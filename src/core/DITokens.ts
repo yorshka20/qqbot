@@ -1,0 +1,15 @@
+// Dependency injection tokens
+// Centralized token management for dependency injection
+
+export const DITokens = {
+  COMMAND_MANAGER: 'CommandManager',
+  HOOK_MANAGER: 'HookManager',
+  TASK_MANAGER: 'TaskManager',
+  AI_MANAGER: 'AIManager',
+  CONTEXT_MANAGER: 'ContextManager',
+  DATABASE_MANAGER: 'DatabaseManager',
+  API_CLIENT: 'APIClient',
+  CONFIG: 'Config',
+} as const;
+
+export type DIToken = (typeof DITokens)[keyof typeof DITokens];

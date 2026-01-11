@@ -114,6 +114,8 @@ export interface BotConfig {
   bot: {
     selfId: number | null;
     logLevel: LogLevel;
+    owner?: number; // Bot owner user ID
+    admins?: number[]; // Bot admin user IDs
   };
   plugins: {
     enabled: string[];

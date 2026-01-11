@@ -1,20 +1,28 @@
 // Builtin command handlers
 
-import type { CommandHandler, CommandContext, CommandResult } from '../types';
-import { logger } from '@/utils/logger';
+import { DITokens } from '@/core/DITokens';
+import { inject, injectable } from 'tsyringe';
+import type { CommandManager } from '../CommandManager';
+import { Command } from '../decorators';
+import type { CommandHandler, CommandResult } from '../types';
 
 /**
  * Help command - shows available commands
  */
+@Command({
+  name: 'help',
+  description: 'Show available commands',
+  usage: '/help [command]',
+  permissions: ['user'], // All users can use help
+})
+@injectable()
 export class HelpCommand implements CommandHandler {
   name = 'help';
   description = 'Show available commands';
   usage = '/help [command]';
 
   constructor(
-    private commandManager: {
-      getAllCommands: () => Array<{ handler: CommandHandler }>;
-    },
+    @inject(DITokens.COMMAND_MANAGER) private commandManager: CommandManager,
   ) {}
 
   execute(args: string[]): CommandResult {
@@ -69,6 +77,13 @@ export class HelpCommand implements CommandHandler {
 /**
  * Status command - shows bot status
  */
+@Command({
+  name: 'status',
+  description: 'Show bot status',
+  usage: '/status',
+  permissions: ['user'], // All users can check status
+})
+@injectable()
 export class StatusCommand implements CommandHandler {
   name = 'status';
   description = 'Show bot status';
@@ -94,6 +109,13 @@ Memory: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`;
 /**
  * Ping command - responds with pong
  */
+@Command({
+  name: 'ping',
+  description: 'Test bot response',
+  usage: '/ping',
+  permissions: ['user'], // All users can ping
+})
+@injectable()
 export class PingCommand implements CommandHandler {
   name = 'ping';
   description = 'Test bot response';

@@ -18,7 +18,9 @@
       "@/*": ["./src/*"],
       "@/types/*": ["./types/*"]
     },
-    "types": ["bun-types"]
+    "types": ["bun-types"],
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
   },
   "include": ["src/**/*", "types/**/*"],
   "exclude": ["node_modules", "dist"]

@@ -60,10 +60,22 @@ export interface CommandContext {
 }
 
 /**
+ * Permission levels for command access control
+ */
+export type PermissionLevel =
+  | 'user'
+  | 'group_admin'
+  | 'group_owner'
+  | 'admin'
+  | 'owner';
+
+/**
  * Command registration info
  */
 export interface CommandRegistration {
   handler: CommandHandler;
-  priority: number; // Higher priority = executed first
   pluginName?: string; // If registered by plugin
+  permissions?: PermissionLevel[]; // Required permissions
+  aliases?: string[]; // Command aliases
+  enabled?: boolean; // Whether command is enabled
 }

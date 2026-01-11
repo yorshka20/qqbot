@@ -1,4 +1,6 @@
 // Main entry point
+// IMPORTANT: reflect-metadata must be imported FIRST before any other imports
+import 'reflect-metadata';
 
 import { APIClient } from './api/APIClient';
 import { Bot } from './core/Bot';
