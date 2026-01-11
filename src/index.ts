@@ -3,6 +3,7 @@
 import 'reflect-metadata';
 
 import { APIClient } from './api/APIClient';
+import { ConversationInitializer } from './conversation/ConversationInitializer';
 import { Bot } from './core/Bot';
 import type { ProtocolName } from './core/Config';
 import { EventRouter } from './events/EventRouter';
@@ -12,7 +13,6 @@ import { NoticeHandler } from './events/handlers/NoticeHandler';
 import { RequestHandler } from './events/handlers/RequestHandler';
 import type { NormalizedEvent } from './events/types';
 import { PluginManager } from './plugins/PluginManager';
-import { ConversationInitializer } from './conversation/ConversationInitializer';
 import { MilkyAdapter } from './protocol/milky/MilkyAdapter';
 import { OneBot11Adapter } from './protocol/onebot11/OneBot11Adapter';
 import { SatoriAdapter } from './protocol/satori/SatoriAdapter';
@@ -45,7 +45,9 @@ async function main() {
 
     // Set up event handlers
     const messageHandler = new MessageHandler();
-    messageHandler.setConversationManager(conversationComponents.conversationManager);
+    messageHandler.setConversationManager(
+      conversationComponents.conversationManager,
+    );
 
     const noticeHandler = new NoticeHandler();
     const requestHandler = new RequestHandler();
@@ -124,7 +126,7 @@ async function main() {
 
     // Initialize plugin manager before starting bot
     const pluginsConfig = config.getPluginsConfig();
-    const pluginManager = new PluginManager(pluginsConfig.directory);
+    const pluginManager = new PluginManager();
     pluginManager.setContext({
       api: apiClient,
       events: eventRouter,
@@ -139,7 +141,7 @@ async function main() {
     await bot.start();
 
     // Load plugins after bot is started
-    await pluginManager.loadPlugins(pluginsConfig.enabled);
+    await pluginManager.loadPlugins(pluginsConfig.list);
 
     logger.info('[Main] Bot initialized and ready');
 

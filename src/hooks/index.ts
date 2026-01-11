@@ -11,9 +11,13 @@ export type { MessageHooks } from './MessageHooks';
 export type { CommandHooks } from './CommandHooks';
 export type { TaskHooks } from './TaskHooks';
 export type { AIHooks } from './AIHooks';
+export { HookPriority, getCoreHookPriority, getExtensionHookPriority } from './HookPriority';
+export type { CoreHookName, HookPriorityVariant } from './HookPriority';
 
 /**
  * Combined PluginHooks interface
+ * Note: AIHooks are now part of TaskHooks since AI is used as a task executor.
+ * AIHooks is kept for backward compatibility but hooks are registered via TaskSystem.
  */
 export interface PluginHooks extends MessageHooks, CommandHooks, TaskHooks, AIHooks {
   /**

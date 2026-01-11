@@ -57,8 +57,18 @@
     "logLevel": "info",
   },
   // Plugin configuration
+  // Plugins must be placed in src/plugins/ directory
   "plugins": {
-    "enabled": [],
-    "directory": "./plugins",
+    "list": [
+      // Example: Whitelist plugin
+      // {
+      //   "name": "whitelist",
+      //   "enabled": true,
+      //   "config": {
+      //     "enabled": true,
+      //     "userIds": ["123456789", "987654321"]
+      //   }
+      // }
+    ],
   },
 }
