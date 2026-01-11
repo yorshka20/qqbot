@@ -7,5 +7,4 @@ export type {
   SystemDependency,
   SystemFactory,
 } from './System';
-export { SystemManager } from './SystemManager';
 export { SystemRegistry } from './SystemRegistry';
