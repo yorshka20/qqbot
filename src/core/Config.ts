@@ -112,14 +112,17 @@ export interface BotConfig {
     deduplication: EventDeduplicationConfig;
   };
   bot: {
-    selfId: number | null;
+    selfId: string;
     logLevel: LogLevel;
     owner?: number; // Bot owner user ID
     admins?: number[]; // Bot admin user IDs
   };
   plugins: {
-    enabled: string[];
-    directory: string;
+    list: Array<{
+      name: string;
+      enabled: boolean;
+      config?: any; // Each plugin has its own config structure
+    }>;
   };
   database?: DatabaseConfig;
   ai?: AIConfig;
@@ -292,6 +295,21 @@ export class Config {
 
   getPluginsConfig() {
     return this.config.plugins;
+  }
+
+  /**
+   * Get plugin config by name
+   */
+  getPluginConfig(pluginName: string): any | undefined {
+    const plugin = this.config.plugins.list.find((p) => p.name === pluginName);
+    return plugin?.config;
+  }
+
+  /**
+   * Get enabled plugin names
+   */
+  getEnabledPluginNames(): string[] {
+    return this.config.plugins.list.filter((p) => p.enabled).map((p) => p.name);
   }
 
   getDatabaseConfig(): DatabaseConfig | undefined {

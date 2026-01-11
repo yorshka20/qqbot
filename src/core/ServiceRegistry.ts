@@ -7,7 +7,7 @@ import type { APIClient } from '@/api/APIClient';
 import type { CommandManager } from '@/command/CommandManager';
 import type { ContextManager } from '@/context/ContextManager';
 import type { DatabaseManager } from '@/database/DatabaseManager';
-import type { HookManager } from '@/plugins/HookManager';
+import type { HookManager } from '@/hooks/HookManager';
 import type { TaskManager } from '@/task/TaskManager';
 import { logger } from '@/utils/logger';
 import type { Config } from './Config';

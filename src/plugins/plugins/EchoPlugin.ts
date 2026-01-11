@@ -3,7 +3,13 @@
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { PluginBase } from '../PluginBase';
+import { Plugin } from '../decorators';
 
+@Plugin({
+  name: 'echo',
+  version: '1.0.0',
+  description: 'Echo plugin that repeats messages',
+})
 export class EchoPlugin extends PluginBase {
   readonly name = 'echo';
   readonly version = '1.0.0';

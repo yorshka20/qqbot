@@ -3,9 +3,9 @@
 import type { CommandManager } from '@/command/CommandManager';
 import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';
-import type { HookManager } from '@/plugins/HookManager';
-import { getExtensionHookPriority } from '@/plugins/hooks/HookPriority';
-import type { HookContext } from '@/plugins/hooks/types';
+import type { HookManager } from '@/hooks/HookManager';
+import { getExtensionHookPriority } from '@/hooks/HookPriority';
+import type { HookContext } from '@/hooks/types';
 
 /**
  * Command System

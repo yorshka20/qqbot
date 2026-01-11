@@ -1,9 +1,8 @@
 // System interface and types
 // Unified interface for all systems (Lifecycle, Command, Task, AI, etc.)
 
-import type { HookContext, HookHandler } from '@/plugins/hooks/types';
-import type { HookManager } from '@/plugins/HookManager';
-import type { HookRegistry } from '@/plugins/HookRegistry';
+import type { HookContext, HookHandler } from '@/hooks/types';
+import type { HookManager } from '@/hooks/HookManager';
 
 /**
  * System execution stage
@@ -30,7 +29,6 @@ export interface SystemDependency {
  */
 export interface SystemContext {
   hookManager: HookManager;
-  hookRegistry: HookRegistry;
   getSystem<T extends System>(name: string): T | null;
   config: unknown;
 }

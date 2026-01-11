@@ -1,8 +1,8 @@
 // AI Service - provides AI capabilities as a service
 
 import type { ContextManager } from '@/context/ContextManager';
-import type { HookManager } from '@/plugins/HookManager';
-import type { HookContext } from '@/plugins/hooks/types';
+import type { HookManager } from '@/hooks/HookManager';
+import type { HookContext } from '@/hooks/types';
 import type { TaskAnalyzer } from '@/task/TaskAnalyzer';
 import type { Task } from '@/task/types';
 import { logger } from '@/utils/logger';

@@ -126,7 +126,7 @@ async function main() {
 
     // Initialize plugin manager before starting bot
     const pluginsConfig = config.getPluginsConfig();
-    const pluginManager = new PluginManager();
+    const pluginManager = new PluginManager(conversationComponents.hookManager);
     pluginManager.setContext({
       api: apiClient,
       events: eventRouter,
@@ -134,8 +134,6 @@ async function main() {
         getConfig: () => config.getConfig(),
       },
     });
-    // Set hook registry for plugin hook registration
-    pluginManager.setHookRegistry(conversationComponents.hookRegistry);
 
     // Start bot (this will trigger connection events)
     await bot.start();

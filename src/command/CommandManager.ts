@@ -2,8 +2,8 @@
 
 import { getTSyringeContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { HookManager } from '@/plugins/HookManager';
-import type { HookContext } from '@/plugins/hooks/types';
+import type { HookManager } from '@/hooks/HookManager';
+import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { getAllCommandMetadata } from './decorators';
 import type {

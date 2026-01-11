@@ -1,9 +1,6 @@
 // Conversation module type definitions
 
 import type { NormalizedMessageEvent } from '@/events/types';
-import type { ParsedCommand, CommandResult } from '@/command/types';
-import type { Task, TaskResult } from '@/task/types';
-import type { ConversationContext } from '@/context/types';
 
 /**
  * Message processing result
@@ -23,4 +20,5 @@ export interface MessageProcessingContext {
   conversationId?: string;
   sessionId: string;
   sessionType: 'user' | 'group';
+  botSelfId: string;
 }

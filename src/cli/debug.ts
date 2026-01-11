@@ -11,6 +11,7 @@ import { MetaEventHandler } from '../events/handlers/MetaEventHandler';
 import { NoticeHandler } from '../events/handlers/NoticeHandler';
 import { RequestHandler } from '../events/handlers/RequestHandler';
 import type { NormalizedEvent, NormalizedMessageEvent } from '../events/types';
+import { HookManager } from '../hooks/HookManager';
 import { PluginManager } from '../plugins/PluginManager';
 import { MilkyAdapter } from '../protocol/milky/MilkyAdapter';
 import { OneBot11Adapter } from '../protocol/onebot11/OneBot11Adapter';
@@ -384,7 +385,8 @@ class DebugCLI {
       // Load plugins
       const config = this.bot.getConfig();
       const pluginsConfig = config.getPluginsConfig();
-      const pluginManager = new PluginManager(pluginsConfig.directory);
+      const hookManager = new HookManager();
+      const pluginManager = new PluginManager(hookManager);
       pluginManager.setContext({
         api: this.apiClient,
         events: this.eventRouter,
@@ -392,7 +394,7 @@ class DebugCLI {
           getConfig: () => config.getConfig(),
         },
       });
-      await pluginManager.loadPlugins(pluginsConfig.enabled);
+      await pluginManager.loadPlugins(pluginsConfig.list);
 
       this.printSuccess('Bot initialized and ready!\n');
       this.printInfo('Type "help" for available commands.\n');
