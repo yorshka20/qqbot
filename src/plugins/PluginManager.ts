@@ -3,14 +3,23 @@
 import { readdirSync, statSync } from 'fs';
 import { join, extname } from 'path';
 import type { Plugin, PluginContext, PluginInfo } from './types';
+import type { HookRegistry } from './HookRegistry';
 import { logger } from '@/utils/logger';
 
 export class PluginManager {
   private plugins = new Map<string, Plugin>();
   private enabledPlugins = new Set<string>();
   private context?: PluginContext;
+  private hookRegistry?: HookRegistry;
 
   constructor(private pluginDirectory: string) {}
+
+  /**
+   * Set hook registry for registering plugin hooks
+   */
+  setHookRegistry(registry: HookRegistry): void {
+    this.hookRegistry = registry;
+  }
 
   setContext(context: PluginContext): void {
     this.context = context;
@@ -54,6 +63,11 @@ export class PluginManager {
           // Initialize plugin
           if (plugin.onInit) {
             await plugin.onInit(this.context);
+          }
+
+          // Register hooks if hook registry is available
+          if (this.hookRegistry) {
+            this.hookRegistry.registerPluginHooks(plugin, plugin.name);
           }
 
           // Enable if in enabled list
@@ -107,6 +121,11 @@ export class PluginManager {
 
     if (plugin.onDisable) {
       await plugin.onDisable();
+    }
+
+    // Unregister hooks
+    if (this.hookRegistry) {
+      this.hookRegistry.unregisterPluginHooks(name);
     }
 
     this.enabledPlugins.delete(name);
