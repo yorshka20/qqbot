@@ -66,3 +66,26 @@ export interface TaskExecutionContext {
   messageId?: string;
   metadata?: Record<string, unknown>;
 }
+
+/**
+ * Conversation context for task analysis
+ */
+export interface ConversationContext {
+  userMessage: string;
+  conversationHistory?: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+  }>;
+  userId: number;
+  groupId?: number;
+  messageType: 'private' | 'group';
+}
+
+/**
+ * Task analysis result
+ */
+export interface TaskAnalysisResult {
+  task: Task;
+  confidence?: number;
+  reasoning?: string;
+}

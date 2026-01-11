@@ -47,6 +47,64 @@ export interface EventDeduplicationConfig {
   window: number;
 }
 
+export type DatabaseType = 'sqlite' | 'mongodb';
+
+export interface SQLiteConfig {
+  path: string;
+}
+
+export interface MongoDBConfig {
+  connectionString: string;
+  database: string;
+  options?: {
+    authSource?: string;
+    user?: string;
+    password?: string;
+  };
+}
+
+export interface DatabaseConfig {
+  type: DatabaseType;
+  sqlite?: SQLiteConfig;
+  mongodb?: MongoDBConfig;
+}
+
+export type AIProviderType = 'openai' | 'anthropic' | 'ollama';
+
+export interface OpenAIProviderConfig {
+  type: 'openai';
+  apiKey: string;
+  model?: string;
+  baseURL?: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface AnthropicProviderConfig {
+  type: 'anthropic';
+  apiKey: string;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface OllamaProviderConfig {
+  type: 'ollama';
+  baseUrl: string;
+  model: string;
+  temperature?: number;
+}
+
+export type AIProviderConfig =
+  | OpenAIProviderConfig
+  | AnthropicProviderConfig
+  | OllamaProviderConfig;
+
+export interface AIConfig {
+  provider: string; // Current provider name
+  providers: Record<string, AIProviderConfig>;
+}
+
 export interface BotConfig {
   protocols: ProtocolConfig[];
   api: APIConfig;
@@ -61,6 +119,8 @@ export interface BotConfig {
     enabled: string[];
     directory: string;
   };
+  database?: DatabaseConfig;
+  ai?: AIConfig;
 }
 
 export class Config {
@@ -230,5 +290,13 @@ export class Config {
 
   getPluginsConfig() {
     return this.config.plugins;
+  }
+
+  getDatabaseConfig(): DatabaseConfig | undefined {
+    return this.config.database;
+  }
+
+  getAIConfig(): AIConfig | undefined {
+    return this.config.ai;
   }
 }

@@ -10,6 +10,7 @@ import { NoticeHandler } from './events/handlers/NoticeHandler';
 import { RequestHandler } from './events/handlers/RequestHandler';
 import type { NormalizedEvent } from './events/types';
 import { PluginManager } from './plugins/PluginManager';
+import { ConversationInitializer } from './conversation/ConversationInitializer';
 import { MilkyAdapter } from './protocol/milky/MilkyAdapter';
 import { OneBot11Adapter } from './protocol/onebot11/OneBot11Adapter';
 import { SatoriAdapter } from './protocol/satori/SatoriAdapter';
@@ -34,8 +35,16 @@ async function main() {
     const eventDeduplicationConfig = config.getEventDeduplicationConfig();
     const eventRouter = new EventRouter(eventDeduplicationConfig);
 
+    // Initialize conversation components
+    const conversationComponents = await ConversationInitializer.initialize(
+      config,
+      apiClient,
+    );
+
     // Set up event handlers
     const messageHandler = new MessageHandler();
+    messageHandler.setConversationManager(conversationComponents.conversationManager);
+
     const noticeHandler = new NoticeHandler();
     const requestHandler = new RequestHandler();
     const metaEventHandler = new MetaEventHandler();
@@ -121,6 +130,8 @@ async function main() {
         getConfig: () => config.getConfig(),
       },
     });
+    // Set hook registry for plugin hook registration
+    pluginManager.setHookRegistry(conversationComponents.hookRegistry);
 
     // Start bot (this will trigger connection events)
     await bot.start();
@@ -135,6 +146,9 @@ async function main() {
       logger.info('[Main] Received SIGINT, shutting down...');
       await bot.stop();
       eventRouter.destroy();
+      if (conversationComponents.databaseManager) {
+        await conversationComponents.databaseManager.close();
+      }
       process.exit(0);
     });
 
@@ -142,6 +156,9 @@ async function main() {
       logger.info('[Main] Received SIGTERM, shutting down...');
       await bot.stop();
       eventRouter.destroy();
+      if (conversationComponents.databaseManager) {
+        await conversationComponents.databaseManager.close();
+      }
       process.exit(0);
     });
   } catch (error) {

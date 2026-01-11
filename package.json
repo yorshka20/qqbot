@@ -29,13 +29,17 @@
   "packageManager": "bun@1.0.0",
   "dependencies": {
     "@saltify/milky-types": "^1.1.0",
+    "better-sqlite3": "^12.6.0",
     "jsonc-parser": "^3.3.1",
+    "mongodb": "^7.0.0",
+    "openai": "^6.16.0",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
-    "@types/bun": "latest",
     "@biomejs/biome": "^2.3.11",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/bun": "latest",
     "prettier": "^3.7.4",
     "typescript": "^5.9.3"
   }
