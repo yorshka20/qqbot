@@ -1,7 +1,6 @@
 // Milky API response handler utilities
 // Handles parsing and validation of Milky API responses
 
-import { logger } from '@/utils/logger';
 import type { MilkyAPIResponse } from './types';
 
 /**
@@ -26,13 +25,11 @@ export class MilkyAPIResponseHandler {
   /**
    * Handle HTTP response: parse JSON and validate Milky API response format
    * @param response HTTP Response object
-   * @param action API action name for error context
    * @returns Parsed response data
    * @throws Error if HTTP error, JSON parsing fails, or API indicates failure
    */
   static async handleResponse<TResponse = unknown>(
     response: Response,
-    action: string,
   ): Promise<TResponse> {
     // Handle HTTP errors first
     if (!response.ok) {
@@ -54,10 +51,6 @@ export class MilkyAPIResponseHandler {
       }
     }
 
-    // If response doesn't match Milky format, log warning and return as-is
-    logger.warn(
-      `[MilkyAPIResponseHandler] Response doesn't match Milky API format for action: ${action}`,
-    );
     return data as TResponse;
   }
 

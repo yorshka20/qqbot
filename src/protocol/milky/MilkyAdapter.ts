@@ -9,22 +9,6 @@ import type { BaseEvent } from '../base/types';
 import { MilkyAPIConverter } from './MilkyAPIConverter';
 import { MilkyAPIResponseHandler } from './MilkyAPIResponseHandler';
 import { MilkyEventNormalizer } from './MilkyEventNormalizer';
-import type {
-  NormalizedMilkyEvent,
-  NormalizedMilkyMessageEvent,
-  NormalizedMilkyMetaEvent,
-  NormalizedMilkyNoticeEvent,
-  NormalizedMilkyRequestEvent,
-} from './types';
-
-// Re-export normalized event types for external use
-export type {
-  NormalizedMilkyEvent,
-  NormalizedMilkyMessageEvent,
-  NormalizedMilkyMetaEvent,
-  NormalizedMilkyNoticeEvent,
-  NormalizedMilkyRequestEvent,
-};
 
 /**
  * Milky protocol adapter
@@ -65,9 +49,6 @@ export class MilkyAdapter extends ProtocolAdapter {
       context.params,
     );
 
-    // Build the full endpoint URL
-    const endpoint = `${apiUrl}/${milkyAction}`;
-
     logger.debug(
       `[MilkyAdapter] Calling API: ${milkyAction} (echo: ${context.echo}) with params:`,
       JSON.stringify(milkyParams),
@@ -79,7 +60,7 @@ export class MilkyAdapter extends ProtocolAdapter {
       const timeoutId = setTimeout(() => controller.abort(), context.timeout);
 
       // Make HTTP POST request
-      const response = await fetch(endpoint, {
+      const response = await fetch(`${apiUrl}/${milkyAction}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -92,10 +73,7 @@ export class MilkyAdapter extends ProtocolAdapter {
       clearTimeout(timeoutId);
 
       // Handle response: parse JSON and validate Milky API format
-      return MilkyAPIResponseHandler.handleResponse<TResponse>(
-        response,
-        context.action,
-      );
+      return MilkyAPIResponseHandler.handleResponse<TResponse>(response);
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'AbortError') {

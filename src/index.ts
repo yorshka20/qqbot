@@ -13,12 +13,14 @@ import { NoticeHandler } from './events/handlers/NoticeHandler';
 import { RequestHandler } from './events/handlers/RequestHandler';
 import type { NormalizedEvent } from './events/types';
 import { PluginManager } from './plugins/PluginManager';
-import { MilkyAdapter } from './protocol/milky/MilkyAdapter';
+import { MilkyAdapter } from './protocol/milky';
 import { OneBot11Adapter } from './protocol/onebot11/OneBot11Adapter';
 import { SatoriAdapter } from './protocol/satori/SatoriAdapter';
 import { logger } from './utils/logger';
 
 async function main() {
+  logger.info('Starting bot...');
+
   try {
     // Load configuration
     const configPath = process.env.CONFIG_PATH;
