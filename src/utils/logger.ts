@@ -1,5 +1,10 @@
 // Logging utility
 
+import { existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import winston from 'winston';
+import DailyRotateFile from 'winston-daily-rotate-file';
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface Logger {
@@ -9,43 +14,89 @@ export interface Logger {
   error(message: string, ...args: unknown[]): void;
 }
 
-class ConsoleLogger implements Logger {
-  constructor(private level: LogLevel = 'info') {}
+class FileLogger implements Logger {
+  private winstonLogger: winston.Logger;
 
-  private shouldLog(level: LogLevel): boolean {
-    const levels: LogLevel[] = ['debug', 'info', 'warn', 'error'];
-    return levels.indexOf(level) >= levels.indexOf(this.level);
+  constructor(level: LogLevel = 'info') {
+    // Ensure logs directory exists
+    const logsDir = join(process.cwd(), 'logs');
+    if (!existsSync(logsDir)) {
+      mkdirSync(logsDir, { recursive: true });
+    }
+
+    // Configure daily rotate file transport
+    const fileTransport = new DailyRotateFile({
+      filename: join(logsDir, 'app-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      maxSize: '20m',
+      maxFiles: '14d',
+      format: winston.format.combine(
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+        winston.format.errors({ stack: true }),
+        winston.format.splat(),
+        winston.format.printf(
+          ({ timestamp, level, message, stack, ...meta }) => {
+            let metaStr = '';
+            if (stack) {
+              metaStr = `\n${stack}`;
+            } else if (Object.keys(meta).length) {
+              metaStr = ` ${JSON.stringify(meta)}`;
+            }
+            return `[${timestamp}] [${level.toUpperCase()}] ${message}${metaStr}`;
+          },
+        ),
+      ),
+    });
+
+    // Configure console transport
+    const consoleTransport = new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+        winston.format.errors({ stack: true }),
+        winston.format.splat(),
+        winston.format.printf(
+          ({ timestamp, level, message, stack, ...meta }) => {
+            let metaStr = '';
+            if (stack) {
+              metaStr = `\n${stack}`;
+            } else if (Object.keys(meta).length) {
+              metaStr = ` ${JSON.stringify(meta)}`;
+            }
+            return `[${timestamp}] [${level}] ${message}${metaStr}`;
+          },
+        ),
+      ),
+    });
+
+    // Create winston logger
+    this.winstonLogger = winston.createLogger({
+      level,
+      transports: [fileTransport, consoleTransport],
+    });
   }
 
   debug(message: string, ...args: unknown[]): void {
-    if (this.shouldLog('debug')) {
-      console.debug(`[DEBUG] ${message}`, ...args);
-    }
+    this.winstonLogger.debug(message, ...args);
   }
 
   info(message: string, ...args: unknown[]): void {
-    if (this.shouldLog('info')) {
-      console.log(`[INFO] ${message}`, ...args);
-    }
+    this.winstonLogger.info(message, ...args);
   }
 
   warn(message: string, ...args: unknown[]): void {
-    if (this.shouldLog('warn')) {
-      console.warn(`[WARN] ${message}`, ...args);
-    }
+    this.winstonLogger.warn(message, ...args);
   }
 
   error(message: string, ...args: unknown[]): void {
-    if (this.shouldLog('error')) {
-      console.error(`[ERROR] ${message}`, ...args);
-    }
+    this.winstonLogger.error(message, ...args);
   }
 }
 
-let defaultLogger: Logger = new ConsoleLogger();
+let defaultLogger: Logger = new FileLogger();
 
 export function setLogLevel(level: LogLevel): void {
-  defaultLogger = new ConsoleLogger(level);
+  defaultLogger = new FileLogger(level);
 }
 
 export function getLogger(): Logger {
