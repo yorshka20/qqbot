@@ -1,0 +1,3 @@
+# User plugins directory
+# Place your plugin files (.ts or .js) here
+# Plugins are automatically loaded by PluginManager

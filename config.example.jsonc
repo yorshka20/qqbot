@@ -1,0 +1,64 @@
+{
+  // Protocol configurations
+  "protocols": [
+    {
+      // Milky protocol (primary)
+      "name": "milky",
+      "enabled": true,
+      "priority": 1,
+      "connection": {
+        "url": "ws://192.168.50.97:3011/event",
+        "apiUrl": "http://192.168.50.97:3011/api",
+        "accessToken": "your_access_token_here",
+      },
+      "reconnect": {
+        "enabled": true,
+        "maxRetries": 10,
+        "backoff": "exponential",
+        "initialDelay": 1000,
+        "maxDelay": 30000,
+      },
+    },
+    {
+      // OneBot11 protocol (fallback)
+      "name": "onebot11",
+      "enabled": true,
+      "priority": 2,
+      "connection": {
+        "url": "ws://192.168.50.97:3010/event",
+        "apiUrl": "http://192.168.50.97:3010/api",
+        "accessToken": "your_access_token_here",
+      },
+      "reconnect": {
+        "enabled": true,
+        "maxRetries": 10,
+        "backoff": "exponential",
+        "initialDelay": 1000,
+        "maxDelay": 30000,
+      },
+    },
+  ],
+  // API configuration
+  "api": {
+    "strategy": "priority",
+    "preferredProtocol": "milky",
+  },
+  // Event deduplication configuration
+  "events": {
+    "deduplication": {
+      "enabled": true,
+      "strategy": "first-received",
+      "window": 5000,
+    },
+  },
+  // Bot configuration
+  "bot": {
+    "selfId": null,
+    "logLevel": "info",
+  },
+  // Plugin configuration
+  "plugins": {
+    "enabled": [],
+    "directory": "./plugins",
+  },
+}

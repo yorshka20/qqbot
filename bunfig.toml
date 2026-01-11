@@ -1,0 +1,21 @@
+[install]
+# Automatically install peer dependencies
+auto = true
+
+# Production dependencies only
+production = false
+
+# Install optional dependencies
+optional = true
+
+# Install dev dependencies
+dev = true
+
+[run]
+# Prepend PATH with node symlink pointing to bun
+# Set to true to make bun available as node in scripts
+bun = false
+
+# Shell to use when running scripts
+# Options: "bun" (Bun's shell) or "system" (system shell)
+shell = "bun"
