@@ -1,5 +1,6 @@
 // Unified multi-protocol API client
 
+import type { ConversationContext } from '@/context/types';
 import type { ProtocolName } from '@/core/Config';
 import type { ProtocolAdapter } from '@/protocol/base/ProtocolAdapter';
 import { APIError } from '@/utils/errors';
@@ -40,15 +41,27 @@ export class APIClient {
    * APIClient -> APIRouter -> ProtocolAdapter -> Connection
    * This allows any layer to access or modify context information without
    * changing method signatures.
+   *
+   * @param action - API action name
+   * @param params - API parameters
+   * @param protocol - Protocol name
+   * @param timeout - Request timeout (default: 10000ms)
+   * @param conversationContext - Optional conversation context for better integration
    */
   async call<TResponse = unknown>(
     action: string,
     params: Record<string, unknown> = {},
     protocol: ProtocolName,
     timeout = 10000,
+    conversationContext?: ConversationContext,
   ): Promise<TResponse> {
     // Create context for this API call - all information is encapsulated here
     const context = new APIContext(action, params, protocol, timeout);
+
+    // Store conversation context in metadata if provided
+    if (conversationContext) {
+      context.metadata.set('conversationContext', conversationContext);
+    }
 
     // Get adapter using context - router can access all needed info from context
     const adapter = this.router.getAdapter(context);
