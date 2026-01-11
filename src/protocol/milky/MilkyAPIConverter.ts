@@ -83,9 +83,7 @@ export class MilkyAPIConverter {
    * Convert message string or array to OutgoingSegment array
    * Helper function for message conversion
    */
-  private static convertMessageToSegments(
-    message: unknown,
-  ): OutgoingSegment[] | undefined {
+  private static convertMessageToSegments(message: unknown): OutgoingSegment[] | undefined {
     if (typeof message === 'string') {
       return [
         {
@@ -111,19 +109,14 @@ export class MilkyAPIConverter {
    * @param params Unified API parameters (OneBot11-style, e.g., { user_id, message: string })
    * @returns Milky format parameters (e.g., { user_id, message: OutgoingSegment[] })
    */
-  static convertParamsToMilky(
-    action: string,
-    params: Record<string, unknown>,
-  ): Record<string, unknown> {
+  static convertParamsToMilky(action: string, params: Record<string, unknown>): Record<string, unknown> {
     switch (action) {
       case 'send_private_message': {
         const milkyParams: Partial<SendPrivateMessageInput> = {
           user_id: (params.user_id || params.peer_id) as number,
         };
 
-        const messageSegments = MilkyAPIConverter.convertMessageToSegments(
-          params.message,
-        );
+        const messageSegments = MilkyAPIConverter.convertMessageToSegments(params.message);
         if (messageSegments) {
           milkyParams.message = messageSegments;
         }
@@ -136,9 +129,7 @@ export class MilkyAPIConverter {
           group_id: (params.group_id || params.peer_id) as number,
         };
 
-        const messageSegments = MilkyAPIConverter.convertMessageToSegments(
-          params.message,
-        );
+        const messageSegments = MilkyAPIConverter.convertMessageToSegments(params.message);
         if (messageSegments) {
           milkyParams.message = messageSegments;
         }
@@ -170,6 +161,19 @@ export class MilkyAPIConverter {
         return {
           message_seq: (params.message_seq || params.message_id) as number,
         };
+      }
+
+      case 'send_group_message_reaction': {
+        // Milky protocol uses message_seq (number) for reaction API
+        // Milky protocol expects reaction (string code like "76") instead of emoji character
+        // Ensure message_seq is a number, not a string
+        const milkyParams: Record<string, unknown> = {
+          group_id: params.group_id as number,
+          message_seq: typeof params.message_seq === 'number' ? params.message_seq : Number(params.message_seq),
+          reaction: (params.reaction || params.emoji_id) as string, // Milky uses 'reaction' parameter name (表情 ID)
+          is_add: (params.is_add as boolean) || true, // Default to true if not specified
+        };
+        return milkyParams;
       }
 
       case 'get_user_info': {
@@ -308,17 +312,9 @@ export class MilkyAPIConverter {
         for (const [key, value] of Object.entries(params)) {
           // Convert common OneBot11 parameter names to Milky
           // Note: Milky uses peer_id for both user_id and group_id in some contexts
-          if (
-            key === 'user_id' &&
-            !('peer_id' in params) &&
-            !('user_id' in converted)
-          ) {
+          if (key === 'user_id' && !('peer_id' in params) && !('user_id' in converted)) {
             converted.user_id = value;
-          } else if (
-            key === 'group_id' &&
-            !('peer_id' in params) &&
-            !('group_id' in converted)
-          ) {
+          } else if (key === 'group_id' && !('peer_id' in params) && !('group_id' in converted)) {
             converted.group_id = value;
           } else {
             converted[key] = value;
