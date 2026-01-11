@@ -2,6 +2,7 @@
 // Provides a clear, organized way to register services with proper lifecycle management
 
 import type { AIManager } from '@/ai/AIManager';
+import type { AIService } from '@/ai/AIService';
 import type { APIClient } from '@/api/APIClient';
 import type { CommandManager } from '@/command/CommandManager';
 import type { ContextManager } from '@/context/ContextManager';
@@ -53,6 +54,14 @@ export class ServiceRegistry {
   registerAIService(aiManager: AIManager): void {
     logger.debug('[ServiceRegistry] Registering AI service...');
     this.container.registerInstance(DITokens.AI_MANAGER, aiManager);
+  }
+
+  /**
+   * Register AI Service (high-level AI capabilities)
+   */
+  registerAIServiceCapabilities(aiService: AIService): void {
+    logger.debug('[ServiceRegistry] Registering AI Service capabilities...');
+    this.container.registerInstance(DITokens.AI_SERVICE, aiService);
   }
 
   /**

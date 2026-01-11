@@ -6,6 +6,7 @@ export const DITokens = {
   HOOK_MANAGER: 'HookManager',
   TASK_MANAGER: 'TaskManager',
   AI_MANAGER: 'AIManager',
+  AI_SERVICE: 'AIService',
   CONTEXT_MANAGER: 'ContextManager',
   DATABASE_MANAGER: 'DatabaseManager',
   API_CLIENT: 'APIClient',
