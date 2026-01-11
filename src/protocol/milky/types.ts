@@ -1,57 +1,56 @@
-// Milky protocol types
+// Milky protocol normalized event types
+// Shared types for Milky adapter and normalizer
 
-export interface MilkyMessageSegment {
-  type: string;
-  data?: Record<string, unknown>;
+import type { IncomingSegment } from '@saltify/milky-types';
+import type { BaseEvent } from '../base/types';
+
+/**
+ * Milky API response format
+ * @see https://github.com/SaltifyDev/milky
+ */
+export interface MilkyAPIResponse<T = unknown> {
+  code: number;
+  message?: string;
+  data?: T;
 }
 
-export interface MilkyMessageEvent {
-  event_type: 'message_receive';
-  data: {
-    message_scene: 'group' | 'friend';
-    sender_id: number;
-    peer_id: number;
-    segments: MilkyMessageSegment[];
-    message_id?: number;
-    group?: {
-      group_id: number;
-      group_name: string;
-    };
-    group_member?: {
-      user_id: number;
-      nickname: string;
-      card?: string;
-      role?: string;
-    };
+export interface NormalizedMilkyMessageEvent extends BaseEvent {
+  type: 'message';
+  messageType: 'private' | 'group';
+  userId: number;
+  groupId?: number;
+  message: string;
+  segments: IncomingSegment[];
+  messageSeq?: number;
+  groupName?: string;
+  sender?: {
+    userId: number;
+    nickname?: string;
+    card?: string;
+    role?: string;
   };
 }
 
-export interface MilkyNoticeEvent {
-  event_type: 'notice';
-  data: {
-    notice_type: string;
-    [key: string]: unknown;
-  };
+export interface NormalizedMilkyNoticeEvent extends BaseEvent {
+  type: 'notice';
+  noticeType: string;
+  [key: string]: unknown;
 }
 
-export interface MilkyRequestEvent {
-  event_type: 'request';
-  data: {
-    request_type: string;
-    [key: string]: unknown;
-  };
+export interface NormalizedMilkyRequestEvent extends BaseEvent {
+  type: 'request';
+  requestType: string;
+  [key: string]: unknown;
 }
 
-export interface MilkyMetaEvent {
-  event_type: 'meta_event';
-  data: {
-    meta_event_type: string;
-    [key: string]: unknown;
-  };
+export interface NormalizedMilkyMetaEvent extends BaseEvent {
+  type: 'meta_event';
+  metaEventType: string;
+  [key: string]: unknown;
 }
 
-export type MilkyEvent =
-  | MilkyMessageEvent
-  | MilkyNoticeEvent
-  | MilkyRequestEvent
-  | MilkyMetaEvent;
+export type NormalizedMilkyEvent =
+  | NormalizedMilkyMessageEvent
+  | NormalizedMilkyNoticeEvent
+  | NormalizedMilkyRequestEvent
+  | NormalizedMilkyMetaEvent;

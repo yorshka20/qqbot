@@ -1,58 +1,34 @@
 // Milky protocol adapter implementation
 
+import type { ProtocolConfig } from '@/core/Config';
+import { Connection } from '@/core/Connection';
+import { logger } from '@/utils/logger';
 import { ProtocolAdapter } from '../base/ProtocolAdapter';
 import type { BaseEvent } from '../base/types';
+import { MilkyAPIConverter } from './MilkyAPIConverter';
+import { MilkyAPIResponseHandler } from './MilkyAPIResponseHandler';
+import { MilkyEventNormalizer } from './MilkyEventNormalizer';
 import type {
-  MilkyEvent,
-  MilkyMessageEvent,
-  MilkyNoticeEvent,
-  MilkyRequestEvent,
-  MilkyMetaEvent,
+  NormalizedMilkyEvent,
+  NormalizedMilkyMessageEvent,
+  NormalizedMilkyMetaEvent,
+  NormalizedMilkyNoticeEvent,
+  NormalizedMilkyRequestEvent,
 } from './types';
-import { Connection } from '@/core/Connection';
-import type { ProtocolConfig } from '@/core/Config';
 
-export interface NormalizedMilkyMessageEvent extends BaseEvent {
-  type: 'message';
-  messageType: 'private' | 'group';
-  userId: number;
-  groupId?: number;
-  message: string;
-  segments: Array<{ type: string; data?: Record<string, unknown> }>;
-  messageId?: number;
-  groupName?: string;
-  sender?: {
-    userId: number;
-    nickname?: string;
-    card?: string;
-    role?: string;
-  };
-}
+// Re-export normalized event types for external use
+export type {
+  NormalizedMilkyEvent,
+  NormalizedMilkyMessageEvent,
+  NormalizedMilkyMetaEvent,
+  NormalizedMilkyNoticeEvent,
+  NormalizedMilkyRequestEvent,
+};
 
-export interface NormalizedMilkyNoticeEvent extends BaseEvent {
-  type: 'notice';
-  noticeType: string;
-  [key: string]: unknown;
-}
-
-export interface NormalizedMilkyRequestEvent extends BaseEvent {
-  type: 'request';
-  requestType: string;
-  [key: string]: unknown;
-}
-
-export interface NormalizedMilkyMetaEvent extends BaseEvent {
-  type: 'meta_event';
-  metaEventType: string;
-  [key: string]: unknown;
-}
-
-export type NormalizedMilkyEvent =
-  | NormalizedMilkyMessageEvent
-  | NormalizedMilkyNoticeEvent
-  | NormalizedMilkyRequestEvent
-  | NormalizedMilkyMetaEvent;
-
+/**
+ * Milky protocol adapter
+ * Converts Milky protocol events and API calls to unified format
+ */
 export class MilkyAdapter extends ProtocolAdapter {
   constructor(config: ProtocolConfig, connection: Connection) {
     super(config, connection);
@@ -63,132 +39,73 @@ export class MilkyAdapter extends ProtocolAdapter {
   }
 
   normalizeEvent(rawEvent: unknown): BaseEvent | null {
-    if (typeof rawEvent !== 'object' || rawEvent === null) {
-      return null;
-    }
-
-    const event = rawEvent as MilkyEvent;
-
-    // Check if it's a Milky event
-    if (!('event_type' in event)) {
-      return null;
-    }
-
-    const timestamp = Date.now();
-    const baseEvent: BaseEvent = {
-      id: `milky_${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
-      type: event.event_type,
-      timestamp,
-      protocol: 'milky',
-    };
-
-    switch (event.event_type) {
-      case 'message_receive':
-        return this.normalizeMessageEvent(event as MilkyMessageEvent, baseEvent);
-      case 'notice':
-        return this.normalizeNoticeEvent(event, baseEvent);
-      case 'request':
-        return this.normalizeRequestEvent(event, baseEvent);
-      case 'meta_event':
-        return this.normalizeMetaEvent(event, baseEvent);
-      default:
-        return baseEvent;
-    }
+    return MilkyEventNormalizer.normalizeEvent(rawEvent);
   }
 
-  private normalizeMessageEvent(
-    event: MilkyMessageEvent,
-    baseEvent: BaseEvent
-  ): NormalizedMilkyMessageEvent {
-    const { data } = event;
-    const messageType = data.message_scene === 'group' ? 'group' : 'private';
+  /**
+   * Override sendAPI to use HTTP POST instead of WebSocket for Milky protocol
+   * Also converts unified API parameters (OneBot11-style) to Milky protocol format
+   */
+  async sendAPI<TResponse = unknown>(
+    action: string,
+    params: Record<string, unknown> = {},
+    timeout = 10000,
+  ): Promise<TResponse> {
+    const apiUrl = this.config.connection.apiUrl;
+    const accessToken = this.config.connection.accessToken;
 
-    const normalized: NormalizedMilkyMessageEvent = {
-      ...baseEvent,
-      type: 'message',
-      messageType,
-      userId: data.sender_id,
-      segments: data.segments || [],
-      message: this.segmentsToText(data.segments || []),
-    };
-
-    if (data.message_id) {
-      normalized.messageId = data.message_id;
+    if (!apiUrl) {
+      throw new Error('API URL is not configured for Milky protocol');
     }
 
-    if (messageType === 'group') {
-      normalized.groupId = data.peer_id;
-      if (data.group) {
-        normalized.groupName = data.group.group_name;
-      }
-    }
+    // Convert unified API action names (OneBot11-style) to Milky protocol endpoints
+    const milkyAction = MilkyAPIConverter.convertActionToMilky(action);
 
-    if (data.group_member) {
-      normalized.sender = {
-        userId: data.group_member.user_id,
-        nickname: data.group_member.nickname,
-        card: data.group_member.card,
-        role: data.group_member.role,
-      };
-    }
+    // Convert unified API parameters (OneBot11-style) to Milky protocol format
+    const milkyParams = MilkyAPIConverter.convertParamsToMilky(
+      milkyAction,
+      params,
+    );
 
-    return normalized;
-  }
+    // Build the full endpoint URL
+    const endpoint = `${apiUrl}/${milkyAction}`;
 
-  private normalizeNoticeEvent(
-    event: MilkyNoticeEvent,
-    baseEvent: BaseEvent
-  ): NormalizedMilkyNoticeEvent {
-    return {
-      ...baseEvent,
-      type: 'notice',
-      noticeType: event.data.notice_type,
-      ...event.data,
-    };
-  }
+    logger.debug(
+      `[MilkyAdapter] Calling API: ${milkyAction} with params:`,
+      JSON.stringify(milkyParams),
+    );
 
-  private normalizeRequestEvent(
-    event: MilkyRequestEvent,
-    baseEvent: BaseEvent
-  ): NormalizedMilkyRequestEvent {
-    return {
-      ...baseEvent,
-      type: 'request',
-      requestType: event.data.request_type,
-      ...event.data,
-    };
-  }
+    try {
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-  private normalizeMetaEvent(
-    event: MilkyMetaEvent,
-    baseEvent: BaseEvent
-  ): NormalizedMilkyMetaEvent {
-    return {
-      ...baseEvent,
-      type: 'meta_event',
-      metaEventType: event.data.meta_event_type,
-      ...event.data,
-    };
-  }
+      // Make HTTP POST request
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
+        },
+        body: JSON.stringify(milkyParams),
+        signal: controller.signal,
+      });
 
-  private segmentsToText(segments: Array<{ type: string; data?: Record<string, unknown> }>): string {
-    return segments
-      .map((segment) => {
-        switch (segment.type) {
-          case 'text':
-            return (segment.data?.text as string) || '';
-          case 'at':
-            return `@${segment.data?.qq || ''}`;
-          case 'face':
-            return `[Face:${segment.data?.id || ''}]`;
-          case 'image':
-            return `[Image:${segment.data?.file || ''}]`;
-          case 'reply':
-            return `[Reply:${segment.data?.id || ''}]`;
-          default:
-            return `[${segment.type}]`;
+      clearTimeout(timeoutId);
+
+      // Handle response: parse JSON and validate Milky API format
+      return MilkyAPIResponseHandler.handleResponse<TResponse>(
+        response,
+        action,
+      );
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new Error(`API request timeout: ${action}`);
         }
-      })
-      .join('');
+        throw error;
+      }
+      throw new Error(`Unknown error: ${String(error)}`);
+    }
   }
 }

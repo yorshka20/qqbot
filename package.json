@@ -8,6 +8,7 @@
     "dev": "bun run src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun --minify",
     "start": "bun dist/index.js",
+    "debug": "bun run src/cli/debug.ts",
     "type-check": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
@@ -27,6 +28,7 @@
   "license": "ISC",
   "packageManager": "bun@1.0.0",
   "dependencies": {
+    "@saltify/milky-types": "^1.1.0",
     "jsonc-parser": "^3.3.1",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0"
