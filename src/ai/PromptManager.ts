@@ -1,4 +1,5 @@
 // Prompt Manager - manages prompt templates
+// Part of AI module - prompt management is integrated into AI scope
 
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
