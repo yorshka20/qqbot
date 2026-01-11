@@ -1,6 +1,7 @@
 // Milky protocol adapter implementation
 
-import type { ProtocolConfig } from '@/core/Config';
+import type { APIContext } from '@/api/types';
+import type { ProtocolConfig, ProtocolName } from '@/core/Config';
 import { Connection } from '@/core/Connection';
 import { logger } from '@/utils/logger';
 import { ProtocolAdapter } from '../base/ProtocolAdapter';
@@ -34,7 +35,7 @@ export class MilkyAdapter extends ProtocolAdapter {
     super(config, connection);
   }
 
-  getProtocolName(): string {
+  getProtocolName(): ProtocolName {
     return 'milky';
   }
 
@@ -45,12 +46,9 @@ export class MilkyAdapter extends ProtocolAdapter {
   /**
    * Override sendAPI to use HTTP POST instead of WebSocket for Milky protocol
    * Also converts unified API parameters (OneBot11-style) to Milky protocol format
+   * Uses context-based approach to access all call information
    */
-  async sendAPI<TResponse = unknown>(
-    action: string,
-    params: Record<string, unknown> = {},
-    timeout = 10000,
-  ): Promise<TResponse> {
+  async sendAPI<TResponse = unknown>(context: APIContext): Promise<TResponse> {
     const apiUrl = this.config.connection.apiUrl;
     const accessToken = this.config.connection.accessToken;
 
@@ -59,26 +57,26 @@ export class MilkyAdapter extends ProtocolAdapter {
     }
 
     // Convert unified API action names (OneBot11-style) to Milky protocol endpoints
-    const milkyAction = MilkyAPIConverter.convertActionToMilky(action);
+    const milkyAction = MilkyAPIConverter.convertActionToMilky(context.action);
 
     // Convert unified API parameters (OneBot11-style) to Milky protocol format
     const milkyParams = MilkyAPIConverter.convertParamsToMilky(
       milkyAction,
-      params,
+      context.params,
     );
 
     // Build the full endpoint URL
     const endpoint = `${apiUrl}/${milkyAction}`;
 
     logger.debug(
-      `[MilkyAdapter] Calling API: ${milkyAction} with params:`,
+      `[MilkyAdapter] Calling API: ${milkyAction} (echo: ${context.echo}) with params:`,
       JSON.stringify(milkyParams),
     );
 
     try {
       // Create AbortController for timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      const timeoutId = setTimeout(() => controller.abort(), context.timeout);
 
       // Make HTTP POST request
       const response = await fetch(endpoint, {
@@ -96,12 +94,14 @@ export class MilkyAdapter extends ProtocolAdapter {
       // Handle response: parse JSON and validate Milky API format
       return MilkyAPIResponseHandler.handleResponse<TResponse>(
         response,
-        action,
+        context.action,
       );
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
-          throw new Error(`API request timeout: ${action}`);
+          throw new Error(
+            `API request timeout: ${context.action} (protocol: milky, echo: ${context.echo})`,
+          );
         }
         throw error;
       }

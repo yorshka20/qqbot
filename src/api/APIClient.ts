@@ -1,12 +1,13 @@
 // Unified multi-protocol API client
 
+import type { ProtocolName } from '@/core/Config';
+import type { ProtocolAdapter } from '@/protocol/base/ProtocolAdapter';
+import { APIError } from '@/utils/errors';
+import { logger } from '@/utils/logger';
 import { APIRouter } from './APIRouter';
 import { RequestManager } from './RequestManager';
-import type { ProtocolAdapter } from '@/protocol/base/ProtocolAdapter';
-import type { APIStrategy, APIRequest } from './types';
-import type { ProtocolName } from '@/core/Config';
-import { logger } from '@/utils/logger';
-import { APIError } from '@/utils/errors';
+import type { APIStrategy } from './types';
+import { APIContext } from './types';
 
 export class APIClient {
   private router: APIRouter;
@@ -19,7 +20,7 @@ export class APIClient {
 
   registerAdapter(protocol: ProtocolName, adapter: ProtocolAdapter): void {
     this.router.registerAdapter(protocol, adapter);
-    
+
     // Set up adapter to handle API responses
     adapter.onEvent(() => {
       // Events are handled separately, this is just for API responses
@@ -30,27 +31,49 @@ export class APIClient {
     this.router.unregisterAdapter(protocol);
   }
 
+  /**
+   * Call API action with context-based approach.
+   * Context contains all call information and can be extended without changing method signature.
+   * This follows the pattern used in backend frameworks (Express, Koa, Fastify, etc.)
+   *
+   * The context is passed through the entire call chain:
+   * APIClient -> APIRouter -> ProtocolAdapter -> Connection
+   * This allows any layer to access or modify context information without
+   * changing method signatures.
+   */
   async call<TResponse = unknown>(
     action: string,
     params: Record<string, unknown> = {},
-    protocol?: ProtocolName,
-    timeout = 10000
+    protocol: ProtocolName,
+    timeout = 10000,
   ): Promise<TResponse> {
-    const adapter = this.router.getAdapter(protocol);
-    if (!adapter) {
-      throw new APIError(
-        `No available adapter for protocol ${protocol || 'default'}`,
-        action
-      );
-    }
+    // Create context for this API call - all information is encapsulated here
+    const context = new APIContext(action, params, protocol, timeout);
+
+    // Get adapter using context - router can access all needed info from context
+    const adapter = this.router.getAdapter(context);
 
     try {
-      const response = await adapter.sendAPI<TResponse>(action, params, timeout);
+      // Execute API call - pass context directly, adapter extracts what it needs
+      const response = await adapter.sendAPI<TResponse>(context);
+
+      // Log successful call with context information
+      // Router guarantees protocol is set
+      logger.debug(
+        `[APIClient] API call succeeded: ${context.action} (protocol: ${context.protocol}, echo: ${context.echo})`,
+      );
+
       return response;
     } catch (error) {
+      if (error instanceof APIError) {
+        throw error;
+      }
       const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.error(`[APIClient] API call failed: ${action}`, err);
-      throw new APIError(`API call failed: ${err.message}`, action);
+      logger.error(
+        `[APIClient] API call failed: ${context.action} (protocol: ${context.protocol ?? 'unknown'}, echo: ${context.echo})`,
+        err,
+      );
+      throw new APIError(`API call failed: ${err.message}`, context.action);
     }
   }
 

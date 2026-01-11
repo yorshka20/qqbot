@@ -1,6 +1,7 @@
 // Base protocol adapter abstract class
 
-import type { ProtocolConfig } from '@/core/Config';
+import type { APIContext } from '@/api/types';
+import type { ProtocolConfig, ProtocolName } from '@/core/Config';
 import { Connection } from '@/core/Connection';
 import { EventEmitter } from 'events';
 import type { BaseAPIRequest, BaseAPIResponse, BaseEvent } from './types';
@@ -26,7 +27,7 @@ export abstract class ProtocolAdapter extends EventEmitter {
   }
 
   abstract normalizeEvent(rawEvent: unknown): BaseEvent | null;
-  abstract getProtocolName(): string;
+  abstract getProtocolName(): ProtocolName;
 
   async connect(): Promise<void> {
     await this.connection.connect();
@@ -46,27 +47,36 @@ export abstract class ProtocolAdapter extends EventEmitter {
     return this.connection.getState() === 'connected';
   }
 
-  async sendAPI<TResponse = unknown>(
-    action: string,
-    params: Record<string, unknown> = {},
-    timeout = 10000,
-  ): Promise<TResponse> {
+  /**
+   * Send API request using context-based approach.
+   * Context contains all call information (action, params, timeout, etc.)
+   * This allows the adapter to access all necessary information without
+   * needing multiple parameters, and enables better extensibility.
+   */
+  async sendAPI<TResponse = unknown>(context: APIContext): Promise<TResponse> {
     if (!this.isConnected()) {
       throw new Error(`Protocol ${this.getProtocolName()} is not connected`);
     }
 
+    // Generate echo ID and store it in context for tracking
     const echo = this.generateEcho();
+    context.setEcho(echo);
+
     const request: BaseAPIRequest = {
-      action,
-      params,
+      action: context.action,
+      params: context.params,
       echo,
     };
 
     return new Promise<TResponse>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingRequests.delete(echo);
-        reject(new Error(`API request timeout: ${action}`));
-      }, timeout);
+        reject(
+          new Error(
+            `API request timeout: ${context.action} (protocol: ${context.protocol})`,
+          ),
+        );
+      }, context.timeout);
 
       this.pendingRequests.set(echo, {
         resolve: resolve as (value: unknown) => void,

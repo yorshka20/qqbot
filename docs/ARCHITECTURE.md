@@ -217,9 +217,18 @@ Abstract base class for all protocol implementations.
 **Key Methods:**
 
 - `normalizeEvent(rawEvent)`: Convert protocol event to normalized format
-- `sendAPI(action, params, timeout)`: Send API request and wait for response
+- `sendAPI(context)`: Send API request using context-based approach
 - `onEvent(callback)`: Register event handler
 - `getProtocolName()`: Return protocol identifier
+
+**Context-Based API Calls:**
+
+The `sendAPI()` method accepts an `APIContext` object instead of individual parameters. This allows:
+
+- Access to all call information (action, params, timeout, protocol) from context
+- Storing echo ID in context for request tracking
+- Better error messages with full context information
+- Extensibility without changing method signatures
 
 #### OneBot11Adapter
 
@@ -255,6 +264,45 @@ Implements Satori protocol specification.
 
 ### API Layer
 
+#### APIContext
+
+Context-based design pattern for API calls, similar to request context in backend frameworks (Express, Koa, Fastify, etc.).
+
+**Purpose:**
+
+The `APIContext` class encapsulates all information about an API call, allowing it to be passed through the entire call chain without adding parameters to every method signature. This provides:
+
+- **Better extensibility**: Add new call metadata without changing method signatures
+- **Improved debugging**: Track echo IDs, selected protocols, and timestamps throughout the call chain
+- **Cleaner architecture**: Single context object instead of multiple parameters
+- **Request tracking**: Store request metadata (echo ID, selected protocol) for correlation
+
+**Context Properties:**
+
+- `action`: API action name
+- `params`: API parameters
+- `protocol`: Protocol used for the request (user-specified or auto-selected by router)
+- `timeout`: Request timeout in milliseconds
+- `timestamp`: When the context was created
+- `echo`: Request echo ID (generated automatically)
+- `metadata`: Extensible metadata map for custom data
+
+**Protocol Selection:**
+
+- If user specifies a protocol in `call()`, that protocol is used (or an error is thrown if unavailable)
+- If user doesn't specify a protocol, the router selects one based on strategy (priority, round-robin, etc.)
+- The `protocol` field always reflects the actual protocol used for the request
+
+**Context Flow:**
+
+```
+APIClient.call()
+  → Creates APIContext
+  → APIRouter.getAdapter(context)
+  → ProtocolAdapter.sendAPI(context)
+  → Context flows through entire chain
+```
+
 #### APIClient.ts
 
 Unified API client that provides protocol-agnostic interface.
@@ -262,20 +310,35 @@ Unified API client that provides protocol-agnostic interface.
 **Responsibilities:**
 
 - Provide unified interface for API calls
+- Create and manage API context for each call
 - Route API calls to appropriate protocol adapter
 - Handle errors and timeouts
 - Manage protocol selection strategy
 
 **Key Methods:**
 
-- `call(action, params, protocol?, timeout)`: Make API call
+- `call(action, params, protocol?, timeout)`: Make API call (creates context internally)
 - `registerAdapter(protocol, adapter)`: Register protocol adapter
 - `unregisterAdapter(protocol)`: Unregister protocol adapter
 - `getAvailableProtocols()`: Get list of available protocols
 
+**Context Usage:**
+
+The `call()` method creates an `APIContext` and passes it through the entire call chain. The context is used by:
+
+- `APIRouter` to select the appropriate adapter
+- `ProtocolAdapter` to execute the API call
+- Error handlers to provide detailed error information
+
 #### APIRouter.ts
 
 Routes API calls to appropriate protocol adapter based on strategy.
+
+**Responsibilities:**
+
+- Select adapter based on context's protocol preference or routing strategy
+- Store selected protocol in context for tracking
+- Handle adapter availability and connection state
 
 **Routing Strategies:**
 
@@ -283,9 +346,15 @@ Routes API calls to appropriate protocol adapter based on strategy.
 - **Round-robin**: Distribute requests across protocols
 - **Capability-based**: Choose protocol based on feature support
 
+**Context Integration:**
+
+The router uses `context.protocol` to determine if a specific protocol was requested. If not specified, the router selects a protocol based on strategy and stores it in `context.protocol` using `context.setProtocol()`.
+
 #### RequestManager.ts
 
 Tracks pending API requests and correlates responses.
+
+**Note:** RequestManager is currently not used, as each ProtocolAdapter manages its own pending requests. The context-based design allows for future centralized request management if needed.
 
 **Responsibilities:**
 
@@ -462,23 +531,33 @@ PluginManager → Plugins
 
 ```
 Plugin/Handler
-    ↓ (API call)
-APIClient
-    ↓ (route based on strategy)
-APIRouter
-    ↓ (select protocol adapter)
-Protocol Adapter
+    ↓ (API call: action, params, protocol?, timeout)
+APIClient.call()
+    ↓ (creates APIContext with all call information)
+APIRouter.getAdapter(context)
+    ↓ (uses context.protocol or selects based on strategy)
+    ↓ (stores selected protocol in context.selectedProtocol)
+ProtocolAdapter.sendAPI(context)
+    ↓ (extracts action, params, timeout from context)
+    ↓ (generates/stores echo ID in context.echo)
     ↓ (protocol-specific request)
 Connection
-    ↓ (WebSocket message)
+    ↓ (WebSocket/HTTP message)
 LLBot Server
     ↓ (response)
 Protocol Adapter
-    ↓ (normalize response)
+    ↓ (normalize response, correlate via context.echo)
 APIClient
-    ↓ (return to caller)
+    ↓ (return to caller with context tracking info)
 Plugin/Handler
 ```
+
+**Context Benefits in API Flow:**
+
+- **Single source of truth**: All call information in one object
+- **Request tracking**: Echo ID and selected protocol stored in context
+- **Better error messages**: Context provides detailed information for debugging
+- **Extensibility**: New metadata can be added without changing method signatures
 
 ## Protocol Support
 

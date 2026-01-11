@@ -1,17 +1,17 @@
 // Satori protocol adapter implementation
 
+import type { ProtocolConfig, ProtocolName } from '@/core/Config';
+import { Connection } from '@/core/Connection';
 import { ProtocolAdapter } from '../base/ProtocolAdapter';
 import type { BaseEvent } from '../base/types';
 import type { SatoriEvent } from './types';
-import { Connection } from '@/core/Connection';
-import type { ProtocolConfig } from '@/core/Config';
 
 export class SatoriAdapter extends ProtocolAdapter {
   constructor(config: ProtocolConfig, connection: Connection) {
     super(config, connection);
   }
 
-  getProtocolName(): string {
+  getProtocolName(): ProtocolName {
     return 'satori';
   }
 

@@ -1,16 +1,16 @@
 // OneBot11 protocol adapter implementation
 
+import type { ProtocolConfig, ProtocolName } from '@/core/Config';
+import { Connection } from '@/core/Connection';
 import { ProtocolAdapter } from '../base/ProtocolAdapter';
 import type { BaseEvent } from '../base/types';
 import type {
   OneBot11Event,
   OneBot11MessageEvent,
+  OneBot11MetaEvent,
   OneBot11NoticeEvent,
   OneBot11RequestEvent,
-  OneBot11MetaEvent,
 } from './types';
-import { Connection } from '@/core/Connection';
-import type { ProtocolConfig } from '@/core/Config';
 
 export interface NormalizedMessageEvent extends BaseEvent {
   type: 'message';
@@ -57,7 +57,7 @@ export class OneBot11Adapter extends ProtocolAdapter {
     super(config, connection);
   }
 
-  getProtocolName(): string {
+  getProtocolName(): ProtocolName {
     return 'onebot11';
   }
 
@@ -82,7 +82,10 @@ export class OneBot11Adapter extends ProtocolAdapter {
 
     switch (event.post_type) {
       case 'message':
-        return this.normalizeMessageEvent(event as OneBot11MessageEvent, baseEvent);
+        return this.normalizeMessageEvent(
+          event as OneBot11MessageEvent,
+          baseEvent,
+        );
       case 'notice':
         return this.normalizeNoticeEvent(event, baseEvent);
       case 'request':
@@ -96,7 +99,7 @@ export class OneBot11Adapter extends ProtocolAdapter {
 
   private normalizeMessageEvent(
     event: OneBot11MessageEvent,
-    baseEvent: BaseEvent
+    baseEvent: BaseEvent,
   ): NormalizedMessageEvent {
     const normalized: NormalizedMessageEvent = {
       ...baseEvent,
@@ -126,7 +129,7 @@ export class OneBot11Adapter extends ProtocolAdapter {
 
   private normalizeNoticeEvent(
     event: OneBot11NoticeEvent,
-    baseEvent: BaseEvent
+    baseEvent: BaseEvent,
   ): NormalizedNoticeEvent {
     return {
       ...baseEvent,
@@ -138,7 +141,7 @@ export class OneBot11Adapter extends ProtocolAdapter {
 
   private normalizeRequestEvent(
     event: OneBot11RequestEvent,
-    baseEvent: BaseEvent
+    baseEvent: BaseEvent,
   ): NormalizedRequestEvent {
     return {
       ...baseEvent,
@@ -150,7 +153,7 @@ export class OneBot11Adapter extends ProtocolAdapter {
 
   private normalizeMetaEvent(
     event: OneBot11MetaEvent,
-    baseEvent: BaseEvent
+    baseEvent: BaseEvent,
   ): NormalizedMetaEvent {
     return {
       ...baseEvent,
