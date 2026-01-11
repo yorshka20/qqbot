@@ -7,8 +7,8 @@
       "enabled": true,
       "priority": 1,
       "connection": {
-        "url": "ws://192.168.50.97:3011/event",
-        "apiUrl": "http://192.168.50.97:3011/api",
+        "url": "ws://192.168.50.97:3010/event",
+        "apiUrl": "http://192.168.50.97:3010/api",
         "accessToken": "your_access_token_here",
       },
       "reconnect": {
@@ -25,8 +25,8 @@
       "enabled": true,
       "priority": 2,
       "connection": {
-        "url": "ws://192.168.50.97:3010/event",
-        "apiUrl": "http://192.168.50.97:3010/api",
+        "url": "ws://192.168.50.97:3001/event",
+        "apiUrl": "http://192.168.50.97:3001/api",
         "accessToken": "your_access_token_here",
       },
       "reconnect": {
