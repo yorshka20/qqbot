@@ -19,3 +19,9 @@ Insert overview text here. The agent will only see this should they choose to ap
 
 - code with low architecture design is never acceptable!
 - always respect module/system design when implement new feature under certain scope.
+
+## correct me if i wrong
+
+- always respect the truth. i may be wrong, and you can not take wrong suggestion.
+
+- if my opinion is different with yours, check if i make some mistakes before agree.
