@@ -1,10 +1,15 @@
 // Conversation Manager - orchestrates the conversation flow
 
+import type { Config } from '@/core/Config';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
-import type { MessageProcessingResult, MessageProcessingContext } from './types';
-import { MessagePipeline } from './MessagePipeline';
-import { CommandRouter } from './CommandRouter';
 import { logger } from '@/utils/logger';
+import { MessagePipeline } from './MessagePipeline';
+import type {
+  MessageProcessingContext,
+  MessageProcessingResult,
+} from './types';
 
 /**
  * Conversation Manager
@@ -12,15 +17,36 @@ import { logger } from '@/utils/logger';
  */
 export class ConversationManager {
   private pipeline: MessagePipeline;
+  private botSelfId: string;
 
   constructor(pipeline: MessagePipeline) {
     this.pipeline = pipeline;
+    this.botSelfId = this.getBotSelfIdFromConfig();
+  }
+
+  /**
+   * Get bot self ID from config
+   */
+  private getBotSelfId(): string {
+    return this.botSelfId || this.getBotSelfIdFromConfig();
+  }
+
+  private getBotSelfIdFromConfig(): string {
+    const container = getContainer();
+    if (container.isRegistered(DITokens.CONFIG)) {
+      const config = container.resolve<Config>(DITokens.CONFIG);
+      const botConfig = config.getConfig();
+      return botConfig.bot.selfId;
+    }
+    return '';
   }
 
   /**
    * Process message event
    */
-  async processMessage(event: NormalizedMessageEvent): Promise<MessageProcessingResult> {
+  async processMessage(
+    event: NormalizedMessageEvent,
+  ): Promise<MessageProcessingResult> {
     try {
       logger.debug(
         `[ConversationManager] Processing message from ${event.userId} (${event.messageType})`,
@@ -32,16 +58,11 @@ export class ConversationManager {
         sessionId: this.getSessionId(event),
         sessionType: event.messageType === 'private' ? 'user' : 'group',
         conversationId: undefined, // Can be loaded from database
+        botSelfId: this.getBotSelfId(),
       };
 
       // Process through pipeline
       const result = await this.pipeline.process(event, context);
-
-      if (result.success) {
-        logger.debug('[ConversationManager] Message processed successfully');
-      } else {
-        logger.warn(`[ConversationManager] Message processing failed: ${result.error}`);
-      }
 
       return result;
     } catch (error) {

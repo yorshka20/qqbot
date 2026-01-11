@@ -2,7 +2,6 @@
 
 import { CommandParser } from '@/command';
 import type { ParsedCommand } from '@/command/types';
-import { logger } from '@/utils/logger';
 
 /**
  * Command Router

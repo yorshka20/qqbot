@@ -2,6 +2,7 @@
 
 import type { HookManager } from '@/hooks/HookManager';
 import { getCoreHookPriority } from '@/hooks/HookPriority';
+import type { HookHandler } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { extname, join } from 'path';
@@ -224,7 +225,7 @@ export class PluginManager {
     }
 
     // Unregister hooks
-    this.unregisterPluginHooks(name);
+    this.hookManager.unregister(name);
 
     this.enabledPlugins.delete(name);
     logger.info(`[PluginManager] Disabled plugin: ${name}`);
@@ -244,7 +245,7 @@ export class PluginManager {
 
   /**
    * Register hooks from plugin using decorator metadata
-   * This is the new method using @Hook() decorator
+   * Simplified: just add handlers to hooks
    */
   private registerPluginHooksFromMetadata(
     plugin: Plugin,
@@ -275,26 +276,23 @@ export class PluginManager {
 
       // Bind handler to plugin instance to preserve 'this' context
       const boundHandler = handler.bind(plugin);
-      this.hookManager.register(
+      this.hookManager.addHandler(
         hookMeta.hookName as any,
         boundHandler,
         priority,
-        pluginName,
       );
       registeredCount++;
     }
 
     if (registeredCount > 0) {
       logger.info(
-        `[PluginManager] Registered ${registeredCount} hooks from plugin: ${pluginName} (via decorators)`,
+        `[PluginManager] Registered ${registeredCount} hooks from plugin: ${pluginName}`,
       );
     }
   }
 
   /**
-   * Register all hooks from a plugin (fallback method)
-   * Merged from HookRegistry - registers core hooks from plugin interface
-   * This is for backward compatibility until all plugins use decorators
+   * Register all hooks from a plugin (fallback method for backward compatibility)
    */
   private registerPluginHooks(plugin: Plugin, pluginName: string): void {
     // Core hooks only
@@ -315,50 +313,18 @@ export class PluginManager {
         const priority = getCoreHookPriority(hookName as any);
 
         // Bind handler to plugin instance to preserve 'this' context
-        const boundHandler = handler.bind(plugin);
-        this.hookManager.register(
-          hookName as any,
-          boundHandler as any,
-          priority,
-          pluginName,
-        );
+        // PluginHooks methods have signature (context: HookContext) => HookResult
+        // which matches HookHandler, so we can safely cast
+        const boundHandler = handler.bind(plugin) as HookHandler;
+        this.hookManager.addHandler(hookName as any, boundHandler, priority);
         registeredCount++;
       }
     }
 
     if (registeredCount > 0) {
       logger.info(
-        `[PluginManager] Registered ${registeredCount} core hooks from plugin: ${pluginName} (fallback method)`,
+        `[PluginManager] Registered ${registeredCount} core hooks from plugin: ${pluginName}`,
       );
     }
-  }
-
-  /**
-   * Register extended hooks from extensions (command system, task system, etc.)
-   * Can also be used by plugins to manually register hooks with custom priority
-   *
-   * @param hookName - Hook name (core or extended)
-   * @param handler - Hook handler function
-   * @param priority - Priority (optional, uses default if not provided)
-   * @param extensionName - Extension/plugin name
-   */
-  registerExtensionHooks(
-    hookName: string,
-    handler: any,
-    priority?: number,
-    extensionName?: string,
-  ): void {
-    // Priority will be set to default if not provided (handled by HookManager.register)
-    this.hookManager.register(hookName, handler, priority, extensionName);
-    logger.debug(
-      `[PluginManager] Registered hook: ${hookName} (priority: ${priority ?? 'default'}, from: ${extensionName || 'unknown'})`,
-    );
-  }
-
-  /**
-   * Unregister all hooks from a plugin
-   */
-  private unregisterPluginHooks(pluginName: string): void {
-    this.hookManager.unregisterPluginHooks(pluginName);
   }
 }

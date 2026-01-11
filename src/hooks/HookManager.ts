@@ -1,10 +1,7 @@
 // Hook Manager - manages and executes hooks
 
 import { logger } from '@/utils/logger';
-import {
-  getCoreHookPriority,
-  getExtensionHookPriority,
-} from './HookPriority';
+import { getCoreHookPriority, getExtensionHookPriority } from './HookPriority';
 import type { HookContext, HookHandler, HookRegistration } from './types';
 
 // Core hook names - only message lifecycle hooks
@@ -27,35 +24,33 @@ export type HookName = CoreHookName | ExtendedHookName;
  */
 export class HookManager {
   private hooks = new Map<HookName, HookRegistration[]>();
+  private coreHooks: HookName[] = [
+    'onMessageReceived',
+    'onMessagePreprocess',
+    'onMessageBeforeSend',
+    'onMessageSent',
+    'onError',
+  ];
 
   /**
-   * Register a hook handler
+   * Register a hook handler or declare a hook
    * Supports both core hooks and extended hooks (registered by extensions)
+   * If handler is not provided, only declares the hook (initializes hook list for plugin registration)
    *
    * @param hookName - Hook name (core or extended)
-   * @param handler - Hook handler function
    * @param priority - Priority (higher = executed earlier). If not provided, uses default priority for the hook
    * @param pluginName - Plugin/extension name that registered this hook
    */
-  register(
-    hookName: HookName,
-    handler: HookHandler,
-    priority?: number,
-    pluginName?: string,
-  ): void {
-    // Validate core hook names
-    const coreHooks: CoreHookName[] = [
-      'onMessageReceived',
-      'onMessagePreprocess',
-      'onMessageBeforeSend',
-      'onMessageSent',
-      'onError',
-    ];
-    const isCoreHook = coreHooks.includes(hookName as CoreHookName);
+  register(hookName: HookName, priority?: number): void {
+    // Initialize hook list if needed
+    if (!this.hooks.has(hookName)) {
+      this.hooks.set(hookName, []);
+    }
 
     // Use default priority if not provided
     let finalPriority = priority;
     if (finalPriority === undefined) {
+      const isCoreHook = this.coreHooks.includes(hookName);
       if (isCoreHook) {
         finalPriority = getCoreHookPriority(hookName as CoreHookName);
       } else {
@@ -63,85 +58,105 @@ export class HookManager {
       }
     }
 
-    if (!isCoreHook && !this.hooks.has(hookName)) {
-      // Extended hook - log that it's being registered
-      logger.debug(
-        `[HookManager] Registering extended hook: ${hookName} (from: ${pluginName || 'extension'})`,
-      );
+    const hookList = this.hooks.get(hookName)!;
+
+    // Check if handler is already registered (prevent duplicate registration)
+    if (hookList.some((reg) => reg.hookName === hookName)) {
+      return;
     }
 
+    // Register handler
+    hookList.push({
+      hookName,
+      priority: finalPriority,
+      handlers: [],
+    });
+
+    // Sort by priority (higher priority first)
+    hookList.sort((a, b) => b.priority - a.priority);
+  }
+
+  /**
+   * Add a handler to a hook
+   * The hook must be registered first (via register method)
+   *
+   * @param hookName - Hook name
+   * @param handler - Handler function
+   * @param priority - Priority (optional, uses default if not provided)
+   */
+  addHandler(hookName: HookName, handler: HookHandler, priority?: number): void {
+    // Ensure hook is registered first
     if (!this.hooks.has(hookName)) {
-      this.hooks.set(hookName, []);
+      this.register(hookName, priority);
     }
 
     const hookList = this.hooks.get(hookName)!;
 
-    // Check if handler is already registered (prevent duplicate registration)
-    const existingRegistration = hookList.find(
-      (reg) => reg.handler === handler,
-    );
-    if (existingRegistration) {
-      logger.debug(
-        `[HookManager] Handler already registered for hook: ${hookName} (plugin: ${pluginName || 'unknown'}), skipping duplicate`,
-      );
+    // Use default priority if not provided
+    let finalPriority = priority;
+    if (finalPriority === undefined) {
+      const isCoreHook = this.coreHooks.includes(hookName);
+      if (isCoreHook) {
+        finalPriority = getCoreHookPriority(hookName as CoreHookName);
+      } else {
+        finalPriority = getExtensionHookPriority(hookName);
+      }
+    }
+
+    // Find or create registration with matching priority
+    let registration = hookList.find((reg) => reg.priority === finalPriority);
+    if (!registration) {
+      registration = {
+        hookName,
+        priority: finalPriority,
+        handlers: [],
+      };
+      hookList.push(registration);
+      // Sort by priority (higher priority first)
+      hookList.sort((a, b) => b.priority - a.priority);
+    }
+
+    // Check if handler is already registered (prevent duplicate)
+    if (registration.handlers.includes(handler)) {
       return;
     }
 
-    const registration: HookRegistration = {
-      handler,
-      priority: finalPriority,
-      pluginName,
-    };
-
-    hookList.push(registration);
-
-    // Sort by priority (higher priority first)
-    hookList.sort((a, b) => b.priority - a.priority);
-
-    logger.debug(
-      `[HookManager] Registered hook: ${hookName} (priority: ${finalPriority}, plugin: ${pluginName || 'builtin'})`,
-    );
+    // Add handler
+    registration.handlers.push(handler);
   }
 
   /**
-   * Unregister a hook handler
+   * Remove a handler from a hook
    */
-  unregister(hookName: HookName, handler: HookHandler): boolean {
+  removeHandler(hookName: HookName, handler: HookHandler): boolean {
     const hookList = this.hooks.get(hookName);
     if (!hookList) {
       return false;
     }
 
-    const index = hookList.findIndex((reg) => reg.handler === handler);
-    if (index === -1) {
-      return false;
+    for (const registration of hookList) {
+      const index = registration.handlers.indexOf(handler);
+      if (index !== -1) {
+        registration.handlers.splice(index, 1);
+        // Remove registration if no handlers left
+        if (registration.handlers.length === 0) {
+          const regIndex = hookList.indexOf(registration);
+          if (regIndex !== -1) {
+            hookList.splice(regIndex, 1);
+          }
+        }
+        return true;
+      }
     }
 
-    hookList.splice(index, 1);
-    logger.debug(`[HookManager] Unregistered hook: ${hookName}`);
-    return true;
+    return false;
   }
 
   /**
-   * Unregister all hooks from a plugin
+   * Unregister a hook (remove all registrations for this hook)
    */
-  unregisterPluginHooks(pluginName: string): void {
-    let count = 0;
-
-    for (const [hookName, hookList] of this.hooks.entries()) {
-      const filtered = hookList.filter((reg) => {
-        if (reg.pluginName === pluginName) {
-          count++;
-          return false;
-        }
-        return true;
-      });
-      this.hooks.set(hookName, filtered);
-    }
-
-    logger.info(
-      `[HookManager] Unregistered ${count} hooks from plugin: ${pluginName}`,
-    );
+  unregister(hookName: HookName): boolean {
+    return this.hooks.delete(hookName);
   }
 
   /**
@@ -151,63 +166,65 @@ export class HookManager {
   async execute(hookName: HookName, context: HookContext): Promise<boolean> {
     const hookList = this.hooks.get(hookName);
     if (!hookList || hookList.length === 0) {
-      logger.debug(
-        `[HookManager] No handlers registered for hook: ${hookName}`,
-      );
+      logger.debug(`[HookManager] No handlers registered for hook: ${hookName}`);
       return true; // No hooks, continue execution
     }
 
-    const messageId =
-      context.message?.id || context.message?.messageId || 'unknown';
-    logger.info(
-      `[HookManager] Executing hook: ${hookName} | messageId=${messageId} | handlerCount=${hookList.length} | handlers=[${hookList.map((r) => `${r.pluginName || 'builtin'}:${r.priority}`).join(', ')}]`,
-    );
+    const messageId = context.message?.id || context.message?.messageId || 'unknown';
 
-    for (let i = 0; i < hookList.length; i++) {
-      const registration = hookList[i];
-      const handlerName = `${registration.pluginName || 'builtin'}:${registration.priority}`;
+    // Calculate total handler count
+    const totalHandlerCount = hookList.reduce((sum, reg) => sum + reg.handlers.length, 0);
 
-      try {
-        logger.info(
-          `[HookManager] Executing handler [${i + 1}/${hookList.length}]: ${handlerName} | hook=${hookName} | messageId=${messageId}`,
-        );
-
-        const result = await registration.handler(context);
-
-        // If handler returns false, interrupt execution
-        if (result === false) {
-          logger.info(
-            `[HookManager] ✗ Hook ${hookName} interrupted by handler | handler=${handlerName} | messageId=${messageId}`,
-          );
-          return false;
-        }
-
-        logger.info(
-          `[HookManager] ✓ Handler completed | handler=${handlerName} | hook=${hookName} | messageId=${messageId}`,
-        );
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error('Unknown error');
-        logger.error(
-          `[HookManager] ✗ Error in hook ${hookName} | handler=${handlerName} | messageId=${messageId} | error=${err.message}`,
-          err,
-        );
-
-        // Call onError hook if available
-        if (hookName !== 'onError') {
-          const errorContext: HookContext = {
-            ...context,
-            error: err,
-          };
-          await this.execute('onError', errorContext);
-        }
-
-        // Continue execution even if hook fails (don't interrupt)
-      }
+    if (totalHandlerCount === 0) {
+      logger.debug(`[HookManager] No handlers in registrations for hook: ${hookName}`);
+      return true;
     }
 
     logger.info(
-      `[HookManager] ✓ All handlers completed for hook: ${hookName} | messageId=${messageId}`,
+      `[HookManager] Executing hook: ${hookName} | messageId=${messageId} | registrationCount=${hookList.length} | totalHandlerCount=${totalHandlerCount}`,
     );
+
+    // Execute handlers from each registration (sorted by priority)
+    for (const registration of hookList) {
+      // Execute all handlers in this registration
+      for (let j = 0; j < registration.handlers.length; j++) {
+        const handler = registration.handlers[j];
+        const handlerName = `${registration.hookName}:${registration.priority}[${j}]`;
+
+        try {
+          logger.debug(`[HookManager] Executing handler: ${handlerName} | hook=${hookName} | messageId=${messageId}`);
+
+          const result = await handler(context);
+
+          // If handler returns false, interrupt execution
+          if (result === false) {
+            logger.info(
+              `[HookManager] ✗ Hook ${hookName} interrupted by handler | handler=${handlerName} | messageId=${messageId}`,
+            );
+            return false;
+          }
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error('Unknown error');
+          logger.error(
+            `[HookManager] ✗ Error in hook ${hookName} | handler=${handlerName} | messageId=${messageId} | error=${err.message}`,
+            err,
+          );
+
+          // Call onError hook if available
+          if (hookName !== 'onError') {
+            const errorContext: HookContext = {
+              ...context,
+              error: err,
+            };
+            await this.execute('onError', errorContext);
+          }
+
+          // Continue execution even if hook fails (don't interrupt)
+        }
+      }
+    }
+
+    logger.info(`[HookManager] ✓ All handlers completed for hook: ${hookName} | messageId=${messageId}`);
     return true; // Continue execution
   }
 

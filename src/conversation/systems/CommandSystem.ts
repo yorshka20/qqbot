@@ -61,16 +61,19 @@ export class CommandSystem implements System {
     return true;
   }
 
+  /**
+   * Declare extension hooks that plugins can subscribe to
+   * These hooks are declared without handlers - plugins can register their own handlers
+   * The priority is used as default when plugins register handlers without specifying priority
+   */
   getExtensionHooks() {
     return [
       {
         hookName: 'onCommandDetected',
-        handler: () => true,
         priority: getExtensionHookPriority('onCommandDetected', 'DEFAULT'),
       },
       {
         hookName: 'onCommandExecuted',
-        handler: () => true,
         priority: getExtensionHookPriority('onCommandExecuted', 'DEFAULT'),
       },
     ];

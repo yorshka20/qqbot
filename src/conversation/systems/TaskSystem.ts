@@ -5,9 +5,9 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';
-import type { HookManager } from '@/plugins/HookManager';
-import { getExtensionHookPriority } from '@/plugins/hooks/HookPriority';
-import type { HookContext } from '@/plugins/hooks/types';
+import type { HookManager } from '@/hooks/HookManager';
+import { getExtensionHookPriority } from '@/hooks/HookPriority';
+import type { HookContext } from '@/hooks/types';
 import type { TaskManager } from '@/task/TaskManager';
 import { logger } from '@/utils/logger';
 
@@ -31,15 +31,39 @@ export class TaskSystem implements System {
   ) {}
 
   async execute(context: HookContext): Promise<boolean> {
+    const messageId =
+      context.message?.id || context.message?.messageId || 'unknown';
+
     // Skip if command was already processed
     if (context.command) {
+      logger.info(
+        `[TaskSystem] Command already processed, skipping task generation | messageId=${messageId} | command=${context.command.name}`,
+      );
       return true;
     }
 
     // Skip if reply already exists (may be set by other systems)
-    if (context.metadata.get('reply')) {
+    const existingReply = context.metadata.get('reply') as string;
+    if (existingReply) {
+      logger.info(
+        `[TaskSystem] Reply already exists, skipping task generation | messageId=${messageId} | replyLength=${existingReply.length}`,
+      );
       return true;
     }
+
+    // Check if this is post-processing only (collect message, no reply)
+    const postProcessOnly = context.metadata.get('postProcessOnly') as boolean;
+    if (postProcessOnly) {
+      logger.info(
+        `[TaskSystem] ✗ Message is marked as post-process only, SKIPPING task generation and reply | messageId=${messageId}`,
+      );
+      // Still collect the message content (context building happens elsewhere)
+      return true;
+    }
+
+    logger.info(
+      `[TaskSystem] ✓ Message is not post-process only, proceeding with task generation | messageId=${messageId}`,
+    );
 
     // Detect task in hookContext
     let task = context.task;
@@ -149,38 +173,37 @@ export class TaskSystem implements System {
     return null;
   }
 
+  /**
+   * Declare extension hooks that plugins can subscribe to
+   * These hooks are declared without handlers - plugins can register their own handlers
+   * The priority is used as default when plugins register handlers without specifying priority
+   */
   getExtensionHooks() {
     return [
       {
         hookName: 'onTaskAnalyzed',
-        handler: () => true,
         priority: getExtensionHookPriority('onTaskAnalyzed', 'DEFAULT'),
       },
       {
         hookName: 'onTaskBeforeExecute',
-        handler: () => true,
         priority: getExtensionHookPriority('onTaskBeforeExecute', 'DEFAULT'),
       },
       {
         hookName: 'onTaskExecuted',
-        handler: () => true,
         priority: getExtensionHookPriority('onTaskExecuted', 'DEFAULT'),
       },
       // AI-related hooks are part of task execution
       // These hooks are triggered when AIService is called during task execution
       {
         hookName: 'onMessageBeforeAI',
-        handler: () => true,
         priority: getExtensionHookPriority('onMessageBeforeAI', 'DEFAULT'),
       },
       {
         hookName: 'onAIGenerationStart',
-        handler: () => true,
         priority: getExtensionHookPriority('onAIGenerationStart', 'DEFAULT'),
       },
       {
         hookName: 'onAIGenerationComplete',
-        handler: () => true,
         priority: getExtensionHookPriority('onAIGenerationComplete', 'DEFAULT'),
       },
     ];

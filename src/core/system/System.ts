@@ -1,8 +1,8 @@
 // System interface and types
 // Unified interface for all systems (Lifecycle, Command, Task, AI, etc.)
 
-import type { HookContext, HookHandler } from '@/hooks/types';
 import type { HookManager } from '@/hooks/HookManager';
+import type { HookContext } from '@/hooks/types';
 
 /**
  * System execution stage
@@ -35,11 +35,12 @@ export interface SystemContext {
 
 /**
  * Extension hook definition
+ * Used to declare extension hooks that plugins can subscribe to.
+ * Systems declare hooks to make them available for plugins to register handlers.
  */
 export interface ExtensionHookDefinition {
   hookName: string;
-  handler: HookHandler;
-  priority?: number;
+  priority?: number; // Default priority for this hook (used when plugins register without specifying priority)
 }
 
 /**
