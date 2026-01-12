@@ -1,8 +1,8 @@
 // Conversation Summary Memory - compresses long conversations using summaries
 
-import type { ConversationBufferMemory } from './ConversationBufferMemory';
-import type { AIManager } from '@/ai/AIManager';
+import type { LLMService } from '@/ai/services/LLMService';
 import { logger } from '@/utils/logger';
+import type { ConversationBufferMemory } from './ConversationBufferMemory';
 
 /**
  * Conversation Summary Memory
@@ -12,16 +12,12 @@ export class ConversationSummaryMemory {
   private summary: string = '';
   private buffer: ConversationBufferMemory;
   private summaryThreshold: number;
-  private aiManager: AIManager | null = null;
+  private llmService: LLMService | null = null;
 
-  constructor(
-    buffer: ConversationBufferMemory,
-    summaryThreshold = 20,
-    aiManager?: AIManager,
-  ) {
+  constructor(buffer: ConversationBufferMemory, summaryThreshold = 20, llmService?: LLMService) {
     this.buffer = buffer;
     this.summaryThreshold = summaryThreshold;
-    this.aiManager = aiManager || null;
+    this.llmService = llmService || null;
   }
 
   /**
@@ -31,7 +27,7 @@ export class ConversationSummaryMemory {
     this.buffer.addMessage(role, content);
 
     // Summarize if buffer exceeds threshold
-    if (this.buffer.size() > this.summaryThreshold && this.aiManager) {
+    if (this.buffer.size() > this.summaryThreshold && this.llmService) {
       await this.summarize();
     }
   }
@@ -60,8 +56,8 @@ export class ConversationSummaryMemory {
    * Summarize old messages
    */
   private async summarize(): Promise<void> {
-    if (!this.aiManager) {
-      logger.warn('[ConversationSummaryMemory] AI manager not available, skipping summary');
+    if (!this.llmService) {
+      logger.warn('[ConversationSummaryMemory] LLM service not available, skipping summary');
       return;
     }
 
@@ -83,7 +79,7 @@ Summary:`;
 
       logger.debug('[ConversationSummaryMemory] Generating summary...');
 
-      const response = await this.aiManager.generate(prompt, {
+      const response = await this.llmService.generate(prompt, {
         temperature: 0.5,
         maxTokens: 200,
       });
@@ -124,9 +120,9 @@ Summary:`;
   }
 
   /**
-   * Set AI manager for summarization
+   * Set LLM service for summarization
    */
-  setAIManager(aiManager: AIManager): void {
-    this.aiManager = aiManager;
+  setLLMService(llmService: LLMService): void {
+    this.llmService = llmService;
   }
 }

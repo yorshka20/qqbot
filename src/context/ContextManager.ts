@@ -1,15 +1,10 @@
 // Context Manager - builds and manages conversation contexts
 
-import type {
-  ConversationContext,
-  SessionContext,
-  GlobalContext,
-  ContextBuilderOptions,
-} from './types';
+import type { LLMService } from '@/ai/services/LLMService';
+import { logger } from '@/utils/logger';
 import { ConversationBufferMemory } from './memory/ConversationBufferMemory';
 import { ConversationSummaryMemory } from './memory/ConversationSummaryMemory';
-import type { AIManager } from '@/ai/AIManager';
-import { logger } from '@/utils/logger';
+import type { ContextBuilderOptions, ConversationContext, GlobalContext, SessionContext } from './types';
 
 export interface BuildContextOptions extends ContextBuilderOptions {
   sessionId: string;
@@ -26,12 +21,16 @@ export interface BuildContextOptions extends ContextBuilderOptions {
 export class ContextManager {
   private memories = new Map<string, ConversationBufferMemory | ConversationSummaryMemory>();
   private globalContext: GlobalContext | null = null;
+  private maxBufferSize: number;
 
   constructor(
-    private aiManager?: AIManager,
+    private llmService?: LLMService,
     private useSummary = false,
     private summaryThreshold = 20,
-  ) {}
+    maxBufferSize = 30,
+  ) {
+    this.maxBufferSize = maxBufferSize;
+  }
 
   /**
    * Set global context
@@ -45,10 +44,12 @@ export class ContextManager {
    */
   private getMemory(sessionId: string): ConversationBufferMemory | ConversationSummaryMemory {
     if (!this.memories.has(sessionId)) {
-      const buffer = new ConversationBufferMemory(50);
-      const memory = this.useSummary && this.aiManager
-        ? new ConversationSummaryMemory(buffer, this.summaryThreshold, this.aiManager)
-        : buffer;
+      // Use configured maxBufferSize
+      const buffer = new ConversationBufferMemory(this.maxBufferSize);
+      const memory =
+        this.useSummary && this.llmService
+          ? new ConversationSummaryMemory(buffer, this.summaryThreshold, this.llmService)
+          : buffer;
       this.memories.set(sessionId, memory);
     }
     return this.memories.get(sessionId)!;
@@ -57,16 +58,11 @@ export class ContextManager {
   /**
    * Build conversation context
    */
-  buildContext(
-    userMessage: string,
-    options: BuildContextOptions,
-  ): ConversationContext {
+  buildContext(userMessage: string, options: BuildContextOptions): ConversationContext {
     const memory = this.getMemory(options.sessionId);
 
     // Get conversation history
-    const history = memory instanceof ConversationSummaryMemory
-      ? memory.getHistory()
-      : memory.getFormattedHistory();
+    const history = memory instanceof ConversationSummaryMemory ? memory.getHistory() : memory.getFormattedHistory();
 
     // Build context
     const context: ConversationContext = {
@@ -96,11 +92,7 @@ export class ContextManager {
   /**
    * Add message to conversation history
    */
-  async addMessage(
-    sessionId: string,
-    role: 'user' | 'assistant',
-    content: string,
-  ): Promise<void> {
+  async addMessage(sessionId: string, role: 'user' | 'assistant', content: string): Promise<void> {
     const memory = this.getMemory(sessionId);
 
     if (memory instanceof ConversationSummaryMemory) {
@@ -125,9 +117,7 @@ export class ContextManager {
    */
   getSessionContext(sessionId: string, sessionType: 'user' | 'group'): SessionContext {
     const memory = this.getMemory(sessionId);
-    const history = memory instanceof ConversationSummaryMemory
-      ? memory.getHistory()
-      : memory.getFormattedHistory();
+    const history = memory instanceof ConversationSummaryMemory ? memory.getHistory() : memory.getFormattedHistory();
 
     return {
       sessionId,
@@ -137,5 +127,20 @@ export class ContextManager {
       },
       metadata: new Map(),
     };
+  }
+
+  /**
+   * Get conversation history for a session
+   * Returns formatted history messages for use in AI context
+   */
+  getHistory(sessionId: string, maxMessages?: number): Array<{ role: 'user' | 'assistant'; content: string }> {
+    const memory = this.getMemory(sessionId);
+    const history = memory instanceof ConversationSummaryMemory ? memory.getHistory() : memory.getFormattedHistory();
+
+    if (maxMessages && maxMessages > 0) {
+      return history.slice(-maxMessages);
+    }
+
+    return history;
   }
 }

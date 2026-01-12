@@ -212,7 +212,11 @@ export class Lifecycle {
     const command = this.commandRouter.route(context.message.message);
     if (command) {
       context.command = command;
-      logger.debug(`${this.LOG_PREFIX} Command routed | command=${command.name} | messageId=${messageId}`);
+      logger.info(`${this.LOG_PREFIX} Command routed | command=${command.name} | messageId=${messageId}`);
+    } else {
+      logger.debug(
+        `${this.LOG_PREFIX} No command detected | message=${context.message.message.substring(0, 50)} | messageId=${messageId}`,
+      );
     }
   }
 
