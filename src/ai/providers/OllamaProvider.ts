@@ -133,7 +133,6 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
     options?: AIGenerateOptions,
     stream = false,
   ): Promise<Response> {
-    const model = this.config.model;
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
@@ -143,7 +142,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model,
+        model: this.config.model,
         messages,
         options: {
           temperature,
@@ -157,10 +156,8 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
   }
 
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
-    const model = this.config.model;
-
     try {
-      logger.debug(`[OllamaProvider] Generating with model: ${model}`);
+      logger.debug(`[OllamaProvider] Generating with model: ${this.config.model}`);
 
       // Always use chat API - it supports both single messages and conversation history
       // This simplifies the code and makes it consistent with other providers
@@ -187,7 +184,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
         text,
         usage,
         metadata: {
-          model: data.model || model,
+          model: data.model || this.config.model,
           done: data.done,
         },
       };
@@ -258,10 +255,8 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
     handler: StreamingHandler,
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
-    const model = this.config.model;
-
     try {
-      logger.debug(`[OllamaProvider] Generating stream with model: ${model}`);
+      logger.debug(`[OllamaProvider] Generating stream with model: ${this.config.model}`);
 
       // Always use chat API - it supports both single messages and conversation history
       // This simplifies the code and makes it consistent with other providers

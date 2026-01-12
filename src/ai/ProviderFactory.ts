@@ -5,6 +5,7 @@ import { logger } from '@/utils/logger';
 import type { AIProvider } from './base/AIProvider';
 import { AnthropicProvider } from './providers/AnthropicProvider';
 import { DeepSeekProvider } from './providers/DeepSeekProvider';
+import { LocalText2ImageProvider } from './providers/LocalText2ImageProvider';
 import { OllamaProvider } from './providers/OllamaProvider';
 import { OpenAIProvider } from './providers/OpenAIProvider';
 
@@ -26,6 +27,8 @@ export class ProviderFactory {
             baseURL: config.baseURL,
             defaultTemperature: config.temperature,
             defaultMaxTokens: config.maxTokens,
+            enableContext: config.enableContext,
+            contextMessageCount: config.contextMessageCount,
           });
         }
         case 'ollama': {
@@ -34,6 +37,8 @@ export class ProviderFactory {
             model: config.model,
             defaultTemperature: config.temperature,
             defaultMaxTokens: config.maxTokens || 2000,
+            enableContext: config.enableContext,
+            contextMessageCount: config.contextMessageCount,
           });
         }
         case 'anthropic': {
@@ -42,6 +47,8 @@ export class ProviderFactory {
             model: config.model,
             defaultTemperature: config.temperature,
             defaultMaxTokens: config.maxTokens,
+            enableContext: config.enableContext,
+            contextMessageCount: config.contextMessageCount,
           });
         }
         case 'deepseek': {
@@ -51,6 +58,17 @@ export class ProviderFactory {
             baseURL: config.baseURL,
             defaultTemperature: config.temperature,
             defaultMaxTokens: config.maxTokens,
+            enableContext: config.enableContext,
+            contextMessageCount: config.contextMessageCount,
+          });
+        }
+        case 'local-text2img': {
+          const localConfig = config as Extract<AIProviderConfig, { type: 'local-text2img' }>;
+          return new LocalText2ImageProvider({
+            baseUrl: localConfig.baseUrl,
+            endpoint: localConfig.endpoint,
+            timeout: localConfig.timeout,
+            censorEnabled: localConfig.censorEnabled,
           });
         }
         default: {

@@ -1,14 +1,26 @@
 // AI module exports
 
-export { AIProvider } from './base/AIProvider';
-export { OpenAIProvider } from './providers/OpenAIProvider';
-export { OllamaProvider } from './providers/OllamaProvider';
 export { AIManager } from './AIManager';
 export { AIService } from './AIService';
-export { PromptManager } from './PromptManager';
+export { AIProvider } from './base/AIProvider';
+export type { Image2ImageCapability, LLMCapability, Text2ImageCapability, VisionCapability } from './capabilities';
 export type {
-  AIGenerateOptions,
-  AIGenerateResponse,
-  StreamingHandler,
-} from './types';
-export type { PromptTemplate, SystemPrompt } from './prompt-types';
+  CapabilityType,
+  Image2ImageOptions,
+  ImageGenerationResponse,
+  Text2ImageOptions,
+  VisionImage,
+} from './capabilities/types';
+export { PromptManager } from './PromptManager';
+export { ProviderFactory } from './ProviderFactory';
+export { ProviderRegistry } from './ProviderRegistry';
+export { AnthropicProvider } from './providers/AnthropicProvider';
+export { DeepSeekProvider } from './providers/DeepSeekProvider';
+export { LocalText2ImageProvider } from './providers/LocalText2ImageProvider';
+export { OllamaProvider } from './providers/OllamaProvider';
+export { OpenAIProvider } from './providers/OpenAIProvider';
+export { ProviderSelector } from './ProviderSelector';
+export { ImageGenerationService } from './services/ImageGenerationService';
+export { LLMService } from './services/LLMService';
+export { VisionService } from './services/VisionService';
+export type { AIGenerateOptions, AIGenerateResponse, PromptTemplate, StreamingHandler, SystemPrompt } from './types';

@@ -1,12 +1,14 @@
 // AI Manager - manages AI providers and handles provider switching
 
-import type { AIProvider } from './base/AIProvider';
-import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from './types';
 import { logger } from '@/utils/logger';
+import type { AIProvider } from './base/AIProvider';
+import type { CapabilityType } from './capabilities/types';
+import { ProviderRegistry } from './ProviderRegistry';
 
 export class AIManager {
   private providers = new Map<string, AIProvider>();
-  private currentProviderName: string | null = null;
+  private registry = new ProviderRegistry();
+  private defaultProviders = new Map<CapabilityType, string>();
 
   /**
    * Register an AI provider
@@ -18,12 +20,16 @@ export class AIManager {
     }
 
     this.providers.set(provider.name, provider);
+    this.registry.registerProvider(provider);
     logger.info(`[AIManager] Registered provider: ${provider.name}`);
 
-    // Set as current if no current provider
-    if (!this.currentProviderName) {
-      this.currentProviderName = provider.name;
-      logger.info(`[AIManager] Set ${provider.name} as current provider`);
+    // Set as default for each capability if no default is set
+    const capabilities = provider.getCapabilities();
+    for (const capability of capabilities) {
+      if (!this.defaultProviders.has(capability)) {
+        this.defaultProviders.set(capability, provider.name);
+        logger.info(`[AIManager] Set ${provider.name} as default provider for ${capability}`);
+      }
     }
   }
 
@@ -31,46 +37,59 @@ export class AIManager {
    * Unregister a provider
    */
   unregisterProvider(name: string): boolean {
-    if (this.providers.delete(name)) {
-      // If current provider was removed, switch to first available
-      if (this.currentProviderName === name) {
-        const firstProvider = Array.from(this.providers.keys())[0];
-        this.currentProviderName = firstProvider || null;
-        if (this.currentProviderName) {
-          logger.info(`[AIManager] Switched to provider: ${this.currentProviderName}`);
+    const provider = this.providers.get(name);
+    if (!provider) {
+      return false;
+    }
+
+    // Remove from registry
+    this.registry.unregisterProvider(name);
+
+    // Remove from providers map
+    this.providers.delete(name);
+
+    // Update default providers if needed
+    for (const [capability, defaultName] of this.defaultProviders.entries()) {
+      if (defaultName === name) {
+        // Find a new default provider for this capability
+        const availableProviders = this.registry.getProvidersForCapability(capability);
+        if (availableProviders.length > 0) {
+          this.defaultProviders.set(capability, availableProviders[0].name);
+          logger.info(`[AIManager] Switched default ${capability} provider to: ${availableProviders[0].name}`);
+        } else {
+          this.defaultProviders.delete(capability);
+          logger.info(`[AIManager] No available providers for ${capability}, removed default`);
         }
       }
-      logger.info(`[AIManager] Unregistered provider: ${name}`);
-      return true;
     }
-    return false;
+
+    logger.info(`[AIManager] Unregistered provider: ${name}`);
+    return true;
   }
 
   /**
-   * Set current provider
+   * Set default provider for a capability
    */
-  setCurrentProvider(name: string): void {
-    if (!this.providers.has(name)) {
-      throw new Error(`Provider ${name} not found`);
+  setDefaultProvider(capability: CapabilityType, providerName: string): void {
+    const provider = this.registry.getProviderForCapability(capability, providerName);
+    if (!provider) {
+      throw new Error(`Provider ${providerName} does not support capability ${capability} or is not available`);
     }
 
-    const provider = this.providers.get(name)!;
-    if (!provider.isAvailable()) {
-      throw new Error(`Provider ${name} is not available`);
-    }
-
-    this.currentProviderName = name;
-    logger.info(`[AIManager] Switched to provider: ${name}`);
+    this.defaultProviders.set(capability, providerName);
+    logger.info(`[AIManager] Set ${providerName} as default provider for ${capability}`);
   }
 
   /**
-   * Get current provider
+   * Get default provider for a capability
    */
-  getCurrentProvider(): AIProvider | null {
-    if (!this.currentProviderName) {
+  getDefaultProvider(capability: CapabilityType): AIProvider | null {
+    const defaultName = this.defaultProviders.get(capability);
+    if (!defaultName) {
       return null;
     }
-    return this.providers.get(this.currentProviderName) || null;
+
+    return this.registry.getProviderForCapability(capability, defaultName);
   }
 
   /**
@@ -78,6 +97,19 @@ export class AIManager {
    */
   getProvider(name: string): AIProvider | null {
     return this.providers.get(name) || null;
+  }
+
+  /**
+   * Get provider for a specific capability
+   * If providerName is provided, returns that specific provider if it supports the capability
+   * Otherwise, returns the default provider for that capability
+   */
+  getProviderForCapability(capability: CapabilityType, providerName?: string): AIProvider | null {
+    if (providerName) {
+      return this.registry.getProviderForCapability(capability, providerName);
+    }
+
+    return this.getDefaultProvider(capability);
   }
 
   /**
@@ -95,49 +127,18 @@ export class AIManager {
   }
 
   /**
-   * Generate text using current provider
+   * Get current provider (for backward compatibility)
+   * Returns the default LLM provider
    */
-  async generate(
-    prompt: string,
-    options?: AIGenerateOptions,
-    providerName?: string,
-  ): Promise<AIGenerateResponse> {
-    const provider = providerName
-      ? this.getProvider(providerName)
-      : this.getCurrentProvider();
-
-    if (!provider) {
-      throw new Error('No AI provider available');
-    }
-
-    if (!provider.isAvailable()) {
-      throw new Error(`Provider ${provider.name} is not available`);
-    }
-
-    return await provider.generate(prompt, options);
+  getCurrentProvider(capability: CapabilityType = 'llm'): AIProvider | null {
+    return this.getDefaultProvider(capability);
   }
 
   /**
-   * Generate text with streaming using current provider
+   * Set current provider (for backward compatibility)
+   * Sets the default LLM provider
    */
-  async generateStream(
-    prompt: string,
-    handler: StreamingHandler,
-    options?: AIGenerateOptions,
-    providerName?: string,
-  ): Promise<AIGenerateResponse> {
-    const provider = providerName
-      ? this.getProvider(providerName)
-      : this.getCurrentProvider();
-
-    if (!provider) {
-      throw new Error('No AI provider available');
-    }
-
-    if (!provider.isAvailable()) {
-      throw new Error(`Provider ${provider.name} is not available`);
-    }
-
-    return await provider.generateStream(prompt, handler, options);
+  setCurrentProvider(capability: CapabilityType, name: string): void {
+    this.setDefaultProvider(capability, name);
   }
 }
