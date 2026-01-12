@@ -2,16 +2,8 @@
 
 export { CommandManager, type PermissionChecker } from './CommandManager';
 export { CommandParser } from './CommandParser';
-export {
-  Command,
-  getAllCommandMetadata,
-  getCommandMetadata,
-} from './decorators';
-export {
-  HelpCommand,
-  PingCommand,
-  StatusCommand,
-} from './handlers/BuiltinCommandHandler';
+export { Command, getAllCommandMetadata, getCommandMetadata } from './decorators';
+export { HelpCommand, PingCommand, StatusCommand } from './handlers/BuiltinCommandHandler';
 export { PluginCommandHandler } from './handlers/PluginCommandHandler';
 export { DefaultPermissionChecker } from './PermissionChecker';
 export type {

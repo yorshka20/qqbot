@@ -4,27 +4,24 @@ import { logger } from '@/utils/logger';
 import type { PermissionChecker as IPermissionChecker } from './CommandManager';
 import type { PermissionLevel } from './types';
 
-// Re-export PermissionChecker interface for convenience
-export type { PermissionChecker } from './CommandManager';
-
 export interface PermissionConfig {
-  owner?: number; // Bot owner user ID
-  admins?: number[]; // Bot admin user IDs
+  // Bot owner: highest permission level
+  owner: string;
+  // Bot admins: user IDs that have admin permission level
+  admins: string[];
 }
 
 /**
  * Permission checker implementation
  */
 export class DefaultPermissionChecker implements IPermissionChecker {
-  private ownerId: number | null = null;
-  private adminIds: Set<number> = new Set();
+  private ownerId: string;
+  private adminIds: Set<string> = new Set();
 
-  constructor(config?: PermissionConfig) {
-    if (config) {
-      this.ownerId = config.owner || null;
-      if (config.admins) {
-        this.adminIds = new Set(config.admins);
-      }
+  constructor(config: PermissionConfig) {
+    this.ownerId = config.owner;
+    if (config.admins) {
+      this.adminIds = new Set(config.admins);
     }
   }
 
@@ -33,7 +30,6 @@ export class DefaultPermissionChecker implements IPermissionChecker {
    */
   checkPermission(
     userId: number,
-    groupId: number | undefined,
     messageType: 'private' | 'group',
     requiredPermissions: PermissionLevel[],
     userRole?: string,
@@ -45,22 +41,26 @@ export class DefaultPermissionChecker implements IPermissionChecker {
 
     // Check each required permission
     for (const permission of requiredPermissions) {
-      if (
-        this.hasPermission(userId, groupId, messageType, userRole, permission)
-      ) {
-        return true; // User has at least one required permission
+      if (this.hasPermission(userId, messageType, userRole, permission)) {
+        return true;
       }
     }
 
-    return false; // User doesn't have any required permission
+    return false;
   }
 
   /**
    * Check if user has a specific permission
+   *
+   * Permission levels:
+   * - 'user': All users have this permission
+   * - 'group_admin': Only group administrators (from QQ protocol data)
+   * - 'group_owner': Only group owners (from QQ protocol data)
+   * - 'admin': Bot administrators (configured user IDs)
+   * - 'owner': Bot owner only (configured user ID)
    */
   private hasPermission(
     userId: number,
-    groupId: number | undefined,
     messageType: 'private' | 'group',
     userRole: string | undefined,
     permission: PermissionLevel,
@@ -71,31 +71,38 @@ export class DefaultPermissionChecker implements IPermissionChecker {
         return true;
 
       case 'group_admin':
-        // Only group administrators
-        if (messageType !== 'group') {
+        // Only group administrators - check role from QQ protocol data
+        // Must be a group message and have a role
+        if (messageType !== 'group' || !userRole) {
           return false;
         }
-        return userRole === 'admin' || userRole === 'administrator';
+        // Check common admin role values from different QQ protocols
+        // Different protocols may return: 'admin', 'administrator', 'moderator', etc.
+        const normalizedRole = userRole.toLowerCase();
+        return normalizedRole === 'admin' || normalizedRole === 'administrator' || normalizedRole === 'moderator';
 
       case 'group_owner':
-        // Only group owners
-        if (messageType !== 'group') {
+        // Only group owners - check role from QQ protocol data
+        // Must be a group message and have a role
+        if (messageType !== 'group' || !userRole) {
           return false;
         }
-        return userRole === 'owner';
+        // Check common owner role values from different QQ protocols
+        // Different protocols may return: 'owner', 'master', etc.
+        const normalizedOwnerRole = userRole.toLowerCase();
+        return normalizedOwnerRole === 'owner' || normalizedOwnerRole === 'master';
 
       case 'admin':
-        // Bot administrators
-        return this.adminIds.has(userId) || userId === this.ownerId;
+        // Bot administrators: check by user ID only
+        // User must be in admins list or be the owner
+        return this.adminIds.has(userId.toString()) || userId.toString() === this.ownerId;
 
       case 'owner':
         // Bot owner only
-        return userId === this.ownerId;
+        return userId.toString() === this.ownerId;
 
       default:
-        logger.warn(
-          `[PermissionChecker] Unknown permission level: ${permission}`,
-        );
+        logger.warn(`[PermissionChecker] Unknown permission level: ${permission}`);
         return false;
     }
   }
@@ -103,21 +110,21 @@ export class DefaultPermissionChecker implements IPermissionChecker {
   /**
    * Set owner ID
    */
-  setOwner(ownerId: number): void {
+  setOwner(ownerId: string): void {
     this.ownerId = ownerId;
   }
 
   /**
    * Add admin ID
    */
-  addAdmin(adminId: number): void {
+  addAdmin(adminId: string): void {
     this.adminIds.add(adminId);
   }
 
   /**
    * Remove admin ID
    */
-  removeAdmin(adminId: number): void {
+  removeAdmin(adminId: string): void {
     this.adminIds.delete(adminId);
   }
 }
