@@ -207,6 +207,20 @@ export interface PromptsConfig {
   directory: string;
 }
 
+export interface TTSConfig {
+  // Fish Audio API key
+  apiKey: string;
+  // Base model to use in header (s1, speech-1.6, speech-1.5)
+  // Default: s1
+  model?: string;
+  // Custom voice model ID (reference_id) to use in request body
+  // If not specified, uses the base model
+  referenceId?: string;
+  // Audio format (mp3, wav, etc.)
+  // Default: mp3
+  format?: string;
+}
+
 export interface BotConfig {
   protocols: ProtocolConfig[];
   api: APIConfig;
@@ -219,6 +233,7 @@ export interface BotConfig {
   ai?: AIConfig;
   contextMemory?: ContextMemoryConfig;
   prompts: PromptsConfig;
+  tts?: TTSConfig;
 }
 
 export class Config {
@@ -440,5 +455,9 @@ export class Config {
       throw new ConfigError('Prompts configuration is required. Please set "prompts" in config file.');
     }
     return this.config.prompts;
+  }
+
+  getTTSConfig(): TTSConfig | undefined {
+    return this.config.tts;
   }
 }

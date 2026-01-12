@@ -5,11 +5,7 @@ import { logger } from '@/utils/logger';
 import { EventEmitter } from 'events';
 import type { ProtocolConfig } from './Config';
 
-export type ConnectionState =
-  | 'disconnected'
-  | 'connecting'
-  | 'connected'
-  | 'reconnecting';
+export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
 export interface ConnectionEvents {
   open: () => void;
@@ -58,10 +54,7 @@ export class Connection extends EventEmitter {
     } catch (error) {
       this.setState('disconnected');
       const err = error instanceof Error ? error : new Error('Unknown error');
-      throw new ConnectionError(
-        `Failed to create WebSocket: ${err.message}`,
-        this.config.name,
-      );
+      throw new ConnectionError(`Failed to create WebSocket: ${err.message}`, this.config.name);
     }
   }
 
@@ -81,20 +74,42 @@ export class Connection extends EventEmitter {
     }
 
     if (this.ws.readyState !== WebSocket.OPEN) {
-      throw new ConnectionError(
-        'WebSocket is not in OPEN state',
-        this.config.name,
-      );
+      throw new ConnectionError('WebSocket is not in OPEN state', this.config.name);
     }
 
     try {
       this.ws.send(data);
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      throw new ConnectionError(
-        `Failed to send message: ${err.message}`,
-        this.config.name,
-      );
+      throw new ConnectionError(`Failed to send message: ${err.message}`, this.config.name);
+    }
+  }
+
+  /**
+   * Send WebSocket ping frame to keep connection alive
+   * Uses native WebSocket ping if available
+   */
+  ping(data?: string | ArrayBuffer): void {
+    if (this.state !== 'connected' || !this.ws) {
+      throw new ConnectionError('WebSocket is not connected', this.config.name);
+    }
+
+    if (this.ws.readyState !== WebSocket.OPEN) {
+      throw new ConnectionError('WebSocket is not in OPEN state', this.config.name);
+    }
+
+    try {
+      // Use Bun native WebSocket ping method
+      if (typeof this.ws.ping === 'function') {
+        this.ws.ping(data);
+      } else {
+        // Fallback: send a ping message as application data
+        // This is a simple ping frame alternative
+        this.ws.send(data || 'ping');
+      }
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      throw new ConnectionError(`Failed to send ping: ${err.message}`, this.config.name);
     }
   }
 
@@ -122,10 +137,7 @@ export class Connection extends EventEmitter {
         }
         this.emit('message', message);
       } catch (error) {
-        logger.error(
-          `[Connection] ${this.config.name} failed to parse message:`,
-          error,
-        );
+        logger.error(`[Connection] ${this.config.name} failed to parse message:`, error);
       }
     };
 
@@ -137,8 +149,7 @@ export class Connection extends EventEmitter {
     };
 
     this.ws.onerror = (error: Event) => {
-      const errorMessage =
-        error instanceof ErrorEvent ? error.message : 'WebSocket error';
+      const errorMessage = error instanceof ErrorEvent ? error.message : 'WebSocket error';
       const err = new Error(errorMessage);
       logger.error(`[Connection] ${this.config.name} error:`, err);
       this.emit('error', err);
@@ -149,9 +160,7 @@ export class Connection extends EventEmitter {
     if (this.state !== state) {
       this.state = state;
       this.emit('state', state);
-      logger.debug(
-        `[Connection] ${this.config.name} state changed to: ${state}`,
-      );
+      logger.debug(`[Connection] ${this.config.name} state changed to: ${state}`);
     }
   }
 
@@ -161,26 +170,19 @@ export class Connection extends EventEmitter {
     }
 
     if (this.reconnectAttempts >= this.config.reconnect.maxRetries) {
-      logger.error(
-        `[Connection] ${this.config.name} max reconnect attempts reached`,
-      );
+      logger.error(`[Connection] ${this.config.name} max reconnect attempts reached`);
       return;
     }
 
     this.reconnectAttempts++;
     const delay = this.calculateReconnectDelay();
 
-    logger.info(
-      `[Connection] ${this.config.name} reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`,
-    );
+    logger.info(`[Connection] ${this.config.name} reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
     this.setState('reconnecting');
     this.reconnectTimer = setTimeout(() => {
       this.connect().catch((error) => {
-        logger.error(
-          `[Connection] ${this.config.name} reconnect failed:`,
-          error,
-        );
+        logger.error(`[Connection] ${this.config.name} reconnect failed:`, error);
       });
     }, delay);
   }
