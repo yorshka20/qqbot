@@ -1,26 +1,28 @@
 // SQLite database adapter implementation
 
-import Database from 'better-sqlite3';
+import { logger } from '@/utils/logger';
+import { Database } from 'bun:sqlite';
+import { randomUUID } from 'node:crypto';
+import { mkdir, stat } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 import type { DatabaseAdapter } from '../base/DatabaseAdapter';
 import type {
-  DatabaseModel,
   BaseModel,
+  Command,
   Conversation,
+  DatabaseModel,
   Message,
+  ModelAccessor,
   Session,
   Task,
-  Command,
-  ModelAccessor,
 } from '../models/types';
-import { logger } from '@/utils/logger';
-import { randomUUID } from 'crypto';
 
 /**
  * SQLite model accessor implementation
  */
 class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
   constructor(
-    private db: Database.Database,
+    private db: Database,
     private tableName: string,
   ) {}
 
@@ -34,27 +36,29 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
       updatedAt: now,
     } as T;
 
-    const keys = Object.keys(record).filter(
-      (k) => k !== 'id' && k !== 'createdAt' && k !== 'updatedAt',
-    );
+    const keys = Object.keys(record).filter((k) => k !== 'id' && k !== 'createdAt' && k !== 'updatedAt');
     const placeholders = keys.map(() => '?').join(', ');
-    const values = keys.map((k) => {
+    const values: (string | number | bigint | boolean | null)[] = keys.map((k) => {
       const value = (record as Record<string, unknown>)[k];
-      return typeof value === 'object' && value !== null
-        ? JSON.stringify(value)
-        : value;
+      if (value === null || value === undefined) {
+        return null;
+      }
+      if (typeof value === 'object') {
+        return JSON.stringify(value);
+      }
+      return value as string | number | bigint | boolean;
     });
 
     const sql = `INSERT INTO ${this.tableName} (id, ${keys.join(', ')}, createdAt, updatedAt) VALUES (?, ${placeholders}, ?, ?)`;
-    this.db.prepare(sql).run(id, ...values, now.toISOString(), now.toISOString());
+    const stmt = this.db.query(sql);
+    stmt.run(id, ...values, now.toISOString(), now.toISOString());
 
     return record;
   }
 
   async findById(id: string): Promise<T | null> {
-    const row = this.db
-      .prepare(`SELECT * FROM ${this.tableName} WHERE id = ?`)
-      .get(id) as Record<string, unknown> | undefined;
+    const stmt = this.db.query(`SELECT * FROM ${this.tableName} WHERE id = ?`);
+    const row = stmt.get(id) as Record<string, unknown> | undefined;
 
     if (!row) {
       return null;
@@ -65,14 +69,18 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
 
   async find(criteria: Partial<T>): Promise<T[]> {
     const conditions: string[] = [];
-    const values: unknown[] = [];
+    const values: (string | number | bigint | boolean | null)[] = [];
 
     for (const [key, value] of Object.entries(criteria)) {
       if (value !== undefined) {
         conditions.push(`${key} = ?`);
-        values.push(
-          typeof value === 'object' && value !== null ? JSON.stringify(value) : value,
-        );
+        if (value === null) {
+          values.push(null);
+        } else if (typeof value === 'object') {
+          values.push(JSON.stringify(value));
+        } else {
+          values.push(value as string | number | bigint | boolean);
+        }
       }
     }
 
@@ -81,7 +89,8 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
         ? `SELECT * FROM ${this.tableName} WHERE ${conditions.join(' AND ')}`
         : `SELECT * FROM ${this.tableName}`;
 
-    const rows = this.db.prepare(sql).all(...values) as Record<string, unknown>[];
+    const stmt = this.db.query(sql);
+    const rows = (conditions.length > 0 ? stmt.all(...values) : stmt.all()) as Record<string, unknown>[];
     return rows.map((row) => this.deserialize(row) as T);
   }
 
@@ -90,24 +99,25 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
     return results[0] || null;
   }
 
-  async update(
-    id: string,
-    data: Partial<Omit<T, 'id' | 'createdAt'>>,
-  ): Promise<T> {
+  async update(id: string, data: Partial<Omit<T, 'id' | 'createdAt'>>): Promise<T> {
     const existing = await this.findById(id);
     if (!existing) {
       throw new Error(`Record with id ${id} not found`);
     }
 
     const updates: string[] = [];
-    const values: unknown[] = [];
+    const values: (string | number | bigint | boolean | null)[] = [];
 
     for (const [key, value] of Object.entries(data)) {
       if (key !== 'id' && key !== 'createdAt' && value !== undefined) {
         updates.push(`${key} = ?`);
-        values.push(
-          typeof value === 'object' && value !== null ? JSON.stringify(value) : value,
-        );
+        if (value === null) {
+          values.push(null);
+        } else if (typeof value === 'object') {
+          values.push(JSON.stringify(value));
+        } else {
+          values.push(value as string | number | bigint | boolean);
+        }
       }
     }
 
@@ -120,40 +130,44 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
     values.push(id);
 
     const sql = `UPDATE ${this.tableName} SET ${updates.join(', ')} WHERE id = ?`;
-    this.db.prepare(sql).run(...values);
+    const stmt = this.db.query(sql);
+    stmt.run(...values);
 
     return (await this.findById(id))!;
   }
 
   async delete(id: string): Promise<boolean> {
-    const result = this.db
-      .prepare(`DELETE FROM ${this.tableName} WHERE id = ?`)
-      .run(id);
-    return result.changes > 0;
+    const stmt = this.db.query(`DELETE FROM ${this.tableName} WHERE id = ?`);
+    const result = stmt.run(id);
+    return (result as { changes: number }).changes > 0;
   }
 
   async count(criteria?: Partial<T>): Promise<number> {
     if (!criteria || Object.keys(criteria).length === 0) {
-      const row = this.db
-        .prepare(`SELECT COUNT(*) as count FROM ${this.tableName}`)
-        .get() as { count: number };
+      const stmt = this.db.query(`SELECT COUNT(*) as count FROM ${this.tableName}`);
+      const row = stmt.get() as { count: number };
       return row.count;
     }
 
     const conditions: string[] = [];
-    const values: unknown[] = [];
+    const values: (string | number | bigint | boolean | null)[] = [];
 
     for (const [key, value] of Object.entries(criteria)) {
       if (value !== undefined) {
         conditions.push(`${key} = ?`);
-        values.push(
-          typeof value === 'object' && value !== null ? JSON.stringify(value) : value,
-        );
+        if (value === null) {
+          values.push(null);
+        } else if (typeof value === 'object') {
+          values.push(JSON.stringify(value));
+        } else {
+          values.push(value as string | number | bigint | boolean);
+        }
       }
     }
 
     const sql = `SELECT COUNT(*) as count FROM ${this.tableName} WHERE ${conditions.join(' AND ')}`;
-    const row = this.db.prepare(sql).get(...values) as { count: number };
+    const stmt = this.db.query(sql);
+    const row = stmt.get(...values) as { count: number };
     return row.count;
   }
 
@@ -191,7 +205,7 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
  * SQLite database adapter
  */
 export class SQLiteAdapter implements DatabaseAdapter {
-  private db: Database.Database | null = null;
+  private db: Database | null = null;
   private models: DatabaseModel | null = null;
 
   constructor(private dbPath: string) {}
@@ -203,11 +217,25 @@ export class SQLiteAdapter implements DatabaseAdapter {
     }
 
     try {
-      this.db = new Database(this.dbPath);
-      this.db.pragma('journal_mode = WAL'); // Enable WAL mode for better concurrency
-      this.db.pragma('foreign_keys = ON'); // Enable foreign key constraints
+      // Resolve the database path (handle both relative and absolute paths)
+      const resolvedPath = resolve(this.dbPath);
+      const dbDir = dirname(resolvedPath);
 
-      logger.info(`[SQLiteAdapter] Connected to database: ${this.dbPath}`);
+      // Ensure the directory exists
+      try {
+        await stat(dbDir);
+      } catch {
+        // Directory doesn't exist, create it
+        await mkdir(dbDir, { recursive: true });
+        logger.info(`[SQLiteAdapter] Created database directory: ${dbDir}`);
+      }
+
+      // Create or open the database
+      this.db = new Database(resolvedPath);
+      this.db.run('PRAGMA journal_mode = WAL'); // Enable WAL mode for better concurrency
+      this.db.run('PRAGMA foreign_keys = ON'); // Enable foreign key constraints
+
+      logger.info(`[SQLiteAdapter] Connected to database: ${resolvedPath}`);
 
       // Initialize models
       this.models = this.createModels();
@@ -240,9 +268,9 @@ export class SQLiteAdapter implements DatabaseAdapter {
 
     logger.info('[SQLiteAdapter] Running migrations...');
 
-    // Create tables
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS conversations (
+    // Create tables - execute each statement separately for bun:sqlite compatibility
+    const statements = [
+      `CREATE TABLE IF NOT EXISTS conversations (
         id TEXT PRIMARY KEY,
         sessionId TEXT NOT NULL,
         sessionType TEXT NOT NULL CHECK(sessionType IN ('user', 'group')),
@@ -251,9 +279,8 @@ export class SQLiteAdapter implements DatabaseAdapter {
         metadata TEXT,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS messages (
+      )`,
+      `CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
         conversationId TEXT NOT NULL,
         userId INTEGER NOT NULL,
@@ -267,9 +294,8 @@ export class SQLiteAdapter implements DatabaseAdapter {
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL,
         FOREIGN KEY (conversationId) REFERENCES conversations(id)
-      );
-
-      CREATE TABLE IF NOT EXISTS sessions (
+      )`,
+      `CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
         sessionId TEXT NOT NULL,
         sessionType TEXT NOT NULL CHECK(sessionType IN ('user', 'group')),
@@ -277,9 +303,8 @@ export class SQLiteAdapter implements DatabaseAdapter {
         metadata TEXT,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS tasks (
+      )`,
+      `CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
         conversationId TEXT NOT NULL,
         messageId TEXT NOT NULL,
@@ -294,9 +319,8 @@ export class SQLiteAdapter implements DatabaseAdapter {
         updatedAt TEXT NOT NULL,
         FOREIGN KEY (conversationId) REFERENCES conversations(id),
         FOREIGN KEY (messageId) REFERENCES messages(id)
-      );
-
-      CREATE TABLE IF NOT EXISTS commands (
+      )`,
+      `CREATE TABLE IF NOT EXISTS commands (
         id TEXT PRIMARY KEY,
         conversationId TEXT NOT NULL,
         messageId TEXT NOT NULL,
@@ -310,14 +334,17 @@ export class SQLiteAdapter implements DatabaseAdapter {
         updatedAt TEXT NOT NULL,
         FOREIGN KEY (conversationId) REFERENCES conversations(id),
         FOREIGN KEY (messageId) REFERENCES messages(id)
-      );
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_messages_conversationId ON messages(conversationId)`,
+      `CREATE INDEX IF NOT EXISTS idx_messages_userId ON messages(userId)`,
+      `CREATE INDEX IF NOT EXISTS idx_tasks_conversationId ON tasks(conversationId)`,
+      `CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_commands_conversationId ON commands(conversationId)`,
+    ];
 
-      CREATE INDEX IF NOT EXISTS idx_messages_conversationId ON messages(conversationId);
-      CREATE INDEX IF NOT EXISTS idx_messages_userId ON messages(userId);
-      CREATE INDEX IF NOT EXISTS idx_tasks_conversationId ON tasks(conversationId);
-      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-      CREATE INDEX IF NOT EXISTS idx_commands_conversationId ON commands(conversationId);
-    `);
+    for (const statement of statements) {
+      this.db.run(statement);
+    }
 
     logger.info('[SQLiteAdapter] Migrations completed');
   }
@@ -334,11 +361,17 @@ export class SQLiteAdapter implements DatabaseAdapter {
       throw new Error('Database not connected');
     }
 
-    const transaction = this.db.transaction(() => {
-      return fn();
-    });
-
-    return transaction();
+    // bun:sqlite transactions are synchronous, but we need to handle async operations
+    // We manually manage the transaction using BEGIN/COMMIT/ROLLBACK
+    try {
+      this.db.run('BEGIN TRANSACTION');
+      const result = await fn();
+      this.db.run('COMMIT');
+      return result;
+    } catch (error) {
+      this.db.run('ROLLBACK');
+      throw error;
+    }
   }
 
   private createModels(): DatabaseModel {
