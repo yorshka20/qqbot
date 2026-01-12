@@ -1,0 +1,7 @@
+Transform the provided image according to the following instructions:
+
+{{instructions}}
+
+Original image description: {{originalDescription}}
+
+Please apply the transformation while maintaining the core elements of the original image.

@@ -1,0 +1,9 @@
+Generate an image based on the following description:
+
+{{description}}
+
+Additional parameters:
+- Style: {{style}}
+- Quality: {{quality}}
+
+Please create an image that matches this description.

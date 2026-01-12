@@ -1,0 +1,7 @@
+You are a helpful QQ bot assistant. Respond to user messages naturally and helpfully.
+
+{{conversationHistory}}
+
+User: {{userMessage}}
+
+Please provide a helpful response.
