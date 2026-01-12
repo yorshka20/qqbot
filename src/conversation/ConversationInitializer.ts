@@ -1,34 +1,57 @@
 // Conversation Initializer - initializes all conversation-related components
-// Organized into clear phases with distinct responsibilities
 
+import '@/command/handlers/BuiltinCommandHandler';
+
+import {
+  AIManager,
+  AIService,
+  CapabilityType,
+  LLMService,
+  PromptManager,
+  ProviderFactory,
+  ProviderSelector,
+} from '@/ai';
 import type { APIClient } from '@/api/APIClient';
 import { CommandManager } from '@/command';
 import { DefaultPermissionChecker } from '@/command/PermissionChecker';
-import type { Config } from '@/core/Config';
-// Import command handlers to trigger decorator registration
-// The decorator will automatically register them when the classes are loaded
-import { AIManager, OllamaProvider, OpenAIProvider } from '@/ai';
-import '@/command/handlers/BuiltinCommandHandler';
 import { ContextManager } from '@/context';
+import type { AIConfig, BotConfig, Config } from '@/core/Config';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import { ServiceRegistry } from '@/core/ServiceRegistry';
+import { SystemRegistry, type SystemContext } from '@/core/system';
 import { DatabaseManager } from '@/database/DatabaseManager';
-import { HookManager } from '@/plugins/HookManager';
-import { HookRegistry } from '@/plugins/HookRegistry';
+import { HookManager } from '@/hooks/HookManager';
 import { ReplyTaskExecutor, TaskAnalyzer, TaskManager } from '@/task';
+import type { TaskType } from '@/task/types';
 import { logger } from '@/utils/logger';
 import { CommandRouter } from './CommandRouter';
 import { ConversationManager } from './ConversationManager';
+import { Lifecycle } from './Lifecycle';
 import { MessagePipeline } from './MessagePipeline';
+import { CommandSystem } from './systems/CommandSystem';
+import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
+import { TaskSystem } from './systems/TaskSystem';
+
+/**
+ * Extended BotConfig with optional task configuration
+ */
+interface BotConfigWithTask extends BotConfig {
+  task?: {
+    types?: TaskType[];
+  };
+}
 
 export interface ConversationComponents {
   conversationManager: ConversationManager;
   hookManager: HookManager;
-  hookRegistry: HookRegistry;
   commandManager: CommandManager;
   taskManager: TaskManager;
   aiManager: AIManager;
   contextManager: ContextManager;
-  databaseManager?: DatabaseManager;
+  databaseManager: DatabaseManager;
+  systemRegistry: SystemRegistry;
+  lifecycle: Lifecycle;
 }
 
 /**
@@ -41,52 +64,74 @@ export interface ConversationComponents {
  * 4. Service Registration - Register services to DI container
  * 5. Service Wiring - Connect services together (dependencies)
  * 6. Component Assembly - Assemble high-level components (Pipeline, Manager)
+ * 7. System Registration - Register and initialize business systems
  */
 export class ConversationInitializer {
   /**
    * Initialize all conversation components
    */
-  static async initialize(
-    config: Config,
-    apiClient: APIClient,
-  ): Promise<ConversationComponents> {
-    logger.info('[ConversationInitializer] Starting initialization...');
-
+  static async initialize(config: Config, apiClient: APIClient): Promise<ConversationComponents> {
     // Phase 1: Infrastructure Setup
     const serviceRegistry = new ServiceRegistry();
     serviceRegistry.registerInfrastructureServices(config, apiClient);
-    logger.info(
-      '[ConversationInitializer] Phase 1: Infrastructure setup complete',
-    );
 
     // Phase 2: Core Services Creation
     const services = await this.createCoreServices(config);
-    logger.info('[ConversationInitializer] Phase 2: Core services created');
 
     // Phase 3: Service Configuration
     await this.configureServices(services, config);
-    logger.info('[ConversationInitializer] Phase 3: Services configured');
 
     // Phase 4: Service Registration
     serviceRegistry.registerConversationServices(services);
-    logger.info(
-      '[ConversationInitializer] Phase 4: Services registered to DI container',
-    );
+
+    // Create ProviderSelector and LLMService for AI capabilities
+    const providerSelector = new ProviderSelector(services.aiManager, services.databaseManager);
+    const llmService = new LLMService(services.aiManager, providerSelector);
+
+    // Update ContextManager with LLMService if summary is enabled
+    const memoryConfig = config.getContextMemoryConfig();
+    const useSummary = memoryConfig?.useSummary ?? false;
+    if (useSummary) {
+      const summaryThreshold = memoryConfig?.summaryThreshold ?? 20;
+      const maxBufferSize = memoryConfig?.maxBufferSize ?? 30;
+      const currentProvider = services.aiManager.getCurrentProvider();
+      if (currentProvider) {
+        services.contextManager = new ContextManager(llmService, useSummary, summaryThreshold, maxBufferSize);
+      }
+    }
+
+    // Create and register AIService if AI provider is available
+    const currentProvider = services.aiManager.getCurrentProvider();
+    if (currentProvider) {
+      const taskAnalyzer = new TaskAnalyzer(llmService, services.taskManager);
+      const maxHistoryMessages = memoryConfig?.maxHistoryMessages ?? 10;
+      const container = getContainer();
+      const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+
+      const aiService = new AIService(
+        services.aiManager,
+        services.contextManager,
+        services.hookManager,
+        promptManager,
+        taskAnalyzer,
+        maxHistoryMessages,
+        providerSelector,
+      );
+      serviceRegistry.registerAIServiceCapabilities(aiService);
+    } else {
+      logger.warn('[ConversationInitializer] No AI provider available. AIService will not be registered.');
+    }
 
     // Phase 5: Service Wiring
     this.wireServices(services);
-    logger.info('[ConversationInitializer] Phase 5: Services wired together');
 
     // Phase 6: Component Assembly
-    const components = this.assembleComponents(services, config, apiClient);
-    logger.info('[ConversationInitializer] Phase 6: Components assembled');
+    const components = this.assembleComponents(services, apiClient);
 
-    // Verify all services are registered
+    // Phase 7: Register and initialize systems
+    await this.registerAndInitializeSystems(components, services, config);
+
     serviceRegistry.verifyServices();
-
-    logger.info(
-      '[ConversationInitializer] All components initialized successfully',
-    );
 
     return components;
   }
@@ -95,52 +140,38 @@ export class ConversationInitializer {
    * Phase 2: Create core service instances
    */
   private static async createCoreServices(config: Config): Promise<{
-    databaseManager?: DatabaseManager;
+    databaseManager: DatabaseManager;
     aiManager: AIManager;
     contextManager: ContextManager;
     commandManager: CommandManager;
     taskManager: TaskManager;
     hookManager: HookManager;
   }> {
-    // Create database manager if configured
-    let databaseManager: DatabaseManager | undefined;
     const dbConfig = config.getDatabaseConfig();
-    if (dbConfig) {
-      databaseManager = new DatabaseManager();
-      await databaseManager.initialize(dbConfig);
-      logger.debug('[ConversationInitializer] Database manager created');
-    }
+    const databaseManager = new DatabaseManager();
+    await databaseManager.initialize(dbConfig);
 
-    // Create AI manager
     const aiManager = new AIManager();
-    logger.debug('[ConversationInitializer] AI manager created');
 
-    // Create context manager
-    const contextManager = new ContextManager(
-      undefined, // Will be set after AI manager is configured
-      false, // useSummary
-      20, // summaryThreshold
-    );
-    logger.debug('[ConversationInitializer] Context manager created');
+    const memoryConfig = config.getContextMemoryConfig();
+    const useSummary = memoryConfig?.useSummary ?? false;
+    const summaryThreshold = memoryConfig?.summaryThreshold ?? 20;
+    const maxBufferSize = memoryConfig?.maxBufferSize ?? 30;
 
-    // Create permission checker
+    // ContextManager will be updated with LLMService later if summary is enabled
+    const contextManager = new ContextManager(undefined, useSummary, summaryThreshold, maxBufferSize);
+
     const botConfig = config.getConfig();
     const permissionChecker = new DefaultPermissionChecker({
       owner: botConfig.bot.owner,
       admins: botConfig.bot.admins,
     });
 
-    // Create command manager (registers itself in DI container during construction)
+    // CommandManager registers itself in DI container during construction
     const commandManager = new CommandManager(permissionChecker);
-    logger.debug('[ConversationInitializer] Command manager created');
 
-    // Create task manager
     const taskManager = new TaskManager();
-    logger.debug('[ConversationInitializer] Task manager created');
-
-    // Create hook manager
     const hookManager = new HookManager();
-    logger.debug('[ConversationInitializer] Hook manager created');
 
     return {
       databaseManager,
@@ -163,68 +194,98 @@ export class ConversationInitializer {
     },
     config: Config,
   ): Promise<void> {
-    // Configure AI Manager
-    const aiConfig = config.getAIConfig();
-    if (aiConfig) {
-      // Register AI providers
-      for (const [name, providerConfig] of Object.entries(aiConfig.providers)) {
-        if (providerConfig.type === 'openai') {
-          const provider = new OpenAIProvider({
-            apiKey: providerConfig.apiKey,
-            model: providerConfig.model,
-            baseURL: providerConfig.baseURL,
-            defaultTemperature: providerConfig.temperature,
-            defaultMaxTokens: providerConfig.maxTokens,
-          });
-          services.aiManager.registerProvider(provider);
-        } else if (providerConfig.type === 'ollama') {
-          const provider = new OllamaProvider({
-            baseUrl: providerConfig.baseUrl,
-            model: providerConfig.model,
-            defaultTemperature: providerConfig.temperature,
-            defaultMaxTokens: 2000, // Ollama doesn't have maxTokens in config
-          });
-          services.aiManager.registerProvider(provider);
-        }
-        // Add other providers here (Anthropic, etc.)
-      }
-
-      // Set current provider
-      if (aiConfig.provider) {
-        services.aiManager.setCurrentProvider(aiConfig.provider);
-      }
-
-      // Update context manager with AI manager
-      services.contextManager = new ContextManager(
-        services.aiManager.getCurrentProvider()
-          ? services.aiManager
-          : undefined,
-        false, // useSummary
-        20, // summaryThreshold
-      );
-      logger.debug('[ConversationInitializer] AI manager configured');
-    }
-
-    // Configure Task Manager
-    const taskConfig = (config.getConfig() as any).task;
-    services.taskManager.registerExecutor(new ReplyTaskExecutor());
-
-    if (taskConfig?.types) {
-      for (const taskType of taskConfig.types) {
-        services.taskManager.registerTaskType({
-          name: taskType.name,
-          description: taskType.description,
-          executor: taskType.executor,
-        });
-      }
-    }
-    logger.debug('[ConversationInitializer] Task manager configured');
+    this.configureAIManager(services.aiManager, services.contextManager, config);
+    this.configureTaskManager(services.taskManager, config);
   }
 
   /**
-   * Phase 4: Service Registration is handled by ServiceRegistry.registerConversationServices
-   * (called in main initialize method)
+   * Configure AI Manager with providers from config
    */
+  private static configureAIManager(aiManager: AIManager, contextManager: ContextManager, config: Config): void {
+    const aiConfig = config.getAIConfig();
+    if (!aiConfig) {
+      logger.warn('[ConversationInitializer] No AI configuration found. AI capabilities will not be available.');
+      return;
+    }
+
+    const providers = ProviderFactory.createProviders(aiConfig.providers);
+    const registeredProviders: string[] = [];
+
+    for (const { name, provider } of providers) {
+      try {
+        aiManager.registerProvider(provider);
+        registeredProviders.push(name);
+      } catch (error) {
+        logger.warn(`[ConversationInitializer] Failed to register provider ${name}:`, error);
+      }
+    }
+
+    if (registeredProviders.length === 0) {
+      logger.warn('[ConversationInitializer] No providers were successfully registered');
+      return;
+    }
+
+    this.configureDefaultProviders(aiManager, aiConfig);
+  }
+
+  /**
+   * Configure default providers by capability
+   */
+  private static configureDefaultProviders(aiManager: AIManager, aiConfig: AIConfig): void {
+    if (!aiConfig.defaultProviders) {
+      return;
+    }
+
+    const validCapabilities: CapabilityType[] = ['llm', 'vision', 'text2img', 'img2img'];
+
+    for (const capability of validCapabilities) {
+      const providerName = aiConfig.defaultProviders[capability];
+      if (!providerName) {
+        continue;
+      }
+
+      try {
+        aiManager.setDefaultProvider(capability, providerName);
+      } catch (error) {
+        logger.warn(
+          `[ConversationInitializer] Failed to set default provider ${providerName} for ${capability}:`,
+          error,
+        );
+      }
+    }
+  }
+
+  /**
+   * Configure Task Manager
+   */
+  private static configureTaskManager(taskManager: TaskManager, config: Config): void {
+    // Register default reply executor
+    taskManager.registerExecutor(new ReplyTaskExecutor());
+
+    // Register default "reply" task type
+    taskManager.registerTaskType({
+      name: 'reply',
+      description: 'AI reply task - generates AI response for user input',
+      executor: 'reply',
+    });
+
+    // Register additional task types from config
+    const botConfig = config.getConfig() as BotConfigWithTask;
+    const taskConfig = botConfig.task;
+    if (taskConfig?.types) {
+      for (const taskType of taskConfig.types) {
+        // Skip "reply" if already registered
+        if (taskType.name.toLowerCase() !== 'reply') {
+          taskManager.registerTaskType({
+            name: taskType.name,
+            description: taskType.description,
+            executor: taskType.executor,
+            parameters: taskType.parameters,
+          });
+        }
+      }
+    }
+  }
 
   /**
    * Phase 5: Wire services together (set dependencies)
@@ -234,10 +295,8 @@ export class ConversationInitializer {
     taskManager: TaskManager;
     hookManager: HookManager;
   }): void {
-    // Connect hook manager to command and task systems
     services.commandManager.setHookManager(services.hookManager);
     services.taskManager.setHookManager(services.hookManager);
-    logger.debug('[ConversationInitializer] Services wired together');
   }
 
   /**
@@ -250,49 +309,74 @@ export class ConversationInitializer {
       commandManager: CommandManager;
       taskManager: TaskManager;
       hookManager: HookManager;
-      databaseManager?: DatabaseManager;
+      databaseManager: DatabaseManager;
     },
-    config: Config,
     apiClient: APIClient,
   ): ConversationComponents {
-    // Create hook registry
-    const hookRegistry = new HookRegistry(services.hookManager);
-
-    // Create task analyzer
-    const taskAnalyzer = new TaskAnalyzer(
-      services.aiManager,
-      services.taskManager,
-    );
-
-    // Create command router
-    const commandConfig = (config.getConfig() as any).command;
-    const prefixes = commandConfig?.prefixes || ['/', '!'];
-    const commandRouter = new CommandRouter(prefixes);
-
-    // Create message pipeline
-    const pipeline = new MessagePipeline(
-      commandRouter,
-      services.commandManager,
-      services.taskManager,
-      taskAnalyzer,
-      services.contextManager,
-      services.aiManager,
-      services.hookManager,
-      apiClient,
-    );
-
-    // Create conversation manager
+    const systemRegistry = new SystemRegistry();
+    const commandRouter = new CommandRouter(['/', '!']);
+    const lifecycle = new Lifecycle(services.hookManager);
+    lifecycle.setCommandRouter(commandRouter);
+    const pipeline = new MessagePipeline(lifecycle, services.hookManager, apiClient);
+    // ConversationManager gets botSelfId from config via DI container
     const conversationManager = new ConversationManager(pipeline);
 
     return {
       conversationManager,
       hookManager: services.hookManager,
-      hookRegistry,
       commandManager: services.commandManager,
       taskManager: services.taskManager,
       aiManager: services.aiManager,
       contextManager: services.contextManager,
       databaseManager: services.databaseManager,
+      systemRegistry,
+      lifecycle,
     };
+  }
+
+  /**
+   * Phase 7: Register and initialize systems
+   */
+  private static async registerAndInitializeSystems(
+    components: ConversationComponents,
+    services: {
+      aiManager: AIManager;
+      contextManager: ContextManager;
+      commandManager: CommandManager;
+      taskManager: TaskManager;
+      hookManager: HookManager;
+      databaseManager: DatabaseManager;
+    },
+    config: Config,
+  ): Promise<void> {
+    const { systemRegistry } = components;
+
+    const systemContext: SystemContext = {
+      hookManager: services.hookManager,
+      getSystem: (name) => systemRegistry.getSystem(name),
+      config: config.getConfig(),
+    };
+
+    systemRegistry.registerSystemFactory('command', () => {
+      return new CommandSystem(services.commandManager, services.hookManager);
+    });
+
+    systemRegistry.registerSystemFactory('task', () => {
+      return new TaskSystem(services.taskManager, services.hookManager);
+    });
+
+    systemRegistry.registerSystemFactory('database-persistence', () => {
+      return new DatabasePersistenceSystem(services.databaseManager);
+    });
+
+    await systemRegistry.createSystems(systemContext);
+    await systemRegistry.initializeSystems(systemContext);
+
+    // Register all systems to lifecycle for execution at different stages
+    const { lifecycle } = components;
+    const businessSystems = systemRegistry.getAllSystems();
+    for (const system of businessSystems) {
+      lifecycle.registerSystem(system);
+    }
   }
 }
