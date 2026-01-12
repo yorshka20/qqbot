@@ -20,6 +20,10 @@ export class DatabasePersistenceSystem implements System {
 
   constructor(private databaseManager: DatabaseManager) {}
 
+  enabled(): boolean {
+    return true;
+  }
+
   async execute(context: HookContext): Promise<boolean> {
     const messageId = context.message?.id || context.message?.messageId || 'unknown';
     const sessionId = context.metadata.get('sessionId') as string;

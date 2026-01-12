@@ -343,6 +343,7 @@ export class Lifecycle {
   /**
    * Check if message is @bot itself
    * Supports multiple protocols: Milky (mention) and OneBot11 (at)
+   * Note: In Milky protocol, @0 (user_id=0) typically means @bot itself
    */
   private checkIsAtBot(
     message: {
@@ -388,10 +389,15 @@ export class Lifecycle {
         }
       }
 
-      if (atUserId) {
+      // atUserId could be 0
+      if (atUserId !== undefined) {
         const atUserIdNum = typeof atUserId === 'string' ? parseInt(atUserId, 10) : atUserId;
-        if (!isNaN(atUserIdNum) && atUserIdNum === botSelfIdNum) {
-          return true;
+        if (!isNaN(atUserIdNum)) {
+          // In Milky protocol, @0 (user_id=0) typically means @bot itself
+          // Also check if the atUserId matches botSelfId
+          if (atUserIdNum === 0 || atUserIdNum === botSelfIdNum) {
+            return true;
+          }
         }
       }
     }

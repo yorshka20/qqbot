@@ -3,6 +3,7 @@
 import readline from 'readline';
 import { APIClient } from '../api/APIClient';
 import { MessageAPI } from '../api/methods/MessageAPI';
+import { ConversationInitializer } from '../conversation/ConversationInitializer';
 import { Bot } from '../core/Bot';
 import type { ProtocolName } from '../core/Config';
 import { EventRouter } from '../events/EventRouter';
@@ -41,60 +42,24 @@ class DebugCLI {
 
     // Initialize API client
     const apiConfig = config.getAPIConfig();
-    this.apiClient = new APIClient(
-      apiConfig.strategy,
-      apiConfig.preferredProtocol,
-    );
+    this.apiClient = new APIClient(apiConfig.strategy, apiConfig.preferredProtocol);
     this.messageAPI = new MessageAPI(this.apiClient);
 
     // Initialize event router
     const eventDeduplicationConfig = config.getEventDeduplicationConfig();
     this.eventRouter = new EventRouter(eventDeduplicationConfig);
 
-    // Set up event handlers
-    const messageHandler = new MessageHandler();
-    const noticeHandler = new NoticeHandler();
-    const requestHandler = new RequestHandler();
-    const metaEventHandler = new MetaEventHandler();
-
-    // Set up event listeners to display events in CLI
-    this.eventRouter.on('message', (event) => {
-      messageHandler.handle(event);
-      this.displayMessageEvent(event);
-    });
-
-    this.eventRouter.on('notice', (event) => {
-      noticeHandler.handle(event);
-      this.displayEvent('NOTICE', event);
-    });
-
-    this.eventRouter.on('request', (event) => {
-      requestHandler.handle(event);
-      this.displayEvent('REQUEST', event);
-    });
-
-    this.eventRouter.on('meta_event', (event) => {
-      metaEventHandler.handle(event);
-      // Don't display meta events by default (too noisy)
-    });
-
     // Set up protocol adapters
     const adapters = new Map<ProtocolName, { adapter: any; connection: any }>();
 
     connectionManager.on('connectionOpen', async (protocolName, connection) => {
-      logger.info(
-        `[DebugCLI] Setting up adapter for protocol: ${protocolName}`,
-      );
+      logger.info(`[DebugCLI] Setting up adapter for protocol: ${protocolName}`);
 
       let adapter;
-      const protocolConfig = config.getProtocolConfig(
-        protocolName as ProtocolName,
-      );
+      const protocolConfig = config.getProtocolConfig(protocolName as ProtocolName);
 
       if (!protocolConfig) {
-        logger.error(
-          `[DebugCLI] Protocol config not found for: ${protocolName}`,
-        );
+        logger.error(`[DebugCLI] Protocol config not found for: ${protocolName}`);
         return;
       }
 
@@ -188,14 +153,10 @@ class DebugCLI {
         }
         const message = args.slice(1).join(' ');
         try {
-          const messageId = await this.messageAPI.sendPrivateMessage(
-            userId,
-            message,
-          );
+          const messageId = await this.messageAPI.sendPrivateMessage(userId, message);
           this.printSuccess(`Message sent! Message ID: ${messageId}`);
         } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
+          const errorMessage = error instanceof Error ? error.message : String(error);
           this.printError(`Failed to send message: ${errorMessage}`);
           if (error instanceof Error && error.stack) {
             logger.debug('Error stack:', error.stack);
@@ -221,14 +182,10 @@ class DebugCLI {
         }
         const message = args.slice(1).join(' ');
         try {
-          const messageId = await this.messageAPI.sendGroupMessage(
-            groupId,
-            message,
-          );
+          const messageId = await this.messageAPI.sendGroupMessage(groupId, message);
           this.printSuccess(`Message sent! Message ID: ${messageId}`);
         } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
+          const errorMessage = error instanceof Error ? error.message : String(error);
           this.printError(`Failed to send message: ${errorMessage}`);
           if (error instanceof Error && error.stack) {
             logger.debug('Error stack:', error.stack);
@@ -244,9 +201,7 @@ class DebugCLI {
       usage: 'api <action> [params...] [--protocol <protocol>]',
       handler: async (args) => {
         if (args.length < 1) {
-          this.printError(
-            'Usage: api <action> [params...] [--protocol <protocol>]',
-          );
+          this.printError('Usage: api <action> [params...] [--protocol <protocol>]');
           return;
         }
         const action = args[0];
@@ -288,12 +243,8 @@ class DebugCLI {
 
         this.printInfo('\nBot Status:');
         this.printInfo(`  Running: ${this.bot.isBotRunning() ? 'Yes' : 'No'}`);
-        this.printInfo(
-          `  Configured Protocols: ${allProtocols.join(', ') || 'None'}`,
-        );
-        this.printInfo(
-          `  Connected Protocols: ${protocols.join(', ') || 'None'}`,
-        );
+        this.printInfo(`  Configured Protocols: ${allProtocols.join(', ') || 'None'}`);
+        this.printInfo(`  Connected Protocols: ${protocols.join(', ') || 'None'}`);
         if (protocols.length === 0 && allProtocols.length > 0) {
           this.printWarning('  ⚠ No protocols are connected!');
         }
@@ -330,12 +281,8 @@ class DebugCLI {
 
   private displayMessageEvent(event: NormalizedMessageEvent): void {
     const type = event.messageType === 'private' ? 'PRIVATE' : 'GROUP';
-    const sender =
-      event.sender?.nickname || event.sender?.card || `User ${event.userId}`;
-    const location =
-      event.messageType === 'private'
-        ? `from ${sender}`
-        : `in group ${event.groupId} from ${sender}`;
+    const sender = event.sender?.nickname || event.sender?.card || `User ${event.userId}`;
+    const location = event.messageType === 'private' ? `from ${sender}` : `in group ${event.groupId} from ${sender}`;
 
     this.printMessage(`\n[${type}] ${location}:`);
     this.printMessage(`  ${event.message}\n`);
@@ -378,12 +325,43 @@ class DebugCLI {
     this.isRunning = true;
 
     try {
+      // Initialize conversation system (required for MessageHandler)
+      const config = this.bot.getConfig();
+      this.printInfo('Initializing conversation system...');
+      const conversationComponents = await ConversationInitializer.initialize(config, this.apiClient);
+
+      // Set up event handlers (after conversation system is initialized)
+      const messageHandler = new MessageHandler(conversationComponents.conversationManager);
+      const noticeHandler = new NoticeHandler();
+      const requestHandler = new RequestHandler();
+      const metaEventHandler = new MetaEventHandler();
+
+      // Set up event listeners to display events in CLI
+      this.eventRouter.on('message', (event) => {
+        messageHandler.handle(event);
+        this.displayMessageEvent(event);
+      });
+
+      this.eventRouter.on('notice', (event) => {
+        noticeHandler.handle(event);
+        this.displayEvent('NOTICE', event);
+      });
+
+      this.eventRouter.on('request', (event) => {
+        requestHandler.handle(event);
+        this.displayEvent('REQUEST', event);
+      });
+
+      this.eventRouter.on('meta_event', (event) => {
+        metaEventHandler.handle(event);
+        // Don't display meta events by default (too noisy)
+      });
+
       // Start bot
       this.printInfo('Starting bot...');
       await this.bot.start();
 
       // Load plugins
-      const config = this.bot.getConfig();
       const pluginsConfig = config.getPluginsConfig();
       const hookManager = new HookManager();
       const pluginManager = new PluginManager(hookManager);
@@ -417,9 +395,7 @@ class DebugCLI {
             this.printError(`Error executing command: ${error}`);
           }
         } else {
-          this.printError(
-            `Unknown command: ${commandName}. Type "help" for available commands.`,
-          );
+          this.printError(`Unknown command: ${commandName}. Type "help" for available commands.`);
         }
 
         this.rl.prompt();

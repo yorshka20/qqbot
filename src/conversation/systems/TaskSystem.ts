@@ -1,6 +1,7 @@
 // Task System - handles task execution and drives AI capabilities
 
 import type { AIService } from '@/ai/AIService';
+import { extractImagesFromSegments } from '@/ai/utils/imageUtils';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { System } from '@/core/system';
@@ -30,15 +31,15 @@ export class TaskSystem implements System {
     private hookManager: HookManager,
   ) {}
 
+  enabled(): boolean {
+    return false;
+  }
+
   async execute(context: HookContext): Promise<boolean> {
-    const messageId =
-      context.message?.id || context.message?.messageId || 'unknown';
+    const messageId = context.message?.id || context.message?.messageId || 'unknown';
 
     // Skip if command was already processed
     if (context.command) {
-      logger.info(
-        `[TaskSystem] Command already processed, skipping task generation | messageId=${messageId} | command=${context.command.name}`,
-      );
       return true;
     }
 
@@ -72,9 +73,7 @@ export class TaskSystem implements System {
     if (!task) {
       const aiService = this.getAIService();
       if (aiService) {
-        logger.debug(
-          '[TaskSystem] No task found, attempting to analyze with AI...',
-        );
+        logger.debug('[TaskSystem] No task found, attempting to analyze with AI...');
         const generatedTask = await aiService.analyzeTask(context);
         if (generatedTask) {
           task = generatedTask;
@@ -86,9 +85,7 @@ export class TaskSystem implements System {
 
     // If still no task, create a default "ai reply" task
     if (!task) {
-      logger.debug(
-        '[TaskSystem] No task generated, creating default AI reply task',
-      );
+      logger.debug('[TaskSystem] No task generated, creating default AI reply task');
       task = {
         type: 'reply',
         parameters: {},
@@ -106,26 +103,40 @@ export class TaskSystem implements System {
       const aiService = this.getAIService();
       if (aiService) {
         try {
-          logger.debug('[TaskSystem] Generating AI reply for reply task...');
-          const aiReply = await aiService.generateReply(context);
+          logger.info('[TaskSystem] Generating AI reply for reply task...');
+
+          // Check if message contains images (multimodal support)
+          const messageSegments = context.message.segments;
+          const hasImages = messageSegments?.some((seg) => seg.type === 'image');
+
+          let aiReply: string;
+
+          if (hasImages) {
+            // Use vision capability for multimodal input
+            const images = extractImagesFromSegments(messageSegments as any[]);
+            logger.info(`[TaskSystem] Message contains ${images.length} image(s), using vision capability`);
+            aiReply = await aiService.generateReplyWithVision(context, images);
+          } else {
+            // Use standard LLM capability
+            aiReply = await aiService.generateReply(context);
+          }
+
           task.reply = aiReply;
           context.aiResponse = aiReply;
+          logger.info(`[TaskSystem] AI reply generated successfully | replyLength=${aiReply.length}`);
         } catch (error) {
           logger.error('[TaskSystem] Failed to generate AI reply:', error);
-          task.reply =
-            'I apologize, but I encountered an error processing your message.';
+          task.reply = 'I apologize, but I encountered an error processing your message.';
         }
       } else {
         // Fallback if AIService is not available
+        logger.warn('[TaskSystem] AIService is not available. Please configure AI in config file (config.ai).');
         task.reply = 'I apologize, but AI capabilities are not available.';
       }
     }
 
     // Hook: onTaskBeforeExecute
-    const shouldExecute = await this.hookManager.execute(
-      'onTaskBeforeExecute',
-      context,
-    );
+    const shouldExecute = await this.hookManager.execute('onTaskBeforeExecute', context);
     if (!shouldExecute) {
       return false;
     }

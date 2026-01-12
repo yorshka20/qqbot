@@ -22,6 +22,10 @@ export class CommandSystem implements System {
     private hookManager: HookManager,
   ) {}
 
+  enabled(): boolean {
+    return true;
+  }
+
   async execute(context: HookContext): Promise<boolean> {
     const command = context.command;
     if (!command) {
