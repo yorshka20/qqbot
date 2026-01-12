@@ -18,7 +18,6 @@ import type {
 export interface PermissionChecker {
   checkPermission(
     userId: number,
-    groupId: number | undefined,
     messageType: 'private' | 'group',
     requiredPermissions: PermissionLevel[],
     userRole?: string,
@@ -29,41 +28,22 @@ export class CommandManager {
   private commands = new Map<string, CommandRegistration>();
   private builtinCommands = new Map<string, CommandRegistration>();
   private hookManager: HookManager | null = null;
-  private permissionChecker: PermissionChecker | null = null;
 
-  constructor(permissionChecker?: PermissionChecker) {
-    this.permissionChecker = permissionChecker || null;
-
+  constructor(private permissionChecker: PermissionChecker) {
     // Register self in DI container for commands that need it
     const container = getTSyringeContainer();
     container.register(DITokens.COMMAND_MANAGER, { useValue: this });
 
-    // Auto-register all decorated commands
     this.autoRegisterDecoratedCommands();
   }
 
   /**
    * Set hook manager for extension hooks
+   * Note: Command hooks (onCommandDetected, onCommandExecuted) are registered
+   * by CommandSystem via getExtensionHooks() method, not here.
    */
   setHookManager(hookManager: HookManager): void {
     this.hookManager = hookManager;
-    // Register command extension hooks
-    this.registerCommandHooks();
-  }
-
-  /**
-   * Register command extension hooks
-   */
-  private registerCommandHooks(): void {
-    if (!this.hookManager) {
-      return;
-    }
-
-    // Register command hooks as extended hooks
-    // These hooks are only available if command system is initialized
-    logger.debug(
-      '[CommandManager] Command extension hooks available (onCommandDetected, onCommandExecuted)',
-    );
   }
 
   /**
@@ -77,9 +57,7 @@ export class CommandManager {
       try {
         // Check if command is enabled
         if (metadata.enabled === false) {
-          logger.debug(
-            `[CommandManager] Command "${metadata.name}" is disabled, skipping registration`,
-          );
+          logger.debug(`[CommandManager] Command "${metadata.name}" is disabled, skipping registration`);
           continue;
         }
 
@@ -96,25 +74,18 @@ export class CommandManager {
         };
 
         this.builtinCommands.set(name, registration);
-        logger.info(
-          `[CommandManager] Auto-registered decorated command: ${name}`,
-        );
+        logger.info(`[CommandManager] Auto-registered decorated command: ${name}`);
 
         // Register aliases
         if (metadata.aliases) {
           for (const alias of metadata.aliases) {
             const aliasLower = alias.toLowerCase();
             this.builtinCommands.set(aliasLower, registration);
-            logger.debug(
-              `[CommandManager] Registered command alias: ${aliasLower} -> ${name}`,
-            );
+            logger.debug(`[CommandManager] Registered command alias: ${aliasLower} -> ${name}`);
           }
         }
       } catch (error) {
-        logger.error(
-          `[CommandManager] Failed to auto-register command ${metadata.name}:`,
-          error,
-        );
+        logger.error(`[CommandManager] Failed to auto-register command ${metadata.name}:`, error);
       }
     }
   }
@@ -136,50 +107,24 @@ export class CommandManager {
     } catch (error) {
       // Fallback to direct instantiation if not registered with TSyringe
       // This allows for commands that don't use dependency injection
-      logger.debug(
-        `[CommandManager] Resolving ${metadata.name} directly (not using TSyringe)`,
-      );
+      logger.debug(`[CommandManager] Resolving ${metadata.name} directly (not using TSyringe)`);
       return new HandlerClass();
     }
   }
 
   /**
-   * Set permission checker
-   */
-  setPermissionChecker(checker: PermissionChecker): void {
-    this.permissionChecker = checker;
-  }
-
-  /**
    * Check if user has required permissions
    */
-  private checkPermissions(
-    context: CommandContext,
-    requiredPermissions?: PermissionLevel[],
-  ): boolean {
+  private checkPermissions(context: CommandContext, requiredPermissions?: PermissionLevel[]): boolean {
     // If no permissions required, allow all users
     if (!requiredPermissions || requiredPermissions.length === 0) {
-      return true;
-    }
-
-    // If no permission checker, allow all (backward compatibility)
-    if (!this.permissionChecker) {
-      logger.warn(
-        '[CommandManager] No permission checker configured, allowing all commands',
-      );
       return true;
     }
 
     // Get user role from context (if available)
     const userRole = (context.metadata?.senderRole as string) || undefined;
 
-    return this.permissionChecker.checkPermission(
-      context.userId,
-      context.groupId,
-      context.messageType,
-      requiredPermissions,
-      userRole,
-    );
+    return this.permissionChecker.checkPermission(context.userId, context.messageType, requiredPermissions, userRole);
   }
 
   /**
@@ -189,9 +134,7 @@ export class CommandManager {
     const name = handler.name.toLowerCase();
 
     if (this.commands.has(name) || this.builtinCommands.has(name)) {
-      logger.warn(
-        `[CommandManager] Command "${name}" already registered, overwriting...`,
-      );
+      logger.warn(`[CommandManager] Command "${name}" already registered, overwriting...`);
     }
 
     const registration: CommandRegistration = {
@@ -201,9 +144,7 @@ export class CommandManager {
 
     if (pluginName) {
       this.commands.set(name, registration);
-      logger.info(
-        `[CommandManager] Registered plugin command: ${name} (plugin: ${pluginName})`,
-      );
+      logger.info(`[CommandManager] Registered plugin command: ${name} (plugin: ${pluginName})`);
     } else {
       this.builtinCommands.set(name, registration);
       logger.info(`[CommandManager] Registered builtin command: ${name}`);
@@ -221,18 +162,14 @@ export class CommandManager {
       const reg = this.commands.get(lowerName);
       if (reg && reg.pluginName === pluginName) {
         this.commands.delete(lowerName);
-        logger.info(
-          `[CommandManager] Unregistered plugin command: ${lowerName} (plugin: ${pluginName})`,
-        );
+        logger.info(`[CommandManager] Unregistered plugin command: ${lowerName} (plugin: ${pluginName})`);
         return true;
       }
     } else {
       // Unregister builtin command
       if (this.builtinCommands.has(lowerName)) {
         this.builtinCommands.delete(lowerName);
-        logger.info(
-          `[CommandManager] Unregistered builtin command: ${lowerName}`,
-        );
+        logger.info(`[CommandManager] Unregistered builtin command: ${lowerName}`);
         return true;
       }
     }
@@ -269,7 +206,7 @@ export class CommandManager {
     }
 
     // Check if command is enabled
-    if (registration.enabled === false) {
+    if (!registration.enabled) {
       return {
         success: false,
         error: `Command "${command.name}" is disabled`,
@@ -306,9 +243,7 @@ export class CommandManager {
     }
 
     try {
-      logger.debug(
-        `[CommandManager] Executing command: ${command.name} with args: ${command.args.join(', ')}`,
-      );
+      logger.debug(`[CommandManager] Executing command: ${command.name} with args: ${command.args.join(', ')}`);
 
       const result = await handler.execute(command.args, context);
 
@@ -321,22 +256,15 @@ export class CommandManager {
       }
 
       if (result.success) {
-        logger.debug(
-          `[CommandManager] Command ${command.name} executed successfully`,
-        );
+        logger.debug(`[CommandManager] Command ${command.name} executed successfully`);
       } else {
-        logger.warn(
-          `[CommandManager] Command ${command.name} failed: ${result.error}`,
-        );
+        logger.warn(`[CommandManager] Command ${command.name} failed: ${result.error}`);
       }
 
       return result;
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.error(
-        `[CommandManager] Error executing command ${command.name}:`,
-        err,
-      );
+      logger.error(`[CommandManager] Error executing command ${command.name}:`, err);
 
       return {
         success: false,
@@ -419,8 +347,6 @@ export class CommandManager {
       this.commands.delete(name);
     }
 
-    logger.info(
-      `[CommandManager] Unregistered ${toRemove.length} commands from plugin: ${pluginName}`,
-    );
+    logger.info(`[CommandManager] Unregistered ${toRemove.length} commands from plugin: ${pluginName}`);
   }
 }
