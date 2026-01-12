@@ -166,8 +166,8 @@ export class LocalText2ImageProvider extends AIProvider implements Text2ImageCap
       }
 
       const data = (await response.json()) as {
-        image?: string | string[];
-        images?: string[];
+        image_url?: string;
+        image_urls?: string[];
         metadata?: Record<string, unknown>;
       };
 
@@ -175,20 +175,14 @@ export class LocalText2ImageProvider extends AIProvider implements Text2ImageCap
       // Image can be base64 string or array of base64 strings
       let images: Array<{ base64?: string; url?: string }> = [];
 
-      if (data.image) {
+      if (data.image_url) {
         // Single image response
-        if (typeof data.image === 'string') {
-          // Base64 string
-          images.push({ base64: data.image });
-        } else if (Array.isArray(data.image)) {
-          // Array of base64 strings
-          images = data.image.map((img: string) => ({ base64: img }));
-        }
-      } else if (data.images && Array.isArray(data.images)) {
+        images.push({ url: data.image_url });
+      } else if (data.image_urls && Array.isArray(data.image_urls)) {
         // Multiple images response
-        images = data.images.map((img: string) => ({ base64: img }));
+        images = data.image_urls.map((url: string) => ({ url }));
       } else {
-        throw new Error('Invalid response format: expected "image" or "images" field');
+        throw new Error('Invalid response format: expected "image_url" or "image_urls" field');
       }
 
       logger.debug(`[LocalText2ImageProvider] Generated ${images.length} image(s)`);

@@ -285,8 +285,6 @@ export class AIService {
       // Template name: 'text2img.generate' (from prompts/text2img/generate.txt)
       const prompt = this.promptManager.render('text2img.generate', {
         description: context.message.message,
-        style: options?.style || 'default',
-        quality: options?.quality || 'standard',
       });
 
       logger.debug('[AIService] Generating image with prompt:', prompt);
