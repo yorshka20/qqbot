@@ -1,7 +1,7 @@
 // Plugin loading and lifecycle management
 
 import type { HookManager } from '@/hooks/HookManager';
-import { getCoreHookPriority } from '@/hooks/HookPriority';
+import { CoreHookName, getCoreHookPriority, HookPriorityVariant } from '@/hooks/HookPriority';
 import type { HookHandler } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { existsSync, readdirSync, statSync } from 'fs';
@@ -15,22 +15,26 @@ export class PluginManager {
   private context?: PluginContext;
   private hookManager: HookManager;
 
-  // Plugin directory is fixed to src/plugins
-  private readonly pluginDirectory: string;
+  private readonly coreHookNames: CoreHookName[] = [
+    'onMessageReceived',
+    'onMessagePreprocess',
+    'onMessageBeforeSend',
+    'onMessageSent',
+    'onError',
+  ];
+
+  // Plugin directory is fixed to src/plugins/plugins
+  private readonly pluginDirectory = join(process.cwd(), 'src', 'plugins', 'plugins');
 
   constructor(hookManager: HookManager) {
     this.hookManager = hookManager;
-    // Fixed plugin directory: src/plugins/plugins
-    this.pluginDirectory = join(process.cwd(), 'src', 'plugins', 'plugins');
   }
 
   setContext(context: PluginContext): void {
     this.context = context;
   }
 
-  async loadPlugins(
-    pluginConfigs: Array<{ name: string; enabled: boolean; config?: any }> = [],
-  ): Promise<void> {
+  async loadPlugins(pluginConfigs: Array<{ name: string; enabled: boolean; config?: any }> = []): Promise<void> {
     if (!this.context) {
       throw new Error('Plugin context not set');
     }
@@ -40,20 +44,10 @@ export class PluginManager {
 
     // Load plugins from fixed src/plugins directory
     if (this.dirExists(this.pluginDirectory)) {
-      await this.loadPluginsFromDirectory(
-        this.pluginDirectory,
-        pluginConfigMap,
-        true,
-      );
-    } else {
-      logger.warn(
-        `[PluginManager] Plugin directory not found: ${this.pluginDirectory}`,
-      );
+      await this.loadPluginsFromDirectory(this.pluginDirectory, pluginConfigMap, true);
     }
 
-    logger.info(
-      `[PluginManager] Finished loading plugins. Total: ${this.plugins.size}`,
-    );
+    logger.info(`[PluginManager] Finished loading plugins. Total: ${this.plugins.size}`);
   }
 
   /**
@@ -72,117 +66,92 @@ export class PluginManager {
    */
   private async loadPluginsFromDirectory(
     directory: string,
-    pluginConfigMap: Map<
-      string,
-      { name: string; enabled: boolean; config?: any }
-    >,
+    pluginConfigMap: Map<string, { name: string; enabled: boolean; config?: any }>,
     isBuiltin: boolean = false,
   ): Promise<void> {
-    try {
-      const files = readdirSync(directory);
-      const pluginFiles = files.filter(
-        (file) => extname(file) === '.ts' || extname(file) === '.js',
+    const files = readdirSync(directory);
+    const pluginFiles = files.filter((file) => extname(file) === '.ts' || extname(file) === '.js');
+
+    if (pluginFiles.length > 0) {
+      logger.info(
+        `[PluginManager] Found ${pluginFiles.length} plugin file(s) in ${isBuiltin ? 'built-in' : ''} directory: ${directory}`,
       );
+    }
 
-      if (pluginFiles.length > 0) {
-        logger.info(
-          `[PluginManager] Found ${pluginFiles.length} plugin file(s) in ${isBuiltin ? 'built-in' : ''} directory: ${directory}`,
-        );
-      }
+    for (const file of pluginFiles) {
+      try {
+        const pluginPath = join(directory, file);
+        const pluginModule = await import(pluginPath);
 
-      for (const file of pluginFiles) {
-        try {
-          const pluginPath = join(directory, file);
-          const pluginModule = await import(pluginPath);
+        // Support both default export and named export
+        const PluginClass = pluginModule.default || pluginModule[Object.keys(pluginModule)[0]];
 
-          // Support both default export and named export
-          const PluginClass =
-            pluginModule.default || pluginModule[Object.keys(pluginModule)[0]];
-
-          if (!PluginClass) {
-            logger.warn(`[PluginManager] No plugin class found in ${file}`);
-            continue;
-          }
-
-          // Get plugin metadata from decorator (decorator executed during import)
-          const pluginMetadata = getPluginMetadata(PluginClass);
-          if (!pluginMetadata) {
-            logger.warn(
-              `[PluginManager] Plugin class ${PluginClass.name} is not decorated with @Plugin()`,
-            );
-            continue;
-          }
-
-          const plugin: Plugin = new PluginClass();
-
-          // Verify plugin name and version match decorator metadata
-          // Use decorator metadata as source of truth
-          if (plugin.name !== pluginMetadata.name) {
-            logger.warn(
-              `[PluginManager] Plugin name mismatch: class has "${plugin.name}", decorator has "${pluginMetadata.name}". Using decorator name.`,
-            );
-            (plugin as any).name = pluginMetadata.name;
-          }
-          if (plugin.version !== pluginMetadata.version) {
-            logger.warn(
-              `[PluginManager] Plugin version mismatch: class has "${plugin.version}", decorator has "${pluginMetadata.version}". Using decorator version.`,
-            );
-            (plugin as any).version = pluginMetadata.version;
-          }
-
-          // Skip if plugin already loaded (avoid duplicates)
-          if (this.plugins.has(plugin.name)) {
-            logger.debug(
-              `[PluginManager] Plugin ${plugin.name} already loaded, skipping duplicate`,
-            );
-            continue;
-          }
-
-          this.plugins.set(plugin.name, plugin);
-
-          // Get plugin config from config list
-          const pluginConfig = pluginConfigMap.get(plugin.name);
-
-          // Initialize plugin with context
-          if (plugin.onInit && this.context) {
-            await plugin.onInit(this.context);
-          }
-
-          // Register hooks from plugin using decorator metadata
-          // All hooks are registered (regardless of enabled state)
-          const hookMetadataList = getPluginHooks(PluginClass);
-          if (hookMetadataList.length > 0) {
-            this.registerPluginHooksFromMetadata(
-              plugin,
-              hookMetadataList,
-              plugin.name,
-            );
-          } else {
-            // Fallback: register hooks from plugin interface (for backward compatibility)
-            // This will be removed once all plugins use decorators
-            this.registerPluginHooks(plugin, plugin.name);
-          }
-
-          // Enable if enabled in config
-          if (pluginConfig?.enabled) {
-            await this.enablePlugin(plugin.name);
-          }
-
-          logger.info(
-            `[PluginManager] Loaded plugin: ${plugin.name} v${plugin.version} (enabled: ${pluginConfig?.enabled ?? false})${isBuiltin ? ' [built-in]' : ''}`,
-          );
-        } catch (error) {
-          logger.error(
-            `[PluginManager] Failed to load plugin ${file} from ${directory}:`,
-            error,
-          );
+        if (!PluginClass) {
+          logger.warn(`[PluginManager] No plugin class found in ${file}`);
+          continue;
         }
+
+        // Get plugin metadata from decorator (decorator executed during import)
+        const pluginMetadata = getPluginMetadata(PluginClass);
+        if (!pluginMetadata) {
+          logger.warn(`[PluginManager] Plugin class ${PluginClass.name} is not decorated with @Plugin()`);
+          continue;
+        }
+
+        const plugin: Plugin = new PluginClass();
+
+        // Verify plugin name and version match decorator metadata
+        // Use decorator metadata as source of truth
+        if (plugin.name !== pluginMetadata.name) {
+          logger.warn(
+            `[PluginManager] Plugin name mismatch: class has "${plugin.name}", decorator has "${pluginMetadata.name}". Using decorator name.`,
+          );
+          (plugin as any).name = pluginMetadata.name;
+        }
+        if (plugin.version !== pluginMetadata.version) {
+          logger.warn(
+            `[PluginManager] Plugin version mismatch: class has "${plugin.version}", decorator has "${pluginMetadata.version}". Using decorator version.`,
+          );
+          (plugin as any).version = pluginMetadata.version;
+        }
+
+        // Skip if plugin already loaded (avoid duplicates)
+        if (this.plugins.has(plugin.name)) {
+          continue;
+        }
+
+        this.plugins.set(plugin.name, plugin);
+
+        // Get plugin config from config list
+        const pluginConfig = pluginConfigMap.get(plugin.name);
+
+        // Initialize plugin with context
+        if (plugin.onInit && this.context) {
+          await plugin.onInit(this.context);
+        }
+
+        // Register hooks from plugin using decorator metadata
+        // All hooks are registered (regardless of enabled state)
+        const hookMetadataList = getPluginHooks(PluginClass);
+        if (hookMetadataList.length > 0) {
+          this.registerPluginHooksFromMetadata(plugin, hookMetadataList, plugin.name);
+        } else {
+          // Fallback: register hooks from plugin interface (for backward compatibility)
+          // This will be removed once all plugins use decorators
+          this.registerPluginHooks(plugin, plugin.name);
+        }
+
+        // Enable if enabled in config
+        if (pluginConfig?.enabled) {
+          await this.enablePlugin(plugin.name);
+        }
+
+        logger.info(
+          `[PluginManager] Loaded plugin: ${plugin.name} v${plugin.version} (enabled: ${pluginConfig?.enabled ?? false})${isBuiltin ? ' [built-in]' : ''}`,
+        );
+      } catch (error) {
+        logger.error(`[PluginManager] Failed to load plugin ${file} from ${directory}:`, error);
       }
-    } catch (error) {
-      logger.error(
-        `[PluginManager] Failed to read plugin directory ${directory}:`,
-        error,
-      );
     }
   }
 
@@ -193,7 +162,6 @@ export class PluginManager {
     }
 
     if (this.enabledPlugins.has(name)) {
-      logger.warn(`[PluginManager] Plugin ${name} is already enabled`);
       return;
     }
 
@@ -216,7 +184,6 @@ export class PluginManager {
     }
 
     if (!this.enabledPlugins.has(name)) {
-      logger.warn(`[PluginManager] Plugin ${name} is not enabled`);
       return;
     }
 
@@ -250,44 +217,26 @@ export class PluginManager {
   private registerPluginHooksFromMetadata(
     plugin: Plugin,
     hookMetadataList: Array<{
-      hookName: string;
-      priority: string;
+      hookName: CoreHookName;
+      priority: HookPriorityVariant;
       methodName: string;
     }>,
     pluginName: string,
   ): void {
-    let registeredCount = 0;
-
     for (const hookMeta of hookMetadataList) {
       // Get handler method from plugin instance
       const handler = (plugin as any)[hookMeta.methodName];
       if (typeof handler !== 'function') {
-        logger.warn(
-          `[PluginManager] Hook method ${hookMeta.methodName} not found in plugin ${pluginName}`,
-        );
+        logger.warn(`[PluginManager] Hook method ${hookMeta.methodName} not found in plugin ${pluginName}`);
         continue;
       }
 
       // Calculate priority from variant
-      const priority = getCoreHookPriority(
-        hookMeta.hookName as any,
-        hookMeta.priority as any,
-      );
+      const priority = getCoreHookPriority(hookMeta.hookName, hookMeta.priority);
 
       // Bind handler to plugin instance to preserve 'this' context
       const boundHandler = handler.bind(plugin);
-      this.hookManager.addHandler(
-        hookMeta.hookName as any,
-        boundHandler,
-        priority,
-      );
-      registeredCount++;
-    }
-
-    if (registeredCount > 0) {
-      logger.info(
-        `[PluginManager] Registered ${registeredCount} hooks from plugin: ${pluginName}`,
-      );
+      this.hookManager.addHandler(hookMeta.hookName, boundHandler, priority);
     }
   }
 
@@ -296,35 +245,18 @@ export class PluginManager {
    */
   private registerPluginHooks(plugin: Plugin, pluginName: string): void {
     // Core hooks only
-    const coreHookNames: Array<keyof Plugin> = [
-      'onMessageReceived',
-      'onMessagePreprocess',
-      'onMessageBeforeSend',
-      'onMessageSent',
-      'onError',
-    ];
-
-    let registeredCount = 0;
-
-    for (const hookName of coreHookNames) {
+    for (const hookName of this.coreHookNames) {
       const handler = plugin[hookName];
       if (typeof handler === 'function') {
         // Use default priority
-        const priority = getCoreHookPriority(hookName as any);
+        const priority = getCoreHookPriority(hookName);
 
         // Bind handler to plugin instance to preserve 'this' context
         // PluginHooks methods have signature (context: HookContext) => HookResult
         // which matches HookHandler, so we can safely cast
         const boundHandler = handler.bind(plugin) as HookHandler;
-        this.hookManager.addHandler(hookName as any, boundHandler, priority);
-        registeredCount++;
+        this.hookManager.addHandler(hookName, boundHandler, priority);
       }
-    }
-
-    if (registeredCount > 0) {
-      logger.info(
-        `[PluginManager] Registered ${registeredCount} core hooks from plugin: ${pluginName}`,
-      );
     }
   }
 }

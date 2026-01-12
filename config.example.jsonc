@@ -55,6 +55,14 @@
   "bot": {
     "selfId": null,
     "logLevel": "info",
+    // Bot owner: highest permission level, can use all commands
+    "owner": "123123",
+    // Bot admins: user IDs that have admin permission level
+    // These users can adjust bot behavior and trigger special commands
+    "admins": [
+      "123123",
+      "123123"
+    ]
   },
   // Plugin configuration
   // Plugins must be placed in src/plugins/ directory
@@ -70,6 +78,27 @@
       //   }
       // }
     ],
+  },
+  // Database configuration (required)
+  // Choose one database type: "sqlite" or "mongodb"
+  "database": {
+    // SQLite configuration (simple, file-based database)
+    "type": "sqlite",
+    "sqlite": {
+      // Path to SQLite database file (relative to project root or absolute path)
+      "path": "data/bot.db"
+    },
+    // MongoDB configuration (alternative, for production use)
+    // "type": "mongodb",
+    // "mongodb": {
+    //   "connectionString": "mongodb://localhost:27017",
+    //   "database": "qqbot",
+    //   "options": {
+    //     "authSource": "admin",
+    //     "user": "your_username",
+    //     "password": "your_password"
+    //   }
+    // }
   },
   // AI configuration (optional)
   // If not configured, AI capabilities will not be available
@@ -95,5 +124,24 @@
       //   "maxTokens": 2000
       // }
     }
+  },
+  // Context memory configuration (optional)
+  // Controls how conversation history is stored and used
+  "contextMemory": {
+    // Maximum number of messages to store in memory buffer (default: 30)
+    "maxBufferSize": 30,
+    // Whether to use summary memory for long conversations (default: false)
+    // Requires AI manager to be configured
+    "useSummary": false,
+    // Threshold for triggering summary when buffer exceeds this count (default: 20)
+    "summaryThreshold": 20,
+    // Maximum number of history messages to include in AI prompt (default: 10)
+    // This limits the prompt length to prevent excessive token usage
+    "maxHistoryMessages": 10
+  },
+  // Prompt templates configuration (required)
+  // Directory path for prompt templates (relative to project root or absolute path)
+  "prompts": {
+    "directory": "prompts"
   }
 }

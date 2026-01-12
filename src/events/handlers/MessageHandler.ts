@@ -1,18 +1,11 @@
 // Message event handler
 
-import type { NormalizedMessageEvent } from '../types';
 import type { ConversationManager } from '@/conversation/ConversationManager';
 import { logger } from '@/utils/logger';
+import type { NormalizedMessageEvent } from '../types';
 
 export class MessageHandler {
-  private conversationManager: ConversationManager | null = null;
-
-  /**
-   * Set conversation manager
-   */
-  setConversationManager(manager: ConversationManager): void {
-    this.conversationManager = manager;
-  }
+  constructor(private conversationManager: ConversationManager) {}
 
   /**
    * Handle message event
@@ -21,8 +14,7 @@ export class MessageHandler {
     // Log message
     if (event.messageType === 'group') {
       const groupName = event.groupName || 'Unknown';
-      const senderName =
-        event.sender?.card || event.sender?.nickname || event.userId.toString();
+      const senderName = event.sender?.card || event.sender?.nickname || event.userId.toString();
       const role = event.sender?.role || 'member';
 
       logger.info(
