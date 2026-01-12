@@ -69,6 +69,12 @@ export class ProviderFactory {
             endpoint: localConfig.endpoint,
             timeout: localConfig.timeout,
             censorEnabled: localConfig.censorEnabled,
+            // Default values
+            defaultSteps: localConfig.defaultSteps,
+            defaultWidth: localConfig.defaultWidth,
+            defaultHeight: localConfig.defaultHeight,
+            defaultGuidanceScale: localConfig.defaultGuidanceScale,
+            defaultNumImages: localConfig.defaultNumImages,
           });
         }
         default: {

@@ -10,6 +10,12 @@ export interface LocalText2ImageProviderConfig {
   endpoint?: string; // API endpoint path (default: /generate)
   timeout?: number; // Request timeout in milliseconds (default: 300000 = 5 minutes)
   censorEnabled?: boolean; // Enable content censorship (default: true)
+  // Default values for image generation parameters
+  defaultSteps?: number; // Default number of inference steps (default: 25)
+  defaultWidth?: number; // Default image width (default: 1024)
+  defaultHeight?: number; // Default image height (default: 1024)
+  defaultGuidanceScale?: number; // Default guidance scale (default: 5)
+  defaultNumImages?: number; // Default number of images to generate (default: 1)
 }
 
 /**
@@ -27,6 +33,12 @@ export class LocalText2ImageProvider extends AIProvider implements Text2ImageCap
       endpoint: '/generate',
       timeout: 300000, // 5 minutes default timeout for image generation
       censorEnabled: true,
+      // Default values
+      defaultSteps: 25,
+      defaultWidth: 1024,
+      defaultHeight: 1024,
+      defaultGuidanceScale: 5,
+      defaultNumImages: 1,
       ...config,
     };
 
@@ -102,35 +114,26 @@ export class LocalText2ImageProvider extends AIProvider implements Text2ImageCap
 
     try {
       const url = `${this.config.baseUrl}${this.config.endpoint}`;
-      logger.debug(`[LocalText2ImageProvider] Generating image with prompt: ${prompt.substring(0, 50)}...`);
+      logger.debug(`[LocalText2ImageProvider] Generating image with prompt: ${prompt}`);
 
       // Build request body with all parameters
       const requestBody: Record<string, unknown> = {
-        prompt,
+        prompt: `masterpiece, best quality, amazing quality, 4k, very aesthetic, high resolution, ultra-detailed, absurdres, newest, scenery, ${prompt}, BREAK, depth of field, volumetric lighting`,
         censor_enabled: this.config.censorEnabled,
       };
 
-      // Add optional parameters from options
       if (options?.negative_prompt) {
-        requestBody.negative_prompt = options.negative_prompt;
+        requestBody.negative_prompt = `modern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured, long body, lowres, bad anatomy, bad hands, missing fingers, extra digits, fewer digits, cropped, very displeasing, (worst quality, bad quality:1.2), bad anatomy, sketch, jpeg artifacts, signature, watermark, username, signature, simple background, conjoined,bad ai-generated, ${options.negative_prompt}`;
       }
-      if (options?.steps !== undefined) {
-        requestBody.steps = options.steps;
-      }
-      if (options?.width !== undefined) {
-        requestBody.width = options.width;
-      }
-      if (options?.height !== undefined) {
-        requestBody.height = options.height;
-      }
-      if (options?.guidance_scale !== undefined) {
-        requestBody.guidance_scale = options.guidance_scale;
-      }
+
+      requestBody.steps = options?.steps || this.config.defaultSteps;
+      requestBody.width = options?.width || this.config.defaultWidth;
+      requestBody.height = options?.height || this.config.defaultHeight;
+      requestBody.guidance_scale = options?.guidance_scale || this.config.defaultGuidanceScale;
+      requestBody.num_images = options?.numImages || this.config.defaultNumImages;
+
       if (options?.seed !== undefined) {
         requestBody.seed = options.seed;
-      }
-      if (options?.numImages !== undefined) {
-        requestBody.num_images = options.numImages;
       }
 
       // Add any additional provider-specific options

@@ -116,6 +116,12 @@ export interface LocalText2ImageProviderConfig {
   endpoint?: string; // API endpoint path (default: /generate)
   timeout?: number; // Request timeout in milliseconds (default: 300000 = 5 minutes)
   censorEnabled?: boolean; // Enable content censorship (default: true)
+  // Default values for image generation parameters
+  defaultSteps?: number; // Default number of inference steps (default: 25)
+  defaultWidth?: number; // Default image width (default: 1024)
+  defaultHeight?: number; // Default image height (default: 1024)
+  defaultGuidanceScale?: number; // Default guidance scale (default: 5)
+  defaultNumImages?: number; // Default number of images to generate (default: 1)
 }
 
 export type AIProviderConfig =

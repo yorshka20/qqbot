@@ -14,12 +14,33 @@ export function extractImagesFromSegments(segments: MessageSegment[]): VisionIma
       const imageData = segment.data;
       const visionImage: VisionImage = {};
 
+      // Handle Milky protocol uri field
+      if (imageData.uri) {
+        if (imageData.uri.startsWith('base64://')) {
+          // Extract base64 data from base64:// URI
+          visionImage.base64 = imageData.uri.substring(9); // Remove 'base64://' prefix
+        } else if (imageData.uri.startsWith('http://') || imageData.uri.startsWith('https://')) {
+          visionImage.url = imageData.uri;
+        } else if (imageData.uri.startsWith('file://')) {
+          visionImage.file = imageData.uri.substring(7); // Remove 'file://' prefix
+        } else {
+          // Fallback: treat as URL
+          visionImage.url = imageData.uri;
+        }
+      }
+
+      // Legacy field support for backward compatibility
       if (imageData.url) {
         visionImage.url = imageData.url;
       }
 
       if (imageData.file) {
         visionImage.file = imageData.file;
+      }
+
+      if (imageData.data) {
+        // Base64 encoded image data
+        visionImage.base64 = imageData.data;
       }
 
       // Try to infer MIME type from URL or file extension

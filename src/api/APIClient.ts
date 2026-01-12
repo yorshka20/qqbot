@@ -4,7 +4,6 @@ import type { ConversationContext } from '@/context/types';
 import type { ProtocolName } from '@/core/Config';
 import type { ProtocolAdapter } from '@/protocol/base/ProtocolAdapter';
 import { APIError } from '@/utils/errors';
-import { logger } from '@/utils/logger';
 import { APIRouter } from './APIRouter';
 import { RequestManager } from './RequestManager';
 import type { APIStrategy } from './types';
@@ -69,23 +68,12 @@ export class APIClient {
     try {
       // Execute API call - pass context directly, adapter extracts what it needs
       const response = await adapter.sendAPI<TResponse>(context);
-
-      // Log successful call with context information
-      // Router guarantees protocol is set
-      logger.debug(
-        `[APIClient] API call succeeded: ${context.action} (protocol: ${context.protocol}, echo: ${context.echo})`,
-      );
-
       return response;
     } catch (error) {
       if (error instanceof APIError) {
         throw error;
       }
       const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.error(
-        `[APIClient] API call failed: ${context.action} (protocol: ${context.protocol ?? 'unknown'}, echo: ${context.echo})`,
-        err,
-      );
       throw new APIError(`API call failed: ${err.message}`, context.action);
     }
   }

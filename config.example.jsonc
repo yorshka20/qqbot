@@ -122,8 +122,26 @@
       //   "baseURL": "https://api.openai.com/v1",
       //   "temperature": 0.7,
       //   "maxTokens": 2000
+      // },
+      // Local Text2Image provider example (connects to local Python server)
+      // "local-text2img": {
+      //   "type": "local-text2img",
+      //   "baseUrl": "http://localhost:8000",
+      //   "endpoint": "/generate",
+      //   "timeout": 300000,
+      //   "censorEnabled": true,
+      //   // Default values (used when options are not provided)
+      //   "defaultSteps": 25,
+      //   "defaultWidth": 1024,
+      //   "defaultHeight": 1024,
+      //   "defaultGuidanceScale": 5,
+      //   "defaultNumImages": 1,
       // }
-    }
+    },
+    // Default providers by capability (optional)
+    // "defaultProviders": {
+    //   "text2img": "local-text2img"
+    // }
   },
   // Context memory configuration (optional)
   // Controls how conversation history is stored and used
