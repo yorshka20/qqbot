@@ -62,10 +62,13 @@ export class CommandManager {
           continue;
         }
 
+        const name = metadata.name.toLowerCase();
+        if (this.builtinCommands.has(name)) {
+          continue;
+        }
+
         // Create a lazy handler that will instantiate the command on first execution
         const lazyHandler = this.createLazyHandler(metadata);
-
-        const name = metadata.name.toLowerCase();
 
         const registration: CommandRegistration = {
           handler: lazyHandler,
@@ -82,8 +85,13 @@ export class CommandManager {
         if (metadata.aliases) {
           for (const alias of metadata.aliases) {
             const aliasLower = alias.toLowerCase();
-            this.builtinCommands.set(aliasLower, registration);
-            logger.debug(`[CommandManager] Registered command alias: ${aliasLower} -> ${name}`);
+            // Also check if alias is already registered
+            if (!this.builtinCommands.has(aliasLower)) {
+              this.builtinCommands.set(aliasLower, registration);
+              logger.debug(`[CommandManager] Registered command alias: ${aliasLower} -> ${name}`);
+            } else {
+              logger.debug(`[CommandManager] Command alias "${aliasLower}" already registered, skipping`);
+            }
           }
         }
       } catch (error) {
@@ -337,15 +345,25 @@ export class CommandManager {
    */
   getAllCommands(): CommandRegistration[] {
     const all: CommandRegistration[] = [];
+    // Use WeakSet to deduplicate by registration object reference
+    // This prevents aliases from appearing as separate commands
+    const seenRegistrations = new WeakSet<CommandRegistration>();
 
     // Builtin commands first
     for (const reg of this.builtinCommands.values()) {
-      all.push(reg);
+      // Only add each registration object once, even if it's referenced by multiple keys (aliases)
+      if (!seenRegistrations.has(reg)) {
+        seenRegistrations.add(reg);
+        all.push(reg);
+      }
     }
 
     // Plugin commands
     for (const reg of this.commands.values()) {
-      all.push(reg);
+      if (!seenRegistrations.has(reg)) {
+        seenRegistrations.add(reg);
+        all.push(reg);
+      }
     }
 
     // Sort alphabetically by command name

@@ -5,12 +5,7 @@ import type { CommandHandler } from './types';
 /**
  * Permission levels for command access control
  */
-export type PermissionLevel =
-  | 'user'
-  | 'group_admin'
-  | 'group_owner'
-  | 'admin'
-  | 'owner';
+export type PermissionLevel = 'user' | 'group_admin' | 'group_owner' | 'admin' | 'owner';
 
 /**
  * Command decorator options
@@ -61,6 +56,8 @@ const COMMAND_METADATA_KEY = Symbol('command:metadata');
 
 // Static registry for all decorated commands
 const commandRegistry: CommandMetadata[] = [];
+// Track registered classes to prevent duplicates from module reloads
+const registeredClasses = new WeakSet<new (...args: any[]) => CommandHandler>();
 
 /**
  * Command decorator
@@ -71,9 +68,12 @@ const commandRegistry: CommandMetadata[] = [];
  * @param options - Command options (name, description, permissions, etc.)
  */
 export function Command(options: CommandOptions) {
-  return function <T extends new (...args: any[]) => CommandHandler>(
-    target: T,
-  ): T {
+  return function <T extends new (...args: any[]) => CommandHandler>(target: T): T {
+    // Also check if this class has already been registered (additional safety check)
+    if (registeredClasses.has(target)) {
+      return target;
+    }
+
     // Store metadata on class
     const metadata: CommandMetadata = {
       ...options,
@@ -82,6 +82,9 @@ export function Command(options: CommandOptions) {
 
     // Store metadata using Symbol
     (target as any)[COMMAND_METADATA_KEY] = metadata;
+
+    // Mark class and command name as registered
+    registeredClasses.add(target);
 
     // Add to static registry
     commandRegistry.push(metadata);
@@ -93,15 +96,24 @@ export function Command(options: CommandOptions) {
 /**
  * Get command metadata from class
  */
-export function getCommandMetadata(
-  handlerClass: new (...args: any[]) => CommandHandler,
-): CommandMetadata | undefined {
+export function getCommandMetadata(handlerClass: new (...args: any[]) => CommandHandler): CommandMetadata | undefined {
   return (handlerClass as any)[COMMAND_METADATA_KEY];
 }
 
 /**
  * Get all registered command metadata
+ * Deduplicates by command name to avoid duplicates from module reloads
  */
 export function getAllCommandMetadata(): CommandMetadata[] {
-  return [...commandRegistry];
+  const seen = new Map<string, CommandMetadata>();
+
+  // Deduplicate by command name (case-insensitive)
+  for (const metadata of commandRegistry) {
+    const name = metadata.name.toLowerCase();
+    if (!seen.has(name)) {
+      seen.set(name, metadata);
+    }
+  }
+
+  return Array.from(seen.values());
 }
