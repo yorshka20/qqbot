@@ -1,11 +1,23 @@
 // Task manager - registers and manages task types and executors
 
-import type { TaskType, TaskExecutor, Task, TaskResult, TaskExecutionContext } from './types';
+import type { HookManager } from '@/hooks/HookManager';
+import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
+import type { Task, TaskExecutionContext, TaskExecutor, TaskResult, TaskType } from './types';
 
 export class TaskManager {
   private taskTypes = new Map<string, TaskType>();
   private executors = new Map<string, TaskExecutor>();
+  private hookManager: HookManager | null = null;
+
+  /**
+   * Set hook manager for extension hooks
+   * Note: Task hooks (onTaskAnalyzed, onTaskBeforeExecute, onTaskExecuted, etc.) are registered
+   * by TaskSystem via getExtensionHooks() method, not here.
+   */
+  setHookManager(hookManager: HookManager): void {
+    this.hookManager = hookManager;
+  }
 
   /**
    * Register a task type
@@ -67,8 +79,14 @@ export class TaskManager {
 
   /**
    * Execute task
+   * Handles task extension hooks internally
    */
-  async execute(task: Task, context: TaskExecutionContext): Promise<TaskResult> {
+  async execute(
+    task: Task,
+    context: TaskExecutionContext,
+    hookManager?: HookManager,
+    hookContext?: HookContext,
+  ): Promise<TaskResult> {
     // Validate task type
     const taskType = this.getTaskType(task.type);
     if (!taskType) {
@@ -103,10 +121,41 @@ export class TaskManager {
       }
     }
 
+    // Use provided hookManager or internal one
+    const hm = hookManager || this.hookManager;
+    const hc: HookContext = hookContext || {
+      message: {} as any,
+      task,
+      metadata: new Map(),
+    };
+
+    // Hook: onTaskBeforeExecute (if hook manager available)
+    // Note: onTaskAnalyzed hook should be called by TaskSystem before calling execute
+    if (hm && hc) {
+      const shouldExecute = await hm.execute('onTaskBeforeExecute', hc);
+      if (!shouldExecute) {
+        return {
+          success: false,
+          reply: 'Task execution interrupted by hook',
+          error: 'Task execution interrupted by hook',
+        };
+      }
+    }
+
     try {
       logger.debug(`[TaskManager] Executing task: ${task.type} with executor: ${executorName}`);
 
       const result = await executor.execute(task, context);
+
+      // Update hook context
+      if (hc) {
+        hc.result = result;
+      }
+
+      // Hook: onTaskExecuted (if hook manager available)
+      if (hm && hc) {
+        await hm.execute('onTaskExecuted', hc);
+      }
 
       if (result.success) {
         logger.debug(`[TaskManager] Task ${task.type} executed successfully`);

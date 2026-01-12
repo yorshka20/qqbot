@@ -1,20 +1,16 @@
 // Task Analyzer - uses AI to analyze conversation and generate tasks
 
-import type { AIManager } from '@/ai/AIManager';
-import type { TaskManager } from './TaskManager';
-import type {
-  Task,
-  ConversationContext,
-  TaskAnalysisResult,
-} from './types';
+import type { LLMService } from '@/ai/services/LLMService';
 import { logger } from '@/utils/logger';
+import type { TaskManager } from './TaskManager';
+import type { ConversationContext, Task, TaskAnalysisResult } from './types';
 
 /**
  * Task Analyzer - analyzes conversation using AI and generates tasks
  */
 export class TaskAnalyzer {
   constructor(
-    private aiManager: AIManager,
+    private llmService: LLMService,
     private taskManager: TaskManager,
     private systemPrompt?: string,
   ) {}
@@ -29,8 +25,8 @@ export class TaskAnalyzer {
 
       logger.debug('[TaskAnalyzer] Analyzing conversation with AI...');
 
-      // Generate AI response
-      const response = await this.aiManager.generate(prompt, {
+      // Generate AI response using LLM service
+      const response = await this.llmService.generate(prompt, {
         temperature: 0.7,
         maxTokens: 1000,
       });
@@ -72,7 +68,9 @@ export class TaskAnalyzer {
         let desc = `- ${tt.name}: ${tt.description}`;
         if (tt.parameters) {
           const params = Object.entries(tt.parameters)
-            .map(([key, def]) => `  - ${key} (${def.type}, ${def.required ? 'required' : 'optional'}): ${def.description}`)
+            .map(
+              ([key, def]) => `  - ${key} (${def.type}, ${def.required ? 'required' : 'optional'}): ${def.description}`,
+            )
             .join('\n');
           desc += `\n  Parameters:\n${params}`;
         }
@@ -86,24 +84,27 @@ export class TaskAnalyzer {
           .join('\n')
       : 'No previous conversation history.';
 
-    const systemPrompt = this.systemPrompt || `You are a task analysis assistant. Your job is to analyze user messages and determine what task should be executed.
+    const systemPrompt =
+      this.systemPrompt ||
+      `You are a task analysis assistant. Your job is to analyze user messages and determine what task should be executed.
+    
+    Available task types:
+    ${taskTypesDescription}
+    
+    Analyze the user's message and determine the most appropriate task type. If the message matches a specific task type, return a JSON object with the task information. If it's just a general conversation, use the "reply" task type.
+    
+    Return ONLY a valid JSON object in this format:
+    {
+      "taskType": "task type name",
+      "parameters": { /* task parameters object */ },
+      "reply": "optional AI-generated reply message"
+    }`;
 
-Available task types:
-${taskTypesDescription}
-
-Analyze the user's message and determine the most appropriate task type. If the message matches a specific task type, return a JSON object with the task information. If it's just a general conversation, use the "reply" task type.
-
-Return ONLY a valid JSON object in this format:
-{
-  "taskType": "task type name",
-  "parameters": { /* task parameters object */ },
-  "reply": "optional AI-generated reply message"
-}`;
-
-    const userPrompt = `User message: ${context.userMessage}
-
+    const userPrompt = `    
 Conversation history:
 ${historyText}
+
+User message: ${context.userMessage}
 
 Analyze this message and return the task information as JSON.`;
 
@@ -113,10 +114,7 @@ Analyze this message and return the task information as JSON.`;
   /**
    * Parse AI response to extract task
    */
-  private parseTaskResponse(
-    aiResponse: string,
-    context: ConversationContext,
-  ): Task {
+  private parseTaskResponse(aiResponse: string, context: ConversationContext): Task {
     try {
       // Try to extract JSON from response
       const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
