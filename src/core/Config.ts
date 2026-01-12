@@ -75,6 +75,8 @@ export interface OpenAIProviderConfig {
   baseURL?: string;
   temperature?: number;
   maxTokens?: number;
+  enableContext?: boolean; // Enable automatic context loading from conversation history
+  contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
 }
 
 export interface AnthropicProviderConfig {
@@ -83,6 +85,8 @@ export interface AnthropicProviderConfig {
   model?: string; // claude-3-opus, claude-3-sonnet, claude-3-haiku, etc.
   temperature?: number;
   maxTokens?: number;
+  enableContext?: boolean; // Enable automatic context loading from conversation history
+  contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
 }
 
 export interface OllamaProviderConfig {
@@ -91,6 +95,8 @@ export interface OllamaProviderConfig {
   model: string;
   temperature?: number;
   maxTokens?: number;
+  enableContext?: boolean; // Enable automatic context loading from conversation history
+  contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
 }
 
 export interface DeepSeekProviderConfig {
@@ -100,6 +106,8 @@ export interface DeepSeekProviderConfig {
   baseURL?: string;
   temperature?: number;
   maxTokens?: number;
+  enableContext?: boolean; // Enable automatic context loading from conversation history
+  contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
 }
 
 export type AIProviderConfig =

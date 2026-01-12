@@ -81,6 +81,12 @@ export interface System {
   initialize?(context: SystemContext): Promise<void> | void;
 
   /**
+   * Check if the system is enabled
+   * @returns true if the system is enabled, false otherwise
+   */
+  enabled(): boolean;
+
+  /**
    * Execute the system
    * Called during message processing
    * @param context - Hook context with message and metadata

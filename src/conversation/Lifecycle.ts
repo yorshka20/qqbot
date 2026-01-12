@@ -1,4 +1,4 @@
-// Lifecycle System - core system that manages the message processing lifecycle
+// Message Lifecycle Orchestrator - orchestrates the message processing lifecycle
 
 import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';
@@ -8,11 +8,11 @@ import { logger } from '@/utils/logger';
 import type { CommandRouter } from './CommandRouter';
 
 /**
- * Lifecycle System
- * Core system that manages the entire message processing lifecycle
- * Orchestrates all stages: RECEIVE → PREPROCESS → PROCESS → PREPARE → SEND → COMPLETE
+ * Message Lifecycle Orchestrator
+ * Orchestrates the entire message processing lifecycle
+ * Coordinates all stages: RECEIVE → PREPROCESS → PROCESS → PREPARE → SEND → COMPLETE
  */
-export class LifecycleSystem implements System {
+export class Lifecycle {
   readonly name = 'lifecycle';
   readonly version = '1.0.0';
   readonly stage = SystemStage.PROCESS; // Lifecycle manages all stages
@@ -21,11 +21,15 @@ export class LifecycleSystem implements System {
   private hookManager: HookManager;
   private commandRouter?: CommandRouter;
 
-  private readonly LOG_PREFIX = '[LifecycleSystem]';
+  private readonly LOG_PREFIX = '[Lifecycle]';
 
   constructor(hookManager: HookManager) {
     this.hookManager = hookManager;
     logger.debug(`${this.LOG_PREFIX} Initialized`);
+  }
+
+  enabled(): boolean {
+    return true;
   }
 
   /**
@@ -33,7 +37,6 @@ export class LifecycleSystem implements System {
    */
   setCommandRouter(router: CommandRouter): void {
     this.commandRouter = router;
-    logger.debug(`${this.LOG_PREFIX} Command router configured`);
   }
 
   /**
@@ -59,14 +62,7 @@ export class LifecycleSystem implements System {
         // Declare hook (initialize hook list for plugin registration)
         this.hookManager.register(hookDef.hookName, hookDef.priority);
       }
-
-      if (hooks.length > 0) {
-        logger.debug(`${this.LOG_PREFIX} Declared ${hooks.length} extension hooks from ${system.name}`);
-      }
     }
-
-    const priority = system.priority ?? 0;
-    logger.info(`${this.LOG_PREFIX} System registered | name=${system.name} | stage=${stage} | priority=${priority}`);
   }
 
   /**
@@ -153,7 +149,7 @@ export class LifecycleSystem implements System {
    * Main processing: command execution, task analysis, AI generation
    */
   private async executeStageProcess(context: HookContext, messageId: string): Promise<boolean> {
-    logger.debug(`${this.LOG_PREFIX} Stage: PROCESS`);
+    logger.info(`${this.LOG_PREFIX} Stage: PROCESS | messageId=${messageId}`);
 
     // Determine if message should be processed for reply
     // This check happens after command routing to avoid unnecessary processing
@@ -222,36 +218,59 @@ export class LifecycleSystem implements System {
 
   /**
    * Determine processing mode (reply vs collect-only)
-   * Sets postProcessOnly flag if message is not a command and not @bot
+   * Sets postProcessOnly flag based on message type and whitelist status
+   *
+   * Reply logic:
+   * - Commands: always reply
+   * - Private chat: only reply if user is in whitelist (no @bot required)
+   * - Group chat: must be in whitelist (user or group) AND @bot to trigger reply
    */
   private determineProcessingMode(context: HookContext, messageId: string): void {
-    // Skip if postProcessOnly is already set (e.g., by whitelist plugin)
+    // Skip if postProcessOnly is already set (e.g., by whitelist plugin for non-whitelist users)
     const existingPostProcessOnly = context.metadata.get('postProcessOnly') as boolean;
     if (existingPostProcessOnly) {
-      logger.debug(`${this.LOG_PREFIX} postProcessOnly already set | messageId=${messageId}`);
       return;
     }
 
-    // If command exists, process normally
-    if (context.command) {
-      logger.debug(
-        `${this.LOG_PREFIX} Command detected, normal processing | messageId=${messageId} | command=${context.command.name}`,
-      );
-      return;
-    }
-
-    // Check if message is @bot
+    // Ignore bot's own messages
     const botSelfId = context.metadata.get('botSelfId') as string;
-    const isAtBot = this.checkIsAtBot(context.message, botSelfId);
-
-    if (!isAtBot) {
-      // Not a command and not @bot - collect only, no reply
+    const messageUserId = context.message.userId?.toString();
+    if (botSelfId && messageUserId && botSelfId === messageUserId) {
       context.metadata.set('postProcessOnly', true);
-      logger.debug(
-        `${this.LOG_PREFIX} Set postProcessOnly=true | messageId=${messageId} | reason=not_command_and_not_at_bot`,
-      );
-    } else {
-      logger.debug(`${this.LOG_PREFIX} Message @bot, normal processing | messageId=${messageId}`);
+      return;
+    }
+
+    // Commands always get replies
+    if (context.command) {
+      return;
+    }
+
+    const messageType = context.message.messageType;
+    const isWhitelistUser = context.metadata.get('whitelistUser') as boolean;
+    const isWhitelistGroup = context.metadata.get('whitelistGroup') as boolean;
+
+    // Private chat: only reply if user is in whitelist
+    if (messageType === 'private') {
+      if (isWhitelistUser) {
+        return;
+      }
+
+      // Non-whitelist user in private chat - should not reach here (WhitelistPlugin should have set postProcessOnly)
+      context.metadata.set('postProcessOnly', true);
+      return;
+    }
+
+    // Group chat logic: must be in whitelist (user or group) AND @bot to trigger reply
+    // First check if user or group is in whitelist
+    if (!isWhitelistUser && !isWhitelistGroup) {
+      context.metadata.set('postProcessOnly', true);
+      return;
+    }
+
+    // In whitelist, but still need @bot for group chat
+    const isAtBot = this.checkIsAtBot(context.message, botSelfId);
+    if (!isAtBot) {
+      context.metadata.set('postProcessOnly', true);
     }
   }
 
@@ -331,14 +350,14 @@ export class LifecycleSystem implements System {
     },
     botSelfId?: string | null,
   ): boolean {
-    // If bot selfId is not configured, cannot determine
     if (!botSelfId || botSelfId === '') {
+      logger.info(`${this.LOG_PREFIX} checkIsAtBot: botSelfId not configured or empty | botSelfId=${botSelfId}`);
       return false;
     }
 
-    // Convert botSelfId to number for comparison
     const botSelfIdNum = parseInt(botSelfId, 10);
     if (isNaN(botSelfIdNum)) {
+      logger.debug(`${this.LOG_PREFIX} checkIsAtBot: botSelfId is not a valid number: ${botSelfId}`);
       return false;
     }
 
@@ -361,17 +380,15 @@ export class LifecycleSystem implements System {
         if (typeof userId === 'number' || typeof userId === 'string') {
           atUserId = userId;
         }
-      }
-      // Handle OneBot11 protocol (at type)
-      else if (segment.type === 'at') {
+      } else if (segment.type === 'at') {
+        // Handle OneBot11 protocol (at type)
         const qq = segment.data.qq;
         if (typeof qq === 'number' || typeof qq === 'string') {
           atUserId = qq;
         }
       }
 
-      if (atUserId !== undefined) {
-        // Convert to number for comparison
+      if (atUserId) {
         const atUserIdNum = typeof atUserId === 'string' ? parseInt(atUserId, 10) : atUserId;
         if (!isNaN(atUserIdNum) && atUserIdNum === botSelfIdNum) {
           return true;

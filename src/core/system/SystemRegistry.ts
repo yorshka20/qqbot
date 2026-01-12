@@ -1,12 +1,7 @@
 // System Registry - centralized system registration and management
 
 import { logger } from '@/utils/logger';
-import type {
-  System,
-  SystemContext,
-  SystemFactory,
-  SystemStage,
-} from './System';
+import type { System, SystemContext, SystemFactory, SystemStage } from './System';
 
 /**
  * System Registry
@@ -23,9 +18,7 @@ export class SystemRegistry {
    */
   registerSystemFactory(name: string, factory: SystemFactory): void {
     if (this.systemFactories.has(name)) {
-      logger.warn(
-        `[SystemRegistry] System factory ${name} already registered, overwriting...`,
-      );
+      logger.warn(`[SystemRegistry] System factory ${name} already registered, overwriting...`);
     }
     this.systemFactories.set(name, factory);
     logger.debug(`[SystemRegistry] Registered system factory: ${name}`);
@@ -36,9 +29,7 @@ export class SystemRegistry {
    */
   registerSystem(system: System): void {
     if (this.systems.has(system.name)) {
-      logger.warn(
-        `[SystemRegistry] System ${system.name} already registered, overwriting...`,
-      );
+      logger.warn(`[SystemRegistry] System ${system.name} already registered, overwriting...`);
     }
     this.systems.set(system.name, system);
     logger.info(`[SystemRegistry] Registered system: ${system.name}`);
@@ -53,10 +44,7 @@ export class SystemRegistry {
         const system = await factory(context);
         this.registerSystem(system);
       } catch (error) {
-        logger.error(
-          `[SystemRegistry] Failed to create system ${name}:`,
-          error,
-        );
+        logger.error(`[SystemRegistry] Failed to create system ${name}:`, error);
         throw error;
       }
     }
@@ -67,7 +55,6 @@ export class SystemRegistry {
    */
   async initializeSystems(context: SystemContext): Promise<void> {
     if (this.initialized) {
-      logger.warn('[SystemRegistry] Systems already initialized');
       return;
     }
 
@@ -80,12 +67,8 @@ export class SystemRegistry {
         if (system.initialize) {
           await system.initialize(context);
         }
-        logger.info(`[SystemRegistry] Initialized system: ${system.name}`);
       } catch (error) {
-        logger.error(
-          `[SystemRegistry] Failed to initialize system ${system.name}:`,
-          error,
-        );
+        logger.error(`[SystemRegistry] Failed to initialize system ${system.name}:`, error);
         throw error;
       }
     }
@@ -104,9 +87,7 @@ export class SystemRegistry {
 
     const visit = (system: System): void => {
       if (visiting.has(system.name)) {
-        throw new Error(
-          `Circular dependency detected involving system: ${system.name}`,
-        );
+        throw new Error(`Circular dependency detected involving system: ${system.name}`);
       }
 
       if (visited.has(system.name)) {
@@ -121,9 +102,7 @@ export class SystemRegistry {
           const depSystem = systems.find((s) => s.name === dep.systemName);
           if (!depSystem) {
             if (dep.required) {
-              throw new Error(
-                `Required dependency ${dep.systemName} not found for system ${system.name}`,
-              );
+              throw new Error(`Required dependency ${dep.systemName} not found for system ${system.name}`);
             }
             continue;
           }

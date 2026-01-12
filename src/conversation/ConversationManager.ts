@@ -6,10 +6,7 @@ import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
 import { MessagePipeline } from './MessagePipeline';
-import type {
-  MessageProcessingContext,
-  MessageProcessingResult,
-} from './types';
+import type { MessageProcessingContext, MessageProcessingResult } from './types';
 
 /**
  * Conversation Manager
@@ -44,13 +41,9 @@ export class ConversationManager {
   /**
    * Process message event
    */
-  async processMessage(
-    event: NormalizedMessageEvent,
-  ): Promise<MessageProcessingResult> {
+  async processMessage(event: NormalizedMessageEvent): Promise<MessageProcessingResult> {
     try {
-      logger.debug(
-        `[ConversationManager] Processing message from ${event.userId} (${event.messageType})`,
-      );
+      logger.debug(`[ConversationManager] Processing message from ${event.userId} (${event.messageType})`);
 
       // Build processing context
       const context: MessageProcessingContext = {
