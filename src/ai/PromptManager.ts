@@ -29,7 +29,12 @@ export class PromptManager {
   /**
    * Load prompt template from file
    */
-  loadTemplate(name: string, filePath: string, namespace?: string): void {
+  loadTemplate(name: string, filePath: string, namespace: string): void {
+    // Skip README file
+    if (name === 'README') {
+      return;
+    }
+
     try {
       const resolvedPath = resolve(filePath);
       if (!existsSync(resolvedPath)) {
@@ -48,17 +53,12 @@ export class PromptManager {
 
       this.templates.set(name, template);
 
-      // Also register in namespace
-      if (namespace) {
-        if (!this.namespaces.has(namespace)) {
-          this.namespaces.set(namespace, new Map());
-        }
-        this.namespaces.get(namespace)!.set(name, template);
+      if (!this.namespaces.has(namespace)) {
+        this.namespaces.set(namespace, new Map());
       }
+      this.namespaces.get(namespace)!.set(name, template);
 
-      logger.info(
-        `[PromptManager] Loaded template: ${name} from ${resolvedPath}${namespace ? ` (namespace: ${namespace})` : ''}`,
-      );
+      logger.info(`[PromptManager] Loaded template: ${name} from ${resolvedPath} (namespace: ${namespace})`);
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error(`[PromptManager] Failed to load template ${name}:`, err);
@@ -84,7 +84,6 @@ export class PromptManager {
     }
 
     this.loadTemplatesRecursive(dir, '');
-    logger.info(`[PromptManager] Loaded templates from directory: ${dir}`);
   }
 
   /**
@@ -109,7 +108,7 @@ export class PromptManager {
             const templateName = basename(entry, ext);
             // Use full namespace path as template name if namespace exists
             const fullName = namespace ? `${namespace}.${templateName}` : templateName;
-            this.loadTemplate(fullName, fullPath, namespace || undefined);
+            this.loadTemplate(fullName, fullPath, namespace);
           }
         }
       }
