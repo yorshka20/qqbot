@@ -66,7 +66,7 @@ export interface DatabaseConfig {
   mongodb?: MongoDBConfig;
 }
 
-export type AIProviderType = 'openai' | 'anthropic' | 'ollama' | 'deepseek';
+export type AIProviderType = 'openai' | 'anthropic' | 'ollama' | 'deepseek' | 'local-text2img';
 
 export interface OpenAIProviderConfig {
   type: 'openai';
@@ -110,11 +110,20 @@ export interface DeepSeekProviderConfig {
   contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
 }
 
+export interface LocalText2ImageProviderConfig {
+  type: 'local-text2img';
+  baseUrl: string; // Base URL of the Python server (e.g., http://localhost:8000)
+  endpoint?: string; // API endpoint path (default: /generate)
+  timeout?: number; // Request timeout in milliseconds (default: 300000 = 5 minutes)
+  censorEnabled?: boolean; // Enable content censorship (default: true)
+}
+
 export type AIProviderConfig =
   | OpenAIProviderConfig
   | AnthropicProviderConfig
   | OllamaProviderConfig
-  | DeepSeekProviderConfig;
+  | DeepSeekProviderConfig
+  | LocalText2ImageProviderConfig;
 
 /**
  * Default providers configuration (by capability)
