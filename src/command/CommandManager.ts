@@ -1,5 +1,8 @@
 // Command manager - registers and manages commands
 
+// import handler to register commands
+import './handlers';
+
 import { getTSyringeContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
