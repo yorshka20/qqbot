@@ -1,6 +1,14 @@
 // AI Provider type definitions
 
 /**
+ * Message in conversation history
+ */
+export interface ConversationMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
+/**
  * AI generation options
  */
 export interface AIGenerateOptions {
@@ -11,6 +19,11 @@ export interface AIGenerateOptions {
   presencePenalty?: number;
   stop?: string[];
   stream?: boolean;
+  /**
+   * Session ID for automatic context loading
+   * If provided and provider has context enabled, will automatically load history from ContextManager
+   */
+  sessionId?: string;
 }
 
 /**
@@ -30,3 +43,14 @@ export interface AIGenerateResponse {
  * Streaming response handler
  */
 export type StreamingHandler = (chunk: string) => void;
+
+export interface PromptTemplate {
+  name: string;
+  content: string;
+  variables?: string[];
+}
+
+export interface SystemPrompt {
+  content: string;
+  variables?: Record<string, string>;
+}
