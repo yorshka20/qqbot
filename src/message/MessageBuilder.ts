@@ -35,13 +35,43 @@ export class MessageBuilder {
     return this;
   }
 
-  image(file: string, url?: string): this {
+  image(input: { file?: string; url?: string; data?: string }): this {
+    const { file, url, data } = input;
+    const imageData: {
+      uri?: string;
+      sub_type?: 'normal' | 'sticker';
+      summary?: string;
+    } = {
+      sub_type: 'normal',
+      summary: '',
+    };
+
+    // Convert to Milky protocol format: use uri field
+    if (data) {
+      // Base64 data: convert to base64:// URI format
+      imageData.uri = `base64://${data}`;
+    } else if (url) {
+      // HTTP/HTTPS URL: use as-is
+      imageData.uri = url;
+    } else if (file) {
+      // File path: convert to file:// URI format
+      if (
+        file.startsWith('file://') ||
+        file.startsWith('http://') ||
+        file.startsWith('https://') ||
+        file.startsWith('base64://')
+      ) {
+        // Already a URI
+        imageData.uri = file;
+      } else {
+        // Local file path: convert to file:// URI
+        imageData.uri = `file://${file}`;
+      }
+    }
+
     this.segments.push({
       type: 'image',
-      data: {
-        file,
-        url,
-      },
+      data: imageData,
     });
     return this;
   }

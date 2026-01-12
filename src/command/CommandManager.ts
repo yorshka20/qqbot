@@ -49,6 +49,7 @@ export class CommandManager {
   /**
    * Auto-register all decorated commands
    * Called during initialization
+   * Uses lazy instantiation - commands are created on first execution when all dependencies are available
    */
   private autoRegisterDecoratedCommands(): void {
     const metadataList = getAllCommandMetadata();
@@ -61,20 +62,21 @@ export class CommandManager {
           continue;
         }
 
-        // Resolve dependencies and create handler instance
-        const handler = this.createHandlerInstance(metadata);
+        // Create a lazy handler that will instantiate the command on first execution
+        const lazyHandler = this.createLazyHandler(metadata);
 
-        const name = handler.name.toLowerCase();
+        const name = metadata.name.toLowerCase();
 
         const registration: CommandRegistration = {
-          handler,
+          handler: lazyHandler,
+          handlerClass: metadata.handlerClass, // Store class reference for lazy instantiation
           permissions: metadata.permissions,
           aliases: metadata.aliases,
           enabled: metadata.enabled ?? true,
         };
 
         this.builtinCommands.set(name, registration);
-        logger.info(`[CommandManager] Auto-registered decorated command: ${name}`);
+        logger.info(`[CommandManager] Auto-registered decorated command: ${name} (lazy instantiation)`);
 
         // Register aliases
         if (metadata.aliases) {
@@ -85,31 +87,62 @@ export class CommandManager {
           }
         }
       } catch (error) {
-        logger.error(`[CommandManager] Failed to auto-register command ${metadata.name}:`, error);
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        logger.error(`[CommandManager] Failed to auto-register command ${metadata.name}:`, err);
+        logger.error(`[CommandManager] Error details: ${err.message}\n${err.stack}`);
       }
     }
   }
 
   /**
-   * Create handler instance with dependency injection using TSyringe
+   * Create a lazy handler that instantiates the command on first execution
+   * This allows commands to use @injectable() and dependency injection even if dependencies
+   * are not available at registration time
    */
-  private createHandlerInstance(metadata: {
+  private createLazyHandler(metadata: {
     handlerClass: new (...args: any[]) => CommandHandler;
     name: string;
   }): CommandHandler {
     const HandlerClass = metadata.handlerClass;
     const container = getTSyringeContainer();
+    let cachedInstance: CommandHandler | null = null;
 
-    // TSyringe automatically resolves dependencies using @inject() decorators
-    // If the class is marked with @injectable(), container.resolve will handle dependency injection
-    try {
-      return container.resolve(HandlerClass);
-    } catch (error) {
-      // Fallback to direct instantiation if not registered with TSyringe
-      // This allows for commands that don't use dependency injection
-      logger.debug(`[CommandManager] Resolving ${metadata.name} directly (not using TSyringe)`);
-      return new HandlerClass();
-    }
+    // Helper function to get or create the instance
+    const getInstance = (): CommandHandler => {
+      if (cachedInstance) {
+        return cachedInstance;
+      }
+
+      // Try to resolve with dependency injection
+      try {
+        cachedInstance = container.resolve(HandlerClass);
+        logger.debug(`[CommandManager] Lazy-instantiated ${metadata.name} with dependency injection`);
+        return cachedInstance;
+      } catch (error) {
+        // Fallback to direct instantiation (for commands without dependencies)
+        logger.debug(`[CommandManager] Falling back to direct instantiation for ${metadata.name}`);
+        cachedInstance = new HandlerClass();
+        return cachedInstance;
+      }
+    };
+
+    // Create a proxy handler that lazily instantiates the command
+    const lazyHandler: CommandHandler = {
+      get name() {
+        return getInstance().name;
+      },
+      get description() {
+        return getInstance().description;
+      },
+      get usage() {
+        return getInstance().usage;
+      },
+      async execute(args: string[], context: CommandContext): Promise<CommandResult> {
+        return getInstance().execute(args, context);
+      },
+    };
+
+    return lazyHandler;
   }
 
   /**
@@ -199,6 +232,9 @@ export class CommandManager {
     const registration = this.getRegistration(command.name);
 
     if (!registration) {
+      logger.warn(
+        `[CommandManager] Command "${command.name}" not found | available commands: ${Array.from(this.builtinCommands.keys()).join(', ')}`,
+      );
       return {
         success: false,
         error: `Command "${command.name}" not found`,

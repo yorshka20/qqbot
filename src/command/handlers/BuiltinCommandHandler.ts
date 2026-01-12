@@ -192,7 +192,7 @@ export class Text2ImageCommand implements CommandHandler {
 
       // Generate image
       const response = await this.aiService.generateImg(hookContext, options);
-
+      logger.info(`[Text2ImageCommand] Generated image with response: ${JSON.stringify(response)}`);
       if (!response.images || response.images.length === 0) {
         return {
           success: false,
@@ -211,20 +211,20 @@ export class Text2ImageCommand implements CommandHandler {
       // Add each image
       for (const image of response.images) {
         if (image.base64) {
-          // Convert base64 to data URL for sending
-          // Note: Some protocols may require file upload instead
-          const dataUrl = `data:image/png;base64,${image.base64}`;
-          messageBuilder.image('', dataUrl);
+          // Use base64 data directly for Milky protocol
+          // Milky protocol supports base64 data in the 'data' field
+          messageBuilder.image({ data: image.base64 });
         } else if (image.url) {
-          messageBuilder.image('', image.url);
+          messageBuilder.image({ url: image.url });
         } else if (image.file) {
-          messageBuilder.image(image.file);
+          messageBuilder.image({ file: image.file });
+        } else {
+          logger.warn(`[Text2ImageCommand] Image has no base64, url, or file field: ${JSON.stringify(image)}`);
         }
       }
 
       const messageSegments = messageBuilder.build();
 
-      // Send message directly via API
       if (context.messageType === 'private') {
         await this.apiClient.call(
           'send_private_msg',
@@ -249,7 +249,6 @@ export class Text2ImageCommand implements CommandHandler {
 
       return {
         success: true,
-        message: `Generated ${response.images.length} image(s)`,
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');

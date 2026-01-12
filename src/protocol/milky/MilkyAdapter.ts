@@ -44,10 +44,7 @@ export class MilkyAdapter extends ProtocolAdapter {
     const milkyAction = MilkyAPIConverter.convertActionToMilky(context.action);
 
     // Convert unified API parameters (OneBot11-style) to Milky protocol format
-    const milkyParams = MilkyAPIConverter.convertParamsToMilky(
-      milkyAction,
-      context.params,
-    );
+    const milkyParams = MilkyAPIConverter.convertParamsToMilky(milkyAction, context.params);
 
     logger.debug(
       `[MilkyAdapter] Calling API: ${milkyAction} (echo: ${context.echo}) with params:`,
@@ -77,9 +74,7 @@ export class MilkyAdapter extends ProtocolAdapter {
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
-          throw new Error(
-            `API request timeout: ${context.action} (protocol: milky, echo: ${context.echo})`,
-          );
+          throw new Error(`API request timeout: ${context.action} (protocol: milky, echo: ${context.echo})`);
         }
         throw error;
       }

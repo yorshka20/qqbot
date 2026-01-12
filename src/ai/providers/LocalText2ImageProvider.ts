@@ -122,10 +122,7 @@ export class LocalText2ImageProvider extends AIProvider implements Text2ImageCap
         censor_enabled: this.config.censorEnabled,
       };
 
-      if (options?.negative_prompt) {
-        requestBody.negative_prompt = `modern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured, long body, lowres, bad anatomy, bad hands, missing fingers, extra digits, fewer digits, cropped, very displeasing, (worst quality, bad quality:1.2), bad anatomy, sketch, jpeg artifacts, signature, watermark, username, signature, simple background, conjoined,bad ai-generated, ${options.negative_prompt}`;
-      }
-
+      requestBody.negative_prompt = `modern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured, long body, lowres, bad anatomy, bad hands, missing fingers, extra digits, fewer digits, cropped, very displeasing, (worst quality, bad quality:1.2), bad anatomy, sketch, jpeg artifacts, signature, watermark, username, signature, simple background, conjoined,bad ai-generated, ${options?.negative_prompt ?? ''}`;
       requestBody.steps = options?.steps || this.config.defaultSteps;
       requestBody.width = options?.width || this.config.defaultWidth;
       requestBody.height = options?.height || this.config.defaultHeight;
