@@ -42,10 +42,7 @@ export interface CommandHandler {
   /**
    * Execute command
    */
-  execute(
-    args: string[],
-    context: CommandContext,
-  ): Promise<CommandResult> | CommandResult;
+  execute(args: string[], context: CommandContext): Promise<CommandResult> | CommandResult;
 }
 
 /**
@@ -62,18 +59,14 @@ export interface CommandContext {
 /**
  * Permission levels for command access control
  */
-export type PermissionLevel =
-  | 'user'
-  | 'group_admin'
-  | 'group_owner'
-  | 'admin'
-  | 'owner';
+export type PermissionLevel = 'user' | 'group_admin' | 'group_owner' | 'admin' | 'owner';
 
 /**
  * Command registration info
  */
 export interface CommandRegistration {
   handler: CommandHandler;
+  handlerClass?: new (...args: any[]) => CommandHandler; // Class reference for lazy instantiation
   pluginName?: string; // If registered by plugin
   permissions?: PermissionLevel[]; // Required permissions
   aliases?: string[]; // Command aliases
