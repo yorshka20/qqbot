@@ -28,8 +28,6 @@ import { VisionService } from './services/VisionService';
  * Other systems (like TaskSystem) should inject this service to use AI capabilities.
  */
 export class AIService {
-  private promptManager: PromptManager;
-  private maxHistoryMessages: number;
   private llmService: LLMService;
   private visionService: VisionService;
   private imageGenerationService: ImageGenerationService;
@@ -38,15 +36,11 @@ export class AIService {
     aiManager: AIManager,
     private contextManager: ContextManager,
     private hookManager: HookManager,
-    promptManager: PromptManager, // Required: must be provided from DI container
+    private promptManager: PromptManager, // Required: must be provided from DI container
     private taskAnalyzer?: TaskAnalyzer, // Optional: only used if TaskAnalyzer is available
-    maxHistoryMessages = 10, // Maximum number of history messages to include in prompt
+    private maxHistoryMessages = 10, // Maximum number of history messages to include in prompt
     providerSelector?: ProviderSelector, // Optional: for session-level provider selection
   ) {
-    // Initialize PromptManager
-    this.promptManager = promptManager;
-    this.maxHistoryMessages = maxHistoryMessages;
-
     // Initialize business services
     this.llmService = new LLMService(aiManager, providerSelector);
     this.visionService = new VisionService(aiManager, providerSelector);
@@ -204,15 +198,7 @@ export class AIService {
 
     try {
       const sessionId = context.metadata.get('sessionId') as string | undefined;
-      const history = context.context?.history || [];
-      const limitedHistory = history.slice(-this.maxHistoryMessages);
-
-      const historyText =
-        limitedHistory.length > 0
-          ? `Conversation history:\n${limitedHistory
-              .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
-              .join('\n')}\n`
-          : '';
+      const historyText = this.buildConversationHistory(context);
 
       // Build prompt
       // Template name: 'llm.reply' (from prompts/llm/reply.txt)
@@ -224,7 +210,6 @@ export class AIService {
       let response;
 
       // Use vision if images are provided
-      // sessionId is passed in options for both provider selection and context loading
       if (images && images.length > 0) {
         response = await this.visionService.generateWithVision(prompt, images, {
           temperature: 0.7,
@@ -233,7 +218,6 @@ export class AIService {
         });
       } else {
         // Use LLM
-        // sessionId is passed in options for both provider selection and context loading
         response = await this.llmService.generate(prompt, {
           temperature: 0.7,
           maxTokens: 2000,
@@ -255,6 +239,7 @@ export class AIService {
   /**
    * Generate image from text prompt
    * This method can be called by other systems to generate images from text descriptions
+   * Now includes LLM preprocessing to convert user input to standardized image generation parameters
    */
   async generateImg(context: HookContext, options?: Text2ImageOptions): Promise<ImageGenerationResponse> {
     // Hook: onMessageBeforeAI
@@ -281,16 +266,78 @@ export class AIService {
       // Get session ID for provider selection
       const sessionId = context.metadata.get('sessionId') as string | undefined;
 
-      // Build prompt using PromptManager
-      // Template name: 'text2img.generate' (from prompts/text2img/generate.txt)
-      const prompt = this.promptManager.render('text2img.generate', {
-        description: context.message.message,
-      });
+      const userInput = context.message.message;
+      logger.debug(`[AIService] Processing image generation request | userInput=${userInput.substring(0, 50)}...`);
 
-      logger.debug('[AIService] Generating image with prompt:', prompt);
+      // Step 1: Use LLM to preprocess user input and convert to standardized parameters
+      let processedPrompt: string;
+      let processedOptions: Text2ImageOptions;
 
-      // Generate image using ImageGenerationService
-      const response = await this.imageGenerationService.generateImage(prompt, options, sessionId);
+      try {
+        // Build LLM prompt using PromptManager
+        // Template name: 'text2img.generate' (from prompts/text2img/generate.txt)
+        const llmPrompt = this.promptManager.render('text2img.generate', {
+          description: userInput,
+        });
+
+        logger.debug('[AIService] Calling LLM to preprocess image generation parameters...');
+
+        // Call LLM to generate JSON parameters
+        const llmResponse = await this.llmService.generate(llmPrompt, {
+          temperature: 0.3, // Lower temperature for more consistent JSON output
+          maxTokens: 1000,
+          sessionId,
+        });
+
+        logger.debug(`[AIService] LLM response received | responseLength=${llmResponse.text.length}`);
+
+        // Step 2: Parse LLM response to extract image generation parameters
+        const parsedParams = this.parseImageGenerationParams(llmResponse.text, userInput);
+
+        processedPrompt = parsedParams.prompt;
+        processedOptions = {
+          steps: parsedParams.steps,
+          guidance_scale: parsedParams.cfg_scale,
+          seed: parsedParams.seed,
+          width: parsedParams.width,
+          height: parsedParams.height,
+          negative_prompt: parsedParams.negative_prompt,
+          // Add sampler as provider-specific option
+          sampler: parsedParams.sampler,
+          // Merge with user-provided options (user options take precedence)
+          ...options,
+        };
+
+        logger.info(
+          `[AIService] LLM preprocessing completed | original="${userInput.substring(0, 50)}..." | processed="${processedPrompt.substring(0, 50)}..." | steps=${processedOptions.steps} | cfg=${processedOptions.guidance_scale}`,
+        );
+      } catch (llmError) {
+        const llmErr = llmError instanceof Error ? llmError : new Error('Unknown LLM error');
+        logger.warn(
+          `[AIService] LLM preprocessing failed, falling back to direct user input | error=${llmErr.message}`,
+        );
+
+        // Fallback: Use user input directly as prompt
+        processedPrompt = userInput;
+        processedOptions = {
+          steps: 30,
+          guidance_scale: 7.5,
+          seed: -1,
+          width: 1024,
+          height: 1024,
+          // Merge with user-provided options
+          ...options,
+        };
+
+        logger.info('[AIService] Using fallback: direct user input as prompt');
+      }
+
+      // Step 3: Generate image using ImageGenerationService with processed parameters
+      logger.debug(
+        `[AIService] Generating image | prompt="${processedPrompt.substring(0, 50)}..." | options=${JSON.stringify(processedOptions)}`,
+      );
+
+      const response = await this.imageGenerationService.generateImage(processedPrompt, processedOptions, sessionId);
 
       // Hook: onAIGenerationComplete
       await this.hookManager.execute('onAIGenerationComplete', context);
@@ -303,5 +350,118 @@ export class AIService {
       await this.hookManager.execute('onAIGenerationComplete', context);
       throw err;
     }
+  }
+
+  /**
+   * Parse LLM response to extract image generation parameters
+   * Handles various response formats including JSON wrapped in markdown code blocks
+   * @param llmResponse - Raw LLM response text
+   * @param fallbackPrompt - Fallback prompt to use if parsing fails
+   * @returns Parsed image generation parameters
+   */
+  private parseImageGenerationParams(
+    llmResponse: string,
+    fallbackPrompt: string,
+  ): {
+    prompt: string;
+    negative_prompt: string;
+    steps: number;
+    cfg_scale: number;
+    seed: number;
+    width: number;
+    height: number;
+    sampler: string;
+  } {
+    try {
+      // Try to extract JSON from the response
+      // Handle cases where JSON might be wrapped in markdown code blocks
+      let jsonText = llmResponse.trim();
+
+      // Remove markdown code block markers if present
+      const jsonBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (jsonBlockMatch) {
+        jsonText = jsonBlockMatch[1].trim();
+      }
+
+      // Try to find JSON object in the text
+      const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonText = jsonMatch[0];
+      }
+
+      // Parse JSON
+      const parsed = JSON.parse(jsonText);
+
+      // Validate required fields
+      if (!parsed.prompt || typeof parsed.prompt !== 'string') {
+        throw new Error('Missing or invalid prompt field in LLM response');
+      }
+
+      // Extract and validate parameters with defaults
+      const result = {
+        prompt: parsed.prompt as string,
+        negative_prompt: parsed.negative_prompt as string,
+        steps: this.validateNumber(parsed.steps, 30, 1, 100),
+        cfg_scale: this.validateNumber(parsed.cfg_scale, 7.5, 1, 20),
+        seed: this.validateNumber(parsed.seed, -1, -1, Number.MAX_SAFE_INTEGER),
+        width: this.validateNumber(parsed.width, 1024, 256, 2048),
+        height: this.validateNumber(parsed.height, 1024, 256, 2048),
+        sampler: (parsed.sampler as string) || 'Euler a',
+      };
+
+      logger.debug(`[AIService] Successfully parsed LLM response | prompt="${result.prompt.substring(0, 50)}..."`);
+
+      return result;
+    } catch (parseError) {
+      const parseErr = parseError instanceof Error ? parseError : new Error('Unknown parsing error');
+      logger.warn(
+        `[AIService] Failed to parse LLM response, using fallback | error=${parseErr.message} | response=${llmResponse.substring(0, 200)}`,
+      );
+
+      // Fallback: Return default parameters with user input as prompt
+      return {
+        prompt: fallbackPrompt,
+        negative_prompt:
+          'worst quality, low quality, bad anatomy, bad hands, text, error, jpeg artifacts, signature, watermark, blurry',
+        steps: 30,
+        cfg_scale: 7.5,
+        seed: -1,
+        width: 1024,
+        height: 1024,
+        sampler: 'Euler a',
+      };
+    }
+  }
+
+  /**
+   * Validate and normalize a number parameter
+   * @param value - Value to validate
+   * @param defaultValue - Default value if validation fails
+   * @param min - Minimum allowed value
+   * @param max - Maximum allowed value
+   * @returns Validated number
+   */
+  private validateNumber(value: unknown, defaultValue: number, min: number, max: number): number {
+    if (typeof value === 'number' && !isNaN(value)) {
+      return Math.max(min, Math.min(max, value));
+    }
+    if (typeof value === 'string') {
+      const parsed = parseFloat(value);
+      if (!isNaN(parsed)) {
+        return Math.max(min, Math.min(max, parsed));
+      }
+    }
+    return defaultValue;
+  }
+
+  /**
+   * Build conversation history for prompt
+   * @param context - Hook context
+   * @returns Conversation history
+   */
+  private buildConversationHistory(context: HookContext): string {
+    const history = context.context?.history || [];
+    const limitedHistory = history.slice(-this.maxHistoryMessages);
+    return limitedHistory.map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`).join('\n');
   }
 }
