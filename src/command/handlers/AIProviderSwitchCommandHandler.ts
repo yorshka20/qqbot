@@ -8,7 +8,7 @@ import { CommandContext, CommandHandler, CommandResult } from '../types';
 @Command({
   name: 'ai-provider-switch',
   description: 'Switch AI provider',
-  usage: '/ai-provider-switch <provider>',
+  usage: '/provider <list|switch> <capability> <provider>',
   permissions: ['admin'],
 })
 @injectable()

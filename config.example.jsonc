@@ -161,5 +161,13 @@
   // Directory path for prompt templates (relative to project root or absolute path)
   "prompts": {
     "directory": "prompts"
+  },
+  // TTS configuration (optional)
+  // Fish Audio API configuration for text-to-speech
+  "tts": {
+    "apiKey": "your_fish_audio_api_key_here",
+    "model": "s1",
+    "referenceId": "e4642e5edccd4d9ab61a69e82d4f8a14",
+    "format": "mp3"
   }
 }

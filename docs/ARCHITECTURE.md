@@ -774,6 +774,22 @@ The entire codebase uses TypeScript with strict mode enabled:
 - Plugin interfaces are typed
 - Configuration is type-checked
 
+## Stage 2: AI-Enabled Architecture
+
+Stage 2 extends the base architecture with AI-driven conversation capabilities. See [ARCHITECTURE_STAGE2.md](./ARCHITECTURE_STAGE2.md) for detailed documentation.
+
+### Key Additions in Stage 2
+
+- **Plugin Hook System**: 13 hook stages for complete lifecycle management
+- **Command System**: Built-in and plugin command support with prefix parsing
+- **Task System**: AI-driven task analysis and execution
+- **AI Provider Layer**: Multi-provider support (OpenAI, Anthropic, Ollama)
+- **Context Management**: Conversation history with compression support
+- **Database Persistence**: SQLite and MongoDB adapters
+- **Complete Conversation Flow**: Command → AI → Task → Reply pipeline
+
 ## Conclusion
 
 This architecture provides a robust, extensible, and type-safe foundation for building QQ bots. The multi-protocol support allows developers to leverage the strengths of different protocols while maintaining a unified development experience. The plugin system enables easy extensibility without modifying core code.
+
+Stage 2 adds AI capabilities, making the bot intelligent and context-aware, with full support for command processing, task execution, and conversation management.

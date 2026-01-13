@@ -86,6 +86,42 @@ export class MessageBuilder {
     return this;
   }
 
+  record(input: { file?: string; url?: string; data?: string }): this {
+    const { file, url, data } = input;
+    const recordData: {
+      uri?: string;
+    } = {};
+
+    // Convert to Milky protocol format: use uri field
+    if (data) {
+      // Base64 data: convert to base64:// URI format
+      recordData.uri = `base64://${data}`;
+    } else if (url) {
+      // HTTP/HTTPS URL: use as-is
+      recordData.uri = url;
+    } else if (file) {
+      // File path: convert to file:// URI format
+      if (
+        file.startsWith('file://') ||
+        file.startsWith('http://') ||
+        file.startsWith('https://') ||
+        file.startsWith('base64://')
+      ) {
+        // Already a URI
+        recordData.uri = file;
+      } else {
+        // Local file path: convert to file:// URI
+        recordData.uri = `file://${file}`;
+      }
+    }
+
+    this.segments.push({
+      type: 'record',
+      data: recordData,
+    });
+    return this;
+  }
+
   build(): MessageSegment[] {
     return [...this.segments];
   }
