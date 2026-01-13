@@ -32,6 +32,14 @@ export class AIService {
   private visionService: VisionService;
   private imageGenerationService: ImageGenerationService;
 
+  // Constants for parameter limits (NovelAI specific)
+  private static readonly MAX_STEPS = 50;
+  private static readonly MAX_GUIDANCE_SCALE = 9;
+  private static readonly DEFAULT_STEPS = 45;
+  private static readonly DEFAULT_GUIDANCE_SCALE = 7;
+  private static readonly DEFAULT_WIDTH = 832;
+  private static readonly DEFAULT_HEIGHT = 1216;
+
   constructor(
     aiManager: AIManager,
     private contextManager: ContextManager,
@@ -240,8 +248,17 @@ export class AIService {
    * Generate image from text prompt
    * This method can be called by other systems to generate images from text descriptions
    * Now includes LLM preprocessing to convert user input to standardized image generation parameters
+   * @param context - Hook context containing message and metadata
+   * @param options - Image generation options (width, height, steps, etc.)
+   * @param providerName - Optional provider name to use (e.g., 'novelai', 'local-text2img'). If not specified, uses default provider.
+   * @param skipLLMProcess - If true, skip LLM preprocessing and use user input directly as prompt
    */
-  async generateImg(context: HookContext, options?: Text2ImageOptions): Promise<ImageGenerationResponse> {
+  async generateImg(
+    context: HookContext,
+    options?: Text2ImageOptions,
+    providerName?: string,
+    skipLLMProcess?: boolean,
+  ): Promise<ImageGenerationResponse> {
     // Hook: onMessageBeforeAI
     const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
     if (!shouldContinue) {
@@ -267,77 +284,29 @@ export class AIService {
       const sessionId = context.metadata.get('sessionId') as string | undefined;
 
       const userInput = context.message.message;
-      logger.debug(`[AIService] Processing image generation request | userInput=${userInput.substring(0, 50)}...`);
-
-      // Step 1: Use LLM to preprocess user input and convert to standardized parameters
-      let processedPrompt: string;
-      let processedOptions: Text2ImageOptions;
-
-      try {
-        // Build LLM prompt using PromptManager
-        // Template name: 'text2img.generate' (from prompts/text2img/generate.txt)
-        const llmPrompt = this.promptManager.render('text2img.generate', {
-          description: userInput,
-        });
-
-        logger.debug('[AIService] Calling LLM to preprocess image generation parameters...');
-
-        // Call LLM to generate JSON parameters
-        const llmResponse = await this.llmService.generate(llmPrompt, {
-          temperature: 0.3, // Lower temperature for more consistent JSON output
-          maxTokens: 1000,
-          sessionId,
-        });
-
-        logger.debug(`[AIService] LLM response received | responseLength=${llmResponse.text.length}`);
-
-        // Step 2: Parse LLM response to extract image generation parameters
-        const parsedParams = this.parseImageGenerationParams(llmResponse.text, userInput);
-
-        processedPrompt = parsedParams.prompt;
-        processedOptions = {
-          steps: parsedParams.steps,
-          guidance_scale: parsedParams.cfg_scale,
-          seed: parsedParams.seed,
-          width: parsedParams.width,
-          height: parsedParams.height,
-          negative_prompt: parsedParams.negative_prompt,
-          // Add sampler as provider-specific option
-          sampler: parsedParams.sampler,
-          // Merge with user-provided options (user options take precedence)
-          ...options,
-        };
-
-        logger.info(
-          `[AIService] LLM preprocessing completed | original="${userInput.substring(0, 50)}..." | processed="${processedPrompt.substring(0, 50)}..." | steps=${processedOptions.steps} | cfg=${processedOptions.guidance_scale}`,
-        );
-      } catch (llmError) {
-        const llmErr = llmError instanceof Error ? llmError : new Error('Unknown LLM error');
-        logger.warn(
-          `[AIService] LLM preprocessing failed, falling back to direct user input | error=${llmErr.message}`,
-        );
-
-        // Fallback: Use user input directly as prompt
-        processedPrompt = userInput;
-        processedOptions = {
-          steps: 30,
-          guidance_scale: 7.5,
-          seed: -1,
-          width: 1024,
-          height: 1024,
-          // Merge with user-provided options
-          ...options,
-        };
-
-        logger.info('[AIService] Using fallback: direct user input as prompt');
-      }
-
-      // Step 3: Generate image using ImageGenerationService with processed parameters
       logger.debug(
-        `[AIService] Generating image | prompt="${processedPrompt.substring(0, 50)}..." | options=${JSON.stringify(processedOptions)}`,
+        `[AIService] Processing image generation request | userInput=${userInput.substring(0, 50)}... | skipLLMProcess=${skipLLMProcess || false}`,
       );
 
-      const response = await this.imageGenerationService.generateImage(processedPrompt, processedOptions, sessionId);
+      // Prepare image generation parameters (with or without LLM preprocessing)
+      const { prompt: processedPrompt, options: processedOptions } = await this.prepareImageGenerationParams(
+        userInput,
+        options,
+        sessionId,
+        skipLLMProcess,
+      );
+
+      // Generate image using ImageGenerationService with processed parameters
+      logger.info(
+        `[AIService] Generating image | prompt="${processedPrompt}" | options=${JSON.stringify(processedOptions)} | providerName=${providerName || 'default'}`,
+      );
+
+      const response = await this.imageGenerationService.generateImage(
+        processedPrompt,
+        processedOptions,
+        sessionId,
+        providerName,
+      );
 
       // Hook: onAIGenerationComplete
       await this.hookManager.execute('onAIGenerationComplete', context);
@@ -350,6 +319,134 @@ export class AIService {
       await this.hookManager.execute('onAIGenerationComplete', context);
       throw err;
     }
+  }
+
+  /**
+   * Prepare image generation parameters
+   * Either uses LLM preprocessing or directly uses user input based on skipLLMProcess flag
+   * @param userInput - User input text
+   * @param options - User-provided options
+   * @param sessionId - Session ID for provider selection
+   * @param skipLLMProcess - Whether to skip LLM preprocessing
+   * @returns Processed prompt and options
+   */
+  private async prepareImageGenerationParams(
+    userInput: string,
+    options: Text2ImageOptions | undefined,
+    sessionId: string | undefined,
+    skipLLMProcess?: boolean,
+  ): Promise<{ prompt: string; options: Text2ImageOptions }> {
+    if (skipLLMProcess) {
+      return this.prepareDirectPrompt(userInput, options);
+    }
+
+    try {
+      return await this.preprocessPromptWithLLM(userInput, options, sessionId);
+    } catch (llmError) {
+      const llmErr = llmError instanceof Error ? llmError : new Error('Unknown LLM error');
+      logger.warn(`[AIService] LLM preprocessing failed, falling back to direct user input | error=${llmErr.message}`);
+      return this.prepareDirectPrompt(userInput, options);
+    }
+  }
+
+  /**
+   * Preprocess user input using LLM to generate standardized image generation parameters
+   * @param userInput - User input text
+   * @param options - User-provided options (will be merged with LLM-generated options)
+   * @param sessionId - Session ID for provider selection
+   * @returns Processed prompt and options
+   */
+  private async preprocessPromptWithLLM(
+    userInput: string,
+    options: Text2ImageOptions | undefined,
+    sessionId: string | undefined,
+  ): Promise<{ prompt: string; options: Text2ImageOptions }> {
+    // Build LLM prompt using PromptManager
+    // Template name: 'text2img.generate' (from prompts/text2img/generate.txt)
+    const llmPrompt = this.promptManager.render('text2img.generate', {
+      description: userInput,
+    });
+
+    logger.debug('[AIService] Calling LLM to preprocess image generation parameters...');
+
+    // Call LLM to generate JSON parameters
+    const llmResponse = await this.llmService.generate(llmPrompt, {
+      temperature: 0.3, // Lower temperature for more consistent JSON output
+      maxTokens: 1000,
+      sessionId,
+    });
+
+    logger.debug(`[AIService] LLM response received | responseLength=${llmResponse.text.length}`);
+
+    // Parse LLM response to extract image generation parameters
+    const parsedParams = this.parseImageGenerationParams(llmResponse.text, userInput);
+
+    const processedOptions: Text2ImageOptions = {
+      steps: parsedParams.steps,
+      guidance_scale: parsedParams.cfg_scale,
+      seed: parsedParams.seed,
+      width: parsedParams.width,
+      height: parsedParams.height,
+      negative_prompt: parsedParams.negative_prompt,
+      sampler: parsedParams.sampler,
+      // Merge with user-provided options (user options take precedence)
+      ...options,
+    };
+
+    logger.info(
+      `[AIService] LLM preprocessing completed | original="${userInput.substring(0, 50)}..." | processed="${parsedParams.prompt.substring(0, 50)}..." | steps=${processedOptions.steps} | cfg=${processedOptions.guidance_scale}`,
+    );
+
+    return {
+      prompt: parsedParams.prompt,
+      options: processedOptions,
+    };
+  }
+
+  /**
+   * Prepare prompt and options directly from user input (skip LLM processing)
+   * @param userInput - User input text
+   * @param options - User-provided options
+   * @returns Processed prompt and options
+   */
+  private prepareDirectPrompt(
+    userInput: string,
+    options: Text2ImageOptions | undefined,
+  ): { prompt: string; options: Text2ImageOptions } {
+    logger.debug('[AIService] Using direct user input as prompt (LLM processing skipped)');
+
+    const processedOptions = this.mergeAndValidateOptions(options);
+
+    logger.info('[AIService] Using direct user input as prompt');
+
+    return {
+      prompt: userInput,
+      options: processedOptions,
+    };
+  }
+
+  /**
+   * Merge user-provided options with defaults and apply validation limits
+   * @param options - User-provided options
+   * @returns Merged and validated options
+   */
+  private mergeAndValidateOptions(options: Text2ImageOptions | undefined): Text2ImageOptions {
+    const mergedOptions = {
+      seed: -1,
+      width: options?.width || AIService.DEFAULT_WIDTH,
+      height: options?.height || AIService.DEFAULT_HEIGHT,
+      ...options, // Merge user-provided options
+    };
+
+    // Apply limits to steps and guidance_scale after merge
+    return {
+      ...mergedOptions,
+      steps: Math.min(mergedOptions.steps || AIService.DEFAULT_STEPS, AIService.MAX_STEPS),
+      guidance_scale: Math.min(
+        mergedOptions.guidance_scale || AIService.DEFAULT_GUIDANCE_SCALE,
+        AIService.MAX_GUIDANCE_SCALE,
+      ),
+    };
   }
 
   /**
@@ -398,14 +495,20 @@ export class AIService {
       }
 
       // Extract and validate parameters with defaults
+      // Limit steps and cfg_scale to reasonable values (NovelAI typically uses steps 28-50, cfg 5-11)
       const result = {
         prompt: parsed.prompt as string,
-        negative_prompt: parsed.negative_prompt as string,
-        steps: this.validateNumber(parsed.steps, 30, 1, 100),
-        cfg_scale: this.validateNumber(parsed.cfg_scale, 7.5, 1, 20),
+        negative_prompt: (parsed.negative_prompt as string) || '',
+        steps: this.validateNumber(parsed.steps, AIService.DEFAULT_STEPS, 1, AIService.MAX_STEPS),
+        cfg_scale: this.validateNumber(
+          parsed.cfg_scale,
+          AIService.DEFAULT_GUIDANCE_SCALE,
+          1,
+          AIService.MAX_GUIDANCE_SCALE,
+        ),
         seed: this.validateNumber(parsed.seed, -1, -1, Number.MAX_SAFE_INTEGER),
-        width: this.validateNumber(parsed.width, 1024, 256, 2048),
-        height: this.validateNumber(parsed.height, 1024, 256, 2048),
+        width: this.validateNumber(parsed.width, AIService.DEFAULT_WIDTH, 256, 2048),
+        height: this.validateNumber(parsed.height, AIService.DEFAULT_HEIGHT, 256, 2048),
         sampler: (parsed.sampler as string) || 'Euler a',
       };
 
@@ -423,11 +526,11 @@ export class AIService {
         prompt: fallbackPrompt,
         negative_prompt:
           'worst quality, low quality, bad anatomy, bad hands, text, error, jpeg artifacts, signature, watermark, blurry',
-        steps: 30,
-        cfg_scale: 7.5,
+        steps: AIService.DEFAULT_STEPS,
+        cfg_scale: AIService.DEFAULT_GUIDANCE_SCALE,
         seed: -1,
-        width: 1024,
-        height: 1024,
+        width: AIService.DEFAULT_WIDTH,
+        height: AIService.DEFAULT_HEIGHT,
         sampler: 'Euler a',
       };
     }
