@@ -1,6 +1,6 @@
 // Conversation Manager - orchestrates the conversation flow
 
-import type { Config } from '@/core/Config';
+import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';

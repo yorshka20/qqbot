@@ -2,7 +2,7 @@
 
 import { logger, setLogLevel } from '@/utils/logger';
 import { EventEmitter } from 'events';
-import { Config } from './Config';
+import { Config } from './config';
 import { ConnectionManager } from './ConnectionManager';
 
 export interface BotEvents {

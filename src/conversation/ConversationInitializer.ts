@@ -15,7 +15,7 @@ import type { APIClient } from '@/api/APIClient';
 import { CommandManager } from '@/command';
 import { DefaultPermissionChecker } from '@/command/PermissionChecker';
 import { ContextManager } from '@/context';
-import type { AIConfig, BotConfig, Config } from '@/core/Config';
+import type { AIConfig, BotConfig, Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { ServiceRegistry } from '@/core/ServiceRegistry';

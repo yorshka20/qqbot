@@ -1,6 +1,6 @@
 // Routes API calls to appropriate protocol adapter
 
-import type { ProtocolName } from '@/core/Config';
+import type { ProtocolName } from '@/core/config';
 import type { ProtocolAdapter } from '@/protocol/base/ProtocolAdapter';
 import { APIError } from '@/utils/errors';
 import { logger } from '@/utils/logger';

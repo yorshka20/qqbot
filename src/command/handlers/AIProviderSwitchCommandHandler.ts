@@ -1,5 +1,5 @@
 import { AIManager, CapabilityType } from '@/ai';
-import { Config } from '@/core/Config';
+import { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { inject, injectable } from 'tsyringe';
 import { Command } from '../decorators';

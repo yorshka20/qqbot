@@ -3,7 +3,7 @@
 import type { DatabaseAdapter } from './base/DatabaseAdapter';
 import { SQLiteAdapter } from './adapters/SQLiteAdapter';
 import { MongoDBAdapter } from './adapters/MongoDBAdapter';
-import type { DatabaseConfig } from '@/core/Config';
+import type { DatabaseConfig } from '@/core/config';
 import { logger } from '@/utils/logger';
 
 export class DatabaseManager {

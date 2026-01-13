@@ -1,6 +1,6 @@
 // API layer types
 
-import type { ProtocolName } from '@/core/Config';
+import type { ProtocolName } from '@/core/config';
 
 export interface APIRequest {
   action: string;

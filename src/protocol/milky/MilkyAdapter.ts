@@ -1,7 +1,7 @@
 // Milky protocol adapter implementation
 
 import type { APIContext } from '@/api/types';
-import type { ProtocolConfig, ProtocolName } from '@/core/Config';
+import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import { Connection } from '@/core/Connection';
 import { logger } from '@/utils/logger';
 import { ProtocolAdapter } from '../base/ProtocolAdapter';

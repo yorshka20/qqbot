@@ -1,7 +1,7 @@
 // Base protocol adapter abstract class
 
 import type { APIContext } from '@/api/types';
-import type { ProtocolConfig, ProtocolName } from '@/core/Config';
+import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import { Connection } from '@/core/Connection';
 import { EventEmitter } from 'events';
 import type { BaseAPIRequest, BaseAPIResponse, BaseEvent } from './types';

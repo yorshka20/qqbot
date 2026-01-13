@@ -5,7 +5,7 @@ import { APIClient } from '../api/APIClient';
 import { MessageAPI } from '../api/methods/MessageAPI';
 import { ConversationInitializer } from '../conversation/ConversationInitializer';
 import { Bot } from '../core/Bot';
-import type { ProtocolName } from '../core/Config';
+import type { ProtocolName } from '../core/config';
 import { EventRouter } from '../events/EventRouter';
 import { MessageHandler } from '../events/handlers/MessageHandler';
 import { MetaEventHandler } from '../events/handlers/MetaEventHandler';
@@ -46,7 +46,8 @@ class DebugCLI {
     this.messageAPI = new MessageAPI(this.apiClient);
 
     // Initialize event router
-    const eventDeduplicationConfig = config.getEventDeduplicationConfig();
+    const eventConfig = config.getEventConfig();
+    const eventDeduplicationConfig = eventConfig.deduplication;
     this.eventRouter = new EventRouter(eventDeduplicationConfig);
 
     // Set up protocol adapters

@@ -1,5 +1,5 @@
 import { APIClient } from '@/api/APIClient';
-import { Config } from '@/core/Config';
+import { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';

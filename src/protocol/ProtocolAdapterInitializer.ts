@@ -1,7 +1,7 @@
 // Protocol Adapter Initializer - sets up protocol adapters and connects them to event router
 
 import type { APIClient } from '@/api/APIClient';
-import type { Config, ProtocolName } from '@/core/Config';
+import type { Config, ProtocolName } from '@/core/config';
 import type { ConnectionManager } from '@/core/ConnectionManager';
 import type { EventRouter } from '@/events/EventRouter';
 import type { NormalizedEvent } from '@/events/types';

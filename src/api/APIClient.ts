@@ -1,7 +1,7 @@
 // Unified multi-protocol API client
 
 import type { ConversationContext } from '@/context/types';
-import type { ProtocolName } from '@/core/Config';
+import type { ProtocolName } from '@/core/config';
 import type { ProtocolAdapter } from '@/protocol/base/ProtocolAdapter';
 import { APIError } from '@/utils/errors';
 import { APIRouter } from './APIRouter';

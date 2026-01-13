@@ -1,232 +1,56 @@
-// Configuration management
+// Configuration management - main entry point
 
 import { ConfigError } from '@/utils/errors';
 import { existsSync, readFileSync } from 'fs';
 import { parse as parseJsonc } from 'jsonc-parser';
 import { extname, resolve } from 'path';
 
-export type ProtocolName = 'milky' | 'onebot11' | 'satori';
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-export type BackoffStrategy = 'exponential' | 'linear';
-export type APIStrategy = 'priority' | 'round-robin' | 'capability-based';
-export type DeduplicationStrategy = 'first-received' | 'priority-protocol' | 'merge';
+// Import all config types
+import type { AIConfig, ContextMemoryConfig, SessionProviderConfig } from './ai';
+import type { BotSelfConfig } from './bot';
+import type { DatabaseConfig } from './database';
+import type { PluginsConfig } from './plugins';
+import type { PromptsConfig } from './prompts';
+import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './protocol';
+import type { TTSConfig } from './tts';
+import type { LogLevel } from './types';
 
-export interface ProtocolConnectionConfig {
-  url: string;
-  apiUrl: string;
-  accessToken: string;
-}
-
-export interface ReconnectConfig {
-  enabled: boolean;
-  maxRetries: number;
-  backoff: BackoffStrategy;
-  initialDelay: number;
-  maxDelay: number;
-}
-
-export interface ProtocolConfig {
-  name: ProtocolName;
-  enabled: boolean;
-  priority: number;
-  connection: ProtocolConnectionConfig;
-  reconnect: ReconnectConfig;
-}
-
-export interface APIConfig {
-  strategy: APIStrategy;
-  preferredProtocol?: ProtocolName;
-}
-
-export interface EventDeduplicationConfig {
-  enabled: boolean;
-  strategy: DeduplicationStrategy;
-  window: number;
-}
-
-export type DatabaseType = 'sqlite' | 'mongodb';
-
-export interface SQLiteConfig {
-  path: string;
-}
-
-export interface MongoDBConfig {
-  connectionString: string;
-  database: string;
-  options?: {
-    authSource?: string;
-    user?: string;
-    password?: string;
-  };
-}
-
-export interface DatabaseConfig {
-  type: DatabaseType;
-  sqlite?: SQLiteConfig;
-  mongodb?: MongoDBConfig;
-}
-
-export type AIProviderType = 'openai' | 'anthropic' | 'ollama' | 'deepseek' | 'local-text2img';
-
-export interface OpenAIProviderConfig {
-  type: 'openai';
-  apiKey: string;
-  model?: string;
-  baseURL?: string;
-  temperature?: number;
-  maxTokens?: number;
-  enableContext?: boolean; // Enable automatic context loading from conversation history
-  contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
-}
-
-export interface AnthropicProviderConfig {
-  type: 'anthropic';
-  apiKey: string;
-  model?: string; // claude-3-opus, claude-3-sonnet, claude-3-haiku, etc.
-  temperature?: number;
-  maxTokens?: number;
-  enableContext?: boolean; // Enable automatic context loading from conversation history
-  contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
-}
-
-export interface OllamaProviderConfig {
-  type: 'ollama';
-  baseUrl: string;
-  model: string;
-  temperature?: number;
-  maxTokens?: number;
-  enableContext?: boolean; // Enable automatic context loading from conversation history
-  contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
-}
-
-export interface DeepSeekProviderConfig {
-  type: 'deepseek';
-  apiKey: string;
-  model?: string;
-  baseURL?: string;
-  temperature?: number;
-  maxTokens?: number;
-  enableContext?: boolean; // Enable automatic context loading from conversation history
-  contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
-}
-
-export interface LocalText2ImageProviderConfig {
-  type: 'local-text2img';
-  baseUrl: string; // Base URL of the Python server (e.g., http://localhost:8000)
-  endpoint?: string; // API endpoint path (default: /generate)
-  timeout?: number; // Request timeout in milliseconds (default: 300000 = 5 minutes)
-  censorEnabled?: boolean; // Enable content censorship (default: true)
-  // Default values for image generation parameters
-  defaultSteps?: number; // Default number of inference steps (default: 25)
-  defaultWidth?: number; // Default image width (default: 1024)
-  defaultHeight?: number; // Default image height (default: 1024)
-  defaultGuidanceScale?: number; // Default guidance scale (default: 5)
-  defaultNumImages?: number; // Default number of images to generate (default: 1)
-}
-
-export type AIProviderConfig =
-  | OpenAIProviderConfig
-  | AnthropicProviderConfig
-  | OllamaProviderConfig
-  | DeepSeekProviderConfig
-  | LocalText2ImageProviderConfig;
-
-/**
- * Default providers configuration (by capability)
- */
-export interface DefaultProvidersConfig {
-  llm?: string; // Default LLM provider name
-  vision?: string; // Default vision/multimodal provider name
-  text2img?: string; // Default text-to-image provider name
-  img2img?: string; // Default image-to-image provider name
-}
-
-/**
- * Session-level provider override configuration
- */
-export interface SessionProviderConfig {
-  llm?: string;
-  vision?: string;
-  text2img?: string;
-  img2img?: string;
-}
-
-/**
- * Auto-switch configuration
- */
-export interface AutoSwitchConfig {
-  // Automatically switch to vision provider when message contains images
-  // but current provider doesn't support vision
-  enableVisionFallback?: boolean;
-}
-
-export interface AIConfig {
-  // Default providers by capability (replaces single "provider" field)
-  defaultProviders?: DefaultProvidersConfig;
-  // Legacy: single provider name (for backward compatibility)
-  provider?: string;
-  // Provider configurations
-  providers: Record<string, AIProviderConfig>;
-  // Session-level provider overrides (key is sessionId)
-  sessionProviders?: Record<string, SessionProviderConfig>;
-  // Auto-switch configuration
-  autoSwitch?: AutoSwitchConfig;
-}
-
-export interface ContextMemoryConfig {
-  // Maximum number of messages to store in memory buffer
-  maxBufferSize?: number;
-  // Whether to use summary memory (requires AI manager)
-  useSummary?: boolean;
-  // Threshold for triggering summary (number of messages)
-  summaryThreshold?: number;
-  // Maximum number of history messages to include in AI prompt
-  maxHistoryMessages?: number;
-}
-
-export interface BotSelfConfig {
-  selfId: string;
-  logLevel: LogLevel;
-  // Bot owner: highest permission level, can use all commands
-  owner: string;
-  // Bot admins: user IDs that have admin permission level
-  // These users can adjust bot behavior and trigger special commands
-  admins: string[];
-}
-
-export interface PluginsConfig {
-  list: Array<{
-    name: string;
-    enabled: boolean;
-    config?: any; // Each plugin has its own config structure
-  }>;
-}
-
-export interface PromptsConfig {
-  // Directory path for prompt templates (relative to project root or absolute path)
-  directory: string;
-}
-
-export interface TTSConfig {
-  // Fish Audio API key
-  apiKey: string;
-  // Base model to use in header (s1, speech-1.6, speech-1.5)
-  // Default: s1
-  model?: string;
-  // Custom voice model ID (reference_id) to use in request body
-  // If not specified, uses the base model
-  referenceId?: string;
-  // Audio format (mp3, wav, etc.)
-  // Default: mp3
-  format?: string;
-}
+// Re-export all types for convenience
+export type {
+  AIConfig,
+  AIProviderConfig,
+  AIProviderType,
+  AnthropicProviderConfig,
+  AutoSwitchConfig,
+  ContextMemoryConfig,
+  DeepSeekProviderConfig,
+  DefaultProvidersConfig,
+  LocalText2ImageProviderConfig,
+  NovelAIProviderConfig,
+  OllamaProviderConfig,
+  OpenAIProviderConfig,
+  OpenRouterProviderConfig,
+  SessionProviderConfig,
+} from './ai';
+export type { BotSelfConfig } from './bot';
+export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './database';
+export type { PluginsConfig } from './plugins';
+export type { PromptsConfig } from './prompts';
+export type {
+  APIConfig,
+  EventDeduplicationConfig,
+  ProtocolConfig,
+  ProtocolConnectionConfig,
+  ProtocolName,
+  ReconnectConfig,
+} from './protocol';
+export type { TTSConfig } from './tts';
+export type { LogLevel } from './types';
 
 export interface BotConfig {
   protocols: ProtocolConfig[];
   api: APIConfig;
-  events: {
-    deduplication: EventDeduplicationConfig;
-  };
+  events: EventConfig;
   bot: BotSelfConfig;
   plugins: PluginsConfig;
   database: DatabaseConfig;
@@ -373,8 +197,8 @@ export class Config {
     return this.config.api;
   }
 
-  getEventDeduplicationConfig(): EventDeduplicationConfig {
-    return this.config.events.deduplication;
+  getEventConfig(): EventConfig {
+    return this.config.events;
   }
 
   getLogLevel(): LogLevel {

@@ -1,7 +1,7 @@
 // Event Initializer - initializes EventRouter and all event handlers
 
 import type { ConversationManager } from '@/conversation/ConversationManager';
-import type { Config } from '@/core/Config';
+import type { Config } from '@/core/config';
 import { logger } from '@/utils/logger';
 import { EventRouter } from './EventRouter';
 import { MessageHandler } from './handlers/MessageHandler';
@@ -28,7 +28,8 @@ export class EventInitializer {
     logger.info('[EventInitializer] Starting initialization...');
 
     // Initialize event router
-    const eventDeduplicationConfig = config.getEventDeduplicationConfig();
+    const eventConfig = config.getEventConfig();
+    const eventDeduplicationConfig = eventConfig.deduplication;
     const eventRouter = new EventRouter(eventDeduplicationConfig);
 
     // Initialize event handlers

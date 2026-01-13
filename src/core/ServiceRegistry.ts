@@ -11,7 +11,7 @@ import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { TaskManager } from '@/task/TaskManager';
 import { logger } from '@/utils/logger';
-import type { Config } from './Config';
+import type { Config } from './config';
 import { getContainer } from './DIContainer';
 import { DITokens } from './DITokens';
 

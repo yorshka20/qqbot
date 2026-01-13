@@ -3,7 +3,7 @@
 import { ConnectionError } from '@/utils/errors';
 import { logger } from '@/utils/logger';
 import { EventEmitter } from 'events';
-import type { ProtocolConfig } from './Config';
+import type { ProtocolConfig } from './config';
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 

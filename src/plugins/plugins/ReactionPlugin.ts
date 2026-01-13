@@ -1,6 +1,6 @@
 // Reaction Plugin - sends reaction when message contains configured keywords
 
-import type { BotConfig } from '@/core/Config';
+import type { BotConfig } from '@/core/config';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext, HookResult } from '@/hooks/types';
 import type { NormalizedMilkyMessageEvent } from '@/protocol/milky/types';

@@ -1,10 +1,10 @@
 // Multi-protocol connection management
 
-import { EventEmitter } from 'events';
-import { Connection } from './Connection';
 import { logger } from '@/utils/logger';
-import { Config } from './Config';
-import type { ProtocolConfig } from './Config';
+import { EventEmitter } from 'events';
+import type { ProtocolConfig } from './config';
+import { Config } from './config';
+import { Connection } from './Connection';
 
 export interface ConnectionManagerEvents {
   connectionOpen: (protocol: string, connection: Connection) => void;

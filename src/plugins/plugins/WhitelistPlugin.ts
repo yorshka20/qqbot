@@ -2,7 +2,7 @@
 // If sender is not in whitelist and message is not from whitelisted group, only post-process (no reply)
 // If sender is in whitelist or message is from whitelisted group, always reply
 
-import type { BotConfig } from '@/core/Config';
+import type { BotConfig } from '@/core/config';
 import type { HookContext, HookResult } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { Hook, Plugin } from '../decorators';
