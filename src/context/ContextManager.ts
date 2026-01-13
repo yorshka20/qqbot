@@ -1,5 +1,6 @@
 // Context Manager - builds and manages conversation contexts
 
+import { PromptManager } from '@/ai/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import { logger } from '@/utils/logger';
 import { ConversationBufferMemory } from './memory/ConversationBufferMemory';
@@ -21,16 +22,14 @@ export interface BuildContextOptions extends ContextBuilderOptions {
 export class ContextManager {
   private memories = new Map<string, ConversationBufferMemory | ConversationSummaryMemory>();
   private globalContext: GlobalContext | null = null;
-  private maxBufferSize: number;
 
   constructor(
-    private llmService?: LLMService,
+    private llmService: LLMService,
+    private promptManager: PromptManager,
     private useSummary = false,
     private summaryThreshold = 20,
-    maxBufferSize = 30,
-  ) {
-    this.maxBufferSize = maxBufferSize;
-  }
+    private maxBufferSize = 30,
+  ) {}
 
   /**
    * Set global context
@@ -44,12 +43,15 @@ export class ContextManager {
    */
   private getMemory(sessionId: string): ConversationBufferMemory | ConversationSummaryMemory {
     if (!this.memories.has(sessionId)) {
-      // Use configured maxBufferSize
       const buffer = new ConversationBufferMemory(this.maxBufferSize);
-      const memory =
-        this.useSummary && this.llmService
-          ? new ConversationSummaryMemory(buffer, this.summaryThreshold, this.llmService)
-          : buffer;
+      let memory: ConversationBufferMemory | ConversationSummaryMemory;
+
+      if (this.useSummary) {
+        memory = new ConversationSummaryMemory(buffer, this.summaryThreshold, this.llmService, this.promptManager);
+      } else {
+        memory = buffer;
+      }
+
       this.memories.set(sessionId, memory);
     }
     return this.memories.get(sessionId)!;

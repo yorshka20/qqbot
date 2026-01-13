@@ -1,5 +1,6 @@
 // LLM Service - provides LLM text generation capability
 
+import { logger } from '@/utils/logger';
 import type { AIManager } from '../AIManager';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import { isLLMCapability } from '../capabilities/LLMCapability';
@@ -17,27 +18,51 @@ export class LLMService {
   ) {}
 
   /**
-   * Generate text using LLM capability
+   * Get fallback response when no provider is available
+   * Returns a simple template response based on the prompt type
    */
-  async generate(prompt: string, options?: AIGenerateOptions, providerName?: string): Promise<AIGenerateResponse> {
-    // Determine which provider to use
+  private getFallbackResponse(prompt: string): AIGenerateResponse {
+    // Check if this is a summary request
+    if (prompt.includes('Summarize') || prompt.includes('Summary:')) {
+      // Extract conversation text if possible
+      const conversationMatch = prompt.match(/User:.*?Assistant:.*/s);
+      if (conversationMatch) {
+        const conversationText = conversationMatch[0];
+        // Create a simple summary based on message count
+        const messages = conversationText.split(/\n(?=User:|Assistant:)/).filter(Boolean);
+        return {
+          text: `Previous conversation with ${messages.length} messages. Key topics discussed.`,
+        };
+      }
+      return {
+        text: 'Previous conversation summary: Key topics and decisions were discussed.',
+      };
+    }
+
+    // Default fallback response
+    return {
+      text: 'I apologize, but AI service is currently unavailable. Please try again later.',
+    };
+  }
+
+  /**
+   * Check if provider is available
+   */
+  private getAvailableProvider(providerName?: string, sessionId?: string): LLMCapability | null {
     let provider: LLMCapability | null = null;
-    const sessionId = options?.sessionId;
 
     if (providerName) {
       // Use specified provider
       const p = this.aiManager.getProviderForCapability('llm', providerName);
-      if (p && isLLMCapability(p)) {
+      if (p && isLLMCapability(p) && p.isAvailable()) {
         provider = p;
-      } else {
-        throw new Error(`Provider ${providerName} does not support LLM capability`);
       }
     } else if (sessionId && this.providerSelector) {
       // Use session-specific provider
       const sessionProviderName = this.providerSelector.getProviderForSession(sessionId, 'llm');
       if (sessionProviderName) {
         const p = this.aiManager.getProviderForCapability('llm', sessionProviderName);
-        if (p && isLLMCapability(p)) {
+        if (p && isLLMCapability(p) && p.isAvailable()) {
           provider = p;
         }
       }
@@ -46,11 +71,25 @@ export class LLMService {
     // Fall back to default provider
     if (!provider) {
       const defaultProvider = this.aiManager.getDefaultProvider('llm');
-      if (defaultProvider && isLLMCapability(defaultProvider)) {
+      if (defaultProvider && isLLMCapability(defaultProvider) && defaultProvider.isAvailable()) {
         provider = defaultProvider;
-      } else {
-        throw new Error('No LLM provider available');
       }
+    }
+
+    return provider;
+  }
+
+  /**
+   * Generate text using LLM capability
+   */
+  async generate(prompt: string, options?: AIGenerateOptions, providerName?: string): Promise<AIGenerateResponse> {
+    const sessionId = options?.sessionId;
+    const provider = this.getAvailableProvider(providerName, sessionId);
+
+    // If no available provider, return fallback response
+    if (!provider) {
+      logger.warn('[LLMService] No available LLM provider, returning fallback response');
+      return this.getFallbackResponse(prompt);
     }
 
     return await provider.generate(prompt, options);
@@ -65,34 +104,16 @@ export class LLMService {
     options?: AIGenerateOptions,
     providerName?: string,
   ): Promise<AIGenerateResponse> {
-    // Determine which provider to use
-    let provider: LLMCapability | null = null;
     const sessionId = options?.sessionId;
+    const provider = this.getAvailableProvider(providerName, sessionId);
 
-    if (providerName) {
-      const p = this.aiManager.getProviderForCapability('llm', providerName);
-      if (p && isLLMCapability(p)) {
-        provider = p;
-      } else {
-        throw new Error(`Provider ${providerName} does not support LLM capability`);
-      }
-    } else if (sessionId && this.providerSelector) {
-      const sessionProviderName = this.providerSelector.getProviderForSession(sessionId, 'llm');
-      if (sessionProviderName) {
-        const p = this.aiManager.getProviderForCapability('llm', sessionProviderName);
-        if (p && isLLMCapability(p)) {
-          provider = p;
-        }
-      }
-    }
-
+    // If no available provider, return fallback response
     if (!provider) {
-      const defaultProvider = this.aiManager.getDefaultProvider('llm');
-      if (defaultProvider && isLLMCapability(defaultProvider)) {
-        provider = defaultProvider;
-      } else {
-        throw new Error('No LLM provider available');
-      }
+      logger.warn('[LLMService] No available LLM provider, returning fallback response');
+      const fallbackResponse = this.getFallbackResponse(prompt);
+      // Call handler with fallback text for streaming compatibility
+      handler(fallbackResponse.text);
+      return fallbackResponse;
     }
 
     return await provider.generateStream(prompt, handler, options);

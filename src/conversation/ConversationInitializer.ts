@@ -1,7 +1,5 @@
 // Conversation Initializer - initializes all conversation-related components
 
-import '@/command/handlers/BuiltinCommandHandler';
-
 import {
   AIManager,
   AIService,
@@ -16,8 +14,6 @@ import { CommandManager } from '@/command';
 import { DefaultPermissionChecker } from '@/command/PermissionChecker';
 import { ContextManager } from '@/context';
 import type { AIConfig, BotConfig, Config } from '@/core/config';
-import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { SystemRegistry, type SystemContext } from '@/core/system';
 import { DatabaseManager } from '@/database/DatabaseManager';
@@ -55,6 +51,18 @@ export interface ConversationComponents {
 }
 
 /**
+ * Complete services type (includes ContextManager created in Phase 4)
+ */
+type CompleteServices = {
+  databaseManager: DatabaseManager;
+  aiManager: AIManager;
+  contextManager: ContextManager;
+  commandManager: CommandManager;
+  taskManager: TaskManager;
+  hookManager: HookManager;
+};
+
+/**
  * Conversation Initializer
  * Initializes all conversation-related components
  * Organized into clear phases:
@@ -81,55 +89,47 @@ export class ConversationInitializer {
     // Phase 3: Service Configuration
     await this.configureServices(services, config);
 
-    // Phase 4: Service Registration
-    serviceRegistry.registerConversationServices(services);
-
-    // Create ProviderSelector and LLMService for AI capabilities
+    // Phase 4: Create LLMService and ContextManager
     const providerSelector = new ProviderSelector(services.aiManager, services.databaseManager);
     const llmService = new LLMService(services.aiManager, providerSelector);
 
-    // Update ContextManager with LLMService if summary is enabled
     const memoryConfig = config.getContextMemoryConfig();
     const useSummary = memoryConfig?.useSummary ?? false;
-    if (useSummary) {
-      const summaryThreshold = memoryConfig?.summaryThreshold ?? 20;
-      const maxBufferSize = memoryConfig?.maxBufferSize ?? 30;
-      const currentProvider = services.aiManager.getCurrentProvider();
-      if (currentProvider) {
-        services.contextManager = new ContextManager(llmService, useSummary, summaryThreshold, maxBufferSize);
-      }
-    }
+    const summaryThreshold = memoryConfig?.summaryThreshold ?? 20;
+    const maxBufferSize = memoryConfig?.maxBufferSize ?? 30;
+    const maxHistoryMessages = memoryConfig?.maxHistoryMessages ?? 10;
 
-    // Create and register AIService if AI provider is available
-    const currentProvider = services.aiManager.getCurrentProvider();
-    if (currentProvider) {
-      const taskAnalyzer = new TaskAnalyzer(llmService, services.taskManager);
-      const maxHistoryMessages = memoryConfig?.maxHistoryMessages ?? 10;
-      const container = getContainer();
-      const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+    const promptManager = new PromptManager();
+    serviceRegistry.registerPromptManager(promptManager);
 
-      const aiService = new AIService(
-        services.aiManager,
-        services.contextManager,
-        services.hookManager,
-        promptManager,
-        taskAnalyzer,
-        maxHistoryMessages,
-        providerSelector,
-      );
-      serviceRegistry.registerAIServiceCapabilities(aiService);
-    } else {
-      logger.warn('[ConversationInitializer] No AI provider available. AIService will not be registered.');
-    }
+    const contextManager = new ContextManager(llmService, promptManager, useSummary, summaryThreshold, maxBufferSize);
+
+    const completeServices: CompleteServices = {
+      ...services,
+      contextManager,
+    };
+    serviceRegistry.registerConversationServices(completeServices);
+
+    const taskAnalyzer = new TaskAnalyzer(llmService, completeServices.taskManager);
+    const aiService = new AIService(
+      completeServices.aiManager,
+      completeServices.contextManager,
+      completeServices.hookManager,
+      promptManager,
+      taskAnalyzer,
+      maxHistoryMessages,
+      providerSelector,
+    );
+    serviceRegistry.registerAIServiceCapabilities(aiService);
 
     // Phase 5: Service Wiring
-    this.wireServices(services);
+    this.wireServices(completeServices);
 
     // Phase 6: Component Assembly
-    const components = this.assembleComponents(services, apiClient);
+    const components = this.assembleComponents(completeServices, apiClient);
 
     // Phase 7: Register and initialize systems
-    await this.registerAndInitializeSystems(components, services, config);
+    await this.registerAndInitializeSystems(components, completeServices, config);
 
     serviceRegistry.verifyServices();
 
@@ -137,12 +137,12 @@ export class ConversationInitializer {
   }
 
   /**
-   * Phase 2: Create core service instances
+   * Phase 2: Create core service instances (without ContextManager)
+   * ContextManager requires LLMService, which is created in Phase 4
    */
   private static async createCoreServices(config: Config): Promise<{
     databaseManager: DatabaseManager;
     aiManager: AIManager;
-    contextManager: ContextManager;
     commandManager: CommandManager;
     taskManager: TaskManager;
     hookManager: HookManager;
@@ -152,14 +152,6 @@ export class ConversationInitializer {
     await databaseManager.initialize(dbConfig);
 
     const aiManager = new AIManager();
-
-    const memoryConfig = config.getContextMemoryConfig();
-    const useSummary = memoryConfig?.useSummary ?? false;
-    const summaryThreshold = memoryConfig?.summaryThreshold ?? 20;
-    const maxBufferSize = memoryConfig?.maxBufferSize ?? 30;
-
-    // ContextManager will be updated with LLMService later if summary is enabled
-    const contextManager = new ContextManager(undefined, useSummary, summaryThreshold, maxBufferSize);
 
     const botConfig = config.getConfig();
     const permissionChecker = new DefaultPermissionChecker({
@@ -176,7 +168,6 @@ export class ConversationInitializer {
     return {
       databaseManager,
       aiManager,
-      contextManager,
       commandManager,
       taskManager,
       hookManager,
@@ -189,19 +180,18 @@ export class ConversationInitializer {
   private static async configureServices(
     services: {
       aiManager: AIManager;
-      contextManager: ContextManager;
       taskManager: TaskManager;
     },
     config: Config,
   ): Promise<void> {
-    this.configureAIManager(services.aiManager, services.contextManager, config);
+    this.configureAIManager(services.aiManager, config);
     this.configureTaskManager(services.taskManager, config);
   }
 
   /**
    * Configure AI Manager with providers from config
    */
-  private static configureAIManager(aiManager: AIManager, contextManager: ContextManager, config: Config): void {
+  private static configureAIManager(aiManager: AIManager, config: Config): void {
     const aiConfig = config.getAIConfig();
     if (!aiConfig) {
       logger.warn('[ConversationInitializer] No AI configuration found. AI capabilities will not be available.');
@@ -290,11 +280,7 @@ export class ConversationInitializer {
   /**
    * Phase 5: Wire services together (set dependencies)
    */
-  private static wireServices(services: {
-    commandManager: CommandManager;
-    taskManager: TaskManager;
-    hookManager: HookManager;
-  }): void {
+  private static wireServices(services: CompleteServices): void {
     services.commandManager.setHookManager(services.hookManager);
     services.taskManager.setHookManager(services.hookManager);
   }
@@ -302,23 +288,13 @@ export class ConversationInitializer {
   /**
    * Phase 6: Assemble high-level components
    */
-  private static assembleComponents(
-    services: {
-      aiManager: AIManager;
-      contextManager: ContextManager;
-      commandManager: CommandManager;
-      taskManager: TaskManager;
-      hookManager: HookManager;
-      databaseManager: DatabaseManager;
-    },
-    apiClient: APIClient,
-  ): ConversationComponents {
+  private static assembleComponents(services: CompleteServices, apiClient: APIClient): ConversationComponents {
     const systemRegistry = new SystemRegistry();
     const commandRouter = new CommandRouter(['/', '!']);
     const lifecycle = new Lifecycle(services.hookManager);
     lifecycle.setCommandRouter(commandRouter);
+
     const pipeline = new MessagePipeline(lifecycle, services.hookManager, apiClient);
-    // ConversationManager gets botSelfId from config via DI container
     const conversationManager = new ConversationManager(pipeline);
 
     return {
@@ -339,14 +315,7 @@ export class ConversationInitializer {
    */
   private static async registerAndInitializeSystems(
     components: ConversationComponents,
-    services: {
-      aiManager: AIManager;
-      contextManager: ContextManager;
-      commandManager: CommandManager;
-      taskManager: TaskManager;
-      hookManager: HookManager;
-      databaseManager: DatabaseManager;
-    },
+    services: CompleteServices,
     config: Config,
   ): Promise<void> {
     const { systemRegistry } = components;
