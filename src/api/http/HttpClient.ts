@@ -300,19 +300,31 @@ export class HttpClient {
         const contentType = response.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
           errorData = await response.json();
+          const errorObj = errorData as { message?: string; error?: string; detail?: string; statusCode?: number };
           errorMessage =
-            (errorData as { message?: string; error?: string })?.message ||
-            (errorData as { error?: string })?.error ||
+            errorObj.message ||
+            errorObj.error ||
+            errorObj.detail ||
+            (errorObj.statusCode ? `HTTP ${errorObj.statusCode}` : null) ||
             errorMessage;
         } else {
           const text = await response.text();
           errorData = text;
           if (text) {
-            errorMessage = text.length > 200 ? `${text.substring(0, 200)}...` : text;
+            errorMessage = text.length > 500 ? `${text.substring(0, 500)}...` : text;
           }
         }
-      } catch {
-        // Ignore parsing errors, use default error message
+      } catch (parseError) {
+        // Try to get error text even if JSON parsing fails
+        try {
+          const text = await response.clone().text();
+          if (text) {
+            errorData = text;
+            errorMessage = text.length > 500 ? `${text.substring(0, 500)}...` : text;
+          }
+        } catch {
+          // Ignore parsing errors, use default error message
+        }
       }
 
       throw new HttpClientError(errorMessage, response.status, response.statusText, errorData);
@@ -321,7 +333,7 @@ export class HttpClient {
     // Parse response based on content type
     const contentType = response.headers.get('content-type');
 
-    // Handle JSON response
+    // Handle JSON response (only if content-type explicitly says JSON)
     if (contentType && contentType.includes('application/json')) {
       try {
         return (await response.json()) as T;
@@ -332,15 +344,39 @@ export class HttpClient {
       }
     }
 
-    // Handle binary response (ArrayBuffer)
-    if (
-      contentType &&
-      (contentType.includes('audio/') ||
-        contentType.includes('image/') ||
-        contentType.includes('application/octet-stream'))
-    ) {
+    // For unknown or binary content-types, read as ArrayBuffer first to check for ZIP magic bytes
+    // This ensures we can detect ZIP files even if content-type is wrong
+    const shouldCheckForZip =
+      !contentType ||
+      contentType.includes('application/octet-stream') ||
+      contentType.includes('application/zip') ||
+      contentType.includes('audio/') ||
+      contentType.includes('image/');
+
+    if (shouldCheckForZip) {
       try {
-        return (await response.arrayBuffer()) as unknown as T;
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        // ZIP files start with "PK" (0x50 0x4B)
+        const isZip = buffer.length >= 2 && buffer[0] === 0x50 && buffer[1] === 0x4b;
+        if (isZip || contentType?.includes('application/zip')) {
+          return arrayBuffer as unknown as T;
+        }
+        // If it's an image/audio and not ZIP, return as ArrayBuffer
+        if (contentType && (contentType.includes('audio/') || contentType.includes('image/'))) {
+          return arrayBuffer as unknown as T;
+        }
+        // For application/octet-stream, return as ArrayBuffer
+        if (contentType?.includes('application/octet-stream')) {
+          return arrayBuffer as unknown as T;
+        }
+        // If we read it as ArrayBuffer but it's not binary, convert to text
+        // This handles cases where content-type is missing but response is text
+        try {
+          return buffer.toString('utf-8') as unknown as T;
+        } catch {
+          return arrayBuffer as unknown as T;
+        }
       } catch (error) {
         throw new HttpClientError(
           `Failed to read binary response: ${error instanceof Error ? error.message : String(error)}`,
@@ -348,7 +384,7 @@ export class HttpClient {
       }
     }
 
-    // Return text response as fallback
+    // Return text response as fallback for known text content-types
     try {
       return (await response.text()) as unknown as T;
     } catch (error) {
@@ -367,6 +403,11 @@ export class HttpClient {
     // If URL is already absolute, return as is
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return url;
+    }
+
+    // If URL is empty, return baseURL as is (no trailing slash)
+    if (!url) {
+      return this.baseURL;
     }
 
     // Remove leading slash from URL if baseURL ends with slash
