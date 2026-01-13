@@ -100,12 +100,14 @@ export class ProviderFactory {
             type: 'novelai',
             accessToken: novelAIConfig.accessToken,
             baseURL: novelAIConfig.baseURL,
+            model: novelAIConfig.model, // Pass model configuration
             defaultSteps: novelAIConfig.defaultSteps,
             defaultWidth: novelAIConfig.defaultWidth,
             defaultHeight: novelAIConfig.defaultHeight,
             defaultGuidanceScale: novelAIConfig.defaultGuidanceScale,
             defaultStrength: novelAIConfig.defaultStrength,
             defaultNoise: novelAIConfig.defaultNoise,
+            resourceSavePath: novelAIConfig.resourceSavePath,
           });
         }
         default: {

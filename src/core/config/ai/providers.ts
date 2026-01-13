@@ -83,7 +83,8 @@ export interface OpenRouterProviderConfig {
 export interface NovelAIProviderConfig {
   type: 'novelai';
   accessToken: string; // NovelAI access token
-  baseURL?: string; // Default: "https://api.novelai.net"
+  baseURL?: string; // Default: "https://image.novelai.net" (api.novelai.net was deprecated on 2024-04-05)
+  model?: string; // Model name: 'nai-diffusion-4-5-curated', 'nai-diffusion-4-5-full', 'nai-diffusion-3' (default: 'nai-diffusion-4-5-curated')
   defaultSteps?: number; // Default inference steps
   defaultWidth?: number; // Default image width
   defaultHeight?: number; // Default image height

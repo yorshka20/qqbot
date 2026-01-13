@@ -1,5 +1,4 @@
 import { AIService, Text2ImageOptions } from '@/ai';
-import { AIManager } from '@/ai/AIManager';
 import { APIClient } from '@/api/APIClient';
 import { DITokens } from '@/core/DITokens';
 import { NormalizedMessageEvent } from '@/events/types';
@@ -11,33 +10,31 @@ import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
 
 /**
- * Text2Image command - generates image from text prompt
+ * NovelAI command - generates image from text prompt using NovelAI provider
  */
 @Command({
-  name: 't2i',
-  description: 'Generate image from text prompt',
+  name: 'nai',
+  description: 'Generate image from text prompt using NovelAI',
   usage:
-    '/t2i <prompt> [--width <width>] [--height <height>] [--steps <steps>] [--seed <seed>] [--guidance <scale>] [--negative <prompt>]',
+    '/nai <prompt> [--width <width>] [--height <height>] [--steps <steps>] [--seed <seed>] [--guidance <scale>] [--negative <prompt>]',
   permissions: ['user'], // All users can generate images
-  aliases: ['text2img'],
 })
 @injectable()
-export class Text2ImageCommand implements CommandHandler {
-  name = 't2i';
-  description = 'Generate image from text prompt';
-  usage = '/t2i <prompt> [options]';
+export class NovelAICommand implements CommandHandler {
+  name = 'nai';
+  description = 'Generate image from text prompt using NovelAI';
+  usage = '/nai <prompt> [options]';
 
   constructor(
     @inject(DITokens.AI_SERVICE) private aiService: AIService,
     @inject(DITokens.API_CLIENT) private apiClient: APIClient,
-    @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
   ) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     if (args.length === 0) {
       return {
         success: false,
-        error: 'Please provide a prompt. Usage: /t2i <prompt> [options]',
+        error: 'Please provide a prompt. Usage: /nai <prompt> [options]',
       };
     }
 
@@ -45,7 +42,7 @@ export class Text2ImageCommand implements CommandHandler {
       // Parse arguments
       const { prompt, options } = this.parseArguments(args);
 
-      logger.info(`[Text2ImageCommand] Generating image with prompt: ${prompt.substring(0, 50)}...`);
+      logger.info(`[NovelAICommand] Generating image with prompt: ${prompt.substring(0, 50)}...`);
 
       // Create hook context for AIService
       const hookContext: HookContext = {
@@ -67,19 +64,10 @@ export class Text2ImageCommand implements CommandHandler {
         ]),
       };
 
-      // Determine which provider to use: try local-text2img first, fallback to novelai if unavailable
-      let providerName: string | undefined = 'local-text2img';
-      const localProvider = this.aiManager.getProviderForCapability('text2img', 'local-text2img');
-      if (!localProvider || !localProvider.isAvailable()) {
-        logger.info('[Text2ImageCommand] local-text2img provider is not available, falling back to novelai');
-        providerName = 'novelai';
-      } else {
-        logger.debug('[Text2ImageCommand] Using local-text2img provider');
-      }
-
-      // Generate image with selected provider
-      const response = await this.aiService.generateImg(hookContext, options, providerName);
-      logger.info(`[Text2ImageCommand] Generated image with response: ${JSON.stringify(response)}`);
+      // Generate image using NovelAI provider (force provider name)
+      // Skip LLM preprocessing for /nai command - use user input directly as prompt
+      const response = await this.aiService.generateImg(hookContext, options, 'novelai', true);
+      logger.info(`[NovelAICommand] Generated image with response: ${JSON.stringify(response)}`);
       if (!response.images || response.images.length === 0) {
         return {
           success: false,
@@ -106,7 +94,7 @@ export class Text2ImageCommand implements CommandHandler {
         } else if (image.file) {
           messageBuilder.image({ file: image.file });
         } else {
-          logger.warn(`[Text2ImageCommand] Image has no base64, url, or file field: ${JSON.stringify(image)}`);
+          logger.warn(`[NovelAICommand] Image has no base64, url, or file field: ${JSON.stringify(image)}`);
         }
       }
 
@@ -139,7 +127,7 @@ export class Text2ImageCommand implements CommandHandler {
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.error('[Text2ImageCommand] Failed to generate image:', err);
+      logger.error('[NovelAICommand] Failed to generate image:', err);
       return {
         success: false,
         error: `Failed to generate image: ${err.message}`,
@@ -149,7 +137,7 @@ export class Text2ImageCommand implements CommandHandler {
 
   /**
    * Parse command arguments
-   * Supports: /t2i prompt --width 512 --height 512 --steps 50 --seed 123 --guidance 7.5 --negative "bad prompt"
+   * Supports: /nai prompt --width 512 --height 512 --steps 50 --seed 123 --guidance 7.5 --negative "bad prompt"
    */
   private parseArguments(args: string[]): {
     prompt: string;
