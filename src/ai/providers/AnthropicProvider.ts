@@ -16,6 +16,7 @@ export interface AnthropicProviderConfig {
   defaultMaxTokens?: number;
   enableContext?: boolean;
   contextMessageCount?: number;
+  resourceSavePath?: string; // Directory path to save downloaded resources
 }
 
 interface AnthropicMessage {
@@ -307,6 +308,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
           imageData = await ResourceDownloader.downloadToBase64(image.url, {
             timeout: 30000, // 30 seconds timeout
             maxSize: 5 * 1024 * 1024, // 5MB maximum (Anthropic API limit)
+            savePath: this.config.resourceSavePath, // Use provider-specific save path if configured
           });
         } else if (image.file) {
           // Read file and convert to base64
@@ -314,6 +316,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
           imageData = await ResourceDownloader.downloadToBase64(image.file, {
             timeout: 5000, // 5 seconds for local file
             maxSize: 5 * 1024 * 1024, // 5MB maximum (Anthropic API limit)
+            savePath: this.config.resourceSavePath, // Use provider-specific save path if configured
           });
         } else {
           throw new Error('Invalid image format. Must provide base64, url, or file.');

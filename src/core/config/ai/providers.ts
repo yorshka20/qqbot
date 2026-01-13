@@ -28,6 +28,7 @@ export interface AnthropicProviderConfig {
   maxTokens?: number;
   enableContext?: boolean; // Enable automatic context loading from conversation history
   contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
+  resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/anthropic')
 }
 
 export interface OllamaProviderConfig {
@@ -76,6 +77,7 @@ export interface OpenRouterProviderConfig {
   contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
   httpReferer?: string; // Optional: Site URL for rankings
   siteName?: string; // Optional: Site name for rankings
+  resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/openrouter')
 }
 
 export interface NovelAIProviderConfig {
@@ -88,6 +90,7 @@ export interface NovelAIProviderConfig {
   defaultGuidanceScale?: number; // Default guidance scale
   defaultStrength?: number; // Default strength for img2img (0-1)
   defaultNoise?: number; // Default noise for img2img
+  resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/novelai')
 }
 
 export type AIProviderConfig =

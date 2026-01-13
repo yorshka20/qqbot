@@ -185,6 +185,7 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
       const imageBase64 = await ResourceDownloader.downloadToBase64(image, {
         timeout: 30000, // 30 seconds timeout for image download
         maxSize: 10 * 1024 * 1024, // 10MB maximum file size
+        savePath: this.config.resourceSavePath, // Use provider-specific save path if configured
       });
 
       const img2imgParameters: Record<string, unknown> = {
