@@ -14,6 +14,8 @@ import { CommandManager } from '@/command';
 import { DefaultPermissionChecker } from '@/command/PermissionChecker';
 import { ContextManager } from '@/context';
 import type { AIConfig, BotConfig, Config } from '@/core/config';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { SystemRegistry, type SystemContext } from '@/core/system';
 import { DatabaseManager } from '@/database/DatabaseManager';
@@ -99,8 +101,7 @@ export class ConversationInitializer {
     const maxBufferSize = memoryConfig?.maxBufferSize ?? 30;
     const maxHistoryMessages = memoryConfig?.maxHistoryMessages ?? 10;
 
-    const promptManager = new PromptManager();
-    serviceRegistry.registerPromptManager(promptManager);
+    const promptManager = getContainer().resolve<PromptManager>(DITokens.PROMPT_MANAGER);
 
     const contextManager = new ContextManager(llmService, promptManager, useSummary, summaryThreshold, maxBufferSize);
 

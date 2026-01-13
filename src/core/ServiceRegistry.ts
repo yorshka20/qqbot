@@ -3,7 +3,6 @@
 
 import type { AIManager } from '@/ai/AIManager';
 import type { AIService } from '@/ai/AIService';
-import type { PromptManager } from '@/ai/PromptManager';
 import type { APIClient } from '@/api/APIClient';
 import type { CommandManager } from '@/command/CommandManager';
 import type { ContextManager } from '@/context/ContextManager';
@@ -85,13 +84,6 @@ export class ServiceRegistry {
    */
   registerHookService(hookManager: HookManager): void {
     this.container.registerInstance(DITokens.HOOK_MANAGER, hookManager);
-  }
-
-  /**
-   * Register prompt manager service
-   */
-  registerPromptManager(promptManager: PromptManager): void {
-    this.container.registerInstance(DITokens.PROMPT_MANAGER, promptManager);
   }
 
   /**
