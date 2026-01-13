@@ -1,13 +1,15 @@
 // Provider Factory - creates AI providers from configuration
 
-import type { AIProviderConfig } from '@/core/Config';
+import type { AIProviderConfig } from '@/core/config';
 import { logger } from '@/utils/logger';
 import type { AIProvider } from './base/AIProvider';
 import { AnthropicProvider } from './providers/AnthropicProvider';
 import { DeepSeekProvider } from './providers/DeepSeekProvider';
 import { LocalText2ImageProvider } from './providers/LocalText2ImageProvider';
+import { NovelAIProvider } from './providers/NovelAIProvider';
 import { OllamaProvider } from './providers/OllamaProvider';
 import { OpenAIProvider } from './providers/OpenAIProvider';
+import { OpenRouterProvider } from './providers/OpenRouterProvider';
 
 /**
  * Provider Factory
@@ -75,6 +77,35 @@ export class ProviderFactory {
             defaultHeight: localConfig.defaultHeight,
             defaultGuidanceScale: localConfig.defaultGuidanceScale,
             defaultNumImages: localConfig.defaultNumImages,
+          });
+        }
+        case 'openrouter': {
+          const openRouterConfig = config as Extract<AIProviderConfig, { type: 'openrouter' }>;
+          return new OpenRouterProvider({
+            type: 'openrouter',
+            apiKey: openRouterConfig.apiKey,
+            model: openRouterConfig.model,
+            baseURL: openRouterConfig.baseURL,
+            temperature: openRouterConfig.temperature,
+            maxTokens: openRouterConfig.maxTokens,
+            enableContext: openRouterConfig.enableContext,
+            contextMessageCount: openRouterConfig.contextMessageCount,
+            httpReferer: openRouterConfig.httpReferer,
+            siteName: openRouterConfig.siteName,
+          });
+        }
+        case 'novelai': {
+          const novelAIConfig = config as Extract<AIProviderConfig, { type: 'novelai' }>;
+          return new NovelAIProvider({
+            type: 'novelai',
+            accessToken: novelAIConfig.accessToken,
+            baseURL: novelAIConfig.baseURL,
+            defaultSteps: novelAIConfig.defaultSteps,
+            defaultWidth: novelAIConfig.defaultWidth,
+            defaultHeight: novelAIConfig.defaultHeight,
+            defaultGuidanceScale: novelAIConfig.defaultGuidanceScale,
+            defaultStrength: novelAIConfig.defaultStrength,
+            defaultNoise: novelAIConfig.defaultNoise,
           });
         }
         default: {
