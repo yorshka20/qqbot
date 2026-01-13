@@ -1,6 +1,6 @@
 // Prompt Initializer - initializes PromptManager and registers it to DI container
 
-import type { Config } from '@/core/Config';
+import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';

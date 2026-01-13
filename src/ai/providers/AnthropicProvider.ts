@@ -1,11 +1,13 @@
 // Anthropic Provider implementation
 
+import { HttpClient } from '@/api/http/HttpClient';
 import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { VisionCapability } from '../capabilities/VisionCapability';
 import type { CapabilityType, VisionImage } from '../capabilities/types';
 import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
+import { ResourceDownloader } from '../utils/ResourceDownloader';
 
 export interface AnthropicProviderConfig {
   apiKey: string;
@@ -33,6 +35,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
   private config: AnthropicProviderConfig;
   private baseUrl = 'https://api.anthropic.com/v1';
   private _capabilities: CapabilityType[];
+  private httpClient: HttpClient;
 
   constructor(config: AnthropicProviderConfig) {
     super();
@@ -44,6 +47,16 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
 
     // Set context configuration
     this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);
+
+    // Configure HttpClient
+    this.httpClient = new HttpClient({
+      baseURL: this.baseUrl,
+      defaultHeaders: {
+        'x-api-key': this.config.apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      defaultTimeout: 120000, // 2 minutes default timeout for AI processing
+    });
 
     if (this.isAvailable()) {
       logger.info('[AnthropicProvider] Initialized');
@@ -61,24 +74,25 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
 
     try {
       // Test API connection by making a simple request
-      const response = await fetch(`${this.baseUrl}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.config.apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
+      await this.httpClient.post(
+        '/messages',
+        {
           model: this.config.model || 'claude-3-sonnet-20240229',
           max_tokens: 1,
           messages: [{ role: 'user', content: 'test' }],
-        }),
-      });
-
-      return response.ok || response.status === 400; // 400 might mean invalid request but API is reachable
+        },
+        { timeout: 5000 },
+      );
+      return true;
     } catch (error) {
       logger.debug('[AnthropicProvider] Availability check failed:', error);
-      return false;
+      // If we get a 401 or 400, the API is reachable but token/request might be invalid
+      // If we get a network error, the API is not reachable
+      if (error instanceof Error && error.message.includes('timeout')) {
+        return false;
+      }
+      // Other errors (like 401, 400) mean the API is reachable
+      return true;
     }
   }
 
@@ -124,27 +138,12 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         content: prompt,
       });
 
-      const response = await fetch(`${this.baseUrl}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.config.apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: maxTokens,
-          temperature,
-          messages,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Anthropic API error: ${response.status} ${errorText}`);
-      }
-
-      const data = (await response.json()) as {
+      const data = (await this.httpClient.post('/messages', {
+        model,
+        max_tokens: maxTokens,
+        temperature,
+        messages,
+      })) as {
         content: Array<{ type: string; text: string }>;
         usage?: { input_tokens: number; output_tokens: number };
         model: string;
@@ -203,32 +202,19 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         content: prompt,
       });
 
-      const response = await fetch(`${this.baseUrl}/messages`, {
+      // Use HttpClient stream method for streaming requests
+      const stream = await this.httpClient.stream('/messages', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.config.apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
+        body: {
           model,
           max_tokens: maxTokens,
           temperature,
           messages,
           stream: true,
-        }),
+        },
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Anthropic API error: ${response.status} ${errorText}`);
-      }
-
-      if (!response.body) {
-        throw new Error('Response body is null');
-      }
-
-      const reader = response.body.getReader();
+      const reader = stream.getReader();
       const decoder = new TextDecoder();
       let fullText = '';
       let usage: AIGenerateResponse['usage'] | undefined;
@@ -312,16 +298,25 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         let imageData: string;
         let mimeType = image.mimeType || 'image/jpeg';
 
+        // Use ResourceDownloader to handle various input formats
         if (image.base64) {
           imageData = image.base64;
         } else if (image.url) {
-          // For URLs, we need to fetch and convert to base64
-          // This is a simplified version - in production, you might want to handle this differently
-          throw new Error('URL images not directly supported. Please use base64 encoded images.');
+          // Download from URL and convert to base64
+          // Anthropic API limit: 5MB per image, 32MB per request
+          imageData = await ResourceDownloader.downloadToBase64(image.url, {
+            timeout: 30000, // 30 seconds timeout
+            maxSize: 5 * 1024 * 1024, // 5MB maximum (Anthropic API limit)
+          });
         } else if (image.file) {
-          throw new Error('File path images not directly supported. Please use base64 encoded images.');
+          // Read file and convert to base64
+          // Anthropic API limit: 5MB per image, 32MB per request
+          imageData = await ResourceDownloader.downloadToBase64(image.file, {
+            timeout: 5000, // 5 seconds for local file
+            maxSize: 5 * 1024 * 1024, // 5MB maximum (Anthropic API limit)
+          });
         } else {
-          throw new Error('Invalid image format. Must provide base64 encoded image.');
+          throw new Error('Invalid image format. Must provide base64, url, or file.');
         }
 
         content.push({
@@ -334,32 +329,17 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         });
       }
 
-      const response = await fetch(`${this.baseUrl}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.config.apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: maxTokens,
-          temperature,
-          messages: [
-            {
-              role: 'user',
-              content,
-            },
-          ],
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Anthropic API error: ${response.status} ${errorText}`);
-      }
-
-      const data = (await response.json()) as {
+      const data = (await this.httpClient.post('/messages', {
+        model,
+        max_tokens: maxTokens,
+        temperature,
+        messages: [
+          {
+            role: 'user',
+            content,
+          },
+        ],
+      })) as {
         content: Array<{ type: string; text: string }>;
         usage?: { input_tokens: number; output_tokens: number };
         model: string;

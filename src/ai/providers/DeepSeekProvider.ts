@@ -1,5 +1,6 @@
 // DeepSeek Provider implementation
 
+import { HttpClient } from '@/api/http/HttpClient';
 import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
@@ -33,6 +34,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
   private config: DeepSeekProviderConfig;
   private baseUrl: string;
   private _capabilities: CapabilityType[];
+  private httpClient: HttpClient;
 
   constructor(config: DeepSeekProviderConfig) {
     super();
@@ -45,6 +47,15 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
 
     // Set context configuration
     this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);
+
+    // Configure HttpClient
+    this.httpClient = new HttpClient({
+      baseURL: this.baseUrl,
+      defaultHeaders: {
+        Authorization: `Bearer ${this.config.apiKey}`,
+      },
+      defaultTimeout: 120000, // 2 minutes default timeout for AI processing
+    });
 
     if (this.isAvailable()) {
       logger.info('[DeepSeekProvider] Initialized');
@@ -62,23 +73,25 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
 
     try {
       // Test API connection by making a simple request
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.config.apiKey}`,
-        },
-        body: JSON.stringify({
+      await this.httpClient.post(
+        '/chat/completions',
+        {
           model: this.config.model || 'deepseek-chat',
           messages: [{ role: 'user', content: 'test' }],
           max_tokens: 1,
-        }),
-      });
-
-      return response.ok || response.status === 400; // 400 might mean invalid request but API is reachable
+        },
+        { timeout: 5000 },
+      );
+      return true;
     } catch (error) {
       logger.debug('[DeepSeekProvider] Availability check failed:', error);
-      return false;
+      // If we get a 401 or 400, the API is reachable but token/request might be invalid
+      // If we get a network error, the API is not reachable
+      if (error instanceof Error && error.message.includes('timeout')) {
+        return false;
+      }
+      // Other errors (like 401, 400) mean the API is reachable
+      return true;
     }
   }
 
@@ -125,30 +138,16 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
         content: prompt,
       });
 
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.config.apiKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          messages,
-          temperature,
-          max_tokens: maxTokens,
-          top_p: options?.topP,
-          frequency_penalty: options?.frequencyPenalty,
-          presence_penalty: options?.presencePenalty,
-          stop: options?.stop,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`DeepSeek API error: ${response.status} ${errorText}`);
-      }
-
-      const data = (await response.json()) as {
+      const data = (await this.httpClient.post('/chat/completions', {
+        model,
+        messages,
+        temperature,
+        max_tokens: maxTokens,
+        top_p: options?.topP,
+        frequency_penalty: options?.frequencyPenalty,
+        presence_penalty: options?.presencePenalty,
+        stop: options?.stop,
+      })) as {
         choices: Array<{ message: { content: string } }>;
         usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
         model: string;
@@ -207,13 +206,10 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
         content: prompt,
       });
 
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+      // Use HttpClient stream method for streaming requests
+      const stream = await this.httpClient.stream('/chat/completions', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.config.apiKey}`,
-        },
-        body: JSON.stringify({
+        body: {
           model,
           messages,
           temperature,
@@ -223,19 +219,10 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
           presence_penalty: options?.presencePenalty,
           stop: options?.stop,
           stream: true,
-        }),
+        },
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`DeepSeek API error: ${response.status} ${errorText}`);
-      }
-
-      if (!response.body) {
-        throw new Error('Response body is null');
-      }
-
-      const reader = response.body.getReader();
+      const reader = stream.getReader();
       const decoder = new TextDecoder();
       let fullText = '';
       let usage: AIGenerateResponse['usage'] | undefined;

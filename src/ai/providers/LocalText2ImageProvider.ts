@@ -1,5 +1,6 @@
 // Local Text2Image Provider implementation - connects to local Python server
 
+import { HttpClient } from '@/api/http/HttpClient';
 import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';
@@ -18,6 +19,12 @@ export interface LocalText2ImageProviderConfig {
   defaultNumImages?: number; // Default number of images to generate (default: 1)
 }
 
+type LocalText2ImageResponse = {
+  image_url?: string;
+  image_urls?: string[];
+  metadata?: Record<string, unknown>;
+};
+
 /**
  * Local Text2Image Provider implementation
  * Connects to a local Python server for text-to-image generation
@@ -26,6 +33,7 @@ export class LocalText2ImageProvider extends AIProvider implements Text2ImageCap
   readonly name = 'local-text2img';
   private config: LocalText2ImageProviderConfig;
   private _capabilities: CapabilityType[];
+  private httpClient: HttpClient;
 
   constructor(config: LocalText2ImageProviderConfig) {
     super();
@@ -45,6 +53,12 @@ export class LocalText2ImageProvider extends AIProvider implements Text2ImageCap
     // Explicitly declare supported capabilities
     this._capabilities = ['text2img'];
 
+    // Configure HttpClient
+    this.httpClient = new HttpClient({
+      baseURL: this.config.baseUrl,
+      defaultTimeout: this.config.timeout,
+    });
+
     logger.info('[LocalText2ImageProvider] Initialized', {
       baseUrl: this.config.baseUrl,
       endpoint: this.config.endpoint,
@@ -62,29 +76,24 @@ export class LocalText2ImageProvider extends AIProvider implements Text2ImageCap
 
     try {
       // Test API connection by making a simple request
-      const url = `${this.config.baseUrl}${this.config.endpoint}`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout for health check
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      await this.httpClient.post(
+        this.config.endpoint!,
+        {
           prompt: 'test',
           censor_enabled: this.config.censorEnabled,
-        }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      // Even if the request fails, if we get a response, the server is reachable
-      return response.status !== 404;
+        },
+        { timeout: 5000 }, // 5 second timeout for health check
+      );
+      return true;
     } catch (error) {
       logger.debug('[LocalText2ImageProvider] Availability check failed:', error);
-      return false;
+      // If we get a 404, the server is not reachable
+      // Other errors might mean the server is reachable but the request is invalid
+      if (error instanceof Error && error.message.includes('404')) {
+        return false;
+      }
+      // For other errors, assume server is reachable
+      return true;
     }
   }
 
@@ -113,7 +122,6 @@ export class LocalText2ImageProvider extends AIProvider implements Text2ImageCap
     }
 
     try {
-      const url = `${this.config.baseUrl}${this.config.endpoint}`;
       logger.debug(`[LocalText2ImageProvider] Generating image with prompt: ${prompt}`);
 
       // Build request body with all parameters
@@ -140,33 +148,9 @@ export class LocalText2ImageProvider extends AIProvider implements Text2ImageCap
         }
       }
 
-      // Create abort controller for timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
+      const data = await this.httpClient.post<LocalText2ImageResponse>(this.config.endpoint!, requestBody, {
+        timeout: this.config.timeout,
       });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(
-          `LocalText2ImageProvider request failed: ${response.status} ${response.statusText} - ${errorText}`,
-        );
-      }
-
-      const data = (await response.json()) as {
-        image_url?: string;
-        image_urls?: string[];
-        metadata?: Record<string, unknown>;
-      };
 
       // Handle response format: { image } or { images: [...] }
       // Image can be base64 string or array of base64 strings
@@ -194,9 +178,6 @@ export class LocalText2ImageProvider extends AIProvider implements Text2ImageCap
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      if (err.name === 'AbortError') {
-        throw new Error(`LocalText2ImageProvider request timeout after ${this.config.timeout}ms`);
-      }
       logger.error('[LocalText2ImageProvider] Generation failed:', err);
       throw err;
     }

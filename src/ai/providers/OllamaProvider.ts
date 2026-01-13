@@ -1,5 +1,6 @@
 // Ollama Provider implementation
 
+import { HttpClient } from '@/api/http/HttpClient';
 import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
@@ -33,6 +34,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
   private config: OllamaProviderConfig;
   private baseUrl: string;
   private _capabilities: CapabilityType[];
+  private httpClient: HttpClient;
 
   constructor(config: OllamaProviderConfig) {
     super();
@@ -45,6 +47,12 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
 
     // Set context configuration
     this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);
+
+    // Configure HttpClient
+    this.httpClient = new HttpClient({
+      baseURL: this.baseUrl,
+      defaultTimeout: 120000, // 2 minutes default timeout for AI processing
+    });
 
     if (this.isAvailable()) {
       logger.info('[OllamaProvider] Initialized');
@@ -81,13 +89,8 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/api/tags`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      return response.ok;
+      await this.httpClient.get('/api/tags', { timeout: 5000 });
+      return true;
     } catch (error) {
       logger.debug('[OllamaProvider] Availability check failed:', error);
       return false;
@@ -126,22 +129,41 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
   }
 
   /**
-   * Call Ollama chat API
+   * Call Ollama chat API (non-streaming)
    */
   private async callChatAPI(
     messages: Array<{ role: 'user' | 'assistant'; content: string }>,
     options?: AIGenerateOptions,
-    stream = false,
-  ): Promise<Response> {
+  ): Promise<OllamaGenerateResponse> {
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
-    return fetch(`${this.baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    return this.httpClient.post<OllamaGenerateResponse>('/api/chat', {
+      model: this.config.model,
+      messages,
+      options: {
+        temperature,
+        num_predict: maxTokens,
+        top_p: options?.topP,
+        repeat_penalty: options?.frequencyPenalty ? 1 + options.frequencyPenalty : undefined,
       },
-      body: JSON.stringify({
+      stream: false,
+    });
+  }
+
+  /**
+   * Call Ollama chat API (streaming)
+   */
+  private async callChatAPIStream(
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+    options?: AIGenerateOptions,
+  ): Promise<ReadableStream<Uint8Array>> {
+    const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
+    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+
+    return this.httpClient.stream('/api/chat', {
+      method: 'POST',
+      body: {
         model: this.config.model,
         messages,
         options: {
@@ -150,8 +172,8 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
           top_p: options?.topP,
           repeat_penalty: options?.frequencyPenalty ? 1 + options.frequencyPenalty : undefined,
         },
-        stream,
-      }),
+        stream: true,
+      },
     });
   }
 
@@ -162,14 +184,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
       // Always use chat API - it supports both single messages and conversation history
       // This simplifies the code and makes it consistent with other providers
       const messages = await this.buildMessages(prompt, options);
-      const response = await this.callChatAPI(messages, options, false);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Ollama API error: ${response.status} ${errorText}`);
-      }
-
-      const data = (await response.json()) as OllamaGenerateResponse;
+      const data = await this.callChatAPI(messages, options);
 
       const text = data.message?.content ?? '';
       const usage = data.eval_count
@@ -199,14 +214,10 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
    * Parse streaming response from chat API
    */
   private async parseChatStream(
-    response: Response,
+    stream: ReadableStream<Uint8Array>,
     handler: StreamingHandler,
   ): Promise<{ text: string; usage?: AIGenerateResponse['usage'] }> {
-    if (!response.body) {
-      throw new Error('Response body is null');
-    }
-
-    const reader = response.body.getReader();
+    const reader = stream.getReader();
     const decoder = new TextDecoder();
     let fullText = '';
     let usage: AIGenerateResponse['usage'] | undefined;
@@ -261,14 +272,9 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
       // Always use chat API - it supports both single messages and conversation history
       // This simplifies the code and makes it consistent with other providers
       const messages = await this.buildMessages(prompt, options);
-      const response = await this.callChatAPI(messages, options, true);
+      const stream = await this.callChatAPIStream(messages, options);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Ollama API error: ${response.status} ${errorText}`);
-      }
-
-      const { text, usage } = await this.parseChatStream(response, handler);
+      const { text, usage } = await this.parseChatStream(stream, handler);
       return { text, usage };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');

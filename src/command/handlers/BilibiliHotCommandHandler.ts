@@ -1,10 +1,23 @@
 import { APIClient } from '@/api/APIClient';
+import { HttpClient } from '@/api/http/HttpClient';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
 import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
+
+// Fetch hot search data from Bilibili API
+type BilibiliHotSearchResponse = {
+  code: number;
+  list?: Array<{
+    keyword: string;
+    show_name: string;
+    heat_score: number;
+    pos: number;
+    icon?: string;
+  }>;
+};
 
 /**
  * Bilibili hot search command - fetches B站热搜列表 and sends as card messages
@@ -23,35 +36,24 @@ export class BilibiliHotCommandHandler implements CommandHandler {
   usage = '/b站';
 
   private readonly API_URL = 'https://s.search.bilibili.com/main/hotword';
+  private readonly httpClient: HttpClient;
 
-  constructor(@inject(DITokens.API_CLIENT) private apiClient: APIClient) {}
+  constructor(@inject(DITokens.API_CLIENT) private apiClient: APIClient) {
+    // Configure HttpClient for Bilibili API
+    this.httpClient = new HttpClient({
+      baseURL: this.API_URL,
+      defaultHeaders: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+      defaultTimeout: 10000, // 10 seconds default timeout
+    });
+  }
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     try {
       logger.info('[BilibiliHotCommandHandler] Fetching Bilibili hot search list');
 
-      // Fetch hot search data from Bilibili API
-      const response = await fetch(this.API_URL, {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = (await response.json()) as {
-        code: number;
-        list?: Array<{
-          keyword: string;
-          show_name: string;
-          heat_score: number;
-          pos: number;
-          icon?: string;
-        }>;
-      };
+      const data = await this.httpClient.get<BilibiliHotSearchResponse>('');
 
       if (data.code !== 0 || !data.list || data.list.length === 0) {
         return {
@@ -60,10 +62,8 @@ export class BilibiliHotCommandHandler implements CommandHandler {
         };
       }
 
-      // Build card-style message
       const messageBuilder = new MessageBuilder();
 
-      // Title
       messageBuilder.text('🔥 B站热搜榜\n');
       messageBuilder.text('━━━━━━━━━━━━━━━━\n\n');
 

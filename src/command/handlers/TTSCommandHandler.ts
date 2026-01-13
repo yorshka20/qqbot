@@ -1,4 +1,5 @@
 import { APIClient } from '@/api/APIClient';
+import { HttpClient } from '@/api/http/HttpClient';
 import { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
@@ -26,6 +27,7 @@ export class TTSCommandHandler implements CommandHandler {
 
   // Fish Audio API URL
   private readonly FISH_API_URL = 'https://api.fish.audio/v1/tts';
+  private readonly httpClient: HttpClient;
 
   // Voice map: voice name -> reference_id
   private readonly VOICE_MAP: Record<string, string> = {
@@ -48,7 +50,13 @@ export class TTSCommandHandler implements CommandHandler {
   constructor(
     @inject(DITokens.API_CLIENT) private apiClient: APIClient,
     @inject(DITokens.CONFIG) private config: Config,
-  ) {}
+  ) {
+    // Configure HttpClient for Fish Audio API
+    this.httpClient = new HttpClient({
+      baseURL: this.FISH_API_URL,
+      defaultTimeout: 30000, // 30 seconds default timeout
+    });
+  }
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     // Check if user wants to list available voices
@@ -136,23 +144,14 @@ export class TTSCommandHandler implements CommandHandler {
       }
 
       // Generate speech using Fish Audio API
-      const response = await fetch(this.FISH_API_URL, {
-        method: 'POST',
+      const audioArrayBuffer = await this.httpClient.post<ArrayBuffer>('', requestBody, {
         headers: {
           Authorization: `Bearer ${ttsConfig.apiKey}`,
-          'Content-Type': 'application/json',
           model: baseModel,
         },
-        body: JSON.stringify(requestBody),
+        timeout: 30000, // 30 seconds timeout
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Fish Audio API error: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-
-      // Get audio data as ArrayBuffer
-      const audioArrayBuffer = await response.arrayBuffer();
+      // Convert ArrayBuffer to Buffer
       const audioBuffer = Buffer.from(audioArrayBuffer);
 
       // Convert Buffer to base64 string
