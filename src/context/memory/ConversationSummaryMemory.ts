@@ -1,5 +1,6 @@
 // Conversation Summary Memory - compresses long conversations using summaries
 
+import { PromptManager } from '@/ai/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import { logger } from '@/utils/logger';
 import type { ConversationBufferMemory } from './ConversationBufferMemory';
@@ -10,15 +11,13 @@ import type { ConversationBufferMemory } from './ConversationBufferMemory';
  */
 export class ConversationSummaryMemory {
   private summary: string = '';
-  private buffer: ConversationBufferMemory;
-  private summaryThreshold: number;
-  private llmService: LLMService | null = null;
 
-  constructor(buffer: ConversationBufferMemory, summaryThreshold = 20, llmService?: LLMService) {
-    this.buffer = buffer;
-    this.summaryThreshold = summaryThreshold;
-    this.llmService = llmService || null;
-  }
+  constructor(
+    private buffer: ConversationBufferMemory,
+    private summaryThreshold: number,
+    private llmService: LLMService,
+    private promptManager: PromptManager,
+  ) {}
 
   /**
    * Add message and potentially summarize if buffer is too large
@@ -27,7 +26,7 @@ export class ConversationSummaryMemory {
     this.buffer.addMessage(role, content);
 
     // Summarize if buffer exceeds threshold
-    if (this.buffer.size() > this.summaryThreshold && this.llmService) {
+    if (this.buffer.size() > this.summaryThreshold) {
       await this.summarize();
     }
   }
@@ -56,11 +55,6 @@ export class ConversationSummaryMemory {
    * Summarize old messages
    */
   private async summarize(): Promise<void> {
-    if (!this.llmService) {
-      logger.warn('[ConversationSummaryMemory] LLM service not available, skipping summary');
-      return;
-    }
-
     try {
       const oldMessages = this.buffer.getHistory().slice(0, -5); // Keep last 5 messages
       if (oldMessages.length === 0) {
@@ -71,11 +65,10 @@ export class ConversationSummaryMemory {
         .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
         .join('\n');
 
-      const prompt = `Summarize the following conversation in 2-3 sentences, focusing on key topics and decisions:
-
-${conversationText}
-
-Summary:`;
+      // Render prompt using PromptManager
+      const prompt = this.promptManager.render('llm.summarize', {
+        conversationText,
+      });
 
       logger.debug('[ConversationSummaryMemory] Generating summary...');
 
@@ -91,15 +84,11 @@ Summary:`;
         this.summary = response.text;
       }
 
-      // Remove summarized messages from buffer
-      for (let i = 0; i < oldMessages.length; i++) {
-        // Buffer will auto-trim, but we need to manually remove
-        // Since we can't directly remove, we'll recreate buffer with remaining messages
-      }
-
-      // Keep only recent messages
+      // Keep only recent messages (last 5) in buffer, remove summarized messages
+      // Get recent messages before clearing buffer
       const recentMessages = this.buffer.getHistory().slice(-5);
       this.buffer.clear();
+      // Re-add only the recent messages to buffer
       for (const msg of recentMessages) {
         this.buffer.addMessage(msg.role, msg.content);
       }
@@ -117,12 +106,5 @@ Summary:`;
   clear(): void {
     this.summary = '';
     this.buffer.clear();
-  }
-
-  /**
-   * Set LLM service for summarization
-   */
-  setLLMService(llmService: LLMService): void {
-    this.llmService = llmService;
   }
 }

@@ -1,0 +1,5 @@
+Summarize the following conversation in 2-3 sentences, focusing on key topics and decisions:
+
+{{conversationText}}
+
+Summary:
