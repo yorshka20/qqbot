@@ -1,61 +1,43 @@
 // NovelAI Provider implementation
 
-import { HttpClient } from '@/api/http/HttpClient';
 import type { NovelAIProviderConfig } from '@/core/config';
 import { logger } from '@/utils/logger';
+import { mkdir, writeFile } from 'fs/promises';
+import JSZip from 'jszip';
+import { join } from 'path';
 import { AIProvider } from '../base/AIProvider';
-import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
 import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';
-import type {
-  CapabilityType,
-  Image2ImageOptions,
-  ImageGenerationResponse,
-  Text2ImageOptions,
-} from '../capabilities/types';
-import { ResourceDownloader } from '../utils/ResourceDownloader';
+import type { CapabilityType, ImageGenerationResponse, Text2ImageOptions } from '../capabilities/types';
 
 /**
  * NovelAI Provider implementation
- * Implements Text2Image and Image2Image capabilities
- * Supports both text-to-image and image-to-image generation
+ * Text-to-image generation using NovelAI API
  */
-export class NovelAIProvider extends AIProvider implements Text2ImageCapability, Image2ImageCapability {
+export class NovelAIProvider extends AIProvider implements Text2ImageCapability {
   readonly name = 'novelai';
-  private httpClient: HttpClient;
   private config: NovelAIProviderConfig;
   private _capabilities: CapabilityType[];
+
+  // Basic defaults
+  private static readonly DEFAULT_STEPS = 45;
+  private static readonly DEFAULT_WIDTH = 832;
+  private static readonly DEFAULT_HEIGHT = 1216;
+  private static readonly DEFAULT_GUIDANCE_SCALE = 5.0;
 
   constructor(config: NovelAIProviderConfig) {
     super();
     this.config = {
-      baseURL: 'https://api.novelai.net',
-      defaultSteps: 28,
-      defaultWidth: 832,
-      defaultHeight: 1216,
-      defaultGuidanceScale: 7,
-      defaultStrength: 0.7,
-      defaultNoise: 0.1,
+      baseURL: 'https://image.novelai.net',
+      defaultSteps: NovelAIProvider.DEFAULT_STEPS,
+      defaultWidth: NovelAIProvider.DEFAULT_WIDTH,
+      defaultHeight: NovelAIProvider.DEFAULT_HEIGHT,
+      defaultGuidanceScale: NovelAIProvider.DEFAULT_GUIDANCE_SCALE,
       ...config,
     };
 
-    // Explicitly declare supported capabilities
-    this._capabilities = ['text2img', 'img2img'];
+    this._capabilities = ['text2img'];
 
-    // Configure HttpClient
-    const baseURL = this.config.baseURL || 'https://api.novelai.net';
-    const defaultHeaders: Record<string, string> = {
-      Authorization: `Bearer ${config.accessToken}`,
-    };
-
-    this.httpClient = new HttpClient({
-      baseURL,
-      defaultHeaders,
-      defaultTimeout: 300000, // 5 minutes default timeout for image generation
-    });
-
-    if (this.isAvailable()) {
-      logger.info('[NovelAIProvider] Initialized');
-    }
+    logger.info('[NovelAIProvider] Initialized');
   }
 
   isAvailable(): boolean {
@@ -66,22 +48,7 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
     if (!this.isAvailable()) {
       return false;
     }
-
-    try {
-      // Test API connection by making a simple request
-      // NovelAI doesn't have a simple health check endpoint, so we'll try to get user info
-      await this.httpClient.get('/user/information', { timeout: 5000 });
-      return true;
-    } catch (error) {
-      logger.debug('[NovelAIProvider] Availability check failed:', error);
-      // If we get a 401, the API is reachable but token is invalid
-      // If we get a network error, the API is not reachable
-      if (error instanceof Error && error.message.includes('timeout')) {
-        return false;
-      }
-      // Other errors (like 401) mean the API is reachable
-      return true;
-    }
+    return true;
   }
 
   getConfig(): Record<string, unknown> {
@@ -94,12 +61,198 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
     };
   }
 
-  /**
-   * Get capabilities supported by this provider
-   * NovelAI supports both text-to-image and image-to-image generation
-   */
   getCapabilities(): CapabilityType[] {
     return this._capabilities;
+  }
+
+  /**
+   * Save base64 image data to local file
+   */
+  private async saveImageToFile(base64Data: string, prompt: string, seed?: number): Promise<string> {
+    try {
+      // Create output directory if it doesn't exist
+      const outputDir = join(process.cwd(), 'output');
+      await mkdir(outputDir, { recursive: true });
+
+      // Generate filename based on timestamp, seed, and prompt hash
+      const timestamp = Date.now();
+      const promptHash = prompt.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_');
+      const seedStr = seed !== undefined ? `_${seed}` : '';
+      const filename = `novelai_${timestamp}${seedStr}_${promptHash}.png`;
+      const filepath = join(outputDir, filename);
+
+      // Convert base64 to buffer and save
+      const imageBuffer = Buffer.from(base64Data, 'base64');
+      await writeFile(filepath, imageBuffer);
+
+      logger.info(`[NovelAIProvider] Saved image to: ${filepath} (${imageBuffer.length} bytes)`);
+      return filepath;
+    } catch (error) {
+      logger.warn(
+        `[NovelAIProvider] Failed to save image to file: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return '';
+    }
+  }
+
+  /**
+   * Parse SSE (Server-Sent Events) stream to extract the final image
+   */
+  private async parseSSEStream(response: Response): Promise<string> {
+    if (!response.body) {
+      throw new Error('Response body is null');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalImage = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Process complete SSE events
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line for next iteration
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.substring(6)); // Remove 'data: ' prefix
+
+              if (data.image && data.event_type === 'intermediate') {
+                // This is likely the final image (intermediate event with image data)
+                finalImage = data.image;
+              }
+            } catch (e) {
+              logger.warn(`[NovelAIProvider] Failed to parse SSE data: ${line}`);
+            }
+          }
+        }
+      }
+
+      // Process any remaining data
+      if (buffer.trim()) {
+        const lines = buffer.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.substring(6));
+              if (data.image) {
+                finalImage = data.image;
+                logger.info(`[NovelAIProvider] Found final image in remaining data, length: ${finalImage.length}`);
+              }
+            } catch (e) {
+              // Ignore parse errors for remaining buffer
+            }
+          }
+        }
+      }
+
+      if (!finalImage) {
+        throw new Error('No image found in SSE stream');
+      }
+
+      return finalImage;
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  /**
+   * Ensure complete download of response data using streaming
+   * This prevents incomplete ZIP file downloads that can cause corruption
+   */
+  private async downloadComplete(response: Response): Promise<Buffer> {
+    if (!response.body) {
+      throw new Error('Response body is null');
+    }
+
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let receivedLength = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      chunks.push(value);
+      receivedLength += value.length;
+    }
+
+    // Merge all chunks
+    const allChunks = new Uint8Array(receivedLength);
+    let position = 0;
+    for (const chunk of chunks) {
+      allChunks.set(chunk, position);
+      position += chunk.length;
+    }
+
+    return Buffer.from(allChunks);
+  }
+
+  /**
+   * Extract image from NovelAI ZIP response using JSZip
+   * NovelAI returns a ZIP file containing the generated image
+   */
+  private async extractImageFromZip(buffer: Buffer): Promise<string> {
+    logger.info(`[NovelAIProvider] Extracting image from ZIP (${buffer.length} bytes)`);
+
+    // Validate ZIP signature
+    if (buffer.length < 4 || buffer.readUInt32LE(0) !== 0x04034b50) {
+      logger.error(`[NovelAIProvider] Invalid ZIP signature: ${buffer.subarray(0, 4).toString('hex')}`);
+      throw new Error('Invalid ZIP file - corrupted or incomplete download');
+    }
+
+    try {
+      logger.info(`[NovelAIProvider] Loading ZIP file...`);
+      // Load ZIP file with JSZip
+      const zip = await JSZip.loadAsync(buffer);
+
+      // Get all entries (files) in the ZIP
+      const entries = Object.keys(zip.files).filter((name) => !zip.files[name].dir);
+      logger.info(`[NovelAIProvider] Found ${entries.length} files in ZIP: ${entries.join(', ')}`);
+
+      if (entries.length === 0) {
+        throw new Error('No files found in ZIP archive');
+      }
+
+      // Get the first image file (usually there's only one)
+      const imageFile = zip.files[entries[0]];
+      if (!imageFile) {
+        throw new Error('Image file not found in ZIP');
+      }
+
+      logger.info(`[NovelAIProvider] Extracting ${entries[0]}...`);
+      // Extract the image data as ArrayBuffer
+      const imageBuffer = await imageFile.async('arraybuffer');
+
+      // Convert to Node.js Buffer for PNG validation
+      const nodeBuffer = Buffer.from(imageBuffer);
+      logger.info(`[NovelAIProvider] Extracted ${nodeBuffer.length} bytes of image data`);
+
+      // Verify it's a PNG
+      const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      if (nodeBuffer.length < 8 || !nodeBuffer.subarray(0, 8).equals(pngSignature)) {
+        logger.warn('[NovelAIProvider] Extracted file is not a valid PNG');
+      } else {
+        logger.info(`[NovelAIProvider] PNG signature validated`);
+      }
+
+      // Convert to base64
+      const base64Data = nodeBuffer.toString('base64');
+      logger.info(`[NovelAIProvider] Successfully extracted image (${base64Data.length} chars base64)`);
+
+      return base64Data;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.error(`[NovelAIProvider] Failed to extract image from ZIP: ${err.message}`, err);
+      throw new Error(`Failed to extract image from ZIP: ${err.message}`);
+    }
   }
 
   /**
@@ -111,133 +264,123 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
     }
 
     try {
-      logger.debug(`[NovelAIProvider] Generating image with prompt: ${prompt}`);
+      logger.info(`[NovelAIProvider] Starting image generation for prompt: ${prompt}`);
 
+      const steps = options?.steps || this.config.defaultSteps;
+      const width = options?.width || this.config.defaultWidth;
+      const height = options?.height || this.config.defaultHeight;
+      const guidanceScale = options?.guidance_scale || this.config.defaultGuidanceScale;
+      const seed =
+        options?.seed !== undefined && options.seed >= 0 ? options.seed : Math.floor(Math.random() * 4294967295);
+      const model = this.config.model || 'nai-diffusion-4-5-full';
+
+      const isV4Plus = model.startsWith('nai-diffusion-4');
+
+      logger.info(
+        `[NovelAIProvider] Parameters: model=${model}, size=${width}x${height}, steps=${steps}, scale=${guidanceScale}, seed=${seed}`,
+      );
+
+      // V4/V4.5 parameters according to the correct API spec
       const parameters: Record<string, unknown> = {
-        width: options?.width || this.config.defaultWidth || 832,
-        height: options?.height || this.config.defaultHeight || 1216,
-        scale: options?.guidance_scale || this.config.defaultGuidanceScale || 7,
-        steps: options?.steps || this.config.defaultSteps || 28,
-        n_samples: options?.numImages || 1,
+        params_version: 3,
+        width,
+        height,
+        scale: guidanceScale,
+        sampler: 'k_euler_ancestral',
+        steps,
+        seed,
+        n_samples: 3,
+        ucPreset: 0,
+        qualityToggle: false,
+        noise_schedule: 'karras',
       };
 
-      // Add seed if provided
-      if (options?.seed !== undefined) {
-        parameters.seed = options.seed;
-      }
-
-      // Add negative prompt if provided
-      if (options?.negative_prompt) {
-        parameters.negative_prompt = options.negative_prompt;
+      // For V4+ models, use v4_prompt and v4_negative_prompt structure
+      if (isV4Plus) {
+        parameters.v4_prompt = {
+          caption: {
+            base_caption: prompt,
+            char_captions: [],
+          },
+          use_coords: false,
+          use_order: true,
+        };
+        parameters.v4_negative_prompt = {
+          caption: {
+            base_caption:
+              options?.negative_prompt ||
+              'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page,bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, blurry, deformed, mutated, mutation, extra limbs, fused fingers, too many fingers, malformed limbs, gross proportions, long neck, disconnected limbs, poorly drawn hands, disfigured, extra limbs, missing limbs,lack of detail',
+            char_captions: [],
+          },
+        };
       }
 
       const requestBody: Record<string, unknown> = {
-        input: prompt,
-        model: 'nai-diffusion-3',
         action: 'generate',
+        model,
         parameters,
       };
 
-      const response = await this.httpClient.post<{
-        data: string[]; // Array of base64-encoded images
-      }>('/ai/generate-image', requestBody, {
-        timeout: 300000, // 5 minutes for image generation
-      });
-
-      // Convert base64 images to response format
-      const images = (response.data || []).map((base64: string) => ({
-        base64,
-      }));
-
-      logger.debug(`[NovelAIProvider] Generated ${images.length} image(s)`);
-
-      return {
-        images,
-        metadata: {
-          prompt,
-          numImages: images.length,
-          width: parameters.width,
-          height: parameters.height,
-          steps: parameters.steps,
-          guidanceScale: parameters.scale,
-        },
-      };
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.error('[NovelAIProvider] Generation failed:', err);
-      throw err;
-    }
-  }
-
-  /**
-   * Transform image based on prompt (img2img)
-   */
-  async transformImage(image: string, prompt: string, options?: Image2ImageOptions): Promise<ImageGenerationResponse> {
-    if (!this.isAvailable()) {
-      throw new Error('NovelAIProvider is not available: accessToken not configured');
-    }
-
-    try {
-      logger.debug(`[NovelAIProvider] Transforming image with prompt: ${prompt}`);
-
-      // Convert image to base64 using ResourceDownloader
-      // Supports: URLs, data URLs, base64:// URIs, file paths, and raw base64 strings
-      const imageBase64 = await ResourceDownloader.downloadToBase64(image, {
-        timeout: 30000, // 30 seconds timeout for image download
-        maxSize: 10 * 1024 * 1024, // 10MB maximum file size
-        savePath: this.config.resourceSavePath, // Use provider-specific save path if configured
-      });
-
-      const img2imgParameters: Record<string, unknown> = {
-        width: options?.width || this.config.defaultWidth || 832,
-        height: options?.height || this.config.defaultHeight || 1216,
-        scale: this.config.defaultGuidanceScale || 7,
-        steps: this.config.defaultSteps || 28,
-        strength: options?.strength ?? this.config.defaultStrength ?? 0.7,
-        noise: this.config.defaultNoise || 0.1,
-        n_samples: options?.numImages || 1,
-      };
-
-      // Add seed if provided
-      if (options?.seed !== undefined) {
-        img2imgParameters.seed = options.seed;
+      // For V3 models, use input field; for V4+ models, prompt is in parameters.v4_prompt
+      if (!isV4Plus) {
+        requestBody.input = prompt;
       }
 
-      const requestBody: Record<string, unknown> = {
-        input: prompt,
-        model: 'nai-diffusion-3',
-        action: 'img2img',
-        image: imageBase64,
-        parameters: img2imgParameters,
-      };
+      logger.info(`[NovelAIProvider] Request body: ${JSON.stringify(requestBody, null, 2)}`);
 
-      const response = await this.httpClient.post<{
-        data: string[]; // Array of base64-encoded images
-      }>('/ai/generate-image', requestBody, {
-        timeout: 300000, // 5 minutes for image generation
+      const baseURL = this.config.baseURL || 'https://image.novelai.net';
+      const fullUrl = baseURL.endsWith('/')
+        ? `${baseURL}ai/generate-image-stream`
+        : `${baseURL}/ai/generate-image-stream`;
+
+      const response = await fetch(fullUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.config.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(300000),
       });
 
-      // Convert base64 images to response format
-      const images = (response.data || []).map((base64: string) => ({
-        base64,
-      }));
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
 
-      logger.debug(`[NovelAIProvider] Transformed ${images.length} image(s)`);
+      // For streaming API (/generate-image-stream), parse SSE events
+      if (fullUrl.includes('generate-image-stream')) {
+        const streamImage = await this.parseSSEStream(response);
+        const filepath = await this.saveImageToFile(streamImage, prompt, seed);
+        return {
+          images: [{ base64: streamImage }],
+          metadata: { prompt, numImages: 1, width, height, steps, guidanceScale, filepath },
+        };
+      }
 
+      // Fallback for non-streaming API (legacy support)
+      const buffer = await this.downloadComplete(response);
+
+      // Check if it's direct PNG binary data (legacy support)
+      const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      if (buffer.length >= 8 && buffer.subarray(0, 8).equals(pngSignature)) {
+        const base64Data = buffer.toString('base64');
+        const filepath = await this.saveImageToFile(base64Data, prompt, seed);
+        return {
+          images: [{ base64: base64Data }],
+          metadata: { prompt, numImages: 1, width, height, steps, guidanceScale, filepath },
+        };
+      }
+
+      const base64Image = await this.extractImageFromZip(buffer);
+      const filepath = await this.saveImageToFile(base64Image, prompt, seed);
       return {
-        images,
-        metadata: {
-          prompt,
-          numImages: images.length,
-          width: img2imgParameters.width,
-          height: img2imgParameters.height,
-          steps: img2imgParameters.steps,
-          strength: img2imgParameters.strength,
-        },
+        images: [{ base64: base64Image }],
+        metadata: { prompt, numImages: 1, width, height, steps, guidanceScale, filepath },
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.error('[NovelAIProvider] Image transformation failed:', err);
+      logger.error(`[NovelAIProvider] Generation failed: ${err.message}`, err);
       throw err;
     }
   }
