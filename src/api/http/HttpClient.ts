@@ -13,7 +13,11 @@ export interface HttpClientOptions {
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   headers?: Record<string, string>;
-  body?: unknown; // Will be JSON.stringify if object
+  /**
+   * Note: The body is converted to string internally because fetch API requires
+   * body to be string, FormData, Blob, etc. Objects are automatically serialized.
+   */
+  body?: unknown;
   timeout?: number;
   signal?: AbortSignal;
   retries?: number;
@@ -45,7 +49,10 @@ export class HttpClient {
   constructor(options: HttpClientOptions = {}) {
     this.baseURL = options.baseURL || '';
     this.defaultHeaders = options.defaultHeaders || {};
-    this.defaultTimeout = options.defaultTimeout || 30000; // 30 seconds default
+    // Default timeout: 120 seconds (2 minutes) - suitable for AI processing
+    // Individual providers can override with longer timeouts for specific operations
+    // (e.g., video generation may need 2 minutes)
+    this.defaultTimeout = options.defaultTimeout || 120000; // 120 seconds default
     this.retries = options.retries ?? 0;
     this.retryDelay = options.retryDelay || 1000;
   }
@@ -61,11 +68,17 @@ export class HttpClient {
     // Build full URL
     const fullUrl = this.buildUrl(url);
 
-    // Merge headers
-    const headers = this.mergeHeaders(options.headers);
-
-    // Prepare body
+    // Prepare body first to determine if we need to set Content-Type
     const body = this.prepareBody(options.body);
+    const bodyWasObject = options.body !== undefined && options.body !== null && typeof options.body !== 'string';
+
+    // Merge headers and auto-set Content-Type for JSON bodies
+    const headers = this.mergeHeaders(options.headers);
+    // Automatically set Content-Type: application/json if body is an object (was JSON.stringify'd)
+    // and Content-Type is not already set
+    if (bodyWasObject && !headers['Content-Type'] && !headers['content-type']) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     // Log request in debug mode
     logger.debug(`[HttpClient] ${method} ${fullUrl}`, {
@@ -132,6 +145,22 @@ export class HttpClient {
 
   /**
    * Make a POST request
+   *
+   * @param url - Request URL (relative to baseURL if configured)
+   * @param body - Request body (object will be JSON.stringify'd automatically)
+   * @param options - Additional request options (headers, timeout, etc.)
+   *
+   * @example
+   * ```typescript
+   * // Object body - automatically serialized to JSON
+   * await httpClient.post('/api/endpoint', { key: 'value' });
+   *
+   * // String body - sent as-is
+   * await httpClient.post('/api/endpoint', 'raw string');
+   *
+   * // With custom timeout
+   * await httpClient.post('/api/endpoint', data, { timeout: 300000 });
+   * ```
    */
   async post<T = unknown>(url: string, body?: unknown, options?: Omit<RequestOptions, 'method' | 'body'>): Promise<T> {
     return this.request<T>(url, { ...options, method: 'POST', body });
@@ -168,11 +197,17 @@ export class HttpClient {
     // Build full URL
     const fullUrl = this.buildUrl(url);
 
-    // Merge headers
-    const headers = this.mergeHeaders(options.headers);
-
-    // Prepare body
+    // Prepare body first to determine if we need to set Content-Type
     const body = this.prepareBody(options.body);
+    const bodyWasObject = options.body !== undefined && options.body !== null && typeof options.body !== 'string';
+
+    // Merge headers and auto-set Content-Type for JSON bodies
+    const headers = this.mergeHeaders(options.headers);
+    // Automatically set Content-Type: application/json if body is an object (was JSON.stringify'd)
+    // and Content-Type is not already set
+    if (bodyWasObject && !headers['Content-Type'] && !headers['content-type']) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     // Log request in debug mode
     logger.debug(`[HttpClient] ${method} ${fullUrl} (streaming)`);
@@ -283,8 +318,10 @@ export class HttpClient {
       throw new HttpClientError(errorMessage, response.status, response.statusText, errorData);
     }
 
-    // Parse JSON response
+    // Parse response based on content type
     const contentType = response.headers.get('content-type');
+
+    // Handle JSON response
     if (contentType && contentType.includes('application/json')) {
       try {
         return (await response.json()) as T;
@@ -295,7 +332,23 @@ export class HttpClient {
       }
     }
 
-    // Return text response
+    // Handle binary response (ArrayBuffer)
+    if (
+      contentType &&
+      (contentType.includes('audio/') ||
+        contentType.includes('image/') ||
+        contentType.includes('application/octet-stream'))
+    ) {
+      try {
+        return (await response.arrayBuffer()) as unknown as T;
+      } catch (error) {
+        throw new HttpClientError(
+          `Failed to read binary response: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    // Return text response as fallback
     try {
       return (await response.text()) as unknown as T;
     } catch (error) {

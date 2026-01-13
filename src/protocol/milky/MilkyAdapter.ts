@@ -1,5 +1,6 @@
 // Milky protocol adapter implementation
 
+import { HttpClient } from '@/api/http/HttpClient';
 import type { APIContext } from '@/api/types';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import { Connection } from '@/core/Connection';
@@ -15,8 +16,27 @@ import { MilkyEventNormalizer } from './MilkyEventNormalizer';
  * Converts Milky protocol events and API calls to unified format
  */
 export class MilkyAdapter extends ProtocolAdapter {
+  private httpClient: HttpClient;
+
   constructor(config: ProtocolConfig, connection: Connection) {
     super(config, connection);
+
+    const apiUrl = this.config.connection.apiUrl;
+    if (!apiUrl) {
+      throw new Error('API URL is not configured for Milky protocol');
+    }
+
+    // Configure HttpClient for Milky protocol API calls
+    const defaultHeaders: Record<string, string> = {};
+    if (this.config.connection.accessToken) {
+      defaultHeaders.Authorization = `Bearer ${this.config.connection.accessToken}`;
+    }
+
+    this.httpClient = new HttpClient({
+      baseURL: apiUrl,
+      defaultHeaders,
+      defaultTimeout: 10000, // 10 seconds default timeout (can be overridden per request)
+    });
   }
 
   getProtocolName(): ProtocolName {
@@ -33,13 +53,6 @@ export class MilkyAdapter extends ProtocolAdapter {
    * Uses context-based approach to access all call information
    */
   async sendAPI<TResponse = unknown>(context: APIContext): Promise<TResponse> {
-    const apiUrl = this.config.connection.apiUrl;
-    const accessToken = this.config.connection.accessToken;
-
-    if (!apiUrl) {
-      throw new Error('API URL is not configured for Milky protocol');
-    }
-
     // Convert unified API action names (OneBot11-style) to Milky protocol endpoints
     const milkyAction = MilkyAPIConverter.convertActionToMilky(context.action);
 
@@ -52,28 +65,28 @@ export class MilkyAdapter extends ProtocolAdapter {
     );
 
     try {
-      // Create AbortController for timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
-      // Make HTTP POST request
-      const response = await fetch(`${apiUrl}/${milkyAction}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
-        },
-        body: JSON.stringify(milkyParams),
-        signal: controller.signal,
+      // Use HttpClient to make the request
+      // Note: We need to handle the response in Milky API format, so we'll parse it manually
+      const data = await this.httpClient.post<unknown>(`/${milkyAction}`, milkyParams, {
+        timeout: context.timeout,
       });
 
-      clearTimeout(timeoutId);
+      // Handle Milky API response format: { code: number, message?: string, data?: T }
+      if (MilkyAPIResponseHandler.isMilkyAPIResponse(data)) {
+        if (data.code === 0) {
+          // Success - return the data field, or the whole response if no data field
+          return (data.data ?? data) as TResponse;
+        } else {
+          // API error - code is not 0
+          const errorMessage = (data as { message?: string }).message || 'Unknown error';
+          throw new Error(`Milky API error [${data.code}]: ${errorMessage}`);
+        }
+      }
 
-      // Handle response: parse JSON and validate Milky API format
-      return MilkyAPIResponseHandler.handleResponse<TResponse>(response);
+      return data as TResponse;
     } catch (error) {
       if (error instanceof Error) {
-        if (error.name === 'AbortError') {
+        if (error.message.includes('timeout')) {
           throw new Error(`API request timeout: ${context.action} (protocol: milky, echo: ${context.echo})`);
         }
         throw error;
