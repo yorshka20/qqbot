@@ -1,5 +1,6 @@
 // Command module exports
 
+export { CommandBuilder, type CommandBuildOptions } from './CommandBuilder';
 export { CommandManager, type PermissionChecker } from './CommandManager';
 export { CommandParser } from './CommandParser';
 export { Command, getAllCommandMetadata, getCommandMetadata } from './decorators';
