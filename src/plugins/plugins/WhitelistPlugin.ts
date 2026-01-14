@@ -2,7 +2,6 @@
 // If sender is not in whitelist and message is not from whitelisted group, only post-process (no reply)
 // If sender is in whitelist or message is from whitelisted group, always reply
 
-import type { BotConfig } from '@/core/config';
 import type { HookContext, HookResult } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { Hook, Plugin } from '../decorators';
@@ -21,13 +20,8 @@ interface WhitelistPluginConfig {
   description: 'Whitelist plugin that controls message processing based on user and group whitelist',
 })
 export class WhitelistPlugin extends PluginBase {
-  readonly name = 'whitelist';
-  readonly version = '1.0.0';
-  readonly description = 'Whitelist plugin that controls message processing based on user and group whitelist';
-
   private userWhitelist: Set<string> = new Set();
   private groupWhitelist: Set<string> = new Set();
-  private enabled: boolean = false;
 
   async onInit(context: PluginContext): Promise<void> {
     this.context = context;
@@ -40,7 +34,7 @@ export class WhitelistPlugin extends PluginBase {
    */
   private loadConfig(): void {
     try {
-      const config = this.context?.bot.getConfig() as BotConfig;
+      const config = this.context?.bot.getConfig();
       if (!config) {
         logger.warn('[WhitelistPlugin] Failed to load config');
         this.enabled = false;
@@ -100,7 +94,7 @@ export class WhitelistPlugin extends PluginBase {
 
   /**
    * Hook: onMessagePreprocess
-   * Executed during PREPROCESS stage with EARLY priority
+   * Executed during PREPROCESS stage with HIGHEST priority
    * Whitelist check should be the highest priority - if user is not in whitelist and group is not in whitelist,
    * set postProcessOnly immediately to skip all processing (command, @bot check, etc.)
    *
@@ -108,7 +102,7 @@ export class WhitelistPlugin extends PluginBase {
    */
   @Hook({
     stage: 'onMessagePreprocess',
-    priority: 'EARLY', // Ensure whitelist check runs before command routing
+    priority: 'HIGHEST', // Ensure whitelist check runs before command routing
   })
   onMessagePreprocess(context: HookContext): HookResult {
     const userId = context.message.userId;

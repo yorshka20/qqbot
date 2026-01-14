@@ -7,7 +7,7 @@ import { DITokens } from '@/core/DITokens';
 import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';
 import type { HookManager } from '@/hooks/HookManager';
-import { getExtensionHookPriority } from '@/hooks/HookPriority';
+import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookContext } from '@/hooks/types';
 import type { TaskManager } from '@/task/TaskManager';
 import { logger } from '@/utils/logger';
@@ -193,29 +193,29 @@ export class TaskSystem implements System {
     return [
       {
         hookName: 'onTaskAnalyzed',
-        priority: getExtensionHookPriority('onTaskAnalyzed', 'DEFAULT'),
+        priority: getHookPriority('onTaskAnalyzed', 'NORMAL'),
       },
       {
         hookName: 'onTaskBeforeExecute',
-        priority: getExtensionHookPriority('onTaskBeforeExecute', 'DEFAULT'),
+        priority: getHookPriority('onTaskBeforeExecute', 'NORMAL'),
       },
       {
         hookName: 'onTaskExecuted',
-        priority: getExtensionHookPriority('onTaskExecuted', 'DEFAULT'),
+        priority: getHookPriority('onTaskExecuted', 'NORMAL'),
       },
       // AI-related hooks are part of task execution
       // These hooks are triggered when AIService is called during task execution
       {
         hookName: 'onMessageBeforeAI',
-        priority: getExtensionHookPriority('onMessageBeforeAI', 'DEFAULT'),
+        priority: getHookPriority('onMessageBeforeAI', 'NORMAL'),
       },
       {
         hookName: 'onAIGenerationStart',
-        priority: getExtensionHookPriority('onAIGenerationStart', 'DEFAULT'),
+        priority: getHookPriority('onAIGenerationStart', 'NORMAL'),
       },
       {
         hookName: 'onAIGenerationComplete',
-        priority: getExtensionHookPriority('onAIGenerationComplete', 'DEFAULT'),
+        priority: getHookPriority('onAIGenerationComplete', 'NORMAL'),
       },
     ];
   }

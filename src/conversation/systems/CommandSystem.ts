@@ -4,7 +4,7 @@ import type { CommandManager } from '@/command/CommandManager';
 import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';
 import type { HookManager } from '@/hooks/HookManager';
-import { getExtensionHookPriority } from '@/hooks/HookPriority';
+import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookContext } from '@/hooks/types';
 
 /**
@@ -74,11 +74,11 @@ export class CommandSystem implements System {
     return [
       {
         hookName: 'onCommandDetected',
-        priority: getExtensionHookPriority('onCommandDetected', 'DEFAULT'),
+        priority: getHookPriority('onCommandDetected', 'NORMAL'),
       },
       {
         hookName: 'onCommandExecuted',
-        priority: getExtensionHookPriority('onCommandExecuted', 'DEFAULT'),
+        priority: getHookPriority('onCommandExecuted', 'NORMAL'),
       },
     ];
   }

@@ -1,6 +1,7 @@
 // Plugin type definitions
 
 import type { APIClient } from '@/api/APIClient';
+import type { BotConfig } from '@/core/config';
 import type { EventRouter } from '@/events/EventRouter';
 import type { PluginHooks } from '@/hooks';
 
@@ -8,7 +9,7 @@ export interface PluginContext {
   api: APIClient;
   events: EventRouter;
   bot: {
-    getConfig: () => unknown;
+    getConfig: () => BotConfig;
   };
 }
 

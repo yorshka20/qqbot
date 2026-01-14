@@ -1,7 +1,6 @@
 // Plugin and Hook decorators for automatic registration
 
-import type { CoreHookName, HookPriorityVariant } from '@/hooks/HookPriority';
-import type { HookHandler } from '@/hooks/types';
+import type { HookPriorityVariant } from '@/hooks/HookPriority';
 import type { Plugin } from './types';
 
 /**
@@ -10,16 +9,15 @@ import type { Plugin } from './types';
 export interface PluginOptions {
   name: string;
   version: string;
-  description?: string;
-  author?: string;
+  description: string;
 }
 
 /**
  * Hook decorator options
  */
 export interface HookOptions {
-  stage: CoreHookName;
-  priority?: HookPriorityVariant; // Default: 'DEFAULT'
+  stage: string;
+  priority?: HookPriorityVariant; // Default: 'NORMAL'
 }
 
 /**
@@ -33,7 +31,7 @@ export interface PluginMetadata extends PluginOptions {
  * Hook metadata stored on method
  */
 export interface HookMetadata {
-  hookName: CoreHookName;
+  hookName: string; // extended hook name
   priority: HookPriorityVariant;
   methodName: string;
   pluginClass: new (...args: any[]) => Plugin;
@@ -87,18 +85,14 @@ export function Plugin(options: PluginOptions) {
  * @param options - Hook options (stage, priority)
  */
 export function Hook(options: HookOptions) {
-  return function (
-    target: any,
-    propertyKey: string,
-    descriptor: PropertyDescriptor,
-  ): PropertyDescriptor {
+  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor): PropertyDescriptor {
     // Get plugin class (target is the prototype, constructor is the class)
     const pluginClass = target.constructor as new (...args: any[]) => Plugin;
 
     // Store hook metadata
     const hookMetadata: HookMetadata = {
       hookName: options.stage,
-      priority: options.priority || 'DEFAULT',
+      priority: options.priority || 'NORMAL',
       methodName: propertyKey,
       pluginClass,
     };
@@ -116,18 +110,14 @@ export function Hook(options: HookOptions) {
 /**
  * Get plugin metadata from class
  */
-export function getPluginMetadata(
-  pluginClass: new (...args: any[]) => Plugin,
-): PluginMetadata | undefined {
+export function getPluginMetadata(pluginClass: new (...args: any[]) => Plugin): PluginMetadata | undefined {
   return (pluginClass as any)[PLUGIN_METADATA_KEY];
 }
 
 /**
  * Get hook metadata for a plugin class
  */
-export function getPluginHooks(
-  pluginClass: new (...args: any[]) => Plugin,
-): HookMetadata[] {
+export function getPluginHooks(pluginClass: new (...args: any[]) => Plugin): HookMetadata[] {
   return hookRegistry.get(pluginClass) || [];
 }
 

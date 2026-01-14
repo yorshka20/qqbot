@@ -1,7 +1,7 @@
 // Plugin loading and lifecycle management
 
-import type { HookManager } from '@/hooks/HookManager';
-import { CoreHookName, getCoreHookPriority, HookPriorityVariant } from '@/hooks/HookPriority';
+import { HookManager } from '@/hooks/HookManager';
+import { getHookPriority, HookPriorityVariant } from '@/hooks/HookPriority';
 import type { HookHandler } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { existsSync, readdirSync, statSync } from 'fs';
@@ -14,14 +14,6 @@ export class PluginManager {
   private enabledPlugins = new Set<string>();
   private context?: PluginContext;
   private hookManager: HookManager;
-
-  private readonly coreHookNames: CoreHookName[] = [
-    'onMessageReceived',
-    'onMessagePreprocess',
-    'onMessageBeforeSend',
-    'onMessageSent',
-    'onError',
-  ];
 
   // Plugin directory is fixed to src/plugins/plugins
   private readonly pluginDirectory = join(process.cwd(), 'src', 'plugins', 'plugins');
@@ -98,31 +90,14 @@ export class PluginManager {
           continue;
         }
 
-        const plugin: Plugin = new PluginClass();
+        const plugin: Plugin = new PluginClass(pluginMetadata);
 
-        // Verify plugin name and version match decorator metadata
-        // Use decorator metadata as source of truth
-        if (plugin.name !== pluginMetadata.name) {
-          logger.warn(
-            `[PluginManager] Plugin name mismatch: class has "${plugin.name}", decorator has "${pluginMetadata.name}". Using decorator name.`,
-          );
-          (plugin as any).name = pluginMetadata.name;
-        }
-        if (plugin.version !== pluginMetadata.version) {
-          logger.warn(
-            `[PluginManager] Plugin version mismatch: class has "${plugin.version}", decorator has "${pluginMetadata.version}". Using decorator version.`,
-          );
-          (plugin as any).version = pluginMetadata.version;
-        }
-
-        // Skip if plugin already loaded (avoid duplicates)
         if (this.plugins.has(plugin.name)) {
           continue;
         }
 
         this.plugins.set(plugin.name, plugin);
 
-        // Get plugin config from config list
         const pluginConfig = pluginConfigMap.get(plugin.name);
 
         // Initialize plugin with context
@@ -131,14 +106,9 @@ export class PluginManager {
         }
 
         // Register hooks from plugin using decorator metadata
-        // All hooks are registered (regardless of enabled state)
         const hookMetadataList = getPluginHooks(PluginClass);
         if (hookMetadataList.length > 0) {
           this.registerPluginHooksFromMetadata(plugin, hookMetadataList, plugin.name);
-        } else {
-          // Fallback: register hooks from plugin interface (for backward compatibility)
-          // This will be removed once all plugins use decorators
-          this.registerPluginHooks(plugin, plugin.name);
         }
 
         // Enable if enabled in config
@@ -169,9 +139,7 @@ export class PluginManager {
       throw new Error('Plugin context not set');
     }
 
-    if (plugin.onEnable) {
-      await plugin.onEnable(this.context);
-    }
+    await plugin.onEnable?.(this.context);
 
     this.enabledPlugins.add(name);
     logger.info(`[PluginManager] Enabled plugin: ${name}`);
@@ -187,11 +155,9 @@ export class PluginManager {
       return;
     }
 
-    if (plugin.onDisable) {
-      await plugin.onDisable();
-    }
+    await plugin.onDisable?.();
 
-    // Unregister hooks
+    // todo: should we unregister plugin from hook?
     this.hookManager.unregister(name);
 
     this.enabledPlugins.delete(name);
@@ -217,46 +183,27 @@ export class PluginManager {
   private registerPluginHooksFromMetadata(
     plugin: Plugin,
     hookMetadataList: Array<{
-      hookName: CoreHookName;
+      hookName: string;
       priority: HookPriorityVariant;
       methodName: string;
     }>,
     pluginName: string,
   ): void {
     for (const hookMeta of hookMetadataList) {
+      logger.info(`[PluginManager] metadata: ${JSON.stringify(hookMeta)}`);
       // Get handler method from plugin instance
-      const handler = (plugin as any)[hookMeta.methodName];
+      const handler = plugin[hookMeta.methodName as keyof Plugin];
       if (typeof handler !== 'function') {
         logger.warn(`[PluginManager] Hook method ${hookMeta.methodName} not found in plugin ${pluginName}`);
         continue;
       }
 
       // Calculate priority from variant
-      const priority = getCoreHookPriority(hookMeta.hookName, hookMeta.priority);
+      const priority = getHookPriority(hookMeta.hookName, hookMeta.priority);
 
       // Bind handler to plugin instance to preserve 'this' context
-      const boundHandler = handler.bind(plugin);
+      const boundHandler = handler.bind(plugin) as HookHandler;
       this.hookManager.addHandler(hookMeta.hookName, boundHandler, priority);
-    }
-  }
-
-  /**
-   * Register all hooks from a plugin (fallback method for backward compatibility)
-   */
-  private registerPluginHooks(plugin: Plugin, pluginName: string): void {
-    // Core hooks only
-    for (const hookName of this.coreHookNames) {
-      const handler = plugin[hookName];
-      if (typeof handler === 'function') {
-        // Use default priority
-        const priority = getCoreHookPriority(hookName);
-
-        // Bind handler to plugin instance to preserve 'this' context
-        // PluginHooks methods have signature (context: HookContext) => HookResult
-        // which matches HookHandler, so we can safely cast
-        const boundHandler = handler.bind(plugin) as HookHandler;
-        this.hookManager.addHandler(hookName, boundHandler, priority);
-      }
     }
   }
 }

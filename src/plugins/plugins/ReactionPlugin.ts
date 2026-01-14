@@ -1,6 +1,5 @@
 // Reaction Plugin - sends reaction when message contains configured keywords
 
-import type { BotConfig } from '@/core/config';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext, HookResult } from '@/hooks/types';
 import type { NormalizedMilkyMessageEvent } from '@/protocol/milky/types';
@@ -15,22 +14,17 @@ interface ReactionPluginConfig {
    * Map of keyword to reaction ID
    * Key: keyword (case-insensitive)
    * Value: reaction ID (emoji code like "76" for 👍, or emoji character like "👍" which will be converted to code)
-   * Example: { "cygnus": "76", "hello": "👍" }
+   * Example: { "": "76", "hello": "👍" }
    */
   reactions?: Record<string, string>;
 }
 
 @Plugin({
   name: 'reaction',
-  version: '2.0.0',
+  version: '1.0.0',
   description: 'Sends group message reaction when message contains configured keywords',
 })
 export class ReactionPlugin extends PluginBase {
-  readonly name = 'reaction';
-  readonly version = '2.0.0';
-  readonly description = 'Sends group message reaction when message contains configured keywords';
-
-  private enabled: boolean = false;
   /**
    * Map of keyword (lowercase) to reaction ID (code)
    * Populated from config.reactions
@@ -47,9 +41,9 @@ export class ReactionPlugin extends PluginBase {
    */
   private loadConfig(): void {
     try {
-      const config = this.context?.bot.getConfig() as BotConfig;
+      const config = this.context?.bot.getConfig();
       if (!config) {
-        logger.warn('[CygnusReactionPlugin] Failed to load config');
+        logger.warn('[ReactionPlugin] Failed to load config');
         this.enabled = false;
         return;
       }
@@ -58,7 +52,7 @@ export class ReactionPlugin extends PluginBase {
       const pluginEntry = config.plugins.list.find((p) => p.name === this.name);
 
       if (!pluginEntry) {
-        logger.warn(`[CygnusReactionPlugin] No plugin entry found in config.plugins.list for plugin: ${this.name}`);
+        logger.warn(`[ReactionPlugin] No plugin entry found in config.plugins.list for plugin: ${this.name}`);
         this.enabled = false;
         return;
       }
@@ -98,37 +92,35 @@ export class ReactionPlugin extends PluginBase {
    */
   @Hook({
     stage: 'onMessagePreprocess',
-    priority: 'DEFAULT',
+    priority: 'NORMAL',
   })
   onMessagePreprocess(context: HookContext): HookResult {
-    const messageId = context.message?.id || context.message?.messageId || 'unknown';
-
-    // Skip if plugin is disabled
     if (!this.enabled) {
-      return; // Continue processing
+      return;
     }
 
-    // Skip if no reaction mappings configured
+    const messageId = context.message?.id || context.message?.messageId || 'unknown';
+
     if (this.keywordToReactionMap.size === 0) {
-      return; // Continue processing
+      return;
     }
 
     // Ignore bot's own messages
     const botSelfId = context.metadata.get('botSelfId') as string;
     const messageUserId = context.message.userId?.toString();
     if (botSelfId && messageUserId && botSelfId === messageUserId) {
-      return; // Continue processing (ignore bot's own messages)
+      return;
     }
 
     // Only process group messages
     if (context.message.messageType !== 'group' || !context.message.groupId) {
-      return; // Continue processing
+      return;
     }
 
     // Only send reaction in whitelisted groups
     const isWhitelistGroup = context.metadata.get('whitelistGroup') as boolean;
     if (!isWhitelistGroup) {
-      return; // Continue processing (reaction only for whitelisted groups)
+      return;
     }
 
     // Check if message contains any configured keyword (case-insensitive)
@@ -140,12 +132,12 @@ export class ReactionPlugin extends PluginBase {
       if (messageText.includes(keyword)) {
         matchedKeyword = keyword;
         matchedReaction = reaction;
-        break; // Use first match
+        break;
       }
     }
 
     if (!matchedKeyword || !matchedReaction) {
-      return; // Continue processing (no keyword match)
+      return;
     }
 
     logger.info(
@@ -157,7 +149,6 @@ export class ReactionPlugin extends PluginBase {
       logger.error(`[ReactionPlugin] Failed to send reaction | messageId=${messageId}:`, error);
     });
 
-    // Continue processing (don't interrupt)
     return;
   }
 
@@ -210,11 +201,11 @@ export class ReactionPlugin extends PluginBase {
         'send_group_message_reaction',
         {
           group_id: groupId,
-          message_seq: messageSeq, // Milky protocol uses message_seq (number)
+          message_seq: messageSeq,
           reaction: reactionId,
           is_add: true,
         },
-        'milky', // Use configured protocol
+        'milky',
       );
 
       logger.info(

@@ -1,36 +1,27 @@
 // Hook Manager - manages and executes hooks
 
 import { logger } from '@/utils/logger';
-import { getCoreHookPriority, getExtensionHookPriority } from './HookPriority';
-import type { HookContext, HookHandler, HookRegistration } from './types';
-
-// Core hook names - only message lifecycle hooks
-export type CoreHookName =
-  | 'onMessageReceived'
-  | 'onMessagePreprocess'
-  | 'onMessageBeforeSend'
-  | 'onMessageSent'
-  | 'onError';
-
-// Extended hook names - can be registered by extensions (command system, task system, etc.)
-export type ExtendedHookName = string;
-
-// Hook name union - core hooks are always available, extended hooks are optional
-export type HookName = CoreHookName | ExtendedHookName;
+import { getHookPriority } from './HookPriority';
+import type { CoreHookName, HookContext, HookHandler, HookName, HookRegistration } from './types';
 
 /**
  * Hook Manager
  * Manages hook registration and execution
  */
 export class HookManager {
-  private hooks = new Map<HookName, HookRegistration[]>();
-  private coreHooks: HookName[] = [
+  /**
+   * Core hook names - only message lifecycle hooks
+   * Hook can be extended by other systems based on core hooks.
+   */
+  static coreHooks: CoreHookName[] = [
     'onMessageReceived',
     'onMessagePreprocess',
     'onMessageBeforeSend',
     'onMessageSent',
     'onError',
   ];
+
+  private hooks = new Map<HookName, HookRegistration[]>();
 
   /**
    * Register a hook handler or declare a hook
@@ -47,16 +38,7 @@ export class HookManager {
       this.hooks.set(hookName, []);
     }
 
-    // Use default priority if not provided
-    let finalPriority = priority;
-    if (finalPriority === undefined) {
-      const isCoreHook = this.coreHooks.includes(hookName);
-      if (isCoreHook) {
-        finalPriority = getCoreHookPriority(hookName as CoreHookName);
-      } else {
-        finalPriority = getExtensionHookPriority(hookName);
-      }
-    }
+    const finalPriority = priority ?? getHookPriority(hookName);
 
     const hookList = this.hooks.get(hookName)!;
 
@@ -92,16 +74,7 @@ export class HookManager {
 
     const hookList = this.hooks.get(hookName)!;
 
-    // Use default priority if not provided
-    let finalPriority = priority;
-    if (finalPriority === undefined) {
-      const isCoreHook = this.coreHooks.includes(hookName);
-      if (isCoreHook) {
-        finalPriority = getCoreHookPriority(hookName as CoreHookName);
-      } else {
-        finalPriority = getExtensionHookPriority(hookName);
-      }
-    }
+    const finalPriority = priority ?? getHookPriority(hookName);
 
     // Find or create registration with matching priority
     let registration = hookList.find((reg) => reg.priority === finalPriority);

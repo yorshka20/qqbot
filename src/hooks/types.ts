@@ -4,7 +4,6 @@ import type { CommandResult, ParsedCommand } from '@/command/types';
 import type { ConversationContext } from '@/context/types';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { Task, TaskResult } from '@/task/types';
-import type { HookName } from './HookManager';
 
 /**
  * Hook Context - unified context object passed to all hooks
@@ -41,3 +40,17 @@ export interface HookRegistration {
   priority: number; // Higher priority = executed first
   handlers: HookHandler[];
 }
+
+// Core hook names - only message lifecycle hooks
+export type CoreHookName =
+  | 'onMessageReceived'
+  | 'onMessagePreprocess'
+  | 'onMessageBeforeSend'
+  | 'onMessageSent'
+  | 'onError';
+
+// Extended hook names - can be registered by extensions (command system, task system, etc.)
+export type ExtendedHookName = string;
+
+// Hook name union - core hooks are always available, extended hooks are optional
+export type HookName = CoreHookName | ExtendedHookName;
