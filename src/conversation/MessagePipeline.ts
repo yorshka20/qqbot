@@ -7,6 +7,7 @@ import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
+import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
 import type { Lifecycle } from './Lifecycle';
 import type { MessageProcessingContext, MessageProcessingResult } from './types';
@@ -106,13 +107,30 @@ export class MessagePipeline {
       // Get conversation context from hook context if available
       const conversationContext = hookContext.context;
 
+      // Check if we need to send card image
+      const isCardImage = hookContext.metadata.get('isCardImage') as boolean;
+      const cardImage = hookContext.metadata.get('cardImage') as string | undefined;
+
+      let messageToSend: string | ReturnType<MessageBuilder['build']>;
+
+      if (isCardImage && cardImage) {
+        // Build image message using MessageBuilder
+        const messageBuilder = new MessageBuilder();
+        messageBuilder.image({ data: cardImage });
+        messageToSend = messageBuilder.build();
+        logger.info('[MessagePipeline] Sending card image message');
+      } else {
+        // Send text message as before
+        messageToSend = finalReply;
+      }
+
       // Send message via API
       if (event.messageType === 'private') {
         await this.apiClient.call(
           'send_private_msg',
           {
             user_id: event.userId,
-            message: finalReply,
+            message: messageToSend,
           },
           'milky',
           10000,
@@ -123,7 +141,7 @@ export class MessagePipeline {
           'send_group_msg',
           {
             group_id: event.groupId,
-            message: finalReply,
+            message: messageToSend,
           },
           'milky',
           10000,

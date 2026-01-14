@@ -11,6 +11,7 @@ import type { AIManager } from './AIManager';
 import type { ImageGenerationResponse, Text2ImageOptions, VisionImage } from './capabilities/types';
 import { PromptManager } from './PromptManager';
 import type { ProviderSelector } from './ProviderSelector';
+import { CardRenderingService } from './services/CardRenderingService';
 import { ImageGenerationService } from './services/ImageGenerationService';
 import { LLMService } from './services/LLMService';
 import { VisionService } from './services/VisionService';
@@ -32,6 +33,7 @@ export class AIService {
   private llmService: LLMService;
   private visionService: VisionService;
   private imageGenerationService: ImageGenerationService;
+  private cardRenderingService: CardRenderingService;
 
   // Constants for parameter limits (NovelAI specific)
   private static readonly MAX_STEPS = 50;
@@ -42,7 +44,7 @@ export class AIService {
   private static readonly DEFAULT_HEIGHT = 1216;
 
   constructor(
-    aiManager: AIManager,
+    private aiManager: AIManager,
     private contextManager: ContextManager,
     private hookManager: HookManager,
     private promptManager: PromptManager, // Required: must be provided from DI container
@@ -55,6 +57,7 @@ export class AIService {
     this.llmService = new LLMService(aiManager, providerSelector);
     this.visionService = new VisionService(aiManager, providerSelector);
     this.imageGenerationService = new ImageGenerationService(aiManager, providerSelector);
+    this.cardRenderingService = new CardRenderingService(aiManager);
   }
 
   /**
@@ -119,6 +122,7 @@ export class AIService {
    * Generate AI reply for user message
    * This method can be called by other systems (e.g., TaskSystem) to generate AI replies
    * Implements two-step process: 1) Check if search is needed, 2) Generate reply with or without search results
+   * Supports card rendering for non-local providers when response is long
    */
   async generateReply(context: HookContext): Promise<string> {
     // Hook: onMessageBeforeAI
@@ -148,26 +152,47 @@ export class AIService {
       // Get session ID for provider selection and context loading
       const sessionId = context.metadata.get('sessionId') as string | undefined;
 
+      // Check if card format prompt should be used
+      const useCardFormat = this.cardRenderingService.shouldUseCardFormatPrompt(sessionId);
+
       // Perform smart search if search service is available
       const searchResultsText = this.searchService
         ? await this.searchService.performSmartSearch(context.message.message, this.llmService, sessionId)
         : '';
 
       // Generate reply with or without search results
+      // Use card format prompt for non-local providers
       let prompt: string;
-      if (searchResultsText) {
-        // Use prompt template with search results
-        prompt = this.promptManager.render('llm.reply.with_search', {
-          userMessage: context.message.message,
-          conversationHistory: historyText,
-          searchResults: searchResultsText,
-        });
+      let shouldUseCardPrompt = useCardFormat;
+
+      if (useCardFormat) {
+        if (searchResultsText) {
+          // Use card format prompt with search results
+          prompt = this.promptManager.render('llm.reply.card.with_search', {
+            userMessage: context.message.message,
+            conversationHistory: historyText,
+            searchResults: searchResultsText,
+          });
+        } else {
+          prompt = this.promptManager.render('llm.reply.card', {
+            userMessage: context.message.message,
+            conversationHistory: historyText,
+          });
+        }
       } else {
-        // Use standard prompt template
-        prompt = this.promptManager.render('llm.reply', {
-          userMessage: context.message.message,
-          conversationHistory: historyText,
-        });
+        // For local providers, use standard prompt
+        if (searchResultsText) {
+          prompt = this.promptManager.render('llm.reply.with_search', {
+            userMessage: context.message.message,
+            conversationHistory: historyText,
+            searchResults: searchResultsText,
+          });
+        } else {
+          prompt = this.promptManager.render('llm.reply', {
+            userMessage: context.message.message,
+            conversationHistory: historyText,
+          });
+        }
       }
 
       // Generate AI response using LLM service
@@ -176,6 +201,44 @@ export class AIService {
         maxTokens: 2000,
         sessionId,
       });
+
+      logger.debug(
+        `[AIService] LLM response received | useCardFormat=${useCardFormat} | shouldUseCardPrompt=${shouldUseCardPrompt} | responseLength=${response.text.length}`,
+      );
+
+      // Check if we should render as card using CardRenderingService
+      if (shouldUseCardPrompt) {
+        const shouldRender = this.cardRenderingService.shouldUseCardRendering(response.text, sessionId);
+        logger.debug(
+          `[AIService] Card rendering check | shouldRender=${shouldRender} | responseLength=${response.text.length}`,
+        );
+
+        if (shouldRender) {
+          try {
+            logger.info('[AIService] Rendering card image for response');
+            // Render card to image using CardRenderingService
+            const base64Image = await this.cardRenderingService.renderCard(response.text);
+
+            // Store image data in context metadata
+            context.metadata.set('cardImage', base64Image);
+            context.metadata.set('isCardImage', true);
+
+            logger.info('[AIService] Card image rendered and stored in metadata');
+            // Return empty string as the actual message will be sent as image
+            return '';
+          } catch (cardError) {
+            const cardErr = cardError instanceof Error ? cardError : new Error('Unknown card error');
+            logger.error('[AIService] Failed to render card:', cardErr);
+            logger.error(`[AIService] Response text (first 500 chars): ${response.text.substring(0, 500)}`);
+            // According to user requirement: force_json - throw error if JSON parsing fails
+            throw cardErr;
+          }
+        } else {
+          logger.debug(
+            `[AIService] Card rendering skipped | reason: shouldUseCardRendering returned false | responseLength=${response.text.length}`,
+          );
+        }
+      }
 
       // Hook: onAIGenerationComplete
       await this.hookManager.execute('onAIGenerationComplete', context);
