@@ -20,6 +20,7 @@ export { LocalText2ImageProvider } from './providers/LocalText2ImageProvider';
 export { OllamaProvider } from './providers/OllamaProvider';
 export { OpenAIProvider } from './providers/OpenAIProvider';
 export { ProviderSelector } from './ProviderSelector';
+export { CardRenderingService } from './services/CardRenderingService';
 export { ImageGenerationService } from './services/ImageGenerationService';
 export { LLMService } from './services/LLMService';
 export { VisionService } from './services/VisionService';

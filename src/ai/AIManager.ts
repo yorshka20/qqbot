@@ -12,8 +12,10 @@ export class AIManager {
 
   /**
    * Register an AI provider
+   * @param provider - Provider to register
+   * @param autoSetDefault - If true, automatically set as default for capabilities if no default is set (default: false)
    */
-  registerProvider(provider: AIProvider): void {
+  registerProvider(provider: AIProvider, autoSetDefault: boolean = false): void {
     if (!provider.isAvailable()) {
       logger.warn(`[AIManager] Provider ${provider.name} is not available, skipping registration`);
       return;
@@ -23,12 +25,14 @@ export class AIManager {
     this.registry.registerProvider(provider);
     logger.info(`[AIManager] Registered provider: ${provider.name}`);
 
-    // Set as default for each capability if no default is set
-    const capabilities = provider.getCapabilities();
-    for (const capability of capabilities) {
-      if (!this.defaultProviders.has(capability)) {
-        this.defaultProviders.set(capability, provider.name);
-        logger.info(`[AIManager] Set ${provider.name} as default provider for ${capability}`);
+    // Set as default for each capability if autoSetDefault is true and no default is set
+    if (autoSetDefault) {
+      const capabilities = provider.getCapabilities();
+      for (const capability of capabilities) {
+        if (!this.defaultProviders.has(capability)) {
+          this.defaultProviders.set(capability, provider.name);
+          logger.info(`[AIManager] Set ${provider.name} as default provider for ${capability}`);
+        }
       }
     }
   }

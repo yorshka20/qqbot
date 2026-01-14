@@ -32,10 +32,8 @@ export interface AutoSwitchConfig {
 }
 
 export interface AIConfig {
-  // Default providers by capability (replaces single "provider" field)
+  // Default providers by capability
   defaultProviders?: DefaultProvidersConfig;
-  // Legacy: single provider name (for backward compatibility)
-  provider?: string;
   // Provider configurations
   providers: Record<string, AIProviderConfig>;
   // Session-level provider overrides (key is sessionId)

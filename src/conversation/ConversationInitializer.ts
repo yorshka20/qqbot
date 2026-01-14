@@ -229,27 +229,58 @@ export class ConversationInitializer {
 
   /**
    * Configure default providers by capability
+   * Priority: 1. Config specified providers, 2. First available provider
    */
   private static configureDefaultProviders(aiManager: AIManager, aiConfig: AIConfig): void {
-    if (!aiConfig.defaultProviders) {
-      return;
-    }
-
     const validCapabilities: CapabilityType[] = ['llm', 'vision', 'text2img', 'img2img'];
 
+    // First, set default providers from config if specified
+    if (aiConfig.defaultProviders) {
+      for (const capability of validCapabilities) {
+        const providerName = aiConfig.defaultProviders[capability];
+        if (!providerName) {
+          continue;
+        }
+
+        try {
+          aiManager.setDefaultProvider(capability, providerName);
+        } catch (error) {
+          logger.warn(
+            `[ConversationInitializer] Failed to set default provider ${providerName} for ${capability}:`,
+            error,
+          );
+        }
+      }
+    }
+
+    // Then, for capabilities without default provider, use the first available provider
     for (const capability of validCapabilities) {
-      const providerName = aiConfig.defaultProviders[capability];
-      if (!providerName) {
+      // Skip if default is already set (from config)
+      if (aiManager.getDefaultProvider(capability)) {
         continue;
       }
 
-      try {
-        aiManager.setDefaultProvider(capability, providerName);
-      } catch (error) {
-        logger.warn(
-          `[ConversationInitializer] Failed to set default provider ${providerName} for ${capability}:`,
-          error,
-        );
+      // Find first available provider for this capability
+      // Try to get provider by trying each registered provider
+      const allProviders = aiManager.getAllProviders();
+      const firstAvailableProvider = allProviders.find(
+        (p) => p.getCapabilities().includes(capability) && p.isAvailable(),
+      );
+
+      if (firstAvailableProvider) {
+        try {
+          aiManager.setDefaultProvider(capability, firstAvailableProvider.name);
+          logger.info(
+            `[ConversationInitializer] Set ${firstAvailableProvider.name} as default provider for ${capability} (first available)`,
+          );
+        } catch (error) {
+          logger.warn(
+            `[ConversationInitializer] Failed to set default provider ${firstAvailableProvider.name} for ${capability}:`,
+            error,
+          );
+        }
+      } else {
+        logger.warn(`[ConversationInitializer] No available providers for capability ${capability}`);
       }
     }
   }

@@ -243,7 +243,6 @@ export class Config {
 
   /**
    * Get default provider name for a capability
-   * Supports both new defaultProviders structure and legacy provider field
    */
   getDefaultProviderName(capability: 'llm' | 'vision' | 'text2img' | 'img2img'): string | undefined {
     const aiConfig = this.config.ai;
@@ -251,14 +250,8 @@ export class Config {
       return undefined;
     }
 
-    // Try new structure first
     if (aiConfig.defaultProviders) {
       return aiConfig.defaultProviders[capability];
-    }
-
-    // Fall back to legacy provider field for LLM
-    if (capability === 'llm' && aiConfig.provider) {
-      return aiConfig.provider;
     }
 
     return undefined;
