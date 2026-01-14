@@ -20,6 +20,7 @@ import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { SystemRegistry, type SystemContext } from '@/core/system';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import { HookManager } from '@/hooks/HookManager';
+import { MessageUtils } from '@/message/MessageUtils';
 import type { SearchService } from '@/search';
 import { ReplyTaskExecutor, TaskAnalyzer, TaskManager } from '@/task';
 import type { TaskType } from '@/task/types';
@@ -298,6 +299,10 @@ export class ConversationInitializer {
   private static assembleComponents(services: CompleteServices, apiClient: APIClient): ConversationComponents {
     const systemRegistry = new SystemRegistry();
     const commandRouter = new CommandRouter(['/', '!']);
+
+    // Initialize MessageUtils with command prefixes
+    MessageUtils.initialize(['/', '!']);
+
     const lifecycle = new Lifecycle(services.hookManager);
     lifecycle.setCommandRouter(commandRouter);
 

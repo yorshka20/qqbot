@@ -4,6 +4,7 @@ import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
+import { MessageUtils } from '@/message/MessageUtils';
 import { logger } from '@/utils/logger';
 import type { CommandRouter } from './CommandRouter';
 
@@ -346,8 +347,7 @@ export class Lifecycle {
 
   /**
    * Check if message is @bot itself
-   * Supports multiple protocols: Milky (mention) and OneBot11 (at)
-   * Note: In Milky protocol, @0 (user_id=0) typically means @bot itself
+   * Delegates to MessageUtils for centralized implementation
    */
   private checkIsAtBot(
     message: {
@@ -355,57 +355,6 @@ export class Lifecycle {
     },
     botSelfId?: string | null,
   ): boolean {
-    if (!botSelfId || botSelfId === '') {
-      logger.info(`${this.LOG_PREFIX} checkIsAtBot: botSelfId not configured or empty | botSelfId=${botSelfId}`);
-      return false;
-    }
-
-    const botSelfIdNum = parseInt(botSelfId, 10);
-    if (isNaN(botSelfIdNum)) {
-      logger.debug(`${this.LOG_PREFIX} checkIsAtBot: botSelfId is not a valid number: ${botSelfId}`);
-      return false;
-    }
-
-    // Check if message has segments
-    if (!message.segments || message.segments.length === 0) {
-      return false;
-    }
-
-    // Check if any segment is an 'at' or 'mention' segment targeting bot selfId
-    for (const segment of message.segments) {
-      if (!segment.data) {
-        continue;
-      }
-
-      let atUserId: number | string | undefined;
-
-      // Handle Milky protocol (mention type)
-      if (segment.type === 'mention') {
-        const userId = segment.data.user_id;
-        if (typeof userId === 'number' || typeof userId === 'string') {
-          atUserId = userId;
-        }
-      } else if (segment.type === 'at') {
-        // Handle OneBot11 protocol (at type)
-        const qq = segment.data.qq;
-        if (typeof qq === 'number' || typeof qq === 'string') {
-          atUserId = qq;
-        }
-      }
-
-      // atUserId could be 0
-      if (atUserId !== undefined) {
-        const atUserIdNum = typeof atUserId === 'string' ? parseInt(atUserId, 10) : atUserId;
-        if (!isNaN(atUserIdNum)) {
-          // In Milky protocol, @0 (user_id=0) typically means @bot itself
-          // Also check if the atUserId matches botSelfId
-          if (atUserIdNum === 0 || atUserIdNum === botSelfIdNum) {
-            return true;
-          }
-        }
-      }
-    }
-
-    return false;
+    return MessageUtils.isAtBot(message, botSelfId);
   }
 }

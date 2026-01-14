@@ -35,7 +35,7 @@
 ## 示例
 输入：沙滩比基尼女孩，打码
 输出：
-{"prompt":"girl in bikini on beach, mosaic censoring, pixelated","negative_prompt":"worst quality, low quality, bad anatomy, bad hands, text, error, jpeg artifacts, signature, watermark, blurry, uncensored","steps":30,"cfg_scale":7.5,"seed":-1,"width":832,"height":1216,"sampler":"Euler a"}
+{"prompt":"girl in bikini on beach, mosaic censoring, pixelated","negative_prompt":"uncensored","steps":30,"cfg_scale":7.5,"seed":-1,"width":832,"height":1216,"sampler":"Euler a"}
 
 用户输入：{{description}}
 JSON：`;
