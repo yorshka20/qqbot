@@ -116,6 +116,7 @@ export class ConversationInitializer {
       contextManager,
     };
     serviceRegistry.registerConversationServices(completeServices);
+    serviceRegistry.registerCommandManager(completeServices.commandManager);
 
     const taskAnalyzer = new TaskAnalyzer(llmService, completeServices.taskManager);
     const aiService = new AIService(
@@ -167,7 +168,6 @@ export class ConversationInitializer {
       admins: botConfig.bot.admins,
     });
 
-    // CommandManager registers itself in DI container during construction
     const commandManager = new CommandManager(permissionChecker);
 
     const taskManager = new TaskManager();

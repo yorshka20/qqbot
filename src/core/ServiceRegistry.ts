@@ -37,6 +37,13 @@ export class ServiceRegistry {
   }
 
   /**
+   * Register command manager
+   */
+  registerCommandManager(commandManager: CommandManager): void {
+    this.container.registerInstance(DITokens.COMMAND_MANAGER, commandManager);
+  }
+
+  /**
    * Register database service
    */
   registerDatabaseService(databaseManager: DatabaseManager): void {

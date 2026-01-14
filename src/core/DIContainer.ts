@@ -53,9 +53,7 @@ export class DIContainer {
 
     // Check if already registered
     if (this.registeredTokens.has(token) && !allowOverride) {
-      logger.warn(
-        `[DIContainer] Service "${token}" is already registered. Use allowOverride: true to override.`,
-      );
+      logger.warn(`[DIContainer] Service "${token}" is already registered. Use allowOverride: true to override.`);
       return;
     }
 
@@ -71,30 +69,21 @@ export class DIContainer {
   /**
    * Register a service class (transient)
    */
-  registerClass<T>(
-    token: string,
-    constructor: new (...args: any[]) => T,
-  ): void {
+  registerClass<T>(token: string, constructor: new (...args: any[]) => T): void {
     this._container.register(token, { useClass: constructor });
   }
 
   /**
    * Register a service class as singleton
    */
-  registerSingleton<T>(
-    token: string,
-    constructor: new (...args: any[]) => T,
-  ): void {
+  registerSingleton<T>(token: string, constructor: new (...args: any[]) => T): void {
     this._container.registerSingleton(token, constructor);
   }
 
   /**
    * Register a factory function
    */
-  registerFactory<T>(
-    token: string,
-    factory: (container: DependencyContainer) => T,
-  ): void {
+  registerFactory<T>(token: string, factory: (container: DependencyContainer) => T): void {
     this._container.register(token, { useFactory: factory });
   }
 
@@ -109,9 +98,7 @@ export class DIContainer {
    * Check if a service is registered
    */
   isRegistered(token: string): boolean {
-    return (
-      this.registeredTokens.has(token) || this._container.isRegistered(token)
-    );
+    return this.registeredTokens.has(token) || this._container.isRegistered(token);
   }
 
   /**
@@ -132,6 +119,3 @@ export class DIContainer {
 
 // Export convenience function to get container instance
 export const getContainer = () => DIContainer.getInstance();
-
-// Export convenience function to get TSyringe container directly
-export const getTSyringeContainer = () => DIContainer.getInstance().container;

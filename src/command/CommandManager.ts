@@ -3,8 +3,7 @@
 // import handler to register commands
 import './handlers';
 
-import { getTSyringeContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
+import { getContainer } from '@/core/DIContainer';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
@@ -33,10 +32,6 @@ export class CommandManager {
   private hookManager: HookManager | null = null;
 
   constructor(private permissionChecker: PermissionChecker) {
-    // Register self in DI container for commands that need it
-    const container = getTSyringeContainer();
-    container.register(DITokens.COMMAND_MANAGER, { useValue: this });
-
     this.autoRegisterDecoratedCommands();
   }
 
@@ -107,15 +102,16 @@ export class CommandManager {
 
   /**
    * Create a lazy handler that instantiates the command on first execution
-   * This allows commands to use @injectable() and dependency injection even if dependencies
-   * are not available at registration time
+   * Uses Proxy API for complete property and method delegation
+   * This ensures all properties and methods are properly proxied, even if CommandHandler interface extends
    */
   private createLazyHandler(metadata: {
     handlerClass: new (...args: any[]) => CommandHandler;
     name: string;
+    description?: string;
+    usage?: string;
   }): CommandHandler {
     const HandlerClass = metadata.handlerClass;
-    const container = getTSyringeContainer();
     let cachedInstance: CommandHandler | null = null;
 
     // Helper function to get or create the instance
@@ -124,36 +120,70 @@ export class CommandManager {
         return cachedInstance;
       }
 
+      const container = getContainer();
+
       // Try to resolve with dependency injection
       try {
         cachedInstance = container.resolve(HandlerClass);
         logger.debug(`[CommandManager] Lazy-instantiated ${metadata.name} with dependency injection`);
         return cachedInstance;
       } catch (error) {
-        // Fallback to direct instantiation (for commands without dependencies)
-        logger.debug(`[CommandManager] Falling back to direct instantiation for ${metadata.name}`);
-        cachedInstance = new HandlerClass();
-        return cachedInstance;
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        // Only fallback for commands that truly don't need DI (no constructor params)
+        // Otherwise, log error and rethrow to surface dependency issues
+        if (HandlerClass.length === 0) {
+          logger.debug(
+            `[CommandManager] Falling back to direct instantiation for ${metadata.name} (no constructor params)`,
+          );
+          cachedInstance = new HandlerClass();
+          return cachedInstance;
+        }
+
+        // If command has constructor params but DI failed, this is a real error
+        logger.error(`[CommandManager] Failed to resolve ${metadata.name} with DI: ${err.message}`);
+        throw new Error(`Failed to instantiate command ${metadata.name}: ${err.message}`);
       }
     };
 
-    // Create a proxy handler that lazily instantiates the command
-    const lazyHandler: CommandHandler = {
-      get name() {
-        return getInstance().name;
-      },
-      get description() {
-        return getInstance().description;
-      },
-      get usage() {
-        return getInstance().usage;
-      },
-      async execute(args: string[], context: CommandContext): Promise<CommandResult> {
-        return getInstance().execute(args, context);
-      },
-    };
+    // Use Proxy for complete delegation
+    // This handles all properties and methods, even if CommandHandler interface extends
+    return new Proxy({} as CommandHandler, {
+      get(target, prop) {
+        // For known metadata properties, return from metadata first to avoid instantiation
+        if (prop in metadata) {
+          return (metadata as any)[prop];
+        }
 
-    return lazyHandler;
+        // For all other properties/methods, delegate to actual instance
+        const instance = getInstance();
+        const value = instance[prop as keyof CommandHandler];
+
+        // Bind methods to preserve 'this' context
+        if (typeof value === 'function') {
+          return value.bind(instance);
+        }
+
+        return value;
+      },
+
+      // Support 'in' operator
+      has(target, prop) {
+        const instance = getInstance();
+        return prop in instance;
+      },
+
+      // Support Object.keys() and similar operations
+      ownKeys(target) {
+        const instance = getInstance();
+        return Reflect.ownKeys(instance);
+      },
+
+      // Support property descriptor access
+      getOwnPropertyDescriptor(target, prop) {
+        const instance = getInstance();
+        return Reflect.getOwnPropertyDescriptor(instance, prop);
+      },
+    });
   }
 
   /**
