@@ -87,17 +87,18 @@ export class TaskAnalyzer {
     const systemPrompt =
       this.systemPrompt ||
       `You are a task analysis assistant. Your job is to analyze user messages and determine what task should be executed.
-    
+
     Available task types:
     ${taskTypesDescription}
-    
+
     Analyze the user's message and determine the most appropriate task type. If the message matches a specific task type, return a JSON object with the task information. If it's just a general conversation, use the "reply" task type.
-    
+
+    IMPORTANT: For "reply" tasks, DO NOT generate the actual reply content. The reply content will be generated later by the AI service which includes search capabilities and template-based responses.
+
     Return ONLY a valid JSON object in this format:
     {
       "taskType": "task type name",
-      "parameters": { /* task parameters object */ },
-      "reply": "optional AI-generated reply message"
+      "parameters": { /* task parameters object */ }
     }`;
 
     const userPrompt = `    
@@ -138,15 +139,23 @@ Analyze this message and return the task information as JSON.`;
           type: 'reply',
           parameters: {},
           executor: 'reply',
-          reply: parsed.reply || aiResponse,
+          reply: undefined, // Don't pre-generate reply for fallback cases
         };
+      }
+
+      // For reply tasks, never pre-generate reply content - let AIService.generateReply handle it
+      // This ensures search logic and template-based responses work properly
+      let replyContent: string | undefined = undefined;
+      if (taskTypeName !== 'reply' && parsed.reply) {
+        // Only keep pre-generated reply for non-reply tasks
+        replyContent = parsed.reply;
       }
 
       return {
         type: taskTypeName,
         parameters: parsed.parameters || {},
         executor: taskType.executor,
-        reply: parsed.reply,
+        reply: replyContent,
         metadata: {
           analyzedAt: new Date().toISOString(),
           userId: context.userId,

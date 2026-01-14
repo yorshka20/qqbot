@@ -75,7 +75,6 @@ cp config.example.jsonc config.jsonc
   },
   "bot": {
     "selfId": null,
-    "logLevel": "info",
   },
   "plugins": {
     "enabled": [],
@@ -93,6 +92,20 @@ Run the bot in development mode:
 ```bash
 bun run dev
 ```
+
+To enable debug logging:
+
+```bash
+bun run dev
+```
+
+Or set environment variable directly:
+
+```bash
+LOG_LEVEL=debug bun run src/index.ts
+```
+
+Log levels: `debug`, `info`, `warn`, `error`
 
 ### Production Build
 
