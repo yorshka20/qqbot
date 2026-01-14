@@ -148,44 +148,14 @@ export class AIService {
       // Get session ID for provider selection and context loading
       const sessionId = context.metadata.get('sessionId') as string | undefined;
 
-      // Step 1: Check if search is needed (if search service is available and enabled)
-      let needsSearch = false;
-      let searchQuery = '';
-      let searchResultsText = '';
+      // Perform smart search if search service is available
+      const searchResultsText = this.searchService
+        ? await this.searchService.performSmartSearch(context.message.message, this.llmService, sessionId)
+        : '';
 
-      if (this.searchService && this.searchService.isEnabled()) {
-        try {
-          // Use LLM to determine if search is needed
-          const checkPrompt = this.promptManager.render('llm.search_check', {
-            userMessage: context.message.message,
-          });
-
-          const checkResponse = await this.llmService.generate(checkPrompt, {
-            temperature: 0.3, // Lower temperature for more consistent judgment
-            maxTokens: 50, // Short response is enough
-            sessionId,
-          });
-
-          const searchDecision = this.parseSearchDecision(checkResponse.text);
-          needsSearch = searchDecision.needsSearch;
-          searchQuery = searchDecision.query || this.extractSearchQuery(context.message.message);
-
-          // Step 2: Execute search if needed
-          if (needsSearch && searchQuery) {
-            logger.info(`[AIService] Search triggered for query: ${searchQuery}`);
-            const searchResults = await this.searchService.search(searchQuery);
-            searchResultsText = this.searchService.formatSearchResults(searchResults);
-          }
-        } catch (searchError) {
-          // If search check or execution fails, continue without search
-          logger.warn('[AIService] Search check or execution failed, continuing without search:', searchError);
-          needsSearch = false;
-        }
-      }
-
-      // Step 3: Generate reply with or without search results
+      // Generate reply with or without search results
       let prompt: string;
-      if (needsSearch && searchResultsText) {
+      if (searchResultsText) {
         // Use prompt template with search results
         prompt = this.promptManager.render('llm.reply.with_search', {
           userMessage: context.message.message,
@@ -216,47 +186,6 @@ export class AIService {
       logger.error('[AIService] Failed to generate AI reply:', err);
       throw err;
     }
-  }
-
-  /**
-   * Parse LLM response to determine if search is needed
-   * Expected format: "SEARCH: <keywords>" or "NO_SEARCH"
-   */
-  private parseSearchDecision(response: string): { needsSearch: boolean; query?: string } {
-    const trimmed = response.trim().toUpperCase();
-
-    // Check if response starts with "SEARCH:"
-    if (trimmed.startsWith('SEARCH:')) {
-      const query = response.trim().substring(7).trim(); // Remove "SEARCH:" prefix, preserve original case for query
-      return {
-        needsSearch: true,
-        query: query || undefined,
-      };
-    }
-
-    // No search needed (handles "NO_SEARCH" or any other response)
-    return {
-      needsSearch: false,
-    };
-  }
-
-  /**
-   * Extract search query from user message (fallback method)
-   */
-  private extractSearchQuery(message: string): string {
-    // Simple extraction: remove common question words and use the rest as query
-    const questionWords = ['什么', '怎么', '如何', '为什么', '哪里', '哪个', '谁', '何时', '搜索', '查询', '查找'];
-    let query = message.trim();
-
-    // Remove question words from the beginning
-    for (const word of questionWords) {
-      if (query.startsWith(word)) {
-        query = query.substring(word.length).trim();
-        break;
-      }
-    }
-
-    return query || message; // Fallback to original message if extraction fails
   }
 
   /**
