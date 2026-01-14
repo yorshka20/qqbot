@@ -7,8 +7,10 @@ import { APIClient } from './api/APIClient';
 import { ConversationInitializer } from './conversation/ConversationInitializer';
 import { Bot } from './core/Bot';
 import { EventInitializer } from './events/EventInitializer';
+import { MCPInitializer } from './mcp/MCPInitializer';
 import { PluginInitializer } from './plugins/PluginInitializer';
 import { ProtocolAdapterInitializer } from './protocol/ProtocolAdapterInitializer';
+import { SearchService } from './search';
 import { logger } from './utils/logger';
 
 async function main() {
@@ -28,8 +30,19 @@ async function main() {
     // Initialize prompt system (before conversation initialization)
     PromptInitializer.initialize(config);
 
+    // Initialize MCP system (if enabled)
+    const mcpSystem = MCPInitializer.initialize(config);
+
+    // Initialize search service (if MCP is enabled)
+    let searchService: SearchService | undefined;
+    const mcpConfig = config.getMCPConfig();
+    if (mcpConfig && mcpConfig.enabled) {
+      searchService = new SearchService(mcpConfig);
+      logger.info('[Main] SearchService initialized');
+    }
+
     // Initialize conversation components
-    const conversationComponents = await ConversationInitializer.initialize(config, apiClient);
+    const conversationComponents = await ConversationInitializer.initialize(config, apiClient, searchService);
 
     // Initialize event system (EventRouter and handlers)
     const eventSystem = EventInitializer.initialize(config, conversationComponents.conversationManager);
@@ -49,6 +62,15 @@ async function main() {
     // Start bot (this will trigger connection events)
     await bot.start();
 
+    // Connect to MCP servers (after bot is started)
+    if (mcpSystem) {
+      await MCPInitializer.connectServers(mcpSystem, config);
+      // Update SearchService with MCP manager for MCP mode
+      if (searchService) {
+        MCPInitializer.updateSearchService(mcpSystem, searchService);
+      }
+    }
+
     // Load plugins after bot is started
     await PluginInitializer.loadPlugins(pluginSystem, config);
 
@@ -59,9 +81,8 @@ async function main() {
       logger.info('[Main] Received SIGINT, shutting down...');
       await bot.stop();
       eventRouter.destroy();
-      if (conversationComponents.databaseManager) {
-        await conversationComponents.databaseManager.close();
-      }
+      await MCPInitializer.disconnectServers(mcpSystem);
+      await conversationComponents.databaseManager.close();
       process.exit(0);
     });
 
@@ -69,9 +90,8 @@ async function main() {
       logger.info('[Main] Received SIGTERM, shutting down...');
       await bot.stop();
       eventRouter.destroy();
-      if (conversationComponents.databaseManager) {
-        await conversationComponents.databaseManager.close();
-      }
+      await MCPInitializer.disconnectServers(mcpSystem);
+      await conversationComponents.databaseManager.close();
       process.exit(0);
     });
   } catch (error) {

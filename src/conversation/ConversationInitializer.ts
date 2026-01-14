@@ -20,6 +20,7 @@ import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { SystemRegistry, type SystemContext } from '@/core/system';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import { HookManager } from '@/hooks/HookManager';
+import type { SearchService } from '@/search';
 import { ReplyTaskExecutor, TaskAnalyzer, TaskManager } from '@/task';
 import type { TaskType } from '@/task/types';
 import { logger } from '@/utils/logger';
@@ -80,7 +81,11 @@ export class ConversationInitializer {
   /**
    * Initialize all conversation components
    */
-  static async initialize(config: Config, apiClient: APIClient): Promise<ConversationComponents> {
+  static async initialize(
+    config: Config,
+    apiClient: APIClient,
+    searchService?: SearchService,
+  ): Promise<ConversationComponents> {
     // Phase 1: Infrastructure Setup
     const serviceRegistry = new ServiceRegistry();
     serviceRegistry.registerInfrastructureServices(config, apiClient);
@@ -120,6 +125,7 @@ export class ConversationInitializer {
       taskAnalyzer,
       maxHistoryMessages,
       providerSelector,
+      searchService,
     );
     serviceRegistry.registerAIServiceCapabilities(aiService);
 

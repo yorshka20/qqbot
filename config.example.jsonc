@@ -181,5 +181,36 @@
     "model": "s1",
     "referenceId": "e4642e5edccd4d9ab61a69e82d4f8a14",
     "format": "mp3"
+  },
+  // MCP configuration (optional)
+  // MCP (Model Context Protocol) configuration for RAG search functionality
+  "mcp": {
+    "enabled": true,
+    "searxng": {
+      "url": "http://localhost:8080"
+      // Optional: HTTP Basic Auth credentials
+      // "authUsername": "user",
+      // "authPassword": "pass",
+      // Optional: Custom User-Agent header
+      // "userAgent": "qqbot/1.0",
+      // Optional: Proxy configuration
+      // "proxy": {
+      //   "http": "http://proxy:8080",
+      //   "https": "http://proxy:8080"
+      // }
+    },
+    "server": {
+      "enabled": false,  // false = direct API mode, true = MCP server mode
+      "runtime": "bunx",  // "bunx" | "npx" | "npm"
+      "package": "mcp-searxng"
+    },
+    "search": {
+      "enabled": true,
+      "mode": "direct",  // "direct" (SearXNG API) or "mcp" (MCP server)
+      "autoTrigger": true,  // Automatically trigger search when needed
+      "triggerStrategy": "llm",  // "llm" (use LLM to judge) | "keywords" | "none"
+      "maxResults": 5,  // Maximum number of search results
+      "language": "all"  // Default language for search results
+    }
   }
 }

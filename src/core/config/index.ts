@@ -9,6 +9,7 @@ import { extname, resolve } from 'path';
 import type { AIConfig, ContextMemoryConfig, SessionProviderConfig } from './ai';
 import type { BotSelfConfig } from './bot';
 import type { DatabaseConfig } from './database';
+import type { MCPConfig } from './mcp';
 import type { PluginsConfig } from './plugins';
 import type { PromptsConfig } from './prompts';
 import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './protocol';
@@ -34,6 +35,15 @@ export type {
 } from './ai';
 export type { BotSelfConfig } from './bot';
 export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './database';
+export type {
+  MCPConfig,
+  MCPServerConfig,
+  ProxyConfig,
+  SearchConfig,
+  SearchMode,
+  SearXNGConfig,
+  TriggerStrategy,
+} from './mcp';
 export type { PluginsConfig } from './plugins';
 export type { PromptsConfig } from './prompts';
 export type {
@@ -58,6 +68,7 @@ export interface BotConfig {
   contextMemory?: ContextMemoryConfig;
   prompts: PromptsConfig;
   tts?: TTSConfig;
+  mcp?: MCPConfig;
 }
 
 export class Config {
@@ -283,5 +294,9 @@ export class Config {
 
   getTTSConfig(): TTSConfig | undefined {
     return this.config.tts;
+  }
+
+  getMCPConfig(): MCPConfig | undefined {
+    return this.config.mcp;
   }
 }

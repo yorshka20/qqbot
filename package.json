@@ -28,6 +28,7 @@
   "license": "ISC",
   "packageManager": "bun@1.0.0",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.2",
     "@saltify/milky-types": "^1.1.0",
     "better-sqlite3": "^12.6.0",
     "jsonc-parser": "^3.3.1",
