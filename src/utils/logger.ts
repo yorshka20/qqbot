@@ -45,7 +45,7 @@ function getLogFilePath(logsDir: string): string {
   const now = new Date();
   const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
   const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-'); // HH-MM-SS
-  return join(logsDir, `${dateStr}-${timeStr}.log`);
+  return join(logsDir, `${dateStr}/${dateStr}-${timeStr}.log`);
 }
 
 // Color codes for console output
@@ -216,7 +216,9 @@ class FileLogger implements Logger {
   }
 }
 
-let defaultLogger: Logger = new FileLogger();
+// Get default log level from environment variable or use 'info' as fallback
+const defaultLogLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'info';
+let defaultLogger: Logger = new FileLogger(defaultLogLevel);
 
 export function setLogLevel(level: LogLevel): void {
   defaultLogger = new FileLogger(level);

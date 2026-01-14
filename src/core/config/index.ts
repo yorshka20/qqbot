@@ -14,7 +14,6 @@ import type { PluginsConfig } from './plugins';
 import type { PromptsConfig } from './prompts';
 import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './protocol';
 import type { TTSConfig } from './tts';
-import type { LogLevel } from './types';
 
 // Re-export all types for convenience
 export type {
@@ -210,10 +209,6 @@ export class Config {
 
   getEventConfig(): EventConfig {
     return this.config.events;
-  }
-
-  getLogLevel(): LogLevel {
-    return this.config.bot.logLevel;
   }
 
   getPluginsConfig() {

@@ -54,7 +54,6 @@
   // Bot configuration
   "bot": {
     "selfId": null,
-    "logLevel": "info",
     // Bot owner: highest permission level, can use all commands
     "owner": "123123",
     // Bot admins: user IDs that have admin permission level

@@ -1,6 +1,6 @@
 // Main bot orchestrator class
 
-import { logger, setLogLevel } from '@/utils/logger';
+import { logger } from '@/utils/logger';
 import { EventEmitter } from 'events';
 import { Config } from './config';
 import { ConnectionManager } from './ConnectionManager';
@@ -26,9 +26,6 @@ export class Bot extends EventEmitter {
     super();
     this.config = new Config(configPath);
 
-    // Initialize logger with config log level
-    setLogLevel(this.config.getLogLevel());
-
     this.connectionManager = new ConnectionManager(this.config);
     this.setupConnectionManagerEvents();
   }
@@ -47,7 +44,7 @@ export class Bot extends EventEmitter {
       return;
     }
 
-    logger.info('[Bot] Starting bot...');
+    logger.info('[Bot] ⚡ Starting bot...');
     this.isRunning = true;
 
     try {

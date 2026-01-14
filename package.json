@@ -5,7 +5,7 @@
   "main": "src/index.ts",
   "type": "module",
   "scripts": {
-    "dev": "bun run src/index.ts",
+    "dev": "LOG_LEVEL=debug bun run src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun --minify",
     "start": "bun dist/index.js",
     "debug": "bun run src/cli/debug.ts",

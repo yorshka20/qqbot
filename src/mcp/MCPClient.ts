@@ -2,7 +2,7 @@
 
 import type { MCPConfig, MCPRuntime } from '@/core/config/mcp';
 import { logger } from '@/utils/logger';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { Client } from '@modelcontextprotocol/sdk/client';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { MCPTool, MCPToolCallResult } from './types';
 
