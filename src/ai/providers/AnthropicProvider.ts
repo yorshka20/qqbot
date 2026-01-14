@@ -53,6 +53,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     this.httpClient = new HttpClient({
       baseURL: this.baseUrl,
       defaultHeaders: {
+        'Content-Type': 'application/json',
         'x-api-key': this.config.apiKey,
         'anthropic-version': '2023-06-01',
       },

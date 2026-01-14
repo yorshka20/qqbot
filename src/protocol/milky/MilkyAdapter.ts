@@ -27,7 +27,9 @@ export class MilkyAdapter extends ProtocolAdapter {
     }
 
     // Configure HttpClient for Milky protocol API calls
-    const defaultHeaders: Record<string, string> = {};
+    const defaultHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
     if (this.config.connection.accessToken) {
       defaultHeaders.Authorization = `Bearer ${this.config.connection.accessToken}`;
     }
@@ -60,8 +62,7 @@ export class MilkyAdapter extends ProtocolAdapter {
     const milkyParams = MilkyAPIConverter.convertParamsToMilky(milkyAction, context.params);
 
     logger.debug(
-      `[MilkyAdapter] Calling API: ${milkyAction} (echo: ${context.echo}) with params:`,
-      JSON.stringify(milkyParams),
+      `[MilkyAdapter] Calling API: ${milkyAction} (echo: ${context.echo}) with params:\n${JSON.stringify(milkyParams, null, 2)}`,
     );
 
     try {

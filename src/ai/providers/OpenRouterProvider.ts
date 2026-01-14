@@ -33,6 +33,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
     const baseURL = config.baseURL || 'https://openrouter.ai/api/v1';
     const defaultHeaders: Record<string, string> = {
       Authorization: `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json',
     };
 
     // Add optional headers for rankings

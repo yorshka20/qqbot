@@ -56,6 +56,9 @@ export class LocalText2ImageProvider extends AIProvider implements Text2ImageCap
     // Configure HttpClient
     this.httpClient = new HttpClient({
       baseURL: this.config.baseUrl,
+      defaultHeaders: {
+        'Content-Type': 'application/json',
+      },
       defaultTimeout: this.config.timeout,
     });
 

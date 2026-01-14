@@ -50,6 +50,9 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
 
     // Configure HttpClient
     this.httpClient = new HttpClient({
+      defaultHeaders: {
+        'Content-Type': 'application/json',
+      },
       baseURL: this.baseUrl,
       defaultTimeout: 120000, // 2 minutes default timeout for AI processing
     });

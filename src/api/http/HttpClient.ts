@@ -68,22 +68,14 @@ export class HttpClient {
     // Build full URL
     const fullUrl = this.buildUrl(url);
 
-    // Prepare body first to determine if we need to set Content-Type
-    const body = this.prepareBody(options.body);
-    const bodyWasObject = options.body !== undefined && options.body !== null && typeof options.body !== 'string';
-
-    // Merge headers and auto-set Content-Type for JSON bodies
+    // Merge headers
     const headers = this.mergeHeaders(options.headers);
-    // Automatically set Content-Type: application/json if body is an object (was JSON.stringify'd)
-    // and Content-Type is not already set
-    if (bodyWasObject && !headers['Content-Type'] && !headers['content-type']) {
-      headers['Content-Type'] = 'application/json';
-    }
+    const body = this.prepareBody(options.body);
 
     // Log request in debug mode
     logger.debug(`[HttpClient] ${method} ${fullUrl}`, {
       headers: this.sanitizeHeaders(headers),
-      body: body ? (typeof body === 'string' ? body.substring(0, 200) : '...') : undefined,
+      body,
     });
 
     let lastError: Error | null = null;
@@ -103,10 +95,7 @@ export class HttpClient {
         const data = await this.parseResponse<T>(response);
 
         // Log response in debug mode
-        logger.debug(`[HttpClient] ${method} ${fullUrl} - ${response.status}`, {
-          status: response.status,
-          statusText: response.statusText,
-        });
+        logger.debug(`[HttpClient] ${method} ${fullUrl} - ${response.status}:${response.statusText}`);
 
         return data;
       } catch (error) {

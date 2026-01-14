@@ -43,6 +43,7 @@ export class BilibiliHotCommandHandler implements CommandHandler {
     this.httpClient = new HttpClient({
       baseURL: this.API_URL,
       defaultHeaders: {
+        'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
       defaultTimeout: 10000, // 10 seconds default timeout

@@ -52,6 +52,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
     this.httpClient = new HttpClient({
       baseURL: this.baseUrl,
       defaultHeaders: {
+        'Content-Type': 'application/json',
         Authorization: `Bearer ${this.config.apiKey}`,
       },
       defaultTimeout: 120000, // 2 minutes default timeout for AI processing

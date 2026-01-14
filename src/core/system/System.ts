@@ -40,7 +40,7 @@ export interface SystemContext {
  */
 export interface ExtensionHookDefinition {
   hookName: string;
-  priority?: number; // Default priority for this hook (used when plugins register without specifying priority)
+  priority: number; // Default priority for this hook (used when plugins register without specifying priority)
 }
 
 /**

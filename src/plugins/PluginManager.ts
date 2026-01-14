@@ -39,7 +39,7 @@ export class PluginManager {
       await this.loadPluginsFromDirectory(this.pluginDirectory, pluginConfigMap, true);
     }
 
-    logger.info(`[PluginManager] Finished loading plugins. Total: ${this.plugins.size}`);
+    logger.info(`📦 [PluginManager] Finished loading plugins. Total: ${this.plugins.size}`);
   }
 
   /**
@@ -117,10 +117,10 @@ export class PluginManager {
         }
 
         logger.info(
-          `[PluginManager] Loaded plugin: ${plugin.name} v${plugin.version} (enabled: ${pluginConfig?.enabled ?? false})${isBuiltin ? ' [built-in]' : ''}`,
+          `✅ [PluginManager] Loaded plugin: ${plugin.name} v${plugin.version} (enabled: ${pluginConfig?.enabled ?? false})${isBuiltin ? ' [built-in]' : ''}`,
         );
       } catch (error) {
-        logger.error(`[PluginManager] Failed to load plugin ${file} from ${directory}:`, error);
+        logger.error(`❌ [PluginManager] Failed to load plugin ${file} from ${directory}:`, error);
       }
     }
   }
@@ -142,7 +142,7 @@ export class PluginManager {
     await plugin.onEnable?.(this.context);
 
     this.enabledPlugins.add(name);
-    logger.info(`[PluginManager] Enabled plugin: ${name}`);
+    logger.info(`▶️ [PluginManager] Enabled plugin: ${name}`);
   }
 
   async disablePlugin(name: string): Promise<void> {
@@ -161,7 +161,7 @@ export class PluginManager {
     this.hookManager.unregister(name);
 
     this.enabledPlugins.delete(name);
-    logger.info(`[PluginManager] Disabled plugin: ${name}`);
+    logger.info(`⏸️ [PluginManager] Disabled plugin: ${name}`);
   }
 
   getPlugin(name: string): Plugin | undefined {
@@ -185,6 +185,7 @@ export class PluginManager {
     hookMetadataList: Array<{
       hookName: string;
       priority: HookPriorityVariant;
+      order: number;
       methodName: string;
     }>,
     pluginName: string,
@@ -199,7 +200,7 @@ export class PluginManager {
       }
 
       // Calculate priority from variant
-      const priority = getHookPriority(hookMeta.hookName, hookMeta.priority);
+      const priority = getHookPriority(hookMeta.hookName, hookMeta.priority, hookMeta.order);
 
       // Bind handler to plugin instance to preserve 'this' context
       const boundHandler = handler.bind(plugin) as HookHandler;
