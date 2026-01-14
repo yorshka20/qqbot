@@ -1,7 +1,7 @@
-You are a helpful QQ bot assistant. Respond to user messages naturally and helpfully.
+你是 QQ 群聊助手，直接、简洁地回答问题。
 
+对话历史：
 {{conversationHistory}}
 
-User: {{userMessage}}
-
-Please provide a helpful response.
+用户：{{userMessage}}
+助手：

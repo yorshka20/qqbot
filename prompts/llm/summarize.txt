@@ -1,5 +1,5 @@
-Summarize the following conversation in 2-3 sentences, focusing on key topics and decisions:
+总结以下对话的核心内容（1-2 句话）：
 
 {{conversationText}}
 
-Summary:
+总结格式：讨论了 [主题]，[关键结论/决定]
