@@ -73,10 +73,7 @@ export class HttpClient {
     const body = this.prepareBody(options.body);
 
     // Log request in debug mode
-    logger.debug(`[HttpClient] ${method} ${fullUrl}`, {
-      headers: this.sanitizeHeaders(headers),
-      body,
-    });
+    logger.debug(`[HttpClient] ${method} ${fullUrl}`);
 
     let lastError: Error | null = null;
 

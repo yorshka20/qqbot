@@ -4,7 +4,6 @@ import { HttpClient } from '@/api/http/HttpClient';
 import type { APIContext } from '@/api/types';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import { Connection } from '@/core/Connection';
-import { logger } from '@/utils/logger';
 import { ProtocolAdapter } from '../base/ProtocolAdapter';
 import type { BaseEvent } from '../base/types';
 import { MilkyAPIConverter } from './MilkyAPIConverter';
@@ -60,10 +59,6 @@ export class MilkyAdapter extends ProtocolAdapter {
 
     // Convert unified API parameters (OneBot11-style) to Milky protocol format
     const milkyParams = MilkyAPIConverter.convertParamsToMilky(milkyAction, context.params);
-
-    logger.debug(
-      `[MilkyAdapter] Calling API: ${milkyAction} (echo: ${context.echo}) with params:\n${JSON.stringify(milkyParams, null, 2)}`,
-    );
 
     try {
       // Use HttpClient to make the request

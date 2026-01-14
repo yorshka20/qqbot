@@ -40,10 +40,18 @@ function formatMeta(meta: Record<string, unknown>): string {
   return parts.length > 0 ? '\n' + parts.join('\n') : '';
 }
 
+// Get local date string in YYYY-MM-DD format
+function getLocalDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // Get log file path with date and time
 function getLogFilePath(logsDir: string): string {
   const now = new Date();
-  const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+  const dateStr = getLocalDateString(now); // YYYY-MM-DD (local time)
   const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-'); // HH-MM-SS
   return join(logsDir, `${dateStr}/${dateStr}-${timeStr}.log`);
 }
@@ -83,7 +91,7 @@ class FileLogger implements Logger {
       mkdirSync(this.logsDir, { recursive: true });
     }
 
-    this.currentDate = new Date().toISOString().split('T')[0];
+    this.currentDate = getLocalDateString(new Date());
 
     // File format
     const fileFormat = winston.format.combine(
@@ -103,6 +111,11 @@ class FileLogger implements Logger {
 
     // Create file transport with new file on startup
     const logFilePath = getLogFilePath(this.logsDir);
+    // Ensure date directory exists
+    const dateDir = join(this.logsDir, this.currentDate);
+    if (!existsSync(dateDir)) {
+      mkdirSync(dateDir, { recursive: true });
+    }
     // Delete file if exists to create new file instead of appending
     if (existsSync(logFilePath)) {
       unlinkSync(logFilePath);
@@ -159,11 +172,17 @@ class FileLogger implements Logger {
   }
 
   private checkDateChange(): void {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateString(new Date());
     if (today !== this.currentDate) {
       // Date changed, create new file transport
       this.currentDate = today;
       const newLogFilePath = getLogFilePath(this.logsDir);
+
+      // Ensure new date directory exists
+      const dateDir = join(this.logsDir, this.currentDate);
+      if (!existsSync(dateDir)) {
+        mkdirSync(dateDir, { recursive: true });
+      }
 
       // Remove old file transport
       this.winstonLogger.remove(this.fileTransport);
