@@ -1,6 +1,9 @@
 // Search service - provides unified search interface
 
+import type { PromptManager } from '@/ai/PromptManager';
 import type { MCPConfig } from '@/core/config/mcp';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import type { MCPManager } from '@/mcp';
 import { logger } from '@/utils/logger';
 import { SearXNGClient } from './SearXNGClient';
@@ -11,16 +14,21 @@ export class SearchService {
   private mcpManager: MCPManager | null = null;
   private config: MCPConfig | null = null;
   private maxResults: number;
+  private promptManager: PromptManager;
 
   constructor(config?: MCPConfig) {
     this.config = config || null;
-    this.maxResults = config?.search.maxResults || 5;
+    this.maxResults = config?.search.maxResults || 8;
 
     // Initialize SearXNG client if in direct mode or MCP mode not enabled
     if (config && config.enabled && config.search.mode === 'direct') {
       this.searxngClient = new SearXNGClient(config.searxng);
       logger.info('[SearchService] Initialized in Direct mode');
     }
+
+    // Initialize PromptManager from DI container
+    const container = getContainer();
+    this.promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
   }
 
   /**
@@ -108,13 +116,23 @@ export class SearchService {
     }
 
     const formatted = results
+      .slice(0, 8)
       .map((result, index) => {
-        const snippet = (result.snippet || result.content || '').substring(0, 200); // Limit snippet length
-        return `${index + 1}. [${result.title}](${result.url})\n   ${snippet}`;
+        const snippet = (result.snippet || result.content || '').substring(0, 300);
+        let domain = '';
+        try {
+          domain = new URL(result.url).hostname.replace('www.', '');
+        } catch (error) {
+          domain = '未知来源';
+        }
+        return `${index + 1}. **${result.title}**\n   来源: ${domain}\n   摘要: ${snippet}\n   链接: ${result.url}`;
       })
       .join('\n\n');
 
-    return `Relevant search results:\n${formatted}\n\nUse the above search results to provide accurate and up-to-date information in your response.`;
+    return this.promptManager.render('llm.format_search_results', {
+      totalResults: results.length.toString(),
+      formattedResults: formatted,
+    });
   }
 
   /**
