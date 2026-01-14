@@ -17,7 +17,8 @@ export interface PluginOptions {
  */
 export interface HookOptions {
   stage: string;
-  priority?: HookPriorityVariant; // Default: 'NORMAL'
+  priority: HookPriorityVariant; // Default: 'NORMAL'
+  order: number; // Default: 0
 }
 
 /**
@@ -33,6 +34,7 @@ export interface PluginMetadata extends PluginOptions {
 export interface HookMetadata {
   hookName: string; // extended hook name
   priority: HookPriorityVariant;
+  order: number;
   methodName: string;
   pluginClass: new (...args: any[]) => Plugin;
 }
@@ -92,7 +94,8 @@ export function Hook(options: HookOptions) {
     // Store hook metadata
     const hookMetadata: HookMetadata = {
       hookName: options.stage,
-      priority: options.priority || 'NORMAL',
+      priority: options.priority,
+      order: options.order,
       methodName: propertyKey,
       pluginClass,
     };

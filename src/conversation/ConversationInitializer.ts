@@ -116,7 +116,8 @@ export class ConversationInitializer {
       contextManager,
     };
     serviceRegistry.registerConversationServices(completeServices);
-    serviceRegistry.registerCommandManager(completeServices.commandManager);
+    // commandManager will be auto registered by injector.
+    // serviceRegistry.registerCommandManager(completeServices.commandManager);
 
     const taskAnalyzer = new TaskAnalyzer(llmService, completeServices.taskManager);
     const aiService = new AIService(

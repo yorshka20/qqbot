@@ -5,23 +5,22 @@
  * Hook Priority Constants
  *
  * Priority ranges:
- * - Higher number = executed earlier
+ * - Lower number = executed earlier
  * - Core hooks have fixed priority ranges
  * - Extension hooks should use priority values within appropriate ranges
  *
- * Priority ranges:
- * - 1000+: Very early (system-level hooks)
- * - 500-999: Early (pre-processing)
- * - 100-499: Normal (main processing)
- * - 0-99: Late (post-processing)
- * - Negative: Very late (cleanup)
+ * Priority ranges (lower number = executed earlier):
+ * - 0-399: Very early (system-level hooks)
+ * - 400-699: Early (pre-processing)
+ * - 700-999: Normal (main processing)
+ * - 1000+: Late (post-processing)
  */
 
 /**
  * Hook priority variant type
  * Five priority levels within a hook stage (not related to hook name timing)
  * Priority order: HIGHEST > HIGH > NORMAL > LOW > LOWEST
- * Higher number = executed earlier within the same hook stage
+ * Lower number = executed earlier within the same hook stage
  */
 export type HookPriorityVariant = 'HIGHEST' | 'HIGH' | 'NORMAL' | 'LOW' | 'LOWEST';
 
@@ -29,22 +28,22 @@ export type HookPriorityVariant = 'HIGHEST' | 'HIGH' | 'NORMAL' | 'LOW' | 'LOWES
  * Standard priority configuration for most hooks
  */
 const STANDARD_PRIORITIES: Record<HookPriorityVariant, number> = {
-  HIGHEST: 700,
-  HIGH: 600,
+  HIGHEST: 0,
+  HIGH: 300,
   NORMAL: 500,
-  LOW: 400,
-  LOWEST: 300,
+  LOW: 700,
+  LOWEST: 900,
 };
 
 /**
  * Error hook priority configuration (higher priority for error handling)
  */
 const ERROR_PRIORITIES: Record<HookPriorityVariant, number> = {
-  HIGHEST: 1200,
-  HIGH: 1100,
+  HIGHEST: 600,
+  HIGH: 900,
   NORMAL: 1000,
-  LOW: 900,
-  LOWEST: 800,
+  LOW: 1100,
+  LOWEST: 1200,
 };
 
 /**
@@ -98,73 +97,63 @@ export const HookPriority: Record<
  * Get priority for a hook (core or extension)
  * @param hookName - Hook name
  * @param variant - Priority variant (defaults to NORMAL)
- * @returns Priority number (higher = executed earlier within the same hook stage)
+ * @param order - Order (defaults to 0)
+ * @returns Priority number (lower = executed earlier within the same hook stage)
  */
-export function getHookPriority(hookName: string, variant: HookPriorityVariant = 'NORMAL'): number {
+export function getHookPriority(hookName: string, variant: HookPriorityVariant, order: number = 0): number {
+  let priority = STANDARD_PRIORITIES.NORMAL;
+
   // Core hooks
   switch (hookName) {
     case 'onMessageReceived': {
-      const priority = HookPriority.CORE.MESSAGE_RECEIVED[variant];
-      return priority ?? HookPriority.CORE.MESSAGE_RECEIVED.NORMAL;
+      priority = HookPriority.CORE.MESSAGE_RECEIVED[variant] ?? HookPriority.CORE.MESSAGE_RECEIVED.NORMAL;
     }
     case 'onMessagePreprocess': {
-      const priority = HookPriority.CORE.MESSAGE_PREPROCESS[variant];
-      return priority ?? HookPriority.CORE.MESSAGE_PREPROCESS.NORMAL;
+      priority = HookPriority.CORE.MESSAGE_PREPROCESS[variant] ?? HookPriority.CORE.MESSAGE_PREPROCESS.NORMAL;
     }
     case 'onMessageBeforeSend': {
-      const priority = HookPriority.CORE.MESSAGE_BEFORE_SEND[variant];
-      return priority ?? HookPriority.CORE.MESSAGE_BEFORE_SEND.NORMAL;
+      priority = HookPriority.CORE.MESSAGE_BEFORE_SEND[variant] ?? HookPriority.CORE.MESSAGE_BEFORE_SEND.NORMAL;
     }
     case 'onMessageSent': {
-      const priority = HookPriority.CORE.MESSAGE_SENT[variant];
-      return priority ?? HookPriority.CORE.MESSAGE_SENT.NORMAL;
+      priority = HookPriority.CORE.MESSAGE_SENT[variant] ?? HookPriority.CORE.MESSAGE_SENT.NORMAL;
     }
     case 'onError': {
-      const priority = HookPriority.CORE.ERROR[variant];
-      return priority ?? HookPriority.CORE.ERROR.NORMAL;
+      priority = HookPriority.CORE.ERROR[variant] ?? HookPriority.CORE.ERROR.NORMAL;
     }
   }
 
   // Command hooks
   if (hookName === 'onCommandDetected') {
-    const priority = HookPriority.COMMAND.DETECTED[variant];
-    return priority ?? HookPriority.COMMAND.DETECTED.NORMAL;
+    priority = HookPriority.COMMAND.DETECTED[variant] ?? HookPriority.COMMAND.DETECTED.NORMAL;
   }
   if (hookName === 'onCommandExecuted') {
-    const priority = HookPriority.COMMAND.EXECUTED[variant];
-    return priority ?? HookPriority.COMMAND.EXECUTED.NORMAL;
+    priority = HookPriority.COMMAND.EXECUTED[variant] ?? HookPriority.COMMAND.EXECUTED.NORMAL;
   }
 
   // Task hooks
   if (hookName === 'onTaskAnalyzed') {
-    const priority = HookPriority.TASK.ANALYZED[variant];
-    return priority ?? HookPriority.TASK.ANALYZED.NORMAL;
+    priority = HookPriority.TASK.ANALYZED[variant] ?? HookPriority.TASK.ANALYZED.NORMAL;
   }
   if (hookName === 'onTaskBeforeExecute') {
-    const priority = HookPriority.TASK.BEFORE_EXECUTE[variant];
-    return priority ?? HookPriority.TASK.BEFORE_EXECUTE.NORMAL;
+    priority = HookPriority.TASK.BEFORE_EXECUTE[variant] ?? HookPriority.TASK.BEFORE_EXECUTE.NORMAL;
   }
   if (hookName === 'onTaskExecuted') {
-    const priority = HookPriority.TASK.EXECUTED[variant];
-    return priority ?? HookPriority.TASK.EXECUTED.NORMAL;
+    priority = HookPriority.TASK.EXECUTED[variant] ?? HookPriority.TASK.EXECUTED.NORMAL;
   }
 
   // AI hooks
   if (hookName === 'onMessageBeforeAI') {
-    const priority = HookPriority.AI.BEFORE_AI[variant];
-    return priority ?? HookPriority.AI.BEFORE_AI.NORMAL;
+    priority = HookPriority.AI.BEFORE_AI[variant] ?? HookPriority.AI.BEFORE_AI.NORMAL;
   }
   if (hookName === 'onAIGenerationStart') {
-    const priority = HookPriority.AI.GENERATION_START[variant];
-    return priority ?? HookPriority.AI.GENERATION_START.NORMAL;
+    priority = HookPriority.AI.GENERATION_START[variant] ?? HookPriority.AI.GENERATION_START.NORMAL;
   }
   if (hookName === 'onAIGenerationComplete') {
-    const priority = HookPriority.AI.GENERATION_COMPLETE[variant];
-    return priority ?? HookPriority.AI.GENERATION_COMPLETE.NORMAL;
+    priority = HookPriority.AI.GENERATION_COMPLETE[variant] ?? HookPriority.AI.GENERATION_COMPLETE.NORMAL;
   }
 
   // Unknown hook - use standard priority
-  return STANDARD_PRIORITIES.NORMAL;
+  return priority + order;
 }
 
 /**
