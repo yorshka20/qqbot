@@ -50,14 +50,14 @@ export class MilkyAdapter extends ProtocolAdapter {
 
   /**
    * Override sendAPI to use HTTP POST instead of WebSocket for Milky protocol
-   * Also converts unified API parameters (OneBot11-style) to Milky protocol format
+   * Converts API parameters to Milky protocol format
    * Uses context-based approach to access all call information
    */
   async sendAPI<TResponse = unknown>(context: APIContext): Promise<TResponse> {
-    // Convert unified API action names (OneBot11-style) to Milky protocol endpoints
+    // Convert action names to Milky protocol endpoints
     const milkyAction = MilkyAPIConverter.convertActionToMilky(context.action);
 
-    // Convert unified API parameters (OneBot11-style) to Milky protocol format
+    // Convert API parameters to Milky protocol format
     const milkyParams = MilkyAPIConverter.convertParamsToMilky(milkyAction, context.params);
 
     try {

@@ -26,57 +26,21 @@ import type {
 /**
  * Utility class for converting API calls to Milky protocol format
  *
- * Conversion flow:
- * 1. Application layer calls unified API interface (OneBot11-style naming like 'send_private_msg')
- * 2. APIClient routes to MilkyAdapter
- * 3. MilkyAdapter receives unified action/params and uses this converter
- * 4. This converter transforms to Milky native format (like 'send_private_message')
- * 5. MilkyAdapter sends HTTP request to Milky server
+ * Since we directly use Milky API names, this converter mainly handles parameter transformation.
  */
 export class MilkyAPIConverter {
   /**
-   * Convert unified API action names (OneBot11-style) to Milky protocol endpoints
+   * Convert API action names to Milky protocol endpoints
+   * For Milky protocol, we directly use the API names, so this mainly passes through
+   * or handles any necessary name transformations.
    *
-   * @param action Unified API action name (OneBot11-style, e.g., 'send_private_msg')
-   * @returns Milky protocol endpoint name (e.g., 'send_private_message')
+   * @param action API action name (should already be Milky-style)
+   * @returns Milky protocol endpoint name
    */
   static convertActionToMilky(action: string): string {
-    const actionMap: Record<string, string> = {
-      // Message APIs
-      send_private_msg: 'send_private_message',
-      send_group_msg: 'send_group_message',
-      delete_msg: 'delete_message',
-      recall_msg: 'recall_message',
-
-      // User/Group Info APIs
-      get_login_info: 'get_login_info',
-      get_user_info: 'get_user_info',
-      get_friend_list: 'get_friend_list',
-      get_group_list: 'get_group_list',
-      get_group_info: 'get_group_info',
-      get_group_member_list: 'get_group_member_list',
-      get_group_member_info: 'get_group_member_info',
-
-      // Group Management APIs
-      set_group_kick: 'set_group_kick',
-      set_group_ban: 'set_group_ban',
-      set_group_whole_ban: 'set_group_whole_ban',
-      set_group_admin: 'set_group_admin',
-      set_group_card: 'set_group_card',
-      set_group_name: 'set_group_name',
-      set_group_leave: 'set_group_leave',
-
-      // File APIs
-      get_image: 'get_image',
-      can_send_image: 'can_send_image',
-      can_send_record: 'can_send_record',
-
-      // Status APIs
-      get_status: 'get_status',
-      get_version_info: 'get_version_info',
-    };
-
-    return actionMap[action] || action;
+    // For now, we assume action names are already in Milky format
+    // Add any necessary transformations here if needed
+    return action;
   }
 
   /**
@@ -101,19 +65,21 @@ export class MilkyAPIConverter {
   }
 
   /**
-   * Convert unified API parameters (OneBot11-style) to Milky protocol format
+   * Convert API parameters to Milky protocol format
    * Uses official types from @saltify/milky-types
-   * Improved with switch case structure for better maintainability
    *
-   * @param action Milky action name (already converted by convertActionToMilky)
-   * @param params Unified API parameters (OneBot11-style, e.g., { user_id, message: string })
-   * @returns Milky format parameters (e.g., { user_id, message: OutgoingSegment[] })
+   * @param action Milky action name
+   * @param params API parameters
+   * @returns Milky format parameters
    */
   static convertParamsToMilky(action: string, params: Record<string, unknown>): Record<string, unknown> {
     switch (action) {
+      // Currently used APIs in the project - implementations are above
+
+      // Future APIs - defined for completeness but not currently used
       case 'send_private_message': {
         const milkyParams: Partial<SendPrivateMessageInput> = {
-          user_id: (params.user_id || params.peer_id) as number,
+          user_id: params.user_id as number,
         };
 
         const messageSegments = MilkyAPIConverter.convertMessageToSegments(params.message);
@@ -126,7 +92,7 @@ export class MilkyAPIConverter {
 
       case 'send_group_message': {
         const milkyParams: Partial<SendGroupMessageInput> = {
-          group_id: (params.group_id || params.peer_id) as number,
+          group_id: params.group_id as number,
         };
 
         const messageSegments = MilkyAPIConverter.convertMessageToSegments(params.message);
@@ -137,27 +103,27 @@ export class MilkyAPIConverter {
         return milkyParams as Record<string, unknown>;
       }
 
-      case 'delete_message':
-      case 'recall_message': {
-        // Milky protocol uses message_seq instead of message_id
-        // And requires user_id for private messages or group_id for group messages
-        // Try to determine message type from params
-        if (params.group_id || params.peer_id) {
-          // Group message recall
-          const milkyParams: Partial<RecallGroupMessageInput> = {
-            group_id: (params.group_id || params.peer_id) as number,
-            message_seq: (params.message_seq || params.message_id) as number,
-          };
-          return milkyParams as Record<string, unknown>;
-        } else if (params.user_id) {
-          // Private message recall
-          const milkyParams: Partial<RecallPrivateMessageInput> = {
-            user_id: params.user_id as number,
-            message_seq: (params.message_seq || params.message_id) as number,
-          };
-          return milkyParams as Record<string, unknown>;
-        }
-        // Fallback: if we can't determine, assume it's a message_seq
+      case 'recall_group_message': {
+        // Group message recall - requires group_id and message_seq
+        const milkyParams: Partial<RecallGroupMessageInput> = {
+          group_id: (params.group_id || params.peer_id) as number,
+          message_seq: (params.message_seq || params.message_id) as number,
+        };
+        return milkyParams as Record<string, unknown>;
+      }
+
+      case 'recall_private_message': {
+        // Private message recall - requires user_id and message_seq
+        const milkyParams: Partial<RecallPrivateMessageInput> = {
+          user_id: params.user_id as number,
+          message_seq: (params.message_seq || params.message_id) as number,
+        };
+        return milkyParams as Record<string, unknown>;
+      }
+
+      case 'delete_message': {
+        // Delete message - fallback for backward compatibility
+        // Note: This case might be deprecated, use specific recall APIs instead
         return {
           message_seq: (params.message_seq || params.message_id) as number,
         };
@@ -307,20 +273,9 @@ export class MilkyAPIConverter {
       }
 
       default: {
-        // For unknown actions, pass through with parameter name conversion
-        const converted: Record<string, unknown> = {};
-        for (const [key, value] of Object.entries(params)) {
-          // Convert common OneBot11 parameter names to Milky
-          // Note: Milky uses peer_id for both user_id and group_id in some contexts
-          if (key === 'user_id' && !('peer_id' in params) && !('user_id' in converted)) {
-            converted.user_id = value;
-          } else if (key === 'group_id' && !('peer_id' in params) && !('group_id' in converted)) {
-            converted.group_id = value;
-          } else {
-            converted[key] = value;
-          }
-        }
-        return converted;
+        // For unknown actions, pass parameters through as-is
+        // This allows for future API extensions without modifying this converter
+        return params;
       }
     }
   }
