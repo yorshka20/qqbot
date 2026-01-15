@@ -42,6 +42,13 @@ async function main() {
       logger.info('[Main] SearchService initialized');
     }
 
+    // Initialize and start static file server for serving generated images
+    // This must be done BEFORE ConversationInitializer because ImageGenerationService needs it
+    const staticServerConfig = config.getStaticServerConfig();
+    if (staticServerConfig) {
+      await initStaticFileServer(staticServerConfig.port, staticServerConfig.root, staticServerConfig.host);
+    }
+
     // Initialize conversation components
     const conversationComponents = await ConversationInitializer.initialize(config, apiClient, searchService);
 
@@ -59,13 +66,6 @@ async function main() {
       apiClient,
       eventRouter,
     );
-
-    // Initialize and start static file server for serving generated images
-    // This starts the server once and keeps it running
-    const staticServerConfig = config.getStaticServerConfig();
-    if (staticServerConfig) {
-      await initStaticFileServer(staticServerConfig.port, staticServerConfig.root, staticServerConfig.host);
-    }
 
     // Start bot (this will trigger connection events)
     await bot.start();

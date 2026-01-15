@@ -6,6 +6,7 @@ import { HookContext } from '@/hooks';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
+import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
 
@@ -16,7 +17,7 @@ import { CommandContext, CommandHandler, CommandResult } from '../types';
   name: 'nai',
   description: 'Generate image from text prompt using NovelAI',
   usage:
-    '/nai <prompt> [--width <width>] [--height <height>] [--steps <steps>] [--seed <seed>] [--guidance <scale>] [--negative <prompt>]',
+    '/nai <prompt> [--width=<width>] [--height=<height>] [--steps=<steps>] [--seed=<seed>] [--guidance=<scale>] [--negative=<prompt>]',
   permissions: ['user'], // All users can generate images
 })
 @injectable()
@@ -24,6 +25,19 @@ export class NovelAICommand implements CommandHandler {
   name = 'nai';
   description = 'Generate image from text prompt using NovelAI';
   usage = '/nai <prompt> [options]';
+
+  // Command parameter configuration
+  private readonly argsConfig: ParserConfig = {
+    options: {
+      width: { property: 'width', type: 'number' },
+      height: { property: 'height', type: 'number' },
+      steps: { property: 'steps', type: 'number' },
+      seed: { property: 'seed', type: 'number' },
+      guidance: { property: 'guidance_scale', type: 'float' },
+      negative: { property: 'negative_prompt', type: 'string' },
+      num: { property: 'numImages', type: 'number', aliases: ['num_images'] },
+    },
+  };
 
   constructor(
     @inject(DITokens.AI_SERVICE) private aiService: AIService,
@@ -39,8 +53,8 @@ export class NovelAICommand implements CommandHandler {
     }
 
     try {
-      // Parse arguments
-      const { prompt, options } = this.parseArguments(args);
+      // Parse arguments using unified parser with command-specific config
+      const { text: prompt, options } = CommandArgsParser.parse<Text2ImageOptions>(args, this.argsConfig);
 
       logger.info(`[NovelAICommand] Generating image with prompt: ${prompt.substring(0, 50)}...`);
 
@@ -133,103 +147,5 @@ export class NovelAICommand implements CommandHandler {
         error: `Failed to generate image: ${err.message}`,
       };
     }
-  }
-
-  /**
-   * Parse command arguments
-   * Supports: /nai prompt --width 512 --height 512 --steps 50 --seed 123 --guidance 7.5 --negative "bad prompt"
-   */
-  private parseArguments(args: string[]): {
-    prompt: string;
-    options: Text2ImageOptions;
-  } {
-    const options: Text2ImageOptions = {};
-    const promptParts: string[] = [];
-    let i = 0;
-
-    // Collect prompt text (until we hit an option flag)
-    while (i < args.length && !args[i].startsWith('--')) {
-      promptParts.push(args[i]);
-      i++;
-    }
-
-    const prompt = promptParts.join(' ');
-
-    // Parse options
-    while (i < args.length) {
-      const arg = args[i];
-      if (arg.startsWith('--')) {
-        const optionName = arg.slice(2);
-        const nextArg = args[i + 1];
-
-        switch (optionName) {
-          case 'width':
-            if (nextArg) {
-              options.width = parseInt(nextArg, 10);
-              i += 2;
-            } else {
-              i++;
-            }
-            break;
-          case 'height':
-            if (nextArg) {
-              options.height = parseInt(nextArg, 10);
-              i += 2;
-            } else {
-              i++;
-            }
-            break;
-          case 'steps':
-            if (nextArg) {
-              options.steps = parseInt(nextArg, 10);
-              i += 2;
-            } else {
-              i++;
-            }
-            break;
-          case 'seed':
-            if (nextArg) {
-              options.seed = parseInt(nextArg, 10);
-              i += 2;
-            } else {
-              i++;
-            }
-            break;
-          case 'guidance':
-            if (nextArg) {
-              options.guidance_scale = parseFloat(nextArg);
-              i += 2;
-            } else {
-              i++;
-            }
-            break;
-          case 'negative':
-            if (nextArg) {
-              options.negative_prompt = nextArg;
-              i += 2;
-            } else {
-              i++;
-            }
-            break;
-          case 'num':
-          case 'num_images':
-            if (nextArg) {
-              options.numImages = parseInt(nextArg, 10);
-              i += 2;
-            } else {
-              i++;
-            }
-            break;
-          default:
-            // Unknown option, skip
-            i++;
-            break;
-        }
-      } else {
-        i++;
-      }
-    }
-
-    return { prompt, options };
   }
 }

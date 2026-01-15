@@ -21,7 +21,7 @@ export class StaticFileServer {
   /**
    * Start the static file server
    */
-  start(): string {
+  async start(): Promise<string> {
     if (this.server) {
       return this.baseURL;
     }
@@ -124,13 +124,17 @@ let serverInstance: StaticFileServer | null = null;
  * @param baseDir Base directory for serving files (default: './output')
  * @param hostIP Host IP address to bind to (optional, auto-detect if not provided)
  */
-export function initStaticFileServer(port?: number, baseDir?: string, hostIP?: string): StaticFileServer {
+export async function initStaticFileServer(
+  port?: number,
+  baseDir?: string,
+  hostIP?: string,
+): Promise<StaticFileServer> {
   if (serverInstance) {
     return serverInstance;
   }
 
   serverInstance = new StaticFileServer(port, baseDir, hostIP);
-  serverInstance.start();
+  await serverInstance.start();
 
   return serverInstance;
 }

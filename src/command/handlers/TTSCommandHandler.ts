@@ -6,6 +6,7 @@ import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
 import { Command } from '../decorators';
+import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
 
 /**
@@ -13,8 +14,8 @@ import { CommandContext, CommandHandler, CommandResult } from '../types';
  */
 @Command({
   name: 'tts',
-  description: 'Convert text to speech. Example: /tts 你好世界 -voice=丁真. Use /tts list to see all available voices.',
-  usage: '/tts <text> [-voice=<voice>] | /tts list',
+  description: 'Convert text to speech. Example: /tts 你好世界 --voice=丁真. Use /tts list to see all available voices.',
+  usage: '/tts <text> [--voice=<voice>] | /tts list',
   permissions: ['user'], // All users can use TTS
   aliases: ['say', 'speak'],
 })
@@ -22,8 +23,8 @@ import { CommandContext, CommandHandler, CommandResult } from '../types';
 export class TTSCommandHandler implements CommandHandler {
   name = 'tts';
   description =
-    'Convert text to speech. Example: /tts 你好世界 -voice=丁真. Use /tts list to see all available voices.';
-  usage = '/tts <text> [-voice=<voice>] | /tts list';
+    'Convert text to speech. Example: /tts 你好世界 --voice=丁真. Use /tts list to see all available voices.';
+  usage = '/tts <text> [--voice=<voice>] | /tts list';
 
   // Fish Audio API URL
   private readonly FISH_API_URL = 'https://api.fish.audio/v1/tts';
@@ -46,6 +47,15 @@ export class TTSCommandHandler implements CommandHandler {
 
   // Maximum text length (in characters)
   private readonly MAX_TEXT_LENGTH = 1000;
+
+  // Command parameter configuration
+  private readonly argsConfig: ParserConfig = {
+    options: {
+      voice: { property: 'voice', type: 'string' },
+      rate: { property: 'rate', type: 'string' },
+      pitch: { property: 'pitch', type: 'string' },
+    },
+  };
 
   constructor(
     @inject(DITokens.API_CLIENT) private apiClient: APIClient,
@@ -71,8 +81,12 @@ export class TTSCommandHandler implements CommandHandler {
     }
 
     try {
-      // Parse arguments
-      const { text, options } = this.parseArguments(args);
+      // Parse arguments using unified parser with command-specific config
+      const { text, options } = CommandArgsParser.parse<{
+        voice?: string;
+        rate?: string;
+        pitch?: string;
+      }>(args, this.argsConfig);
 
       // Validate text length
       if (text.length > this.MAX_TEXT_LENGTH) {
@@ -212,91 +226,6 @@ export class TTSCommandHandler implements CommandHandler {
   }
 
   /**
-   * Parse command arguments
-   * Supports:
-   * - /tts text -voice=丁真
-   * - /tts text --voice 丁真
-   * - /tts text [--rate <rate>] [--pitch <pitch>]
-   */
-  private parseArguments(args: string[]): {
-    text: string;
-    options: {
-      voice?: string;
-      rate?: string;
-      pitch?: string;
-    };
-  } {
-    const options: {
-      voice?: string;
-      rate?: string;
-      pitch?: string;
-    } = {};
-    const textParts: string[] = [];
-    let i = 0;
-
-    // Collect text (until we hit an option flag)
-    while (i < args.length && !args[i].startsWith('-') && !args[i].startsWith('--')) {
-      textParts.push(args[i]);
-      i++;
-    }
-
-    const text = textParts.join(' ');
-
-    // Parse options
-    while (i < args.length) {
-      const arg = args[i];
-
-      // Handle -voice=key format
-      if (arg.startsWith('-voice=')) {
-        options.voice = arg.slice(7); // Remove '-voice='
-        i++;
-        continue;
-      }
-
-      // Handle --option format
-      if (arg.startsWith('--')) {
-        const optionName = arg.slice(2);
-        const nextArg = args[i + 1];
-
-        switch (optionName) {
-          case 'voice':
-            if (nextArg) {
-              options.voice = nextArg;
-              i += 2;
-            } else {
-              i++;
-            }
-            break;
-          case 'rate':
-            if (nextArg) {
-              options.rate = nextArg;
-              i += 2;
-            } else {
-              i++;
-            }
-            break;
-          case 'pitch':
-            if (nextArg) {
-              options.pitch = nextArg;
-              i += 2;
-            } else {
-              i++;
-            }
-            break;
-          default:
-            // Unknown option, skip
-            i++;
-            break;
-        }
-      } else {
-        i++;
-      }
-    }
-
-    return { text, options };
-  }
-
-  /**
    * Get formatted list of available voices
    * @returns Formatted string listing all available voices
    */
@@ -313,7 +242,7 @@ export class TTSCommandHandler implements CommandHandler {
 
     list += `\n使用示例：\n`;
     list += `/tts 你好世界                    # 使用默认声音（${defaultVoice}）\n`;
-    list += `/tts 你好世界 -voice=${voices[0]}      # 指定声音\n`;
+    list += `/tts 你好世界 --voice=${voices[0]}      # 指定声音\n`;
     list += `/tts list                      # 查看此列表\n`;
 
     return list;

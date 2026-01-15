@@ -169,7 +169,16 @@
         "defaultWidth": 832,
         "defaultHeight": 1216,
         "defaultGuidanceScale": 5.0
-      }
+      },
+      // Gemini provider for text-to-image generation
+      // Uses Google Gemini API (nano banana) for image generation
+      // "gemini": {
+      //   "type": "gemini",
+      //   "apiKey": "your_gemini_api_key_here",
+      //   "model": "gemini-2.5-flash-image", // Default: "gemini-2.5-flash-image"
+      //   "defaultWidth": 1024, // Default: 1024
+      //   "defaultHeight": 1024, // Default: 1024
+      // }
     }
   },
   // Context memory configuration (optional)

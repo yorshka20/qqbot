@@ -1,4 +1,5 @@
 export * from './AIProviderSwitchCommandHandler';
+export * from './BananaCommandHandler';
 export * from './BilibiliHotCommandHandler';
 export * from './BuiltinCommandHandler';
 export * from './NovelAICommandHandler';

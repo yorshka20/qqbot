@@ -1,8 +1,6 @@
 import { AIService, Text2ImageOptions } from '@/ai';
-import { AIManager } from '@/ai/AIManager';
 import { APIClient } from '@/api/APIClient';
 import { DITokens } from '@/core/DITokens';
-import { NormalizedMessageEvent } from '@/events/types';
 import { HookContext } from '@/hooks';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
@@ -12,23 +10,20 @@ import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
 
 /**
- * Text2Image command - generates image from text prompt
+ * Banana command - generates image from text prompt using Gemini provider
+ * Directly uses user input as prompt without LLM preprocessing
  */
 @Command({
-  name: 't2i',
-  description: 'Generate image from text prompt',
-  usage:
-    '/t2i <prompt> [--width=<width>] [--height=<height>] [--steps=<steps>] [--seed=<seed>] [--guidance=<scale>] [--negative=<prompt>]',
+  name: 'banana',
+  description: 'Generate image from text prompt using Gemini',
+  usage: '/banana <prompt> [--width=<width>] [--height=<height>]',
   permissions: ['user'], // All users can generate images
-  aliases: ['text2img'],
 })
 @injectable()
-export class Text2ImageCommand implements CommandHandler {
-  name = 't2i';
-  description = 'Generate image from text prompt';
-  usage = '/t2i <prompt> [options]';
-
-  private defaultProviderName = 'local-text2img';
+export class BananaCommand implements CommandHandler {
+  name = 'banana';
+  description = 'Generate image from text prompt using Gemini';
+  usage = '/banana <prompt> [options]';
 
   // Command parameter configuration
   private readonly argsConfig: ParserConfig = {
@@ -46,14 +41,13 @@ export class Text2ImageCommand implements CommandHandler {
   constructor(
     @inject(DITokens.AI_SERVICE) private aiService: AIService,
     @inject(DITokens.API_CLIENT) private apiClient: APIClient,
-    @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
   ) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     if (args.length === 0) {
       return {
         success: false,
-        error: 'Please provide a prompt. Usage: /t2i <prompt> [options]',
+        error: 'Please provide a prompt. Usage: /banana <prompt> [options]',
       };
     }
 
@@ -61,7 +55,7 @@ export class Text2ImageCommand implements CommandHandler {
       // Parse arguments using unified parser with command-specific config
       const { text: prompt, options } = CommandArgsParser.parse<Text2ImageOptions>(args, this.argsConfig);
 
-      logger.info(`[Text2ImageCommand] Generating image with prompt: ${prompt.substring(0, 50)}...`);
+      logger.info(`[BananaCommand] Generating image with prompt: ${prompt.substring(0, 50)}...`);
 
       // Create hook context for AIService
       const hookContext: HookContext = {
@@ -76,28 +70,17 @@ export class Text2ImageCommand implements CommandHandler {
           messageType: context.messageType,
           message: prompt,
           segments: [],
-        } as NormalizedMessageEvent,
+        },
         metadata: new Map([
           ['sessionId', context.groupId ? `group_${context.groupId}` : `user_${context.userId}`],
           ['sessionType', context.messageType],
         ]),
       };
 
-      // Determine which provider to use: try local-text2img first, fallback to novelai if unavailable
-      let providerName: string = this.defaultProviderName;
-      const localProvider = this.aiManager.getProviderForCapability('text2img', this.defaultProviderName);
-      if (!localProvider || !localProvider.isAvailable()) {
-        logger.info(
-          `[Text2ImageCommand] ${this.defaultProviderName} provider is not available, falling back to novelai`,
-        );
-        providerName = 'novelai';
-      } else {
-        logger.debug(`[Text2ImageCommand] Using ${this.defaultProviderName} provider`);
-      }
-
-      // Generate image with selected provider
-      const response = await this.aiService.generateImg(hookContext, options, providerName);
-      logger.info(`[Text2ImageCommand] Generated image with response: ${JSON.stringify(response)}`);
+      // Generate image using Gemini provider (force provider name)
+      // Skip LLM preprocessing for /banana command - use user input directly as prompt
+      const response = await this.aiService.generateImg(hookContext, options, 'gemini', true);
+      logger.info(`[BananaCommand] Generated image with response: ${JSON.stringify(response)}`);
       if (!response.images || response.images.length === 0) {
         return {
           success: false,
@@ -115,7 +98,6 @@ export class Text2ImageCommand implements CommandHandler {
 
       // Add each image
       // File paths are already converted to URLs by ImageGenerationService
-      // Priority: URL first, then base64 (filepath not supported)
       for (const image of response.images) {
         if (image.url) {
           // Prefer URL over base64 for better performance
@@ -125,7 +107,7 @@ export class Text2ImageCommand implements CommandHandler {
           // Milky protocol supports base64 data in the 'data' field
           messageBuilder.image({ data: image.base64 });
         } else {
-          logger.warn(`[Text2ImageCommand] Image has no url or base64 field: ${JSON.stringify(image)}`);
+          logger.warn(`[BananaCommand] Image has no url or base64 field: ${JSON.stringify(image)}`);
         }
       }
 
@@ -158,7 +140,7 @@ export class Text2ImageCommand implements CommandHandler {
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.error('[Text2ImageCommand] Failed to generate image:', err);
+      logger.error('[BananaCommand] Failed to generate image:', err);
       return {
         success: false,
         error: `Failed to generate image: ${err.message}`,
