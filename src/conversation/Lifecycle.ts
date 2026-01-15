@@ -229,11 +229,20 @@ export class Lifecycle {
    * - Commands: always reply
    * - Private chat: only reply if user is in whitelist (no @bot required)
    * - Group chat: must be in whitelist (user or group) AND @bot to trigger reply
+   * - If reply already exists (e.g., from EchoPlugin), don't set postProcessOnly
    */
   private determineProcessingMode(context: HookContext, messageId: string): void {
     // Skip if postProcessOnly is already set (e.g., by whitelist plugin for non-whitelist users)
     const existingPostProcessOnly = context.metadata.get('postProcessOnly') as boolean;
     if (existingPostProcessOnly) {
+      return;
+    }
+
+    // If reply already exists (e.g., from EchoPlugin or other plugins), don't set postProcessOnly
+    // This allows plugins to generate replies even in group chat without @bot
+    const existingReply = context.metadata.get('reply') as string;
+    if (existingReply) {
+      logger.debug(`${this.LOG_PREFIX} Reply already exists, skipping postProcessOnly check | messageId=${messageId}`);
       return;
     }
 

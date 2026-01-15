@@ -68,7 +68,6 @@ export class ReactionPlugin extends PluginBase {
         for (const [keyword, reaction] of Object.entries(pluginConfig.reactions)) {
           const keywordLower = keyword.toLowerCase();
           this.keywordToReactionMap.set(keywordLower, reaction);
-          logger.debug(`[ReactionPlugin] Configured reaction mapping: "${keyword}" -> "${reaction}"`);
         }
       }
 
@@ -93,34 +92,35 @@ export class ReactionPlugin extends PluginBase {
   @Hook({
     stage: 'onMessagePreprocess',
     priority: 'NORMAL',
+    order: 10,
   })
   onMessagePreprocess(context: HookContext): HookResult {
     if (!this.enabled) {
-      return;
+      return true;
     }
 
     const messageId = context.message?.id || context.message?.messageId || 'unknown';
 
     if (this.keywordToReactionMap.size === 0) {
-      return;
+      return true;
     }
 
     // Ignore bot's own messages
     const botSelfId = context.metadata.get('botSelfId') as string;
     const messageUserId = context.message.userId?.toString();
     if (botSelfId && messageUserId && botSelfId === messageUserId) {
-      return;
+      return true;
     }
 
     // Only process group messages
     if (context.message.messageType !== 'group' || !context.message.groupId) {
-      return;
+      return true;
     }
 
     // Only send reaction in whitelisted groups
     const isWhitelistGroup = context.metadata.get('whitelistGroup') as boolean;
     if (!isWhitelistGroup) {
-      return;
+      return true;
     }
 
     // Check if message contains any configured keyword (case-insensitive)
@@ -137,7 +137,7 @@ export class ReactionPlugin extends PluginBase {
     }
 
     if (!matchedKeyword || !matchedReaction) {
-      return;
+      return true;
     }
 
     logger.info(
@@ -149,7 +149,7 @@ export class ReactionPlugin extends PluginBase {
       logger.error(`[ReactionPlugin] Failed to send reaction | messageId=${messageId}:`, error);
     });
 
-    return;
+    return true;
   }
 
   /**

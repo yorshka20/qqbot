@@ -103,6 +103,7 @@ export class WhitelistPlugin extends PluginBase {
   @Hook({
     stage: 'onMessagePreprocess',
     priority: 'HIGHEST', // Ensure whitelist check runs before command routing
+    order: 0,
   })
   onMessagePreprocess(context: HookContext): HookResult {
     const userId = context.message.userId;
@@ -116,7 +117,7 @@ export class WhitelistPlugin extends PluginBase {
     // Skip if plugin is disabled
     if (!this.enabled) {
       logger.info(`[WhitelistPlugin] Plugin is disabled, skipping whitelist check | messageId=${messageId}`);
-      return; // Continue processing
+      return true;
     }
 
     const userIdStr = userId.toString();
@@ -139,22 +140,16 @@ export class WhitelistPlugin extends PluginBase {
       // User not in whitelist and group not in whitelist - set postProcessOnly flag immediately
       // This will skip command routing, @bot check, and all reply generation
       context.metadata.set('postProcessOnly', true);
-      logger.info(
-        `[WhitelistPlugin] ✗ User ${userId} and group ${groupId || 'N/A'} NOT in whitelist, SET postProcessOnly=true | messageId=${messageId}`,
-      );
+      logger.info(`[WhitelistPlugin] skipped due to not in whitelist | messageId=${messageId}`);
     } else {
       // User or group in whitelist - ensure postProcessOnly is not set (allow all processing)
       // Also set flags to indicate this is a whitelist user/group, so determineProcessingMode won't override
       const hadPostProcessOnly = context.metadata.has('postProcessOnly');
       if (hadPostProcessOnly) {
         context.metadata.delete('postProcessOnly');
-        logger.info(
-          `[WhitelistPlugin] ✓ User ${userId} or group ${groupId || 'N/A'} is in whitelist, CLEARED existing postProcessOnly flag | messageId=${messageId}`,
-        );
+        logger.info(`[WhitelistPlugin] cleared existing postProcessOnly flag | messageId=${messageId}`);
       } else {
-        logger.info(
-          `[WhitelistPlugin] ✓ User ${userId} or group ${groupId || 'N/A'} is in whitelist, allowing all processing | messageId=${messageId}`,
-        );
+        logger.info(`[WhitelistPlugin] allowing all processing | messageId=${messageId}`);
       }
       // Set flags to indicate this is a whitelist user/group
       // This prevents determineProcessingMode from setting postProcessOnly later
@@ -172,7 +167,6 @@ export class WhitelistPlugin extends PluginBase {
       `[WhitelistPlugin] PREPROCESS hook completed | messageId=${messageId} | finalPostProcessOnly=${finalPostProcessOnly}`,
     );
 
-    // Continue processing (don't interrupt)
-    return;
+    return true;
   }
 }
