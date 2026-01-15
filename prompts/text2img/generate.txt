@@ -1,41 +1,158 @@
-将用户输入转换为图像生成参数，输出纯 JSON（不含 markdown 代码块）。
+将用户输入转换为 Nova Anime XL 图像生成参数，输出纯 JSON（不含 markdown 代码块）。
 
 ## 输出格式
-{
-  "prompt": "英文描述",
-  "negative_prompt": "负面词",
-  "steps": 30,
-  "cfg_scale": 7.5,
-  "seed": -1,
-  "width": 1024,
-  "height": 1024,
-  "sampler": "Euler a"
-}
+{"prompt":"英文描述","negative_prompt":"负面词","steps":28,"cfg_scale":5.0,"seed":-1,"width":1024,"height":1024,"sampler":"Euler a"}
 
-## 规则
-1. **中文必须翻译成英文的、用逗号分隔的标准提示词。不要使用完整句子**
-   - "赛博朋克女孩" → "cyberpunk girl"
-   - "沙滩比基尼" → "bikini,on beach"
+## 🎯 Nova Anime XL 特性（Illustrious XL 基础）
 
-2. **关键词处理**
-   - 含 sfw/censor/打码 → prompt 加 "mosaic censoring, pixelated"，negative 加 "uncensored"
-   - 含 nsfw → prompt 加 "nsfw, explicit"，negative 加 "censored"
+### 模型特点
+- 基于 Illustrious XL，使用 Danbooru 数据集训练
+- **色彩鲜艳**：默认颜色饱和度高
+- **低 CFG 最佳**：推荐 4-6（比一般 SDXL 低）
+- **支持自然语言**：但 Danbooru 标签更精确
+- **改进的手部/姿势**：v9+ 版本显著提升
 
-3. **尺寸选择**
-   - 人物 → 832x1216
-   - 风景 → 1216x832
-   - 其他 → 1024x1024
+### 智能识别规则（重要）
+与 NovelAI 模板相同的智能保留功能：
+1. **保留用户已有的英文标签**（不修改）
+2. **保留画师标签**（artist:xxx, by xxx）
+3. **保留质量标签**（如用户已有 masterpiece 等）
+4. **保留强调语法**（括号、权重等）
+5. **只翻译中文部分**
 
-4. **参数调整**
-   - 含"详细/精细" → steps: 40
-   - 含"创意/自由" → cfg_scale: 6.0
-   - 含"严格/精确" → cfg_scale: 9.0
-   - 直接数字 → 使用该值
+## 标准提示词结构
+
+### 质量标签（开头）
+**默认添加**（如用户未提供）：
+`masterpiece, best quality, amazing quality, very aesthetic, absurdres, newest`
+
+**简化版**：
+`masterpiece, best quality, newest, absurdres`
+
+**检查用户输入**：
+- 如果用户已有质量标签 → 不重复添加
+- 如果用户完全没有 → 添加简化版
+
+### 主体描述
+- **人物**：`1girl`, `1boy`, `2girls` 等
+- **无人物**：`no humans` + 场景描述
+- **可用短语**：自然语言也支持，如 "a girl with long hair"
+
+### 场景和细节
+- 使用 Danbooru 标签或自然短语
+- 可以混用：`1girl, long hair, school uniform, standing in classroom`
+- 不必过度拆分
+
+### 可选增强
+- 构图：`upper body`, `cowboy shot`, `full body`, `portrait`
+- 视角：`from above`, `from side`
+- 光影：`depth of field`, `volumetric lighting`, `soft lighting`
+- 背景：`simple background`, `detailed background`, `outdoors`
+
+## 参数设置（Nova Anime XL 优化）
+
+### Steps
+- **默认：28**（20-30 范围内都可以）
+- 用户要求高质量：30
+- 用户要求快速：20
+
+### CFG Scale（重要：Nova Anime 推荐低值）
+- **默认：5.0**（推荐范围 4-6）
+- 颜色过于鲜艳：4.0-4.5
+- 需要更精确：5.5-6.0
+- **不要超过 7.0**（会导致过饱和）
+- 用户指定：使用指定值但警告如果 >7
+
+### Sampler
+- **固定：Euler a**（Nova Anime 推荐）
+
+### 尺寸
+- **人物肖像**：832x1216（竖版）
+- **风景/场景**：1216x832（横版）
+- **方形/通用**：1024x1024
+- SDXL 标准尺寸都支持
+
+## 负面提示词（Nova Anime XL 标准）
+
+### 基础模板
+```
+lowres, bad anatomy, bad hands, text, error, missing fingers, extra digits, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry
+```
+
+### Nova Anime 特有补充
+添加：`3d, large head, mutated hands and fingers, bad eye`
+
+### 完整推荐
+```
+lowres, bad anatomy, bad hands, text, error, missing fingers, extra digits, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry, 3d, large head, mutated hands, bad eye
+```
+
+### 特定内容调整
+- **SFW 内容**：添加 `nsfw, nude, explicit`
+- **NSFW 内容**：添加 `censored, mosaic censoring`（如需要）
 
 ## 示例
-输入：沙滩比基尼女孩，打码
-输出：
-{"prompt":"girl in bikini on beach, mosaic censoring, pixelated","negative_prompt":"uncensored","steps":30,"cfg_scale":7.5,"seed":-1,"width":832,"height":1216,"sampler":"Euler a"}
+
+### 示例1：纯中文输入
+输入：可爱的长发女孩穿校服
+```json
+{"prompt":"masterpiece, best quality, newest, absurdres, 1girl, long hair, school uniform, cute, smile, looking at viewer","negative_prompt":"lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, blurry, 3d, nsfw","steps":28,"cfg_scale":5.0,"seed":-1,"width":832,"height":1216,"sampler":"Euler a"}
+```
+
+### 示例2：保留画师标签
+输入：by mogumo, 银发精灵少女
+```json
+{"prompt":"masterpiece, best quality, newest, absurdres, by mogumo, 1girl, elf, pointy ears, silver hair, blue eyes","negative_prompt":"lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, blurry, 3d, nsfw","steps":28,"cfg_scale":5.0,"seed":-1,"width":832,"height":1216,"sampler":"Euler a"}
+```
+
+### 示例3：用户已有标签
+输入：masterpiece, 1girl, cowboy shot, 赛博朋克街道
+```json
+{"prompt":"masterpiece, 1girl, cowboy shot, cyberpunk street, neon lights, night, city background","negative_prompt":"lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, blurry, 3d","steps":28,"cfg_scale":5.0,"seed":-1,"width":832,"height":1216,"sampler":"Euler a"}
+```
+**说明**：用户已有 `masterpiece`，不重复添加
+
+### 示例4：风景场景
+输入：樱花树下的长椅，日落
+```json
+{"prompt":"masterpiece, best quality, newest, absurdres, no humans, cherry blossoms, bench, sunset, park, scenery, depth of field, volumetric lighting","negative_prompt":"lowres, bad anatomy, text, error, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, blurry, 3d, people","steps":28,"cfg_scale":5.0,"seed":-1,"width":1216,"height":832,"sampler":"Euler a"}
+```
+
+### 示例5：颜色过饱和调整
+输入：柔和色调的女孩肖像
+```json
+{"prompt":"masterpiece, best quality, newest, absurdres, 1girl, soft colors, pastel colors, portrait, upper body, soft lighting, gentle expression","negative_prompt":"lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, blurry, 3d, oversaturated, vibrant colors, nsfw","steps":28,"cfg_scale":4.5,"seed":-1,"width":832,"height":1216,"sampler":"Euler a"}
+```
+**说明**：CFG 降至 4.5，negative 添加 `oversaturated, vibrant colors`
+
+### 示例6：NSFW 内容
+输入：rating:nsfw, 1girl, bikini, 海滩
+```json
+{"prompt":"masterpiece, best quality, newest, absurdres, rating:nsfw, 1girl, bikini, beach, ocean, standing, wet","negative_prompt":"lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, blurry, 3d, censored, mosaic","steps":28,"cfg_scale":5.0,"seed":-1,"width":832,"height":1216,"sampler":"Euler a"}
+```
+
+## 翻译要点
+
+1. **智能保留**：检查用户输入，保留英文标签
+2. **质量标签**：用户没有则添加，有则不重复
+3. **自然描述**：可以用短语，不必强制标签化
+4. **CFG 控制**：默认 5.0，注意 Nova Anime 推荐低值
+5. **负面提示词**：使用 Nova Anime 标准模板
+6. **尊重用户**：不修改已有的提示词和画师标签
+
+## 特殊提示
+
+### Nova Anime 色彩管理
+- **默认鲜艳**：如用户要求"柔和/淡雅"，降低 CFG 至 4-4.5
+- **过饱和**：添加 `soft lighting` 或降低 CFG
+- **写实风格**：不适合 Nova Anime（这是动漫模型）
+
+### 与 NovelAI 的区别
+- ✅ CFG 更低（5.0 vs 6.5）
+- ✅ Steps 更少（28 vs 28，范围 20-30）
+- ✅ 使用相同的 Danbooru 标签系统
+- ✅ 同样支持画师标签
+- ✅ 负面提示词略有不同
 
 用户输入：{{description}}
-JSON：`;
+JSON：

@@ -221,6 +221,110 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
   }
 
   /**
+   * Create error response for image generation failure
+   */
+  private createErrorResponse(
+    errorMessage: string,
+    prompt: string,
+    additionalMetadata?: Record<string, unknown>,
+  ): ProviderImageGenerationResponse {
+    logger.warn(`[NovelAIProvider] ${errorMessage}`);
+    return {
+      images: [],
+      text: errorMessage,
+      metadata: {
+        prompt,
+        error: true,
+        ...additionalMetadata,
+      },
+    };
+  }
+
+  /**
+   * Handle HTTP error responses from NovelAI API
+   */
+  private async handleHttpError(response: Response, prompt: string): Promise<ProviderImageGenerationResponse | null> {
+    if (response.ok) {
+      return null;
+    }
+
+    const errorText = await response.text().catch(() => 'Unknown error');
+    let errorMessage: string;
+
+    // Parse error response if it's JSON
+    try {
+      const errorJson = JSON.parse(errorText);
+      errorMessage = errorJson.message || errorJson.error || errorText;
+    } catch {
+      errorMessage = errorText;
+    }
+
+    // Create user-friendly error messages for common HTTP errors
+    let userFriendlyMessage: string;
+    switch (response.status) {
+      case 429:
+        userFriendlyMessage = '图片生成失败：并发生成被锁定，请稍后再试。NovelAI 同时只能处理一个生成请求。';
+        break;
+      case 401:
+        userFriendlyMessage = '图片生成失败：认证失败，请检查 NovelAI access token 配置。';
+        break;
+      case 402:
+        userFriendlyMessage = '图片生成失败：账户余额不足，请充值后重试。';
+        break;
+      case 400:
+        userFriendlyMessage = `图片生成失败：请求参数错误。${errorMessage}`;
+        break;
+      case 500:
+      case 502:
+      case 503:
+        userFriendlyMessage = '图片生成失败：NovelAI 服务暂时不可用，请稍后再试。';
+        break;
+      default:
+        userFriendlyMessage = `图片生成失败：HTTP ${response.status}。${errorMessage}`;
+    }
+
+    logger.error(`[NovelAIProvider] HTTP ${response.status} error: ${errorMessage}`);
+
+    return this.createErrorResponse(userFriendlyMessage, prompt, {
+      httpStatus: response.status,
+      errorMessage,
+    });
+  }
+
+  /**
+   * Handle ZIP extraction errors
+   */
+  private handleExtractionError(error: unknown, prompt: string): ProviderImageGenerationResponse {
+    const err = error instanceof Error ? error : new Error('Unknown extraction error');
+    logger.error(`[NovelAIProvider] Failed to extract image from ZIP: ${err.message}`, error);
+    return this.createErrorResponse(`图片生成失败：无法从 ZIP 文件中提取图片。${err.message}`, prompt, {
+      errorType: 'ExtractionError',
+      errorMessage: err.message,
+    });
+  }
+
+  /**
+   * Handle case when no image data is available after extraction
+   */
+  private handleNoImageData(prompt: string): ProviderImageGenerationResponse {
+    return this.createErrorResponse('图片生成失败：无法提取图片数据，请重试。', prompt, {
+      errorMessage: 'Failed to extract image: no relative path or base64 data available',
+    });
+  }
+
+  /**
+   * Handle general errors (from catch blocks)
+   */
+  private handleGeneralError(error: unknown, prompt: string): ProviderImageGenerationResponse {
+    const err = error instanceof Error ? error : new Error('Unknown error');
+    logger.error(`[NovelAIProvider] Generation failed: ${err.message}`, err);
+    return this.createErrorResponse(`图片生成失败：${err.message}`, prompt, {
+      errorType: err.name || 'Error',
+      errorMessage: err.message,
+    });
+  }
+
+  /**
    * Generate image from text prompt
    */
   async generateImage(prompt: string, options?: Text2ImageOptions): Promise<ProviderImageGenerationResponse> {
@@ -254,9 +358,9 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
       // According to swagger: v4_prompt and v4_negative_prompt are used instead of prompt/negative_prompt
       const parameters: Record<string, unknown> = {
         params_version: 3,
-        width,
-        height,
-        scale: guidanceScale,
+        width: 832,
+        height: 1216,
+        scale: 5,
         sampler: 'k_euler_ancestral',
         steps: 28,
         seed,
@@ -324,9 +428,10 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
         signal: AbortSignal.timeout(300000),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      // Handle HTTP errors
+      const httpError = await this.handleHttpError(response, prompt);
+      if (httpError) {
+        return httpError;
       }
 
       // CRITICAL: Must completely download the ZIP stream before attempting to extract
@@ -337,26 +442,34 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
 
       // Extract image from ZIP and save to local file
       // extractImageFromZip will handle the complete ZIP buffer and save the first image
-      const { relativePath, base64: base64Image } = await this.extractImageFromZip(buffer);
+      try {
+        const { relativePath, base64: base64Image } = await this.extractImageFromZip(buffer);
 
-      // Prefer relative path over base64 for better performance
-      const imageData: { relativePath?: string; base64?: string } = {};
-      if (relativePath) {
-        imageData.relativePath = relativePath;
-      } else if (base64Image) {
-        imageData.base64 = base64Image;
-      } else {
-        throw new Error('Failed to extract image: no relative path or base64 data available');
+        // Prefer relative path over base64 for better performance
+        if (!relativePath && !base64Image) {
+          // This should not happen, but handle it gracefully
+          return this.handleNoImageData(prompt);
+        }
+
+        const imageData: { relativePath?: string; base64?: string } = {};
+        if (relativePath) {
+          imageData.relativePath = relativePath;
+        } else if (base64Image) {
+          imageData.base64 = base64Image;
+        }
+
+        return {
+          images: [imageData],
+          metadata: { prompt, numImages: 1, width, height, steps: 28, guidanceScale },
+        };
+      } catch (extractError) {
+        return this.handleExtractionError(extractError, prompt);
       }
-
-      return {
-        images: [imageData],
-        metadata: { prompt, numImages: 1, width, height, steps: 28, guidanceScale },
-      };
     } catch (error) {
-      const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.error(`[NovelAIProvider] Generation failed: ${err.message}`, err);
-      throw err;
+      // Return error response instead of throwing for better user experience
+      // Only throw for truly unexpected errors (like network failures during ZIP download)
+      // HTTP errors are already handled above
+      return this.handleGeneralError(error, prompt);
     }
   }
 }

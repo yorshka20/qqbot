@@ -1,0 +1,148 @@
+将用户输入转换为 NovelAI V4.5 图像生成参数，输出纯 JSON。
+
+## 输出格式
+{"prompt":"英文描述","negative_prompt":"负面词","steps":28,"cfg_scale":6.5,"seed":-1,"width":832,"height":1216}
+
+## 🔥 核心原则
+
+### 智能识别用户输入
+1. **保留已有提示词**：如果用户输入中包含英文标签或提示词，原样保留
+2. **保留画师标签**：`artist:xxx`、`by xxx`、画师名等必须保留
+3. **保留特殊标签**：`year 2023`、`rating:nsfw`、`fur dataset` 等保留
+4. **避免重复**：如果用户已有质量词，不要再添加
+5. **补充翻译**：只翻译中文描述部分，英文部分保持不变
+
+### 识别规则
+**直接保留的情况**（不做任何修改）：
+- 包含 `artist:` 的画师标签
+- 包含 `by ` 开头的画师引用
+- 包含 `year ` 的年份标签
+- 包含 `rating:` 的评级标签
+- 已经是逗号分隔的英文标签格式
+- 包含 Danbooru 常见标签（如 `1girl`, `masterpiece`, `cowboy shot` 等）
+
+**需要翻译的情况**：
+- 纯中文描述
+- 中英混合（只翻译中文部分）
+
+## 翻译规则
+
+### 1. 质量标签处理
+**检查用户输入**：
+- 如果已有 `masterpiece`、`best quality` 等 → 不添加
+- 如果没有 → 在开头添加 `masterpiece, best quality`
+
+### 2. 主体描述
+- **人物**：`1girl`, `1boy`, `2girls` 等（如果用户未指定）
+- **无人物**：`no humans`（风景/物品，如果用户未指定）
+
+### 3. 特征和场景
+- 使用自然短语或标签
+- 不过度拆分
+- 保持简洁
+
+### 4. 画师标签位置
+- 如果用户提供画师标签，通常放在质量标签之后
+- 格式：`artist:画师名` 或 `by 画师名`
+
+## 参数设置
+
+**Steps**：28（默认）| 50（高质量）
+**CFG Scale**：
+- 默认：6.5
+- 精确：7.5-8.0  
+- 自由：4.0-5.0
+- 用户指定：使用指定值（1-11）
+
+**尺寸**：
+- 人物：832x1216
+- 风景：1216x832
+- 方形：1024x1024
+
+## 负面提示词
+```
+low quality, worst quality, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, jpeg artifacts, signature, watermark, username, blurry
+```
+
+## 示例：智能保留
+
+### 示例1：用户已有画师标签
+输入：`artist:wlop, 银发精灵少女`
+```json
+{"prompt":"masterpiece, best quality, artist:wlop, 1girl, elf, pointy ears, silver hair, blue eyes","negative_prompt":"low quality, worst quality, bad anatomy, bad hands, text, error, cropped, jpeg artifacts, signature, watermark, blurry","steps":28,"cfg_scale":6.5,"seed":-1,"width":832,"height":1216}
+```
+**说明**：保留 `artist:wlop`，只翻译中文部分
+
+### 示例2：用户已有部分标签
+输入：`1girl, long hair, 校服，微笑`
+```json
+{"prompt":"masterpiece, best quality, 1girl, long hair, school uniform, smile","negative_prompt":"low quality, worst quality, bad anatomy, bad hands, text, error, cropped, jpeg artifacts, signature, watermark, blurry, nsfw","steps":28,"cfg_scale":6.5,"seed":-1,"width":832,"height":1216}
+```
+**说明**：保留 `1girl, long hair`，只翻译 `校服，微笑`
+
+### 示例3：用户已有完整提示词+补充
+输入：`masterpiece, 1girl, cowboy shot, looking at viewer, 赛博朋克街道`
+```json
+{"prompt":"masterpiece, 1girl, cowboy shot, looking at viewer, cyberpunk street, neon lights, night","negative_prompt":"low quality, worst quality, bad anatomy, bad hands, text, error, cropped, jpeg artifacts, signature, watermark, blurry","steps":28,"cfg_scale":6.5,"seed":-1,"width":832,"height":1216}
+```
+**说明**：保留用户的所有英文标签，注意用户已有 `masterpiece` 所以不重复添加
+
+### 示例4：用户指定年份和画风
+输入：`year 2020, by mogumo, 女孩在雨中`
+```json
+{"prompt":"masterpiece, best quality, year 2020, by mogumo, 1girl, rain, wet, standing, looking up","negative_prompt":"low quality, worst quality, bad anatomy, bad hands, text, error, cropped, jpeg artifacts, signature, watermark, blurry, nsfw","steps":28,"cfg_scale":6.5,"seed":-1,"width":832,"height":1216}
+```
+**说明**：保留 `year 2020` 和 `by mogumo`，翻译中文描述
+
+### 示例5：纯中文输入
+输入：`可爱的长发少女穿校服`
+```json
+{"prompt":"masterpiece, best quality, 1girl, long hair, school uniform, cute, smile, looking at viewer","negative_prompt":"low quality, worst quality, bad anatomy, bad hands, text, error, cropped, jpeg artifacts, signature, watermark, blurry, nsfw","steps":28,"cfg_scale":6.5,"seed":-1,"width":832,"height":1216}
+```
+**说明**：纯中文，正常翻译并添加质量标签
+
+### 示例6：用户指定 NSFW
+输入：`rating:nsfw, 1girl, bikini, 海滩`
+```json
+{"prompt":"masterpiece, best quality, rating:nsfw, 1girl, bikini, beach, ocean, standing","negative_prompt":"low quality, worst quality, bad anatomy, bad hands, text, error, cropped, jpeg artifacts, signature, watermark, blurry, censored","steps":28,"cfg_scale":6.5,"seed":-1,"width":832,"height":1216}
+```
+**说明**：保留 `rating:nsfw`，negative 中不添加 `nsfw`（因为正面已指定），但添加 `censored`
+
+### 示例7：用户已有复杂提示词
+输入：`{{{masterpiece}}}, {{best quality}}, ultra-detailed, 1girl, 幻想骑士`
+```json
+{"prompt":"{{{masterpiece}}}, {{best quality}}, ultra-detailed, 1girl, fantasy knight, armor, sword","negative_prompt":"low quality, worst quality, bad anatomy, bad hands, text, error, cropped, jpeg artifacts, signature, watermark, blurry","steps":28,"cfg_scale":6.5,"seed":-1,"width":832,"height":1216}
+```
+**说明**：完全保留用户的强调语法 `{{{ }}}` 和 `{{ }}`，只翻译中文
+
+## 处理逻辑
+
+### 步骤1：解析用户输入
+1. 识别英文部分（标签、画师、特殊标记）
+2. 识别中文部分（需要翻译）
+3. 识别是否有质量词
+4. 识别是否有画师标签
+5. 识别是否有特殊标签（year, rating 等）
+
+### 步骤2：构建提示词
+1. **质量词**：用户没有则添加 `masterpiece, best quality`
+2. **画师标签**：保留用户的画师标签（如果有）
+3. **用户原有标签**：完全保留
+4. **翻译补充**：翻译中文部分并补充
+5. **合并**：按合理顺序组合（质量词 → 画师 → 主体 → 细节）
+
+### 步骤3：负面提示词
+- 标准模板
+- 如果用户指定 `rating:nsfw`，则 negative 中不包含 `nsfw`，改为 `censored`
+- 如果用户指定 SFW 内容，则 negative 添加 `nsfw`
+
+## 重要提醒
+
+1. **不要修改用户的英文标签**：即使格式不完美，也保留
+2. **不要重复添加**：检查用户是否已有相同标签
+3. **保持用户的强调语法**：`{{{ }}}`, `{{ }}`, `[]` 等保持不变
+4. **尊重用户意图**：如果用户指定了画师，不要改变
+5. **只翻译中文**：英文部分原样保留
+
+用户输入：{{description}}
+JSON：
