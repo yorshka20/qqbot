@@ -138,10 +138,7 @@ export class LocalText2ImageProvider extends AIProvider implements Text2ImageCap
       requestBody.height = options?.height || this.config.defaultHeight;
       requestBody.guidance_scale = options?.guidance_scale || this.config.defaultGuidanceScale;
       requestBody.num_images = options?.numImages || this.config.defaultNumImages;
-
-      if (options?.seed !== undefined) {
-        requestBody.seed = options.seed;
-      }
+      requestBody.seed = options?.seed && options.seed >= 0 ? options.seed : Math.floor(Math.random() * 4294967295);
 
       // Add any additional provider-specific options
       for (const [key, value] of Object.entries(options || {})) {

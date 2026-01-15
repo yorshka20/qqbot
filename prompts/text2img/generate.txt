@@ -13,9 +13,9 @@
 }
 
 ## 规则
-1. **中文必须翻译成英文**
+1. **中文必须翻译成英文的、用逗号分隔的标准提示词。不要使用完整句子**
    - "赛博朋克女孩" → "cyberpunk girl"
-   - "沙滩比基尼" → "bikini on beach"
+   - "沙滩比基尼" → "bikini,on beach"
 
 2. **关键词处理**
    - 含 sfw/censor/打码 → prompt 加 "mosaic censoring, pixelated"，negative 加 "uncensored"
