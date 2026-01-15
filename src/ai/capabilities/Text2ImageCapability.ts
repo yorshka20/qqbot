@@ -1,28 +1,19 @@
 // Text2Image Capability interface - text to image generation capability
 
 import type { AIProvider } from '../base/AIProvider';
-import type { ImageGenerationResponse, Text2ImageOptions } from './types';
+import type { ProviderImageGenerationResponse, Text2ImageOptions } from './types';
 
 /**
  * Text2Image Capability interface
  * Providers that support text-to-image generation should implement this interface
+ * Returns ProviderImageGenerationResponse (internal type with relativePath)
  */
 export interface Text2ImageCapability {
   /**
    * Generate image from text prompt
+   * @returns ProviderImageGenerationResponse with relativePath or base64
    */
-  generateImage(prompt: string, options?: Text2ImageOptions): Promise<ImageGenerationResponse>;
-}
-
-/**
- * Text2Image Capability interface
- * Providers that support text-to-image generation should implement this interface
- */
-export interface Text2ImageCapability {
-  /**
-   * Generate image from text prompt
-   */
-  generateImage(prompt: string, options?: Text2ImageOptions): Promise<ImageGenerationResponse>;
+  generateImage(prompt: string, options?: Text2ImageOptions): Promise<ProviderImageGenerationResponse>;
 }
 
 /**

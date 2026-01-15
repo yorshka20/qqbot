@@ -28,6 +28,7 @@
   "license": "ISC",
   "packageManager": "bun@1.0.0",
   "dependencies": {
+    "@google/genai": "^1.36.0",
     "@modelcontextprotocol/sdk": "^1.25.2",
     "@saltify/milky-types": "^1.1.0",
     "adm-zip": "^0.5.16",

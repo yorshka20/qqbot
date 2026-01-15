@@ -65,7 +65,6 @@
   },
   // Static file server configuration (optional)
   "staticServer": {
-    "enabled": true,
     "port": 8888,
     "host": "192.168.50.173",
     "root": "./output"

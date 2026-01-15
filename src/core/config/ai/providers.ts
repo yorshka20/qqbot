@@ -7,7 +7,8 @@ export type AIProviderType =
   | 'deepseek'
   | 'local-text2img'
   | 'openrouter'
-  | 'novelai';
+  | 'novelai'
+  | 'gemini';
 
 export interface OpenAIProviderConfig {
   type: 'openai';
@@ -94,6 +95,15 @@ export interface NovelAIProviderConfig {
   resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/novelai')
 }
 
+export interface GeminiProviderConfig {
+  type: 'gemini';
+  apiKey: string;
+  model?: string; // Default: 'gemini-2.5-flash-image'
+  defaultWidth?: number;
+  defaultHeight?: number;
+  resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/gemini')
+}
+
 export type AIProviderConfig =
   | OpenAIProviderConfig
   | AnthropicProviderConfig
@@ -101,4 +111,5 @@ export type AIProviderConfig =
   | DeepSeekProviderConfig
   | LocalText2ImageProviderConfig
   | OpenRouterProviderConfig
-  | NovelAIProviderConfig;
+  | NovelAIProviderConfig
+  | GeminiProviderConfig;

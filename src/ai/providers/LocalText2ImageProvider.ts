@@ -4,7 +4,7 @@ import { HttpClient } from '@/api/http/HttpClient';
 import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';
-import type { CapabilityType, ImageGenerationResponse, Text2ImageOptions } from '../capabilities/types';
+import type { CapabilityType, ProviderImageGenerationResponse, Text2ImageOptions } from '../capabilities/types';
 
 export interface LocalText2ImageProviderConfig {
   baseUrl: string; // Base URL of the Python server (e.g., http://localhost:8000)
@@ -41,7 +41,6 @@ export class LocalText2ImageProvider extends AIProvider implements Text2ImageCap
       endpoint: '/generate',
       timeout: 300000, // 5 minutes default timeout for image generation
       censorEnabled: true,
-      // Default values
       defaultSteps: 25,
       defaultWidth: 1024,
       defaultHeight: 1024,
@@ -119,7 +118,7 @@ export class LocalText2ImageProvider extends AIProvider implements Text2ImageCap
   /**
    * Generate image from text prompt
    */
-  async generateImage(prompt: string, options?: Text2ImageOptions): Promise<ImageGenerationResponse> {
+  async generateImage(prompt: string, options?: Text2ImageOptions): Promise<ProviderImageGenerationResponse> {
     if (!this.isAvailable()) {
       throw new Error('LocalText2ImageProvider is not available: baseUrl not configured');
     }

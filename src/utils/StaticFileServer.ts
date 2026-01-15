@@ -21,9 +21,8 @@ export class StaticFileServer {
   /**
    * Start the static file server
    */
-  async start(): Promise<string> {
+  start(): string {
     if (this.server) {
-      logger.warn('[StaticFileServer] Server already started');
       return this.baseURL;
     }
 
@@ -106,18 +105,18 @@ export class StaticFileServer {
   }
 
   /**
-   * Convert a local file path to a public URL
+   * Convert a relative path (from output directory) to a public URL
+   * @param relativePath - Relative path from output directory (e.g., 'novelai/image.png')
    */
-  getFileURL(filePath: string): string {
-    // Extract filename from path
-    const filename = filePath.split('/').pop() || '';
-    return `${this.baseURL}/output/${filename}`;
+  getFileURL(relativePath: string): string {
+    // Normalize path separators and construct URL
+    const normalized = relativePath.replace(/\\/g, '/');
+    return `${this.baseURL}/output/${normalized}`;
   }
 }
 
 // Singleton instance
 let serverInstance: StaticFileServer | null = null;
-let isServerStarted = false;
 
 /**
  * Initialize and start the static file server (should be called once at startup)
@@ -125,19 +124,13 @@ let isServerStarted = false;
  * @param baseDir Base directory for serving files (default: './output')
  * @param hostIP Host IP address to bind to (optional, auto-detect if not provided)
  */
-export async function initStaticFileServer(
-  port?: number,
-  baseDir?: string,
-  hostIP?: string,
-): Promise<StaticFileServer> {
+export function initStaticFileServer(port?: number, baseDir?: string, hostIP?: string): StaticFileServer {
   if (serverInstance) {
-    logger.warn('[StaticFileServer] Server already initialized');
     return serverInstance;
   }
 
   serverInstance = new StaticFileServer(port, baseDir, hostIP);
-  await serverInstance.start();
-  isServerStarted = true;
+  serverInstance.start();
 
   return serverInstance;
 }
@@ -159,6 +152,5 @@ export function stopStaticFileServer(): void {
   if (serverInstance) {
     serverInstance.stop();
     serverInstance = null;
-    isServerStarted = false;
   }
 }

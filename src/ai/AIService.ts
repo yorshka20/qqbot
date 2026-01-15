@@ -337,10 +337,14 @@ export class AIService {
       throw new Error('Image generation interrupted by hook');
     }
 
+    // Get session ID for provider selection
+    const sessionId = context.metadata.get('sessionId') as string;
+    const userInput = context.message.message;
+
     // Build context if not already built
     if (!context.context) {
-      const conversationContext = this.contextManager.buildContext(context.message.message, {
-        sessionId: context.metadata.get('sessionId') as string,
+      const conversationContext = this.contextManager.buildContext(userInput, {
+        sessionId,
         sessionType: context.metadata.get('sessionType') as 'user' | 'group',
         userId: context.message.userId,
         groupId: context.message.groupId,
@@ -352,10 +356,6 @@ export class AIService {
     await this.hookManager.execute('onAIGenerationStart', context);
 
     try {
-      // Get session ID for provider selection
-      const sessionId = context.metadata.get('sessionId') as string | undefined;
-
-      const userInput = context.message.message;
       logger.debug(
         `[AIService] Processing image generation request | userInput=${userInput.substring(0, 50)}... | skipLLMProcess=${skipLLMProcess || false}`,
       );

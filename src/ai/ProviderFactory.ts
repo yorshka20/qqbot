@@ -5,6 +5,7 @@ import { logger } from '@/utils/logger';
 import type { AIProvider } from './base/AIProvider';
 import { AnthropicProvider } from './providers/AnthropicProvider';
 import { DeepSeekProvider } from './providers/DeepSeekProvider';
+import { GeminiProvider } from './providers/GeminiProvider';
 import { LocalText2ImageProvider } from './providers/LocalText2ImageProvider';
 import { NovelAIProvider } from './providers/NovelAIProvider';
 import { OllamaProvider } from './providers/OllamaProvider';
@@ -108,6 +109,17 @@ export class ProviderFactory {
             defaultStrength: novelAIConfig.defaultStrength,
             defaultNoise: novelAIConfig.defaultNoise,
             resourceSavePath: novelAIConfig.resourceSavePath,
+          });
+        }
+        case 'gemini': {
+          const geminiConfig = config as Extract<AIProviderConfig, { type: 'gemini' }>;
+          return new GeminiProvider({
+            type: 'gemini',
+            apiKey: geminiConfig.apiKey,
+            model: geminiConfig.model,
+            defaultWidth: geminiConfig.defaultWidth,
+            defaultHeight: geminiConfig.defaultHeight,
+            resourceSavePath: geminiConfig.resourceSavePath,
           });
         }
         default: {

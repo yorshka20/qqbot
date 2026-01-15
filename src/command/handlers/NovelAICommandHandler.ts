@@ -5,7 +5,6 @@ import { NormalizedMessageEvent } from '@/events/types';
 import { HookContext } from '@/hooks';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
-import { getStaticFileServer } from '@/utils/StaticFileServer';
 import { inject, injectable } from 'tsyringe';
 import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
@@ -85,30 +84,17 @@ export class NovelAICommand implements CommandHandler {
       }
 
       // Add each image
+      // File paths are already converted to URLs by ImageGenerationService
       for (const image of response.images) {
-        if (image.base64) {
-          // Use base64 data directly for Milky protocol
+        if (image.url) {
+          // Prefer URL over base64 for better performance
+          messageBuilder.image({ url: image.url });
+        } else if (image.base64) {
+          // Fallback to base64 if URL is not available
           // Milky protocol supports base64 data in the 'data' field
           messageBuilder.image({ data: image.base64 });
-        } else if (image.url) {
-          messageBuilder.image({ url: image.url });
-        } else if (image.file) {
-          // image.file contains a local file path - convert to HTTP URL
-          // This avoids bloating the message with base64 data
-          try {
-            const fileServer = getStaticFileServer();
-            const httpURL = fileServer.getFileURL(image.file);
-            logger.info(`[NovelAICommand] Using HTTP URL for image: ${httpURL}`);
-            messageBuilder.image({ url: httpURL });
-          } catch (error) {
-            logger.error(
-              `[NovelAICommand] Failed to convert file to HTTP URL: ${error instanceof Error ? error.message : String(error)}`,
-            );
-            // Skip this image if we can't convert it
-            continue;
-          }
         } else {
-          logger.warn(`[NovelAICommand] Image has no base64, url, or file field: ${JSON.stringify(image)}`);
+          logger.warn(`[NovelAICommand] Image has no url or base64 field: ${JSON.stringify(image)}`);
         }
       }
 

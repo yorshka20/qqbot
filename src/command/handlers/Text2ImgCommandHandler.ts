@@ -27,6 +27,8 @@ export class Text2ImageCommand implements CommandHandler {
   description = 'Generate image from text prompt';
   usage = '/t2i <prompt> [options]';
 
+  private defaultProviderName = 'local-text2img';
+
   constructor(
     @inject(DITokens.AI_SERVICE) private aiService: AIService,
     @inject(DITokens.API_CLIENT) private apiClient: APIClient,
@@ -68,13 +70,15 @@ export class Text2ImageCommand implements CommandHandler {
       };
 
       // Determine which provider to use: try local-text2img first, fallback to novelai if unavailable
-      let providerName: string | undefined = 'local-text2img';
-      const localProvider = this.aiManager.getProviderForCapability('text2img', 'local-text2img');
+      let providerName: string = this.defaultProviderName;
+      const localProvider = this.aiManager.getProviderForCapability('text2img', this.defaultProviderName);
       if (!localProvider || !localProvider.isAvailable()) {
-        logger.info('[Text2ImageCommand] local-text2img provider is not available, falling back to novelai');
+        logger.info(
+          `[Text2ImageCommand] ${this.defaultProviderName} provider is not available, falling back to novelai`,
+        );
         providerName = 'novelai';
       } else {
-        logger.debug('[Text2ImageCommand] Using local-text2img provider');
+        logger.debug(`[Text2ImageCommand] Using ${this.defaultProviderName} provider`);
       }
 
       // Generate image with selected provider
@@ -96,17 +100,18 @@ export class Text2ImageCommand implements CommandHandler {
       }
 
       // Add each image
+      // File paths are already converted to URLs by ImageGenerationService
+      // Priority: URL first, then base64 (filepath not supported)
       for (const image of response.images) {
-        if (image.base64) {
-          // Use base64 data directly for Milky protocol
+        if (image.url) {
+          // Prefer URL over base64 for better performance
+          messageBuilder.image({ url: image.url });
+        } else if (image.base64) {
+          // Fallback to base64 if URL is not available
           // Milky protocol supports base64 data in the 'data' field
           messageBuilder.image({ data: image.base64 });
-        } else if (image.url) {
-          messageBuilder.image({ url: image.url });
-        } else if (image.file) {
-          messageBuilder.image({ file: image.file });
         } else {
-          logger.warn(`[Text2ImageCommand] Image has no base64, url, or file field: ${JSON.stringify(image)}`);
+          logger.warn(`[Text2ImageCommand] Image has no url or base64 field: ${JSON.stringify(image)}`);
         }
       }
 

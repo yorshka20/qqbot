@@ -7,7 +7,7 @@ import { mkdir, writeFile } from 'fs/promises';
 import { extname, join } from 'path';
 import { AIProvider } from '../base/AIProvider';
 import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';
-import type { CapabilityType, ImageGenerationResponse, Text2ImageOptions } from '../capabilities/types';
+import type { CapabilityType, ProviderImageGenerationResponse, Text2ImageOptions } from '../capabilities/types';
 
 /**
  * NovelAI Provider implementation
@@ -17,6 +17,8 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
   readonly name = 'novelai';
   private config: NovelAIProviderConfig;
   private _capabilities: CapabilityType[];
+
+  private outputPath = join(process.cwd(), 'output', 'novelai');
 
   // Basic defaults for V4.5
   private static readonly DEFAULT_STEPS = 28;
@@ -68,11 +70,11 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
   /**
    * Save image data to local file
    * Supports both Buffer and base64 string input
+   * @returns Relative path from output directory (e.g., 'novelai/image.png') or null if save failed
    */
-  private async saveImageToFile(imageData: Buffer | string, originalFilename: string): Promise<string> {
+  private async saveImageToFile(imageData: Buffer | string, originalFilename: string): Promise<string | null> {
     try {
-      // Create output directory if it doesn't exist
-      const outputDir = join(process.cwd(), 'output');
+      const outputDir = this.outputPath;
       await mkdir(outputDir, { recursive: true });
 
       // Generate filename using timestamp and original filename
@@ -91,13 +93,16 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
       }
       await writeFile(filepath, imageBuffer);
 
+      // Build relative path: providerName/filename
+      const relativePath = `novelai/${filename}`;
+
       logger.info(`[NovelAIProvider] Saved image to: ${filepath} (${imageBuffer.length} bytes)`);
-      return filepath;
+      return relativePath;
     } catch (error) {
       logger.warn(
         `[NovelAIProvider] Failed to save image to file: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return '';
+      return null;
     }
   }
 
@@ -139,9 +144,12 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
    * Reference: nai.md implementation
    *
    * @param buffer Complete ZIP file buffer (must be fully downloaded)
-   * @returns Object containing file path (preferred) or base64 data (fallback)
+   * @returns Object containing relativePath (preferred) or base64 data (fallback)
    */
-  private async extractImageFromZip(buffer: Buffer): Promise<{ base64?: string; filepath: string }> {
+  private async extractImageFromZip(buffer: Buffer): Promise<{
+    relativePath?: string;
+    base64?: string;
+  }> {
     logger.info(`[NovelAIProvider] Extracting image from ZIP (${buffer.length} bytes)`);
 
     // Validate ZIP signature
@@ -187,31 +195,22 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
       const originalFilename =
         imageEntry.entryName.split('/').pop() || `image${extname(imageEntry.entryName) || '.png'}`;
 
-      // Save image to local file synchronously (file I/O is fast, won't significantly block)
-      // This allows us to return file path instead of base64
-      let filepath = '';
-      try {
-        filepath = await this.saveImageToFile(imageBuffer, originalFilename);
-        logger.info(`[NovelAIProvider] Image saved to: ${filepath}`);
-      } catch (error) {
-        logger.warn(
-          `[NovelAIProvider] Failed to save image, will use base64 fallback: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
+      // Save image to local file
+      const relativePath = await this.saveImageToFile(imageBuffer, originalFilename);
 
-      // Return file path if available, otherwise fallback to base64
-      if (filepath) {
+      // Return relative path if available, otherwise fallback to base64
+      if (relativePath) {
         return {
+          relativePath,
           base64: undefined,
-          filepath,
         };
       } else {
         // Fallback to base64 if file save failed
         const base64Data = imageBuffer.toString('base64');
         logger.info(`[NovelAIProvider] Using base64 fallback (${base64Data.length} chars)`);
         return {
+          relativePath: undefined,
           base64: base64Data,
-          filepath: '',
         };
       }
     } catch (error) {
@@ -224,7 +223,7 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
   /**
    * Generate image from text prompt
    */
-  async generateImage(prompt: string, options?: Text2ImageOptions): Promise<ImageGenerationResponse> {
+  async generateImage(prompt: string, options?: Text2ImageOptions): Promise<ProviderImageGenerationResponse> {
     if (!this.isAvailable()) {
       throw new Error('NovelAIProvider is not available: accessToken not configured');
     }
@@ -338,21 +337,21 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
 
       // Extract image from ZIP and save to local file
       // extractImageFromZip will handle the complete ZIP buffer and save the first image
-      const { base64: base64Image, filepath } = await this.extractImageFromZip(buffer);
+      const { relativePath, base64: base64Image } = await this.extractImageFromZip(buffer);
 
-      // Prefer file path over base64 for better performance
-      const imageData: { file?: string; base64?: string } = {};
-      if (filepath) {
-        imageData.file = filepath;
+      // Prefer relative path over base64 for better performance
+      const imageData: { relativePath?: string; base64?: string } = {};
+      if (relativePath) {
+        imageData.relativePath = relativePath;
       } else if (base64Image) {
         imageData.base64 = base64Image;
       } else {
-        throw new Error('Failed to extract image: no file path or base64 data available');
+        throw new Error('Failed to extract image: no relative path or base64 data available');
       }
 
       return {
         images: [imageData],
-        metadata: { prompt, numImages: 1, width, height, steps: 28, guidanceScale, filepath },
+        metadata: { prompt, numImages: 1, width, height, steps: 28, guidanceScale },
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');

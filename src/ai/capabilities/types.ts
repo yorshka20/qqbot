@@ -39,13 +39,28 @@ export interface Image2ImageOptions {
 }
 
 /**
- * Image generation response
+ * Provider image generation response (internal/intermediate type)
+ * Used by providers to return images with relative paths or external URLs
+ * This is converted to ImageGenerationResponse by ImageGenerationService
+ */
+export interface ProviderImageGenerationResponse {
+  images: Array<{
+    relativePath?: string; // Relative path from output directory (e.g., 'novelai/image.png') - for locally saved files
+    url?: string; // External URL (for providers that return URLs directly, e.g., LocalText2ImageProvider)
+    base64?: string; // Base64 encoded image (fallback if file save fails)
+  }>;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Image generation response (final/public type)
+ * Returned by ImageGenerationService to external callers
+ * Contains only public URLs or base64, no internal paths
  */
 export interface ImageGenerationResponse {
   images: Array<{
-    url?: string;
-    base64?: string;
-    file?: string;
+    url?: string; // Public URL (converted from relativePath by service layer)
+    base64?: string; // Base64 encoded image (fallback if URL conversion fails)
   }>;
   metadata?: Record<string, unknown>;
 }

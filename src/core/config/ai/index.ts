@@ -59,6 +59,7 @@ export type {
   AIProviderType,
   AnthropicProviderConfig,
   DeepSeekProviderConfig,
+  GeminiProviderConfig,
   LocalText2ImageProviderConfig,
   NovelAIProviderConfig,
   OllamaProviderConfig,
