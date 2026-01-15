@@ -12,6 +12,7 @@ export const DITokens = {
   API_CLIENT: 'APIClient',
   CONFIG: 'Config',
   PROMPT_MANAGER: 'PromptManager',
+  PLUGIN_MANAGER: 'PluginManager',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];

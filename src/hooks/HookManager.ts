@@ -152,9 +152,9 @@ export class HookManager {
         try {
           logger.debug(`[HookManager] Executing handler: ${handlerName} | hook=${hookName} | messageId=${messageId}`);
 
-          const result = await handler(context);
+          const continueExecution = await handler(context);
 
-          if (!result) {
+          if (!continueExecution) {
             logger.info(
               `🚫 [HookManager] Hook ${hookName} interrupted by handler | handler=${handlerName} | messageId=${messageId}`,
             );

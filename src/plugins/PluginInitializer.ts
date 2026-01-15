@@ -1,6 +1,8 @@
 // Plugin Initializer - initializes PluginManager and loads plugins
 
 import type { APIClient } from '@/api/APIClient';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import type { Config } from '@/core/config';
 import type { EventRouter } from '@/events/EventRouter';
 import type { HookManager } from '@/hooks/HookManager';
@@ -42,6 +44,10 @@ export class PluginInitializer {
     });
 
     logger.info('[PluginInitializer] PluginManager initialized');
+
+    // Register PluginManager to DI container
+    const container = getContainer();
+    container.registerInstance(DITokens.PLUGIN_MANAGER, pluginManager);
 
     return {
       pluginManager,

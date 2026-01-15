@@ -287,9 +287,9 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
         height,
         scale: guidanceScale,
         sampler: 'k_euler_ancestral',
-        steps,
+        steps: 28, // hardcode to prevent points cost
         seed,
-        n_samples: 3,
+        n_samples: 1,
         ucPreset: 0,
         qualityToggle: false,
         noise_schedule: 'karras',

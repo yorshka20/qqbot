@@ -148,6 +148,7 @@ export class TTSCommandHandler implements CommandHandler {
         headers: {
           Authorization: `Bearer ${ttsConfig.apiKey}`,
           model: baseModel,
+          'Content-Type': 'application/json',
         },
         timeout: 30000, // 30 seconds timeout
       });

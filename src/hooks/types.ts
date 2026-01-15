@@ -21,11 +21,10 @@ export interface HookContext {
 
 /**
  * Hook result type
- * - void/undefined: Continue execution
  * - true: Continue execution
  * - false: Interrupt execution
  */
-export type HookResult = void | boolean | Promise<void | boolean>;
+export type HookResult = boolean | Promise<boolean>;
 
 /**
  * Hook handler function type

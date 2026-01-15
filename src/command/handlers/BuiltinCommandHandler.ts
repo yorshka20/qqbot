@@ -1,6 +1,7 @@
 // Builtin command handlers
 
 import { DITokens } from '@/core/DITokens';
+import type { PluginManager } from '@/plugins/PluginManager';
 import { inject, injectable } from 'tsyringe';
 import type { CommandManager } from '../CommandManager';
 import { Command } from '../decorators';
@@ -124,5 +125,60 @@ export class PingCommand implements CommandHandler {
       success: true,
       message: 'pong',
     };
+  }
+}
+
+/**
+ * Echo command - toggle EchoPlugin enabled/disabled state
+ */
+@Command({
+  name: 'echo',
+  description: 'Toggle EchoPlugin enabled/disabled state',
+  usage: '/echo',
+  permissions: ['admin'], // Only admins can toggle echo plugin
+})
+@injectable()
+export class EchoCommand implements CommandHandler {
+  name = 'echo';
+  description = 'Toggle EchoPlugin enabled/disabled state';
+  usage = '/echo';
+
+  constructor(@inject(DITokens.PLUGIN_MANAGER) private pluginManager: PluginManager) {}
+
+  async execute(): Promise<CommandResult> {
+    const pluginName = 'echo';
+    const plugin = this.pluginManager.getPlugin(pluginName);
+
+    if (!plugin) {
+      return {
+        success: false,
+        error: 'EchoPlugin not loaded',
+      };
+    }
+
+    const enabledPlugins = this.pluginManager.getEnabledPlugins();
+    const isEnabled = enabledPlugins.includes(pluginName);
+
+    try {
+      if (isEnabled) {
+        await this.pluginManager.disablePlugin(pluginName);
+        return {
+          success: true,
+          message: 'off',
+        };
+      } else {
+        await this.pluginManager.enablePlugin(pluginName);
+        return {
+          success: true,
+          message: 'on',
+        };
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        success: false,
+        error: `Failed to toggle plugin: ${errorMessage}`,
+      };
+    }
   }
 }
