@@ -7,7 +7,7 @@ import { extname, resolve } from 'path';
 
 // Import all config types
 import type { AIConfig, ContextMemoryConfig, SessionProviderConfig } from './ai';
-import type { BotSelfConfig } from './bot';
+import type { BotSelfConfig, StaticServerConfig } from './bot';
 import type { DatabaseConfig } from './database';
 import type { MCPConfig } from './mcp';
 import type { PluginsConfig } from './plugins';
@@ -32,7 +32,7 @@ export type {
   OpenRouterProviderConfig,
   SessionProviderConfig,
 } from './ai';
-export type { BotSelfConfig } from './bot';
+export type { BotSelfConfig, StaticServerConfig } from './bot';
 export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './database';
 export type {
   MCPConfig,
@@ -68,6 +68,7 @@ export interface BotConfig {
   prompts: PromptsConfig;
   tts?: TTSConfig;
   mcp?: MCPConfig;
+  staticServer?: StaticServerConfig;
 }
 
 export class Config {
@@ -286,5 +287,9 @@ export class Config {
 
   getMCPConfig(): MCPConfig | undefined {
     return this.config.mcp;
+  }
+
+  getStaticServerConfig(): StaticServerConfig | undefined {
+    return this.config.staticServer;
   }
 }

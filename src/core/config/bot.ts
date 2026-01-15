@@ -8,3 +8,9 @@ export interface BotSelfConfig {
   // These users can adjust bot behavior and trigger special commands
   admins: string[];
 }
+
+export interface StaticServerConfig {
+  port: number;
+  host: string;
+  root: string;
+}

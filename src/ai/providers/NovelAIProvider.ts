@@ -22,7 +22,7 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
   private static readonly DEFAULT_STEPS = 28;
   private static readonly DEFAULT_WIDTH = 832;
   private static readonly DEFAULT_HEIGHT = 1216;
-  private static readonly DEFAULT_GUIDANCE_SCALE = 6.0;
+  private static readonly DEFAULT_GUIDANCE_SCALE = 5.0;
 
   constructor(config: NovelAIProviderConfig) {
     super();
@@ -251,35 +251,67 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
         `[NovelAIProvider] Parameters: model=${model}, size=${width}x${height}, steps=28, scale=${guidanceScale}, seed=${seed}`,
       );
 
-      // Parameters according to nai.md reference implementation for V4.5
+      // Parameters according to latest NovelAI API documentation
+      // According to swagger: v4_prompt and v4_negative_prompt are used instead of prompt/negative_prompt
       const parameters: Record<string, unknown> = {
+        params_version: 3,
         width,
         height,
         scale: guidanceScale,
         sampler: 'k_euler_ancestral',
-        steps: 28, // Fixed for V4.5 to prevent points cost
+        steps: 28,
         seed,
         n_samples: 1,
+        strength: 0.7,
+        noise: 0,
         ucPreset: 0,
         qualityToggle: true,
-        params_version: 1,
+        autoSmea: false,
+        sm: false,
+        sm_dyn: false,
+        dynamic_thresholding: false,
+        controlnet_strength: 1,
+        legacy: false,
+        add_original_image: true,
+        cfg_rescale: 0,
+        noise_schedule: 'karras',
         legacy_v3_extend: false,
+        skip_cfg_above_sigma: null,
+        use_coords: false,
+        legacy_uc: false,
+        normalize_reference_strength_multiple: true,
+        inpaintImg2ImgStrength: 1,
+        // V4.5 specific prompt structure (replaces "prompt" field)
+        v4_prompt: {
+          caption: {
+            base_caption: prompt,
+            char_captions: [],
+          },
+          use_coords: false,
+          use_order: true,
+        },
+        // V4.5 specific negative prompt structure (replaces "negative_prompt" field)
+        v4_negative_prompt: {
+          caption: {
+            base_caption: options?.negative_prompt || 'low quality, bad anatomy, text, blurry, worst quality',
+            char_captions: [],
+          },
+          use_coords: false,
+          use_order: true,
+        },
       };
-
-      // Add negative prompt (V4.5 recommended default if not provided)
-      parameters.negative_prompt = options?.negative_prompt || 'low quality, bad anatomy, text, blurry, worst quality';
 
       const requestBody: Record<string, unknown> = {
         action: 'generate',
         model,
-        input: prompt, // Use input field for all models (as per nai.md)
+        input: prompt, // Required input field for the API
         parameters,
       };
 
       logger.info(`[NovelAIProvider] Request body: ${JSON.stringify(requestBody, null, 2)}`);
 
       const baseURL = this.config.baseURL || 'https://image.novelai.net';
-      // Use /ai/generate-image endpoint which returns ZIP file (not streaming)
+      // Use /ai/generate-image endpoint as per swagger spec (returns ZIP file)
       const fullUrl = baseURL.endsWith('/') ? `${baseURL}ai/generate-image` : `${baseURL}/ai/generate-image`;
 
       const response = await fetch(fullUrl, {
@@ -287,6 +319,7 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
         headers: {
           Authorization: `Bearer ${this.config.accessToken}`,
           'Content-Type': 'application/json',
+          Accept: 'application/zip', // NovelAI returns ZIP file
         },
         body: JSON.stringify(requestBody),
         signal: AbortSignal.timeout(300000),

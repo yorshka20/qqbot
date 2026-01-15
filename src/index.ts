@@ -12,6 +12,7 @@ import { PluginInitializer } from './plugins/PluginInitializer';
 import { ProtocolAdapterInitializer } from './protocol/ProtocolAdapterInitializer';
 import { SearchService } from './search';
 import { logger } from './utils/logger';
+import { initStaticFileServer, stopStaticFileServer } from './utils/StaticFileServer';
 
 async function main() {
   logger.info('Starting bot...');
@@ -59,6 +60,13 @@ async function main() {
       eventRouter,
     );
 
+    // Initialize and start static file server for serving generated images
+    // This starts the server once and keeps it running
+    const staticServerConfig = config.getStaticServerConfig();
+    if (staticServerConfig) {
+      await initStaticFileServer(staticServerConfig.port, staticServerConfig.root, staticServerConfig.host);
+    }
+
     // Start bot (this will trigger connection events)
     await bot.start();
 
@@ -79,6 +87,7 @@ async function main() {
     // Handle graceful shutdown
     process.on('SIGINT', async () => {
       logger.info('[Main] Received SIGINT, shutting down...');
+      stopStaticFileServer();
       await bot.stop();
       eventRouter.destroy();
       await MCPInitializer.disconnectServers(mcpSystem);
@@ -88,6 +97,7 @@ async function main() {
 
     process.on('SIGTERM', async () => {
       logger.info('[Main] Received SIGTERM, shutting down...');
+      stopStaticFileServer();
       await bot.stop();
       eventRouter.destroy();
       await MCPInitializer.disconnectServers(mcpSystem);

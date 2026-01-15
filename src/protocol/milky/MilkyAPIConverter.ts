@@ -38,9 +38,16 @@ export class MilkyAPIConverter {
    * @returns Milky protocol endpoint name
    */
   static convertActionToMilky(action: string): string {
-    // For now, we assume action names are already in Milky format
-    // Add any necessary transformations here if needed
-    return action;
+    // Convert shorthand action names to full Milky protocol endpoint names
+    // Milky protocol uses full names like "send_group_message" not "send_group_msg"
+    const actionMap: Record<string, string> = {
+      send_group_msg: 'send_group_message',
+      send_private_msg: 'send_private_message',
+      recall_msg: 'recall_message',
+      delete_msg: 'delete_message',
+    };
+
+    return actionMap[action] || action;
   }
 
   /**

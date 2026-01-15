@@ -5,6 +5,7 @@ import { NormalizedMessageEvent } from '@/events/types';
 import { HookContext } from '@/hooks';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
+import { getStaticFileServer } from '@/utils/StaticFileServer';
 import { inject, injectable } from 'tsyringe';
 import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
@@ -92,7 +93,20 @@ export class NovelAICommand implements CommandHandler {
         } else if (image.url) {
           messageBuilder.image({ url: image.url });
         } else if (image.file) {
-          messageBuilder.image({ file: image.file });
+          // image.file contains a local file path - convert to HTTP URL
+          // This avoids bloating the message with base64 data
+          try {
+            const fileServer = getStaticFileServer();
+            const httpURL = fileServer.getFileURL(image.file);
+            logger.info(`[NovelAICommand] Using HTTP URL for image: ${httpURL}`);
+            messageBuilder.image({ url: httpURL });
+          } catch (error) {
+            logger.error(
+              `[NovelAICommand] Failed to convert file to HTTP URL: ${error instanceof Error ? error.message : String(error)}`,
+            );
+            // Skip this image if we can't convert it
+            continue;
+          }
         } else {
           logger.warn(`[NovelAICommand] Image has no base64, url, or file field: ${JSON.stringify(image)}`);
         }

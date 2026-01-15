@@ -63,6 +63,13 @@
       "123123"
     ]
   },
+  // Static file server configuration (optional)
+  "staticServer": {
+    "enabled": true,
+    "port": 8888,
+    "host": "192.168.50.173",
+    "root": "./output"
+  },
   // Plugin configuration
   // Plugins must be placed in src/plugins/ directory
   "plugins": {
