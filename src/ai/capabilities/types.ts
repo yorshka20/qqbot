@@ -49,6 +49,7 @@ export interface ProviderImageGenerationResponse {
     url?: string; // External URL (for providers that return URLs directly, e.g., LocalText2ImageProvider)
     base64?: string; // Base64 encoded image (fallback if file save fails)
   }>;
+  text?: string; // Text response from provider
   metadata?: Record<string, unknown>;
 }
 
@@ -62,6 +63,7 @@ export interface ImageGenerationResponse {
     url?: string; // Public URL (converted from relativePath by service layer)
     base64?: string; // Base64 encoded image (fallback if URL conversion fails)
   }>;
+  text?: string; // Text response from provider
   metadata?: Record<string, unknown>;
 }
 

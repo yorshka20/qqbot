@@ -435,11 +435,7 @@ Fluent API for constructing messages.
 **Example:**
 
 ```typescript
-const message = new MessageBuilder()
-  .text('Hello ')
-  .at(userId)
-  .text('!')
-  .build();
+const message = new MessageBuilder().text('Hello ').at(userId).text('!').build();
 ```
 
 #### MessageParser.ts
@@ -636,7 +632,6 @@ Configuration is stored in `config.jsonc` (JSON with Comments):
   // Bot configuration
   "bot": {
     "selfId": null,
-    "logLevel": "info",
   },
   // Plugin configuration
   "plugins": {

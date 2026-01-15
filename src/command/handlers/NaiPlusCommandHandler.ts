@@ -1,6 +1,7 @@
 import { AIService, Text2ImageOptions } from '@/ai';
 import { APIClient } from '@/api/APIClient';
 import { DITokens } from '@/core/DITokens';
+import { NormalizedMessageEvent } from '@/events/types';
 import { HookContext } from '@/hooks';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
@@ -10,20 +11,21 @@ import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
 
 /**
- * Banana command - generates image from text prompt using Gemini provider
- * Directly uses user input as prompt without LLM preprocessing
+ * NaiPlus command - generates image from text prompt using NovelAI provider with LLM preprocessing
+ * Similar to t2i but uses NovelAI-specific prompt template and forces NovelAI provider
  */
 @Command({
-  name: 'banana',
-  description: 'Generate image from text prompt using Gemini',
-  usage: '/banana <prompt> [--width=<width>] [--height=<height>]',
+  name: 'nai-plus',
+  description: 'Generate image from text prompt using NovelAI with LLM preprocessing',
+  usage:
+    '/nai-plus <prompt> [--width=<width>] [--height=<height>] [--steps=<steps>] [--seed=<seed>] [--guidance=<scale>] [--negative=<prompt>]',
   permissions: ['user'], // All users can generate images
 })
 @injectable()
-export class BananaCommand implements CommandHandler {
-  name = 'banana';
-  description = 'Generate image from text prompt using Gemini';
-  usage = '/banana <prompt> [options]';
+export class NaiPlusCommand implements CommandHandler {
+  name = 'nai-plus';
+  description = 'Generate image from text prompt using NovelAI with LLM preprocessing';
+  usage = '/nai-plus <prompt> [options]';
 
   // Command parameter configuration
   private readonly argsConfig: ParserConfig = {
@@ -47,7 +49,7 @@ export class BananaCommand implements CommandHandler {
     if (args.length === 0) {
       return {
         success: false,
-        error: 'Please provide a prompt. Usage: /banana <prompt> [options]',
+        error: 'Please provide a prompt. Usage: /nai-plus <prompt> [options]',
       };
     }
 
@@ -55,7 +57,7 @@ export class BananaCommand implements CommandHandler {
       // Parse arguments using unified parser with command-specific config
       const { text: prompt, options } = CommandArgsParser.parse<Text2ImageOptions>(args, this.argsConfig);
 
-      logger.info(`[BananaCommand] Generating image with prompt: ${prompt.substring(0, 50)}...`);
+      logger.info(`[NaiPlusCommand] Generating image with prompt: ${prompt.substring(0, 50)}...`);
 
       // Create hook context for AIService
       const hookContext: HookContext = {
@@ -70,17 +72,24 @@ export class BananaCommand implements CommandHandler {
           messageType: context.messageType,
           message: prompt,
           segments: [],
-        },
+        } as NormalizedMessageEvent,
         metadata: new Map([
           ['sessionId', context.groupId ? `group_${context.groupId}` : `user_${context.userId}`],
           ['sessionType', context.messageType],
         ]),
       };
 
-      // Generate image using Gemini provider (force provider name)
-      // Skip LLM preprocessing for /banana command - use user input directly as prompt
-      const response = await this.aiService.generateImg(hookContext, options, 'gemini', true);
-      logger.info(`[BananaCommand] Generated image with response: ${JSON.stringify(response)}`);
+      // Generate image using NovelAI provider with LLM preprocessing
+      // Use NovelAI-specific template: 'text2img.generate_nai'
+      // Do not skip LLM preprocessing (skipLLMProcess = false)
+      const response = await this.aiService.generateImg(
+        hookContext,
+        options,
+        'novelai', // Force NovelAI provider
+        false, // Do not skip LLM preprocessing
+        'text2img.generate_nai', // Use NovelAI-specific template
+      );
+      logger.info(`[NaiPlusCommand] Generated image with response: ${JSON.stringify(response)}`);
 
       // If no images and no text, return error
       if ((!response.images || response.images.length === 0) && !response.text) {
@@ -109,7 +118,7 @@ export class BananaCommand implements CommandHandler {
           // Milky protocol supports base64 data in the 'data' field
           messageBuilder.image({ data: image.base64 });
         } else {
-          logger.warn(`[BananaCommand] Image has no url or base64 field: ${JSON.stringify(image)}`);
+          logger.warn(`[NaiPlusCommand] Image has no url or base64 field: ${JSON.stringify(image)}`);
         }
       }
 
@@ -142,7 +151,7 @@ export class BananaCommand implements CommandHandler {
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.error('[BananaCommand] Failed to generate image:', err);
+      logger.error('[NaiPlusCommand] Failed to generate image:', err);
       return {
         success: false,
         error: `Failed to generate image: ${err.message}`,

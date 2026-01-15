@@ -324,12 +324,14 @@ export class AIService {
    * @param options - Image generation options (width, height, steps, etc.)
    * @param providerName - Optional provider name to use (e.g., 'novelai', 'local-text2img'). If not specified, uses default provider.
    * @param skipLLMProcess - If true, skip LLM preprocessing and use user input directly as prompt
+   * @param templateName - Optional template name for LLM preprocessing (default: 'text2img.generate')
    */
   async generateImg(
     context: HookContext,
     options?: Text2ImageOptions,
     providerName?: string,
     skipLLMProcess?: boolean,
+    templateName?: string,
   ): Promise<ImageGenerationResponse> {
     // Hook: onMessageBeforeAI
     const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
@@ -366,6 +368,7 @@ export class AIService {
         options,
         sessionId,
         skipLLMProcess,
+        templateName, // Use specified template or default
       );
 
       // Generate image using ImageGenerationService with processed parameters
@@ -400,6 +403,7 @@ export class AIService {
    * @param options - User-provided options
    * @param sessionId - Session ID for provider selection
    * @param skipLLMProcess - Whether to skip LLM preprocessing
+   * @param templateName - Optional template name for LLM preprocessing (default: 'text2img.generate')
    * @returns Processed prompt and options
    */
   private async prepareImageGenerationParams(
@@ -407,13 +411,14 @@ export class AIService {
     options: Text2ImageOptions | undefined,
     sessionId: string | undefined,
     skipLLMProcess?: boolean,
+    templateName?: string,
   ): Promise<{ prompt: string; options: Text2ImageOptions }> {
     if (skipLLMProcess) {
       return this.prepareDirectPrompt(userInput, options);
     }
 
     try {
-      return await this.preprocessPromptWithLLM(userInput, options, sessionId);
+      return await this.preprocessPromptWithLLM(userInput, options, sessionId, templateName);
     } catch (llmError) {
       const llmErr = llmError instanceof Error ? llmError : new Error('Unknown LLM error');
       logger.warn(`[AIService] LLM preprocessing failed, falling back to direct user input | error=${llmErr.message}`);
@@ -426,16 +431,19 @@ export class AIService {
    * @param userInput - User input text
    * @param options - User-provided options (will be merged with LLM-generated options)
    * @param sessionId - Session ID for provider selection
+   * @param templateName - Optional template name (default: 'text2img.generate')
    * @returns Processed prompt and options
    */
   private async preprocessPromptWithLLM(
     userInput: string,
     options: Text2ImageOptions | undefined,
     sessionId: string | undefined,
+    templateName: string = 'text2img.generate',
   ): Promise<{ prompt: string; options: Text2ImageOptions }> {
     // Build LLM prompt using PromptManager
-    // Template name: 'text2img.generate' (from prompts/text2img/generate.txt)
-    const llmPrompt = this.promptManager.render('text2img.generate', {
+    // Default template name: 'text2img.generate' (from prompts/text2img/generate.txt)
+    // Can be overridden with templateName parameter (e.g., 'text2img.generate_nai')
+    const llmPrompt = this.promptManager.render(templateName, {
       description: userInput,
     });
 

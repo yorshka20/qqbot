@@ -8,6 +8,13 @@ import { join } from 'path';
 import { AIProvider } from '../base/AIProvider';
 import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';
 import type { CapabilityType, ProviderImageGenerationResponse, Text2ImageOptions } from '../capabilities/types';
+import {
+  handleFinishReason,
+  handleGeneralError,
+  handleInvalidContent,
+  handleNoCandidates,
+  handleNoImageData,
+} from '../utils/geminiErrorHandler';
 
 /**
  * Gemini Provider implementation
@@ -130,26 +137,41 @@ export class GeminiProvider extends AIProvider implements Text2ImageCapability {
         contents: prompt,
       });
 
-      logger.debug(`[GeminiProvider] Response received`);
+      logger.debug(`[GeminiProvider] Response received`, response);
 
       // Response structure: candidates[0].content.parts[] with inlineData
-      if (!response.candidates || response.candidates.length === 0) {
-        throw new Error('No candidates in response');
+      // Check for no candidates error
+      const noCandidatesError = handleNoCandidates(response, prompt);
+      if (noCandidatesError) {
+        return noCandidatesError;
       }
 
-      const candidate = response.candidates[0];
-      if (!candidate.content || !candidate.content.parts) {
-        throw new Error('Invalid response structure: missing content.parts');
+      // At this point, response.candidates is guaranteed to exist and have at least one element
+      const candidate = response.candidates![0]!;
+
+      // Check finish reason for errors
+      const finishReasonError = handleFinishReason(candidate, prompt);
+      if (finishReasonError) {
+        return finishReasonError;
       }
+
+      // Check for invalid content structure
+      const invalidContentError = handleInvalidContent(candidate, prompt);
+      if (invalidContentError) {
+        return invalidContentError;
+      }
+
+      // At this point, candidate.content and candidate.content.parts are guaranteed to exist
+      const parts = candidate.content!.parts!;
 
       // Find image part in response
       let imageData: string | null = null;
+      let text: string = '';
       let mimeType = 'image/png';
 
-      for (const part of candidate.content.parts) {
+      for (const part of parts) {
         if (part.text) {
-          // Log any text response
-          logger.debug(`[GeminiProvider] Text response: ${part.text}`);
+          text = part.text;
         } else if (part.inlineData) {
           const data = part.inlineData.data;
           if (data) {
@@ -161,7 +183,8 @@ export class GeminiProvider extends AIProvider implements Text2ImageCapability {
       }
 
       if (!imageData) {
-        throw new Error('No image data found in response');
+        // No image data found - check if there's a text explanation
+        return handleNoImageData(text, prompt);
       }
 
       logger.info(`[GeminiProvider] Extracted image data (${imageData.length} chars, mimeType: ${mimeType})`);
@@ -185,6 +208,7 @@ export class GeminiProvider extends AIProvider implements Text2ImageCapability {
 
       return {
         images: [imageDataResponse],
+        text,
         metadata: {
           prompt,
           numImages: 1,
@@ -195,9 +219,8 @@ export class GeminiProvider extends AIProvider implements Text2ImageCapability {
         },
       };
     } catch (error) {
-      const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.error(`[GeminiProvider] Generation failed: ${err.message}`, err);
-      throw err;
+      // Return error message in text field instead of throwing
+      return handleGeneralError(error, prompt);
     }
   }
 }

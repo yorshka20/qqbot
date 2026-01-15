@@ -55,8 +55,8 @@ export class ImageGenerationService {
 
     // Return final response with only url/base64, no internal fields
     return {
+      ...response,
       images: convertedImages,
-      metadata: response.metadata,
     };
   }
 

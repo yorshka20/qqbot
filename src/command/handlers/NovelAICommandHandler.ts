@@ -82,19 +82,21 @@ export class NovelAICommand implements CommandHandler {
       // Skip LLM preprocessing for /nai command - use user input directly as prompt
       const response = await this.aiService.generateImg(hookContext, options, 'novelai', true);
       logger.info(`[NovelAICommand] Generated image with response: ${JSON.stringify(response)}`);
-      if (!response.images || response.images.length === 0) {
+
+      // If no images and no text, return error
+      if ((!response.images || response.images.length === 0) && !response.text) {
         return {
           success: false,
-          error: 'No images generated',
+          error: 'No images generated and no error message received',
         };
       }
 
-      // Build message with images
+      // Build message with images and text
       const messageBuilder = new MessageBuilder();
 
-      // Add text message if multiple images
-      if (response.images.length > 1) {
-        messageBuilder.text(`Generated ${response.images.length} images:\n`);
+      // Add text message from provider if available (may contain error message)
+      if (response.text) {
+        messageBuilder.text(response.text);
       }
 
       // Add each image
