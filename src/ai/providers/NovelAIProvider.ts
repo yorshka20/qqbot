@@ -2,27 +2,27 @@
 
 import type { NovelAIProviderConfig } from '@/core/config';
 import { logger } from '@/utils/logger';
+import AdmZip from 'adm-zip';
 import { mkdir, writeFile } from 'fs/promises';
-import JSZip from 'jszip';
-import { join } from 'path';
+import { extname, join } from 'path';
 import { AIProvider } from '../base/AIProvider';
 import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';
 import type { CapabilityType, ImageGenerationResponse, Text2ImageOptions } from '../capabilities/types';
 
 /**
  * NovelAI Provider implementation
- * Text-to-image generation using NovelAI API
+ * Text-to-image generation using NovelAI API (V4+ only)
  */
 export class NovelAIProvider extends AIProvider implements Text2ImageCapability {
   readonly name = 'novelai';
   private config: NovelAIProviderConfig;
   private _capabilities: CapabilityType[];
 
-  // Basic defaults
-  private static readonly DEFAULT_STEPS = 45;
+  // Basic defaults for V4.5
+  private static readonly DEFAULT_STEPS = 28;
   private static readonly DEFAULT_WIDTH = 832;
   private static readonly DEFAULT_HEIGHT = 1216;
-  private static readonly DEFAULT_GUIDANCE_SCALE = 5.0;
+  private static readonly DEFAULT_GUIDANCE_SCALE = 6.0;
 
   constructor(config: NovelAIProviderConfig) {
     super();
@@ -66,23 +66,29 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
   }
 
   /**
-   * Save base64 image data to local file
+   * Save image data to local file
+   * Supports both Buffer and base64 string input
    */
-  private async saveImageToFile(base64Data: string, prompt: string, seed?: number): Promise<string> {
+  private async saveImageToFile(imageData: Buffer | string, originalFilename: string): Promise<string> {
     try {
       // Create output directory if it doesn't exist
       const outputDir = join(process.cwd(), 'output');
       await mkdir(outputDir, { recursive: true });
 
-      // Generate filename based on timestamp, seed, and prompt hash
+      // Generate filename using timestamp and original filename
       const timestamp = Date.now();
-      const promptHash = prompt.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_');
-      const seedStr = seed !== undefined ? `_${seed}` : '';
-      const filename = `novelai_${timestamp}${seedStr}_${promptHash}.png`;
+      const filename = `${timestamp}_${originalFilename}`;
       const filepath = join(outputDir, filename);
 
-      // Convert base64 to buffer and save
-      const imageBuffer = Buffer.from(base64Data, 'base64');
+      // Convert to buffer if needed
+      let imageBuffer: Buffer;
+      if (imageData instanceof Buffer) {
+        imageBuffer = imageData;
+      } else if (typeof imageData === 'string') {
+        imageBuffer = Buffer.from(imageData, 'base64');
+      } else {
+        throw new Error('Invalid imageData type');
+      }
       await writeFile(filepath, imageBuffer);
 
       logger.info(`[NovelAIProvider] Saved image to: ${filepath} (${imageBuffer.length} bytes)`);
@@ -92,74 +98,6 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
         `[NovelAIProvider] Failed to save image to file: ${error instanceof Error ? error.message : String(error)}`,
       );
       return '';
-    }
-  }
-
-  /**
-   * Parse SSE (Server-Sent Events) stream to extract the final image
-   */
-  private async parseSSEStream(response: Response): Promise<string> {
-    if (!response.body) {
-      throw new Error('Response body is null');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let finalImage = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // Process complete SSE events
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // Keep incomplete line for next iteration
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.substring(6)); // Remove 'data: ' prefix
-
-              if (data.image && data.event_type === 'intermediate') {
-                // This is likely the final image (intermediate event with image data)
-                finalImage = data.image;
-              }
-            } catch (e) {
-              logger.warn(`[NovelAIProvider] Failed to parse SSE data: ${line}`);
-            }
-          }
-        }
-      }
-
-      // Process any remaining data
-      if (buffer.trim()) {
-        const lines = buffer.split('\n');
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.substring(6));
-              if (data.image) {
-                finalImage = data.image;
-                logger.info(`[NovelAIProvider] Found final image in remaining data, length: ${finalImage.length}`);
-              }
-            } catch (e) {
-              // Ignore parse errors for remaining buffer
-            }
-          }
-        }
-      }
-
-      if (!finalImage) {
-        throw new Error('No image found in SSE stream');
-      }
-
-      return finalImage;
-    } finally {
-      reader.releaseLock();
     }
   }
 
@@ -196,10 +134,14 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
   }
 
   /**
-   * Extract image from NovelAI ZIP response using JSZip
+   * Extract image from NovelAI ZIP response using AdmZip
    * NovelAI returns a ZIP file containing the generated image
+   * Reference: nai.md implementation
+   *
+   * @param buffer Complete ZIP file buffer (must be fully downloaded)
+   * @returns Object containing file path (preferred) or base64 data (fallback)
    */
-  private async extractImageFromZip(buffer: Buffer): Promise<string> {
+  private async extractImageFromZip(buffer: Buffer): Promise<{ base64?: string; filepath: string }> {
     logger.info(`[NovelAIProvider] Extracting image from ZIP (${buffer.length} bytes)`);
 
     // Validate ZIP signature
@@ -209,45 +151,69 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
     }
 
     try {
-      logger.info(`[NovelAIProvider] Loading ZIP file...`);
-      // Load ZIP file with JSZip
-      const zip = await JSZip.loadAsync(buffer);
+      logger.info(`[NovelAIProvider] Loading ZIP file with AdmZip...`);
+      // Use AdmZip to parse the ZIP file (as per nai.md reference)
+      const zip = new AdmZip(buffer);
+      const zipEntries = zip.getEntries();
 
-      // Get all entries (files) in the ZIP
-      const entries = Object.keys(zip.files).filter((name) => !zip.files[name].dir);
-      logger.info(`[NovelAIProvider] Found ${entries.length} files in ZIP: ${entries.join(', ')}`);
+      logger.info(`[NovelAIProvider] Found ${zipEntries.length} entries in ZIP`);
 
-      if (entries.length === 0) {
+      if (zipEntries.length === 0) {
         throw new Error('No files found in ZIP archive');
       }
 
-      // Get the first image file (usually there's only one)
-      const imageFile = zip.files[entries[0]];
-      if (!imageFile) {
-        throw new Error('Image file not found in ZIP');
+      // Find the first image file (PNG or WebP)
+      let imageEntry = null;
+      for (const entry of zipEntries) {
+        const entryName = entry.entryName;
+        if (entryName.endsWith('.png') || entryName.endsWith('.webp')) {
+          imageEntry = entry;
+          break;
+        }
       }
 
-      logger.info(`[NovelAIProvider] Extracting ${entries[0]}...`);
-      // Extract the image data as ArrayBuffer
-      const imageBuffer = await imageFile.async('arraybuffer');
+      if (!imageEntry) {
+        throw new Error('No image file (PNG or WebP) found in ZIP archive');
+      }
 
-      // Convert to Node.js Buffer for PNG validation
-      const nodeBuffer = Buffer.from(imageBuffer);
-      logger.info(`[NovelAIProvider] Extracted ${nodeBuffer.length} bytes of image data`);
+      logger.info(`[NovelAIProvider] Extracting ${imageEntry.entryName}...`);
+      // Extract the image data using AdmZip's getData method
+      const imageData = imageEntry.getData();
+      const imageBuffer = Buffer.from(imageData);
 
-      // Verify it's a PNG
-      const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-      if (nodeBuffer.length < 8 || !nodeBuffer.subarray(0, 8).equals(pngSignature)) {
-        logger.warn('[NovelAIProvider] Extracted file is not a valid PNG');
+      logger.info(`[NovelAIProvider] Extracted ${imageBuffer.length} bytes of image data`);
+
+      // Get original filename from ZIP entry
+      const originalFilename =
+        imageEntry.entryName.split('/').pop() || `image${extname(imageEntry.entryName) || '.png'}`;
+
+      // Save image to local file synchronously (file I/O is fast, won't significantly block)
+      // This allows us to return file path instead of base64
+      let filepath = '';
+      try {
+        filepath = await this.saveImageToFile(imageBuffer, originalFilename);
+        logger.info(`[NovelAIProvider] Image saved to: ${filepath}`);
+      } catch (error) {
+        logger.warn(
+          `[NovelAIProvider] Failed to save image, will use base64 fallback: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      // Return file path if available, otherwise fallback to base64
+      if (filepath) {
+        return {
+          base64: undefined,
+          filepath,
+        };
       } else {
-        logger.info(`[NovelAIProvider] PNG signature validated`);
+        // Fallback to base64 if file save failed
+        const base64Data = imageBuffer.toString('base64');
+        logger.info(`[NovelAIProvider] Using base64 fallback (${base64Data.length} chars)`);
+        return {
+          base64: base64Data,
+          filepath: '',
+        };
       }
-
-      // Convert to base64
-      const base64Data = nodeBuffer.toString('base64');
-      logger.info(`[NovelAIProvider] Successfully extracted image (${base64Data.length} chars base64)`);
-
-      return base64Data;
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error(`[NovelAIProvider] Failed to extract image from ZIP: ${err.message}`, err);
@@ -266,72 +232,55 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
     try {
       logger.info(`[NovelAIProvider] Starting image generation for prompt: ${prompt}`);
 
-      const steps = options?.steps || this.config.defaultSteps;
       const width = options?.width || this.config.defaultWidth;
       const height = options?.height || this.config.defaultHeight;
       const guidanceScale = options?.guidance_scale || this.config.defaultGuidanceScale;
       const seed =
         options?.seed !== undefined && options.seed >= 0 ? options.seed : Math.floor(Math.random() * 4294967295);
+      // V4+ models only
       const model = this.config.model || 'nai-diffusion-4-5-full';
 
-      const isV4Plus = model.startsWith('nai-diffusion-4');
+      // Validate model is V4+
+      if (!model.startsWith('nai-diffusion-4')) {
+        throw new Error(
+          `Unsupported model: ${model}. NovelAIProvider only supports V4+ models (e.g., nai-diffusion-4-5-full)`,
+        );
+      }
 
       logger.info(
-        `[NovelAIProvider] Parameters: model=${model}, size=${width}x${height}, steps=${steps}, scale=${guidanceScale}, seed=${seed}`,
+        `[NovelAIProvider] Parameters: model=${model}, size=${width}x${height}, steps=28, scale=${guidanceScale}, seed=${seed}`,
       );
 
-      // V4/V4.5 parameters according to the correct API spec
+      // Parameters according to nai.md reference implementation for V4.5
       const parameters: Record<string, unknown> = {
-        params_version: 3,
         width,
         height,
         scale: guidanceScale,
         sampler: 'k_euler_ancestral',
-        steps: 28, // hardcode to prevent points cost
+        steps: 28, // Fixed for V4.5 to prevent points cost
         seed,
         n_samples: 1,
         ucPreset: 0,
-        qualityToggle: false,
-        noise_schedule: 'karras',
+        qualityToggle: true,
+        params_version: 1,
+        legacy_v3_extend: false,
       };
 
-      // For V4+ models, use v4_prompt and v4_negative_prompt structure
-      if (isV4Plus) {
-        parameters.v4_prompt = {
-          caption: {
-            base_caption: prompt,
-            char_captions: [],
-          },
-          use_coords: false,
-          use_order: true,
-        };
-        parameters.v4_negative_prompt = {
-          caption: {
-            base_caption:
-              options?.negative_prompt ||
-              'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page,bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, blurry, deformed, mutated, mutation, extra limbs, fused fingers, too many fingers, malformed limbs, gross proportions, long neck, disconnected limbs, poorly drawn hands, disfigured, extra limbs, missing limbs,lack of detail',
-            char_captions: [],
-          },
-        };
-      }
+      // Add negative prompt (V4.5 recommended default if not provided)
+      parameters.negative_prompt = options?.negative_prompt || 'low quality, bad anatomy, text, blurry, worst quality';
 
       const requestBody: Record<string, unknown> = {
         action: 'generate',
         model,
+        input: prompt, // Use input field for all models (as per nai.md)
         parameters,
       };
-
-      // For V3 models, use input field; for V4+ models, prompt is in parameters.v4_prompt
-      if (!isV4Plus) {
-        requestBody.input = prompt;
-      }
 
       logger.info(`[NovelAIProvider] Request body: ${JSON.stringify(requestBody, null, 2)}`);
 
       const baseURL = this.config.baseURL || 'https://image.novelai.net';
-      const fullUrl = baseURL.endsWith('/')
-        ? `${baseURL}ai/generate-image-stream`
-        : `${baseURL}/ai/generate-image-stream`;
+      // Use /ai/generate-image endpoint which returns ZIP file (not streaming)
+      const fullUrl = baseURL.endsWith('/') ? `${baseURL}ai/generate-image` : `${baseURL}/ai/generate-image`;
 
       const response = await fetch(fullUrl, {
         method: 'POST',
@@ -348,35 +297,29 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
-      // For streaming API (/generate-image-stream), parse SSE events
-      if (fullUrl.includes('generate-image-stream')) {
-        const streamImage = await this.parseSSEStream(response);
-        const filepath = await this.saveImageToFile(streamImage, prompt, seed);
-        return {
-          images: [{ base64: streamImage }],
-          metadata: { prompt, numImages: 1, width, height, steps, guidanceScale, filepath },
-        };
-      }
-
-      // Fallback for non-streaming API (legacy support)
+      // CRITICAL: Must completely download the ZIP stream before attempting to extract
+      // This ensures all chunks are received and prevents corruption
+      logger.info(`[NovelAIProvider] Downloading complete ZIP file...`);
       const buffer = await this.downloadComplete(response);
+      logger.info(`[NovelAIProvider] ZIP file download complete (${buffer.length} bytes)`);
 
-      // Check if it's direct PNG binary data (legacy support)
-      const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-      if (buffer.length >= 8 && buffer.subarray(0, 8).equals(pngSignature)) {
-        const base64Data = buffer.toString('base64');
-        const filepath = await this.saveImageToFile(base64Data, prompt, seed);
-        return {
-          images: [{ base64: base64Data }],
-          metadata: { prompt, numImages: 1, width, height, steps, guidanceScale, filepath },
-        };
+      // Extract image from ZIP and save to local file
+      // extractImageFromZip will handle the complete ZIP buffer and save the first image
+      const { base64: base64Image, filepath } = await this.extractImageFromZip(buffer);
+
+      // Prefer file path over base64 for better performance
+      const imageData: { file?: string; base64?: string } = {};
+      if (filepath) {
+        imageData.file = filepath;
+      } else if (base64Image) {
+        imageData.base64 = base64Image;
+      } else {
+        throw new Error('Failed to extract image: no file path or base64 data available');
       }
 
-      const base64Image = await this.extractImageFromZip(buffer);
-      const filepath = await this.saveImageToFile(base64Image, prompt, seed);
       return {
-        images: [{ base64: base64Image }],
-        metadata: { prompt, numImages: 1, width, height, steps, guidanceScale, filepath },
+        images: [imageData],
+        metadata: { prompt, numImages: 1, width, height, steps: 28, guidanceScale, filepath },
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
