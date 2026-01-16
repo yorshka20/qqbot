@@ -5,7 +5,7 @@ import type { PluginManager } from '@/plugins/PluginManager';
 import { inject, injectable } from 'tsyringe';
 import type { CommandManager } from '../CommandManager';
 import { Command } from '../decorators';
-import type { CommandHandler, CommandResult } from '../types';
+import type { CommandContext, CommandHandler, CommandResult } from '../types';
 
 /**
  * Help command - shows available commands
@@ -202,7 +202,7 @@ export class CommandToggleCommand implements CommandHandler {
 
   constructor(@inject(DITokens.COMMAND_MANAGER) private commandManager: CommandManager) {}
 
-  async execute(args: string[]): Promise<CommandResult> {
+  async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     if (args.length < 2) {
       return {
         success: false,
@@ -221,7 +221,7 @@ export class CommandToggleCommand implements CommandHandler {
       };
     }
 
-    // Get command registration to check current state
+    // Get command registration to check if command exists
     const allCommands = this.commandManager.getAllCommands();
     const command = allCommands.find((c) => c.handler.name.toLowerCase() === commandName);
     if (!command) {
@@ -231,19 +231,26 @@ export class CommandToggleCommand implements CommandHandler {
       };
     }
 
+    // Get group ID if in a group message
+    const groupId = context.messageType === 'group' ? context.groupId : undefined;
+
     if (action === 'enable') {
-      if (command.enabled) {
+      // Check current state for the group (or globally if not in a group)
+      const isEnabled = this.commandManager.isCommandEnabled(commandName, groupId);
+      if (isEnabled) {
+        const location = groupId !== undefined ? `in this group` : 'globally';
         return {
           success: true,
-          message: `Command "${commandName}" is already enabled`,
+          message: `Command "${commandName}" is already enabled ${location}`,
         };
       }
 
-      const success = this.commandManager.enableCommand(commandName);
+      const success = this.commandManager.enableCommand(commandName, groupId);
       if (success) {
+        const location = groupId !== undefined ? `in this group` : 'globally';
         return {
           success: true,
-          message: `Command "${commandName}" has been enabled`,
+          message: `Command "${commandName}" has been enabled ${location}`,
         };
       } else {
         return {
@@ -252,18 +259,22 @@ export class CommandToggleCommand implements CommandHandler {
         };
       }
     } else if (action === 'disable') {
-      if (!command.enabled) {
+      // Check current state for the group (or globally if not in a group)
+      const isEnabled = this.commandManager.isCommandEnabled(commandName, groupId);
+      if (!isEnabled) {
+        const location = groupId !== undefined ? `in this group` : 'globally';
         return {
           success: true,
-          message: `Command "${commandName}" is already disabled`,
+          message: `Command "${commandName}" is already disabled ${location}`,
         };
       }
 
-      const success = this.commandManager.disableCommand(commandName);
+      const success = this.commandManager.disableCommand(commandName, groupId);
       if (success) {
+        const location = groupId !== undefined ? `in this group` : 'globally';
         return {
           success: true,
-          message: `Command "${commandName}" has been disabled`,
+          message: `Command "${commandName}" has been disabled ${location}`,
         };
       } else {
         return {

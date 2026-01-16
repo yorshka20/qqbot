@@ -30,6 +30,9 @@ export class CommandManager {
   private commands = new Map<string, CommandRegistration>();
   private builtinCommands = new Map<string, CommandRegistration>();
   private hookManager: HookManager | null = null;
+  // Store command enabled/disabled state per group
+  // Map<groupId, Map<commandName, enabled>>
+  private groupCommandStates = new Map<number, Map<string, boolean>>();
 
   constructor(private permissionChecker: PermissionChecker) {
     this.autoRegisterDecoratedCommands();
@@ -54,12 +57,6 @@ export class CommandManager {
 
     for (const metadata of metadataList) {
       try {
-        // Check if command is enabled
-        if (metadata.enabled === false) {
-          logger.debug(`[CommandManager] Command "${metadata.name}" is disabled, skipping registration`);
-          continue;
-        }
-
         const name = metadata.name.toLowerCase();
         if (this.builtinCommands.has(name)) {
           continue;
@@ -68,16 +65,22 @@ export class CommandManager {
         // Create a lazy handler that will instantiate the command on first execution
         const lazyHandler = this.createLazyHandler(metadata);
 
+        // Register all commands regardless of enabled state
+        // The enabled state from decorator is used as initial state, but commands can be
+        // enabled/disabled at runtime via /cmd enable/disable
         const registration: CommandRegistration = {
           handler: lazyHandler,
           handlerClass: metadata.handlerClass, // Store class reference for lazy instantiation
           permissions: metadata.permissions,
           aliases: metadata.aliases,
-          enabled: metadata.enabled ?? true,
+          enabled: metadata.enabled ?? true, // Use decorator's enabled state as initial state
         };
 
         this.builtinCommands.set(name, registration);
-        logger.info(`[CommandManager] Auto-registered decorated command: ${name} (lazy instantiation)`);
+        const enabledStatus = registration.enabled ? 'enabled' : 'disabled';
+        logger.info(
+          `[CommandManager] Auto-registered decorated command: ${name} (lazy instantiation, initially ${enabledStatus})`,
+        );
 
         // Register aliases
         if (metadata.aliases) {
@@ -282,20 +285,43 @@ export class CommandManager {
       };
     }
 
-    // Check if command is enabled
-    if (!registration.enabled) {
-      return {
-        success: false,
-        error: `Command "${command.name}" is disabled`,
-      };
-    }
-
-    // Check permissions
-    if (!this.checkPermissions(context, registration.permissions)) {
+    // Check permissions first - if user doesn't have permission, return permission error
+    // This ensures that disabled commands return "no permission" error for users without permission
+    const userRole = (context.metadata?.senderRole as string) || undefined;
+    const hasPermission = this.checkPermissions(context, registration.permissions);
+    if (!hasPermission) {
       return {
         success: false,
         error: `You don't have permission to use command "${command.name}"`,
       };
+    }
+
+    // Check if user is admin - admins can always execute commands regardless of enabled state
+    const isAdmin = this.permissionChecker.checkPermission(context.userId, context.messageType, ['admin'], userRole);
+
+    // Check if command is enabled (skip for admins)
+    if (!isAdmin) {
+      let isEnabled = registration.enabled ?? true; // Default to enabled if not set
+
+      // For group messages, check group-specific state first
+      if (context.messageType === 'group' && context.groupId !== undefined) {
+        const groupStates = this.groupCommandStates.get(context.groupId);
+        if (groupStates) {
+          const commandState = groupStates.get(command.name.toLowerCase());
+          // If explicitly set in this group, use group state; otherwise use global state
+          if (commandState !== undefined) {
+            isEnabled = commandState;
+          }
+        }
+      }
+
+      if (!isEnabled) {
+        const location = context.messageType === 'group' ? 'in this group' : 'globally';
+        return {
+          success: false,
+          error: `Command "${command.name}" is disabled ${location}`,
+        };
+      }
     }
 
     // Hook: onCommandDetected (if hook manager available)
@@ -426,35 +452,90 @@ export class CommandManager {
   /**
    * Enable a command
    * @param name - Command name to enable
+   * @param groupId - Optional group ID to enable command for specific group. If not provided, enables globally
    * @returns true if command was found and enabled, false otherwise
    */
-  enableCommand(name: string): boolean {
+  enableCommand(name: string, groupId?: number): boolean {
     const registration = this.getRegistration(name);
     if (!registration) {
       logger.warn(`[CommandManager] Cannot enable command "${name}": command not found`);
       return false;
     }
 
-    registration.enabled = true;
-    logger.info(`[CommandManager] Enabled command: ${name}`);
+    if (groupId !== undefined) {
+      // Enable for specific group
+      let groupStates = this.groupCommandStates.get(groupId);
+      if (!groupStates) {
+        groupStates = new Map<string, boolean>();
+        this.groupCommandStates.set(groupId, groupStates);
+      }
+      groupStates.set(name.toLowerCase(), true);
+      logger.info(`[CommandManager] Enabled command "${name}" for group ${groupId}`);
+    } else {
+      // Enable globally
+      registration.enabled = true;
+      logger.info(`[CommandManager] Enabled command: ${name} (globally)`);
+    }
     return true;
   }
 
   /**
    * Disable a command
    * @param name - Command name to disable
+   * @param groupId - Optional group ID to disable command for specific group. If not provided, disables globally
    * @returns true if command was found and disabled, false otherwise
    */
-  disableCommand(name: string): boolean {
+  disableCommand(name: string, groupId?: number): boolean {
     const registration = this.getRegistration(name);
     if (!registration) {
       logger.warn(`[CommandManager] Cannot disable command "${name}": command not found`);
       return false;
     }
 
-    registration.enabled = false;
-    logger.info(`[CommandManager] Disabled command: ${name}`);
+    if (groupId !== undefined) {
+      // Disable for specific group
+      let groupStates = this.groupCommandStates.get(groupId);
+      if (!groupStates) {
+        groupStates = new Map<string, boolean>();
+        this.groupCommandStates.set(groupId, groupStates);
+      }
+      groupStates.set(name.toLowerCase(), false);
+      logger.info(`[CommandManager] Disabled command "${name}" for group ${groupId}`);
+    } else {
+      // Disable globally
+      registration.enabled = false;
+      logger.info(`[CommandManager] Disabled command: ${name} (globally)`);
+    }
     return true;
+  }
+
+  /**
+   * Check if a command is enabled for a specific group
+   * @param name - Command name to check
+   * @param groupId - Group ID to check (optional, for group messages)
+   * @returns true if command is enabled, false otherwise
+   */
+  isCommandEnabled(name: string, groupId?: number): boolean {
+    const registration = this.getRegistration(name);
+    if (!registration) {
+      return false;
+    }
+
+    let isEnabled = registration.enabled ?? true; // Default to enabled if not set
+
+    // If group ID is provided, check group-specific state
+    if (groupId !== undefined) {
+      const groupStates = this.groupCommandStates.get(groupId);
+      if (groupStates) {
+        const commandState = groupStates.get(name.toLowerCase());
+        // If explicitly set in this group, use group state; otherwise use global state
+        if (commandState !== undefined) {
+          isEnabled = commandState;
+        }
+      }
+    }
+
+    return isEnabled;
   }
 
   /**
