@@ -1,5 +1,7 @@
 // Builtin command handlers
 
+import type { AIManager } from '@/ai/AIManager';
+import type { CapabilityType } from '@/ai/capabilities/types';
 import { DITokens } from '@/core/DITokens';
 import type { PluginManager } from '@/plugins/PluginManager';
 import { inject, injectable } from 'tsyringe';
@@ -88,15 +90,33 @@ export class StatusCommand implements CommandHandler {
   description = 'Show bot status';
   usage = '/status';
 
-  execute(): CommandResult {
+  constructor(@inject(DITokens.AI_MANAGER) private aiManager: AIManager) {}
+
+  execute(_args: string[], context: CommandContext): CommandResult {
     const uptime = process.uptime();
     const hours = Math.floor(uptime / 3600);
     const minutes = Math.floor((uptime % 3600) / 60);
     const seconds = Math.floor(uptime % 60);
 
+    // Get group ID
+    const groupId = context.groupId !== undefined ? context.groupId.toString() : 'N/A (Private message)';
+
+    // Get current AI providers for each capability
+    const capabilities: CapabilityType[] = ['llm', 'vision', 'text2img', 'img2img'];
+    const providerInfo: string[] = [];
+
+    for (const capability of capabilities) {
+      const provider = this.aiManager.getCurrentProvider(capability);
+      const providerName = provider ? provider.name : 'None';
+      providerInfo.push(`${capability}: ${providerName}`);
+    }
+
     const status = `Bot Status:
 Uptime: ${hours}h ${minutes}m ${seconds}s
-Memory: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`;
+Memory: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB
+Group ID: ${groupId}
+AI Providers:
+  ${providerInfo.join('\n  ')}`;
 
     return {
       success: true,
