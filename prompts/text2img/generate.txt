@@ -76,7 +76,7 @@
 
 ### 基础模板
 ```
-lowres, bad anatomy, bad hands, text, error, missing fingers, extra digits, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry
+lowres, bad anatomy, bad hands, (text:1.3), error, missing fingers, extra digits, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, (signature:1.3), (watermark:1.3), (username:1.3), blurry, 3d, large head, mutated hands, bad eye, artist name, logo
 ```
 
 ### Nova Anime 特有补充

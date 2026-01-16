@@ -367,7 +367,7 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
         n_samples: 1,
         strength: 0.7,
         noise: 0,
-        ucPreset: 0,
+        ucPreset: 1,
         qualityToggle: true,
         autoSmea: false,
         sm: false,
