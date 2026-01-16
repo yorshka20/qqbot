@@ -92,9 +92,32 @@ export class Text2ImageCommand implements CommandHandler {
         logger.debug(`[Text2ImageCommand] Using ${this.defaultProviderName} provider`);
       }
 
-      // Generate image with selected provider
-      const response = await this.aiService.generateImg(hookContext, options, providerName);
-      logger.info(`[Text2ImageCommand] Generated image with response: ${JSON.stringify(response)}`);
+      // Generate image with selected provider, with fallback to novelai if local-text2img fails
+      let response;
+
+      try {
+        response = await this.aiService.generateImg(hookContext, options, providerName, false, 'text2img.generate');
+        logger.info(`[Text2ImageCommand] Generated image with response: ${JSON.stringify(response)}`);
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        // If local-text2img fails, directly fallback to novelai
+        if (providerName === this.defaultProviderName) {
+          logger.warn(
+            `[Text2ImageCommand] ${this.defaultProviderName} provider failed, falling back to novelai: ${err.message}`,
+          );
+          response = await this.aiService.generateImg(
+            hookContext,
+            options,
+            'novelai',
+            false, // Keep LLM preprocessing for fallback
+            'text2img.generate_nai', // Use NovelAI-specific template
+          );
+          logger.info(`[Text2ImageCommand] Generated image with fallback provider: ${JSON.stringify(response)}`);
+        } else {
+          // Re-throw other errors
+          throw error;
+        }
+      }
 
       // If no images and no text, return error
       if ((!response.images || response.images.length === 0) && !response.text) {
