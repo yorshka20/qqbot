@@ -4,10 +4,8 @@ import type { NormalizedNoticeEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
 import { Plugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
-import type { PluginContext } from '../types';
 
 interface MessageOperationPluginConfig {
-  enabled?: boolean;
   /**
    * Map of reaction ID to operation
    * Key: reaction ID (string)
@@ -29,47 +27,10 @@ export class MessageOperationPlugin extends PluginBase {
    */
   private reactionToOperationMap: Map<string, string> = new Map();
 
-  async onInit(context: PluginContext): Promise<void> {
-    this.context = context;
-    this.loadConfig();
-
-    // Register notice event handler for reaction events
-    this.on('notice', this.handleNotice.bind(this));
-  }
-
-  async onEnable(context: PluginContext): Promise<void> {
-    // Additional setup if needed when plugin is enabled
-  }
-
-  async onDisable(): Promise<void> {
-    // Cleanup if needed when plugin is disabled
-  }
-
-  /**
-   * Load plugin configuration from bot config
-   */
-  private loadConfig(): void {
+  async onInit(): Promise<void> {
+    // Load plugin-specific configuration
     try {
-      const config = this.context?.bot.getConfig();
-      if (!config) {
-        logger.warn('[MessageOperationPlugin] Failed to load config');
-        this.enabled = false;
-        return;
-      }
-
-      // Get plugin-specific config from config.plugins.list
-      const pluginEntry = config.plugins.list.find((p) => p.name === this.name);
-
-      if (!pluginEntry) {
-        logger.warn(`[MessageOperationPlugin] No plugin entry found in config.plugins.list for plugin: ${this.name}`);
-        this.enabled = false;
-        return;
-      }
-
-      const pluginConfig = pluginEntry.config as MessageOperationPluginConfig | undefined;
-
-      // Plugin enabled state is determined by pluginEntry.enabled, not pluginConfig.enabled
-      this.enabled = pluginEntry.enabled && pluginConfig?.enabled !== false;
+      const pluginConfig = this.pluginConfig?.config as MessageOperationPluginConfig | undefined;
 
       // Load reaction to operation mappings
       this.reactionToOperationMap.clear();
@@ -78,20 +39,13 @@ export class MessageOperationPlugin extends PluginBase {
           this.reactionToOperationMap.set(reactionId, operation);
         }
       }
-
-      if (this.reactionToOperationMap.size === 0) {
-        logger.warn(
-          `[MessageOperationPlugin] No reaction operation mappings configured. Plugin will not trigger any operations.`,
-        );
-      } else {
-        logger.info(
-          `[MessageOperationPlugin] Plugin ${this.enabled ? 'enabled' : 'disabled'} | configured ${this.reactionToOperationMap.size} reaction operation mapping(s)`,
-        );
-      }
     } catch (error) {
       logger.error('[MessageOperationPlugin] Error loading config:', error);
       this.enabled = false;
     }
+
+    // Register notice event handler for reaction events
+    this.on('notice', this.handleNotice.bind(this));
   }
 
   /**

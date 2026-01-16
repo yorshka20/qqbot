@@ -1,37 +1,27 @@
 // Plugin loading and lifecycle management
 
 import { HookManager } from '@/hooks/HookManager';
-import { getHookPriority, HookPriorityVariant } from '@/hooks/HookPriority';
+import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookHandler } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { extname, join } from 'path';
-import { getPluginHooks, getPluginMetadata } from './decorators';
+import { getPluginHooks, getPluginMetadata, type HookMetadata } from './decorators';
 import type { Plugin, PluginContext } from './types';
 
 export class PluginManager {
   private plugins = new Map<string, Plugin>();
   private enabledPlugins = new Set<string>();
-  private context?: PluginContext;
-  private hookManager: HookManager;
 
   // Plugin directory is fixed to src/plugins/plugins
   private readonly pluginDirectory = join(process.cwd(), 'src', 'plugins', 'plugins');
 
-  constructor(hookManager: HookManager) {
-    this.hookManager = hookManager;
-  }
-
-  setContext(context: PluginContext): void {
-    this.context = context;
-  }
+  constructor(
+    private hookManager: HookManager,
+    private context: PluginContext,
+  ) {}
 
   async loadPlugins(pluginConfigs: Array<{ name: string; enabled: boolean; config?: any }> = []): Promise<void> {
-    if (!this.context) {
-      throw new Error('Plugin context not set');
-    }
-
-    // Create a map of plugin configs by name for quick lookup
     const pluginConfigMap = new Map(pluginConfigs.map((p) => [p.name, p]));
 
     // Load plugins from fixed src/plugins directory
@@ -98,22 +88,20 @@ export class PluginManager {
 
         this.plugins.set(plugin.name, plugin);
 
+        // setup plugin context and configuration
         const pluginConfig = pluginConfigMap.get(plugin.name);
+        plugin.loadConfig(this.context, pluginConfig);
 
-        // Initialize plugin with context
-        if (plugin.onInit && this.context) {
-          await plugin.onInit(this.context);
+        await plugin.onInit?.();
+
+        if (pluginConfig?.enabled) {
+          await this.enablePlugin(plugin.name);
         }
 
         // Register hooks from plugin using decorator metadata
         const hookMetadataList = getPluginHooks(PluginClass);
         if (hookMetadataList.length > 0) {
           this.registerPluginHooksFromMetadata(plugin, hookMetadataList, plugin.name);
-        }
-
-        // Enable if enabled in config
-        if (pluginConfig?.enabled) {
-          await this.enablePlugin(plugin.name);
         }
 
         logger.info(
@@ -135,11 +123,7 @@ export class PluginManager {
       return;
     }
 
-    if (!this.context) {
-      throw new Error('Plugin context not set');
-    }
-
-    await plugin.onEnable?.(this.context);
+    await plugin.onEnable?.();
 
     this.enabledPlugins.add(name);
     logger.info(`▶️ [PluginManager] Enabled plugin: ${name}`);
@@ -182,17 +166,10 @@ export class PluginManager {
    */
   private registerPluginHooksFromMetadata(
     plugin: Plugin,
-    hookMetadataList: Array<{
-      hookName: string;
-      priority: HookPriorityVariant;
-      order: number;
-      methodName: string;
-    }>,
+    hookMetadataList: Array<HookMetadata>,
     pluginName: string,
   ): void {
     for (const hookMeta of hookMetadataList) {
-      logger.info(`[PluginManager] metadata: ${JSON.stringify(hookMeta)}`);
-      // Get handler method from plugin instance
       const handler = plugin[hookMeta.methodName as keyof Plugin];
       if (typeof handler !== 'function') {
         logger.warn(`[PluginManager] Hook method ${hookMeta.methodName} not found in plugin ${pluginName}`);

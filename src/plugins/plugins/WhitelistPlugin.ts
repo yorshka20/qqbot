@@ -6,10 +6,8 @@ import type { HookContext, HookResult } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { Hook, Plugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
-import type { PluginContext } from '../types';
 
 interface WhitelistPluginConfig {
-  enabled?: boolean;
   userIds?: string[];
   groupIds?: string[]; // Group whitelist - messages from these groups are always allowed
 }
@@ -23,47 +21,14 @@ export class WhitelistPlugin extends PluginBase {
   private userWhitelist: Set<string> = new Set();
   private groupWhitelist: Set<string> = new Set();
 
-  async onInit(context: PluginContext): Promise<void> {
-    this.context = context;
-    this.loadConfig();
-  }
-
-  /**
-   * Load whitelist configuration from bot config
-   * Each plugin reads its own config from config.plugins.list[pluginName].config
-   */
-  private loadConfig(): void {
+  async onInit(): Promise<void> {
+    // Load plugin-specific configuration
     try {
-      const config = this.context?.bot.getConfig();
-      if (!config) {
-        logger.warn('[WhitelistPlugin] Failed to load config');
-        this.enabled = false;
-        return;
-      }
-
-      // Get plugin-specific config from config.plugins.list
-      // Find the plugin entry by name and get its config
-      const pluginEntry = config.plugins.list.find((p) => p.name === this.name);
-
-      if (!pluginEntry) {
-        logger.warn(`[WhitelistPlugin] No plugin entry found in config.plugins.list for plugin: ${this.name}`);
-        this.enabled = false;
-        return;
-      }
-
-      const pluginConfig = pluginEntry.config as WhitelistPluginConfig | undefined;
-
+      const pluginConfig = this.pluginConfig?.config as WhitelistPluginConfig | undefined;
       if (!pluginConfig) {
-        logger.warn(
-          `[WhitelistPlugin] No configuration found for plugin: ${this.name}. Please add config in config.plugins.list`,
-        );
         this.enabled = false;
         return;
       }
-
-      // Plugin enabled state is determined by pluginEntry.enabled, not pluginConfig.enabled
-      // pluginConfig.enabled is for plugin-specific feature toggle
-      this.enabled = pluginEntry.enabled && pluginConfig.enabled !== false;
 
       // Load user whitelist
       if (pluginConfig.userIds && Array.isArray(pluginConfig.userIds)) {
@@ -82,8 +47,7 @@ export class WhitelistPlugin extends PluginBase {
       }
 
       // Plugin requires at least one whitelist (user or group) to be enabled
-      if (this.userWhitelist.size === 0 && this.groupWhitelist.size === 0) {
-        logger.warn('[WhitelistPlugin] No user IDs or group IDs found in whitelist configuration');
+      if (!this.userWhitelist.size && !this.groupWhitelist.size) {
         this.enabled = false;
       }
     } catch (error) {
@@ -108,15 +72,10 @@ export class WhitelistPlugin extends PluginBase {
   onMessagePreprocess(context: HookContext): HookResult {
     const userId = context.message.userId;
     const groupId = context.message.groupId;
-    const messageId = context.message?.id || context.message?.messageId || 'unknown';
-
-    logger.info(
-      `[WhitelistPlugin] PREPROCESS hook triggered | messageId=${messageId} | userId=${userId} | groupId=${groupId} | pluginEnabled=${this.enabled} | userWhitelistSize=${this.userWhitelist.size} | groupWhitelistSize=${this.groupWhitelist.size}`,
-    );
+    const messageId = context.message.id || context.message.messageId || 'unknown';
 
     // Skip if plugin is disabled
     if (!this.enabled) {
-      logger.info(`[WhitelistPlugin] Plugin is disabled, skipping whitelist check | messageId=${messageId}`);
       return true;
     }
 
@@ -131,10 +90,6 @@ export class WhitelistPlugin extends PluginBase {
     }
 
     const isAllowed = isUserInWhitelist || isGroupInWhitelist;
-
-    logger.info(
-      `[WhitelistPlugin] Checking whitelist | messageId=${messageId} | userId=${userId} | userIdStr=${userIdStr} | groupId=${groupId} | isUserInWhitelist=${isUserInWhitelist} | isGroupInWhitelist=${isGroupInWhitelist} | isAllowed=${isAllowed}`,
-    );
 
     if (!isAllowed) {
       // User not in whitelist and group not in whitelist - set postProcessOnly flag immediately

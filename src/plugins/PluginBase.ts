@@ -4,7 +4,7 @@ import type { APIClient } from '@/api/APIClient';
 import type { EventRouter } from '@/events/EventRouter';
 import type { EventHandler, NormalizedEvent } from '@/events/types';
 import { PluginOptions } from './decorators';
-import type { PluginContext } from './types';
+import type { PluginConfigEntry, PluginContext } from './types';
 
 export abstract class PluginBase {
   readonly name: string;
@@ -12,10 +12,10 @@ export abstract class PluginBase {
   readonly description: string;
 
   author?: string;
+  enabled: boolean = false;
 
-  protected enabled: boolean = false;
-
-  protected context?: PluginContext;
+  protected context!: PluginContext;
+  protected pluginConfig?: PluginConfigEntry;
 
   constructor(options: PluginOptions) {
     this.name = options.name;
@@ -23,9 +23,26 @@ export abstract class PluginBase {
     this.description = options.description;
   }
 
-  onInit?(context: PluginContext): void | Promise<void>;
-  onEnable?(context: PluginContext): void | Promise<void>;
-  onDisable?(): void | Promise<void>;
+  /**
+   * Load plugin configuration
+   * Called during plugin registration to save config and set enabled state
+   * @param pluginEntry - Plugin configuration entry from config.plugins.list
+   */
+  public loadConfig(context: PluginContext, pluginEntry?: PluginConfigEntry): void {
+    this.context = context;
+    this.pluginConfig = pluginEntry;
+    this.enabled = pluginEntry?.enabled ?? false;
+  }
+
+  onInit?(): void | Promise<void>;
+
+  onEnable(): void | Promise<void> {
+    this.enabled = true;
+  }
+
+  onDisable(): void | Promise<void> {
+    this.enabled = false;
+  }
 
   protected on<T extends NormalizedEvent>(eventType: string, handler: EventHandler<T>): void {
     if (!this.context) {

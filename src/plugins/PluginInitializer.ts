@@ -34,8 +34,7 @@ export class PluginInitializer {
   ): PluginSystem {
     logger.info('[PluginInitializer] Starting initialization...');
 
-    const pluginManager = new PluginManager(hookManager);
-    pluginManager.setContext({
+    const pluginManager = new PluginManager(hookManager, {
       api: apiClient,
       events: eventRouter,
       bot: {

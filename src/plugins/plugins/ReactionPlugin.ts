@@ -6,10 +6,8 @@ import type { NormalizedMilkyMessageEvent } from '@/protocol/milky/types';
 import { logger } from '@/utils/logger';
 import { Hook, Plugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
-import type { PluginContext } from '../types';
 
 interface ReactionPluginConfig {
-  enabled?: boolean;
   /**
    * Map of keyword to reaction ID
    * Key: keyword (case-insensitive)
@@ -31,36 +29,10 @@ export class ReactionPlugin extends PluginBase {
    */
   private keywordToReactionMap: Map<string, string> = new Map();
 
-  async onInit(context: PluginContext): Promise<void> {
-    this.context = context;
-    this.loadConfig();
-  }
-
-  /**
-   * Load plugin configuration from bot config
-   */
-  private loadConfig(): void {
+  async onInit(): Promise<void> {
+    // Load plugin-specific configuration
     try {
-      const config = this.context?.bot.getConfig();
-      if (!config) {
-        logger.warn('[ReactionPlugin] Failed to load config');
-        this.enabled = false;
-        return;
-      }
-
-      // Get plugin-specific config from config.plugins.list
-      const pluginEntry = config.plugins.list.find((p) => p.name === this.name);
-
-      if (!pluginEntry) {
-        logger.warn(`[ReactionPlugin] No plugin entry found in config.plugins.list for plugin: ${this.name}`);
-        this.enabled = false;
-        return;
-      }
-
-      const pluginConfig = pluginEntry.config as ReactionPluginConfig | undefined;
-
-      // Plugin enabled state is determined by pluginEntry.enabled, not pluginConfig.enabled
-      this.enabled = pluginEntry.enabled && pluginConfig?.enabled !== false;
+      const pluginConfig = this.pluginConfig?.config as ReactionPluginConfig | undefined;
 
       // Load keyword to reaction mappings
       this.keywordToReactionMap.clear();
@@ -69,14 +41,6 @@ export class ReactionPlugin extends PluginBase {
           const keywordLower = keyword.toLowerCase();
           this.keywordToReactionMap.set(keywordLower, reaction);
         }
-      }
-
-      if (this.keywordToReactionMap.size === 0) {
-        logger.warn(`[ReactionPlugin] No reaction mappings configured. Plugin will not send any reactions.`);
-      } else {
-        logger.info(
-          `[ReactionPlugin] Plugin ${this.enabled ? 'enabled' : 'disabled'} | configured ${this.keywordToReactionMap.size} reaction mapping(s)`,
-        );
       }
     } catch (error) {
       logger.error('[ReactionPlugin] Error loading config:', error);

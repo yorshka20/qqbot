@@ -21,12 +21,22 @@ export interface PluginInfo {
 }
 
 /**
+ * Plugin configuration entry from config.plugins.list
+ */
+export interface PluginConfigEntry {
+  name: string;
+  enabled: boolean;
+  config?: unknown;
+}
+
+/**
  * Plugin interface
  * Extends PluginHooks to support hook methods
  * Hooks are registered via @Hook() decorator, not through interface methods
  */
 export interface Plugin extends PluginInfo, PluginHooks {
-  onInit?(context: PluginContext): void | Promise<void>;
-  onEnable?(context: PluginContext): void | Promise<void>;
+  loadConfig(context: PluginContext, pluginEntry?: PluginConfigEntry): void;
+  onInit?(): void | Promise<void>;
+  onEnable?(): void | Promise<void>;
   onDisable?(): void | Promise<void>;
 }

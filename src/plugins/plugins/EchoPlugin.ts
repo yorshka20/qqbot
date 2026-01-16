@@ -10,7 +10,6 @@ import { MessageUtils } from '@/message/MessageUtils';
 import { logger } from '@/utils/logger';
 import { Hook, Plugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
-import type { PluginContext } from '../types';
 
 /**
  * Echo Plugin
@@ -22,70 +21,14 @@ import type { PluginContext } from '../types';
   description: 'Automatically converts admin messages to TTS',
 })
 export class EchoPlugin extends PluginBase {
-  // Static reference to plugin instance for command access
-  private static instance: EchoPlugin | null = null;
-
   private commandManager: CommandManager | null = null;
   private hookManager: HookManager | null = null;
 
-  async onInit(context: PluginContext): Promise<void> {
-    this.context = context;
-
-    // Store static reference to instance
-    EchoPlugin.instance = this;
-
-    // Load plugin configuration and set enabled state
-    this.loadConfig();
-
+  async onInit(): Promise<void> {
     // Get CommandManager and HookManager from DI container
-    try {
-      const container = getContainer();
-      this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
-      this.hookManager = container.resolve<HookManager>(DITokens.HOOK_MANAGER);
-      logger.debug('[EchoPlugin] CommandManager and HookManager resolved from DI container');
-    } catch (error) {
-      logger.warn('[EchoPlugin] Failed to resolve dependencies from DI container:', error);
-    }
-  }
-
-  /**
-   * Load plugin configuration from bot config
-   * Sets enabled state based on config.plugins.list[pluginName].enabled
-   */
-  private loadConfig(): void {
-    try {
-      const config = this.context?.bot.getConfig();
-      if (!config) {
-        logger.warn('[EchoPlugin] Failed to load config');
-        this.enabled = false;
-        return;
-      }
-
-      // Get plugin entry from config.plugins.list
-      const pluginEntry = config.plugins.list.find((p) => p.name === this.name);
-
-      if (!pluginEntry) {
-        logger.warn(`[EchoPlugin] No plugin entry found in config.plugins.list for plugin: ${this.name}`);
-        this.enabled = false;
-        return;
-      }
-
-      // Plugin enabled state is determined by pluginEntry.enabled
-      this.enabled = pluginEntry.enabled;
-
-      logger.info(`[EchoPlugin] Plugin ${this.enabled ? 'enabled' : 'disabled'} | loaded from config`);
-    } catch (error) {
-      logger.error('[EchoPlugin] Error loading config:', error);
-      this.enabled = false;
-    }
-  }
-
-  onEnable(): void {
-    this.enabled = true;
-  }
-
-  onDisable(): void {
-    this.enabled = false;
+    const container = getContainer();
+    this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
+    this.hookManager = container.resolve<HookManager>(DITokens.HOOK_MANAGER);
   }
 
   /**
