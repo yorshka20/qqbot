@@ -53,24 +53,13 @@ export class EchoPlugin extends PluginBase {
     const botSelfId = context.metadata.get('botSelfId') as string;
     const config = this.context?.bot.getConfig();
     const botConfig = config?.bot;
-    const messageId = context.message?.id || context.message?.messageId || 'unknown';
 
     const isEnabled = this.enabled;
     const isAdmin = MessageUtils.isAdmin(context.message.userId, botConfig);
     const isCommand = MessageUtils.isCommand(context.message.message);
     const isAtBot = MessageUtils.isAtBot(context.message, botSelfId);
 
-    logger.debug(
-      `[EchoPlugin] shouldTrigger check | messageId=${messageId} | enabled=${isEnabled} | isAdmin=${isAdmin} | isCommand=${isCommand} | isAtBot=${isAtBot}`,
-    );
-
     const shouldTrigger = isEnabled && isAdmin && !isCommand && !isAtBot;
-
-    if (!shouldTrigger) {
-      logger.debug(
-        `[EchoPlugin] Not triggering | messageId=${messageId} | reason=${!isEnabled ? 'disabled' : !isAdmin ? 'not admin' : isCommand ? 'is command' : isAtBot ? 'is @bot' : 'unknown'}`,
-      );
-    }
 
     return shouldTrigger;
   }
@@ -81,7 +70,6 @@ export class EchoPlugin extends PluginBase {
    */
   private async triggerTTSCommand(text: string, context: HookContext): Promise<void> {
     if (!this.commandManager) {
-      logger.error('[EchoPlugin] CommandManager not available, cannot trigger TTS command');
       return;
     }
 
@@ -108,9 +96,7 @@ export class EchoPlugin extends PluginBase {
       if (result.success && result.message) {
         // Set reply in hookContext metadata (same pattern as CommandSystem)
         context.metadata.set('reply', result.message);
-        logger.info(
-          `[EchoPlugin] TTS command executed successfully, reply set | messageId=${context.message?.id || context.message?.messageId || 'unknown'}`,
-        );
+        logger.info(`[EchoPlugin] TTS command executed successfully, reply set`);
       } else {
         logger.warn(`[EchoPlugin] TTS command failed: ${result.error}`);
       }
@@ -122,7 +108,7 @@ export class EchoPlugin extends PluginBase {
   /**
    * Hook: onMessagePreprocess
    * Check if message is from admin, not a command, and not @bot, then trigger TTS command
-   * Executes synchronously to ensure reply is set before determineProcessingMode runs
+   * Executes synchronously to ensure reply is set before processing mode checks
    */
   @Hook({
     stage: 'onMessagePreprocess',
@@ -130,19 +116,14 @@ export class EchoPlugin extends PluginBase {
     order: 10,
   })
   async onMessagePreprocess(context: HookContext): Promise<boolean> {
-    const messageId = context.message?.id || context.message?.messageId || 'unknown';
-    logger.debug(`[EchoPlugin] onMessagePreprocess hook called | messageId=${messageId} | enabled=${this.enabled}`);
-
     if (!this.shouldTrigger(context)) {
       return true;
     }
 
     const messageText = context.message.message?.trim() || '';
 
-    logger.info(`[EchoPlugin] Admin message detected | messageId=${messageId}`);
-
     // Trigger TTS command synchronously to ensure reply is set in hookContext
-    // This allows the reply to be sent even if determineProcessingMode sets postProcessOnly
+    // This allows the reply to be sent even if plugins set postProcessOnly later
     await this.triggerTTSCommand(messageText, context);
 
     return true;
