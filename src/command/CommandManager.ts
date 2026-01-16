@@ -5,7 +5,6 @@ import './handlers';
 
 import { getContainer } from '@/core/DIContainer';
 import type { HookManager } from '@/hooks/HookManager';
-import { MetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { getAllCommandMetadata } from './decorators';
@@ -268,8 +267,8 @@ export class CommandManager {
   async execute(
     command: ParsedCommand,
     context: CommandContext,
-    hookManager?: HookManager,
-    hookContext?: HookContext,
+    hookManager: HookManager,
+    hookContext: HookContext,
   ): Promise<CommandResult> {
     const registration = this.getRegistration(command.name);
 
@@ -299,39 +298,25 @@ export class CommandManager {
       };
     }
 
-    const handler = registration.handler;
-
-    // Use provided hookManager or internal one
-    const hm = hookManager || this.hookManager;
-    const hc: HookContext = hookContext || {
-      message: {} as any, // Temporary context for command execution
-      command,
-      metadata: new MetadataMap(),
-    };
-
     // Hook: onCommandDetected (if hook manager available)
-    if (hm) {
-      const shouldContinue = await hm.execute('onCommandDetected', hc);
-      if (!shouldContinue) {
-        return {
-          success: false,
-          error: 'Command execution interrupted by hook',
-        };
-      }
+    const shouldContinue = await hookManager.execute('onCommandDetected', hookContext);
+    if (!shouldContinue) {
+      return {
+        success: false,
+        error: 'Command execution interrupted by hook',
+      };
     }
 
     try {
       logger.debug(`[CommandManager] Executing command: ${command.name} with args: ${command.args.join(', ')}`);
 
-      const result = await handler.execute(command.args, context);
+      const result = await registration.handler.execute(command.args, context);
 
       // Update hook context
-      hc.result = result;
+      hookContext.result = result;
 
       // Hook: onCommandExecuted (if hook manager available)
-      if (hm) {
-        await hm.execute('onCommandExecuted', hc);
-      }
+      await hookManager.execute('onCommandExecuted', hookContext);
 
       if (result.success) {
         logger.debug(`[CommandManager] Command ${command.name} executed successfully`);

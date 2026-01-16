@@ -2,12 +2,12 @@
 
 import type { APIClient } from '@/api/APIClient';
 import type { ContextManager } from '@/context';
+import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { getReply, getReplyContent, setReply } from '@/context/HookContextHelpers';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
-import { MetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
@@ -30,16 +30,13 @@ export class MessagePipeline {
    */
   async process(event: NormalizedMessageEvent, context: MessageProcessingContext): Promise<MessageProcessingResult> {
     try {
-      // Create initial hook context
-      const hookContext: HookContext = {
-        message: event,
-        metadata: MetadataMap.fromEntries([
-          ['sessionId', context.sessionId],
-          ['sessionType', context.sessionType],
-          ['conversationId', context.conversationId],
-          ['botSelfId', context.botSelfId],
-        ]),
-      };
+      // Create initial hook context using builder
+      const hookContext = HookContextBuilder.fromMessage(event, {
+        sessionId: context.sessionId,
+        sessionType: context.sessionType,
+        conversationId: context.conversationId,
+        botSelfId: context.botSelfId,
+      }).build();
 
       const messageId = event?.id || event?.messageId || 'unknown';
       logger.info(`[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId}`);
@@ -74,11 +71,7 @@ export class MessagePipeline {
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       // Hook: onError
-      const errorContext: HookContext = {
-        message: event,
-        error: err,
-        metadata: new MetadataMap(),
-      };
+      const errorContext = HookContextBuilder.fromMessage(event).withError(err).build();
       await this.hookManager.execute('onError', errorContext);
 
       return {
@@ -164,10 +157,7 @@ export class MessagePipeline {
       const err = error instanceof Error ? error : new Error('Unknown error');
 
       // Hook: onError
-      const errorContext: HookContext = {
-        ...hookContext,
-        error: err,
-      };
+      const errorContext = HookContextBuilder.fromContext(hookContext).withError(err).build();
       await this.hookManager.execute('onError', errorContext);
     }
   }

@@ -1,6 +1,7 @@
 // Command System - handles command processing
 
 import type { CommandManager } from '@/command/CommandManager';
+import { CommandContextBuilder } from '@/context/CommandContextBuilder';
 import { setReply } from '@/context/HookContextHelpers';
 import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';
@@ -37,20 +38,8 @@ export class CommandSystem implements System {
     await this.hookManager.execute('onCommandDetected', context);
 
     // Execute command
-    const commandResult = await this.commandManager.execute(
-      command,
-      {
-        userId: context.message.userId,
-        groupId: context.message.groupId,
-        messageType: context.message.messageType,
-        rawMessage: context.message.message,
-        metadata: {
-          senderRole: context.message.sender?.role,
-        },
-      },
-      this.hookManager,
-      context,
-    );
+    const commandContext = CommandContextBuilder.fromHookContext(context).build();
+    const commandResult = await this.commandManager.execute(command, commandContext, this.hookManager, context);
 
     // Update hook context
     context.result = commandResult;

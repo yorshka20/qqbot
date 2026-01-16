@@ -1,5 +1,6 @@
 // Message Lifecycle Orchestrator - orchestrates the message processing lifecycle
 
+import { HookContextBuilder } from '@/context/HookContextBuilder';
 import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';
 import type { HookManager } from '@/hooks/HookManager';
@@ -259,10 +260,7 @@ export class Lifecycle {
    * Handle error and execute error hook
    */
   private async handleError(context: HookContext, error: Error, messageId: string): Promise<void> {
-    const errorContext: HookContext = {
-      ...context,
-      error,
-    };
+    const errorContext = HookContextBuilder.fromContext(context).withError(error).build();
 
     try {
       await this.hookManager.execute('onError', errorContext);

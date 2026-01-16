@@ -1,9 +1,7 @@
 import { AIService, Text2ImageOptions } from '@/ai';
 import { APIClient } from '@/api/APIClient';
+import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { DITokens } from '@/core/DITokens';
-import { NormalizedMessageEvent } from '@/events/types';
-import { HookContext } from '@/hooks';
-import { MetadataMap } from '@/hooks/metadata';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
@@ -60,8 +58,8 @@ export class NovelAICommand implements CommandHandler {
       logger.info(`[NovelAICommand] Generating image with prompt: ${prompt.substring(0, 50)}...`);
 
       // Create hook context for AIService
-      const hookContext: HookContext = {
-        message: {
+      const hookContext = HookContextBuilder.create()
+        .withSyntheticMessage({
           id: `cmd_${Date.now()}`,
           type: 'message',
           timestamp: Date.now(),
@@ -72,12 +70,10 @@ export class NovelAICommand implements CommandHandler {
           messageType: context.messageType,
           message: prompt,
           segments: [],
-        } as NormalizedMessageEvent,
-        metadata: MetadataMap.fromEntries([
-          ['sessionId', context.groupId ? `group_${context.groupId}` : `user_${context.userId}`],
-          ['sessionType', context.messageType],
-        ]),
-      };
+        })
+        .withMetadata('sessionId', context.groupId ? `group_${context.groupId}` : `user_${context.userId}`)
+        .withMetadata('sessionType', context.messageType === 'private' ? 'user' : context.messageType)
+        .build();
 
       // Generate image using NovelAI provider (force provider name)
       // Skip LLM preprocessing for /nai command - use user input directly as prompt

@@ -2,6 +2,7 @@
 
 import { CommandBuilder } from '@/command/CommandBuilder';
 import { CommandManager } from '@/command/CommandManager';
+import { CommandContextBuilder } from '@/context/CommandContextBuilder';
 import { setReply } from '@/context/HookContextHelpers';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -22,14 +23,22 @@ import { PluginBase } from '../PluginBase';
   description: 'Automatically converts admin messages to TTS',
 })
 export class EchoPlugin extends PluginBase {
-  private commandManager: CommandManager | null = null;
-  private hookManager: HookManager | null = null;
+  private commandManager!: CommandManager;
+  private hookManager!: HookManager;
 
   async onInit(): Promise<void> {
     // Get CommandManager and HookManager from DI container
     const container = getContainer();
     this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
     this.hookManager = container.resolve<HookManager>(DITokens.HOOK_MANAGER);
+
+    if (!this.commandManager) {
+      throw new Error('CommandManager not found');
+    }
+
+    if (!this.hookManager) {
+      throw new Error('HookManager not found');
+    }
   }
 
   /**
@@ -78,21 +87,13 @@ export class EchoPlugin extends PluginBase {
       // Build command using CommandBuilder
       const command = CommandBuilder.build('tts', [text]);
 
-      // Construct CommandContext
-      const commandContext = {
-        userId: context.message.userId!,
-        groupId: context.message.groupId,
-        messageType: context.message.messageType,
-        rawMessage: context.message.message,
-        metadata: {
-          senderRole: context.message.sender?.role,
-        },
-      };
+      // Construct CommandContext using builder
+      const commandContext = CommandContextBuilder.fromHookContext(context).build();
 
       logger.info(`[EchoPlugin] Triggering TTS command for text: ${text.substring(0, 50)}...`);
 
       // Execute command with hookManager and hookContext to ensure reply is set in context
-      const result = await this.commandManager.execute(command, commandContext, this.hookManager || undefined, context);
+      const result = await this.commandManager.execute(command, commandContext, this.hookManager, context);
 
       if (result.success && result.message) {
         // Set reply using helper function (same pattern as CommandSystem)

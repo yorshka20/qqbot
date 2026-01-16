@@ -1,8 +1,7 @@
 import { AIService, Text2ImageOptions } from '@/ai';
 import { APIClient } from '@/api/APIClient';
+import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { DITokens } from '@/core/DITokens';
-import { HookContext } from '@/hooks';
-import { MetadataMap } from '@/hooks/metadata';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
@@ -59,8 +58,8 @@ export class BananaCommand implements CommandHandler {
       logger.info(`[BananaCommand] Generating image with prompt: ${prompt.substring(0, 50)}...`);
 
       // Create hook context for AIService
-      const hookContext: HookContext = {
-        message: {
+      const hookContext = HookContextBuilder.create()
+        .withSyntheticMessage({
           id: `cmd_${Date.now()}`,
           type: 'message',
           timestamp: Date.now(),
@@ -71,17 +70,15 @@ export class BananaCommand implements CommandHandler {
           messageType: context.messageType,
           message: prompt,
           segments: [],
-        },
-        metadata: MetadataMap.fromEntries([
-          ['sessionId', context.groupId ? `group_${context.groupId}` : `user_${context.userId}`],
-          ['sessionType', context.messageType],
-        ]),
-      };
+        })
+        .withMetadata('sessionId', context.groupId ? `group_${context.groupId}` : `user_${context.userId}`)
+        .withMetadata('sessionType', context.messageType === 'private' ? 'user' : context.messageType)
+        .build();
 
       // Generate image using Gemini provider (force provider name)
       // Skip LLM preprocessing for /banana command - use user input directly as prompt
       const response = await this.aiService.generateImg(hookContext, options, 'gemini', true);
-      logger.info(`[BananaCommand] Generated image with response: ${JSON.stringify(response)}`);
+      logger.info(`[BananaCommand] respond`);
 
       // If no images and no text, return error
       if ((!response.images || response.images.length === 0) && !response.text) {

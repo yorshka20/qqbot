@@ -44,7 +44,7 @@ export class Bot extends EventEmitter {
       return;
     }
 
-    logger.info('[Bot] ⚡ Starting bot...');
+    logger.info('[Bot] ================ ⚡ Starting bot... ================');
     this.isRunning = true;
 
     try {
