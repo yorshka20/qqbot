@@ -93,7 +93,7 @@ export class WhitelistPlugin extends PluginBase {
     const messageId = context.message.id || context.message.messageId || 'unknown';
 
     // Core access control 1: Check bot's own messages
-    const botSelfId = context.metadata.get('botSelfId') as string;
+    const botSelfId = context.metadata.get('botSelfId');
     const messageUserId = context.message.userId?.toString();
     if (botSelfId && messageUserId && botSelfId === messageUserId) {
       context.metadata.set('postProcessOnly', true);
@@ -166,7 +166,7 @@ export class WhitelistPlugin extends PluginBase {
     }
 
     // Verify final state
-    const finalPostProcessOnly = context.metadata.get('postProcessOnly') as boolean;
+    const finalPostProcessOnly = context.metadata.get('postProcessOnly');
     logger.info(
       `[WhitelistPlugin] PREPROCESS hook completed | messageId=${messageId} | whitelistEnabled=${this.whitelistEnabled} | postProcessOnly=${finalPostProcessOnly}`,
     );

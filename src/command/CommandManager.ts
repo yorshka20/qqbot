@@ -5,6 +5,7 @@ import './handlers';
 
 import { getContainer } from '@/core/DIContainer';
 import type { HookManager } from '@/hooks/HookManager';
+import { MetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { getAllCommandMetadata } from './decorators';
@@ -303,9 +304,9 @@ export class CommandManager {
     // Use provided hookManager or internal one
     const hm = hookManager || this.hookManager;
     const hc: HookContext = hookContext || {
-      message: {} as any,
+      message: {} as any, // Temporary context for command execution
       command,
-      metadata: new Map(),
+      metadata: new MetadataMap(),
     };
 
     // Hook: onCommandDetected (if hook manager available)
@@ -435,5 +436,48 @@ export class CommandManager {
     }
 
     logger.info(`[CommandManager] Unregistered ${toRemove.length} commands from plugin: ${pluginName}`);
+  }
+
+  /**
+   * Enable a command
+   * @param name - Command name to enable
+   * @returns true if command was found and enabled, false otherwise
+   */
+  enableCommand(name: string): boolean {
+    const registration = this.getRegistration(name);
+    if (!registration) {
+      logger.warn(`[CommandManager] Cannot enable command "${name}": command not found`);
+      return false;
+    }
+
+    registration.enabled = true;
+    logger.info(`[CommandManager] Enabled command: ${name}`);
+    return true;
+  }
+
+  /**
+   * Disable a command
+   * @param name - Command name to disable
+   * @returns true if command was found and disabled, false otherwise
+   */
+  disableCommand(name: string): boolean {
+    const registration = this.getRegistration(name);
+    if (!registration) {
+      logger.warn(`[CommandManager] Cannot disable command "${name}": command not found`);
+      return false;
+    }
+
+    registration.enabled = false;
+    logger.info(`[CommandManager] Disabled command: ${name}`);
+    return true;
+  }
+
+  /**
+   * Check if a command exists
+   * @param name - Command name to check
+   * @returns true if command exists, false otherwise
+   */
+  hasCommand(name: string): boolean {
+    return this.getRegistration(name) !== null;
   }
 }

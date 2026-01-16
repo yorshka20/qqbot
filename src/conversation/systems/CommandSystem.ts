@@ -1,6 +1,7 @@
 // Command System - handles command processing
 
 import type { CommandManager } from '@/command/CommandManager';
+import { setReply } from '@/context/HookContextHelpers';
 import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';
 import type { HookManager } from '@/hooks/HookManager';
@@ -57,9 +58,9 @@ export class CommandSystem implements System {
     // Hook: onCommandExecuted
     await this.hookManager.execute('onCommandExecuted', context);
 
-    // Set reply in metadata
+    // Set reply using helper function
     if (commandResult.success && commandResult.message) {
-      context.metadata.set('reply', commandResult.message);
+      setReply(context, commandResult.message, 'command');
     }
 
     return true;

@@ -2,6 +2,7 @@
 
 import { CommandBuilder } from '@/command/CommandBuilder';
 import { CommandManager } from '@/command/CommandManager';
+import { setReply } from '@/context/HookContextHelpers';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
@@ -50,7 +51,7 @@ export class EchoPlugin extends PluginBase {
   }
 
   private shouldTrigger(context: HookContext): boolean {
-    const botSelfId = context.metadata.get('botSelfId') as string;
+    const botSelfId = context.metadata.get('botSelfId');
     const config = this.context?.bot.getConfig();
     const botConfig = config?.bot;
 
@@ -94,8 +95,8 @@ export class EchoPlugin extends PluginBase {
       const result = await this.commandManager.execute(command, commandContext, this.hookManager || undefined, context);
 
       if (result.success && result.message) {
-        // Set reply in hookContext metadata (same pattern as CommandSystem)
-        context.metadata.set('reply', result.message);
+        // Set reply using helper function (same pattern as CommandSystem)
+        setReply(context, result.message, 'plugin');
         logger.info(`[EchoPlugin] TTS command executed successfully, reply set`);
       } else {
         logger.warn(`[EchoPlugin] TTS command failed: ${result.error}`);

@@ -2,10 +2,12 @@
 
 import type { APIClient } from '@/api/APIClient';
 import type { ContextManager } from '@/context';
+import { getReply, getReplyContent, setReply } from '@/context/HookContextHelpers';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
+import { MetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
@@ -31,7 +33,7 @@ export class MessagePipeline {
       // Create initial hook context
       const hookContext: HookContext = {
         message: event,
-        metadata: new Map([
+        metadata: MetadataMap.fromEntries([
           ['sessionId', context.sessionId],
           ['sessionType', context.sessionType],
           ['conversationId', context.conversationId],
@@ -49,9 +51,9 @@ export class MessagePipeline {
         return { success: false, error: 'Processing interrupted' };
       }
 
-      // Get reply from hook context
-      const reply = hookContext.metadata.get('reply') as string;
-      const postProcessOnly = hookContext.metadata.get('postProcessOnly') as boolean;
+      // Get reply from hook context using helper function
+      const reply = getReply(hookContext);
+      const postProcessOnly = hookContext.metadata.get('postProcessOnly');
 
       // Send message if available
       if (reply) {
@@ -75,7 +77,7 @@ export class MessagePipeline {
       const errorContext: HookContext = {
         message: event,
         error: err,
-        metadata: new Map(),
+        metadata: new MetadataMap(),
       };
       await this.hookManager.execute('onError', errorContext);
 
@@ -90,8 +92,14 @@ export class MessagePipeline {
    * Send message
    */
   private async sendMessage(event: NormalizedMessageEvent, reply: string, hookContext: HookContext): Promise<void> {
-    // Update hook context
-    hookContext.metadata.set('reply', reply);
+    // Update hook context using helper function
+    // If reply field doesn't exist, set it with 'ai' as default source (may be updated by hooks)
+    if (!hookContext.reply) {
+      setReply(hookContext, reply, 'ai');
+    } else {
+      // Update text if needed (preserve source and metadata)
+      hookContext.reply.text = reply;
+    }
 
     // Hook: onMessageBeforeSend
     const shouldContinue = await this.hookManager.execute('onMessageBeforeSend', hookContext);
@@ -100,16 +108,17 @@ export class MessagePipeline {
       return;
     }
 
-    // Get final reply (may be modified by hook)
-    const finalReply = (hookContext.metadata.get('reply') as string) || reply;
+    // Get final reply content (may be modified by hook)
+    const replyContent = getReplyContent(hookContext);
+    const finalReply = replyContent?.text || reply;
 
     try {
       // Get conversation context from hook context if available
       const conversationContext = hookContext.context;
 
       // Check if we need to send card image
-      const isCardImage = hookContext.metadata.get('isCardImage') as boolean;
-      const cardImage = hookContext.metadata.get('cardImage') as string | undefined;
+      const isCardImage = replyContent?.metadata?.isCardImage;
+      const cardImage = replyContent?.metadata?.cardImage;
 
       let messageToSend: string | ReturnType<MessageBuilder['build']>;
 

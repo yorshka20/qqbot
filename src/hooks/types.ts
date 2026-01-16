@@ -4,6 +4,25 @@ import type { CommandResult, ParsedCommand } from '@/command/types';
 import type { ConversationContext } from '@/context/types';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { Task, TaskResult } from '@/task/types';
+import type { MetadataMap } from './metadata';
+
+/**
+ * Reply content metadata
+ */
+export interface ReplyMetadata {
+  cardImage?: string; // Base64-encoded image data
+  isCardImage?: boolean; // Flag indicating card image message format
+}
+
+/**
+ * Reply content structure
+ * Represents a reply message with source tracking and metadata
+ */
+export interface ReplyContent {
+  text: string; // The reply message text content
+  source: 'command' | 'task' | 'plugin' | 'ai'; // Source of the reply
+  metadata?: ReplyMetadata; // Additional reply metadata (images, formatting, etc.)
+}
 
 /**
  * Hook Context - unified context object passed to all hooks
@@ -16,7 +35,8 @@ export interface HookContext {
   context?: ConversationContext;
   result?: TaskResult | CommandResult;
   error?: Error;
-  metadata: Map<string, unknown>;
+  reply?: ReplyContent; // Unified reply content (preferred over metadata 'reply')
+  metadata: MetadataMap; // Type-safe metadata map
 }
 
 /**

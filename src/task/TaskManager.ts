@@ -1,6 +1,7 @@
 // Task manager - registers and manages task types and executors
 
 import type { HookManager } from '@/hooks/HookManager';
+import { MetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import type { Task, TaskExecutionContext, TaskExecutor, TaskResult, TaskType } from './types';
@@ -124,9 +125,9 @@ export class TaskManager {
     // Use provided hookManager or internal one
     const hm = hookManager || this.hookManager;
     const hc: HookContext = hookContext || {
-      message: {} as any,
+      message: {} as any, // Temporary context for task execution
       task,
-      metadata: new Map(),
+      metadata: new MetadataMap(),
     };
 
     // Hook: onTaskBeforeExecute (if hook manager available)

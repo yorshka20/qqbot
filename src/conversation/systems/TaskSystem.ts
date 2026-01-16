@@ -2,6 +2,7 @@
 
 import type { AIService } from '@/ai/AIService';
 import { extractImagesFromSegments } from '@/ai/utils/imageUtils';
+import { getReply, hasReply, setReply } from '@/context/HookContextHelpers';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { System } from '@/core/system';
@@ -24,7 +25,6 @@ export class TaskSystem implements System {
   readonly version = '1.0.0';
   readonly stage = SystemStage.PROCESS;
   readonly priority = 20; // Lower priority, but drives AI capabilities
-  // No dependencies, runs independently
 
   constructor(
     private taskManager: TaskManager,
@@ -32,7 +32,7 @@ export class TaskSystem implements System {
   ) {}
 
   enabled(): boolean {
-    return false;
+    return true;
   }
 
   async execute(context: HookContext): Promise<boolean> {
@@ -44,16 +44,16 @@ export class TaskSystem implements System {
     }
 
     // Skip if reply already exists (may be set by other systems)
-    const existingReply = context.metadata.get('reply') as string;
-    if (existingReply) {
+    if (hasReply(context)) {
+      const existingReply = getReply(context);
       logger.info(
-        `[TaskSystem] Reply already exists, skipping task generation | messageId=${messageId} | replyLength=${existingReply.length}`,
+        `[TaskSystem] Reply already exists, skipping task generation | messageId=${messageId} | replyLength=${existingReply?.length || 0}`,
       );
       return true;
     }
 
     // Check if this is post-processing only (collect message, no reply)
-    const postProcessOnly = context.metadata.get('postProcessOnly') as boolean;
+    const postProcessOnly = context.metadata.get('postProcessOnly');
     if (postProcessOnly) {
       logger.info(
         `[TaskSystem] ✗ Message is marked as post-process only, SKIPPING task generation and reply | messageId=${messageId}`,
@@ -148,7 +148,7 @@ export class TaskSystem implements System {
         userId: context.message.userId,
         groupId: context.message.groupId,
         messageType: context.message.messageType,
-        conversationId: context.metadata.get('conversationId') as string,
+        conversationId: context.metadata.get('conversationId'),
         messageId: context.message.messageId?.toString(),
       },
       this.hookManager,
@@ -161,9 +161,9 @@ export class TaskSystem implements System {
     // Hook: onTaskExecuted
     await this.hookManager.execute('onTaskExecuted', context);
 
-    // Set reply in metadata
+    // Set reply using helper function
     if (taskResult.reply) {
-      context.metadata.set('reply', taskResult.reply);
+      setReply(context, taskResult.reply, 'task');
     }
 
     return true;

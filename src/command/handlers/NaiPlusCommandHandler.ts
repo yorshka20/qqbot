@@ -3,6 +3,7 @@ import { APIClient } from '@/api/APIClient';
 import { DITokens } from '@/core/DITokens';
 import { NormalizedMessageEvent } from '@/events/types';
 import { HookContext } from '@/hooks';
+import { MetadataMap } from '@/hooks/metadata';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
@@ -73,7 +74,7 @@ export class NaiPlusCommand implements CommandHandler {
           message: prompt,
           segments: [],
         } as NormalizedMessageEvent,
-        metadata: new Map([
+        metadata: MetadataMap.fromEntries([
           ['sessionId', context.groupId ? `group_${context.groupId}` : `user_${context.userId}`],
           ['sessionType', context.messageType],
         ]),

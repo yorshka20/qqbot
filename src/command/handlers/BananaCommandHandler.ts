@@ -2,6 +2,7 @@ import { AIService, Text2ImageOptions } from '@/ai';
 import { APIClient } from '@/api/APIClient';
 import { DITokens } from '@/core/DITokens';
 import { HookContext } from '@/hooks';
+import { MetadataMap } from '@/hooks/metadata';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
@@ -71,7 +72,7 @@ export class BananaCommand implements CommandHandler {
           message: prompt,
           segments: [],
         },
-        metadata: new Map([
+        metadata: MetadataMap.fromEntries([
           ['sessionId', context.groupId ? `group_${context.groupId}` : `user_${context.userId}`],
           ['sessionType', context.messageType],
         ]),

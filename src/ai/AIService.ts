@@ -1,6 +1,7 @@
 // AI Service - provides AI capabilities as a service
 
 import type { ContextManager } from '@/context/ContextManager';
+import { setReply } from '@/context/HookContextHelpers';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { SearchService } from '@/search';
@@ -79,9 +80,14 @@ export class AIService {
 
     // Build context if not already built
     if (!context.context) {
+      const sessionId = context.metadata.get('sessionId');
+      const sessionType = context.metadata.get('sessionType');
+      if (!sessionId || !sessionType) {
+        throw new Error('sessionId and sessionType must be set in metadata');
+      }
       const conversationContext = this.contextManager.buildContext(context.message.message, {
-        sessionId: context.metadata.get('sessionId') as string,
-        sessionType: context.metadata.get('sessionType') as 'user' | 'group',
+        sessionId,
+        sessionType,
         userId: context.message.userId,
         groupId: context.message.groupId,
       });
@@ -133,9 +139,14 @@ export class AIService {
 
     // Build context if not already built
     if (!context.context) {
+      const sessionId = context.metadata.get('sessionId');
+      const sessionType = context.metadata.get('sessionType');
+      if (!sessionId || !sessionType) {
+        throw new Error('sessionId and sessionType must be set in metadata');
+      }
       const conversationContext = this.contextManager.buildContext(context.message.message, {
-        sessionId: context.metadata.get('sessionId') as string,
-        sessionType: context.metadata.get('sessionType') as 'user' | 'group',
+        sessionId,
+        sessionType,
         userId: context.message.userId,
         groupId: context.message.groupId,
       });
@@ -150,7 +161,7 @@ export class AIService {
       const historyText = this.buildConversationHistory(context);
 
       // Get session ID for provider selection and context loading
-      const sessionId = context.metadata.get('sessionId') as string | undefined;
+      const sessionId = context.metadata.get('sessionId');
 
       // Check if card format prompt should be used
       const useCardFormat = this.cardRenderingService.shouldUseCardFormatPrompt(sessionId);
@@ -219,11 +230,13 @@ export class AIService {
             // Render card to image using CardRenderingService
             const base64Image = await this.cardRenderingService.renderCard(response.text);
 
-            // Store image data in context metadata
-            context.metadata.set('cardImage', base64Image);
-            context.metadata.set('isCardImage', true);
+            // Store image data in context reply using helper function
+            setReply(context, '', 'ai', {
+              cardImage: base64Image,
+              isCardImage: true,
+            });
 
-            logger.info('[AIService] Card image rendered and stored in metadata');
+            logger.info('[AIService] Card image rendered and stored in reply');
             // Return empty string as the actual message will be sent as image
             return '';
           } catch (cardError) {
@@ -264,9 +277,14 @@ export class AIService {
 
     // Build context if not already built
     if (!context.context) {
+      const sessionId = context.metadata.get('sessionId');
+      const sessionType = context.metadata.get('sessionType');
+      if (!sessionId || !sessionType) {
+        throw new Error('sessionId and sessionType must be set in metadata');
+      }
       const conversationContext = this.contextManager.buildContext(context.message.message, {
-        sessionId: context.metadata.get('sessionId') as string,
-        sessionType: context.metadata.get('sessionType') as 'user' | 'group',
+        sessionId,
+        sessionType,
         userId: context.message.userId,
         groupId: context.message.groupId,
       });
@@ -277,7 +295,7 @@ export class AIService {
     await this.hookManager.execute('onAIGenerationStart', context);
 
     try {
-      const sessionId = context.metadata.get('sessionId') as string | undefined;
+      const sessionId = context.metadata.get('sessionId');
       const historyText = this.buildConversationHistory(context);
 
       // Build prompt
@@ -340,14 +358,18 @@ export class AIService {
     }
 
     // Get session ID for provider selection
-    const sessionId = context.metadata.get('sessionId') as string;
+    const sessionId = context.metadata.get('sessionId');
+    const sessionType = context.metadata.get('sessionType');
+    if (!sessionId || !sessionType) {
+      throw new Error('sessionId and sessionType must be set in metadata');
+    }
     const userInput = context.message.message;
 
     // Build context if not already built
     if (!context.context) {
       const conversationContext = this.contextManager.buildContext(userInput, {
         sessionId,
-        sessionType: context.metadata.get('sessionType') as 'user' | 'group',
+        sessionType,
         userId: context.message.userId,
         groupId: context.message.groupId,
       });

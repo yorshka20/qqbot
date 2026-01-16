@@ -119,7 +119,7 @@ export class ConversationInitializer {
     // commandManager will be auto registered by injector.
     // serviceRegistry.registerCommandManager(completeServices.commandManager);
 
-    const taskAnalyzer = new TaskAnalyzer(llmService, completeServices.taskManager);
+    const taskAnalyzer = new TaskAnalyzer(llmService, completeServices.taskManager, promptManager);
     const aiService = new AIService(
       completeServices.aiManager,
       completeServices.contextManager,
@@ -295,8 +295,11 @@ export class ConversationInitializer {
     // Register default "reply" task type
     taskManager.registerTaskType({
       name: 'reply',
-      description: 'AI reply task - generates AI response for user input',
+      description: 'AI 回复任务 - 生成 AI 响应回复用户输入',
       executor: 'reply',
+      whenToUse:
+        '当用户发送一般性对话、询问、聊天消息时使用此任务类型。这是默认任务类型，适用于所有不匹配其他特定任务类型的消息。',
+      examples: ['你好', '今天天气怎么样？', '帮我解释一下什么是人工智能', '给我讲个笑话'],
     });
 
     // Register additional task types from config
@@ -311,6 +314,9 @@ export class ConversationInitializer {
             description: taskType.description,
             executor: taskType.executor,
             parameters: taskType.parameters,
+            examples: taskType.examples,
+            triggerKeywords: taskType.triggerKeywords,
+            whenToUse: taskType.whenToUse,
           });
         }
       }
@@ -335,8 +341,7 @@ export class ConversationInitializer {
     // Initialize MessageUtils with command prefixes
     MessageUtils.initialize(['/', '!']);
 
-    const lifecycle = new Lifecycle(services.hookManager);
-    lifecycle.setCommandRouter(commandRouter);
+    const lifecycle = new Lifecycle(services.hookManager, commandRouter);
 
     const pipeline = new MessagePipeline(lifecycle, services.hookManager, apiClient);
     const conversationManager = new ConversationManager(pipeline);

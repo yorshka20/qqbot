@@ -1,5 +1,6 @@
 // Database Persistence System - saves messages and conversations to database
 
+import { getReply } from '@/context/HookContextHelpers';
 import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';
 import type { DatabaseManager } from '@/database/DatabaseManager';
@@ -26,8 +27,8 @@ export class DatabasePersistenceSystem implements System {
 
   async execute(context: HookContext): Promise<boolean> {
     const messageId = context.message?.id || context.message?.messageId || 'unknown';
-    const sessionId = context.metadata.get('sessionId') as string;
-    const sessionType = context.metadata.get('sessionType') as 'user' | 'group';
+    const sessionId = context.metadata.get('sessionId');
+    const sessionType = context.metadata.get('sessionType');
 
     if (!sessionId || !sessionType) {
       logger.debug('[DatabasePersistenceSystem] Missing sessionId or sessionType, skipping save');
@@ -68,7 +69,7 @@ export class DatabasePersistenceSystem implements System {
       // Save message
       const messages = adapter.getModel('messages');
       const message = context.message;
-      const reply = context.metadata.get('reply') as string;
+      const reply = getReply(context);
 
       // Save user message
       await messages.create({
@@ -92,7 +93,7 @@ export class DatabasePersistenceSystem implements System {
 
       // Save bot reply if exists
       if (reply) {
-        const botSelfId = context.metadata.get('botSelfId') as string | number;
+        const botSelfId = context.metadata.get('botSelfId');
         const botUserId = typeof botSelfId === 'string' ? parseInt(botSelfId, 10) : botSelfId || 0;
         await messages.create({
           conversationId: conversation.id,

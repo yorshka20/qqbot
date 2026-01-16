@@ -70,7 +70,7 @@ export class ReactionPlugin extends PluginBase {
     }
 
     // Ignore bot's own messages
-    const botSelfId = context.metadata.get('botSelfId') as string;
+    const botSelfId = context.metadata.get('botSelfId');
     const messageUserId = context.message.userId?.toString();
     if (botSelfId && messageUserId && botSelfId === messageUserId) {
       return true;
@@ -82,7 +82,7 @@ export class ReactionPlugin extends PluginBase {
     }
 
     // Only send reaction in whitelisted groups
-    const isWhitelistGroup = context.metadata.get('whitelistGroup') as boolean;
+    const isWhitelistGroup = context.metadata.get('whitelistGroup');
     if (!isWhitelistGroup) {
       return true;
     }

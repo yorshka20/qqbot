@@ -182,3 +182,100 @@ export class EchoCommand implements CommandHandler {
     }
   }
 }
+
+/**
+ * Command toggle command - enable or disable other commands
+ * Only group admins and group owners can use this command
+ * Cannot disable itself
+ */
+@Command({
+  name: 'cmd',
+  description: 'Enable or disable a command. Usage: /cmd enable <command> or /cmd disable <command>',
+  usage: '/cmd enable <command> | /cmd disable <command>',
+  permissions: ['group_admin', 'group_owner', 'admin'], // Only group admins, group owners, and bot admins can toggle commands
+})
+@injectable()
+export class CommandToggleCommand implements CommandHandler {
+  name = 'cmd';
+  description = 'Enable or disable a command. Usage: /cmd enable <command> or /cmd disable <command>';
+  usage = '/cmd enable <command> | /cmd disable <command>';
+
+  constructor(@inject(DITokens.COMMAND_MANAGER) private commandManager: CommandManager) {}
+
+  async execute(args: string[]): Promise<CommandResult> {
+    if (args.length < 2) {
+      return {
+        success: false,
+        error: 'Usage: /cmd enable <command> or /cmd disable <command>',
+      };
+    }
+
+    const action = args[0].toLowerCase();
+    const commandName = args[1].toLowerCase();
+
+    // Prevent disabling/enabling itself
+    if (commandName === this.name) {
+      return {
+        success: false,
+        error: 'Cannot enable or disable the cmd command itself',
+      };
+    }
+
+    // Get command registration to check current state
+    const allCommands = this.commandManager.getAllCommands();
+    const command = allCommands.find((c) => c.handler.name.toLowerCase() === commandName);
+    if (!command) {
+      return {
+        success: false,
+        error: `Command "${commandName}" not found`,
+      };
+    }
+
+    if (action === 'enable') {
+      if (command.enabled) {
+        return {
+          success: true,
+          message: `Command "${commandName}" is already enabled`,
+        };
+      }
+
+      const success = this.commandManager.enableCommand(commandName);
+      if (success) {
+        return {
+          success: true,
+          message: `Command "${commandName}" has been enabled`,
+        };
+      } else {
+        return {
+          success: false,
+          error: `Failed to enable command "${commandName}"`,
+        };
+      }
+    } else if (action === 'disable') {
+      if (!command.enabled) {
+        return {
+          success: true,
+          message: `Command "${commandName}" is already disabled`,
+        };
+      }
+
+      const success = this.commandManager.disableCommand(commandName);
+      if (success) {
+        return {
+          success: true,
+          message: `Command "${commandName}" has been disabled`,
+        };
+      } else {
+        return {
+          success: false,
+          error: `Failed to disable command "${commandName}"`,
+        };
+      }
+    } else {
+      return {
+        success: false,
+        error: 'Invalid action. Use "enable" or "disable"',
+      };
+    }
+  }
+}
