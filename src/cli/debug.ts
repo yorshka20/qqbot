@@ -7,7 +7,6 @@ import { PromptInitializer } from '../ai/PromptInitializer';
 import { APIClient } from '../api/APIClient';
 import { MessageAPI } from '../api/methods/MessageAPI';
 import type { APIStrategy } from '../api/types';
-import type { ConversationContext } from '../context/types';
 import { ConversationInitializer } from '../conversation/ConversationInitializer';
 import { Bot } from '../core/Bot';
 import type { Config, ProtocolName } from '../core/config';
@@ -43,7 +42,6 @@ class MockAPIClient extends APIClient {
     params: Record<string, unknown> = {},
     protocol: ProtocolName = 'milky',
     timeout = 10000,
-    conversationContext?: ConversationContext,
   ): Promise<TResponse> {
     // Intercept message sending actions
     if (action === 'send_private_msg' || action === 'send_group_msg') {
@@ -151,7 +149,7 @@ class DebugCLI {
           }
           const message = args.slice(1).join(' ');
           try {
-            const messageId = await this.messageAPI.sendPrivateMessage(userId, message);
+            const messageId = await this.messageAPI.sendPrivateMessage(userId, message, 'milky');
             this.printSuccess(`Message sent! Message ID: ${messageId}`);
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
@@ -180,7 +178,7 @@ class DebugCLI {
           }
           const message = args.slice(1).join(' ');
           try {
-            const messageId = await this.messageAPI.sendGroupMessage(groupId, message);
+            const messageId = await this.messageAPI.sendGroupMessage(groupId, message, 'milky');
             this.printSuccess(`Message sent! Message ID: ${messageId}`);
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);

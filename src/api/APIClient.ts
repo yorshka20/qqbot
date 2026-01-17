@@ -1,30 +1,21 @@
 // Unified multi-protocol API client
 
-import type { ConversationContext } from '@/context/types';
 import type { ProtocolName } from '@/core/config';
 import type { ProtocolAdapter } from '@/protocol/base/ProtocolAdapter';
 import { APIError } from '@/utils/errors';
 import { APIRouter } from './APIRouter';
-import { RequestManager } from './RequestManager';
 import type { APIStrategy } from './types';
 import { APIContext } from './types';
 
 export class APIClient {
   private router: APIRouter;
-  private requestManager: RequestManager;
 
   constructor(strategy: APIStrategy, preferredProtocol?: ProtocolName) {
     this.router = new APIRouter(strategy, preferredProtocol);
-    this.requestManager = new RequestManager();
   }
 
   registerAdapter(protocol: ProtocolName, adapter: ProtocolAdapter): void {
     this.router.registerAdapter(protocol, adapter);
-
-    // Set up adapter to handle API responses
-    adapter.onEvent(() => {
-      // Events are handled separately, this is just for API responses
-    });
   }
 
   unregisterAdapter(protocol: ProtocolName): void {
@@ -45,22 +36,15 @@ export class APIClient {
    * @param params - API parameters
    * @param protocol - Protocol name
    * @param timeout - Request timeout (default: 10000ms)
-   * @param conversationContext - Optional conversation context for better integration
    */
   async call<TResponse = unknown>(
     action: string,
     params: Record<string, unknown> = {},
     protocol: ProtocolName,
     timeout = 10000,
-    conversationContext?: ConversationContext,
   ): Promise<TResponse> {
     // Create context for this API call - all information is encapsulated here
     const context = new APIContext(action, params, protocol, timeout);
-
-    // Store conversation context in metadata if provided
-    if (conversationContext) {
-      context.metadata.set('conversationContext', conversationContext);
-    }
 
     // Get adapter using context - router can access all needed info from context
     const adapter = this.router.getAdapter(context);

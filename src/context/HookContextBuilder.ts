@@ -206,8 +206,15 @@ export class HookContextBuilder {
       );
     }
 
+    if (!this.conversationContext) {
+      throw new Error(
+        'HookContextBuilder: conversationContext is required. Use withConversationContext() to set it.',
+      );
+    }
+
     const context: HookContext = {
       message: this.message,
+      context: this.conversationContext,
       metadata: this.metadata,
     };
 
@@ -219,9 +226,6 @@ export class HookContextBuilder {
     }
     if (this.aiResponse !== undefined) {
       context.aiResponse = this.aiResponse;
-    }
-    if (this.conversationContext !== undefined) {
-      context.context = this.conversationContext;
     }
     if (this.result !== undefined) {
       context.result = this.result;

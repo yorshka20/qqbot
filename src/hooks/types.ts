@@ -29,10 +29,10 @@ export interface ReplyContent {
  */
 export interface HookContext {
   message: NormalizedMessageEvent;
+  context: ConversationContext;
   command?: ParsedCommand;
   task?: Task;
   aiResponse?: string;
-  context?: ConversationContext;
   result?: TaskResult | CommandResult;
   error?: Error;
   reply?: ReplyContent; // Unified reply content (preferred over metadata 'reply')

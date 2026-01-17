@@ -1,13 +1,13 @@
-import { APIClient } from '@/api/APIClient';
 import { HttpClient } from '@/api/http/HttpClient';
 import { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
-import { Command } from '../decorators';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
+import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
+import { MessageSender } from '../utils/MessageSender';
 
 /**
  * TTS command - converts text to speech using Fish Audio API
@@ -59,8 +59,8 @@ export class TTSCommandHandler implements CommandHandler {
   };
 
   constructor(
-    @inject(DITokens.API_CLIENT) private apiClient: APIClient,
     @inject(DITokens.CONFIG) private config: Config,
+    @inject(MessageSender) private messageSender: MessageSender,
   ) {
     // Configure HttpClient for Fish Audio API
     this.httpClient = new HttpClient({
@@ -178,29 +178,7 @@ export class TTSCommandHandler implements CommandHandler {
       messageBuilder.record({ data: base64Audio });
 
       const messageSegments = messageBuilder.build();
-
-      // Send message
-      if (context.messageType === 'private') {
-        await this.apiClient.call(
-          'send_private_msg',
-          {
-            user_id: context.userId,
-            message: messageSegments,
-          },
-          'milky',
-          30000, // 30 second timeout for TTS generation
-        );
-      } else if (context.groupId) {
-        await this.apiClient.call(
-          'send_group_msg',
-          {
-            group_id: context.groupId,
-            message: messageSegments,
-          },
-          'milky',
-          30000, // 30 second timeout for TTS generation
-        );
-      }
+      await this.messageSender.send(messageSegments, context, 10000);
 
       return {
         success: true,

@@ -1,15 +1,15 @@
 // Message Pipeline - processes messages through the complete flow
 
 import type { APIClient } from '@/api/APIClient';
-import type { ContextManager } from '@/context';
+import { MessageAPI } from '@/api/methods/MessageAPI';
+import type { ContextManager, ConversationContext } from '@/context';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { getReply, getReplyContent, setReply } from '@/context/HookContextHelpers';
-import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
+import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { Lifecycle } from './Lifecycle';
 import type { MessageProcessingContext, MessageProcessingResult } from './types';
@@ -19,179 +19,185 @@ import type { MessageProcessingContext, MessageProcessingResult } from './types'
  * Processes messages through the complete flow using Lifecycle
  */
 export class MessagePipeline {
+  private messageAPI: MessageAPI;
+
   constructor(
     private lifecycle: Lifecycle,
     private hookManager: HookManager,
     private apiClient: APIClient,
-  ) { }
+    private contextManager: ContextManager,
+  ) {
+    // Create MessageAPI instance from APIClient
+    this.messageAPI = new MessageAPI(this.apiClient);
+  }
 
   /**
    * Process message through the complete pipeline
    */
   async process(event: NormalizedMessageEvent, context: MessageProcessingContext): Promise<MessageProcessingResult> {
     try {
-      // Create initial hook context using builder
-      const hookContext = HookContextBuilder.fromMessage(event, {
-        sessionId: context.sessionId,
-        sessionType: context.sessionType,
-        conversationId: context.conversationId,
-        botSelfId: context.botSelfId,
-      }).build();
-
-      const messageId = event?.id || event?.messageId || 'unknown';
+      const hookContext = this.createHookContext(event, context);
+      const messageId = String(event.id ?? event.messageId ?? 'unknown');
       logger.info(`[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId}`);
 
-      // Execute lifecycle
       const success = await this.lifecycle.execute(hookContext);
-
       if (!success) {
         return { success: false, error: 'Processing interrupted' };
       }
 
-      // Get reply from hook context using helper function
-      const reply = getReply(hookContext);
-      const postProcessOnly = hookContext.metadata.get('postProcessOnly');
-
-      // Send message if available
-      if (reply) {
-        logger.info(`[MessagePipeline] Sending reply | messageId=${messageId} | replyLength=${reply.length}`);
-        await this.sendMessage(event, reply, hookContext);
-
-        // Save user message and AI reply to conversation history after successful send
-        // This ensures history is available for next conversation
-        await this.saveConversationMessages(context.sessionId, event.message, reply);
-      } else {
-        logger.info(`[MessagePipeline] No reply to send | messageId=${messageId} | postProcessOnly=${postProcessOnly}`);
-      }
-
-      return {
-        success: true,
-        reply,
-      };
+      return await this.handleReply(event, context, hookContext, messageId);
     } catch (error) {
-      const err = error instanceof Error ? error : new Error('Unknown error');
-      // Hook: onError
-      const errorContext = HookContextBuilder.fromMessage(event).withError(err).build();
-      await this.hookManager.execute('onError', errorContext);
-
-      return {
-        success: false,
-        error: err.message,
-      };
+      return await this.handleError(error, event, context);
     }
+  }
+
+  /**
+   * Build conversation context from event and processing context
+   */
+  private buildConversationContext(
+    event: NormalizedMessageEvent,
+    context: MessageProcessingContext,
+  ): ConversationContext {
+    return this.contextManager.buildContext(event.message, {
+      sessionId: context.sessionId,
+      sessionType: context.sessionType,
+      userId: event.userId,
+      groupId: event.groupId,
+    });
+  }
+
+  /**
+   * Create initial hook context with conversation context
+   */
+  private createHookContext(
+    event: NormalizedMessageEvent,
+    context: MessageProcessingContext,
+  ): HookContext {
+    const conversationContext = this.buildConversationContext(event, context);
+    return HookContextBuilder.fromMessage(event, {
+      sessionId: context.sessionId,
+      sessionType: context.sessionType,
+      conversationId: context.conversationId,
+      botSelfId: context.botSelfId,
+    })
+      .withConversationContext(conversationContext)
+      .build();
+  }
+
+  /**
+   * Handle reply from hook context
+   */
+  private async handleReply(
+    event: NormalizedMessageEvent,
+    context: MessageProcessingContext,
+    hookContext: HookContext,
+    messageId: string,
+  ): Promise<MessageProcessingResult> {
+    const reply = getReply(hookContext);
+    const postProcessOnly = hookContext.metadata.get('postProcessOnly');
+
+    if (reply) {
+      logger.info(`[MessagePipeline] Sending reply | messageId=${messageId} | replyLength=${reply.length}`);
+      await this.sendMessage(event, reply, hookContext);
+      await this.saveConversationMessages(context.sessionId, event.message, reply);
+    } else {
+      logger.info(`[MessagePipeline] No reply to send | messageId=${messageId} | postProcessOnly=${postProcessOnly}`);
+    }
+
+    return {
+      success: true,
+      reply,
+    };
+  }
+
+  /**
+   * Handle error during message processing
+   */
+  private async handleError(
+    error: unknown,
+    event: NormalizedMessageEvent,
+    context: MessageProcessingContext,
+  ): Promise<MessageProcessingResult> {
+    const err = error instanceof Error ? error : new Error('Unknown error');
+    const conversationContext = this.buildConversationContext(event, context);
+    const errorContext = HookContextBuilder.fromMessage(event, {
+      sessionId: context.sessionId,
+      sessionType: context.sessionType,
+      conversationId: context.conversationId,
+      botSelfId: context.botSelfId,
+    })
+      .withConversationContext(conversationContext)
+      .withError(err)
+      .build();
+    await this.hookManager.execute('onError', errorContext);
+
+    return {
+      success: false,
+      error: err.message,
+    };
   }
 
   /**
    * Send message
    */
   private async sendMessage(event: NormalizedMessageEvent, reply: string, hookContext: HookContext): Promise<void> {
-    // Update hook context using helper function
-    // If reply field doesn't exist, set it with 'ai' as default source (may be updated by hooks)
-    if (!hookContext.reply) {
-      setReply(hookContext, reply, 'ai');
-    } else {
-      // Update text if needed (preserve source and metadata)
-      hookContext.reply.text = reply;
-    }
+    this.updateReplyInContext(hookContext, reply);
 
-    // Hook: onMessageBeforeSend
     const shouldContinue = await this.hookManager.execute('onMessageBeforeSend', hookContext);
     if (!shouldContinue) {
       logger.warn('[MessagePipeline] Message sending interrupted by hook');
       return;
     }
 
-    // Get final reply content (may be modified by hook)
-    const replyContent = getReplyContent(hookContext);
-    const finalReply = replyContent?.text || reply;
-
     try {
-      // Get conversation context from hook context if available
-      const conversationContext = hookContext.context;
-
-      // Get protocol from event (required parameter)
-      const protocol = event.protocol;
-      if (!protocol) {
-        throw new Error('Protocol is required but not found in message event');
-      }
-
-      // Check if we need to send card image
-      const isCardImage = replyContent?.metadata?.isCardImage;
-      const cardImage = replyContent?.metadata?.cardImage;
-
-      let messageToSend: string | ReturnType<MessageBuilder['build']>;
-
-      if (isCardImage && cardImage) {
-        // Build image message using MessageBuilder
-        const messageBuilder = new MessageBuilder();
-        messageBuilder.image({ data: cardImage });
-        messageToSend = messageBuilder.build();
-        logger.info('[MessagePipeline] Sending card image message');
-      } else {
-        // Send text message as before
-        messageToSend = finalReply;
-      }
-
-      // Send message via API
-      // Handle temporary session messages (messageScene === 'temp')
-      // Temporary sessions should use private message API with group_id context
-      if (event.messageScene === 'temp' && event.groupId) {
-        await this.apiClient.call(
-          'send_private_msg',
-          {
-            user_id: event.userId,
-            group_id: event.groupId, // Include group_id for temporary session context
-            message: messageToSend,
-          },
-          protocol,
-          10000,
-          conversationContext,
-        );
-      } else if (event.messageType === 'private') {
-        await this.apiClient.call(
-          'send_private_msg',
-          {
-            user_id: event.userId,
-            message: messageToSend,
-          },
-          protocol,
-          10000,
-          conversationContext,
-        );
-      } else if (event.groupId) {
-        await this.apiClient.call(
-          'send_group_msg',
-          {
-            group_id: event.groupId,
-            message: messageToSend,
-          },
-          protocol,
-          10000,
-          conversationContext,
-        );
-      }
-
-      // Hook: onMessageSent
+      const messageToSend = this.buildMessageToSend(hookContext, reply);
+      await this.messageAPI.sendFromContext(messageToSend, event, 10000);
       await this.hookManager.execute('onMessageSent', hookContext);
     } catch (error) {
-      const err = error instanceof Error ? error : new Error('Unknown error');
-
-      // Hook: onError
-      const errorContext = HookContextBuilder.fromContext(hookContext).withError(err).build();
-      await this.hookManager.execute('onError', errorContext);
+      await this.handleSendError(error, hookContext);
     }
   }
 
   /**
-   * Get ContextManager from DI container
+   * Update reply in hook context
    */
-  private getContextManager(): ContextManager | null {
-    const container = getContainer();
-    if (container.isRegistered(DITokens.CONTEXT_MANAGER)) {
-      return container.resolve<ContextManager>(DITokens.CONTEXT_MANAGER);
+  private updateReplyInContext(hookContext: HookContext, reply: string): void {
+    if (!hookContext.reply) {
+      setReply(hookContext, reply, 'ai');
+    } else {
+      hookContext.reply.text = reply;
+    }
+  }
+
+  /**
+   * Build message to send (text or card image)
+   */
+  private buildMessageToSend(
+    hookContext: HookContext,
+    defaultReply: string,
+  ): string | MessageSegment[] {
+    const replyContent = getReplyContent(hookContext);
+    const finalReply = replyContent?.text || defaultReply;
+    const isCardImage = replyContent?.metadata?.isCardImage;
+    const cardImage = replyContent?.metadata?.cardImage;
+
+    if (isCardImage && cardImage) {
+      const messageBuilder = new MessageBuilder();
+      messageBuilder.image({ data: cardImage });
+      logger.info('[MessagePipeline] Sending card image message');
+      return messageBuilder.build();
     }
 
-    return null;
+    return finalReply;
+  }
+
+  /**
+   * Handle error during message sending
+   */
+  private async handleSendError(error: unknown, hookContext: HookContext): Promise<void> {
+    const err = error instanceof Error ? error : new Error('Unknown error');
+    const errorContext = HookContextBuilder.fromContext(hookContext).withError(err).build();
+    await this.hookManager.execute('onError', errorContext);
   }
 
   /**
@@ -203,16 +209,11 @@ export class MessagePipeline {
     userMessage: string,
     assistantReply: string,
   ): Promise<void> {
-    const contextManager = this.getContextManager();
-    if (contextManager) {
-      try {
-        // Save user message first
-        await contextManager.addMessage(sessionId, 'user', userMessage);
-        // Then save assistant reply
-        await contextManager.addMessage(sessionId, 'assistant', assistantReply);
-      } catch (error) {
-        logger.warn(`[MessagePipeline] Failed to save conversation to history: ${error}`);
-      }
+    try {
+      await this.contextManager.addMessage(sessionId, 'user', userMessage);
+      await this.contextManager.addMessage(sessionId, 'assistant', assistantReply);
+    } catch (error) {
+      logger.warn(`[MessagePipeline] Failed to save conversation to history: ${error}`);
     }
   }
 }

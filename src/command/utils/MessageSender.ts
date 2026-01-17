@@ -4,7 +4,7 @@
  */
 
 import { ImageGenerationResponse } from '@/ai';
-import { APIClient } from '@/api/APIClient';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
@@ -27,7 +27,12 @@ export type SendableResponse =
  */
 @injectable()
 export class MessageSender {
-  constructor(@inject(DITokens.API_CLIENT) private apiClient: APIClient) { }
+  private messageAPI: MessageAPI;
+
+  constructor(@inject(DITokens.API_CLIENT) private apiClient: any) {
+    // Create MessageAPI instance from APIClient
+    this.messageAPI = new MessageAPI(this.apiClient);
+  }
 
   /**
    * Build message from various response types
@@ -116,47 +121,8 @@ export class MessageSender {
    * @param timeout - Optional timeout in milliseconds (default: 30000)
    */
   async send(messageSegments: MessageSegment[], context: CommandContext, timeout: number = 30000): Promise<void> {
-    // Get protocol from context metadata
-    // Protocol is required and should be set when creating CommandContext
-    const protocol = context.metadata?.protocol;
-    if (!protocol) {
-      throw new Error('Protocol is not specified in context metadata');
-    }
-
-    // Send message based on message type
-    // Handle temporary session messages (messageScene === 'temp')
-    // Temporary sessions should use private message API with group_id context
-    if (context.messageScene === 'temp' && context.groupId) {
-      await this.apiClient.call(
-        'send_private_msg',
-        {
-          user_id: context.userId,
-          group_id: context.groupId, // Include group_id for temporary session context
-          message: messageSegments,
-        },
-        protocol,
-        timeout,
-      );
-    } else if (context.messageType === 'private') {
-      await this.apiClient.call(
-        'send_private_msg',
-        {
-          user_id: context.userId,
-          message: messageSegments,
-        },
-        protocol,
-        timeout,
-      );
-    } else if (context.groupId) {
-      await this.apiClient.call(
-        'send_group_msg',
-        {
-          group_id: context.groupId,
-          message: messageSegments,
-        },
-        protocol,
-        timeout,
-      );
-    }
+    // Use MessageAPI to send message from context
+    // MessageAPI automatically extracts protocol, userId, groupId, and handles message type logic
+    await this.messageAPI.sendFromContext(messageSegments, context, timeout);
   }
 }

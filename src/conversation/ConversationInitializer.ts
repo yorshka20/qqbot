@@ -343,7 +343,7 @@ export class ConversationInitializer {
 
     const lifecycle = new Lifecycle(services.hookManager, commandRouter);
 
-    const pipeline = new MessagePipeline(lifecycle, services.hookManager, apiClient);
+    const pipeline = new MessagePipeline(lifecycle, services.hookManager, apiClient, services.contextManager);
     const conversationManager = new ConversationManager(pipeline);
 
     return {

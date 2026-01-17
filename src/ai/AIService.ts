@@ -78,22 +78,6 @@ export class AIService {
       return null;
     }
 
-    // Build context if not already built
-    if (!context.context) {
-      const sessionId = context.metadata.get('sessionId');
-      const sessionType = context.metadata.get('sessionType');
-      if (!sessionId || !sessionType) {
-        throw new Error('sessionId and sessionType must be set in metadata');
-      }
-      const conversationContext = this.contextManager.buildContext(context.message.message, {
-        sessionId,
-        sessionType,
-        userId: context.message.userId,
-        groupId: context.message.groupId,
-      });
-      context.context = conversationContext;
-    }
-
     // Hook: onAIGenerationStart
     await this.hookManager.execute('onAIGenerationStart', context);
 
@@ -135,22 +119,6 @@ export class AIService {
     const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
     if (!shouldContinue) {
       throw new Error('AI reply generation interrupted by hook');
-    }
-
-    // Build context if not already built
-    if (!context.context) {
-      const sessionId = context.metadata.get('sessionId');
-      const sessionType = context.metadata.get('sessionType');
-      if (!sessionId || !sessionType) {
-        throw new Error('sessionId and sessionType must be set in metadata');
-      }
-      const conversationContext = this.contextManager.buildContext(context.message.message, {
-        sessionId,
-        sessionType,
-        userId: context.message.userId,
-        groupId: context.message.groupId,
-      });
-      context.context = conversationContext;
     }
 
     // Hook: onAIGenerationStart
@@ -275,22 +243,6 @@ export class AIService {
       throw new Error('AI reply generation interrupted by hook');
     }
 
-    // Build context if not already built
-    if (!context.context) {
-      const sessionId = context.metadata.get('sessionId');
-      const sessionType = context.metadata.get('sessionType');
-      if (!sessionId || !sessionType) {
-        throw new Error('sessionId and sessionType must be set in metadata');
-      }
-      const conversationContext = this.contextManager.buildContext(context.message.message, {
-        sessionId,
-        sessionType,
-        userId: context.message.userId,
-        groupId: context.message.groupId,
-      });
-      context.context = conversationContext;
-    }
-
     // Hook: onAIGenerationStart
     await this.hookManager.execute('onAIGenerationStart', context);
 
@@ -383,7 +335,7 @@ export class AIService {
       logger.info(
         `[AIService] Generating image | prompt="${finalPrompt.substring(0, 100)}..." | providerName=${providerName || 'default'}`,
       );
-      
+
       // Generate image using ImageGenerationService
       const response = await this.imageGenerationService.generateImage(
         finalPrompt,

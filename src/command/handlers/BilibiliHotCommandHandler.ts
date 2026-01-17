@@ -1,11 +1,10 @@
-import { APIClient } from '@/api/APIClient';
 import { HttpClient } from '@/api/http/HttpClient';
-import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
 import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
+import { MessageSender } from '../utils/MessageSender';
 
 // Fetch hot search data from Bilibili API
 type BilibiliHotSearchResponse = {
@@ -38,7 +37,7 @@ export class BilibiliHotCommandHandler implements CommandHandler {
   private readonly API_URL = 'https://s.search.bilibili.com/main/hotword';
   private readonly httpClient: HttpClient;
 
-  constructor(@inject(DITokens.API_CLIENT) private apiClient: APIClient) {
+  constructor(@inject(MessageSender) private messageSender: MessageSender) {
     // Configure HttpClient for Bilibili API
     this.httpClient = new HttpClient({
       baseURL: this.API_URL,
@@ -98,29 +97,7 @@ export class BilibiliHotCommandHandler implements CommandHandler {
       messageBuilder.text('\n━━━━━━━━━━━━━━━━');
 
       const messageSegments = messageBuilder.build();
-
-      // Send message
-      if (context.messageType === 'private') {
-        await this.apiClient.call(
-          'send_private_msg',
-          {
-            user_id: context.userId,
-            message: messageSegments,
-          },
-          'milky',
-          10000,
-        );
-      } else if (context.groupId) {
-        await this.apiClient.call(
-          'send_group_msg',
-          {
-            group_id: context.groupId,
-            message: messageSegments,
-          },
-          'milky',
-          10000,
-        );
-      }
+      await this.messageSender.send(messageSegments, context, 10000);
 
       return {
         success: true,
