@@ -94,6 +94,11 @@
             "38": "recall"
           }
         }
+      },
+      // Nudge Plugin - automatically replies with bot status when bot is nudged (戳一戳)
+      {
+        "name": "nudge",
+        "enabled": true
       }
     ],
   },

@@ -31,6 +31,11 @@ export class MessageAPI {
     }
   }
 
+  /**
+   * @deprecated This method is FORBIDDEN for production use. Only use in debug mode.
+   * Use sendFromContext() instead, which properly handles protocol extraction and message type detection.
+   * This method is kept only for debug CLI commands.
+   */
   async sendPrivateMessage(userId: number, message: string | unknown[], protocol: ProtocolName): Promise<number> {
     const result = await this.apiClient.call<SendMessageResult>(
       'send_private_msg',
@@ -48,6 +53,11 @@ export class MessageAPI {
     return messageId;
   }
 
+  /**
+   * @deprecated This method is FORBIDDEN for production use. Only use in debug mode.
+   * Use sendFromContext() instead, which properly handles protocol extraction and message type detection.
+   * This method is kept only for debug CLI commands.
+   */
   async sendGroupMessage(groupId: number, message: string | unknown[], protocol: ProtocolName): Promise<number> {
     const result = await this.apiClient.call<SendMessageResult>(
       'send_group_msg',
