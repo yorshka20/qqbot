@@ -14,7 +14,8 @@ import { CommandContext, CommandHandler, CommandResult } from '../types';
  */
 @Command({
   name: 'tts',
-  description: 'Convert text to speech. Example: /tts 你好世界 --voice=丁真. Use /tts list to see all available voices.',
+  description:
+    'Convert text to speech. Example: /tts 你好世界 --voice=丁真. Use /tts list to see all available voices.',
   usage: '/tts <text> [--voice=<voice>] | /tts list',
   permissions: ['user'], // All users can use TTS
   aliases: ['say', 'speak'],

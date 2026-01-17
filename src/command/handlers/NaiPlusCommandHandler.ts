@@ -1,13 +1,13 @@
 import { AIService, Text2ImageOptions } from '@/ai';
-import { APIClient } from '@/api/APIClient';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { DITokens } from '@/core/DITokens';
-import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
+import { generateSeed } from '../utils/CommandImageUtils';
+import { MessageSender } from '../utils/MessageSender';
 
 /**
  * NaiPlus command - generates image from text prompt using NovelAI provider with LLM preprocessing
@@ -17,7 +17,7 @@ import { CommandContext, CommandHandler, CommandResult } from '../types';
   name: 'nai-plus',
   description: 'Generate image from text prompt using NovelAI with LLM preprocessing',
   usage:
-    '/nai-plus <prompt> [--width=<width>] [--height=<height>] [--steps=<steps>] [--seed=<seed>] [--guidance=<scale>] [--negative=<prompt>]',
+    '/nai-plus <prompt> [--width=<width>] [--height=<height>] [--steps=<steps>] [--seed=<seed>] [--guidance=<scale>] [--negative=<prompt>] [--num=<number>]',
   permissions: ['user'], // All users can generate images
 })
 @injectable()
@@ -36,13 +36,15 @@ export class NaiPlusCommand implements CommandHandler {
       guidance: { property: 'guidance_scale', type: 'float' },
       negative: { property: 'negative_prompt', type: 'string' },
       num: { property: 'numImages', type: 'number', aliases: ['num_images'] },
+      silent: { property: 'silent', type: 'boolean' },
+      template: { property: 'template', type: 'string' },
     },
   };
 
   constructor(
     @inject(DITokens.AI_SERVICE) private aiService: AIService,
-    @inject(DITokens.API_CLIENT) private apiClient: APIClient,
-  ) {}
+    @inject(MessageSender) private messageSender: MessageSender,
+  ) { }
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     if (args.length === 0) {
@@ -59,12 +61,14 @@ export class NaiPlusCommand implements CommandHandler {
       logger.info(`[NaiPlusCommand] Generating image with prompt: ${prompt.substring(0, 50)}...`);
 
       // Create hook context for AIService
+      // Get protocol from context metadata (should be set by CommandContextBuilder)
+      const protocol = context.metadata.protocol;
       const hookContext = HookContextBuilder.create()
         .withSyntheticMessage({
           id: `cmd_${Date.now()}`,
           type: 'message',
           timestamp: Date.now(),
-          protocol: 'command',
+          protocol,
           userId: context.userId,
           groupId: context.groupId,
           messageId: undefined,
@@ -76,11 +80,85 @@ export class NaiPlusCommand implements CommandHandler {
         .withMetadata('sessionType', context.messageType === 'private' ? 'user' : context.messageType)
         .build();
 
+      // Check if num parameter is provided for multiple image generation
+      const numImages = options?.numImages || 1;
+      const baseSeed = options?.seed;
+      const silent = options?.silent === true;
+      const templateName = options?.template || 'text2img.generate_nai';
+
+      // Prepare base options without numImages to avoid batch generation
+      const baseOptions: Text2ImageOptions = {
+        ...options,
+        prompt, // Must provide prompt in options
+        numImages: undefined, // Remove numImages to avoid batch generation
+      };
+
+      // If num > 1, first call LLM preprocessing to get processed prompt, then loop with skipLLMProcess=true
+      if (numImages > 1) {
+        logger.info(
+          `[NaiPlusCommand] Generating ${numImages} images - first call LLM preprocessing, then loop generateImage`,
+        );
+
+        // First call: LLM preprocessing to get processed prompt
+        const firstResponse = await this.aiService.generateImg(
+          hookContext,
+          baseOptions,
+          'novelai', // Force NovelAI provider
+          false, // Do not skip LLM preprocessing for first call
+          templateName, // Use NovelAI-specific template
+        );
+
+        // Get processed prompt from first response
+        if (!firstResponse.prompt) {
+          logger.warn('[NaiPlusCommand] First response does not contain processed prompt, falling back to user input');
+        }
+
+        // used in batch generation
+        const processedPrompt = firstResponse.prompt || prompt;
+
+        // Send first image (unless silent mode)
+        if (!silent) {
+          const messageBuilder = this.messageSender.buildMessage(firstResponse, '[NaiPlusCommand]');
+          await this.messageSender.send(messageBuilder.build(), context);
+        }
+
+        // Generate remaining images with processed prompt (skip LLM processing)
+        for (let i = 1; i < numImages; i++) {
+          logger.info(`[NaiPlusCommand] Generating image ${i + 1}/${numImages} with processed prompt`);
+
+          // Update seed for each image
+          const currentSeed = generateSeed(baseSeed, i);
+          const processedOptions = {
+            ...baseOptions,
+            prompt: processedPrompt,
+            seed: currentSeed,
+          };
+
+          const response = await this.aiService.generateImg(
+            hookContext,
+            processedOptions,
+            'novelai',
+            true, // Skip LLM processing
+            undefined,
+          );
+          // Send image (unless silent mode)
+          if (!silent) {
+            const messageBuilder = this.messageSender.buildMessage(response, '[NaiPlusCommand]');
+            await this.messageSender.send(messageBuilder.build(), context);
+          }
+        }
+
+        return {
+          success: true,
+        };
+      }
+
+      // Single image generation (original behavior)
       // Generate image using NovelAI provider with LLM preprocessing
       // Do not skip LLM preprocessing (skipLLMProcess = false)
       const response = await this.aiService.generateImg(
         hookContext,
-        options,
+        baseOptions,
         'novelai', // Force NovelAI provider
         false, // Do not skip LLM preprocessing
         'text2img.generate_nai', // Use NovelAI-specific template
@@ -95,51 +173,10 @@ export class NaiPlusCommand implements CommandHandler {
         };
       }
 
-      // Build message with images and text
-      const messageBuilder = new MessageBuilder();
-
-      // Add text message from provider if available (may contain error message)
-      if (response.text) {
-        messageBuilder.text(response.text);
-      }
-
-      // Add each image
-      // File paths are already converted to URLs by ImageGenerationService
-      for (const image of response.images) {
-        if (image.url) {
-          // Prefer URL over base64 for better performance
-          messageBuilder.image({ url: image.url });
-        } else if (image.base64) {
-          // Fallback to base64 if URL is not available
-          // Milky protocol supports base64 data in the 'data' field
-          messageBuilder.image({ data: image.base64 });
-        } else {
-          logger.warn(`[NaiPlusCommand] Image has no url or base64 field: ${JSON.stringify(image)}`);
-        }
-      }
-
-      const messageSegments = messageBuilder.build();
-
-      if (context.messageType === 'private') {
-        await this.apiClient.call(
-          'send_private_msg',
-          {
-            user_id: context.userId,
-            message: messageSegments,
-          },
-          'milky',
-          30000, // 30 second timeout for image generation
-        );
-      } else if (context.groupId) {
-        await this.apiClient.call(
-          'send_group_msg',
-          {
-            group_id: context.groupId,
-            message: messageSegments,
-          },
-          'milky',
-          30000, // 30 second timeout for image generation
-        );
+      // Send image response (unless silent mode)
+      if (!silent) {
+        const messageBuilder = this.messageSender.buildMessage(response, '[NaiPlusCommand]');
+        await this.messageSender.send(messageBuilder.build(), context);
       }
 
       return {

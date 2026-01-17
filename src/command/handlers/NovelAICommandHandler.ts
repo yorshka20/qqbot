@@ -1,13 +1,14 @@
-import { AIService, Text2ImageOptions } from '@/ai';
-import { APIClient } from '@/api/APIClient';
+import { AIService, ImageGenerationResponse, Text2ImageOptions } from '@/ai';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { DITokens } from '@/core/DITokens';
-import { MessageBuilder } from '@/message/MessageBuilder';
+import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
+import { generateSeed } from '../utils/CommandImageUtils';
+import { MessageSender } from '../utils/MessageSender';
 
 /**
  * NovelAI command - generates image from text prompt using NovelAI provider
@@ -16,14 +17,14 @@ import { CommandContext, CommandHandler, CommandResult } from '../types';
   name: 'nai',
   description: 'Generate image from text prompt using NovelAI',
   usage:
-    '/nai <prompt> [--width=<width>] [--height=<height>] [--steps=<steps>] [--seed=<seed>] [--guidance=<scale>] [--negative=<prompt>]',
+    '/nai <prompt> [--width=<width>] [--height=<height>] [--steps=<steps>] [--seed=<seed>] [--guidance=<scale>] [--negative=<prompt>] [--num=<number>]',
   permissions: ['user'], // All users can generate images
 })
 @injectable()
 export class NovelAICommand implements CommandHandler {
   name = 'nai';
   description = 'Generate image from text prompt using NovelAI';
-  usage = '/nai <prompt> [options]';
+  usage = '/nai <prompt> [options] [--num=<number>]';
 
   // Command parameter configuration
   private readonly argsConfig: ParserConfig = {
@@ -35,13 +36,61 @@ export class NovelAICommand implements CommandHandler {
       guidance: { property: 'guidance_scale', type: 'float' },
       negative: { property: 'negative_prompt', type: 'string' },
       num: { property: 'numImages', type: 'number', aliases: ['num_images'] },
+      silent: { property: 'silent', type: 'boolean' },
     },
   };
 
   constructor(
     @inject(DITokens.AI_SERVICE) private aiService: AIService,
-    @inject(DITokens.API_CLIENT) private apiClient: APIClient,
-  ) {}
+    @inject(MessageSender) private messageSender: MessageSender,
+  ) { }
+
+  /**
+   * Generate a single image
+   */
+  private async generateImage(
+    hookContext: HookContext,
+    options: Text2ImageOptions,
+    index?: number,
+    total?: number,
+  ): Promise<ImageGenerationResponse> {
+    const logPrefix =
+      total !== undefined && index !== undefined
+        ? `[NovelAICommand] Generating image ${index + 1}/${total}`
+        : '[NovelAICommand] Generating image';
+
+    logger.info(`${logPrefix} with options: ${JSON.stringify(options)}`);
+
+    // Generate image using NovelAI provider (force provider name)
+    // Skip LLM preprocessing for /nai command - use user input directly as prompt
+    const response = await this.aiService.generateImg(hookContext, options, 'novelai', true);
+
+    logger.info(`${logPrefix} completed with response: ${JSON.stringify(response)}`);
+
+    return response;
+  }
+
+  /**
+   * Send image response as message
+   */
+  private async sendImage(
+    response: ImageGenerationResponse,
+    context: CommandContext,
+    silent?: boolean,
+  ): Promise<boolean> {
+    // If no images and no text, log error
+    if ((!response.images || response.images.length === 0) && !response.text) {
+      logger.warn('[NovelAICommand] No images generated and no error message received');
+      return false;
+    }
+
+    // Send message (unless silent mode)
+    if (!silent) {
+      const messageBuilder = this.messageSender.buildMessage(response, '[NovelAICommand]');
+      await this.messageSender.send(messageBuilder.build(), context);
+    }
+    return true;
+  }
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     if (args.length === 0) {
@@ -58,12 +107,14 @@ export class NovelAICommand implements CommandHandler {
       logger.info(`[NovelAICommand] Generating image with prompt: ${prompt.substring(0, 50)}...`);
 
       // Create hook context for AIService
+      // Get protocol from context metadata (should be set by CommandContextBuilder)
+      const protocol = context.metadata.protocol;
       const hookContext = HookContextBuilder.create()
         .withSyntheticMessage({
           id: `cmd_${Date.now()}`,
           type: 'message',
           timestamp: Date.now(),
-          protocol: 'command',
+          protocol,
           userId: context.userId,
           groupId: context.groupId,
           messageId: undefined,
@@ -75,64 +126,49 @@ export class NovelAICommand implements CommandHandler {
         .withMetadata('sessionType', context.messageType === 'private' ? 'user' : context.messageType)
         .build();
 
-      // Generate image using NovelAI provider (force provider name)
-      // Skip LLM preprocessing for /nai command - use user input directly as prompt
-      const response = await this.aiService.generateImg(hookContext, options, 'novelai', true);
-      logger.info(`[NovelAICommand] Generated image with response: ${JSON.stringify(response)}`);
+      // Check if num parameter is provided for multiple image generation
+      const numImages = options?.numImages || 1;
+      const baseSeed = options?.seed;
+      const silent = options?.silent === true;
 
-      // If no images and no text, return error
-      if ((!response.images || response.images.length === 0) && !response.text) {
+      // Prepare base options without numImages to avoid batch generation
+      const baseOptions: Text2ImageOptions = {
+        ...options,
+        prompt,
+        numImages: undefined, // Remove numImages to avoid batch generation
+      };
+
+      // If num > 1, generate images sequentially with different seeds
+      if (numImages > 1) {
+        logger.info(`[NovelAICommand] Generating ${numImages} images sequentially with different seeds`);
+
+        // Generate images one by one (serial generation to avoid consuming points)
+        for (let i = 0; i < numImages; i++) {
+          const currentSeed = generateSeed(baseSeed, i);
+          const currentOptions: Text2ImageOptions = {
+            ...baseOptions,
+            seed: currentSeed,
+          };
+
+          // Generate image
+          const response = await this.generateImage(hookContext, currentOptions, i, numImages);
+          // Send image
+          await this.sendImage(response, context, silent);
+        }
+
+        return {
+          success: true,
+        };
+      }
+
+      // Single image generation (original behavior)
+      const response = await this.generateImage(hookContext, baseOptions);
+      const success = await this.sendImage(response, context, silent);
+      if (!success) {
         return {
           success: false,
           error: 'No images generated and no error message received',
         };
-      }
-
-      // Build message with images and text
-      const messageBuilder = new MessageBuilder();
-
-      // Add text message from provider if available (may contain error message)
-      if (response.text) {
-        messageBuilder.text(response.text);
-      }
-
-      // Add each image
-      // File paths are already converted to URLs by ImageGenerationService
-      for (const image of response.images) {
-        if (image.url) {
-          // Prefer URL over base64 for better performance
-          messageBuilder.image({ url: image.url });
-        } else if (image.base64) {
-          // Fallback to base64 if URL is not available
-          // Milky protocol supports base64 data in the 'data' field
-          messageBuilder.image({ data: image.base64 });
-        } else {
-          logger.warn(`[NovelAICommand] Image has no url or base64 field: ${JSON.stringify(image)}`);
-        }
-      }
-
-      const messageSegments = messageBuilder.build();
-
-      if (context.messageType === 'private') {
-        await this.apiClient.call(
-          'send_private_msg',
-          {
-            user_id: context.userId,
-            message: messageSegments,
-          },
-          'milky',
-          30000, // 30 second timeout for image generation
-        );
-      } else if (context.groupId) {
-        await this.apiClient.call(
-          'send_group_msg',
-          {
-            group_id: context.groupId,
-            message: messageSegments,
-          },
-          'milky',
-          30000, // 30 second timeout for image generation
-        );
       }
 
       return {
