@@ -89,6 +89,11 @@ export class MilkyAPIConverter {
           user_id: params.user_id as number,
         };
 
+        // For temporary session messages, include group_id if provided
+        if (params.group_id !== undefined) {
+          (milkyParams as Record<string, unknown>).group_id = params.group_id as number;
+        }
+
         const messageSegments = MilkyAPIConverter.convertMessageToSegments(params.message);
         if (messageSegments) {
           milkyParams.message = messageSegments;

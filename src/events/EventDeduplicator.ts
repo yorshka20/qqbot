@@ -45,9 +45,7 @@ export class EventDeduplicator {
       // Check if within time window
       const timeDiff = event.timestamp - existing.timestamp;
       if (timeDiff <= this.config.window) {
-        logger.debug(
-          `[EventDeduplicator] Duplicate event detected: ${key} (${timeDiff}ms ago)`
-        );
+        logger.debug(`[EventDeduplicator] Duplicate event detected: ${key} (${timeDiff}ms ago)`);
         return false;
       }
     }

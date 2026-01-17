@@ -32,6 +32,7 @@ export class BananaCommand implements CommandHandler {
       aspectRatio: { property: 'aspectRatio', type: 'string' },
       imageSize: { property: 'imageSize', type: 'string' },
       model: { property: 'model', type: 'string' },
+      llm: { property: 'llm', type: 'boolean' },
     },
   };
 
@@ -51,6 +52,7 @@ export class BananaCommand implements CommandHandler {
     try {
       // Parse arguments using unified parser with command-specific config
       const { text: prompt, options } = CommandArgsParser.parse<Text2ImageOptions>(args, this.argsConfig);
+      const { llm } = options as { llm: boolean };
 
       logger.info(`[BananaCommand] Generating image with prompt: ${prompt.substring(0, 50)}...`);
 
@@ -73,12 +75,16 @@ export class BananaCommand implements CommandHandler {
         .build();
 
       // Generate image using Laozhang provider with Gemini 2.5 model
-      // Skip LLM preprocessing for /banana command - use user input directly as prompt
       const imageOptions = {
         ...options,
         model: 'gemini-2.5-flash-image', // Use Gemini 2.5 model for small banana
       };
-      const response = await this.aiService.generateImg(hookContext, imageOptions, 'laozhang', true);
+
+      // Use LLM preprocessing based on llm parameter
+      // If llm is true, use LLM preprocessing with template; if false or undefined, skip LLM preprocessing
+      const skipLLMProcess = llm === false || llm === undefined;
+      const templateName = llm === true ? 'text2img.generate_banana' : undefined;
+      const response = await this.aiService.generateImg(hookContext, imageOptions, 'laozhang', skipLLMProcess, templateName);
       logger.info(`[BananaCommand] respond`);
 
       // If no images and no text, return error

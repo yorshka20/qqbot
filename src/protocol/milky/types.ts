@@ -23,6 +23,8 @@ export interface NormalizedMilkyMessageEvent extends BaseEvent {
   segments: IncomingSegment[];
   messageSeq?: number;
   groupName?: string;
+  // Message scene from Milky protocol (e.g., 'private', 'group', 'temp' for temporary session)
+  messageScene?: string;
   sender?: {
     userId: number;
     nickname?: string;

@@ -1,5 +1,7 @@
 // Command type definitions
 
+import { ProtocolName } from '@/core/config';
+
 /**
  * Parsed command structure
  */
@@ -46,6 +48,18 @@ export interface CommandHandler {
 }
 
 /**
+ * CommandContext Metadata interface
+ * Defines all possible metadata keys and their types
+ */
+export interface CommandContextMetadata {
+  // Protocol information
+  protocol: ProtocolName;
+  // Command metadata
+  senderRole?: string;
+}
+
+
+/**
  * Command execution context
  */
 export interface CommandContext {
@@ -53,7 +67,9 @@ export interface CommandContext {
   groupId?: number;
   messageType: 'private' | 'group';
   rawMessage: string;
-  metadata?: Record<string, unknown>;
+  // Message scene from protocol (e.g., 'private', 'group', 'temp' for temporary session)
+  messageScene: string;
+  metadata: CommandContextMetadata;
 }
 
 /**

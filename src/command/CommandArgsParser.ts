@@ -110,30 +110,44 @@ export class CommandArgsParser {
     for (const arg of args) {
       // Check if this is an option (starts with --)
       if (arg.startsWith('--')) {
-        // Parse --option=value format
+        // Parse --option=value format or --option (for boolean flags)
         const equalIndex = arg.indexOf('=');
-        if (equalIndex === -1) {
-          // No = found, skip this argument
-          continue;
-        }
 
-        const optionName = arg.slice(2, equalIndex); // Remove -- and get option name
-        const optionValue = arg.slice(equalIndex + 1); // Get value after =
+        let optionName: string;
+        let optionValue: string | undefined;
+
+        if (equalIndex === -1) {
+          // No = found, treat as boolean flag (value is undefined)
+          optionName = arg.slice(2); // Remove --
+          optionValue = undefined;
+        } else {
+          // Has =, extract option name and value
+          optionName = arg.slice(2, equalIndex); // Remove -- and get option name
+          optionValue = arg.slice(equalIndex + 1); // Get value after =
+        }
 
         // Find option definition
         const definition = optionMap.get(optionName);
         if (definition) {
-          // Convert value to appropriate type
-          const convertedValue = this.convertValue(optionValue, definition.type);
+          // For boolean type without value, default to true
+          if (definition.type === 'boolean' && optionValue === undefined) {
+            options[definition.property] = true;
+          } else if (optionValue !== undefined) {
+            // Convert value to appropriate type
+            const convertedValue = this.convertValue(optionValue, definition.type);
 
-          // Validate number types
-          if ((definition.type === 'number' || definition.type === 'float') && isNaN(convertedValue as number)) {
-            // Invalid number, skip
+            // Validate number types
+            if ((definition.type === 'number' || definition.type === 'float') && isNaN(convertedValue as number)) {
+              // Invalid number, skip
+              continue;
+            }
+
+            // Set the property with the correct name
+            options[definition.property] = convertedValue;
+          } else {
+            // Non-boolean option without value, skip
             continue;
           }
-
-          // Set the property with the correct name
-          options[definition.property] = convertedValue;
         }
         // Unknown options are silently ignored
       } else {

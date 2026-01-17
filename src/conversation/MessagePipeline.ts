@@ -23,7 +23,7 @@ export class MessagePipeline {
     private lifecycle: Lifecycle,
     private hookManager: HookManager,
     private apiClient: APIClient,
-  ) {}
+  ) { }
 
   /**
    * Process message through the complete pipeline
@@ -109,6 +109,12 @@ export class MessagePipeline {
       // Get conversation context from hook context if available
       const conversationContext = hookContext.context;
 
+      // Get protocol from event (required parameter)
+      const protocol = event.protocol;
+      if (!protocol) {
+        throw new Error('Protocol is required but not found in message event');
+      }
+
       // Check if we need to send card image
       const isCardImage = replyContent?.metadata?.isCardImage;
       const cardImage = replyContent?.metadata?.cardImage;
@@ -127,14 +133,28 @@ export class MessagePipeline {
       }
 
       // Send message via API
-      if (event.messageType === 'private') {
+      // Handle temporary session messages (messageScene === 'temp')
+      // Temporary sessions should use private message API with group_id context
+      if (event.messageScene === 'temp' && event.groupId) {
+        await this.apiClient.call(
+          'send_private_msg',
+          {
+            user_id: event.userId,
+            group_id: event.groupId, // Include group_id for temporary session context
+            message: messageToSend,
+          },
+          protocol,
+          10000,
+          conversationContext,
+        );
+      } else if (event.messageType === 'private') {
         await this.apiClient.call(
           'send_private_msg',
           {
             user_id: event.userId,
             message: messageToSend,
           },
-          'milky',
+          protocol,
           10000,
           conversationContext,
         );
@@ -145,7 +165,7 @@ export class MessagePipeline {
             group_id: event.groupId,
             message: messageToSend,
           },
-          'milky',
+          protocol,
           10000,
           conversationContext,
         );

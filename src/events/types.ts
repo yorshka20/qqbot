@@ -12,6 +12,8 @@ export interface NormalizedMessageEvent extends BaseEvent {
   messageId?: number;
   segments?: Array<{ type: string; data?: Record<string, unknown> }>;
   groupName?: string;
+  // Message scene from protocol (e.g., 'private', 'group', 'temp' for temporary session)
+  messageScene?: string;
   sender?: {
     userId: number;
     nickname?: string;

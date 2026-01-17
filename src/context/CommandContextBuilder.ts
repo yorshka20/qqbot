@@ -1,7 +1,7 @@
 // CommandContext Builder
 // Provides a unified way to create CommandContext instances
 
-import type { CommandContext } from '@/command/types';
+import type { CommandContext, CommandContextMetadata } from '@/command/types';
 import type { HookContext } from '@/hooks/types';
 
 /**
@@ -13,9 +13,10 @@ export class CommandContextBuilder {
   private groupId?: number;
   private messageType?: 'private' | 'group';
   private rawMessage?: string;
-  private metadata?: Record<string, unknown>;
+  private messageScene?: string;
+  private metadata?: CommandContextMetadata;
 
-  private constructor() {}
+  private constructor() { }
 
   /**
    * Create a new builder instance
@@ -37,13 +38,21 @@ export class CommandContextBuilder {
     builder.groupId = context.message.groupId;
     builder.messageType = context.message.messageType;
     builder.rawMessage = context.message.message;
+    // Save message scene for temporary session handling (required field)
+    builder.messageScene = context.message.messageScene || 'private';
 
-    // Extract metadata from message sender if available
-    if (context.message.sender?.role) {
-      builder.metadata = {
-        senderRole: context.message.sender.role,
-      };
+    // Extract metadata from message sender and protocol
+    // Protocol is required in CommandContextMetadata, so it must be present
+    if (!context.message.protocol) {
+      throw new Error('Protocol is required but not found in message event');
     }
+    const metadata: CommandContextMetadata = {
+      protocol: context.message.protocol,
+    };
+    if (context.message.sender?.role) {
+      metadata.senderRole = context.message.sender.role;
+    }
+    builder.metadata = metadata;
 
     return builder;
   }
@@ -83,17 +92,20 @@ export class CommandContextBuilder {
   /**
    * Set metadata
    */
-  withMetadata(metadata: Record<string, unknown>): this {
-    this.metadata = { ...this.metadata, ...metadata };
+  withMetadata(metadata: Partial<CommandContextMetadata>): this {
+    this.metadata = { ...this.metadata, ...metadata } as CommandContextMetadata;
     return this;
   }
 
   /**
-   * Add a single metadata key-value pair
+   * Add a single metadata key-value pair with type safety
    */
-  withMetadataEntry(key: string, value: unknown): this {
+  withMetadataEntry<K extends keyof CommandContextMetadata>(
+    key: K,
+    value: CommandContextMetadata[K],
+  ): this {
     if (!this.metadata) {
-      this.metadata = {};
+      this.metadata = {} as CommandContextMetadata;
     }
     this.metadata[key] = value;
     return this;
@@ -113,18 +125,23 @@ export class CommandContextBuilder {
     if (this.rawMessage === undefined) {
       throw new Error('CommandContextBuilder: rawMessage is required');
     }
+    if (this.messageScene === undefined) {
+      throw new Error('CommandContextBuilder: messageScene is required');
+    }
+    if (this.metadata === undefined || !this.metadata.protocol) {
+      throw new Error('CommandContextBuilder: metadata with protocol is required');
+    }
 
     const context: CommandContext = {
       userId: this.userId,
       messageType: this.messageType,
       rawMessage: this.rawMessage,
+      messageScene: this.messageScene,
+      metadata: this.metadata,
     };
 
     if (this.groupId !== undefined) {
       context.groupId = this.groupId;
-    }
-    if (this.metadata !== undefined && Object.keys(this.metadata).length > 0) {
-      context.metadata = this.metadata;
     }
 
     return context;

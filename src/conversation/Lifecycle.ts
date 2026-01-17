@@ -22,7 +22,7 @@ export class Lifecycle {
   constructor(
     private hookManager: HookManager,
     private commandRouter: CommandRouter,
-  ) { }
+  ) {}
 
   enabled(): boolean {
     return true;

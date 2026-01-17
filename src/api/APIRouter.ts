@@ -59,9 +59,7 @@ export class APIRouter {
    * Throws APIError if no connected adapter is available.
    */
   private selectAdapter(context: APIContext): ProtocolAdapter {
-    const connectedAdapters = Array.from(this.adapters.entries()).filter(
-      ([, adapter]) => adapter.isConnected(),
-    );
+    const connectedAdapters = Array.from(this.adapters.entries()).filter(([, adapter]) => adapter.isConnected());
 
     if (connectedAdapters.length === 0) {
       const registeredProtocols = Array.from(this.adapters.keys());
@@ -87,13 +85,9 @@ export class APIRouter {
     }
   }
 
-  private selectByPriority(
-    adapters: Array<[ProtocolName, ProtocolAdapter]>,
-  ): ProtocolAdapter {
+  private selectByPriority(adapters: Array<[ProtocolName, ProtocolAdapter]>): ProtocolAdapter {
     if (this.preferredProtocol) {
-      const preferred = adapters.find(
-        ([name]) => name === this.preferredProtocol,
-      );
+      const preferred = adapters.find(([name]) => name === this.preferredProtocol);
       if (preferred) {
         return preferred[1];
       }
@@ -103,9 +97,7 @@ export class APIRouter {
     return adapters[0][1];
   }
 
-  private selectRoundRobin(
-    adapters: Array<[ProtocolName, ProtocolAdapter]>,
-  ): ProtocolAdapter {
+  private selectRoundRobin(adapters: Array<[ProtocolName, ProtocolAdapter]>): ProtocolAdapter {
     if (adapters.length === 0) {
       throw new Error('No adapters available');
     }

@@ -1,25 +1,25 @@
 // MongoDB database adapter implementation
 
-import { MongoClient, Db, Collection } from 'mongodb';
-import type { DatabaseAdapter } from '../base/DatabaseAdapter';
-import type {
-  DatabaseModel,
-  BaseModel,
-  Conversation,
-  Message,
-  Session,
-  Task,
-  Command,
-  ModelAccessor,
-} from '../models/types';
 import { logger } from '@/utils/logger';
 import { randomUUID } from 'crypto';
+import { Collection, Db, MongoClient } from 'mongodb';
+import type { DatabaseAdapter } from '../base/DatabaseAdapter';
+import type {
+  BaseModel,
+  Command,
+  Conversation,
+  DatabaseModel,
+  Message,
+  ModelAccessor,
+  Session,
+  Task,
+} from '../models/types';
 
 /**
  * MongoDB model accessor implementation
  */
 class MongoModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
-  constructor(private collection: Collection) {}
+  constructor(private collection: Collection) { }
 
   async create(data: Omit<T, 'id' | 'createdAt' | 'updatedAt'>): Promise<T> {
     const now = new Date();
@@ -117,7 +117,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
   constructor(
     private connectionString: string,
     private databaseName: string,
-  ) {}
+  ) { }
 
   async connect(): Promise<void> {
     if (this.client) {
@@ -221,9 +221,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
     }
 
     return {
-      conversations: new MongoModelAccessor<Conversation>(
-        this.db.collection('conversations'),
-      ),
+      conversations: new MongoModelAccessor<Conversation>(this.db.collection('conversations')),
       messages: new MongoModelAccessor<Message>(this.db.collection('messages')),
       sessions: new MongoModelAccessor<Session>(this.db.collection('sessions')),
       tasks: new MongoModelAccessor<Task>(this.db.collection('tasks')),

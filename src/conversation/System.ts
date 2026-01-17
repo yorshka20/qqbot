@@ -103,6 +103,4 @@ export interface System {
 /**
  * System factory function type
  */
-export type SystemFactory = (
-  context: SystemContext,
-) => Promise<System> | System;
+export type SystemFactory = (context: SystemContext) => Promise<System> | System;

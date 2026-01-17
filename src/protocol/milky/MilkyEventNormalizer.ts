@@ -178,6 +178,7 @@ export class MilkyEventNormalizer {
       segments: data.segments,
       message: MilkyMessageSegmentParser.segmentsToText(data.segments),
       messageSeq: data.message_seq,
+      messageScene: data.message_scene, // Save original message scene for temporary session handling
     };
 
     if (data.message_scene === 'group' || data.message_scene === 'temp') {

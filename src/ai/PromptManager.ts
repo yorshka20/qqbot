@@ -104,7 +104,7 @@ export class PromptManager {
         } else if (stat.isFile()) {
           // Load template file
           const ext = extname(entry).toLowerCase();
-          if (ext === '.txt' || ext === '.md' || ext === '.prompt') {
+          if (ext === '.txt' || ext === '.md' || ext === '.prompt' || ext === '.local') {
             const templateName = basename(entry, ext);
             // Use full namespace path as template name if namespace exists
             const fullName = namespace ? `${namespace}.${templateName}` : templateName;

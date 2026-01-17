@@ -25,7 +25,7 @@ export class RequestManager {
     protocol: string,
     resolve: (value: unknown) => void,
     reject: (error: Error) => void,
-    timeout = 10000
+    timeout = 10000,
   ): void {
     const timer = setTimeout(() => {
       const request = this.pendingRequests.get(echo);
@@ -59,8 +59,8 @@ export class RequestManager {
     } else {
       request.reject(
         new Error(
-          `API request failed: ${response.retcode} - ${response.msg || 'Unknown error'} (action: ${request.action}, protocol: ${request.protocol})`
-        )
+          `API request failed: ${response.retcode} - ${response.msg || 'Unknown error'} (action: ${request.action}, protocol: ${request.protocol})`,
+        ),
       );
     }
 

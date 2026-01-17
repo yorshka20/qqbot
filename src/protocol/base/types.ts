@@ -1,10 +1,12 @@
 // Base protocol types
 
+import { ProtocolName } from '@/core/config';
+
 export interface BaseEvent {
   id: string;
   type: string;
   timestamp: number;
-  protocol: string;
+  protocol: ProtocolName;
 }
 
 export interface BaseAPIRequest {
