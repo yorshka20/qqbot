@@ -4,7 +4,7 @@ import type { AIManager } from '@/ai/AIManager';
 import type { CapabilityType } from '@/ai/capabilities/types';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import type { PluginManager } from '@/plugins/PluginManager';
+import { PluginManager } from '@/plugins/PluginManager';
 import { inject, injectable } from 'tsyringe';
 import type { CommandManager } from '../CommandManager';
 import { Command } from '../decorators';
@@ -25,7 +25,7 @@ export class HelpCommand implements CommandHandler {
   description = 'Show available commands. / and ! can be used as prefix.';
   usage = '/help [command]';
 
-  constructor(@inject(DITokens.COMMAND_MANAGER) private commandManager: CommandManager) {}
+  constructor(@inject(DITokens.COMMAND_MANAGER) private commandManager: CommandManager) { }
 
   execute(args: string[]): CommandResult {
     const commands = this.commandManager.getAllCommands();
@@ -95,7 +95,7 @@ export class StatusCommand implements CommandHandler {
   description = 'Show bot status';
   usage = '/status';
 
-  constructor(@inject(DITokens.AI_MANAGER) private aiManager: AIManager) {}
+  constructor(@inject(DITokens.AI_MANAGER) private aiManager: AIManager) { }
 
   execute(_args: string[], context: CommandContext): CommandResult {
     const uptime = process.uptime();
@@ -172,7 +172,7 @@ export class EchoCommand implements CommandHandler {
   description = 'Toggle EchoPlugin enabled/disabled state';
   usage = '/echo';
 
-  constructor(@inject(DITokens.PLUGIN_MANAGER) private pluginManager: PluginManager) {}
+  constructor(@inject(DITokens.PLUGIN_MANAGER) private pluginManager: PluginManager) { }
 
   async execute(): Promise<CommandResult> {
     const pluginName = 'echo';
@@ -211,116 +211,5 @@ export class EchoCommand implements CommandHandler {
   }
 }
 
-/**
- * Command toggle command - enable or disable other commands
- * Only group admins and group owners can use this command
- * Cannot disable itself
- */
-@Command({
-  name: 'cmd',
-  description: 'Enable or disable a command. Usage: /cmd enable <command> or /cmd disable <command>',
-  usage: '/cmd enable <command> | /cmd disable <command>',
-  permissions: ['group_admin', 'group_owner', 'admin'], // Only group admins, group owners, and bot admins can toggle commands
-})
-@injectable()
-export class CommandToggleCommand implements CommandHandler {
-  name = 'cmd';
-  description = 'Enable or disable a command. Usage: /cmd enable <command> or /cmd disable <command>';
-  usage = '/cmd enable <command> | /cmd disable <command>';
-
-  constructor(@inject(DITokens.COMMAND_MANAGER) private commandManager: CommandManager) {}
-
-  async execute(args: string[], context: CommandContext): Promise<CommandResult> {
-    if (args.length < 2) {
-      return {
-        success: false,
-        error: 'Usage: /cmd enable <command> or /cmd disable <command>',
-      };
-    }
-
-    const action = args[0].toLowerCase();
-    const commandName = args[1].toLowerCase();
-
-    // Prevent disabling/enabling itself
-    if (commandName === this.name) {
-      return {
-        success: false,
-        error: 'Cannot enable or disable the cmd command itself',
-      };
-    }
-
-    // Get command registration to check if command exists
-    const allCommands = this.commandManager.getAllCommands();
-    const command = allCommands.find((c) => c.handler.name.toLowerCase() === commandName);
-    if (!command) {
-      return {
-        success: false,
-        error: `Command "${commandName}" not found`,
-      };
-    }
-
-    // Get group ID if in a group message
-    const groupId = context.messageType === 'group' ? context.groupId : undefined;
-
-    if (action === 'enable') {
-      // Check current state for the group (or globally if not in a group)
-      const isEnabled = this.commandManager.isCommandEnabled(commandName, groupId);
-      const messageBuilder = new MessageBuilder();
-      if (isEnabled) {
-        const location = groupId !== undefined ? `in this group` : 'globally';
-        messageBuilder.text(`Command "${commandName}" is already enabled ${location}`);
-        return {
-          success: true,
-          segments: messageBuilder.build(),
-        };
-      }
-
-      const success = this.commandManager.enableCommand(commandName, groupId);
-      if (success) {
-        const location = groupId !== undefined ? `in this group` : 'globally';
-        messageBuilder.text(`Command "${commandName}" has been enabled ${location}`);
-        return {
-          success: true,
-          segments: messageBuilder.build(),
-        };
-      } else {
-        return {
-          success: false,
-          error: `Failed to enable command "${commandName}"`,
-        };
-      }
-    } else if (action === 'disable') {
-      // Check current state for the group (or globally if not in a group)
-      const isEnabled = this.commandManager.isCommandEnabled(commandName, groupId);
-      const messageBuilder = new MessageBuilder();
-      if (!isEnabled) {
-        const location = groupId !== undefined ? `in this group` : 'globally';
-        messageBuilder.text(`Command "${commandName}" is already disabled ${location}`);
-        return {
-          success: true,
-          segments: messageBuilder.build(),
-        };
-      }
-
-      const success = this.commandManager.disableCommand(commandName, groupId);
-      if (success) {
-        const location = groupId !== undefined ? `in this group` : 'globally';
-        messageBuilder.text(`Command "${commandName}" has been disabled ${location}`);
-        return {
-          success: true,
-          segments: messageBuilder.build(),
-        };
-      } else {
-        return {
-          success: false,
-          error: `Failed to disable command "${commandName}"`,
-        };
-      }
-    } else {
-      return {
-        success: false,
-        error: 'Invalid action. Use "enable" or "disable"',
-      };
-    }
-  }
-}
+// Command toggle command has been moved to ConversationConfigPlugin
+// This file is kept for reference but the command is no longer registered here

@@ -5,6 +5,8 @@ import type { AIManager } from '@/ai/AIManager';
 import type { AIService } from '@/ai/AIService';
 import type { APIClient } from '@/api/APIClient';
 import type { CommandManager } from '@/command/CommandManager';
+import { ConversationConfigService } from '@/config/ConversationConfigService';
+import { GlobalConfigManager } from '@/config/GlobalConfigManager';
 import type { ContextManager } from '@/context/ContextManager';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
@@ -94,6 +96,17 @@ export class ServiceRegistry {
   }
 
   /**
+   * Register conversation config services
+   */
+  registerConversationConfigServices(
+    conversationConfigService: ConversationConfigService,
+    globalConfigManager: GlobalConfigManager,
+  ): void {
+    this.container.registerInstance(DITokens.CONVERSATION_CONFIG_SERVICE, conversationConfigService);
+    this.container.registerInstance(DITokens.GLOBAL_CONFIG_MANAGER, globalConfigManager);
+  }
+
+  /**
    * Register all conversation services at once
    * Convenience method for batch registration
    */
@@ -104,6 +117,8 @@ export class ServiceRegistry {
     commandManager: CommandManager;
     taskManager: TaskManager;
     hookManager: HookManager;
+    conversationConfigService: ConversationConfigService;
+    globalConfigManager: GlobalConfigManager;
   }): void {
     this.registerDatabaseService(services.databaseManager);
     this.registerAIService(services.aiManager);
@@ -111,6 +126,7 @@ export class ServiceRegistry {
     this.registerCommandService(services.commandManager);
     this.registerTaskService(services.taskManager);
     this.registerHookService(services.hookManager);
+    this.registerConversationConfigServices(services.conversationConfigService, services.globalConfigManager);
   }
 
   /**

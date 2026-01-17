@@ -10,6 +10,7 @@ import type {
   BaseModel,
   Command,
   Conversation,
+  ConversationConfig,
   DatabaseModel,
   Message,
   ModelAccessor,
@@ -24,7 +25,7 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
   constructor(
     private db: Database,
     private tableName: string,
-  ) {}
+  ) { }
 
   async create(data: Omit<T, 'id' | 'createdAt' | 'updatedAt'>): Promise<T> {
     const now = new Date();
@@ -186,7 +187,7 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
     }
 
     // Parse JSON fields
-    const jsonFields = ['metadata', 'context', 'parameters', 'result', 'args', 'rawContent'];
+    const jsonFields = ['metadata', 'context', 'parameters', 'result', 'args', 'rawContent', 'config'];
     for (const field of jsonFields) {
       if (result[field] && typeof result[field] === 'string') {
         try {
@@ -208,7 +209,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
   private db: Database | null = null;
   private models: DatabaseModel | null = null;
 
-  constructor(private dbPath: string) {}
+  constructor(private dbPath: string) { }
 
   async connect(): Promise<void> {
     if (this.db) {
@@ -335,11 +336,21 @@ export class SQLiteAdapter implements DatabaseAdapter {
         FOREIGN KEY (conversationId) REFERENCES conversations(id),
         FOREIGN KEY (messageId) REFERENCES messages(id)
       )`,
+      `CREATE TABLE IF NOT EXISTS conversation_configs (
+        id TEXT PRIMARY KEY,
+        sessionId TEXT NOT NULL,
+        sessionType TEXT NOT NULL CHECK(sessionType IN ('user', 'group')),
+        config TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        UNIQUE(sessionId, sessionType)
+      )`,
       `CREATE INDEX IF NOT EXISTS idx_messages_conversationId ON messages(conversationId)`,
       `CREATE INDEX IF NOT EXISTS idx_messages_userId ON messages(userId)`,
       `CREATE INDEX IF NOT EXISTS idx_tasks_conversationId ON tasks(conversationId)`,
       `CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)`,
       `CREATE INDEX IF NOT EXISTS idx_commands_conversationId ON commands(conversationId)`,
+      `CREATE INDEX IF NOT EXISTS idx_conversation_configs_session ON conversation_configs(sessionId, sessionType)`,
     ];
 
     for (const statement of statements) {
@@ -385,6 +396,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       sessions: new SQLiteModelAccessor<Session>(this.db, 'sessions'),
       tasks: new SQLiteModelAccessor<Task>(this.db, 'tasks'),
       commands: new SQLiteModelAccessor<Command>(this.db, 'commands'),
+      conversationConfigs: new SQLiteModelAccessor<ConversationConfig>(this.db, 'conversation_configs'),
     };
   }
 }

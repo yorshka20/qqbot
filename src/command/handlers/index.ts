@@ -4,6 +4,6 @@ export * from './BilibiliHotCommandHandler';
 export * from './BuiltinCommandHandler';
 export * from './NaiPlusCommandHandler';
 export * from './NovelAICommandHandler';
-export * from './PluginCommandHandler';
 export * from './Text2ImgCommandHandler';
 export * from './TTSCommandHandler';
+

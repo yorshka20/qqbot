@@ -1,6 +1,7 @@
 // Plugin Initializer - initializes PluginManager and loads plugins
 
 import type { APIClient } from '@/api/APIClient';
+import { ConversationConfigService } from '@/config/ConversationConfigService';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { Config } from '@/core/config';
@@ -34,18 +35,34 @@ export class PluginInitializer {
   ): PluginSystem {
     logger.info('[PluginInitializer] Starting initialization...');
 
-    const pluginManager = new PluginManager(hookManager, {
-      api: apiClient,
-      events: eventRouter,
-      bot: {
-        getConfig: () => config.getConfig(),
+    // Get ConversationConfigService from DI container
+    // It must be registered by ConversationInitializer before this method is called
+    const container = getContainer();
+    if (!container.isRegistered(DITokens.CONVERSATION_CONFIG_SERVICE)) {
+      throw new Error(
+        '[PluginInitializer] ConversationConfigService is not registered. Ensure ConversationInitializer.initialize() is called before PluginInitializer.initialize().',
+      );
+    }
+
+    const conversationConfigService = container.resolve<ConversationConfigService>(
+      DITokens.CONVERSATION_CONFIG_SERVICE,
+    );
+
+    const pluginManager = new PluginManager(
+      hookManager,
+      {
+        api: apiClient,
+        events: eventRouter,
+        bot: {
+          getConfig: () => config.getConfig(),
+        },
       },
-    });
+      conversationConfigService,
+    );
 
     logger.info('[PluginInitializer] PluginManager initialized');
 
     // Register PluginManager to DI container
-    const container = getContainer();
     container.registerInstance(DITokens.PLUGIN_MANAGER, pluginManager);
 
     return {

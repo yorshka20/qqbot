@@ -12,6 +12,8 @@ import {
 import type { APIClient } from '@/api/APIClient';
 import { CommandManager } from '@/command';
 import { DefaultPermissionChecker } from '@/command/PermissionChecker';
+import { ConversationConfigService } from '@/config/ConversationConfigService';
+import { GlobalConfigManager } from '@/config/GlobalConfigManager';
 import { ContextManager } from '@/context';
 import type { AIConfig, BotConfig, Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
@@ -64,6 +66,8 @@ type CompleteServices = {
   commandManager: CommandManager;
   taskManager: TaskManager;
   hookManager: HookManager;
+  conversationConfigService: ConversationConfigService;
+  globalConfigManager: GlobalConfigManager;
 };
 
 /**
@@ -91,8 +95,21 @@ export class ConversationInitializer {
     const serviceRegistry = new ServiceRegistry();
     serviceRegistry.registerInfrastructureServices(config, apiClient);
 
-    // Phase 2: Core Services Creation
-    const services = await this.createCoreServices(config);
+    // Phase 2: Create core service instances (CommandManager requires ConversationConfigService)
+    // DatabaseManager must be created first for ConversationConfigService
+    const dbConfig = config.getDatabaseConfig();
+    const databaseManager = new DatabaseManager();
+    await databaseManager.initialize(dbConfig);
+
+    // Phase 2.5: Initialize Conversation Config Services (required before CommandManager)
+    const globalConfigManager = new GlobalConfigManager();
+    const conversationConfigService = new ConversationConfigService(
+      databaseManager.getAdapter(),
+      globalConfigManager,
+    );
+
+    // Phase 2.6: Create remaining core services (CommandManager requires ConversationConfigService)
+    const services = await this.createCoreServices(config, conversationConfigService, databaseManager);
 
     // Phase 3: Service Configuration
     await this.configureServices(services, config);
@@ -111,9 +128,15 @@ export class ConversationInitializer {
 
     const contextManager = new ContextManager(llmService, promptManager, useSummary, summaryThreshold, maxBufferSize);
 
+    // Register conversation config services to DI container early so PluginManager can inject them
+    // This must be done before PluginManager is created
+    serviceRegistry.registerConversationConfigServices(conversationConfigService, globalConfigManager);
+
     const completeServices: CompleteServices = {
       ...services,
       contextManager,
+      conversationConfigService,
+      globalConfigManager,
     };
     serviceRegistry.registerConversationServices(completeServices);
     // commandManager will be auto registered by injector.
@@ -132,13 +155,10 @@ export class ConversationInitializer {
     );
     serviceRegistry.registerAIServiceCapabilities(aiService);
 
-    // Phase 5: Service Wiring
-    this.wireServices(completeServices);
-
-    // Phase 6: Component Assembly
+    // Phase 5: Component Assembly
     const components = this.assembleComponents(completeServices, apiClient);
 
-    // Phase 7: Register and initialize systems
+    // Phase 6: Register and initialize systems (includes service wiring and config loading)
     await this.registerAndInitializeSystems(components, completeServices, config);
 
     serviceRegistry.verifyServices();
@@ -149,18 +169,20 @@ export class ConversationInitializer {
   /**
    * Phase 2: Create core service instances (without ContextManager)
    * ContextManager requires LLMService, which is created in Phase 4
+   * Note: ConversationConfigService is created before CommandManager because CommandManager requires it
+   * Note: DatabaseManager is passed in because it's already initialized
    */
-  private static async createCoreServices(config: Config): Promise<{
+  private static async createCoreServices(
+    config: Config,
+    conversationConfigService: ConversationConfigService,
+    databaseManager: DatabaseManager,
+  ): Promise<{
     databaseManager: DatabaseManager;
     aiManager: AIManager;
     commandManager: CommandManager;
     taskManager: TaskManager;
     hookManager: HookManager;
   }> {
-    const dbConfig = config.getDatabaseConfig();
-    const databaseManager = new DatabaseManager();
-    await databaseManager.initialize(dbConfig);
-
     const aiManager = new AIManager();
 
     const botConfig = config.getConfig();
@@ -169,7 +191,7 @@ export class ConversationInitializer {
       admins: botConfig.bot.admins,
     });
 
-    const commandManager = new CommandManager(permissionChecker);
+    const commandManager = new CommandManager(permissionChecker, conversationConfigService);
 
     const taskManager = new TaskManager();
     const hookManager = new HookManager();
@@ -324,15 +346,7 @@ export class ConversationInitializer {
   }
 
   /**
-   * Phase 5: Wire services together (set dependencies)
-   */
-  private static wireServices(services: CompleteServices): void {
-    services.commandManager.setHookManager(services.hookManager);
-    services.taskManager.setHookManager(services.hookManager);
-  }
-
-  /**
-   * Phase 6: Assemble high-level components
+   * Phase 5: Assemble high-level components
    */
   private static assembleComponents(services: CompleteServices, apiClient: APIClient): ConversationComponents {
     const systemRegistry = new SystemRegistry();
@@ -360,7 +374,7 @@ export class ConversationInitializer {
   }
 
   /**
-   * Phase 7: Register and initialize systems
+   * Phase 6: Register and initialize systems (includes service wiring and config loading)
    */
   private static async registerAndInitializeSystems(
     components: ConversationComponents,
@@ -368,6 +382,13 @@ export class ConversationInitializer {
     config: Config,
   ): Promise<void> {
     const { systemRegistry } = components;
+
+    // Wire services together (set dependencies)
+    services.commandManager.setHookManager(services.hookManager);
+    services.taskManager.setHookManager(services.hookManager);
+
+    // Load all conversation configs from database
+    await services.conversationConfigService.loadAllConfigs();
 
     const systemContext: SystemContext = {
       hookManager: services.hookManager,

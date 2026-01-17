@@ -3,6 +3,8 @@
 // import handler to register commands
 import './handlers';
 
+import { ConversationConfigService } from '@/config/ConversationConfigService';
+import { getSessionId, getSessionType } from '@/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
@@ -30,11 +32,14 @@ export class CommandManager {
   private commands = new Map<string, CommandRegistration>();
   private builtinCommands = new Map<string, CommandRegistration>();
   private hookManager: HookManager | null = null;
-  // Store command enabled/disabled state per group
+  // Store command enabled/disabled state per group (deprecated, kept for backward compatibility)
   // Map<groupId, Map<commandName, enabled>>
   private groupCommandStates = new Map<number, Map<string, boolean>>();
 
-  constructor(private permissionChecker: PermissionChecker) {
+  constructor(
+    private permissionChecker: PermissionChecker,
+    private conversationConfigService: ConversationConfigService,
+  ) {
     this.autoRegisterDecoratedCommands();
   }
 
@@ -153,8 +158,9 @@ export class CommandManager {
     return new Proxy({} as CommandHandler, {
       get(target, prop) {
         // For known metadata properties, return from metadata first to avoid instantiation
-        if (prop in metadata) {
-          return (metadata as any)[prop];
+        const propKey = prop as keyof typeof metadata;
+        if (propKey === 'name' || propKey === 'description' || propKey === 'usage') {
+          return metadata[propKey];
         }
 
         // For all other properties/methods, delegate to actual instance
@@ -191,16 +197,41 @@ export class CommandManager {
 
   /**
    * Check if user has required permissions
+   * Checks conversation config permissions first, then falls back to default permission checker
    */
-  private checkPermissions(context: CommandContext, requiredPermissions?: PermissionLevel[]): boolean {
+  private async checkPermissions(
+    context: CommandContext,
+    requiredPermissions?: PermissionLevel[],
+  ): Promise<boolean> {
     // If no permissions required, allow all users
     if (!requiredPermissions || requiredPermissions.length === 0) {
       return true;
     }
 
-    // Get user role from context (if available)
-    const userRole = (context.metadata?.senderRole as string) || undefined;
+    // Get session info for conversation config (handles private, group, and temp sessions correctly)
+    const sessionId = getSessionId(context);
+    const sessionType = getSessionType(context);
 
+    // Check conversation config permissions first
+    const conversationPermissions = await this.conversationConfigService.getUserPermissions(
+      context.userId.toString(),
+      sessionId,
+      sessionType,
+    );
+
+    if (conversationPermissions && conversationPermissions.length > 0) {
+      // Check if any of the required permissions are in conversation permissions
+      for (const required of requiredPermissions) {
+        if (conversationPermissions.includes(required)) {
+          return true;
+        }
+      }
+      // If conversation permissions are set but don't match, deny access
+      return false;
+    }
+
+    // Fallback to default permission checker
+    const userRole = (context.metadata?.senderRole as string) || undefined;
     return this.permissionChecker.checkPermission(context.userId, context.messageType, requiredPermissions, userRole);
   }
 
@@ -287,14 +318,16 @@ export class CommandManager {
 
     // Check permissions first - if user doesn't have permission, return permission error
     // This ensures that disabled commands return "no permission" error for users without permission
-    const userRole = (context.metadata?.senderRole as string) || undefined;
-    const hasPermission = this.checkPermissions(context, registration.permissions);
+    const hasPermission = await this.checkPermissions(context, registration.permissions);
     if (!hasPermission) {
       return {
         success: false,
         error: `You don't have permission to use command "${command.name}"`,
       };
     }
+
+    // Get user role from context (if available)
+    const userRole = context.metadata.senderRole
 
     // Check if user is admin - admins can always execute commands regardless of enabled state
     const isAdmin = this.permissionChecker.checkPermission(context.userId, context.messageType, ['admin'], userRole);
@@ -303,14 +336,27 @@ export class CommandManager {
     if (!isAdmin) {
       let isEnabled = registration.enabled ?? true; // Default to enabled if not set
 
-      // For group messages, check group-specific state first
-      if (context.messageType === 'group' && context.groupId !== undefined) {
-        const groupStates = this.groupCommandStates.get(context.groupId);
-        if (groupStates) {
-          const commandState = groupStates.get(command.name.toLowerCase());
-          // If explicitly set in this group, use group state; otherwise use global state
-          if (commandState !== undefined) {
-            isEnabled = commandState;
+      // Get session info for conversation config
+      const sessionId = getSessionId(context);
+      const sessionType = getSessionType(context);
+
+      // Check conversation config first
+      const conversationEnabled = await this.conversationConfigService.getCommandEnabled(
+        command.name,
+        sessionId,
+        sessionType,
+      );
+      if (conversationEnabled !== null) {
+        isEnabled = conversationEnabled;
+      } else {
+        // Fallback to legacy group command states for backward compatibility
+        if (context.messageType === 'group' && context.groupId !== undefined) {
+          const groupStates = this.groupCommandStates.get(context.groupId);
+          if (groupStates) {
+            const commandState = groupStates.get(command.name.toLowerCase());
+            if (commandState !== undefined) {
+              isEnabled = commandState;
+            }
           }
         }
       }
@@ -365,7 +411,7 @@ export class CommandManager {
   /**
    * Get command registration (includes metadata)
    */
-  private getRegistration(name: string): CommandRegistration | null {
+  getRegistration(name: string): CommandRegistration | null {
     const lowerName = name.toLowerCase();
 
     // Check builtin first
@@ -452,70 +498,81 @@ export class CommandManager {
   /**
    * Enable a command
    * @param name - Command name to enable
-   * @param groupId - Optional group ID to enable command for specific group. If not provided, enables globally
+   * @param sessionId - Session ID (userId or groupId as string)
+   * @param sessionType - Session type ('user' or 'group')
+   * @param isGlobal - If true, enable globally (not persisted, reset on restart)
    * @returns true if command was found and enabled, false otherwise
    */
-  enableCommand(name: string, groupId?: number): boolean {
+  async enableCommand(
+    name: string,
+    sessionId: string,
+    sessionType: 'user' | 'group',
+    isGlobal: boolean = false,
+  ): Promise<boolean> {
     const registration = this.getRegistration(name);
     if (!registration) {
       logger.warn(`[CommandManager] Cannot enable command "${name}": command not found`);
       return false;
     }
 
-    if (groupId !== undefined) {
-      // Enable for specific group
-      let groupStates = this.groupCommandStates.get(groupId);
-      if (!groupStates) {
-        groupStates = new Map<string, boolean>();
-        this.groupCommandStates.set(groupId, groupStates);
-      }
-      groupStates.set(name.toLowerCase(), true);
-      logger.info(`[CommandManager] Enabled command "${name}" for group ${groupId}`);
-    } else {
-      // Enable globally
+    if (isGlobal) {
+      // Enable globally (not persisted)
       registration.enabled = true;
-      logger.info(`[CommandManager] Enabled command: ${name} (globally)`);
+      logger.info(`[CommandManager] Enabled command: ${name} (globally, not persisted)`);
+      return true;
     }
+
+    // Enable for conversation (persisted)
+    await this.conversationConfigService.enableCommand(name, sessionId, sessionType);
+    logger.info(`[CommandManager] Enabled command "${name}" for ${sessionType}:${sessionId}`);
     return true;
   }
 
   /**
    * Disable a command
    * @param name - Command name to disable
-   * @param groupId - Optional group ID to disable command for specific group. If not provided, disables globally
+   * @param sessionId - Session ID (userId or groupId as string)
+   * @param sessionType - Session type ('user' or 'group')
+   * @param isGlobal - If true, disable globally (not persisted, reset on restart)
    * @returns true if command was found and disabled, false otherwise
    */
-  disableCommand(name: string, groupId?: number): boolean {
+  async disableCommand(
+    name: string,
+    sessionId: string,
+    sessionType: 'user' | 'group',
+    isGlobal: boolean = false,
+  ): Promise<boolean> {
     const registration = this.getRegistration(name);
     if (!registration) {
       logger.warn(`[CommandManager] Cannot disable command "${name}": command not found`);
       return false;
     }
 
-    if (groupId !== undefined) {
-      // Disable for specific group
-      let groupStates = this.groupCommandStates.get(groupId);
-      if (!groupStates) {
-        groupStates = new Map<string, boolean>();
-        this.groupCommandStates.set(groupId, groupStates);
-      }
-      groupStates.set(name.toLowerCase(), false);
-      logger.info(`[CommandManager] Disabled command "${name}" for group ${groupId}`);
-    } else {
-      // Disable globally
+    if (isGlobal) {
+      // Disable globally (not persisted)
       registration.enabled = false;
-      logger.info(`[CommandManager] Disabled command: ${name} (globally)`);
+      logger.info(`[CommandManager] Disabled command: ${name} (globally, not persisted)`);
+      return true;
     }
+
+    // Disable for conversation (persisted)
+    await this.conversationConfigService.disableCommand(name, sessionId, sessionType);
+    logger.info(`[CommandManager] Disabled command "${name}" for ${sessionType}:${sessionId}`);
     return true;
   }
 
   /**
-   * Check if a command is enabled for a specific group
+   * Check if a command is enabled for a specific session
    * @param name - Command name to check
-   * @param groupId - Group ID to check (optional, for group messages)
+   * @param sessionId - Session ID (userId or groupId as string)
+   * @param sessionType - Session type ('user' or 'group')
    * @returns true if command is enabled, false otherwise
    */
-  isCommandEnabled(name: string, groupId?: number): boolean {
+  async isCommandEnabled(
+    name: string,
+    sessionId: string,
+    sessionType: 'user' | 'group',
+  ): Promise<boolean> {
     const registration = this.getRegistration(name);
     if (!registration) {
       return false;
@@ -523,18 +580,17 @@ export class CommandManager {
 
     let isEnabled = registration.enabled ?? true; // Default to enabled if not set
 
-    // If group ID is provided, check group-specific state
-    if (groupId !== undefined) {
-      const groupStates = this.groupCommandStates.get(groupId);
-      if (groupStates) {
-        const commandState = groupStates.get(name.toLowerCase());
-        // If explicitly set in this group, use group state; otherwise use global state
-        if (commandState !== undefined) {
-          isEnabled = commandState;
-        }
-      }
+    // Check conversation config
+    const conversationEnabled = await this.conversationConfigService.getCommandEnabled(
+      name,
+      sessionId,
+      sessionType,
+    );
+    if (conversationEnabled !== null) {
+      return conversationEnabled;
     }
 
+    // Fallback to registration enabled state
     return isEnabled;
   }
 

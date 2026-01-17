@@ -57,7 +57,7 @@ export interface CommandContextMetadata {
   // Protocol information
   protocol: ProtocolName;
   // Command metadata
-  senderRole?: string;
+  senderRole: string;
 }
 
 

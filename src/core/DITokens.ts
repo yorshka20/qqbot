@@ -13,6 +13,8 @@ export const DITokens = {
   CONFIG: 'Config',
   PROMPT_MANAGER: 'PromptManager',
   PLUGIN_MANAGER: 'PluginManager',
+  CONVERSATION_CONFIG_SERVICE: 'ConversationConfigService',
+  GLOBAL_CONFIG_MANAGER: 'GlobalConfigManager',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];

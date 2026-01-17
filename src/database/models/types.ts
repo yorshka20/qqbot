@@ -75,6 +75,32 @@ export interface Command extends BaseModel {
 }
 
 /**
+ * Conversation config data structure
+ */
+export interface ConversationConfigData {
+  commands?: {
+    enabled?: string[];
+    disabled?: string[];
+  };
+  plugins?: {
+    enabled?: string[];
+    disabled?: string[];
+  };
+  permissions?: {
+    users?: Record<string, string[]>; // userId -> permission levels (as strings, will be validated as PermissionLevel)
+  };
+}
+
+/**
+ * Conversation config model
+ */
+export interface ConversationConfig extends BaseModel {
+  sessionId: string; // User ID or Group ID
+  sessionType: 'user' | 'group';
+  config: ConversationConfigData; // JSON object
+}
+
+/**
  * Model accessor interface
  */
 export interface ModelAccessor<T extends BaseModel> {
@@ -123,4 +149,5 @@ export interface DatabaseModel {
   sessions: ModelAccessor<Session>;
   tasks: ModelAccessor<Task>;
   commands: ModelAccessor<Command>;
+  conversationConfigs: ModelAccessor<ConversationConfig>;
 }

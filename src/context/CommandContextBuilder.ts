@@ -50,13 +50,11 @@ export class CommandContextBuilder {
     if (!context.message.protocol) {
       throw new Error('Protocol is required but not found in message event');
     }
-    const metadata: CommandContextMetadata = {
+
+    builder.metadata = {
       protocol: context.message.protocol,
+      senderRole: context.message.sender?.role ?? '',
     };
-    if (context.message.sender?.role) {
-      metadata.senderRole = context.message.sender.role;
-    }
-    builder.metadata = metadata;
 
     return builder;
   }

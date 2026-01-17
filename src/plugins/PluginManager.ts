@@ -1,5 +1,8 @@
 // Plugin loading and lifecycle management
 
+import type { CommandContext } from '@/command/types';
+import { ConversationConfigService } from '@/config/ConversationConfigService';
+import { getSessionId, getSessionType } from '@/config/SessionUtils';
 import { HookManager } from '@/hooks/HookManager';
 import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookHandler } from '@/hooks/types';
@@ -19,9 +22,10 @@ export class PluginManager {
   constructor(
     private hookManager: HookManager,
     private context: PluginContext,
-  ) {}
+    private conversationConfigService: ConversationConfigService,
+  ) { }
 
-  async loadPlugins(pluginConfigs: Array<{ name: string; enabled: boolean; config?: any }> = []): Promise<void> {
+  async loadPlugins(pluginConfigs: Array<{ name: string; enabled: boolean; config?: unknown }> = []): Promise<void> {
     const pluginConfigMap = new Map(pluginConfigs.map((p) => [p.name, p]));
 
     // Load plugins from fixed src/plugins directory
@@ -48,7 +52,7 @@ export class PluginManager {
    */
   private async loadPluginsFromDirectory(
     directory: string,
-    pluginConfigMap: Map<string, { name: string; enabled: boolean; config?: any }>,
+    pluginConfigMap: Map<string, { name: string; enabled: boolean; config?: unknown }>,
     isBuiltin: boolean = false,
   ): Promise<void> {
     const files = readdirSync(directory);
@@ -152,12 +156,99 @@ export class PluginManager {
     return this.plugins.get(name);
   }
 
+  /**
+   * Get plugin with type assertion
+   * @param name - Plugin name
+   * @returns Plugin instance cast to type T, or undefined if not found
+   */
+  getPluginAs<T extends Plugin>(name: string): T | undefined {
+    return this.plugins.get(name) as T | undefined;
+  }
+
   getEnabledPlugins(): string[] {
     return Array.from(this.enabledPlugins);
   }
 
   getAllPlugins(): Plugin[] {
     return Array.from(this.plugins.values());
+  }
+
+
+  /**
+   * Enable a plugin for a conversation
+   * @param pluginName - Plugin name to enable
+   * @param context - Command context to extract session info
+   * @param isGlobal - If true, enable globally (not persisted, reset on restart)
+   */
+  async enablePluginForConversation(
+    pluginName: string,
+    context: CommandContext,
+    isGlobal: boolean = false,
+  ): Promise<void> {
+    if (isGlobal) {
+      // Enable globally (not persisted)
+      await this.enablePlugin(pluginName);
+      logger.info(`[PluginManager] Enabled plugin: ${pluginName} (globally, not persisted)`);
+      return;
+    }
+
+    // Enable for conversation (persisted)
+    const sessionId = getSessionId(context);
+    const sessionType = getSessionType(context);
+    await this.conversationConfigService.enablePlugin(pluginName, sessionId, sessionType);
+    logger.info(`[PluginManager] Enabled plugin "${pluginName}" for ${sessionType}:${sessionId}`);
+  }
+
+  /**
+   * Disable a plugin for a conversation
+   * @param pluginName - Plugin name to disable
+   * @param context - Command context to extract session info
+   * @param isGlobal - If true, disable globally (not persisted, reset on restart)
+   */
+  async disablePluginForConversation(
+    pluginName: string,
+    context: CommandContext,
+    isGlobal: boolean = false,
+  ): Promise<void> {
+    if (isGlobal) {
+      // Disable globally (not persisted)
+      await this.disablePlugin(pluginName);
+      logger.info(`[PluginManager] Disabled plugin: ${pluginName} (globally, not persisted)`);
+      return;
+    }
+
+    // Disable for conversation (persisted)
+    const sessionId = getSessionId(context);
+    const sessionType = getSessionType(context);
+    await this.conversationConfigService.disablePlugin(pluginName, sessionId, sessionType);
+    logger.info(`[PluginManager] Disabled plugin "${pluginName}" for ${sessionType}:${sessionId}`);
+  }
+
+  /**
+   * Check if a plugin is enabled for a specific session
+   * @param pluginName - Plugin name to check
+   * @param context - Command context to extract session info
+   * @returns true if plugin is enabled, false otherwise
+   */
+  async isPluginEnabledForConversation(
+    pluginName: string,
+    context: CommandContext,
+  ): Promise<boolean> {
+    // Check if plugin is globally enabled first
+    if (!this.enabledPlugins.has(pluginName)) {
+      return false;
+    }
+
+    // Check conversation config
+    const sessionId = getSessionId(context);
+    const sessionType = getSessionType(context);
+    const conversationEnabled = await this.conversationConfigService.getPluginEnabled(
+      pluginName,
+      sessionId,
+      sessionType,
+    );
+
+    return conversationEnabled ?? true;
   }
 
   /**

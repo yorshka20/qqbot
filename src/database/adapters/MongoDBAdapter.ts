@@ -8,6 +8,7 @@ import type {
   BaseModel,
   Command,
   Conversation,
+  ConversationConfig,
   DatabaseModel,
   Message,
   ModelAccessor,
@@ -226,6 +227,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
       sessions: new MongoModelAccessor<Session>(this.db.collection('sessions')),
       tasks: new MongoModelAccessor<Task>(this.db.collection('tasks')),
       commands: new MongoModelAccessor<Command>(this.db.collection('commands')),
+      conversationConfigs: new MongoModelAccessor<ConversationConfig>(this.db.collection('conversation_configs')),
     };
   }
 }
