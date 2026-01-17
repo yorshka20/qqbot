@@ -1,5 +1,4 @@
 import { AIService, ImageGenerationResponse, Text2ImageOptions } from '@/ai';
-import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
@@ -8,6 +7,7 @@ import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
 import { generateSeed } from '../utils/CommandImageUtils';
+import { createHookContextForCommand } from '../utils/HookContextBuilder';
 import { MessageSender } from '../utils/MessageSender';
 
 /**
@@ -107,24 +107,7 @@ export class NovelAICommand implements CommandHandler {
       logger.info(`[NovelAICommand] Generating image with prompt: ${prompt.substring(0, 50)}...`);
 
       // Create hook context for AIService
-      // Get protocol from context metadata (should be set by CommandContextBuilder)
-      const protocol = context.metadata.protocol;
-      const hookContext = HookContextBuilder.create()
-        .withSyntheticMessage({
-          id: `cmd_${Date.now()}`,
-          type: 'message',
-          timestamp: Date.now(),
-          protocol,
-          userId: context.userId,
-          groupId: context.groupId,
-          messageId: undefined,
-          messageType: context.messageType,
-          message: prompt,
-          segments: [],
-        })
-        .withMetadata('sessionId', context.groupId ? `group_${context.groupId}` : `user_${context.userId}`)
-        .withMetadata('sessionType', context.messageType === 'private' ? 'user' : context.messageType)
-        .build();
+      const hookContext = createHookContextForCommand(context, prompt);
 
       // Check if num parameter is provided for multiple image generation
       const numImages = options?.numImages || 1;

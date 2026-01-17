@@ -2,6 +2,7 @@
 // Provides a unified way to create CommandContext instances
 
 import type { CommandContext, CommandContextMetadata } from '@/command/types';
+import type { ConversationContext } from '@/context/types';
 import type { HookContext } from '@/hooks/types';
 
 /**
@@ -15,6 +16,7 @@ export class CommandContextBuilder {
   private rawMessage?: string;
   private messageScene?: string;
   private metadata?: CommandContextMetadata;
+  private conversationContext?: ConversationContext;
 
   private constructor() { }
 
@@ -40,6 +42,8 @@ export class CommandContextBuilder {
     builder.rawMessage = context.message.message;
     // Save message scene for temporary session handling (required field)
     builder.messageScene = context.message.messageScene || 'private';
+    // Extract conversation context from HookContext
+    builder.conversationContext = context.context;
 
     // Extract metadata from message sender and protocol
     // Protocol is required in CommandContextMetadata, so it must be present
@@ -112,6 +116,14 @@ export class CommandContextBuilder {
   }
 
   /**
+   * Set conversation context
+   */
+  withConversationContext(conversationContext: ConversationContext): this {
+    this.conversationContext = conversationContext;
+    return this;
+  }
+
+  /**
    * Build the CommandContext instance
    * Throws if required fields are missing
    */
@@ -131,6 +143,9 @@ export class CommandContextBuilder {
     if (this.metadata === undefined || !this.metadata.protocol) {
       throw new Error('CommandContextBuilder: metadata with protocol is required');
     }
+    if (this.conversationContext === undefined) {
+      throw new Error('CommandContextBuilder: conversationContext is required');
+    }
 
     const context: CommandContext = {
       userId: this.userId,
@@ -138,6 +153,7 @@ export class CommandContextBuilder {
       rawMessage: this.rawMessage,
       messageScene: this.messageScene,
       metadata: this.metadata,
+      conversationContext: this.conversationContext,
     };
 
     if (this.groupId !== undefined) {

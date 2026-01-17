@@ -1,11 +1,11 @@
 import { AIService, Text2ImageOptions } from '@/ai';
-import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
+import { createHookContextForCommand } from '../utils/HookContextBuilder';
 import { MessageSender } from '../utils/MessageSender';
 
 /**
@@ -59,24 +59,7 @@ export class BananaCommand implements CommandHandler {
       logger.info(`[BananaCommand] Generating image with prompt: ${prompt.substring(0, 50)}...`);
 
       // Create hook context for AIService
-      // Get protocol from context metadata (should be set by CommandContextBuilder)
-      const protocol = context.metadata.protocol;
-      const hookContext = HookContextBuilder.create()
-        .withSyntheticMessage({
-          id: `cmd_${Date.now()}`,
-          type: 'message',
-          timestamp: Date.now(),
-          protocol,
-          userId: context.userId,
-          groupId: context.groupId,
-          messageId: undefined,
-          messageType: context.messageType,
-          message: prompt,
-          segments: [],
-        })
-        .withMetadata('sessionId', context.groupId ? `group_${context.groupId}` : `user_${context.userId}`)
-        .withMetadata('sessionType', context.messageType === 'private' ? 'user' : context.messageType)
-        .build();
+      const hookContext = createHookContextForCommand(context, prompt);
 
       // Generate image using Laozhang provider with Gemini 2.5 model
       const imageOptions: Text2ImageOptions = {
@@ -173,24 +156,7 @@ export class BananaProCommand implements CommandHandler {
       logger.info(`[BananaProCommand] Generating image with prompt: ${prompt.substring(0, 50)}...`);
 
       // Create hook context for AIService
-      // Get protocol from context metadata (should be set by CommandContextBuilder)
-      const protocol = context.metadata?.protocol || 'milky';
-      const hookContext = HookContextBuilder.create()
-        .withSyntheticMessage({
-          id: `cmd_${Date.now()}`,
-          type: 'message',
-          timestamp: Date.now(),
-          protocol,
-          userId: context.userId,
-          groupId: context.groupId,
-          messageId: undefined,
-          messageType: context.messageType,
-          message: prompt,
-          segments: [],
-        })
-        .withMetadata('sessionId', context.groupId ? `group_${context.groupId}` : `user_${context.userId}`)
-        .withMetadata('sessionType', context.messageType === 'private' ? 'user' : context.messageType)
-        .build();
+      const hookContext = createHookContextForCommand(context, prompt);
 
       // Generate image using Laozhang provider with Gemini 3 Pro model
       // Use LLM preprocessing with generate_banana template for better prompt optimization
