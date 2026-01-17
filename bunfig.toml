@@ -19,3 +19,27 @@ bun = false
 # Shell to use when running scripts
 # Options: "bun" (Bun's shell) or "system" (system shell)
 shell = "bun"
+
+[build]
+# Default build target for bun build command
+# Options: "bun", "node", "browser"
+target = "bun"
+
+# Minify output bundle
+minify = false
+
+# Source map generation
+# Options: "inline", "external", true, false
+sourcemap = "external"
+
+# Environment variable handling
+# Options: "inline" (inline all), "disable" (disable), or pattern like "PUBLIC_*"
+env = "inline"
+
+# Code splitting configuration
+# Note: Bun's code splitting (--splitting) only works effectively with MULTIPLE entrypoints.
+# For single entrypoint builds, all dependencies are bundled into one file.
+# To enable code splitting, you need to:
+# 1. Use multiple entrypoints in build command: bun build entry1.ts entry2.ts --splitting
+# 2. Use dynamic imports (import()) in your code to create separate chunks
+# 3. For server-side apps, single-file bundles are often acceptable and simpler to deploy

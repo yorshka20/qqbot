@@ -6,7 +6,10 @@
   "type": "module",
   "scripts": {
     "dev": "LOG_LEVEL=debug bun run src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target bun --minify",
+    "build": "bun run scripts/build.ts production",
+    "build:dev": "bun run scripts/build.ts development",
+    "build:all": "bun run scripts/build.ts bundleAll",
+    "build:watch": "bun build src/index.ts --outdir dist --target bun --watch",
     "start": "bun dist/index.js",
     "debug": "bun run src/cli/debug.ts",
     "type-check": "tsc --noEmit",
