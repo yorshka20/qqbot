@@ -22,7 +22,7 @@ export class Lifecycle {
   constructor(
     private hookManager: HookManager,
     private commandRouter: CommandRouter,
-  ) {}
+  ) { }
 
   enabled(): boolean {
     return true;
@@ -100,7 +100,7 @@ export class Lifecycle {
    * Initial message reception and validation
    */
   private async executeStageReceive(context: HookContext, messageId: string): Promise<boolean> {
-    logger.debug(`[Lifecycle] Stage1: ON_MESSAGE_RECEIVED`);
+    logger.debug(`[Lifecycle] 🟦[1] Stage: ON_MESSAGE_RECEIVED`);
 
     // Execute hook
     const shouldContinue = await this.hookManager.execute('onMessageReceived', context);
@@ -118,7 +118,7 @@ export class Lifecycle {
    * Message preprocessing, command routing, and initial filtering
    */
   private async executeStagePreprocess(context: HookContext, messageId: string): Promise<boolean> {
-    logger.debug(`[Lifecycle] Stage2: PREPROCESS`);
+    logger.debug(`[Lifecycle] 🟦[2] Stage: PREPROCESS`);
 
     // Execute hook and check return value
     const shouldContinue = await this.hookManager.execute('onMessagePreprocess', context);
@@ -139,7 +139,7 @@ export class Lifecycle {
    * Main processing: command execution, task analysis, AI generation
    */
   private async executeStageProcess(context: HookContext, messageId: string): Promise<boolean> {
-    logger.debug(`[Lifecycle] Stage3: PROCESS`);
+    logger.debug(`[Lifecycle] 🟦[3] Stage: PROCESS`);
 
     // Execute systems (CommandSystem, TaskSystem, etc.)
     return await this.executeSystems(SystemStage.PROCESS, context, messageId);
@@ -150,7 +150,7 @@ export class Lifecycle {
    * Prepare message for sending
    */
   private async executeStagePrepare(context: HookContext, messageId: string): Promise<boolean> {
-    logger.debug(`[Lifecycle] Stage4: PREPARE`);
+    logger.debug(`[Lifecycle] 🟦[4] Stage: PREPARE`);
 
     // Execute hook and check return value
     const shouldContinue = await this.hookManager.execute('onMessageBeforeSend', context);
@@ -168,7 +168,7 @@ export class Lifecycle {
    * Send message (actual sending is handled by MessagePipeline)
    */
   private async executeStageSend(context: HookContext, messageId: string): Promise<boolean> {
-    logger.debug(`[Lifecycle] Stage5: SEND`);
+    logger.debug(`[Lifecycle] 🟦[5] Stage: SEND`);
 
     // Execute systems
     return await this.executeSystems(SystemStage.SEND, context, messageId);
@@ -179,7 +179,7 @@ export class Lifecycle {
    * Final cleanup and completion
    */
   private async executeStageComplete(context: HookContext, messageId: string): Promise<boolean> {
-    logger.debug(`[Lifecycle] Stage6: COMPLETE`);
+    logger.debug(`[Lifecycle] 🟧[6] Stage: COMPLETE`);
 
     // Execute hook. no blocking since it's the last stage
     await this.hookManager.execute('onMessageSent', context);

@@ -5,7 +5,9 @@ import { logger } from '@/utils/logger';
 import type { AIProvider } from './base/AIProvider';
 import { AnthropicProvider } from './providers/AnthropicProvider';
 import { DeepSeekProvider } from './providers/DeepSeekProvider';
+import { DoubaoProvider } from './providers/DoubaoProvider';
 import { GeminiProvider } from './providers/GeminiProvider';
+import { LaozhangProvider } from './providers/LaozhangProvider';
 import { LocalText2ImageProvider } from './providers/LocalText2ImageProvider';
 import { NovelAIProvider } from './providers/NovelAIProvider';
 import { OllamaProvider } from './providers/OllamaProvider';
@@ -120,6 +122,31 @@ export class ProviderFactory {
             defaultWidth: geminiConfig.defaultWidth,
             defaultHeight: geminiConfig.defaultHeight,
             resourceSavePath: geminiConfig.resourceSavePath,
+          });
+        }
+        case 'doubao': {
+          const doubaoConfig = config as Extract<AIProviderConfig, { type: 'doubao' }>;
+          return new DoubaoProvider({
+            apiKey: doubaoConfig.apiKey,
+            model: doubaoConfig.model,
+            baseURL: doubaoConfig.baseURL,
+            reasoningEffort: doubaoConfig.reasoningEffort,
+            defaultTemperature: doubaoConfig.temperature,
+            defaultMaxTokens: doubaoConfig.maxTokens,
+            enableContext: doubaoConfig.enableContext,
+            contextMessageCount: doubaoConfig.contextMessageCount,
+          });
+        }
+        case 'laozhang': {
+          const laozhangConfig = config as Extract<AIProviderConfig, { type: 'laozhang' }>;
+          return new LaozhangProvider({
+            type: 'laozhang',
+            apiKey: laozhangConfig.apiKey,
+            model: laozhangConfig.model,
+            baseURL: laozhangConfig.baseURL,
+            defaultAspectRatio: laozhangConfig.defaultAspectRatio,
+            defaultImageSize: laozhangConfig.defaultImageSize,
+            resourceSavePath: laozhangConfig.resourceSavePath,
           });
         }
         default: {

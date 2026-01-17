@@ -69,9 +69,32 @@ export class EchoPlugin extends PluginBase {
     const isCommand = MessageUtils.isCommand(context.message.message);
     const isAtBot = MessageUtils.isAtBot(context.message, botSelfId);
 
-    const shouldTrigger = isEnabled && isAdmin && !isCommand && !isAtBot;
+    // Check if message contains images or faces (emojis)
+    // Only echo pure text messages
+    const hasNonTextContent = this.hasNonTextContent(context.message);
+
+    const shouldTrigger = isEnabled && isAdmin && !isCommand && !isAtBot && !hasNonTextContent;
 
     return shouldTrigger;
+  }
+
+  /**
+   * Check if message contains non-text content (images or faces/emojis)
+   * Returns true if message contains images or faces, false otherwise
+   */
+  private hasNonTextContent(message: HookContext['message']): boolean {
+    const segments = message.segments;
+
+    // If no segments, treat as pure text message
+    if (!segments || segments.length === 0) {
+      return false;
+    }
+
+    // Check if any segment is image or face
+    return segments.some((segment) => {
+      const segmentType = segment.type;
+      return segmentType === 'image' || segmentType === 'face';
+    });
   }
 
   /**

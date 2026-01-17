@@ -471,17 +471,21 @@ export class AIService {
 
     logger.debug('[AIService] Calling LLM to preprocess image generation parameters...');
 
-    // Call LLM to generate JSON parameters
+    // Call LLM to generate JSON parameters. use deepseek to generate prompt.
     const llmResponse = await this.llmService.generate(llmPrompt, {
       temperature: 0.3, // Lower temperature for more consistent JSON output
       maxTokens: 1000,
       sessionId,
-    });
+    }, 'deepseek');
 
     logger.debug(`[AIService] LLM response received | responseLength=${llmResponse.text.length}`);
 
     // Parse LLM response to extract image generation parameters
     const parsedParams = this.parseImageGenerationParams(llmResponse.text, userInput);
+
+    // Extract additional parameters from LLM JSON response that may not be in standard format
+    // Some templates (like generate_banana.txt) output aspectRatio and resolution directly
+    const additionalParams = this.extractAdditionalParamsFromLLMResponse(llmResponse.text);
 
     const processedOptions: Text2ImageOptions = {
       steps: parsedParams.steps,
@@ -491,12 +495,14 @@ export class AIService {
       height: parsedParams.height,
       negative_prompt: parsedParams.negative_prompt,
       sampler: parsedParams.sampler,
+      // Additional parameters from LLM response (aspectRatio, imageSize from resolution, etc.)
+      ...additionalParams,
       // Merge with user-provided options (user options take precedence)
       ...options,
     };
 
     logger.info(
-      `[AIService] LLM preprocessing completed | original="${userInput.substring(0, 50)}..." | processed="${parsedParams.prompt.substring(0, 50)}..." | steps=${processedOptions.steps} | cfg=${processedOptions.guidance_scale}`,
+      `[AIService] LLM preprocessing completed | original="${userInput.substring(0, 50)}..." | processed="${parsedParams.prompt}" | steps=${processedOptions.steps} | cfg=${processedOptions.guidance_scale}`,
     );
 
     return {
@@ -635,6 +641,59 @@ export class AIService {
         height: AIService.DEFAULT_HEIGHT,
         sampler: 'Euler a',
       };
+    }
+  }
+
+  /**
+   * Extract additional parameters from LLM JSON response
+   * Some templates output parameters directly (e.g., aspectRatio, resolution) that should be mapped to options
+   * This is a generic extractor that supports common parameter names from different templates
+   * @param llmResponse - Raw LLM response text
+   * @returns Additional parameters to merge into options
+   */
+  private extractAdditionalParamsFromLLMResponse(llmResponse: string): Partial<Text2ImageOptions> {
+    try {
+      // Try to extract JSON from the response
+      let jsonText = llmResponse.trim();
+
+      // Remove markdown code block markers if present
+      const jsonBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (jsonBlockMatch) {
+        jsonText = jsonBlockMatch[1].trim();
+      }
+
+      // Try to find JSON object in the text
+      const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonText = jsonMatch[0];
+      }
+
+      // Parse JSON
+      const parsed = JSON.parse(jsonText);
+
+      const result: Partial<Text2ImageOptions> = {};
+
+      // Extract aspectRatio if present (e.g., from generate_banana.txt)
+      if (parsed.aspectRatio && typeof parsed.aspectRatio === 'string') {
+        result.aspectRatio = parsed.aspectRatio;
+      }
+
+      // Extract imageSize from resolution if present
+      // Some templates output "resolution": "2K" or "4K" which should map to imageSize
+      if (parsed.resolution && typeof parsed.resolution === 'string') {
+        // Normalize to uppercase (e.g., "2k" -> "2K")
+        result.imageSize = parsed.resolution.toUpperCase();
+      }
+
+      // Extract imageSize directly if present
+      if (parsed.imageSize && typeof parsed.imageSize === 'string') {
+        result.imageSize = parsed.imageSize.toUpperCase();
+      }
+
+      return result;
+    } catch (error) {
+      // If parsing fails, return empty object (no additional params extracted)
+      return {};
     }
   }
 
