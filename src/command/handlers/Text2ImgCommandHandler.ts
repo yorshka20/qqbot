@@ -2,6 +2,7 @@ import { AIService, ImageGenerationResponse, Text2ImageOptions } from '@/ai';
 import { AIManager } from '@/ai/AIManager';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
+import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
@@ -9,7 +10,7 @@ import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
 import { generateSeed } from '../utils/CommandImageUtils';
 import { createHookContextForCommand } from '../utils/HookContextBuilder';
-import { MessageSender } from '../utils/MessageSender';
+import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 
 /**
  * Text2Image command - generates image from text prompt
@@ -48,8 +49,7 @@ export class Text2ImageCommand implements CommandHandler {
   constructor(
     @inject(DITokens.AI_SERVICE) private aiService: AIService,
     @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
-    @inject(MessageSender) private messageSender: MessageSender,
-  ) { }
+  ) {}
 
   /**
    * Generate image with provider fallback
@@ -152,10 +152,11 @@ export class Text2ImageCommand implements CommandHandler {
           };
         }
 
-        // Send first image (unless silent mode)
+        // Build first image message (unless silent mode)
+        let firstImageSegments: MessageSegment[] | undefined;
         if (!silent) {
-          const messageBuilder = this.messageSender.buildMessage(firstResponse, '[Text2ImageCommand]');
-          await this.messageSender.send(messageBuilder.build(), context);
+          const messageBuilder = buildMessageFromResponse(firstResponse, '[Text2ImageCommand]');
+          firstImageSegments = messageBuilder.build();
         }
 
         // Determine template name for remaining images (same as first call or novelai template if fallback happened)
@@ -174,15 +175,18 @@ export class Text2ImageCommand implements CommandHandler {
           };
 
           const response = await this.generateWithProvider(hookContext, processedOptions, providerName, true, remainingTemplateName);
-          // Send image (unless silent mode)
-          if (!silent) {
-            const messageBuilder = this.messageSender.buildMessage(response, '[Text2ImageCommand]');
-            await this.messageSender.send(messageBuilder.build(), context);
+          // Build image message (unless silent mode)
+          // Note: For batch generation, we only return the first image segments
+          // Subsequent images would need to be sent separately or handled differently
+          if (!silent && !firstImageSegments) {
+            const messageBuilder = buildMessageFromResponse(response, '[Text2ImageCommand]');
+            firstImageSegments = messageBuilder.build();
           }
         }
 
         return {
           success: true,
+          segments: firstImageSegments,
         };
       }
 
@@ -199,14 +203,16 @@ export class Text2ImageCommand implements CommandHandler {
         };
       }
 
-      // Send image response (unless silent mode)
+      // Build image response (unless silent mode)
+      let imageSegments: MessageSegment[] | undefined;
       if (!silent) {
-        const messageBuilder = this.messageSender.buildMessage(response, '[Text2ImageCommand]');
-        await this.messageSender.send(messageBuilder.build(), context);
+        const messageBuilder = buildMessageFromResponse(response, '[Text2ImageCommand]');
+        imageSegments = messageBuilder.build();
       }
 
       return {
         success: true,
+        segments: imageSegments,
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');

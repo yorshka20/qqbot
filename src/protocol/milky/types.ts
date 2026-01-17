@@ -6,10 +6,12 @@ import type { BaseEvent } from '../base/types';
 
 /**
  * Milky API response format
+ * Actual format returned by Milky API: { status: string, retcode: number, data?: T }
  * @see https://github.com/SaltifyDev/milky
  */
 export interface MilkyAPIResponse<T = unknown> {
-  code: number;
+  status: string;
+  retcode: number;
   message?: string;
   data?: T;
 }

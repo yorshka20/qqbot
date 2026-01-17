@@ -1,12 +1,13 @@
 import { AIService, Text2ImageOptions } from '@/ai';
 import { DITokens } from '@/core/DITokens';
+import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
 import { createHookContextForCommand } from '../utils/HookContextBuilder';
-import { MessageSender } from '../utils/MessageSender';
+import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 
 /**
  * Banana command - generates image from text prompt using Laozhang AI provider (Gemini 2.5 model)
@@ -36,10 +37,7 @@ export class BananaCommand implements CommandHandler {
     },
   };
 
-  constructor(
-    @inject(DITokens.AI_SERVICE) private aiService: AIService,
-    @inject(MessageSender) private messageSender: MessageSender,
-  ) { }
+  constructor(@inject(DITokens.AI_SERVICE) private aiService: AIService) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     if (args.length === 0) {
@@ -90,14 +88,16 @@ export class BananaCommand implements CommandHandler {
         };
       }
 
-      // Send image response (unless silent mode)
+      // Build image response (unless silent mode)
+      let imageSegments: MessageSegment[] | undefined;
       if (!silent) {
-        const messageBuilder = this.messageSender.buildMessage(response, '[BananaCommand]');
-        await this.messageSender.send(messageBuilder.build(), context);
+        const messageBuilder = buildMessageFromResponse(response, '[BananaCommand]');
+        imageSegments = messageBuilder.build();
       }
 
       return {
         success: true,
+        segments: imageSegments,
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
@@ -136,10 +136,7 @@ export class BananaProCommand implements CommandHandler {
     },
   };
 
-  constructor(
-    @inject(DITokens.AI_SERVICE) private aiService: AIService,
-    @inject(MessageSender) private messageSender: MessageSender,
-  ) { }
+  constructor(@inject(DITokens.AI_SERVICE) private aiService: AIService) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     if (args.length === 0) {
@@ -183,14 +180,16 @@ export class BananaProCommand implements CommandHandler {
         };
       }
 
-      // Send image response (unless silent mode)
+      // Build image response (unless silent mode)
+      let imageSegments: MessageSegment[] | undefined;
       if (!silent) {
-        const messageBuilder = this.messageSender.buildMessage(response, '[BananaProCommand]');
-        await this.messageSender.send(messageBuilder.build(), context);
+        const messageBuilder = buildMessageFromResponse(response, '[BananaProCommand]');
+        imageSegments = messageBuilder.build();
       }
 
       return {
         success: true,
+        segments: imageSegments,
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');

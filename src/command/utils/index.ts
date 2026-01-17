@@ -4,5 +4,5 @@
  */
 
 export * from './CommandImageUtils';
-export * from './MessageSender';
+export * from './HookContextBuilder';
 

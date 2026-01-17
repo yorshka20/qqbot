@@ -1,10 +1,9 @@
 import { HttpClient } from '@/api/http/HttpClient';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
-import { inject, injectable } from 'tsyringe';
+import { injectable } from 'tsyringe';
 import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
-import { MessageSender } from '../utils/MessageSender';
 
 // Fetch hot search data from Bilibili API
 type BilibiliHotSearchResponse = {
@@ -37,7 +36,7 @@ export class BilibiliHotCommandHandler implements CommandHandler {
   private readonly API_URL = 'https://s.search.bilibili.com/main/hotword';
   private readonly httpClient: HttpClient;
 
-  constructor(@inject(MessageSender) private messageSender: MessageSender) {
+  constructor() {
     // Configure HttpClient for Bilibili API
     this.httpClient = new HttpClient({
       baseURL: this.API_URL,
@@ -97,10 +96,10 @@ export class BilibiliHotCommandHandler implements CommandHandler {
       messageBuilder.text('\n━━━━━━━━━━━━━━━━');
 
       const messageSegments = messageBuilder.build();
-      await this.messageSender.send(messageSegments, context, 10000);
 
       return {
         success: true,
+        segments: messageSegments,
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');

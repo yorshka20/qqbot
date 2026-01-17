@@ -1,14 +1,14 @@
 // Message Pipeline - processes messages through the complete flow
 
+import { extractTextFromSegments } from '@/ai/utils/imageUtils';
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ContextManager, ConversationContext } from '@/context';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
-import { getReply, getReplyContent, setReply } from '@/context/HookContextHelpers';
+import { getReplyContent } from '@/context/HookContextHelpers';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
-import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { Lifecycle } from './Lifecycle';
@@ -93,21 +93,25 @@ export class MessagePipeline {
     hookContext: HookContext,
     messageId: string,
   ): Promise<MessageProcessingResult> {
-    const reply = getReply(hookContext);
+    const replyContent = getReplyContent(hookContext);
     const postProcessOnly = hookContext.metadata.get('postProcessOnly');
 
-    if (reply) {
-      logger.info(`[MessagePipeline] Sending reply | messageId=${messageId} | replyLength=${reply.length}`);
-      await this.sendMessage(event, reply, hookContext);
-      await this.saveConversationMessages(context.sessionId, event.message, reply);
+    if (replyContent?.segments && replyContent.segments.length > 0) {
+      const replyText = extractTextFromSegments(replyContent.segments);
+      logger.info(`[MessagePipeline] Sending reply | messageId=${messageId} | replyLength=${replyText.length}`);
+      await this.sendMessage(event, hookContext);
+      await this.saveConversationMessages(context.sessionId, event.message, replyText);
+
+      return {
+        success: true,
+        reply: replyText,
+      };
     } else {
       logger.info(`[MessagePipeline] No reply to send | messageId=${messageId} | postProcessOnly=${postProcessOnly}`);
+      return {
+        success: true,
+      };
     }
-
-    return {
-      success: true,
-      reply,
-    };
   }
 
   /**
@@ -140,9 +144,7 @@ export class MessagePipeline {
   /**
    * Send message
    */
-  private async sendMessage(event: NormalizedMessageEvent, reply: string, hookContext: HookContext): Promise<void> {
-    this.updateReplyInContext(hookContext, reply);
-
+  private async sendMessage(event: NormalizedMessageEvent, hookContext: HookContext): Promise<void> {
     const shouldContinue = await this.hookManager.execute('onMessageBeforeSend', hookContext);
     if (!shouldContinue) {
       logger.warn('[MessagePipeline] Message sending interrupted by hook');
@@ -150,45 +152,30 @@ export class MessagePipeline {
     }
 
     try {
-      const messageToSend = this.buildMessageToSend(hookContext, reply);
-      await this.messageAPI.sendFromContext(messageToSend, event, 10000);
+      const messageToSend = this.buildMessageToSend(hookContext);
+      const sentMessageResponse = await this.messageAPI.sendFromContext(messageToSend, event, 10000);
+      // Save full API response for plugins to access all fields (e.g., message_id, message_seq, etc.)
+      hookContext.sentMessageResponse = sentMessageResponse;
       await this.hookManager.execute('onMessageSent', hookContext);
     } catch (error) {
       await this.handleSendError(error, hookContext);
     }
   }
 
-  /**
-   * Update reply in hook context
-   */
-  private updateReplyInContext(hookContext: HookContext, reply: string): void {
-    if (!hookContext.reply) {
-      setReply(hookContext, reply, 'ai');
-    } else {
-      hookContext.reply.text = reply;
-    }
-  }
 
   /**
-   * Build message to send (text or card image)
+   * Build message to send (always returns segments)
    */
-  private buildMessageToSend(
-    hookContext: HookContext,
-    defaultReply: string,
-  ): string | MessageSegment[] {
+  private buildMessageToSend(hookContext: HookContext): MessageSegment[] {
     const replyContent = getReplyContent(hookContext);
-    const finalReply = replyContent?.text || defaultReply;
-    const isCardImage = replyContent?.metadata?.isCardImage;
-    const cardImage = replyContent?.metadata?.cardImage;
 
-    if (isCardImage && cardImage) {
-      const messageBuilder = new MessageBuilder();
-      messageBuilder.image({ data: cardImage });
-      logger.info('[MessagePipeline] Sending card image message');
-      return messageBuilder.build();
+    // Segments is a required field, so it should always exist if replyContent exists
+    if (!replyContent || !replyContent.segments || replyContent.segments.length === 0) {
+      throw new Error('ReplyContent.segments is required but missing or empty');
     }
 
-    return finalReply;
+    logger.info('[MessagePipeline] Sending message with segments');
+    return replyContent.segments;
   }
 
   /**

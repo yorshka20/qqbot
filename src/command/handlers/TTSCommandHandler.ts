@@ -6,8 +6,7 @@ import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
-import { CommandContext, CommandHandler, CommandResult } from '../types';
-import { MessageSender } from '../utils/MessageSender';
+import type { CommandContext, CommandHandler, CommandResult } from '../types';
 
 /**
  * TTS command - converts text to speech using Fish Audio API
@@ -43,8 +42,7 @@ export class TTSCommandHandler implements CommandHandler {
     日语: 'fbea303b64374bffb8843569404b095e',
   };
 
-  // Default voice: 丁真
-  private readonly DEFAULT_VOICE = '丁真';
+  private readonly DEFAULT_VOICE = '赛马娘';
 
   // Maximum text length (in characters)
   private readonly MAX_TEXT_LENGTH = 1000;
@@ -58,10 +56,7 @@ export class TTSCommandHandler implements CommandHandler {
     },
   };
 
-  constructor(
-    @inject(DITokens.CONFIG) private config: Config,
-    @inject(MessageSender) private messageSender: MessageSender,
-  ) {
+  constructor(@inject(DITokens.CONFIG) private config: Config) {
     // Configure HttpClient for Fish Audio API
     this.httpClient = new HttpClient({
       baseURL: this.FISH_API_URL,
@@ -75,9 +70,11 @@ export class TTSCommandHandler implements CommandHandler {
       args.length === 0 ||
       (args.length === 1 && (args[0] === 'list' || args[0] === '--list' || args[0] === '-list'))
     ) {
+      const messageBuilder = new MessageBuilder();
+      messageBuilder.text(this.getVoiceList());
       return {
         success: true,
-        message: this.getVoiceList(),
+        segments: messageBuilder.build(),
       };
     }
 
@@ -178,10 +175,10 @@ export class TTSCommandHandler implements CommandHandler {
       messageBuilder.record({ data: base64Audio });
 
       const messageSegments = messageBuilder.build();
-      await this.messageSender.send(messageSegments, context, 10000);
 
       return {
         success: true,
+        segments: messageSegments,
       };
     } catch (error) {
       // Handle different error types (Error, ErrorEvent, etc.)

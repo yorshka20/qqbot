@@ -1,6 +1,7 @@
 import { AIManager, CapabilityType } from '@/ai';
 import { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
+import { MessageBuilder } from '@/message/MessageBuilder';
 import { inject, injectable } from 'tsyringe';
 import { Command } from '../decorators';
 import { CommandHandler, CommandResult } from '../types';
@@ -24,11 +25,13 @@ export class AIProviderSwitchCommandHandler implements CommandHandler {
 
   async execute(args: string[]): Promise<CommandResult> {
     const [action, capability, providerName] = args;
+    const messageBuilder = new MessageBuilder();
     if (action === 'list') {
       const list = this.aiManager.getAllProviders();
+      messageBuilder.text(`Available providers: ${list.map((p) => p.name).join(', ')}`);
       return {
         success: true,
-        message: `Available providers: ${list.map((p) => p.name).join(', ')}`,
+        segments: messageBuilder.build(),
       };
     }
     if (action === 'switch') {
@@ -40,9 +43,10 @@ export class AIProviderSwitchCommandHandler implements CommandHandler {
         };
       }
       this.aiManager.setCurrentProvider(capability as CapabilityType, provider.name);
+      messageBuilder.text(`Switched to provider: ${provider.name}`);
       return {
         success: true,
-        message: `Switched to provider: ${provider.name}`,
+        segments: messageBuilder.build(),
       };
     }
     return {

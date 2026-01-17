@@ -181,9 +181,6 @@ export class Lifecycle {
   private async executeStageComplete(context: HookContext, messageId: string): Promise<boolean> {
     logger.debug(`[Lifecycle] 🟧[6] Stage: COMPLETE`);
 
-    // Execute hook. no blocking since it's the last stage
-    await this.hookManager.execute('onMessageSent', context);
-
     // Execute systems (non-blocking, errors are logged but don't fail)
     await this.executeSystems(SystemStage.COMPLETE, context, messageId);
 

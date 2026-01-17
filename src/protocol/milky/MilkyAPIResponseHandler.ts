@@ -17,9 +17,36 @@ export class MilkyAPIResponseHandler {
     return (
       typeof data === 'object' &&
       data !== null &&
-      'code' in data &&
-      typeof (data as { code: unknown }).code === 'number'
+      'retcode' in data &&
+      typeof (data as { retcode: unknown }).retcode === 'number'
     );
+  }
+
+  /**
+   * Handle parsed JSON data from Milky API response
+   * Milky API returns: { status: string, retcode: number, data?: T }
+   * @param data Parsed JSON data
+   * @returns Extracted data field or the whole response
+   * @throws Error if API indicates failure
+   */
+  static handleParsedResponse<TResponse = unknown>(data: unknown): TResponse {
+    if (typeof data !== 'object' || data === null) {
+      return data as TResponse;
+    }
+
+    // Handle Milky API response format: { status: string, retcode: number, data?: T }
+    if (this.isMilkyAPIResponse(data)) {
+      if (data.retcode === 0) {
+        // Success - return the data field, or the whole response if no data field
+        return (data.data ?? data) as TResponse;
+      } else {
+        // API error - retcode is not 0
+        const errorMessage = data.message || data.status || 'Unknown error';
+        throw new Error(`Milky API error [${data.retcode}]: ${errorMessage}`);
+      }
+    }
+
+    return data as TResponse;
   }
 
   /**
@@ -39,19 +66,8 @@ export class MilkyAPIResponseHandler {
     // Parse JSON response (response.json() will throw if parsing fails)
     const data = await response.json();
 
-    // Handle Milky API response format: { code: number, message?: string, data?: T }
-    if (this.isMilkyAPIResponse(data)) {
-      if (data.code === 0) {
-        // Success - return the data field, or the whole response if no data field
-        return (data.data ?? data) as TResponse;
-      } else {
-        // API error - code is not 0
-        const errorMessage = data.message || 'Unknown error';
-        throw new Error(`Milky API error [${data.code}]: ${errorMessage}`);
-      }
-    }
-
-    return data as TResponse;
+    // Handle Milky API response format
+    return this.handleParsedResponse<TResponse>(data);
   }
 
   /**

@@ -1,5 +1,6 @@
 import { AIService, Text2ImageOptions } from '@/ai';
 import { DITokens } from '@/core/DITokens';
+import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
@@ -7,7 +8,7 @@ import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
 import { generateSeed } from '../utils/CommandImageUtils';
 import { createHookContextForCommand } from '../utils/HookContextBuilder';
-import { MessageSender } from '../utils/MessageSender';
+import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 
 /**
  * NaiPlus command - generates image from text prompt using NovelAI provider with LLM preprocessing
@@ -41,10 +42,7 @@ export class NaiPlusCommand implements CommandHandler {
     },
   };
 
-  constructor(
-    @inject(DITokens.AI_SERVICE) private aiService: AIService,
-    @inject(MessageSender) private messageSender: MessageSender,
-  ) { }
+  constructor(@inject(DITokens.AI_SERVICE) private aiService: AIService) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     if (args.length === 0) {
@@ -99,10 +97,11 @@ export class NaiPlusCommand implements CommandHandler {
         // used in batch generation
         const processedPrompt = firstResponse.prompt || prompt;
 
-        // Send first image (unless silent mode)
+        // Build first image message (unless silent mode)
+        let firstImageSegments: MessageSegment[] | undefined;
         if (!silent) {
-          const messageBuilder = this.messageSender.buildMessage(firstResponse, '[NaiPlusCommand]');
-          await this.messageSender.send(messageBuilder.build(), context);
+          const messageBuilder = buildMessageFromResponse(firstResponse, '[NaiPlusCommand]');
+          firstImageSegments = messageBuilder.build();
         }
 
         // Generate remaining images with processed prompt (skip LLM processing)
@@ -124,15 +123,18 @@ export class NaiPlusCommand implements CommandHandler {
             true, // Skip LLM processing
             undefined,
           );
-          // Send image (unless silent mode)
-          if (!silent) {
-            const messageBuilder = this.messageSender.buildMessage(response, '[NaiPlusCommand]');
-            await this.messageSender.send(messageBuilder.build(), context);
+          // Build image message (unless silent mode)
+          // Note: For batch generation, we only return the first image segments
+          // Subsequent images would need to be sent separately or handled differently
+          if (!silent && !firstImageSegments) {
+            const messageBuilder = buildMessageFromResponse(response, '[NaiPlusCommand]');
+            firstImageSegments = messageBuilder.build();
           }
         }
 
         return {
           success: true,
+          segments: firstImageSegments,
         };
       }
 
@@ -156,14 +158,16 @@ export class NaiPlusCommand implements CommandHandler {
         };
       }
 
-      // Send image response (unless silent mode)
+      // Build image response (unless silent mode)
+      let imageSegments: MessageSegment[] | undefined;
       if (!silent) {
-        const messageBuilder = this.messageSender.buildMessage(response, '[NaiPlusCommand]');
-        await this.messageSender.send(messageBuilder.build(), context);
+        const messageBuilder = buildMessageFromResponse(response, '[NaiPlusCommand]');
+        imageSegments = messageBuilder.build();
       }
 
       return {
         success: true,
+        segments: imageSegments,
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');

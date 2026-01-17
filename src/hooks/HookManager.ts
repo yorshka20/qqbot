@@ -1,5 +1,6 @@
 // Hook Manager - manages and executes hooks
 
+import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { logger } from '@/utils/logger';
 import type { CoreHookName, HookContext, HookHandler, HookName, HookRegistration } from './types';
 
@@ -134,45 +135,31 @@ export class HookManager {
   async execute(hookName: HookName, context: HookContext): Promise<boolean> {
     const hookList = this.hooks.get(hookName);
     if (!hookList || hookList.length === 0) {
-      logger.debug(`[HookManager] No handlers registered for hook: ${hookName}`);
       return true;
     }
 
     const messageId = context.message?.id || context.message?.messageId || 'unknown';
 
-    logger.info(
-      `🎣 [HookManager] Executing hook: ${hookName} | messageId=${messageId} | registrationCount=${hookList.length}`,
-    );
+    logger.info(`🎣 [HookManager] Executing hook: ${hookName} | messageId=${messageId}`);
 
     for (const registration of hookList) {
       for (let j = 0; j < registration.handlers.length; j++) {
         const handler = registration.handlers[j];
-        const handlerName = `${registration.hookName}:${registration.priority}[${j}]`;
 
         try {
-          logger.debug(`[HookManager] Executing handler: ${handlerName} | hook=${hookName} | messageId=${messageId}`);
-
           const continueExecution = await handler(context);
 
           if (!continueExecution) {
-            logger.info(
-              `🚫 [HookManager] Hook ${hookName} interrupted by handler | handler=${handlerName} | messageId=${messageId}`,
-            );
+            logger.info(`🚫 [HookManager] Hook ${hookName} interrupted | messageId=${messageId}`);
             return false;
           }
         } catch (error) {
           const err = error instanceof Error ? error : new Error('Unknown error');
-          logger.error(
-            `🚫 [HookManager] Error in hook ${hookName} | handler=${handlerName} | messageId=${messageId} | error=${err.message}`,
-            err,
-          );
+          logger.error(`🚫 [HookManager] Error in hook ${hookName} | messageId=${messageId}`, err);
 
           // Call onError hook if available
           if (hookName !== 'onError') {
-            const errorContext: HookContext = {
-              ...context,
-              error: err,
-            };
+            const errorContext = HookContextBuilder.fromContext(context).withError(err).build();
             await this.execute('onError', errorContext);
           }
 

@@ -3,6 +3,7 @@
 import type { AIManager } from '@/ai/AIManager';
 import type { CapabilityType } from '@/ai/capabilities/types';
 import { DITokens } from '@/core/DITokens';
+import { MessageBuilder } from '@/message/MessageBuilder';
 import type { PluginManager } from '@/plugins/PluginManager';
 import { inject, injectable } from 'tsyringe';
 import type { CommandManager } from '../CommandManager';
@@ -50,9 +51,11 @@ export class HelpCommand implements CommandHandler {
         help += `Usage: ${handler.usage}\n`;
       }
 
+      const messageBuilder = new MessageBuilder();
+      messageBuilder.text(help);
       return {
         success: true,
-        message: help,
+        segments: messageBuilder.build(),
       };
     }
 
@@ -68,9 +71,11 @@ export class HelpCommand implements CommandHandler {
       })
       .join('\n');
 
+    const messageBuilder = new MessageBuilder();
+    messageBuilder.text(`Available commands:\n${commandList}\n\nUse /help(!help) <command> for more info`);
     return {
       success: true,
-      message: `Available commands:\n${commandList}\n\nUse /help(!help) <command> for more info`,
+      segments: messageBuilder.build(),
     };
   }
 }
@@ -118,9 +123,11 @@ Group ID: ${groupId}
 AI Providers:
   ${providerInfo.join('\n  ')}`;
 
+    const messageBuilder = new MessageBuilder();
+    messageBuilder.text(status);
     return {
       success: true,
-      message: status,
+      segments: messageBuilder.build(),
     };
   }
 }
@@ -141,9 +148,11 @@ export class PingCommand implements CommandHandler {
   usage = '/ping';
 
   execute(): CommandResult {
+    const messageBuilder = new MessageBuilder();
+    messageBuilder.text('pong');
     return {
       success: true,
-      message: 'pong',
+      segments: messageBuilder.build(),
     };
   }
 }
@@ -180,19 +189,18 @@ export class EchoCommand implements CommandHandler {
     const isEnabled = enabledPlugins.includes(pluginName);
 
     try {
+      const messageBuilder = new MessageBuilder();
       if (isEnabled) {
         await this.pluginManager.disablePlugin(pluginName);
-        return {
-          success: true,
-          message: 'off',
-        };
+        messageBuilder.text('off');
       } else {
         await this.pluginManager.enablePlugin(pluginName);
-        return {
-          success: true,
-          message: 'on',
-        };
+        messageBuilder.text('on');
       }
+      return {
+        success: true,
+        segments: messageBuilder.build(),
+      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       return {
@@ -257,20 +265,23 @@ export class CommandToggleCommand implements CommandHandler {
     if (action === 'enable') {
       // Check current state for the group (or globally if not in a group)
       const isEnabled = this.commandManager.isCommandEnabled(commandName, groupId);
+      const messageBuilder = new MessageBuilder();
       if (isEnabled) {
         const location = groupId !== undefined ? `in this group` : 'globally';
+        messageBuilder.text(`Command "${commandName}" is already enabled ${location}`);
         return {
           success: true,
-          message: `Command "${commandName}" is already enabled ${location}`,
+          segments: messageBuilder.build(),
         };
       }
 
       const success = this.commandManager.enableCommand(commandName, groupId);
       if (success) {
         const location = groupId !== undefined ? `in this group` : 'globally';
+        messageBuilder.text(`Command "${commandName}" has been enabled ${location}`);
         return {
           success: true,
-          message: `Command "${commandName}" has been enabled ${location}`,
+          segments: messageBuilder.build(),
         };
       } else {
         return {
@@ -281,20 +292,23 @@ export class CommandToggleCommand implements CommandHandler {
     } else if (action === 'disable') {
       // Check current state for the group (or globally if not in a group)
       const isEnabled = this.commandManager.isCommandEnabled(commandName, groupId);
+      const messageBuilder = new MessageBuilder();
       if (!isEnabled) {
         const location = groupId !== undefined ? `in this group` : 'globally';
+        messageBuilder.text(`Command "${commandName}" is already disabled ${location}`);
         return {
           success: true,
-          message: `Command "${commandName}" is already disabled ${location}`,
+          segments: messageBuilder.build(),
         };
       }
 
       const success = this.commandManager.disableCommand(commandName, groupId);
       if (success) {
         const location = groupId !== undefined ? `in this group` : 'globally';
+        messageBuilder.text(`Command "${commandName}" has been disabled ${location}`);
         return {
           success: true,
-          message: `Command "${commandName}" has been disabled ${location}`,
+          segments: messageBuilder.build(),
         };
       } else {
         return {

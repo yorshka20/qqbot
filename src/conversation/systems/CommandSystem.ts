@@ -2,7 +2,7 @@
 
 import type { CommandManager } from '@/command/CommandManager';
 import { CommandContextBuilder } from '@/context/CommandContextBuilder';
-import { setReply } from '@/context/HookContextHelpers';
+import { setReplyWithSegments } from '@/context/HookContextHelpers';
 import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';
 import type { HookManager } from '@/hooks/HookManager';
@@ -48,8 +48,8 @@ export class CommandSystem implements System {
     await this.hookManager.execute('onCommandExecuted', context);
 
     // Set reply using helper function
-    if (commandResult.success && commandResult.message) {
-      setReply(context, commandResult.message, 'command');
+    if (commandResult.success && commandResult.segments && commandResult.segments.length > 0) {
+      setReplyWithSegments(context, commandResult.segments, 'command');
     }
 
     return true;

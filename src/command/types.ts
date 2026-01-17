@@ -1,6 +1,8 @@
 // Command type definitions
 
+import type { ConversationContext } from '@/context/types';
 import { ProtocolName } from '@/core/config';
+import { MessageSegment } from '@/message/types';
 
 /**
  * Parsed command structure
@@ -17,7 +19,7 @@ export interface ParsedCommand {
  */
 export interface CommandResult {
   success: boolean;
-  message?: string;
+  segments?: MessageSegment[]; // Message segments (images, audio, text, etc.) - required if success is true
   error?: string;
   data?: Record<string, unknown>;
 }
@@ -70,6 +72,8 @@ export interface CommandContext {
   // Message scene from protocol (e.g., 'private', 'group', 'temp' for temporary session)
   messageScene: string;
   metadata: CommandContextMetadata;
+  // Conversation context from HookContext
+  conversationContext: ConversationContext;
 }
 
 /**

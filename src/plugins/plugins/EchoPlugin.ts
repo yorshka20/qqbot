@@ -3,7 +3,7 @@
 import { CommandBuilder } from '@/command/CommandBuilder';
 import { CommandManager } from '@/command/CommandManager';
 import { CommandContextBuilder } from '@/context/CommandContextBuilder';
-import { setReply } from '@/context/HookContextHelpers';
+import { setReplyWithSegments } from '@/context/HookContextHelpers';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
@@ -118,12 +118,11 @@ export class EchoPlugin extends PluginBase {
       // Execute command with hookManager and hookContext to ensure reply is set in context
       const result = await this.commandManager.execute(command, commandContext, this.hookManager, context);
 
-      if (result.success && result.message) {
-        // Set reply using helper function (same pattern as CommandSystem)
-        setReply(context, result.message, 'plugin');
-        logger.info(`[EchoPlugin] TTS command executed successfully, reply set`);
+      if (result.success && result.segments && result.segments.length > 0) {
+        setReplyWithSegments(context, result.segments, 'plugin');
+        logger.info(`[EchoPlugin] TTS command executed successfully, segments set`);
       } else {
-        logger.warn(`[EchoPlugin] TTS command failed: ${result.error}`);
+        logger.warn(`[EchoPlugin] TTS command failed or no segments: ${result.error || 'no segments'}`);
       }
     } catch (error) {
       logger.error('[EchoPlugin] Failed to trigger TTS command:', error);

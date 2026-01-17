@@ -61,25 +61,13 @@ export class MilkyAdapter extends ProtocolAdapter {
     const milkyParams = MilkyAPIConverter.convertParamsToMilky(milkyAction, context.params);
 
     try {
-      // Use HttpClient to make the request
-      // Note: We need to handle the response in Milky API format, so we'll parse it manually
-      const data = await this.httpClient.post<unknown>(`/${milkyAction}`, milkyParams, {
+      // use MilkyAPIResponseHandler to handle Milky-specific response format
+      const rawData = await this.httpClient.post<unknown>(`/${milkyAction}`, milkyParams, {
         timeout: context.timeout,
       });
 
-      // Handle Milky API response format: { code: number, message?: string, data?: T }
-      if (MilkyAPIResponseHandler.isMilkyAPIResponse(data)) {
-        if (data.code === 0) {
-          // Success - return the data field, or the whole response if no data field
-          return (data.data ?? data) as TResponse;
-        } else {
-          // API error - code is not 0
-          const errorMessage = (data as { message?: string }).message || 'Unknown error';
-          throw new Error(`Milky API error [${data.code}]: ${errorMessage}`);
-        }
-      }
-
-      return data as TResponse;
+      // Handle Milky API response format using MilkyAPIResponseHandler
+      return MilkyAPIResponseHandler.handleParsedResponse<TResponse>(rawData);
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('timeout')) {
