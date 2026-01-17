@@ -15,6 +15,7 @@ export interface VisionImage {
  * Text to image generation options
  */
 export interface Text2ImageOptions {
+  prompt: string; // Prompt to use for generation (must be provided by caller when calling generateImg, not extracted from message)
   width?: number;
   height?: number;
   aspectRatio?: string;
@@ -27,6 +28,7 @@ export interface Text2ImageOptions {
   guidance_scale?: number; // Guidance scale (CFG)
   seed?: number; // Random seed for reproducibility
   model?: string; // Model to use for generation
+  template?: string; // Template to use for generation
   [key: string]: unknown; // Allow provider-specific options
 }
 
@@ -71,6 +73,7 @@ export interface ImageGenerationResponse {
   }>;
   text?: string; // Text response from provider
   metadata?: Record<string, unknown>;
+  prompt?: string; // Processed prompt used for generation (useful for batch generation)
 }
 
 /**

@@ -3,6 +3,7 @@
 import type { AIService } from '@/ai/AIService';
 import { extractImagesFromSegments } from '@/ai/utils/imageUtils';
 import { getReply, hasReply, setReply } from '@/context/HookContextHelpers';
+import { TaskExecutionContextBuilder } from '@/context/TaskExecutionContextBuilder';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { System } from '@/core/system';
@@ -135,34 +136,15 @@ export class TaskSystem implements System {
       }
     }
 
-    // Hook: onTaskBeforeExecute
-    const shouldExecute = await this.hookManager.execute('onTaskBeforeExecute', context);
-    if (!shouldExecute) {
-      return false;
-    }
-
-    // Execute task
-    const taskResult = await this.taskManager.execute(
-      task,
-      {
-        userId: context.message.userId,
-        groupId: context.message.groupId,
-        messageType: context.message.messageType,
-        conversationId: context.metadata.get('conversationId'),
-        messageId: context.message.messageId?.toString(),
-      },
-      this.hookManager,
-      context,
-    );
+    // Execute task (TaskManager will handle onTaskBeforeExecute and onTaskExecuted hooks internally)
+    const taskExecutionContext = TaskExecutionContextBuilder.fromHookContext(context).build();
+    const taskResult = await this.taskManager.execute(task, taskExecutionContext, this.hookManager, context);
 
     // Update hook context
     context.result = taskResult;
 
-    // Hook: onTaskExecuted
-    await this.hookManager.execute('onTaskExecuted', context);
-
-    // Set reply using helper function
-    if (taskResult.reply) {
+    // Set reply using helper function (similar to CommandSystem pattern)
+    if (taskResult.success && taskResult.reply) {
       setReply(context, taskResult.reply, 'task');
     }
 
@@ -203,8 +185,9 @@ export class TaskSystem implements System {
         hookName: 'onTaskExecuted',
         priority: getHookPriority('onTaskExecuted', 'NORMAL'),
       },
-      // AI-related hooks are part of task execution
-      // These hooks are triggered when AIService is called during task execution
+      // AI-related hooks are triggered during task execution when AIService is used
+      // These hooks are declared here because TaskSystem drives AI capabilities
+      // AIService internally calls these hooks, but TaskSystem declares them for plugin registration
       {
         hookName: 'onMessageBeforeAI',
         priority: getHookPriority('onMessageBeforeAI', 'NORMAL'),

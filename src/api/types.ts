@@ -36,12 +36,7 @@ export class APIContext {
   // Request tracking
   private _echo?: string;
 
-  constructor(
-    action: string,
-    params: Record<string, unknown> = {},
-    protocol: ProtocolName,
-    timeout = 10000,
-  ) {
+  constructor(action: string, params: Record<string, unknown> = {}, protocol: ProtocolName, timeout = 10000) {
     this.action = action;
     this.params = params;
     this.protocol = protocol;
@@ -84,9 +79,7 @@ export class APIContext {
   /**
    * Create a new context with updated values
    */
-  clone(
-    updates?: Partial<Pick<APIContext, 'protocol' | 'timeout'>>,
-  ): APIContext {
+  clone(updates?: Partial<Pick<APIContext, 'protocol' | 'timeout'>>): APIContext {
     const context = new APIContext(
       this.action,
       this.params,

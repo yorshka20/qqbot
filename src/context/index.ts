@@ -7,6 +7,7 @@ export type { MessageContextOptions } from './HookContextBuilder';
 export { clearReply, getReply, getReplyContent, hasReply, setReply } from './HookContextHelpers';
 export { ConversationBufferMemory } from './memory/ConversationBufferMemory';
 export { ConversationSummaryMemory } from './memory/ConversationSummaryMemory';
+export { TaskExecutionContextBuilder } from './TaskExecutionContextBuilder';
 export type {
   BuildContextOptions,
   ContextBuilderOptions,

@@ -336,17 +336,22 @@ export class AIService {
 
   /**
    * Generate image from text prompt
-   * This method can be called by other systems to generate images from text descriptions
-   * Now includes LLM preprocessing to convert user input to standardized image generation parameters
-   * @param context - Hook context containing message and metadata
-   * @param options - Image generation options (width, height, steps, etc.)
-   * @param providerName - Optional provider name to use (e.g., 'novelai', 'local-text2img'). If not specified, uses default provider.
-   * @param skipLLMProcess - If true, skip LLM preprocessing and use user input directly as prompt
+   *
+   * Prompt must be provided in options.prompt by the caller.
+   * LLM preprocessing is controlled by skipLLMProcess parameter:
+   * - If skipLLMProcess is true, use options.prompt directly as final prompt (no LLM preprocessing)
+   * - If skipLLMProcess is false/undefined, perform LLM preprocessing on options.prompt
+   *
+   * @param context - Hook context containing metadata (message is not used)
+   * @param options - Image generation options. options.prompt must be provided by caller
+   * @param providerName - Optional provider name to use (e.g., 'novelai', 'local-text2img')
+   * @param skipLLMProcess - If true, skip LLM preprocessing and use options.prompt directly
    * @param templateName - Optional template name for LLM preprocessing (default: 'text2img.generate')
+   * @returns Image generation response with processed prompt included for batch generation reuse
    */
   async generateImg(
     context: HookContext,
-    options?: Text2ImageOptions,
+    options: Text2ImageOptions,
     providerName?: string,
     skipLLMProcess?: boolean,
     templateName?: string,
@@ -363,47 +368,32 @@ export class AIService {
     if (!sessionId || !sessionType) {
       throw new Error('sessionId and sessionType must be set in metadata');
     }
-    const userInput = context.message.message;
-
-    // Build context if not already built
-    if (!context.context) {
-      const conversationContext = this.contextManager.buildContext(userInput, {
-        sessionId,
-        sessionType,
-        userId: context.message.userId,
-        groupId: context.message.groupId,
-      });
-      context.context = conversationContext;
-    }
 
     // Hook: onAIGenerationStart
     await this.hookManager.execute('onAIGenerationStart', context);
 
     try {
-      logger.debug(
-        `[AIService] Processing image generation request | userInput=${userInput.substring(0, 50)}... | skipLLMProcess=${skipLLMProcess || false}`,
-      );
-
-      // Prepare image generation parameters (with or without LLM preprocessing)
-      const { prompt: processedPrompt, options: processedOptions } = await this.prepareImageGenerationParams(
-        userInput,
+      const { prompt: finalPrompt, options: finalOptions } = await this.resolvePromptAndOptions(
         options,
         sessionId,
         skipLLMProcess,
-        templateName, // Use specified template or default
+        templateName,
       );
 
-      // Generate image using ImageGenerationService with processed parameters
       logger.info(
-        `[AIService] Generating image | prompt="${processedPrompt}" | options=${JSON.stringify(processedOptions)} | providerName=${providerName || 'default'}`,
+        `[AIService] Generating image | prompt="${finalPrompt.substring(0, 100)}..." | providerName=${providerName || 'default'}`,
       );
-
+      
+      // Generate image using ImageGenerationService
       const response = await this.imageGenerationService.generateImage(
-        processedPrompt,
-        processedOptions,
+        finalPrompt,
+        finalOptions,
         sessionId,
         providerName,
       );
+
+      // Include processed prompt in response for batch generation reuse
+      response.prompt = finalPrompt;
 
       // Hook: onAIGenerationComplete
       await this.hookManager.execute('onAIGenerationComplete', context);
@@ -419,6 +409,60 @@ export class AIService {
   }
 
   /**
+   * Resolve final prompt and options for image generation
+   * Prompt must be provided in options.prompt by caller
+   * LLM preprocessing: controlled by skipLLMProcess parameter
+   */
+  private async resolvePromptAndOptions(
+    options: Text2ImageOptions,
+    sessionId: string,
+    skipLLMProcess: boolean | undefined,
+    templateName: string | undefined,
+  ): Promise<{ prompt: string; options: Text2ImageOptions }> {
+    // Prompt must be provided in options.prompt by caller
+    if (!options?.prompt) {
+      throw new Error('options.prompt must be provided by caller');
+    }
+
+    const userInput = options.prompt;
+
+    logger.debug(
+      `[AIService] Processing prompt | input=${userInput.substring(0, 50)}... | skipLLMProcess=${skipLLMProcess || false}`,
+    );
+
+    // Prepare parameters (with or without LLM preprocessing based on skipLLMProcess)
+    const prepared = await this.prepareImageGenerationParams(
+      userInput,
+      options,
+      sessionId,
+      skipLLMProcess,
+      templateName,
+    );
+
+    // Return prepared options (prompt is already extracted and returned separately)
+    return { prompt: prepared.prompt, options: prepared.options };
+  }
+
+  /**
+   * Preprocess image generation prompt using LLM
+   * This is a public method that can be called to get processed prompt and options
+   * Useful for batch generation where you want to preprocess once and reuse the prompt
+   * @param userInput - User input text
+   * @param options - User-provided options
+   * @param sessionId - Session ID for provider selection
+   * @param templateName - Optional template name for LLM preprocessing (default: 'text2img.generate')
+   * @returns Processed prompt and options
+   */
+  async preprocessImagePrompt(
+    userInput: string,
+    options: Text2ImageOptions,
+    sessionId: string,
+    templateName: string = 'text2img.generate',
+  ): Promise<{ prompt: string; options: Text2ImageOptions }> {
+    return await this.preprocessPromptWithLLM(userInput, options, sessionId, templateName);
+  }
+
+  /**
    * Prepare image generation parameters
    * Either uses LLM preprocessing or directly uses user input based on skipLLMProcess flag
    * @param userInput - User input text
@@ -430,8 +474,8 @@ export class AIService {
    */
   private async prepareImageGenerationParams(
     userInput: string,
-    options: Text2ImageOptions | undefined,
-    sessionId: string | undefined,
+    options: Text2ImageOptions,
+    sessionId: string,
     skipLLMProcess?: boolean,
     templateName?: string,
   ): Promise<{ prompt: string; options: Text2ImageOptions }> {
@@ -472,11 +516,15 @@ export class AIService {
     logger.debug('[AIService] Calling LLM to preprocess image generation parameters...');
 
     // Call LLM to generate JSON parameters. use deepseek to generate prompt.
-    const llmResponse = await this.llmService.generate(llmPrompt, {
-      temperature: 0.3, // Lower temperature for more consistent JSON output
-      maxTokens: 1000,
-      sessionId,
-    }, 'deepseek');
+    const llmResponse = await this.llmService.generate(
+      llmPrompt,
+      {
+        temperature: 0.3, // Lower temperature for more consistent JSON output
+        maxTokens: 1000,
+        sessionId,
+      },
+      'deepseek',
+    );
 
     logger.debug(`[AIService] LLM response received | responseLength=${llmResponse.text.length}`);
 
@@ -488,6 +536,7 @@ export class AIService {
     const additionalParams = this.extractAdditionalParamsFromLLMResponse(llmResponse.text);
 
     const processedOptions: Text2ImageOptions = {
+      prompt: parsedParams.prompt,
       steps: parsedParams.steps,
       guidance_scale: parsedParams.cfg_scale,
       seed: parsedParams.seed,
@@ -519,7 +568,7 @@ export class AIService {
    */
   private prepareDirectPrompt(
     userInput: string,
-    options: Text2ImageOptions | undefined,
+    options: Text2ImageOptions,
   ): { prompt: string; options: Text2ImageOptions } {
     logger.debug('[AIService] Using direct user input as prompt (LLM processing skipped)');
 
@@ -538,13 +587,16 @@ export class AIService {
    * @param options - User-provided options
    * @returns Merged and validated options
    */
-  private mergeAndValidateOptions(options: Text2ImageOptions | undefined): Text2ImageOptions {
-    const mergedOptions = {
+  private mergeAndValidateOptions(options: Text2ImageOptions): Text2ImageOptions {
+    const mergedOptions: Text2ImageOptions = {
       seed: -1,
-      width: options?.width || AIService.DEFAULT_WIDTH,
-      height: options?.height || AIService.DEFAULT_HEIGHT,
+      width: options.width ?? AIService.DEFAULT_WIDTH,
+      height: options.height ?? AIService.DEFAULT_HEIGHT,
       ...options, // Merge user-provided options
     };
+    if (!mergedOptions.prompt) {
+      throw new Error('options.prompt must be provided by caller');
+    }
 
     // Apply limits to steps and guidance_scale after merge
     return {

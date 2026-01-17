@@ -411,8 +411,6 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
         parameters,
       };
 
-      logger.info(`[NovelAIProvider] Request body: ${JSON.stringify(requestBody, null, 2)}`);
-
       const baseURL = this.config.baseURL || 'https://image.novelai.net';
       // Use /ai/generate-image endpoint as per swagger spec (returns ZIP file)
       const fullUrl = baseURL.endsWith('/') ? `${baseURL}ai/generate-image` : `${baseURL}/ai/generate-image`;

@@ -8,7 +8,9 @@ export type AIProviderType =
   | 'local-text2img'
   | 'openrouter'
   | 'novelai'
-  | 'gemini';
+  | 'gemini'
+  | 'doubao'
+  | 'laozhang';
 
 export interface OpenAIProviderConfig {
   type: 'openai';
@@ -104,6 +106,28 @@ export interface GeminiProviderConfig {
   resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/gemini')
 }
 
+export interface DoubaoProviderConfig {
+  type: 'doubao';
+  apiKey: string;
+  model?: string; // Default: 'doubao-seed-1-6-lite-251015'
+  baseURL?: string; // Default: 'https://ark.cn-beijing.volces.com/api/v3'
+  reasoningEffort?: 'low' | 'medium' | 'high'; // Default: 'medium'
+  temperature?: number;
+  maxTokens?: number;
+  enableContext?: boolean; // Enable automatic context loading from conversation history
+  contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
+}
+
+export interface LaozhangProviderConfig {
+  type: 'laozhang';
+  apiKey: string;
+  model?: string; // Default: 'gemini-3-pro-image-preview'
+  baseURL?: string; // Default: 'https://api.laozhang.ai'
+  defaultAspectRatio?: string; // One of: "1:1", "16:9", "9:16", "4:3", "3:4", "21:9", "3:2", "2:3", "5:4", "4:5", default: "16:9"
+  defaultImageSize?: string; // One of: "1K", "2K", "4K", default: "2K"
+  resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/laozhang')
+}
+
 export type AIProviderConfig =
   | OpenAIProviderConfig
   | AnthropicProviderConfig
@@ -112,4 +136,6 @@ export type AIProviderConfig =
   | LocalText2ImageProviderConfig
   | OpenRouterProviderConfig
   | NovelAIProviderConfig
-  | GeminiProviderConfig;
+  | GeminiProviderConfig
+  | DoubaoProviderConfig
+  | LaozhangProviderConfig;

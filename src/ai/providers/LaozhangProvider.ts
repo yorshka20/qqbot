@@ -61,7 +61,7 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
   private static readonly DEFAULT_BASE_URL = 'https://api.laozhang.ai';
   private static readonly DEFAULT_ASPECT_RATIO = '16:9';
   private static readonly DEFAULT_IMAGE_SIZE = '2K';
-  private static readonly TIMEOUT = 360000; // 6 minutes timeout for image generation
+  private static readonly TIMEOUT = 10 * 60 * 1000; // 10 minutes timeout for image generation
 
   // Supported aspect ratios
   private static readonly SUPPORTED_ASPECT_RATIOS = [
@@ -293,9 +293,7 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
       };
     } catch (error) {
       logger.error(`[LaozhangProvider] Failed to load image: ${image}`, error);
-      throw new Error(
-        `Failed to load image: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      );
+      throw new Error(`Failed to load image: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -495,9 +493,7 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
       const aspectRatio = this.resolveAspectRatioForImage2Image(options);
       const imageSize = this.resolveImageSize(options);
 
-      logger.info(
-        `[LaozhangProvider] Parameters: model=${model}, aspectRatio=${aspectRatio}, imageSize=${imageSize}`,
-      );
+      logger.info(`[LaozhangProvider] Parameters: model=${model}, aspectRatio=${aspectRatio}, imageSize=${imageSize}`);
 
       // Load input image and convert to base64
       const { data: imageBase64, mimeType: imageMimeType } = await this.loadImageAsBase64(image);
@@ -533,7 +529,9 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
       };
 
       // Log request payload for debugging (using sanitizeResponseForLogging to truncate base64 data)
-      logger.debug(`[LaozhangProvider] Request payload: ${JSON.stringify(this.sanitizeResponseForLogging(payload), null, 2)}`);
+      logger.debug(
+        `[LaozhangProvider] Request payload: ${JSON.stringify(this.sanitizeResponseForLogging(payload), null, 2)}`,
+      );
 
       // Make HTTP request
       const response = await this.httpClient.post<LaozhangApiResponse>(endpoint, payload, {
