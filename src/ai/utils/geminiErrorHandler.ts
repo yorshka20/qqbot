@@ -1,6 +1,7 @@
 // Gemini API error message handler
 // Provides utilities for handling errors in Gemini API responses and converting them to user-friendly messages
 
+import { HttpClientError } from '@/api/http/HttpClient';
 import { logger } from '@/utils/logger';
 import type { ProviderImageGenerationResponse } from '../capabilities/types';
 
@@ -115,6 +116,40 @@ export function handleNoImageData(text: string, prompt: string): ProviderImageGe
  */
 export function handleGeneralError(error: unknown, prompt: string): ProviderImageGenerationResponse {
   const err = error instanceof Error ? error : new Error('Unknown error');
+
+  // Handle HttpClientError specifically to extract more details
+  if (error instanceof HttpClientError) {
+    const httpError = error as HttpClientError;
+    const statusInfo = httpError.status ? `HTTP ${httpError.status} ${httpError.statusText || ''}` : '';
+
+    // Try to extract more detailed error message from response
+    let detailedMessage = httpError.message;
+    if (httpError.response && typeof httpError.response === 'object') {
+      try {
+        const responseObj = httpError.response as { error?: { message?: string; status?: string } };
+        if (responseObj.error?.message) {
+          detailedMessage = responseObj.error.message;
+        } else if (responseObj.error?.status) {
+          detailedMessage = responseObj.error.status;
+        }
+      } catch {
+        // If parsing fails, use the original message
+      }
+    }
+
+    logger.error(
+      `[GeminiErrorHandler] Generation failed: ${statusInfo} ${detailedMessage}`,
+      httpError.response || httpError,
+    );
+    const errorMessage = statusInfo ? `${statusInfo}: ${detailedMessage}` : detailedMessage;
+    return createErrorResponse(errorMessage, prompt, {
+      errorType: httpError.name || 'HttpClientError',
+      status: httpError.status,
+      statusText: httpError.statusText,
+      response: httpError.response,
+    });
+  }
+
   logger.error(`[GeminiErrorHandler] Generation failed: ${err.message}`, err);
   const errorMessage = `Image generation failed: ${err.message}`;
   return createErrorResponse(errorMessage, prompt, {

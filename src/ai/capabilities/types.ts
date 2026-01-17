@@ -17,6 +17,8 @@ export interface VisionImage {
 export interface Text2ImageOptions {
   width?: number;
   height?: number;
+  aspectRatio?: string;
+  imageSize?: string;
   numImages?: number;
   style?: string;
   quality?: 'standard' | 'hd';
@@ -24,6 +26,7 @@ export interface Text2ImageOptions {
   steps?: number; // Number of inference steps
   guidance_scale?: number; // Guidance scale (CFG)
   seed?: number; // Random seed for reproducibility
+  model?: string; // Model to use for generation
   [key: string]: unknown; // Allow provider-specific options
 }
 
@@ -34,7 +37,10 @@ export interface Image2ImageOptions {
   strength?: number; // How much to transform (0-1)
   width?: number;
   height?: number;
+  aspectRatio?: string;
+  imageSize?: string;
   numImages?: number;
+  model?: string; // Model to use for generation
   [key: string]: unknown; // Allow provider-specific options
 }
 

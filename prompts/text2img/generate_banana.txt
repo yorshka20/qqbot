@@ -1,0 +1,60 @@
+将用户的中文输入转换为Gemini 3 Pro Image的优化prompt，输出纯JSON（无markdown）。
+
+# 输出格式
+{"prompt":"详细的中文描述","style":"photorealistic|anime|cartoon|illustration|cyberpunk|watercolor","aspectRatio":"1:1|16:9|9:16|4:3|21:9","needsText":false,"textContent":"","resolution":"2K|4K"}
+
+# Gemini 3 Pro特性
+- 4K高分辨率，真实感/动漫/卡通等多风格
+- 文字渲染准确（多语言）
+- 角色一致性强，世界知识理解好
+
+# 核心规则
+
+## 1. 风格识别
+- 动漫/二次元/anime → anime
+- 卡通/cartoon/可爱 → cartoon
+- 赛博朋克/霓虹/未来 → cyberpunk
+- 插画/手绘 → illustration
+- 水彩/淡雅 → watercolor
+- 默认 → photorealistic
+
+## 2. 宽高比
+- 手机壁纸/竖屏 → 9:16
+- 电脑壁纸/横屏/风景 → 16:9或21:9
+- 头像/方形 → 1:1
+- 根据内容判断
+
+## 3. 文字检测
+- 海报/标语/引号内容 → needsText:true，提取textContent
+- 否则 → needsText:false
+
+## 4. Prompt结构（100~300字）
+主体 + 风格 + 环境 + 光影 + 色彩 + 细节 + 构图 + 分辨率要求
+
+**具体化原则**：
+❌ "一只猫" 
+✅ "橘色短毛猫，琥珀色眼睛，坐在窗台，阳光洒在身上"
+
+**补充缺失**：无环境→推测环境，无时间→推测时间，无视角→选最佳视角
+
+**风格一致**：
+- anime: "动漫风格，精美作画，鲜艳色彩，清晰线条"
+- photorealistic: "真实感，专业摄影，自然光影"
+- cartoon: "卡通风格，可爱夸张，明快色彩"
+
+## 5. 分辨率
+- 高质量/打印/壁纸 → 4K
+- 一般/社交 → 2K（默认）
+
+# 示例（仅供参考格式）
+输入：画一只猫
+{"prompt":"橘色短毛猫，琥珀色眼睛，毛发蓬松，坐在温暖室内窗台。柔和自然光从窗外洒进，照亮侧脸，温馨家居氛围。背景模糊突出主体。\n\n风格：真实感照片\n要求：4K超高清，专业光影，毛发纹理清晰，色彩自然，浅景深，主体清晰背景虚化","style":"photorealistic","aspectRatio":"4:3","needsText":false,"textContent":"","resolution":"2K"}
+
+输入：二次元少女校服
+{"prompt":"日系动漫美少女，黑色长直发及腰，大眼睛闪光。白衬衫深蓝裙红领结校服，站在樱花树下，粉色花瓣飘落。春日午后柔光，校园操场背景，半身像。\n\n风格：日系动漫\n要求：4K超高清，精美作画，清晰线条，鲜艳色彩，高饱和度，五官精致，光影层次分明","style":"anime","aspectRatio":"9:16","needsText":false,"textContent":"","resolution":"2K"}
+
+输入：海报"永不放弃"山背景
+{"prompt":"励志海报，壮丽雪山背景，山峰晨曦金光。攀登者剪影向顶峰前进。天空蓝橙渐变，象征希望。\n\n文字：画面上方居中"永不放弃"，粗体现代字体，白色带深色描边，清晰可读。\n\n风格：真实感摄影\n要求：4K超高清，电影调色，光影对比强，构图平衡，文字清晰锐利","style":"photorealistic","aspectRatio":"16:9","needsText":true,"textContent":"永不放弃","resolution":"4K"}
+
+用户输入：{{description}}
+JSON：
