@@ -29,7 +29,7 @@ export class ContextManager {
     private useSummary = false,
     private summaryThreshold = 20,
     private maxBufferSize = 30,
-  ) {}
+  ) { }
 
   /**
    * Set global context
@@ -74,6 +74,9 @@ export class ContextManager {
         content: msg.content,
         timestamp: new Date(),
       })),
+      userId: options.userId,
+      groupId: options.groupId,
+      messageType: options.sessionType === 'group' ? 'group' : 'private',
       systemPrompt: options.systemPrompt || this.globalContext?.systemPrompt,
       metadata: new Map(),
     };

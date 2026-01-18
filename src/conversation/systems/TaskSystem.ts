@@ -2,7 +2,7 @@
 
 import type { AIService } from '@/ai/AIService';
 import { extractImagesFromSegments } from '@/ai/utils/imageUtils';
-import { getReply, hasReply, setReply } from '@/context/HookContextHelpers';
+import { getReply, getReplyContent, hasReply, setReply } from '@/context/HookContextHelpers';
 import { TaskExecutionContextBuilder } from '@/context/TaskExecutionContextBuilder';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -30,7 +30,7 @@ export class TaskSystem implements System {
   constructor(
     private taskManager: TaskManager,
     private hookManager: HookManager,
-  ) {}
+  ) { }
 
   enabled(): boolean {
     return true;
@@ -110,21 +110,27 @@ export class TaskSystem implements System {
           const messageSegments = context.message.segments;
           const hasImages = messageSegments?.some((seg) => seg.type === 'image');
 
-          let aiReply: string;
-
           if (hasImages) {
             // Use vision capability for multimodal input
             const images = extractImagesFromSegments(messageSegments as any[]);
             logger.info(`[TaskSystem] Message contains ${images.length} image(s), using vision capability`);
-            aiReply = await aiService.generateReplyWithVision(context, images);
+            await aiService.generateReplyWithVision(context, images);
           } else {
             // Use standard LLM capability
-            aiReply = await aiService.generateReply(context);
+            await aiService.generateReply(context);
           }
 
-          task.reply = aiReply;
-          context.aiResponse = aiReply;
-          logger.info(`[TaskSystem] AI reply generated successfully | replyLength=${aiReply.length}`);
+          // Get reply from context (set by AIService)
+          const replyContent = getReplyContent(context);
+          if (replyContent?.segments && replyContent.segments.length > 0) {
+            const replyText = getReply(context) || '';
+            task.reply = replyText;
+            context.aiResponse = replyText;
+            logger.info(`[TaskSystem] AI reply generated successfully | replyLength=${replyText.length}`);
+          } else {
+            logger.warn('[TaskSystem] No reply found in context after AI generation');
+            task.reply = 'I apologize, but I encountered an error processing your message.';
+          }
         } catch (error) {
           logger.error('[TaskSystem] Failed to generate AI reply:', error);
           task.reply = 'I apologize, but I encountered an error processing your message.';

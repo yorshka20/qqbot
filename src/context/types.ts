@@ -10,6 +10,9 @@ export interface ConversationContext {
     content: string;
     timestamp: Date;
   }>;
+  userId: number;
+  groupId?: number;
+  messageType: 'private' | 'group';
   systemPrompt?: string;
   metadata: Map<string, unknown>;
 }

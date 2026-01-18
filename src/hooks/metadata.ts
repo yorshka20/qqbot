@@ -8,10 +8,10 @@
  */
 export interface HookContextMetadata {
   // Session & Context Information
-  sessionId?: string;
-  sessionType?: 'user' | 'group';
+  sessionId: string;
+  sessionType: 'user' | 'group';
   conversationId?: string;
-  botSelfId?: string;
+  botSelfId: string;
 
   // Access Control & Processing Mode
   postProcessOnly?: boolean;
@@ -36,8 +36,8 @@ export class MetadataMap {
   /**
    * Get metadata value by key with type safety
    */
-  get<K extends keyof HookContextMetadata>(key: K): HookContextMetadata[K] | undefined {
-    return this.map.get(key) as HookContextMetadata[K] | undefined;
+  get<K extends keyof HookContextMetadata>(key: K): HookContextMetadata[K] {
+    return this.map.get(key) as HookContextMetadata[K];
   }
 
   /**

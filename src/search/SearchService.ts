@@ -1,6 +1,7 @@
 // Search service - provides unified search interface
 
 import type { PromptManager } from '@/ai/PromptManager';
+import { LLMService } from '@/ai/services/LLMService';
 import type { MCPConfig } from '@/core/config/mcp';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -253,7 +254,7 @@ export class SearchService {
    */
   async performSmartSearch(
     userMessage: string,
-    llmService: any, // LLMService type
+    llmService: LLMService,
     sessionId?: string,
   ): Promise<string> {
     if (!this.isEnabled()) {

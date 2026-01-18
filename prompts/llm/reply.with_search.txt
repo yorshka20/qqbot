@@ -7,6 +7,8 @@
 搜索结果：
 {{searchResults}}
 
+对话历史：
 {{conversationHistory}}
+
 用户：{{userMessage}}
 助手：
