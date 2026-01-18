@@ -71,12 +71,16 @@ export class Text2ImageCommand implements CommandHandler {
         logger.warn(
           `[Text2ImageCommand] ${this.defaultProviderName} provider failed, falling back to novelai: ${err.message}`,
         );
+        // Use SFW template if original template was SFW, otherwise use NovelAI template
+        const fallbackTemplate = templateName === 'text2img.generate_sfw' 
+          ? 'text2img.generate_sfw' 
+          : (templateName || 'text2img.generate_nai');
         return await this.aiService.generateImg(
           hookContext,
           opts,
           'novelai',
           skipLLMProcess, // Use same skipLLMProcess flag for fallback
-          templateName || 'text2img.generate_nai', // Use NovelAI-specific template for fallback
+          fallbackTemplate,
         );
       } else {
         // Re-throw other errors
@@ -118,7 +122,14 @@ export class Text2ImageCommand implements CommandHandler {
       const numImages = options?.numImages || 1;
       const baseSeed = options?.seed;
       const silent = options?.silent === true;
-      const templateName = options?.template || 'text2img.generate';
+      let templateName: string = options?.template || 'text2img.generate';
+      
+      // Check if plugin has set a template name in metadata (from conversation context)
+      const pluginTemplateName = context.conversationContext.metadata?.get('text2imgTemplateName');
+      if (pluginTemplateName && typeof pluginTemplateName === 'string') {
+        templateName = pluginTemplateName;
+        logger.info(`[Text2ImageCommand] Using plugin-specified template: ${templateName}`);
+      }
 
       // Prepare base options without numImages to avoid batch generation
       const baseOptions: Text2ImageOptions = {
@@ -159,8 +170,11 @@ export class Text2ImageCommand implements CommandHandler {
           firstImageSegments = messageBuilder.build();
         }
 
-        // Determine template name for remaining images (same as first call or novelai template if fallback happened)
-        const remainingTemplateName = providerName === 'novelai' ? 'text2img.generate_nai' : undefined;
+        // Determine template name for remaining images
+        // If using novelai provider and not SFW user, use novelai template; otherwise keep original template
+        const remainingTemplateName = providerName === 'novelai' && templateName !== 'text2img.generate_sfw' 
+          ? 'text2img.generate_nai' 
+          : undefined;
 
         // Generate remaining images with processed prompt (skip LLM processing)
         for (let i = 1; i < numImages; i++) {
@@ -192,7 +206,7 @@ export class Text2ImageCommand implements CommandHandler {
 
       // Single image generation (original behavior)
       // Generate image with selected provider, with fallback to novelai if local-text2img fails
-      const response = await this.generateWithProvider(hookContext, baseOptions, providerName, false, 'text2img.generate');
+      const response = await this.generateWithProvider(hookContext, baseOptions, providerName, false, templateName);
       logger.info(`[Text2ImageCommand] Generated image with response: ${JSON.stringify(response)}`);
 
       // If no images and no text, return error

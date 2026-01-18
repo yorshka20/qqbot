@@ -147,6 +147,15 @@
             }
           ]
         }
+      },
+      // Text2Img SFW Filter Plugin - forces specific users to use SFW template for text2img commands
+      {
+        "name": "text2imgSfwFilter",
+        "enabled": true,
+        "config": {
+          // User IDs that should be forced to use SFW template for text2img commands
+          "sfwUserIds": []
+        }
       }
     ],
   },

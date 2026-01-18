@@ -65,7 +65,14 @@ export class NaiPlusCommand implements CommandHandler {
       const numImages = options?.numImages || 1;
       const baseSeed = options?.seed;
       const silent = options?.silent === true;
-      const templateName = options?.template || 'text2img.generate_nai';
+      let templateName: string = options?.template || 'text2img.generate_nai';
+      
+      // Check if plugin has set a template name in metadata (from conversation context)
+      const pluginTemplateName = context.conversationContext.metadata?.get('text2imgTemplateName');
+      if (pluginTemplateName && typeof pluginTemplateName === 'string') {
+        templateName = pluginTemplateName;
+        logger.info(`[NaiPlusCommand] Using plugin-specified template: ${templateName}`);
+      }
 
       // Prepare base options without numImages to avoid batch generation
       const baseOptions: Text2ImageOptions = {
@@ -81,12 +88,15 @@ export class NaiPlusCommand implements CommandHandler {
         );
 
         // First call: LLM preprocessing to get processed prompt
+        // Check if plugin forces LLM processing (for SFW filter)
+        const forceLLMProcess = context.conversationContext.metadata?.get('text2imgForceLLMProcess') === true;
+        const skipLLMProcess = forceLLMProcess ? false : false; // Always false for first call in batch mode
         const firstResponse = await this.aiService.generateImg(
           hookContext,
           baseOptions,
           'novelai', // Force NovelAI provider
-          false, // Do not skip LLM preprocessing for first call
-          templateName, // Use NovelAI-specific template
+          skipLLMProcess,
+          templateName,
         );
 
         // Get processed prompt from first response
@@ -140,13 +150,16 @@ export class NaiPlusCommand implements CommandHandler {
 
       // Single image generation (original behavior)
       // Generate image using NovelAI provider with LLM preprocessing
-      // Do not skip LLM preprocessing (skipLLMProcess = false)
+      // Check if plugin forces LLM processing (for SFW filter)
+      const forceLLMProcess = context.conversationContext.metadata?.get('text2imgForceLLMProcess') === true;
+      const skipLLMProcess = forceLLMProcess ? false : false; // Always false for single image
+      const finalTemplateName = templateName || 'text2img.generate_nai';
       const response = await this.aiService.generateImg(
         hookContext,
         baseOptions,
         'novelai', // Force NovelAI provider
-        false, // Do not skip LLM preprocessing
-        'text2img.generate_nai', // Use NovelAI-specific template
+        skipLLMProcess,
+        finalTemplateName,
       );
       logger.info(`[NaiPlusCommand] Generated image with response: ${JSON.stringify(response)}`);
 

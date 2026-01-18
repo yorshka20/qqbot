@@ -49,6 +49,7 @@ export class NovelAICommand implements CommandHandler {
   private async generateImage(
     hookContext: HookContext,
     options: Text2ImageOptions,
+    context: CommandContext,
     index?: number,
     total?: number,
   ): Promise<ImageGenerationResponse> {
@@ -59,9 +60,23 @@ export class NovelAICommand implements CommandHandler {
 
     logger.info(`${logPrefix} with options: ${JSON.stringify(options)}`);
 
+    // Check if plugin has set a template name (for SFW filter)
+    // If SFW filter is active, force enable LLM preprocessing
+    const pluginTemplateName = context.conversationContext.metadata?.get('text2imgTemplateName');
+    const forceLLMProcess = context.conversationContext.metadata?.get('text2imgForceLLMProcess') === true;
+    
+    let skipLLMProcess = true; // Default: skip LLM preprocessing for /nai command
+    let templateName: string | undefined = undefined;
+    
+    if (forceLLMProcess && pluginTemplateName && typeof pluginTemplateName === 'string') {
+      // SFW filter is active - force enable LLM preprocessing with SFW template
+      skipLLMProcess = false;
+      templateName = pluginTemplateName;
+      logger.info(`[NovelAICommand] SFW filter active, forcing LLM preprocessing with template: ${templateName}`);
+    }
+
     // Generate image using NovelAI provider (force provider name)
-    // Skip LLM preprocessing for /nai command - use user input directly as prompt
-    const response = await this.aiService.generateImg(hookContext, options, 'novelai', true);
+    const response = await this.aiService.generateImg(hookContext, options, 'novelai', skipLLMProcess, templateName);
 
     logger.info(`${logPrefix} completed with response: ${JSON.stringify(response)}`);
 
@@ -131,7 +146,7 @@ export class NovelAICommand implements CommandHandler {
           seed: firstSeed,
         };
 
-        const firstResponse = await this.generateImage(hookContext, firstOptions, 0, numImages);
+        const firstResponse = await this.generateImage(hookContext, firstOptions, context, 0, numImages);
         const firstImageSegments = this.buildImageSegments(firstResponse, silent);
 
         // Generate remaining images (but don't send them - they would need separate handling)
@@ -143,7 +158,7 @@ export class NovelAICommand implements CommandHandler {
             seed: currentSeed,
           };
           // Generate but don't send (would need separate pipeline call)
-          await this.generateImage(hookContext, currentOptions, i, numImages);
+          await this.generateImage(hookContext, currentOptions, context, i, numImages);
         }
 
         return {
@@ -153,7 +168,7 @@ export class NovelAICommand implements CommandHandler {
       }
 
       // Single image generation (original behavior)
-      const response = await this.generateImage(hookContext, baseOptions);
+      const response = await this.generateImage(hookContext, baseOptions, context);
       const imageSegments = this.buildImageSegments(response, silent);
       if (!imageSegments) {
         return {

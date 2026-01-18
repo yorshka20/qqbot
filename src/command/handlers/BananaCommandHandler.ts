@@ -1,5 +1,6 @@
 import { AIService, Text2ImageOptions } from '@/ai';
 import { DITokens } from '@/core/DITokens';
+import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
@@ -7,7 +8,6 @@ import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
 import { createHookContextForCommand } from '../utils/HookContextBuilder';
-import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 
 /**
  * Banana command - generates image from text prompt using Laozhang AI provider (Gemini 2.5 model)
@@ -37,7 +37,7 @@ export class BananaCommand implements CommandHandler {
     },
   };
 
-  constructor(@inject(DITokens.AI_SERVICE) private aiService: AIService) {}
+  constructor(@inject(DITokens.AI_SERVICE) private aiService: AIService) { }
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     if (args.length === 0) {
@@ -68,8 +68,19 @@ export class BananaCommand implements CommandHandler {
 
       // Use LLM preprocessing based on llm parameter
       // If llm is true, use LLM preprocessing with template; if false or undefined, skip LLM preprocessing
-      const skipLLMProcess = options.llm === false || options.llm === undefined;
-      const templateName = options.llm === true ? 'text2img.generate_banana' : undefined;
+      // Check if plugin has set a template name (for SFW filter)
+      const pluginTemplateName = context.conversationContext.metadata?.get('text2imgTemplateName');
+      const forceLLMProcess = context.conversationContext.metadata?.get('text2imgForceLLMProcess') === true;
+
+      let skipLLMProcess = options.llm === false || options.llm === undefined;
+      let templateName: string | undefined = options.llm === true ? 'text2img.generate_banana' : undefined;
+
+      // If SFW filter is active, override template and force LLM processing
+      if (forceLLMProcess && pluginTemplateName && typeof pluginTemplateName === 'string') {
+        skipLLMProcess = false;
+        templateName = pluginTemplateName;
+        logger.info(`[BananaCommand] SFW filter active, forcing LLM preprocessing with template: ${templateName}`);
+      }
       const silent = options.silent === true;
       const response = await this.aiService.generateImg(
         hookContext,
@@ -136,7 +147,7 @@ export class BananaProCommand implements CommandHandler {
     },
   };
 
-  constructor(@inject(DITokens.AI_SERVICE) private aiService: AIService) {}
+  constructor(@inject(DITokens.AI_SERVICE) private aiService: AIService) { }
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     if (args.length === 0) {
@@ -163,12 +174,26 @@ export class BananaProCommand implements CommandHandler {
         model: 'gemini-3-pro-image-preview', // Use Gemini 3 Pro model for big banana
       };
       const silent = options.silent === true;
+
+      // Check if plugin has set a template name (for SFW filter)
+      const pluginTemplateName = context.conversationContext.metadata?.get('text2imgTemplateName');
+      const forceLLMProcess = context.conversationContext.metadata?.get('text2imgForceLLMProcess') === true;
+
+      let skipLLMProcess = false; // Default: enable LLM preprocessing for banana-pro
+      let templateName: string = 'text2img.generate_banana'; // Default template
+
+      // If SFW filter is active, override template
+      if (forceLLMProcess && pluginTemplateName && typeof pluginTemplateName === 'string') {
+        templateName = pluginTemplateName;
+        logger.info(`[BananaProCommand] SFW filter active, using template: ${templateName}`);
+      }
+
       const response = await this.aiService.generateImg(
         hookContext,
         imageOptions,
         'laozhang',
-        false, // Enable LLM preprocessing
-        'text2img.generate_banana', // Use banana-specific template
+        skipLLMProcess,
+        templateName,
       );
       logger.info(`[BananaProCommand] respond`);
 
