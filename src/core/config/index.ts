@@ -30,7 +30,7 @@ export type {
   OllamaProviderConfig,
   OpenAIProviderConfig,
   OpenRouterProviderConfig,
-  SessionProviderConfig,
+  SessionProviderConfig
 } from './ai';
 export type { BotSelfConfig, StaticServerConfig } from './bot';
 export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './database';
@@ -41,7 +41,7 @@ export type {
   SearchConfig,
   SearchMode,
   SearXNGConfig,
-  TriggerStrategy,
+  TriggerStrategy
 } from './mcp';
 export type { PluginsConfig } from './plugins';
 export type { PromptsConfig } from './prompts';
@@ -51,7 +51,7 @@ export type {
   ProtocolConfig,
   ProtocolConnectionConfig,
   ProtocolName,
-  ReconnectConfig,
+  ReconnectConfig
 } from './protocol';
 export type { TTSConfig } from './tts';
 export type { LogLevel } from './types';
@@ -130,10 +130,10 @@ export class Config {
     // No config file found
     throw new ConfigError(
       `Config file not found. Please provide a config.jsonc file via:\n` +
-        `  1. Config constructor argument: new Config('/path/to/config.jsonc')\n` +
-        `  2. CONFIG_PATH environment variable: CONFIG_PATH=/path/to/config.jsonc\n` +
-        `  3. Place config.jsonc in project root: ${defaultPath}\n` +
-        `  You can copy config.example.json to config.jsonc as a starting point.`,
+      `  1. Config constructor argument: new Config('/path/to/config.jsonc')\n` +
+      `  2. CONFIG_PATH environment variable: CONFIG_PATH=/path/to/config.jsonc\n` +
+      `  3. Place config.jsonc in project root: ${defaultPath}\n` +
+      `  You can copy config.example.json to config.jsonc as a starting point.`,
     );
   }
 

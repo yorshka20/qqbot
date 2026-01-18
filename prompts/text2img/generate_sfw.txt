@@ -1,0 +1,95 @@
+```markdown
+将用户输入的 NovelAI 提示词优化为安全内容（允许性感但禁止露骨内容），输出纯 JSON。
+
+## 输出格式
+{"prompt":"优化后的英文描述","negative_prompt":"增强的负面词","steps":28,"cfg_scale":6.5,"seed":-1,"width":832,"height":1216}
+
+## 核心原则
+
+1. **允许性感**：保留 sexy, attractive, beautiful, charming 等描述
+2. **禁止露骨**：移除 nude, naked, nsfw 等明确色情内容
+3. **重点过滤**：猎奇、血腥、恐怖、重口味内容必须移除
+4. **保留原意**：在安全范围内尽量保持用户创作意图
+
+## 必须移除的内容
+
+**露骨色情**：
+- `nude`, `naked`, `topless`, `exposed`, `nsfw`, `rating:nsfw`
+- `sexual`, `erotic`, `sex`, `porn`
+- `spread legs`, 明确的性行为描述
+
+**猎奇重口**：
+- `gore`, `blood`, `injury`, `wound`, `torture`, `pain`
+- `horror`, `scary`, `creepy`, `disturbing`, `grotesque`
+- `zombie`, `undead`, `corpse`, `monster`（恐怖向）
+- `vomit`, `scat`, `extreme fetish`
+
+**未成年相关**：
+- `loli`, `shota`, `child`, `young`
+
+## 可以保留的内容
+
+**性感描述**：
+- `sexy`, `attractive`, `beautiful`, `charming`, `alluring`
+- `seductive`, `elegant`, `gorgeous`
+- `curvy`, `slim`, `fit`
+
+**衣着**：
+- `bikini`, `lingerie`, `revealing clothes`, `cleavage`
+- `tight clothes`, `short skirt`, `see-through`（非完全透明）
+
+**姿势**：
+- `sexy pose`, `lying down`, `sitting`
+- 一般暗示性姿势（非明确性行为）
+
+## 优化策略
+
+### 删除替换规则
+- `nude` → 删除或替换为 `bikini/lingerie`
+- `nsfw` → 删除
+- `blood` → 删除
+- `gore/horror` → 删除
+- `creepy/disturbing` → 删除或替换为 `mysterious`
+
+### 负面提示词模板
+```
+low quality, worst quality, bad anatomy, bad hands, text, error, cropped, jpeg artifacts, signature, watermark, blurry, nude, naked, nsfw, porn, explicit, gore, blood, horror, scary, creepy, disturbing, grotesque, zombie, corpse, injury, torture, loli, shota, child
+```
+
+## 示例
+
+### 示例1：保留性感，移除露骨
+输入：`1girl, sexy, nude, bikini, beach`
+```json
+{"prompt":"masterpiece, best quality, 1girl, sexy, attractive, bikini, beach, standing, looking at viewer","negative_prompt":"low quality, worst quality, bad anatomy, bad hands, text, error, cropped, jpeg artifacts, signature, watermark, blurry, nude, naked, nsfw, porn, explicit, gore, blood, horror, loli, shota","steps":28,"cfg_scale":6.5,"seed":-1,"width":832,"height":1216}
+```
+
+### 示例2：移除猎奇恐怖
+输入：`artist:xxx, 1girl, blood, horror atmosphere, creepy smile`
+```json
+{"prompt":"masterpiece, best quality, artist:xxx, 1girl, mysterious smile, dramatic lighting","negative_prompt":"low quality, worst quality, bad anatomy, bad hands, text, error, cropped, jpeg artifacts, signature, watermark, blurry, nude, naked, nsfw, gore, blood, horror, scary, creepy, disturbing, grotesque","steps":28,"cfg_scale":6.5,"seed":-1,"width":832,"height":1216}
+```
+
+### 示例3：保留性感元素
+输入：`1girl, sexy pose, revealing dress, seductive, looking at viewer`
+```json
+{"prompt":"masterpiece, best quality, 1girl, sexy pose, revealing dress, seductive, attractive, looking at viewer, elegant","negative_prompt":"low quality, worst quality, bad anatomy, bad hands, text, error, cropped, jpeg artifacts, signature, watermark, blurry, nude, naked, nsfw, porn, explicit, gore, blood, horror, loli, shota","steps":28,"cfg_scale":6.5,"seed":-1,"width":832,"height":1216}
+```
+
+### 示例4：移除暴力血腥
+输入：`1girl, injured, blood stains, torn clothes, dark`
+```json
+{"prompt":"masterpiece, best quality, 1girl, dramatic lighting, moody atmosphere","negative_prompt":"low quality, worst quality, bad anatomy, bad hands, text, error, cropped, jpeg artifacts, signature, watermark, blurry, nude, naked, nsfw, gore, blood, injury, wound, torn clothes, horror, disturbing","steps":28,"cfg_scale":6.5,"seed":-1,"width":832,"height":1216}
+```
+
+## 处理流程
+
+1. 扫描并移除：nude, naked, nsfw, gore, blood, horror, creepy 等标签
+2. 保留：sexy, attractive, bikini, revealing 等性感描述
+3. 保留用户的画师标签和风格标签
+4. 增强负面提示词以过滤猎奇和重口内容
+5. 输出 JSON
+
+用户输入：{{description}}
+JSON：
+```

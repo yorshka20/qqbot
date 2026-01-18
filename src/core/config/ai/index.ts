@@ -66,5 +66,6 @@ export type {
   NovelAIProviderConfig,
   OllamaProviderConfig,
   OpenAIProviderConfig,
-  OpenRouterProviderConfig,
+  OpenRouterProviderConfig
 } from './providers';
+

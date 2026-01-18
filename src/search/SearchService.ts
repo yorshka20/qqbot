@@ -263,8 +263,12 @@ export class SearchService {
 
     try {
       // Step 1: Use LLM to determine if search is needed
-      const checkPrompt = this.promptManager.render('llm.search_check', {
+      // Use search_decision template (same as recursive search) for consistency
+      const checkPrompt = this.promptManager.render('llm.search_decision', {
         userMessage,
+        existingInformation: 'None',
+        taskResults: 'None',
+        previousSearchResults: 'None',
       });
 
       const checkResponse = await llmService.generate(checkPrompt, {
@@ -291,7 +295,7 @@ export class SearchService {
         // Single search query
         const query = searchDecision.query || this.extractSearchQuery(userMessage);
         if (query) {
-          searchQueries = [{ query, explanation: '用户查询' }];
+          searchQueries = [{ query, explanation: 'User query' }];
           logger.info(`[SearchService] Search triggered for query: ${query}`);
         }
       }

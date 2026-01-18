@@ -10,6 +10,7 @@ import { GlobalConfigManager } from '@/config/GlobalConfigManager';
 import type { ContextManager } from '@/context/ContextManager';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
+import type { SearchService } from '@/search';
 import type { TaskManager } from '@/task/TaskManager';
 import { logger } from '@/utils/logger';
 import type { Config } from './config';
@@ -104,6 +105,13 @@ export class ServiceRegistry {
   ): void {
     this.container.registerInstance(DITokens.CONVERSATION_CONFIG_SERVICE, conversationConfigService);
     this.container.registerInstance(DITokens.GLOBAL_CONFIG_MANAGER, globalConfigManager);
+  }
+
+  /**
+   * Register search service
+   */
+  registerSearchService(searchService: SearchService): void {
+    this.container.registerInstance(DITokens.SEARCH_SERVICE, searchService);
   }
 
   /**
