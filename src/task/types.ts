@@ -1,5 +1,7 @@
 // Task type definitions
 
+import type { HookContext } from '@/hooks/types';
+
 /**
  * Task type definition
  * Defines a task type with clear description, examples, and trigger conditions
@@ -25,7 +27,7 @@ export interface TaskType {
    */
   parameters?: {
     [key: string]: {
-      type: string;
+      type: 'string' | 'number' | 'boolean' | 'object' | 'array';
       required: boolean;
       description: string;
     };
@@ -84,6 +86,7 @@ export interface TaskExecutor {
 
   /**
    * Execute task
+   * Receives Task (with actual parameter values) and execution context
    */
   execute(task: Task, context: TaskExecutionContext): Promise<TaskResult> | TaskResult;
 }
@@ -97,6 +100,20 @@ export interface TaskExecutionContext {
   messageType: 'private' | 'group';
   conversationId?: string;
   messageId?: string;
+  /**
+   * Hook context for executors to access full context
+   * This is the primary way for executors to interact with the message processing pipeline
+   */
+  hookContext?: HookContext;
+  /**
+   * Task results from other tasks (for reply task to access)
+   * Used when reply task needs to incorporate results from other tasks
+   */
+  taskResults?: Map<string, TaskResult>;
+  /**
+   * Additional metadata for extensibility
+   * Use this for plugin-specific or future extensions
+   */
   metadata?: Record<string, unknown>;
 }
 

@@ -1,6 +1,6 @@
 // Base task executor - abstract base class for task executors
 
-import type { TaskExecutor, Task, TaskResult, TaskExecutionContext } from '../types';
+import type { Task, TaskExecutionContext, TaskExecutor, TaskResult } from '../types';
 
 /**
  * Abstract base class for task executors

@@ -2,7 +2,7 @@
 
 import type { CommandManager } from '@/command/CommandManager';
 import { CommandContextBuilder } from '@/context/CommandContextBuilder';
-import { setReplyWithSegments } from '@/context/HookContextHelpers';
+import { replaceReplyWithSegments } from '@/context/HookContextHelpers';
 import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';
 import type { HookManager } from '@/hooks/HookManager';
@@ -48,8 +48,9 @@ export class CommandSystem implements System {
     await this.hookManager.execute('onCommandExecuted', context);
 
     // Set reply using helper function
+    // Use replace instead of append because command result is the final result
     if (commandResult.success && commandResult.segments && commandResult.segments.length > 0) {
-      setReplyWithSegments(context, commandResult.segments, 'command');
+      replaceReplyWithSegments(context, commandResult.segments, 'command');
     }
 
     return true;

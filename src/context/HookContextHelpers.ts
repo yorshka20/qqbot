@@ -6,15 +6,96 @@ import type { HookContext, ReplyContent, ReplyMetadata } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
 
 /**
- * Set reply content in HookContext (for plain text messages)
- * Converts text to text segment automatically
+ * Append reply content to HookContext (for plain text messages)
+ * Converts text to text segment automatically and appends to existing reply
+ * If no existing reply, creates a new one
+ *
+ * @param context - Hook context
+ * @param text - Reply message text
+ * @param source - Source of the reply (command, task, plugin, or ai)
+ * @param metadata - Optional reply metadata (flags only, will be merged with existing)
+ */
+export function setReply(
+  context: HookContext,
+  text: string,
+  source: ReplyContent['source'],
+  metadata?: ReplyMetadata,
+): void {
+  const newSegment: MessageSegment = {
+    type: 'text',
+    data: { text },
+  };
+
+  if (context.reply?.segments) {
+    // Append to existing reply
+    context.reply.segments.push(newSegment);
+    // Merge metadata (new metadata overrides existing)
+    if (metadata) {
+      context.reply.metadata = {
+        ...context.reply.metadata,
+        ...metadata,
+      };
+    }
+    // Update source to the latest one (most recent source)
+    context.reply.source = source;
+  } else {
+    // Create new reply
+    context.reply = {
+      source,
+      segments: [newSegment],
+      ...(metadata && { metadata }),
+    };
+  }
+}
+
+/**
+ * Append reply content with message segments to HookContext
+ * Appends segments to existing reply if it exists
+ *
+ * @param context - Hook context
+ * @param segments - Message segments (images, audio, etc.)
+ * @param source - Source of the reply (command, task, plugin, or ai)
+ * @param metadata - Optional reply metadata (flags only, will be merged with existing)
+ */
+export function setReplyWithSegments(
+  context: HookContext,
+  segments: MessageSegment[],
+  source: ReplyContent['source'],
+  metadata?: ReplyMetadata,
+): void {
+  if (context.reply?.segments) {
+    // Append to existing reply
+    context.reply.segments.push(...segments);
+    // Merge metadata (new metadata overrides existing)
+    if (metadata) {
+      context.reply.metadata = {
+        ...context.reply.metadata,
+        ...metadata,
+      };
+    }
+    // Update source to the latest one (most recent source)
+    context.reply.source = source;
+  } else {
+    // Create new reply
+    context.reply = {
+      source,
+      segments,
+      ...(metadata && { metadata }),
+    };
+  }
+}
+
+/**
+ * Replace reply content in HookContext (for plain text messages)
+ * Replaces existing reply completely, or creates new if none exists
+ * Use this when you need to explicitly replace the reply (e.g., fallback scenarios)
  *
  * @param context - Hook context
  * @param text - Reply message text
  * @param source - Source of the reply (command, task, plugin, or ai)
  * @param metadata - Optional reply metadata (flags only)
  */
-export function setReply(
+export function replaceReply(
   context: HookContext,
   text: string,
   source: ReplyContent['source'],
@@ -33,14 +114,16 @@ export function setReply(
 }
 
 /**
- * Set reply content with message segments in HookContext
+ * Replace reply content with message segments in HookContext
+ * Replaces existing reply completely, or creates new if none exists
+ * Use this when you need to explicitly replace the reply (e.g., command results, plugin results)
  *
  * @param context - Hook context
  * @param segments - Message segments (images, audio, etc.)
  * @param source - Source of the reply (command, task, plugin, or ai)
  * @param metadata - Optional reply metadata (flags only)
  */
-export function setReplyWithSegments(
+export function replaceReplyWithSegments(
   context: HookContext,
   segments: MessageSegment[],
   source: ReplyContent['source'],
@@ -48,7 +131,7 @@ export function setReplyWithSegments(
 ): void {
   context.reply = {
     source,
-    segments, // Set at top level, not in metadata
+    segments,
     ...(metadata && { metadata }),
   };
 }

@@ -27,7 +27,7 @@ export interface TaskOptions {
    */
   parameters?: {
     [key: string]: {
-      type: string;
+      type: 'string' | 'number' | 'boolean' | 'object' | 'array';
       required: boolean;
       description: string;
     };
@@ -67,12 +67,12 @@ const taskRegistry: TaskMetadata[] = [];
 const registeredClasses = new WeakSet<new (...args: any[]) => TaskExecutor>();
 
 /**
- * Task decorator
+ * Task definition decorator
  * Automatically registers task types and executors when class is loaded
  *
  * @param options - Task options (name, description, executor, parameters, etc.)
  */
-export function Task(options: TaskOptions) {
+export function TaskDefinition(options: TaskOptions) {
   return function <T extends new (...args: any[]) => TaskExecutor>(target: T): T {
     // Check if this class has already been registered
     if (registeredClasses.has(target)) {

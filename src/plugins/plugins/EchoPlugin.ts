@@ -3,7 +3,7 @@
 import { CommandBuilder } from '@/command/CommandBuilder';
 import { CommandManager } from '@/command/CommandManager';
 import { CommandContextBuilder } from '@/context/CommandContextBuilder';
-import { setReplyWithSegments } from '@/context/HookContextHelpers';
+import { replaceReplyWithSegments } from '@/context/HookContextHelpers';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
@@ -119,7 +119,8 @@ export class EchoPlugin extends PluginBase {
       const result = await this.commandManager.execute(command, commandContext, this.hookManager, context);
 
       if (result.success && result.segments && result.segments.length > 0) {
-        setReplyWithSegments(context, result.segments, 'plugin');
+        // Use replace instead of append because plugin result is the final result
+        replaceReplyWithSegments(context, result.segments, 'plugin');
         logger.info(`[EchoPlugin] TTS command executed successfully, segments set`);
       } else {
         logger.warn(`[EchoPlugin] TTS command failed or no segments: ${result.error || 'no segments'}`);

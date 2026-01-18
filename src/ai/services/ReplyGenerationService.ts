@@ -1,6 +1,6 @@
 // Reply Generation Service - provides AI reply generation capabilities
 
-import { setReply, setReplyWithSegments } from '@/context/HookContextHelpers';
+import { replaceReply, replaceReplyWithSegments, setReply } from '@/context/HookContextHelpers';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
@@ -102,7 +102,8 @@ export class ReplyGenerationService {
       await this.hookManager.execute('onAIGenerationComplete', context);
 
       // Set text reply to context
-      setReply(context, response.text, 'ai');
+      // Use replace because this is fallback from card reply attempt (same AI reply update)
+      replaceReply(context, response.text, 'ai');
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error('[ReplyGenerationService] Failed to generate AI reply:', err);
@@ -532,12 +533,18 @@ export class ReplyGenerationService {
       if (success) {
         return;
       }
+      // If card reply failed, fallback to text - use replace (same AI reply update)
+      // Hook: onAIGenerationComplete
+      await this.hookManager.execute('onAIGenerationComplete', context);
+      replaceReply(context, response.text, 'ai');
+      return;
     }
 
     // Hook: onAIGenerationComplete
     await this.hookManager.execute('onAIGenerationComplete', context);
 
     // Set text reply to context
+    // Use append because this is a new AI reply (no card attempt)
     setReply(context, response.text, 'ai');
   }
 
@@ -638,9 +645,10 @@ export class ReplyGenerationService {
         const base64Image = await this.cardRenderingService.renderCard(cardFormatText);
 
         // Store image data in context reply using segments
+        // Use replace because card image is the final form of this AI reply
         const messageBuilder = new MessageBuilder();
         messageBuilder.image({ data: base64Image });
-        setReplyWithSegments(
+        replaceReplyWithSegments(
           context,
           messageBuilder.build(),
           'ai',
