@@ -27,10 +27,9 @@ export interface ImageSegment {
     uri?: string; // File URI, supports file://, http(s)://, base64:// formats
     sub_type?: 'normal' | 'sticker'; // Image type, default: normal
     summary?: string; // Image preview text
-    // Legacy fields for backward compatibility (will be converted to uri)
-    file?: string;
-    url?: string;
-    data?: string; // Base64 encoded image data
+    // Milky protocol specific fields
+    temp_url?: string; // Temporary download URL provided by Milky protocol
+    resource_id?: string; // Resource ID for Milky protocol (requires API call to get actual URL)
   };
 }
 

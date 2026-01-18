@@ -1,9 +1,10 @@
 // AI Service - provides AI capabilities as a service
 
 import type { ContextManager } from '@/context/ContextManager';
-import { setReply } from '@/context/HookContextHelpers';
+import { setReplyWithSegments } from '@/context/HookContextHelpers';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
+import { MessageBuilder } from '@/message/MessageBuilder';
 import type { SearchService } from '@/search';
 import type { TaskAnalyzer } from '@/task/TaskAnalyzer';
 import type { Task } from '@/task/types';
@@ -198,14 +199,18 @@ export class AIService {
             // Render card to image using CardRenderingService
             const base64Image = await this.cardRenderingService.renderCard(response.text);
 
-            // Store image data in context reply using helper function
-            setReply(context, '', 'ai', {
-              cardImage: base64Image,
-              isCardImage: true,
-            });
+            // Store image data in context reply using segments
+            const messageBuilder = new MessageBuilder();
+            messageBuilder.image({ data: base64Image });
+            setReplyWithSegments(
+              context,
+              messageBuilder.build(),
+              'ai',
+              { isCardImage: true }, // Set flag in metadata
+            );
 
             logger.info('[AIService] Card image rendered and stored in reply');
-            // Return empty string as the actual message will be sent as image
+            // Return empty string as the actual message will be sent as segments
             return '';
           } catch (cardError) {
             const cardErr = cardError instanceof Error ? cardError : new Error('Unknown card error');
