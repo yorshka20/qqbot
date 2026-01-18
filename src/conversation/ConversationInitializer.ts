@@ -145,7 +145,6 @@ export class ConversationInitializer {
     const taskAnalyzer = new TaskAnalyzer(llmService, completeServices.taskManager, promptManager);
     const aiService = new AIService(
       completeServices.aiManager,
-      completeServices.contextManager,
       completeServices.hookManager,
       promptManager,
       taskAnalyzer,
@@ -242,7 +241,6 @@ export class ConversationInitializer {
     }
 
     if (registeredProviders.length === 0) {
-      logger.warn('[ConversationInitializer] No providers were successfully registered');
       return;
     }
 
