@@ -1,15 +1,11 @@
 // Task module exports
 
-export { TaskManager } from './TaskManager';
+export * from './decorators';
+export * from './executors';
 export { TaskAnalyzer } from './TaskAnalyzer';
-export { ReplyTaskExecutor } from './executors/ReplyTaskExecutor';
-export { BaseTaskExecutor } from './executors/BaseTaskExecutor';
+export { TaskInitializer } from './TaskInitializer';
+export { TaskManager } from './TaskManager';
 export type {
-  TaskType,
-  Task,
-  TaskResult,
-  TaskExecutor,
-  TaskExecutionContext,
-  ConversationContext,
-  TaskAnalysisResult,
+  Task, TaskAnalysisResult, TaskExecutionContext, TaskExecutor, TaskResult, TaskType
 } from './types';
+

@@ -2,11 +2,27 @@
 
 /**
  * Task type definition
+ * Defines a task type with clear description, examples, and trigger conditions
  */
 export interface TaskType {
+  /**
+   * Task type name (unique identifier)
+   */
   name: string;
+
+  /**
+   * Task description - what this task does
+   */
   description: string;
-  executor: string; // "reply" | "plugin:xxx" | "builtin:xxx"
+
+  /**
+   * Executor identifier - "reply" | "plugin:xxx" | "builtin:xxx"
+   */
+  executor: string;
+
+  /**
+   * Task parameters definition
+   */
   parameters?: {
     [key: string]: {
       type: string;
@@ -14,6 +30,23 @@ export interface TaskType {
       description: string;
     };
   };
+
+  /**
+   * Example user messages that would trigger this task type
+   * Helps AI understand when to use this task type
+   */
+  examples?: string[];
+
+  /**
+   * Trigger conditions or keywords that indicate this task type
+   * Optional: helps AI identify when to use this task
+   */
+  triggerKeywords?: string[];
+
+  /**
+   * When to use this task type (detailed guidance for AI)
+   */
+  whenToUse?: string;
 }
 
 /**
@@ -68,24 +101,10 @@ export interface TaskExecutionContext {
 }
 
 /**
- * Conversation context for task analysis
- */
-export interface ConversationContext {
-  userMessage: string;
-  conversationHistory?: Array<{
-    role: 'user' | 'assistant';
-    content: string;
-  }>;
-  userId: number;
-  groupId?: number;
-  messageType: 'private' | 'group';
-}
-
-/**
  * Task analysis result
  */
 export interface TaskAnalysisResult {
-  task: Task;
+  tasks: Task[];
   confidence?: number;
   reasoning?: string;
 }
