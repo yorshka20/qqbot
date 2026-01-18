@@ -1,20 +1,22 @@
 // AI Service - provides AI capabilities as a service
 
-import { setReply, setReplyWithSegments } from '@/context/HookContextHelpers';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
-import { MessageBuilder } from '@/message/MessageBuilder';
 import type { SearchService } from '@/search';
-import type { TaskAnalyzer } from '@/task/TaskAnalyzer';
-import type { Task } from '@/task/types';
+import type { TaskManager } from '@/task/TaskManager';
+import type { Task, TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
 import type { AIManager } from './AIManager';
-import type { ImageGenerationResponse, Text2ImageOptions, VisionImage } from './capabilities/types';
+import type { ImageGenerationResponse, Text2ImageOptions } from './capabilities/types';
 import { PromptManager } from './PromptManager';
 import type { ProviderSelector } from './ProviderSelector';
 import { CardRenderingService } from './services/CardRenderingService';
+import { ConversationHistoryService } from './services/ConversationHistoryService';
 import { ImageGenerationService } from './services/ImageGenerationService';
+import { ImagePromptService } from './services/ImagePromptService';
 import { LLMService } from './services/LLMService';
+import { ReplyGenerationService } from './services/ReplyGenerationService';
+import { TaskAnalysisService } from './services/TaskAnalysisService';
 import { VisionService } from './services/VisionService';
 
 /**
@@ -22,11 +24,17 @@ import { VisionService } from './services/VisionService';
  * Provides AI capabilities as a service to other systems.
  * This is NOT a System - it's a service that can be called by systems.
  *
+ * This service acts as a facade, delegating to specialized services:
+ * - TaskAnalysisService: Handles AI-based task analysis
+ * - ReplyGenerationService: Handles all reply generation logic
+ * - ImagePromptService: Handles image prompt preprocessing
+ * - ImageGenerationService: Handles actual image generation
+ * - ConversationHistoryService: Handles conversation history building
+ *
  * Capabilities:
- * 1. generateReply: Generate AI response for user input
- * 2. analyzeTask: Analyze user input and generate tasks
- * 3. Vision support: Generate responses with images
- * 4. Image generation: Text-to-image and image-to-image
+ * 1. analyzeTask: Analyze user input and generate tasks
+ * 2. generateReplyFromTaskResults: Generate AI reply from task execution results (unified entry point)
+ * 3. Image generation: Text-to-image and image-to-image
  *
  * Other systems (like TaskSystem) should inject this service to use AI capabilities.
  */
@@ -35,193 +43,51 @@ export class AIService {
   private visionService: VisionService;
   private imageGenerationService: ImageGenerationService;
   private cardRenderingService: CardRenderingService;
-
-  // Constants for parameter limits (NovelAI specific)
-  private static readonly MAX_STEPS = 50;
-  private static readonly MAX_GUIDANCE_SCALE = 9;
-  private static readonly DEFAULT_STEPS = 45;
-  private static readonly DEFAULT_GUIDANCE_SCALE = 7;
-  private static readonly DEFAULT_WIDTH = 832;
-  private static readonly DEFAULT_HEIGHT = 1216;
+  private replyGenerationService: ReplyGenerationService;
+  private imagePromptService: ImagePromptService;
+  private conversationHistoryService: ConversationHistoryService;
+  private taskAnalysisService: TaskAnalysisService;
 
   constructor(
     aiManager: AIManager,
     private hookManager: HookManager,
-    private promptManager: PromptManager, // Required: must be provided from DI container
-    private taskAnalyzer?: TaskAnalyzer, // Optional: only used if TaskAnalyzer is available
-    private maxHistoryMessages = 10, // Maximum number of history messages to include in prompt
-    providerSelector?: ProviderSelector, // Optional: for session-level provider selection
-    private searchService?: SearchService, // Optional: search service for RAG
+    private promptManager: PromptManager,
+    taskManager: TaskManager,
+    maxHistoryMessages = 10,
+    providerSelector?: ProviderSelector,
+    private searchService?: SearchService,
   ) {
     // Initialize business services
     this.llmService = new LLMService(aiManager, providerSelector);
     this.visionService = new VisionService(aiManager, providerSelector);
     this.imageGenerationService = new ImageGenerationService(aiManager, providerSelector);
     this.cardRenderingService = new CardRenderingService(aiManager);
+    this.conversationHistoryService = new ConversationHistoryService(maxHistoryMessages);
+    this.imagePromptService = new ImagePromptService(this.llmService, this.promptManager);
+    this.replyGenerationService = new ReplyGenerationService(
+      this.llmService,
+      this.visionService,
+      this.cardRenderingService,
+      this.promptManager,
+      this.hookManager,
+      this.conversationHistoryService,
+      this.searchService,
+    );
+    this.taskAnalysisService = new TaskAnalysisService(
+      this.llmService,
+      taskManager,
+      this.promptManager,
+      this.hookManager,
+    );
   }
 
   /**
-   * Analyze user input and generate task
+   * Analyze user input and generate tasks
    * This method can be called by other systems (e.g., TaskSystem) to analyze and generate tasks
-   * Returns null if task analysis is not available or fails
+   * Returns task array (excluding reply task which is always generated by system)
    */
-  async analyzeTask(context: HookContext): Promise<Task | null> {
-    if (!this.taskAnalyzer) {
-      logger.debug('[AIService] TaskAnalyzer not available, cannot analyze task');
-      return null;
-    }
-
-    // Hook: onMessageBeforeAI
-    const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
-    if (!shouldContinue) {
-      return null;
-    }
-
-    // Hook: onAIGenerationStart
-    await this.hookManager.execute('onAIGenerationStart', context);
-
-    try {
-      logger.debug('[AIService] Analyzing task with AI...');
-
-      // Analyze with AI to generate task
-      // Use context.context directly since ConversationContext type is now unified
-      const analysisResult = await this.taskAnalyzer.analyze(context.context);
-
-      // Hook: onAIGenerationComplete
-      await this.hookManager.execute('onAIGenerationComplete', context);
-
-      return analysisResult.task;
-    } catch (error) {
-      logger.warn('[AIService] Task analysis failed:', error);
-      // Hook: onAIGenerationComplete (even on error)
-      await this.hookManager.execute('onAIGenerationComplete', context);
-      return null;
-    }
-  }
-
-  /**
-   * Generate AI reply for user message
-   * This method can be called by other systems (e.g., TaskSystem) to generate AI replies
-   * Implements two-step process: 1) Check if search is needed, 2) Generate reply with or without search results
-   * Supports card rendering for non-local providers when response is long
-   * Reply is set to context.reply via setReply or setReplyWithSegments
-   */
-  async generateReply(context: HookContext): Promise<void> {
-    // Hook: onMessageBeforeAI
-    const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
-    if (!shouldContinue) {
-      throw new Error('AI reply generation interrupted by hook');
-    }
-
-    // Hook: onAIGenerationStart
-    await this.hookManager.execute('onAIGenerationStart', context);
-
-    try {
-      // Build conversation history for prompt
-      const historyText = this.buildConversationHistory(context);
-
-      // Get session ID for provider selection and context loading
-      const sessionId = context.metadata.get('sessionId');
-
-      // Perform smart search if search service is available
-      const searchResultsText = await this.searchService?.performSmartSearch(context.message.message, this.llmService, sessionId) ?? '';
-
-      let prompt: string;
-      if (searchResultsText) {
-        prompt = this.promptManager.render('llm.reply.with_search', {
-          userMessage: context.message.message,
-          conversationHistory: historyText,
-          searchResults: searchResultsText,
-        });
-      } else {
-        prompt = this.promptManager.render('llm.reply', {
-          userMessage: context.message.message,
-          conversationHistory: historyText,
-        });
-      }
-
-      // Generate AI response using LLM service
-      const response = await this.llmService.generate(prompt, {
-        temperature: 0.7,
-        maxTokens: 2000,
-        sessionId,
-      });
-
-      logger.debug(`[AIService] LLM response received | responseLength=${response.text.length}`);
-
-      // Try to handle as card reply if applicable
-      const success = await this.handleCardReply(response.text, sessionId, context);
-      if (success) {
-        // Card reply has been built into context
-        return;
-      }
-
-      // Hook: onAIGenerationComplete
-      await this.hookManager.execute('onAIGenerationComplete', context);
-
-      // Set text reply to context
-      setReply(context, response.text, 'ai');
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.error('[AIService] Failed to generate AI reply:', err);
-      throw err;
-    }
-  }
-
-  /**
-   * Generate reply with vision support (multimodal)
-   * Detects images in message and uses vision capability if available
-   * Reply is set to context.reply via setReply
-   */
-  async generateReplyWithVision(context: HookContext, images?: VisionImage[]): Promise<void> {
-    // Hook: onMessageBeforeAI
-    const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
-    if (!shouldContinue) {
-      throw new Error('AI reply generation interrupted by hook');
-    }
-
-    // Hook: onAIGenerationStart
-    await this.hookManager.execute('onAIGenerationStart', context);
-
-    try {
-      const sessionId = context.metadata.get('sessionId');
-      const historyText = this.buildConversationHistory(context);
-
-      // Build prompt
-      // Template name: 'llm.reply' (from prompts/llm/reply.txt)
-      const prompt = this.promptManager.render('llm.reply', {
-        userMessage: context.message.message,
-        conversationHistory: historyText,
-      });
-
-      let response;
-
-      // Use vision if images are provided
-      if (images && images.length > 0) {
-        response = await this.visionService.generateWithVision(prompt, images, {
-          temperature: 0.7,
-          maxTokens: 2000,
-          sessionId,
-        });
-      } else {
-        // Use LLM
-        response = await this.llmService.generate(prompt, {
-          temperature: 0.7,
-          maxTokens: 2000,
-          sessionId,
-        });
-      }
-
-      // Hook: onAIGenerationComplete
-      await this.hookManager.execute('onAIGenerationComplete', context);
-
-      // Set text reply to context
-      setReply(context, response.text, 'ai');
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.error('[AIService] Failed to generate AI reply with vision:', err);
-      throw err;
-    }
+  async analyzeTask(context: HookContext): Promise<Task[]> {
+    return await this.taskAnalysisService.analyzeTask(context);
   }
 
   /**
@@ -263,12 +129,28 @@ export class AIService {
     await this.hookManager.execute('onAIGenerationStart', context);
 
     try {
-      const { prompt: finalPrompt, options: finalOptions } = await this.resolvePromptAndOptions(
+      // Prompt must be provided in options.prompt by caller
+      if (!options?.prompt) {
+        throw new Error('options.prompt must be provided by caller');
+      }
+
+      const userInput = options.prompt;
+
+      logger.debug(
+        `[AIService] Processing prompt | input=${userInput.substring(0, 50)}... | skipLLMProcess=${skipLLMProcess || false}`,
+      );
+
+      // Prepare parameters (with or without LLM preprocessing based on skipLLMProcess)
+      const prepared = await this.imagePromptService.prepareImageGenerationParams(
+        userInput,
         options,
         sessionId,
         skipLLMProcess,
         templateName,
       );
+
+      const finalPrompt = prepared.prompt;
+      const finalOptions = prepared.options;
 
       logger.info(
         `[AIService] Generating image | prompt="${finalPrompt.substring(0, 100)}..." | providerName=${providerName || 'default'}`,
@@ -299,467 +181,17 @@ export class AIService {
   }
 
   /**
-   * Resolve final prompt and options for image generation
-   * Prompt must be provided in options.prompt by caller
-   * LLM preprocessing: controlled by skipLLMProcess parameter
+   * Generate reply from task results
+   * This is the unified entry point for generating bot replies after task execution.
+   * Handles all cases: with/without images, with/without task results, with/without search.
+   *
+   * @param context - Hook context containing message and conversation history
+   * @param taskResults - Task execution results (empty Map if no tasks)
    */
-  private async resolvePromptAndOptions(
-    options: Text2ImageOptions,
-    sessionId: string,
-    skipLLMProcess: boolean | undefined,
-    templateName: string | undefined,
-  ): Promise<{ prompt: string; options: Text2ImageOptions }> {
-    // Prompt must be provided in options.prompt by caller
-    if (!options?.prompt) {
-      throw new Error('options.prompt must be provided by caller');
-    }
-
-    const userInput = options.prompt;
-
-    logger.debug(
-      `[AIService] Processing prompt | input=${userInput.substring(0, 50)}... | skipLLMProcess=${skipLLMProcess || false}`,
-    );
-
-    // Prepare parameters (with or without LLM preprocessing based on skipLLMProcess)
-    const prepared = await this.prepareImageGenerationParams(
-      userInput,
-      options,
-      sessionId,
-      skipLLMProcess,
-      templateName,
-    );
-
-    // Return prepared options (prompt is already extracted and returned separately)
-    return { prompt: prepared.prompt, options: prepared.options };
-  }
-
-  /**
-   * Preprocess image generation prompt using LLM
-   * This is a public method that can be called to get processed prompt and options
-   * Useful for batch generation where you want to preprocess once and reuse the prompt
-   * @param userInput - User input text
-   * @param options - User-provided options
-   * @param sessionId - Session ID for provider selection
-   * @param templateName - Optional template name for LLM preprocessing (default: 'text2img.generate')
-   * @returns Processed prompt and options
-   */
-  async preprocessImagePrompt(
-    userInput: string,
-    options: Text2ImageOptions,
-    sessionId: string,
-    templateName: string = 'text2img.generate',
-  ): Promise<{ prompt: string; options: Text2ImageOptions }> {
-    return await this.preprocessPromptWithLLM(userInput, options, sessionId, templateName);
-  }
-
-  /**
-   * Prepare image generation parameters
-   * Either uses LLM preprocessing or directly uses user input based on skipLLMProcess flag
-   * @param userInput - User input text
-   * @param options - User-provided options
-   * @param sessionId - Session ID for provider selection
-   * @param skipLLMProcess - Whether to skip LLM preprocessing
-   * @param templateName - Optional template name for LLM preprocessing (default: 'text2img.generate')
-   * @returns Processed prompt and options
-   */
-  private async prepareImageGenerationParams(
-    userInput: string,
-    options: Text2ImageOptions,
-    sessionId: string,
-    skipLLMProcess?: boolean,
-    templateName?: string,
-  ): Promise<{ prompt: string; options: Text2ImageOptions }> {
-    if (skipLLMProcess) {
-      return this.prepareDirectPrompt(userInput, options);
-    }
-
-    try {
-      return await this.preprocessPromptWithLLM(userInput, options, sessionId, templateName);
-    } catch (llmError) {
-      const llmErr = llmError instanceof Error ? llmError : new Error('Unknown LLM error');
-      logger.warn(`[AIService] LLM preprocessing failed, falling back to direct user input | error=${llmErr.message}`);
-      return this.prepareDirectPrompt(userInput, options);
-    }
-  }
-
-  /**
-   * Preprocess user input using LLM to generate standardized image generation parameters
-   * @param userInput - User input text
-   * @param options - User-provided options (will be merged with LLM-generated options)
-   * @param sessionId - Session ID for provider selection
-   * @param templateName - Optional template name (default: 'text2img.generate')
-   * @returns Processed prompt and options
-   */
-  private async preprocessPromptWithLLM(
-    userInput: string,
-    options: Text2ImageOptions | undefined,
-    sessionId: string | undefined,
-    templateName: string = 'text2img.generate',
-  ): Promise<{ prompt: string; options: Text2ImageOptions }> {
-    // Build LLM prompt using PromptManager
-    // Default template name: 'text2img.generate' (from prompts/text2img/generate.txt)
-    // Can be overridden with templateName parameter (e.g., 'text2img.generate_nai')
-    const llmPrompt = this.promptManager.render(templateName, {
-      description: userInput,
-    });
-
-    logger.debug('[AIService] Calling LLM to preprocess image generation parameters...');
-
-    // Call LLM to generate JSON parameters. use deepseek to generate prompt.
-    const llmResponse = await this.llmService.generate(
-      llmPrompt,
-      {
-        temperature: 0.3, // Lower temperature for more consistent JSON output
-        maxTokens: 1000,
-        sessionId,
-      },
-      'deepseek',
-    );
-
-    logger.debug(`[AIService] LLM response received | responseLength=${llmResponse.text.length}`);
-
-    // Parse LLM response to extract image generation parameters
-    const parsedParams = this.parseImageGenerationParams(llmResponse.text, userInput);
-
-    // Extract additional parameters from LLM JSON response that may not be in standard format
-    // Some templates (like generate_banana.txt) output aspectRatio and resolution directly
-    const additionalParams = this.extractAdditionalParamsFromLLMResponse(llmResponse.text);
-
-    const processedOptions: Text2ImageOptions = {
-      prompt: parsedParams.prompt,
-      steps: parsedParams.steps,
-      guidance_scale: parsedParams.cfg_scale,
-      seed: parsedParams.seed,
-      width: parsedParams.width,
-      height: parsedParams.height,
-      negative_prompt: parsedParams.negative_prompt,
-      sampler: parsedParams.sampler,
-      // Additional parameters from LLM response (aspectRatio, imageSize from resolution, etc.)
-      ...additionalParams,
-      // Merge with user-provided options (user options take precedence)
-      ...options,
-    };
-
-    logger.info(
-      `[AIService] LLM preprocessing completed | original="${userInput.substring(0, 50)}..." | processed="${parsedParams.prompt}" | steps=${processedOptions.steps} | cfg=${processedOptions.guidance_scale}`,
-    );
-
-    return {
-      prompt: parsedParams.prompt,
-      options: processedOptions,
-    };
-  }
-
-  /**
-   * Prepare prompt and options directly from user input (skip LLM processing)
-   * @param userInput - User input text
-   * @param options - User-provided options
-   * @returns Processed prompt and options
-   */
-  private prepareDirectPrompt(
-    userInput: string,
-    options: Text2ImageOptions,
-  ): { prompt: string; options: Text2ImageOptions } {
-    logger.debug('[AIService] Using direct user input as prompt (LLM processing skipped)');
-
-    const processedOptions = this.mergeAndValidateOptions(options);
-
-    logger.info('[AIService] Using direct user input as prompt');
-
-    return {
-      prompt: userInput,
-      options: processedOptions,
-    };
-  }
-
-  /**
-   * Merge user-provided options with defaults and apply validation limits
-   * @param options - User-provided options
-   * @returns Merged and validated options
-   */
-  private mergeAndValidateOptions(options: Text2ImageOptions): Text2ImageOptions {
-    const mergedOptions: Text2ImageOptions = {
-      seed: -1,
-      width: options.width ?? AIService.DEFAULT_WIDTH,
-      height: options.height ?? AIService.DEFAULT_HEIGHT,
-      ...options, // Merge user-provided options
-    };
-    if (!mergedOptions.prompt) {
-      throw new Error('options.prompt must be provided by caller');
-    }
-
-    // Apply limits to steps and guidance_scale after merge
-    return {
-      ...mergedOptions,
-      steps: Math.min(mergedOptions.steps || AIService.DEFAULT_STEPS, AIService.MAX_STEPS),
-      guidance_scale: Math.min(
-        mergedOptions.guidance_scale || AIService.DEFAULT_GUIDANCE_SCALE,
-        AIService.MAX_GUIDANCE_SCALE,
-      ),
-    };
-  }
-
-  /**
-   * Parse LLM response to extract image generation parameters
-   * Handles various response formats including JSON wrapped in markdown code blocks
-   * @param llmResponse - Raw LLM response text
-   * @param fallbackPrompt - Fallback prompt to use if parsing fails
-   * @returns Parsed image generation parameters
-   */
-  private parseImageGenerationParams(
-    llmResponse: string,
-    fallbackPrompt: string,
-  ): {
-    prompt: string;
-    negative_prompt: string;
-    steps: number;
-    cfg_scale: number;
-    seed: number;
-    width: number;
-    height: number;
-    sampler: string;
-  } {
-    try {
-      // Try to extract JSON from the response
-      // Handle cases where JSON might be wrapped in markdown code blocks
-      let jsonText = llmResponse.trim();
-
-      // Remove markdown code block markers if present
-      const jsonBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-      if (jsonBlockMatch) {
-        jsonText = jsonBlockMatch[1].trim();
-      }
-
-      // Try to find JSON object in the text
-      const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        jsonText = jsonMatch[0];
-      }
-
-      // Parse JSON
-      const parsed = JSON.parse(jsonText);
-
-      // Validate required fields
-      if (!parsed.prompt || typeof parsed.prompt !== 'string') {
-        throw new Error('Missing or invalid prompt field in LLM response');
-      }
-
-      // Extract and validate parameters with defaults
-      // Limit steps and cfg_scale to reasonable values (NovelAI typically uses steps 28-50, cfg 5-11)
-      const result = {
-        prompt: parsed.prompt as string,
-        negative_prompt: (parsed.negative_prompt as string) || '',
-        steps: this.validateNumber(parsed.steps, AIService.DEFAULT_STEPS, 1, AIService.MAX_STEPS),
-        cfg_scale: this.validateNumber(
-          parsed.cfg_scale,
-          AIService.DEFAULT_GUIDANCE_SCALE,
-          1,
-          AIService.MAX_GUIDANCE_SCALE,
-        ),
-        seed: this.validateNumber(parsed.seed, -1, -1, Number.MAX_SAFE_INTEGER),
-        width: this.validateNumber(parsed.width, AIService.DEFAULT_WIDTH, 256, 2048),
-        height: this.validateNumber(parsed.height, AIService.DEFAULT_HEIGHT, 256, 2048),
-        sampler: (parsed.sampler as string) || 'Euler a',
-      };
-
-      logger.debug(`[AIService] Successfully parsed LLM response | prompt="${result.prompt.substring(0, 50)}..."`);
-
-      return result;
-    } catch (parseError) {
-      const parseErr = parseError instanceof Error ? parseError : new Error('Unknown parsing error');
-      logger.warn(
-        `[AIService] Failed to parse LLM response, using fallback | error=${parseErr.message} | response=${llmResponse.substring(0, 200)}`,
-      );
-
-      // Fallback: Return default parameters with user input as prompt
-      return {
-        prompt: fallbackPrompt,
-        negative_prompt:
-          'worst quality, low quality, bad anatomy, bad hands, text, error, jpeg artifacts, signature, watermark, blurry',
-        steps: AIService.DEFAULT_STEPS,
-        cfg_scale: AIService.DEFAULT_GUIDANCE_SCALE,
-        seed: -1,
-        width: AIService.DEFAULT_WIDTH,
-        height: AIService.DEFAULT_HEIGHT,
-        sampler: 'Euler a',
-      };
-    }
-  }
-
-  /**
-   * Extract additional parameters from LLM JSON response
-   * Some templates output parameters directly (e.g., aspectRatio, resolution) that should be mapped to options
-   * This is a generic extractor that supports common parameter names from different templates
-   * @param llmResponse - Raw LLM response text
-   * @returns Additional parameters to merge into options
-   */
-  private extractAdditionalParamsFromLLMResponse(llmResponse: string): Partial<Text2ImageOptions> {
-    try {
-      // Try to extract JSON from the response
-      let jsonText = llmResponse.trim();
-
-      // Remove markdown code block markers if present
-      const jsonBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-      if (jsonBlockMatch) {
-        jsonText = jsonBlockMatch[1].trim();
-      }
-
-      // Try to find JSON object in the text
-      const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        jsonText = jsonMatch[0];
-      }
-
-      // Parse JSON
-      const parsed = JSON.parse(jsonText);
-
-      const result: Partial<Text2ImageOptions> = {};
-
-      // Extract aspectRatio if present (e.g., from generate_banana.txt)
-      if (parsed.aspectRatio && typeof parsed.aspectRatio === 'string') {
-        result.aspectRatio = parsed.aspectRatio;
-      }
-
-      // Extract imageSize from resolution if present
-      // Some templates output "resolution": "2K" or "4K" which should map to imageSize
-      if (parsed.resolution && typeof parsed.resolution === 'string') {
-        // Normalize to uppercase (e.g., "2k" -> "2K")
-        result.imageSize = parsed.resolution.toUpperCase();
-      }
-
-      // Extract imageSize directly if present
-      if (parsed.imageSize && typeof parsed.imageSize === 'string') {
-        result.imageSize = parsed.imageSize.toUpperCase();
-      }
-
-      return result;
-    } catch (error) {
-      // If parsing fails, return empty object (no additional params extracted)
-      return {};
-    }
-  }
-
-  /**
-   * Validate and normalize a number parameter
-   * @param value - Value to validate
-   * @param defaultValue - Default value if validation fails
-   * @param min - Minimum allowed value
-   * @param max - Maximum allowed value
-   * @returns Validated number
-   */
-  private validateNumber(value: unknown, defaultValue: number, min: number, max: number): number {
-    if (typeof value === 'number' && !isNaN(value)) {
-      return Math.max(min, Math.min(max, value));
-    }
-    if (typeof value === 'string') {
-      const parsed = parseFloat(value);
-      if (!isNaN(parsed)) {
-        return Math.max(min, Math.min(max, parsed));
-      }
-    }
-    return defaultValue;
-  }
-
-  /**
-   * Handle card reply rendering if applicable
-   * Checks if response should be rendered as card and handles the conversion and rendering
-   * @param responseText - Original text response
-   * @param sessionId - Session ID for provider selection
-   * @param context - Hook context for setting reply
-   * @returns true if card was successfully rendered, false if should use text reply
-   */
-  private async handleCardReply(
-    responseText: string,
-    sessionId: string,
+  async generateReplyFromTaskResults(
     context: HookContext,
-  ): Promise<boolean> {
-    // Check if response length exceeds threshold
-    const cardThreshold = CardRenderingService.getThreshold();
-    const shouldConvertToCard = responseText.length >= cardThreshold;
-
-    if (!shouldConvertToCard) {
-      return false;
-    }
-
-    // Check if card rendering service is available (not local provider)
-    const canUseCardFormat = this.cardRenderingService.shouldUseCardFormatPrompt(sessionId);
-
-    if (!canUseCardFormat) {
-      return false;
-    }
-
-    try {
-      // Convert text to card format
-      logger.info('[AIService] Converting response to card format');
-      const cardFormatText = await this.convertToCardFormat(responseText, sessionId);
-
-      // Check if conversion was successful (valid JSON card data)
-      const shouldRender = this.cardRenderingService.shouldUseCardRendering(cardFormatText, sessionId);
-      if (shouldRender) {
-        logger.info('[AIService] Rendering card image for response');
-        // Render card to image using CardRenderingService
-        const base64Image = await this.cardRenderingService.renderCard(cardFormatText);
-
-        // Store image data in context reply using segments
-        const messageBuilder = new MessageBuilder();
-        messageBuilder.image({ data: base64Image });
-        setReplyWithSegments(
-          context,
-          messageBuilder.build(),
-          'ai',
-          { isCardImage: true }, // Set flag in metadata
-        );
-
-        logger.info('[AIService] Card image rendered and stored in reply');
-        // Hook: onAIGenerationComplete
-        await this.hookManager.execute('onAIGenerationComplete', context);
-        return true;
-      } else {
-        logger.debug('[AIService] Card conversion failed or invalid, falling back to text');
-        return false;
-      }
-    } catch (cardError) {
-      const cardErr = cardError instanceof Error ? cardError : new Error('Unknown card error');
-      logger.warn('[AIService] Failed to convert to card format, falling back to text:', cardErr);
-      return false;
-    }
-  }
-
-  /**
-   * Convert text response to card format JSON
-   * This method is called when response length exceeds threshold
-   * @param responseText - Original text response
-   * @param sessionId - Session ID for provider selection
-   * @returns Card format JSON string
-   */
-  private async convertToCardFormat(responseText: string, sessionId?: string): Promise<string> {
-    // Use dedicated conversion prompt template
-    const prompt = this.promptManager.render('llm.reply.convert_to_card', {
-      responseText,
-    });
-
-    logger.debug('[AIService] Converting text to card format using LLM');
-
-    // Generate card format response
-    const cardResponse = await this.llmService.generate(prompt, {
-      temperature: 0.3, // Lower temperature for more consistent JSON output
-      maxTokens: 2000,
-      sessionId,
-    });
-
-    logger.debug(`[AIService] Card format conversion completed | responseLength=${cardResponse.text.length}`);
-
-    return cardResponse.text;
-  }
-
-  /**
-   * Build conversation history for prompt
-   * @param context - Hook context
-   * @returns Conversation history
-   */
-  private buildConversationHistory(context: HookContext): string {
-    const history = context.context?.history || [];
-    const limitedHistory = history.slice(-this.maxHistoryMessages);
-    return limitedHistory.map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`).join('\n');
+    taskResults: Map<string, TaskResult>
+  ): Promise<void> {
+    return await this.replyGenerationService.generateReplyFromTaskResults(context, taskResults);
   }
 }

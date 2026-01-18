@@ -26,6 +26,7 @@ export interface Text2ImageOptions {
   negative_prompt?: string; // Negative prompt for generation
   steps?: number; // Number of inference steps
   guidance_scale?: number; // Guidance scale (CFG)
+  cfg_scale?: number;
   seed?: number; // Random seed for reproducibility
   model?: string; // Model to use for generation
   template?: string; // Template to use for generation

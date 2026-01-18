@@ -24,6 +24,12 @@ export interface AIGenerateOptions {
    * If provided and provider has context enabled, will automatically load history from ContextManager
    */
   sessionId?: string;
+  /**
+   * Whether to include reasoning content in the response (for providers that support reasoning)
+   * Default: false (only include the final answer, not the reasoning process)
+   * Set to true if you need the reasoning content (e.g., for task analysis or debugging)
+   */
+  includeReasoning?: boolean;
 }
 
 /**
