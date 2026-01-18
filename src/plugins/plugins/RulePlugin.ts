@@ -127,7 +127,7 @@ export class RulePlugin extends PluginBase {
 
     // Load and validate configuration from config.jsonc (persisted)
     // Configuration is loaded from config.jsonc file, which persists across server restarts
-    const pluginConfig = this.pluginConfig?.config as RulePluginConfig | undefined;
+    const pluginConfig = this.pluginConfig?.config as RulePluginConfig;
     if (!pluginConfig) {
       logger.warn('[RulePlugin] No configuration found in config.jsonc, plugin will be disabled');
       this.enabled = false;
@@ -137,14 +137,11 @@ export class RulePlugin extends PluginBase {
     // Load timezone from config (default: Asia/Tokyo)
     if (pluginConfig.timezone) {
       this.timezone = pluginConfig.timezone;
-      logger.info(`[RulePlugin] Using configured timezone: ${this.timezone}`);
-    } else {
-      logger.info(`[RulePlugin] Using default timezone: ${this.timezone}`);
     }
+    logger.info(`[RulePlugin] Using timezone: ${this.timezone}`);
 
     const rules = pluginConfig.rules || [];
     if (rules.length === 0) {
-      logger.warn('[RulePlugin] No rules configured in config.jsonc');
       return;
     }
 
@@ -162,7 +159,7 @@ export class RulePlugin extends PluginBase {
       }
     }
 
-    logger.info(`[RulePlugin] Successfully registered ${this.cronJobs.size} cron job(s) from persisted configuration`);
+    logger.info(`[RulePlugin] Successfully registered ${this.cronJobs.size} cron job(s)`);
   }
 
   async onDisable(): Promise<void> {
@@ -216,7 +213,6 @@ export class RulePlugin extends PluginBase {
 
     // Check if rule already exists (should not happen after clearing in onEnable, but safety check)
     if (this.cronJobs.has(ruleId)) {
-      logger.warn(`[RulePlugin] Rule ${ruleId} already registered, skipping`);
       return;
     }
 
@@ -237,7 +233,6 @@ export class RulePlugin extends PluginBase {
     );
 
     this.cronJobs.set(ruleId, job);
-    logger.info(`[RulePlugin] Registered cron job: ${ruleId} (schedule: ${rule.schedule}, timezone: ${this.timezone})`);
   }
 
   /**
