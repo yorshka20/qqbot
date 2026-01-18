@@ -29,15 +29,15 @@ export class ConversationConfigService {
   }
 
   /**
-   * Get conversation config with fallback to global config
+   * Get raw conversation config (without global merge)
+   * Used internally for update operations to avoid saving global config data
    */
-  async getConfig(sessionId: string, sessionType: SessionType): Promise<ConversationConfigData> {
+  private async getRawConfig(sessionId: string, sessionType: SessionType): Promise<ConversationConfigData> {
     const cacheKey = this.getCacheKey(sessionId, sessionType);
 
     // Check cache first
     if (this.configCache.has(cacheKey)) {
-      const cached = this.configCache.get(cacheKey)!;
-      return this.mergeWithGlobal(cached);
+      return this.configCache.get(cacheKey)!;
     }
 
     // Load from database
@@ -55,24 +55,52 @@ export class ConversationConfigService {
       this.configCache.set(cacheKey, configData);
     }
 
-    return this.mergeWithGlobal(configData);
+    return configData;
+  }
+
+  /**
+   * Get conversation config with fallback to global config
+   */
+  async getConfig(sessionId: string, sessionType: SessionType): Promise<ConversationConfigData> {
+    const rawConfig = await this.getRawConfig(sessionId, sessionType);
+    return this.mergeWithGlobal(rawConfig);
   }
 
   /**
    * Merge conversation config with global config (fallback)
+   * If conversation config has commands/plugins defined, use them entirely (don't merge with global)
+   * This ensures that conversation-level config takes precedence and avoids conflicts
    */
   private mergeWithGlobal(conversationConfig: ConversationConfigData): ConversationConfigData {
     const globalConfig = this.globalConfigManager.getConfig();
 
+    // If conversation config has commands defined, use them entirely
+    // Otherwise, fallback to global config
+    const commands = conversationConfig.commands !== undefined
+      ? {
+        enabled: conversationConfig.commands.enabled ?? [],
+        disabled: conversationConfig.commands.disabled ?? [],
+      }
+      : {
+        enabled: globalConfig.commands?.enabled ?? [],
+        disabled: globalConfig.commands?.disabled ?? [],
+      };
+
+    // If conversation config has plugins defined, use them entirely
+    // Otherwise, fallback to global config
+    const plugins = conversationConfig.plugins !== undefined
+      ? {
+        enabled: conversationConfig.plugins.enabled ?? [],
+        disabled: conversationConfig.plugins.disabled ?? [],
+      }
+      : {
+        enabled: globalConfig.plugins?.enabled ?? [],
+        disabled: globalConfig.plugins?.disabled ?? [],
+      };
+
     return {
-      commands: {
-        enabled: conversationConfig.commands?.enabled ?? globalConfig.commands?.enabled ?? [],
-        disabled: conversationConfig.commands?.disabled ?? globalConfig.commands?.disabled ?? [],
-      },
-      plugins: {
-        enabled: conversationConfig.plugins?.enabled ?? globalConfig.plugins?.enabled ?? [],
-        disabled: conversationConfig.plugins?.disabled ?? globalConfig.plugins?.disabled ?? [],
-      },
+      commands,
+      plugins,
       permissions: {
         users: {
           ...globalConfig.permissions?.users,
@@ -128,14 +156,11 @@ export class ConversationConfigService {
     } else {
       // Create new config
       configData = partialConfig as ConversationConfigData;
-      const now = new Date();
 
       await model.create({
         sessionId,
         sessionType,
         config: configData,
-        createdAt: now,
-        updatedAt: now,
       });
     }
 
@@ -251,11 +276,12 @@ export class ConversationConfigService {
     sessionId: string,
     sessionType: SessionType,
   ): Promise<void> {
-    const config = await this.getConfig(sessionId, sessionType);
+    // Get raw conversation config (without global merge) to avoid saving global config data
+    const rawConfig = await this.getRawConfig(sessionId, sessionType);
     const { enabled, disabled } = updateEnabledDisabled(
       commandName,
-      config.commands?.enabled ?? [],
-      config.commands?.disabled ?? [],
+      rawConfig.commands?.enabled ?? [],
+      rawConfig.commands?.disabled ?? [],
       true,
     );
 
@@ -272,11 +298,12 @@ export class ConversationConfigService {
     sessionId: string,
     sessionType: SessionType,
   ): Promise<void> {
-    const config = await this.getConfig(sessionId, sessionType);
+    // Get raw conversation config (without global merge) to avoid saving global config data
+    const rawConfig = await this.getRawConfig(sessionId, sessionType);
     const { enabled, disabled } = updateEnabledDisabled(
       commandName,
-      config.commands?.enabled ?? [],
-      config.commands?.disabled ?? [],
+      rawConfig.commands?.enabled ?? [],
+      rawConfig.commands?.disabled ?? [],
       false,
     );
 
@@ -293,11 +320,12 @@ export class ConversationConfigService {
     sessionId: string,
     sessionType: SessionType,
   ): Promise<void> {
-    const config = await this.getConfig(sessionId, sessionType);
+    // Get raw conversation config (without global merge) to avoid saving global config data
+    const rawConfig = await this.getRawConfig(sessionId, sessionType);
     const { enabled, disabled } = updateEnabledDisabled(
       pluginName,
-      config.plugins?.enabled ?? [],
-      config.plugins?.disabled ?? [],
+      rawConfig.plugins?.enabled ?? [],
+      rawConfig.plugins?.disabled ?? [],
       true,
     );
 
@@ -314,11 +342,12 @@ export class ConversationConfigService {
     sessionId: string,
     sessionType: SessionType,
   ): Promise<void> {
-    const config = await this.getConfig(sessionId, sessionType);
+    // Get raw conversation config (without global merge) to avoid saving global config data
+    const rawConfig = await this.getRawConfig(sessionId, sessionType);
     const { enabled, disabled } = updateEnabledDisabled(
       pluginName,
-      config.plugins?.enabled ?? [],
-      config.plugins?.disabled ?? [],
+      rawConfig.plugins?.enabled ?? [],
+      rawConfig.plugins?.disabled ?? [],
       false,
     );
 

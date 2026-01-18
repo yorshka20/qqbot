@@ -318,12 +318,15 @@ export class CommandManager {
 
     // Check permissions first - if user doesn't have permission, return permission error
     // This ensures that disabled commands return "no permission" error for users without permission
-    const hasPermission = await this.checkPermissions(context, registration.permissions);
-    if (!hasPermission) {
-      return {
-        success: false,
-        error: `You don't have permission to use command "${command.name}"`,
-      };
+    // Skip permission check for system execution (bot-initiated commands)
+    if (!context.metadata.isSystemExecution) {
+      const hasPermission = await this.checkPermissions(context, registration.permissions);
+      if (!hasPermission) {
+        return {
+          success: false,
+          error: `You don't have permission to use command "${command.name}"`,
+        };
+      }
     }
 
     // Get user role from context (if available)

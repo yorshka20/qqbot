@@ -58,6 +58,8 @@ export interface CommandContextMetadata {
   protocol: ProtocolName;
   // Command metadata
   senderRole: string;
+  // System execution flag - if true, skip permission checks (for bot/system-initiated commands)
+  isSystemExecution?: boolean;
 }
 
 

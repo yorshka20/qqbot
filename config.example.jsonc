@@ -99,6 +99,54 @@
       {
         "name": "nudge",
         "enabled": true
+      },
+      // Rule Plugin - executes commands on schedule based on configured rules
+      {
+        "name": "rule",
+        "enabled": true,
+        "config": {
+          // Timezone for cron jobs (default: "Asia/Tokyo")
+          // Must be a valid IANA timezone identifier (e.g., "Asia/Tokyo", "Asia/Shanghai", "UTC")
+          "timezone": "Asia/Tokyo",
+          // List of rules to execute
+          "rules": [
+            {
+              // Group ID where the command will be executed
+              "groupId": "123456789",
+              // Cron schedule expression (e.g., "0 20 * * *" for daily at 20:00)
+              // Format: minute hour day month day-of-week
+              "schedule": "0 20 * * *",
+              // Command name to execute
+              "command": "cmd",
+              // Command arguments
+              "args": [
+                "enable",
+                "t2i"
+              ]
+            },
+            {
+              "groupId": "123456789",
+              "schedule": "0 22 * * *",
+              "command": "cmd",
+              "args": [
+                "disable",
+                "t2i"
+              ]
+            },
+            // Example: enable multiple commands at once
+            {
+              "groupId": "123456789",
+              "schedule": "0 8 * * *",
+              "command": "cmd",
+              "args": [
+                "enable",
+                "t2i",
+                "tts",
+                "help"
+              ]
+            }
+          ]
+        }
       }
     ],
   },

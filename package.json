@@ -38,6 +38,7 @@
     "better-sqlite3": "^12.6.0",
     "jsonc-parser": "^3.3.1",
     "mongodb": "^7.0.0",
+    "node-cron": "^3.0.3",
     "openai": "^6.16.0",
     "puppeteer": "^21.0.0",
     "reflect-metadata": "^0.2.2",
@@ -50,6 +51,7 @@
     "@types/adm-zip": "^0.5.7",
     "@types/better-sqlite3": "^7.6.13",
     "@types/bun": "latest",
+    "@types/node-cron": "^3.0.11",
     "prettier": "^3.7.4",
     "typescript": "^5.9.3"
   }
