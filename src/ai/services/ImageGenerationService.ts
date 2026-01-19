@@ -105,9 +105,9 @@ export class ImageGenerationService {
   }
 
   /**
-   * Transform image based on prompt
+   * Generate image from image based on prompt (image-to-image generation)
    */
-  async transformImage(
+  async generateImageFromImage(
     image: string,
     prompt: string,
     options?: Image2ImageOptions,
@@ -144,7 +144,7 @@ export class ImageGenerationService {
       }
     }
 
-    const providerResponse = await provider.transformImage(image, prompt, options);
+    const providerResponse = await provider.generateImageFromImage(image, prompt, options);
     // Convert provider response (with relativePath) to final response (with URL)
     return this.convertProviderResponseToFinal(providerResponse);
   }

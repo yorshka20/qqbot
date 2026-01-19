@@ -3,6 +3,7 @@
 
 import type { CommandContext, CommandContextMetadata } from '@/command/types';
 import type { ConversationContext } from '@/context/types';
+import { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext } from '@/hooks/types';
 
 /**
@@ -17,6 +18,7 @@ export class CommandContextBuilder {
   private messageScene?: string;
   private metadata?: CommandContextMetadata;
   private conversationContext?: ConversationContext;
+  private originalMessage?: NormalizedMessageEvent;
 
   private constructor() { }
 
@@ -55,6 +57,8 @@ export class CommandContextBuilder {
       protocol: context.message.protocol,
       senderRole: context.message.sender?.role ?? '',
     };
+    // Save original message for accessing segments, etc.
+    builder.originalMessage = context.message;
 
     return builder;
   }
@@ -156,6 +160,10 @@ export class CommandContextBuilder {
 
     if (this.groupId !== undefined) {
       context.groupId = this.groupId;
+    }
+
+    if (this.originalMessage !== undefined) {
+      context.originalMessage = this.originalMessage;
     }
 
     return context;

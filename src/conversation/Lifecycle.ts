@@ -1,10 +1,12 @@
 // Message Lifecycle Orchestrator - orchestrates the message processing lifecycle
 
+import { ParsedCommand } from '@/command';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
+import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { CommandRouter } from './CommandRouter';
 
@@ -22,7 +24,7 @@ export class Lifecycle {
   constructor(
     private hookManager: HookManager,
     private commandRouter: CommandRouter,
-  ) {}
+  ) { }
 
   enabled(): boolean {
     return true;
@@ -189,9 +191,24 @@ export class Lifecycle {
 
   /**
    * Route command from message
+   * Prefers segments if available to properly handle reply messages
    */
   private routeCommand(context: HookContext): void {
-    const command = this.commandRouter.route(context.message.message);
+    let command: ParsedCommand | null = null;
+
+    // If segments are available, use them to extract text (skipping reply/at segments)
+    // This ensures commands in reply messages are properly detected
+    if (context.message.segments && context.message.segments.length > 0) {
+      // Convert segments to MessageSegment[] type
+      const segments = context.message.segments as unknown as MessageSegment[];
+      command = this.commandRouter.routeFromSegments(segments);
+    }
+
+    // Fallback to message string if no command found from segments
+    if (!command) {
+      command = this.commandRouter.route(context.message.message);
+    }
+
     if (command) {
       context.command = command;
       logger.info(`[Lifecycle] Command routed | command=${command.name}`);

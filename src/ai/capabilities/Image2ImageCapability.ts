@@ -5,18 +5,18 @@ import type { Image2ImageOptions, ProviderImageGenerationResponse } from './type
 
 /**
  * Image2Image Capability interface
- * Providers that support image-to-image transformation should implement this interface
+ * Providers that support image-to-image generation should implement this interface
  * Returns ProviderImageGenerationResponse (internal type with relativePath)
  */
 export interface Image2ImageCapability {
   /**
-   * Transform image based on prompt
+   * Generate image from image based on prompt (image-to-image generation)
    * @param image - Source image (URL, base64, or file path)
-   * @param prompt - Transformation prompt
-   * @param options - Transformation options
+   * @param prompt - Generation prompt
+   * @param options - Generation options
    * @returns ProviderImageGenerationResponse with relativePath or base64
    */
-  transformImage(image: string, prompt: string, options?: Image2ImageOptions): Promise<ProviderImageGenerationResponse>;
+  generateImageFromImage(image: string, prompt: string, options?: Image2ImageOptions): Promise<ProviderImageGenerationResponse>;
 }
 
 /**

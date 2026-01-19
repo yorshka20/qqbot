@@ -6,6 +6,7 @@ import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ContextManager, ConversationContext } from '@/context';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { getReplyContent } from '@/context/HookContextHelpers';
+import { cacheMessage } from '@/conversation/MessageCache';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
@@ -36,6 +37,9 @@ export class MessagePipeline {
    */
   async process(event: NormalizedMessageEvent, context: MessageProcessingContext): Promise<MessageProcessingResult> {
     try {
+      // Cache message early for quick lookup (e.g., for reply segments)
+      cacheMessage(event);
+
       const hookContext = this.createHookContext(event, context);
       const messageId = String(event.id ?? event.messageId ?? 'unknown');
       logger.info(`[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId}`);

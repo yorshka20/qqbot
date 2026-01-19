@@ -474,10 +474,10 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
   }
 
   /**
-   * Transform image based on prompt (image-to-image)
+   * Generate image from image based on prompt (image-to-image generation)
    * Supports single image input
    */
-  async transformImage(
+  async generateImageFromImage(
     image: string,
     prompt: string,
     options?: Image2ImageOptions,
