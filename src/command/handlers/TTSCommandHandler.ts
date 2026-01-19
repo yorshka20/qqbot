@@ -1,11 +1,11 @@
+import type { APIClient } from '@/api/APIClient';
 import { HttpClient } from '@/api/http/HttpClient';
+import { FileAPI } from '@/api/methods/FileAPI';
 import { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
+import { uploadFileBuffer } from '@/utils/fileUpload';
 import { logger } from '@/utils/logger';
-import { existsSync } from 'fs';
-import { mkdir, writeFile } from 'fs/promises';
-import { join } from 'path';
 import { inject, injectable } from 'tsyringe';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
@@ -60,12 +60,19 @@ export class TTSCommandHandler implements CommandHandler {
     },
   };
 
-  constructor(@inject(DITokens.CONFIG) private config: Config) {
+  private fileAPI: FileAPI;
+
+  constructor(
+    @inject(DITokens.CONFIG) private config: Config,
+    @inject(DITokens.API_CLIENT) private apiClient: APIClient,
+  ) {
     // Configure HttpClient for Fish Audio API
     this.httpClient = new HttpClient({
       baseURL: this.FISH_API_URL,
       defaultTimeout: 30000, // 30 seconds default timeout
     });
+    // Initialize FileAPI for uploading files
+    this.fileAPI = new FileAPI(this.apiClient);
   }
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
@@ -175,29 +182,23 @@ export class TTSCommandHandler implements CommandHandler {
       // Build message with audio record
       const messageBuilder = new MessageBuilder();
 
-      // If --file option is provided, save audio as file and send as file attachment
+      // If --file option is provided, upload file and send as file attachment
       if (options.file) {
         try {
-          // Create temporary directory if it doesn't exist
-          const tempDir = join(process.cwd(), 'temp', 'tts');
-          if (!existsSync(tempDir)) {
-            await mkdir(tempDir, { recursive: true });
-          }
-
           // Generate filename with timestamp
           const timestamp = Date.now();
           const filename = `tts_${timestamp}.${format}`;
-          const filePath = join(tempDir, filename);
 
-          // Save audio buffer to file
-          await writeFile(filePath, audioBuffer);
-          logger.info(`[TTSCommandHandler] Saved TTS audio to file: ${filePath}`);
+          // Upload file using generic upload utility
+          // This will upload the file to Milky protocol and return file_id
+          const fileId = await uploadFileBuffer(this.fileAPI, audioBuffer, filename, context, 30000);
 
-          // Send as file attachment using file message segment
-          messageBuilder.file({ file: filePath, file_name: filename });
+          // Send as file attachment using file_id (Milky protocol format)
+          messageBuilder.file({ file_id: fileId, file_name: filename });
+          logger.debug(`[TTSCommandHandler] Built file segment with file_id=${fileId}, file_name=${filename}`);
         } catch (fileError) {
-          logger.error('[TTSCommandHandler] Failed to save audio file:', fileError);
-          // Fallback to sending as base64 data if file save fails
+          logger.error('[TTSCommandHandler] Failed to upload file:', fileError);
+          // Fallback to sending as base64 audio data if file upload fails
           const base64Audio = audioBuffer.toString('base64');
           messageBuilder.record({ data: base64Audio });
         }

@@ -275,6 +275,16 @@ export class MilkyAPIConverter {
         return milkyParams as Record<string, unknown>;
       }
 
+      case 'upload_group_file': {
+        // Upload file to group - pass parameters through as-is
+        return params;
+      }
+
+      case 'upload_private_file': {
+        // Upload file to private chat - pass parameters through as-is
+        return params;
+      }
+
       case 'get_login_info':
       case 'can_send_image':
       case 'can_send_record':

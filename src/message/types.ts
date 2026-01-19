@@ -53,8 +53,29 @@ export interface FileSegment {
   type: 'file';
   data: {
     uri?: string; // File URI, supports file://, http(s)://, base64:// formats
+    file_id?: string; // File ID from Milky protocol (obtained via upload_group_file or upload_private_file)
     file_name?: string; // File name for display
   };
+}
+
+// Input types for MessageBuilder methods
+export interface FileInput {
+  file?: string; // File path or URI (file://, http(s)://, base64://)
+  url?: string; // HTTP/HTTPS URL
+  file_id?: string; // File ID from Milky protocol upload API
+  file_name?: string; // File name for display
+}
+
+export interface ImageInput {
+  file?: string; // File path or URI
+  url?: string; // HTTP/HTTPS URL
+  data?: string; // Base64 encoded image data
+}
+
+export interface RecordInput {
+  file?: string; // File path or URI
+  url?: string; // HTTP/HTTPS URL
+  data?: string; // Base64 encoded audio data
 }
 
 export type MessageSegment = TextSegment | AtSegment | FaceSegment | ImageSegment | ReplySegment | RecordSegment | FileSegment;

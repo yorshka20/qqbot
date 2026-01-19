@@ -178,7 +178,7 @@ export class MessagePipeline {
       throw new Error('ReplyContent.segments is required but missing or empty');
     }
 
-    logger.info('[MessagePipeline] Sending message with segments');
+    logger.info(`[MessagePipeline] Sending message with ${replyContent.segments.length} segment(s)`);
     return replyContent.segments;
   }
 

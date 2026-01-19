@@ -1,6 +1,6 @@
 // Builder for constructing messages
 
-import type { MessageSegment } from './types';
+import type { FileInput, ImageInput, MessageSegment, RecordInput } from './types';
 
 export class MessageBuilder {
   private segments: MessageSegment[] = [];
@@ -35,7 +35,7 @@ export class MessageBuilder {
     return this;
   }
 
-  image(input: { file?: string; url?: string; data?: string }): this {
+  image(input: ImageInput): this {
     const { file, url, data } = input;
     const imageData: {
       uri?: string;
@@ -86,7 +86,7 @@ export class MessageBuilder {
     return this;
   }
 
-  record(input: { file?: string; url?: string; data?: string }): this {
+  record(input: RecordInput): this {
     const { file, url, data } = input;
     const recordData: {
       uri?: string;
@@ -122,15 +122,20 @@ export class MessageBuilder {
     return this;
   }
 
-  file(input: { file?: string; url?: string; file_name?: string }): this {
-    const { file, url, file_name } = input;
+  file(input: FileInput): this {
+    const { file, url, file_id, file_name } = input;
     const fileData: {
       uri?: string;
+      file_id?: string;
       file_name?: string;
     } = {};
 
-    // Convert to Milky protocol format: use uri field
-    if (url) {
+    // Priority 1: Use file_id if provided (from Milky protocol upload API)
+    if (file_id) {
+      fileData.file_id = file_id;
+    }
+    // Priority 2: Convert to Milky protocol format: use uri field
+    else if (url) {
       // HTTP/HTTPS URL: use as-is
       fileData.uri = url;
     } else if (file) {
