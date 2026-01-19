@@ -31,47 +31,20 @@ export interface Message extends BaseModel {
   content: string;
   rawContent?: string; // Original message segments
   protocol: string;
-  messageId?: string; // Protocol-specific message ID
+  messageId?: string; // Protocol-specific message ID (for non-Milky protocols)
+  messageSeq?: number; // Message sequence number (for Milky protocol, unique within groupId)
   metadata?: Record<string, unknown>;
 }
 
-/**
- * Session model
- */
-export interface Session extends BaseModel {
-  sessionId: string; // User ID or Group ID
-  sessionType: 'user' | 'group';
-  context?: Record<string, unknown>; // Session context data
-  metadata?: Record<string, unknown>;
-}
 
 /**
- * Task model
+ * Provider selection for a session
  */
-export interface Task extends BaseModel {
-  conversationId: string;
-  messageId: string; // Related message ID
-  taskType: string;
-  parameters: Record<string, unknown>;
-  status: 'pending' | 'executing' | 'completed' | 'failed';
-  result?: Record<string, unknown>;
-  error?: string;
-  executor: string;
-  metadata?: Record<string, unknown>;
-}
-
-/**
- * Command model
- */
-export interface Command extends BaseModel {
-  conversationId: string;
-  messageId: string; // Related message ID
-  commandName: string;
-  args: string[];
-  userId: number;
-  result?: string;
-  error?: string;
-  metadata?: Record<string, unknown>;
+export interface ProviderSelection {
+  llm?: string;
+  vision?: string;
+  text2img?: string;
+  img2img?: string;
 }
 
 /**
@@ -89,6 +62,7 @@ export interface ConversationConfigData {
   permissions?: {
     users?: Record<string, string[]>; // userId -> permission levels (as strings, will be validated as PermissionLevel)
   };
+  providers?: ProviderSelection; // Session-level AI provider selection
 }
 
 /**
@@ -146,8 +120,5 @@ export interface ModelAccessor<T extends BaseModel> {
 export interface DatabaseModel {
   conversations: ModelAccessor<Conversation>;
   messages: ModelAccessor<Message>;
-  sessions: ModelAccessor<Session>;
-  tasks: ModelAccessor<Task>;
-  commands: ModelAccessor<Command>;
   conversationConfigs: ModelAccessor<ConversationConfig>;
 }

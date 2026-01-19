@@ -105,7 +105,7 @@ export class ConversationInitializer {
     await this.configureServices(services, config);
 
     // Phase 4: Create LLMService and ContextManager
-    const providerSelector = new ProviderSelector(services.aiManager, services.databaseManager);
+    const providerSelector = new ProviderSelector(services.aiManager, conversationConfigService);
     const llmService = new LLMService(services.aiManager, providerSelector);
 
     const memoryConfig = config.getContextMemoryConfig();

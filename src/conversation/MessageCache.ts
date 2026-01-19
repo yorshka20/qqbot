@@ -35,11 +35,19 @@ class MessageCache {
   }
 
   /**
-   * Store message in cache by messageSeq (for Milky protocol, requires groupId)
-   * Key format: `${protocol}:${groupId}:${messageSeq}`
+   * Store message in cache by messageSeq (for Milky protocol)
+   * For group messages: uses groupId, key format: `${protocol}:g:${groupId}:${messageSeq}`
+   * For private messages: uses userId, key format: `${protocol}:u:${userId}:${messageSeq}`
    */
-  setBySeq(protocol: ProtocolName, groupId: number, messageSeq: number, message: NormalizedMessageEvent): void {
-    const key = `${protocol}:${groupId}:${messageSeq}`;
+  setBySeq(
+    protocol: ProtocolName,
+    groupIdOrUserId: number,
+    messageSeq: number,
+    message: NormalizedMessageEvent,
+    isGroup: boolean,
+  ): void {
+    const prefix = isGroup ? 'g' : 'u';
+    const key = `${protocol}:${prefix}:${groupIdOrUserId}:${messageSeq}`;
 
     // If cache is full, remove oldest entry (FIFO)
     if (this.cache.size >= this.maxSize && !this.cache.has(key)) {
@@ -61,10 +69,18 @@ class MessageCache {
   }
 
   /**
-   * Get message from cache by messageSeq (for Milky protocol, requires groupId)
+   * Get message from cache by messageSeq (for Milky protocol)
+   * For group messages: uses groupId
+   * For private messages: uses userId
    */
-  getBySeq(protocol: ProtocolName, groupId: number, messageSeq: number): NormalizedMessageEvent | undefined {
-    const key = `${protocol}:${groupId}:${messageSeq}`;
+  getBySeq(
+    protocol: ProtocolName,
+    groupIdOrUserId: number,
+    messageSeq: number,
+    isGroup: boolean,
+  ): NormalizedMessageEvent | undefined {
+    const prefix = isGroup ? 'g' : 'u';
+    const key = `${protocol}:${prefix}:${groupIdOrUserId}:${messageSeq}`;
     return this.cache.get(key);
   }
 
@@ -111,14 +127,27 @@ export function cacheMessage(message: NormalizedMessageEvent): void {
     logger.debug(`[MessageCache] Cached message | protocol=${message.protocol} | messageId=${message.messageId}`);
   }
 
-  // For Milky protocol, also cache by messageSeq with groupId (required for uniqueness)
-  if (message.protocol === 'milky' && message.groupId) {
+  // For Milky protocol, cache by messageSeq
+  // Group messages: use groupId (messageSeq unique within group)
+  // Private messages: messageSeq is globally unique, but we still cache for quick lookup
+  // Use a special key format for private: protocol:private:messageSeq
+  if (message.protocol === 'milky') {
     const milkyMessage = message as NormalizedMessageEvent & { messageSeq?: number };
     if (milkyMessage.messageSeq !== undefined && typeof milkyMessage.messageSeq === 'number') {
-      getMessageCache().setBySeq(message.protocol, message.groupId, milkyMessage.messageSeq, message);
-      logger.debug(
-        `[MessageCache] Cached message by messageSeq | protocol=${message.protocol} | groupId=${message.groupId} | messageSeq=${milkyMessage.messageSeq}`,
-      );
+      if (message.groupId) {
+        // Group message: use groupId (messageSeq unique within group)
+        getMessageCache().setBySeq(message.protocol, message.groupId, milkyMessage.messageSeq, message, true);
+        logger.debug(
+          `[MessageCache] Cached group message by messageSeq | protocol=${message.protocol} | groupId=${message.groupId} | messageSeq=${milkyMessage.messageSeq}`,
+        );
+      } else if (message.messageType === 'private') {
+        // Private message: messageSeq is globally unique, use 0 as placeholder for userId
+        // Key format: milky:u:0:messageSeq (0 indicates global uniqueness)
+        getMessageCache().setBySeq(message.protocol, 0, milkyMessage.messageSeq, message, false);
+        logger.debug(
+          `[MessageCache] Cached private message by messageSeq | protocol=${message.protocol} | messageSeq=${milkyMessage.messageSeq}`,
+        );
+      }
     }
   }
 }
@@ -131,15 +160,18 @@ export function getCachedMessage(protocol: ProtocolName, messageId: number): Nor
 }
 
 /**
- * Get message from cache by messageSeq (for Milky protocol, requires groupId)
+ * Get message from cache by messageSeq (for Milky protocol)
+ * For group messages: uses groupId
+ * For private messages: uses userId
  */
 export function getCachedMessageBySeq(
   protocol: ProtocolName,
-  groupId: number,
+  groupIdOrUserId: number,
   messageSeq: number,
+  isGroup: boolean,
 ): NormalizedMessageEvent | undefined {
   if (protocol !== 'milky') {
     return undefined;
   }
-  return getMessageCache().getBySeq(protocol, groupId, messageSeq);
+  return getMessageCache().getBySeq(protocol, groupIdOrUserId, messageSeq, isGroup);
 }

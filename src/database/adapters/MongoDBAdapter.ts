@@ -6,14 +6,11 @@ import { Collection, Db, MongoClient } from 'mongodb';
 import type { DatabaseAdapter } from '../base/DatabaseAdapter';
 import type {
   BaseModel,
-  Command,
   Conversation,
   ConversationConfig,
   DatabaseModel,
   Message,
   ModelAccessor,
-  Session,
-  Task,
 } from '../models/types';
 
 /**
@@ -182,15 +179,6 @@ export class MongoDBAdapter implements DatabaseAdapter {
     await collections.messages.createIndex({ userId: 1 });
     await collections.messages.createIndex({ createdAt: -1 });
 
-    await collections.sessions.createIndex({ sessionId: 1, sessionType: 1 });
-
-    await collections.tasks.createIndex({ conversationId: 1 });
-    await collections.tasks.createIndex({ status: 1 });
-    await collections.tasks.createIndex({ createdAt: -1 });
-
-    await collections.commands.createIndex({ conversationId: 1 });
-    await collections.commands.createIndex({ userId: 1 });
-
     logger.info('[MongoDBAdapter] Migrations completed');
   }
 
@@ -224,9 +212,6 @@ export class MongoDBAdapter implements DatabaseAdapter {
     return {
       conversations: new MongoModelAccessor<Conversation>(this.db.collection('conversations')),
       messages: new MongoModelAccessor<Message>(this.db.collection('messages')),
-      sessions: new MongoModelAccessor<Session>(this.db.collection('sessions')),
-      tasks: new MongoModelAccessor<Task>(this.db.collection('tasks')),
-      commands: new MongoModelAccessor<Command>(this.db.collection('commands')),
       conversationConfigs: new MongoModelAccessor<ConversationConfig>(this.db.collection('conversation_configs')),
     };
   }

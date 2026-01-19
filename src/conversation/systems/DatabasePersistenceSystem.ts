@@ -1,6 +1,7 @@
 // Database Persistence System - saves messages and conversations to database
 
 import { getReply } from '@/context/HookContextHelpers';
+import { cacheMessage } from '@/conversation/MessageCache';
 import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';
 import type { DatabaseManager } from '@/database/DatabaseManager';
@@ -12,6 +13,7 @@ import { randomUUID } from 'node:crypto';
  * Database Persistence System
  * Saves messages and conversations to database after processing
  * Executes in COMPLETE stage to ensure all data is saved
+ * Also caches messages in memory for quick lookup
  */
 export class DatabasePersistenceSystem implements System {
   readonly name = 'database-persistence';
@@ -19,7 +21,7 @@ export class DatabasePersistenceSystem implements System {
   readonly stage = SystemStage.COMPLETE;
   readonly priority = 10; // Lower priority, runs after other complete stage systems
 
-  constructor(private databaseManager: DatabaseManager) {}
+  constructor(private databaseManager: DatabaseManager) { }
 
   enabled(): boolean {
     return true;
@@ -31,18 +33,15 @@ export class DatabasePersistenceSystem implements System {
     const sessionType = context.metadata.get('sessionType');
 
     if (!sessionId || !sessionType) {
-      logger.debug('[DatabasePersistenceSystem] Missing sessionId or sessionType, skipping save');
       return true;
     }
 
     try {
       const adapter = this.databaseManager.getAdapter();
       if (!adapter || !adapter.isConnected()) {
-        logger.debug('[DatabasePersistenceSystem] Database not connected, skipping save');
         return true;
       }
 
-      // Get or create conversation
       const conversations = adapter.getModel('conversations');
       let conversation = await conversations.findOne({
         sessionId,
@@ -53,7 +52,6 @@ export class DatabasePersistenceSystem implements System {
       const conversationId = conversation?.id || randomUUID();
 
       if (!conversation) {
-        // Create new conversation
         conversation = await conversations.create({
           sessionId,
           sessionType,
@@ -66,13 +64,44 @@ export class DatabasePersistenceSystem implements System {
         );
       }
 
-      // Save message
       const messages = adapter.getModel('messages');
       const message = context.message;
       const reply = getReply(context);
 
       // Save user message
-      await messages.create({
+      // For Milky protocol, save all important fields to metadata
+      const metadata: Record<string, unknown> = {
+        sender: message.sender,
+        timestamp: message.timestamp,
+      };
+
+      // Save Milky-specific fields
+      if (message.protocol === 'milky') {
+        const milkyMessage = message as typeof message & {
+          messageSeq?: number;
+          messageScene?: string;
+          groupName?: string;
+        };
+        if (milkyMessage.messageScene !== undefined) {
+          metadata.messageScene = milkyMessage.messageScene;
+        }
+        if (milkyMessage.groupName !== undefined) {
+          metadata.groupName = milkyMessage.groupName;
+        }
+      }
+
+      const messageData: {
+        conversationId: string;
+        userId: number;
+        messageType: 'private' | 'group';
+        groupId?: number;
+        content: string;
+        rawContent?: string;
+        protocol: string;
+        messageId?: string;
+        messageSeq?: number;
+        metadata: Record<string, unknown>;
+      } = {
         conversationId: conversation.id,
         userId: message.userId,
         messageType: message.messageType,
@@ -80,16 +109,29 @@ export class DatabasePersistenceSystem implements System {
         content: message.message,
         rawContent: message.segments ? JSON.stringify(message.segments) : undefined,
         protocol: message.protocol || 'unknown',
-        messageId: message.messageId?.toString(),
-        metadata: {
-          sender: message.sender,
-          timestamp: message.timestamp,
-        },
-      });
+        metadata,
+      };
+
+      // For Milky protocol, save messageSeq to dedicated column (not messageId)
+      if (message.protocol === 'milky' && 'messageSeq' in message) {
+        const milkyMessage = message as typeof message & { messageSeq?: number };
+        const seq = milkyMessage.messageSeq;
+        if (typeof seq === 'number' && !isNaN(seq)) {
+          messageData.messageSeq = seq;
+        }
+      } else if (message.messageId !== undefined) {
+        // For other protocols, save messageId if available
+        messageData.messageId = message.messageId.toString();
+      }
+
+      await messages.create(messageData);
 
       logger.debug(
         `[DatabasePersistenceSystem] Saved user message | conversationId=${conversation.id} | messageId=${messageId}`,
       );
+
+      // Cache message in memory for quick lookup (e.g., for reply segments)
+      cacheMessage(message);
 
       // Save bot reply if exists
       if (reply) {
@@ -107,8 +149,6 @@ export class DatabasePersistenceSystem implements System {
             timestamp: now.toISOString(),
           },
         });
-
-        logger.debug(`[DatabasePersistenceSystem] Saved bot reply | conversationId=${conversation.id}`);
       }
 
       // Update conversation
@@ -118,15 +158,10 @@ export class DatabasePersistenceSystem implements System {
         lastMessageAt: now,
       });
 
-      logger.debug(
-        `[DatabasePersistenceSystem] Updated conversation | conversationId=${conversation.id} | messageCount=${messageCount}`,
-      );
-
       return true;
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error('[DatabasePersistenceSystem] Failed to save to database:', err);
-      // Don't fail the lifecycle if database save fails
       return true;
     }
   }

@@ -8,14 +8,11 @@ import { dirname, resolve } from 'node:path';
 import type { DatabaseAdapter } from '../base/DatabaseAdapter';
 import type {
   BaseModel,
-  Command,
   Conversation,
   ConversationConfig,
   DatabaseModel,
   Message,
   ModelAccessor,
-  Session,
-  Task,
 } from '../models/types';
 
 /**
@@ -291,50 +288,11 @@ export class SQLiteAdapter implements DatabaseAdapter {
         rawContent TEXT,
         protocol TEXT NOT NULL,
         messageId TEXT,
+        messageSeq INTEGER,
         metadata TEXT,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL,
         FOREIGN KEY (conversationId) REFERENCES conversations(id)
-      )`,
-      `CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        sessionId TEXT NOT NULL,
-        sessionType TEXT NOT NULL CHECK(sessionType IN ('user', 'group')),
-        context TEXT,
-        metadata TEXT,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL
-      )`,
-      `CREATE TABLE IF NOT EXISTS tasks (
-        id TEXT PRIMARY KEY,
-        conversationId TEXT NOT NULL,
-        messageId TEXT NOT NULL,
-        taskType TEXT NOT NULL,
-        parameters TEXT NOT NULL,
-        status TEXT NOT NULL CHECK(status IN ('pending', 'executing', 'completed', 'failed')),
-        result TEXT,
-        error TEXT,
-        executor TEXT NOT NULL,
-        metadata TEXT,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
-        FOREIGN KEY (conversationId) REFERENCES conversations(id),
-        FOREIGN KEY (messageId) REFERENCES messages(id)
-      )`,
-      `CREATE TABLE IF NOT EXISTS commands (
-        id TEXT PRIMARY KEY,
-        conversationId TEXT NOT NULL,
-        messageId TEXT NOT NULL,
-        commandName TEXT NOT NULL,
-        args TEXT NOT NULL,
-        userId INTEGER NOT NULL,
-        result TEXT,
-        error TEXT,
-        metadata TEXT,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
-        FOREIGN KEY (conversationId) REFERENCES conversations(id),
-        FOREIGN KEY (messageId) REFERENCES messages(id)
       )`,
       `CREATE TABLE IF NOT EXISTS conversation_configs (
         id TEXT PRIMARY KEY,
@@ -345,16 +303,55 @@ export class SQLiteAdapter implements DatabaseAdapter {
         updatedAt TEXT NOT NULL,
         UNIQUE(sessionId, sessionType)
       )`,
-      `CREATE INDEX IF NOT EXISTS idx_messages_conversationId ON messages(conversationId)`,
-      `CREATE INDEX IF NOT EXISTS idx_messages_userId ON messages(userId)`,
-      `CREATE INDEX IF NOT EXISTS idx_tasks_conversationId ON tasks(conversationId)`,
-      `CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)`,
-      `CREATE INDEX IF NOT EXISTS idx_commands_conversationId ON commands(conversationId)`,
-      `CREATE INDEX IF NOT EXISTS idx_conversation_configs_session ON conversation_configs(sessionId, sessionType)`,
     ];
 
     for (const statement of statements) {
       this.db.run(statement);
+    }
+
+    // Add messageSeq column if it doesn't exist (migration for existing databases)
+    // Must be done BEFORE creating indexes that reference it
+    // This is safe: ALTER TABLE ADD COLUMN only adds a new column, never deletes data
+    try {
+      const tableInfo = this.db.query(`PRAGMA table_info(messages)`).all() as Array<{ name: string }>;
+      if (!Array.isArray(tableInfo)) {
+        logger.warn('[SQLiteAdapter] Could not check table_info for messages table');
+      } else {
+        const hasMessageSeq = tableInfo.some((col) => col.name === 'messageSeq');
+        if (!hasMessageSeq) {
+          logger.info('[SQLiteAdapter] Adding messageSeq column to messages table...');
+          this.db.run(`ALTER TABLE messages ADD COLUMN messageSeq INTEGER`);
+          logger.info('[SQLiteAdapter] messageSeq column added successfully');
+        } else {
+          logger.debug('[SQLiteAdapter] messageSeq column already exists');
+        }
+      }
+    } catch (error) {
+      // If ALTER TABLE fails, log warning but don't fail migration
+      // This could happen if column already exists (though we check) or other issues
+      logger.warn(`[SQLiteAdapter] Failed to add messageSeq column: ${error}`);
+      // Don't throw - allow migration to continue
+    }
+
+    // Create indexes AFTER ensuring messageSeq column exists
+    // CREATE INDEX IF NOT EXISTS is safe - won't fail if index already exists
+    const indexStatements = [
+      `CREATE INDEX IF NOT EXISTS idx_messages_conversationId ON messages(conversationId)`,
+      `CREATE INDEX IF NOT EXISTS idx_messages_userId ON messages(userId)`,
+      `CREATE INDEX IF NOT EXISTS idx_messages_protocol_groupId_messageSeq ON messages(protocol, groupId, messageSeq)`,
+      `CREATE INDEX IF NOT EXISTS idx_messages_protocol_userId_messageSeq ON messages(protocol, userId, messageSeq, messageType)`,
+      `CREATE INDEX IF NOT EXISTS idx_conversation_configs_session ON conversation_configs(sessionId, sessionType)`,
+    ];
+
+    for (const statement of indexStatements) {
+      try {
+        this.db.run(statement);
+      } catch (error) {
+        // Log error but don't fail migration
+        // This could happen if column doesn't exist (shouldn't happen after our check)
+        // or if index creation fails for other reasons
+        logger.warn(`[SQLiteAdapter] Failed to create index (may already exist or column missing): ${error}`);
+      }
     }
 
     logger.info('[SQLiteAdapter] Migrations completed');
@@ -393,9 +390,6 @@ export class SQLiteAdapter implements DatabaseAdapter {
     return {
       conversations: new SQLiteModelAccessor<Conversation>(this.db, 'conversations'),
       messages: new SQLiteModelAccessor<Message>(this.db, 'messages'),
-      sessions: new SQLiteModelAccessor<Session>(this.db, 'sessions'),
-      tasks: new SQLiteModelAccessor<Task>(this.db, 'tasks'),
-      commands: new SQLiteModelAccessor<Command>(this.db, 'commands'),
       conversationConfigs: new SQLiteModelAccessor<ConversationConfig>(this.db, 'conversation_configs'),
     };
   }
