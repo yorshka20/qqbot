@@ -2,6 +2,7 @@
 
 import type { ConversationContext } from '@/context/types';
 import { ProtocolName } from '@/core/config';
+import { NormalizedMessageEvent } from '@/events/types';
 import { MessageSegment } from '@/message/types';
 
 /**
@@ -76,6 +77,8 @@ export interface CommandContext {
   metadata: CommandContextMetadata;
   // Conversation context from HookContext
   conversationContext: ConversationContext;
+  // Original message event (optional, for accessing segments, etc.)
+  originalMessage?: NormalizedMessageEvent;
 }
 
 /**

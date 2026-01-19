@@ -7,7 +7,7 @@ import type { TaskManager } from '@/task/TaskManager';
 import type { Task, TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
 import type { AIManager } from './AIManager';
-import type { ImageGenerationResponse, Text2ImageOptions } from './capabilities/types';
+import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions } from './capabilities/types';
 import { PromptManager } from './PromptManager';
 import type { ProviderSelector } from './ProviderSelector';
 import { CardRenderingService } from './services/CardRenderingService';
@@ -174,6 +174,73 @@ export class AIService {
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error('[AIService] Failed to generate image:', err);
+      // Hook: onAIGenerationComplete (even on error)
+      await this.hookManager.execute('onAIGenerationComplete', context);
+      throw err;
+    }
+  }
+
+  /**
+   * Transform image based on prompt (image-to-image)
+   *
+   * Prompt must be provided as a separate parameter.
+   * This method does NOT perform LLM preprocessing - it uses the prompt directly.
+   *
+   * @param context - Hook context containing metadata (message is not used)
+   * @param image - Image input (URL, base64, or file path)
+   * @param prompt - Text prompt for image transformation
+   * @param options - Image transformation options
+   * @param providerName - Optional provider name to use (e.g., 'laozhang')
+   * @returns Image generation response
+   */
+  async generateImageFromImage(
+    context: HookContext,
+    image: string,
+    prompt: string,
+    options?: Image2ImageOptions,
+    providerName?: string,
+  ): Promise<ImageGenerationResponse> {
+    // Hook: onMessageBeforeAI
+    const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
+    if (!shouldContinue) {
+      throw new Error('Image transformation interrupted by hook');
+    }
+
+    // Get session ID for provider selection
+    const sessionId = context.metadata.get('sessionId');
+    const sessionType = context.metadata.get('sessionType');
+    if (!sessionId || !sessionType) {
+      throw new Error('sessionId and sessionType must be set in metadata');
+    }
+
+    // Hook: onAIGenerationStart
+    await this.hookManager.execute('onAIGenerationStart', context);
+
+    try {
+      if (!prompt || prompt.trim().length === 0) {
+        throw new Error('prompt must be provided for image transformation');
+      }
+
+      logger.info(
+        `[AIService] Generating image from image | prompt="${prompt.substring(0, 100)}..." | providerName=${providerName || 'default'}`,
+      );
+
+      // Generate image from image using ImageGenerationService (no LLM preprocessing)
+      const response = await this.imageGenerationService.generateImageFromImage(
+        image,
+        prompt,
+        options,
+        sessionId,
+        providerName,
+      );
+
+      // Hook: onAIGenerationComplete
+      await this.hookManager.execute('onAIGenerationComplete', context);
+
+      return response;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.error('[AIService] Failed to generate image from image:', err);
       // Hook: onAIGenerationComplete (even on error)
       await this.hookManager.execute('onAIGenerationComplete', context);
       throw err;

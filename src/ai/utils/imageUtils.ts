@@ -1,5 +1,8 @@
 // Image utilities for converting message segments to VisionImage format
 
+import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { DatabaseManager } from '@/database/DatabaseManager';
+import type { NormalizedMessageEvent } from '@/events/types';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../capabilities/types';
@@ -54,8 +57,11 @@ export function extractImagesFromSegments(segments: MessageSegment[]): VisionIma
     if (segment.type === 'image') {
       const imageData = segment.data;
 
+      // Check if this is a sticker (sub_type === 'sticker')
+      const imageType = imageData.sub_type || 'normal';
+
       // Log image segment data for debugging
-      logger.debug(`[imageUtils] Processing image segment | data=${JSON.stringify(imageData)}`);
+      logger.debug(`[imageUtils] Processing ${imageType} image segment | data=${JSON.stringify(imageData)}`);
 
       const visionImage: VisionImage = {};
 
@@ -241,4 +247,118 @@ export async function normalizeVisionImages(
   }
 
   return normalized;
+}
+
+/**
+ * Convert VisionImage to string format for use with image transformation APIs
+ * Priority: url > base64 > file
+ * @param image - VisionImage object to convert
+ * @returns String representation (URL, base64, or file path)
+ */
+export function visionImageToString(image: VisionImage): string {
+  if (image.url) {
+    return image.url;
+  }
+  if (image.base64) {
+    return image.base64;
+  }
+  if (image.file) {
+    return image.file;
+  }
+  throw new Error('VisionImage has no valid url, base64, or file field');
+}
+
+/**
+ * Extract reply message ID from reply segment
+ * Supports both 'id' (standard) and 'message_seq' (Milky protocol) fields
+ */
+function extractReplyMessageId(segment: { type: string; data?: Record<string, unknown> }): number | null {
+  if (segment.type !== 'reply' || !segment.data) {
+    return null;
+  }
+
+  const id = segment.data.id ?? segment.data.message_seq;
+  if (id === undefined || id === null) {
+    return null;
+  }
+
+  const idNumber = typeof id === 'string' ? parseInt(id, 10) : Number(id);
+  return isNaN(idNumber) ? null : idNumber;
+}
+
+/**
+ * Extract images from referenced reply message
+ */
+async function extractImagesFromReplyMessage(
+  replyMessageId: number,
+  message: NormalizedMessageEvent,
+  messageAPI: MessageAPI,
+  databaseManager: DatabaseManager,
+): Promise<VisionImage[]> {
+  const referencedMessage = await messageAPI.getMessageFromContext(
+    replyMessageId,
+    message,
+    databaseManager,
+  );
+
+  if (!referencedMessage.segments || referencedMessage.segments.length === 0) {
+    return [];
+  }
+
+  return extractImagesFromSegments(referencedMessage.segments as MessageSegment[]);
+}
+
+/**
+ * Extract images from message and its referenced reply message
+ * Supports both current message images and images from referenced messages
+ * @param message - NormalizedMessageEvent containing segments
+ * @param messageAPI - MessageAPI instance for fetching referenced messages
+ * @param databaseManager - DatabaseManager for querying database (required)
+ * @returns Array of VisionImage objects extracted from current and referenced messages
+ * @throws Error if referenced message cannot be retrieved
+ */
+export async function extractImagesFromMessageAndReply(
+  message: NormalizedMessageEvent,
+  messageAPI: MessageAPI,
+  databaseManager: DatabaseManager,
+): Promise<VisionImage[]> {
+  const images: VisionImage[] = [];
+
+  // Extract images from current message
+  if (message.segments && message.segments.length > 0) {
+    const currentImages = extractImagesFromSegments(message.segments as MessageSegment[]);
+    images.push(...currentImages);
+  }
+
+  // Extract images from referenced reply message
+  if (message.segments && message.segments.length > 0) {
+    for (const segment of message.segments) {
+      const replyMessageId = extractReplyMessageId(segment);
+      if (replyMessageId === null) {
+        continue;
+      }
+
+      try {
+        logger.debug(`[imageUtils] Fetching referenced message | messageId=${replyMessageId}`);
+        const referencedImages = await extractImagesFromReplyMessage(
+          replyMessageId,
+          message,
+          messageAPI,
+          databaseManager,
+        );
+        images.push(...referencedImages);
+        if (referencedImages.length > 0) {
+          logger.debug(`[imageUtils] Extracted ${referencedImages.length} image(s) from referenced message`);
+        }
+      } catch (error) {
+        logger.error(
+          `[imageUtils] Failed to extract images from referenced message | messageId=${replyMessageId} | error=${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
+        throw error;
+      }
+    }
+  }
+
+  logger.info(`[imageUtils] Extracted ${images.length} image(s) from message and reply`);
+  return images;
 }
