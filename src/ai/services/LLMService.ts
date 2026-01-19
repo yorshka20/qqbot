@@ -15,7 +15,7 @@ export class LLMService {
   constructor(
     private aiManager: AIManager,
     private providerSelector?: ProviderSelector,
-  ) {}
+  ) { }
 
   /**
    * Get fallback response when no provider is available
@@ -48,7 +48,7 @@ export class LLMService {
   /**
    * Check if provider is available
    */
-  private getAvailableProvider(providerName?: string, sessionId?: string): LLMCapability | null {
+  private async getAvailableProvider(providerName?: string, sessionId?: string): Promise<LLMCapability | null> {
     let provider: LLMCapability | null = null;
 
     if (providerName) {
@@ -59,7 +59,7 @@ export class LLMService {
       }
     } else if (sessionId && this.providerSelector) {
       // Use session-specific provider
-      const sessionProviderName = this.providerSelector.getProviderForSession(sessionId, 'llm');
+      const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'llm');
       if (sessionProviderName) {
         const p = this.aiManager.getProviderForCapability('llm', sessionProviderName);
         if (p && isLLMCapability(p) && p.isAvailable()) {
@@ -84,7 +84,7 @@ export class LLMService {
    */
   async generate(prompt: string, options?: AIGenerateOptions, providerName?: string): Promise<AIGenerateResponse> {
     const sessionId = options?.sessionId;
-    const provider = this.getAvailableProvider(providerName, sessionId);
+    const provider = await this.getAvailableProvider(providerName, sessionId);
 
     // If no available provider, return fallback response
     if (!provider) {
@@ -105,7 +105,7 @@ export class LLMService {
     providerName?: string,
   ): Promise<AIGenerateResponse> {
     const sessionId = options?.sessionId;
-    const provider = this.getAvailableProvider(providerName, sessionId);
+    const provider = await this.getAvailableProvider(providerName, sessionId);
 
     // If no available provider, return fallback response
     if (!provider) {

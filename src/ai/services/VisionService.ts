@@ -51,7 +51,7 @@ export class VisionService {
         throw new Error(`Provider ${providerName} does not support Vision capability`);
       }
     } else if (sessionId && this.providerSelector) {
-      const sessionProviderName = this.providerSelector.getProviderForSession(sessionId, 'vision');
+      const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'vision');
       if (sessionProviderName) {
         const p = this.aiManager.getProviderForCapability('vision', sessionProviderName);
         if (p && isVisionCapability(p)) {
@@ -107,7 +107,7 @@ export class VisionService {
         throw new Error(`Provider ${providerName} does not support Vision capability`);
       }
     } else if (sessionId && this.providerSelector) {
-      const sessionProviderName = this.providerSelector.getProviderForSession(sessionId, 'vision');
+      const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'vision');
       if (sessionProviderName) {
         const p = this.aiManager.getProviderForCapability('vision', sessionProviderName);
         if (p && isVisionCapability(p)) {

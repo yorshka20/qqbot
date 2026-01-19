@@ -147,6 +147,10 @@ export class ConversationConfigService {
             ...partialConfig.permissions?.users,
           },
         },
+        // Merge providers if provided
+        providers: partialConfig.providers !== undefined
+          ? partialConfig.providers
+          : existing.config.providers,
       };
 
       // Update in database

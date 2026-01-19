@@ -14,7 +14,7 @@ export class MessageParser {
           case 'face':
             return `[Face:${segment.data.id}]`;
           case 'image':
-            return `[Image:${segment.data.file}]`;
+            return `[Image:${segment.data.summary || segment.data.uri || segment.data.resource_id || 'N/A'}]`;
           case 'reply':
             return `[Reply:${segment.data.id}]`;
           default:

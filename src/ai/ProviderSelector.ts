@@ -1,24 +1,20 @@
 // Provider Selector - manages session-level provider selection
 
-import type { DatabaseManager } from '@/database/DatabaseManager';
+import type { ConversationConfigService } from '@/config/ConversationConfigService';
+import type { ProviderSelection } from '@/database/models/types';
 import { logger } from '@/utils/logger';
 import type { AIManager } from './AIManager';
 import type { CapabilityType } from './capabilities/types';
 
 /**
- * Provider selection for a session
+ * Provider selection for a session (alias for ProviderSelection)
  */
-export interface SessionProviderSelection {
-  llm?: string;
-  vision?: string;
-  text2img?: string;
-  img2img?: string;
-}
+export interface SessionProviderSelection extends ProviderSelection { }
 
 /**
  * Provider Selector
  * Manages provider selection at the session level (based on sessionId)
- * Supports persistence to Session model's context field
+ * Persists to conversation_configs table via ConversationConfigService
  */
 export class ProviderSelector {
   // In-memory cache of session provider selections
@@ -26,15 +22,75 @@ export class ProviderSelector {
 
   constructor(
     private aiManager: AIManager,
-    private databaseManager: DatabaseManager,
-  ) {}
+    private configService: ConversationConfigService,
+  ) { }
+
+  /**
+   * Parse sessionId to extract sessionId and sessionType
+   * Supports formats: "group:123", "user:456", "group_123", "user_456", or just "123" (defaults to user)
+   */
+  private parseSessionId(sessionId: string): { sessionId: string; sessionType: 'user' | 'group' } {
+    // Check for colon format: "group:123" or "user:456"
+    if (sessionId.startsWith('group:')) {
+      return {
+        sessionId: sessionId.substring(6),
+        sessionType: 'group',
+      };
+    }
+    if (sessionId.startsWith('user:')) {
+      return {
+        sessionId: sessionId.substring(5),
+        sessionType: 'user',
+      };
+    }
+    // Check for underscore format: "group_123" or "user_456"
+    if (sessionId.startsWith('group_')) {
+      return {
+        sessionId: sessionId.substring(6),
+        sessionType: 'group',
+      };
+    }
+    if (sessionId.startsWith('user_')) {
+      return {
+        sessionId: sessionId.substring(5),
+        sessionType: 'user',
+      };
+    }
+    // Default to user if no prefix
+    return {
+      sessionId,
+      sessionType: 'user',
+    };
+  }
+
+  /**
+   * Load provider selection from conversation config
+   */
+  private async loadProviderSelection(sessionId: string): Promise<void> {
+    try {
+      const { sessionId: parsedId, sessionType } = this.parseSessionId(sessionId);
+      const config = await this.configService.getConfig(parsedId, sessionType);
+
+      if (config.providers) {
+        this.sessionSelections.set(sessionId, config.providers);
+        logger.debug(`[ProviderSelector] Loaded provider selection for session ${sessionId}`);
+      }
+    } catch (error) {
+      logger.warn(`[ProviderSelector] Failed to load provider selection for ${sessionId}:`, error);
+    }
+  }
 
   /**
    * Get provider for a capability for a specific session
    * Returns session-specific provider if set, otherwise returns default provider
    */
-  getProviderForSession(sessionId: string, capability: CapabilityType): string | null {
-    // Check session-specific selection first
+  async getProviderForSession(sessionId: string, capability: CapabilityType): Promise<string | null> {
+    // Load from config if not in cache
+    if (!this.sessionSelections.has(sessionId)) {
+      await this.loadProviderSelection(sessionId);
+    }
+
+    // Check session-specific selection
     const sessionSelection = this.sessionSelections.get(sessionId);
     if (sessionSelection) {
       const providerName = sessionSelection[capability];
@@ -66,6 +122,11 @@ export class ProviderSelector {
       throw new Error(`Provider ${providerName} does not support capability ${capability} or is not available`);
     }
 
+    // Load existing selection if not in cache
+    if (!this.sessionSelections.has(sessionId)) {
+      await this.loadProviderSelection(sessionId);
+    }
+
     // Update in-memory cache
     let sessionSelection = this.sessionSelections.get(sessionId);
     if (!sessionSelection) {
@@ -74,8 +135,11 @@ export class ProviderSelector {
     }
     sessionSelection[capability] = providerName;
 
-    // Persist to database
-    await this.persistSessionSelection(sessionId, sessionSelection);
+    // Persist to conversation config
+    const { sessionId: parsedId, sessionType } = this.parseSessionId(sessionId);
+    await this.configService.updateConfig(parsedId, sessionType, {
+      providers: sessionSelection,
+    });
 
     logger.info(`[ProviderSelector] Set provider ${providerName} for ${capability} for session ${sessionId}`);
   }
@@ -83,7 +147,11 @@ export class ProviderSelector {
   /**
    * Get all provider selections for a session
    */
-  getSessionSelection(sessionId: string): SessionProviderSelection | null {
+  async getSessionSelection(sessionId: string): Promise<SessionProviderSelection | null> {
+    // Load from config if not in cache
+    if (!this.sessionSelections.has(sessionId)) {
+      await this.loadProviderSelection(sessionId);
+    }
     return this.sessionSelections.get(sessionId) || null;
   }
 
@@ -104,68 +172,13 @@ export class ProviderSelector {
     // Update in-memory cache
     this.sessionSelections.set(sessionId, selection);
 
-    // Persist to database
-    await this.persistSessionSelection(sessionId, selection);
+    // Persist to conversation config
+    const { sessionId: parsedId, sessionType } = this.parseSessionId(sessionId);
+    await this.configService.updateConfig(parsedId, sessionType, {
+      providers: selection,
+    });
 
     logger.info(`[ProviderSelector] Set provider selection for session ${sessionId}`);
-  }
-
-  /**
-   * Load session selection from database
-   */
-  async loadSessionSelection(sessionId: string): Promise<void> {
-    try {
-      const adapter = this.databaseManager.getAdapter();
-      const sessions = adapter.getModel('sessions');
-      const session = await sessions.findOne({ sessionId });
-
-      if (session && session.context) {
-        const providerSelection = (session.context as Record<string, unknown>).providerSelection as
-          | SessionProviderSelection
-          | undefined;
-
-        if (providerSelection) {
-          this.sessionSelections.set(sessionId, providerSelection);
-          logger.debug(`[ProviderSelector] Loaded provider selection for session ${sessionId}`);
-        }
-      }
-    } catch (error) {
-      logger.warn(`[ProviderSelector] Failed to load session selection for ${sessionId}:`, error);
-    }
-  }
-
-  /**
-   * Persist session selection to database
-   */
-  private async persistSessionSelection(sessionId: string, selection: SessionProviderSelection): Promise<void> {
-    try {
-      const adapter = this.databaseManager.getAdapter();
-      const sessions = adapter.getModel('sessions');
-      const session = await sessions.findOne({ sessionId });
-
-      if (session) {
-        // Update existing session
-        const context = (session.context as Record<string, unknown>) || {};
-        context.providerSelection = selection;
-        await sessions.update(session.id, { context });
-      } else {
-        // Create new session record
-        // Extract sessionType from sessionId (assuming format: "user:123" or "group:456")
-        // For now, we'll default to 'user' if we can't determine
-        const sessionType = sessionId.startsWith('group:') ? 'group' : 'user';
-        await sessions.create({
-          sessionId,
-          sessionType,
-          context: {
-            providerSelection: selection,
-          },
-        });
-      }
-
-      logger.debug(`[ProviderSelector] Persisted provider selection for session ${sessionId}`);
-    } catch (error) {
-      logger.warn(`[ProviderSelector] Failed to persist session selection for ${sessionId}:`, error);
-    }
   }
 
   /**
@@ -174,19 +187,11 @@ export class ProviderSelector {
   async clearSessionSelection(sessionId: string): Promise<void> {
     this.sessionSelections.delete(sessionId);
 
-    try {
-      const adapter = this.databaseManager.getAdapter();
-      const sessions = adapter.getModel('sessions');
-      const session = await sessions.findOne({ sessionId });
-
-      if (session && session.context) {
-        const context = session.context as Record<string, unknown>;
-        delete context.providerSelection;
-        await sessions.update(session.id, { context });
-      }
-    } catch (error) {
-      logger.warn(`[ProviderSelector] Failed to clear session selection for ${sessionId}:`, error);
-    }
+    // Remove from conversation config
+    const { sessionId: parsedId, sessionType } = this.parseSessionId(sessionId);
+    await this.configService.updateConfig(parsedId, sessionType, {
+      providers: undefined,
+    });
 
     logger.info(`[ProviderSelector] Cleared provider selection for session ${sessionId}`);
   }
