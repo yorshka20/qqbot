@@ -3,6 +3,9 @@ import { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
+import { existsSync } from 'fs';
+import { mkdir, writeFile } from 'fs/promises';
+import { join } from 'path';
 import { inject, injectable } from 'tsyringe';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
@@ -15,7 +18,7 @@ import type { CommandContext, CommandHandler, CommandResult } from '../types';
   name: 'tts',
   description:
     'Convert text to speech. Example: /tts 你好世界 --voice=丁真. Use /tts list to see all available voices.',
-  usage: '/tts <text> [--voice=<voice>] | /tts list',
+  usage: '/tts <text> [--voice=<voice>] [--file] | /tts list',
   permissions: ['user'], // All users can use TTS
   aliases: ['say', 'speak'],
 })
@@ -24,7 +27,7 @@ export class TTSCommandHandler implements CommandHandler {
   name = 'tts';
   description =
     'Convert text to speech. Example: /tts 你好世界 --voice=丁真. Use /tts list to see all available voices.';
-  usage = '/tts <text> [--voice=<voice>] | /tts list';
+  usage = '/tts <text> [--voice=<voice>] [--file] | /tts list';
 
   // Fish Audio API URL
   private readonly FISH_API_URL = 'https://api.fish.audio/v1/tts';
@@ -53,6 +56,7 @@ export class TTSCommandHandler implements CommandHandler {
       voice: { property: 'voice', type: 'string' },
       rate: { property: 'rate', type: 'string' },
       pitch: { property: 'pitch', type: 'string' },
+      file: { property: 'file', type: 'boolean' },
     },
   };
 
@@ -84,6 +88,7 @@ export class TTSCommandHandler implements CommandHandler {
         voice?: string;
         rate?: string;
         pitch?: string;
+        file?: boolean;
       }>(args, this.argsConfig);
 
       // Validate text length
@@ -167,12 +172,40 @@ export class TTSCommandHandler implements CommandHandler {
       // Convert ArrayBuffer to Buffer
       const audioBuffer = Buffer.from(audioArrayBuffer);
 
-      // Convert Buffer to base64 string
-      const base64Audio = audioBuffer.toString('base64');
-
       // Build message with audio record
       const messageBuilder = new MessageBuilder();
-      messageBuilder.record({ data: base64Audio });
+
+      // If --file option is provided, save audio as file and send as file attachment
+      if (options.file) {
+        try {
+          // Create temporary directory if it doesn't exist
+          const tempDir = join(process.cwd(), 'temp', 'tts');
+          if (!existsSync(tempDir)) {
+            await mkdir(tempDir, { recursive: true });
+          }
+
+          // Generate filename with timestamp
+          const timestamp = Date.now();
+          const filename = `tts_${timestamp}.${format}`;
+          const filePath = join(tempDir, filename);
+
+          // Save audio buffer to file
+          await writeFile(filePath, audioBuffer);
+          logger.info(`[TTSCommandHandler] Saved TTS audio to file: ${filePath}`);
+
+          // Send as file attachment using file message segment
+          messageBuilder.file({ file: filePath, file_name: filename });
+        } catch (fileError) {
+          logger.error('[TTSCommandHandler] Failed to save audio file:', fileError);
+          // Fallback to sending as base64 data if file save fails
+          const base64Audio = audioBuffer.toString('base64');
+          messageBuilder.record({ data: base64Audio });
+        }
+      } else {
+        // Default behavior: send as base64 audio data (voice message)
+        const base64Audio = audioBuffer.toString('base64');
+        messageBuilder.record({ data: base64Audio });
+      }
 
       const messageSegments = messageBuilder.build();
 
@@ -219,6 +252,7 @@ export class TTSCommandHandler implements CommandHandler {
     list += `\n使用示例：\n`;
     list += `/tts 你好世界                    # 使用默认声音（${defaultVoice}）\n`;
     list += `/tts 你好世界 --voice=${voices[0]}      # 指定声音\n`;
+    list += `/tts 你好世界 --file              # 发送为mp3文件\n`;
     list += `/tts list                      # 查看此列表\n`;
 
     return list;

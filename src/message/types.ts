@@ -49,6 +49,14 @@ export interface RecordSegment {
   };
 }
 
-export type MessageSegment = TextSegment | AtSegment | FaceSegment | ImageSegment | ReplySegment | RecordSegment;
+export interface FileSegment {
+  type: 'file';
+  data: {
+    uri?: string; // File URI, supports file://, http(s)://, base64:// formats
+    file_name?: string; // File name for display
+  };
+}
+
+export type MessageSegment = TextSegment | AtSegment | FaceSegment | ImageSegment | ReplySegment | RecordSegment | FileSegment;
 
 export type Message = string | MessageSegment[];
