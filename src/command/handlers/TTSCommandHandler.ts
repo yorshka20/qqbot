@@ -57,6 +57,7 @@ export class TTSCommandHandler implements CommandHandler {
       rate: { property: 'rate', type: 'string' },
       pitch: { property: 'pitch', type: 'string' },
       file: { property: 'file', type: 'boolean' },
+      random: { property: 'random', type: 'boolean' },
     },
   };
 
@@ -96,6 +97,7 @@ export class TTSCommandHandler implements CommandHandler {
         rate?: string;
         pitch?: string;
         file?: boolean;
+        random?: boolean;
       }>(args, this.argsConfig);
 
       // Validate text length
@@ -147,8 +149,12 @@ export class TTSCommandHandler implements CommandHandler {
           };
         }
       } else {
-        // Use default voice (丁真)
-        referenceId = this.VOICE_MAP[this.DEFAULT_VOICE];
+        if (options.random) {
+          referenceId = this.VOICE_MAP[Object.keys(this.VOICE_MAP)[Math.floor(Math.random() * Object.keys(this.VOICE_MAP).length)]];
+        } else {
+          // Use default voice (丁真)
+          referenceId = this.VOICE_MAP[this.DEFAULT_VOICE];
+        }
         logger.info(`[TTSCommandHandler] Using default voice: ${this.DEFAULT_VOICE} (${referenceId})`);
       }
 
