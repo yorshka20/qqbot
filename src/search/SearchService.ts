@@ -1,7 +1,7 @@
 // Search service - provides unified search interface
 
 import type { PromptManager } from '@/ai/PromptManager';
-import { LLMService } from '@/ai/services/LLMService';
+import type { LLMService } from '@/ai/services/LLMService';
 import type { MCPConfig } from '@/core/config/mcp';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -21,8 +21,7 @@ export class SearchService {
     this.config = config || null;
     this.maxResults = config?.search.maxResults || 8;
 
-    // Initialize SearXNG client if in direct mode or MCP mode not enabled
-    if (config && config.enabled && config.search.mode === 'direct') {
+    if (config?.enabled && config.search.mode === 'direct') {
       this.searxngClient = new SearXNGClient(config.searxng);
       logger.info('[SearchService] Initialized in Direct mode');
     }
@@ -66,12 +65,11 @@ export class SearchService {
           maxResults,
         });
       } else if (searchMode === 'mcp') {
-        // MCP mode: use MCP server
         if (!this.mcpManager) {
-          throw new Error('MCP manager not initialized');
+          logger.warn('[SearchService] MCP manager not initialized, skipping search');
+          return [];
         }
 
-        // Check if searxng_web_search tool is available
         const toolName = 'searxng_web_search';
         if (!this.mcpManager.hasTool(toolName)) {
           logger.warn(`[SearchService] Tool ${toolName} not found, falling back to direct mode`);
@@ -81,30 +79,36 @@ export class SearchService {
               maxResults,
             });
           } else {
-            throw new Error('MCP tool not available and SearXNG client not initialized');
+            logger.warn('[SearchService] MCP tool not available and SearXNG client not initialized, skipping search');
+            return [];
           }
         } else {
-          // Call MCP tool
-          const toolResult = await this.mcpManager.callTool(toolName, {
-            query,
-            pageno: options?.pageno || 1,
-            ...(options?.timeRange && { time_range: options.timeRange }),
-            ...(options?.language && { language: options.language }),
-            ...(options?.safesearch !== undefined && { safesearch: options.safesearch }),
-          });
+          try {
+            const toolResult = await this.mcpManager.callTool(toolName, {
+              query,
+              pageno: options?.pageno || 1,
+              ...(options?.timeRange && { time_range: options.timeRange }),
+              ...(options?.language && { language: options.language }),
+              ...(options?.safesearch !== undefined && { safesearch: options.safesearch }),
+            });
 
-          // Parse MCP tool result (returns text format, need to parse)
-          const resultText = toolResult.content[0]?.text || '';
-          results = this.parseMCPSearchResults(resultText);
+            const resultText = toolResult.content[0]?.text || '';
+            results = this.parseMCPSearchResults(resultText);
+          } catch (error) {
+            logger.warn(
+              `[SearchService] MCP tool call failed: ${error instanceof Error ? error.message : String(error)}, skipping search`,
+            );
+            return [];
+          }
         }
       }
 
-      // Limit results to maxResults
       return results.slice(0, maxResults);
     } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      logger.error(`[SearchService] Search failed: ${err.message}`);
-      throw err;
+      logger.warn(
+        `[SearchService] Search failed: ${error instanceof Error ? error.message : String(error)}, returning empty results`,
+      );
+      return [];
     }
   }
 
@@ -123,7 +127,7 @@ export class SearchService {
         let domain = '';
         try {
           domain = new URL(result.url).hostname.replace('www.', '');
-        } catch (error) {
+        } catch {
           domain = '未知来源';
         }
         return `${index + 1}. **${result.title}**\n   来源: ${domain}\n   摘要: ${snippet}\n   链接: ${result.url}`;
@@ -181,7 +185,7 @@ export class SearchService {
         let domain = '';
         try {
           domain = new URL(result.url).hostname.replace('www.', '');
-        } catch (error) {
+        } catch {
           domain = '未知来源';
         }
         return `${index + 1}. **${result.title}**\n   来源: ${domain}\n   摘要: ${snippet}\n   链接: ${result.url}`;
@@ -217,8 +221,7 @@ export class SearchService {
       // Match numbered result: "1. [Title](URL)"
       const numberedMatch = trimmed.match(/^\d+\.\s*\[([^\]]+)\]\(([^)]+)\)/);
       if (numberedMatch) {
-        // Save previous result if exists
-        if (currentResult && currentResult.title && currentResult.url) {
+        if (currentResult?.title && currentResult?.url) {
           results.push(currentResult as SearchResult);
         }
 
@@ -236,8 +239,7 @@ export class SearchService {
       }
     }
 
-    // Save last result
-    if (currentResult && currentResult.title && currentResult.url) {
+    if (currentResult?.title && currentResult?.url) {
       results.push(currentResult as SearchResult);
     }
 
@@ -252,11 +254,7 @@ export class SearchService {
    * 3. Execute searches
    * 4. Format results
    */
-  async performSmartSearch(
-    userMessage: string,
-    llmService: LLMService,
-    sessionId?: string,
-  ): Promise<string> {
+  async performSmartSearch(userMessage: string, llmService: LLMService, sessionId?: string): Promise<string> {
     if (!this.isEnabled()) {
       return '';
     }

@@ -11,7 +11,7 @@
     "build:all": "bun run scripts/build.ts bundleAll",
     "build:watch": "bun build src/index.ts --outdir dist --target bun --watch",
     "start": "bun dist/index.js",
-    "debug": "bun run src/cli/debug.ts",
+    "debug": "bun run src/cli/debug.ts LOG_LEVEL=debug --mock",
     "type-check": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",

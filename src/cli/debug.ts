@@ -6,7 +6,6 @@ import readline from 'readline';
 import { PromptInitializer } from '../ai/PromptInitializer';
 import { APIClient } from '../api/APIClient';
 import { MessageAPI } from '../api/methods/MessageAPI';
-import type { APIStrategy } from '../api/types';
 import { ConversationInitializer } from '../conversation/ConversationInitializer';
 import { Bot } from '../core/Bot';
 import type { Config, ProtocolName } from '../core/config';
@@ -17,42 +16,15 @@ import { PluginInitializer } from '../plugins/PluginInitializer';
 import { ProtocolAdapterInitializer } from '../protocol/ProtocolAdapterInitializer';
 import { SearchService } from '../search';
 import { logger } from '../utils/logger';
+import { initStaticFileServer } from '../utils/StaticFileServer';
+import { MockConnection } from './MockConnection';
+import { MockProtocolAdapter } from './MockProtocolAdapter';
 
 interface Command {
   name: string;
   description: string;
   usage: string;
   handler: (args: string[]) => Promise<void> | void;
-}
-
-/**
- * Mock APIClient for simulation mode
- * Intercepts message sending and only outputs to console
- */
-class MockAPIClient extends APIClient {
-  private debugCLI: DebugCLI;
-
-  constructor(debugCLI: DebugCLI, strategy: APIStrategy, preferredProtocol?: ProtocolName) {
-    super(strategy, preferredProtocol);
-    this.debugCLI = debugCLI;
-  }
-
-  async call<TResponse = unknown>(
-    action: string,
-    params: Record<string, unknown> = {},
-    protocol: ProtocolName = 'milky',
-    timeout = 10000,
-  ): Promise<TResponse> {
-    // Intercept message sending actions
-    if (action === 'send_private_msg' || action === 'send_group_msg') {
-      this.debugCLI.printMockReply(action, params);
-      return { message_id: Date.now() } as TResponse;
-    }
-
-    // For other API calls, log a warning
-    this.debugCLI.printWarning(`[Mock Mode] API call "${action}" not supported in mock mode`);
-    return {} as TResponse;
-  }
 }
 
 class DebugCLI {
@@ -83,13 +55,9 @@ class DebugCLI {
     this.bot = mockMode ? null : new Bot(configPath);
     this.config = this.bot ? this.bot.getConfig() : new Bot(configPath).getConfig();
 
-    // Initialize API client based on mode
+    // Initialize API client
     const apiConfig = this.config.getAPIConfig();
-    if (mockMode) {
-      this.apiClient = new MockAPIClient(this, apiConfig.strategy, apiConfig.preferredProtocol);
-    } else {
-      this.apiClient = new APIClient(apiConfig.strategy, apiConfig.preferredProtocol);
-    }
+    this.apiClient = new APIClient(apiConfig.strategy, apiConfig.preferredProtocol);
     this.messageAPI = new MessageAPI(this.apiClient);
 
     // Register commands
@@ -143,7 +111,7 @@ class DebugCLI {
             return;
           }
           const userId = parseInt(args[0], 10);
-          if (isNaN(userId)) {
+          if (Number.isNaN(userId)) {
             this.printError('Invalid user ID');
             return;
           }
@@ -172,7 +140,7 @@ class DebugCLI {
             return;
           }
           const groupId = parseInt(args[0], 10);
-          if (isNaN(groupId)) {
+          if (Number.isNaN(groupId)) {
             this.printError('Invalid group ID');
             return;
           }
@@ -212,7 +180,7 @@ class DebugCLI {
             i++;
           } else if (args[i].includes('=')) {
             const [key, value] = args[i].split('=');
-            params[key] = isNaN(Number(value)) ? value : Number(value);
+            params[key] = Number.isNaN(Number(value)) ? value : Number(value);
           } else {
             params[args[i]] = true;
           }
@@ -327,7 +295,7 @@ class DebugCLI {
 
   private async handleSimulate(args: string[]): Promise<void> {
     if (args.length < 3) {
-      this.printError('Usage: simulate <type> <userId> [groupId] <message> [--at-bot]');
+      this.printError('Usage: msg <type> <userId> [groupId] <message> [--at-bot]');
       this.printInfo('  type: private or group');
       this.printInfo('  userId: user ID (number)');
       this.printInfo('  groupId: group ID (number, required for group type)');
@@ -343,7 +311,7 @@ class DebugCLI {
     }
 
     const userId = parseInt(args[1], 10);
-    if (isNaN(userId)) {
+    if (Number.isNaN(userId)) {
       this.printError('Invalid user ID');
       return;
     }
@@ -358,7 +326,7 @@ class DebugCLI {
         return;
       }
       groupId = parseInt(args[2], 10);
-      if (isNaN(groupId)) {
+      if (Number.isNaN(groupId)) {
         this.printError('Invalid group ID');
         return;
       }
@@ -432,6 +400,7 @@ class DebugCLI {
   ): NormalizedMessageEvent {
     const segments: Array<{ type: string; data?: Record<string, unknown> }> = [];
 
+    // Add @bot mention if requested (for group messages)
     if (atBot && type === 'group') {
       segments.push({
         type: 'mention',
@@ -439,8 +408,13 @@ class DebugCLI {
       });
     }
 
-    const botConfig = this.config.getConfig();
-    const botSelfId = botConfig.bot.selfId;
+    // Add text segment for the message content
+    if (message) {
+      segments.push({
+        type: 'text',
+        data: { text: message },
+      });
+    }
 
     return {
       type: 'message',
@@ -456,26 +430,28 @@ class DebugCLI {
       sender: {
         userId,
         nickname: `User ${userId}`,
-        role: 'member',
+        role: type === 'group' ? 'member' : undefined,
       },
     };
   }
 
   printMockReply(action: string, params: Record<string, unknown>): void {
-    const message = params.message as string;
-    if (action === 'send_private_msg') {
+    const message = params.message as string | unknown[];
+    const messageText = typeof message === 'string' ? message : JSON.stringify(message);
+    
+    if (action === 'send_private_msg' || action === 'send_private_message') {
       const userId = params.user_id as number;
       this.printSuccess(`\n[Mock] Would send private message to ${userId}:`);
-      this.printMessage(`  ${message}\n`);
-    } else if (action === 'send_group_msg') {
+      this.printMessage(`  ${messageText}\n`);
+    } else if (action === 'send_group_msg' || action === 'send_group_message') {
       const groupId = params.group_id as number;
       this.printSuccess(`\n[Mock] Would send group message to ${groupId}:`);
-      this.printMessage(`  ${message}\n`);
+      this.printMessage(`  ${messageText}\n`);
     }
     this.rl.prompt();
   }
 
-  private printInfo(message: string): void {
+  printInfo(message: string): void {
     console.log(`\x1b[36m${message}\x1b[0m`);
   }
 
@@ -570,15 +546,39 @@ class DebugCLI {
   private async initializeMockMode(): Promise<void> {
     this.printInfo('Initializing in Mock Mode (no real connections)...');
 
+    // Register mock protocol adapter
+    // Get the first enabled protocol config (or use milky as default)
+    const enabledProtocols = this.config.getEnabledProtocols();
+    const protocolConfig = enabledProtocols.length > 0 ? enabledProtocols[0] : this.config.getProtocolConfig('milky');
+    
+    if (!protocolConfig) {
+      throw new Error('No protocol configuration found for mock mode');
+    }
+
+    const mockConnection = new MockConnection(protocolConfig);
+    const mockAdapter = new MockProtocolAdapter(protocolConfig, mockConnection, this);
+    
+    // Register adapter with API client
+    this.apiClient.registerAdapter('milky', mockAdapter);
+    this.printInfo('✓ Mock protocol adapter registered');
+
     // Initialize MCP system (if enabled)
     const mcpSystem = MCPInitializer.initialize(this.config);
 
     // Initialize search service (if MCP is enabled)
     let searchService: SearchService | undefined;
     const mcpConfig = this.config.getMCPConfig();
-    if (mcpConfig && mcpConfig.enabled) {
+    if (mcpConfig?.enabled) {
       searchService = new SearchService(mcpConfig);
       logger.info('[DebugCLI] SearchService initialized');
+    }
+
+    // Initialize and start static file server for serving generated images
+    // This must be done BEFORE ConversationInitializer because ImageGenerationService needs it
+    const staticServerConfig = this.config.getStaticServerConfig();
+    if (staticServerConfig) {
+      await initStaticFileServer(staticServerConfig.port, staticServerConfig.root, staticServerConfig.host);
+      this.printInfo('✓ Static file server initialized');
     }
 
     // Initialize conversation components
@@ -629,9 +629,17 @@ class DebugCLI {
     // Initialize search service (if MCP is enabled)
     let searchService: SearchService | undefined;
     const mcpConfig = this.config.getMCPConfig();
-    if (mcpConfig && mcpConfig.enabled) {
+    if (mcpConfig?.enabled) {
       searchService = new SearchService(mcpConfig);
       logger.info('[DebugCLI] SearchService initialized');
+    }
+
+    // Initialize and start static file server for serving generated images
+    // This must be done BEFORE ConversationInitializer because ImageGenerationService needs it
+    const staticServerConfig = this.config.getStaticServerConfig();
+    if (staticServerConfig) {
+      await initStaticFileServer(staticServerConfig.port, staticServerConfig.root, staticServerConfig.host);
+      this.printInfo('✓ Static file server initialized');
     }
 
     // Initialize conversation components
@@ -640,62 +648,9 @@ class DebugCLI {
     this.conversationManager = conversationComponents.conversationManager;
     this.commandManager = conversationComponents.commandManager;
 
-    // Initialize event system
+    // Initialize event system (EventRouter and handlers)
     const eventSystem = EventInitializer.initialize(this.config, conversationComponents.conversationManager);
     this.eventRouter = eventSystem.eventRouter;
-
-    // Set up protocol adapters
-    const adapters = new Map<ProtocolName, { adapter: any; connection: any }>();
-
-    connectionManager.on('connectionOpen', async (protocolName, connection) => {
-      logger.info(`[DebugCLI] Setting up adapter for protocol: ${protocolName}`);
-
-      const protocolConfig = this.config.getProtocolConfig(protocolName as ProtocolName);
-      if (!protocolConfig) {
-        logger.error(`[DebugCLI] Protocol config not found for: ${protocolName}`);
-        return;
-      }
-
-      // Import adapters dynamically
-      let adapter;
-      switch (protocolName) {
-        case 'onebot11':
-          const { OneBot11Adapter } = await import('../protocol/onebot11/OneBot11Adapter');
-          adapter = new OneBot11Adapter(protocolConfig, connection);
-          break;
-        case 'milky':
-          const { MilkyAdapter } = await import('../protocol/milky');
-          adapter = new MilkyAdapter(protocolConfig, connection);
-          break;
-        case 'satori':
-          const { SatoriAdapter } = await import('../protocol/satori/SatoriAdapter');
-          adapter = new SatoriAdapter(protocolConfig, connection);
-          break;
-        default:
-          logger.error(`[DebugCLI] Unknown protocol: ${protocolName}`);
-          return;
-      }
-
-      // Set up adapter event handling
-      adapter.onEvent((event: any) => {
-        if (event && typeof event === 'object' && 'type' in event) {
-          this.eventRouter.routeEvent(event as NormalizedEvent);
-        }
-      });
-
-      // Register adapter with API client
-      this.apiClient.registerAdapter(protocolName as ProtocolName, adapter);
-      adapters.set(protocolName as ProtocolName, { adapter, connection });
-
-      this.printInfo(`✓ Adapter registered for protocol: ${protocolName}`);
-    });
-
-    connectionManager.on('connectionClose', (protocolName) => {
-      logger.info(`[DebugCLI] Connection closed for protocol: ${protocolName}`);
-      this.apiClient.unregisterAdapter(protocolName as ProtocolName);
-      adapters.delete(protocolName as ProtocolName);
-      this.printWarning(`✗ Connection closed for protocol: ${protocolName}`);
-    });
 
     // Initialize protocol adapter system (BEFORE starting bot)
     ProtocolAdapterInitializer.initialize(this.config, connectionManager, this.eventRouter, this.apiClient);

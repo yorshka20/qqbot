@@ -23,11 +23,7 @@ import { BaseTaskExecutor } from './BaseTaskExecutor';
       description: 'Search query string',
     },
   },
-  examples: [
-    '搜索一下Python教程',
-    '帮我查一下最新的AI新闻',
-    '什么是量子计算？',
-  ],
+  examples: ['搜索一下Python教程', '帮我查一下最新的AI新闻', '什么是量子计算？'],
   triggerKeywords: ['搜索', 'search', '查', '找', '查询', '了解'],
   whenToUse: 'Use this task when user asks to search for information, look up something, or find content on the web.',
 })
@@ -35,7 +31,7 @@ import { BaseTaskExecutor } from './BaseTaskExecutor';
 export class SearchTaskExecutor extends BaseTaskExecutor {
   name = 'search';
 
-  constructor(@inject(DITokens.SEARCH_SERVICE) private searchService?: SearchService) {
+  constructor(@inject(DITokens.SEARCH_SERVICE) private searchService: SearchService) {
     super();
   }
 
@@ -47,42 +43,26 @@ export class SearchTaskExecutor extends BaseTaskExecutor {
     }
 
     if (!this.searchService?.isEnabled()) {
-      logger.warn('[SearchTaskExecutor] SearchService is not enabled');
-      return this.error('搜索功能暂时不可用：搜索服务未启用', 'SearchService not enabled');
+      logger.info('[SearchTaskExecutor] SearchService is not enabled, skipping search');
+      return this.success('', { query, results: [] });
     }
 
-    try {
-      logger.info(`[SearchTaskExecutor] Executing search for query: ${query}`);
+    logger.info(`[SearchTaskExecutor] Executing search for query: ${query}`);
 
-      // Perform search using SearchService
-      const searchResults = await this.searchService.search(query);
+    const searchResults = await this.searchService.search(query);
 
-      if (searchResults.length === 0) {
-        return this.success(
-          `未找到与"${query}"相关的搜索结果。`,
-          { query, results: [] },
-        );
-      }
-
-      // Format search results for display
-      const formattedResults = this.searchService.formatSearchResults(searchResults);
-
-      logger.info(`[SearchTaskExecutor] Search completed: ${searchResults.length} results found`);
-
-      return this.success(
-        formattedResults,
-        {
-          query,
-          results: searchResults,
-          resultCount: searchResults.length,
-        },
-      );
-    } catch (error) {
-      logger.error('[SearchTaskExecutor] Search failed:', error);
-      return this.error(
-        `搜索失败：${error instanceof Error ? error.message : '未知错误'}`,
-        error instanceof Error ? error.message : 'Unknown error',
-      );
+    if (searchResults.length === 0) {
+      logger.info('[SearchTaskExecutor] No search results found');
+      return this.success('', { query, results: [] });
     }
+
+    const formattedResults = this.searchService.formatSearchResults(searchResults);
+    logger.info(`[SearchTaskExecutor] Search completed: ${searchResults.length} results found`);
+
+    return this.success(formattedResults, {
+      query,
+      results: searchResults,
+      resultCount: searchResults.length,
+    });
   }
 }
