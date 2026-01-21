@@ -3,7 +3,7 @@
 import { getReply } from '@/context/HookContextHelpers';
 import { cacheMessage } from '@/conversation/MessageCache';
 import type { System } from '@/core/system';
-import { SystemStage } from '@/core/system';
+import { SystemPriority, SystemStage } from '@/core/system';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
@@ -19,9 +19,9 @@ export class DatabasePersistenceSystem implements System {
   readonly name = 'database-persistence';
   readonly version = '1.0.0';
   readonly stage = SystemStage.COMPLETE;
-  readonly priority = 10; // Lower priority, runs after other complete stage systems
+  readonly priority = SystemPriority.DatabasePersistence; // Lower priority, runs after other complete stage systems
 
-  constructor(private databaseManager: DatabaseManager) { }
+  constructor(private databaseManager: DatabaseManager) {}
 
   enabled(): boolean {
     return true;

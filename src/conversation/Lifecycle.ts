@@ -24,7 +24,7 @@ export class Lifecycle {
   constructor(
     private hookManager: HookManager,
     private commandRouter: CommandRouter,
-  ) { }
+  ) {}
 
   enabled(): boolean {
     return true;
@@ -43,7 +43,7 @@ export class Lifecycle {
     stageSystems.push(system);
 
     // Sort by priority (higher first)
-    stageSystems.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    stageSystems.sort((a, b) => b.priority - a.priority);
 
     // Register extension hooks if provided
     // Extension hooks are declared to make them available for plugins to subscribe

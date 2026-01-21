@@ -4,7 +4,7 @@ import type { CommandManager } from '@/command/CommandManager';
 import { CommandContextBuilder } from '@/context/CommandContextBuilder';
 import { replaceReplyWithSegments } from '@/context/HookContextHelpers';
 import type { System } from '@/core/system';
-import { SystemStage } from '@/core/system';
+import { SystemPriority, SystemStage } from '@/core/system';
 import type { HookManager } from '@/hooks/HookManager';
 import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookContext } from '@/hooks/types';
@@ -17,7 +17,7 @@ export class CommandSystem implements System {
   readonly name = 'command';
   readonly version = '1.0.0';
   readonly stage = SystemStage.PROCESS;
-  readonly priority = 100; // High priority, executes early in PROCESS stage
+  readonly priority = SystemPriority.Command; // High priority, executes early in PROCESS stage
 
   constructor(
     private commandManager: CommandManager,

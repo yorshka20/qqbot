@@ -52,7 +52,6 @@ export class SearchTaskExecutor extends BaseTaskExecutor {
     const searchResults = await this.searchService.search(query);
 
     if (searchResults.length === 0) {
-      logger.info('[SearchTaskExecutor] No search results found');
       return this.success('', { query, results: [] });
     }
 

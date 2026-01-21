@@ -144,7 +144,7 @@ export class SystemRegistry {
   getSystemsByStage(stage: SystemStage): System[] {
     return Array.from(this.systems.values())
       .filter((s) => s.stage === stage)
-      .sort((a, b) => (b.priority || 0) - (a.priority || 0));
+      .sort((a, b) => b.priority - a.priority);
   }
 
   /**

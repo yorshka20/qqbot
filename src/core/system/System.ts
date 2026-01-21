@@ -17,6 +17,16 @@ export enum SystemStage {
 }
 
 /**
+ * System priority.
+ * lower number = executed later
+ */
+export enum SystemPriority {
+  Command = 100,
+  Task = 20,
+  DatabasePersistence = 10,
+}
+
+/**
  * System dependencies
  */
 export interface SystemDependency {
@@ -72,7 +82,7 @@ export interface System {
   /**
    * Priority within the stage (higher = executed earlier)
    */
-  readonly priority?: number;
+  readonly priority: SystemPriority;
 
   /**
    * Initialize the system

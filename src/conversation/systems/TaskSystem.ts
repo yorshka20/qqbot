@@ -4,7 +4,7 @@ import type { AIService } from '@/ai/AIService';
 import { hasReply } from '@/context/HookContextHelpers';
 import { TaskExecutionContextBuilder } from '@/context/TaskExecutionContextBuilder';
 import type { System } from '@/core/system';
-import { SystemStage } from '@/core/system';
+import { SystemPriority, SystemStage } from '@/core/system';
 import type { HookManager } from '@/hooks/HookManager';
 import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookContext } from '@/hooks/types';
@@ -22,13 +22,13 @@ export class TaskSystem implements System {
   readonly name = 'task';
   readonly version = '1.0.0';
   readonly stage = SystemStage.PROCESS;
-  readonly priority = 20; // Lower priority, but drives AI capabilities
+  readonly priority = SystemPriority.Task; // Lower priority, but drives AI capabilities
 
   constructor(
     private taskManager: TaskManager,
     private hookManager: HookManager,
     private aiService: AIService,
-  ) { }
+  ) {}
 
   enabled(): boolean {
     return true;
@@ -50,16 +50,13 @@ export class TaskSystem implements System {
 
     // 2. Keyword detection: determine if additional tasks are needed
     const taskTypes = this.taskManager.getAllTaskTypes();
-    const triggeredTaskTypes = this.detectTriggeredTaskTypes(
-      context.message.message,
-      taskTypes
-    );
+    const triggeredTaskTypes = this.detectTriggeredTaskTypes(context.message.message, taskTypes);
 
     // 3. If there are triggered keywords, call LLM analysis to generate task list
     let additionalTasks: Task[] = [];
     if (triggeredTaskTypes.length > 0) {
       const analysisResult = await this.aiService.analyzeTask(context);
-      additionalTasks = analysisResult;  // Already filtered reply, always returns array
+      additionalTasks = analysisResult; // Already filtered reply, always returns array
       if (additionalTasks.length > 0) {
         logger.info(`[TaskSystem] LLM generated ${additionalTasks.length} additional task(s)`);
       }
@@ -95,10 +92,7 @@ export class TaskSystem implements System {
    * @param taskTypes - All registered task types
    * @returns Matched task types list (excluding reply)
    */
-  private detectTriggeredTaskTypes(
-    userMessage: string,
-    taskTypes: TaskType[]
-  ): TaskType[] {
+  private detectTriggeredTaskTypes(userMessage: string, taskTypes: TaskType[]): TaskType[] {
     const messageLower = userMessage.toLowerCase();
     const triggered: TaskType[] = [];
 
@@ -110,9 +104,7 @@ export class TaskSystem implements System {
 
       // Check if there are trigger keywords
       if (taskType.triggerKeywords && taskType.triggerKeywords.length > 0) {
-        const hasKeyword = taskType.triggerKeywords.some(keyword =>
-          messageLower.includes(keyword.toLowerCase())
-        );
+        const hasKeyword = taskType.triggerKeywords.some((keyword) => messageLower.includes(keyword.toLowerCase()));
 
         if (hasKeyword) {
           triggered.push(taskType);
@@ -130,10 +122,7 @@ export class TaskSystem implements System {
    * 2. Each task should receive an empty Map to avoid confusion
    * 3. Task results are collected after all tasks complete, then passed to reply generation
    */
-  private async executeAllTasks(
-    tasks: Task[],
-    context: HookContext
-  ): Promise<Map<string, TaskResult>> {
+  private async executeAllTasks(tasks: Task[], context: HookContext): Promise<Map<string, TaskResult>> {
     // Execute all tasks concurrently
     // Do NOT pass taskResults - tasks execute concurrently and cannot access each other's results
     const taskPromises = tasks.map(async (task, index) => {
@@ -193,12 +182,12 @@ export class TaskSystem implements System {
    */
   private mergeTaskResults(taskType: string, results: TaskResult[]): TaskResult {
     // Determine overall success: if any succeeded, overall is successful
-    const overallSuccess = results.some(r => r.success);
+    const overallSuccess = results.some((r) => r.success);
 
     // Collect all errors
     const errors = results
-      .filter(r => r.error)
-      .map(r => r.error!)
+      .filter((r) => r.error)
+      .map((r) => r.error!)
       .filter((error, index, self) => self.indexOf(error) === index); // Remove duplicates
 
     // Merge reply messages based on task type
@@ -206,9 +195,9 @@ export class TaskSystem implements System {
     if (taskType === 'search') {
       // For search: combine all search results with clear separation
       const searchResults = results
-        .filter(r => r.success && r.reply)
-        .map(r => r.reply.trim())
-        .filter(reply => reply.length > 0);
+        .filter((r) => r.success && r.reply)
+        .map((r) => r.reply.trim())
+        .filter((reply) => reply.length > 0);
 
       if (searchResults.length > 0) {
         mergedReply = searchResults.join('\n\n---\n\n');
@@ -260,26 +249,16 @@ export class TaskSystem implements System {
    * @param task - Task to execute
    * @param context - Hook context
    */
-  private async executeSingleTask(
-    task: Task,
-    context: HookContext
-  ): Promise<TaskResult> {
+  private async executeSingleTask(task: Task, context: HookContext): Promise<TaskResult> {
     // All tasks execute through TaskManager
     // Pass HookContext as first-class field for type safety
     // Task results are collected after completion and passed directly to reply generation
-    const taskExecutionContext = TaskExecutionContextBuilder
-      .fromHookContext(context)
+    const taskExecutionContext = TaskExecutionContextBuilder.fromHookContext(context)
       .withTaskResults(new Map<string, TaskResult>())
       .build();
 
-    return await this.taskManager.execute(
-      task,
-      taskExecutionContext,
-      this.hookManager,
-      context
-    );
+    return await this.taskManager.execute(task, taskExecutionContext, this.hookManager, context);
   }
-
 
   /**
    * Declare extension hooks that plugins can subscribe to
