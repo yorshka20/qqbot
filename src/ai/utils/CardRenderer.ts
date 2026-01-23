@@ -30,6 +30,29 @@ export class CardRenderer {
   }
 
   /**
+   * Get Puppeteer launch arguments based on platform
+   * macOS doesn't support --single-process and --no-zygote flags
+   */
+  private getLaunchArgs(): string[] {
+    const platform = process.platform;
+    const baseArgs = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--disable-web-security',
+    ];
+
+    // --single-process and --no-zygote are Linux-specific and cause issues on macOS
+    if (platform === 'linux') {
+      baseArgs.push('--no-zygote', '--single-process');
+    }
+
+    return baseArgs;
+  }
+
+  /**
    * Initialize browser instance
    */
   private async init(): Promise<void> {
@@ -44,26 +67,28 @@ export class CardRenderer {
     this.isInitializing = true;
     this.initPromise = (async () => {
       try {
-        logger.info('[CardRenderer] Initializing Puppeteer browser...');
+        const platform = process.platform;
+        logger.info(`[CardRenderer] Initializing Puppeteer browser on ${platform}...`);
+
+        const launchArgs = this.getLaunchArgs();
+        logger.debug(`[CardRenderer] Launch args: ${launchArgs.join(' ')}`);
+
         this.browser = await puppeteer.launch({
           headless: 'new',
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--single-process',
-            '--disable-web-security',
-          ],
+          args: launchArgs,
         });
+
         logger.info('[CardRenderer] Browser initialized successfully');
       } catch (error) {
         this.isInitializing = false;
         this.initPromise = null;
         const err = error instanceof Error ? error : new Error('Unknown error');
-        logger.error('[CardRenderer] Failed to initialize browser:', err);
+        logger.error('[CardRenderer] Failed to initialize browser:', {
+          error: err.message,
+          stack: err.stack,
+          platform: process.platform,
+          arch: process.arch,
+        });
         throw err;
       }
       this.isInitializing = false;
@@ -121,20 +146,36 @@ export class CardRenderer {
         waitUntil: 'networkidle0',
       });
 
-      // wait for twemoji to be parsed
-      await Promise.race([
-        page.waitForFunction(
-          () => {
-            // @ts-expect-error - document is available in browser context
-            const hasTwemoji = typeof (window as any).twemoji !== 'undefined';
-            return !hasTwemoji;
-          },
-          { timeout: 3000 },
-        ),
-        new Promise((resolve) => setTimeout(resolve, 3000)),
-      ]).catch(() => {
-        logger.warn('[CardRenderer] Twemoji parsing timeout, continuing...');
-      });
+      // Wait for twemoji library to load and then parse emojis
+      try {
+        // Wait for twemoji library to be available
+        await Promise.race([
+          page.waitForFunction(
+            () => {
+              // @ts-expect-error - window is available in browser context
+              return typeof (window as any).twemoji !== 'undefined';
+            },
+            { timeout: 5000 },
+          ),
+          new Promise((resolve) => setTimeout(resolve, 5000)),
+        ]);
+
+        // Parse emojis using twemoji
+        await page.evaluate(() => {
+          // @ts-expect-error - twemoji is available in browser context
+          if (typeof (window as any).twemoji !== 'undefined') {
+            // @ts-expect-error - twemoji is available in browser context
+            (window as any).twemoji.parse(document.body, {
+              folder: 'svg',
+              ext: '.svg',
+            });
+          }
+        });
+
+        logger.debug('[CardRenderer] Twemoji parsed successfully');
+      } catch (error) {
+        logger.warn('[CardRenderer] Failed to load or parse twemoji, continuing without emoji replacement:', error);
+      }
 
       // Wait for fonts and images to load
       await page.evaluateHandle(() => {
