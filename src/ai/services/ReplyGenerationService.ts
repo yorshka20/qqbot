@@ -28,7 +28,7 @@ export class ReplyGenerationService {
     private hookManager: HookManager,
     private conversationHistoryService: ConversationHistoryService,
     private searchService?: SearchService,
-  ) { }
+  ) {}
 
   /**
    * Generate AI reply for user message
@@ -65,7 +65,8 @@ export class ReplyGenerationService {
         searchResultsText = providedSearchResults;
       } else if (this.searchService) {
         // Perform smart search if search service is available and no results were provided
-        searchResultsText = await this.searchService.performSmartSearch(context.message.message, this.llmService, sessionId) ?? '';
+        searchResultsText =
+          (await this.searchService.performSmartSearch(context.message.message, this.llmService, sessionId)) ?? '';
       }
 
       let prompt: string;
@@ -175,10 +176,7 @@ export class ReplyGenerationService {
    * @param context - Hook context containing message and conversation history
    * @param taskResults - Task execution results (empty Map if no tasks)
    */
-  async generateReplyFromTaskResults(
-    context: HookContext,
-    taskResults: Map<string, TaskResult>
-  ): Promise<void> {
+  async generateReplyFromTaskResults(context: HookContext, taskResults: Map<string, TaskResult>): Promise<void> {
     // Hook: onMessageBeforeAI
     const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
     if (!shouldContinue) {
@@ -215,7 +213,7 @@ export class ReplyGenerationService {
           taskResultsSummary,
           accumulatedSearchResults,
           sessionId,
-          3 // Maximum iterations
+          3, // Maximum iterations
         );
       }
 
@@ -226,15 +224,10 @@ export class ReplyGenerationService {
           taskResultsSummary,
           accumulatedSearchResults,
           images,
-          sessionId
+          sessionId,
         );
       } else {
-        await this.generateReplyWithTaskResults(
-          context,
-          taskResultsSummary,
-          accumulatedSearchResults,
-          sessionId
-        );
+        await this.generateReplyWithTaskResults(context, taskResultsSummary, accumulatedSearchResults, sessionId);
       }
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
@@ -278,7 +271,7 @@ export class ReplyGenerationService {
     taskResultsSummary: string,
     existingSearchResults: string,
     sessionId?: string,
-    maxIterations: number = 3
+    maxIterations: number = 3,
   ): Promise<string> {
     if (!this.searchService) {
       return existingSearchResults;
@@ -296,7 +289,7 @@ export class ReplyGenerationService {
         userMessage,
         taskResultsSummary,
         accumulatedResults,
-        sessionId
+        sessionId,
       );
 
       // 2. If no search needed, exit loop
@@ -311,7 +304,7 @@ export class ReplyGenerationService {
         // Multiple search queries
         logger.info(
           `[ReplyGenerationService] Performing multi-search (iteration ${iteration}):`,
-          searchDecision.queries.map(q => q.query)
+          searchDecision.queries.map((q) => q.query),
         );
 
         const searchPromises = searchDecision.queries.map(async (queryInfo) => {
@@ -340,7 +333,7 @@ export class ReplyGenerationService {
       }
 
       // 4. Merge search results
-      const newResults = searchResults.filter(r => r).join('\n\n');
+      const newResults = searchResults.filter((r) => r).join('\n\n');
       if (newResults) {
         if (accumulatedResults) {
           accumulatedResults = `${accumulatedResults}\n\n--- Search Results Round ${iteration} ---\n\n${newResults}`;
@@ -375,7 +368,7 @@ export class ReplyGenerationService {
     userMessage: string,
     taskResultsSummary: string,
     existingSearchResults: string,
-    sessionId?: string
+    sessionId?: string,
   ): Promise<{
     needsSearch: boolean;
     query?: string;
@@ -490,7 +483,7 @@ export class ReplyGenerationService {
     context: HookContext,
     taskResultsSummary: string,
     searchResultsText: string,
-    sessionId?: string
+    sessionId?: string,
   ): Promise<void> {
     const historyText = this.conversationHistoryService.buildConversationHistory(context);
 
@@ -561,7 +554,7 @@ export class ReplyGenerationService {
     taskResultsSummary: string,
     searchResultsText: string,
     images: VisionImage[],
-    sessionId?: string
+    sessionId?: string,
   ): Promise<void> {
     const historyText = this.conversationHistoryService.buildConversationHistory(context);
 
@@ -612,11 +605,7 @@ export class ReplyGenerationService {
    * @param context - Hook context for setting reply
    * @returns true if card was successfully rendered, false if should use text reply
    */
-  private async handleCardReply(
-    responseText: string,
-    sessionId: string,
-    context: HookContext,
-  ): Promise<boolean> {
+  private async handleCardReply(responseText: string, sessionId: string, context: HookContext): Promise<boolean> {
     // Check if response length exceeds threshold
     const cardThreshold = CardRenderingService.getThreshold();
     const shouldConvertToCard = responseText.length >= cardThreshold;
@@ -692,7 +681,9 @@ export class ReplyGenerationService {
       sessionId,
     });
 
-    logger.debug(`[ReplyGenerationService] Card format conversion completed | responseLength=${cardResponse.text.length}`);
+    logger.debug(
+      `[ReplyGenerationService] Card format conversion completed | responseLength=${cardResponse.text.length}`,
+    );
 
     return cardResponse.text;
   }
