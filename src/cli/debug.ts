@@ -438,7 +438,7 @@ class DebugCLI {
   printMockReply(action: string, params: Record<string, unknown>): void {
     const message = params.message as string | unknown[];
     const messageText = typeof message === 'string' ? message : JSON.stringify(message);
-    
+
     if (action === 'send_private_msg' || action === 'send_private_message') {
       const userId = params.user_id as number;
       this.printSuccess(`\n[Mock] Would send private message to ${userId}:`);
@@ -550,14 +550,14 @@ class DebugCLI {
     // Get the first enabled protocol config (or use milky as default)
     const enabledProtocols = this.config.getEnabledProtocols();
     const protocolConfig = enabledProtocols.length > 0 ? enabledProtocols[0] : this.config.getProtocolConfig('milky');
-    
+
     if (!protocolConfig) {
       throw new Error('No protocol configuration found for mock mode');
     }
 
     const mockConnection = new MockConnection(protocolConfig);
     const mockAdapter = new MockProtocolAdapter(protocolConfig, mockConnection, this);
-    
+
     // Register adapter with API client
     this.apiClient.registerAdapter('milky', mockAdapter);
     this.printInfo('✓ Mock protocol adapter registered');
@@ -586,6 +586,12 @@ class DebugCLI {
     const conversationComponents = await ConversationInitializer.initialize(this.config, this.apiClient, searchService);
     this.conversationManager = conversationComponents.conversationManager;
     this.commandManager = conversationComponents.commandManager;
+
+    // Register SearchService health check (after HealthCheckManager is created)
+    if (searchService) {
+      searchService.registerHealthCheck();
+      this.printInfo('✓ SearchService health check registered');
+    }
 
     // Initialize event router (for plugins that might use it)
     const eventSystem = EventInitializer.initialize(this.config, conversationComponents.conversationManager);
@@ -647,6 +653,12 @@ class DebugCLI {
     const conversationComponents = await ConversationInitializer.initialize(this.config, this.apiClient, searchService);
     this.conversationManager = conversationComponents.conversationManager;
     this.commandManager = conversationComponents.commandManager;
+
+    // Register SearchService health check (after HealthCheckManager is created)
+    if (searchService) {
+      searchService.registerHealthCheck();
+      this.printInfo('✓ SearchService health check registered');
+    }
 
     // Initialize event system (EventRouter and handlers)
     const eventSystem = EventInitializer.initialize(this.config, conversationComponents.conversationManager);

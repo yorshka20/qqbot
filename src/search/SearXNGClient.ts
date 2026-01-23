@@ -1,10 +1,13 @@
 // SearXNG HTTP API client (Direct mode)
 
 import type { SearXNGConfig } from '@/core/config/mcp';
+import type { HealthCheckOptions, HealthCheckResult } from '@/core/health';
+import { HealthStatus } from '@/core/health';
+import type { HealthCheckable } from '@/core/health/types';
 import { logger } from '@/utils/logger';
 import type { SearchOptions, SearchResult, SearXNGSearchResponse } from './types';
 
-export class SearXNGClient {
+export class SearXNGClient implements HealthCheckable {
   private baseUrl: string;
   private authUsername?: string;
   private authPassword?: string;
@@ -17,6 +20,96 @@ export class SearXNGClient {
     this.authPassword = config.authPassword;
     this.userAgent = config.userAgent || 'qqbot/1.0';
     this.proxy = config.proxy;
+  }
+
+  /**
+   * Get service name for health check identification
+   */
+  getServiceName(): string {
+    return 'SearXNG';
+  }
+
+  /**
+   * Perform health check (implements HealthCheckable interface)
+   */
+  async checkHealth(options?: HealthCheckOptions): Promise<HealthCheckResult> {
+    const timeout = options?.timeout ?? 2000; // Default 2 second timeout
+    const startTime = Date.now();
+
+    try {
+      const headers: Record<string, string> = {
+        'User-Agent': this.userAgent,
+      };
+
+      if (this.authUsername && this.authPassword) {
+        const credentials = btoa(`${this.authUsername}:${this.authPassword}`);
+        headers['Authorization'] = `Basic ${credentials}`;
+      }
+
+      // Set up proxy if configured
+      const originalHttpProxy = process.env.HTTP_PROXY;
+      const originalHttpsProxy = process.env.HTTPS_PROXY;
+
+      if (this.proxy?.http) {
+        process.env.HTTP_PROXY = this.proxy.http;
+      }
+      if (this.proxy?.https) {
+        process.env.HTTPS_PROXY = this.proxy.https;
+      }
+
+      try {
+        // Try to access the base URL
+        const response = await fetch(this.baseUrl, {
+          method: 'GET',
+          headers,
+          signal: AbortSignal.timeout(timeout),
+        });
+
+        // Restore proxy settings
+        if (originalHttpProxy !== undefined) {
+          process.env.HTTP_PROXY = originalHttpProxy;
+        } else {
+          delete process.env.HTTP_PROXY;
+        }
+        if (originalHttpsProxy !== undefined) {
+          process.env.HTTPS_PROXY = originalHttpsProxy;
+        } else {
+          delete process.env.HTTPS_PROXY;
+        }
+
+        // Service is available if we get any response (including 404, 301, etc.)
+        // This is because SearXNG might return different status codes on base URL
+        return {
+          status: HealthStatus.HEALTHY,
+          timestamp: Date.now(),
+          responseTime: Date.now() - startTime,
+          message: `Service responded with status ${response.status}`,
+        };
+      } catch (fetchError) {
+        // Restore proxy settings on error
+        if (originalHttpProxy !== undefined) {
+          process.env.HTTP_PROXY = originalHttpProxy;
+        } else {
+          delete process.env.HTTP_PROXY;
+        }
+        if (originalHttpsProxy !== undefined) {
+          process.env.HTTPS_PROXY = originalHttpsProxy;
+        } else {
+          delete process.env.HTTPS_PROXY;
+        }
+        throw fetchError;
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.warn(`[SearXNGClient] Health check failed: ${errorMessage}`);
+
+      return {
+        status: HealthStatus.UNHEALTHY,
+        timestamp: Date.now(),
+        responseTime: Date.now() - startTime,
+        message: errorMessage,
+      };
+    }
   }
 
   /**
@@ -49,7 +142,7 @@ export class SearXNGClient {
     logger.debug(`[SearXNGClient] Searching: ${query} (page ${pageno})`);
 
     let lastError: Error | null = null;
-    const maxRetries = 3;
+    const maxRetries = 2; // Reduce retries to save time
 
     // Retry logic with exponential backoff
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -69,7 +162,7 @@ export class SearXNGClient {
         const fetchOptions: RequestInit = {
           method: 'GET',
           headers,
-          signal: AbortSignal.timeout(30000), // 30 second timeout
+          signal: AbortSignal.timeout(10000), // 10 second timeout (reduced from 30s)
         };
 
         // Bun supports proxy via environment variables
@@ -156,11 +249,19 @@ export class SearXNGClient {
 
   /**
    * Check if error is retryable
+   * Timeout errors are NOT retryable to fail fast when service is unavailable
    */
   private isRetryableError(error: Error): boolean {
-    const retryableMessages = ['timeout', 'network', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND'];
     const errorMessage = error.message.toLowerCase();
-    return retryableMessages.some((msg) => errorMessage.includes(msg));
+
+    // Do NOT retry on timeout - fail fast instead
+    if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+      return false;
+    }
+
+    // Only retry on transient network errors
+    const retryableMessages = ['network error', 'socket hang up', 'ECONNRESET'];
+    return retryableMessages.some((msg) => errorMessage.toLowerCase().includes(msg.toLowerCase()));
   }
 
   /**

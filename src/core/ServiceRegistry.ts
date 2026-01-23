@@ -16,6 +16,7 @@ import { logger } from '@/utils/logger';
 import type { Config } from './config';
 import { getContainer } from './DIContainer';
 import { DITokens } from './DITokens';
+import { HealthCheckManager } from './health';
 
 /**
  * Service Registry
@@ -112,6 +113,37 @@ export class ServiceRegistry {
    */
   registerSearchService(searchService: SearchService): void {
     this.container.registerInstance(DITokens.SEARCH_SERVICE, searchService);
+  }
+
+  /**
+   * Register health check manager
+   */
+  registerHealthCheckManager(healthCheckManager: HealthCheckManager): void {
+    this.container.registerInstance(DITokens.HEALTH_CHECK_MANAGER, healthCheckManager);
+  }
+
+  /**
+   * Register AIManager with health check manager
+   * AIManager will check health of all its managed providers
+   */
+  registerAIManagerHealthCheck(aiManager: AIManager): void {
+    // Get health check manager from container
+    if (!this.container.isRegistered(DITokens.HEALTH_CHECK_MANAGER)) {
+      logger.warn('[ServiceRegistry] Health check manager not registered, skipping AI manager health check');
+      return;
+    }
+
+    const healthManager = this.container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
+
+    // Register AIManager itself (it will check all its providers)
+    healthManager.registerService(aiManager, {
+      cacheDuration: 120000, // Cache for 2 minutes (AI providers are usually stable)
+      timeout: 10000, // 10 second timeout for checking all providers
+      retries: 0, // No retries for health checks
+    });
+
+    const providerCount = aiManager.getAvailableProviders().length;
+    logger.info(`[ServiceRegistry] Registered AIManager health check (managing ${providerCount} providers)`);
   }
 
   /**

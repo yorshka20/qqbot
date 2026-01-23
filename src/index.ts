@@ -52,6 +52,11 @@ async function main() {
     // Initialize conversation components
     const conversationComponents = await ConversationInitializer.initialize(config, apiClient, searchService);
 
+    // Register SearchService health check (after HealthCheckManager is created)
+    if (searchService) {
+      searchService.registerHealthCheck();
+    }
+
     // Initialize event system (EventRouter and handlers)
     const eventSystem = EventInitializer.initialize(config, conversationComponents.conversationManager);
     const eventRouter = eventSystem.eventRouter;

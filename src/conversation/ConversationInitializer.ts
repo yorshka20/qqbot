@@ -18,8 +18,9 @@ import { ContextManager } from '@/context';
 import type { AIConfig, Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import { HealthCheckManager } from '@/core/health';
 import { ServiceRegistry } from '@/core/ServiceRegistry';
-import { SystemRegistry, type SystemContext } from '@/core/system';
+import { type SystemContext, SystemRegistry } from '@/core/system';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import { HookManager } from '@/hooks/HookManager';
 import { MessageUtils } from '@/message/MessageUtils';
@@ -50,8 +51,8 @@ export interface ConversationComponents {
  */
 type CompleteServices = {
   databaseManager: DatabaseManager;
-  aiManager: AIManager;  // Required for DI registration and service creation
-  aiService: AIService;  // Business logic layer
+  aiManager: AIManager; // Required for DI registration and service creation
+  aiService: AIService; // Business logic layer
   contextManager: ContextManager;
   commandManager: CommandManager;
   taskManager: TaskManager;
@@ -91,18 +92,22 @@ export class ConversationInitializer {
     const databaseManager = new DatabaseManager();
     await databaseManager.initialize(dbConfig);
 
+    // Phase 2.1: Create HealthCheckManager early for service health monitoring
+    const healthCheckManager = new HealthCheckManager();
+    serviceRegistry.registerHealthCheckManager(healthCheckManager);
+
     // Phase 2.5: Initialize Conversation Config Services (required before CommandManager)
     const globalConfigManager = new GlobalConfigManager();
-    const conversationConfigService = new ConversationConfigService(
-      databaseManager.getAdapter(),
-      globalConfigManager,
-    );
+    const conversationConfigService = new ConversationConfigService(databaseManager.getAdapter(), globalConfigManager);
 
     // Phase 2.6: Create remaining core services (CommandManager requires ConversationConfigService)
     const services = await this.createCoreServices(config, conversationConfigService, databaseManager);
 
     // Phase 3: Service Configuration
     await this.configureServices(services, config);
+
+    // Phase 3.5: Register AIManager with health check manager
+    serviceRegistry.registerAIManagerHealthCheck(services.aiManager);
 
     // Phase 4: Create LLMService and ContextManager
     const providerSelector = new ProviderSelector(services.aiManager, conversationConfigService);

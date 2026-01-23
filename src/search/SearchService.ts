@@ -5,6 +5,7 @@ import type { LLMService } from '@/ai/services/LLMService';
 import type { MCPConfig } from '@/core/config/mcp';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import type { HealthCheckManager } from '@/core/health';
 import type { MCPManager } from '@/mcp';
 import { logger } from '@/utils/logger';
 import { SearXNGClient } from './SearXNGClient';
@@ -29,6 +30,29 @@ export class SearchService {
     // Initialize PromptManager from DI container
     const container = getContainer();
     this.promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+  }
+
+  /**
+   * Register SearXNG client with health check manager
+   * Should be called after HealthCheckManager is initialized
+   */
+  registerHealthCheck(): void {
+    if (!this.searxngClient) {
+      return;
+    }
+
+    const container = getContainer();
+    if (container.isRegistered(DITokens.HEALTH_CHECK_MANAGER)) {
+      const healthManager = container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
+      healthManager.registerService(this.searxngClient, {
+        cacheDuration: 60000, // Cache for 60 seconds
+        timeout: 2000, // 2 second timeout for health checks
+        retries: 0, // No retries for health checks
+      });
+      logger.info('[SearchService] Registered SearXNG with health check manager');
+    } else {
+      logger.warn('[SearchService] HealthCheckManager not available, health checks disabled');
+    }
   }
 
   /**
@@ -57,7 +81,19 @@ export class SearchService {
       if (searchMode === 'direct') {
         // Direct mode: use SearXNG HTTP API
         if (!this.searxngClient) {
-          throw new Error('SearXNG client not initialized');
+          logger.warn('[SearchService] SearXNG client not initialized');
+          return [];
+        }
+
+        // Fast health check before attempting search
+        const container = getContainer();
+        if (container.isRegistered(DITokens.HEALTH_CHECK_MANAGER)) {
+          const healthManager = container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
+          const isHealthy = await healthManager.isServiceHealthy('SearXNG');
+          if (!isHealthy) {
+            logger.warn('[SearchService] SearXNG service is not available, skipping search');
+            return [];
+          }
         }
 
         results = await this.searxngClient.webSearch(query, {
@@ -74,6 +110,17 @@ export class SearchService {
         if (!this.mcpManager.hasTool(toolName)) {
           logger.warn(`[SearchService] Tool ${toolName} not found, falling back to direct mode`);
           if (this.searxngClient) {
+            // Fast health check before attempting search
+            const container = getContainer();
+            if (container.isRegistered(DITokens.HEALTH_CHECK_MANAGER)) {
+              const healthManager = container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
+              const isHealthy = await healthManager.isServiceHealthy('SearXNG');
+              if (!isHealthy) {
+                logger.warn('[SearchService] SearXNG service is not available, skipping search');
+                return [];
+              }
+            }
+
             results = await this.searxngClient.webSearch(query, {
               ...options,
               maxResults,

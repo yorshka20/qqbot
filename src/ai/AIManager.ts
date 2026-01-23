@@ -1,11 +1,13 @@
 // AI Manager - manages AI providers and handles provider switching
 
+import type { HealthCheckable, HealthCheckOptions, HealthCheckResult } from '@/core/health';
+import { HealthStatus } from '@/core/health';
 import { logger } from '@/utils/logger';
 import type { AIProvider } from './base/AIProvider';
 import type { CapabilityType } from './capabilities/types';
 import { ProviderRegistry } from './ProviderRegistry';
 
-export class AIManager {
+export class AIManager implements HealthCheckable {
   private providers = new Map<string, AIProvider>();
   private registry = new ProviderRegistry();
   private defaultProviders = new Map<CapabilityType, string>();
@@ -13,7 +15,7 @@ export class AIManager {
   /**
    * Register an AI provider
    * @param provider - Provider to register
-    */
+   */
   registerProvider(provider: AIProvider): void {
     if (!provider.isAvailable()) {
       logger.warn(`[AIManager] Provider ${provider.name} is not available, skipping registration`);
@@ -132,5 +134,86 @@ export class AIManager {
    */
   setCurrentProvider(capability: CapabilityType, name: string): void {
     this.setDefaultProvider(capability, name);
+  }
+
+  /**
+   * Get service name for health check identification
+   */
+  getServiceName(): string {
+    return 'AIManager';
+  }
+
+  /**
+   * Perform health check on all available AI providers
+   * Returns HEALTHY if at least one provider is available
+   * Returns UNHEALTHY if no providers are available
+   */
+  async checkHealth(options?: HealthCheckOptions): Promise<HealthCheckResult> {
+    const timeout = options?.timeout ?? 10000; // 10 second default timeout
+    const startTime = Date.now();
+
+    try {
+      const availableProviders = this.getAvailableProviders();
+
+      // Check health of all available providers in parallel
+      const healthCheckPromises = availableProviders.map(async (provider) => {
+        try {
+          const checkPromise = provider.checkAvailability();
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Provider health check timeout')), timeout / availableProviders.length);
+          });
+
+          const isAvailable = await Promise.race([checkPromise, timeoutPromise]);
+          return { provider: provider.name, healthy: isAvailable };
+        } catch (error) {
+          logger.debug(
+            `[AIManager] Health check failed for provider ${provider.name}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          return { provider: provider.name, healthy: false };
+        }
+      });
+
+      const results = await Promise.all(healthCheckPromises);
+      const healthyProviders = results.filter((r) => r.healthy);
+      const responseTime = Date.now() - startTime;
+
+      const providerStatus = Object.fromEntries(results.map((r) => [r.provider, r.healthy]));
+
+      if (healthyProviders.length === 0) {
+        return {
+          status: HealthStatus.UNHEALTHY,
+          timestamp: Date.now(),
+          responseTime,
+          message: 'All AI providers failed health check',
+          details: {
+            totalProviders: availableProviders.length,
+            healthyProviders: 0,
+            providers: providerStatus,
+          },
+        };
+      }
+
+      return {
+        status: HealthStatus.HEALTHY,
+        timestamp: Date.now(),
+        responseTime,
+        message: `${healthyProviders.length}/${availableProviders.length} AI providers are healthy`,
+        details: {
+          totalProviders: availableProviders.length,
+          healthyProviders: healthyProviders.length,
+          providers: providerStatus,
+        },
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.warn(`[AIManager] Health check failed: ${errorMessage}`);
+
+      return {
+        status: HealthStatus.UNHEALTHY,
+        timestamp: Date.now(),
+        responseTime: Date.now() - startTime,
+        message: errorMessage,
+      };
+    }
   }
 }
