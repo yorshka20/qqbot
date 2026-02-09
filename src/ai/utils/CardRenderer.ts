@@ -1,10 +1,21 @@
-// Card renderer using Puppeteer to convert HTML cards to images
+// Card renderer using puppeteer-core + system Chrome/Chromium (no bundled browser)
 
+import { existsSync } from 'node:fs';
+import puppeteer, { type Browser, type Page } from 'puppeteer-core';
 import { logger } from '@/utils/logger';
-import puppeteer, { type Browser, type Page } from 'puppeteer';
 import { cardStyles } from './cardStyles';
 import { renderCard } from './cardTemplates';
 import type { CardData } from './cardTypes';
+
+/** Default path to Google Chrome on macOS. */
+const MACOS_CHROME_PATH = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+/** Common Chrome/Chromium paths on Linux (first existing wins). */
+const LINUX_BROWSER_PATHS = [
+  '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+];
 
 /**
  * Card renderer that converts card data to PNG images
@@ -30,6 +41,27 @@ export class CardRenderer {
   }
 
   /**
+   * Resolve Chrome/Chromium executable path (required for puppeteer-core; no bundled browser).
+   * Uses PUPPETEER_EXECUTABLE_PATH, or platform default paths.
+   */
+  private getExecutablePath(): string {
+    const fromEnv = process.env.PUPPETEER_EXECUTABLE_PATH;
+    if (fromEnv && fromEnv.length > 0) {
+      return fromEnv;
+    }
+    if (process.platform === 'darwin' && existsSync(MACOS_CHROME_PATH)) {
+      return MACOS_CHROME_PATH;
+    }
+    if (process.platform === 'linux') {
+      const found = LINUX_BROWSER_PATHS.find((p) => existsSync(p));
+      if (found) return found;
+    }
+    throw new Error(
+      'Card rendering requires a browser. Set PUPPETEER_EXECUTABLE_PATH to Chrome/Chromium path, or install Google Chrome (macOS: /Applications/Google Chrome.app).',
+    );
+  }
+
+  /**
    * Get Puppeteer launch arguments based on platform
    * macOS doesn't support --single-process and --no-zygote flags
    */
@@ -47,6 +79,11 @@ export class CardRenderer {
     // --single-process and --no-zygote are Linux-specific and cause issues on macOS
     if (platform === 'linux') {
       baseArgs.push('--no-zygote', '--single-process');
+    }
+
+    // macOS: reduce GPU/sandbox issues that cause "UniversalExceptionRaise" / crash info version 7
+    if (platform === 'darwin') {
+      baseArgs.push('--disable-gpu-sandbox', '--disable-gpu');
     }
 
     return baseArgs;
@@ -71,11 +108,14 @@ export class CardRenderer {
         logger.info(`[CardRenderer] Initializing Puppeteer browser on ${platform}...`);
 
         const launchArgs = this.getLaunchArgs();
+        const executablePath = this.getExecutablePath();
+        logger.info(`[CardRenderer] Using browser: ${executablePath}`);
         logger.debug(`[CardRenderer] Launch args: ${launchArgs.join(' ')}`);
 
         this.browser = await puppeteer.launch({
           headless: 'new',
           args: launchArgs,
+          executablePath,
         });
 
         logger.info('[CardRenderer] Browser initialized successfully');

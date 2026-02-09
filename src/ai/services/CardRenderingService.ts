@@ -1,22 +1,19 @@
 // Card Rendering Service - provides card rendering capability for LLM responses
+// Card image rendering (Puppeteer) has been removed; long replies use text fallback.
 
 import { logger } from '@/utils/logger';
 import type { AIManager } from '../AIManager';
 import type { AIProvider } from '../base/AIProvider';
-import { CardRenderer } from '../utils/CardRenderer';
-import { parseCardData, type CardData } from '../utils/cardTypes';
+import { parseCardData } from '../utils/cardTypes';
 
 /**
  * Card Rendering Service
- * Provides card rendering capability for LLM responses
+ * Provides card-format checks for LLM responses. Image rendering is disabled (Puppeteer removed).
  */
 export class CardRenderingService {
-  private cardRenderer: CardRenderer;
   private static readonly CARD_RENDERING_THRESHOLD = 200; // characters
 
-  constructor(private aiManager: AIManager) {
-    this.cardRenderer = CardRenderer.getInstance();
-  }
+  constructor(private aiManager: AIManager) {}
 
   /**
    * Check if provider is local (ollama)
