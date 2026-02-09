@@ -153,8 +153,13 @@
         "name": "text2imgSfwFilter",
         "enabled": true,
         "config": {
-          // User IDs that should be forced to use SFW template for text2img commands
-          "sfwUserIds": []
+          // Group-based user IDs that should be forced to use SFW template for text2img commands
+          // Key is groupId (as string), value is array of user IDs (as numbers)
+          "groupSfwUsers": {
+            // Example: configure SFW users for specific groups
+            // "123456789": [1001, 1002, 1003],
+            // "987654321": [2001, 2002]
+          }
         }
       }
     ],

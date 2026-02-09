@@ -7,8 +7,9 @@ import { Hook, Plugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 interface Text2ImgSFWFilterPluginConfig {
-  // User IDs that should be forced to use SFW template for text2img commands
-  sfwUserIds?: number[];
+  // Group-based user IDs that should be forced to use SFW template for text2img commands
+  // Key is groupId (as string), value is array of user IDs (as numbers)
+  groupSfwUsers?: Record<string, number[]>;
 }
 
 @Plugin({
@@ -17,7 +18,8 @@ interface Text2ImgSFWFilterPluginConfig {
   description: 'Forces specific users to use SFW template for text2img commands',
 })
 export class Text2ImgSFWFilterPlugin extends PluginBase {
-  private sfwUserIds: Set<number> = new Set();
+  // Map of groupId -> Set of user IDs that should be forced to use SFW template
+  private groupSfwUsers: Map<string, Set<number>> = new Map();
 
   async onInit(): Promise<void> {
     // Load plugin-specific configuration
@@ -30,15 +32,25 @@ export class Text2ImgSFWFilterPlugin extends PluginBase {
         return;
       }
 
-      // Load SFW user IDs
-      if (pluginConfig.sfwUserIds && Array.isArray(pluginConfig.sfwUserIds)) {
-        this.sfwUserIds = new Set(pluginConfig.sfwUserIds);
-        logger.info(
-          `[Text2ImgSFWFilterPlugin] Loaded SFW user IDs: ${Array.from(this.sfwUserIds).join(', ')}`,
-        );
-        this.enabled = true;
+      // Load group-based SFW user IDs
+      if (pluginConfig.groupSfwUsers) {
+        this.groupSfwUsers.clear();
+        for (const [groupId, userIds] of Object.entries(pluginConfig.groupSfwUsers)) {
+          if (userIds.length > 0) {
+            this.groupSfwUsers.set(groupId, new Set(userIds));
+            logger.info(
+              `[Text2ImgSFWFilterPlugin] Loaded SFW user IDs for group ${groupId}: ${userIds.join(', ')}`,
+            );
+          }
+        }
+        if (this.groupSfwUsers.size > 0) {
+          this.enabled = true;
+        } else {
+          logger.info('[Text2ImgSFWFilterPlugin] No SFW user IDs configured for any group, plugin disabled');
+          this.enabled = false;
+        }
       } else {
-        logger.info('[Text2ImgSFWFilterPlugin] No SFW user IDs configured, plugin disabled');
+        logger.info('[Text2ImgSFWFilterPlugin] No group SFW user IDs configured, plugin disabled');
         this.enabled = false;
       }
     } catch (error) {
@@ -57,17 +69,30 @@ export class Text2ImgSFWFilterPlugin extends PluginBase {
     order: 20, // Run after whitelist plugin but before command routing
   })
   onMessagePreprocess(context: HookContext): HookResult {
-    if (!this.enabled || this.sfwUserIds.size === 0) {
+    if (!this.enabled || this.groupSfwUsers.size === 0) {
       return true;
     }
 
     const userId = context.message.userId;
+    const groupId = context.message.groupId;
+    
     if (!userId) {
       return true;
     }
 
-    // Check if user is in SFW list
-    if (!this.sfwUserIds.has(userId)) {
+    // Only apply SFW filter in group chats
+    if (!groupId) {
+      return true;
+    }
+
+    // Get SFW user list for this group
+    const groupSfwUserSet = this.groupSfwUsers.get(groupId.toString());
+    if (!groupSfwUserSet || groupSfwUserSet.size === 0) {
+      return true;
+    }
+
+    // Check if user is in SFW list for this group
+    if (!groupSfwUserSet.has(userId)) {
       return true;
     }
 
@@ -104,7 +129,7 @@ export class Text2ImgSFWFilterPlugin extends PluginBase {
       // For commands that skip LLM preprocessing (like /nai), force enable LLM preprocessing
       context.context.metadata.set('text2imgForceLLMProcess', true);
       logger.info(
-        `[Text2ImgSFWFilterPlugin] User ${userId} detected, forcing SFW template for text2img command`,
+        `[Text2ImgSFWFilterPlugin] User ${userId} in group ${groupId} detected, forcing SFW template for text2img command`,
       );
     }
 
