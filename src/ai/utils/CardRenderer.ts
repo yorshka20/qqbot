@@ -1,8 +1,8 @@
 // Card renderer using puppeteer-core + system Chrome/Chromium (no bundled browser)
 
+import { logger } from '@/utils/logger';
 import { existsSync } from 'node:fs';
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
-import { logger } from '@/utils/logger';
 import { cardStyles } from './cardStyles';
 import { renderCard } from './cardTemplates';
 import type { CardData } from './cardTypes';
