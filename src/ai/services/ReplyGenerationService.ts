@@ -20,6 +20,8 @@ import { VisionService } from './VisionService';
  * Provides AI reply generation capabilities including basic replies, vision support, and task-based replies
  */
 export class ReplyGenerationService {
+  private readonly MAX_SEARCH_ITERATIONS = 5;
+
   constructor(
     private llmService: LLMService,
     private visionService: VisionService,
@@ -271,7 +273,7 @@ export class ReplyGenerationService {
     taskResultsSummary: string,
     existingSearchResults: string,
     sessionId?: string,
-    maxIterations: number = 3,
+    maxIterations: number = this.MAX_SEARCH_ITERATIONS,
   ): Promise<string> {
     if (!this.searchService) {
       return existingSearchResults;
