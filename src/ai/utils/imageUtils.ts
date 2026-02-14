@@ -269,6 +269,31 @@ export function visionImageToString(image: VisionImage): string {
 }
 
 /**
+ * Convert VisionImage to Buffer for APIs that need raw bytes (e.g. ComfyUI upload).
+ * For url/file, downloads and returns buffer; for base64, decodes in-place.
+ */
+export async function visionImageToBuffer(
+  image: VisionImage,
+  options?: { timeout?: number; maxSize?: number },
+): Promise<Buffer> {
+  const timeout = options?.timeout ?? 30000;
+  const maxSize = options?.maxSize ?? 10 * 1024 * 1024; // 10MB default
+
+  if (image.base64) {
+    return Buffer.from(image.base64, 'base64');
+  }
+  if (image.url || image.file) {
+    const source = image.url ?? image.file!;
+    const base64Data = await ResourceDownloader.downloadToBase64(source, {
+      timeout,
+      maxSize,
+    });
+    return Buffer.from(base64Data, 'base64');
+  }
+  throw new Error('VisionImage has no valid url, base64, or file field');
+}
+
+/**
  * Extract reply message ID from reply segment
  * Supports both 'id' (standard) and 'message_seq' (Milky protocol) fields
  */

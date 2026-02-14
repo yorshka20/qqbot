@@ -13,6 +13,7 @@ import type { MCPConfig } from './mcp';
 import type { PluginsConfig } from './plugins';
 import type { PromptsConfig } from './prompts';
 import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './protocol';
+import type { RunpodConfig } from './runpod';
 import type { TTSConfig } from './tts';
 
 // Re-export all types for convenience
@@ -53,6 +54,7 @@ export type {
   ProtocolName,
   ReconnectConfig
 } from './protocol';
+export type { RunpodConfig } from './runpod';
 export type { TTSConfig } from './tts';
 export type { LogLevel } from './types';
 
@@ -68,6 +70,7 @@ export interface BotConfig {
   prompts: PromptsConfig;
   tts?: TTSConfig;
   mcp?: MCPConfig;
+  runpod?: RunpodConfig;
   staticServer?: StaticServerConfig;
 }
 
@@ -287,6 +290,10 @@ export class Config {
 
   getMCPConfig(): MCPConfig | undefined {
     return this.config.mcp;
+  }
+
+  getRunpodConfig(): RunpodConfig | undefined {
+    return this.config.runpod;
   }
 
   getStaticServerConfig(): StaticServerConfig | undefined {

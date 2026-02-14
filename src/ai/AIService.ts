@@ -181,6 +181,22 @@ export class AIService {
   }
 
   /**
+   * Prepare a single prompt string for image-to-video (I2V) using LLM and template.
+   * Used by the i2v command to convert user input into a Wan2.2-suitable motion prompt.
+   * @param userInput - User description (can be empty)
+   * @param sessionId - Session ID for LLM provider selection
+   * @param templateName - Template name (default: 'img2video.generate')
+   * @returns Processed prompt string for ComfyUI
+   */
+  async prepareI2VPrompt(
+    userInput: string,
+    sessionId: string,
+    templateName?: string,
+  ): Promise<string> {
+    return this.imagePromptService.prepareI2VPrompt(userInput, sessionId, templateName ?? 'img2video.generate');
+  }
+
+  /**
    * Transform image based on prompt (image-to-image)
    *
    * Prompt must be provided as a separate parameter.
