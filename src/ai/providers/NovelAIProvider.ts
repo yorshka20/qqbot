@@ -492,8 +492,9 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
   }
 
   /**
-   * Generate image from image (img2img). V4+ uses same action 'generate' as text2img;
-   * difference is parameters.image (raw base64), strength, and noise. Input image is resized to target resolution.
+   * Generate image from image (img2img). API requires action 'img2img' when parameters.image is present
+   * (action 'generate' is rejected with "image is not allowed for regular generations").
+   * Parameters: image (raw base64), strength, noise. Input image is resized to target resolution.
    */
   async generateImageFromImage(
     image: string,
@@ -577,7 +578,7 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
       };
 
       const requestBody: Record<string, unknown> = {
-        action: 'generate',
+        action: 'img2img',
         model,
         input: prompt,
         parameters,
