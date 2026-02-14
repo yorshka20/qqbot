@@ -2,18 +2,26 @@
 
 import type { NovelAIProviderConfig } from '@/core/config';
 import { logger } from '@/utils/logger';
+import { ResourceDownloader } from '../utils/ResourceDownloader';
 import AdmZip from 'adm-zip';
 import { mkdir, writeFile } from 'fs/promises';
 import { extname, join } from 'path';
 import { AIProvider } from '../base/AIProvider';
+import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
 import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';
-import type { CapabilityType, ProviderImageGenerationResponse, Text2ImageOptions } from '../capabilities/types';
+import type {
+  CapabilityType,
+  Image2ImageOptions,
+  ProviderImageGenerationResponse,
+  Text2ImageOptions,
+} from '../capabilities/types';
+import { resizeImageToBase64 } from '../utils/imageResize';
 
 /**
  * NovelAI Provider implementation
- * Text-to-image generation using NovelAI API (V4+ only)
+ * Text-to-image and image-to-image generation using NovelAI API (V4+ only)
  */
-export class NovelAIProvider extends AIProvider implements Text2ImageCapability {
+export class NovelAIProvider extends AIProvider implements Text2ImageCapability, Image2ImageCapability {
   readonly name = 'novelai';
   private config: NovelAIProviderConfig;
   private _capabilities: CapabilityType[];
@@ -37,7 +45,7 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
       ...config,
     };
 
-    this._capabilities = ['text2img'];
+    this._capabilities = ['text2img', 'img2img'];
 
     logger.info('[NovelAIProvider] Initialized');
   }
@@ -104,6 +112,18 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
       );
       return null;
     }
+  }
+
+  /**
+   * Load image from URL/file/base64 and resize to target dimensions for img2img.
+   * Returns raw base64 (no data URL prefix). NovelAI API requires exact resolution or returns 400.
+   */
+  private async loadAndResizeImageForImg2Img(image: string, width: number, height: number): Promise<string> {
+    const base64Data = await ResourceDownloader.downloadToBase64(image, {
+      timeout: 30000,
+      maxSize: 10 * 1024 * 1024,
+    });
+    return resizeImageToBase64(base64Data, width, height);
   }
 
   /**
@@ -467,6 +487,144 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability 
       // Return error response instead of throwing for better user experience
       // Only throw for truly unexpected errors (like network failures during ZIP download)
       // HTTP errors are already handled above
+      return this.handleGeneralError(error, prompt);
+    }
+  }
+
+  /**
+   * Generate image from image (img2img). V4+ uses same action 'generate' as text2img;
+   * difference is parameters.image (raw base64), strength, and noise. Input image is resized to target resolution.
+   */
+  async generateImageFromImage(
+    image: string,
+    prompt: string,
+    options?: Image2ImageOptions,
+  ): Promise<ProviderImageGenerationResponse> {
+    if (!this.isAvailable()) {
+      throw new Error('NovelAIProvider is not available: accessToken not configured');
+    }
+
+    try {
+      logger.info(`[NovelAIProvider] Starting img2img for prompt: ${prompt}`);
+
+      const width = options?.width ?? this.config.defaultWidth ?? NovelAIProvider.DEFAULT_WIDTH;
+      const height = options?.height ?? this.config.defaultHeight ?? NovelAIProvider.DEFAULT_HEIGHT;
+      const seed =
+        typeof options?.seed === 'number' && options.seed >= 0
+          ? options.seed
+          : Math.floor(Math.random() * 4294967295);
+      const model = this.config.model || 'nai-diffusion-4-5-full';
+
+      if (!model.startsWith('nai-diffusion-4')) {
+        throw new Error(
+          `Unsupported model: ${model}. NovelAIProvider only supports V4+ models (e.g., nai-diffusion-4-5-full)`,
+        );
+      }
+
+      const strength = options?.strength ?? this.config.defaultStrength ?? 0.5;
+      const noise = options?.noise ?? this.config.defaultNoise ?? 0;
+
+      logger.info(
+        `[NovelAIProvider] img2img params: model=${model}, size=${width}x${height}, strength=${strength}, seed=${seed}`,
+      );
+
+      const imageBase64 = await this.loadAndResizeImageForImg2Img(image, width, height);
+
+      const parameters: Record<string, unknown> = {
+        params_version: 3,
+        width,
+        height,
+        scale: 5,
+        sampler: 'k_euler_ancestral',
+        steps: 28,
+        seed,
+        n_samples: 1,
+        ucPreset: 1,
+        qualityToggle: true,
+        autoSmea: false,
+        sm: false,
+        sm_dyn: false,
+        dynamic_thresholding: false,
+        controlnet_strength: 1,
+        legacy: false,
+        add_original_image: true,
+        cfg_rescale: 0,
+        noise_schedule: 'karras',
+        legacy_v3_extend: false,
+        skip_cfg_above_sigma: null,
+        use_coords: false,
+        legacy_uc: false,
+        normalize_reference_strength_multiple: true,
+        inpaintImg2ImgStrength: 1,
+        image: imageBase64,
+        strength,
+        noise,
+        v4_prompt: {
+          caption: { base_caption: prompt, char_captions: [] },
+          use_coords: false,
+          use_order: true,
+        },
+        v4_negative_prompt: {
+          caption: {
+            base_caption:
+              (options?.negative_prompt as string | undefined) ||
+              'low quality, bad anatomy, text, blurry, worst quality',
+            char_captions: [],
+          },
+          use_coords: false,
+          use_order: true,
+        },
+      };
+
+      const requestBody: Record<string, unknown> = {
+        action: 'generate',
+        model,
+        input: prompt,
+        parameters,
+      };
+
+      const baseURL = this.config.baseURL || 'https://image.novelai.net';
+      const fullUrl = baseURL.endsWith('/') ? `${baseURL}ai/generate-image` : `${baseURL}/ai/generate-image`;
+
+      const response = await fetch(fullUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.config.accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/zip',
+        },
+        body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(300000),
+      });
+
+      const httpError = await this.handleHttpError(response, prompt);
+      if (httpError) {
+        return httpError;
+      }
+
+      logger.info(`[NovelAIProvider] Downloading complete ZIP file...`);
+      const buffer = await this.downloadComplete(response);
+      logger.info(`[NovelAIProvider] ZIP file download complete (${buffer.length} bytes)`);
+
+      try {
+        const { relativePath, base64: base64Image } = await this.extractImageFromZip(buffer);
+        if (!relativePath && !base64Image) {
+          return this.handleNoImageData(prompt);
+        }
+        const imageData: { relativePath?: string; base64?: string } = {};
+        if (relativePath) {
+          imageData.relativePath = relativePath;
+        } else if (base64Image) {
+          imageData.base64 = base64Image;
+        }
+        return {
+          images: [imageData],
+          metadata: { prompt, numImages: 1, width, height, steps: 28, strength, noise },
+        };
+      } catch (extractError) {
+        return this.handleExtractionError(extractError, prompt);
+      }
+    } catch (error) {
       return this.handleGeneralError(error, prompt);
     }
   }

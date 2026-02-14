@@ -1,6 +1,11 @@
-import { AIService, ImageGenerationResponse, Text2ImageOptions } from '@/ai';
+import { AIService, Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions } from '@/ai';
+import { extractImagesFromMessageAndReply, visionImageToString } from '@/ai/utils/imageUtils';
+import type { APIClient } from '@/api/APIClient';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { DITokens } from '@/core/DITokens';
+import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookContext } from '@/hooks/types';
+import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
@@ -9,7 +14,6 @@ import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
 import { generateSeed } from '../utils/CommandImageUtils';
 import { createHookContextForCommand } from '../utils/HookContextBuilder';
-import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 
 /**
  * NovelAI command - generates image from text prompt using NovelAI provider
@@ -18,7 +22,7 @@ import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
   name: 'nai',
   description: 'Generate image from text prompt using NovelAI',
   usage:
-    '/nai <prompt> [--width=<width>] [--height=<height>] [--steps=<steps>] [--seed=<seed>] [--guidance=<scale>] [--negative=<prompt>] [--num=<number>]',
+    '/nai <prompt> [--width=<width>] [--height=<height>] [--steps=<steps>] [--seed=<seed>] [--guidance=<scale>] [--negative=<prompt>] [--num=<number>] [--strength=<n>] [--noise=<n>]',
   permissions: ['user'], // All users can generate images
 })
 @injectable()
@@ -38,10 +42,20 @@ export class NovelAICommand implements CommandHandler {
       negative: { property: 'negative_prompt', type: 'string' },
       num: { property: 'numImages', type: 'number', aliases: ['num_images'] },
       silent: { property: 'silent', type: 'boolean' },
+      strength: { property: 'strength', type: 'float' },
+      noise: { property: 'noise', type: 'float' },
     },
   };
 
-  constructor(@inject(DITokens.AI_SERVICE) private aiService: AIService) {}
+  private messageAPI: MessageAPI;
+
+  constructor(
+    @inject(DITokens.AI_SERVICE) private aiService: AIService,
+    @inject(DITokens.API_CLIENT) private apiClient: APIClient,
+    @inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager,
+  ) {
+    this.messageAPI = new MessageAPI(this.apiClient);
+  }
 
   /**
    * Generate a single image
@@ -121,10 +135,64 @@ export class NovelAICommand implements CommandHandler {
       // Create hook context for AIService
       const hookContext = createHookContextForCommand(context, prompt);
 
-      // Check if num parameter is provided for multiple image generation
+      // Extract images from current message and referenced reply message (for img2img)
+      let images: Awaited<ReturnType<typeof extractImagesFromMessageAndReply>> = [];
+      if (context.originalMessage) {
+        try {
+          images = await extractImagesFromMessageAndReply(
+            context.originalMessage,
+            this.messageAPI,
+            this.databaseManager,
+          );
+          logger.debug(`[NovelAICommand] Extracted ${images.length} image(s) from message`);
+        } catch (error) {
+          logger.warn(
+            `[NovelAICommand] Failed to extract images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          );
+        }
+      }
+
+      const silent = options?.silent === true;
+
+      // If images are found, use image-to-image (img2img) with NovelAI
+      if (images.length > 0) {
+        logger.info(`[NovelAICommand] Using img2img with ${images.length} image(s)`);
+        let inputImage: string;
+        try {
+          inputImage = visionImageToString(images[0]!);
+        } catch (error) {
+          logger.error(
+            `[NovelAICommand] Failed to convert image to string: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          );
+          return {
+            success: false,
+            error: `Failed to process image: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          };
+        }
+        const img2imgOptions: Image2ImageOptions = {
+          width: typeof options?.width === 'number' ? options.width : undefined,
+          height: typeof options?.height === 'number' ? options.height : undefined,
+          strength: typeof options?.strength === 'number' ? options.strength : undefined,
+          noise: typeof options?.noise === 'number' ? options.noise : undefined,
+          negative_prompt: typeof options?.negative_prompt === 'string' ? options.negative_prompt : undefined,
+        };
+        const response = await this.aiService.generateImageFromImage(
+          hookContext,
+          inputImage,
+          prompt,
+          img2imgOptions,
+          'novelai',
+        );
+        if ((!response.images || response.images.length === 0) && !response.text) {
+          return { success: false, error: 'No images generated and no error message received' };
+        }
+        const imageSegments = this.buildImageSegments(response, silent);
+        return { success: true, segments: imageSegments };
+      }
+
+      // Text-to-image path: check if num parameter is provided for multiple image generation
       const numImages = options?.numImages || 1;
       const baseSeed = options?.seed;
-      const silent = options?.silent === true;
 
       // Prepare base options without numImages to avoid batch generation
       const baseOptions: Text2ImageOptions = {

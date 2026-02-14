@@ -1,5 +1,10 @@
-import { AIService, Text2ImageOptions } from '@/ai';
+import { AIService, Image2ImageOptions, Text2ImageOptions } from '@/ai';
+import { extractImagesFromMessageAndReply, visionImageToString } from '@/ai/utils/imageUtils';
+import type { APIClient } from '@/api/APIClient';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { DITokens } from '@/core/DITokens';
+import type { DatabaseManager } from '@/database/DatabaseManager';
+import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
@@ -8,7 +13,6 @@ import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
 import { generateSeed } from '../utils/CommandImageUtils';
 import { createHookContextForCommand } from '../utils/HookContextBuilder';
-import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 
 /**
  * NaiPlus command - generates image from text prompt using NovelAI provider with LLM preprocessing
@@ -18,7 +22,7 @@ import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
   name: 'nai-plus',
   description: 'Generate image from text prompt using NovelAI with LLM preprocessing',
   usage:
-    '/nai-plus <prompt> [--width=<width>] [--height=<height>] [--steps=<steps>] [--seed=<seed>] [--guidance=<scale>] [--negative=<prompt>] [--num=<number>]',
+    '/nai-plus <prompt> [--width=<width>] [--height=<height>] [--steps=<steps>] [--seed=<seed>] [--guidance=<scale>] [--negative=<prompt>] [--num=<number>] [--strength=<n>] [--noise=<n>]',
   permissions: ['user'], // All users can generate images
 })
 @injectable()
@@ -39,10 +43,20 @@ export class NaiPlusCommand implements CommandHandler {
       num: { property: 'numImages', type: 'number', aliases: ['num_images'] },
       silent: { property: 'silent', type: 'boolean' },
       template: { property: 'template', type: 'string' },
+      strength: { property: 'strength', type: 'float' },
+      noise: { property: 'noise', type: 'float' },
     },
   };
 
-  constructor(@inject(DITokens.AI_SERVICE) private aiService: AIService) {}
+  private messageAPI: MessageAPI;
+
+  constructor(
+    @inject(DITokens.AI_SERVICE) private aiService: AIService,
+    @inject(DITokens.API_CLIENT) private apiClient: APIClient,
+    @inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager,
+  ) {
+    this.messageAPI = new MessageAPI(this.apiClient);
+  }
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     if (args.length === 0) {
@@ -61,12 +75,70 @@ export class NaiPlusCommand implements CommandHandler {
       // Create hook context for AIService
       const hookContext = createHookContextForCommand(context, prompt);
 
-      // Check if num parameter is provided for multiple image generation
+      // Extract images from current message and referenced reply message (for img2img)
+      let images: Awaited<ReturnType<typeof extractImagesFromMessageAndReply>> = [];
+      if (context.originalMessage) {
+        try {
+          images = await extractImagesFromMessageAndReply(
+            context.originalMessage,
+            this.messageAPI,
+            this.databaseManager,
+          );
+          logger.debug(`[NaiPlusCommand] Extracted ${images.length} image(s) from message`);
+        } catch (error) {
+          logger.warn(
+            `[NaiPlusCommand] Failed to extract images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          );
+        }
+      }
+
+      const silent = options?.silent === true;
+
+      // If images are found, use image-to-image (img2img) with NovelAI (no LLM preprocessing)
+      if (images.length > 0) {
+        logger.info(`[NaiPlusCommand] Using img2img with ${images.length} image(s)`);
+        let inputImage: string;
+        try {
+          inputImage = visionImageToString(images[0]!);
+        } catch (error) {
+          logger.error(
+            `[NaiPlusCommand] Failed to convert image to string: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          );
+          return {
+            success: false,
+            error: `Failed to process image: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          };
+        }
+        const img2imgOptions: Image2ImageOptions = {
+          width: typeof options?.width === 'number' ? options.width : undefined,
+          height: typeof options?.height === 'number' ? options.height : undefined,
+          strength: typeof options?.strength === 'number' ? options.strength : undefined,
+          noise: typeof options?.noise === 'number' ? options.noise : undefined,
+          negative_prompt: typeof options?.negative_prompt === 'string' ? options.negative_prompt : undefined,
+        };
+        const response = await this.aiService.generateImageFromImage(
+          hookContext,
+          inputImage,
+          prompt,
+          img2imgOptions,
+          'novelai',
+        );
+        if ((!response.images || response.images.length === 0) && !response.text) {
+          return { success: false, error: 'No images generated and no error message received' };
+        }
+        let imageSegments: MessageSegment[] | undefined;
+        if (!silent) {
+          const messageBuilder = buildMessageFromResponse(response, '[NaiPlusCommand]');
+          imageSegments = messageBuilder.build();
+        }
+        return { success: true, segments: imageSegments };
+      }
+
+      // Text-to-image path: check if num parameter is provided for multiple image generation
       const numImages = options?.numImages || 1;
       const baseSeed = options?.seed;
-      const silent = options?.silent === true;
       let templateName: string = options?.template || 'text2img.generate_nai';
-      
+
       // Check if plugin has set a template name in metadata (from conversation context)
       const pluginTemplateName = context.conversationContext.metadata?.get('text2imgTemplateName');
       if (pluginTemplateName && typeof pluginTemplateName === 'string') {

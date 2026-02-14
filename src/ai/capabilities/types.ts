@@ -38,6 +38,7 @@ export interface Text2ImageOptions {
  */
 export interface Image2ImageOptions {
   strength?: number; // How much to transform (0-1)
+  noise?: number; // Noise for img2img (e.g. NovelAI), usually 0
   width?: number;
   height?: number;
   aspectRatio?: string;
