@@ -1,6 +1,8 @@
-// RunPod / ComfyUI configuration
+// RunPod Serverless configuration (for image-to-video via ComfyUI handler)
 
 export interface RunpodConfig {
-  /** Base URL of the ComfyUI API (e.g. https://YOUR_POD_ID-8188.proxy.runpod.net) */
-  comfyUiBaseUrl: string;
+  /** RunPod serverless endpoint ID (e.g. xcyxkj2cn6e507) */
+  endpointId: string;
+  /** API key; if omitted, RUNPOD_API_KEY env is used */
+  apiKey?: string;
 }

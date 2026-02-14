@@ -328,9 +328,10 @@
       "language": "all" // Default language for search results
     }
   },
-  // RunPod ComfyUI (optional) - for image-to-video via RunPod Pod
-  // Uncomment and set your Pod URL from RunPod Connect (e.g. https://YOUR_POD_ID-8188.proxy.runpod.net)
+  // RunPod Serverless (optional) - for image-to-video via ComfyUI handler
+  // Uncomment and set endpoint ID from RunPod Console; apiKey can be omitted if RUNPOD_API_KEY env is set
   // "runpod": {
-  //   "comfyUiBaseUrl": "https://YOUR_POD_ID-8188.proxy.runpod.net"
+  //   "endpointId": "YOUR_ENDPOINT_ID",
+  //   "apiKey": "YOUR_API_KEY"
   // }
 }

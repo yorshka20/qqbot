@@ -1,4 +1,4 @@
-// I2V command - image-to-video via RunPod ComfyUI (Wan2.2 I2V workflow)
+// I2V command - image-to-video via RunPod Serverless ComfyUI (Wan2.2 I2V workflow)
 
 import type { AIService } from '@/ai/AIService';
 import { extractImagesFromMessageAndReply, visionImageToBuffer } from '@/ai/utils/imageUtils';
@@ -10,7 +10,7 @@ import { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { ComfyUIClient } from '@/runpod';
+import { RunPodServerlessClient } from '@/runpod';
 import { uploadFileBuffer } from '@/utils/fileUpload';
 import { logger } from '@/utils/logger';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
@@ -28,7 +28,7 @@ const OUTPUT_DIR = join(process.cwd(), 'output', 'runpod');
 
 @Command({
   name: 'i2v',
-  description: 'Image-to-video: generate video from image using RunPod ComfyUI (Wan2.2 I2V)',
+  description: 'Image-to-video: generate video from image using RunPod Serverless ComfyUI (Wan2.2 I2V)',
   usage: '/i2v [prompt] [--seed=<number>] (send with one image)',
   permissions: ['user'],
   aliases: ['图生视频'],
@@ -36,7 +36,7 @@ const OUTPUT_DIR = join(process.cwd(), 'output', 'runpod');
 @injectable()
 export class I2vCommandHandler implements CommandHandler {
   name = 'i2v';
-  description = 'Image-to-video: generate video from image using RunPod ComfyUI (Wan2.2 I2V)';
+  description = 'Image-to-video: generate video from image using RunPod Serverless ComfyUI (Wan2.2 I2V)';
   usage = '/i2v [prompt] [--seed=<number>] (send with one image)';
 
   private readonly argsConfig: ParserConfig = {
@@ -60,10 +60,11 @@ export class I2vCommandHandler implements CommandHandler {
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     const runpodConfig = this.config.getRunpodConfig();
-    if (!runpodConfig?.comfyUiBaseUrl) {
+    const apiKey = runpodConfig?.apiKey ?? process.env.RUNPOD_API_KEY;
+    if (!runpodConfig?.endpointId || !apiKey?.trim()) {
       return {
         success: false,
-        error: 'RunPod ComfyUI is not configured. Add "runpod.comfyUiBaseUrl" in config.',
+        error: 'RunPod Serverless is not configured. Set runpod.endpointId and runpod.apiKey (or RUNPOD_API_KEY env).',
       };
     }
 
@@ -109,7 +110,7 @@ export class I2vCommandHandler implements CommandHandler {
         `[I2vCommandHandler] Image size: ${imageBuffer.length} bytes, prompt: ${processedPrompt.substring(0, 50)}..., duration: ${durationSeconds}s`,
       );
 
-      const client = new ComfyUIClient(runpodConfig.comfyUiBaseUrl, {
+      const client = new RunPodServerlessClient(runpodConfig.endpointId, apiKey, {
         pollIntervalMs: POLL_INTERVAL_MS,
         timeoutMs: 600_000,
       });

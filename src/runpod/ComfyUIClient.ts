@@ -2,6 +2,7 @@
 // Uses native fetch for FormData (upload) and binary (view); no shared HttpClient.
 
 import { logger } from '@/utils/logger';
+import { buildWan22I2VWorkflow } from './wan22Workflow';
 
 /** ComfyUI output file entry (filename, subfolder, type) */
 interface ComfyUIOutputFile {
@@ -82,174 +83,6 @@ export class ComfyUIClient {
     }
     const data = (await res.json()) as UploadImageResponse;
     return data.name;
-  }
-
-  /** FPS in workflow node 94 (CreateVideo); used to convert durationSeconds to frame count. */
-  private static readonly WORKFLOW_FPS = 16;
-
-  /**
-   * Build Wan2.2 I2V workflow with parameterized prompt, image filename, seed, and duration.
-   * Node IDs match video_wan2_2_14B_i2v API workflow; _meta is omitted.
-   * durationSeconds: 1–15, default 5; converted to frame count (length) for node 98.
-   */
-  private buildWorkflow(
-    uploadedFilename: string,
-    positivePrompt: string,
-    seed: number,
-    durationSeconds: number = 5,
-  ): Record<string, { inputs: Record<string, unknown>; class_type: string }> {
-    const lengthFrames = Math.max(
-      16,
-      Math.min(240, Math.round(durationSeconds * ComfyUIClient.WORKFLOW_FPS)),
-    );
-    const negativePrompt =
-      '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走';
-
-    return {
-      '84': {
-        inputs: {
-          clip_name: 'umt5_xxl_fp8_e4m3fn_scaled.safetensors',
-          type: 'wan',
-          device: 'default',
-        },
-        class_type: 'CLIPLoader',
-      },
-      '85': {
-        inputs: {
-          add_noise: 'disable',
-          noise_seed: 0,
-          steps: 4,
-          cfg: 1,
-          sampler_name: 'euler',
-          scheduler: 'simple',
-          start_at_step: 2,
-          end_at_step: 4,
-          return_with_leftover_noise: 'disable',
-          model: ['103', 0],
-          positive: ['98', 0],
-          negative: ['98', 1],
-          latent_image: ['86', 0],
-        },
-        class_type: 'KSamplerAdvanced',
-      },
-      '86': {
-        inputs: {
-          add_noise: 'enable',
-          noise_seed: seed,
-          steps: 4,
-          cfg: 1,
-          sampler_name: 'euler',
-          scheduler: 'simple',
-          start_at_step: 0,
-          end_at_step: 2,
-          return_with_leftover_noise: 'enable',
-          model: ['104', 0],
-          positive: ['98', 0],
-          negative: ['98', 1],
-          latent_image: ['98', 2],
-        },
-        class_type: 'KSamplerAdvanced',
-      },
-      '87': {
-        inputs: {
-          samples: ['85', 0],
-          vae: ['90', 0],
-        },
-        class_type: 'VAEDecode',
-      },
-      '89': {
-        inputs: {
-          text: negativePrompt,
-          clip: ['84', 0],
-        },
-        class_type: 'CLIPTextEncode',
-      },
-      '90': {
-        inputs: { vae_name: 'wan_2.1_vae.safetensors' },
-        class_type: 'VAELoader',
-      },
-      '93': {
-        inputs: {
-          text: positivePrompt,
-          clip: ['84', 0],
-        },
-        class_type: 'CLIPTextEncode',
-      },
-      '94': {
-        inputs: {
-          fps: 16,
-          images: ['87', 0],
-        },
-        class_type: 'CreateVideo',
-      },
-      '96': {
-        inputs: {
-          unet_name: 'wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors',
-          weight_dtype: 'default',
-        },
-        class_type: 'UNETLoader',
-      },
-      '97': {
-        inputs: {
-          image: uploadedFilename,
-        },
-        class_type: 'LoadImage',
-      },
-      '98': {
-        inputs: {
-          width: 640,
-          height: 640,
-          length: lengthFrames,
-          batch_size: 1,
-          positive: ['93', 0],
-          negative: ['89', 0],
-          vae: ['90', 0],
-          start_image: ['97', 0],
-        },
-        class_type: 'WanImageToVideo',
-      },
-      '101': {
-        inputs: {
-          lora_name: 'wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors',
-          strength_model: 1.0,
-          model: ['116', 0],
-        },
-        class_type: 'LoraLoaderModelOnly',
-      },
-      '102': {
-        inputs: {
-          lora_name: 'wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors',
-          strength_model: 1.0,
-          model: ['96', 0],
-        },
-        class_type: 'LoraLoaderModelOnly',
-      },
-      '103': {
-        inputs: { shift: 5.0, model: ['102', 0] },
-        class_type: 'ModelSamplingSD3',
-      },
-      '104': {
-        inputs: { shift: 5.0, model: ['101', 0] },
-        class_type: 'ModelSamplingSD3',
-      },
-      '108': {
-        inputs: {
-          filename_prefix: 'video/ComfyUI',
-          format: 'auto',
-          codec: 'auto',
-          'video-preview': '',
-          video: ['94', 0],
-        },
-        class_type: 'SaveVideo',
-      },
-      '116': {
-        inputs: {
-          unet_name: 'wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors',
-          weight_dtype: 'default',
-        },
-        class_type: 'UNETLoader',
-      },
-    };
   }
 
   /**
@@ -342,7 +175,7 @@ export class ComfyUIClient {
     const uploadedName = await this.uploadImage(imageBuffer, filename);
 
     logger.info('[ComfyUIClient] Submitting job', { seed, durationSeconds });
-    const workflow = this.buildWorkflow(uploadedName, prompt, seed, durationSeconds);
+    const workflow = buildWan22I2VWorkflow(uploadedName, prompt, seed, durationSeconds);
     const promptId = await this.submitPrompt(workflow);
 
     logger.info('[ComfyUIClient] Waiting for job', { promptId });
