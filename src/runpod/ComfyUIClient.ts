@@ -84,15 +84,24 @@ export class ComfyUIClient {
     return data.name;
   }
 
+  /** FPS in workflow node 94 (CreateVideo); used to convert durationSeconds to frame count. */
+  private static readonly WORKFLOW_FPS = 16;
+
   /**
-   * Build Wan2.2 I2V workflow with parameterized prompt, image filename, and seed.
+   * Build Wan2.2 I2V workflow with parameterized prompt, image filename, seed, and duration.
    * Node IDs match video_wan2_2_14B_i2v API workflow; _meta is omitted.
+   * durationSeconds: 1–15, default 5; converted to frame count (length) for node 98.
    */
   private buildWorkflow(
     uploadedFilename: string,
     positivePrompt: string,
     seed: number,
+    durationSeconds: number = 5,
   ): Record<string, { inputs: Record<string, unknown>; class_type: string }> {
+    const lengthFrames = Math.max(
+      16,
+      Math.min(240, Math.round(durationSeconds * ComfyUIClient.WORKFLOW_FPS)),
+    );
     const negativePrompt =
       '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走';
 
@@ -190,7 +199,7 @@ export class ComfyUIClient {
         inputs: {
           width: 640,
           height: 640,
-          length: 81,
+          length: lengthFrames,
           batch_size: 1,
           positive: ['93', 0],
           negative: ['89', 0],
@@ -267,8 +276,13 @@ export class ComfyUIClient {
     while (Date.now() < deadline) {
       await Bun.sleep(this.pollIntervalMs);
       const res = await fetch(`${this.baseUrl}/history/${promptId}`);
-      const history = (await res.json()) as Record<string, ComfyUIHistoryJob>;
-      const job = history[promptId];
+      if (!res.ok) {
+        logger.warn('[ComfyUIClient] History request failed', { status: res.status, promptId });
+        continue;
+      }
+      const raw = await res.json();
+      const history = raw != null && typeof raw === 'object' ? (raw as Record<string, ComfyUIHistoryJob>) : null;
+      const job = history?.[promptId];
       if (!job) {
         continue;
       }
@@ -318,16 +332,17 @@ export class ComfyUIClient {
   async animateImage(
     imageBuffer: Buffer,
     prompt: string,
-    options?: { seed?: number },
+    options?: { seed?: number; durationSeconds?: number },
   ): Promise<Buffer> {
     const seed = options?.seed ?? Math.floor(Math.random() * 2 ** 32);
+    const durationSeconds = Math.max(1, Math.min(15, options?.durationSeconds ?? 5));
     const filename = `input_${Date.now()}.png`;
 
     logger.info('[ComfyUIClient] Uploading image...');
     const uploadedName = await this.uploadImage(imageBuffer, filename);
 
-    logger.info('[ComfyUIClient] Submitting job', { seed });
-    const workflow = this.buildWorkflow(uploadedName, prompt, seed);
+    logger.info('[ComfyUIClient] Submitting job', { seed, durationSeconds });
+    const workflow = this.buildWorkflow(uploadedName, prompt, seed, durationSeconds);
     const promptId = await this.submitPrompt(workflow);
 
     logger.info('[ComfyUIClient] Waiting for job', { promptId });

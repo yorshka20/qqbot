@@ -19,7 +19,8 @@ export class StaticFileServer {
   }
 
   /**
-   * Start the static file server
+   * Start the static file server.
+   * If the configured port is in use, tries the next ports up to maxAttempts.
    */
   async start(): Promise<string> {
     if (this.server) {
@@ -27,63 +28,77 @@ export class StaticFileServer {
     }
 
     const baseDir = this.baseDir;
+    const maxAttempts = 10;
+    const fetchHandler = async (req: Request) => {
+      const url = new URL(req.url);
+      const pathname = url.pathname;
 
-    try {
-      this.server = serve({
-        port: this.port,
-        hostname: '0.0.0.0', // Listen on all interfaces (allows external access)
-        async fetch(req) {
-          const url = new URL(req.url);
-          const pathname = url.pathname;
+      // Only serve files from /output/ path
+      if (!pathname.startsWith('/output/')) {
+        return new Response('Not Found', { status: 404 });
+      }
 
-          // Only serve files from /output/ path
-          if (!pathname.startsWith('/output/')) {
-            return new Response('Not Found', { status: 404 });
-          }
+      try {
+        // Remove /output/ prefix and get relative path
+        const relativePath = pathname.slice('/output/'.length);
+        const filePath = `${baseDir}/${relativePath}`;
 
-          try {
-            // Remove /output/ prefix and get relative path
-            const relativePath = pathname.slice('/output/'.length);
-            const filePath = `${baseDir}/${relativePath}`;
+        // Read file
+        const fileBuffer = await readFile(filePath);
 
-            // Read file
-            const fileBuffer = await readFile(filePath);
+        // Determine content type based on extension
+        const ext = extname(filePath).toLowerCase();
+        const contentType =
+          {
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp',
+            '.mp3': 'audio/mpeg',
+            '.wav': 'audio/wav',
+          }[ext] || 'application/octet-stream';
 
-            // Determine content type based on extension
-            const ext = extname(filePath).toLowerCase();
-            const contentType =
-              {
-                '.png': 'image/png',
-                '.jpg': 'image/jpeg',
-                '.jpeg': 'image/jpeg',
-                '.gif': 'image/gif',
-                '.webp': 'image/webp',
-                '.mp3': 'audio/mpeg',
-                '.wav': 'audio/wav',
-              }[ext] || 'application/octet-stream';
+        return new Response(fileBuffer, {
+          headers: {
+            'Content-Type': contentType,
+            'Cache-Control': 'public, max-age=3600',
+          },
+        });
+      } catch (error) {
+        logger.error(`[StaticFileServer] Error serving file: ${error}`);
+        return new Response('File not found', { status: 404 });
+      }
+    };
 
-            return new Response(fileBuffer, {
-              headers: {
-                'Content-Type': contentType,
-                'Cache-Control': 'public, max-age=3600',
-              },
-            });
-          } catch (error) {
-            logger.error(`[StaticFileServer] Error serving file: ${error}`);
-            return new Response('File not found', { status: 404 });
-          }
-        },
-      });
-
-      // Determine base URL
-      this.baseURL = `http://${this.hostIP}:${this.port}`;
-
-      logger.info(`[StaticFileServer] Started on ${this.baseURL}`);
-      return this.baseURL;
-    } catch (error) {
-      logger.error(`[StaticFileServer] Failed to start: ${error}`);
-      throw error;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const tryPort = this.port + attempt;
+      try {
+        this.server = serve({
+          port: tryPort,
+          hostname: '0.0.0.0', // Listen on all interfaces (allows external access)
+          fetch: fetchHandler,
+        });
+        this.port = tryPort;
+        this.baseURL = `http://${this.hostIP ?? 'localhost'}:${this.port}`;
+        if (attempt > 0) {
+          logger.info(`[StaticFileServer] Port ${this.port - attempt} was in use, using ${tryPort} instead`);
+        }
+        logger.info(`[StaticFileServer] Started on ${this.baseURL}`);
+        return this.baseURL;
+      } catch (error) {
+        lastError = error;
+        const msg = String(error);
+        if (!msg.includes('in use') && !msg.includes('EADDRINUSE')) {
+          logger.error(`[StaticFileServer] Failed to start: ${error}`);
+          throw error;
+        }
+      }
     }
+
+    logger.error(`[StaticFileServer] Failed to start: ${lastError}`);
+    throw lastError;
   }
 
   /**

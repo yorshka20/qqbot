@@ -327,5 +327,10 @@
       "maxResults": 5, // Maximum number of search results
       "language": "all" // Default language for search results
     }
-  }
+  },
+  // RunPod ComfyUI (optional) - for image-to-video via RunPod Pod
+  // Uncomment and set your Pod URL from RunPod Connect (e.g. https://YOUR_POD_ID-8188.proxy.runpod.net)
+  // "runpod": {
+  //   "comfyUiBaseUrl": "https://YOUR_POD_ID-8188.proxy.runpod.net"
+  // }
 }

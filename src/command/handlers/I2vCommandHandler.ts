@@ -98,21 +98,26 @@ export class I2vCommandHandler implements CommandHandler {
     try {
       const { text: promptArg, options } = CommandArgsParser.parse<{ seed?: number }>(args, this.argsConfig);
       const sessionId = getSessionId(context);
-      const processedPrompt = await this.aiService.prepareI2VPrompt(promptArg ?? '', sessionId, 'img2video.generate');
+      const { prompt: processedPrompt, durationSeconds } = await this.aiService.prepareI2VPrompt(
+        promptArg ?? '',
+        sessionId,
+        'img2video.generate',
+      );
 
       const imageBuffer = await visionImageToBuffer(images[0]!, { timeout: 30000, maxSize: 10 * 1024 * 1024 });
-      logger.info(`[I2vCommandHandler] Image size: ${imageBuffer.length} bytes, prompt: ${processedPrompt.substring(0, 50)}...`);
+      logger.info(
+        `[I2vCommandHandler] Image size: ${imageBuffer.length} bytes, prompt: ${processedPrompt.substring(0, 50)}..., duration: ${durationSeconds}s`,
+      );
 
       const client = new ComfyUIClient(runpodConfig.comfyUiBaseUrl, {
         pollIntervalMs: POLL_INTERVAL_MS,
         timeoutMs: 600_000,
       });
 
-      const videoBuffer = await client.animateImage(
-        imageBuffer,
-        processedPrompt,
-        options.seed !== undefined ? { seed: options.seed } : undefined,
-      );
+      const videoBuffer = await client.animateImage(imageBuffer, processedPrompt, {
+        seed: options.seed,
+        durationSeconds,
+      });
 
       // Save to local output directory
       if (!existsSync(OUTPUT_DIR)) {

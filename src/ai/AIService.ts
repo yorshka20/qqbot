@@ -13,6 +13,7 @@ import type { ProviderSelector } from './ProviderSelector';
 import { CardRenderingService } from './services/CardRenderingService';
 import { ConversationHistoryService } from './services/ConversationHistoryService';
 import { ImageGenerationService } from './services/ImageGenerationService';
+import type { I2VPromptResult } from './services/ImagePromptService';
 import { ImagePromptService } from './services/ImagePromptService';
 import { LLMService } from './services/LLMService';
 import { ReplyGenerationService } from './services/ReplyGenerationService';
@@ -181,18 +182,18 @@ export class AIService {
   }
 
   /**
-   * Prepare a single prompt string for image-to-video (I2V) using LLM and template.
-   * Used by the i2v command to convert user input into a Wan2.2-suitable motion prompt.
+   * Prepare prompt and duration for image-to-video (I2V) using LLM and template.
+   * Used by the i2v command to convert user input into a Wan2.2-suitable motion prompt and duration (1–15s).
    * @param userInput - User description (can be empty)
    * @param sessionId - Session ID for LLM provider selection
    * @param templateName - Template name (default: 'img2video.generate')
-   * @returns Processed prompt string for ComfyUI
+   * @returns Processed prompt and durationSeconds (default 5, clamped 1–15)
    */
   async prepareI2VPrompt(
     userInput: string,
     sessionId: string,
     templateName?: string,
-  ): Promise<string> {
+  ): Promise<I2VPromptResult> {
     return this.imagePromptService.prepareI2VPrompt(userInput, sessionId, templateName ?? 'img2video.generate');
   }
 

@@ -12,6 +12,16 @@ import { LLMService } from './LLMService';
 /** Default prompt when I2V LLM/parse fails or user input is empty */
 export const DEFAULT_I2V_PROMPT = 'An1meStyl3, AnimeStyle, smooth animation';
 
+/** Default and bounds for I2V video duration (seconds) */
+export const DEFAULT_I2V_DURATION_SECONDS = 5;
+export const MIN_I2V_DURATION_SECONDS = 1;
+export const MAX_I2V_DURATION_SECONDS = 15;
+
+export interface I2VPromptResult {
+  prompt: string;
+  durationSeconds: number;
+}
+
 export class ImagePromptService {
   // Constants for parameter limits (NovelAI specific)
   private static readonly MAX_STEPS = 50;
@@ -126,18 +136,18 @@ export class ImagePromptService {
   }
 
   /**
-   * Prepare a single prompt string for image-to-video (I2V) using LLM and template.
-   * Used by the i2v command to convert user input into a Wan2.2-suitable motion prompt.
+   * Prepare prompt and duration for image-to-video (I2V) using LLM and template.
+   * Used by the i2v command to convert user input into a Wan2.2-suitable motion prompt and duration (1–15s).
    * @param userInput - User description (can be empty; template will produce default)
    * @param sessionId - Session ID for LLM provider selection
    * @param templateName - Template name (default: 'img2video.generate')
-   * @returns Processed prompt string for ComfyUI positive prompt
+   * @returns Processed prompt and durationSeconds (default 5, clamped 1–15)
    */
   async prepareI2VPrompt(
     userInput: string,
     sessionId: string,
     templateName: string = 'img2video.generate',
-  ): Promise<string> {
+  ): Promise<I2VPromptResult> {
     try {
       const llmPrompt = this.promptManager.render(templateName, {
         description: userInput ?? '',
@@ -155,44 +165,50 @@ export class ImagePromptService {
         'deepseek',
       );
 
-      const prompt = this.parseI2VPromptResponse(llmResponse.text);
+      const result = this.parseI2VPromptResponse(llmResponse.text);
       logger.info(
-        `[ImagePromptService] I2V prompt prepared | input="${(userInput ?? '').substring(0, 40)}..." | output="${prompt.substring(0, 60)}..."`,
+        `[ImagePromptService] I2V prompt prepared | input="${(userInput ?? '').substring(0, 40)}..." | prompt="${result.prompt.substring(0, 50)}..." | duration=${result.durationSeconds}s`,
       );
-      return prompt;
+      return result;
     } catch (llmError) {
       const llmErr = llmError instanceof Error ? llmError : new Error('Unknown LLM error');
       logger.warn(`[ImagePromptService] I2V LLM preprocessing failed, using fallback | error=${llmErr.message}`);
-      const fallback = (userInput ?? '').trim() || DEFAULT_I2V_PROMPT;
-      return fallback;
+      const prompt = (userInput ?? '').trim() || DEFAULT_I2V_PROMPT;
+      return { prompt, durationSeconds: DEFAULT_I2V_DURATION_SECONDS };
     }
   }
 
   /**
-   * Parse LLM response for I2V: expect JSON with "prompt" field or a single line of text.
+   * Parse LLM response for I2V: expect JSON with "prompt" and optional "duration_seconds".
+   * Returns prompt string and duration 1–15 (default 5).
    */
-  private parseI2VPromptResponse(llmResponse: string): string {
+  private parseI2VPromptResponse(llmResponse: string): I2VPromptResult {
     let text = llmResponse.trim();
     // Strip markdown code blocks
     const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
     if (codeBlockMatch) {
       text = codeBlockMatch[1].trim();
     }
-    // Try JSON with "prompt" field
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       try {
         const parsed = JSON.parse(jsonMatch[0]);
         if (parsed.prompt && typeof parsed.prompt === 'string') {
-          return parsed.prompt.trim();
+          let duration = typeof parsed.duration_seconds === 'number' ? parsed.duration_seconds : DEFAULT_I2V_DURATION_SECONDS;
+          if (typeof parsed.duration_seconds === 'string') {
+            const n = parseInt(parsed.duration_seconds, 10);
+            if (!isNaN(n)) duration = n;
+          }
+          duration = Math.max(MIN_I2V_DURATION_SECONDS, Math.min(MAX_I2V_DURATION_SECONDS, Math.round(duration)));
+          return { prompt: parsed.prompt.trim(), durationSeconds: duration };
         }
       } catch {
-        // Fall through to use as plain text
+        // Fall through
       }
     }
-    // Use first non-empty line or full text as prompt
     const firstLine = text.split(/\r?\n/)[0]?.trim();
-    return firstLine || text || DEFAULT_I2V_PROMPT;
+    const prompt = firstLine || text || DEFAULT_I2V_PROMPT;
+    return { prompt, durationSeconds: DEFAULT_I2V_DURATION_SECONDS };
   }
 
   /**
