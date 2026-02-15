@@ -119,17 +119,12 @@ export class RunPodServerlessClient {
     prompt: string,
     options?: { seed?: number; durationSeconds?: number; negativePrompt?: string },
   ): Promise<Buffer> {
-    const seed = options?.seed ?? Math.floor(Math.random() * 2 ** 32);
-    const durationSeconds = Math.max(1, Math.min(15, options?.durationSeconds ?? 5));
     const filename = `input_${Date.now()}.png`;
-
-    const workflow = buildWan22I2VRemixWorkflow(filename, prompt, seed, durationSeconds, {
-      negativePrompt: options?.negativePrompt,
-    });
+    const workflow = buildWan22I2VRemixWorkflow(filename, { prompt, ...options });
     const imageBase64 = imageBuffer.toString('base64');
     const images = [{ name: filename, image: imageBase64 }];
 
-    logger.info('[RunPodServerlessClient] Submitting job', { seed, durationSeconds });
+    logger.info('[RunPodServerlessClient] Submitting job', { seed: options?.seed, durationSeconds: options?.durationSeconds });
     logger.info('[RunPodServerlessClient] Full workflow params (images omitted)', {
       workflow: JSON.stringify(workflow, null, 2),
       imagesMeta: images.map(({ name }) => ({ name })),

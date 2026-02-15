@@ -168,17 +168,13 @@ export class ComfyUIClient {
     prompt: string,
     options?: { seed?: number; durationSeconds?: number; negativePrompt?: string },
   ): Promise<Buffer> {
-    const seed = options?.seed ?? Math.floor(Math.random() * 2 ** 32);
-    const durationSeconds = Math.max(1, Math.min(15, options?.durationSeconds ?? 5));
     const filename = `input_${Date.now()}.png`;
 
     logger.info('[ComfyUIClient] Uploading image...');
     const uploadedName = await this.uploadImage(imageBuffer, filename);
 
-    logger.info('[ComfyUIClient] Submitting job', { seed, durationSeconds });
-    const workflow = buildWan22I2VRemixWorkflow(uploadedName, prompt, seed, durationSeconds, {
-      negativePrompt: options?.negativePrompt,
-    });
+    logger.info('[ComfyUIClient] Submitting job', { seed: options?.seed, durationSeconds: options?.durationSeconds });
+    const workflow = buildWan22I2VRemixWorkflow(uploadedName, { prompt, ...options });
     const promptId = await this.submitPrompt(workflow);
 
     logger.info('[ComfyUIClient] Waiting for job', { promptId });
