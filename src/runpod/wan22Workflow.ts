@@ -78,7 +78,7 @@ export function buildWan22I2VRemixWorkflow(
       inputs.text = negativePrompt;
     }
     if (node.class_type === 'WanVideoImageToVideoEncode' && id === '156') {
-      inputs.length = lengthFrames;
+      inputs.num_frames = lengthFrames;
     }
     // WanVideoSampler id=139 has noise_opt "randomize" - it uses the user seed
     if (node.class_type === 'WanVideoSampler' && id === '139') {
