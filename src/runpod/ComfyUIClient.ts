@@ -1,8 +1,8 @@
-// RunPod ComfyUI client - upload image, submit Wan2.2 I2V workflow, poll, download video.
+// ComfyUI client - upload image, submit Wan2.2 I2V Remix workflow, poll, download video.
 // Uses native fetch for FormData (upload) and binary (view); no shared HttpClient.
 
 import { logger } from '@/utils/logger';
-import { buildWan22I2VWorkflow } from './wan22Workflow';
+import { buildWan22I2VRemixWorkflow } from './wan22Workflow';
 
 /** ComfyUI output file entry (filename, subfolder, type) */
 interface ComfyUIOutputFile {
@@ -131,13 +131,14 @@ export class ComfyUIClient {
   }
 
   /**
-   * Download video from job output (node 108 SaveVideo); returns raw buffer.
+   * Download video from job output. Wan22-I2V-Remix uses SaveVideo node 117.
+   * Old wan22_remix_i2v uses node 108; try both for compatibility.
    */
   async downloadVideo(job: ComfyUIHistoryJob): Promise<Buffer> {
-    const output = job.outputs?.['108'];
+    const output = job.outputs?.['117'] ?? job.outputs?.['108'];
     if (!output) {
-      logger.error('[ComfyUIClient] Node 108 missing in job.outputs', { outputKeys: job.outputs ? Object.keys(job.outputs) : [] });
-      throw new Error('ComfyUI node 108 output not found');
+      logger.error('[ComfyUIClient] SaveVideo output (node 117/108) missing in job.outputs', { outputKeys: job.outputs ? Object.keys(job.outputs) : [] });
+      throw new Error('ComfyUI SaveVideo output not found');
     }
     // SaveVideo may return videos, gifs, or images (ComfyUI version-dependent)
     const videoInfo = output.videos?.[0] ?? output.gifs?.[0] ?? output.images?.[0];
@@ -159,13 +160,13 @@ export class ComfyUIClient {
   }
 
   /**
-   * Full flow: upload image, submit Wan2.2 I2V workflow, wait for completion, download video.
+   * Full flow: upload image, submit Wan2.2 I2V Remix workflow, wait for completion, download video.
    * Public entry for callers (e.g. future command handler).
    */
   async animateImage(
     imageBuffer: Buffer,
     prompt: string,
-    options?: { seed?: number; durationSeconds?: number },
+    options?: { seed?: number; durationSeconds?: number; negativePrompt?: string },
   ): Promise<Buffer> {
     const seed = options?.seed ?? Math.floor(Math.random() * 2 ** 32);
     const durationSeconds = Math.max(1, Math.min(15, options?.durationSeconds ?? 5));
@@ -175,7 +176,9 @@ export class ComfyUIClient {
     const uploadedName = await this.uploadImage(imageBuffer, filename);
 
     logger.info('[ComfyUIClient] Submitting job', { seed, durationSeconds });
-    const workflow = buildWan22I2VWorkflow(uploadedName, prompt, seed, durationSeconds);
+    const workflow = buildWan22I2VRemixWorkflow(uploadedName, prompt, seed, durationSeconds, {
+      negativePrompt: options?.negativePrompt,
+    });
     const promptId = await this.submitPrompt(workflow);
 
     logger.info('[ComfyUIClient] Waiting for job', { promptId });

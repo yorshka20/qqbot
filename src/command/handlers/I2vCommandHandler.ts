@@ -28,20 +28,21 @@ const OUTPUT_DIR = join(process.cwd(), 'output', 'runpod');
 
 @Command({
   name: 'i2v',
-  description: 'Image-to-video: generate video from image using RunPod Serverless ComfyUI (Wan2.2 I2V)',
-  usage: '/i2v [prompt] [--seed=<number>] (send with one image)',
+  description: 'Image-to-video: generate video from image using RunPod Serverless ComfyUI (Wan2.2 I2V Remix)',
+  usage: '/i2v [prompt] [--seed=<number>] [--duration=<1-15>] (send with one image)',
   permissions: ['user'],
   aliases: ['图生视频'],
 })
 @injectable()
 export class I2vCommandHandler implements CommandHandler {
   name = 'i2v';
-  description = 'Image-to-video: generate video from image using RunPod Serverless ComfyUI (Wan2.2 I2V)';
-  usage = '/i2v [prompt] [--seed=<number>] (send with one image)';
+  description = 'Image-to-video: generate video from image using RunPod Serverless ComfyUI (Wan2.2 I2V Remix)';
+  usage = '/i2v [prompt] [--seed=<number>] [--duration=<1-15>] (send with one image)';
 
   private readonly argsConfig: ParserConfig = {
     options: {
       seed: { property: 'seed', type: 'number' },
+      duration: { property: 'duration', type: 'number' },
     },
   };
 
@@ -88,7 +89,7 @@ export class I2vCommandHandler implements CommandHandler {
     if (images.length === 0) {
       return {
         success: false,
-        error: 'Please send one image (with or without reply). Usage: /i2v [prompt] [--seed=<number>]',
+        error: 'Please send one image (with or without reply). Usage: /i2v [prompt] [--seed=<number>] [--duration=<1-15>]',
       };
     }
 
@@ -97,17 +98,22 @@ export class I2vCommandHandler implements CommandHandler {
     }
 
     try {
-      const { text: promptArg, options } = CommandArgsParser.parse<{ seed?: number }>(args, this.argsConfig);
+      const { text: promptArg, options } = CommandArgsParser.parse<{ seed?: number; duration?: number }>(args, this.argsConfig);
       const sessionId = getSessionId(context);
-      const { prompt: processedPrompt, durationSeconds } = await this.aiService.prepareI2VPrompt(
+      const aiResult = await this.aiService.prepareI2VPrompt(
         promptArg ?? '',
         sessionId,
         'img2video.generate',
       );
 
+      // User --duration overrides AI duration
+      const durationSeconds = options.duration != null
+        ? Math.max(1, Math.min(15, Math.round(options.duration)))
+        : aiResult.durationSeconds;
+
       const imageBuffer = await visionImageToBuffer(images[0]!, { timeout: 30000, maxSize: 10 * 1024 * 1024 });
       logger.info(
-        `[I2vCommandHandler] Image size: ${imageBuffer.length} bytes, prompt: ${processedPrompt.substring(0, 50)}..., duration: ${durationSeconds}s`,
+        `[I2vCommandHandler] Image size: ${imageBuffer.length} bytes, prompt: ${aiResult.prompt.substring(0, 50)}..., duration: ${durationSeconds}s`,
       );
 
       const client = new RunPodServerlessClient(runpodConfig.endpointId, apiKey, {
@@ -115,9 +121,10 @@ export class I2vCommandHandler implements CommandHandler {
         timeoutMs: 600_000,
       });
 
-      const videoBuffer = await client.animateImage(imageBuffer, processedPrompt, {
+      const videoBuffer = await client.animateImage(imageBuffer, aiResult.prompt, {
         seed: options.seed,
         durationSeconds,
+        negativePrompt: aiResult.negativePrompt,
       });
 
       // Save to local output directory

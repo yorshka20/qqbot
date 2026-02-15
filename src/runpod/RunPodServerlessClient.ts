@@ -2,7 +2,7 @@
 // Handler contract: input { workflow, images: [{ name, image: base64 }] }; output { outputs: [{ data: base64 }] } or { error }.
 
 import { logger } from '@/utils/logger';
-import { buildWan22I2VWorkflow } from './wan22Workflow';
+import { buildWan22I2VRemixWorkflow } from './wan22Workflow';
 
 const RUNPOD_API_BASE = 'https://api.runpod.ai/v2';
 
@@ -109,19 +109,21 @@ export class RunPodServerlessClient {
   }
 
   /**
-   * Full flow: build workflow, send image as base64, POST /run, poll /status, decode video from output.
+   * Full flow: build Wan22-I2V-Remix workflow, send image as base64, POST /run, poll /status, decode video from output.
    * Same signature as ComfyUIClient.animateImage for drop-in use.
    */
   async animateImage(
     imageBuffer: Buffer,
     prompt: string,
-    options?: { seed?: number; durationSeconds?: number },
+    options?: { seed?: number; durationSeconds?: number; negativePrompt?: string },
   ): Promise<Buffer> {
     const seed = options?.seed ?? Math.floor(Math.random() * 2 ** 32);
     const durationSeconds = Math.max(1, Math.min(15, options?.durationSeconds ?? 5));
     const filename = `input_${Date.now()}.png`;
 
-    const workflow = buildWan22I2VWorkflow(filename, prompt, seed, durationSeconds);
+    const workflow = buildWan22I2VRemixWorkflow(filename, prompt, seed, durationSeconds, {
+      negativePrompt: options?.negativePrompt,
+    });
     const imageBase64 = imageBuffer.toString('base64');
     const images = [{ name: filename, image: imageBase64 }];
 

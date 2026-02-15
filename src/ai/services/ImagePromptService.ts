@@ -20,6 +20,8 @@ export const MAX_I2V_DURATION_SECONDS = 15;
 export interface I2VPromptResult {
   prompt: string;
   durationSeconds: number;
+  /** Optional negative prompt; if omitted, workflow uses default. */
+  negativePrompt?: string;
 }
 
 export class ImagePromptService {
@@ -179,8 +181,8 @@ export class ImagePromptService {
   }
 
   /**
-   * Parse LLM response for I2V: expect JSON with "prompt" and optional "duration_seconds".
-   * Returns prompt string and duration 1–15 (default 5).
+   * Parse LLM response for I2V: expect JSON with "prompt", optional "duration_seconds", optional "negative_prompt".
+   * Returns prompt string, duration 1–15 (default 5), and optional negative prompt.
    */
   private parseI2VPromptResponse(llmResponse: string): I2VPromptResult {
     let text = llmResponse.trim();
@@ -200,7 +202,11 @@ export class ImagePromptService {
             if (!isNaN(n)) duration = n;
           }
           duration = Math.max(MIN_I2V_DURATION_SECONDS, Math.min(MAX_I2V_DURATION_SECONDS, Math.round(duration)));
-          return { prompt: parsed.prompt.trim(), durationSeconds: duration };
+          const result: I2VPromptResult = { prompt: parsed.prompt.trim(), durationSeconds: duration };
+          if (typeof parsed.negative_prompt === 'string' && parsed.negative_prompt.trim()) {
+            result.negativePrompt = parsed.negative_prompt.trim();
+          }
+          return result;
         }
       } catch {
         // Fall through
