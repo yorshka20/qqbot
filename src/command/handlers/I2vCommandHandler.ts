@@ -113,7 +113,7 @@ export class I2vCommandHandler implements CommandHandler {
 
       const imageBuffer = await visionImageToBuffer(images[0]!, { timeout: 30000, maxSize: 10 * 1024 * 1024 });
       logger.info(
-        `[I2vCommandHandler] Image size: ${imageBuffer.length} bytes, prompt: ${aiResult.prompt.substring(0, 50)}..., duration: ${durationSeconds}s`,
+        `[I2vCommandHandler] Image size: ${imageBuffer.length} bytes, prompt: ${aiResult.prompt}, duration: ${durationSeconds}s`,
       );
 
       const client = new RunPodServerlessClient(runpodConfig.endpointId, apiKey, {

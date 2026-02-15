@@ -17,6 +17,8 @@ interface StatusResponse {
   id?: string;
   status: string;
   output?: {
+    /** runpod-worker-comfyui format */
+    images?: Array<{ filename?: string; type?: string; data?: string }>;
     outputs?: Array<{ data?: string; format?: string; filename?: string }>;
     error?: string;
   };
@@ -128,6 +130,10 @@ export class RunPodServerlessClient {
     const images = [{ name: filename, image: imageBase64 }];
 
     logger.info('[RunPodServerlessClient] Submitting job', { seed, durationSeconds });
+    logger.info('[RunPodServerlessClient] Full workflow params (images omitted)', {
+      workflow: JSON.stringify(workflow, null, 2),
+      imagesMeta: images.map(({ name }) => ({ name })),
+    });
     const jobId = await this.run({ workflow, images });
 
     logger.info('[RunPodServerlessClient] Waiting for job', { jobId });
@@ -135,14 +141,19 @@ export class RunPodServerlessClient {
 
     if (statusRes.status === 'FAILED' || statusRes.status === 'TIMED_OUT' || statusRes.status === 'CANCELLED') {
       const errMsg = statusRes.output?.error ?? statusRes.status;
+      logger.error(
+        `[RunPodServerlessClient] Job failed | jobId=${jobId} | status=${statusRes.status} | output=${JSON.stringify(statusRes.output ?? null)}`,
+      );
       throw new Error(`RunPod job failed: ${errMsg}`);
     }
 
     const output = statusRes.output;
-    if (!output?.outputs?.length) {
+    // Handle runpod-worker-comfyui format: { images: [{ data }] } or { outputs: [{ data }] }
+    const items = output?.images ?? output?.outputs ?? [];
+    if (!items.length) {
       throw new Error('RunPod job completed but no outputs in response');
     }
-    const first = output.outputs[0];
+    const first = items[0];
     const dataB64 = first?.data;
     if (!dataB64 || typeof dataB64 !== 'string') {
       throw new Error('RunPod output missing data (base64 video)');
