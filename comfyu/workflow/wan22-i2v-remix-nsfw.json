@@ -385,7 +385,7 @@
         "fp16_fast",
         "disabled",
         "offload_device",
-        "sageattn",
+        "sdpa",
         "default"
       ],
       "color": "#223",
@@ -486,7 +486,7 @@
         "fp16_fast",
         "disabled",
         "offload_device",
-        "sageattn",
+        "sdpa",
         "default"
       ],
       "color": "#223",
