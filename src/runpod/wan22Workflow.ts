@@ -28,7 +28,7 @@ let cachedRemixOptimizedApiWorkflow: Record<string, Wan22WorkflowNode> | null = 
 function loadRemixOptimizedTemplate(): Record<string, Wan22WorkflowNode> {
   if (cachedRemixOptimizedApiWorkflow) return cachedRemixOptimizedApiWorkflow;
 
-  const workflowPath = join(process.cwd(), 'comfyu', 'opt', 'wan22-i2v-remix-nsfw-optimized-api.json');
+  const workflowPath = join(process.cwd(), 'comfyu', 'workflow', 'opt', 'wan22-i2v-remix-nsfw-optimized-api.json');
   try {
     const raw = readFileSync(workflowPath, 'utf-8');
     cachedRemixOptimizedApiWorkflow = JSON.parse(raw) as Record<string, Wan22WorkflowNode>;
