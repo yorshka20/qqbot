@@ -1,18 +1,4 @@
 {
-  "115": {
-    "inputs": {
-      "ckpt_name": "rife47.pth",
-      "clear_cache_after_n_frames": 50,
-      "multiplier": 2,
-      "fast_mode": true,
-      "ensemble": true,
-      "scale_factor": 1
-    },
-    "class_type": "RIFE VFI",
-    "_meta": {
-      "title": "RIFE VFI (recommend rife47 and rife49)"
-    }
-  },
   "116": {
     "inputs": {
       "fps": 16,
@@ -41,54 +27,14 @@
       "title": "Save Video"
     }
   },
-  "127": {
-    "inputs": {
-      "backend": "inductor",
-      "fullgraph": false,
-      "mode": "default",
-      "dynamic": false,
-      "dynamo_cache_size_limit": 64,
-      "compile_transformer_blocks_only": true,
-      "dynamo_recompile_limit": 128,
-      "force_parameter_static_shapes": false,
-      "allow_unmerged_lora_compile": false
-    },
-    "class_type": "WanVideoTorchCompileSettings",
-    "_meta": {
-      "title": "WanVideo Torch Compile Settings"
-    }
-  },
-  "128": {
-    "inputs": {
-      "blocks_to_swap": 0,
-      "offload_img_emb": false,
-      "offload_txt_emb": false,
-      "use_non_blocking": false,
-      "vace_blocks_to_swap": 0,
-      "prefetch_blocks": 0,
-      "block_swap_debug": false
-    },
-    "class_type": "WanVideoBlockSwap",
-    "_meta": {
-      "title": "WanVideo Block Swap"
-    }
-  },
   "131": {
     "inputs": {
       "model": "dasiwa_synthseduction_v9_HIGH.safetensors",
       "base_precision": "fp16_fast",
-      "quantization": "disabled",
+      "quantization": "fp8_e4m3fn_fast",
       "load_device": "main_device",
       "attention_mode": "sageattn",
-      "rms_norm_function": "default",
-      "compile_args": [
-        "127",
-        0
-      ],
-      "block_swap_args": [
-        "128",
-        0
-      ]
+      "rms_norm_function": "default"
     },
     "class_type": "WanVideoModelLoader",
     "_meta": {
@@ -99,18 +45,10 @@
     "inputs": {
       "model": "dasiwa_synthseduction_v9_LOW.safetensors",
       "base_precision": "fp16_fast",
-      "quantization": "disabled",
+      "quantization": "fp8_e4m3fn_fast",
       "load_device": "main_device",
       "attention_mode": "sageattn",
-      "rms_norm_function": "default",
-      "compile_args": [
-        "127",
-        0
-      ],
-      "block_swap_args": [
-        "128",
-        0
-      ]
+      "rms_norm_function": "default"
     },
     "class_type": "WanVideoModelLoader",
     "_meta": {
@@ -356,7 +294,7 @@
       "noise_aug_strength": 0,
       "start_latent_strength": 1,
       "end_latent_strength": 1,
-      "force_offload": true,
+      "force_offload": false,
       "fun_or_fl2v_model": false,
       "tiled_vae": false,
       "augment_empty_frames": 0,
