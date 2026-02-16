@@ -2,6 +2,9 @@
 
 import type { AIProviderConfig, AIProviderType } from './providers';
 
+
+export type AIProviderCapability = 'llm' | 'vision' | 'text2img' | 'img2img' | 'i2v';
+
 /**
  * Default providers configuration (by capability)
  */
@@ -10,6 +13,7 @@ export interface DefaultProvidersConfig {
   vision?: AIProviderType; // Default vision/multimodal provider name
   text2img?: AIProviderType; // Default text-to-image provider name
   img2img?: AIProviderType; // Default image-to-image provider name
+  i2v?: AIProviderType; // Default image-to-video provider name
 }
 
 /**
@@ -20,6 +24,7 @@ export interface SessionProviderConfig {
   vision?: AIProviderType;
   text2img?: AIProviderType;
   img2img?: AIProviderType;
+  i2v?: AIProviderType;
 }
 
 /**
@@ -66,6 +71,7 @@ export type {
   NovelAIProviderConfig,
   OllamaProviderConfig,
   OpenAIProviderConfig,
-  OpenRouterProviderConfig
+  OpenRouterProviderConfig,
+  RunPodProviderConfig
 } from './providers';
 

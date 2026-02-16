@@ -13,10 +13,11 @@ import { NovelAIProvider } from './providers/NovelAIProvider';
 import { OllamaProvider } from './providers/OllamaProvider';
 import { OpenAIProvider } from './providers/OpenAIProvider';
 import { OpenRouterProvider } from './providers/OpenRouterProvider';
+import { RunPodProvider } from './providers/RunPodProvider';
 
 /**
  * Provider Factory
- * Creates AI provider instances from configuration
+ * Creates AI provider instances from configuration (all providers read only from their own config block).
  */
 export class ProviderFactory {
   /**
@@ -147,6 +148,16 @@ export class ProviderFactory {
             defaultAspectRatio: laozhangConfig.defaultAspectRatio,
             defaultImageSize: laozhangConfig.defaultImageSize,
             resourceSavePath: laozhangConfig.resourceSavePath,
+          });
+        }
+        case 'runpod': {
+          const c = config as Extract<AIProviderConfig, { type: 'runpod' }>;
+          return new RunPodProvider({
+            endpointId: c.endpointId,
+            apiKey: c.apiKey,
+            t2iEndpointId: c.t2iEndpointId,
+            timeoutMs: c.timeoutMs,
+            pollIntervalMs: c.pollIntervalMs,
           });
         }
         default: {

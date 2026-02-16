@@ -6,14 +6,13 @@ import { parse as parseJsonc } from 'jsonc-parser';
 import { extname, resolve } from 'path';
 
 // Import all config types
-import type { AIConfig, ContextMemoryConfig, SessionProviderConfig } from './ai';
+import type { AIConfig, AIProviderCapability, ContextMemoryConfig, SessionProviderConfig } from './ai';
 import type { BotSelfConfig, StaticServerConfig } from './bot';
 import type { DatabaseConfig } from './database';
 import type { MCPConfig } from './mcp';
 import type { PluginsConfig } from './plugins';
 import type { PromptsConfig } from './prompts';
 import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './protocol';
-import type { RunpodConfig } from './runpod';
 import type { TTSConfig } from './tts';
 
 // Re-export all types for convenience
@@ -54,7 +53,6 @@ export type {
   ProtocolName,
   ReconnectConfig
 } from './protocol';
-export type { RunpodConfig } from './runpod';
 export type { TTSConfig } from './tts';
 export type { LogLevel } from './types';
 
@@ -70,7 +68,6 @@ export interface BotConfig {
   prompts: PromptsConfig;
   tts?: TTSConfig;
   mcp?: MCPConfig;
-  runpod?: RunpodConfig;
   staticServer?: StaticServerConfig;
 }
 
@@ -248,7 +245,7 @@ export class Config {
   /**
    * Get default provider name for a capability
    */
-  getDefaultProviderName(capability: 'llm' | 'vision' | 'text2img' | 'img2img'): string | undefined {
+  getDefaultProviderName(capability: AIProviderCapability): string | undefined {
     const aiConfig = this.config.ai;
     if (!aiConfig) {
       return undefined;
@@ -290,10 +287,6 @@ export class Config {
 
   getMCPConfig(): MCPConfig | undefined {
     return this.config.mcp;
-  }
-
-  getRunpodConfig(): RunpodConfig | undefined {
-    return this.config.runpod;
   }
 
   getStaticServerConfig(): StaticServerConfig | undefined {

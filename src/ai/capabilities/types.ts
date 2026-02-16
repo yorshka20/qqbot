@@ -1,5 +1,7 @@
 // Capability type definitions
 
+import type { AIProviderCapability } from '@/core/config/ai';
+
 /**
  * Vision image input type
  * Supports multiple formats for image input
@@ -49,6 +51,16 @@ export interface Image2ImageOptions {
 }
 
 /**
+ * Image-to-video (I2V) generation options
+ */
+export interface Image2VideoOptions {
+  seed?: number;
+  durationSeconds?: number;
+  negativePrompt?: string;
+  [key: string]: unknown;
+}
+
+/**
  * Provider image generation response (internal/intermediate type)
  * Used by providers to return images with relative paths or external URLs
  * This is converted to ImageGenerationResponse by ImageGenerationService
@@ -81,4 +93,4 @@ export interface ImageGenerationResponse {
 /**
  * Capability type identifiers
  */
-export type CapabilityType = 'llm' | 'vision' | 'text2img' | 'img2img';
+export type CapabilityType = AIProviderCapability;

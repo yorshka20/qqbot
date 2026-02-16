@@ -253,7 +253,7 @@ export class ConversationInitializer {
    * Priority: 1. Config specified providers, 2. First available provider
    */
   private static configureDefaultProviders(aiManager: AIManager, aiConfig: AIConfig): void {
-    const validCapabilities: CapabilityType[] = ['llm', 'vision', 'text2img', 'img2img'];
+    const validCapabilities: CapabilityType[] = ['llm', 'vision', 'text2img', 'img2img', 'i2v'];
 
     // First, set default providers from config if specified
     if (aiConfig.defaultProviders) {

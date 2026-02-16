@@ -6,6 +6,7 @@ export type AIProviderType =
   | 'ollama'
   | 'deepseek'
   | 'local-text2img'
+  | 'runpod'
   | 'openrouter'
   | 'novelai'
   | 'gemini'
@@ -128,6 +129,17 @@ export interface LaozhangProviderConfig {
   resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/laozhang')
 }
 
+/** RunPod Serverless provider (T2I + I2V). Same pattern as other providers: all config in ai.providers.runpod. */
+export interface RunPodProviderConfig {
+  type: 'runpod';
+  endpointId: string;
+  apiKey: string;
+  /** Optional T2I-only endpoint; if not set, endpointId is used for T2I */
+  t2iEndpointId?: string;
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+}
+
 export type AIProviderConfig =
   | OpenAIProviderConfig
   | AnthropicProviderConfig
@@ -138,4 +150,5 @@ export type AIProviderConfig =
   | NovelAIProviderConfig
   | GeminiProviderConfig
   | DoubaoProviderConfig
-  | LaozhangProviderConfig;
+  | LaozhangProviderConfig
+  | RunPodProviderConfig;

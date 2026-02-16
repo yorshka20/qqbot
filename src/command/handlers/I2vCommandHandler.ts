@@ -1,16 +1,16 @@
-// I2V command - image-to-video via RunPod Serverless ComfyUI (Wan2.2 I2V workflow)
+// I2V command - image-to-video via RunPod provider (ComfyUI Wan2.2 I2V)
 
+import type { AIManager } from '@/ai/AIManager';
 import type { AIService } from '@/ai/AIService';
+import { isImage2VideoCapability } from '@/ai/capabilities/Image2VideoCapability';
 import { extractImagesFromMessageAndReply, visionImageToBuffer } from '@/ai/utils/imageUtils';
 import type { APIClient } from '@/api/APIClient';
 import { FileAPI } from '@/api/methods/FileAPI';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { getSessionId } from '@/config/SessionUtils';
-import { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { RunPodServerlessClient } from '@/runpod';
 import { uploadFileBuffer } from '@/utils/fileUpload';
 import { logger } from '@/utils/logger';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
@@ -19,9 +19,6 @@ import { inject, injectable } from 'tsyringe';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
-
-/** Poll interval for ComfyUI history (5 seconds as requested) */
-const POLL_INTERVAL_MS = 5_000;
 
 /** Local output directory for saved videos (relative to cwd) */
 const OUTPUT_DIR = join(process.cwd(), 'output', 'runpod');
@@ -50,22 +47,22 @@ export class I2vCommandHandler implements CommandHandler {
   private fileAPI: FileAPI;
 
   constructor(
-    @inject(DITokens.CONFIG) private config: Config,
     @inject(DITokens.API_CLIENT) private apiClient: APIClient,
     @inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager,
     @inject(DITokens.AI_SERVICE) private aiService: AIService,
+    @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
   ) {
     this.messageAPI = new MessageAPI(this.apiClient);
     this.fileAPI = new FileAPI(this.apiClient);
   }
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
-    const runpodConfig = this.config.getRunpodConfig();
-    const apiKey = runpodConfig?.apiKey ?? process.env.RUNPOD_API_KEY;
-    if (!runpodConfig?.endpointId || !apiKey?.trim()) {
+    const i2vProvider = this.aiManager.getProviderForCapability('i2v', 'runpod')
+      ?? this.aiManager.getDefaultProvider('i2v');
+    if (!i2vProvider?.isAvailable() || !isImage2VideoCapability(i2vProvider)) {
       return {
         success: false,
-        error: 'RunPod Serverless is not configured. Set runpod.endpointId and runpod.apiKey (or RUNPOD_API_KEY env).',
+        error: 'RunPod I2V is not configured. Add runpod provider in ai.providers with endpointId and apiKey.',
       };
     }
 
@@ -116,12 +113,7 @@ export class I2vCommandHandler implements CommandHandler {
         `[I2vCommandHandler] Image size: ${imageBuffer.length} bytes, prompt: ${aiResult.prompt}, duration: ${durationSeconds}s`,
       );
 
-      const client = new RunPodServerlessClient(runpodConfig.endpointId, apiKey, {
-        pollIntervalMs: POLL_INTERVAL_MS,
-        timeoutMs: 600_000,
-      });
-
-      const videoBuffer = await client.animateImage(imageBuffer, aiResult.prompt, {
+      const videoBuffer = await i2vProvider.generateVideoFromImage(imageBuffer, aiResult.prompt, {
         seed: options.seed,
         durationSeconds,
         negativePrompt: aiResult.negativePrompt,

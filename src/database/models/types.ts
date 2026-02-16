@@ -45,6 +45,7 @@ export interface ProviderSelection {
   vision?: string;
   text2img?: string;
   img2img?: string;
+  i2v?: string;
 }
 
 /**

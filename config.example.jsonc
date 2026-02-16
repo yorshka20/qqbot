@@ -268,6 +268,15 @@
       //   "baseURL": "https://api.laozhang.ai", // Default: "https://api.laozhang.ai"
       //   "defaultAspectRatio": "16:9", // Options: "1:1", "16:9", "9:16", "4:3", "3:4", "21:9", "3:2", "2:3", "5:4", "4:5", default: "16:9"
       //   "defaultImageSize": "2K" // Options: "1K", "2K", "4K", default: "2K"
+      // },
+      // RunPod Serverless provider (T2I + I2V) - configure under ai.providers.runpod only
+      // "runpod": {
+      //   "type": "runpod",
+      //   "endpointId": "YOUR_ENDPOINT_ID",
+      //   "apiKey": "YOUR_API_KEY",
+      //   "t2iEndpointId": "YOUR_T2I_ENDPOINT_ID",
+      //   "timeoutMs": 600000,
+      //   "pollIntervalMs": 5000
       // }
     }
   },
@@ -327,11 +336,5 @@
       "maxResults": 5, // Maximum number of search results
       "language": "all" // Default language for search results
     }
-  },
-  // RunPod Serverless (optional) - for image-to-video via ComfyUI handler
-  // Uncomment and set endpoint ID from RunPod Console; apiKey can be omitted if RUNPOD_API_KEY env is set
-  // "runpod": {
-  //   "endpointId": "YOUR_ENDPOINT_ID",
-  //   "apiKey": "YOUR_API_KEY"
-  // }
+  }
 }

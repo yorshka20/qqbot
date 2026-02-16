@@ -1,7 +1,10 @@
 // RunPod Serverless client - submit I2V job via RunPod v2 API, poll status, return video buffer.
+// T2I: submit workflow with images: [], get image buffer from output.
 // Handler contract: input { workflow, images: [{ name, image: base64 }] }; output { outputs: [{ data: base64 }] } or { error }.
 
+import type { Text2ImageOptions } from '@/ai/capabilities/types';
 import { logger } from '@/utils/logger';
+import { buildT2IWorkflow } from './t2iWorkflow';
 import { buildWan22I2VRemixWorkflow } from './wan22Workflow';
 
 const RUNPOD_API_BASE = 'https://api.runpod.ai/v2';
@@ -112,9 +115,9 @@ export class RunPodServerlessClient {
 
   /**
    * Full flow: build Wan22-I2V-Remix workflow, send image as base64, POST /run, poll /status, decode video from output.
-   * Same signature as ComfyUIClient.animateImage for drop-in use.
+   * Same signature as ComfyUIClient.generateVideoFromImage for drop-in use.
    */
-  async animateImage(
+  async generateVideoFromImage(
     imageBuffer: Buffer,
     prompt: string,
     options?: { seed?: number; durationSeconds?: number; negativePrompt?: string },
@@ -124,11 +127,8 @@ export class RunPodServerlessClient {
     const imageBase64 = imageBuffer.toString('base64');
     const images = [{ name: filename, image: imageBase64 }];
 
-    logger.info('[RunPodServerlessClient] Submitting job', { seed: options?.seed, durationSeconds: options?.durationSeconds });
-    logger.info('[RunPodServerlessClient] Full workflow params (images omitted)', {
-      workflow: JSON.stringify(workflow, null, 2),
-      imagesMeta: images.map(({ name }) => ({ name })),
-    });
+    logger.info('[RunPodServerlessClient] Submitting job', { seed: options?.seed, durationSeconds: options?.durationSeconds, prompt });
+
     const jobId = await this.run({ workflow, images });
 
     logger.info('[RunPodServerlessClient] Waiting for job', { jobId });
@@ -155,6 +155,55 @@ export class RunPodServerlessClient {
     }
 
     logger.info('[RunPodServerlessClient] Job done, decoding video', { jobId });
+    return Buffer.from(dataB64, 'base64');
+  }
+
+  /**
+   * Full flow: build T2I workflow, POST /run with empty images, poll /status, decode first image from output.
+   */
+  async generateImage(prompt: string, options?: Text2ImageOptions): Promise<Buffer> {
+    const workflow = buildT2IWorkflow({
+      prompt,
+      negative_prompt: options?.negative_prompt,
+      seed: options?.seed,
+      width: options?.width,
+      height: options?.height,
+      steps: options?.steps,
+      guidance_scale: options?.guidance_scale,
+      cfg_scale: options?.cfg_scale,
+    });
+
+    logger.info('[RunPodServerlessClient] Submitting T2I job', {
+      seed: options?.seed,
+      width: options?.width,
+      height: options?.height,
+      steps: options?.steps,
+    });
+    const jobId = await this.run({ workflow, images: [] });
+
+    logger.info('[RunPodServerlessClient] Waiting for T2I job', { jobId });
+    const statusRes = await this.waitForCompletion(jobId);
+
+    if (statusRes.status === 'FAILED' || statusRes.status === 'TIMED_OUT' || statusRes.status === 'CANCELLED') {
+      const errMsg = statusRes.output?.error ?? statusRes.status;
+      logger.error(
+        `[RunPodServerlessClient] T2I job failed | jobId=${jobId} | status=${statusRes.status} | output=${JSON.stringify(statusRes.output ?? null)}`,
+      );
+      throw new Error(`RunPod job failed: ${errMsg}`);
+    }
+
+    const output = statusRes.output;
+    const items = output?.images ?? output?.outputs ?? [];
+    if (!items.length) {
+      throw new Error('RunPod job completed but no outputs in response');
+    }
+    const first = items[0];
+    const dataB64 = first?.data;
+    if (!dataB64 || typeof dataB64 !== 'string') {
+      throw new Error('RunPod output missing data (base64 image)');
+    }
+
+    logger.info('[RunPodServerlessClient] T2I job done, decoding image', { jobId });
     return Buffer.from(dataB64, 'base64');
   }
 }

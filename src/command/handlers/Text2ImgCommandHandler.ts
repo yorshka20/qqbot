@@ -19,7 +19,7 @@ import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
   name: 't2i',
   description: 'Generate image from text prompt',
   usage:
-    '/t2i <prompt> [--width=<width>] [--height=<height>] [--steps=<steps>] [--seed=<seed>] [--guidance=<scale>] [--negative=<prompt>] [--num=<number>] [--silent]',
+    '/t2i <prompt> [--width=<width>] [--height=<height>] [--steps=<steps>] [--seed=<seed>] [--guidance=<scale>] [--negative=<prompt>] [--num=<number>] [--silent] [--provider=runpod|nai|local]',
   permissions: ['user'], // All users can generate images
   aliases: ['text2img'],
 })
@@ -29,7 +29,11 @@ export class Text2ImageCommand implements CommandHandler {
   description = 'Generate image from text prompt';
   usage = '/t2i <prompt> [options]';
 
-  private defaultProviderName = 'local-text2img';
+  /** Fallback provider when primary (local-text2img or runpod) fails */
+  private readonly fallbackProviderName = 'novelai';
+
+  /** Provider names that trigger fallback to novelai on failure */
+  private readonly providersWithFallback = new Set(['local-text2img', 'runpod']);
 
   // Command parameter configuration
   private readonly argsConfig: ParserConfig = {
@@ -43,6 +47,7 @@ export class Text2ImageCommand implements CommandHandler {
       num: { property: 'numImages', type: 'number', aliases: ['num_images'] },
       silent: { property: 'silent', type: 'boolean' },
       template: { property: 'template', type: 'string' },
+      provider: { property: 'provider', type: 'string' },
     },
   };
 
@@ -52,8 +57,8 @@ export class Text2ImageCommand implements CommandHandler {
   ) {}
 
   /**
-   * Generate image with provider fallback
-   * If primary provider fails and it's the default provider, fallback to novelai
+   * Generate image with provider fallback.
+   * If primary provider (local-text2img or runpod) fails, fallback to novelai.
    */
   private async generateWithProvider(
     hookContext: HookContext,
@@ -66,27 +71,50 @@ export class Text2ImageCommand implements CommandHandler {
       return await this.aiService.generateImg(hookContext, opts, providerName, skipLLMProcess, templateName);
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      // If local-text2img fails, directly fallback to novelai
-      if (providerName === this.defaultProviderName) {
+      if (this.providersWithFallback.has(providerName)) {
         logger.warn(
-          `[Text2ImageCommand] ${this.defaultProviderName} provider failed, falling back to novelai: ${err.message}`,
+          `[Text2ImageCommand] ${providerName} provider failed, falling back to ${this.fallbackProviderName}: ${err.message}`,
         );
-        // Use SFW template if original template was SFW, otherwise use NovelAI template
-        const fallbackTemplate = templateName === 'text2img.generate_sfw' 
-          ? 'text2img.generate_sfw' 
-          : (templateName || 'text2img.generate_nai');
+        const fallbackTemplate =
+          templateName === 'text2img.generate_sfw'
+            ? 'text2img.generate_sfw'
+            : (templateName || 'text2img.generate_nai');
         return await this.aiService.generateImg(
           hookContext,
           opts,
-          'novelai',
-          skipLLMProcess, // Use same skipLLMProcess flag for fallback
+          this.fallbackProviderName,
+          skipLLMProcess,
           fallbackTemplate,
         );
-      } else {
-        // Re-throw other errors
-        throw error;
       }
+      throw error;
     }
+  }
+
+  /** Resolve provider name from --provider flag: runpod -> runpod, nai -> novelai, local -> local-text2img */
+  private resolveProviderOverride(providerOpt: string | undefined): string | undefined {
+    if (!providerOpt || typeof providerOpt !== 'string') return undefined;
+    const v = providerOpt.toLowerCase().trim();
+    if (v === 'runpod') return 'runpod';
+    if (v === 'nai' || v === 'novelai') return 'novelai';
+    if (v === 'local') return 'local-text2img';
+    return undefined;
+  }
+
+  /** Get default text2img provider: config default if available, else local-text2img, else novelai */
+  private getDefaultProviderName(): string {
+    const defaultProvider = this.aiManager.getDefaultProvider('text2img');
+    if (defaultProvider?.isAvailable()) {
+      logger.debug(`[Text2ImageCommand] Using config default provider: ${defaultProvider.name}`);
+      return defaultProvider.name;
+    }
+    const localProvider = this.aiManager.getProviderForCapability('text2img', 'local-text2img');
+    if (localProvider?.isAvailable()) {
+      logger.debug('[Text2ImageCommand] Using local-text2img provider');
+      return 'local-text2img';
+    }
+    logger.info('[Text2ImageCommand] Default/local provider not available, using novelai');
+    return 'novelai';
   }
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
@@ -106,16 +134,20 @@ export class Text2ImageCommand implements CommandHandler {
       // Create hook context for AIService
       const hookContext = createHookContextForCommand(context, prompt);
 
-      // Determine which provider to use: try local-text2img first, fallback to novelai if unavailable
-      let providerName: string = this.defaultProviderName;
-      const localProvider = this.aiManager.getProviderForCapability('text2img', this.defaultProviderName);
-      if (!localProvider || !localProvider.isAvailable()) {
-        logger.info(
-          `[Text2ImageCommand] ${this.defaultProviderName} provider is not available, falling back to novelai`,
-        );
-        providerName = 'novelai';
+      // Resolve provider: --provider override, or config default, or local-text2img then novelai
+      let providerName: string;
+      const providerOverride = this.resolveProviderOverride(options?.provider as string | undefined);
+      if (providerOverride) {
+        const provider = this.aiManager.getProviderForCapability('text2img', providerOverride);
+        if (provider?.isAvailable()) {
+          providerName = providerOverride;
+          logger.debug(`[Text2ImageCommand] Using provider override: ${providerName}`);
+        } else {
+          logger.warn(`[Text2ImageCommand] Requested provider ${providerOverride} not available, using default`);
+          providerName = this.getDefaultProviderName();
+        }
       } else {
-        logger.debug(`[Text2ImageCommand] Using ${this.defaultProviderName} provider`);
+        providerName = this.getDefaultProviderName();
       }
 
       // Check if num parameter is provided for multiple image generation
