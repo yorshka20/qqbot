@@ -1,27 +1,9 @@
 {
-  "115": {
-    "inputs": {
-      "ckpt_name": "rife47.pth",
-      "clear_cache_after_n_frames": 50,
-      "multiplier": 2,
-      "fast_mode": true,
-      "ensemble": true,
-      "scale_factor": 1,
-      "frames": [
-        "158",
-        0
-      ]
-    },
-    "class_type": "RIFE VFI",
-    "_meta": {
-      "title": "RIFE VFI (recommend rife47 and rife49)"
-    }
-  },
   "116": {
     "inputs": {
-      "fps": 32,
+      "fps": 16,
       "images": [
-        "115",
+        "158",
         0
       ]
     },
