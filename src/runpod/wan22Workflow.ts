@@ -1,13 +1,13 @@
-// Wan2.2 I2V workflow - loads exported API JSON (wan22-i2v-remix-nsfw-api.json). Do not build API from workflow.
+// Wan2.2 I2V workflow - loads exported API JSON (video_wan2_2_14B_i2v_80GB_adaptive_api.json). Do not build API from workflow.
 
 import { logger } from '@/utils/logger';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-/** FPS for converting durationSeconds to frame count (must match VHS_VideoCombine frame_rate in workflow). */
+/** FPS for converting durationSeconds to frame count (must match CreateVideo fps in workflow). */
 const WORKFLOW_FPS = 16;
 
-/** Default negative prompt (node 137). */
+/** Default negative prompt (node 89). */
 export const DEFAULT_NEGATIVE_PROMPT =
   "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走";
 
@@ -18,7 +18,7 @@ let cachedRemixApiWorkflow: Record<string, Wan22WorkflowNode> | null = null;
 function loadRemixI2VWorkflowTemplate(): Record<string, Wan22WorkflowNode> {
   if (cachedRemixApiWorkflow) return cachedRemixApiWorkflow;
 
-  const workflowPath = join(process.cwd(), 'comfyu', 'workflow', 'wan22-i2v-remix-nsfw-api.json');
+  const workflowPath = join(process.cwd(), 'comfyu', 'workflow', 'opt', 'video_wan2_2_14B_i2v_80GB_adaptive_api.json');
   try {
     const raw = readFileSync(workflowPath, 'utf-8');
     cachedRemixApiWorkflow = JSON.parse(raw) as Record<string, Wan22WorkflowNode>;
@@ -38,13 +38,13 @@ export type Wan22RemixBuildOptions = {
 };
 
 /**
- * Build Wan2.2 I2V Remix workflow from exported API JSON.
+ * Build Wan2.2 I2V Remix workflow from exported API JSON (video_wan2_2_14B_i2v_80GB_adaptive_api.json).
  * User-filled params only (do not change other nodes):
- * - 148 LoadImage: image = uploaded image filename
- * - 134 CLIPTextEncode: text = positive prompt (options.prompt)
- * - 137 CLIPTextEncode: text = negative prompt (options.negativePrompt)
- * - 139 WanVideoSampler: seed
- * - 156 WanVideoImageToVideoEncode: num_frames (from options.durationSeconds)
+ * - 97 LoadImage: image = uploaded image filename
+ * - 93 CLIPTextEncode: text = positive prompt (options.prompt)
+ * - 89 CLIPTextEncode: text = negative prompt (options.negativePrompt)
+ * - 86 KSamplerAdvanced: noise_seed (options.seed)
+ * - 98 WanImageToVideo: length = num_frames (from options.durationSeconds)
  */
 export function buildWan22I2VRemixWorkflow(
   uploadedFilename: string,
@@ -62,20 +62,20 @@ export function buildWan22I2VRemixWorkflow(
   for (const [id, node] of Object.entries(template)) {
     const inputs = { ...node.inputs };
 
-    if (node.class_type === 'LoadImage' && id === '148') {
+    if (node.class_type === 'LoadImage' && id === '97') {
       inputs.image = uploadedFilename;
     }
-    if (node.class_type === 'CLIPTextEncode' && id === '134') {
+    if (node.class_type === 'CLIPTextEncode' && id === '93') {
       inputs.text = prompt;
     }
-    if (node.class_type === 'CLIPTextEncode' && id === '137') {
+    if (node.class_type === 'CLIPTextEncode' && id === '89') {
       inputs.text = negativePrompt;
     }
-    if (node.class_type === 'WanVideoSampler' && id === '139') {
-      inputs.seed = seed;
+    if (node.class_type === 'KSamplerAdvanced' && id === '86') {
+      inputs.noise_seed = seed;
     }
-    if (node.class_type === 'WanVideoImageToVideoEncode' && id === '156') {
-      inputs.num_frames = numFrames;
+    if (node.class_type === 'WanImageToVideo' && id === '98') {
+      inputs.length = numFrames;
     }
 
     workflow[id] = { class_type: node.class_type, inputs };
