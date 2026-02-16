@@ -90,7 +90,7 @@
         }
       },
       "widgets_values": [
-        20,
+        0,
         false,
         false,
         false,
@@ -384,8 +384,8 @@
         "Wan2.2_Remix_NSFW_i2v_14b_low_lighting_v2.0.safetensors",
         "fp16_fast",
         "disabled",
-        "offload_device",
-        "sdpa",
+        "main_device",
+        "sageattn",
         "default"
       ],
       "color": "#223",
@@ -485,8 +485,8 @@
         "Wan2.2_Remix_NSFW_i2v_14b_high_lighting_v2.0.safetensors",
         "fp16_fast",
         "disabled",
-        "offload_device",
-        "sdpa",
+        "main_device",
+        "sageattn",
         "default"
       ],
       "color": "#223",
