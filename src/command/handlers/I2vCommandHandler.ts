@@ -3,6 +3,7 @@
 import type { AIManager } from '@/ai/AIManager';
 import type { AIService } from '@/ai/AIService';
 import { isImage2VideoCapability } from '@/ai/capabilities/Image2VideoCapability';
+import { prepareImageForI2v } from '@/ai/utils/imageResize';
 import { extractImagesFromMessageAndReply, visionImageToBuffer } from '@/ai/utils/imageUtils';
 import type { APIClient } from '@/api/APIClient';
 import { FileAPI } from '@/api/methods/FileAPI';
@@ -70,11 +71,7 @@ export class I2vCommandHandler implements CommandHandler {
     let images: Awaited<ReturnType<typeof extractImagesFromMessageAndReply>> = [];
     if (context.originalMessage) {
       try {
-        images = await extractImagesFromMessageAndReply(
-          context.originalMessage,
-          this.messageAPI,
-          this.databaseManager,
-        );
+        images = await extractImagesFromMessageAndReply(context.originalMessage, this.messageAPI, this.databaseManager);
         logger.debug(`[I2vCommandHandler] Extracted ${images.length} image(s) from message`);
       } catch (error) {
         logger.warn(
@@ -86,7 +83,8 @@ export class I2vCommandHandler implements CommandHandler {
     if (images.length === 0) {
       return {
         success: false,
-        error: 'Please send one image (with or without reply). Usage: /i2v [prompt] [--seed=<number>] [--duration=<1-15>]',
+        error:
+          'Please send one image (with or without reply). Usage: /i2v [prompt] [--seed=<number>] [--duration=<1-15>]',
       };
     }
 
@@ -95,23 +93,25 @@ export class I2vCommandHandler implements CommandHandler {
     }
 
     try {
-      const { text: promptArg, options } = CommandArgsParser.parse<{ seed?: number; duration?: number }>(args, this.argsConfig);
-      const sessionId = getSessionId(context);
-      const aiResult = await this.aiService.prepareI2VPrompt(
-        promptArg ?? '',
-        sessionId,
-        'img2video.generate',
+      const { text: promptArg, options } = CommandArgsParser.parse<{ seed?: number; duration?: number }>(
+        args,
+        this.argsConfig,
       );
+      const sessionId = getSessionId(context);
+      const aiResult = await this.aiService.prepareI2VPrompt(promptArg ?? '', sessionId, 'img2video.generate');
 
       // User --duration overrides AI duration
-      const durationSeconds = options.duration != null
-        ? Math.max(1, Math.min(15, Math.round(options.duration)))
-        : aiResult.durationSeconds;
+      const durationSeconds =
+        options.duration != null ? Math.max(1, Math.min(15, Math.round(options.duration))) : aiResult.durationSeconds;
 
-      const imageBuffer = await visionImageToBuffer(images[0]!, { timeout: 30000, maxSize: 10 * 1024 * 1024 });
+      let imageBuffer = await visionImageToBuffer(images[0]!, { timeout: 30000, maxSize: 10 * 1024 * 1024 });
       logger.info(
-        `[I2vCommandHandler] Image size: ${imageBuffer.length} bytes, prompt: ${aiResult.prompt}, duration: ${durationSeconds}s`,
+        `[I2vCommandHandler] Image fetched: ${imageBuffer.length} bytes, prompt: ${aiResult.prompt}, duration: ${durationSeconds}s`,
       );
+
+      // Scale proportionally: max dimension 1k, file size under 500 KB (keeps aspect ratio)
+      imageBuffer = await prepareImageForI2v(imageBuffer);
+      logger.info(`[I2vCommandHandler] Image after prepare: ${imageBuffer.length} bytes`);
 
       const videoBuffer = await i2vProvider.generateVideoFromImage(imageBuffer, aiResult.prompt, {
         seed: options.seed,
