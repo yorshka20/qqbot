@@ -83,6 +83,71 @@ export function buildWan22I2VRemixWorkflowOptimized(
 }
 
 // ---------------------------------------------------------------------------
+// Dasiwa API (dasiwa/workflow-api.json)
+// ---------------------------------------------------------------------------
+
+const WORKFLOW_FPS_DASIWA = 16;
+
+let cachedDasiwaApiWorkflow: Record<string, Wan22WorkflowNode> | null = null;
+
+function loadDasiwaTemplate(): Record<string, Wan22WorkflowNode> {
+  if (cachedDasiwaApiWorkflow) return cachedDasiwaApiWorkflow;
+
+  const workflowPath = join(process.cwd(), 'comfyu', 'workflow', 'dasiwa', 'workflow-api.json');
+  try {
+    const raw = readFileSync(workflowPath, 'utf-8');
+    cachedDasiwaApiWorkflow = JSON.parse(raw) as Record<string, Wan22WorkflowNode>;
+    logger.debug('[wan22Workflow] Loaded dasiwa I2V workflow', { path: workflowPath, nodeCount: Object.keys(cachedDasiwaApiWorkflow).length });
+    return cachedDasiwaApiWorkflow;
+  } catch (err) {
+    logger.error('[wan22Workflow] Failed to load dasiwa I2V workflow', { path: workflowPath, error: err instanceof Error ? err.message : String(err) });
+    throw err;
+  }
+}
+
+/**
+ * Build Dasiwa I2V workflow from dasiwa/workflow-api.json.
+ * Nodes: 148 LoadImage, 134/137 CLIPTextEncode, 139/140 WanVideoSampler, 156 WanVideoImageToVideoEncode. FPS 16.
+ */
+export function buildWan22I2VRemixWorkflowDasiwa(
+  uploadedFilename: string,
+  options?: Wan22RemixBuildOptions,
+): Record<string, Wan22WorkflowNode> {
+  const prompt = options?.prompt ?? '';
+  const negativePrompt = options?.negativePrompt ?? DEFAULT_NEGATIVE_PROMPT;
+  const seed = options?.seed ?? Math.floor(Math.random() * 2 ** 32);
+  const durationSeconds = Math.max(1, Math.min(15, options?.durationSeconds ?? 5));
+  const numFrames = Math.max(16, Math.min(240, Math.round(durationSeconds * WORKFLOW_FPS_DASIWA)));
+
+  const template = loadDasiwaTemplate();
+  const workflow: Record<string, Wan22WorkflowNode> = {};
+
+  for (const [id, node] of Object.entries(template)) {
+    const inputs = { ...node.inputs };
+
+    if (node.class_type === 'LoadImage' && id === '148') {
+      inputs.image = uploadedFilename;
+    }
+    if (node.class_type === 'CLIPTextEncode' && id === '134') {
+      inputs.text = prompt;
+    }
+    if (node.class_type === 'CLIPTextEncode' && id === '137') {
+      inputs.text = negativePrompt;
+    }
+    if (node.class_type === 'WanVideoSampler' && (id === '139' || id === '140')) {
+      inputs.seed = seed;
+    }
+    if (node.class_type === 'WanVideoImageToVideoEncode' && id === '156') {
+      inputs.num_frames = numFrames;
+    }
+
+    workflow[id] = { class_type: node.class_type, inputs };
+  }
+
+  return workflow;
+}
+
+// ---------------------------------------------------------------------------
 // Adaptive API (video_wan2_2_14B_i2v_80GB_adaptive_api.json)
 // ---------------------------------------------------------------------------
 
@@ -151,14 +216,14 @@ export function buildWan22I2VRemixWorkflowOrigin(
 // Current variant: switch to choose which workflow API is used by default
 // ---------------------------------------------------------------------------
 
-export type Wan22RemixWorkflowVariant = 'optimized' | 'origin';
+export type Wan22RemixWorkflowVariant = 'optimized' | 'origin' | 'dasiwa';
 
-/** Set to 'optimized' to use new remix (wan22-i2v-remix-nsfw-optimized-api.json), 'origin' for original API. */
-export const WAN22_REMIX_WORKFLOW_VARIANT: Wan22RemixWorkflowVariant = 'optimized';
+/** Set to 'optimized' | 'origin' | 'dasiwa' to choose which workflow API is used by default. */
+export const WAN22_REMIX_WORKFLOW_VARIANT: Wan22RemixWorkflowVariant = 'dasiwa';
 
 /**
  * Build Wan2.2 I2V Remix workflow using the current variant (see WAN22_REMIX_WORKFLOW_VARIANT).
- * Default is 'optimized' (new remix).
+ * Default is 'optimized' (new remix). Supports 'dasiwa' (dasiwa/workflow-api.json) and 'origin'.
  */
 export function buildWan22I2VRemixWorkflow(
   uploadedFilename: string,
@@ -166,6 +231,9 @@ export function buildWan22I2VRemixWorkflow(
 ): Record<string, Wan22WorkflowNode> {
   if (WAN22_REMIX_WORKFLOW_VARIANT === 'origin') {
     return buildWan22I2VRemixWorkflowOrigin(uploadedFilename, options);
+  }
+  if (WAN22_REMIX_WORKFLOW_VARIANT === 'dasiwa') {
+    return buildWan22I2VRemixWorkflowDasiwa(uploadedFilename, options);
   }
   return buildWan22I2VRemixWorkflowOptimized(uploadedFilename, options);
 }

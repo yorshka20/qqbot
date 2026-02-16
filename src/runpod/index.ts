@@ -4,6 +4,7 @@ export { ComfyUIClient, type ComfyUIClientOptions } from './ComfyUIClient';
 export { RunPodServerlessClient, type RunPodServerlessClientOptions } from './RunPodServerlessClient';
 export {
   buildWan22I2VRemixWorkflow,
+  buildWan22I2VRemixWorkflowDasiwa,
   buildWan22I2VRemixWorkflowOptimized,
   buildWan22I2VRemixWorkflowOrigin,
   DEFAULT_NEGATIVE_PROMPT,
