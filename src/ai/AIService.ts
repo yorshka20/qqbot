@@ -67,7 +67,7 @@ export class AIService {
     this.visionService = new VisionService(aiManager, providerSelector);
     this.imageGenerationService = new ImageGenerationService(aiManager, providerSelector);
     this.cardRenderingService = new CardRenderingService(aiManager);
-    this.conversationHistoryService = new ConversationHistoryService(maxHistoryMessages);
+    this.conversationHistoryService = new ConversationHistoryService(maxHistoryMessages, databaseManager);
     this.imagePromptService = new ImagePromptService(this.llmService, this.promptManager);
     this.replyGenerationService = new ReplyGenerationService(
       this.llmService,

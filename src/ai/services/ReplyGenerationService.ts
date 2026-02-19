@@ -58,8 +58,8 @@ export class ReplyGenerationService {
     await this.hookManager.execute('onAIGenerationStart', context);
 
     try {
-      // Build conversation history for prompt
-      const historyText = this.conversationHistoryService.buildConversationHistory(context);
+      // Build conversation history for prompt (from in-memory or DB when empty after restart)
+      const historyText = await this.conversationHistoryService.buildConversationHistory(context);
 
       // Get session ID for provider selection and context loading
       const sessionId = context.metadata.get('sessionId');
@@ -135,7 +135,7 @@ export class ReplyGenerationService {
 
     try {
       const sessionId = context.metadata.get('sessionId');
-      const historyText = this.conversationHistoryService.buildConversationHistory(context);
+      const historyText = await this.conversationHistoryService.buildConversationHistory(context);
 
       // Build prompt
       // Template name: 'llm.reply' (from prompts/llm/reply.txt)
@@ -508,7 +508,7 @@ export class ReplyGenerationService {
     searchResultsText: string,
     sessionId?: string,
   ): Promise<void> {
-    const historyText = this.conversationHistoryService.buildConversationHistory(context);
+    const historyText = await this.conversationHistoryService.buildConversationHistory(context);
 
     // Build prompt
     let prompt: string;
@@ -579,7 +579,7 @@ export class ReplyGenerationService {
     images: VisionImage[],
     sessionId?: string,
   ): Promise<void> {
-    const historyText = this.conversationHistoryService.buildConversationHistory(context);
+    const historyText = await this.conversationHistoryService.buildConversationHistory(context);
 
     // Build prompt (vision version also supports task results)
     let prompt: string;
