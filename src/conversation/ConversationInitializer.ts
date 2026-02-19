@@ -10,6 +10,7 @@ import {
   ProviderSelector,
 } from '@/ai';
 import type { APIClient } from '@/api/APIClient';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { CommandManager } from '@/command';
 import { DefaultPermissionChecker } from '@/command/PermissionChecker';
 import { ConversationConfigService } from '@/config/ConversationConfigService';
@@ -132,7 +133,8 @@ export class ConversationInitializer {
       serviceRegistry.registerSearchService(searchService);
     }
 
-    // Create AIService
+    // Create AIService (MessageAPI from apiClient for vision reply: extract images from current + referenced messages)
+    const messageAPI = new MessageAPI(apiClient);
     const aiService = new AIService(
       services.aiManager,
       services.hookManager,
@@ -141,6 +143,8 @@ export class ConversationInitializer {
       maxHistoryMessages,
       providerSelector,
       searchService,
+      messageAPI,
+      databaseManager,
     );
     serviceRegistry.registerAIServiceCapabilities(aiService);
 

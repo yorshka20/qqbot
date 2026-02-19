@@ -1,5 +1,7 @@
 // AI Service - provides AI capabilities as a service
 
+import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { SearchService } from '@/search';
@@ -57,6 +59,8 @@ export class AIService {
     maxHistoryMessages = 10,
     providerSelector?: ProviderSelector,
     private searchService?: SearchService,
+    messageAPI?: MessageAPI,
+    databaseManager?: DatabaseManager,
   ) {
     // Initialize business services
     this.llmService = new LLMService(aiManager, providerSelector);
@@ -73,6 +77,8 @@ export class AIService {
       this.hookManager,
       this.conversationHistoryService,
       this.searchService,
+      messageAPI,
+      databaseManager,
     );
     this.taskAnalysisService = new TaskAnalysisService(
       this.llmService,

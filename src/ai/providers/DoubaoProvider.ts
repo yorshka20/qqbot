@@ -343,19 +343,15 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
         { type: 'text', text: prompt },
       ];
 
-      // Add images to content
-      // Note: Images are already normalized by VisionService (local files and private URLs converted to base64)
+      // Add images to content (VisionService normalizes to base64 only; we send data URL to API)
       for (const image of images) {
         let imageUrl: string;
-        if (image.url) {
-          // Public URL - can be used directly (already validated by VisionService)
-          imageUrl = image.url;
-        } else if (image.base64) {
-          // Convert base64 to data URL
+        if (image.base64) {
           const mimeType = image.mimeType || 'image/jpeg';
           imageUrl = `data:${mimeType};base64,${image.base64}`;
+        } else if (image.url) {
+          imageUrl = image.url;
         } else {
-          // This should not happen if VisionService normalized images correctly
           throw new Error(
             'Invalid image format. Images should be normalized by VisionService (url or base64 required).',
           );
@@ -467,19 +463,15 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
         { type: 'text', text: prompt },
       ];
 
-      // Add images to content
-      // Note: Images are already normalized by VisionService (local files and private URLs converted to base64)
+      // Add images to content (VisionService normalizes to base64 only; we send data URL to API)
       for (const image of images) {
         let imageUrl: string;
-        if (image.url) {
-          // Public URL - can be used directly (already validated by VisionService)
-          imageUrl = image.url;
-        } else if (image.base64) {
-          // Convert base64 to data URL
+        if (image.base64) {
           const mimeType = image.mimeType || 'image/jpeg';
           imageUrl = `data:${mimeType};base64,${image.base64}`;
+        } else if (image.url) {
+          imageUrl = image.url;
         } else {
-          // This should not happen if VisionService normalized images correctly
           throw new Error(
             'Invalid image format. Images should be normalized by VisionService (url or base64 required).',
           );

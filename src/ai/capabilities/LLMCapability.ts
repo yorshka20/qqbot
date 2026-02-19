@@ -20,22 +20,6 @@ export interface LLMCapability {
 }
 
 /**
- * LLM Capability interface
- * Providers that support text generation should implement this interface
- */
-export interface LLMCapability {
-  /**
-   * Generate text from prompt
-   */
-  generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse>;
-
-  /**
-   * Generate text with streaming support
-   */
-  generateStream(prompt: string, handler: StreamingHandler, options?: AIGenerateOptions): Promise<AIGenerateResponse>;
-}
-
-/**
  * Type guard to check if a provider implements LLMCapability
  * Checks if provider explicitly declared 'llm' capability in getCapabilities()
  */

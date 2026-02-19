@@ -199,6 +199,42 @@ export class MessageAPI {
   }
 
   /**
+   * Get temporary URL for a resource by resource_id (Milky protocol only).
+   * Uses get_resource_temp_url API to resolve resource_id when temp_url is expired or missing.
+   * @param resourceId - Milky resource_id from image segment
+   * @param context - NormalizedMessageEvent or CommandContext for protocol
+   * @returns Temporary download URL, or null if protocol is not Milky or API fails
+   */
+  async getResourceTempUrl(
+    resourceId: string,
+    context: CommandContext | NormalizedMessageEvent,
+  ): Promise<string | null> {
+    const protocol = this.extractProtocol(context);
+    if (protocol !== 'milky') {
+      return null;
+    }
+    try {
+      const response = await this.apiClient.call<{ url: string }>(
+        'get_resource_temp_url',
+        { resource_id: resourceId },
+        protocol,
+        15000,
+      );
+      const url = response?.url;
+      if (typeof url === 'string' && url) {
+        logger.debug(`[MessageAPI] Got resource temp URL for resource_id=${resourceId.substring(0, 20)}...`);
+        return url;
+      }
+      return null;
+    } catch (error) {
+      logger.warn(
+        `[MessageAPI] get_resource_temp_url failed | resourceId=${resourceId.substring(0, 30)}... | error=${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      return null;
+    }
+  }
+
+  /**
    * Get message from context by messageSeq (for Milky protocol) or messageId (for other protocols)
    * Priority: 1. Memory cache, 2. Database query
    * @param messageSeq - Message sequence (for Milky protocol)
@@ -328,12 +364,15 @@ export class MessageAPI {
       }
 
       // Parse segments from rawContent if available
+      // Note: SQLite adapter deserializes jsonFields (including rawContent) so it may already be an array
       if (dbMessage.rawContent) {
         try {
-          const segments = JSON.parse(dbMessage.rawContent) as Array<{
-            type: string;
-            data?: Record<string, unknown>;
-          }>;
+          const segments = Array.isArray(dbMessage.rawContent)
+            ? (dbMessage.rawContent as Array<{ type: string; data?: Record<string, unknown> }>)
+            : (JSON.parse(dbMessage.rawContent as string) as Array<{
+                type: string;
+                data?: Record<string, unknown>;
+              }>);
           normalizedMessage.segments = segments;
         } catch {
           normalizedMessage.segments = [

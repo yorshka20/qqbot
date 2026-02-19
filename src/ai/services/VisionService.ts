@@ -31,9 +31,7 @@ export class VisionService {
       throw new Error('At least one image is required for vision generation');
     }
 
-    // Normalize images before passing to provider
-    // This converts local files and non-publicly accessible URLs to base64
-    // so that all AI providers can access them
+    // Normalize images before passing to provider: always convert URL/file to base64, never pass URL to model
     const normalizedImages = await normalizeVisionImages(images, {
       timeout: 30000,
       maxSize: 10 * 1024 * 1024, // 10MB default
@@ -87,9 +85,7 @@ export class VisionService {
       throw new Error('At least one image is required for vision generation');
     }
 
-    // Normalize images before passing to provider
-    // This converts local files and non-publicly accessible URLs to base64
-    // so that all AI providers can access them
+    // Normalize images before passing to provider: always convert URL/file to base64, never pass URL to model
     const normalizedImages = await normalizeVisionImages(images, {
       timeout: 30000,
       maxSize: 10 * 1024 * 1024, // 10MB default

@@ -4,12 +4,14 @@ import { replaceReply, replaceReplyWithSegments, setReply } from '@/context/Hook
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
+import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { SearchService } from '@/search';
 import type { TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../capabilities/types';
 import { PromptManager } from '../PromptManager';
-import { extractImagesFromSegments } from '../utils/imageUtils';
+import { extractImagesFromMessageAndReply, extractImagesFromSegments } from '../utils/imageUtils';
 import { CardRenderingService } from './CardRenderingService';
 import { ConversationHistoryService } from './ConversationHistoryService';
 import { LLMService } from './LLMService';
@@ -30,6 +32,8 @@ export class ReplyGenerationService {
     private hookManager: HookManager,
     private conversationHistoryService: ConversationHistoryService,
     private searchService?: SearchService,
+    private messageAPI?: MessageAPI,
+    private databaseManager?: DatabaseManager,
   ) {}
 
   /**
@@ -191,13 +195,29 @@ export class ReplyGenerationService {
     try {
       const sessionId = context.metadata.get('sessionId');
 
-      // 1. Check if there are images
-      const messageSegments = context.message.segments;
-      const hasImages = messageSegments?.some((seg) => seg.type === 'image');
-      let images: VisionImage[] | undefined;
-      if (hasImages) {
-        images = extractImagesFromSegments(messageSegments as any[]);
+      // 1. Extract images from current message and/or referenced reply message
+      let images: VisionImage[] = [];
+      if (this.messageAPI && this.databaseManager) {
+        try {
+          images = await extractImagesFromMessageAndReply(
+            context.message,
+            this.messageAPI,
+            this.databaseManager,
+          );
+        } catch (error) {
+          logger.warn(
+            '[ReplyGenerationService] Failed to extract images from message and reply, falling back to text-only reply:',
+            error instanceof Error ? error.message : error,
+          );
+        }
+      } else {
+        const messageSegments = context.message.segments;
+        const hasImagesInSegments = messageSegments?.some((seg) => seg.type === 'image');
+        if (hasImagesInSegments && messageSegments) {
+          images = extractImagesFromSegments(messageSegments as any[]);
+        }
       }
+      const hasImages = images.length > 0;
 
       // 2. Extract search task results from taskResults
       const searchTaskResult = taskResults.get('search');
@@ -209,7 +229,8 @@ export class ReplyGenerationService {
       const taskResultsSummary = this.buildTaskResultsSummary(otherTaskResults);
 
       // 4. Perform recursive search (max 3 iterations)
-      if (this.searchService) {
+      // Skip search when user provided images (vision path): answer should come from vision, not web search
+      if (this.searchService && !hasImages) {
         accumulatedSearchResults = await this.performRecursiveSearch(
           context.message.message,
           taskResultsSummary,

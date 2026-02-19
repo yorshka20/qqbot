@@ -6,6 +6,7 @@ import type { NormalizedMessageEvent } from '@/events/types';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../capabilities/types';
+import { compressImageToMaxBytes } from './imageResize';
 import { ResourceDownloader } from './ResourceDownloader';
 
 /**
@@ -41,6 +42,66 @@ export function isPubliclyAccessibleURL(url: string): boolean {
 }
 
 /**
+ * Build a single VisionImage from segment.data using only uri and temp_url (no resource_id).
+ * Used as fallback when get_resource_temp_url is not available or when temp_url might still be valid.
+ */
+function buildVisionImageFromUriAndTempUrl(imageData: Record<string, unknown> | undefined): VisionImage | null {
+  if (!imageData || typeof imageData !== 'object') return null;
+  const visionImage: VisionImage = {};
+
+  // Priority 1: Handle Milky protocol uri field
+  if (imageData.uri && typeof imageData.uri === 'string') {
+    if (imageData.uri.startsWith('base64://')) {
+      // Extract base64 data from base64:// URI
+      visionImage.base64 = imageData.uri.substring(9); // Remove 'base64://' prefix
+    } else if (
+      imageData.uri.startsWith('http://') ||
+      imageData.uri.startsWith('https://') ||
+      imageData.uri.startsWith('file://')
+    ) {
+      if (imageData.uri.startsWith('file://')) {
+        visionImage.file = imageData.uri.substring(7); // Remove 'file://' prefix
+      } else {
+        visionImage.url = imageData.uri;
+      }
+    } else {
+      // Fallback: treat as URL
+      visionImage.url = imageData.uri;
+    }
+  }
+  // Priority 2: Handle Milky protocol temp_url field
+  // temp_url is a temporary download URL provided by Milky protocol
+  // This is typically available for images received in messages
+  if (
+    imageData.temp_url &&
+    typeof imageData.temp_url === 'string' &&
+    !visionImage.url &&
+    !visionImage.base64 &&
+    !visionImage.file
+  ) {
+    visionImage.url = imageData.temp_url;
+  }
+
+  if (!visionImage.url && !visionImage.base64 && !visionImage.file) return null;
+
+  // Try to infer MIME type from URL or file extension
+  if (visionImage.url) {
+    const urlLower = visionImage.url.toLowerCase();
+    if (urlLower.includes('.png')) visionImage.mimeType = 'image/png';
+    else if (urlLower.includes('.gif')) visionImage.mimeType = 'image/gif';
+    else if (urlLower.includes('.webp')) visionImage.mimeType = 'image/webp';
+    else visionImage.mimeType = 'image/jpeg';
+  } else if (visionImage.file) {
+    const fileLower = (visionImage.file as string).toLowerCase();
+    if (fileLower.endsWith('.png')) visionImage.mimeType = 'image/png';
+    else if (fileLower.endsWith('.gif')) visionImage.mimeType = 'image/gif';
+    else if (fileLower.endsWith('.webp')) visionImage.mimeType = 'image/webp';
+    else visionImage.mimeType = 'image/jpeg';
+  }
+  return visionImage;
+}
+
+/**
  * Extract images from message segments
  * Supports both MessageSegment (standard format) and IncomingSegment (Milky protocol format)
  */
@@ -55,100 +116,86 @@ export function extractImagesFromSegments(segments: MessageSegment[]): VisionIma
 
     // Handle both MessageSegment and IncomingSegment types
     if (segment.type === 'image') {
-      const imageData = segment.data;
+      const imageData = segment.data as Record<string, unknown> | undefined;
 
       // Check if this is a sticker (sub_type === 'sticker')
-      const imageType = imageData.sub_type || 'normal';
+      const imageType = imageData?.sub_type || 'normal';
 
       // Log image segment data for debugging
       logger.debug(`[imageUtils] Processing ${imageType} image segment | data=${JSON.stringify(imageData)}`);
 
-      const visionImage: VisionImage = {};
-
-      // Priority 1: Handle Milky protocol uri field
-      if (imageData.uri) {
-        if (imageData.uri.startsWith('base64://')) {
-          // Extract base64 data from base64:// URI
-          const base64Data = imageData.uri.substring(9); // Remove 'base64://' prefix
-          visionImage.base64 = base64Data;
-          logger.debug(`[imageUtils] Extracted base64 from base64:// URI | base64Length=${base64Data.length}`);
-        } else if (imageData.uri.startsWith('http://') || imageData.uri.startsWith('https://')) {
-          visionImage.url = imageData.uri;
-          logger.debug(`[imageUtils] Extracted URL from uri field | url=${imageData.uri}`);
-        } else if (imageData.uri.startsWith('file://')) {
-          visionImage.file = imageData.uri.substring(7); // Remove 'file://' prefix
-          logger.debug(`[imageUtils] Extracted file path from file:// URI | file=${visionImage.file}`);
-        } else {
-          // Fallback: treat as URL
-          visionImage.url = imageData.uri;
-          logger.debug(`[imageUtils] Treating uri as URL | url=${imageData.uri}`);
-        }
-      }
-
-      // Priority 2: Handle Milky protocol temp_url field
-      // temp_url is a temporary download URL provided by Milky protocol
-      // This is typically available for images received in messages
-      if (imageData.temp_url && !visionImage.url && !visionImage.base64 && !visionImage.file) {
-        visionImage.url = imageData.temp_url;
-        logger.debug(`[imageUtils] Extracted URL from temp_url field | url=${imageData.temp_url}`);
-      }
-
-      // Priority 3: Handle Milky protocol resource_id field (fallback)
-      // Note: resource_id is a Milky protocol specific field that identifies a resource
-      // If temp_url is not available, we would need API call to get the actual resource URL
-      // For now, we'll log it but won't handle it here (will need Milky API integration)
-      if (imageData.resource_id && !visionImage.url && !visionImage.base64 && !visionImage.file) {
+      const visionImage = buildVisionImageFromUriAndTempUrl(imageData);
+      if (visionImage) {
+        images.push(visionImage);
+      } else if (imageData?.resource_id) {
+        // Priority 3: When only resource_id is present, use extractImagesFromSegmentsAsync with getResourceUrl to resolve via get_resource_temp_url
         logger.warn(
-          `[imageUtils] Image segment has resource_id but no uri/temp_url field | resource_id=${imageData.resource_id} | summary=${imageData.summary || 'N/A'}`,
+          `[imageUtils] Image segment has resource_id but no uri/temp_url | resource_id=${imageData.resource_id} | Use extractImagesFromSegmentsAsync with getResourceUrl to resolve`,
         );
-        logger.warn(
-          `[imageUtils] Milky protocol resource_id requires API call to get image URL - not implemented yet | resource_id=${imageData.resource_id}`,
-        );
-        // TODO: Implement Milky API call to get resource URL from resource_id
-        // For now, skip this image as we can't process it without the actual URL/data
-        continue;
       }
-
-      // Try to infer MIME type from URL or file extension
-      if (visionImage.url) {
-        const urlLower = visionImage.url.toLowerCase();
-        if (urlLower.includes('.jpg') || urlLower.includes('.jpeg')) {
-          visionImage.mimeType = 'image/jpeg';
-        } else if (urlLower.includes('.png')) {
-          visionImage.mimeType = 'image/png';
-        } else if (urlLower.includes('.gif')) {
-          visionImage.mimeType = 'image/gif';
-        } else if (urlLower.includes('.webp')) {
-          visionImage.mimeType = 'image/webp';
-        }
-      } else if (visionImage.file) {
-        const fileLower = visionImage.file.toLowerCase();
-        if (fileLower.endsWith('.jpg') || fileLower.endsWith('.jpeg')) {
-          visionImage.mimeType = 'image/jpeg';
-        } else if (fileLower.endsWith('.png')) {
-          visionImage.mimeType = 'image/png';
-        } else if (fileLower.endsWith('.gif')) {
-          visionImage.mimeType = 'image/gif';
-        } else if (fileLower.endsWith('.webp')) {
-          visionImage.mimeType = 'image/webp';
-        }
-      }
-
-      // Validate that we have at least one valid field
-      if (!visionImage.url && !visionImage.base64 && !visionImage.file) {
-        logger.error(
-          `[imageUtils] Image segment has no valid image data (url/base64/file) | segment=${JSON.stringify(segment)}`,
-        );
-        logger.error(`[imageUtils] Available fields in imageData: ${Object.keys(imageData).join(', ')}`);
-        continue;
-      }
-
-      images.push(visionImage);
     }
   }
 
   logger.info(`[imageUtils] Extracted ${images.length} image(s) from ${segments.length} segment(s)`);
+  return images;
+}
 
+/**
+ * Extract images from segments with optional resolution of Milky resource_id via get_resource_temp_url.
+ * When getResourceUrl is provided: prefer resolving resource_id to a fresh URL (so expired temp_url is not used);
+ * if that fails or resource_id is missing, fall back to uri/temp_url. Never skip an image when segment has resource_id or uri/temp_url.
+ * @param segments - Message segments
+ * @param getResourceUrl - Optional callback to resolve resource_id to URL (e.g. MessageAPI.getResourceTempUrl)
+ * @returns Promise of VisionImage array
+ */
+export async function extractImagesFromSegmentsAsync(
+  segments: MessageSegment[],
+  getResourceUrl?: (resourceId: string) => Promise<string | null>,
+): Promise<VisionImage[]> {
+  const images: VisionImage[] = [];
+  if (!segments?.length) return images;
+
+  for (const segment of segments) {
+    if (typeof segment !== 'object' || segment === null || !('type' in segment) || segment.type !== 'image') {
+      continue;
+    }
+    const imageData = segment.data as Record<string, unknown> | undefined;
+    let visionImage: VisionImage | null = null;
+
+    // Prefer fresh URL from resource_id when available (avoids using expired temp_url)
+    if (imageData?.resource_id && typeof imageData.resource_id === 'string' && getResourceUrl) {
+      try {
+        const url = await getResourceUrl(imageData.resource_id);
+        if (url) {
+          visionImage = { url };
+          if (url.toLowerCase().includes('.png')) visionImage.mimeType = 'image/png';
+          else if (url.toLowerCase().includes('.gif')) visionImage.mimeType = 'image/gif';
+          else if (url.toLowerCase().includes('.webp')) visionImage.mimeType = 'image/webp';
+          else visionImage.mimeType = 'image/jpeg';
+          logger.debug(`[imageUtils] Using fresh URL from get_resource_temp_url for resource_id`);
+        }
+      } catch (err) {
+        logger.warn(
+          `[imageUtils] get_resource_temp_url failed, falling back to uri/temp_url | resourceId=${String(imageData.resource_id).substring(0, 30)}... | error=${err instanceof Error ? err.message : 'Unknown error'}`,
+        );
+      }
+    }
+
+    // Fallback: use uri or temp_url (e.g. when no getResourceUrl, or getResourceUrl returned null / threw)
+    if (!visionImage) {
+      visionImage = buildVisionImageFromUriAndTempUrl(imageData);
+    }
+
+    if (visionImage) {
+      images.push(visionImage);
+    } else if (imageData?.resource_id) {
+      logger.warn(
+        `[imageUtils] Image segment has only resource_id and getResourceUrl failed or not provided; image skipped | resource_id=${String(imageData.resource_id).substring(0, 30)}...`,
+      );
+    }
+  }
+
+  logger.info(`[imageUtils] Extracted ${images.length} image(s) from ${segments.length} segment(s)`);
   return images;
 }
 
@@ -171,23 +218,28 @@ export function extractTextFromSegments(segments: MessageSegment[]): string {
 
 /**
  * Normalize vision images for AI providers
- * Converts local files and non-publicly accessible URLs to base64
- * This ensures all images can be accessed by external AI services
+ * Always converts URLs and local files to base64 before passing to the model.
+ * We never send raw URLs to the model - providers receive only base64 (or data URL from base64)
+ * so that temporary/private URLs (e.g. QQ multimedia) are fetched by our server and never by the provider.
  *
  * @param images - Array of VisionImage objects to normalize
- * @param options - Options for normalization (timeout, maxSize, etc.)
- * @returns Normalized array of VisionImage objects (all have url or base64)
+ * @param options - Options for normalization (timeout, maxSize, maxBytesForVision, etc.)
+ * @returns Normalized array of VisionImage objects (all have base64; url is never passed through)
  */
+const VISION_IMAGE_MAX_BYTES = 500 * 1024; // 500 KB - compress images exceeding this before sending to model
+
 export async function normalizeVisionImages(
   images: VisionImage[],
   options: {
     timeout?: number;
     maxSize?: number;
+    maxBytesForVision?: number;
   } = {},
 ): Promise<VisionImage[]> {
   const normalized: VisionImage[] = [];
   const timeout = options.timeout ?? 30000;
-  const maxSize = options.maxSize ?? 10 * 1024 * 1024; // 10MB default
+  const maxSize = options.maxSize ?? 10 * 1024 * 1024; // 10MB default for download
+  const maxBytesForVision = options.maxBytesForVision ?? VISION_IMAGE_MAX_BYTES;
 
   for (const image of images) {
     const normalizedImage: VisionImage = {
@@ -195,36 +247,27 @@ export async function normalizeVisionImages(
     };
 
     if (image.url) {
-      // Check if URL is publicly accessible
-      if (isPubliclyAccessibleURL(image.url)) {
-        // Public URL - can be used directly by AI providers
-        normalizedImage.url = image.url;
-      } else {
-        // Private/local URL - convert to base64
-        try {
-          const base64Data = await ResourceDownloader.downloadToBase64(image.url, {
-            timeout,
-            maxSize,
-          });
-          normalizedImage.base64 = base64Data;
-          // Preserve mimeType if not already set
-          if (!normalizedImage.mimeType) {
-            normalizedImage.mimeType = 'image/jpeg';
-          }
-        } catch (error) {
-          logger.error(`[imageUtils] Failed to convert URL to base64: ${image.url}`, error);
-          throw new Error(`Failed to process image URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-      }
-    } else if (image.file) {
-      // Local file path - convert to base64
+      // Always download and convert URL to base64 - never pass URL to the model
       try {
-        const base64Data = await ResourceDownloader.downloadToBase64(image.file, {
-          timeout: 5000, // 5 seconds for local file
+        const base64Data = await ResourceDownloader.downloadToBase64(image.url, {
+          timeout,
           maxSize,
         });
         normalizedImage.base64 = base64Data;
-        // Preserve mimeType if not already set
+        if (!normalizedImage.mimeType) {
+          normalizedImage.mimeType = 'image/jpeg';
+        }
+      } catch (error) {
+        logger.error(`[imageUtils] Failed to convert URL to base64: ${image.url}`, error);
+        throw new Error(`Failed to process image URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    } else if (image.file) {
+      try {
+        const base64Data = await ResourceDownloader.downloadToBase64(image.file, {
+          timeout: 5000,
+          maxSize,
+        });
+        normalizedImage.base64 = base64Data;
         if (!normalizedImage.mimeType) {
           normalizedImage.mimeType = 'image/jpeg';
         }
@@ -233,14 +276,26 @@ export async function normalizeVisionImages(
         throw new Error(`Failed to process image file: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     } else if (image.base64) {
-      // Base64 data - use as-is
       normalizedImage.base64 = image.base64;
     } else {
-      // Log detailed error information for debugging
       logger.error(
         `[imageUtils] Invalid image format - no url, base64, or file field found | image=${JSON.stringify(image)}`,
       );
       throw new Error('Invalid image format. Must provide url, base64, or file.');
+    }
+
+    // Compress if over limit so vision APIs receive images <= 500 KB
+    const decodedLength = Buffer.byteLength(normalizedImage.base64!, 'base64');
+    if (decodedLength > maxBytesForVision) {
+      try {
+        const compressed = await compressImageToMaxBytes(normalizedImage.base64!, maxBytesForVision);
+        normalizedImage.base64 = compressed.base64;
+        normalizedImage.mimeType = compressed.mimeType;
+        const newDecodedLength = Buffer.from(compressed.base64, 'base64').length;
+        logger.debug(`[imageUtils] Vision image compressed from ${decodedLength} to ${newDecodedLength} bytes`);
+      } catch (error) {
+        logger.warn(`[imageUtils] Compression failed, using original image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
 
     normalized.push(normalizedImage);
@@ -330,7 +385,8 @@ async function extractImagesFromReplyMessage(
     return [];
   }
 
-  return extractImagesFromSegments(referencedMessage.segments as MessageSegment[]);
+  const getResourceUrl = (resourceId: string) => messageAPI.getResourceTempUrl(resourceId, message);
+  return extractImagesFromSegmentsAsync(referencedMessage.segments as MessageSegment[], getResourceUrl);
 }
 
 /**
@@ -348,10 +404,14 @@ export async function extractImagesFromMessageAndReply(
   databaseManager: DatabaseManager,
 ): Promise<VisionImage[]> {
   const images: VisionImage[] = [];
+  const getResourceUrl = (resourceId: string) => messageAPI.getResourceTempUrl(resourceId, message);
 
-  // Extract images from current message
+  // Extract images from current message (resolve resource_id via get_resource_temp_url when needed)
   if (message.segments && message.segments.length > 0) {
-    const currentImages = extractImagesFromSegments(message.segments as MessageSegment[]);
+    const currentImages = await extractImagesFromSegmentsAsync(
+      message.segments as MessageSegment[],
+      getResourceUrl,
+    );
     images.push(...currentImages);
   }
 
