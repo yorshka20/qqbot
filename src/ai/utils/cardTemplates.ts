@@ -198,7 +198,7 @@ export function knowledgeCard(data: KnowledgeCardData): string {
   const examples = data.examples
     ? `
       <div class="examples">
-        <div class="examples-title">📝 实际应用举例</div>
+        <div class="examples-title"><span class="icon">📝</span>实际应用举例</div>
         <ul>
           ${data.examples.map((ex) => `<li>${sanitizeContentHtml(ex)}</li>`).join('')}
         </ul>

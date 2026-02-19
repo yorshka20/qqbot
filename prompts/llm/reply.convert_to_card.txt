@@ -41,8 +41,8 @@
 {
   "type": "knowledge",
   "term": "专业术语",
-  "definition": "定义解释",
-  "examples": ["例子1", "例子2"]  // 可选
+  "definition": "定义解释（可用下方 HTML 分段、加粗等）",
+  "examples": ["例子1（关键名词可用 strong 包裹，会蓝色高亮）", "例子2"]  // 可选
 }
 
 **6. 数据统计 (type: "stats")**
