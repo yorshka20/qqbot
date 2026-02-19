@@ -3,8 +3,8 @@
 import { logger } from '@/utils/logger';
 import sharp from 'sharp';
 
-/** Max dimension (width or height) for I2V input, in pixels */
-const I2V_MAX_DIMENSION = 1024;
+/** Max dimension for I2V input: fit within 480×832 / 832×480 (scale proportionally, max 832 per side) */
+const I2V_MAX_DIMENSION = 832;
 
 /** Max file size for I2V input, in bytes (500 KB) */
 export const I2V_MAX_BYTES = 500 * 1024;
@@ -98,8 +98,8 @@ async function compressBufferToMaxBytes(
 }
 
 /**
- * Prepare image for I2V: scale proportionally so resolution does not exceed 1k (max dimension 1024)
- * and file size is under 500 KB. Aspect ratio is preserved. Returns original buffer if already within limits.
+ * Prepare image for I2V: scale proportionally to fit within 480×832 / 832×480 (max dimension 832)
+ * and file size under 500 KB. Aspect ratio is preserved. Returns original buffer if already within limits.
  *
  * @param imageBuffer - Raw image buffer (any format supported by sharp)
  * @returns Buffer (PNG or JPEG) meeting size and resolution limits

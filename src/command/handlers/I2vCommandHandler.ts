@@ -109,7 +109,7 @@ export class I2vCommandHandler implements CommandHandler {
         `[I2vCommandHandler] Image fetched: ${imageBuffer.length} bytes, prompt: ${aiResult.prompt}, duration: ${durationSeconds}s`,
       );
 
-      // Scale proportionally: max dimension 1k, file size under 500 KB (keeps aspect ratio)
+      // Scale proportionally to fit within 480×832 / 832×480, file size under 500 KB (keeps aspect ratio)
       imageBuffer = await prepareImageForI2v(imageBuffer);
       logger.info(`[I2vCommandHandler] Image after prepare: ${imageBuffer.length} bytes`);
 

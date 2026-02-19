@@ -4,6 +4,7 @@ import { FileAPI } from '@/api/methods/FileAPI';
 import { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
+import { MessageUtils } from '@/message/MessageUtils';
 import { uploadFileBuffer } from '@/utils/fileUpload';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
@@ -113,6 +114,15 @@ export class TTSCommandHandler implements CommandHandler {
         return {
           success: false,
           error: 'Text cannot be empty. Please provide text to synthesize.',
+        };
+      }
+
+      // TTS only accepts plain text; skip command content (e.g. /tts /i2v xxx)
+      const trimmedText = text.trim();
+      if (MessageUtils.isCommand(trimmedText)) {
+        return {
+          success: false,
+          error: 'TTS only accepts plain text. Do not use command content as TTS input.',
         };
       }
 

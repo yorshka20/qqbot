@@ -99,10 +99,15 @@ export class EchoPlugin extends PluginBase {
 
   /**
    * Trigger TTS command programmatically
-   * Executes command synchronously and sets reply in hookContext metadata
+   * Executes command synchronously and sets reply in hookContext metadata.
+   * TTS only accepts plain text; skips when text looks like a command.
    */
   private async triggerTTSCommand(text: string, context: HookContext): Promise<void> {
     if (!this.commandManager) {
+      return;
+    }
+    // TTS only processes plain text; skip command content
+    if (MessageUtils.isCommand(text.trim())) {
       return;
     }
 
