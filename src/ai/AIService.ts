@@ -183,11 +183,11 @@ export class AIService {
 
   /**
    * Prepare prompt and duration for image-to-video (I2V) using LLM and template.
-   * Used by the i2v command to convert user input into a Wan2.2-suitable motion prompt and duration (1–15s).
+   * Used by the i2v command to convert user input into a Wan2.2-suitable motion prompt and duration (1–30s).
    * @param userInput - User description (can be empty)
    * @param sessionId - Session ID for LLM provider selection
    * @param templateName - Template name (default: 'img2video.generate')
-   * @returns Processed prompt and durationSeconds (default 5, clamped 1–15)
+   * @returns Processed prompt and durationSeconds (default 5, clamped 1–30)
    */
   async prepareI2VPrompt(
     userInput: string,

@@ -15,7 +15,7 @@ export const DEFAULT_I2V_PROMPT = 'An1meStyl3, AnimeStyle, smooth animation';
 /** Default and bounds for I2V video duration (seconds) */
 export const DEFAULT_I2V_DURATION_SECONDS = 5;
 export const MIN_I2V_DURATION_SECONDS = 1;
-export const MAX_I2V_DURATION_SECONDS = 15;
+export const MAX_I2V_DURATION_SECONDS = 30;
 
 export interface I2VPromptResult {
   prompt: string;
@@ -139,11 +139,11 @@ export class ImagePromptService {
 
   /**
    * Prepare prompt and duration for image-to-video (I2V) using LLM and template.
-   * Used by the i2v command to convert user input into a Wan2.2-suitable motion prompt and duration (1–15s).
+   * Used by the i2v command to convert user input into a Wan2.2-suitable motion prompt and duration (1–30s).
    * @param userInput - User description (can be empty; template will produce default)
    * @param sessionId - Session ID for LLM provider selection
    * @param templateName - Template name (default: 'img2video.generate')
-   * @returns Processed prompt and durationSeconds (default 5, clamped 1–15)
+   * @returns Processed prompt and durationSeconds (default 5, clamped 1–30)
    */
   async prepareI2VPrompt(
     userInput: string,
@@ -182,7 +182,7 @@ export class ImagePromptService {
 
   /**
    * Parse LLM response for I2V: expect JSON with "prompt", optional "duration_seconds", optional "negative_prompt".
-   * Returns prompt string, duration 1–15 (default 5), and optional negative prompt.
+   * Returns prompt string, duration 1–30 (default 5), and optional negative prompt.
    */
   private parseI2VPromptResponse(llmResponse: string): I2VPromptResult {
     let text = llmResponse.trim();

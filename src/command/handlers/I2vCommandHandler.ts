@@ -27,7 +27,7 @@ const OUTPUT_DIR = join(process.cwd(), 'output', 'runpod');
 @Command({
   name: 'i2v',
   description: 'Image-to-video: generate video from image using RunPod Serverless ComfyUI (Wan2.2 I2V Remix)',
-  usage: '/i2v [prompt] [--seed=<number>] [--duration=<1-15>] (send with one image)',
+  usage: '/i2v [prompt] [--seed=<number>] [--duration=<1-30>] (send with one image)',
   permissions: ['user'],
   aliases: ['图生视频'],
 })
@@ -35,7 +35,7 @@ const OUTPUT_DIR = join(process.cwd(), 'output', 'runpod');
 export class I2vCommandHandler implements CommandHandler {
   name = 'i2v';
   description = 'Image-to-video: generate video from image using RunPod Serverless ComfyUI (Wan2.2 I2V Remix)';
-  usage = '/i2v [prompt] [--seed=<number>] [--duration=<1-15>] (send with one image)';
+  usage = '/i2v [prompt] [--seed=<number>] [--duration=<1-30>] (send with one image)';
 
   private readonly argsConfig: ParserConfig = {
     options: {
@@ -84,7 +84,7 @@ export class I2vCommandHandler implements CommandHandler {
       return {
         success: false,
         error:
-          'Please send one image (with or without reply). Usage: /i2v [prompt] [--seed=<number>] [--duration=<1-15>]',
+          'Please send one image (with or without reply). Usage: /i2v [prompt] [--seed=<number>] [--duration=<1-30>]',
       };
     }
 
@@ -102,7 +102,7 @@ export class I2vCommandHandler implements CommandHandler {
 
       // User --duration overrides AI duration
       const durationSeconds =
-        options.duration != null ? Math.max(1, Math.min(15, Math.round(options.duration))) : aiResult.durationSeconds;
+        options.duration != null ? Math.max(1, Math.min(30, Math.round(options.duration))) : aiResult.durationSeconds;
 
       let imageBuffer = await visionImageToBuffer(images[0]!, { timeout: 30000, maxSize: 10 * 1024 * 1024 });
       logger.info(
