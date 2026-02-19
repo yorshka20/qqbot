@@ -522,11 +522,12 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
         );
       }
 
+      // Do not change steps/scale/size from fixed values to avoid extra Anlas cost (Opus free tier: 28 steps, no img2img; img2img always uses Anlas).
       const strength = options?.strength ?? this.config.defaultStrength ?? 0.5;
       const noise = options?.noise ?? this.config.defaultNoise ?? 0;
 
       logger.info(
-        `[NovelAIProvider] img2img params: model=${model}, size=${width}x${height}, strength=${strength}, seed=${seed}`,
+        `[NovelAIProvider] img2img params: model=${model}, size=${width}x${height}, strength=${strength}, noise=${noise}, seed=${seed}`,
       );
 
       const imageBase64 = await this.loadAndResizeImageForImg2Img(image, width, height);

@@ -258,6 +258,7 @@ export class AIService {
           templateName ?? 'text2img.generate',
         );
         finalPrompt = prepared.prompt;
+        // Do not merge prepared.options into img2img: NovelAI steps/scale/size must stay fixed to avoid extra Anlas cost.
         logger.debug(
           `[AIService] Image-from-image LLM preprocessing | input="${prompt}"`,
         );

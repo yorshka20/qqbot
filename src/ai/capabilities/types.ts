@@ -39,8 +39,9 @@ export interface Text2ImageOptions {
  * Image to image transformation options
  */
 export interface Image2ImageOptions {
-  strength?: number; // How much to transform (0-1)
-  noise?: number; // Noise for img2img (e.g. NovelAI), usually 0
+  strength?: number; // How much to transform (0-1). Higher = more prompt-driven change (NovelAI: 0.5–0.8 typical)
+  noise?: number; // Noise for img2img (e.g. NovelAI). Higher = more new details; too high = artifacts
+  guidance_scale?: number; // Prompt guidance / CFG (NovelAI: 5–7 for img2img)
   width?: number;
   height?: number;
   aspectRatio?: string;

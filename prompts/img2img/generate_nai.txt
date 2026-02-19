@@ -105,5 +105,17 @@ low quality, worst quality, bad anatomy, bad hands, text, error, missing fingers
 4. **保持强调语法**：`{{{ }}}`、`{{ }}`、`[]` 等保持不变
 5. **只翻译中文**：英文部分原样保留
 
+## 图生图效果说明与推荐用法（不改 NAI 计费参数）
+
+**为何不调整 steps/scale/尺寸等**：NovelAI 按 Anlas 计费；改变 steps、分辨率等会导致额外消耗。图生图本身即消耗 Anlas（Opus 免费仅限「单张、无底图、28 步以内」），故实现上固定使用 steps=28、scale=5、常规尺寸，不随本模板输出的 steps/cfg_scale/width/height 改变。
+
+**若图生图效果不佳，应从提示词入手**：
+- **明确「保留」与「修改」**：在 prompt 里显式写出要保留的（如 `same pose`, `same composition`, `keep character design`）和要改的（如 `red hair`, `school uniform`），避免模糊描述。
+- **一次只改一类**：优先「只改背景」「只换装」「只换发型」等单一意图，避免一句里同时改太多项。
+- **保留类标签**：多用 `same pose`, `same expression`, `same face`, `keep character`, `1girl` 等稳定构图与人物。
+- **修改意图简短**：用逗号分隔的英文标签描述「要改成什么」，不要长句。
+
+**推荐用法**：用户发参考图 + 一句修改意图（如「换成校服，其他不变」）；你输出「质量词 + 保留标签 + 修改标签」的 prompt，负面用标准模板即可。
+
 用户输入（图生图修改意图）：{{description}}
 JSON：
