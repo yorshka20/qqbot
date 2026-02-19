@@ -66,7 +66,9 @@ export class EchoPlugin extends PluginBase {
 
     const isEnabled = this.enabled;
     const isAdmin = MessageUtils.isAdmin(context.message.userId, botConfig);
-    const isCommand = MessageUtils.isCommand(context.message.message);
+    // Use context.command (routed before this hook) so we skip TTS for any command, including when
+    // message.message starts with non-text (e.g. [Image:...]/i2v) and isCommand(message) would be false.
+    const isCommand = context.command != null || MessageUtils.isCommand(context.message.message);
     const isAtBot = MessageUtils.isAtBot(context.message, botSelfId);
 
     // Check if message contains images or faces (emojis)

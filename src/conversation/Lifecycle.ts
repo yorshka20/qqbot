@@ -122,15 +122,16 @@ export class Lifecycle {
   private async executeStagePreprocess(context: HookContext, messageId: string): Promise<boolean> {
     logger.debug(`[Lifecycle] 🟦[2] Stage: PREPROCESS`);
 
+    // Route command before preprocess hook so plugins (e.g. EchoPlugin TTS) can skip when context.command is set.
+    // This avoids TTS triggering on command messages where message.message starts with non-text (e.g. [Image:...]/i2v).
+    this.routeCommand(context);
+
     // Execute hook and check return value
     const shouldContinue = await this.hookManager.execute('onMessagePreprocess', context);
     if (!shouldContinue) {
       logger.debug(`[Lifecycle] Interrupted at PREPROCESS hook | messageId=${messageId}`);
       return false;
     }
-
-    // Route command (moved from PROCESS stage for better logical flow)
-    this.routeCommand(context);
 
     // Execute systems
     return await this.executeSystems(SystemStage.PREPROCESS, context, messageId);
