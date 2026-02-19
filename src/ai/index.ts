@@ -20,6 +20,7 @@ export { DeepSeekProvider } from './providers/DeepSeekProvider';
 export { LocalText2ImageProvider } from './providers/LocalText2ImageProvider';
 export { OllamaProvider } from './providers/OllamaProvider';
 export { OpenAIProvider } from './providers/OpenAIProvider';
+export { GoogleCloudRunProvider } from './providers/GoogleCloudRunProvider';
 export { RunPodProvider } from './providers/RunPodProvider';
 export { ProviderSelector } from './ProviderSelector';
 export { CardRenderingService } from './services/CardRenderingService';

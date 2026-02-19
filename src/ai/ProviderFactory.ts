@@ -13,6 +13,7 @@ import { NovelAIProvider } from './providers/NovelAIProvider';
 import { OllamaProvider } from './providers/OllamaProvider';
 import { OpenAIProvider } from './providers/OpenAIProvider';
 import { OpenRouterProvider } from './providers/OpenRouterProvider';
+import { GoogleCloudRunProvider } from './providers/GoogleCloudRunProvider';
 import { RunPodProvider } from './providers/RunPodProvider';
 
 /**
@@ -158,6 +159,14 @@ export class ProviderFactory {
             t2iEndpointId: c.t2iEndpointId,
             timeoutMs: c.timeoutMs,
             pollIntervalMs: c.pollIntervalMs,
+          });
+        }
+        case 'google-cloud-run': {
+          const c = config as Extract<AIProviderConfig, { type: 'google-cloud-run' }>;
+          return new GoogleCloudRunProvider({
+            baseUrl: c.baseUrl,
+            apiKey: c.apiKey,
+            timeoutMs: c.timeoutMs,
           });
         }
         default: {

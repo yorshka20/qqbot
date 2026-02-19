@@ -277,6 +277,13 @@
       //   "t2iEndpointId": "YOUR_T2I_ENDPOINT_ID",
       //   "timeoutMs": 600000,
       //   "pollIntervalMs": 5000
+      // },
+      // Google Cloud Run ComfyUI provider (T2I only) - sync POST workflow API
+      // "google-cloud-run": {
+      //   "type": "google-cloud-run",
+      //   "baseUrl": "https://comfyui-serverless-us-222237657682.us-east4.run.app",
+      //   "apiKey": "",
+      //   "timeoutMs": 300000
       // }
     }
   },

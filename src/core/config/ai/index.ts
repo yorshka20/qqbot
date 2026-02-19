@@ -72,6 +72,7 @@ export type {
   OllamaProviderConfig,
   OpenAIProviderConfig,
   OpenRouterProviderConfig,
-  RunPodProviderConfig
+  RunPodProviderConfig,
+  GoogleCloudRunProviderConfig
 } from './providers';
 

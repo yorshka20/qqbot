@@ -7,6 +7,7 @@ export type AIProviderType =
   | 'deepseek'
   | 'local-text2img'
   | 'runpod'
+  | 'google-cloud-run'
   | 'openrouter'
   | 'novelai'
   | 'gemini'
@@ -140,6 +141,14 @@ export interface RunPodProviderConfig {
   pollIntervalMs?: number;
 }
 
+/** Google Cloud Run ComfyUI provider (T2I only). Sync POST workflow API. */
+export interface GoogleCloudRunProviderConfig {
+  type: 'google-cloud-run';
+  baseUrl: string;
+  apiKey?: string;
+  timeoutMs?: number;
+}
+
 export type AIProviderConfig =
   | OpenAIProviderConfig
   | AnthropicProviderConfig
@@ -151,4 +160,5 @@ export type AIProviderConfig =
   | GeminiProviderConfig
   | DoubaoProviderConfig
   | LaozhangProviderConfig
-  | RunPodProviderConfig;
+  | RunPodProviderConfig
+  | GoogleCloudRunProviderConfig;
