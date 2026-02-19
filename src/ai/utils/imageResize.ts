@@ -56,10 +56,15 @@ async function compressBufferToMaxBytes(
 ): Promise<{ buffer: Buffer; mimeType: string }> {
   if (buffer.length <= maxBytes) {
     const meta = await sharp(buffer).metadata();
-    const format = meta.format;
-    const mimeType =
-      format === 'png' ? 'image/png' : format === 'webp' ? 'image/webp' : format === 'gif' ? 'image/gif' : 'image/jpeg';
-    return { buffer, mimeType };
+    const w = meta.width ?? 0;
+    const h = meta.height ?? 0;
+    // Only skip resize when both file size and dimensions are within limits
+    if (w <= maxDimension && h <= maxDimension) {
+      const format = meta.format;
+      const mimeType =
+        format === 'png' ? 'image/png' : format === 'webp' ? 'image/webp' : format === 'gif' ? 'image/gif' : 'image/jpeg';
+      return { buffer, mimeType };
+    }
   }
 
   const resizeOpt = () => ({ fit: 'inside' as const, withoutEnlargement: true });
