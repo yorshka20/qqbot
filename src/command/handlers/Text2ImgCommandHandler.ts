@@ -2,6 +2,7 @@ import { AIService, ImageGenerationResponse, Text2ImageOptions } from '@/ai';
 import { AIManager } from '@/ai/AIManager';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
+import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
@@ -10,7 +11,6 @@ import { Command } from '../decorators';
 import { CommandContext, CommandHandler, CommandResult } from '../types';
 import { generateSeed } from '../utils/CommandImageUtils';
 import { createHookContextForCommand } from '../utils/HookContextBuilder';
-import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 
 /**
  * Text2Image command - generates image from text prompt
@@ -76,9 +76,7 @@ export class Text2ImageCommand implements CommandHandler {
           `[Text2ImageCommand] ${providerName} provider failed, falling back to ${this.fallbackProviderName}: ${err.message}`,
         );
         const fallbackTemplate =
-          templateName === 'text2img.generate_sfw'
-            ? 'text2img.generate_sfw'
-            : (templateName || 'text2img.generate_nai');
+          templateName === 'text2img.generate_sfw' ? 'text2img.generate_sfw' : templateName || 'text2img.generate_nai';
         return await this.aiService.generateImg(
           hookContext,
           opts,
@@ -155,7 +153,7 @@ export class Text2ImageCommand implements CommandHandler {
       const baseSeed = options?.seed;
       const silent = options?.silent === true;
       let templateName: string = options?.template || 'text2img.generate';
-      
+
       // Check if plugin has set a template name in metadata (from conversation context)
       const pluginTemplateName = context.conversationContext.metadata?.get('text2imgTemplateName');
       if (pluginTemplateName && typeof pluginTemplateName === 'string') {
@@ -177,11 +175,19 @@ export class Text2ImageCommand implements CommandHandler {
         );
 
         // First call: LLM preprocessing to get processed prompt
-        const firstResponse = await this.generateWithProvider(hookContext, baseOptions, providerName, false, templateName);
+        const firstResponse = await this.generateWithProvider(
+          hookContext,
+          baseOptions,
+          providerName,
+          false,
+          templateName,
+        );
 
         // Get processed prompt from first response
         if (!firstResponse.prompt) {
-          logger.warn('[Text2ImageCommand] First response does not contain processed prompt, falling back to user input');
+          logger.warn(
+            '[Text2ImageCommand] First response does not contain processed prompt, falling back to user input',
+          );
         }
 
         // used in batch generation
@@ -204,9 +210,8 @@ export class Text2ImageCommand implements CommandHandler {
 
         // Determine template name for remaining images
         // If using novelai provider and not SFW user, use novelai template; otherwise keep original template
-        const remainingTemplateName = providerName === 'novelai' && templateName !== 'text2img.generate_sfw' 
-          ? 'text2img.generate_nai' 
-          : undefined;
+        const remainingTemplateName =
+          providerName === 'novelai' && templateName !== 'text2img.generate_sfw' ? 'text2img.generate_nai' : undefined;
 
         // Generate remaining images with processed prompt (skip LLM processing)
         for (let i = 1; i < numImages; i++) {
@@ -220,7 +225,13 @@ export class Text2ImageCommand implements CommandHandler {
             seed: currentSeed,
           };
 
-          const response = await this.generateWithProvider(hookContext, processedOptions, providerName, true, remainingTemplateName);
+          const response = await this.generateWithProvider(
+            hookContext,
+            processedOptions,
+            providerName,
+            true,
+            remainingTemplateName,
+          );
           // Build image message (unless silent mode)
           // Note: For batch generation, we only return the first image segments
           // Subsequent images would need to be sent separately or handled differently
@@ -239,7 +250,9 @@ export class Text2ImageCommand implements CommandHandler {
       // Single image generation (original behavior)
       // Generate image with selected provider, with fallback to novelai if local-text2img fails
       const response = await this.generateWithProvider(hookContext, baseOptions, providerName, false, templateName);
-      logger.info(`[Text2ImageCommand] Generated image with response: ${JSON.stringify(response)}`);
+      // Log summary only (do not log full response - it contains base64 image data and wastes space)
+      const imageCount = response.images?.length ?? 0;
+      logger.info(`[Text2ImageCommand] Generated image with provider ${providerName}: ${imageCount} image(s)`);
 
       // If no images and no text, return error
       if ((!response.images || response.images.length === 0) && !response.text) {
