@@ -259,6 +259,13 @@ export class ConversationInitializer {
   private static configureDefaultProviders(aiManager: AIManager, aiConfig: AIConfig): void {
     const validCapabilities: CapabilityType[] = ['llm', 'vision', 'text2img', 'img2img', 'i2v'];
 
+    // Log loaded defaultProviders so we can verify config is applied (e.g. text2img = google-cloud-run)
+    if (aiConfig.defaultProviders) {
+      logger.debug(
+        `[ConversationInitializer] defaultProviders from config: ${JSON.stringify(aiConfig.defaultProviders)}`,
+      );
+    }
+
     // First, set default providers from config if specified
     if (aiConfig.defaultProviders) {
       for (const capability of validCapabilities) {
