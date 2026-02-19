@@ -64,7 +64,11 @@ function loadT2ITemplate(): Record<string, T2IWorkflowNode> {
 export function buildT2IWorkflow(options?: T2IBuildOptions): Record<string, T2IWorkflowNode> {
   const prompt = options?.prompt ?? '';
   const negativePrompt = options?.negative_prompt ?? DEFAULT_NEGATIVE_PROMPT;
-  const seed = options?.seed ?? Math.floor(Math.random() * 2 ** 32);
+  // ComfyUI KSampler requires seed >= 0; -1 is used elsewhere to mean "random", so treat negative as random
+  const seed =
+    options?.seed !== undefined && options.seed >= 0
+      ? options.seed
+      : Math.floor(Math.random() * 2 ** 32);
   const width = Math.max(64, Math.min(2048, options?.width ?? DEFAULT_WIDTH));
   const height = Math.max(64, Math.min(2048, options?.height ?? DEFAULT_HEIGHT));
   const steps = Math.max(1, Math.min(150, options?.steps ?? DEFAULT_STEPS));

@@ -50,7 +50,11 @@ export function buildWan22I2VRemixWorkflowOptimized(
 ): Record<string, Wan22WorkflowNode> {
   const prompt = options?.prompt ?? '';
   const negativePrompt = options?.negativePrompt ?? DEFAULT_NEGATIVE_PROMPT;
-  const seed = options?.seed ?? Math.floor(Math.random() * 2 ** 32);
+  // ComfyUI requires seed >= 0; -1 means "random" elsewhere, so treat negative as random
+  const seed =
+    options?.seed !== undefined && options.seed >= 0
+      ? options.seed
+      : Math.floor(Math.random() * 2 ** 32);
   const durationSeconds = Math.max(1, Math.min(15, options?.durationSeconds ?? 5));
   const numFrames = Math.max(16, Math.min(240, Math.round(durationSeconds * WORKFLOW_FPS_OPTIMIZED)));
 
@@ -115,7 +119,11 @@ export function buildWan22I2VRemixWorkflowDasiwa(
 ): Record<string, Wan22WorkflowNode> {
   const prompt = options?.prompt ?? '';
   const negativePrompt = options?.negativePrompt ?? DEFAULT_NEGATIVE_PROMPT;
-  const seed = options?.seed ?? Math.floor(Math.random() * 2 ** 32);
+  // ComfyUI requires seed >= 0; -1 means "random" elsewhere, so treat negative as random
+  const seed =
+    options?.seed !== undefined && options.seed >= 0
+      ? options.seed
+      : Math.floor(Math.random() * 2 ** 32);
   const durationSeconds = Math.max(1, Math.min(15, options?.durationSeconds ?? 5));
   const numFrames = Math.max(16, Math.min(240, Math.round(durationSeconds * WORKFLOW_FPS_DASIWA)));
 
@@ -180,7 +188,11 @@ export function buildWan22I2VRemixWorkflowOrigin(
 ): Record<string, Wan22WorkflowNode> {
   const prompt = options?.prompt ?? '';
   const negativePrompt = options?.negativePrompt ?? DEFAULT_NEGATIVE_PROMPT;
-  const seed = options?.seed ?? Math.floor(Math.random() * 2 ** 32);
+  // ComfyUI requires seed >= 0; -1 means "random" elsewhere, so treat negative as random
+  const seed =
+    options?.seed !== undefined && options.seed >= 0
+      ? options.seed
+      : Math.floor(Math.random() * 2 ** 32);
   const durationSeconds = Math.max(1, Math.min(15, options?.durationSeconds ?? 5));
   const numFrames = Math.max(16, Math.min(240, Math.round(durationSeconds * WORKFLOW_FPS_ADAPTIVE)));
 
