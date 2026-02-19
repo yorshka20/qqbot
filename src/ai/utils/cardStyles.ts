@@ -381,6 +381,120 @@ export const cardStyles = `
     font-weight: 500;
   }
 
+  /* Content HTML: inline code */
+  .answer-content code,
+  .info-content code,
+  .definition code,
+  .styled-list li span:last-child code,
+  .comparison-table td code {
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 0.9em;
+    background: rgba(0,0,0,0.06);
+    padding: 2px 6px;
+    border-radius: 4px;
+    word-break: break-all;
+  }
+  .answer-content pre,
+  .info-content pre,
+  .definition pre {
+    margin: 12px 0;
+    padding: 14px 16px;
+    background: rgba(0,0,0,0.06);
+    border-radius: 8px;
+    overflow-x: auto;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .answer-content pre code,
+  .info-content pre code,
+  .definition pre code {
+    background: none;
+    padding: 0;
+  }
+  /* Content HTML: headings (smaller than card title) */
+  .answer-content h2,
+  .info-content h2,
+  .definition h2 {
+    font-size: 1.05em;
+    margin: 16px 0 10px 0;
+    font-weight: 700;
+    color: #2c3e50;
+  }
+  .answer-content h3,
+  .info-content h3,
+  .definition h3 {
+    font-size: 1em;
+    margin: 14px 0 8px 0;
+    font-weight: 600;
+    color: #2c3e50;
+  }
+  /* Content HTML: paragraphs */
+  .answer-content p,
+  .info-content p,
+  .definition p {
+    line-height: 1.9;
+    margin: 10px 0;
+    color: #2c3e50;
+    font-size: inherit;
+  }
+  /* Content HTML: lists inside content */
+  .answer-content ul,
+  .info-content ul,
+  .definition ul,
+  .answer-content ol,
+  .info-content ol,
+  .definition ol {
+    margin: 10px 0;
+    padding-left: 24px;
+  }
+  .answer-content ul { list-style-type: disc; }
+  .answer-content ol { list-style-type: decimal; }
+  .info-content ul { list-style-type: disc; }
+  .info-content ol { list-style-type: decimal; }
+  .definition ul { list-style-type: disc; }
+  .definition ol { list-style-type: decimal; }
+  .answer-content li,
+  .info-content li,
+  .definition li {
+    margin: 6px 0;
+    line-height: 1.7;
+  }
+  /* Content HTML: table (optional class content-table) */
+  .answer-content table,
+  .info-content table,
+  .definition table,
+  .answer-content table.content-table,
+  .info-content table.content-table,
+  .definition table.content-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 14px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .answer-content th,
+  .info-content th,
+  .definition th,
+  .answer-content td,
+  .info-content td,
+  .definition td {
+    padding: 10px 14px;
+    border: 1px solid #e0e0e0;
+    text-align: left;
+  }
+  .answer-content thead th,
+  .info-content thead th,
+  .definition thead th {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    font-weight: 600;
+  }
+
   .footer {
     margin-top: 28px;
     padding-top: 18px;

@@ -24,20 +24,64 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (m) => map[m]);
 }
 
+/** Allowed tags for AI-generated content HTML (whitelist) */
+const ALLOWED_CONTENT_TAGS = new Set([
+  'p',
+  'strong',
+  'em',
+  'code',
+  'pre',
+  'h2',
+  'h3',
+  'ul',
+  'ol',
+  'li',
+  'table',
+  'thead',
+  'tbody',
+  'tr',
+  'th',
+  'td',
+  'br',
+]);
+
+/** Allowed class for table: content-table */
+const ALLOWED_TABLE_CLASS = 'content-table';
+
 /**
- * Convert simple markdown to HTML
- * Supports **bold**, *italic* (em), and line breaks
+ * Sanitize HTML from AI: keep only allowed tags and class="content-table" on table.
+ * Removes script, style, and all other tags/attributes to prevent XSS.
  */
-function markdownToHtml(text: string): string {
-  // Escape HTML first
-  let html = escapeHtml(text);
-  // Convert **bold** to <strong> first (before processing line breaks)
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  // Convert *italic* to <em> (but not if it's part of **bold**)
-  html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
-  // Convert line breaks to <br> tags
-  html = html.replace(/\n/g, '<br>');
-  return html;
+function sanitizeContentHtml(html: string): string {
+  if (!html || typeof html !== 'string') {
+    return '';
+  }
+  // Remove script and style blocks with their content
+  let out = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+  out = out.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '');
+  // Replace opening tags: allow only whitelisted tags; for table allow class="content-table"
+  out = out.replace(/<([a-zA-Z][a-zA-Z0-9]*)\s*([^>]*)>/g, (_, tagName, attrs) => {
+    const lower = tagName.toLowerCase();
+    if (!ALLOWED_CONTENT_TAGS.has(lower)) {
+      return '';
+    }
+    if (lower === 'br') {
+      return '<br>';
+    }
+    if (lower === 'table' && /class\s*=\s*["']content-table["']/i.test(attrs)) {
+      return '<table class="content-table">';
+    }
+    return `<${lower}>`;
+  });
+  // Replace closing tags: allow only whitelisted (no closing for br)
+  out = out.replace(/<\/([a-zA-Z][a-zA-Z0-9]*)>/g, (_, tagName) => {
+    const lower = tagName.toLowerCase();
+    if (!ALLOWED_CONTENT_TAGS.has(lower) || lower === 'br') {
+      return '';
+    }
+    return `</${lower}>`;
+  });
+  return out;
 }
 
 /**
@@ -45,7 +89,7 @@ function markdownToHtml(text: string): string {
  */
 export function qaCard(data: QACardData): string {
   const question = escapeHtml(data.question);
-  const answer = markdownToHtml(data.answer);
+  const answer = sanitizeContentHtml(data.answer);
   return `
     <div class="qa-card">
       <div class="question">
@@ -71,7 +115,7 @@ export function listCard(data: ListCardData): string {
       (item, i) => `
         <li>
           <span class="number">${i + 1}</span>
-          <span>${markdownToHtml(item)}</span>
+          <span>${sanitizeContentHtml(item)}</span>
         </li>
       `,
     )
@@ -98,7 +142,7 @@ export function infoCard(data: InfoCardData): string {
   };
   const icon = icons[data.level] || '💡';
   const title = escapeHtml(data.title);
-  const content = markdownToHtml(data.content);
+  const content = sanitizeContentHtml(data.content);
   return `
     <div class="info-box ${data.level}">
       <div class="info-header">
@@ -120,8 +164,8 @@ export function comparisonCard(data: ComparisonCardData): string {
       (item) => `
         <tr>
           <td class="label">${escapeHtml(item.label)}</td>
-          <td>${markdownToHtml(item.left)}</td>
-          <td>${markdownToHtml(item.right)}</td>
+          <td>${sanitizeContentHtml(item.left)}</td>
+          <td>${sanitizeContentHtml(item.right)}</td>
         </tr>
       `,
     )
@@ -150,13 +194,13 @@ export function comparisonCard(data: ComparisonCardData): string {
  */
 export function knowledgeCard(data: KnowledgeCardData): string {
   const term = escapeHtml(data.term);
-  const definition = markdownToHtml(data.definition);
+  const definition = sanitizeContentHtml(data.definition);
   const examples = data.examples
     ? `
       <div class="examples">
         <div class="examples-title">📝 实际应用举例</div>
         <ul>
-          ${data.examples.map((ex) => `<li>${markdownToHtml(ex)}</li>`).join('')}
+          ${data.examples.map((ex) => `<li>${sanitizeContentHtml(ex)}</li>`).join('')}
         </ul>
       </div>
     `
