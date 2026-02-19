@@ -207,13 +207,15 @@ export class AIService {
    * Transform image based on prompt (image-to-image)
    *
    * Prompt must be provided as a separate parameter.
-   * This method does NOT perform LLM preprocessing - it uses the prompt directly.
+   * When useLLMPreprocess is true, the prompt is optimized by LLM before generation (same as text2img path).
    *
    * @param context - Hook context containing metadata (message is not used)
    * @param image - Image input (URL, base64, or file path)
-   * @param prompt - Text prompt for image transformation
+   * @param prompt - Text prompt for image transformation (user input)
    * @param options - Image transformation options
    * @param providerName - Optional provider name to use (e.g., 'laozhang')
+   * @param useLLMPreprocess - If true, run LLM to optimize prompt before generation (default false)
+   * @param templateName - Template name for LLM preprocessing when useLLMPreprocess is true (e.g. 'text2img.generate_nai')
    * @returns Image generation response
    */
   async generateImageFromImage(
@@ -222,6 +224,8 @@ export class AIService {
     prompt: string,
     options?: Image2ImageOptions,
     providerName?: string,
+    useLLMPreprocess?: boolean,
+    templateName?: string,
   ): Promise<ImageGenerationResponse> {
     // Hook: onMessageBeforeAI
     const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
@@ -244,14 +248,29 @@ export class AIService {
         throw new Error('prompt must be provided for image transformation');
       }
 
+      let finalPrompt = prompt;
+      if (useLLMPreprocess) {
+        const prepared = await this.imagePromptService.prepareImageGenerationParams(
+          prompt,
+          { prompt },
+          sessionId,
+          false,
+          templateName ?? 'text2img.generate',
+        );
+        finalPrompt = prepared.prompt;
+        logger.debug(
+          `[AIService] Image-from-image LLM preprocessing | input="${prompt}"`,
+        );
+      }
+
       logger.info(
-        `[AIService] Generating image from image | prompt="${prompt.substring(0, 100)}..." | providerName=${providerName || 'default'}`,
+        `[AIService] Generating image from image | prompt="${finalPrompt}" | providerName=${providerName || 'default'}`,
       );
 
-      // Generate image from image using ImageGenerationService (no LLM preprocessing)
+      // Generate image from image using ImageGenerationService
       const response = await this.imageGenerationService.generateImageFromImage(
         image,
-        prompt,
+        finalPrompt,
         options,
         sessionId,
         providerName,

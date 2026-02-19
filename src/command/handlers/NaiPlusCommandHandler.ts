@@ -94,7 +94,7 @@ export class NaiPlusCommand implements CommandHandler {
 
       const silent = options?.silent === true;
 
-      // If images are found, use image-to-image (img2img) with NovelAI (no LLM preprocessing)
+      // If images are found, use image-to-image (img2img) with NovelAI (with LLM preprocessing like t2i)
       if (images.length > 0) {
         logger.info(`[NaiPlusCommand] Using img2img with ${images.length} image(s)`);
         let inputImage: string;
@@ -116,12 +116,19 @@ export class NaiPlusCommand implements CommandHandler {
           noise: typeof options?.noise === 'number' ? options.noise : undefined,
           negative_prompt: typeof options?.negative_prompt === 'string' ? options.negative_prompt : undefined,
         };
+        // Use img2img-specific template (plugin/options can override; default is img2img NAI template)
+        const img2imgTemplateName =
+          (context.conversationContext.metadata?.get('text2imgTemplateName') as string | undefined) ||
+          options?.template ||
+          'img2img.generate_nai';
         const response = await this.aiService.generateImageFromImage(
           hookContext,
           inputImage,
           prompt,
           img2imgOptions,
           'novelai',
+          true, // useLLMPreprocess: nai-plus always uses LLM to optimize user input for both t2i and img2img
+          img2imgTemplateName,
         );
         if ((!response.images || response.images.length === 0) && !response.text) {
           return { success: false, error: 'No images generated and no error message received' };
