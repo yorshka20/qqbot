@@ -17,6 +17,8 @@ export const DITokens = {
   GLOBAL_CONFIG_MANAGER: 'GlobalConfigManager',
   SEARCH_SERVICE: 'SearchService',
   HEALTH_CHECK_MANAGER: 'HealthCheckManager',
+  THREAD_SERVICE: 'ThreadService',
+  PROACTIVE_CONVERSATION_SERVICE: 'ProactiveConversationService',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];

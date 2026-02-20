@@ -9,6 +9,7 @@ import {
   ProviderFactory,
   ProviderSelector,
 } from '@/ai';
+import { OllamaPreliminaryAnalysisService } from '@/ai/services/OllamaPreliminaryAnalysisService';
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { CommandManager } from '@/command';
@@ -30,11 +31,14 @@ import { TaskInitializer, TaskManager } from '@/task';
 import { logger } from '@/utils/logger';
 import { CommandRouter } from './CommandRouter';
 import { ConversationManager } from './ConversationManager';
+import { GroupHistoryService } from './GroupHistoryService';
 import { Lifecycle } from './Lifecycle';
 import { MessagePipeline } from './MessagePipeline';
+import { ProactiveConversationService } from './ProactiveConversationService';
 import { CommandSystem } from './systems/CommandSystem';
 import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
 import { TaskSystem } from './systems/TaskSystem';
+import { ThreadService } from './ThreadService';
 
 export interface ConversationComponents {
   conversationManager: ConversationManager;
@@ -148,6 +152,9 @@ export class ConversationInitializer {
     );
     serviceRegistry.registerAIServiceCapabilities(aiService);
 
+    // Proactive conversation (Phase 1): group history, thread, Ollama analysis, orchestrator
+    this.configureProactiveConversationService(serviceRegistry, databaseManager, services.aiManager, aiService, messageAPI, promptManager);
+
     const completeServices: CompleteServices = {
       ...services,
       aiService,
@@ -250,6 +257,26 @@ export class ConversationInitializer {
     }
 
     this.configureDefaultProviders(aiManager, aiConfig);
+  }
+
+  /**
+   * Configure proactive conversation service
+   * Used to scope proactive participation and to provide thread context for replies.
+   */
+  private static configureProactiveConversationService(serviceRegistry: ServiceRegistry, databaseManager: DatabaseManager, aiManager: AIManager, aiService: AIService, messageAPI: MessageAPI, promptManager: PromptManager): void {
+    const groupHistoryService = new GroupHistoryService(databaseManager, 30);
+    const threadService = new ThreadService();
+    const ollamaAnalysis = new OllamaPreliminaryAnalysisService(aiManager, promptManager);
+    const proactiveConversationService = new ProactiveConversationService(
+      groupHistoryService,
+      threadService,
+      ollamaAnalysis,
+      aiService,
+      messageAPI,
+      promptManager,
+    );
+    serviceRegistry.registerThreadService(threadService);
+    serviceRegistry.registerProactiveConversationService(proactiveConversationService);
   }
 
   /**

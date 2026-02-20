@@ -18,6 +18,10 @@ export interface HookContextMetadata {
   whitelistUser?: boolean;
   whitelistGroup?: boolean;
 
+  // Proactive conversation (thread): when in active thread, reply without @bot
+  inProactiveThread?: boolean;
+  proactiveThreadId?: string;
+
   // Context Manager metadata (internal use)
   userId?: number;
   groupId?: number;

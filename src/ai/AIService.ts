@@ -98,6 +98,27 @@ export class AIService {
   }
 
   /**
+   * Generate a single proactive reply for group participation (no RAG in Phase 1).
+   * Used by ProactiveConversationService when the bot decides to join.
+   */
+  async generateProactiveReply(
+    preferenceText: string,
+    threadContextText: string,
+    sessionId?: string,
+  ): Promise<string> {
+    const prompt = this.promptManager.render('llm.proactive_reply', {
+      preferenceText,
+      threadContext: threadContextText || '(no context)',
+    });
+    const response = await this.llmService.generate(prompt, {
+      temperature: 0.7,
+      maxTokens: 2000,
+      sessionId,
+    });
+    return (response.text || '').trim();
+  }
+
+  /**
    * Generate image from text prompt
    *
    * Prompt must be provided in options.prompt by the caller.

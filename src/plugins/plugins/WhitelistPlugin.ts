@@ -1,3 +1,6 @@
+import type { ThreadService } from '@/conversation/ThreadService';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import type { HookContext, HookResult } from '@/hooks/types';
 import { MessageUtils } from '@/message/MessageUtils';
 import { logger } from '@/utils/logger';
@@ -21,8 +24,17 @@ export class WhitelistPlugin extends PluginBase {
   private hasUserWhitelist = false;
   private hasGroupWhitelist = false;
 
+  private threadService!: ThreadService
+
   async onInit(): Promise<void> {
     this.enabled = true;
+    // Get dependencies from DI container
+    const container = getContainer();
+    this.threadService = container.resolve<ThreadService>(DITokens.THREAD_SERVICE);
+
+    if (!this.threadService) {
+      throw new Error('[WhitelistPlugin] ThreadService not found');
+    }
 
     try {
       const pluginConfig = this.pluginConfig?.config as WhitelistPluginConfig | undefined;
@@ -92,8 +104,13 @@ export class WhitelistPlugin extends PluginBase {
         context.metadata.set('whitelistGroup', true);
       }
 
-      // Core access control 2: Group chat requires @bot
+      // Core access control 2: Group chat requires @bot (unless in proactive thread)
       if (!MessageUtils.isAtBot(message, botSelfId)) {
+        if (groupId && this.threadService.hasActiveThread(groupId)) {
+          context.metadata.set('inProactiveThread', true);
+          return true;
+        }
+
         context.metadata.set('postProcessOnly', true);
         logger.info(`[WhitelistPlugin] Group chat not @bot | messageId=${messageId}`);
         return true;

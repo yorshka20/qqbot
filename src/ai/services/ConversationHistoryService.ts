@@ -1,9 +1,12 @@
 // Conversation History Service - provides conversation history building utility
 
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { Message } from '@/database/models/types';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
+import type { ThreadService } from '@/conversation/ThreadService';
 
 /**
  * Conversation History Service
@@ -23,6 +26,17 @@ export class ConversationHistoryService {
    * @returns Conversation history text (formatted "User: ..." / "Assistant: ..." lines)
    */
   async buildConversationHistory(context: HookContext): Promise<string> {
+    // When in proactive thread, use thread context as history
+    const proactiveThreadId = context.metadata.get('proactiveThreadId');
+    if (proactiveThreadId) {
+      const container = getContainer();
+      if (container.isRegistered(DITokens.THREAD_SERVICE)) {
+        const threadService = container.resolve<ThreadService>(DITokens.THREAD_SERVICE);
+        const text = threadService.getContextFormatted(proactiveThreadId);
+        if (text) return text;
+      }
+    }
+
     const inMemoryHistory = context.context?.history || [];
     if (inMemoryHistory.length > 0) {
       return this.formatHistory(inMemoryHistory);

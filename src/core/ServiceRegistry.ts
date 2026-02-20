@@ -8,6 +8,8 @@ import type { CommandManager } from '@/command/CommandManager';
 import { ConversationConfigService } from '@/config/ConversationConfigService';
 import { GlobalConfigManager } from '@/config/GlobalConfigManager';
 import type { ContextManager } from '@/context/ContextManager';
+import { ProactiveConversationService } from '@/conversation/ProactiveConversationService';
+import { ThreadService } from '@/conversation/ThreadService';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { SearchService } from '@/search';
@@ -167,6 +169,22 @@ export class ServiceRegistry {
     this.registerTaskService(services.taskManager);
     this.registerHookService(services.hookManager);
     this.registerConversationConfigServices(services.conversationConfigService, services.globalConfigManager);
+  }
+
+  /**
+   * Register thread service
+   * Used to scope proactive participation and to provide thread context for replies.
+   */
+  registerThreadService(threadService: ThreadService): void {
+    this.container.registerInstance(DITokens.THREAD_SERVICE, threadService);
+  }
+
+  /**
+   * Register proactive conversation service
+   * Schedules per-group debounced analysis; when timer fires, runs Ollama and optionally sends a proactive reply.
+   */
+  registerProactiveConversationService(proactiveConversationService: ProactiveConversationService): void {
+    this.container.registerInstance(DITokens.PROACTIVE_CONVERSATION_SERVICE, proactiveConversationService);
   }
 
   /**

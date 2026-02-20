@@ -187,6 +187,9 @@ export class Lifecycle {
     // Execute systems (non-blocking, errors are logged but don't fail)
     await this.executeSystems(SystemStage.COMPLETE, context, messageId);
 
+    // Hook: onMessageComplete (e.g. for proactive conversation plugin to schedule debounced analysis)
+    await this.hookManager.execute('onMessageComplete', context);
+
     return true;
   }
 

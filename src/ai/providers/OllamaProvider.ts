@@ -140,6 +140,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
   ): Promise<OllamaGenerateResponse> {
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const thinking = options?.includeReasoning ?? false;
 
     return this.httpClient.post<OllamaGenerateResponse>('/api/chat', {
       model: this.config.model,
@@ -149,6 +150,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
         num_predict: maxTokens,
         top_p: options?.topP,
         repeat_penalty: options?.frequencyPenalty ? 1 + options.frequencyPenalty : undefined,
+        thinking,
       },
       stream: false,
     });
@@ -192,10 +194,10 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
       const text = data.message?.content ?? '';
       const usage = data.eval_count
         ? {
-            promptTokens: data.prompt_eval_count || 0,
-            completionTokens: data.eval_count || 0,
-            totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0),
-          }
+          promptTokens: data.prompt_eval_count || 0,
+          completionTokens: data.eval_count || 0,
+          totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0),
+        }
         : undefined;
 
       return {
