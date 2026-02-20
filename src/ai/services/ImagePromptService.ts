@@ -87,7 +87,7 @@ export class ImagePromptService {
     // Can be overridden with templateName parameter (e.g., 'text2img.generate_nai')
     const llmPrompt = this.promptManager.render(templateName, {
       description: userInput,
-    });
+    }, { injectBase: true });
 
     logger.debug('[ImagePromptService] Calling LLM to preprocess image generation parameters...');
 
@@ -153,7 +153,7 @@ export class ImagePromptService {
     try {
       const llmPrompt = this.promptManager.render(templateName, {
         description: userInput ?? '',
-      });
+      }, { injectBase: true });
 
       logger.debug('[ImagePromptService] Calling LLM to prepare I2V prompt...');
 

@@ -61,7 +61,7 @@ export class ThreadContextCompressionService {
     }
     let preferenceSummary = '';
     try {
-      preferenceSummary = this.promptManager.render(`${preferenceKey}.summary`, {}, { skipBase: true });
+      preferenceSummary = this.promptManager.render(`${preferenceKey}.summary`, {});
     } catch {
       return;
     }

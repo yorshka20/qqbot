@@ -31,7 +31,7 @@ export class SummarizeService {
    * @returns Trimmed summary text, or empty string if LLM returned empty
    */
   async summarize(conversationText: string, options?: SummarizeOptions): Promise<string> {
-    const prompt = this.promptManager.render('llm.summarize', { conversationText }, { skipBase: true });
+    const prompt = this.promptManager.render('llm.summarize', { conversationText });
     const provider = options?.provider;
 
     const response = await this.llmService.generate(
@@ -68,7 +68,6 @@ export class SummarizeService {
         threadContextWithIndices: threadContextWithIndices || '(empty)',
         preferenceSummary: preferenceSummary || '(none)',
       },
-      { skipBase: true },
     );
     const provider = options?.provider;
     const response = await this.llmService.generate(

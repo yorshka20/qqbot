@@ -82,12 +82,12 @@ export class ReplyGenerationService {
           userMessage: context.message.message,
           conversationHistory: historyText,
           searchResults: searchResultsText,
-        });
+        }, { injectBase: true });
       } else {
         prompt = this.promptManager.render('llm.reply', {
           userMessage: context.message.message,
           conversationHistory: historyText,
-        });
+        }, { injectBase: true });
       }
 
       // Generate AI response using LLM service
@@ -143,7 +143,7 @@ export class ReplyGenerationService {
       const prompt = this.promptManager.render('llm.reply', {
         userMessage: context.message.message,
         conversationHistory: historyText,
-      });
+      }, { injectBase: true });
 
       let response;
 
@@ -409,7 +409,7 @@ export class ReplyGenerationService {
       existingInformation: existingSearchResults || 'None',
       taskResults: taskResultsSummary || 'None',
       previousSearchResults: existingSearchResults || 'None',
-    });
+    }, { injectBase: true });
 
     // Call LLM to make decision
     const decisionResponse = await this.llmService.generate(decisionPrompt, {
@@ -446,20 +446,20 @@ export class ReplyGenerationService {
         conversationHistory: historyText,
         taskResults: taskResultsSummary,
         searchResults: searchResultsText,
-      });
+      }, { injectBase: true });
     } else if (searchResultsText) {
       // Only search results, use with_search template
       prompt = this.promptManager.render('llm.reply.with_search', {
         userMessage: context.message.message,
         conversationHistory: historyText,
         searchResults: searchResultsText,
-      });
+      }, { injectBase: true });
     } else {
       // No task results and search, use normal template
       prompt = this.promptManager.render('llm.reply', {
         userMessage: context.message.message,
         conversationHistory: historyText,
-      });
+      }, { injectBase: true });
     }
 
     const response = await this.llmService.generate(prompt, {
@@ -517,20 +517,20 @@ export class ReplyGenerationService {
         conversationHistory: historyText,
         taskResults: taskResultsSummary,
         searchResults: searchResultsText,
-      });
+      }, { injectBase: true });
     } else if (searchResultsText) {
       // Only search results, use with_search template
       prompt = this.promptManager.render('llm.reply.with_search', {
         userMessage: context.message.message,
         conversationHistory: historyText,
         searchResults: searchResultsText,
-      });
+      }, { injectBase: true });
     } else {
       // No task results and search, use normal template
       prompt = this.promptManager.render('llm.reply', {
         userMessage: context.message.message,
         conversationHistory: historyText,
-      });
+      }, { injectBase: true });
     }
 
     // Generate reply using vision
@@ -620,7 +620,7 @@ export class ReplyGenerationService {
     // Use dedicated conversion prompt template
     const prompt = this.promptManager.render('llm.reply.convert_to_card', {
       responseText,
-    });
+    }, { injectBase: true });
 
     logger.debug('[ReplyGenerationService] Converting text to card format using LLM');
 

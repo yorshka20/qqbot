@@ -114,7 +114,7 @@ export class AIService {
       preferenceText,
       threadContext: threadContextText || '(no context)',
       retrievedContext: retrievedContext ?? '',
-    });
+    }, { injectBase: true });
     const response = await this.llmService.generate(prompt, {
       temperature: 0.7,
       maxTokens: 2000,

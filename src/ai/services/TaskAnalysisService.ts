@@ -169,7 +169,7 @@ export class TaskAnalysisService {
     // Render system prompt template
     const systemPrompt = this.promptManager.render('task.analyze.system', {
       taskTypesDescription,
-    });
+    }, { injectBase: true });
 
     // Render user prompt template
     const userPrompt = this.promptManager.render('task.analyze.user', {

@@ -80,7 +80,7 @@ export class OllamaPreliminaryAnalysisService {
       prompt = this.promptManager.render('analysis.ollama', {
         preferenceText,
         recentMessagesText: recentMessagesText || '(no messages)',
-      });
+      }, { injectBase: true });
     } catch (err) {
       logger.warn('[OllamaPreliminaryAnalysisService] Failed to render prompt:', err);
       return { shouldJoin: false };
@@ -140,7 +140,7 @@ export class OllamaPreliminaryAnalysisService {
         preferenceText,
         recentMessagesText: recentMessagesText || '(no messages)',
         threadsDescription: threadsDescription || '(no threads)',
-      });
+      }, { injectBase: true });
     } catch (err) {
       logger.warn('[OllamaPreliminaryAnalysisService] Failed to render multi-thread prompt:', err);
       return { shouldJoin: false };

@@ -184,7 +184,7 @@ export class SearchService {
     return this.promptManager.render('llm.format_search_results', {
       totalResults: results.length.toString(),
       formattedResults: formatted,
-    });
+    }, { injectBase: true });
   }
 
   /**
@@ -246,7 +246,7 @@ export class SearchService {
     return this.promptManager.render('llm.format_search_results', {
       totalResults: limitedResults.length.toString(),
       formattedResults: queryContext + formatted,
-    });
+    }, { injectBase: true });
   }
 
   /**
@@ -314,7 +314,7 @@ export class SearchService {
         existingInformation: 'None',
         taskResults: 'None',
         previousSearchResults: 'None',
-      }, { skipBase: true });
+      });
 
       const checkResponse = await llmService.generate(checkPrompt, {
         temperature: 0.3, // Lower temperature for more consistent judgment

@@ -17,14 +17,14 @@ export interface PromptTemplate {
 const BASE_TEMPLATE_NAME = 'base';
 
 export interface RenderOptions {
-  /** When true, do not prepend the base prompt. Use for prompts that should not get global behavior (e.g. some image/task prompts). */
-  skipBase?: boolean;
+  /** When true, prepend the base prompt. Default is false; set true where a flow needs base context (typically once per flow). */
+  injectBase?: boolean;
 }
 
 /**
  * Prompt Manager - manages and loads prompt templates
  * Supports batch loading from directories, namespaces, and versioning.
- * If a template named "base" exists (e.g. prompts/base.txt), it is prepended to every render() output unless skipBase is set.
+ * If a template named "base" exists (e.g. prompts/base.txt), it is prepended only when render() is called with injectBase: true.
  */
 export class PromptManager {
   private templates = new Map<string, PromptTemplate>();
@@ -165,7 +165,7 @@ export class PromptManager {
 
   /**
    * Render template with variables.
-   * If a base template exists (prompts/base.txt), its content is prepended to the result unless options.skipBase is true.
+   * If a base template exists (prompts/base.txt), its content is prepended only when options.injectBase is true.
    */
   render(name: string, variables: Record<string, string>, options?: RenderOptions): string {
     const template = this.getTemplate(name);
@@ -175,7 +175,7 @@ export class PromptManager {
 
     const mainRendered = this.renderTemplateContent(template, name, variables);
 
-    if (options?.skipBase) {
+    if (!options?.injectBase) {
       return mainRendered;
     }
 

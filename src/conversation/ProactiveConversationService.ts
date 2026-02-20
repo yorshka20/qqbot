@@ -22,6 +22,8 @@ export interface ProactiveGroupConfig {
 
 const DEBOUNCE_MS = 1_000;
 const RECENT_MESSAGES_LIMIT = 30;
+/** Trigger thread compression/clean only after this many new messages accumulated (each run summarizes 10 messages). */
+const MESSAGES_PER_COMPRESSION_TRIGGER = 10;
 /** Phase 5: end thread when no activity in this many ms (e.g. 10 minutes). */
 const THREAD_IDLE_TIMEOUT_MS = 10 * 60 * 1_000;
 /** Do not end the current thread if it had activity within this window (avoids ending the thread we just replied in). */
@@ -43,6 +45,8 @@ export class ProactiveConversationService {
   private searchLimit = 8;
   /** Per-thread reply serialization: in-flight reply promise per threadId; resolved when send + append done (or skip). */
   private replyInProgressByThread = new Map<string, Promise<void>>();
+  /** Per-group count of new messages since last compression run; compression runs only when count >= MESSAGES_PER_COMPRESSION_TRIGGER. */
+  private newMessageCountByGroup = new Map<string, number>();
 
   constructor(
     @inject(DITokens.GROUP_HISTORY_SERVICE) private groupHistoryService: GroupHistoryService,
@@ -94,7 +98,12 @@ export class ProactiveConversationService {
    */
   scheduleForGroup(groupId: string): void {
     const keys = this.groupConfig.get(groupId);
-    if (!keys?.length) return;
+    if (!keys?.length) {
+      return;
+    }
+
+    const cur = this.newMessageCountByGroup.get(groupId) ?? 0;
+    this.newMessageCountByGroup.set(groupId, cur + 1);
 
     const existing = this.timersByGroup.get(groupId);
     if (existing) {
@@ -123,7 +132,7 @@ export class ProactiveConversationService {
     const preferenceParts: string[] = [];
     try {
       for (const key of preferenceKeys) {
-        const summary = this.promptManager.render(`${key}.summary`, {}, { skipBase: true });
+        const summary = this.promptManager.render(`${key}.summary`, {});
         preferenceParts.push(`### ${key}\n${summary}`);
       }
     } catch (err) {
@@ -291,9 +300,14 @@ export class ProactiveConversationService {
 
   /**
    * Schedule async thread context compression for the group (Phase 4).
-   * Runs after analysis; does not block reply flow.
+   * Runs only after MESSAGES_PER_COMPRESSION_TRIGGER new messages accumulated, to avoid frequent summarize/clean.
    */
   private scheduleThreadCompression(groupId: string): void {
+    const count = this.newMessageCountByGroup.get(groupId) ?? 0;
+    if (count < MESSAGES_PER_COMPRESSION_TRIGGER) {
+      return;
+    }
+    this.newMessageCountByGroup.set(groupId, 0);
     this.threadCompression?.scheduleCompression(groupId);
   }
 
@@ -328,7 +342,7 @@ export class ProactiveConversationService {
     searchQueries?: string[],
   ): Promise<void> {
     // use preference.full for generating proactive reply
-    const preferenceText = this.promptManager.render(`${preferenceKey}.full`, {}, { skipBase: true });
+    const preferenceText = this.promptManager.render(`${preferenceKey}.full`, {});
     const thread = this.threadService.create(groupId, preferenceKey, filteredEntries);
     const threadContextText = this.groupHistoryService.formatAsText(filteredEntries);
     // retrieve context from preference knowledge service (search decision done at analysis stage)
@@ -369,7 +383,7 @@ export class ProactiveConversationService {
     // Thread context already includes the new message(s); we appended them in runAnalysis when we decided to reply here.
     const contextText = this.threadService.getContextFormatted(threadId);
     // use preference.full for generating proactive reply
-    const preferenceText = this.promptManager.render(`${preferenceKey}.full`, {}, { skipBase: true });
+    const preferenceText = this.promptManager.render(`${preferenceKey}.full`, {});
     // retrieve context from preference knowledge service (search decision done at analysis stage)
     const retrievedChunks = await this.preferenceKnowledge.retrieve(preferenceKey, topicOrQuery, {
       limit: this.searchLimit,
