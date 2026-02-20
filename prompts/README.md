@@ -6,6 +6,7 @@ This directory contains prompt templates used by the AI service. Templates are o
 
 ```
 prompts/
+├── base.txt          # Base prompt (optional). Injected at the start of every rendered prompt to define global AI behavior (style, accuracy, timeliness, etc.). Omit or leave empty to disable.
 ├── llm/              # Language Model prompts
 │   └── reply.txt     # Main reply template
 ├── vision/           # Vision/Multimodal prompts
@@ -56,10 +57,18 @@ Common variables used in templates:
 - `{{instructions}}` - Transformation instructions
 - `{{originalDescription}}` - Original image description
 
+## Base Prompt
+
+A template named **base** (file: `prompts/base.txt`) is treated as the **base prompt**. Its content is prepended to every `render()` result, so you can define global behavior (tone, accuracy, timeliness, scope) in one place. To skip base injection for a specific call (e.g. image or task prompts), pass `{ skipBase: true }`:
+
+```typescript
+promptManager.render('text2img.generate', vars, { skipBase: true });
+```
+
 ## Usage in Code
 
 ```typescript
-// Render a template
+// Render a template (base prompt is prepended if prompts/base.txt exists)
 const prompt = promptManager.render('llm.reply', {
   userMessage: 'Hello',
   conversationHistory: 'Previous messages...',

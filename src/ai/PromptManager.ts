@@ -13,9 +13,18 @@ export interface PromptTemplate {
   version?: string; // Template version
 }
 
+/** Reserved template name for base prompt (file: prompts/base.txt). Injected into all rendered prompts by default. */
+const BASE_TEMPLATE_NAME = 'base';
+
+export interface RenderOptions {
+  /** When true, do not prepend the base prompt. Use for prompts that should not get global behavior (e.g. some image/task prompts). */
+  skipBase?: boolean;
+}
+
 /**
  * Prompt Manager - manages and loads prompt templates
- * Supports batch loading from directories, namespaces, and versioning
+ * Supports batch loading from directories, namespaces, and versioning.
+ * If a template named "base" exists (e.g. prompts/base.txt), it is prepended to every render() output unless skipBase is set.
  */
 export class PromptManager {
   private templates = new Map<string, PromptTemplate>();
@@ -155,14 +164,38 @@ export class PromptManager {
   }
 
   /**
-   * Render template with variables
+   * Render template with variables.
+   * If a base template exists (prompts/base.txt), its content is prepended to the result unless options.skipBase is true.
    */
-  render(name: string, variables: Record<string, string>): string {
+  render(name: string, variables: Record<string, string>, options?: RenderOptions): string {
     const template = this.getTemplate(name);
     if (!template) {
       throw new Error(`Template "${name}" not found`);
     }
 
+    const mainRendered = this.renderTemplateContent(template, name, variables);
+
+    if (options?.skipBase) {
+      return mainRendered;
+    }
+
+    const baseTemplate = this.getTemplate(BASE_TEMPLATE_NAME);
+    if (baseTemplate) {
+      const baseRendered = this.renderTemplateContent(baseTemplate, BASE_TEMPLATE_NAME, variables);
+      return baseRendered ? `${baseRendered}\n\n${mainRendered}` : mainRendered;
+    }
+
+    return mainRendered;
+  }
+
+  /**
+   * Render a single template's content with variable substitution (no base injection).
+   */
+  private renderTemplateContent(
+    template: PromptTemplate,
+    templateName: string,
+    variables: Record<string, string>,
+  ): string {
     let rendered = template.content;
 
     // Simple variable replacement: {{variableName}}
@@ -174,7 +207,9 @@ export class PromptManager {
     // Check for unresolved variables
     const unresolved = rendered.match(/\{\{(\w+)\}\}/g);
     if (unresolved) {
-      logger.warn(`[PromptManager] Unresolved variables in template ${name}: ${unresolved.join(', ')}`);
+      logger.warn(
+        `[PromptManager] Unresolved variables in template ${templateName}: ${unresolved.join(', ')}`,
+      );
     }
 
     return rendered;
