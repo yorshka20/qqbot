@@ -4,8 +4,10 @@ import type { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/PromptManager';
 import type { OllamaPreliminaryAnalysisService } from '@/ai/services/OllamaPreliminaryAnalysisService';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { DITokens } from '@/core/DITokens';
 import type { ProtocolName } from '@/core/config/protocol';
 import type { NormalizedMessageEvent } from '@/events/types';
+import { inject, injectable } from 'tsyringe';
 import { logger } from '@/utils/logger';
 import type { GroupHistoryService } from './GroupHistoryService';
 import type { GroupMessageEntry } from './GroupHistoryService';
@@ -27,7 +29,9 @@ const THREAD_IDLE_TIMEOUT_MS = 10 * 60 * 1_000;
 /**
  * Proactive Conversation Service (Phase 1)
  * Schedules per-group debounced analysis; when timer fires, runs Ollama and optionally sends a proactive reply.
+ * Dependencies are injected via DI container (see DITokens).
  */
+@injectable()
 export class ProactiveConversationService {
   /** groupId -> preferenceKeys[] (multiple preferences per group). */
   private groupConfig = new Map<string, string[]>();
@@ -37,15 +41,15 @@ export class ProactiveConversationService {
   private preferredProtocol: ProtocolName = 'milky';
 
   constructor(
-    private groupHistoryService: GroupHistoryService,
-    private threadService: ThreadService,
-    private ollamaAnalysis: OllamaPreliminaryAnalysisService,
-    private preferenceKnowledge: PreferenceKnowledgeService,
-    private threadPersistence: ProactiveThreadPersistenceService,
-    private aiService: AIService,
-    private messageAPI: MessageAPI,
-    private promptManager: PromptManager,
-    private threadCompression?: ThreadContextCompressionService,
+    @inject(DITokens.GROUP_HISTORY_SERVICE) private groupHistoryService: GroupHistoryService,
+    @inject(DITokens.THREAD_SERVICE) private threadService: ThreadService,
+    @inject(DITokens.OLLAMA_PRELIMINARY_ANALYSIS_SERVICE) private ollamaAnalysis: OllamaPreliminaryAnalysisService,
+    @inject(DITokens.PREFERENCE_KNOWLEDGE_SERVICE) private preferenceKnowledge: PreferenceKnowledgeService,
+    @inject(DITokens.PROACTIVE_THREAD_PERSISTENCE_SERVICE) private threadPersistence: ProactiveThreadPersistenceService,
+    @inject(DITokens.AI_SERVICE) private aiService: AIService,
+    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
+    @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
+    @inject(DITokens.THREAD_CONTEXT_COMPRESSION_SERVICE) private threadCompression: ThreadContextCompressionService,
   ) { }
 
   /**

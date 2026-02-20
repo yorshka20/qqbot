@@ -34,14 +34,17 @@ import { ConversationManager } from './ConversationManager';
 import { GroupHistoryService } from './GroupHistoryService';
 import { Lifecycle } from './Lifecycle';
 import { MessagePipeline } from './MessagePipeline';
-import { DefaultPreferenceKnowledgeService } from './PreferenceKnowledgeService';
-import { DefaultProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
+import {
+  DefaultPreferenceKnowledgeService,
+  SearXNGPreferenceKnowledgeService,
+} from './PreferenceKnowledgeService';
 import { ProactiveConversationService } from './ProactiveConversationService';
+import { DefaultProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
 import { SummarizeService } from './SummarizeService';
-import { ThreadContextCompressionService } from './ThreadContextCompressionService';
 import { CommandSystem } from './systems/CommandSystem';
 import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
 import { TaskSystem } from './systems/TaskSystem';
+import { ThreadContextCompressionService } from './ThreadContextCompressionService';
 import { ThreadService } from './ThreadService';
 
 export interface ConversationComponents {
@@ -91,6 +94,7 @@ export class ConversationInitializer {
     apiClient: APIClient,
     searchService?: SearchService,
   ): Promise<ConversationComponents> {
+    const container = getContainer();
     // Phase 1: Infrastructure Setup
     const serviceRegistry = new ServiceRegistry();
     serviceRegistry.registerInfrastructureServices(config, apiClient);
@@ -128,10 +132,11 @@ export class ConversationInitializer {
     const maxBufferSize = memoryConfig?.maxBufferSize ?? 30;
     const maxHistoryMessages = memoryConfig?.maxHistoryMessages ?? 10;
 
-    const promptManager = getContainer().resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+    const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
 
     // Single SummarizeService for both context memory and thread compression (provider passed at call time).
     const summarizeService = new SummarizeService(llmService, promptManager);
+    container.registerInstance(DITokens.SUMMARIZE_SERVICE, summarizeService, { logRegistration: false });
     const contextManager = new ContextManager(
       summaryThreshold,
       maxBufferSize,
@@ -150,6 +155,7 @@ export class ConversationInitializer {
 
     // Create AIService (MessageAPI from apiClient for vision reply: extract images from current + referenced messages)
     const messageAPI = new MessageAPI(apiClient);
+    container.registerInstance(DITokens.MESSAGE_API, messageAPI, { logRegistration: false });
     const aiService = new AIService(
       services.aiManager,
       services.hookManager,
@@ -164,15 +170,8 @@ export class ConversationInitializer {
     serviceRegistry.registerAIServiceCapabilities(aiService);
 
     // Proactive conversation (Phase 1): group history, thread, Ollama analysis, orchestrator (Phase 4: thread compression)
-    this.configureProactiveConversationService(
-      serviceRegistry,
-      databaseManager,
-      services.aiManager,
-      aiService,
-      messageAPI,
-      promptManager,
-      summarizeService,
-    );
+    // Dependencies resolved from DI container; see createProactiveConversationFromContainer
+    this.configureProactiveConversationService(serviceRegistry);
 
     const completeServices: CompleteServices = {
       ...services,
@@ -279,37 +278,67 @@ export class ConversationInitializer {
   }
 
   /**
-   * Configure proactive conversation service
-   * Used to scope proactive participation and to provide thread context for replies.
+   * Configure proactive conversation service by resolving dependencies from DI container.
+   * Creates GroupHistoryService, ThreadService, OllamaAnalysis, etc. from registered tokens
+   * and registers ThreadService + ProactiveConversationService.
    */
-  private static configureProactiveConversationService(
-    serviceRegistry: ServiceRegistry,
-    databaseManager: DatabaseManager,
-    aiManager: AIManager,
-    aiService: AIService,
-    messageAPI: MessageAPI,
-    promptManager: PromptManager,
-    summarizeService: SummarizeService,
-  ): void {
-    const groupHistoryService = new GroupHistoryService(databaseManager, 30);
-    const threadService = new ThreadService();
-    const ollamaAnalysis = new OllamaPreliminaryAnalysisService(aiManager, promptManager);
-    const preferenceKnowledge = new DefaultPreferenceKnowledgeService();
-    const threadPersistence = new DefaultProactiveThreadPersistenceService(databaseManager);
-    const threadCompression = new ThreadContextCompressionService(threadService, summarizeService, promptManager);
-    const proactiveConversationService = new ProactiveConversationService(
-      groupHistoryService,
-      threadService,
-      ollamaAnalysis,
-      preferenceKnowledge,
-      threadPersistence,
-      aiService,
-      messageAPI,
-      promptManager,
-      threadCompression,
-    );
+  private static configureProactiveConversationService(serviceRegistry: ServiceRegistry): void {
+    const { threadService, proactiveConversationService } =
+      this.createProactiveConversationFromContainer();
     serviceRegistry.registerThreadService(threadService);
     serviceRegistry.registerProactiveConversationService(proactiveConversationService);
+  }
+
+  /**
+   * Register proactive-related dependencies into the container, then resolve ProactiveConversationService.
+   * ProactiveConversationService is @injectable(); the container injects all 9 deps into its constructor.
+   * Returns threadService and proactiveConversationService for ServiceRegistry registration.
+   */
+  private static createProactiveConversationFromContainer(
+  ): { threadService: ThreadService; proactiveConversationService: ProactiveConversationService } {
+    const container = getContainer();
+    const databaseManager = container.resolve<DatabaseManager>(DITokens.DATABASE_MANAGER);
+    const aiManager = container.resolve<AIManager>(DITokens.AI_MANAGER);
+    const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+    const summarizeService = container.resolve<SummarizeService>(DITokens.SUMMARIZE_SERVICE);
+
+    const groupHistoryService = new GroupHistoryService(databaseManager, 30);
+    const threadService = new ThreadService();
+    container.registerInstance(DITokens.GROUP_HISTORY_SERVICE, groupHistoryService, { logRegistration: false });
+    container.registerInstance(DITokens.THREAD_SERVICE, threadService, { logRegistration: false });
+    container.registerInstance(
+      DITokens.OLLAMA_PRELIMINARY_ANALYSIS_SERVICE,
+      new OllamaPreliminaryAnalysisService(aiManager, promptManager),
+      { logRegistration: false },
+    );
+    // Use SearXNG-based preference knowledge when SearchService is available and enabled
+    const searchService = container.isRegistered(DITokens.SEARCH_SERVICE)
+      ? container.resolve<SearchService>(DITokens.SEARCH_SERVICE)
+      : undefined;
+    const preferenceKnowledge =
+      searchService?.isEnabled?.() === true
+        ? new SearXNGPreferenceKnowledgeService(searchService)
+        : new DefaultPreferenceKnowledgeService();
+    container.registerInstance(DITokens.PREFERENCE_KNOWLEDGE_SERVICE, preferenceKnowledge, {
+      logRegistration: false,
+    });
+    container.registerInstance(
+      DITokens.PROACTIVE_THREAD_PERSISTENCE_SERVICE,
+      new DefaultProactiveThreadPersistenceService(databaseManager),
+      { logRegistration: false },
+    );
+    container.registerInstance(
+      DITokens.THREAD_CONTEXT_COMPRESSION_SERVICE,
+      new ThreadContextCompressionService(threadService, summarizeService, promptManager),
+      { logRegistration: false },
+    );
+
+    container.registerSingleton(DITokens.PROACTIVE_CONVERSATION_SERVICE, ProactiveConversationService);
+    const proactiveConversationService = container.resolve<ProactiveConversationService>(
+      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+    );
+    const threadServiceResolved = container.resolve<ThreadService>(DITokens.THREAD_SERVICE);
+    return { threadService: threadServiceResolved, proactiveConversationService };
   }
 
   /**

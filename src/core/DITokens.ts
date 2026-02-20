@@ -19,6 +19,13 @@ export const DITokens = {
   HEALTH_CHECK_MANAGER: 'HealthCheckManager',
   THREAD_SERVICE: 'ThreadService',
   PROACTIVE_CONVERSATION_SERVICE: 'ProactiveConversationService',
+  MESSAGE_API: 'MessageAPI',
+  SUMMARIZE_SERVICE: 'SummarizeService',
+  GROUP_HISTORY_SERVICE: 'GroupHistoryService',
+  OLLAMA_PRELIMINARY_ANALYSIS_SERVICE: 'OllamaPreliminaryAnalysisService',
+  PREFERENCE_KNOWLEDGE_SERVICE: 'PreferenceKnowledgeService',
+  PROACTIVE_THREAD_PERSISTENCE_SERVICE: 'ProactiveThreadPersistenceService',
+  THREAD_CONTEXT_COMPRESSION_SERVICE: 'ThreadContextCompressionService',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];
