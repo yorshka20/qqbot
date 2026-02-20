@@ -8,6 +8,7 @@ import type { ProtocolName } from '@/core/config/protocol';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
 import type { GroupHistoryService } from './GroupHistoryService';
+import type { GroupMessageEntry } from './GroupHistoryService';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 import type { ProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
 import type { ThreadContextCompressionService } from './ThreadContextCompressionService';
@@ -192,9 +193,14 @@ export class ProactiveConversationService {
 
     if (replyInExisting && replyInExisting.groupId === groupId) {
       this.threadService.setCurrentThread(groupId, replyInExisting.threadId);
-      // messageIds are indices into filteredEntries (same list we sent to analysis).
+      // messageIds are indices into filteredEntries. When analysis omits messageIds, append only messages that are strictly newer than the thread's last message (trigger messages only).
+      const messageIdsToUse = this.resolveMessageIdsForReply(
+        replyInExisting,
+        filteredEntries,
+        result.messageIds,
+      );
       this.threadService.appendGroupMessages(replyInExisting.threadId, filteredEntries, {
-        messageIds: result.messageIds?.length ? result.messageIds : undefined,
+        messageIds: messageIdsToUse.length ? messageIdsToUse : undefined,
       });
       await this.replyInThread(
         replyInExisting.threadId,
@@ -207,9 +213,34 @@ export class ProactiveConversationService {
     }
 
     if (result.createNew || activeThreads.length === 0) {
-      await this.joinWithNewThread(groupId, groupIdNum, preferenceKey, recentMessagesText, topicOrQuery);
+      await this.joinWithNewThread(groupId, groupIdNum, preferenceKey, filteredEntries, topicOrQuery);
     }
     this.scheduleThreadCompression(groupId);
+  }
+
+  /**
+   * Resolve which message indices to append when replying in an existing thread.
+   * When analysis returns messageIds, use them. Otherwise append only entries strictly newer than the thread's last message (trigger messages only), so all trigger messages are in context even with multiple consecutive runs.
+   */
+  private resolveMessageIdsForReply(
+    thread: { messages: Array<{ createdAt: Date }>; lastActivityAt: Date },
+    filteredEntries: GroupMessageEntry[],
+    messageIdsFromAnalysis: string[] | undefined,
+  ): string[] {
+    if (messageIdsFromAnalysis?.length) {
+      return messageIdsFromAnalysis;
+    }
+    const lastMsg = thread.messages[thread.messages.length - 1];
+    const lastTime = lastMsg
+      ? new Date(lastMsg.createdAt).getTime()
+      : new Date(thread.lastActivityAt).getTime();
+    return filteredEntries
+      .map((e, i) => ({
+        i,
+        t: (e.createdAt instanceof Date ? e.createdAt : new Date(e.createdAt)).getTime(),
+      }))
+      .filter(({ t }) => t > lastTime)
+      .map(({ i }) => String(i));
   }
 
   /**
@@ -239,17 +270,20 @@ export class ProactiveConversationService {
     }
   }
 
+  /**
+   * Create a new thread and send one proactive reply. Uses the same filteredEntries for both thread initial context and LLM prompt (no duplicate fetch).
+   */
   private async joinWithNewThread(
     groupId: string,
     groupIdNum: number,
     preferenceKey: string,
-    recentMessagesText: string,
+    filteredEntries: GroupMessageEntry[],
     topicOrQuery: string,
   ): Promise<void> {
     // use preference.full for generating proactive reply
     const preferenceText = this.promptManager.render(`${preferenceKey}.full`, {});
-    const entries = await this.groupHistoryService.getRecentMessages(groupId, RECENT_MESSAGES_LIMIT);
-    const thread = this.threadService.create(groupId, preferenceKey, entries);
+    const thread = this.threadService.create(groupId, preferenceKey, filteredEntries);
+    const threadContextText = this.groupHistoryService.formatAsText(filteredEntries);
     // retrieve context from preference knowledge service
     const retrievedChunks = await this.preferenceKnowledge.retrieve(preferenceKey, topicOrQuery);
     // add extra section to template if retrieved chunks are available
@@ -258,7 +292,7 @@ export class ProactiveConversationService {
       : '';
     const replyText = await this.aiService.generateProactiveReply(
       preferenceText,
-      recentMessagesText,
+      threadContextText,
       groupId,
       retrievedContext,
       this.analysisProviderName,
