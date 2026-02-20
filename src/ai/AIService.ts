@@ -101,12 +101,14 @@ export class AIService {
    * Generate a single proactive reply for group participation.
    * Phase 2: optional retrievedContext (RAG chunks) is injected into the prompt when provided.
    * Used by ProactiveConversationService when the bot decides to join.
+   * @param providerName - Optional LLM provider (e.g. "ollama", "doubao"); when set, reply uses this provider.
    */
   async generateProactiveReply(
     preferenceText: string,
     threadContextText: string,
     sessionId?: string,
     retrievedContext?: string,
+    providerName?: string,
   ): Promise<string> {
     const prompt = this.promptManager.render('llm.proactive_reply', {
       preferenceText,
@@ -117,7 +119,7 @@ export class AIService {
       temperature: 0.7,
       maxTokens: 2000,
       sessionId,
-    });
+    }, providerName);
     return (response.text || '').trim();
   }
 

@@ -71,6 +71,7 @@ export class OllamaPreliminaryAnalysisService {
       logger.debug(`[OllamaPreliminaryAnalysisService] Provider "${providerName}" not available`);
       return { shouldJoin: false };
     }
+    logger.debug(`[OllamaPreliminaryAnalysisService] Using provider "${providerName}" for analysis`);
 
     let prompt: string;
     try {
@@ -89,6 +90,7 @@ export class OllamaPreliminaryAnalysisService {
       const response = await llm.generate(prompt, {
         temperature: 0.3,
         maxTokens: 500,
+        reasoningEffort: 'minimal', // no reasoning for quick response.
       });
       const text = (response.text || '').trim();
       return this.parseJsonResult(text);
@@ -121,6 +123,7 @@ export class OllamaPreliminaryAnalysisService {
       logger.debug(`[OllamaPreliminaryAnalysisService] Provider "${providerName}" not available`);
       return { shouldJoin: false };
     }
+    logger.debug(`[OllamaPreliminaryAnalysisService] Using provider "${providerName}" for multi-thread analysis`);
 
     const threadsDescription = threads
       .map(

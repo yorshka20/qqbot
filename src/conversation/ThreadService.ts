@@ -5,10 +5,11 @@ import { randomUUID } from 'node:crypto';
 import type { GroupMessageEntry } from './GroupHistoryService';
 
 /**
- * Whether content is readable text for thread context.
- * Skips empty and non-text-only messages (record, image, video, file, etc.) so they are not included in thread context.
+ * Whether content is readable text for thread/analysis context.
+ * Skips empty and non-text-only messages (record, image, video, file, etc.) so they are not included in thread or analysis.
+ * Exported for use when building analysis input (ProactiveConversationService).
  */
-function isReadableTextForThread(content: string): boolean {
+export function isReadableTextForThread(content: string): boolean {
   const t = content.trim();
   if (t === '') return false;
   // Skip content that is only media/placeholder (e.g. [Image:...], [Record:5s], [Video:...], [File:...])

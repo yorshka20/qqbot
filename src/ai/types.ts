@@ -30,6 +30,7 @@ export interface AIGenerateOptions {
    * Set to true if you need the reasoning content (e.g., for task analysis or debugging)
    */
   includeReasoning?: boolean;
+  reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
 }
 
 /**

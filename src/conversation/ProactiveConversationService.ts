@@ -11,7 +11,7 @@ import type { GroupHistoryService } from './GroupHistoryService';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 import type { ProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
 import type { ThreadContextCompressionService } from './ThreadContextCompressionService';
-import type { ThreadService } from './ThreadService';
+import { isReadableTextForThread, type ThreadService } from './ThreadService';
 
 export interface ProactiveGroupConfig {
   groupId: string;
@@ -131,10 +131,12 @@ export class ProactiveConversationService {
 
     const activeThreads = this.threadService.getActiveThreads(groupId);
     const recentEntries = await this.groupHistoryService.getRecentMessages(groupId, RECENT_MESSAGES_LIMIT);
+    // Filter to readable-only for analysis input (so [Record], [Image]-only etc. are not sent to LLM).
+    const filteredEntries = recentEntries.filter((e) => isReadableTextForThread(e.content));
     const recentMessagesText =
       activeThreads.length > 0
-        ? this.groupHistoryService.formatAsTextWithIds(recentEntries)
-        : this.groupHistoryService.formatAsText(recentEntries);
+        ? this.groupHistoryService.formatAsTextWithIds(filteredEntries)
+        : this.groupHistoryService.formatAsText(filteredEntries);
 
     const analysisOptions = { providerName: this.analysisProviderName };
     let result: Awaited<ReturnType<typeof this.ollamaAnalysis.analyze>>;
@@ -190,8 +192,9 @@ export class ProactiveConversationService {
 
     if (replyInExisting && replyInExisting.groupId === groupId) {
       this.threadService.setCurrentThread(groupId, replyInExisting.threadId);
-      this.threadService.appendGroupMessages(replyInExisting.threadId, recentEntries, {
-        messageIds: result.messageIds,
+      // messageIds are indices into filteredEntries (same list we sent to analysis).
+      this.threadService.appendGroupMessages(replyInExisting.threadId, filteredEntries, {
+        messageIds: result.messageIds?.length ? result.messageIds : undefined,
       });
       await this.replyInThread(
         replyInExisting.threadId,
@@ -258,6 +261,7 @@ export class ProactiveConversationService {
       recentMessagesText,
       groupId,
       retrievedContext,
+      this.analysisProviderName,
     );
     if (!replyText) {
       logger.warn('[ProactiveConversationService] Empty proactive reply');
@@ -294,6 +298,7 @@ export class ProactiveConversationService {
       contextText,
       thread.groupId,
       retrievedContext,
+      this.analysisProviderName,
     );
     if (!replyText) return;
     await this.sendGroupMessage(groupIdNum, replyText);

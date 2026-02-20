@@ -107,7 +107,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     const model = (this.config.model || 'doubao-seed-1-6-lite-251015') as string;
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
-    const reasoningEffort = this.config.reasoningEffort || 'medium';
+    const reasoningEffort = options?.reasoningEffort ?? this.config.reasoningEffort ?? 'medium';
 
     try {
       logger.debug(`[DoubaoProvider] Generating with model: ${model}`);
@@ -139,7 +139,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
         frequency_penalty: options?.frequencyPenalty,
         presence_penalty: options?.presencePenalty,
         stop: options?.stop,
-        reasoning_effort: reasoningEffort,
+        reasoning_effort: options?.includeReasoning ? reasoningEffort : 'minimal',
       });
       // Extract reasoning_content and content
       const message = response.choices[0]?.message as DoubaoChatCompletionMessage;
@@ -176,10 +176,10 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
 
       const usage = response.usage
         ? {
-            promptTokens: response.usage.prompt_tokens,
-            completionTokens: response.usage.completion_tokens,
-            totalTokens: response.usage.total_tokens,
-          }
+          promptTokens: response.usage.prompt_tokens,
+          completionTokens: response.usage.completion_tokens,
+          totalTokens: response.usage.total_tokens,
+        }
         : undefined;
 
       return {
@@ -415,10 +415,10 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
 
       const usage = response.usage
         ? {
-            promptTokens: response.usage.prompt_tokens,
-            completionTokens: response.usage.completion_tokens,
-            totalTokens: response.usage.total_tokens,
-          }
+          promptTokens: response.usage.prompt_tokens,
+          completionTokens: response.usage.completion_tokens,
+          totalTokens: response.usage.total_tokens,
+        }
         : undefined;
 
       return {

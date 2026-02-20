@@ -51,10 +51,12 @@ export class ProactiveConversationPlugin extends PluginBase {
         `[ProactiveConversationPlugin] Enabled for groups: ${Array.from(this.groupIds).join(', ')}`,
       );
     }
-    if (pluginConfig?.analysisProvider != null && pluginConfig.analysisProvider !== '') {
-      this.proactiveConversationService.setAnalysisProvider(pluginConfig.analysisProvider);
-      logger.info(`[ProactiveConversationPlugin] Analysis provider set: ${pluginConfig.analysisProvider}`);
-    }
+    // Always set provider so config is applied (analysis + final reply use this; default ollama).
+    const analysisProvider = (pluginConfig?.analysisProvider != null && pluginConfig.analysisProvider !== '')
+      ? pluginConfig.analysisProvider
+      : 'ollama';
+    this.proactiveConversationService.setAnalysisProvider(analysisProvider);
+    logger.info(`[ProactiveConversationPlugin] Analysis and reply provider: ${analysisProvider}`);
   }
 
   @Hook({

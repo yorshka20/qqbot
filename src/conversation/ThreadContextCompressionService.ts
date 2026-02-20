@@ -67,10 +67,11 @@ export class ThreadContextCompressionService {
       const conversationText = this.formatSegmentForSummarize(segment);
       const prompt = this.promptManager.render('llm.summarize', { conversationText });
 
+      // Summarize always uses Ollama (local, no latency to third-party).
       const response = await this.llmService.generate(prompt, {
         temperature: 0.5,
         maxTokens: 200,
-      });
+      }, 'ollama');
 
       const summaryText = (response.text || '').trim();
       if (!summaryText) {
