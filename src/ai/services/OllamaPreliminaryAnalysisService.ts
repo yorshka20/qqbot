@@ -20,6 +20,8 @@ export interface PreliminaryAnalysisResult {
   messageIds?: string[];
   /** When shouldJoin and (createNew or no replyInThreadId): which preference key to use (must be one of the listed ones). */
   preferenceKey?: string;
+  /** When shouldJoin: optional search queries for supplementary knowledge. Empty or absent = no search. Non-empty = run these queries once in retrieve (no extra LLM). */
+  searchQueries?: string[];
 }
 
 /** Input for multi-thread analysis: one entry per active thread */
@@ -191,6 +193,15 @@ export class OllamaPreliminaryAnalysisService {
         typeof obj.preferenceKey === 'string' && obj.preferenceKey.trim()
           ? obj.preferenceKey.trim()
           : undefined;
+      let searchQueries: string[] | undefined;
+      if (Array.isArray(obj.searchQueries)) {
+        searchQueries = obj.searchQueries
+          .map((x) => (typeof x === 'string' ? x.trim() : null))
+          .filter((x): x is string => x != null && x.length > 0);
+        if (searchQueries.length === 0) {
+          searchQueries = undefined;
+        }
+      }
       return {
         shouldJoin,
         reason,
@@ -200,6 +211,7 @@ export class OllamaPreliminaryAnalysisService {
         threadShouldEndId,
         messageIds: messageIds?.length ? messageIds : undefined,
         preferenceKey,
+        searchQueries,
       };
     } catch {
       logger.debug('[OllamaPreliminaryAnalysisService] Failed to parse JSON');

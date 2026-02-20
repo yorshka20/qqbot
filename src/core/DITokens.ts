@@ -12,6 +12,7 @@ export const DITokens = {
   API_CLIENT: 'APIClient',
   CONFIG: 'Config',
   PROMPT_MANAGER: 'PromptManager',
+  LLM_SERVICE: 'LLMService',
   PLUGIN_MANAGER: 'PluginManager',
   CONVERSATION_CONFIG_SERVICE: 'ConversationConfigService',
   GLOBAL_CONFIG_MANAGER: 'GlobalConfigManager',

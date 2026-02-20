@@ -35,8 +35,7 @@ import { GroupHistoryService } from './GroupHistoryService';
 import { Lifecycle } from './Lifecycle';
 import { MessagePipeline } from './MessagePipeline';
 import {
-  DefaultPreferenceKnowledgeService,
-  SearXNGPreferenceKnowledgeService,
+  SearXNGPreferenceKnowledgeService
 } from './PreferenceKnowledgeService';
 import { ProactiveConversationService } from './ProactiveConversationService';
 import { DefaultProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
@@ -126,6 +125,7 @@ export class ConversationInitializer {
     // Phase 4: Create LLMService and ContextManager
     const providerSelector = new ProviderSelector(services.aiManager, conversationConfigService);
     const llmService = new LLMService(services.aiManager, providerSelector);
+    container.registerInstance(DITokens.LLM_SERVICE, llmService, { logRegistration: false });
 
     const memoryConfig = config.getContextMemoryConfig();
     const useSummary = memoryConfig?.useSummary ?? false;
@@ -314,14 +314,10 @@ export class ConversationInitializer {
       new OllamaPreliminaryAnalysisService(aiManager, promptManager),
       { logRegistration: false },
     );
-    // Use SearXNG-based preference knowledge when SearchService is available and enabled
-    const searchService = container.isRegistered(DITokens.SEARCH_SERVICE)
-      ? container.resolve<SearchService>(DITokens.SEARCH_SERVICE)
-      : undefined;
-    const preferenceKnowledge =
-      searchService?.isEnabled?.() === true
-        ? new SearXNGPreferenceKnowledgeService(searchService)
-        : new DefaultPreferenceKnowledgeService();
+    // Use SearXNG-based preference knowledge when SearchService is available and enabled.
+    // Search decision (whether/what to search) is done at analysis stage; retrieve() only executes queries.
+    const searchService = container.resolve<SearchService>(DITokens.SEARCH_SERVICE);
+    const preferenceKnowledge = new SearXNGPreferenceKnowledgeService(searchService)
     container.registerInstance(DITokens.PREFERENCE_KNOWLEDGE_SERVICE, preferenceKnowledge, {
       logRegistration: false,
     });

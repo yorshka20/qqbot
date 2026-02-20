@@ -7,10 +7,9 @@ import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { DITokens } from '@/core/DITokens';
 import type { ProtocolName } from '@/core/config/protocol';
 import type { NormalizedMessageEvent } from '@/events/types';
-import { inject, injectable } from 'tsyringe';
 import { logger } from '@/utils/logger';
-import type { GroupHistoryService } from './GroupHistoryService';
-import type { GroupMessageEntry } from './GroupHistoryService';
+import { inject, injectable } from 'tsyringe';
+import type { GroupHistoryService, GroupMessageEntry } from './GroupHistoryService';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 import type { ProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
 import type { ThreadContextCompressionService } from './ThreadContextCompressionService';
@@ -39,6 +38,7 @@ export class ProactiveConversationService {
   private analysisProviderName = 'ollama';
   private timersByGroup = new Map<string, ReturnType<typeof setTimeout>>();
   private preferredProtocol: ProtocolName = 'milky';
+  private searchLimit = 8;
 
   constructor(
     @inject(DITokens.GROUP_HISTORY_SERVICE) private groupHistoryService: GroupHistoryService,
@@ -210,13 +210,21 @@ export class ProactiveConversationService {
         groupIdNum,
         preferenceKey,
         topicOrQuery,
+        result.searchQueries,
       );
       this.scheduleThreadCompression(groupId);
       return;
     }
 
     if (result.createNew || activeThreads.length === 0) {
-      await this.joinWithNewThread(groupId, groupIdNum, preferenceKey, filteredEntries, topicOrQuery);
+      await this.joinWithNewThread(
+        groupId,
+        groupIdNum,
+        preferenceKey,
+        filteredEntries,
+        topicOrQuery,
+        result.searchQueries,
+      );
     }
     this.scheduleThreadCompression(groupId);
   }
@@ -282,13 +290,17 @@ export class ProactiveConversationService {
     preferenceKey: string,
     filteredEntries: GroupMessageEntry[],
     topicOrQuery: string,
+    searchQueries?: string[],
   ): Promise<void> {
     // use preference.full for generating proactive reply
     const preferenceText = this.promptManager.render(`${preferenceKey}.full`, {});
     const thread = this.threadService.create(groupId, preferenceKey, filteredEntries);
     const threadContextText = this.groupHistoryService.formatAsText(filteredEntries);
-    // retrieve context from preference knowledge service
-    const retrievedChunks = await this.preferenceKnowledge.retrieve(preferenceKey, topicOrQuery);
+    // retrieve context from preference knowledge service (search decision done at analysis stage)
+    const retrievedChunks = await this.preferenceKnowledge.retrieve(preferenceKey, topicOrQuery, {
+      limit: this.searchLimit,
+      searchQueries,
+    });
     // add extra section to template if retrieved chunks are available
     const retrievedContext = retrievedChunks.length
       ? `## 参考知识\n\n${retrievedChunks.join('\n\n')}`
@@ -317,6 +329,7 @@ export class ProactiveConversationService {
     groupIdNum: number,
     preferenceKey: string,
     topicOrQuery: string,
+    searchQueries?: string[],
   ): Promise<void> {
     const thread = this.threadService.getThread(threadId);
     if (!thread) return;
@@ -324,8 +337,11 @@ export class ProactiveConversationService {
     const contextText = this.threadService.getContextFormatted(threadId);
     // use preference.full for generating proactive reply
     const preferenceText = this.promptManager.render(`${preferenceKey}.full`, {});
-    // retrieve context from preference knowledge service
-    const retrievedChunks = await this.preferenceKnowledge.retrieve(preferenceKey, topicOrQuery);
+    // retrieve context from preference knowledge service (search decision done at analysis stage)
+    const retrievedChunks = await this.preferenceKnowledge.retrieve(preferenceKey, topicOrQuery, {
+      limit: this.searchLimit,
+      searchQueries,
+    });
     // add extra section to template if retrieved chunks are available
     const retrievedContext = retrievedChunks.length
       ? `## 参考知识\n\n${retrievedChunks.join('\n\n')}`
