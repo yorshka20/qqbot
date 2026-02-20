@@ -96,6 +96,9 @@ export class ProactiveConversationPlugin extends PluginBase {
     const userId = context.message?.userId?.toString();
     if (botSelfId && userId === botSelfId) return true;
 
+    // Do not run proactive analysis when the message was @ bot: that message already gets a direct reply.
+    if (context.metadata.get('triggeredByAtBot') === true) return true;
+
     this.proactiveConversationService.scheduleForGroup(groupId);
     return true;
   }

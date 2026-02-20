@@ -9,6 +9,8 @@ export interface GroupMessageEntry {
   content: string;
   isBotReply: boolean;
   createdAt: Date;
+  /** True when message was @ bot (direct reply already sent); used to mark in thread context. */
+  wasAtBot?: boolean;
 }
 
 /**
@@ -60,6 +62,7 @@ export class GroupHistoryService {
           content: msg.content,
           isBotReply: meta.isBotReply === true,
           createdAt: new Date(msg.createdAt),
+          wasAtBot: meta.wasAtBot === true,
         };
       });
     } catch (error) {
@@ -79,7 +82,8 @@ export class GroupHistoryService {
         const who = e.isBotReply ? 'Assistant' : `User<${e.userId}>`;
         const t = e.createdAt instanceof Date ? e.createdAt : new Date(e.createdAt);
         const timeStr = this.formatSimpleTime(t);
-        return `[id:${i}] ${timeStr} ${who}: ${e.content}`;
+        const atBotMark = !e.isBotReply && e.wasAtBot ? ' [用户@机器人，已针对性回复]' : '';
+        return `[id:${i}] ${timeStr} ${who}: ${e.content}${atBotMark}`;
       })
       .join('\n');
   }

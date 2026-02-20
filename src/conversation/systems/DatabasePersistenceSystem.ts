@@ -74,6 +74,9 @@ export class DatabasePersistenceSystem implements System {
         sender: message.sender,
         timestamp: message.timestamp,
       };
+      if (context.metadata.get('triggeredByAtBot') === true) {
+        metadata.wasAtBot = true;
+      }
 
       // Save Milky-specific fields
       if (message.protocol === 'milky') {

@@ -24,6 +24,8 @@ export interface ThreadMessage {
   createdAt: Date;
   /** When true, content is a summary of earlier messages (Phase 4 compression). */
   isSummary?: boolean;
+  /** When true, message was @ bot (already replied); shown in thread context for analysis. */
+  wasAtBot?: boolean;
 }
 
 export interface ProactiveThread {
@@ -61,6 +63,7 @@ export class ThreadService {
       content: m.content,
       isBotReply: m.isBotReply,
       createdAt: m.createdAt instanceof Date ? m.createdAt : new Date(m.createdAt),
+      wasAtBot: m.wasAtBot === true,
     }));
 
     const thread: ProactiveThread = {
@@ -172,6 +175,7 @@ export class ThreadService {
         content: e.content,
         isBotReply: e.isBotReply,
         createdAt: e.createdAt instanceof Date ? e.createdAt : new Date(e.createdAt),
+        wasAtBot: e.wasAtBot === true,
       });
       thread.lastActivityAt =
         e.createdAt instanceof Date ? e.createdAt : new Date(e.createdAt);
@@ -181,6 +185,7 @@ export class ThreadService {
   /**
    * Get thread context as formatted text (for prompts).
    * Summary messages (Phase 4) are rendered as "[Summary of earlier messages]: ...".
+   * User messages that were @ bot are marked with [用户@机器人，已针对性回复] so analysis can skip them.
    */
   getContextFormatted(threadId: string): string {
     const thread = this.threadById.get(threadId);
@@ -191,13 +196,15 @@ export class ThreadService {
           return `[Summary of earlier messages]: ${m.content}`;
         }
         const who = m.isBotReply ? 'Assistant' : `User<${m.userId}>`;
-        return `${m.createdAt.toLocaleTimeString()} ${who}: ${m.content}`;
+        const atBotMark = !m.isBotReply && m.wasAtBot ? ' [用户@机器人，已针对性回复]' : '';
+        return `${m.createdAt.toLocaleTimeString()} ${who}: ${m.content}${atBotMark}`;
       })
       .join('\n');
   }
 
   /**
    * Get thread context with [id:index] prefix per line for LLM topic-cleaning (output keepIndices).
+   * User messages that were @ bot are marked with [用户@机器人，已针对性回复].
    */
   getContextFormattedWithIndices(threadId: string): string {
     const thread = this.threadById.get(threadId);
@@ -208,7 +215,8 @@ export class ThreadService {
           return `[id:${i}] [Summary of earlier messages]: ${m.content}`;
         }
         const who = m.isBotReply ? 'Assistant' : `User<${m.userId}>`;
-        return `[id:${i}] ${m.createdAt.toLocaleTimeString()} ${who}: ${m.content}`;
+        const atBotMark = !m.isBotReply && m.wasAtBot ? ' [用户@机器人，已针对性回复]' : '';
+        return `[id:${i}] ${m.createdAt.toLocaleTimeString()} ${who}: ${m.content}${atBotMark}`;
       })
       .join('\n');
   }
