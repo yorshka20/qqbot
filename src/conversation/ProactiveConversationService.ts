@@ -111,7 +111,7 @@ export class ProactiveConversationService {
       return;
     }
     const preferenceText = preferenceParts.length
-      ? `## 可选人设（仅可选用以下之一参与，且必须为当前群已配置的人设键名）\n\n${preferenceParts.join('\n\n')}`
+      ? preferenceParts.join('\n\n')
       : '';
 
     const groupIdNum = parseInt(groupId, 10);
