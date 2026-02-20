@@ -25,7 +25,7 @@ export class ThreadContextCompressionService {
     private threadService: ThreadService,
     private summarizeService: SummarizeService,
     private promptManager?: PromptManager,
-  ) { }
+  ) {}
 
   /**
    * Schedule compression check for all active threads in the group (async, non-blocking).
@@ -61,7 +61,7 @@ export class ThreadContextCompressionService {
     }
     let preferenceSummary = '';
     try {
-      preferenceSummary = this.promptManager.render(`${preferenceKey}.summary`, {});
+      preferenceSummary = this.promptManager.render(`${preferenceKey}.summary`, {}, { skipBase: true });
     } catch {
       return;
     }
@@ -110,7 +110,7 @@ export class ThreadContextCompressionService {
       if (!summaryText) {
         logger.warn(
           `[ThreadContextCompressionService] Empty summary for thread ${threadId}, skipping replace | ` +
-          `segmentLength=${segmentLength} conversationTextLength=${conversationText.length}`,
+            `segmentLength=${segmentLength} conversationTextLength=${conversationText.length}`,
         );
         return;
       }

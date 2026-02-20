@@ -24,6 +24,8 @@ const DEBOUNCE_MS = 1_000;
 const RECENT_MESSAGES_LIMIT = 30;
 /** Phase 5: end thread when no activity in this many ms (e.g. 10 minutes). */
 const THREAD_IDLE_TIMEOUT_MS = 10 * 60 * 1_000;
+/** Do not end the current thread if it had activity within this window (avoids ending the thread we just replied in). */
+const RECENT_ACTIVITY_GRACE_MS = 2 * 60 * 1_000;
 
 /**
  * Proactive Conversation Service (Phase 1)
@@ -39,6 +41,8 @@ export class ProactiveConversationService {
   private timersByGroup = new Map<string, ReturnType<typeof setTimeout>>();
   private preferredProtocol: ProtocolName = 'milky';
   private searchLimit = 8;
+  /** Per-thread reply serialization: in-flight reply promise per threadId; resolved when send + append done (or skip). */
+  private replyInProgressByThread = new Map<string, Promise<void>>();
 
   constructor(
     @inject(DITokens.GROUP_HISTORY_SERVICE) private groupHistoryService: GroupHistoryService,
@@ -66,7 +70,9 @@ export class ProactiveConversationService {
     }
     const total = this.groupConfig.size;
     const withMulti = [...this.groupConfig.values()].filter((arr) => arr.length > 1).length;
-    logger.info(`[ProactiveConversationService] Group config set: ${total} group(s)${withMulti ? `, ${withMulti} with multiple preferences` : ''}`);
+    logger.info(
+      `[ProactiveConversationService] Group config set: ${total} group(s)${withMulti ? `, ${withMulti} with multiple preferences` : ''}`,
+    );
   }
 
   /**
@@ -117,16 +123,14 @@ export class ProactiveConversationService {
     const preferenceParts: string[] = [];
     try {
       for (const key of preferenceKeys) {
-        const summary = this.promptManager.render(`${key}.summary`, {});
+        const summary = this.promptManager.render(`${key}.summary`, {}, { skipBase: true });
         preferenceParts.push(`### ${key}\n${summary}`);
       }
     } catch (err) {
       logger.warn(`[ProactiveConversationService] Failed to render preference summaries:`, err);
       return;
     }
-    const preferenceText = preferenceParts.length
-      ? preferenceParts.join('\n\n')
-      : '';
+    const preferenceText = preferenceParts.length ? preferenceParts.join('\n\n') : '';
 
     const groupIdNum = parseInt(groupId, 10);
     if (isNaN(groupIdNum)) {
@@ -153,7 +157,12 @@ export class ProactiveConversationService {
         preferenceKey: t.preferenceKey,
         contextText: this.threadService.getContextFormatted(t.threadId),
       }));
-      result = await this.ollamaAnalysis.analyzeWithThreads(preferenceText, recentMessagesText, threadsForAnalysis, analysisOptions);
+      result = await this.ollamaAnalysis.analyzeWithThreads(
+        preferenceText,
+        recentMessagesText,
+        threadsForAnalysis,
+        analysisOptions,
+      );
     }
 
     logger.debug(`[ProactiveConversationService] Ollama analysis result: ${JSON.stringify(result)}`);
@@ -161,9 +170,19 @@ export class ProactiveConversationService {
     if (result.threadShouldEndId) {
       const threadToEnd = this.threadService.getThread(result.threadShouldEndId);
       if (threadToEnd) {
-        await this.threadPersistence.saveEndedThread(threadToEnd);
+        const isCurrentThread = this.threadService.getCurrentThreadId(threadToEnd.groupId) === result.threadShouldEndId;
+        const lastActivityAge = Date.now() - threadToEnd.lastActivityAt.getTime();
+        if (isCurrentThread && lastActivityAge < RECENT_ACTIVITY_GRACE_MS) {
+          logger.debug(
+            `[ProactiveConversationService] Skip ending current thread (recent activity ${Math.round(lastActivityAge / 1000)}s ago) | threadId=${result.threadShouldEndId} | groupId=${threadToEnd.groupId}`,
+          );
+        } else {
+          await this.threadPersistence.saveEndedThread(threadToEnd);
+          this.threadService.endThread(result.threadShouldEndId);
+        }
+      } else {
+        this.threadService.endThread(result.threadShouldEndId);
       }
-      this.threadService.endThread(result.threadShouldEndId);
     }
 
     if (!result.shouldJoin) {
@@ -178,40 +197,67 @@ export class ProactiveConversationService {
     if (replyInExisting && replyInExisting.groupId === groupId) {
       preferenceKey = replyInExisting.preferenceKey;
       if (!preferenceKeys.includes(preferenceKey)) {
-        logger.warn(`[ProactiveConversationService] replyInThread preferenceKey not in group config, skipping join | groupId=${groupId} | preferenceKey=${preferenceKey}`);
+        logger.warn(
+          `[ProactiveConversationService] replyInThread preferenceKey not in group config, skipping join | groupId=${groupId} | preferenceKey=${preferenceKey}`,
+        );
         this.scheduleThreadCompression(groupId);
         return;
       }
     } else {
       preferenceKey = (result.preferenceKey ?? '').trim();
       if (!preferenceKey || !preferenceKeys.includes(preferenceKey)) {
-        logger.warn(`[ProactiveConversationService] preferenceKey not configured for group, skipping join | groupId=${groupId} | preferenceKey=${preferenceKey} | allowed=${preferenceKeys.join(',')}`);
+        logger.warn(
+          `[ProactiveConversationService] preferenceKey not configured for group, skipping join | groupId=${groupId} | preferenceKey=${preferenceKey} | allowed=${preferenceKeys.join(',')}`,
+        );
         this.scheduleThreadCompression(groupId);
         return;
       }
     }
 
-    logger.info(`[ProactiveConversationService] Ollama: shouldJoin=true | groupId=${groupId} | preferenceKey=${preferenceKey} | result=${JSON.stringify(result)}`);
+    logger.info(
+      `[ProactiveConversationService] Ollama: shouldJoin=true | groupId=${groupId} | preferenceKey=${preferenceKey} | result=${JSON.stringify(result)}`,
+    );
 
     const topicOrQuery = result.topic?.trim() || '';
 
     if (replyInExisting && replyInExisting.groupId === groupId) {
-      this.threadService.setCurrentThread(groupId, replyInExisting.threadId);
-      const messageIdsToUse = this.resolveMessageIdsForReply(
-        replyInExisting,
-        filteredEntries,
-        result.messageIds,
-      );
-      this.threadService.appendGroupMessages(replyInExisting.threadId, filteredEntries, {
-        messageIds: messageIdsToUse.length ? messageIdsToUse : undefined,
+      const threadId = replyInExisting.threadId;
+      const previousReplyPromise = this.replyInProgressByThread.get(threadId);
+      if (previousReplyPromise) {
+        await previousReplyPromise;
+      }
+      let resolveReplyDone: () => void;
+      const replyDonePromise = new Promise<void>((r) => {
+        resolveReplyDone = r;
       });
-      await this.replyInThread(
-        replyInExisting.threadId,
-        groupIdNum,
-        preferenceKey,
-        topicOrQuery,
-        result.searchQueries,
-      );
+      this.replyInProgressByThread.set(threadId, replyDonePromise);
+      try {
+        const threadNow = this.threadService.getThread(threadId);
+        if (!threadNow) {
+          logger.debug(
+            `[ProactiveConversationService] Skip reply: thread not found after wait | threadId=${threadId} | groupId=${groupId}`,
+          );
+          return;
+        }
+        if (threadNow.messages.length > 0) {
+          const lastMsg = threadNow.messages[threadNow.messages.length - 1];
+          if (lastMsg.isBotReply) {
+            logger.debug(
+              `[ProactiveConversationService] Skip reply: thread last message is already bot | threadId=${threadId} | groupId=${groupId}`,
+            );
+            return;
+          }
+        }
+        this.threadService.setCurrentThread(groupId, threadId);
+        const messageIdsToUse = this.resolveMessageIdsForReply(replyInExisting, filteredEntries, result.messageIds);
+        this.threadService.appendGroupMessages(threadId, filteredEntries, {
+          messageIds: messageIdsToUse.length ? messageIdsToUse : undefined,
+        });
+        await this.replyInThread(threadId, groupIdNum, preferenceKey, topicOrQuery, result.searchQueries);
+      } finally {
+        this.replyInProgressByThread.delete(threadId);
+        resolveReplyDone!();
+      }
       this.scheduleThreadCompression(groupId);
       return;
     }
@@ -242,9 +288,7 @@ export class ProactiveConversationService {
       return messageIdsFromAnalysis;
     }
     const lastMsg = thread.messages[thread.messages.length - 1];
-    const lastTime = lastMsg
-      ? new Date(lastMsg.createdAt).getTime()
-      : new Date(thread.lastActivityAt).getTime();
+    const lastTime = lastMsg ? new Date(lastMsg.createdAt).getTime() : new Date(thread.lastActivityAt).getTime();
     return filteredEntries
       .map((e, i) => ({
         i,
@@ -293,7 +337,7 @@ export class ProactiveConversationService {
     searchQueries?: string[],
   ): Promise<void> {
     // use preference.full for generating proactive reply
-    const preferenceText = this.promptManager.render(`${preferenceKey}.full`, {});
+    const preferenceText = this.promptManager.render(`${preferenceKey}.full`, {}, { skipBase: true });
     const thread = this.threadService.create(groupId, preferenceKey, filteredEntries);
     const threadContextText = this.groupHistoryService.formatAsText(filteredEntries);
     // retrieve context from preference knowledge service (search decision done at analysis stage)
@@ -302,9 +346,7 @@ export class ProactiveConversationService {
       searchQueries,
     });
     // add extra section to template if retrieved chunks are available
-    const retrievedContext = retrievedChunks.length
-      ? `## 参考知识\n\n${retrievedChunks.join('\n\n')}`
-      : '';
+    const retrievedContext = retrievedChunks.length ? `## 参考知识\n\n${retrievedChunks.join('\n\n')}` : '';
     const replyText = await this.aiService.generateProactiveReply(
       preferenceText,
       threadContextText,
@@ -336,16 +378,14 @@ export class ProactiveConversationService {
     // Thread context already includes the new message(s); we appended them in runAnalysis when we decided to reply here.
     const contextText = this.threadService.getContextFormatted(threadId);
     // use preference.full for generating proactive reply
-    const preferenceText = this.promptManager.render(`${preferenceKey}.full`, {});
+    const preferenceText = this.promptManager.render(`${preferenceKey}.full`, {}, { skipBase: true });
     // retrieve context from preference knowledge service (search decision done at analysis stage)
     const retrievedChunks = await this.preferenceKnowledge.retrieve(preferenceKey, topicOrQuery, {
       limit: this.searchLimit,
       searchQueries,
     });
     // add extra section to template if retrieved chunks are available
-    const retrievedContext = retrievedChunks.length
-      ? `## 参考知识\n\n${retrievedChunks.join('\n\n')}`
-      : '';
+    const retrievedContext = retrievedChunks.length ? `## 参考知识\n\n${retrievedChunks.join('\n\n')}` : '';
     const replyText = await this.aiService.generateProactiveReply(
       preferenceText,
       contextText,

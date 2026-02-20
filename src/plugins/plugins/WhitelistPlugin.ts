@@ -114,7 +114,8 @@ export class WhitelistPlugin extends PluginBase {
         return true;
       }
 
-      // User @bot: allow reply task. If there is an active thread, mark so reply uses thread context.
+      // User @bot: allow reply task. Mark so proactive analysis can skip replying to this message (it gets direct reply).
+      context.metadata.set('triggeredByAtBot', true);
       if (groupId && this.threadService.hasActiveThread(groupId)) {
         context.metadata.set('inProactiveThread', true);
       }
