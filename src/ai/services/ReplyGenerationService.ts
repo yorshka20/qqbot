@@ -1,11 +1,11 @@
 // Reply Generation Service - provides AI reply generation capabilities
 
+import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { replaceReply, replaceReplyWithSegments, setReply } from '@/context/HookContextHelpers';
+import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { SearchService } from '@/search';
 import type { TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
@@ -34,7 +34,7 @@ export class ReplyGenerationService {
     private searchService?: SearchService,
     private messageAPI?: MessageAPI,
     private databaseManager?: DatabaseManager,
-  ) {}
+  ) { }
 
   /**
    * Generate AI reply for user message
@@ -228,7 +228,7 @@ export class ReplyGenerationService {
       otherTaskResults.delete('search');
       const taskResultsSummary = this.buildTaskResultsSummary(otherTaskResults);
 
-      // 4. Perform recursive search (max 3 iterations)
+      // 4. Perform recursive search (max 5 iterations)
       // Skip search when user provided images (vision path): answer should come from vision, not web search
       if (this.searchService && !hasImages) {
         accumulatedSearchResults = await this.performRecursiveSearch(
@@ -236,7 +236,7 @@ export class ReplyGenerationService {
           taskResultsSummary,
           accumulatedSearchResults,
           sessionId,
-          3, // Maximum iterations
+          this.MAX_SEARCH_ITERATIONS,
         );
       }
 
@@ -280,13 +280,13 @@ export class ReplyGenerationService {
   /**
    * Perform recursive search with AI decision making
    * AI analyzes search results and decides if more search is needed
-   * Maximum 3 iterations
+   * Maximum 5 iterations
    *
    * @param userMessage - Original user message
    * @param taskResultsSummary - Summary of task execution results
    * @param existingSearchResults - Previously accumulated search results
    * @param sessionId - Session ID for provider selection
-   * @param maxIterations - Maximum number of search iterations (default: 3)
+   * @param maxIterations - Maximum number of search iterations (default: 5)
    * @returns Accumulated search results
    */
   private async performRecursiveSearch(
