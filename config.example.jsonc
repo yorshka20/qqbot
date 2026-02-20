@@ -161,7 +161,25 @@
             // "987654321": [2001, 2002]
           }
         }
-      }
+      },
+      // Proactive Conversation Plugin - Ollama analysis, thread, proactive reply (Phase 1)
+      {
+        "name": "proactiveConversation",
+        "enabled": true,
+        "config": {
+          "enabled": true,
+          "analysisProvider": "ollama", // optional: LLM for analysis/reply (default "ollama")
+          "groups": [
+            {
+              "groupId": "1",
+              "preferenceKey": "preference.blender"
+            }
+            // Multiple preferences per group: add more entries with same groupId
+            // { "groupId": "1", "preferenceKey": "preference.mihoyo" },
+            // { "groupId": "1", "preferenceKey": "preference.tech" }
+          ]
+        }
+      },
     ],
   },
   // Database configuration (required)

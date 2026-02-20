@@ -27,7 +27,7 @@ export class ProactiveConversationPlugin extends PluginBase {
   private groupIds = new Set<string>();
 
   private proactiveConversationService!: ProactiveConversationService;
-  private threadService!: ThreadService
+  private threadService!: ThreadService;
 
   async onInit(): Promise<void> {
     this.enabled = true;
@@ -35,7 +35,9 @@ export class ProactiveConversationPlugin extends PluginBase {
     // Get dependencies from DI container
     const container = getContainer();
     this.threadService = container.resolve<ThreadService>(DITokens.THREAD_SERVICE);
-    this.proactiveConversationService = container.resolve<ProactiveConversationService>(DITokens.PROACTIVE_CONVERSATION_SERVICE);
+    this.proactiveConversationService = container.resolve<ProactiveConversationService>(
+      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+    );
     if (!this.proactiveConversationService) {
       throw new Error('[ProactiveConversationPlugin] ProactiveConversationService not found');
     }
@@ -47,14 +49,13 @@ export class ProactiveConversationPlugin extends PluginBase {
     if (pluginConfig?.groups && Array.isArray(pluginConfig.groups)) {
       this.proactiveConversationService.setGroupConfig(pluginConfig.groups);
       this.groupIds = new Set(pluginConfig.groups.map((g) => g.groupId));
-      logger.info(
-        `[ProactiveConversationPlugin] Enabled for groups: ${Array.from(this.groupIds).join(', ')}`,
-      );
+      logger.info(`[ProactiveConversationPlugin] Enabled for groups: ${Array.from(this.groupIds).join(', ')}`);
     }
     // Always set provider so config is applied (analysis + final reply use this; default ollama).
-    const analysisProvider = (pluginConfig?.analysisProvider != null && pluginConfig.analysisProvider !== '')
-      ? pluginConfig.analysisProvider
-      : 'ollama';
+    const analysisProvider =
+      pluginConfig?.analysisProvider != null && pluginConfig.analysisProvider !== ''
+        ? pluginConfig.analysisProvider
+        : 'ollama';
     this.proactiveConversationService.setAnalysisProvider(analysisProvider);
     logger.info(`[ProactiveConversationPlugin] Analysis and reply provider: ${analysisProvider}`);
   }
