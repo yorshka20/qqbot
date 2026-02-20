@@ -110,13 +110,13 @@ export class TaskAnalyzer {
     // Render system prompt template
     const systemPrompt = this.promptManager.render('task.analyze.system', {
       taskTypesDescription,
-    });
+    }, { skipBase: true });
 
     // Render user prompt template
     const userPrompt = this.promptManager.render('task.analyze.user', {
       conversationHistory: historyText,
       userMessage: context.userMessage,
-    });
+    }, { skipBase: true });
 
     // Combine system and user prompts
     const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;

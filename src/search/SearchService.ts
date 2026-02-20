@@ -314,7 +314,7 @@ export class SearchService {
         existingInformation: 'None',
         taskResults: 'None',
         previousSearchResults: 'None',
-      });
+      }, { skipBase: true });
 
       const checkResponse = await llmService.generate(checkPrompt, {
         temperature: 0.3, // Lower temperature for more consistent judgment

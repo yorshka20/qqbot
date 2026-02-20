@@ -22,7 +22,7 @@ export class SummarizeService {
   constructor(
     private llmService: LLMService,
     private promptManager: PromptManager,
-  ) {}
+  ) { }
 
   /**
    * Summarize conversation text using llm.summarize template.
@@ -31,7 +31,7 @@ export class SummarizeService {
    * @returns Trimmed summary text, or empty string if LLM returned empty
    */
   async summarize(conversationText: string, options?: SummarizeOptions): Promise<string> {
-    const prompt = this.promptManager.render('llm.summarize', { conversationText });
+    const prompt = this.promptManager.render('llm.summarize', { conversationText }, { skipBase: true });
     const provider = options?.provider;
 
     const response = await this.llmService.generate(
