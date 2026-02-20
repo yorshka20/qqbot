@@ -10,7 +10,6 @@ import { Hook, Plugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 export interface ProactiveConversationPluginConfig {
-  enabled?: boolean;
   /** Groups that have proactive analysis enabled. Same groupId can appear multiple times with different preferenceKey (multiple preferences per group). */
   groups?: Array<{ groupId: string; preferenceKey: string }>;
   /** LLM provider name for preliminary analysis (e.g. "ollama", "doubao"). Must be registered in ai.providers. Default "ollama". */

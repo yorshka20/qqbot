@@ -167,7 +167,6 @@
         "name": "proactiveConversation",
         "enabled": true,
         "config": {
-          "enabled": true,
           "analysisProvider": "ollama", // optional: LLM for analysis/reply (default "ollama")
           "groups": [
             {
