@@ -89,7 +89,7 @@ export class ThreadContextCompressionService {
   private formatSegmentForSummarize(messages: ThreadMessage[]): string {
     return messages
       .map((m) => {
-        const who = m.isBotReply ? 'Assistant' : `User[${m.userId}]`;
+        const who = m.isBotReply ? 'Assistant' : `User<${m.userId}>`;
         return `${who}: ${m.content}`;
       })
       .join('\n');

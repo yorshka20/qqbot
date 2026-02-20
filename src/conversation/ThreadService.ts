@@ -4,6 +4,18 @@ import { logger } from '@/utils/logger';
 import { randomUUID } from 'node:crypto';
 import type { GroupMessageEntry } from './GroupHistoryService';
 
+/**
+ * Whether content is readable text for thread context.
+ * Skips empty and non-text-only messages (record, image, video, file, etc.) so they are not included in thread context.
+ */
+function isReadableTextForThread(content: string): boolean {
+  const t = content.trim();
+  if (t === '') return false;
+  // Skip content that is only media/placeholder (e.g. [Image:...], [Record:5s], [Video:...], [File:...])
+  const onlyPlaceholders = /^(\s*\[(Image|Record|Video|File|Forward|MarketFace|LightApp|XML)(:[^\]]*)?\]\s*)+$/i.test(t);
+  return !onlyPlaceholders;
+}
+
 export interface ThreadMessage {
   userId: number;
   content: string;
@@ -41,7 +53,9 @@ export class ThreadService {
   create(groupId: string, preferenceKey: string, initialMessages: GroupMessageEntry[]): ProactiveThread {
     const threadId = randomUUID();
     const now = new Date();
-    const messages: ThreadMessage[] = initialMessages.map((m) => ({
+    const messages: ThreadMessage[] = initialMessages
+      .filter((m) => isReadableTextForThread(m.content))
+      .map((m) => ({
       userId: m.userId,
       content: m.content,
       isBotReply: m.isBotReply,
@@ -151,6 +165,7 @@ export class ThreadService {
     const unique = [...new Set(indices)].sort((a, b) => a - b);
     const toAppend = unique.map((i) => entries[i]);
     for (const e of toAppend) {
+      if (!isReadableTextForThread(e.content)) continue;
       thread.messages.push({
         userId: e.userId,
         content: e.content,

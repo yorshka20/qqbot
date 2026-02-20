@@ -20,6 +20,8 @@ export interface ProactiveGroupConfig {
 
 const DEBOUNCE_MS = 1_000;
 const RECENT_MESSAGES_LIMIT = 30;
+/** Phase 5: end thread when no activity in this many ms (e.g. 10 minutes). */
+const THREAD_IDLE_TIMEOUT_MS = 10 * 60 * 1_000;
 
 /**
  * Proactive Conversation Service (Phase 1)
@@ -86,6 +88,9 @@ export class ProactiveConversationService {
   private async runAnalysis(groupId: string): Promise<void> {
     const preferenceKey = this.groupConfig.get(groupId);
     if (!preferenceKey) return;
+
+    // Phase 5: end threads that have been idle longer than threshold (timeout-based end).
+    await this.endTimedOutThreads(groupId);
 
     const preferenceTemplate = `${preferenceKey}.summary`;
     let preferenceText: string;
@@ -170,6 +175,25 @@ export class ProactiveConversationService {
    */
   private scheduleThreadCompression(groupId: string): void {
     this.threadCompression?.scheduleCompression(groupId);
+  }
+
+  /**
+   * Phase 5: End threads that have had no activity for longer than THREAD_IDLE_TIMEOUT_MS.
+   * Persist each ended thread before removing from active list.
+   */
+  private async endTimedOutThreads(groupId: string): Promise<void> {
+    const threads = this.threadService.getActiveThreads(groupId);
+    const now = Date.now();
+    for (const thread of threads) {
+      const idleMs = now - thread.lastActivityAt.getTime();
+      if (idleMs >= THREAD_IDLE_TIMEOUT_MS) {
+        logger.info(
+          `[ProactiveConversationService] Ending idle thread | threadId=${thread.threadId} | groupId=${groupId} | idleMs=${idleMs}`,
+        );
+        await this.threadPersistence.saveEndedThread(thread);
+        this.threadService.endThread(thread.threadId);
+      }
+    }
   }
 
   private async joinWithNewThread(
