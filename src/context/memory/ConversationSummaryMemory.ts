@@ -1,13 +1,12 @@
 // Conversation Summary Memory - compresses long conversations using summaries
 
-import { PromptManager } from '@/ai/PromptManager';
-import type { LLMService } from '@/ai/services/LLMService';
+import type { SummarizeService } from '@/conversation/SummarizeService';
 import { logger } from '@/utils/logger';
 import type { ConversationBufferMemory } from './ConversationBufferMemory';
 
 /**
  * Conversation Summary Memory
- * Compresses long conversations by summarizing old messages
+ * Compresses long conversations by summarizing old messages (uses shared SummarizeService).
  */
 export class ConversationSummaryMemory {
   private summary: string = '';
@@ -15,8 +14,7 @@ export class ConversationSummaryMemory {
   constructor(
     private buffer: ConversationBufferMemory,
     private summaryThreshold: number,
-    private llmService: LLMService,
-    private promptManager: PromptManager,
+    private summarizeService: SummarizeService,
   ) {}
 
   /**
@@ -52,7 +50,7 @@ export class ConversationSummaryMemory {
   }
 
   /**
-   * Summarize old messages
+   * Summarize old messages (uses unified SummarizeService with default provider).
    */
   private async summarize(): Promise<void> {
     try {
@@ -65,30 +63,20 @@ export class ConversationSummaryMemory {
         .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
         .join('\n');
 
-      // Render prompt using PromptManager
-      const prompt = this.promptManager.render('llm.summarize', {
-        conversationText,
-      });
-
       logger.debug('[ConversationSummaryMemory] Generating summary...');
 
-      const response = await this.llmService.generate(prompt, {
-        temperature: 0.5,
-        maxTokens: 200,
-      });
+      const summaryText = await this.summarizeService.summarize(conversationText);
 
       // Combine with existing summary
       if (this.summary) {
-        this.summary = `${this.summary} ${response.text}`;
+        this.summary = `${this.summary} ${summaryText}`;
       } else {
-        this.summary = response.text;
+        this.summary = summaryText;
       }
 
       // Keep only recent messages (last 5) in buffer, remove summarized messages
-      // Get recent messages before clearing buffer
       const recentMessages = this.buffer.getHistory().slice(-5);
       this.buffer.clear();
-      // Re-add only the recent messages to buffer
       for (const msg of recentMessages) {
         this.buffer.addMessage(msg.role, msg.content);
       }

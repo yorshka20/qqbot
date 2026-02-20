@@ -37,6 +37,7 @@ import { MessagePipeline } from './MessagePipeline';
 import { DefaultPreferenceKnowledgeService } from './PreferenceKnowledgeService';
 import { DefaultProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
 import { ProactiveConversationService } from './ProactiveConversationService';
+import { SummarizeService } from './SummarizeService';
 import { ThreadContextCompressionService } from './ThreadContextCompressionService';
 import { CommandSystem } from './systems/CommandSystem';
 import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
@@ -129,7 +130,14 @@ export class ConversationInitializer {
 
     const promptManager = getContainer().resolve<PromptManager>(DITokens.PROMPT_MANAGER);
 
-    const contextManager = new ContextManager(llmService, promptManager, useSummary, summaryThreshold, maxBufferSize);
+    // Single SummarizeService for both context memory and thread compression (provider passed at call time).
+    const summarizeService = new SummarizeService(llmService, promptManager);
+    const contextManager = new ContextManager(
+      summaryThreshold,
+      maxBufferSize,
+      useSummary,
+      summarizeService,
+    );
 
     // Register conversation config services to DI container early so PluginManager can inject them
     // This must be done before PluginManager is created
@@ -156,7 +164,15 @@ export class ConversationInitializer {
     serviceRegistry.registerAIServiceCapabilities(aiService);
 
     // Proactive conversation (Phase 1): group history, thread, Ollama analysis, orchestrator (Phase 4: thread compression)
-    this.configureProactiveConversationService(serviceRegistry, databaseManager, services.aiManager, aiService, messageAPI, promptManager, llmService);
+    this.configureProactiveConversationService(
+      serviceRegistry,
+      databaseManager,
+      services.aiManager,
+      aiService,
+      messageAPI,
+      promptManager,
+      summarizeService,
+    );
 
     const completeServices: CompleteServices = {
       ...services,
@@ -273,14 +289,14 @@ export class ConversationInitializer {
     aiService: AIService,
     messageAPI: MessageAPI,
     promptManager: PromptManager,
-    llmService: LLMService,
+    summarizeService: SummarizeService,
   ): void {
     const groupHistoryService = new GroupHistoryService(databaseManager, 30);
     const threadService = new ThreadService();
     const ollamaAnalysis = new OllamaPreliminaryAnalysisService(aiManager, promptManager);
     const preferenceKnowledge = new DefaultPreferenceKnowledgeService();
     const threadPersistence = new DefaultProactiveThreadPersistenceService(databaseManager);
-    const threadCompression = new ThreadContextCompressionService(threadService, llmService, promptManager);
+    const threadCompression = new ThreadContextCompressionService(threadService, summarizeService);
     const proactiveConversationService = new ProactiveConversationService(
       groupHistoryService,
       threadService,

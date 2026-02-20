@@ -1,8 +1,7 @@
 // Thread Context Compression Service (Phase 4) - async summarize oldest segment, replace in thread
 
-import type { PromptManager } from '@/ai/PromptManager';
-import type { LLMService } from '@/ai/services/LLMService';
 import { logger } from '@/utils/logger';
+import type { SummarizeService } from './SummarizeService';
 import type { ThreadMessage, ThreadService } from './ThreadService';
 
 /** When thread message count exceeds this, we may compress the earliest segment. */
@@ -17,12 +16,12 @@ const SEGMENT_SIZE = 10;
 export class ThreadContextCompressionService {
   /** Thread IDs currently being compressed; avoid concurrent compress for same thread. */
   private compressingThreadIds = new Set<string>();
+  private summarizeProvider = 'doubao';
 
   constructor(
     private threadService: ThreadService,
-    private llmService: LLMService,
-    private promptManager: PromptManager,
-  ) { }
+    private summarizeService: SummarizeService,
+  ) {}
 
   /**
    * Schedule compression check for all active threads in the group (async, non-blocking).
@@ -65,17 +64,16 @@ export class ThreadContextCompressionService {
       }
       const segment = thread.messages.slice(0, segmentLength);
       const conversationText = this.formatSegmentForSummarize(segment);
-      const prompt = this.promptManager.render('llm.summarize', { conversationText });
 
-      // Summarize always uses Ollama (local, no latency to third-party).
-      const response = await this.llmService.generate(prompt, {
-        temperature: 0.5,
-        maxTokens: 200,
-      }, 'ollama');
+      const summaryText = await this.summarizeService.summarize(conversationText, {
+        provider: this.summarizeProvider,
+      });
 
-      const summaryText = (response.text || '').trim();
       if (!summaryText) {
-        logger.warn(`[ThreadContextCompressionService] Empty summary for thread ${threadId}, skipping replace`);
+        logger.warn(
+          `[ThreadContextCompressionService] Empty summary for thread ${threadId}, skipping replace | ` +
+            `segmentLength=${segmentLength} conversationTextLength=${conversationText.length}`,
+        );
         return;
       }
 

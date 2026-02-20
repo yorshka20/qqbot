@@ -18,6 +18,8 @@ export interface OllamaProviderConfig {
 
 interface OllamaGenerateResponse {
   message?: { content?: string; role?: string };
+  /** Some Ollama versions or stream:false responses use top-level response instead of message.content */
+  response?: string;
   model?: string;
   done?: boolean;
   eval_count?: number;
@@ -191,7 +193,15 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
       const messages = await this.buildMessages(prompt, options);
       const data = await this.callChatAPI(messages, options);
 
-      const text = data.message?.content ?? '';
+      // Support message.content (chat API) and top-level response (some versions)
+      const rawText = data.message?.content ?? data.response ?? '';
+      const text = rawText.trim();
+      if (!text && data.done) {
+        logger.debug(
+          `[OllamaProvider] Empty content in response | keys=${Object.keys(data).join(',')} ` +
+            `messageKeys=${data.message ? Object.keys(data.message).join(',') : 'none'}`,
+        );
+      }
       const usage = data.eval_count
         ? {
           promptTokens: data.prompt_eval_count || 0,

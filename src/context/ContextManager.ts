@@ -1,7 +1,6 @@
 // Context Manager - builds and manages conversation contexts
 
-import { PromptManager } from '@/ai/PromptManager';
-import type { LLMService } from '@/ai/services/LLMService';
+import type { SummarizeService } from '@/conversation/SummarizeService';
 import { logger } from '@/utils/logger';
 import { ConversationBufferMemory } from './memory/ConversationBufferMemory';
 import { ConversationSummaryMemory } from './memory/ConversationSummaryMemory';
@@ -24,11 +23,11 @@ export class ContextManager {
   private globalContext: GlobalContext | null = null;
 
   constructor(
-    private llmService: LLMService,
-    private promptManager: PromptManager,
-    private useSummary = false,
     private summaryThreshold = 20,
     private maxBufferSize = 30,
+    private useSummary = false,
+    /** Required when useSummary is true. */
+    private summarizeService?: SummarizeService,
   ) { }
 
   /**
@@ -46,8 +45,8 @@ export class ContextManager {
       const buffer = new ConversationBufferMemory(this.maxBufferSize);
       let memory: ConversationBufferMemory | ConversationSummaryMemory;
 
-      if (this.useSummary) {
-        memory = new ConversationSummaryMemory(buffer, this.summaryThreshold, this.llmService, this.promptManager);
+      if (this.useSummary && this.summarizeService) {
+        memory = new ConversationSummaryMemory(buffer, this.summaryThreshold, this.summarizeService);
       } else {
         memory = buffer;
       }
