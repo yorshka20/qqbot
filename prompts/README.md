@@ -59,20 +59,20 @@ Common variables used in templates:
 
 ## Base Prompt
 
-A template named **base** (file: `prompts/base.txt`) is treated as the **base prompt**. Its content is prepended to every `render()` result, so you can define global behavior (tone, accuracy, timeliness, scope) in one place. To skip base injection for a specific call (e.g. image or task prompts), pass `{ skipBase: true }`:
+A template named **base** (file: `prompts/base.txt`) is treated as the **base prompt**. By default it is **not** prepended; pass `{ injectBase: true }` only where a flow needs global context (typically once per flow):
 
 ```typescript
-promptManager.render('text2img.generate', vars, { skipBase: true });
+promptManager.render('llm.reply', vars, { injectBase: true });
 ```
 
 ## Usage in Code
 
 ```typescript
-// Render a template (base prompt is prepended if prompts/base.txt exists)
+// Render a template (no base by default)
 const prompt = promptManager.render('llm.reply', {
   userMessage: 'Hello',
   conversationHistory: 'Previous messages...',
-});
+}, { injectBase: true });
 ```
 
 ## Configuration

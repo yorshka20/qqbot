@@ -315,9 +315,14 @@ export class ConversationInitializer {
       { logRegistration: false },
     );
     // Use SearXNG-based preference knowledge when SearchService is available and enabled.
-    // Search decision (whether/what to search) is done at analysis stage; retrieve() only executes queries.
+    // Analysis stage decides searchQueries; retrieve() runs them then one short LLM sufficiency check (option B: supplement search if needed).
     const searchService = container.resolve<SearchService>(DITokens.SEARCH_SERVICE);
-    const preferenceKnowledge = new SearXNGPreferenceKnowledgeService(searchService)
+    const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
+    const preferenceKnowledge = new SearXNGPreferenceKnowledgeService(
+      searchService,
+      llmService,
+      promptManager,
+    );
     container.registerInstance(DITokens.PREFERENCE_KNOWLEDGE_SERVICE, preferenceKnowledge, {
       logRegistration: false,
     });
