@@ -49,6 +49,8 @@ export class SummarizeService {
         `[SummarizeService] Empty summary from LLM | conversationTextLength=${conversationText.length} provider=${provider ?? 'default'}`,
       );
     }
+    logger.debug(`[SummarizeService] Summary generated | textLength=${text.length} provider=${provider}`);
+    console.log('text', text);
     return text;
   }
 }
