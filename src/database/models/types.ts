@@ -76,6 +76,19 @@ export interface ConversationConfig extends BaseModel {
 }
 
 /**
+ * Proactive thread record (ended thread persisted to DB).
+ * Used for later query/analysis only; once ended a thread is not reopened, new threads are created.
+ * Summary may be context text or LLM summary (method TBD).
+ */
+export interface ProactiveThreadRecord extends BaseModel {
+  groupId: string;
+  threadId: string;
+  preferenceKey: string;
+  summary: string;
+  endedAt: Date;
+}
+
+/**
  * Model accessor interface
  */
 export interface ModelAccessor<T extends BaseModel> {
@@ -122,4 +135,5 @@ export interface DatabaseModel {
   conversations: ModelAccessor<Conversation>;
   messages: ModelAccessor<Message>;
   conversationConfigs: ModelAccessor<ConversationConfig>;
+  proactiveThreads: ModelAccessor<ProactiveThreadRecord>;
 }

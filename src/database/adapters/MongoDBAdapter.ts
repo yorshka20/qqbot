@@ -11,6 +11,7 @@ import type {
   DatabaseModel,
   Message,
   ModelAccessor,
+  ProactiveThreadRecord,
 } from '../models/types';
 
 /**
@@ -99,6 +100,9 @@ class MongoModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
     if (result.lastMessageAt && !(result.lastMessageAt instanceof Date)) {
       result.lastMessageAt = new Date(result.lastMessageAt as string);
     }
+    if (result.endedAt && !(result.endedAt instanceof Date)) {
+      result.endedAt = new Date(result.endedAt as string);
+    }
 
     return result as T;
   }
@@ -169,6 +173,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
       sessions: this.db.collection('sessions'),
       tasks: this.db.collection('tasks'),
       commands: this.db.collection('commands'),
+      proactiveThreads: this.db.collection('proactive_threads'),
     };
 
     // Create indexes
@@ -178,6 +183,9 @@ export class MongoDBAdapter implements DatabaseAdapter {
     await collections.messages.createIndex({ conversationId: 1 });
     await collections.messages.createIndex({ userId: 1 });
     await collections.messages.createIndex({ createdAt: -1 });
+
+    await collections.proactiveThreads.createIndex({ groupId: 1 });
+    await collections.proactiveThreads.createIndex({ threadId: 1 });
 
     logger.info('[MongoDBAdapter] Migrations completed');
   }
@@ -213,6 +221,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
       conversations: new MongoModelAccessor<Conversation>(this.db.collection('conversations')),
       messages: new MongoModelAccessor<Message>(this.db.collection('messages')),
       conversationConfigs: new MongoModelAccessor<ConversationConfig>(this.db.collection('conversation_configs')),
+      proactiveThreads: new MongoModelAccessor<ProactiveThreadRecord>(this.db.collection('proactive_threads')),
     };
   }
 }

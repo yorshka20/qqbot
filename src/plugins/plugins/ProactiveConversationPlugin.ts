@@ -62,9 +62,9 @@ export class ProactiveConversationPlugin extends PluginBase {
     const groupId = context.message?.groupId?.toString();
     if (!inProactive || !groupId) return true;
 
-    const thread = this.threadService.getActiveThread(groupId);
-    if (thread) {
-      context.metadata.set('proactiveThreadId', thread.threadId);
+    const currentThreadId = this.threadService.getCurrentThreadId(groupId);
+    if (currentThreadId) {
+      context.metadata.set('proactiveThreadId', currentThreadId);
     }
     return true;
   }

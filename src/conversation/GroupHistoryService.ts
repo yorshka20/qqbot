@@ -20,7 +20,7 @@ export class GroupHistoryService {
   constructor(
     private databaseManager: DatabaseManager,
     private defaultLimit = 30,
-  ) {}
+  ) { }
 
   /**
    * Get last N messages for a group (from DB).
@@ -71,13 +71,32 @@ export class GroupHistoryService {
 
   /**
    * Format message entries as a single text (e.g. for Ollama input).
+   * Each line includes [id:index], simple time (M/d HH:mm), and content so the AI can reference ids and judge time gaps (e.g. for end-thread).
    */
   formatAsText(entries: GroupMessageEntry[]): string {
     return entries
-      .map((e) => {
-        const who = e.isBotReply ? 'Assistant' : `User${e.userId}`;
-        return `${who}: ${e.content}`;
+      .map((e, i) => {
+        const who = e.isBotReply ? 'Assistant' : `User<${e.userId}>`;
+        const t = e.createdAt instanceof Date ? e.createdAt : new Date(e.createdAt);
+        const timeStr = this.formatSimpleTime(t);
+        return `[id:${i}] ${timeStr} ${who}: ${e.content}`;
       })
       .join('\n');
+  }
+
+  /**
+   * Same as formatAsText: [id:index], simple time, content. Kept for naming clarity where indices are used for messageIds.
+   */
+  formatAsTextWithIds(entries: GroupMessageEntry[]): string {
+    return this.formatAsText(entries);
+  }
+
+  /** Simple time for AI to judge intervals (e.g. long gap → end thread). */
+  private formatSimpleTime(d: Date): string {
+    const M = d.getMonth() + 1;
+    const day = d.getDate();
+    const h = d.getHours().toString().padStart(2, '0');
+    const m = d.getMinutes().toString().padStart(2, '0');
+    return `${M}/${day} ${h}:${m}`;
   }
 }

@@ -9,6 +9,7 @@ import type { NormalizedMessageEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
 import type { GroupHistoryService } from './GroupHistoryService';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
+import type { ProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
 import type { ThreadService } from './ThreadService';
 
 export interface ProactiveGroupConfig {
@@ -33,6 +34,7 @@ export class ProactiveConversationService {
     private threadService: ThreadService,
     private ollamaAnalysis: OllamaPreliminaryAnalysisService,
     private preferenceKnowledge: PreferenceKnowledgeService,
+    private threadPersistence: ProactiveThreadPersistenceService,
     private aiService: AIService,
     private messageAPI: MessageAPI,
     private promptManager: PromptManager,
@@ -77,7 +79,7 @@ export class ProactiveConversationService {
   }
 
   /**
-   * Run analysis: load context, call Ollama, maybe create thread and send reply.
+   * Run analysis: load context, call Ollama (single or multi-thread), maybe create/reply in thread and send.
    */
   private async runAnalysis(groupId: string): Promise<void> {
     const preferenceKey = this.groupConfig.get(groupId);
@@ -98,18 +100,35 @@ export class ProactiveConversationService {
       return;
     }
 
-    const activeThread = this.threadService.getActiveThread(groupId);
-    let recentMessagesText: string;
+    const activeThreads = this.threadService.getActiveThreads(groupId);
+    const recentEntries = await this.groupHistoryService.getRecentMessages(groupId, RECENT_MESSAGES_LIMIT);
+    const recentMessagesText =
+      activeThreads.length > 0
+        ? this.groupHistoryService.formatAsTextWithIds(recentEntries)
+        : this.groupHistoryService.formatAsText(recentEntries);
 
-    if (activeThread) {
-      recentMessagesText = this.threadService.getContextFormatted(activeThread.threadId);
+    let result: Awaited<ReturnType<typeof this.ollamaAnalysis.analyze>>;
+    if (activeThreads.length === 0) {
+      result = await this.ollamaAnalysis.analyze(preferenceText, recentMessagesText);
     } else {
-      const entries = await this.groupHistoryService.getRecentMessages(groupId, RECENT_MESSAGES_LIMIT);
-      recentMessagesText = this.groupHistoryService.formatAsText(entries);
+      const threadsForAnalysis = activeThreads.map((t) => ({
+        threadId: t.threadId,
+        preferenceKey: t.preferenceKey,
+        contextText: this.threadService.getContextFormatted(t.threadId),
+      }));
+      result = await this.ollamaAnalysis.analyzeWithThreads(preferenceText, recentMessagesText, threadsForAnalysis);
     }
 
-    const result = await this.ollamaAnalysis.analyze(preferenceText, recentMessagesText);
     logger.debug(`[ProactiveConversationService] Ollama analysis result: ${JSON.stringify(result)}`);
+
+    if (result.threadShouldEndId) {
+      const threadToEnd = this.threadService.getThread(result.threadShouldEndId);
+      if (threadToEnd) {
+        await this.threadPersistence.saveEndedThread(threadToEnd);
+      }
+      this.threadService.endThread(result.threadShouldEndId);
+    }
+
     if (!result.shouldJoin) {
       logger.debug(`[ProactiveConversationService] Ollama: shouldJoin=false | groupId=${groupId}`);
       return;
@@ -119,9 +138,23 @@ export class ProactiveConversationService {
 
     const topicOrQuery = result.topic?.trim() || '';
 
-    if (activeThread) {
-      await this.replyInThread(activeThread.threadId, groupIdNum, preferenceKey, topicOrQuery);
-    } else {
+    const replyInExisting = result.replyInThreadId && this.threadService.getThread(result.replyInThreadId);
+    if (replyInExisting && replyInExisting.groupId === groupId) {
+      this.threadService.setCurrentThread(groupId, replyInExisting.threadId);
+      // Append only the messages that analysis said are relevant to this thread (by index list).
+      this.threadService.appendGroupMessages(replyInExisting.threadId, recentEntries, {
+        messageIds: result.messageIds,
+      });
+      await this.replyInThread(
+        replyInExisting.threadId,
+        groupIdNum,
+        replyInExisting.preferenceKey,
+        topicOrQuery,
+      );
+      return;
+    }
+
+    if (result.createNew || activeThreads.length === 0) {
       await this.joinWithNewThread(groupId, groupIdNum, preferenceKey, recentMessagesText, topicOrQuery);
     }
   }
@@ -169,6 +202,7 @@ export class ProactiveConversationService {
   ): Promise<void> {
     const thread = this.threadService.getThread(threadId);
     if (!thread) return;
+    // Thread context already includes the new message(s); we appended them in runAnalysis when we decided to reply here.
     const contextText = this.threadService.getContextFormatted(threadId);
     // use preference.full for generating proactive reply
     const preferenceText = this.promptManager.render(`${preferenceKey}.full`, {});

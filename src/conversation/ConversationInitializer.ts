@@ -35,6 +35,7 @@ import { GroupHistoryService } from './GroupHistoryService';
 import { Lifecycle } from './Lifecycle';
 import { MessagePipeline } from './MessagePipeline';
 import { DefaultPreferenceKnowledgeService } from './PreferenceKnowledgeService';
+import { DefaultProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
 import { ProactiveConversationService } from './ProactiveConversationService';
 import { CommandSystem } from './systems/CommandSystem';
 import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
@@ -269,11 +270,13 @@ export class ConversationInitializer {
     const threadService = new ThreadService();
     const ollamaAnalysis = new OllamaPreliminaryAnalysisService(aiManager, promptManager);
     const preferenceKnowledge = new DefaultPreferenceKnowledgeService();
+    const threadPersistence = new DefaultProactiveThreadPersistenceService(databaseManager);
     const proactiveConversationService = new ProactiveConversationService(
       groupHistoryService,
       threadService,
       ollamaAnalysis,
       preferenceKnowledge,
+      threadPersistence,
       aiService,
       messageAPI,
       promptManager,

@@ -13,6 +13,7 @@ import type {
   DatabaseModel,
   Message,
   ModelAccessor,
+  ProactiveThreadRecord,
 } from '../models/types';
 
 /**
@@ -40,6 +41,9 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
       const value = (record as Record<string, unknown>)[k];
       if (value === null || value === undefined) {
         return null;
+      }
+      if (value instanceof Date) {
+        return value.toISOString();
       }
       if (typeof value === 'object') {
         return JSON.stringify(value);
@@ -182,6 +186,9 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
     if (result.lastMessageAt) {
       result.lastMessageAt = new Date(result.lastMessageAt as string);
     }
+    if (result.endedAt) {
+      result.endedAt = new Date(result.endedAt as string);
+    }
 
     // Parse JSON fields
     const jsonFields = ['metadata', 'context', 'parameters', 'result', 'args', 'rawContent', 'config'];
@@ -303,6 +310,16 @@ export class SQLiteAdapter implements DatabaseAdapter {
         updatedAt TEXT NOT NULL,
         UNIQUE(sessionId, sessionType)
       )`,
+      `CREATE TABLE IF NOT EXISTS proactive_threads (
+        id TEXT PRIMARY KEY,
+        groupId TEXT NOT NULL,
+        threadId TEXT NOT NULL,
+        preferenceKey TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        endedAt TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`,
     ];
 
     for (const statement of statements) {
@@ -341,6 +358,8 @@ export class SQLiteAdapter implements DatabaseAdapter {
       `CREATE INDEX IF NOT EXISTS idx_messages_protocol_groupId_messageSeq ON messages(protocol, groupId, messageSeq)`,
       `CREATE INDEX IF NOT EXISTS idx_messages_protocol_userId_messageSeq ON messages(protocol, userId, messageSeq, messageType)`,
       `CREATE INDEX IF NOT EXISTS idx_conversation_configs_session ON conversation_configs(sessionId, sessionType)`,
+      `CREATE INDEX IF NOT EXISTS idx_proactive_threads_groupId ON proactive_threads(groupId)`,
+      `CREATE INDEX IF NOT EXISTS idx_proactive_threads_threadId ON proactive_threads(threadId)`,
     ];
 
     for (const statement of indexStatements) {
@@ -391,6 +410,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       conversations: new SQLiteModelAccessor<Conversation>(this.db, 'conversations'),
       messages: new SQLiteModelAccessor<Message>(this.db, 'messages'),
       conversationConfigs: new SQLiteModelAccessor<ConversationConfig>(this.db, 'conversation_configs'),
+      proactiveThreads: new SQLiteModelAccessor<ProactiveThreadRecord>(this.db, 'proactive_threads'),
     };
   }
 }
