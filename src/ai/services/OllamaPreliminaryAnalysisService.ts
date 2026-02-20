@@ -18,6 +18,8 @@ export interface PreliminaryAnalysisResult {
   threadShouldEndId?: string;
   /** When replying in a thread: ids of recent messages that are relevant and should be added to that thread's context */
   messageIds?: string[];
+  /** When shouldJoin and (createNew or no replyInThreadId): which preference key to use (must be one of the listed ones). */
+  preferenceKey?: string;
 }
 
 /** Input for multi-thread analysis: one entry per active thread */
@@ -169,6 +171,10 @@ export class OllamaPreliminaryAnalysisService {
           .map((x) => (typeof x === 'number' ? String(x) : typeof x === 'string' ? x : null))
           .filter((x): x is string => x != null && x.length > 0);
       }
+      const preferenceKey =
+        typeof obj.preferenceKey === 'string' && obj.preferenceKey.trim()
+          ? obj.preferenceKey.trim()
+          : undefined;
       return {
         shouldJoin,
         reason,
@@ -177,6 +183,7 @@ export class OllamaPreliminaryAnalysisService {
         createNew: createNew || undefined,
         threadShouldEndId,
         messageIds: messageIds?.length ? messageIds : undefined,
+        preferenceKey,
       };
     } catch {
       logger.debug('[OllamaPreliminaryAnalysisService] Failed to parse JSON');

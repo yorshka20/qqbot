@@ -28,7 +28,8 @@ const THREAD_IDLE_TIMEOUT_MS = 10 * 60 * 1_000;
  * Schedules per-group debounced analysis; when timer fires, runs Ollama and optionally sends a proactive reply.
  */
 export class ProactiveConversationService {
-  private groupConfig = new Map<string, string>(); // groupId -> preferenceKey
+  /** groupId -> preferenceKeys[] (multiple preferences per group). */
+  private groupConfig = new Map<string, string[]>();
   private timersByGroup = new Map<string, ReturnType<typeof setTimeout>>();
   private preferredProtocol: ProtocolName = 'milky';
 
@@ -45,15 +46,20 @@ export class ProactiveConversationService {
   ) { }
 
   /**
-   * Set which groups have proactive analysis enabled and their preference key.
+   * Set which groups have proactive analysis enabled and their preference keys.
+   * Same groupId can appear multiple times with different preferenceKey (multiple preferences per group).
    * Called by the plugin from its config.
    */
   setGroupConfig(groups: ProactiveGroupConfig[]): void {
     this.groupConfig.clear();
     for (const g of groups) {
-      this.groupConfig.set(g.groupId, g.preferenceKey);
+      const list = this.groupConfig.get(g.groupId) ?? [];
+      if (!list.includes(g.preferenceKey)) list.push(g.preferenceKey);
+      this.groupConfig.set(g.groupId, list);
     }
-    logger.info(`[ProactiveConversationService] Group config set: ${groups.length} group(s)`);
+    const total = this.groupConfig.size;
+    const withMulti = [...this.groupConfig.values()].filter((arr) => arr.length > 1).length;
+    logger.info(`[ProactiveConversationService] Group config set: ${total} group(s)${withMulti ? `, ${withMulti} with multiple preferences` : ''}`);
   }
 
   /**
@@ -67,7 +73,8 @@ export class ProactiveConversationService {
    * Schedule analysis for this group (debounced). Call when a group message is received.
    */
   scheduleForGroup(groupId: string): void {
-    if (!this.groupConfig.has(groupId)) return;
+    const keys = this.groupConfig.get(groupId);
+    if (!keys?.length) return;
 
     const existing = this.timersByGroup.get(groupId);
     if (existing) {
@@ -86,20 +93,26 @@ export class ProactiveConversationService {
    * Run analysis: load context, call Ollama (single or multi-thread), maybe create/reply in thread and send.
    */
   private async runAnalysis(groupId: string): Promise<void> {
-    const preferenceKey = this.groupConfig.get(groupId);
-    if (!preferenceKey) return;
+    const preferenceKeys = this.groupConfig.get(groupId);
+    if (!preferenceKeys?.length) return;
 
     // Phase 5: end threads that have been idle longer than threshold (timeout-based end).
     await this.endTimedOutThreads(groupId);
 
-    const preferenceTemplate = `${preferenceKey}.summary`;
-    let preferenceText: string;
+    // Build combined preference text so AI knows all available preferences for this group.
+    const preferenceParts: string[] = [];
     try {
-      preferenceText = this.promptManager.render(preferenceTemplate, {});
+      for (const key of preferenceKeys) {
+        const summary = this.promptManager.render(`${key}.summary`, {});
+        preferenceParts.push(`### ${key}\n${summary}`);
+      }
     } catch (err) {
-      logger.warn(`[ProactiveConversationService] Failed to render preference ${preferenceTemplate}:`, err);
+      logger.warn(`[ProactiveConversationService] Failed to render preference summaries:`, err);
       return;
     }
+    const preferenceText = preferenceParts.length
+      ? `## 可选人设（仅可选用以下之一参与，且必须为当前群已配置的人设键名）\n\n${preferenceParts.join('\n\n')}`
+      : '';
 
     const groupIdNum = parseInt(groupId, 10);
     if (isNaN(groupIdNum)) {
@@ -142,21 +155,38 @@ export class ProactiveConversationService {
       return;
     }
 
-    logger.info(`[ProactiveConversationService] Ollama: shouldJoin=true | groupId=${groupId} | result=${JSON.stringify(result)}`);
+    // Resolve which preference to use: from reply thread, or from result.preferenceKey for new thread. Must be in configured list.
+    let preferenceKey: string;
+    const replyInExisting = result.replyInThreadId && this.threadService.getThread(result.replyInThreadId);
+    if (replyInExisting && replyInExisting.groupId === groupId) {
+      preferenceKey = replyInExisting.preferenceKey;
+      if (!preferenceKeys.includes(preferenceKey)) {
+        logger.warn(`[ProactiveConversationService] replyInThread preferenceKey not in group config, skipping join | groupId=${groupId} | preferenceKey=${preferenceKey}`);
+        this.scheduleThreadCompression(groupId);
+        return;
+      }
+    } else {
+      preferenceKey = (result.preferenceKey ?? '').trim();
+      if (!preferenceKey || !preferenceKeys.includes(preferenceKey)) {
+        logger.warn(`[ProactiveConversationService] preferenceKey not configured for group, skipping join | groupId=${groupId} | preferenceKey=${preferenceKey} | allowed=${preferenceKeys.join(',')}`);
+        this.scheduleThreadCompression(groupId);
+        return;
+      }
+    }
+
+    logger.info(`[ProactiveConversationService] Ollama: shouldJoin=true | groupId=${groupId} | preferenceKey=${preferenceKey} | result=${JSON.stringify(result)}`);
 
     const topicOrQuery = result.topic?.trim() || '';
 
-    const replyInExisting = result.replyInThreadId && this.threadService.getThread(result.replyInThreadId);
     if (replyInExisting && replyInExisting.groupId === groupId) {
       this.threadService.setCurrentThread(groupId, replyInExisting.threadId);
-      // Append only the messages that analysis said are relevant to this thread (by index list).
       this.threadService.appendGroupMessages(replyInExisting.threadId, recentEntries, {
         messageIds: result.messageIds,
       });
       await this.replyInThread(
         replyInExisting.threadId,
         groupIdNum,
-        replyInExisting.preferenceKey,
+        preferenceKey,
         topicOrQuery,
       );
       this.scheduleThreadCompression(groupId);

@@ -11,7 +11,7 @@ import { PluginBase } from '../PluginBase';
 
 export interface ProactiveConversationPluginConfig {
   enabled?: boolean;
-  /** Groups that have proactive analysis enabled, with preference key per group */
+  /** Groups that have proactive analysis enabled. Same groupId can appear multiple times with different preferenceKey (multiple preferences per group). */
   groups?: Array<{ groupId: string; preferenceKey: string }>;
 }
 
