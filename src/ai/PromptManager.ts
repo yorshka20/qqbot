@@ -181,7 +181,15 @@ export class PromptManager {
 
     const baseTemplate = this.getTemplate(BASE_TEMPLATE_NAME);
     if (baseTemplate) {
-      const baseRendered = this.renderTemplateContent(baseTemplate, BASE_TEMPLATE_NAME, variables);
+      // inject base template with extra variables.
+      const baseRendered = this.renderTemplateContent(baseTemplate, BASE_TEMPLATE_NAME, {
+        currentDate: new Date().toLocaleDateString('zh-CN', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          weekday: 'long',
+        })
+      });
       return baseRendered ? `${baseRendered}\n\n${mainRendered}` : mainRendered;
     }
 
