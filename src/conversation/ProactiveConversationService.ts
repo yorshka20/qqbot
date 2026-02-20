@@ -30,6 +30,8 @@ const THREAD_IDLE_TIMEOUT_MS = 10 * 60 * 1_000;
 export class ProactiveConversationService {
   /** groupId -> preferenceKeys[] (multiple preferences per group). */
   private groupConfig = new Map<string, string[]>();
+  /** LLM provider name for preliminary analysis (e.g. "ollama", "doubao"). */
+  private analysisProviderName = 'ollama';
   private timersByGroup = new Map<string, ReturnType<typeof setTimeout>>();
   private preferredProtocol: ProtocolName = 'milky';
 
@@ -67,6 +69,13 @@ export class ProactiveConversationService {
    */
   setPreferredProtocol(protocol: ProtocolName): void {
     this.preferredProtocol = protocol;
+  }
+
+  /**
+   * Set LLM provider name for preliminary analysis (e.g. "ollama", "doubao"). Called by plugin from config.
+   */
+  setAnalysisProvider(providerName: string): void {
+    this.analysisProviderName = providerName;
   }
 
   /**
@@ -127,16 +136,17 @@ export class ProactiveConversationService {
         ? this.groupHistoryService.formatAsTextWithIds(recentEntries)
         : this.groupHistoryService.formatAsText(recentEntries);
 
+    const analysisOptions = { providerName: this.analysisProviderName };
     let result: Awaited<ReturnType<typeof this.ollamaAnalysis.analyze>>;
     if (activeThreads.length === 0) {
-      result = await this.ollamaAnalysis.analyze(preferenceText, recentMessagesText);
+      result = await this.ollamaAnalysis.analyze(preferenceText, recentMessagesText, analysisOptions);
     } else {
       const threadsForAnalysis = activeThreads.map((t) => ({
         threadId: t.threadId,
         preferenceKey: t.preferenceKey,
         contextText: this.threadService.getContextFormatted(t.threadId),
       }));
-      result = await this.ollamaAnalysis.analyzeWithThreads(preferenceText, recentMessagesText, threadsForAnalysis);
+      result = await this.ollamaAnalysis.analyzeWithThreads(preferenceText, recentMessagesText, threadsForAnalysis, analysisOptions);
     }
 
     logger.debug(`[ProactiveConversationService] Ollama analysis result: ${JSON.stringify(result)}`);
