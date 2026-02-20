@@ -104,6 +104,7 @@ export class ConversationInitializer {
     const dbConfig = config.getDatabaseConfig();
     const databaseManager = new DatabaseManager();
     await databaseManager.initialize(dbConfig);
+    container.registerInstance(DITokens.DATABASE_MANAGER, databaseManager, { logRegistration: false });
 
     // Phase 2.1: Create HealthCheckManager early for service health monitoring
     const healthCheckManager = new HealthCheckManager();
@@ -212,7 +213,9 @@ export class ConversationInitializer {
     taskManager: TaskManager;
     hookManager: HookManager;
   }> {
+    const container = getContainer();
     const aiManager = new AIManager();
+    container.registerInstance(DITokens.AI_MANAGER, aiManager, { logRegistration: false });
 
     const botConfig = config.getConfig();
     const permissionChecker = new DefaultPermissionChecker({

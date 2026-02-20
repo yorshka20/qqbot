@@ -162,8 +162,13 @@ export class ServiceRegistry {
     conversationConfigService: ConversationConfigService;
     globalConfigManager: GlobalConfigManager;
   }): void {
-    this.registerDatabaseService(services.databaseManager);
-    this.registerAIService(services.aiManager);
+    // DATABASE_MANAGER and AI_MANAGER may already be registered early for ProactiveConversationService DI
+    if (!this.container.isRegistered(DITokens.DATABASE_MANAGER)) {
+      this.registerDatabaseService(services.databaseManager);
+    }
+    if (!this.container.isRegistered(DITokens.AI_MANAGER)) {
+      this.registerAIService(services.aiManager);
+    }
     this.registerContextService(services.contextManager);
     this.registerCommandService(services.commandManager);
     this.registerTaskService(services.taskManager);
