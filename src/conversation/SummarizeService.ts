@@ -50,7 +50,54 @@ export class SummarizeService {
       );
     }
     logger.debug(`[SummarizeService] Summary generated | textLength=${text.length} provider=${provider}`);
-    console.log('text', text);
     return text;
+  }
+
+  /**
+   * Ask LLM which message indices to keep for this thread (remove off-topic). Used for periodic thread context cleaning.
+   * @returns keepIndices (0-based), or empty array on parse failure / empty response.
+   */
+  async cleanThreadTopic(
+    threadContextWithIndices: string,
+    preferenceSummary: string,
+    options?: SummarizeOptions,
+  ): Promise<number[]> {
+    const prompt = this.promptManager.render(
+      'llm.thread_clean_topic',
+      { threadContextWithIndices: threadContextWithIndices || '(empty)', preferenceSummary: preferenceSummary || '(none)' },
+      { skipBase: true },
+    );
+    const provider = options?.provider;
+    const response = await this.llmService.generate(
+      prompt,
+      {
+        temperature: options?.temperature ?? 0.3,
+        maxTokens: options?.maxTokens ?? 800,
+      },
+      provider,
+    );
+    const text = (response.text ?? '').trim();
+    if (!text) {
+      return [];
+    }
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      logger.debug('[SummarizeService] cleanThreadTopic: no JSON in response');
+      return [];
+    }
+    try {
+      const obj = JSON.parse(jsonMatch[0]) as { keepIndices?: unknown };
+      if (!Array.isArray(obj.keepIndices)) {
+        return [];
+      }
+      const indices = obj.keepIndices
+        .map((x) => (typeof x === 'number' ? x : typeof x === 'string' ? parseInt(x, 10) : NaN))
+        .filter((n) => !Number.isNaN(n) && n >= 0);
+      logger.debug(`[SummarizeService] cleanThreadTopic: keep ${indices.length} indices`);
+      return indices;
+    } catch {
+      logger.debug('[SummarizeService] cleanThreadTopic: JSON parse failed');
+      return [];
+    }
   }
 }

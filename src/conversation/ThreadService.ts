@@ -197,6 +197,40 @@ export class ThreadService {
   }
 
   /**
+   * Get thread context with [id:index] prefix per line for LLM topic-cleaning (output keepIndices).
+   */
+  getContextFormattedWithIndices(threadId: string): string {
+    const thread = this.threadById.get(threadId);
+    if (!thread) return '';
+    return thread.messages
+      .map((m, i) => {
+        if (m.isSummary) {
+          return `[id:${i}] [Summary of earlier messages]: ${m.content}`;
+        }
+        const who = m.isBotReply ? 'Assistant' : `User<${m.userId}>`;
+        return `[id:${i}] ${m.createdAt.toLocaleTimeString()} ${who}: ${m.content}`;
+      })
+      .join('\n');
+  }
+
+  /**
+   * Keep only messages at the given indices (for topic cleaning). Order preserved. Invalid indices skipped.
+   * Does nothing if thread not found or indices would leave thread empty (safety).
+   */
+  keepOnlyMessageIndices(threadId: string, indices: number[]): void {
+    const thread = this.threadById.get(threadId);
+    if (!thread) return;
+    const sorted = [...new Set(indices)].filter((i) => i >= 0 && i < thread.messages.length).sort((a, b) => a - b);
+    if (sorted.length === 0) return;
+    const kept = sorted.map((i) => thread.messages[i]);
+    thread.messages.length = 0;
+    thread.messages.push(...kept);
+    const last = kept[kept.length - 1];
+    thread.lastActivityAt = last.createdAt instanceof Date ? last.createdAt : new Date(last.createdAt);
+    logger.info(`[ThreadService] Kept ${kept.length} messages (topic clean) | threadId=${threadId}`);
+  }
+
+  /**
    * Replace the earliest N messages with a single summary message (Phase 4 compression).
    * Does nothing if thread not found or numToReplace is invalid.
    */

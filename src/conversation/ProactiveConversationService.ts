@@ -193,7 +193,6 @@ export class ProactiveConversationService {
 
     if (replyInExisting && replyInExisting.groupId === groupId) {
       this.threadService.setCurrentThread(groupId, replyInExisting.threadId);
-      // messageIds are indices into filteredEntries. When analysis omits messageIds, append only messages that are strictly newer than the thread's last message (trigger messages only).
       const messageIdsToUse = this.resolveMessageIdsForReply(
         replyInExisting,
         filteredEntries,

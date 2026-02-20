@@ -296,7 +296,7 @@ export class ConversationInitializer {
     const ollamaAnalysis = new OllamaPreliminaryAnalysisService(aiManager, promptManager);
     const preferenceKnowledge = new DefaultPreferenceKnowledgeService();
     const threadPersistence = new DefaultProactiveThreadPersistenceService(databaseManager);
-    const threadCompression = new ThreadContextCompressionService(threadService, summarizeService);
+    const threadCompression = new ThreadContextCompressionService(threadService, summarizeService, promptManager);
     const proactiveConversationService = new ProactiveConversationService(
       groupHistoryService,
       threadService,
