@@ -17,7 +17,7 @@ export interface OllamaProviderConfig {
 }
 
 interface OllamaGenerateResponse {
-  message?: { content?: string; role?: string };
+  message?: { content?: string; role?: string; thinking?: string };
   /** Some Ollama versions or stream:false responses use top-level response instead of message.content */
   response?: string;
   model?: string;
@@ -193,8 +193,11 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
       const messages = await this.buildMessages(prompt, options);
       const data = await this.callChatAPI(messages, options);
 
-      // Support message.content (chat API) and top-level response (some versions)
-      const rawText = data.message?.content ?? data.response ?? '';
+      // logger.debug('[OllamaProvider] Chat response: ' + JSON.stringify(data));
+
+      // Support message.content (chat API), message.thinking (thinking models), and top-level response (some versions)
+      // When content is empty but thinking is present, use thinking so we don't drop model output (e.g. qwen3 thinking-only reply)
+      const rawText = data.message?.content ?? data.message?.thinking ?? data.response ?? '';
       const text = rawText.trim();
       if (!text && data.done) {
         logger.debug(
@@ -204,10 +207,10 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
       }
       const usage = data.eval_count
         ? {
-          promptTokens: data.prompt_eval_count || 0,
-          completionTokens: data.eval_count || 0,
-          totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0),
-        }
+            promptTokens: data.prompt_eval_count || 0,
+            completionTokens: data.eval_count || 0,
+            totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0),
+          }
         : undefined;
 
       return {
@@ -250,7 +253,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
         for (const line of lines) {
           try {
             const data = JSON.parse(line) as OllamaGenerateResponse;
-            const content = data.message?.content ?? '';
+            const content = data.message?.content ?? data.message?.thinking ?? '';
             if (content) {
               fullText += content;
               handler(content);
@@ -273,6 +276,8 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
       reader.releaseLock();
     }
 
+    const preview = fullText.length > 120 ? fullText.slice(0, 120) + '...' : fullText;
+    logger.debug(`[OllamaProvider] Stream finished: totalLen=${fullText.length} preview=${JSON.stringify(preview)}`);
     return { text: fullText, usage };
   }
 

@@ -239,15 +239,6 @@ export class ProactiveConversationService {
           );
           return;
         }
-        if (threadNow.messages.length > 0) {
-          const lastMsg = threadNow.messages[threadNow.messages.length - 1];
-          if (lastMsg.isBotReply) {
-            logger.debug(
-              `[ProactiveConversationService] Skip reply: thread last message is already bot | threadId=${threadId} | groupId=${groupId}`,
-            );
-            return;
-          }
-        }
         this.threadService.setCurrentThread(groupId, threadId);
         const messageIdsToUse = this.resolveMessageIdsForReply(replyInExisting, filteredEntries, result.messageIds);
         this.threadService.appendGroupMessages(threadId, filteredEntries, {

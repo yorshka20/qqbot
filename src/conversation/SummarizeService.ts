@@ -22,7 +22,7 @@ export class SummarizeService {
   constructor(
     private llmService: LLMService,
     private promptManager: PromptManager,
-  ) { }
+  ) {}
 
   /**
    * Summarize conversation text using llm.summarize template.
@@ -64,7 +64,10 @@ export class SummarizeService {
   ): Promise<number[]> {
     const prompt = this.promptManager.render(
       'llm.thread_clean_topic',
-      { threadContextWithIndices: threadContextWithIndices || '(empty)', preferenceSummary: preferenceSummary || '(none)' },
+      {
+        threadContextWithIndices: threadContextWithIndices || '(empty)',
+        preferenceSummary: preferenceSummary || '(none)',
+      },
       { skipBase: true },
     );
     const provider = options?.provider;
@@ -72,7 +75,6 @@ export class SummarizeService {
       prompt,
       {
         temperature: options?.temperature ?? 0.3,
-        maxTokens: options?.maxTokens ?? 800,
       },
       provider,
     );
@@ -80,6 +82,7 @@ export class SummarizeService {
     if (!text) {
       return [];
     }
+    // Require complete JSON from model; do not accept or recover truncated output
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       logger.debug('[SummarizeService] cleanThreadTopic: no JSON in response');
