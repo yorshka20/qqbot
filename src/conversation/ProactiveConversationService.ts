@@ -10,6 +10,7 @@ import { logger } from '@/utils/logger';
 import type { GroupHistoryService } from './GroupHistoryService';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 import type { ProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
+import type { ThreadContextCompressionService } from './ThreadContextCompressionService';
 import type { ThreadService } from './ThreadService';
 
 export interface ProactiveGroupConfig {
@@ -38,6 +39,7 @@ export class ProactiveConversationService {
     private aiService: AIService,
     private messageAPI: MessageAPI,
     private promptManager: PromptManager,
+    private threadCompression?: ThreadContextCompressionService,
   ) { }
 
   /**
@@ -131,6 +133,7 @@ export class ProactiveConversationService {
 
     if (!result.shouldJoin) {
       logger.debug(`[ProactiveConversationService] Ollama: shouldJoin=false | groupId=${groupId}`);
+      this.scheduleThreadCompression(groupId);
       return;
     }
 
@@ -151,12 +154,22 @@ export class ProactiveConversationService {
         replyInExisting.preferenceKey,
         topicOrQuery,
       );
+      this.scheduleThreadCompression(groupId);
       return;
     }
 
     if (result.createNew || activeThreads.length === 0) {
       await this.joinWithNewThread(groupId, groupIdNum, preferenceKey, recentMessagesText, topicOrQuery);
     }
+    this.scheduleThreadCompression(groupId);
+  }
+
+  /**
+   * Schedule async thread context compression for the group (Phase 4).
+   * Runs after analysis; does not block reply flow.
+   */
+  private scheduleThreadCompression(groupId: string): void {
+    this.threadCompression?.scheduleCompression(groupId);
   }
 
   private async joinWithNewThread(

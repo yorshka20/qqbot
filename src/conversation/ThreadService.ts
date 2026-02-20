@@ -9,6 +9,8 @@ export interface ThreadMessage {
   content: string;
   isBotReply: boolean;
   createdAt: Date;
+  /** When true, content is a summary of earlier messages (Phase 4 compression). */
+  isSummary?: boolean;
 }
 
 export interface ProactiveThread {
@@ -162,16 +164,47 @@ export class ThreadService {
 
   /**
    * Get thread context as formatted text (for prompts).
+   * Summary messages (Phase 4) are rendered as "[Summary of earlier messages]: ...".
    */
   getContextFormatted(threadId: string): string {
     const thread = this.threadById.get(threadId);
     if (!thread) return '';
     return thread.messages
       .map((m) => {
-        const who = m.isBotReply ? 'Assistant' : `User[${m.userId}]`;
+        if (m.isSummary) {
+          return `[Summary of earlier messages]: ${m.content}`;
+        }
+        const who = m.isBotReply ? 'Assistant' : `User<${m.userId}>`;
         return `${m.createdAt.toLocaleTimeString()} ${who}: ${m.content}`;
       })
       .join('\n');
+  }
+
+  /**
+   * Replace the earliest N messages with a single summary message (Phase 4 compression).
+   * Does nothing if thread not found or numToReplace is invalid.
+   */
+  replaceEarliestWithSummary(threadId: string, numToReplace: number, summaryText: string): void {
+    const thread = this.threadById.get(threadId);
+    if (!thread || numToReplace <= 0 || numToReplace > thread.messages.length) {
+      if (thread && (numToReplace <= 0 || numToReplace > thread.messages.length)) {
+        logger.warn(
+          `[ThreadService] replaceEarliestWithSummary skipped | threadId=${threadId} | numToReplace=${numToReplace} | messagesLength=${thread.messages.length}`,
+        );
+      }
+      return;
+    }
+    const now = new Date();
+    const summaryMessage: ThreadMessage = {
+      userId: 0,
+      content: summaryText,
+      isBotReply: false,
+      createdAt: now,
+      isSummary: true,
+    };
+    thread.messages.splice(0, numToReplace, summaryMessage);
+    thread.lastActivityAt = now;
+    logger.info(`[ThreadService] Replaced earliest ${numToReplace} messages with summary | threadId=${threadId}`);
   }
 
   /**

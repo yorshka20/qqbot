@@ -37,6 +37,7 @@ import { MessagePipeline } from './MessagePipeline';
 import { DefaultPreferenceKnowledgeService } from './PreferenceKnowledgeService';
 import { DefaultProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
 import { ProactiveConversationService } from './ProactiveConversationService';
+import { ThreadContextCompressionService } from './ThreadContextCompressionService';
 import { CommandSystem } from './systems/CommandSystem';
 import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
 import { TaskSystem } from './systems/TaskSystem';
@@ -154,8 +155,8 @@ export class ConversationInitializer {
     );
     serviceRegistry.registerAIServiceCapabilities(aiService);
 
-    // Proactive conversation (Phase 1): group history, thread, Ollama analysis, orchestrator
-    this.configureProactiveConversationService(serviceRegistry, databaseManager, services.aiManager, aiService, messageAPI, promptManager);
+    // Proactive conversation (Phase 1): group history, thread, Ollama analysis, orchestrator (Phase 4: thread compression)
+    this.configureProactiveConversationService(serviceRegistry, databaseManager, services.aiManager, aiService, messageAPI, promptManager, llmService);
 
     const completeServices: CompleteServices = {
       ...services,
@@ -265,12 +266,21 @@ export class ConversationInitializer {
    * Configure proactive conversation service
    * Used to scope proactive participation and to provide thread context for replies.
    */
-  private static configureProactiveConversationService(serviceRegistry: ServiceRegistry, databaseManager: DatabaseManager, aiManager: AIManager, aiService: AIService, messageAPI: MessageAPI, promptManager: PromptManager): void {
+  private static configureProactiveConversationService(
+    serviceRegistry: ServiceRegistry,
+    databaseManager: DatabaseManager,
+    aiManager: AIManager,
+    aiService: AIService,
+    messageAPI: MessageAPI,
+    promptManager: PromptManager,
+    llmService: LLMService,
+  ): void {
     const groupHistoryService = new GroupHistoryService(databaseManager, 30);
     const threadService = new ThreadService();
     const ollamaAnalysis = new OllamaPreliminaryAnalysisService(aiManager, promptManager);
     const preferenceKnowledge = new DefaultPreferenceKnowledgeService();
     const threadPersistence = new DefaultProactiveThreadPersistenceService(databaseManager);
+    const threadCompression = new ThreadContextCompressionService(threadService, llmService, promptManager);
     const proactiveConversationService = new ProactiveConversationService(
       groupHistoryService,
       threadService,
@@ -280,6 +290,7 @@ export class ConversationInitializer {
       aiService,
       messageAPI,
       promptManager,
+      threadCompression,
     );
     serviceRegistry.registerThreadService(threadService);
     serviceRegistry.registerProactiveConversationService(proactiveConversationService);

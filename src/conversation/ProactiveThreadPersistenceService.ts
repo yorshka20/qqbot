@@ -22,7 +22,7 @@ export interface ProactiveThreadPersistenceService {
  * Default implementation: writes to proactive_threads table via DatabaseManager.
  */
 export class DefaultProactiveThreadPersistenceService implements ProactiveThreadPersistenceService {
-  constructor(private databaseManager: DatabaseManager) {}
+  constructor(private databaseManager: DatabaseManager) { }
 
   async saveEndedThread(thread: ProactiveThread, summary?: string): Promise<void> {
     const adapter = this.databaseManager.getAdapter();
@@ -32,7 +32,10 @@ export class DefaultProactiveThreadPersistenceService implements ProactiveThread
       summary ??
       thread.messages
         .map((m) => {
-          const who = m.isBotReply ? 'Assistant' : `User[${m.userId}]`;
+          if (m.isSummary) {
+            return `[Summary of earlier messages]: ${m.content}`;
+          }
+          const who = m.isBotReply ? 'Assistant' : `User<${m.userId}>`;
           return `${m.createdAt.toISOString()} ${who}: ${m.content}`;
         })
         .join('\n');
