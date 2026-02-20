@@ -98,17 +98,20 @@ export class AIService {
   }
 
   /**
-   * Generate a single proactive reply for group participation (no RAG in Phase 1).
+   * Generate a single proactive reply for group participation.
+   * Phase 2: optional retrievedContext (RAG chunks) is injected into the prompt when provided.
    * Used by ProactiveConversationService when the bot decides to join.
    */
   async generateProactiveReply(
     preferenceText: string,
     threadContextText: string,
     sessionId?: string,
+    retrievedContext?: string,
   ): Promise<string> {
     const prompt = this.promptManager.render('llm.proactive_reply', {
       preferenceText,
       threadContext: threadContextText || '(no context)',
+      retrievedContext: retrievedContext ?? '',
     });
     const response = await this.llmService.generate(prompt, {
       temperature: 0.7,

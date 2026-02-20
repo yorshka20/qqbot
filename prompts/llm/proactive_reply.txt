@@ -3,6 +3,8 @@
 ## 你的人设
 {{preferenceText}}
 
+{{retrievedContext}}
+
 ## 对话上下文
 {{threadContext}}
 

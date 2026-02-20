@@ -1,4 +1,4 @@
-// Proactive Conversation Service - orchestrates debounced analysis, Ollama, thread, and proactive reply (Phase 1)
+// Proactive Conversation Service - orchestrates debounced analysis, Ollama, thread, and proactive reply (Phase 1 + Phase 2 RAG)
 
 import type { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/PromptManager';
@@ -8,6 +8,7 @@ import type { ProtocolName } from '@/core/config/protocol';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
 import type { GroupHistoryService } from './GroupHistoryService';
+import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 import type { ThreadService } from './ThreadService';
 
 export interface ProactiveGroupConfig {
@@ -31,6 +32,7 @@ export class ProactiveConversationService {
     private groupHistoryService: GroupHistoryService,
     private threadService: ThreadService,
     private ollamaAnalysis: OllamaPreliminaryAnalysisService,
+    private preferenceKnowledge: PreferenceKnowledgeService,
     private aiService: AIService,
     private messageAPI: MessageAPI,
     private promptManager: PromptManager,
@@ -115,10 +117,12 @@ export class ProactiveConversationService {
 
     logger.info(`[ProactiveConversationService] Ollama: shouldJoin=true | groupId=${groupId} | result=${JSON.stringify(result)}`);
 
+    const topicOrQuery = result.topic?.trim() || '';
+
     if (activeThread) {
-      await this.replyInThread(activeThread.threadId, groupIdNum, preferenceKey);
+      await this.replyInThread(activeThread.threadId, groupIdNum, preferenceKey, topicOrQuery);
     } else {
-      await this.joinWithNewThread(groupId, groupIdNum, preferenceKey, recentMessagesText);
+      await this.joinWithNewThread(groupId, groupIdNum, preferenceKey, recentMessagesText, topicOrQuery);
     }
   }
 
@@ -127,15 +131,23 @@ export class ProactiveConversationService {
     groupIdNum: number,
     preferenceKey: string,
     recentMessagesText: string,
+    topicOrQuery: string,
   ): Promise<void> {
     // use preference.full for generating proactive reply
     const preferenceText = this.promptManager.render(`${preferenceKey}.full`, {});
     const entries = await this.groupHistoryService.getRecentMessages(groupId, RECENT_MESSAGES_LIMIT);
     const thread = this.threadService.create(groupId, preferenceKey, entries);
+    // retrieve context from preference knowledge service
+    const retrievedChunks = await this.preferenceKnowledge.retrieve(preferenceKey, topicOrQuery);
+    // add extra section to template if retrieved chunks are available
+    const retrievedContext = retrievedChunks.length
+      ? `## 参考知识\n\n${retrievedChunks.join('\n\n')}`
+      : '';
     const replyText = await this.aiService.generateProactiveReply(
       preferenceText,
       recentMessagesText,
       groupId,
+      retrievedContext,
     );
     if (!replyText) {
       logger.warn('[ProactiveConversationService] Empty proactive reply');
@@ -153,16 +165,24 @@ export class ProactiveConversationService {
     threadId: string,
     groupIdNum: number,
     preferenceKey: string,
+    topicOrQuery: string,
   ): Promise<void> {
     const thread = this.threadService.getThread(threadId);
     if (!thread) return;
     const contextText = this.threadService.getContextFormatted(threadId);
     // use preference.full for generating proactive reply
     const preferenceText = this.promptManager.render(`${preferenceKey}.full`, {});
+    // retrieve context from preference knowledge service
+    const retrievedChunks = await this.preferenceKnowledge.retrieve(preferenceKey, topicOrQuery);
+    // add extra section to template if retrieved chunks are available
+    const retrievedContext = retrievedChunks.length
+      ? `## 参考知识\n\n${retrievedChunks.join('\n\n')}`
+      : '';
     const replyText = await this.aiService.generateProactiveReply(
       preferenceText,
       contextText,
       thread.groupId,
+      retrievedContext,
     );
     if (!replyText) return;
     await this.sendGroupMessage(groupIdNum, replyText);
