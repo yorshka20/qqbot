@@ -32,7 +32,8 @@ export class PromptInitializer {
     }
 
     const promptDirectory = resolve(process.cwd(), promptsConfig.directory);
-    const promptManager = new PromptManager(promptDirectory);
+    const adminUserId = config.getConfig().bot.owner;
+    const promptManager = new PromptManager(promptDirectory, adminUserId);
 
     // Always auto-load templates from directory
     promptManager.loadTemplatesFromDirectory();

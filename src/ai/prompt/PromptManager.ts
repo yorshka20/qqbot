@@ -1,6 +1,7 @@
 // Prompt Manager - manages prompt templates
 // Part of AI module - prompt management is integrated into AI scope
 
+import type { NormalizedMessageEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { basename, extname, join, resolve } from 'path';
@@ -30,9 +31,22 @@ export class PromptManager {
   private templates = new Map<string, PromptTemplate>();
   private templateDirectory: string;
   private namespaces = new Map<string, Map<string, PromptTemplate>>(); // namespace -> templates
+  /** Current message context set by pipeline before processing; used by injectBase to resolve groupId and userInfo. */
+  private currentMessageContext: { message: NormalizedMessageEvent } | null = null;
+  /** Bot owner user id from config (bot.owner); used by injectBase for {{adminUserId}}. */
+  private readonly adminUserId: string;
 
-  constructor(templateDirectory?: string) {
+  constructor(templateDirectory?: string, adminUserId?: string) {
     this.templateDirectory = templateDirectory || resolve(process.cwd(), 'prompts');
+    this.adminUserId = adminUserId ?? '';
+  }
+
+  /**
+   * Set current message context for base prompt injection (groupId, userInfo).
+   * Pipeline should call this at the start of message processing and clear with setCurrentMessageContext(null) when done.
+   */
+  setCurrentMessageContext(ctx: { message: NormalizedMessageEvent } | null): void {
+    this.currentMessageContext = ctx;
   }
 
   /**
@@ -181,15 +195,25 @@ export class PromptManager {
 
     const baseTemplate = this.getTemplate(BASE_TEMPLATE_NAME);
     if (baseTemplate) {
-      // inject base template with extra variables.
-      const baseRendered = this.renderTemplateContent(baseTemplate, BASE_TEMPLATE_NAME, {
+      // Inject base template; groupId and userInfo are resolved from current message context (set by pipeline).
+      const msg = this.currentMessageContext?.message;
+      const groupId =
+        msg?.messageType === 'group' && msg?.groupId != null ? String(msg.groupId) : '（无）';
+      const userInfo = msg
+        ? `userId：${msg.userId}，nickname：${msg.sender?.nickname ?? '未知'}`
+        : '（无）';
+      const baseVars: Record<string, string> = {
         currentDate: new Date().toLocaleDateString('zh-CN', {
           year: 'numeric',
           month: 'long',
           day: 'numeric',
           weekday: 'long',
-        })
-      });
+        }),
+        groupId,
+        userInfo,
+        adminUserId: this.adminUserId || '（无管理员）',
+      };
+      const baseRendered = this.renderTemplateContent(baseTemplate, BASE_TEMPLATE_NAME, baseVars);
       return baseRendered ? `${baseRendered}\n\n${mainRendered}` : mainRendered;
     }
 
