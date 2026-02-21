@@ -31,20 +31,22 @@ import { TaskInitializer, TaskManager } from '@/task';
 import { logger } from '@/utils/logger';
 import { CommandRouter } from './CommandRouter';
 import { ConversationManager } from './ConversationManager';
-import { GroupHistoryService } from './GroupHistoryService';
 import { Lifecycle } from './Lifecycle';
 import { MessagePipeline } from './MessagePipeline';
 import {
-  SearXNGPreferenceKnowledgeService
-} from './PreferenceKnowledgeService';
-import { ProactiveConversationService } from './ProactiveConversationService';
-import { DefaultProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
+  DefaultProactiveThreadPersistenceService,
+  ProactiveConversationService,
+  SearXNGPreferenceKnowledgeService,
+} from './proactive';
 import { SummarizeService } from './SummarizeService';
 import { CommandSystem } from './systems/CommandSystem';
 import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
 import { TaskSystem } from './systems/TaskSystem';
-import { ThreadContextCompressionService } from './ThreadContextCompressionService';
-import { ThreadService } from './ThreadService';
+import {
+  GroupHistoryService,
+  ThreadContextCompressionService,
+  ThreadService,
+} from './thread';
 
 export interface ConversationComponents {
   conversationManager: ConversationManager;

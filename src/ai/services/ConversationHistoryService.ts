@@ -6,7 +6,7 @@ import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { Message } from '@/database/models/types';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
-import type { ThreadService } from '@/conversation/ThreadService';
+import type { ThreadService } from '@/conversation/thread';
 
 /**
  * Conversation History Service

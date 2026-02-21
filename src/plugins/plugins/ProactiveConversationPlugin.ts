@@ -1,7 +1,7 @@
 // Proactive Conversation Plugin - schedules group analysis and configures proactive participation (Phase 1)
 
-import type { ProactiveConversationService } from '@/conversation/ProactiveConversationService';
-import type { ThreadService } from '@/conversation/ThreadService';
+import type { ProactiveConversationService } from '@/conversation/proactive';
+import type { ThreadService } from '@/conversation/thread';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext, HookResult } from '@/hooks/types';

@@ -9,11 +9,11 @@ import type { ProtocolName } from '@/core/config/protocol';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
-import type { GroupHistoryService, GroupMessageEntry } from './GroupHistoryService';
+import type { GroupHistoryService, GroupMessageEntry } from '../thread';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 import type { ProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
-import type { ThreadContextCompressionService } from './ThreadContextCompressionService';
-import { isReadableTextForThread, type ThreadService } from './ThreadService';
+import type { ThreadContextCompressionService } from '../thread';
+import { isReadableTextForThread, type ThreadService } from '../thread';
 
 export interface ProactiveGroupConfig {
   groupId: string;

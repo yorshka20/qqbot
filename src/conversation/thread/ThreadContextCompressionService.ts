@@ -2,7 +2,7 @@
 
 import type { PromptManager } from '@/ai/PromptManager';
 import { logger } from '@/utils/logger';
-import type { SummarizeService } from './SummarizeService';
+import type { SummarizeService } from '../SummarizeService';
 import type { ThreadMessage, ThreadService } from './ThreadService';
 
 /** When thread message count exceeds this, we may compress the earliest segment. */

@@ -3,7 +3,7 @@
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { ProactiveThreadRecord } from '@/database/models/types';
 import { logger } from '@/utils/logger';
-import type { ProactiveThread } from './ThreadService';
+import type { ProactiveThread } from '../thread';
 
 /**
  * Persists ended proactive threads to the database.

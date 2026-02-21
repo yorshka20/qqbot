@@ -1,4 +1,4 @@
-import type { ThreadService } from '@/conversation/ThreadService';
+import type { ThreadService } from '@/conversation/thread';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext, HookResult } from '@/hooks/types';
