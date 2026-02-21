@@ -10,7 +10,7 @@ import type {
   ConversationConfig,
   DatabaseModel,
   Memory,
-  MemoryExtractCursor,
+  MemoryExtractUserCursor,
   Message,
   ModelAccessor,
   ProactiveThreadRecord,
@@ -45,8 +45,19 @@ class MongoModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
     return this.deserialize(doc) as T;
   }
 
-  async find(criteria: Partial<T>): Promise<T[]> {
-    const docs = await this.collection.find(criteria).toArray();
+  async find(
+    criteria: Partial<T>,
+    options?: { limit?: number; orderBy?: string; order?: 'asc' | 'desc' },
+  ): Promise<T[]> {
+    let cursor = this.collection.find(criteria);
+    if (options?.orderBy) {
+      const dir = options.order === 'desc' ? -1 : 1;
+      cursor = cursor.sort({ [options.orderBy]: dir });
+    }
+    if (options?.limit != null && options.limit > 0) {
+      cursor = cursor.limit(Math.floor(options.limit));
+    }
+    const docs = await cursor.toArray();
     return docs.map((doc) => this.deserialize(doc) as T);
   }
 
@@ -225,7 +236,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
       conversationConfigs: new MongoModelAccessor<ConversationConfig>(this.db.collection('conversation_configs')),
       proactiveThreads: new MongoModelAccessor<ProactiveThreadRecord>(this.db.collection('proactive_threads')),
       memories: new MongoModelAccessor<Memory>(this.db.collection('memories')),
-      memoryExtractCursors: new MongoModelAccessor<MemoryExtractCursor>(this.db.collection('memory_extract_cursors')),
+      memoryExtractUserCursors: new MongoModelAccessor<MemoryExtractUserCursor>(this.db.collection('memory_extract_user_cursors')),
     };
   }
 }

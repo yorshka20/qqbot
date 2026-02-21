@@ -4,7 +4,7 @@ import type { GroupHistoryService, GroupMessageEntry } from '@/conversation/thre
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
-import type { MemoryExtractCursor, Message } from '@/database/models/types';
+import type { MemoryExtractUserCursor, Message } from '@/database/models/types';
 import type { HookContext, HookResult } from '@/hooks/types';
 import type { MemoryExtractService } from '@/memory';
 import { logger } from '@/utils/logger';
@@ -28,7 +28,7 @@ export interface MemoryPluginConfig {
   coldStartMaxLength?: number;
   /** Cold start: progress file path (one line per "groupId:userId"). Default "data/memory_coldstart_progress.txt". */
   coldStartProgressFile?: string;
-  /** When using cursor: max messages per extract run (remaining messages processed in next debounce). Default 500. Cursor stored in DB (memory_extract_cursors). */
+  /** Max messages per debounced extract run (per group). Progress is stored per user in DB (memory_extract_user_cursors) when triggered via MemoryTrigger. */
   maxMessagesPerExtract?: number;
 }
 
@@ -84,7 +84,7 @@ export class MemoryPlugin extends PluginBase {
       this.coldStartProgressFile = pluginConfig.coldStartProgressFile ?? DEFAULT_COLDSTART_PROGRESS_FILE;
       this.maxMessagesPerExtract = pluginConfig.maxMessagesPerExtract ?? DEFAULT_MAX_MESSAGES_PER_EXTRACT;
       logger.info(
-        `[MemoryPlugin] Enabled | groups=${Array.from(this.groupIds).join(', ')} debounceMs=${this.debounceMs} maxPerExtract=${this.maxMessagesPerExtract} (cursor in DB)`,
+        `[MemoryPlugin] Enabled | groups=${Array.from(this.groupIds).join(', ')} debounceMs=${this.debounceMs} maxPerExtract=${this.maxMessagesPerExtract}`,
       );
       if (this.coldStartOnInit) {
         setImmediate(() => {
@@ -315,40 +315,17 @@ export class MemoryPlugin extends PluginBase {
   }
 
   /**
-   * Normal (debounced) flow: get messages since last processed (cursor in DB) so burst and restart do not miss messages.
+   * Normal (debounced) flow: get recent messages for the group and run extract (no group-level cursor; user progress is per user in memory_extract_user_cursors).
    */
   private async runExtractForGroup(groupId: string): Promise<void> {
-    const adapter = this.databaseManager.getAdapter();
-    if (!adapter?.isConnected()) {
-      return;
-    }
-    const cursors = adapter.getModel('memoryExtractCursors');
-    const row = await cursors.findOne({ groupId } as Partial<MemoryExtractCursor>) as MemoryExtractCursor | null;
-    const since = row?.lastProcessedAt ? new Date(row.lastProcessedAt) : null;
-
-    const entries = since
-      ? await this.groupHistoryService.getMessagesSince(groupId, since, this.maxMessagesPerExtract)
-      : await this.groupHistoryService.getRecentMessages(groupId, this.maxMessagesPerExtract);
-
+    const entries = await this.groupHistoryService.getRecentMessages(groupId, this.maxMessagesPerExtract);
     if (entries.length === 0) {
       return;
     }
-
     const recentMessagesText = this.groupHistoryService.formatAsText(entries);
     await this.memoryExtractService.extractAndUpsert(groupId, recentMessagesText, {
       provider: this.extractProvider,
     });
-
-    const latest = entries.reduce((max, e) => {
-      const t = e.createdAt.getTime();
-      return t > max ? t : max;
-    }, 0);
-    const isoDate = new Date(latest).toISOString();
-    if (row) {
-      await cursors.update(row.id, { lastProcessedAt: isoDate });
-    } else {
-      await cursors.create({ groupId, lastProcessedAt: isoDate } as Omit<MemoryExtractCursor, 'id' | 'createdAt' | 'updatedAt'>);
-    }
   }
 
   /**
@@ -376,17 +353,34 @@ export class MemoryPlugin extends PluginBase {
     }
     const entries = await this.getUserMessagesInGroup(conversation.id, userId);
     if (entries.length === 0) {
-      logger.debug(`[MemoryPlugin] runFullHistoryExtractForUser: no messages for groupId=${groupId} userId=${userId}`);
+      logger.debug(`[MemoryPlugin] runFullHistoryExtractForUser: no messages for groupId=${groupId} userId=${userId}, writing progress to skip next time`);
+      await this.appendColdStartProgress(key);
       return;
     }
     const text = this.groupHistoryService.formatAsText(entries);
     const chunks = this.chunkTextByMaxLength(text, this.coldStartMaxLength);
     const opts = { provider: this.extractProvider };
-    for (const chunk of chunks) {
-      await this.memoryExtractService.extractAndUpsertUserOnly(groupId, userId, chunk, opts);
+    try {
+      for (const chunk of chunks) {
+        await this.memoryExtractService.extractAndUpsertUserOnly(groupId, userId, chunk, opts);
+      }
+      const adapter = this.databaseManager.getAdapter();
+      if (adapter?.isConnected()) {
+        const latestEntry = entries[entries.length - 1];
+        const lastProcessedAt = latestEntry?.createdAt ? new Date(latestEntry.createdAt).toISOString() : new Date().toISOString();
+        const userCursors = adapter.getModel('memoryExtractUserCursors');
+        const existingUser = await userCursors.findOne({ groupId, userId } as Partial<MemoryExtractUserCursor>) as MemoryExtractUserCursor | null;
+        if (existingUser) {
+          await userCursors.update(existingUser.id, { lastProcessedAt });
+        } else {
+          await userCursors.create({ groupId, userId, lastProcessedAt } as Omit<MemoryExtractUserCursor, 'id' | 'createdAt' | 'updatedAt'>);
+        }
+      }
+      await this.appendColdStartProgress(key);
+      logger.info(`[MemoryPlugin] Full history extract completed for groupId=${groupId} userId=${userId} chunks=${chunks.length} | progress file + user cursor written`);
+    } catch (err) {
+      logger.error(`[MemoryPlugin] runFullHistoryExtractForUser failed (progress not written): groupId=${groupId} userId=${userId}`, err);
     }
-    await this.appendColdStartProgress(key);
-    logger.info(`[MemoryPlugin] Full history extract completed for groupId=${groupId} userId=${userId} chunks=${chunks.length}`);
   }
 
   @Hook({

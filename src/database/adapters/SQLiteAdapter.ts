@@ -12,7 +12,7 @@ import type {
   ConversationConfig,
   DatabaseModel,
   Memory,
-  MemoryExtractCursor,
+  MemoryExtractUserCursor,
   Message,
   ModelAccessor,
   ProactiveThreadRecord,
@@ -71,7 +71,10 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
     return this.deserialize(row) as T;
   }
 
-  async find(criteria: Partial<T>): Promise<T[]> {
+  async find(
+    criteria: Partial<T>,
+    options?: { limit?: number; orderBy?: string; order?: 'asc' | 'desc' },
+  ): Promise<T[]> {
     const conditions: string[] = [];
     const values: (string | number | bigint | boolean | null)[] = [];
 
@@ -88,10 +91,17 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
       }
     }
 
-    const sql =
+    let sql =
       conditions.length > 0
         ? `SELECT * FROM ${this.tableName} WHERE ${conditions.join(' AND ')}`
         : `SELECT * FROM ${this.tableName}`;
+    if (options?.orderBy) {
+      const dir = options.order === 'desc' ? 'DESC' : 'ASC';
+      sql += ` ORDER BY ${options.orderBy} ${dir}`;
+    }
+    if (options?.limit != null && options.limit > 0) {
+      sql += ` LIMIT ${Math.floor(options.limit)}`;
+    }
 
     const stmt = this.db.query(sql);
     const rows = (conditions.length > 0 ? stmt.all(...values) : stmt.all()) as Record<string, unknown>[];
@@ -332,12 +342,14 @@ export class SQLiteAdapter implements DatabaseAdapter {
         updatedAt TEXT NOT NULL,
         UNIQUE(groupId, userId)
       )`,
-      `CREATE TABLE IF NOT EXISTS memory_extract_cursors (
+      `CREATE TABLE IF NOT EXISTS memory_extract_user_cursors (
         id TEXT PRIMARY KEY,
-        groupId TEXT NOT NULL UNIQUE,
+        groupId TEXT NOT NULL,
+        userId TEXT NOT NULL,
         lastProcessedAt TEXT NOT NULL,
         createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL
+        updatedAt TEXT NOT NULL,
+        UNIQUE(groupId, userId)
       )`,
     ];
 
@@ -380,7 +392,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       `CREATE INDEX IF NOT EXISTS idx_proactive_threads_groupId ON proactive_threads(groupId)`,
       `CREATE INDEX IF NOT EXISTS idx_proactive_threads_threadId ON proactive_threads(threadId)`,
       `CREATE INDEX IF NOT EXISTS idx_memories_groupId_userId ON memories(groupId, userId)`,
-      `CREATE INDEX IF NOT EXISTS idx_memory_extract_cursors_groupId ON memory_extract_cursors(groupId)`,
+      `CREATE INDEX IF NOT EXISTS idx_memory_extract_user_cursors_groupId_userId ON memory_extract_user_cursors(groupId, userId)`,
     ];
 
     for (const statement of indexStatements) {
@@ -433,7 +445,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       conversationConfigs: new SQLiteModelAccessor<ConversationConfig>(this.db, 'conversation_configs'),
       proactiveThreads: new SQLiteModelAccessor<ProactiveThreadRecord>(this.db, 'proactive_threads'),
       memories: new SQLiteModelAccessor<Memory>(this.db, 'memories'),
-      memoryExtractCursors: new SQLiteModelAccessor<MemoryExtractCursor>(this.db, 'memory_extract_cursors'),
+      memoryExtractUserCursors: new SQLiteModelAccessor<MemoryExtractUserCursor>(this.db, 'memory_extract_user_cursors'),
     };
   }
 }

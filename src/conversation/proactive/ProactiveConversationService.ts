@@ -396,6 +396,8 @@ export class ProactiveConversationService {
       content: replyText,
       isBotReply: true,
     });
+
+    logger.debug('[ProactiveConversationService] Join with new thread memoryContext:', { memoryContext: injectContext.memoryContext });
   }
 
   private async replyInThread(
@@ -424,6 +426,8 @@ export class ProactiveConversationService {
       content: replyText,
       isBotReply: true,
     });
+
+    logger.debug('[ProactiveConversationService] Reply in thread memoryContext:', { memoryContext: injectContext.memoryContext });
   }
 
   private async sendGroupMessage(groupId: number, text: string): Promise<void> {

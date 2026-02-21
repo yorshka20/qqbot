@@ -100,10 +100,11 @@ export interface Memory extends BaseModel {
 }
 
 /**
- * Memory extract cursor: last processed message time per group (for incremental extract, survives restart).
+ * Memory extract cursor per user (for MemoryTrigger full-history extract; last processed message time per group+user).
  */
-export interface MemoryExtractCursor extends BaseModel {
+export interface MemoryExtractUserCursor extends BaseModel {
   groupId: string;
+  userId: string;
   lastProcessedAt: string; // ISO date string
 }
 
@@ -122,9 +123,10 @@ export interface ModelAccessor<T extends BaseModel> {
   findById(id: string): Promise<T | null>;
 
   /**
-   * Find records by criteria
+   * Find records by criteria.
+   * @param options - Optional limit and order (e.g. for "last N by createdAt" without loading all).
    */
-  find(criteria: Partial<T>): Promise<T[]>;
+  find(criteria: Partial<T>, options?: { limit?: number; orderBy?: string; order?: 'asc' | 'desc' }): Promise<T[]>;
 
   /**
    * Find one record by criteria
@@ -156,5 +158,5 @@ export interface DatabaseModel {
   conversationConfigs: ModelAccessor<ConversationConfig>;
   proactiveThreads: ModelAccessor<ProactiveThreadRecord>;
   memories: ModelAccessor<Memory>;
-  memoryExtractCursors: ModelAccessor<MemoryExtractCursor>;
+  memoryExtractUserCursors: ModelAccessor<MemoryExtractUserCursor>;
 }

@@ -51,13 +51,13 @@ export class GroupHistoryService {
       }
 
       const messages = adapter.getModel('messages');
-      const all = await messages.find({ conversationId: conversation.id });
-      const sorted = (all as Message[]).sort(
-        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-      );
-      const recent = sorted.slice(-take);
+      const recent = (await messages.find(
+        { conversationId: conversation.id },
+        { orderBy: 'createdAt', order: 'desc', limit: take },
+      )) as Message[];
+      const chronological = recent.reverse();
 
-      return recent.map((msg) => {
+      return chronological.map((msg) => {
         const meta = (msg.metadata as Record<string, unknown>) || {};
         const sender = meta.sender as { nickname?: string; card?: string } | undefined;
         const nickname = sender?.nickname ?? sender?.card;

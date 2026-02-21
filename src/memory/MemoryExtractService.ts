@@ -52,16 +52,15 @@ export class MemoryExtractService {
       newFacts: newFacts.trim(),
     }, { injectBase: true });
 
-    logger.info('[MemoryExtractService] Analyze full prompt:\n' + prompt);
+    // logger.info('[MemoryExtractService] Analyze full prompt:\n' + prompt);
 
     try {
       const res = await this.llmService.generate(prompt, {
         temperature: 0.4,
-        maxTokens: 2000,
+        maxTokens: 20000,
       }, provider);
       const merged = (res.text ?? '').trim();
-      logger.info('[MemoryExtractService] === ANALYZE API RESULT (full) ===');
-      logger.info(JSON.stringify({ text: merged, usage: res.usage, metadata: res.metadata }, null, 2));
+      logger.debug('[MemoryExtractService] Analyze result:', merged);
       return merged;
     } catch (err) {
       logger.error('[MemoryExtractService] LLM analyze failed:', err);
@@ -100,7 +99,7 @@ export class MemoryExtractService {
       recentMessagesText: inputText,
     }, { injectBase: true });
 
-    logger.info('[MemoryExtractService] Extract full prompt:\n' + prompt);
+    // logger.info('[MemoryExtractService] Extract full prompt:\n' + prompt);
 
     let response: string;
     try {
@@ -109,8 +108,7 @@ export class MemoryExtractService {
         maxTokens: 20000, // use long context for extract.
       }, provider);
       response = (res.text ?? '').trim();
-      logger.info('[MemoryExtractService] === EXTRACT API RESULT (full) ===');
-      logger.info(JSON.stringify({ text: response, usage: res.usage, metadata: res.metadata }, null, 2));
+      logger.debug('MemoryExtractService] runExtractAndUpsertUserOnly result:', response);
     } catch (err) {
       logger.error('[MemoryExtractService] LLM extract failed (userOnly):', err);
       return;
@@ -173,7 +171,7 @@ export class MemoryExtractService {
     try {
       const res = await this.llmService.generate(prompt, {
         temperature: 0.4,
-        maxTokens: 2000,
+        maxTokens: 20000,
       }, provider);
       response = (res.text ?? '').trim();
     } catch (err) {
@@ -252,10 +250,10 @@ export class MemoryExtractService {
         result.userFacts = [];
         for (const item of obj.user_facts) {
           const row = item as Record<string, unknown>;
-          if (!row || typeof row.user_id !== 'string') {
+          if (!row || (row.user_id !== undefined && typeof row.user_id !== 'string' && typeof row.user_id !== 'number')) {
             continue;
           }
-          const userId = row.user_id.trim();
+          const userId = row.user_id != null ? String(row.user_id).trim() : '';
           if (!userId) {
             continue;
           }
