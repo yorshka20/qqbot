@@ -16,8 +16,8 @@ export class CommandRouter {
   }
 
   /**
-   * Parse and route message
-   * Returns parsed command if message is a command, null otherwise
+   * Parse and route message (plain or mixed-content; parser handles both).
+   * Returns parsed command if message is a command, null otherwise.
    */
   route(message: string): ParsedCommand | null {
     return this.parser.parse(message);
