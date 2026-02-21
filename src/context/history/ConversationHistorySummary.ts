@@ -1,18 +1,18 @@
-// Conversation Summary Memory - compresses long conversations using summaries
+// Conversation History Summary - compresses long session history using summaries (not persistent memory)
 
 import type { SummarizeService } from '@/conversation/SummarizeService';
 import { logger } from '@/utils/logger';
-import type { ConversationBufferMemory } from './ConversationBufferMemory';
+import type { ConversationHistoryBuffer } from './ConversationHistoryBuffer';
 
 /**
- * Conversation Summary Memory
- * Compresses long conversations by summarizing old messages (uses shared SummarizeService).
+ * Wraps ConversationHistoryBuffer and compresses old messages into a summary when buffer exceeds threshold.
+ * Used by ContextManager for long sessions; not the same as persistent Memory in @/memory.
  */
-export class ConversationSummaryMemory {
+export class ConversationHistorySummary {
   private summary: string = '';
 
   constructor(
-    private buffer: ConversationBufferMemory,
+    private buffer: ConversationHistoryBuffer,
     private summaryThreshold: number,
     private summarizeService: SummarizeService,
   ) {}
@@ -63,7 +63,7 @@ export class ConversationSummaryMemory {
         .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
         .join('\n');
 
-      logger.debug('[ConversationSummaryMemory] Generating summary...');
+      logger.debug('[ConversationHistorySummary] Generating summary...');
 
       const summaryText = await this.summarizeService.summarize(conversationText);
 
@@ -81,9 +81,9 @@ export class ConversationSummaryMemory {
         this.buffer.addMessage(msg.role, msg.content);
       }
 
-      logger.debug('[ConversationSummaryMemory] Summary generated');
+      logger.debug('[ConversationHistorySummary] Summary generated');
     } catch (error) {
-      logger.error('[ConversationSummaryMemory] Failed to generate summary:', error);
+      logger.error('[ConversationHistorySummary] Failed to generate summary:', error);
       // Continue without summary
     }
   }

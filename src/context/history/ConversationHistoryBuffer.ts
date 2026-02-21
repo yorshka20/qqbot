@@ -1,6 +1,4 @@
-// Conversation Buffer Memory - stores conversation history in memory
-
-import type { ConversationContext } from '../types';
+// Conversation History Buffer - in-memory rolling buffer of recent messages (not persistent memory)
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -9,10 +7,10 @@ export interface ConversationMessage {
 }
 
 /**
- * Conversation Buffer Memory
- * Stores conversation history in a buffer with configurable size limit
+ * In-memory buffer of conversation messages for a session.
+ * Used by ContextManager to build conversation context (recent messages); not the same as persistent Memory in @/memory.
  */
-export class ConversationBufferMemory {
+export class ConversationHistoryBuffer {
   private buffer: ConversationMessage[] = [];
   private maxSize: number;
 

@@ -2,8 +2,8 @@
 
 import type { SummarizeService } from '@/conversation/SummarizeService';
 import { logger } from '@/utils/logger';
-import { ConversationBufferMemory } from './memory/ConversationBufferMemory';
-import { ConversationSummaryMemory } from './memory/ConversationSummaryMemory';
+import { ConversationHistoryBuffer } from './history/ConversationHistoryBuffer';
+import { ConversationHistorySummary } from './history/ConversationHistorySummary';
 import type { ContextBuilderOptions, ConversationContext, GlobalContext, SessionContext } from './types';
 
 export interface BuildContextOptions extends ContextBuilderOptions {
@@ -19,7 +19,8 @@ export interface BuildContextOptions extends ContextBuilderOptions {
  * Builds and manages conversation contexts
  */
 export class ContextManager {
-  private memories = new Map<string, ConversationBufferMemory | ConversationSummaryMemory>();
+  /** Per-session conversation history (buffer or buffer+summary); not persistent memory. */
+  private sessionHistory = new Map<string, ConversationHistoryBuffer | ConversationHistorySummary>();
   private globalContext: GlobalContext | null = null;
 
   constructor(
@@ -38,32 +39,32 @@ export class ContextManager {
   }
 
   /**
-   * Get or create memory for session
+   * Get or create conversation history for session (in-memory buffer or summary wrapper).
    */
-  private getMemory(sessionId: string): ConversationBufferMemory | ConversationSummaryMemory {
-    if (!this.memories.has(sessionId)) {
-      const buffer = new ConversationBufferMemory(this.maxBufferSize);
-      let memory: ConversationBufferMemory | ConversationSummaryMemory;
+  private getSessionHistory(sessionId: string): ConversationHistoryBuffer | ConversationHistorySummary {
+    if (!this.sessionHistory.has(sessionId)) {
+      const buffer = new ConversationHistoryBuffer(this.maxBufferSize);
+      let history: ConversationHistoryBuffer | ConversationHistorySummary;
 
       if (this.useSummary && this.summarizeService) {
-        memory = new ConversationSummaryMemory(buffer, this.summaryThreshold, this.summarizeService);
+        history = new ConversationHistorySummary(buffer, this.summaryThreshold, this.summarizeService);
       } else {
-        memory = buffer;
+        history = buffer;
       }
 
-      this.memories.set(sessionId, memory);
+      this.sessionHistory.set(sessionId, history);
     }
-    return this.memories.get(sessionId)!;
+    return this.sessionHistory.get(sessionId)!;
   }
 
   /**
    * Build conversation context
    */
   buildContext(userMessage: string, options: BuildContextOptions): ConversationContext {
-    const memory = this.getMemory(options.sessionId);
+    const sessionHistory = this.getSessionHistory(options.sessionId);
 
     // Get conversation history
-    const history = memory instanceof ConversationSummaryMemory ? memory.getHistory() : memory.getFormattedHistory();
+    const history = sessionHistory instanceof ConversationHistorySummary ? sessionHistory.getHistory() : sessionHistory.getFormattedHistory();
 
     // Build context
     const context: ConversationContext = {
@@ -97,12 +98,12 @@ export class ContextManager {
    * Add message to conversation history
    */
   async addMessage(sessionId: string, role: 'user' | 'assistant', content: string): Promise<void> {
-    const memory = this.getMemory(sessionId);
+    const sessionHistory = this.getSessionHistory(sessionId);
 
-    if (memory instanceof ConversationSummaryMemory) {
-      await memory.addMessage(role, content);
+    if (sessionHistory instanceof ConversationHistorySummary) {
+      await sessionHistory.addMessage(role, content);
     } else {
-      memory.addMessage(role, content);
+      sessionHistory.addMessage(role, content);
     }
   }
 
@@ -110,9 +111,9 @@ export class ContextManager {
    * Clear conversation history for session
    */
   clearSession(sessionId: string): void {
-    const memory = this.memories.get(sessionId);
-    if (memory) {
-      memory.clear();
+    const sessionHistory = this.sessionHistory.get(sessionId);
+    if (sessionHistory) {
+      sessionHistory.clear();
     }
   }
 
@@ -120,8 +121,8 @@ export class ContextManager {
    * Get session context
    */
   getSessionContext(sessionId: string, sessionType: 'user' | 'group'): SessionContext {
-    const memory = this.getMemory(sessionId);
-    const history = memory instanceof ConversationSummaryMemory ? memory.getHistory() : memory.getFormattedHistory();
+    const sessionHistory = this.getSessionHistory(sessionId);
+    const history = sessionHistory instanceof ConversationHistorySummary ? sessionHistory.getHistory() : sessionHistory.getFormattedHistory();
 
     return {
       sessionId,
@@ -138,8 +139,8 @@ export class ContextManager {
    * Returns formatted history messages for use in AI context
    */
   getHistory(sessionId: string, maxMessages?: number): Array<{ role: 'user' | 'assistant'; content: string }> {
-    const memory = this.getMemory(sessionId);
-    const history = memory instanceof ConversationSummaryMemory ? memory.getHistory() : memory.getFormattedHistory();
+    const sessionHistory = this.getSessionHistory(sessionId);
+    const history = sessionHistory instanceof ConversationHistorySummary ? sessionHistory.getHistory() : sessionHistory.getFormattedHistory();
 
     if (maxMessages && maxMessages > 0) {
       return history.slice(-maxMessages);

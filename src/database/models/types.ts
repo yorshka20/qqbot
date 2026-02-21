@@ -95,7 +95,7 @@ export interface ProactiveThreadRecord extends BaseModel {
 export interface Memory extends BaseModel {
   groupId: string;
   userId: string;
-  isGlobalMemory: number; // 1 = group-level, 0 = user-in-group
+  isGlobalMemory: boolean;
   content: string;
 }
 
