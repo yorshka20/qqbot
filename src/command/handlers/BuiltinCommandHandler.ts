@@ -260,7 +260,7 @@ export class RoleCommand implements CommandHandler {
 
     for (const key of preferenceKeys) {
       lines.push(`【${key}】`);
-      const templateName = `preference.${key}${TRIGGER_TEMPLATE_SUFFIX}`;
+      const templateName = `${key}${TRIGGER_TEMPLATE_SUFFIX}`;
       const template = this.promptManager.getTemplate(templateName);
       const triggerWords =
         template?.content

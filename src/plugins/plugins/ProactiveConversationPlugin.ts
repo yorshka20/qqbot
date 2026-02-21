@@ -51,10 +51,10 @@ export class ProactiveConversationPlugin extends PluginBase {
 
   /**
    * Load trigger words for one preference from prompts/preference/{preferenceKey}/trigger.txt via PromptManager.
-   * Template name is "preference.{preferenceKey}.trigger".
+   * Template name is "{preferenceKey}${TRIGGER_TEMPLATE_SUFFIX}".
    */
   private loadTriggerWordsForPreference(promptManager: PromptManager, preferenceKey: string): void {
-    const templateName = `preference.${preferenceKey}${TRIGGER_TEMPLATE_SUFFIX}`;
+    const templateName = `${preferenceKey}${TRIGGER_TEMPLATE_SUFFIX}`;
     const template = promptManager.getTemplate(templateName);
     if (!template?.content) {
       return;
