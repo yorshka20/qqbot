@@ -266,6 +266,7 @@ export class MemoryPlugin extends PluginBase {
       const sender = meta.sender as { nickname?: string; card?: string } | undefined;
       const nickname = sender?.nickname ?? sender?.card;
       return {
+        messageId: msg.id,
         userId: msg.userId,
         nickname: typeof nickname === 'string' ? nickname : undefined,
         content: msg.content,

@@ -116,7 +116,7 @@ export class ReplyGenerationService {
 
       // Generate AI response using LLM service
       const response = await this.llmService.generate(prompt, {
-        temperature: 0.7,
+        temperature: 0.6,
         maxTokens: 2000,
         sessionId,
       });

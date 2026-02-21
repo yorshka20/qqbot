@@ -5,6 +5,8 @@ import type { Message } from '@/database/models/types';
 import { logger } from '@/utils/logger';
 
 export interface GroupMessageEntry {
+  /** Stable message ID from database (Message.id). Used for dedup boundary tracking. */
+  messageId: string;
   userId: number;
   /** Sender display name (from protocol: nickname or card). */
   nickname?: string;
@@ -62,6 +64,7 @@ export class GroupHistoryService {
         const sender = meta.sender as { nickname?: string; card?: string } | undefined;
         const nickname = sender?.nickname ?? sender?.card;
         return {
+          messageId: msg.id,
           userId: msg.userId,
           nickname: typeof nickname === 'string' ? nickname : undefined,
           content: msg.content,
@@ -116,6 +119,7 @@ export class GroupHistoryService {
         const sender = meta.sender as { nickname?: string; card?: string } | undefined;
         const nickname = sender?.nickname ?? sender?.card;
         return {
+          messageId: msg.id,
           userId: msg.userId,
           nickname: typeof nickname === 'string' ? nickname : undefined,
           content: msg.content,

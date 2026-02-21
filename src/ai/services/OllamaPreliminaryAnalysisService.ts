@@ -91,7 +91,7 @@ export class OllamaPreliminaryAnalysisService {
     try {
       const response = await llm.generate(prompt, {
         temperature: 0.3,
-        maxTokens: 500,
+        maxTokens: 5000,
         reasoningEffort: 'minimal', // no reasoning for quick response.
       });
       const text = (response.text || '').trim();
@@ -145,7 +145,7 @@ export class OllamaPreliminaryAnalysisService {
     try {
       const response = await llm.generate(prompt, {
         temperature: 0.3,
-        maxTokens: 600,
+        maxTokens: 4000,
       });
       const text = (response.text || '').trim();
       return this.parseJsonResult(text);

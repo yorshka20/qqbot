@@ -56,7 +56,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
         'Content-Type': 'application/json',
       },
       baseURL: this.baseUrl,
-      defaultTimeout: 300000, // 5 minutes max (e.g. memory extract / cold start can be slow)
+      defaultTimeout: 6 * 60 * 1000, // 6 minutes max (e.g. memory extract / cold start can be slow)
     });
 
     if (this.isAvailable()) {

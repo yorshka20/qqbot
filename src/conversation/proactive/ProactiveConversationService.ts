@@ -40,6 +40,7 @@ const RECENT_ACTIVITY_GRACE_MS = 2 * 60 * 1_000;
 /**
  * Proactive Conversation Service (Phase 1)
  * Schedules per-group debounced analysis; when timer fires, runs Ollama and optionally sends a proactive reply.
+ * Analysis runs are serialized per group (queued, not skipped) so each run sees prior replies in thread context.
  * Dependencies are injected via DI container (see DITokens).
  */
 @injectable()
@@ -53,8 +54,16 @@ export class ProactiveConversationService {
   private searchLimit = 8;
   /** Per-thread reply serialization: in-flight reply promise per threadId; resolved when send + append done (or skip). */
   private replyInProgressByThread = new Map<string, Promise<void>>();
+  /** Per-group analysis queue: chained promises so each runAnalysis waits for the previous one to complete, ensuring context includes prior replies. */
+  private analysisQueueByGroup = new Map<string, Promise<void>>();
   /** Per-group count of new messages since last compression run; compression runs only when count >= MESSAGES_PER_COMPRESSION_TRIGGER. */
   private newMessageCountByGroup = new Map<string, number>();
+  /**
+   * Last-reply boundary guard: after a new thread is created and replied to, stores the messageId of the newest
+   * user message in filteredEntries at that time. Before creating another new thread, checks whether any new user
+   * messages arrived after this boundary; if none, blocks to prevent duplicate cross-thread replies.
+   */
+  private lastNewThreadBoundaryByGroup = new Map<string, string>();
   /** Builds inject context (thread, preference, RAG, memory) for proactive reply at the context layer. */
   private replyContextBuilder: ProactiveReplyContextBuilder;
 
@@ -123,6 +132,8 @@ export class ProactiveConversationService {
 
   /**
    * Schedule analysis for this group (debounced). Call when a group message is received.
+   * When the debounce timer fires, the analysis is enqueued (not called directly) so that
+   * per-group runs are serialized and each run sees the full result of the previous one.
    * @param triggerUserId - User ID of the message that triggered this schedule; saved on context and passed down to reply (for memory injection).
    */
   scheduleForGroup(groupId: string, triggerUserId?: string): void {
@@ -142,10 +153,25 @@ export class ProactiveConversationService {
     const context: ScheduledAnalysisContext = { groupId, triggerUserId };
     const timer = setTimeout(() => {
       this.timersByGroup.delete(context.groupId);
-      void this.runAnalysis(context);
+      this.enqueueAnalysis(context);
     }, DEBOUNCE_MS);
 
     this.timersByGroup.set(groupId, timer);
+  }
+
+  /**
+   * Enqueue an analysis run for a group. Chains onto the existing queue promise so runs execute
+   * sequentially: each runAnalysis sees thread context (including bot replies) from the previous run.
+   */
+  private enqueueAnalysis(context: ScheduledAnalysisContext): void {
+    const { groupId } = context;
+    const prev = this.analysisQueueByGroup.get(groupId) ?? Promise.resolve();
+    const next = prev
+      .then(() => this.runAnalysis(context))
+      .catch((err) => {
+        logger.warn(`[ProactiveConversationService] Analysis queue error | groupId=${groupId}:`, err);
+      });
+    this.analysisQueueByGroup.set(groupId, next);
   }
 
   /**
@@ -295,6 +321,13 @@ export class ProactiveConversationService {
     }
 
     if (result.createNew || activeThreads.length === 0) {
+      if (this.shouldBlockNewThread(groupId, filteredEntries)) {
+        logger.info(
+          `[ProactiveConversationService] Blocked new thread creation (no new user messages since last new-thread reply) | groupId=${groupId} | preferenceKey=${preferenceKey}`,
+        );
+        this.scheduleThreadCompression(groupId);
+        return;
+      }
       await this.joinWithNewThread(
         groupId,
         groupIdNum,
@@ -304,6 +337,12 @@ export class ProactiveConversationService {
         result.searchQueries,
         triggerUserId,
       );
+      // Record boundary: newest user message in filteredEntries, so subsequent new-thread attempts
+      // are blocked until genuinely new user messages arrive.
+      const newestUserEntry = [...filteredEntries].reverse().find((e) => !e.isBotReply);
+      if (newestUserEntry?.messageId) {
+        this.lastNewThreadBoundaryByGroup.set(groupId, newestUserEntry.messageId);
+      }
     }
     this.scheduleThreadCompression(groupId);
   }
@@ -361,6 +400,27 @@ export class ProactiveConversationService {
         this.threadService.endThread(thread.threadId);
       }
     }
+  }
+
+  /**
+   * Last-reply boundary guard: blocks new thread creation when all recent user messages were already
+   * present when the previous new-thread reply was sent (i.e. no genuinely new user messages since then).
+   * Returns true if new thread creation should be blocked.
+   */
+  private shouldBlockNewThread(groupId: string, filteredEntries: GroupMessageEntry[]): boolean {
+    const boundaryMsgId = this.lastNewThreadBoundaryByGroup.get(groupId);
+    if (!boundaryMsgId) {
+      return false;
+    }
+
+    const boundaryIdx = filteredEntries.findIndex((e) => e.messageId === boundaryMsgId);
+    if (boundaryIdx === -1) {
+      // Boundary message aged out of the 30-message window; enough new messages arrived to justify allowing.
+      return false;
+    }
+
+    const newUserMessages = filteredEntries.slice(boundaryIdx + 1).filter((e) => !e.isBotReply);
+    return newUserMessages.length === 0;
   }
 
   /**
