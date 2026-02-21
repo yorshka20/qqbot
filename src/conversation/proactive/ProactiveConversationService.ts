@@ -79,6 +79,14 @@ export class ProactiveConversationService {
   }
 
   /**
+   * Get preference keys configured for a group (for proactive conversation).
+   * Returns empty array if group is not configured or not found.
+   */
+  getGroupPreferenceKeys(groupId: string): string[] {
+    return this.groupConfig.get(groupId) ?? [];
+  }
+
+  /**
    * Set preferred protocol for sending messages (e.g. from config).
    */
   setPreferredProtocol(protocol: ProtocolName): void {

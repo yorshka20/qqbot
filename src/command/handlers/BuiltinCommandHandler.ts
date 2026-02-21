@@ -2,6 +2,8 @@
 
 import type { AIManager } from '@/ai/AIManager';
 import type { CapabilityType } from '@/ai/capabilities/types';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
+import type { ProactiveConversationService } from '@/conversation/proactive';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { PluginManager } from '@/plugins/PluginManager';
@@ -9,6 +11,9 @@ import { inject, injectable } from 'tsyringe';
 import type { CommandManager } from '../CommandManager';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
+
+/** Template name for trigger words: preference.{preferenceKey}.trigger (prompts/preference/{key}/trigger.txt). */
+const TRIGGER_TEMPLATE_SUFFIX = '.trigger';
 
 /**
  * Help command - shows available commands
@@ -208,6 +213,74 @@ export class EchoCommand implements CommandHandler {
         error: `Failed to toggle plugin: ${errorMessage}`,
       };
     }
+  }
+}
+
+/**
+ * Role command - show current group's proactive preference config (preferenceKeys and trigger words)
+ */
+@Command({
+  name: 'role',
+  description: 'Show proactive preferences and trigger words configured for this group',
+  usage: '/role',
+  permissions: ['user'],
+})
+@injectable()
+export class RoleCommand implements CommandHandler {
+  name = 'role';
+  description = 'Show proactive preferences and trigger words configured for this group';
+  usage = '/role';
+
+  constructor(
+    @inject(DITokens.PROACTIVE_CONVERSATION_SERVICE) private proactiveConversationService: ProactiveConversationService,
+    @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
+  ) { }
+
+  execute(_args: string[], context: CommandContext): CommandResult {
+    if (context.messageType !== 'group' || context.groupId === undefined) {
+      return {
+        success: false,
+        error: '仅支持在群内使用 /role',
+      };
+    }
+
+    const groupId = context.groupId.toString();
+    const preferenceKeys = this.proactiveConversationService.getGroupPreferenceKeys(groupId);
+
+    if (preferenceKeys.length === 0) {
+      const messageBuilder = new MessageBuilder();
+      messageBuilder.text('当前群未配置 proactive 偏好。');
+      return {
+        success: true,
+        segments: messageBuilder.build(),
+      };
+    }
+
+    const lines: string[] = ['当前群启用的偏好 (preference) 与触发词：', ''];
+
+    for (const key of preferenceKeys) {
+      lines.push(`【${key}】`);
+      const templateName = `preference.${key}${TRIGGER_TEMPLATE_SUFFIX}`;
+      const template = this.promptManager.getTemplate(templateName);
+      const triggerWords =
+        template?.content
+          ?.split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0 && !line.startsWith('#')) ?? [];
+      if (triggerWords.length > 0) {
+        lines.push(`  触发词: ${triggerWords.join('、')}`);
+      } else {
+        lines.push('  触发词: (无，仅按消息条数累计触发)');
+      }
+      lines.push('');
+    }
+
+    const messageBuilder = new MessageBuilder();
+    messageBuilder.text(lines.join('\n').trimEnd());
+    return {
+      success: true,
+      segments: messageBuilder.build(),
+    };
   }
 }
 
