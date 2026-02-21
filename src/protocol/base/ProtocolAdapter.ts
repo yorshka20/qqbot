@@ -3,6 +3,7 @@
 import type { APIContext } from '@/api/types';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import { Connection } from '@/core/Connection';
+import { logger } from '@/utils/logger';
 import { EventEmitter } from 'events';
 import type { BaseAPIRequest, BaseAPIResponse, BaseEvent } from './types';
 
@@ -85,7 +86,11 @@ export abstract class ProtocolAdapter extends EventEmitter {
       });
 
       try {
-        this.connection.send(JSON.stringify(request));
+        if (this.config.mockSendMessage) {
+          logger.info(`[ProtocolAdapter] Mock sending message: ${JSON.stringify(request)}`);
+        } else {
+          this.connection.send(JSON.stringify(request));
+        }
       } catch (error) {
         this.pendingRequests.delete(echo);
         clearTimeout(timer);

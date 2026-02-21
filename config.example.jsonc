@@ -6,6 +6,7 @@
       "name": "milky",
       "enabled": true,
       "priority": 1,
+      "mockSendMessage": false,
       "connection": {
         "url": "ws://192.168.50.97:3010/event",
         "apiUrl": "http://192.168.50.97:3010/api",
@@ -177,6 +178,31 @@
             // { "groupId": "1", "preferenceKey": "preference.mihoyo" },
             // { "groupId": "1", "preferenceKey": "preference.tech" }
           ]
+        }
+      },
+      // Memory Plugin - debounced extract from recent messages, merge with existing, inject into replies
+      {
+        "name": "memory",
+        "enabled": false,
+        "config": {
+          "groups": [
+            "123456789"
+          ],
+          "debounceMs": 120000,
+          "extractProvider": "ollama",
+          "coldStartOnInit": false
+        }
+      },
+      // Memory Trigger Plugin - on trigger phrase (e.g. bot name), merge user input into user memory (async)
+      {
+        "name": "memoryTrigger",
+        "enabled": false,
+        "config": {
+          "groups": [
+            "123456789"
+          ],
+          "triggerName": "cygnus",
+          "triggerKeywords": []
         }
       },
     ],
