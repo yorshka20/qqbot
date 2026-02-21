@@ -11,7 +11,7 @@ import { PluginBase } from '../PluginBase';
 
 export interface ProactiveConversationPluginConfig {
   /** Groups that have proactive analysis enabled. Same groupId can appear multiple times with different preferenceKey (multiple preferences per group). */
-  groups?: Array<{ groupId: string; preferenceKey: string }>;
+  groups?: Array<{ groupId: string; preferenceKey: string, triggerWords?: string[] }>;
   /** LLM provider name for preliminary analysis (e.g. "ollama", "doubao"). Must be registered in ai.providers. Default "ollama". */
   analysisProvider?: string;
 }
@@ -24,6 +24,10 @@ export interface ProactiveConversationPluginConfig {
 })
 export class ProactiveConversationPlugin extends PluginBase {
   private groupIds = new Set<string>();
+  private triggerWords = new Map<string, string[]>();
+  private triggerAccumulator: Record<string, number> = {};
+  private accumulatorThreshold = 5;
+  private defaultAnalysisProvider = 'ollama';
 
   private proactiveConversationService!: ProactiveConversationService;
   private threadService!: ThreadService;
@@ -48,13 +52,14 @@ export class ProactiveConversationPlugin extends PluginBase {
     if (pluginConfig?.groups && Array.isArray(pluginConfig.groups)) {
       this.proactiveConversationService.setGroupConfig(pluginConfig.groups);
       this.groupIds = new Set(pluginConfig.groups.map((g) => g.groupId));
+      for (const g of pluginConfig.groups) {
+        this.triggerWords.set(g.groupId, g.triggerWords ?? []);
+        this.triggerAccumulator[g.groupId] = 0;
+      }
       logger.info(`[ProactiveConversationPlugin] Enabled for groups: ${Array.from(this.groupIds).join(', ')}`);
     }
     // Always set provider so config is applied (analysis + final reply use this; default ollama).
-    const analysisProvider =
-      pluginConfig?.analysisProvider != null && pluginConfig.analysisProvider !== ''
-        ? pluginConfig.analysisProvider
-        : 'ollama';
+    const analysisProvider = pluginConfig?.analysisProvider ?? this.defaultAnalysisProvider;
     this.proactiveConversationService.setAnalysisProvider(analysisProvider);
     logger.info(`[ProactiveConversationPlugin] Analysis and reply provider: ${analysisProvider}`);
   }
@@ -83,7 +88,7 @@ export class ProactiveConversationPlugin extends PluginBase {
     order: 10,
   })
   onMessageComplete(context: HookContext): HookResult {
-    if (!this.enabled || !this.proactiveConversationService || this.groupIds.size === 0) return true;
+    if (!this.enabled || this.groupIds.size === 0) return true;
 
     const messageType = context.message?.messageType;
     const groupId = context.message?.groupId?.toString();
@@ -99,7 +104,18 @@ export class ProactiveConversationPlugin extends PluginBase {
     // Do not run proactive analysis when the message was @ bot: that message already gets a direct reply.
     if (context.metadata.get('triggeredByAtBot') === true) return true;
 
-    this.proactiveConversationService.scheduleForGroup(groupId);
+    // if triggerWords are matched, schedule analysis directly
+    const triggerWords = this.triggerWords.get(groupId);
+    if (triggerWords && triggerWords.some((word) => context.message?.message?.toLowerCase().includes(word))) {
+      this.proactiveConversationService.scheduleForGroup(groupId);
+    } else {
+      // if triggerWords are not matched, accumulate trigger count
+      this.triggerAccumulator[groupId] += 1;
+      if (this.triggerAccumulator[groupId] >= this.accumulatorThreshold) {
+        this.proactiveConversationService.scheduleForGroup(groupId);
+        this.triggerAccumulator[groupId] = 0;
+      }
+    }
     return true;
   }
 }
