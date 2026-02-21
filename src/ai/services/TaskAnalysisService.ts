@@ -6,7 +6,7 @@ import type { HookContext } from '@/hooks/types';
 import type { TaskManager } from '@/task/TaskManager';
 import type { Task, TaskAnalysisResult } from '@/task/types';
 import { logger } from '@/utils/logger';
-import { PromptManager } from '../PromptManager';
+import { PromptManager } from '../prompt/PromptManager';
 import { LLMService } from './LLMService';
 
 /**

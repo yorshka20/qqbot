@@ -1,11 +1,11 @@
 // Message API method wrappers
 
 import type { CommandContext } from '@/command/types';
-import { cacheMessage, getCachedMessageBySeq } from '@/conversation/MessageCache';
 import { ProtocolName } from '@/core/config/protocol';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { Message } from '@/database/models/types';
 import type { NormalizedMessageEvent } from '@/events/types';
+import { cacheMessage, getCachedMessageBySeq } from '@/message/MessageCache';
 import { logger } from '@/utils/logger';
 import type { APIClient } from '../APIClient';
 
@@ -370,9 +370,9 @@ export class MessageAPI {
           const segments = Array.isArray(dbMessage.rawContent)
             ? (dbMessage.rawContent as Array<{ type: string; data?: Record<string, unknown> }>)
             : (JSON.parse(dbMessage.rawContent as string) as Array<{
-                type: string;
-                data?: Record<string, unknown>;
-              }>);
+              type: string;
+              data?: Record<string, unknown>;
+            }>);
           normalizedMessage.segments = segments;
         } catch {
           normalizedMessage.segments = [

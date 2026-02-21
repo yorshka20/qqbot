@@ -2,7 +2,7 @@
 // IMPORTANT: reflect-metadata must be imported FIRST before any other imports
 import 'reflect-metadata';
 
-import { PromptInitializer } from './ai/PromptInitializer';
+import { PromptInitializer } from './ai/prompt/PromptInitializer';
 import { APIClient } from './api/APIClient';
 import { ConversationInitializer } from './conversation/ConversationInitializer';
 import { Bot } from './core/Bot';

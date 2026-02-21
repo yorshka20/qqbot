@@ -1,6 +1,6 @@
 // PreferenceKnowledgeService - RAG retrieval for proactive reply (Phase 2)
 
-import type { PromptManager } from '@/ai/PromptManager';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { SearchResult, SearchService } from '@/search';
 import { logger } from '@/utils/logger';

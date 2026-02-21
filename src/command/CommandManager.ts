@@ -31,7 +31,7 @@ export interface PermissionChecker {
 export class CommandManager {
   private commands = new Map<string, CommandRegistration>();
   private builtinCommands = new Map<string, CommandRegistration>();
-  private hookManager: HookManager | null = null;
+
   // Store command enabled/disabled state per group (deprecated, kept for backward compatibility)
   // Map<groupId, Map<commandName, enabled>>
   private groupCommandStates = new Map<number, Map<string, boolean>>();
@@ -41,15 +41,6 @@ export class CommandManager {
     private conversationConfigService: ConversationConfigService,
   ) {
     this.autoRegisterDecoratedCommands();
-  }
-
-  /**
-   * Set hook manager for extension hooks
-   * Note: Command hooks (onCommandDetected, onCommandExecuted) are registered
-   * by CommandSystem via getExtensionHooks() method, not here.
-   */
-  setHookManager(hookManager: HookManager): void {
-    this.hookManager = hookManager;
   }
 
   /**

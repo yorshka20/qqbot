@@ -2,7 +2,7 @@
 
 import { logger } from '@/utils/logger';
 import type { Text2ImageOptions } from '../capabilities/types';
-import { PromptManager } from '../PromptManager';
+import { PromptManager } from '../prompt/PromptManager';
 import { LLMService } from './LLMService';
 
 /**

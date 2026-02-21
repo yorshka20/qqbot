@@ -10,7 +10,7 @@ import type { SearchService } from '@/search';
 import type { TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../capabilities/types';
-import { PromptManager } from '../PromptManager';
+import { PromptManager } from '../prompt/PromptManager';
 import { extractImagesFromMessageAndReply, extractImagesFromSegments } from '../utils/imageUtils';
 import { parseSearchDecision as parseSearchDecisionShared } from '../utils/searchDecisionParser';
 import { CardRenderingService } from './CardRenderingService';

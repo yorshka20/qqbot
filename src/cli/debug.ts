@@ -2,8 +2,8 @@
 // IMPORTANT: reflect-metadata must be imported FIRST before any other imports
 import 'reflect-metadata';
 
+import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import readline from 'readline';
-import { PromptInitializer } from '../ai/PromptInitializer';
 import { APIClient } from '../api/APIClient';
 import { MessageAPI } from '../api/methods/MessageAPI';
 import { ConversationInitializer } from '../conversation/ConversationInitializer';

@@ -1,6 +1,6 @@
 // Thread Context Compression Service (Phase 4) - async summarize oldest segment, replace in thread; periodic topic cleaning
 
-import type { PromptManager } from '@/ai/PromptManager';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { logger } from '@/utils/logger';
 import type { SummarizeService } from '../SummarizeService';
 import type { ThreadMessage, ThreadService } from './ThreadService';
@@ -25,7 +25,7 @@ export class ThreadContextCompressionService {
     private threadService: ThreadService,
     private summarizeService: SummarizeService,
     private promptManager?: PromptManager,
-  ) {}
+  ) { }
 
   /**
    * Schedule compression check for all active threads in the group (async, non-blocking).
@@ -110,7 +110,7 @@ export class ThreadContextCompressionService {
       if (!summaryText) {
         logger.warn(
           `[ThreadContextCompressionService] Empty summary for thread ${threadId}, skipping replace | ` +
-            `segmentLength=${segmentLength} conversationTextLength=${conversationText.length}`,
+          `segmentLength=${segmentLength} conversationTextLength=${conversationText.length}`,
         );
         return;
       }

@@ -1,6 +1,6 @@
 // Task Analyzer - uses AI to analyze conversation and generate tasks
 
-import type { PromptManager } from '@/ai/PromptManager';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { ConversationContext } from '@/context/types';
 import { logger } from '@/utils/logger';

@@ -458,9 +458,6 @@ export class ConversationInitializer {
   ): Promise<void> {
     const { systemRegistry } = components;
 
-    // Wire services together (set dependencies)
-    services.commandManager.setHookManager(services.hookManager);
-
     // Load all conversation configs from database
     await services.conversationConfigService.loadAllConfigs();
 

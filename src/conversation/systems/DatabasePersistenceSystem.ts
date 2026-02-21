@@ -1,11 +1,11 @@
 // Database Persistence System - saves messages and conversations to database
 
 import { getReply } from '@/context/HookContextHelpers';
-import { cacheMessage } from '@/conversation/MessageCache';
 import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookContext } from '@/hooks/types';
+import { cacheMessage } from '@/message/MessageCache';
 import { logger } from '@/utils/logger';
 import { randomUUID } from 'node:crypto';
 
@@ -21,7 +21,7 @@ export class DatabasePersistenceSystem implements System {
   readonly stage = SystemStage.COMPLETE;
   readonly priority = SystemPriority.DatabasePersistence; // Lower priority, runs after other complete stage systems
 
-  constructor(private databaseManager: DatabaseManager) {}
+  constructor(private databaseManager: DatabaseManager) { }
 
   enabled(): boolean {
     return true;

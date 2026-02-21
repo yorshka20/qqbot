@@ -1,7 +1,7 @@
 // Proactive Conversation Service - orchestrates debounced analysis, Ollama, thread, and proactive reply (Phase 1 + Phase 2 RAG)
 
 import type { AIService } from '@/ai/AIService';
-import type { PromptManager } from '@/ai/PromptManager';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { OllamaPreliminaryAnalysisService } from '@/ai/services/OllamaPreliminaryAnalysisService';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { DITokens } from '@/core/DITokens';
@@ -9,11 +9,10 @@ import type { ProtocolName } from '@/core/config/protocol';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
-import type { GroupHistoryService, GroupMessageEntry } from '../thread';
+import type { GroupHistoryService, GroupMessageEntry, ThreadContextCompressionService } from '../thread';
+import { isReadableTextForThread, type ThreadService } from '../thread';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 import type { ProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
-import type { ThreadContextCompressionService } from '../thread';
-import { isReadableTextForThread, type ThreadService } from '../thread';
 
 export interface ProactiveGroupConfig {
   groupId: string;

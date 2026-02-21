@@ -1,6 +1,6 @@
 // Search service - provides unified search interface
 
-import type { PromptManager } from '@/ai/PromptManager';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { MCPConfig } from '@/core/config/mcp';
 import { getContainer } from '@/core/DIContainer';

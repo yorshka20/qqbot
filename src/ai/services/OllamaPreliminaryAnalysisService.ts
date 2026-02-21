@@ -3,7 +3,7 @@
 import type { AIManager } from '@/ai/AIManager';
 import type { LLMCapability } from '@/ai/capabilities/LLMCapability';
 import { isLLMCapability } from '@/ai/capabilities/LLMCapability';
-import type { PromptManager } from '@/ai/PromptManager';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { logger } from '@/utils/logger';
 
 export interface PreliminaryAnalysisResult {

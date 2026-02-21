@@ -10,7 +10,7 @@ import type { Task, TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
 import type { AIManager } from './AIManager';
 import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions } from './capabilities/types';
-import { PromptManager } from './PromptManager';
+import { PromptManager } from './prompt/PromptManager';
 import type { ProviderSelector } from './ProviderSelector';
 import { CardRenderingService } from './services/CardRenderingService';
 import { ConversationHistoryService } from './services/ConversationHistoryService';

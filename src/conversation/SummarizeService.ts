@@ -1,6 +1,6 @@
 // Summarize Service - single implementation for llm.summarize (thread compression, context memory, etc.)
 
-import type { PromptManager } from '@/ai/PromptManager';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import { logger } from '@/utils/logger';
 
@@ -22,7 +22,7 @@ export class SummarizeService {
   constructor(
     private llmService: LLMService,
     private promptManager: PromptManager,
-  ) {}
+  ) { }
 
   /**
    * Summarize conversation text using llm.summarize template.
