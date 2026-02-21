@@ -5,6 +5,10 @@ export {
   type ProactiveGroupConfig,
 } from './ProactiveConversationService';
 export {
+  ProactiveReplyContextBuilder,
+  type ProactiveReplyContextBuilderDeps,
+} from './ProactiveReplyContextBuilder';
+export {
   DefaultProactiveThreadPersistenceService,
   type ProactiveThreadPersistenceService,
 } from './ProactiveThreadPersistenceService';

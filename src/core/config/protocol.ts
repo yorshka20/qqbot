@@ -22,6 +22,8 @@ export interface ProtocolConfig {
   name: ProtocolName;
   enabled: boolean;
   priority: number;
+  // if true, will not send real message, just log.
+  mockSendMessage: boolean;
   connection: ProtocolConnectionConfig;
   reconnect: ReconnectConfig;
 }

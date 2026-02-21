@@ -56,7 +56,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
         'Content-Type': 'application/json',
       },
       baseURL: this.baseUrl,
-      defaultTimeout: 120000, // 2 minutes default timeout for AI processing
+      defaultTimeout: 300000, // 5 minutes max (e.g. memory extract / cold start can be slow)
     });
 
     if (this.isAvailable()) {
@@ -153,6 +153,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
         top_p: options?.topP,
         repeat_penalty: options?.frequencyPenalty ? 1 + options.frequencyPenalty : undefined,
         thinking,
+        num_ctx: maxTokens,
       },
       stream: false,
     });
@@ -202,15 +203,15 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
       if (!text && data.done) {
         logger.debug(
           `[OllamaProvider] Empty content in response | keys=${Object.keys(data).join(',')} ` +
-            `messageKeys=${data.message ? Object.keys(data.message).join(',') : 'none'}`,
+          `messageKeys=${data.message ? Object.keys(data.message).join(',') : 'none'}`,
         );
       }
       const usage = data.eval_count
         ? {
-            promptTokens: data.prompt_eval_count || 0,
-            completionTokens: data.eval_count || 0,
-            totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0),
-          }
+          promptTokens: data.prompt_eval_count || 0,
+          completionTokens: data.eval_count || 0,
+          totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0),
+        }
         : undefined;
 
       return {

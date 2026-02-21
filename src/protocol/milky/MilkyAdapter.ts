@@ -4,6 +4,7 @@ import { HttpClient } from '@/api/http/HttpClient';
 import type { APIContext } from '@/api/types';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import { Connection } from '@/core/Connection';
+import { logger } from '@/utils/logger';
 import { ProtocolAdapter } from '../base/ProtocolAdapter';
 import type { BaseEvent } from '../base/types';
 import { MilkyAPIConverter } from './MilkyAPIConverter';
@@ -59,6 +60,11 @@ export class MilkyAdapter extends ProtocolAdapter {
 
     // Convert API parameters to Milky protocol format
     const milkyParams = MilkyAPIConverter.convertParamsToMilky(milkyAction, context.params);
+
+    if (this.config.mockSendMessage) {
+      logger.info(`[MilkyAdapter] Mock sending message: ${JSON.stringify(milkyParams)}`);
+      return { message_seq: Date.now() } as TResponse;
+    }
 
     try {
       // use MilkyAPIResponseHandler to handle Milky-specific response format
