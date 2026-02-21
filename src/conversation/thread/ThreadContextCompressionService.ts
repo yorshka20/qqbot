@@ -59,12 +59,8 @@ export class ThreadContextCompressionService {
     if (!thread || thread.messages.length < MIN_MESSAGES_FOR_TOPIC_CLEAN || !this.promptManager) {
       return;
     }
-    let preferenceSummary = '';
-    try {
-      preferenceSummary = this.promptManager.render(`${preferenceKey}.summary`, {});
-    } catch {
-      return;
-    }
+
+    const preferenceSummary = this.promptManager.render(`${preferenceKey}.summary`, {});
     this.compressingThreadIds.add(threadId);
     try {
       const contextWithIndices = this.threadService.getContextFormattedWithIndices(threadId);

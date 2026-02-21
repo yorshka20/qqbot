@@ -55,3 +55,21 @@ export interface BuildContextOptions extends ContextBuilderOptions {
   groupId?: number;
   systemPrompt?: string;
 }
+
+/**
+ * Unified injectable context for proactive reply generation.
+ * All text blocks (thread, preference, RAG, memory) are assembled at the context layer
+ * and passed to the reply generator in one object.
+ */
+export interface ProactiveReplyInjectContext {
+  /** Rendered preference (persona) text (e.g. preference.full). */
+  preferenceText: string;
+  /** Formatted thread messages for context. */
+  threadContext: string;
+  /** Optional RAG chunks section (e.g. "## 参考知识\n\n..."). */
+  retrievedContext: string;
+  /** Optional group + user memory section. */
+  memoryContext: string;
+  /** Optional session id for LLM (e.g. groupId for proactive). */
+  sessionId?: string;
+}

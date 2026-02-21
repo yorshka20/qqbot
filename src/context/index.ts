@@ -5,14 +5,15 @@ export { ContextManager } from './ContextManager';
 export { HookContextBuilder } from './HookContextBuilder';
 export type { MessageContextOptions } from './HookContextBuilder';
 export { clearReply, getReply, getReplyContent, hasReply, replaceReply, replaceReplyWithSegments, setReply, setReplyWithSegments } from './HookContextHelpers';
-export { ConversationBufferMemory } from './memory/ConversationBufferMemory';
-export { ConversationSummaryMemory } from './memory/ConversationSummaryMemory';
+export { ConversationHistoryBuffer } from './history/ConversationHistoryBuffer';
+export { ConversationHistorySummary } from './history/ConversationHistorySummary';
 export { TaskExecutionContextBuilder } from './TaskExecutionContextBuilder';
 export type {
   BuildContextOptions,
   ContextBuilderOptions,
   ConversationContext,
   GlobalContext,
+  ProactiveReplyInjectContext,
   SessionContext
 } from './types';
 

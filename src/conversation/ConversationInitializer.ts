@@ -25,6 +25,7 @@ import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { type SystemContext, SystemRegistry } from '@/core/system';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import { HookManager } from '@/hooks/HookManager';
+import { MemoryExtractService, MemoryService } from '@/memory';
 import { MessageUtils } from '@/message/MessageUtils';
 import type { SearchService } from '@/search';
 import { TaskInitializer, TaskManager } from '@/task';
@@ -107,6 +108,11 @@ export class ConversationInitializer {
     await databaseManager.initialize(dbConfig);
     container.registerInstance(DITokens.DATABASE_MANAGER, databaseManager, { logRegistration: false });
 
+    // Memory service: load memories from DB into cache (single table for group + user memories)
+    const memoryService = new MemoryService(databaseManager);
+    container.registerInstance(DITokens.MEMORY_SERVICE, memoryService, { logRegistration: false });
+    await memoryService.loadAll();
+
     // Phase 2.1: Create HealthCheckManager early for service health monitoring
     const healthCheckManager = new HealthCheckManager();
     serviceRegistry.registerHealthCheckManager(healthCheckManager);
@@ -136,6 +142,10 @@ export class ConversationInitializer {
     const maxHistoryMessages = memoryConfig?.maxHistoryMessages ?? 10;
 
     const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+
+    // Memory extract service (used by Memory plugin for debounced extract from recent messages)
+    const memoryExtractService = new MemoryExtractService(promptManager, llmService, memoryService);
+    container.registerInstance(DITokens.MEMORY_EXTRACT_SERVICE, memoryExtractService, { logRegistration: false });
 
     // Single SummarizeService for both context memory and thread compression (provider passed at call time).
     const summarizeService = new SummarizeService(llmService, promptManager);
@@ -169,6 +179,7 @@ export class ConversationInitializer {
       searchService,
       messageAPI,
       databaseManager,
+      memoryService,
     );
     serviceRegistry.registerAIServiceCapabilities(aiService);
 

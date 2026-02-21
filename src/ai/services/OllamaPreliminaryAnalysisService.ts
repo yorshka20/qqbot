@@ -134,17 +134,11 @@ export class OllamaPreliminaryAnalysisService {
       )
       .join('\n\n');
 
-    let prompt: string;
-    try {
-      prompt = this.promptManager.render('analysis.ollama_multi', {
-        preferenceText,
-        recentMessagesText: recentMessagesText || '(no messages)',
-        threadsDescription: threadsDescription || '(no threads)',
-      }, { injectBase: true });
-    } catch (err) {
-      logger.warn('[OllamaPreliminaryAnalysisService] Failed to render multi-thread prompt:', err);
-      return { shouldJoin: false };
-    }
+    const prompt = this.promptManager.render('analysis.ollama_multi', {
+      preferenceText,
+      recentMessagesText: recentMessagesText || '(no messages)',
+      threadsDescription: threadsDescription || '(no threads)',
+    }, { injectBase: true });
 
     logger.debug(`[OllamaPreliminaryAnalysisService] Multi-thread prompt length: ${prompt.length}`);
 
