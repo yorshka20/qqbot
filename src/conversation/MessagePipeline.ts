@@ -1,5 +1,6 @@
 // Message Pipeline - processes messages through the complete flow
 
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { extractTextFromSegments } from '@/ai/utils/imageUtils';
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
@@ -27,6 +28,7 @@ export class MessagePipeline {
     private hookManager: HookManager,
     private apiClient: APIClient,
     private contextManager: ContextManager,
+    private promptManager: PromptManager,
   ) {
     // Create MessageAPI instance from APIClient
     this.messageAPI = new MessageAPI(this.apiClient);
@@ -36,11 +38,14 @@ export class MessagePipeline {
    * Process message through the complete pipeline
    */
   async process(event: NormalizedMessageEvent, context: MessageProcessingContext): Promise<MessageProcessingResult> {
+    const hookContext = this.createHookContext(event, context);
     try {
       // Cache message early for quick lookup (e.g., for reply segments)
       cacheMessage(event);
 
-      const hookContext = this.createHookContext(event, context);
+      // Set current message context so PromptManager injectBase can resolve groupId and userInfo by itself
+      this.promptManager.setCurrentMessageContext({ message: hookContext.message });
+
       const messageId = String(event.id ?? event.messageId ?? 'unknown');
       logger.info(`[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId}`);
 
@@ -52,6 +57,8 @@ export class MessagePipeline {
       return await this.handleReply(event, context, hookContext, messageId);
     } catch (error) {
       return await this.handleError(error, event, context);
+    } finally {
+      this.promptManager.setCurrentMessageContext(null);
     }
   }
 

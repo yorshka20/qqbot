@@ -100,6 +100,14 @@ export interface Memory extends BaseModel {
 }
 
 /**
+ * Memory extract cursor: last processed message time per group (for incremental extract, survives restart).
+ */
+export interface MemoryExtractCursor extends BaseModel {
+  groupId: string;
+  lastProcessedAt: string; // ISO date string
+}
+
+/**
  * Model accessor interface
  */
 export interface ModelAccessor<T extends BaseModel> {
@@ -148,4 +156,5 @@ export interface DatabaseModel {
   conversationConfigs: ModelAccessor<ConversationConfig>;
   proactiveThreads: ModelAccessor<ProactiveThreadRecord>;
   memories: ModelAccessor<Memory>;
+  memoryExtractCursors: ModelAccessor<MemoryExtractCursor>;
 }

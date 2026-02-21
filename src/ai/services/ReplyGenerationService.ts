@@ -5,6 +5,7 @@ import { replaceReply, replaceReplyWithSegments, setReply } from '@/context/Hook
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
+import type { MemoryService } from '@/memory/MemoryService';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { SearchService } from '@/search';
 import type { TaskResult } from '@/task/types';
@@ -35,7 +36,25 @@ export class ReplyGenerationService {
     private searchService?: SearchService,
     private messageAPI?: MessageAPI,
     private databaseManager?: DatabaseManager,
+    private memoryService?: MemoryService,
   ) { }
+
+  /**
+   * Get memory text vars for prompt (groupMemoryText, userMemoryText). Empty strings when not group or no memory service.
+   */
+  private getMemoryVars(context: HookContext): { groupMemoryText: string; userMemoryText: string } {
+    if (!this.memoryService) {
+      return { groupMemoryText: '', userMemoryText: '' };
+    }
+    const sessionType = context.metadata.get('sessionType');
+    const sessionId = context.metadata.get('sessionId') as string | undefined;
+    if (sessionType !== 'group' || !sessionId || !sessionId.startsWith('group:')) {
+      return { groupMemoryText: '', userMemoryText: '' };
+    }
+    const groupId = sessionId.replace(/^group:/, '');
+    const userId = context.message?.userId?.toString() ?? '';
+    return this.memoryService.getMemoryTextForReply(groupId, userId);
+  }
 
   /**
    * Generate AI reply for user message
@@ -76,17 +95,22 @@ export class ReplyGenerationService {
           (await this.searchService.performSmartSearch(context.message.message, this.llmService, sessionId)) ?? '';
       }
 
+      const memoryVars = this.getMemoryVars(context);
       let prompt: string;
       if (searchResultsText) {
         prompt = this.promptManager.render('llm.reply.with_search', {
           userMessage: context.message.message,
           conversationHistory: historyText,
           searchResults: searchResultsText,
+          groupMemoryText: memoryVars.groupMemoryText,
+          userMemoryText: memoryVars.userMemoryText,
         }, { injectBase: true });
       } else {
         prompt = this.promptManager.render('llm.reply', {
           userMessage: context.message.message,
           conversationHistory: historyText,
+          groupMemoryText: memoryVars.groupMemoryText,
+          userMemoryText: memoryVars.userMemoryText,
         }, { injectBase: true });
       }
 
@@ -140,9 +164,12 @@ export class ReplyGenerationService {
 
       // Build prompt
       // Template name: 'llm.reply' (from prompts/llm/reply.txt)
+      const memoryVars = this.getMemoryVars(context);
       const prompt = this.promptManager.render('llm.reply', {
         userMessage: context.message.message,
         conversationHistory: historyText,
+        groupMemoryText: memoryVars.groupMemoryText,
+        userMemoryText: memoryVars.userMemoryText,
       }, { injectBase: true });
 
       let response;
@@ -438,6 +465,7 @@ export class ReplyGenerationService {
     const historyText = await this.conversationHistoryService.buildConversationHistory(context);
 
     // Build prompt
+    const memoryVars = this.getMemoryVars(context);
     let prompt: string;
     if (taskResultsSummary) {
       // Has task results, use merge_tasks template
@@ -446,6 +474,8 @@ export class ReplyGenerationService {
         conversationHistory: historyText,
         taskResults: taskResultsSummary,
         searchResults: searchResultsText,
+        groupMemoryText: memoryVars.groupMemoryText,
+        userMemoryText: memoryVars.userMemoryText,
       }, { injectBase: true });
     } else if (searchResultsText) {
       // Only search results, use with_search template
@@ -453,12 +483,16 @@ export class ReplyGenerationService {
         userMessage: context.message.message,
         conversationHistory: historyText,
         searchResults: searchResultsText,
+        groupMemoryText: memoryVars.groupMemoryText,
+        userMemoryText: memoryVars.userMemoryText,
       }, { injectBase: true });
     } else {
       // No task results and search, use normal template
       prompt = this.promptManager.render('llm.reply', {
         userMessage: context.message.message,
         conversationHistory: historyText,
+        groupMemoryText: memoryVars.groupMemoryText,
+        userMemoryText: memoryVars.userMemoryText,
       }, { injectBase: true });
     }
 
@@ -509,6 +543,7 @@ export class ReplyGenerationService {
     const historyText = await this.conversationHistoryService.buildConversationHistory(context);
 
     // Build prompt (vision version also supports task results)
+    const memoryVars = this.getMemoryVars(context);
     let prompt: string;
     if (taskResultsSummary) {
       // Has task results, use merge_tasks template
@@ -517,6 +552,8 @@ export class ReplyGenerationService {
         conversationHistory: historyText,
         taskResults: taskResultsSummary,
         searchResults: searchResultsText,
+        groupMemoryText: memoryVars.groupMemoryText,
+        userMemoryText: memoryVars.userMemoryText,
       }, { injectBase: true });
     } else if (searchResultsText) {
       // Only search results, use with_search template
@@ -524,12 +561,16 @@ export class ReplyGenerationService {
         userMessage: context.message.message,
         conversationHistory: historyText,
         searchResults: searchResultsText,
+        groupMemoryText: memoryVars.groupMemoryText,
+        userMemoryText: memoryVars.userMemoryText,
       }, { injectBase: true });
     } else {
       // No task results and search, use normal template
       prompt = this.promptManager.render('llm.reply', {
         userMessage: context.message.message,
         conversationHistory: historyText,
+        groupMemoryText: memoryVars.groupMemoryText,
+        userMemoryText: memoryVars.userMemoryText,
       }, { injectBase: true });
     }
 

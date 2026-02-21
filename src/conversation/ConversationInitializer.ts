@@ -444,7 +444,14 @@ export class ConversationInitializer {
 
     const lifecycle = new Lifecycle(services.hookManager, commandRouter);
 
-    const pipeline = new MessagePipeline(lifecycle, services.hookManager, apiClient, services.contextManager);
+    const promptManager = getContainer().resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+    const pipeline = new MessagePipeline(
+      lifecycle,
+      services.hookManager,
+      apiClient,
+      services.contextManager,
+      promptManager,
+    );
     const conversationManager = new ConversationManager(pipeline);
 
     return {

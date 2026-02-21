@@ -166,15 +166,17 @@ export class ProactiveConversationPlugin extends PluginBase {
     // Do not run proactive analysis when the message was @ bot: that message already gets a direct reply.
     if (context.metadata.get('triggeredByAtBot') === true) return true;
 
+    // Trigger userId = current message sender (from pipeline event -> hook context.message)
+    const triggerUserId = userId ?? undefined;
     // if trigger words (from any of this group's preferences) are matched, schedule analysis directly
     const triggerWords = this.getTriggerWordsForGroup(groupId);
     if (triggerWords.length > 0 && triggerWords.some((word) => context.message?.message?.toLowerCase().includes(word))) {
-      this.proactiveConversationService.scheduleForGroup(groupId);
+      this.proactiveConversationService.scheduleForGroup(groupId, triggerUserId);
     } else {
       // if trigger words are not matched, accumulate trigger count
       this.triggerAccumulator[groupId] += 1;
       if (this.triggerAccumulator[groupId] >= this.accumulatorThreshold) {
-        this.proactiveConversationService.scheduleForGroup(groupId);
+        this.proactiveConversationService.scheduleForGroup(groupId, triggerUserId);
         this.triggerAccumulator[groupId] = 0;
       }
     }

@@ -3,6 +3,8 @@
 ## 人设
 {{preferenceText}}
 
+{{memoryContext}}
+
 {{retrievedContext}}
 
 ## 当前 thread 对话

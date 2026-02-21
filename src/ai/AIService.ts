@@ -1,9 +1,11 @@
 // AI Service - provides AI capabilities as a service
 
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
+import type { MemoryService } from '@/memory/MemoryService';
 import type { SearchService } from '@/search';
 import type { TaskManager } from '@/task/TaskManager';
 import type { Task, TaskResult } from '@/task/types';
@@ -61,6 +63,7 @@ export class AIService {
     private searchService?: SearchService,
     messageAPI?: MessageAPI,
     databaseManager?: DatabaseManager,
+    memoryService?: MemoryService,
   ) {
     // Initialize business services
     this.llmService = new LLMService(aiManager, providerSelector);
@@ -79,6 +82,7 @@ export class AIService {
       this.searchService,
       messageAPI,
       databaseManager,
+      memoryService,
     );
     this.taskAnalysisService = new TaskAnalysisService(
       this.llmService,
@@ -99,27 +103,26 @@ export class AIService {
 
   /**
    * Generate a single proactive reply for group participation.
-   * Phase 2: optional retrievedContext (RAG chunks) is injected into the prompt when provided.
-   * Used by ProactiveConversationService when the bot decides to join.
+   * All injectable text (preference, thread, RAG, memory) is provided via context from the context layer.
+   * @param context - ProactiveReplyInjectContext built by ProactiveReplyContextBuilder
    * @param providerName - Optional LLM provider (e.g. "ollama", "doubao"); when set, reply uses this provider.
    */
-  async generateProactiveReply(
-    preferenceText: string,
-    threadContextText: string,
-    sessionId?: string,
-    retrievedContext?: string,
-    providerName?: string,
-  ): Promise<string> {
+  async generateProactiveReply(context: ProactiveReplyInjectContext, providerName?: string): Promise<string> {
     const prompt = this.promptManager.render('llm.proactive_reply', {
-      preferenceText,
-      threadContext: threadContextText || '(no context)',
-      retrievedContext: retrievedContext ?? '',
+      preferenceText: context.preferenceText,
+      threadContext: context.threadContext || '(no context)',
+      retrievedContext: context.retrievedContext ?? '',
+      memoryContext: context.memoryContext ?? '',
     }, { injectBase: true });
+
+    logger.debug('generateProactiveReply context', { memory: context.memoryContext });
+
     const response = await this.llmService.generate(prompt, {
-      temperature: 0.7,
-      maxTokens: 2000,
-      sessionId,
+      temperature: 0.5,
+      maxTokens: 10000,
+      sessionId: context.sessionId,
     }, providerName);
+
     return (response.text || '').trim();
   }
 

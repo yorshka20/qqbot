@@ -6,6 +6,8 @@ import { logger } from '@/utils/logger';
 
 export interface GroupMessageEntry {
   userId: number;
+  /** Sender display name (from protocol: nickname or card). */
+  nickname?: string;
   content: string;
   isBotReply: boolean;
   createdAt: Date;
@@ -57,8 +59,11 @@ export class GroupHistoryService {
 
       return recent.map((msg) => {
         const meta = (msg.metadata as Record<string, unknown>) || {};
+        const sender = meta.sender as { nickname?: string; card?: string } | undefined;
+        const nickname = sender?.nickname ?? sender?.card;
         return {
           userId: msg.userId,
+          nickname: typeof nickname === 'string' ? nickname : undefined,
           content: msg.content,
           isBotReply: meta.isBotReply === true,
           createdAt: new Date(msg.createdAt),
@@ -73,13 +78,70 @@ export class GroupHistoryService {
   }
 
   /**
+   * Get messages for a group with createdAt >= since (for incremental extract; survives bot restart when since is persisted).
+   * Returns empty if no conversation or no messages. Capped at maxLimit to avoid huge payloads.
+   */
+  async getMessagesSince(
+    groupId: string | number,
+    since: Date,
+    maxLimit = 2000,
+  ): Promise<GroupMessageEntry[]> {
+    const adapter = this.databaseManager.getAdapter();
+    if (!adapter?.isConnected()) {
+      return [];
+    }
+
+    const sessionId = `group:${groupId}`;
+    const sinceTime = since.getTime();
+
+    try {
+      const conversations = adapter.getModel('conversations');
+      const conversation = await conversations.findOne({
+        sessionId,
+        sessionType: 'group',
+      });
+      if (!conversation) {
+        return [];
+      }
+
+      const messages = adapter.getModel('messages');
+      const all = await messages.find({ conversationId: conversation.id });
+      const sorted = (all as Message[])
+        .filter((m) => new Date(m.createdAt).getTime() >= sinceTime)
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      const slice = sorted.slice(0, maxLimit);
+
+      return slice.map((msg) => {
+        const meta = (msg.metadata as Record<string, unknown>) || {};
+        const sender = meta.sender as { nickname?: string; card?: string } | undefined;
+        const nickname = sender?.nickname ?? sender?.card;
+        return {
+          userId: msg.userId,
+          nickname: typeof nickname === 'string' ? nickname : undefined,
+          content: msg.content,
+          isBotReply: meta.isBotReply === true,
+          createdAt: new Date(msg.createdAt),
+          wasAtBot: meta.wasAtBot === true,
+        };
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.warn('[GroupHistoryService] Failed to load messages since:', err);
+      return [];
+    }
+  }
+
+  /**
    * Format message entries as a single text (e.g. for Ollama input).
-   * Each line includes [id:index], simple time (M/d HH:mm), and content so the AI can reference ids and judge time gaps (e.g. for end-thread).
+   * User prefix is unified as User<userId:nickname> (nickname omitted when empty). Bot lines use Assistant.
+   * Each line includes [id:index], simple time (M/d HH:mm), and content so the AI can reference ids and judge time gaps.
    */
   formatAsText(entries: GroupMessageEntry[]): string {
     return entries
       .map((e, i) => {
-        const who = e.isBotReply ? 'Assistant' : `User<${e.userId}>`;
+        const who = e.isBotReply
+          ? 'Assistant'
+          : `User<${e.userId}${e.nickname != null && e.nickname !== '' ? ':' + e.nickname : ''}>`;
         const t = e.createdAt instanceof Date ? e.createdAt : new Date(e.createdAt);
         const timeStr = this.formatSimpleTime(t);
         const atBotMark = !e.isBotReply && e.wasAtBot ? ' [用户@机器人，已针对性回复]' : '';

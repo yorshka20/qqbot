@@ -12,6 +12,7 @@ import type {
   ConversationConfig,
   DatabaseModel,
   Memory,
+  MemoryExtractCursor,
   Message,
   ModelAccessor,
   ProactiveThreadRecord,
@@ -331,6 +332,13 @@ export class SQLiteAdapter implements DatabaseAdapter {
         updatedAt TEXT NOT NULL,
         UNIQUE(groupId, userId)
       )`,
+      `CREATE TABLE IF NOT EXISTS memory_extract_cursors (
+        id TEXT PRIMARY KEY,
+        groupId TEXT NOT NULL UNIQUE,
+        lastProcessedAt TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`,
     ];
 
     for (const statement of statements) {
@@ -372,6 +380,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       `CREATE INDEX IF NOT EXISTS idx_proactive_threads_groupId ON proactive_threads(groupId)`,
       `CREATE INDEX IF NOT EXISTS idx_proactive_threads_threadId ON proactive_threads(threadId)`,
       `CREATE INDEX IF NOT EXISTS idx_memories_groupId_userId ON memories(groupId, userId)`,
+      `CREATE INDEX IF NOT EXISTS idx_memory_extract_cursors_groupId ON memory_extract_cursors(groupId)`,
     ];
 
     for (const statement of indexStatements) {
@@ -424,6 +433,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       conversationConfigs: new SQLiteModelAccessor<ConversationConfig>(this.db, 'conversation_configs'),
       proactiveThreads: new SQLiteModelAccessor<ProactiveThreadRecord>(this.db, 'proactive_threads'),
       memories: new SQLiteModelAccessor<Memory>(this.db, 'memories'),
+      memoryExtractCursors: new SQLiteModelAccessor<MemoryExtractCursor>(this.db, 'memory_extract_cursors'),
     };
   }
 }

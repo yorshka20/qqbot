@@ -7,16 +7,25 @@ import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { DITokens } from '@/core/DITokens';
 import type { ProtocolName } from '@/core/config/protocol';
 import type { NormalizedMessageEvent } from '@/events/types';
+import type { MemoryService } from '@/memory/MemoryService';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
 import type { GroupHistoryService, GroupMessageEntry, ThreadContextCompressionService } from '../thread';
 import { isReadableTextForThread, type ThreadService } from '../thread';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
+import { ProactiveReplyContextBuilder } from './ProactiveReplyContextBuilder';
 import type { ProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
 
 export interface ProactiveGroupConfig {
   groupId: string;
   preferenceKey: string;
+}
+
+/** Context for a scheduled analysis run; saved when scheduling (from pipeline message), passed into runAnalysis when timer fires. */
+export interface ScheduledAnalysisContext {
+  groupId: string;
+  /** User ID of the message that triggered this schedule (from MessagePipeline event → plugin → here; for memory injection in new-thread reply). */
+  triggerUserId?: string;
 }
 
 const DEBOUNCE_MS = 1_000;
@@ -46,6 +55,8 @@ export class ProactiveConversationService {
   private replyInProgressByThread = new Map<string, Promise<void>>();
   /** Per-group count of new messages since last compression run; compression runs only when count >= MESSAGES_PER_COMPRESSION_TRIGGER. */
   private newMessageCountByGroup = new Map<string, number>();
+  /** Builds inject context (thread, preference, RAG, memory) for proactive reply at the context layer. */
+  private replyContextBuilder: ProactiveReplyContextBuilder;
 
   constructor(
     @inject(DITokens.GROUP_HISTORY_SERVICE) private groupHistoryService: GroupHistoryService,
@@ -57,7 +68,17 @@ export class ProactiveConversationService {
     @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
     @inject(DITokens.THREAD_CONTEXT_COMPRESSION_SERVICE) private threadCompression: ThreadContextCompressionService,
-  ) { }
+    @inject(DITokens.MEMORY_SERVICE) private memoryService?: MemoryService,
+  ) {
+    this.replyContextBuilder = new ProactiveReplyContextBuilder({
+      threadService,
+      groupHistoryService,
+      promptManager,
+      preferenceKnowledge,
+      memoryService,
+      searchLimit: this.searchLimit,
+    });
+  }
 
   /**
    * Set which groups have proactive analysis enabled and their preference keys.
@@ -102,8 +123,9 @@ export class ProactiveConversationService {
 
   /**
    * Schedule analysis for this group (debounced). Call when a group message is received.
+   * @param triggerUserId - User ID of the message that triggered this schedule; saved on context and passed down to reply (for memory injection).
    */
-  scheduleForGroup(groupId: string): void {
+  scheduleForGroup(groupId: string, triggerUserId?: string): void {
     const keys = this.groupConfig.get(groupId);
     if (!keys?.length) {
       return;
@@ -117,9 +139,10 @@ export class ProactiveConversationService {
       clearTimeout(existing);
     }
 
+    const context: ScheduledAnalysisContext = { groupId, triggerUserId };
     const timer = setTimeout(() => {
-      this.timersByGroup.delete(groupId);
-      void this.runAnalysis(groupId);
+      this.timersByGroup.delete(context.groupId);
+      void this.runAnalysis(context);
     }, DEBOUNCE_MS);
 
     this.timersByGroup.set(groupId, timer);
@@ -127,8 +150,10 @@ export class ProactiveConversationService {
 
   /**
    * Run analysis: load context, call Ollama (single or multi-thread), maybe create/reply in thread and send.
+   * Receives context from schedule (includes triggerUserId saved when the message triggered the schedule).
    */
-  private async runAnalysis(groupId: string): Promise<void> {
+  private async runAnalysis(context: ScheduledAnalysisContext): Promise<void> {
+    const { groupId, triggerUserId } = context;
     const preferenceKeys = this.groupConfig.get(groupId);
     if (!preferenceKeys?.length) return;
 
@@ -260,7 +285,7 @@ export class ProactiveConversationService {
         this.threadService.appendGroupMessages(threadId, filteredEntries, {
           messageIds: messageIdsToUse.length ? messageIdsToUse : undefined,
         });
-        await this.replyInThread(threadId, groupIdNum, preferenceKey, topicOrQuery, result.searchQueries);
+        await this.replyInThread(threadId, groupIdNum, preferenceKey, topicOrQuery, result.searchQueries, triggerUserId);
       } finally {
         this.replyInProgressByThread.delete(threadId);
         resolveReplyDone!();
@@ -277,6 +302,7 @@ export class ProactiveConversationService {
         filteredEntries,
         topicOrQuery,
         result.searchQueries,
+        triggerUserId,
       );
     }
     this.scheduleThreadCompression(groupId);
@@ -339,6 +365,7 @@ export class ProactiveConversationService {
 
   /**
    * Create a new thread and send one proactive reply. Uses the same filteredEntries for both thread initial context and LLM prompt (no duplicate fetch).
+   * @param triggerUserId - From ScheduledAnalysisContext (message that triggered the schedule); passed from upstream, not derived here.
    */
   private async joinWithNewThread(
     groupId: string,
@@ -347,25 +374,18 @@ export class ProactiveConversationService {
     filteredEntries: GroupMessageEntry[],
     topicOrQuery: string,
     searchQueries?: string[],
+    triggerUserId?: string,
   ): Promise<void> {
-    // use preference.full for generating proactive reply
-    const preferenceText = this.promptManager.render(`${preferenceKey}.full`, {});
     const thread = this.threadService.create(groupId, preferenceKey, filteredEntries);
-    const threadContextText = this.groupHistoryService.formatAsText(filteredEntries);
-    // retrieve context from preference knowledge service (search decision done at analysis stage)
-    const retrievedChunks = await this.preferenceKnowledge.retrieve(preferenceKey, topicOrQuery, {
-      limit: this.searchLimit,
-      searchQueries,
-    });
-    // add extra section to template if retrieved chunks are available
-    const retrievedContext = retrievedChunks.length ? `## 参考知识\n\n${retrievedChunks.join('\n\n')}` : '';
-    const replyText = await this.aiService.generateProactiveReply(
-      preferenceText,
-      threadContextText,
+    const injectContext = await this.replyContextBuilder.buildForNewThread(
       groupId,
-      retrievedContext,
-      this.analysisProviderName,
+      preferenceKey,
+      topicOrQuery,
+      filteredEntries,
+      searchQueries,
+      triggerUserId,
     );
+    const replyText = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
     if (!replyText) {
       logger.warn('[ProactiveConversationService] Empty proactive reply');
       return;
@@ -384,27 +404,19 @@ export class ProactiveConversationService {
     preferenceKey: string,
     topicOrQuery: string,
     searchQueries?: string[],
+    triggerUserId?: string,
   ): Promise<void> {
     const thread = this.threadService.getThread(threadId);
     if (!thread) return;
-    // Thread context already includes the new message(s); we appended them in runAnalysis when we decided to reply here.
-    const contextText = this.threadService.getContextFormatted(threadId);
-    // use preference.full for generating proactive reply
-    const preferenceText = this.promptManager.render(`${preferenceKey}.full`, {});
-    // retrieve context from preference knowledge service (search decision done at analysis stage)
-    const retrievedChunks = await this.preferenceKnowledge.retrieve(preferenceKey, topicOrQuery, {
-      limit: this.searchLimit,
+    const injectContext = await this.replyContextBuilder.buildForExistingThread(
+      threadId,
+      thread,
+      preferenceKey,
+      topicOrQuery,
       searchQueries,
-    });
-    // add extra section to template if retrieved chunks are available
-    const retrievedContext = retrievedChunks.length ? `## 参考知识\n\n${retrievedChunks.join('\n\n')}` : '';
-    const replyText = await this.aiService.generateProactiveReply(
-      preferenceText,
-      contextText,
-      thread.groupId,
-      retrievedContext,
-      this.analysisProviderName,
+      triggerUserId,
     );
+    const replyText = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
     if (!replyText) return;
     await this.sendGroupMessage(groupIdNum, replyText);
     this.threadService.appendMessage(threadId, {
