@@ -27,6 +27,8 @@ export const DITokens = {
   PREFERENCE_KNOWLEDGE_SERVICE: 'PreferenceKnowledgeService',
   PROACTIVE_THREAD_PERSISTENCE_SERVICE: 'ProactiveThreadPersistenceService',
   THREAD_CONTEXT_COMPRESSION_SERVICE: 'ThreadContextCompressionService',
+  MEMORY_SERVICE: 'MemoryService',
+  MEMORY_EXTRACT_SERVICE: 'MemoryExtractService',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];

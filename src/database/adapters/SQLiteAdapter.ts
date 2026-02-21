@@ -11,6 +11,7 @@ import type {
   Conversation,
   ConversationConfig,
   DatabaseModel,
+  Memory,
   Message,
   ModelAccessor,
   ProactiveThreadRecord,
@@ -320,6 +321,16 @@ export class SQLiteAdapter implements DatabaseAdapter {
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`,
+      `CREATE TABLE IF NOT EXISTS memories (
+        id TEXT PRIMARY KEY,
+        groupId TEXT NOT NULL,
+        userId TEXT NOT NULL,
+        isGlobalMemory INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        UNIQUE(groupId, userId)
+      )`,
     ];
 
     for (const statement of statements) {
@@ -360,6 +371,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       `CREATE INDEX IF NOT EXISTS idx_conversation_configs_session ON conversation_configs(sessionId, sessionType)`,
       `CREATE INDEX IF NOT EXISTS idx_proactive_threads_groupId ON proactive_threads(groupId)`,
       `CREATE INDEX IF NOT EXISTS idx_proactive_threads_threadId ON proactive_threads(threadId)`,
+      `CREATE INDEX IF NOT EXISTS idx_memories_groupId_userId ON memories(groupId, userId)`,
     ];
 
     for (const statement of indexStatements) {
@@ -411,6 +423,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       messages: new SQLiteModelAccessor<Message>(this.db, 'messages'),
       conversationConfigs: new SQLiteModelAccessor<ConversationConfig>(this.db, 'conversation_configs'),
       proactiveThreads: new SQLiteModelAccessor<ProactiveThreadRecord>(this.db, 'proactive_threads'),
+      memories: new SQLiteModelAccessor<Memory>(this.db, 'memories'),
     };
   }
 }

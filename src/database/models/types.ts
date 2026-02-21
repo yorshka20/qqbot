@@ -89,6 +89,17 @@ export interface ProactiveThreadRecord extends BaseModel {
 }
 
 /**
+ * Memory record (single table for group and user memories).
+ * One row per (groupId, userId); group-level memory uses userId = GROUP_MEMORY_USER_ID.
+ */
+export interface Memory extends BaseModel {
+  groupId: string;
+  userId: string;
+  isGlobalMemory: number; // 1 = group-level, 0 = user-in-group
+  content: string;
+}
+
+/**
  * Model accessor interface
  */
 export interface ModelAccessor<T extends BaseModel> {
@@ -136,4 +147,5 @@ export interface DatabaseModel {
   messages: ModelAccessor<Message>;
   conversationConfigs: ModelAccessor<ConversationConfig>;
   proactiveThreads: ModelAccessor<ProactiveThreadRecord>;
+  memories: ModelAccessor<Memory>;
 }
