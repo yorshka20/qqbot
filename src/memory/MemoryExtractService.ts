@@ -60,7 +60,7 @@ export class MemoryExtractService {
         maxTokens: 20000,
       }, provider);
       const merged = (res.text ?? '').trim();
-      logger.debug('[MemoryExtractService] Analyze result:', merged);
+      logger.debug('[MemoryExtractService] Analyze result:', { merged });
       return merged;
     } catch (err) {
       logger.error('[MemoryExtractService] LLM analyze failed:', err);
@@ -108,7 +108,7 @@ export class MemoryExtractService {
         maxTokens: 20000, // use long context for extract.
       }, provider);
       response = (res.text ?? '').trim();
-      logger.debug('MemoryExtractService] runExtractAndUpsertUserOnly result:', response);
+      logger.debug('[MemoryExtractService] runExtractAndUpsertUserOnly result:', { response });
     } catch (err) {
       logger.error('[MemoryExtractService] LLM extract failed (userOnly):', err);
       return;
