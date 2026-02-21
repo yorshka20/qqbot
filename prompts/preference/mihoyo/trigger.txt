@@ -1,0 +1,13 @@
+# Message containing any of these words will trigger proactive analysis for this preference.
+# Empty lines and lines starting with # are ignored.
+
+米哈游
+米游
+绝区零
+原神
+genshin
+崩铁
+崩坏
+星穹铁道
+星铁
+zzz

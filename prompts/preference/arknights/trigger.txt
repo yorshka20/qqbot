@@ -1,0 +1,9 @@
+# Message containing any of these words will trigger proactive analysis for this preference.
+# Empty lines and lines starting with # are ignored.
+
+明日方舟
+方舟
+粥
+终末地
+海猫
+鹰角

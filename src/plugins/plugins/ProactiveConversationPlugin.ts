@@ -1,5 +1,6 @@
 // Proactive Conversation Plugin - schedules group analysis and configures proactive participation (Phase 1)
 
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { ProactiveConversationService } from '@/conversation/proactive';
 import type { ThreadService } from '@/conversation/thread';
 import { getContainer } from '@/core/DIContainer';
@@ -9,9 +10,12 @@ import { logger } from '@/utils/logger';
 import { Hook, Plugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
+/** Template name pattern for trigger words: prompts/preference/{preferenceKey}/trigger.txt (one word per line). */
+const TRIGGER_TEMPLATE_SUFFIX = '.trigger';
+
 export interface ProactiveConversationPluginConfig {
   /** Groups that have proactive analysis enabled. Same groupId can appear multiple times with different preferenceKey (multiple preferences per group). */
-  groups?: Array<{ groupId: string; preferenceKey: string, triggerWords?: string[] }>;
+  groups?: Array<{ groupId: string; preferenceKey: string }>;
   /** LLM provider name for preliminary analysis (e.g. "ollama", "doubao"). Must be registered in ai.providers. Default "ollama". */
   analysisProvider?: string;
 }
@@ -24,13 +28,60 @@ export interface ProactiveConversationPluginConfig {
 })
 export class ProactiveConversationPlugin extends PluginBase {
   private groupIds = new Set<string>();
-  private triggerWords = new Map<string, string[]>();
+  /** groupId -> preferenceKeys[] (each group can have multiple preferences). */
+  private groupPreferenceKeys = new Map<string, string[]>();
+  /** preferenceKey -> trigger words from prompts/preference/{preferenceKey}/trigger.txt (one word per line). */
+  private triggerWords: Record<string, string[]> = {};
   private triggerAccumulator: Record<string, number> = {};
   private accumulatorThreshold = 5;
   private defaultAnalysisProvider = 'ollama';
 
   private proactiveConversationService!: ProactiveConversationService;
   private threadService!: ThreadService;
+
+  /**
+   * Parse template content into trigger words: one per line, skip empty and # lines.
+   */
+  private parseTriggerWordsContent(content: string): string[] {
+    return content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !line.startsWith('#'));
+  }
+
+  /**
+   * Load trigger words for one preference from prompts/preference/{preferenceKey}/trigger.txt via PromptManager.
+   * Template name is "preference.{preferenceKey}.trigger".
+   */
+  private loadTriggerWordsForPreference(promptManager: PromptManager, preferenceKey: string): void {
+    const templateName = `preference.${preferenceKey}${TRIGGER_TEMPLATE_SUFFIX}`;
+    const template = promptManager.getTemplate(templateName);
+    if (!template?.content) {
+      return;
+    }
+    const words = this.parseTriggerWordsContent(template.content);
+    this.triggerWords[preferenceKey] = words;
+    logger.info(`[ProactiveConversationPlugin] Loaded ${words.length} trigger words for preference "${preferenceKey}" from preference/${preferenceKey}/trigger.txt`);
+  }
+
+  /**
+   * Get all trigger words for a group (union of trigger words of all its preference keys).
+   */
+  private getTriggerWordsForGroup(groupId: string): string[] {
+    const preferenceKeys = this.groupPreferenceKeys.get(groupId) ?? [];
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const key of preferenceKeys) {
+      const words = this.triggerWords[key] ?? [];
+      for (const w of words) {
+        if (!seen.has(w)) {
+          seen.add(w);
+          result.push(w);
+        }
+      }
+    }
+    return result;
+  }
 
   async onInit(): Promise<void> {
     this.enabled = true;
@@ -52,9 +103,20 @@ export class ProactiveConversationPlugin extends PluginBase {
     if (pluginConfig?.groups && Array.isArray(pluginConfig.groups)) {
       this.proactiveConversationService.setGroupConfig(pluginConfig.groups);
       this.groupIds = new Set(pluginConfig.groups.map((g) => g.groupId));
+      // Build groupId -> preferenceKeys[] and load trigger words per preference from prompts/preference/{key}/trigger.txt
+      const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+      const preferenceKeysSeen = new Set<string>();
       for (const g of pluginConfig.groups) {
-        this.triggerWords.set(g.groupId, g.triggerWords ?? []);
+        const list = this.groupPreferenceKeys.get(g.groupId) ?? [];
+        if (!list.includes(g.preferenceKey)) {
+          list.push(g.preferenceKey);
+        }
+        this.groupPreferenceKeys.set(g.groupId, list);
         this.triggerAccumulator[g.groupId] = 0;
+        if (promptManager && !preferenceKeysSeen.has(g.preferenceKey)) {
+          preferenceKeysSeen.add(g.preferenceKey);
+          this.loadTriggerWordsForPreference(promptManager, g.preferenceKey);
+        }
       }
       logger.info(`[ProactiveConversationPlugin] Enabled for groups: ${Array.from(this.groupIds).join(', ')}`);
     }
@@ -104,12 +166,12 @@ export class ProactiveConversationPlugin extends PluginBase {
     // Do not run proactive analysis when the message was @ bot: that message already gets a direct reply.
     if (context.metadata.get('triggeredByAtBot') === true) return true;
 
-    // if triggerWords are matched, schedule analysis directly
-    const triggerWords = this.triggerWords.get(groupId);
-    if (triggerWords && triggerWords.some((word) => context.message?.message?.toLowerCase().includes(word))) {
+    // if trigger words (from any of this group's preferences) are matched, schedule analysis directly
+    const triggerWords = this.getTriggerWordsForGroup(groupId);
+    if (triggerWords.length > 0 && triggerWords.some((word) => context.message?.message?.toLowerCase().includes(word))) {
       this.proactiveConversationService.scheduleForGroup(groupId);
     } else {
-      // if triggerWords are not matched, accumulate trigger count
+      // if trigger words are not matched, accumulate trigger count
       this.triggerAccumulator[groupId] += 1;
       if (this.triggerAccumulator[groupId] >= this.accumulatorThreshold) {
         this.proactiveConversationService.scheduleForGroup(groupId);

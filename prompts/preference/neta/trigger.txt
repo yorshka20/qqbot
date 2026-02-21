@@ -1,0 +1,5 @@
+# Message containing any of these words will trigger proactive analysis for this preference.
+# Empty lines and lines starting with # are ignored.
+
+梗
+热门
