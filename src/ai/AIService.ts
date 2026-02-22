@@ -11,7 +11,7 @@ import type { TaskManager } from '@/task/TaskManager';
 import type { Task, TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
 import type { AIManager } from './AIManager';
-import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions } from './capabilities/types';
+import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions, VisionImage } from './capabilities/types';
 import { PromptManager } from './prompt/PromptManager';
 import type { ProviderSelector } from './ProviderSelector';
 import { CardRenderingService } from './services/CardRenderingService';
@@ -113,6 +113,7 @@ export class AIService {
       threadContext: context.threadContext || '(no context)',
       retrievedContext: context.retrievedContext ?? '',
       memoryContext: context.memoryContext ?? '',
+      imageDescription: context.imageDescription ?? '',
     }, { injectBase: true });
 
     logger.debug('generateProactiveReply context', { memory: context.memoryContext });
@@ -124,6 +125,41 @@ export class AIService {
     }, providerName);
 
     return (response.text || '').trim();
+  }
+
+  /**
+   * Generate image description for proactive reply (explain image with user context).
+   * Used when the proactive trigger message contained images; returns text to inject as imageDescription.
+   * @param images - Vision images from the trigger message
+   * @param userDescription - User text (e.g. last message content) for focus
+   * @param sessionId - Optional session id for provider selection
+   * @returns Description text or empty string on error/empty
+   */
+  async generateProactiveImageDescription(
+    images: VisionImage[],
+    userDescription: string,
+    sessionId?: string,
+  ): Promise<string> {
+    if (!images.length) {
+      return '';
+    }
+    try {
+      const explainPrompt = this.promptManager.render('vision.explain_image', {
+        userDescription: userDescription || '（无）',
+      });
+      const response = await this.visionService.explainImages(images, explainPrompt, {
+        temperature: 0.5,
+        maxTokens: 2000,
+        sessionId,
+      });
+      return response.text?.trim() ?? '';
+    } catch (error) {
+      logger.warn(
+        '[AIService] generateProactiveImageDescription failed:',
+        error instanceof Error ? error.message : String(error),
+      );
+      return '';
+    }
   }
 
   /**

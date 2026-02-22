@@ -3,11 +3,15 @@
 import type { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { OllamaPreliminaryAnalysisService } from '@/ai/services/OllamaPreliminaryAnalysisService';
+import { extractImagesFromSegmentsAsync } from '@/ai/utils/imageUtils';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { DITokens } from '@/core/DITokens';
 import type { ProtocolName } from '@/core/config/protocol';
+import type { DatabaseManager } from '@/database/DatabaseManager';
+import type { Message } from '@/database/models/types';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { MemoryService } from '@/memory/MemoryService';
+import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
 import type { GroupHistoryService, GroupMessageEntry, ThreadContextCompressionService } from '../thread';
@@ -80,6 +84,7 @@ export class ProactiveConversationService {
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
     @inject(DITokens.THREAD_CONTEXT_COMPRESSION_SERVICE) private threadCompression: ThreadContextCompressionService,
     @inject(DITokens.MEMORY_SERVICE) private memoryService?: MemoryService,
+    @inject(DITokens.DATABASE_MANAGER) private databaseManager?: DatabaseManager,
   ) {
     this.replyContextBuilder = new ProactiveReplyContextBuilder({
       threadService,
@@ -429,6 +434,69 @@ export class ProactiveConversationService {
   }
 
   /**
+   * If the last user message in filteredEntries had images, load message from DB, extract images, run explain and return description text.
+   * Used to inject imageDescription into proactive reply (same explain-image flow as normal reply).
+   */
+  private async getImageDescriptionFromLastUserMessage(
+    filteredEntries: GroupMessageEntry[],
+    groupId: string,
+  ): Promise<string> {
+    const adapter = this.databaseManager?.getAdapter();
+    if (!adapter) {
+      return '';
+    }
+    const lastUserEntry = [...filteredEntries].reverse().find((e) => !e.isBotReply);
+    if (!lastUserEntry?.messageId) {
+      return '';
+    }
+    try {
+      const messages = adapter.getModel('messages');
+      const dbMessage = await messages.findOne({ id: lastUserEntry.messageId } as Partial<Message>) as Message | null;
+      if (!dbMessage?.rawContent) {
+        return '';
+      }
+      let segments: Array<{ type: string; data?: unknown }>;
+      try {
+        segments = JSON.parse(dbMessage.rawContent) as Array<{ type: string; data?: unknown }>;
+      } catch {
+        return '';
+      }
+      if (!Array.isArray(segments) || !segments.some((s) => s?.type === 'image')) {
+        return '';
+      }
+      const protocol: ProtocolName = (dbMessage.protocol as ProtocolName) || 'milky';
+      const minimalContext: NormalizedMessageEvent = {
+        id: '',
+        type: 'message',
+        timestamp: 0,
+        protocol,
+        userId: 0,
+        groupId: dbMessage.groupId ?? 0,
+        messageType: 'group',
+        message: '',
+        segments: [],
+      };
+      const getResourceUrl = (resourceId: string) =>
+        this.messageAPI.getResourceTempUrl(resourceId, minimalContext);
+      const images = await extractImagesFromSegmentsAsync(segments as MessageSegment[], getResourceUrl);
+      if (!images.length) {
+        return '';
+      }
+      return await this.aiService.generateProactiveImageDescription(
+        images,
+        lastUserEntry.content || '（无）',
+        groupId,
+      );
+    } catch (error) {
+      logger.warn(
+        '[ProactiveConversationService] getImageDescriptionFromLastUserMessage failed:',
+        error instanceof Error ? error.message : String(error),
+      );
+      return '';
+    }
+  }
+
+  /**
    * Create a new thread and send one proactive reply. Uses the same filteredEntries for both thread initial context and LLM prompt (no duplicate fetch).
    * @param triggerUserId - From ScheduledAnalysisContext (message that triggered the schedule); passed from upstream, not derived here.
    */
@@ -450,6 +518,11 @@ export class ProactiveConversationService {
       searchQueries,
       triggerUserId,
     );
+    // When the last user message had images, explain them and inject as imageDescription (same flow as normal reply).
+    const imageDescription = await this.getImageDescriptionFromLastUserMessage(filteredEntries, groupId);
+    if (imageDescription) {
+      injectContext.imageDescription = imageDescription;
+    }
     const replyText = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
     if (!replyText) {
       logger.warn('[ProactiveConversationService] Empty proactive reply');

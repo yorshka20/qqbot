@@ -72,4 +72,6 @@ export interface ProactiveReplyInjectContext {
   memoryContext: string;
   /** Optional session id for LLM (e.g. groupId for proactive). */
   sessionId?: string;
+  /** Optional image description from explainImages (when trigger message had images). */
+  imageDescription?: string;
 }

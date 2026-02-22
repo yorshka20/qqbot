@@ -7,6 +7,8 @@
 
 {{retrievedContext}}
 
+{{imageDescription}}
+
 ## 当前 thread 对话
 {{threadContext}}
 
