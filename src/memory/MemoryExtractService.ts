@@ -32,7 +32,7 @@ export class MemoryExtractService {
     private promptManager: PromptManager,
     private llmService: LLMService,
     private memoryService: MemoryService,
-  ) { }
+  ) {}
 
   /**
    * Merge new facts with existing memory using memory.analyze template.
@@ -47,20 +47,27 @@ export class MemoryExtractService {
       return existingMemory.trim();
     }
     const provider = options.provider ?? DEFAULT_EXTRACT_PROVIDER;
-    const prompt = this.promptManager.render('memory.analyze', {
-      existingMemory: existingMemory || '(无)',
-      newFacts: newFacts.trim(),
-    }, { injectBase: true });
+    const prompt = this.promptManager.render(
+      'memory.analyze',
+      {
+        existingMemory: existingMemory || '(无)',
+        newFacts: newFacts.trim(),
+      },
+      { injectBase: true },
+    );
 
     // logger.info('[MemoryExtractService] Analyze full prompt:\n' + prompt);
 
     try {
-      const res = await this.llmService.generate(prompt, {
-        temperature: 0.4,
-        maxTokens: 20000,
-      }, provider);
+      const res = await this.llmService.generate(
+        prompt,
+        {
+          temperature: 0.4,
+          maxTokens: 20000,
+        },
+        provider,
+      );
       const merged = (res.text ?? '').trim();
-      logger.debug('[MemoryExtractService] Analyze result:', { merged });
       return merged;
     } catch (err) {
       logger.error('[MemoryExtractService] LLM analyze failed:', err);
@@ -79,9 +86,7 @@ export class MemoryExtractService {
     options: MemoryExtractServiceOptions = {},
   ): Promise<void> {
     const prev = this.extractQueue;
-    this.extractQueue = prev.then(() =>
-      this.runExtractAndUpsertUserOnly(groupId, userId, recentMessagesText, options),
-    );
+    this.extractQueue = prev.then(() => this.runExtractAndUpsertUserOnly(groupId, userId, recentMessagesText, options));
     return this.extractQueue;
   }
 
@@ -97,20 +102,28 @@ export class MemoryExtractService {
     const targetUserSection = this.promptManager.render('memory.extract_single_user', {
       targetUserId: userId,
     });
-    const prompt = this.promptManager.render('memory.extract', {
-      groupId,
-      recentMessagesText: inputText,
-      targetUserSection,
-    }, { injectBase: true });
+    const prompt = this.promptManager.render(
+      'memory.extract',
+      {
+        groupId,
+        recentMessagesText: inputText,
+        targetUserSection,
+      },
+      { injectBase: true },
+    );
 
     // logger.info('[MemoryExtractService] Extract full prompt:\n' + prompt);
 
     let response: string;
     try {
-      const res = await this.llmService.generate(prompt, {
-        temperature: 0.4,
-        maxTokens: 20000, // use long context for extract.
-      }, provider);
+      const res = await this.llmService.generate(
+        prompt,
+        {
+          temperature: 0.4,
+          maxTokens: 20000, // use long context for extract.
+        },
+        provider,
+      );
       response = (res.text ?? '').trim();
       logger.debug('[MemoryExtractService] runExtractAndUpsertUserOnly result:', { response });
     } catch (err) {
@@ -129,7 +142,10 @@ export class MemoryExtractService {
     }
 
     try {
-      const newFactsText = userFacts.flatMap((u) => u.facts).filter(Boolean).join('\n');
+      const newFactsText = userFacts
+        .flatMap((u) => u.facts)
+        .filter(Boolean)
+        .join('\n');
       if (!newFactsText.trim()) {
         return;
       }
@@ -138,6 +154,7 @@ export class MemoryExtractService {
       if (merged) {
         await this.memoryService.upsertMemory(groupId, userId, false, merged);
       }
+      logger.debug('[MemoryExtractService] runExtractAndUpsertUserOnly result:', { userId, merged });
     } catch (err) {
       logger.error('[MemoryExtractService] merge/upsert failed (userOnly):', err);
     }
@@ -153,9 +170,7 @@ export class MemoryExtractService {
     options: MemoryExtractServiceOptions = {},
   ): Promise<void> {
     const prev = this.extractQueue;
-    this.extractQueue = prev.then(() =>
-      this.runExtractAndUpsert(groupId, recentMessagesText, options),
-    );
+    this.extractQueue = prev.then(() => this.runExtractAndUpsert(groupId, recentMessagesText, options));
     return this.extractQueue;
   }
 
@@ -174,10 +189,14 @@ export class MemoryExtractService {
 
     let response: string;
     try {
-      const res = await this.llmService.generate(prompt, {
-        temperature: 0.4,
-        maxTokens: 20000,
-      }, provider);
+      const res = await this.llmService.generate(
+        prompt,
+        {
+          temperature: 0.4,
+          maxTokens: 20000,
+        },
+        provider,
+      );
       response = (res.text ?? '').trim();
     } catch (err) {
       logger.error('[MemoryExtractService] LLM extract failed:', err);
@@ -211,6 +230,7 @@ export class MemoryExtractService {
         if (merged) {
           await this.memoryService.upsertMemory(groupId, u.userId, false, merged);
         }
+        logger.debug('[MemoryExtractService] runExtractAndUpsert result:', { merged });
       }
     } catch (err) {
       logger.error('[MemoryExtractService] merge/upsert failed:', err);
@@ -247,15 +267,16 @@ export class MemoryExtractService {
       const obj = JSON.parse(jsonStr) as Record<string, unknown>;
       const result: ExtractResult = {};
       if (Array.isArray(obj.group_facts)) {
-        result.groupFacts = obj.group_facts
-          .map((f) => this.normalizeFact(f))
-          .filter((s): s is string => s != null);
+        result.groupFacts = obj.group_facts.map((f) => this.normalizeFact(f)).filter((s): s is string => s != null);
       }
       if (Array.isArray(obj.user_facts)) {
         result.userFacts = [];
         for (const item of obj.user_facts) {
           const row = item as Record<string, unknown>;
-          if (!row || (row.user_id !== undefined && typeof row.user_id !== 'string' && typeof row.user_id !== 'number')) {
+          if (
+            !row ||
+            (row.user_id !== undefined && typeof row.user_id !== 'string' && typeof row.user_id !== 'number')
+          ) {
             continue;
           }
           const userId = row.user_id != null ? String(row.user_id).trim() : '';
