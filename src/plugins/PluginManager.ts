@@ -48,39 +48,48 @@ export class PluginManager {
   }
 
   /**
-   * Load plugins from a specific directory
+   * Load plugins from a specific directory (recurses into subdirectories)
    */
   private async loadPluginsFromDirectory(
     directory: string,
     pluginConfigMap: Map<string, { name: string; enabled: boolean; config?: unknown }>,
     isBuiltin: boolean = false,
   ): Promise<void> {
-    const files = readdirSync(directory);
-    const pluginFiles = files.filter((file) => extname(file) === '.ts' || extname(file) === '.js');
+    const entries = readdirSync(directory);
 
-    if (pluginFiles.length > 0) {
-      logger.info(
-        `[PluginManager] Found ${pluginFiles.length} plugin file(s) in ${isBuiltin ? 'built-in' : ''} directory: ${directory}`,
-      );
-    }
-
-    for (const file of pluginFiles) {
+    for (const entry of entries) {
+      const fullPath = join(directory, entry);
+      let stat: ReturnType<typeof statSync>;
       try {
-        const pluginPath = join(directory, file);
-        const pluginModule = await import(pluginPath);
+        stat = statSync(fullPath);
+      } catch {
+        continue;
+      }
+
+      if (stat.isDirectory()) {
+        await this.loadPluginsFromDirectory(fullPath, pluginConfigMap, isBuiltin);
+        continue;
+      }
+
+      if (extname(entry) !== '.ts' && extname(entry) !== '.js') {
+        continue;
+      }
+
+      try {
+        const pluginModule = await import(fullPath);
 
         // Support both default export and named export
         const PluginClass = pluginModule.default || pluginModule[Object.keys(pluginModule)[0]];
 
         if (!PluginClass) {
-          logger.warn(`[PluginManager] No plugin class found in ${file}`);
+          logger.warn(`[PluginManager] No plugin class found in ${entry}`);
           continue;
         }
 
         // Get plugin metadata from decorator (decorator executed during import)
         const pluginMetadata = getPluginMetadata(PluginClass);
         if (!pluginMetadata) {
-          logger.warn(`[PluginManager] Plugin class ${PluginClass.name} is not decorated with @Plugin()`);
+          // Not a plugin entry file (e.g. helper module in plugin dir), skip
           continue;
         }
 
@@ -112,7 +121,7 @@ export class PluginManager {
           `✅ [PluginManager] Loaded plugin: ${plugin.name} v${plugin.version} (enabled: ${pluginConfig?.enabled ?? false})${isBuiltin ? ' [built-in]' : ''}`,
         );
       } catch (error) {
-        logger.error(`❌ [PluginManager] Failed to load plugin ${file} from ${directory}:`, error);
+        logger.error(`❌ [PluginManager] Failed to load plugin ${entry} from ${directory}:`, error);
       }
     }
   }

@@ -125,10 +125,15 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
       const history = await this.loadHistory(options);
       const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
 
+      // Prepend system message when provided (e.g. for gacha prompt generation)
+      if (options?.systemPrompt?.trim()) {
+        messages.push({ role: 'system', content: options.systemPrompt.trim() });
+      }
+
       // Add history messages
       for (const msg of history) {
         messages.push({
-          role: msg.role === 'assistant' ? 'assistant' : 'user',
+          role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
           content: msg.content,
         });
       }
@@ -193,10 +198,15 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
       const history = await this.loadHistory(options);
       const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
 
+      // Prepend system message when provided (e.g. for gacha prompt generation)
+      if (options?.systemPrompt?.trim()) {
+        messages.push({ role: 'system', content: options.systemPrompt.trim() });
+      }
+
       // Add history messages
       for (const msg of history) {
         messages.push({
-          role: msg.role === 'assistant' ? 'assistant' : 'user',
+          role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
           content: msg.content,
         });
       }

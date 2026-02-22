@@ -116,6 +116,11 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       const history = await this.loadHistory(options);
       const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
 
+      // Prepend system message when provided (e.g. for gacha prompt generation)
+      if (options?.systemPrompt?.trim()) {
+        messages.push({ role: 'system', content: options.systemPrompt.trim() });
+      }
+
       // Add history messages
       for (const msg of history) {
         messages.push({
@@ -218,6 +223,11 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       // Load conversation history if context is enabled
       const history = await this.loadHistory(options);
       const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
+
+      // Prepend system message when provided (e.g. for gacha prompt generation)
+      if (options?.systemPrompt?.trim()) {
+        messages.push({ role: 'system', content: options.systemPrompt.trim() });
+      }
 
       // Add history messages
       for (const msg of history) {

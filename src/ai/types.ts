@@ -31,6 +31,11 @@ export interface AIGenerateOptions {
    */
   includeReasoning?: boolean;
   reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
+  /**
+   * Optional system message. When set, prepended to messages before history and user prompt.
+   * Supported by providers that accept a system role (e.g. DeepSeek, Doubao).
+   */
+  systemPrompt?: string;
 }
 
 /**

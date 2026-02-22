@@ -1,0 +1,5 @@
+{{requestLine}}
+
+⚠️ FOR THIS REQUEST:
+- Format: NovelAI 4.5
+- Style: {{style}}
