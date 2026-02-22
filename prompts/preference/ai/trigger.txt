@@ -1,0 +1,15 @@
+# Message containing any of these words will trigger proactive analysis for this preference.
+# Empty lines and lines starting with # are ignored.
+
+ai
+人工智能
+llm
+大模型
+提示词
+prompt
+agent
+文生图
+图生图
+ollama
+模型
+视频生成

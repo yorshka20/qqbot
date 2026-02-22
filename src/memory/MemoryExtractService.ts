@@ -94,9 +94,13 @@ export class MemoryExtractService {
   ): Promise<void> {
     const provider = options.provider ?? DEFAULT_EXTRACT_PROVIDER;
     const inputText = recentMessagesText || '(no messages)';
+    const targetUserSection = this.promptManager.render('memory.extract_single_user', {
+      targetUserId: userId,
+    });
     const prompt = this.promptManager.render('memory.extract', {
       groupId,
       recentMessagesText: inputText,
+      targetUserSection,
     }, { injectBase: true });
 
     // logger.info('[MemoryExtractService] Extract full prompt:\n' + prompt);
@@ -165,6 +169,7 @@ export class MemoryExtractService {
     const prompt = this.promptManager.render('memory.extract', {
       groupId,
       recentMessagesText: recentMessagesText || '(no messages)',
+      targetUserSection: '',
     });
 
     let response: string;
