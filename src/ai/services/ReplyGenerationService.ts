@@ -104,6 +104,7 @@ export class ReplyGenerationService {
           searchResults: searchResultsText,
           groupMemoryText: memoryVars.groupMemoryText,
           userMemoryText: memoryVars.userMemoryText,
+          imageDescription: '',
         }, { injectBase: true });
       } else {
         prompt = this.promptManager.render('llm.reply', {
@@ -111,6 +112,7 @@ export class ReplyGenerationService {
           conversationHistory: historyText,
           groupMemoryText: memoryVars.groupMemoryText,
           userMemoryText: memoryVars.userMemoryText,
+          imageDescription: '',
         }, { injectBase: true });
       }
 
@@ -145,7 +147,7 @@ export class ReplyGenerationService {
 
   /**
    * Generate reply with vision support (multimodal)
-   * Detects images in message and uses vision capability if available
+   * When images are present: explain images via vision, then feed description into normal LLM flow (same templates, card reply).
    * Reply is set to context.reply via setReply
    */
   async generateReplyWithVision(context: HookContext, images?: VisionImage[]): Promise<void> {
@@ -161,33 +163,45 @@ export class ReplyGenerationService {
     try {
       const sessionId = context.metadata.get('sessionId');
       const historyText = await this.conversationHistoryService.buildConversationHistory(context);
-
-      // Build prompt
-      // Template name: 'llm.reply' (from prompts/llm/reply.txt)
       const memoryVars = this.getMemoryVars(context);
+
+      let imageDescription = '';
+      if (images && images.length > 0) {
+        // Explain images first, then use normal LLM flow with image description
+        const explainPrompt = this.promptManager.render('vision.explain_image', {
+          userDescription: context.message.message || '（无）',
+        });
+        const explainResponse = await this.visionService.explainImages(images, explainPrompt, {
+          temperature: 0.3,
+          maxTokens: 2000,
+          sessionId,
+        });
+        imageDescription = explainResponse.text;
+      }
+
+      // Build prompt with imageDescription (empty when no images)
       const prompt = this.promptManager.render('llm.reply', {
         userMessage: context.message.message,
         conversationHistory: historyText,
         groupMemoryText: memoryVars.groupMemoryText,
         userMemoryText: memoryVars.userMemoryText,
+        imageDescription,
       }, { injectBase: true });
 
-      let response;
+      const response = await this.llmService.generate(prompt, {
+        temperature: 0.5,
+        maxTokens: 2000,
+        sessionId,
+      });
 
-      // Use vision if images are provided
-      if (images && images.length > 0) {
-        response = await this.visionService.generateWithVision(prompt, images, {
-          temperature: 0.7,
-          maxTokens: 2000,
-          sessionId,
-        });
-      } else {
-        // Use LLM
-        response = await this.llmService.generate(prompt, {
-          temperature: 0.7,
-          maxTokens: 2000,
-          sessionId,
-        });
+      logger.debug(`[ReplyGenerationService] LLM response received | responseLength=${response.text.length}`);
+
+      // Try to handle as card reply if applicable
+      if (sessionId) {
+        const success = await this.handleCardReply(response.text, sessionId, context);
+        if (success) {
+          return;
+        }
       }
 
       // Hook: onAIGenerationComplete
@@ -256,9 +270,8 @@ export class ReplyGenerationService {
       otherTaskResults.delete('search');
       const taskResultsSummary = this.buildTaskResultsSummary(otherTaskResults);
 
-      // 4. Perform recursive search (max 5 iterations)
-      // Skip search when user provided images (vision path): answer should come from vision, not web search
-      if (this.searchService && !hasImages) {
+      // 4. Perform recursive search (max 5 iterations). Run for image messages too (user content is text + image description).
+      if (this.searchService) {
         accumulatedSearchResults = await this.performRecursiveSearch(
           context.message.message,
           taskResultsSummary,
@@ -268,18 +281,26 @@ export class ReplyGenerationService {
         );
       }
 
-      // 5. Generate reply
+      // 5. Generate reply. When hasImages: explain images first, then same path as no-images with imageDescription.
+      let imageDescription = '';
       if (hasImages && images) {
-        await this.generateReplyWithTaskResultsAndVision(
-          context,
-          taskResultsSummary,
-          accumulatedSearchResults,
-          images,
+        const explainPrompt = this.promptManager.render('vision.explain_image', {
+          userDescription: context.message.message || '（无）',
+        });
+        const explainResponse = await this.visionService.explainImages(images, explainPrompt, {
+          temperature: 0.5,
+          maxTokens: 2000,
           sessionId,
-        );
-      } else {
-        await this.generateReplyWithTaskResults(context, taskResultsSummary, accumulatedSearchResults, sessionId);
+        });
+        imageDescription = explainResponse.text;
       }
+      await this.generateReplyWithTaskResults(
+        context,
+        taskResultsSummary,
+        accumulatedSearchResults,
+        sessionId,
+        imageDescription || undefined,
+      );
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error('[ReplyGenerationService] Failed to generate reply from task results:', err);
@@ -455,17 +476,20 @@ export class ReplyGenerationService {
    * @param taskResultsSummary - Summary of task results
    * @param searchResultsText - Search results text
    * @param sessionId - Session ID
+   * @param imageDescription - Optional image description from explainImages (when message had images)
    */
   private async generateReplyWithTaskResults(
     context: HookContext,
     taskResultsSummary: string,
     searchResultsText: string,
     sessionId?: string,
+    imageDescription?: string,
   ): Promise<void> {
     const historyText = await this.conversationHistoryService.buildConversationHistory(context);
 
-    // Build prompt
+    // Build prompt (include imageDescription in all templates)
     const memoryVars = this.getMemoryVars(context);
+    const imageDescVar = imageDescription ?? '';
     let prompt: string;
     if (taskResultsSummary) {
       // Has task results, use merge_tasks template
@@ -476,6 +500,7 @@ export class ReplyGenerationService {
         searchResults: searchResultsText,
         groupMemoryText: memoryVars.groupMemoryText,
         userMemoryText: memoryVars.userMemoryText,
+        imageDescription: imageDescVar,
       }, { injectBase: true });
     } else if (searchResultsText) {
       // Only search results, use with_search template
@@ -485,6 +510,7 @@ export class ReplyGenerationService {
         searchResults: searchResultsText,
         groupMemoryText: memoryVars.groupMemoryText,
         userMemoryText: memoryVars.userMemoryText,
+        imageDescription: imageDescVar,
       }, { injectBase: true });
     } else {
       // No task results and search, use normal template
@@ -493,6 +519,7 @@ export class ReplyGenerationService {
         conversationHistory: historyText,
         groupMemoryText: memoryVars.groupMemoryText,
         userMemoryText: memoryVars.userMemoryText,
+        imageDescription: imageDescVar,
       }, { injectBase: true });
     }
 
@@ -522,69 +549,6 @@ export class ReplyGenerationService {
 
     // Set text reply to context
     // Use append because this is a new AI reply (no card attempt)
-    setReply(context, response.text, 'ai');
-  }
-
-  /**
-   * Generate reply with vision support and task results
-   * @param context - Hook context
-   * @param taskResultsSummary - Summary of task results
-   * @param searchResultsText - Search results text
-   * @param images - Vision images
-   * @param sessionId - Session ID
-   */
-  private async generateReplyWithTaskResultsAndVision(
-    context: HookContext,
-    taskResultsSummary: string,
-    searchResultsText: string,
-    images: VisionImage[],
-    sessionId?: string,
-  ): Promise<void> {
-    const historyText = await this.conversationHistoryService.buildConversationHistory(context);
-
-    // Build prompt (vision version also supports task results)
-    const memoryVars = this.getMemoryVars(context);
-    let prompt: string;
-    if (taskResultsSummary) {
-      // Has task results, use merge_tasks template
-      prompt = this.promptManager.render('llm.reply.merge_tasks', {
-        userMessage: context.message.message,
-        conversationHistory: historyText,
-        taskResults: taskResultsSummary,
-        searchResults: searchResultsText,
-        groupMemoryText: memoryVars.groupMemoryText,
-        userMemoryText: memoryVars.userMemoryText,
-      }, { injectBase: true });
-    } else if (searchResultsText) {
-      // Only search results, use with_search template
-      prompt = this.promptManager.render('llm.reply.with_search', {
-        userMessage: context.message.message,
-        conversationHistory: historyText,
-        searchResults: searchResultsText,
-        groupMemoryText: memoryVars.groupMemoryText,
-        userMemoryText: memoryVars.userMemoryText,
-      }, { injectBase: true });
-    } else {
-      // No task results and search, use normal template
-      prompt = this.promptManager.render('llm.reply', {
-        userMessage: context.message.message,
-        conversationHistory: historyText,
-        groupMemoryText: memoryVars.groupMemoryText,
-        userMemoryText: memoryVars.userMemoryText,
-      }, { injectBase: true });
-    }
-
-    // Generate reply using vision
-    const response = await this.visionService.generateWithVision(prompt, images, {
-      temperature: 0.7,
-      maxTokens: 2000,
-      sessionId,
-    });
-
-    // Hook: onAIGenerationComplete
-    await this.hookManager.execute('onAIGenerationComplete', context);
-
-    // Set text reply to context
     setReply(context, response.text, 'ai');
   }
 

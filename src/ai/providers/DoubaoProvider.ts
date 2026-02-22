@@ -448,6 +448,17 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
   }
 
   /**
+   * Explain image(s): describe image content as text. Prompt is the full rendered text from the dedicated explain-image template.
+   */
+  async explainImages(
+    images: VisionImage[],
+    prompt: string,
+    options?: AIGenerateOptions,
+  ): Promise<AIGenerateResponse> {
+    return this.generateWithVision(prompt, images, options);
+  }
+
+  /**
    * Generate text with vision and streaming support
    */
   async generateStreamWithVision(

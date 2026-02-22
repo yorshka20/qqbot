@@ -25,29 +25,12 @@ export interface VisionCapability {
     handler: StreamingHandler,
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse>;
-}
-
-/**
- * Vision Capability interface
- * Providers that support vision (image understanding) should implement this interface
- * Supports multimodal input: text + images
- */
-export interface VisionCapability {
-  /**
-   * Generate text from prompt with vision (images)
-   * Supports multimodal input: text prompt + images
-   */
-  generateWithVision(prompt: string, images: VisionImage[], options?: AIGenerateOptions): Promise<AIGenerateResponse>;
 
   /**
-   * Generate text with vision and streaming support
+   * Explain image(s): describe image content as text. Prompt is the full rendered text from the dedicated explain-image template.
+   * Used to feed image description into the normal LLM reply flow.
    */
-  generateStreamWithVision(
-    prompt: string,
-    images: VisionImage[],
-    handler: StreamingHandler,
-    options?: AIGenerateOptions,
-  ): Promise<AIGenerateResponse>;
+  explainImages(images: VisionImage[], prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse>;
 }
 
 /**

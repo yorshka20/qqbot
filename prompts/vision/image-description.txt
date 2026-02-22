@@ -1,7 +1,0 @@
-You are a helpful assistant that can understand images. Analyze the provided images and respond to the user's question about them.
-
-{{conversationHistory}}
-
-User message: {{userMessage}}
-
-Please analyze the images and provide a detailed response based on what you see in them.

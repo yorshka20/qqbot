@@ -96,7 +96,7 @@ export class PromptManager {
    *     llm/
    *       reply.txt
    *     vision/
-   *       image-description.txt
+   *       explain_image.txt
    */
   loadTemplatesFromDirectory(directory?: string): void {
     const dir = directory || this.templateDirectory;
