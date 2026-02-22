@@ -34,7 +34,7 @@ export class PromptManager {
   /** Current message context set by pipeline before processing; used by injectBase to resolve groupId and userInfo. */
   private currentMessageContext: { message: NormalizedMessageEvent } | null = null;
   /** Bot owner user id from config (bot.owner); used by injectBase for {{adminUserId}}. */
-  private readonly adminUserId: string;
+  readonly adminUserId: string;
 
   constructor(templateDirectory?: string, adminUserId?: string) {
     this.templateDirectory = templateDirectory || resolve(process.cwd(), 'prompts');
@@ -197,11 +197,8 @@ export class PromptManager {
     if (baseTemplate) {
       // Inject base template; groupId and userInfo are resolved from current message context (set by pipeline).
       const msg = this.currentMessageContext?.message;
-      const groupId =
-        msg?.messageType === 'group' && msg?.groupId != null ? String(msg.groupId) : '（无）';
-      const userInfo = msg
-        ? `userId：${msg.userId}，nickname：${msg.sender?.nickname ?? '未知'}`
-        : '（无）';
+      const groupId = msg?.messageType === 'group' && msg?.groupId != null ? String(msg.groupId) : '（无）';
+      const userInfo = msg ? `userId：${msg.userId}，nickname：${msg.sender?.nickname ?? '未知'}` : '（无）';
       const baseVars: Record<string, string> = {
         currentDate: new Date().toLocaleDateString('zh-CN', {
           year: 'numeric',
@@ -239,9 +236,7 @@ export class PromptManager {
     // Check for unresolved variables
     const unresolved = rendered.match(/\{\{(\w+)\}\}/g);
     if (unresolved) {
-      logger.warn(
-        `[PromptManager] Unresolved variables in template ${templateName}: ${unresolved.join(', ')}`,
-      );
+      logger.warn(`[PromptManager] Unresolved variables in template ${templateName}: ${unresolved.join(', ')}`);
     }
 
     return rendered;

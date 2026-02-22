@@ -52,6 +52,7 @@ export class MemoryExtractService {
       {
         existingMemory: existingMemory || '(无)',
         newFacts: newFacts.trim(),
+        adminUserId: this.promptManager.adminUserId,
       },
       { injectBase: true },
     );
@@ -138,6 +139,7 @@ export class MemoryExtractService {
 
     const userFacts = (parsed.userFacts ?? []).filter((u) => u.userId === userId);
     if (userFacts.length === 0) {
+      logger.debug(`[MemoryExtractService] extractUserOnly group=${groupId} user=${userId}: no facts extracted, skip`);
       return;
     }
 
@@ -154,7 +156,7 @@ export class MemoryExtractService {
       if (merged) {
         await this.memoryService.upsertMemory(groupId, userId, false, merged);
       }
-      logger.debug('[MemoryExtractService] runExtractAndUpsertUserOnly result:', { userId, merged });
+      logger.info(`[MemoryExtractService] memory updated | group=${groupId} user=${userId} |\n${merged}`);
     } catch (err) {
       logger.error('[MemoryExtractService] merge/upsert failed (userOnly):', err);
     }
@@ -208,6 +210,11 @@ export class MemoryExtractService {
       return;
     }
 
+    const userIds = (parsed.userFacts ?? []).map((u) => u.userId).filter(Boolean);
+    logger.info(
+      `[MemoryExtractService] extract done | group=${groupId} | group_facts=${parsed.groupFacts?.length ?? 0} user_facts_users=[${userIds.join(',')}]`,
+    );
+
     try {
       // for group global memory
       if (parsed.groupFacts && parsed.groupFacts.length > 0) {
@@ -217,6 +224,7 @@ export class MemoryExtractService {
         if (merged) {
           await this.memoryService.upsertMemory(groupId, GROUP_MEMORY_USER_ID, true, merged);
         }
+        logger.info(`[MemoryExtractService] memory updated | group=${groupId} target=GROUP_GLOBAL |\n${merged}`);
       }
 
       // for user memory
@@ -230,7 +238,7 @@ export class MemoryExtractService {
         if (merged) {
           await this.memoryService.upsertMemory(groupId, u.userId, false, merged);
         }
-        logger.debug('[MemoryExtractService] runExtractAndUpsert result:', { merged });
+        logger.info(`[MemoryExtractService] memory updated | group=${groupId} user=${u.userId} |\n${merged}`);
       }
     } catch (err) {
       logger.error('[MemoryExtractService] merge/upsert failed:', err);
