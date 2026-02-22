@@ -47,7 +47,7 @@ export class OllamaPreliminaryAnalysisService {
   constructor(
     private aiManager: AIManager,
     private promptManager: PromptManager,
-  ) { }
+  ) {}
 
   /**
    * Run preliminary analysis: should the bot proactively join?
@@ -77,16 +77,20 @@ export class OllamaPreliminaryAnalysisService {
 
     let prompt: string;
     try {
-      prompt = this.promptManager.render('analysis.ollama', {
-        preferenceText,
-        recentMessagesText: recentMessagesText || '(no messages)',
-      }, { injectBase: true });
+      prompt = this.promptManager.render(
+        'analysis.ollama',
+        {
+          preferenceText,
+          recentMessagesText: recentMessagesText || '(no messages)',
+        },
+        { injectBase: true },
+      );
     } catch (err) {
       logger.warn('[OllamaPreliminaryAnalysisService] Failed to render prompt:', err);
       return { shouldJoin: false };
     }
 
-    logger.debug(`[OllamaPreliminaryAnalysisService] Prompt: \n${prompt}`);
+    // logger.debug(`[OllamaPreliminaryAnalysisService] Prompt: \n${prompt}`);
 
     try {
       const response = await llm.generate(prompt, {
@@ -134,11 +138,15 @@ export class OllamaPreliminaryAnalysisService {
       )
       .join('\n\n');
 
-    const prompt = this.promptManager.render('analysis.ollama_multi', {
-      preferenceText,
-      recentMessagesText: recentMessagesText || '(no messages)',
-      threadsDescription: threadsDescription || '(no threads)',
-    }, { injectBase: true });
+    const prompt = this.promptManager.render(
+      'analysis.ollama_multi',
+      {
+        preferenceText,
+        recentMessagesText: recentMessagesText || '(no messages)',
+        threadsDescription: threadsDescription || '(no threads)',
+      },
+      { injectBase: true },
+    );
 
     logger.debug(`[OllamaPreliminaryAnalysisService] Multi-thread prompt length: ${prompt.length}`);
 
@@ -169,9 +177,7 @@ export class OllamaPreliminaryAnalysisService {
       const reason = typeof obj.reason === 'string' ? obj.reason : undefined;
       const topic = typeof obj.topic === 'string' ? obj.topic : undefined;
       const replyInThreadId =
-        typeof obj.replyInThreadId === 'string' && obj.replyInThreadId.trim()
-          ? obj.replyInThreadId.trim()
-          : undefined;
+        typeof obj.replyInThreadId === 'string' && obj.replyInThreadId.trim() ? obj.replyInThreadId.trim() : undefined;
       const createNew = obj.createNew === true;
       const threadShouldEndId =
         typeof obj.threadShouldEndId === 'string' && obj.threadShouldEndId.trim()
@@ -184,9 +190,7 @@ export class OllamaPreliminaryAnalysisService {
           .filter((x): x is string => x != null && x.length > 0);
       }
       const preferenceKey =
-        typeof obj.preferenceKey === 'string' && obj.preferenceKey.trim()
-          ? obj.preferenceKey.trim()
-          : undefined;
+        typeof obj.preferenceKey === 'string' && obj.preferenceKey.trim() ? obj.preferenceKey.trim() : undefined;
       let searchQueries: string[] | undefined;
       if (Array.isArray(obj.searchQueries)) {
         searchQueries = obj.searchQueries
