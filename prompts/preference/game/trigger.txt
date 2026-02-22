@@ -1,0 +1,17 @@
+# Message containing any of these words will trigger proactive analysis for this preference.
+# Empty lines and lines starting with # are ignored.
+
+游戏
+攻略
+高手
+段位
+上分
+配队
+阵容
+强度
+副本
+活动本
+卡池
+抽卡
+版本
+机制

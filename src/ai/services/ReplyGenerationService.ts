@@ -37,7 +37,7 @@ export class ReplyGenerationService {
     private messageAPI?: MessageAPI,
     private databaseManager?: DatabaseManager,
     private memoryService?: MemoryService,
-  ) { }
+  ) {}
 
   /**
    * Get memory text vars for prompt (groupMemoryText, userMemoryText). Empty strings when not group or no memory service.
@@ -98,22 +98,30 @@ export class ReplyGenerationService {
       const memoryVars = this.getMemoryVars(context);
       let prompt: string;
       if (searchResultsText) {
-        prompt = this.promptManager.render('llm.reply.with_search', {
-          userMessage: context.message.message,
-          conversationHistory: historyText,
-          searchResults: searchResultsText,
-          groupMemoryText: memoryVars.groupMemoryText,
-          userMemoryText: memoryVars.userMemoryText,
-          imageDescription: '',
-        }, { injectBase: true });
+        prompt = this.promptManager.render(
+          'llm.reply.with_search',
+          {
+            userMessage: context.message.message,
+            conversationHistory: historyText,
+            searchResults: searchResultsText,
+            groupMemoryText: memoryVars.groupMemoryText,
+            userMemoryText: memoryVars.userMemoryText,
+            imageDescription: '',
+          },
+          { injectBase: true },
+        );
       } else {
-        prompt = this.promptManager.render('llm.reply', {
-          userMessage: context.message.message,
-          conversationHistory: historyText,
-          groupMemoryText: memoryVars.groupMemoryText,
-          userMemoryText: memoryVars.userMemoryText,
-          imageDescription: '',
-        }, { injectBase: true });
+        prompt = this.promptManager.render(
+          'llm.reply',
+          {
+            userMessage: context.message.message,
+            conversationHistory: historyText,
+            groupMemoryText: memoryVars.groupMemoryText,
+            userMemoryText: memoryVars.userMemoryText,
+            imageDescription: '',
+          },
+          { injectBase: true },
+        );
       }
 
       // Generate AI response using LLM service
@@ -232,16 +240,21 @@ export class ReplyGenerationService {
           sessionId,
         });
         imageDescription = explainResponse.text;
+        logger.debug(`[ReplyGenerationService] Image description: ${imageDescription}`);
       }
 
       // Build prompt with imageDescription (empty when no images)
-      const prompt = this.promptManager.render('llm.reply', {
-        userMessage: context.message.message,
-        conversationHistory: historyText,
-        groupMemoryText: memoryVars.groupMemoryText,
-        userMemoryText: memoryVars.userMemoryText,
-        imageDescription,
-      }, { injectBase: true });
+      const prompt = this.promptManager.render(
+        'llm.reply',
+        {
+          userMessage: context.message.message,
+          conversationHistory: historyText,
+          groupMemoryText: memoryVars.groupMemoryText,
+          userMemoryText: memoryVars.userMemoryText,
+          imageDescription,
+        },
+        { injectBase: true },
+      );
 
       const response = await this.llmService.generate(prompt, {
         temperature: 0.5,
@@ -296,11 +309,7 @@ export class ReplyGenerationService {
       let images: VisionImage[] = [];
       if (this.messageAPI && this.databaseManager) {
         try {
-          images = await extractImagesFromMessageAndReply(
-            context.message,
-            this.messageAPI,
-            this.databaseManager,
-          );
+          images = await extractImagesFromMessageAndReply(context.message, this.messageAPI, this.databaseManager);
         } catch (error) {
           logger.warn(
             '[ReplyGenerationService] Failed to extract images from message and reply, falling back to text-only reply:',
@@ -348,6 +357,7 @@ export class ReplyGenerationService {
           sessionId,
         });
         imageDescription = explainResponse.text;
+        logger.debug(`[ReplyGenerationService] Image description: ${imageDescription}`);
       }
       await this.generateReplyWithTaskResults(
         context,
@@ -507,12 +517,16 @@ export class ReplyGenerationService {
     }
 
     // Build decision prompt
-    const decisionPrompt = this.promptManager.render('llm.search_decision', {
-      userMessage,
-      existingInformation: existingSearchResults || 'None',
-      taskResults: taskResultsSummary || 'None',
-      previousSearchResults: existingSearchResults || 'None',
-    }, { injectBase: true });
+    const decisionPrompt = this.promptManager.render(
+      'llm.search_decision',
+      {
+        userMessage,
+        existingInformation: existingSearchResults || 'None',
+        taskResults: taskResultsSummary || 'None',
+        previousSearchResults: existingSearchResults || 'None',
+      },
+      { injectBase: true },
+    );
 
     // Call LLM to make decision
     const decisionResponse = await this.llmService.generate(decisionPrompt, {
@@ -548,34 +562,46 @@ export class ReplyGenerationService {
     let prompt: string;
     if (taskResultsSummary) {
       // Has task results, use merge_tasks template
-      prompt = this.promptManager.render('llm.reply.merge_tasks', {
-        userMessage: context.message.message,
-        conversationHistory: historyText,
-        taskResults: taskResultsSummary,
-        searchResults: searchResultsText,
-        groupMemoryText: memoryVars.groupMemoryText,
-        userMemoryText: memoryVars.userMemoryText,
-        imageDescription: imageDescVar,
-      }, { injectBase: true });
+      prompt = this.promptManager.render(
+        'llm.reply.merge_tasks',
+        {
+          userMessage: context.message.message,
+          conversationHistory: historyText,
+          taskResults: taskResultsSummary,
+          searchResults: searchResultsText,
+          groupMemoryText: memoryVars.groupMemoryText,
+          userMemoryText: memoryVars.userMemoryText,
+          imageDescription: imageDescVar,
+        },
+        { injectBase: true },
+      );
     } else if (searchResultsText) {
       // Only search results, use with_search template
-      prompt = this.promptManager.render('llm.reply.with_search', {
-        userMessage: context.message.message,
-        conversationHistory: historyText,
-        searchResults: searchResultsText,
-        groupMemoryText: memoryVars.groupMemoryText,
-        userMemoryText: memoryVars.userMemoryText,
-        imageDescription: imageDescVar,
-      }, { injectBase: true });
+      prompt = this.promptManager.render(
+        'llm.reply.with_search',
+        {
+          userMessage: context.message.message,
+          conversationHistory: historyText,
+          searchResults: searchResultsText,
+          groupMemoryText: memoryVars.groupMemoryText,
+          userMemoryText: memoryVars.userMemoryText,
+          imageDescription: imageDescVar,
+        },
+        { injectBase: true },
+      );
     } else {
       // No task results and search, use normal template
-      prompt = this.promptManager.render('llm.reply', {
-        userMessage: context.message.message,
-        conversationHistory: historyText,
-        groupMemoryText: memoryVars.groupMemoryText,
-        userMemoryText: memoryVars.userMemoryText,
-        imageDescription: imageDescVar,
-      }, { injectBase: true });
+      prompt = this.promptManager.render(
+        'llm.reply',
+        {
+          userMessage: context.message.message,
+          conversationHistory: historyText,
+          groupMemoryText: memoryVars.groupMemoryText,
+          userMemoryText: memoryVars.userMemoryText,
+          imageDescription: imageDescVar,
+        },
+        { injectBase: true },
+      );
     }
 
     const response = await this.llmService.generate(prompt, {
@@ -678,9 +704,13 @@ export class ReplyGenerationService {
    */
   private async convertToCardFormat(responseText: string, sessionId?: string): Promise<string> {
     // Use dedicated conversion prompt template
-    const prompt = this.promptManager.render('llm.reply.convert_to_card', {
-      responseText,
-    }, { injectBase: true });
+    const prompt = this.promptManager.render(
+      'llm.reply.convert_to_card',
+      {
+        responseText,
+      },
+      { injectBase: true },
+    );
 
     logger.debug('[ReplyGenerationService] Converting text to card format using LLM');
 

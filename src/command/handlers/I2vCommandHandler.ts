@@ -58,8 +58,8 @@ export class I2vCommandHandler implements CommandHandler {
   }
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
-    const i2vProvider = this.aiManager.getProviderForCapability('i2v', 'runpod')
-      ?? this.aiManager.getDefaultProvider('i2v');
+    const i2vProvider =
+      this.aiManager.getProviderForCapability('i2v', 'runpod') ?? this.aiManager.getDefaultProvider('i2v');
     if (!i2vProvider?.isAvailable() || !isImage2VideoCapability(i2vProvider)) {
       return {
         success: false,

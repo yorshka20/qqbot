@@ -108,21 +108,31 @@ export class AIService {
    * @param providerName - Optional LLM provider (e.g. "ollama", "doubao"); when set, reply uses this provider.
    */
   async generateProactiveReply(context: ProactiveReplyInjectContext, providerName?: string): Promise<string> {
-    const prompt = this.promptManager.render('llm.proactive_reply', {
-      preferenceText: context.preferenceText,
-      threadContext: context.threadContext || '(no context)',
-      retrievedContext: context.retrievedContext ?? '',
-      memoryContext: context.memoryContext ?? '',
-      imageDescription: context.imageDescription ?? '',
-    }, { injectBase: true });
+    const prompt = this.promptManager.render(
+      'llm.proactive_reply',
+      {
+        preferenceText: context.preferenceText,
+        threadContext: context.threadContext || '(no context)',
+        retrievedContext: context.retrievedContext ?? '',
+        memoryContext: context.memoryContext ?? '',
+        imageDescription: context.imageDescription ?? '',
+      },
+      { injectBase: true },
+    );
 
     logger.debug('generateProactiveReply context', { memory: context.memoryContext });
 
-    const response = await this.llmService.generate(prompt, {
-      temperature: 0.5,
-      maxTokens: 10000,
-      sessionId: context.sessionId,
-    }, providerName);
+    // logger.debug('generateProactiveReply prompt', { prompt });
+
+    const response = await this.llmService.generate(
+      prompt,
+      {
+        temperature: 0.5,
+        maxTokens: 10000,
+        sessionId: context.sessionId,
+      },
+      providerName,
+    );
 
     return (response.text || '').trim();
   }
@@ -260,11 +270,7 @@ export class AIService {
    * @param templateName - Template name (default: 'img2video.generate')
    * @returns Processed prompt and durationSeconds (default 5, clamped 1–30)
    */
-  async prepareI2VPrompt(
-    userInput: string,
-    sessionId: string,
-    templateName?: string,
-  ): Promise<I2VPromptResult> {
+  async prepareI2VPrompt(userInput: string, sessionId: string, templateName?: string): Promise<I2VPromptResult> {
     return this.imagePromptService.prepareI2VPrompt(userInput, sessionId, templateName ?? 'img2video.generate');
   }
 
@@ -324,9 +330,7 @@ export class AIService {
         );
         finalPrompt = prepared.prompt;
         // Do not merge prepared.options into img2img: NovelAI steps/scale/size must stay fixed to avoid extra Anlas cost.
-        logger.debug(
-          `[AIService] Image-from-image LLM preprocessing | input="${prompt}"`,
-        );
+        logger.debug(`[AIService] Image-from-image LLM preprocessing | input="${prompt}"`);
       }
 
       logger.info(
@@ -363,10 +367,7 @@ export class AIService {
    * @param context - Hook context containing message and conversation history
    * @param taskResults - Task execution results (empty Map if no tasks)
    */
-  async generateReplyFromTaskResults(
-    context: HookContext,
-    taskResults: Map<string, TaskResult>
-  ): Promise<void> {
+  async generateReplyFromTaskResults(context: HookContext, taskResults: Map<string, TaskResult>): Promise<void> {
     return await this.replyGenerationService.generateReplyFromTaskResults(context, taskResults);
   }
 

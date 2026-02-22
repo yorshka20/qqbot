@@ -26,12 +26,10 @@ export async function resizeImageToBase64(
   width: number,
   height: number,
 ): Promise<string> {
-  const buffer = typeof imageBufferOrBase64 === 'string' ? Buffer.from(imageBufferOrBase64, 'base64') : imageBufferOrBase64;
+  const buffer =
+    typeof imageBufferOrBase64 === 'string' ? Buffer.from(imageBufferOrBase64, 'base64') : imageBufferOrBase64;
 
-  const resized = await sharp(buffer)
-    .resize(width, height, { fit: 'fill' })
-    .png()
-    .toBuffer();
+  const resized = await sharp(buffer).resize(width, height, { fit: 'fill' }).png().toBuffer();
 
   const base64 = resized.toString('base64');
   logger.debug(`[imageResize] Resized to ${width}x${height}, output ${base64.length} chars base64`);
@@ -62,7 +60,13 @@ async function compressBufferToMaxBytes(
     if (w <= maxDimension && h <= maxDimension) {
       const format = meta.format;
       const mimeType =
-        format === 'png' ? 'image/png' : format === 'webp' ? 'image/webp' : format === 'gif' ? 'image/gif' : 'image/jpeg';
+        format === 'png'
+          ? 'image/png'
+          : format === 'webp'
+            ? 'image/webp'
+            : format === 'gif'
+              ? 'image/gif'
+              : 'image/jpeg';
       return { buffer, mimeType };
     }
   }
@@ -110,12 +114,7 @@ async function compressBufferToMaxBytes(
  * @returns Buffer (PNG or JPEG) meeting size and resolution limits
  */
 export async function prepareImageForI2v(imageBuffer: Buffer): Promise<Buffer> {
-  const { buffer } = await compressBufferToMaxBytes(
-    imageBuffer,
-    I2V_MAX_BYTES,
-    I2V_MAX_DIMENSION,
-    'I2V',
-  );
+  const { buffer } = await compressBufferToMaxBytes(imageBuffer, I2V_MAX_BYTES, I2V_MAX_DIMENSION, 'I2V');
   return buffer;
 }
 
@@ -136,11 +135,6 @@ export async function compressImageToMaxBytes(
   maxBytes: number = VISION_MAX_BYTES,
 ): Promise<{ base64: string; mimeType: string }> {
   const buffer = typeof bufferOrBase64 === 'string' ? Buffer.from(bufferOrBase64, 'base64') : bufferOrBase64;
-  const { buffer: out, mimeType } = await compressBufferToMaxBytes(
-    buffer,
-    maxBytes,
-    VISION_MAX_DIMENSION,
-    'Vision',
-  );
+  const { buffer: out, mimeType } = await compressBufferToMaxBytes(buffer, maxBytes, VISION_MAX_DIMENSION, 'Vision');
   return { base64: out.toString('base64'), mimeType };
 }
