@@ -45,6 +45,11 @@ export interface CommandHandler {
   usage?: string;
 
   /**
+   * Required permission levels (user must have at least one). If omitted, allow all users.
+   */
+  permissions?: PermissionLevel[];
+
+  /**
    * Execute command
    */
   execute(args: string[], context: CommandContext): Promise<CommandResult> | CommandResult;

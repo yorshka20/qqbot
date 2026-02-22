@@ -64,6 +64,8 @@ export interface ConversationConfigData {
     users?: Record<string, string[]>; // userId -> permission levels (as strings, will be validated as PermissionLevel)
   };
   providers?: ProviderSelection; // Session-level AI provider selection
+  /** When true, session uses fixed NSFW reply flow (single template + LLM) instead of normal task/reply pipeline */
+  nsfwMode?: boolean;
 }
 
 /**

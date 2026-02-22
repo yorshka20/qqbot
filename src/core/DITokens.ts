@@ -29,6 +29,7 @@ export const DITokens = {
   THREAD_CONTEXT_COMPRESSION_SERVICE: 'ThreadContextCompressionService',
   MEMORY_SERVICE: 'MemoryService',
   MEMORY_EXTRACT_SERVICE: 'MemoryExtractService',
+  PROCESS_STAGE_INTERCEPTOR_REGISTRY: 'ProcessStageInterceptorRegistry',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];

@@ -8,6 +8,7 @@ import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
+import type { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
 import type { CommandRouter } from './CommandRouter';
 
 /**
@@ -24,6 +25,7 @@ export class Lifecycle {
   constructor(
     private hookManager: HookManager,
     private commandRouter: CommandRouter,
+    private processStageInterceptorRegistry?: ProcessStageInterceptorRegistry,
   ) {}
 
   enabled(): boolean {
@@ -140,9 +142,24 @@ export class Lifecycle {
   /**
    * Stage 3: PROCESS
    * Main processing: command execution, task analysis, AI generation
+   * Runs process-stage interceptors first; if any handles the message, skip CommandSystem/TaskSystem
    */
   private async executeStageProcess(context: HookContext, messageId: string): Promise<boolean> {
     logger.debug(`[Lifecycle] 🟦[3] Stage: PROCESS`);
+
+    // Run interceptors (e.g. NSFW mode) before systems; if any handles, skip systems
+    if (this.processStageInterceptorRegistry) {
+      const interceptors = this.processStageInterceptorRegistry.getInterceptors();
+      for (const interceptor of interceptors) {
+        const should = interceptor.shouldIntercept(context);
+        const shouldIntercept = typeof should === 'boolean' ? should : await should;
+        if (shouldIntercept) {
+          await interceptor.handle(context);
+          logger.debug(`[Lifecycle] Process stage handled by interceptor | messageId=${messageId}`);
+          return true;
+        }
+      }
+    }
 
     // Execute systems (CommandSystem, TaskSystem, etc.)
     return await this.executeSystems(SystemStage.PROCESS, context, messageId);

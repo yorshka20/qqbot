@@ -205,6 +205,11 @@
           "triggerKeywords": []
         }
       },
+      // Gacha Plugin - one-click NAI prompt generation (DeepSeek) then proxy to /nai
+      {
+        "name": "gacha",
+        "enabled": true
+      },
     ],
   },
   // Database configuration (required)

@@ -20,7 +20,7 @@
 // - Handlers in src/command/handlers/ are actual command implementations (e.g., TTSCommandHandler)
 // - PluginCommandHandler is an adapter that allows plugins to register commands dynamically
 
-import type { CommandContext, CommandHandler, CommandResult } from '@/command/types';
+import type { CommandContext, CommandHandler, CommandResult, PermissionLevel } from '@/command/types';
 import type { PluginContext } from './types';
 
 /**
@@ -43,7 +43,8 @@ import type { PluginContext } from './types';
  *     // Command implementation
  *     return { success: true, segments: [...] };
  *   },
- *   this.context
+ *   this.context,
+ *   ['admin']  // optional: required permissions
  * );
  * this.commandManager.register(handler, this.name);
  * ```
@@ -57,6 +58,7 @@ export class PluginCommandHandler implements CommandHandler {
    * @param usage - Command usage string
    * @param executeFn - Command execution function that receives args, context, and pluginContext
    * @param pluginContext - Plugin context (API, events, bot config)
+   * @param permissions - Optional required permission levels (e.g. ['admin'], ['group_admin', 'group_owner'])
    */
   constructor(
     public name: string,
@@ -68,6 +70,7 @@ export class PluginCommandHandler implements CommandHandler {
       pluginContext: PluginContext,
     ) => Promise<CommandResult> | CommandResult,
     private pluginContext: PluginContext,
+    public permissions?: PermissionLevel[],
   ) { }
 
   /**

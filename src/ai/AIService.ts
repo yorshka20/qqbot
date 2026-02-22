@@ -369,4 +369,12 @@ export class AIService {
   ): Promise<void> {
     return await this.replyGenerationService.generateReplyFromTaskResults(context, taskResults);
   }
+
+  /**
+   * Generate reply using NSFW-mode prompt template only (fixed reply flow).
+   * Used when session is in NSFW mode (e.g. by NsfwModePlugin interceptor).
+   */
+  async generateNsfwReply(context: HookContext): Promise<void> {
+    return await this.replyGenerationService.generateNsfwReply(context);
+  }
 }

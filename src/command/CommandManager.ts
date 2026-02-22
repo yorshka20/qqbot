@@ -239,6 +239,7 @@ export class CommandManager {
     const registration: CommandRegistration = {
       handler,
       pluginName,
+      permissions: handler.permissions,
     };
 
     if (pluginName) {

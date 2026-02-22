@@ -34,6 +34,7 @@ import { CommandRouter } from './CommandRouter';
 import { ConversationManager } from './ConversationManager';
 import { Lifecycle } from './Lifecycle';
 import { MessagePipeline } from './MessagePipeline';
+import { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
 import {
   DefaultProactiveThreadPersistenceService,
   ProactiveConversationService,
@@ -438,11 +439,15 @@ export class ConversationInitializer {
   private static assembleComponents(services: CompleteServices, apiClient: APIClient): ConversationComponents {
     const systemRegistry = new SystemRegistry();
     const commandRouter = new CommandRouter(['/', '!']);
+    const processStageInterceptorRegistry = new ProcessStageInterceptorRegistry();
+    getContainer().registerInstance(DITokens.PROCESS_STAGE_INTERCEPTOR_REGISTRY, processStageInterceptorRegistry, {
+      logRegistration: false,
+    });
 
     // Initialize MessageUtils with command prefixes
     MessageUtils.initialize(['/', '!']);
 
-    const lifecycle = new Lifecycle(services.hookManager, commandRouter);
+    const lifecycle = new Lifecycle(services.hookManager, commandRouter, processStageInterceptorRegistry);
 
     const promptManager = getContainer().resolve<PromptManager>(DITokens.PROMPT_MANAGER);
     const pipeline = new MessagePipeline(

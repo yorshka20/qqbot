@@ -146,6 +146,61 @@ export class ReplyGenerationService {
   }
 
   /**
+   * Generate reply using NSFW-mode prompt template only (fixed reply flow, no task analysis or search).
+   * Used when session is in NSFW mode; reply is set to context.reply.
+   * Template uses {{char}} (bot's roleplay character) and {{user}} (user's role/name) for narrative RP.
+   */
+  async generateNsfwReply(context: HookContext): Promise<void> {
+    const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
+    if (!shouldContinue) {
+      throw new Error('AI reply generation interrupted by hook');
+    }
+
+    await this.hookManager.execute('onAIGenerationStart', context);
+
+    try {
+      const historyText = await this.conversationHistoryService.buildConversationHistory(context);
+      const sessionId = context.metadata.get('sessionId');
+      const memoryVars = this.getMemoryVars(context);
+
+      // char = bot's roleplay character name; user = user's role/name (for template "演绎{{char}}以及{{user}}之外...")
+      const char = '助手';
+      const user = context.message?.sender?.nickname ?? '用户';
+
+      const prompt = this.promptManager.render('llm.nsfw_reply', {
+        char,
+        user,
+        userMessage: context.message.message,
+        conversationHistory: historyText,
+        groupMemoryText: memoryVars.groupMemoryText,
+        userMemoryText: memoryVars.userMemoryText,
+        imageDescription: '',
+      }, { injectBase: true });
+
+      // Higher maxTokens to allow 300-500 word narrative replies per template
+      const response = await this.llmService.generate(prompt, {
+        temperature: 0.8,
+        maxTokens: 3500,
+        sessionId,
+      }, 'ollama');
+
+      logger.debug(`[ReplyGenerationService] NSFW reply received | responseLength=${response.text.length}`);
+
+      const success = await this.handleCardReply(response.text, sessionId, context);
+      if (success) {
+        return;
+      }
+
+      await this.hookManager.execute('onAIGenerationComplete', context);
+      replaceReply(context, response.text, 'ai');
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.error('[ReplyGenerationService] Failed to generate NSFW reply:', err);
+      throw err;
+    }
+  }
+
+  /**
    * Generate reply with vision support (multimodal)
    * When images are present: explain images via vision, then feed description into normal LLM flow (same templates, card reply).
    * Reply is set to context.reply via setReply

@@ -107,6 +107,7 @@ export class ConversationConfigService {
           ...conversationConfig.permissions?.users,
         },
       },
+      nsfwMode: conversationConfig.nsfwMode ?? false,
     };
   }
 
@@ -151,6 +152,8 @@ export class ConversationConfigService {
         providers: partialConfig.providers !== undefined
           ? partialConfig.providers
           : existing.config.providers,
+        // Merge nsfwMode if provided
+        nsfwMode: partialConfig.nsfwMode !== undefined ? partialConfig.nsfwMode : existing.config.nsfwMode,
       };
 
       // Update in database
