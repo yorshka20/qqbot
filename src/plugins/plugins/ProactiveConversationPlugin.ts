@@ -33,7 +33,7 @@ export class ProactiveConversationPlugin extends PluginBase {
   /** preferenceKey -> trigger words from prompts/preference/{preferenceKey}/trigger.txt (one word per line). */
   private triggerWords: Record<string, string[]> = {};
   private triggerAccumulator: Record<string, number> = {};
-  private accumulatorThreshold = 5;
+  private accumulatorThreshold = 30;
   private defaultAnalysisProvider = 'ollama';
 
   private proactiveConversationService!: ProactiveConversationService;
@@ -176,7 +176,7 @@ export class ProactiveConversationPlugin extends PluginBase {
       // if trigger words are not matched, accumulate trigger count
       this.triggerAccumulator[groupId] += 1;
       if (this.triggerAccumulator[groupId] >= this.accumulatorThreshold) {
-        this.proactiveConversationService.scheduleForGroup(groupId, triggerUserId);
+        this.proactiveConversationService.scheduleForGroup(groupId, triggerUserId, true);
         this.triggerAccumulator[groupId] = 0;
       }
     }

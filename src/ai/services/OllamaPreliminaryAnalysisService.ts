@@ -36,6 +36,8 @@ const DEFAULT_ANALYSIS_PROVIDER = 'ollama';
 export interface PreliminaryAnalysisOptions {
   /** LLM provider name (e.g. "ollama", "doubao"). Default "ollama". */
   providerName?: string;
+  /** When true, analysis is idle-triggered (no keyword); inject stricter instruction so AI avoids replying when topic has shifted and no one is interested. */
+  idleMode?: boolean;
 }
 
 /**
@@ -75,6 +77,7 @@ export class OllamaPreliminaryAnalysisService {
     }
     logger.debug(`[OllamaPreliminaryAnalysisService] Using provider "${providerName}" for analysis`);
 
+    const idleModeInstruction = this.resolveIdleModeInstruction(options?.idleMode);
     let prompt: string;
     try {
       prompt = this.promptManager.render(
@@ -82,6 +85,7 @@ export class OllamaPreliminaryAnalysisService {
         {
           preferenceText,
           recentMessagesText: recentMessagesText || '(no messages)',
+          idleModeInstruction,
         },
         { injectBase: true },
       );
@@ -138,12 +142,14 @@ export class OllamaPreliminaryAnalysisService {
       )
       .join('\n\n');
 
+    const idleModeInstruction = this.resolveIdleModeInstruction(options?.idleMode);
     const prompt = this.promptManager.render(
       'analysis.ollama_multi',
       {
         preferenceText,
         recentMessagesText: recentMessagesText || '(no messages)',
         threadsDescription: threadsDescription || '(no threads)',
+        idleModeInstruction,
       },
       { injectBase: true },
     );
@@ -161,6 +167,22 @@ export class OllamaPreliminaryAnalysisService {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.warn(`[OllamaPreliminaryAnalysisService] Provider "${providerName}" call failed:`, err);
       return { shouldJoin: false };
+    }
+  }
+
+  /**
+   * When idleMode is true, render the idle instruction fragment so the AI is more conservative
+   * (do not join if topic has shifted and no one is interested).
+   */
+  private resolveIdleModeInstruction(idleMode?: boolean): string {
+    if (!idleMode) {
+      return '';
+    }
+    try {
+      return this.promptManager.render('analysis.idle_instruction', {}, { injectBase: false });
+    } catch (err) {
+      logger.warn('[OllamaPreliminaryAnalysisService] Failed to render idle instruction:', err);
+      return '';
     }
   }
 

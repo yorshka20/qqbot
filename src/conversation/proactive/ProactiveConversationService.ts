@@ -26,6 +26,8 @@ export interface ScheduledAnalysisContext {
   groupId: string;
   /** User ID of the message that triggered this schedule (from MessagePipeline event → plugin → here; for memory injection in new-thread reply). */
   triggerUserId?: string;
+  /** Whether this schedule is triggered by idle (no new messages since last compression). */
+  idleMode?: boolean;
 }
 
 const DEBOUNCE_MS = 1_000;
@@ -136,7 +138,7 @@ export class ProactiveConversationService {
    * per-group runs are serialized and each run sees the full result of the previous one.
    * @param triggerUserId - User ID of the message that triggered this schedule; saved on context and passed down to reply (for memory injection).
    */
-  scheduleForGroup(groupId: string, triggerUserId?: string): void {
+  scheduleForGroup(groupId: string, triggerUserId?: string, idleMode?: boolean): void {
     const keys = this.groupConfig.get(groupId);
     if (!keys?.length) {
       return;
@@ -150,7 +152,7 @@ export class ProactiveConversationService {
       clearTimeout(existing);
     }
 
-    const context: ScheduledAnalysisContext = { groupId, triggerUserId };
+    const context: ScheduledAnalysisContext = { groupId, triggerUserId, idleMode };
     const timer = setTimeout(() => {
       this.timersByGroup.delete(context.groupId);
       this.enqueueAnalysis(context);
@@ -179,7 +181,7 @@ export class ProactiveConversationService {
    * Receives context from schedule (includes triggerUserId saved when the message triggered the schedule).
    */
   private async runAnalysis(context: ScheduledAnalysisContext): Promise<void> {
-    const { groupId, triggerUserId } = context;
+    const { groupId, triggerUserId, idleMode } = context;
     const preferenceKeys = this.groupConfig.get(groupId);
     if (!preferenceKeys?.length) return;
 
@@ -214,7 +216,10 @@ export class ProactiveConversationService {
         ? this.groupHistoryService.formatAsTextWithIds(filteredEntries)
         : this.groupHistoryService.formatAsText(filteredEntries);
 
-    const analysisOptions = { providerName: this.analysisProviderName };
+    const analysisOptions = {
+      providerName: this.analysisProviderName,
+      idleMode,
+    };
     let result: Awaited<ReturnType<typeof this.ollamaAnalysis.analyze>>;
     if (activeThreads.length === 0) {
       result = await this.ollamaAnalysis.analyze(preferenceText, recentMessagesText, analysisOptions);

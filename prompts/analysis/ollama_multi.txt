@@ -4,6 +4,8 @@
 **带标记 [用户@机器人，已针对性回复] 的消息视为已回复，勿因其填写 shouldJoin、replyInThreadId、createNew 或 messageIds。** 仅根据无该标记的用户消息或讨论判断是否参与。
 **禁止重复**：不要为已经在某个 thread 中讨论的同一话题创建新 thread，即使不同人设也可能与该话题相关——同一话题只需一个 thread，不需要多角度重复回答。
 
+{{idleModeInstruction}}
+
 ## 可选人设（仅可选用以下之一参与，且必须为当前群已配置的人设键名）
 {{preferenceText}}
 
