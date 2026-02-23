@@ -1,0 +1,25 @@
+# Message containing any of these words will trigger proactive analysis for this preference.
+# Empty lines and lines starting with # are ignored.
+
+动漫
+动画
+番剧
+漫画
+轻小说
+新番
+追番
+补番
+二创
+同人
+手办
+周边
+声优
+角色
+剧情
+作画
+老婆
+老公
+中二
+宅
+二次元
+acg
