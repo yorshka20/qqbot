@@ -226,6 +226,31 @@ export class MemoryPlugin extends PluginBase {
     await appendFile(path, key + '\n');
   }
 
+  /** Upsert memory_extract_user_cursors so every run (trigger/skip/complete/error) leaves a record. */
+  private async upsertMemoryExtractCursor(groupId: string, userId: string, lastProcessedAt: string): Promise<void> {
+    const adapter = this.databaseManager.getAdapter();
+    if (!adapter?.isConnected()) {
+      return;
+    }
+    try {
+      const userCursors = adapter.getModel('memoryExtractUserCursors');
+      const existing = (await userCursors.findOne({
+        groupId,
+        userId,
+      } as Partial<MemoryExtractUserCursor>)) as MemoryExtractUserCursor | null;
+      if (existing) {
+        await userCursors.update(existing.id, { lastProcessedAt });
+      } else {
+        await userCursors.create({ groupId, userId, lastProcessedAt } as Omit<
+          MemoryExtractUserCursor,
+          'id' | 'createdAt' | 'updatedAt'
+        >);
+      }
+    } catch (err) {
+      logger.warn('[MemoryPlugin] upsertMemoryExtractCursor failed:', err);
+    }
+  }
+
   private async getGroupConversation(groupId: string): Promise<{ id: string } | null> {
     const adapter = this.databaseManager.getAdapter();
     if (!adapter?.isConnected()) {
@@ -348,58 +373,53 @@ export class MemoryPlugin extends PluginBase {
    * Skips if this groupId:userId was already processed (same progress file as cold start).
    */
   runFullHistoryExtractForUser(groupId: string, userId: string): void {
-    void this.runFullHistoryExtractForUserInternal(groupId, userId);
+    logger.info(`[MemoryPlugin] runFullHistoryExtractForUser started groupId=${groupId} userId=${userId}`);
+    void this.runFullHistoryExtractForUserInternal(groupId, userId).catch((err) => {
+      logger.error(`[MemoryPlugin] runFullHistoryExtractForUser unhandled error groupId=${groupId} userId=${userId}`, err);
+    });
   }
 
   private async runFullHistoryExtractForUserInternal(groupId: string, userId: string): Promise<void> {
     const key = `${groupId}:${userId}`;
     const progressSet = await this.loadColdStartProgress();
     if (progressSet.has(key)) {
-      logger.debug(
+      logger.info(
         `[MemoryPlugin] runFullHistoryExtractForUser: already processed, skip groupId=${groupId} userId=${userId}`,
       );
+      await this.upsertMemoryExtractCursor(groupId, userId, new Date().toISOString());
       return;
     }
     const conversation = await this.getGroupConversation(groupId);
     if (!conversation) {
       logger.warn(`[MemoryPlugin] runFullHistoryExtractForUser: no conversation for groupId=${groupId}`);
+      await this.upsertMemoryExtractCursor(groupId, userId, new Date().toISOString());
       return;
     }
     const entries = await this.getUserMessagesInGroup(conversation.id, userId);
     if (entries.length === 0) {
-      logger.debug(
+      logger.info(
         `[MemoryPlugin] runFullHistoryExtractForUser: no messages for groupId=${groupId} userId=${userId}, writing progress to skip next time`,
       );
       await this.appendColdStartProgress(key);
+      await this.upsertMemoryExtractCursor(groupId, userId, new Date().toISOString());
       return;
     }
     const text = this.groupHistoryService.formatAsText(entries);
     const chunks = this.chunkTextByMaxLength(text, this.coldStartMaxLength);
+    logger.info(
+      `[MemoryPlugin] runFullHistoryExtractForUser: processing groupId=${groupId} userId=${userId} messages=${entries.length} chunks=${chunks.length}`,
+    );
     const opts = { provider: this.extractProvider };
     try {
-      for (const chunk of chunks) {
-        await this.memoryExtractService.extractAndUpsertUserOnly(groupId, userId, chunk, opts);
+      for (let i = 0; i < chunks.length; i++) {
+        logger.info(`[MemoryPlugin] runFullHistoryExtractForUser chunk ${i + 1}/${chunks.length} groupId=${groupId} userId=${userId}`);
+        await this.memoryExtractService.extractAndUpsertUserOnly(groupId, userId, chunks[i], opts);
       }
-      const adapter = this.databaseManager.getAdapter();
-      if (adapter?.isConnected()) {
-        const latestEntry = entries[entries.length - 1];
-        const lastProcessedAt = latestEntry?.createdAt
-          ? new Date(latestEntry.createdAt).toISOString()
-          : new Date().toISOString();
-        const userCursors = adapter.getModel('memoryExtractUserCursors');
-        const existingUser = (await userCursors.findOne({
-          groupId,
-          userId,
-        } as Partial<MemoryExtractUserCursor>)) as MemoryExtractUserCursor | null;
-        if (existingUser) {
-          await userCursors.update(existingUser.id, { lastProcessedAt });
-        } else {
-          await userCursors.create({ groupId, userId, lastProcessedAt } as Omit<
-            MemoryExtractUserCursor,
-            'id' | 'createdAt' | 'updatedAt'
-          >);
-        }
-      }
+      const latestEntry = entries[entries.length - 1];
+      const lastProcessedAt = latestEntry?.createdAt
+        ? new Date(latestEntry.createdAt).toISOString()
+        : new Date().toISOString();
+      await this.upsertMemoryExtractCursor(groupId, userId, lastProcessedAt);
       await this.appendColdStartProgress(key);
       logger.info(
         `[MemoryPlugin] Full history extract completed for groupId=${groupId} userId=${userId} chunks=${chunks.length} | progress file + user cursor written`,
@@ -409,6 +429,7 @@ export class MemoryPlugin extends PluginBase {
         `[MemoryPlugin] runFullHistoryExtractForUser failed (progress not written): groupId=${groupId} userId=${userId}`,
         err,
       );
+      await this.upsertMemoryExtractCursor(groupId, userId, new Date().toISOString());
     }
   }
 
