@@ -72,18 +72,41 @@ export class NsfwModePlugin extends PluginBase {
 
     this.nsfwInterceptor = {
       shouldIntercept: async (ctx: HookContext): Promise<boolean> => {
-        const sessionId = ctx.metadata.get('sessionId') as string | undefined;
+        const rawSessionId = ctx.metadata.get('sessionId') as string | undefined;
         const sessionType = ctx.metadata.get('sessionType') as 'user' | 'group' | undefined;
-        if (!sessionId || !sessionType) {
+        if (!rawSessionId || !sessionType) {
           return false;
         }
         if (ctx.command) {
           return false;
         }
-        const config = await this.conversationConfigService.getConfig(sessionId, sessionType);
-        return config.nsfwMode === true;
+        // Do not intercept bot's own messages (e.g. echo of "已开启 NSFW 模式")
+        const botSelfId = ctx.metadata.get('botSelfId') as string | undefined;
+        const messageUserId = ctx.message?.userId?.toString();
+        if (botSelfId && messageUserId === botSelfId) {
+          logger.debug("[NsfwModePlugin] Bot's own message, skip intercept");
+          return false;
+        }
+        // Pipeline metadata uses prefixed sessionId (e.g. "group:758290153"); ConversationConfigService
+        // and /nsfw command use raw id + sessionType (e.g. "758290153", "group"). Normalize so we read
+        // the same config that was written by executeNsfwCommand.
+        const { sessionId, sessionType: resolvedType } = this.normalizeSessionForConfig(rawSessionId, sessionType);
+        const config = await this.conversationConfigService.getConfig(sessionId, resolvedType);
+        const intercept = config.nsfwMode === true;
+        logger.debug(
+          `[NsfwModePlugin] shouldIntercept | rawSessionId=${rawSessionId} | normalized=${sessionId}|${resolvedType} | nsfwMode=${config.nsfwMode} => ${intercept}`,
+        );
+        if (intercept) {
+          logger.info(
+            `[NsfwModePlugin] NSFW intercept mode ON | sessionId=${sessionId} | sessionType=${resolvedType} | reply will use Ollama`,
+          );
+        }
+        return intercept;
       },
       handle: async (ctx: HookContext): Promise<void> => {
+        logger.info(
+          '[NsfwModePlugin] Handling message in NSFW intercept mode | generating reply via Ollama (skip command/task)',
+        );
         await this.aiService.generateNsfwReply(ctx);
       },
     };
@@ -102,6 +125,24 @@ export class NsfwModePlugin extends PluginBase {
       this.nsfwInterceptor = null;
     }
     logger.info('[NsfwModePlugin] Unregistered /nsfw command and interceptor');
+  }
+
+  /**
+   * Normalize pipeline sessionId (e.g. "group:758290153") to the (sessionId, sessionType) pair
+   * used by ConversationConfigService and by /nsfw command (SessionUtils), so interceptor and
+   * command read/write the same config.
+   */
+  private normalizeSessionForConfig(
+    rawSessionId: string,
+    sessionType: 'user' | 'group',
+  ): { sessionId: string; sessionType: 'user' | 'group' } {
+    if (rawSessionId.startsWith('group:')) {
+      return { sessionId: rawSessionId.slice(6), sessionType: 'group' };
+    }
+    if (rawSessionId.startsWith('user:')) {
+      return { sessionId: rawSessionId.slice(5), sessionType: 'user' };
+    }
+    return { sessionId: rawSessionId, sessionType };
   }
 
   /**
@@ -126,6 +167,7 @@ export class NsfwModePlugin extends PluginBase {
 
     await this.conversationConfigService.updateConfig(sessionId, sessionType, { nsfwMode });
 
+    // Reply makes it clear which mode is now active so user does not confuse toggle result
     const message = nsfwMode ? '已开启 NSFW 模式' : '已关闭 NSFW 模式';
     const segments = new MessageBuilder().text(message).build();
 

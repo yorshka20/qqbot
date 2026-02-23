@@ -286,13 +286,22 @@ export class HttpClient {
         const contentType = response.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
           errorData = await response.json();
-          const errorObj = errorData as { message?: string; error?: string; detail?: string; statusCode?: number };
-          errorMessage =
+          const errorObj = errorData as {
+            message?: string | { message?: string };
+            error?: string | { message?: string };
+            detail?: string;
+            statusCode?: number;
+          };
+          const msg =
             errorObj.message ||
             errorObj.error ||
             errorObj.detail ||
-            (errorObj.statusCode ? `HTTP ${errorObj.statusCode}` : null) ||
-            errorMessage;
+            (errorObj.statusCode ? `HTTP ${errorObj.statusCode}` : null);
+          // Ensure we always pass a string (API may return error as nested object)
+          if (msg != null) {
+            errorMessage =
+              typeof msg === 'string' ? msg : (msg as { message?: string }).message ?? JSON.stringify(msg);
+          }
         } else {
           const text = await response.text();
           errorData = text;
