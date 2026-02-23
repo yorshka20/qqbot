@@ -14,9 +14,9 @@
     "debug": "bun run src/cli/debug.ts LOG_LEVEL=debug --mock",
     "type-check": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
-    "format": "biome format --write \"src/**/*.ts\"",
+    "lint": "biome check src",
+    "lint:fix": "biome check --write src",
+    "format": "biome format --write src",
     "test": "bun test"
   },
   "keywords": [
