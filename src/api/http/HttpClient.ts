@@ -240,7 +240,7 @@ export class HttpClient {
     const timeoutId = setTimeout(() => controller.abort(), options.timeout);
 
     // Combine signals if both are provided
-    let signal = controller.signal;
+    const signal = controller.signal;
     if (options.signal) {
       // If both signals exist, abort if either is aborted
       if (options.signal.aborted) {
@@ -284,7 +284,7 @@ export class HttpClient {
 
       try {
         const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
+        if (contentType?.includes('application/json')) {
           errorData = await response.json();
           const errorObj = errorData as {
             message?: string | { message?: string };
@@ -300,7 +300,7 @@ export class HttpClient {
           // Ensure we always pass a string (API may return error as nested object)
           if (msg != null) {
             errorMessage =
-              typeof msg === 'string' ? msg : (msg as { message?: string }).message ?? JSON.stringify(msg);
+              typeof msg === 'string' ? msg : ((msg as { message?: string }).message ?? JSON.stringify(msg));
           }
         } else {
           const text = await response.text();
@@ -329,7 +329,7 @@ export class HttpClient {
     const contentType = response.headers.get('content-type');
 
     // Handle JSON response (only if content-type explicitly says JSON)
-    if (contentType && contentType.includes('application/json')) {
+    if (contentType?.includes('application/json')) {
       try {
         return (await response.json()) as T;
       } catch (error) {
