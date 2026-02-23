@@ -22,7 +22,7 @@ export class SummarizeService {
   constructor(
     private llmService: LLMService,
     private promptManager: PromptManager,
-  ) { }
+  ) {}
 
   /**
    * Summarize conversation text using llm.summarize template.
@@ -62,13 +62,10 @@ export class SummarizeService {
     preferenceSummary: string,
     options?: SummarizeOptions,
   ): Promise<number[]> {
-    const prompt = this.promptManager.render(
-      'llm.thread_clean_topic',
-      {
-        threadContextWithIndices: threadContextWithIndices || '(empty)',
-        preferenceSummary: preferenceSummary || '(none)',
-      },
-    );
+    const prompt = this.promptManager.render('llm.thread_clean_topic', {
+      threadContextWithIndices: threadContextWithIndices || '(empty)',
+      preferenceSummary: preferenceSummary || '(none)',
+    });
     const provider = options?.provider;
     const response = await this.llmService.generate(
       prompt,

@@ -78,10 +78,10 @@ export class NovelAICommand implements CommandHandler {
     // If SFW filter is active, force enable LLM preprocessing
     const pluginTemplateName = context.conversationContext.metadata?.get('text2imgTemplateName');
     const forceLLMProcess = context.conversationContext.metadata?.get('text2imgForceLLMProcess') === true;
-    
+
     let skipLLMProcess = true; // Default: skip LLM preprocessing for /nai command
     let templateName: string | undefined = undefined;
-    
+
     if (forceLLMProcess && pluginTemplateName && typeof pluginTemplateName === 'string') {
       // SFW filter is active - force enable LLM preprocessing with SFW template
       skipLLMProcess = false;
@@ -100,10 +100,7 @@ export class NovelAICommand implements CommandHandler {
   /**
    * Build image response as message segments
    */
-  private buildImageSegments(
-    response: ImageGenerationResponse,
-    silent?: boolean,
-  ): MessageSegment[] | undefined {
+  private buildImageSegments(response: ImageGenerationResponse, silent?: boolean): MessageSegment[] | undefined {
     // If no images and no text, return undefined
     if ((!response.images || response.images.length === 0) && !response.text) {
       logger.warn('[NovelAICommand] No images generated and no error message received');

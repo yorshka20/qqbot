@@ -15,11 +15,7 @@ export interface Image2VideoCapability {
    * @param options - Optional seed, durationSeconds, negativePrompt
    * @returns Video file as Buffer (e.g. mp4)
    */
-  generateVideoFromImage(
-    imageBuffer: Buffer,
-    prompt: string,
-    options?: Image2VideoOptions,
-  ): Promise<Buffer>;
+  generateVideoFromImage(imageBuffer: Buffer, prompt: string, options?: Image2VideoOptions): Promise<Buffer>;
 }
 
 /**

@@ -19,7 +19,7 @@ export class ConversationConfigService {
   constructor(
     private databaseAdapter: DatabaseAdapter,
     private globalConfigManager: GlobalConfigManager,
-  ) { }
+  ) {}
 
   /**
    * Get conversation config key for cache
@@ -76,27 +76,29 @@ export class ConversationConfigService {
 
     // If conversation config has commands defined, use them entirely
     // Otherwise, fallback to global config
-    const commands = conversationConfig.commands !== undefined
-      ? {
-        enabled: conversationConfig.commands.enabled ?? [],
-        disabled: conversationConfig.commands.disabled ?? [],
-      }
-      : {
-        enabled: globalConfig.commands?.enabled ?? [],
-        disabled: globalConfig.commands?.disabled ?? [],
-      };
+    const commands =
+      conversationConfig.commands !== undefined
+        ? {
+            enabled: conversationConfig.commands.enabled ?? [],
+            disabled: conversationConfig.commands.disabled ?? [],
+          }
+        : {
+            enabled: globalConfig.commands?.enabled ?? [],
+            disabled: globalConfig.commands?.disabled ?? [],
+          };
 
     // If conversation config has plugins defined, use them entirely
     // Otherwise, fallback to global config
-    const plugins = conversationConfig.plugins !== undefined
-      ? {
-        enabled: conversationConfig.plugins.enabled ?? [],
-        disabled: conversationConfig.plugins.disabled ?? [],
-      }
-      : {
-        enabled: globalConfig.plugins?.enabled ?? [],
-        disabled: globalConfig.plugins?.disabled ?? [],
-      };
+    const plugins =
+      conversationConfig.plugins !== undefined
+        ? {
+            enabled: conversationConfig.plugins.enabled ?? [],
+            disabled: conversationConfig.plugins.disabled ?? [],
+          }
+        : {
+            enabled: globalConfig.plugins?.enabled ?? [],
+            disabled: globalConfig.plugins?.disabled ?? [],
+          };
 
     return {
       commands,
@@ -149,9 +151,7 @@ export class ConversationConfigService {
           },
         },
         // Merge providers if provided
-        providers: partialConfig.providers !== undefined
-          ? partialConfig.providers
-          : existing.config.providers,
+        providers: partialConfig.providers !== undefined ? partialConfig.providers : existing.config.providers,
         // Merge nsfwMode if provided
         nsfwMode: partialConfig.nsfwMode !== undefined ? partialConfig.nsfwMode : existing.config.nsfwMode,
       };
@@ -216,11 +216,7 @@ export class ConversationConfigService {
   /**
    * Check if a command is enabled for a conversation
    */
-  async getCommandEnabled(
-    commandName: string,
-    sessionId: string,
-    sessionType: SessionType,
-  ): Promise<boolean | null> {
+  async getCommandEnabled(commandName: string, sessionId: string, sessionType: SessionType): Promise<boolean | null> {
     const config = await this.getConfig(sessionId, sessionType);
     const lowerName = commandName.toLowerCase();
 
@@ -241,11 +237,7 @@ export class ConversationConfigService {
   /**
    * Check if a plugin is enabled for a conversation
    */
-  async getPluginEnabled(
-    pluginName: string,
-    sessionId: string,
-    sessionType: SessionType,
-  ): Promise<boolean | null> {
+  async getPluginEnabled(pluginName: string, sessionId: string, sessionType: SessionType): Promise<boolean | null> {
     const config = await this.getConfig(sessionId, sessionType);
     const lowerName = pluginName.toLowerCase();
 
@@ -266,11 +258,7 @@ export class ConversationConfigService {
   /**
    * Get user permissions for a conversation
    */
-  async getUserPermissions(
-    userId: string,
-    sessionId: string,
-    sessionType: SessionType,
-  ): Promise<string[] | null> {
+  async getUserPermissions(userId: string, sessionId: string, sessionType: SessionType): Promise<string[] | null> {
     const config = await this.getConfig(sessionId, sessionType);
     return config.permissions?.users?.[userId] ?? null;
   }
@@ -278,11 +266,7 @@ export class ConversationConfigService {
   /**
    * Enable a command for a conversation
    */
-  async enableCommand(
-    commandName: string,
-    sessionId: string,
-    sessionType: SessionType,
-  ): Promise<void> {
+  async enableCommand(commandName: string, sessionId: string, sessionType: SessionType): Promise<void> {
     // Get raw conversation config (without global merge) to avoid saving global config data
     const rawConfig = await this.getRawConfig(sessionId, sessionType);
     const { enabled, disabled } = updateEnabledDisabled(
@@ -300,11 +284,7 @@ export class ConversationConfigService {
   /**
    * Disable a command for a conversation
    */
-  async disableCommand(
-    commandName: string,
-    sessionId: string,
-    sessionType: SessionType,
-  ): Promise<void> {
+  async disableCommand(commandName: string, sessionId: string, sessionType: SessionType): Promise<void> {
     // Get raw conversation config (without global merge) to avoid saving global config data
     const rawConfig = await this.getRawConfig(sessionId, sessionType);
     const { enabled, disabled } = updateEnabledDisabled(
@@ -322,11 +302,7 @@ export class ConversationConfigService {
   /**
    * Enable a plugin for a conversation
    */
-  async enablePlugin(
-    pluginName: string,
-    sessionId: string,
-    sessionType: SessionType,
-  ): Promise<void> {
+  async enablePlugin(pluginName: string, sessionId: string, sessionType: SessionType): Promise<void> {
     // Get raw conversation config (without global merge) to avoid saving global config data
     const rawConfig = await this.getRawConfig(sessionId, sessionType);
     const { enabled, disabled } = updateEnabledDisabled(
@@ -344,11 +320,7 @@ export class ConversationConfigService {
   /**
    * Disable a plugin for a conversation
    */
-  async disablePlugin(
-    pluginName: string,
-    sessionId: string,
-    sessionType: SessionType,
-  ): Promise<void> {
+  async disablePlugin(pluginName: string, sessionId: string, sessionType: SessionType): Promise<void> {
     // Get raw conversation config (without global merge) to avoid saving global config data
     const rawConfig = await this.getRawConfig(sessionId, sessionType);
     const { enabled, disabled } = updateEnabledDisabled(

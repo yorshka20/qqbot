@@ -20,7 +20,7 @@ import type {
  * MongoDB model accessor implementation
  */
 class MongoModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
-  constructor(private collection: Collection) { }
+  constructor(private collection: Collection) {}
 
   async create(data: Omit<T, 'id' | 'createdAt' | 'updatedAt'>): Promise<T> {
     const now = new Date();
@@ -132,7 +132,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
   constructor(
     private connectionString: string,
     private databaseName: string,
-  ) { }
+  ) {}
 
   async connect(): Promise<void> {
     if (this.client) {
@@ -236,7 +236,9 @@ export class MongoDBAdapter implements DatabaseAdapter {
       conversationConfigs: new MongoModelAccessor<ConversationConfig>(this.db.collection('conversation_configs')),
       proactiveThreads: new MongoModelAccessor<ProactiveThreadRecord>(this.db.collection('proactive_threads')),
       memories: new MongoModelAccessor<Memory>(this.db.collection('memories')),
-      memoryExtractUserCursors: new MongoModelAccessor<MemoryExtractUserCursor>(this.db.collection('memory_extract_user_cursors')),
+      memoryExtractUserCursors: new MongoModelAccessor<MemoryExtractUserCursor>(
+        this.db.collection('memory_extract_user_cursors'),
+      ),
     };
   }
 }

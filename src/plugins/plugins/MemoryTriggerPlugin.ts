@@ -24,7 +24,8 @@ export interface MemoryTriggerPluginConfig {
 @Plugin({
   name: 'memoryTrigger',
   version: '1.0.0',
-  description: 'Memory trigger: on trigger phrase (e.g. bot name), write user message as user memory and continue to reply',
+  description:
+    'Memory trigger: on trigger phrase (e.g. bot name), write user message as user memory and continue to reply',
 })
 export class MemoryTriggerPlugin extends PluginBase {
   private groupIds = new Set<string>();
@@ -49,7 +50,9 @@ export class MemoryTriggerPlugin extends PluginBase {
       this.groupIds = new Set(pluginConfig.groups);
       this.triggerName = (pluginConfig.triggerName ?? '').trim();
       this.triggerKeywords = Array.isArray(pluginConfig.triggerKeywords) ? pluginConfig.triggerKeywords : [];
-      logger.info(`[MemoryTriggerPlugin] Enabled for groups: ${Array.from(this.groupIds).join(', ')} triggerName=${this.triggerName}`);
+      logger.info(
+        `[MemoryTriggerPlugin] Enabled for groups: ${Array.from(this.groupIds).join(', ')} triggerName=${this.triggerName}`,
+      );
     }
   }
 
@@ -86,7 +89,10 @@ export class MemoryTriggerPlugin extends PluginBase {
       const lower = rest.toLowerCase();
       const name = this.triggerName.toLowerCase();
       if (lower.startsWith(name)) {
-        rest = rest.slice(this.triggerName.length).replace(/^[\s,，、]+/, '').trim();
+        rest = rest
+          .slice(this.triggerName.length)
+          .replace(/^[\s,，、]+/, '')
+          .trim();
       }
     }
     return rest;

@@ -82,10 +82,7 @@ export class OneBot11Adapter extends ProtocolAdapter {
 
     switch (event.post_type) {
       case 'message':
-        return this.normalizeMessageEvent(
-          event as OneBot11MessageEvent,
-          baseEvent,
-        );
+        return this.normalizeMessageEvent(event as OneBot11MessageEvent, baseEvent);
       case 'notice':
         return this.normalizeNoticeEvent(event, baseEvent);
       case 'request':
@@ -97,10 +94,7 @@ export class OneBot11Adapter extends ProtocolAdapter {
     }
   }
 
-  private normalizeMessageEvent(
-    event: OneBot11MessageEvent,
-    baseEvent: BaseEvent,
-  ): NormalizedMessageEvent {
+  private normalizeMessageEvent(event: OneBot11MessageEvent, baseEvent: BaseEvent): NormalizedMessageEvent {
     const normalized: NormalizedMessageEvent = {
       ...baseEvent,
       type: 'message',
@@ -127,10 +121,7 @@ export class OneBot11Adapter extends ProtocolAdapter {
     return normalized;
   }
 
-  private normalizeNoticeEvent(
-    event: OneBot11NoticeEvent,
-    baseEvent: BaseEvent,
-  ): NormalizedNoticeEvent {
+  private normalizeNoticeEvent(event: OneBot11NoticeEvent, baseEvent: BaseEvent): NormalizedNoticeEvent {
     return {
       ...baseEvent,
       type: 'notice',
@@ -139,10 +130,7 @@ export class OneBot11Adapter extends ProtocolAdapter {
     };
   }
 
-  private normalizeRequestEvent(
-    event: OneBot11RequestEvent,
-    baseEvent: BaseEvent,
-  ): NormalizedRequestEvent {
+  private normalizeRequestEvent(event: OneBot11RequestEvent, baseEvent: BaseEvent): NormalizedRequestEvent {
     return {
       ...baseEvent,
       type: 'request',
@@ -151,10 +139,7 @@ export class OneBot11Adapter extends ProtocolAdapter {
     };
   }
 
-  private normalizeMetaEvent(
-    event: OneBot11MetaEvent,
-    baseEvent: BaseEvent,
-  ): NormalizedMetaEvent {
+  private normalizeMetaEvent(event: OneBot11MetaEvent, baseEvent: BaseEvent): NormalizedMetaEvent {
     return {
       ...baseEvent,
       type: 'meta_event',

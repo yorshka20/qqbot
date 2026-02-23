@@ -18,7 +18,8 @@ import { logger } from '@/utils/logger';
  */
 const USAGE = {
   MAIN: '/cmd enable <command> [command2] ... [--global] | /cmd disable <command> [command2] ... [--global] | /cmd plugin enable <plugin> [--global] | /cmd plugin disable <plugin> [--global]',
-  COMMAND: '/cmd enable <command> [command2] [command3] ... [--global] | /cmd disable <command> [command2] [command3] ... [--global]',
+  COMMAND:
+    '/cmd enable <command> [command2] [command3] ... [--global] | /cmd disable <command> [command2] [command3] ... [--global]',
   PLUGIN: '/cmd plugin enable <plugin> [--global] | /cmd plugin disable <plugin> [--global]',
 } as const;
 

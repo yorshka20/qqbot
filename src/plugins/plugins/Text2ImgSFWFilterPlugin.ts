@@ -38,9 +38,7 @@ export class Text2ImgSFWFilterPlugin extends PluginBase {
         for (const [groupId, userIds] of Object.entries(pluginConfig.groupSfwUsers)) {
           if (userIds.length > 0) {
             this.groupSfwUsers.set(groupId, new Set(userIds));
-            logger.info(
-              `[Text2ImgSFWFilterPlugin] Loaded SFW user IDs for group ${groupId}: ${userIds.join(', ')}`,
-            );
+            logger.info(`[Text2ImgSFWFilterPlugin] Loaded SFW user IDs for group ${groupId}: ${userIds.join(', ')}`);
           }
         }
         if (this.groupSfwUsers.size > 0) {
@@ -75,7 +73,7 @@ export class Text2ImgSFWFilterPlugin extends PluginBase {
 
     const userId = context.message.userId;
     const groupId = context.message.groupId;
-    
+
     if (!userId) {
       return true;
     }
@@ -117,7 +115,7 @@ export class Text2ImgSFWFilterPlugin extends PluginBase {
       '/大香蕉 ',
       '!大香蕉 ',
     ];
-    
+
     const isText2ImgCommand = text2imgCommandPrefixes.some((prefix) => messageText.startsWith(prefix));
 
     if (isText2ImgCommand) {

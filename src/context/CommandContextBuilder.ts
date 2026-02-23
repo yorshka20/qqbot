@@ -20,7 +20,7 @@ export class CommandContextBuilder {
   private conversationContext?: ConversationContext;
   private originalMessage?: NormalizedMessageEvent;
 
-  private constructor() { }
+  private constructor() {}
 
   /**
    * Create a new builder instance
@@ -106,10 +106,7 @@ export class CommandContextBuilder {
   /**
    * Add a single metadata key-value pair with type safety
    */
-  withMetadataEntry<K extends keyof CommandContextMetadata>(
-    key: K,
-    value: CommandContextMetadata[K],
-  ): this {
+  withMetadataEntry<K extends keyof CommandContextMetadata>(key: K, value: CommandContextMetadata[K]): this {
     if (!this.metadata) {
       this.metadata = {} as CommandContextMetadata;
     }

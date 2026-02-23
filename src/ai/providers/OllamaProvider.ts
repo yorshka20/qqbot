@@ -203,15 +203,15 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
       if (!text && data.done) {
         logger.debug(
           `[OllamaProvider] Empty content in response | keys=${Object.keys(data).join(',')} ` +
-          `messageKeys=${data.message ? Object.keys(data.message).join(',') : 'none'}`,
+            `messageKeys=${data.message ? Object.keys(data.message).join(',') : 'none'}`,
         );
       }
       const usage = data.eval_count
         ? {
-          promptTokens: data.prompt_eval_count || 0,
-          completionTokens: data.eval_count || 0,
-          totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0),
-        }
+            promptTokens: data.prompt_eval_count || 0,
+            completionTokens: data.eval_count || 0,
+            totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0),
+          }
         : undefined;
 
       return {

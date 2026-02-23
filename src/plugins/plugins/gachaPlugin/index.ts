@@ -85,22 +85,30 @@ export class GachaPlugin extends PluginBase {
     const requestLine = theme
       ? `Theme: ${theme} [Seed: ${randomSeed}]`
       : `Random creative anime illustration [Seed: ${randomSeed}]`;
-    const userMessage = this.promptManager.render('gacha.nai_user', {
-      requestLine,
-      style: 'CONCISE (15-20 tags MAX)',
-    }, { injectBase: false });
+    const userMessage = this.promptManager.render(
+      'gacha.nai_user',
+      {
+        requestLine,
+        style: 'CONCISE (15-20 tags MAX)',
+      },
+      { injectBase: false },
+    );
 
     const systemPrompt = this.promptManager.render('gacha.nai_system', {}, { injectBase: false });
     const sessionId = getSessionId(context);
 
     let rawResponse: string;
     try {
-      const response = await this.llmService.generate(userMessage, {
-        systemPrompt,
-        temperature: 0.8,
-        maxTokens: 8192,
-        sessionId,
-      }, 'deepseek');
+      const response = await this.llmService.generate(
+        userMessage,
+        {
+          systemPrompt,
+          temperature: 0.8,
+          maxTokens: 8192,
+          sessionId,
+        },
+        'deepseek',
+      );
       rawResponse = (response?.text ?? '').trim();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
@@ -140,12 +148,7 @@ export class GachaPlugin extends PluginBase {
     const hookContext = createHookContextForCommand(context, naiPrompt);
 
     try {
-      const result = await this.commandManager.execute(
-        parsedCommand,
-        context,
-        this.hookManager,
-        hookContext,
-      );
+      const result = await this.commandManager.execute(parsedCommand, context, this.hookManager, hookContext);
       return result;
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';

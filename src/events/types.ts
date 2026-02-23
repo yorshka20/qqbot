@@ -46,6 +46,4 @@ export type NormalizedEvent =
   | NormalizedRequestEvent
   | NormalizedMetaEvent;
 
-export type EventHandler<T extends NormalizedEvent = NormalizedEvent> = (
-  event: T
-) => void | Promise<void>;
+export type EventHandler<T extends NormalizedEvent = NormalizedEvent> = (event: T) => void | Promise<void>;

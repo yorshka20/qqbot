@@ -15,7 +15,7 @@ export class TaskAnalyzer {
     private llmService: LLMService,
     private taskManager: TaskManager,
     private promptManager: PromptManager,
-  ) { }
+  ) {}
 
   /**
    * Analyze conversation and generate tasks
@@ -48,7 +48,7 @@ export class TaskAnalyzer {
     const tasks = this.parseTaskListResponse(response.text, context);
 
     logger.info(
-      `[TaskAnalyzer] ✓ Task analysis completed | taskCount=${tasks.length} | tasks=${tasks.map(t => t.type).join(', ')}`,
+      `[TaskAnalyzer] ✓ Task analysis completed | taskCount=${tasks.length} | tasks=${tasks.map((t) => t.type).join(', ')}`,
     );
 
     return {
@@ -64,8 +64,7 @@ export class TaskAnalyzer {
    */
   private buildPrompt(context: ConversationContext): string {
     // Build task types description with enhanced information(excluding reply task type)
-    const taskTypes = this.taskManager.getAllTaskTypes()
-      .filter(tt => tt.name.toLowerCase() !== 'reply');
+    const taskTypes = this.taskManager.getAllTaskTypes().filter((tt) => tt.name.toLowerCase() !== 'reply');
     logger.debug(`[TaskAnalyzer] Building prompt with ${taskTypes.length} task type(s)`);
 
     const taskTypesDescription = taskTypes
@@ -158,9 +157,7 @@ export class TaskAnalyzer {
     // Validate JSON by parsing it
     try {
       JSON.parse(jsonText);
-      logger.debug(
-        `[TaskAnalyzer] Extracted JSON: ${jsonText.substring(0, 200)}${jsonText.length > 200 ? '...' : ''}`,
-      );
+      logger.debug(`[TaskAnalyzer] Extracted JSON: ${jsonText.substring(0, 200)}${jsonText.length > 200 ? '...' : ''}`);
       return jsonText;
     } catch (parseError) {
       const errorMsg = parseError instanceof Error ? parseError.message : 'Unknown error';
@@ -175,10 +172,7 @@ export class TaskAnalyzer {
    * Filters out reply tasks (system will always generate one)
    * Returns empty array if parsing fails (upstream should ensure valid format)
    */
-  private parseTaskListResponse(
-    aiResponse: string,
-    context: ConversationContext
-  ): Task[] {
+  private parseTaskListResponse(aiResponse: string, context: ConversationContext): Task[] {
     const jsonText = this.extractJSON(aiResponse);
     if (!jsonText) {
       return [];
@@ -233,16 +227,11 @@ export class TaskAnalyzer {
   /**
    * Parse single task from parsed JSON object
    */
-  private parseSingleTask(
-    taskType: TaskType,
-    parameters: Record<string, unknown>,
-    context: ConversationContext
-  ): Task {
-
+  private parseSingleTask(taskType: TaskType, parameters: Record<string, unknown>, context: ConversationContext): Task {
     return {
       type: taskType.name,
       parameters: parameters, // Use actual parameters from AI response
-      executor: taskType.executor,  // Use executor defined in task type
+      executor: taskType.executor, // Use executor defined in task type
       metadata: {
         analyzedAt: new Date().toISOString(),
         userId: context.userId,
@@ -250,5 +239,4 @@ export class TaskAnalyzer {
       },
     };
   }
-
 }

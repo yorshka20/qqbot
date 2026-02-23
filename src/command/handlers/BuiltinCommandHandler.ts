@@ -30,7 +30,7 @@ export class HelpCommand implements CommandHandler {
   description = 'Show available commands. / and ! can be used as prefix.';
   usage = '/help [command]';
 
-  constructor(@inject(DITokens.COMMAND_MANAGER) private commandManager: CommandManager) { }
+  constructor(@inject(DITokens.COMMAND_MANAGER) private commandManager: CommandManager) {}
 
   execute(args: string[]): CommandResult {
     const commands = this.commandManager.getAllCommands();
@@ -100,7 +100,7 @@ export class StatusCommand implements CommandHandler {
   description = 'Show bot status';
   usage = '/status';
 
-  constructor(@inject(DITokens.AI_MANAGER) private aiManager: AIManager) { }
+  constructor(@inject(DITokens.AI_MANAGER) private aiManager: AIManager) {}
 
   execute(_args: string[], context: CommandContext): CommandResult {
     const uptime = process.uptime();
@@ -177,7 +177,7 @@ export class EchoCommand implements CommandHandler {
   description = 'Toggle EchoPlugin enabled/disabled state';
   usage = '/echo';
 
-  constructor(@inject(DITokens.PLUGIN_MANAGER) private pluginManager: PluginManager) { }
+  constructor(@inject(DITokens.PLUGIN_MANAGER) private pluginManager: PluginManager) {}
 
   async execute(): Promise<CommandResult> {
     const pluginName = 'echo';
@@ -234,7 +234,7 @@ export class RoleCommand implements CommandHandler {
   constructor(
     @inject(DITokens.PROACTIVE_CONVERSATION_SERVICE) private proactiveConversationService: ProactiveConversationService,
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
-  ) { }
+  ) {}
 
   execute(_args: string[], context: CommandContext): CommandResult {
     if (context.messageType !== 'group' || context.groupId === undefined) {

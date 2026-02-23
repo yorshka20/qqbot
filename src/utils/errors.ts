@@ -1,14 +1,20 @@
 // Custom error classes
 
 export class BotError extends Error {
-  constructor(message: string, public readonly code?: string) {
+  constructor(
+    message: string,
+    public readonly code?: string,
+  ) {
     super(message);
     this.name = 'BotError';
   }
 }
 
 export class ConnectionError extends BotError {
-  constructor(message: string, public readonly protocol?: string) {
+  constructor(
+    message: string,
+    public readonly protocol?: string,
+  ) {
     super(message, 'CONNECTION_ERROR');
     this.name = 'ConnectionError';
   }
@@ -18,7 +24,7 @@ export class APIError extends BotError {
   constructor(
     message: string,
     public readonly action?: string,
-    public readonly retcode?: number
+    public readonly retcode?: number,
   ) {
     super(message, 'API_ERROR');
     this.name = 'APIError';
@@ -26,7 +32,10 @@ export class APIError extends BotError {
 }
 
 export class ProtocolError extends BotError {
-  constructor(message: string, public readonly protocol?: string) {
+  constructor(
+    message: string,
+    public readonly protocol?: string,
+  ) {
     super(message, 'PROTOCOL_ERROR');
     this.name = 'ProtocolError';
   }

@@ -84,19 +84,11 @@ export class RunPodProvider extends AIProvider implements Text2ImageCapability, 
   }
 
   /** I2V: use endpointId */
-  async generateVideoFromImage(
-    imageBuffer: Buffer,
-    prompt: string,
-    options?: Image2VideoOptions,
-  ): Promise<Buffer> {
+  async generateVideoFromImage(imageBuffer: Buffer, prompt: string, options?: Image2VideoOptions): Promise<Buffer> {
     if (!this.isAvailable()) {
       throw new Error('RunPodProvider is not available: endpointId and apiKey must be set');
     }
-    const client = new RunPodServerlessClient(
-      this.options.endpointId,
-      this.options.apiKey,
-      this.clientOptions(),
-    );
+    const client = new RunPodServerlessClient(this.options.endpointId, this.options.apiKey, this.clientOptions());
     return client.generateVideoFromImage(imageBuffer, prompt, options);
   }
 }

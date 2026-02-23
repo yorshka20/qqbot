@@ -2,7 +2,6 @@
 
 import type { AIProviderConfig, AIProviderType } from './providers';
 
-
 export type AIProviderCapability = 'llm' | 'vision' | 'text2img' | 'img2img' | 'i2v';
 
 /**
@@ -73,6 +72,5 @@ export type {
   OpenAIProviderConfig,
   OpenRouterProviderConfig,
   RunPodProviderConfig,
-  GoogleCloudRunProviderConfig
+  GoogleCloudRunProviderConfig,
 } from './providers';
-

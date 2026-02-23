@@ -16,18 +16,15 @@ import type { Task, TaskExecutionContext, TaskExecutor, TaskResult } from '../ty
   name: 'reply',
   description: 'Generate AI reply for user message',
   executor: 'reply',
-  examples: [
-    '你好',
-    '今天天气不错',
-    '帮我写一首诗',
-  ],
-  whenToUse: 'This is the default task for generating AI responses. Use this when no other specific task type matches the user request.',
+  examples: ['你好', '今天天气不错', '帮我写一首诗'],
+  whenToUse:
+    'This is the default task for generating AI responses. Use this when no other specific task type matches the user request.',
 })
 @injectable()
 export class ReplyTaskExecutor implements TaskExecutor {
   name = 'reply';
 
-  constructor(@inject(DITokens.AI_SERVICE) private aiService: AIService) { }
+  constructor(@inject(DITokens.AI_SERVICE) private aiService: AIService) {}
 
   async execute(task: Task, context: TaskExecutionContext): Promise<TaskResult> {
     logger.debug('[ReplyTaskExecutor] Executing reply task');
@@ -60,10 +57,11 @@ export class ReplyTaskExecutor implements TaskExecutor {
         const replyText = getReply(hookContext) || '';
 
         // For card images, return a placeholder text indicating the reply was generated
-        const hasCardImage = replyContent.segments.some(seg => seg.type === 'image' && replyContent.metadata?.isCardImage);
-        const finalReply = hasCardImage && !replyText
-          ? '[Card image reply generated]'
-          : replyText || '[Reply generated]';
+        const hasCardImage = replyContent.segments.some(
+          (seg) => seg.type === 'image' && replyContent.metadata?.isCardImage,
+        );
+        const finalReply =
+          hasCardImage && !replyText ? '[Card image reply generated]' : replyText || '[Reply generated]';
 
         return {
           success: true,

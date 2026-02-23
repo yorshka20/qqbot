@@ -78,6 +78,13 @@ export interface RecordInput {
   data?: string; // Base64 encoded audio data
 }
 
-export type MessageSegment = TextSegment | AtSegment | FaceSegment | ImageSegment | ReplySegment | RecordSegment | FileSegment;
+export type MessageSegment =
+  | TextSegment
+  | AtSegment
+  | FaceSegment
+  | ImageSegment
+  | ReplySegment
+  | RecordSegment
+  | FileSegment;
 
 export type Message = string | MessageSegment[];

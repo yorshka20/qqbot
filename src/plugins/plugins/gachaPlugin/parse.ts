@@ -54,9 +54,7 @@ export function parseStandardPrompt(text: string): ParsedSlots {
     }
 
     const categoryMatch =
-      trimmed.match(/^\[([^\]]+)\]/) ||
-      trimmed.match(/^【([^】]+)】/) ||
-      trimmed.match(/^##?\s*\[?([^\]\s]+)\]?/);
+      trimmed.match(/^\[([^\]]+)\]/) || trimmed.match(/^【([^】]+)】/) || trimmed.match(/^##?\s*\[?([^\]\s]+)\]?/);
     if (categoryMatch) {
       const catName = categoryMatch[1].toLowerCase();
       for (const [key, aliases] of Object.entries(CATEGORY_MAP)) {
@@ -72,7 +70,7 @@ export function parseStandardPrompt(text: string): ParsedSlots {
       const parts = trimmed.split(/\s*[|｜\/]\s*/);
       if (parts.length >= 1) {
         const en = parts[0].trim().replace(/^[-*•]\s*/, '');
-        const zh = (parts[1]?.trim() ?? '?');
+        const zh = parts[1]?.trim() ?? '?';
         if (en && !/^\[/.test(en) && !/^#/.test(en)) {
           result[currentCategory].push({ en, zh });
         }

@@ -88,7 +88,9 @@ export class ComfyUIClient {
   /**
    * Submit workflow to ComfyUI; returns prompt_id.
    */
-  async submitPrompt(workflow: Record<string, { inputs: Record<string, unknown>; class_type: string }>): Promise<string> {
+  async submitPrompt(
+    workflow: Record<string, { inputs: Record<string, unknown>; class_type: string }>,
+  ): Promise<string> {
     const res = await fetch(`${this.baseUrl}/prompt`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -137,17 +139,30 @@ export class ComfyUIClient {
   async downloadVideo(job: ComfyUIHistoryJob): Promise<Buffer> {
     const output = job.outputs?.['117'] ?? job.outputs?.['108'];
     if (!output) {
-      logger.error('[ComfyUIClient] SaveVideo output (node 117/108) missing in job.outputs', { outputKeys: job.outputs ? Object.keys(job.outputs) : [] });
+      logger.error('[ComfyUIClient] SaveVideo output (node 117/108) missing in job.outputs', {
+        outputKeys: job.outputs ? Object.keys(job.outputs) : [],
+      });
       throw new Error('ComfyUI SaveVideo output not found');
     }
     // SaveVideo may return videos, gifs, or images (ComfyUI version-dependent)
     const videoInfo = output.videos?.[0] ?? output.gifs?.[0] ?? output.images?.[0];
-    const sourceKey = output.videos?.[0] ? 'videos' : output.gifs?.[0] ? 'gifs' : output.images?.[0] ? 'images' : 'none';
+    const sourceKey = output.videos?.[0]
+      ? 'videos'
+      : output.gifs?.[0]
+        ? 'gifs'
+        : output.images?.[0]
+          ? 'images'
+          : 'none';
     if (!videoInfo) {
       logger.error('[ComfyUIClient] No video entry in output', { output: JSON.stringify(output) });
       throw new Error(`No video in output: ${JSON.stringify(output)}`);
     }
-    logger.info('[ComfyUIClient] Downloading from /view', { sourceKey, filename: videoInfo.filename, subfolder: videoInfo.subfolder, type: videoInfo.type });
+    logger.info('[ComfyUIClient] Downloading from /view', {
+      sourceKey,
+      filename: videoInfo.filename,
+      subfolder: videoInfo.subfolder,
+      type: videoInfo.type,
+    });
     const { filename, subfolder, type } = videoInfo;
     const url = `${this.baseUrl}/view?filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(subfolder)}&type=${encodeURIComponent(type)}`;
     const res = await fetch(url);

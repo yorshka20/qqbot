@@ -511,9 +511,7 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
       const width = options?.width ?? this.config.defaultWidth ?? NovelAIProvider.DEFAULT_WIDTH;
       const height = options?.height ?? this.config.defaultHeight ?? NovelAIProvider.DEFAULT_HEIGHT;
       const seed =
-        typeof options?.seed === 'number' && options.seed >= 0
-          ? options.seed
-          : Math.floor(Math.random() * 4294967295);
+        typeof options?.seed === 'number' && options.seed >= 0 ? options.seed : Math.floor(Math.random() * 4294967295);
       const model = this.config.model || 'nai-diffusion-4-5-full';
 
       if (!model.startsWith('nai-diffusion-4')) {

@@ -29,7 +29,7 @@ export class ContextManager {
     private useSummary = false,
     /** Required when useSummary is true. */
     private summarizeService?: SummarizeService,
-  ) { }
+  ) {}
 
   /**
    * Set global context
@@ -64,7 +64,10 @@ export class ContextManager {
     const sessionHistory = this.getSessionHistory(options.sessionId);
 
     // Get conversation history
-    const history = sessionHistory instanceof ConversationHistorySummary ? sessionHistory.getHistory() : sessionHistory.getFormattedHistory();
+    const history =
+      sessionHistory instanceof ConversationHistorySummary
+        ? sessionHistory.getHistory()
+        : sessionHistory.getFormattedHistory();
 
     // Build context
     const context: ConversationContext = {
@@ -122,7 +125,10 @@ export class ContextManager {
    */
   getSessionContext(sessionId: string, sessionType: 'user' | 'group'): SessionContext {
     const sessionHistory = this.getSessionHistory(sessionId);
-    const history = sessionHistory instanceof ConversationHistorySummary ? sessionHistory.getHistory() : sessionHistory.getFormattedHistory();
+    const history =
+      sessionHistory instanceof ConversationHistorySummary
+        ? sessionHistory.getHistory()
+        : sessionHistory.getFormattedHistory();
 
     return {
       sessionId,
@@ -140,7 +146,10 @@ export class ContextManager {
    */
   getHistory(sessionId: string, maxMessages?: number): Array<{ role: 'user' | 'assistant'; content: string }> {
     const sessionHistory = this.getSessionHistory(sessionId);
-    const history = sessionHistory instanceof ConversationHistorySummary ? sessionHistory.getHistory() : sessionHistory.getFormattedHistory();
+    const history =
+      sessionHistory instanceof ConversationHistorySummary
+        ? sessionHistory.getHistory()
+        : sessionHistory.getFormattedHistory();
 
     if (maxMessages && maxMessages > 0) {
       return history.slice(-maxMessages);

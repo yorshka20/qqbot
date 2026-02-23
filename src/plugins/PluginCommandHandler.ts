@@ -71,7 +71,7 @@ export class PluginCommandHandler implements CommandHandler {
     ) => Promise<CommandResult> | CommandResult,
     private pluginContext: PluginContext,
     public permissions?: PermissionLevel[],
-  ) { }
+  ) {}
 
   /**
    * Execute the command

@@ -97,10 +97,7 @@ export class MemoryService {
    * Get both group and user memory texts for reply injection.
    * Group memory is always returned; user memory only when userId is provided.
    */
-  getMemoryTextForReply(
-    groupId: string,
-    userId?: string,
-  ): { groupMemoryText: string; userMemoryText: string } {
+  getMemoryTextForReply(groupId: string, userId?: string): { groupMemoryText: string; userMemoryText: string } {
     const groupMemoryText = this.getGroupMemoryText(groupId);
     const userMemoryText = userId ? this.getUserMemoryText(groupId, userId) : '';
     return { groupMemoryText, userMemoryText };
@@ -121,12 +118,7 @@ export class MemoryService {
    * Upsert one memory record by (groupId, userId). Updates in-memory cache then DB.
    * Use GROUP_MEMORY_USER_ID for group-level memory.
    */
-  async upsertMemory(
-    groupId: string,
-    userId: string,
-    isGlobalMemory: boolean,
-    content: string,
-  ): Promise<void> {
+  async upsertMemory(groupId: string, userId: string, isGlobalMemory: boolean, content: string): Promise<void> {
     const trimmed = this.truncate(content.trim());
     if (!trimmed && !content.trim()) {
       return;

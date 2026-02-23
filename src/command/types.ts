@@ -68,7 +68,6 @@ export interface CommandContextMetadata {
   isSystemExecution?: boolean;
 }
 
-
 /**
  * Command execution context
  */
@@ -96,7 +95,9 @@ export type PermissionLevel = 'user' | 'group_admin' | 'group_owner' | 'admin' |
  */
 export interface CommandRegistration {
   handler: CommandHandler;
-  handlerClass?: new (...args: any[]) => CommandHandler; // Class reference for lazy instantiation
+  handlerClass?: new (
+    ...args: any[]
+  ) => CommandHandler; // Class reference for lazy instantiation
   pluginName?: string; // If registered by plugin
   permissions?: PermissionLevel[]; // Required permissions
   aliases?: string[]; // Command aliases

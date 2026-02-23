@@ -13,7 +13,9 @@ export function isReadableTextForThread(content: string): boolean {
   const t = content.trim();
   if (t === '') return false;
   // Skip content that is only media/placeholder (e.g. [Image:...], [Record:5s], [Video:...], [File:...])
-  const onlyPlaceholders = /^(\s*\[(Image|Record|Video|File|Forward|MarketFace|LightApp|XML)(:[^\]]*)?\]\s*)+$/i.test(t);
+  const onlyPlaceholders = /^(\s*\[(Image|Record|Video|File|Forward|MarketFace|LightApp|XML)(:[^\]]*)?\]\s*)+$/i.test(
+    t,
+  );
   return !onlyPlaceholders;
 }
 
@@ -59,12 +61,12 @@ export class ThreadService {
     const messages: ThreadMessage[] = initialMessages
       .filter((m) => isReadableTextForThread(m.content))
       .map((m) => ({
-      userId: m.userId,
-      content: m.content,
-      isBotReply: m.isBotReply,
-      createdAt: m.createdAt instanceof Date ? m.createdAt : new Date(m.createdAt),
-      wasAtBot: m.wasAtBot === true,
-    }));
+        userId: m.userId,
+        content: m.content,
+        isBotReply: m.isBotReply,
+        createdAt: m.createdAt instanceof Date ? m.createdAt : new Date(m.createdAt),
+        wasAtBot: m.wasAtBot === true,
+      }));
 
     const thread: ProactiveThread = {
       threadId,
@@ -80,7 +82,9 @@ export class ThreadService {
     list.push(thread);
     this.threadsByGroup.set(groupId, list);
     this.currentThreadIdByGroup.set(groupId, threadId);
-    logger.info(`[ThreadService] Created thread | threadId=${threadId} | groupId=${groupId} | preferenceKey=${preferenceKey}`);
+    logger.info(
+      `[ThreadService] Created thread | threadId=${threadId} | groupId=${groupId} | preferenceKey=${preferenceKey}`,
+    );
     return thread;
   }
 
@@ -154,11 +158,7 @@ export class ThreadService {
    * messageIds: indices (0-based) into entries; only those entries are appended, in chronological order.
    * When messageIds is missing or empty, nothing is appended.
    */
-  appendGroupMessages(
-    threadId: string,
-    entries: GroupMessageEntry[],
-    options?: { messageIds?: string[] },
-  ): void {
+  appendGroupMessages(threadId: string, entries: GroupMessageEntry[], options?: { messageIds?: string[] }): void {
     const thread = this.threadById.get(threadId);
     if (!thread) return;
     const rawIds = options?.messageIds;
@@ -177,8 +177,7 @@ export class ThreadService {
         createdAt: e.createdAt instanceof Date ? e.createdAt : new Date(e.createdAt),
         wasAtBot: e.wasAtBot === true,
       });
-      thread.lastActivityAt =
-        e.createdAt instanceof Date ? e.createdAt : new Date(e.createdAt);
+      thread.lastActivityAt = e.createdAt instanceof Date ? e.createdAt : new Date(e.createdAt);
     }
   }
 

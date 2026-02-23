@@ -55,9 +55,7 @@ export class MilkyAPIResponseHandler {
    * @returns Parsed response data
    * @throws Error if HTTP error, JSON parsing fails, or API indicates failure
    */
-  static async handleResponse<TResponse = unknown>(
-    response: Response,
-  ): Promise<TResponse> {
+  static async handleResponse<TResponse = unknown>(response: Response): Promise<TResponse> {
     // Handle HTTP errors first
     if (!response.ok) {
       await this.handleHTTPError(response);
@@ -77,8 +75,6 @@ export class MilkyAPIResponseHandler {
    */
   static async handleHTTPError(response: Response): Promise<never> {
     const errorText = await response.text().catch(() => 'Unknown error');
-    throw new Error(
-      `HTTP ${response.status} ${response.statusText}: ${errorText}`,
-    );
+    throw new Error(`HTTP ${response.status} ${response.statusText}: ${errorText}`);
   }
 }

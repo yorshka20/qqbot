@@ -175,22 +175,30 @@ export class ReplyGenerationService {
       const char = '助手';
       const user = context.message?.sender?.nickname ?? '用户';
 
-      const prompt = this.promptManager.render('llm.nsfw_reply', {
-        char,
-        user,
-        userMessage: context.message.message,
-        conversationHistory: historyText,
-        groupMemoryText: memoryVars.groupMemoryText,
-        userMemoryText: memoryVars.userMemoryText,
-        imageDescription: '',
-      }, { injectBase: true });
+      const prompt = this.promptManager.render(
+        'llm.nsfw_reply',
+        {
+          char,
+          user,
+          userMessage: context.message.message,
+          conversationHistory: historyText,
+          groupMemoryText: memoryVars.groupMemoryText,
+          userMemoryText: memoryVars.userMemoryText,
+          imageDescription: '',
+        },
+        { injectBase: true },
+      );
 
       // Higher maxTokens to allow 300-500 word narrative replies per template
-      const response = await this.llmService.generate(prompt, {
-        temperature: 0.8,
-        maxTokens: 3500,
-        sessionId,
-      }, 'ollama');
+      const response = await this.llmService.generate(
+        prompt,
+        {
+          temperature: 0.8,
+          maxTokens: 3500,
+          sessionId,
+        },
+        'ollama',
+      );
 
       logger.debug(`[ReplyGenerationService] NSFW reply received | responseLength=${response.text.length}`);
 

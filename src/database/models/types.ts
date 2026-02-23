@@ -36,7 +36,6 @@ export interface Message extends BaseModel {
   metadata?: Record<string, unknown>;
 }
 
-
 /**
  * Provider selection for a session
  */

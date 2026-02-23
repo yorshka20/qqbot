@@ -15,7 +15,7 @@ export class LLMService {
   constructor(
     private aiManager: AIManager,
     private providerSelector?: ProviderSelector,
-  ) { }
+  ) {}
 
   /**
    * Get fallback response when no provider is available

@@ -321,7 +321,14 @@ export class ProactiveConversationService {
         this.threadService.appendGroupMessages(threadId, filteredEntries, {
           messageIds: messageIdsToUse.length ? messageIdsToUse : undefined,
         });
-        await this.replyInThread(threadId, groupIdNum, preferenceKey, topicOrQuery, result.searchQueries, triggerUserId);
+        await this.replyInThread(
+          threadId,
+          groupIdNum,
+          preferenceKey,
+          topicOrQuery,
+          result.searchQueries,
+          triggerUserId,
+        );
       } finally {
         this.replyInProgressByThread.delete(threadId);
         resolveReplyDone!();
@@ -451,7 +458,7 @@ export class ProactiveConversationService {
     }
     try {
       const messages = adapter.getModel('messages');
-      const dbMessage = await messages.findOne({ id: lastUserEntry.messageId } as Partial<Message>) as Message | null;
+      const dbMessage = (await messages.findOne({ id: lastUserEntry.messageId } as Partial<Message>)) as Message | null;
       if (!dbMessage?.rawContent) {
         return '';
       }
@@ -476,17 +483,12 @@ export class ProactiveConversationService {
         message: '',
         segments: [],
       };
-      const getResourceUrl = (resourceId: string) =>
-        this.messageAPI.getResourceTempUrl(resourceId, minimalContext);
+      const getResourceUrl = (resourceId: string) => this.messageAPI.getResourceTempUrl(resourceId, minimalContext);
       const images = await extractImagesFromSegmentsAsync(segments as MessageSegment[], getResourceUrl);
       if (!images.length) {
         return '';
       }
-      return await this.aiService.generateProactiveImageDescription(
-        images,
-        lastUserEntry.content || '（无）',
-        groupId,
-      );
+      return await this.aiService.generateProactiveImageDescription(images, lastUserEntry.content || '（无）', groupId);
     } catch (error) {
       logger.warn(
         '[ProactiveConversationService] getImageDescriptionFromLastUserMessage failed:',
@@ -535,7 +537,9 @@ export class ProactiveConversationService {
       isBotReply: true,
     });
 
-    logger.debug('[ProactiveConversationService] Join with new thread memoryContext:', { memoryContext: injectContext.memoryContext });
+    logger.debug('[ProactiveConversationService] Join with new thread memoryContext:', {
+      memoryContext: injectContext.memoryContext,
+    });
   }
 
   private async replyInThread(
@@ -565,7 +569,9 @@ export class ProactiveConversationService {
       isBotReply: true,
     });
 
-    logger.debug('[ProactiveConversationService] Reply in thread memoryContext:', { memoryContext: injectContext.memoryContext });
+    logger.debug('[ProactiveConversationService] Reply in thread memoryContext:', {
+      memoryContext: injectContext.memoryContext,
+    });
   }
 
   private async sendGroupMessage(groupId: number, text: string): Promise<void> {

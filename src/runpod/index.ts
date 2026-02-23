@@ -10,6 +10,5 @@ export {
   DEFAULT_NEGATIVE_PROMPT,
   WAN22_REMIX_WORKFLOW_VARIANT,
   type Wan22RemixBuildOptions,
-  type Wan22RemixWorkflowVariant
+  type Wan22RemixWorkflowVariant,
 } from './wan22Workflow';
-

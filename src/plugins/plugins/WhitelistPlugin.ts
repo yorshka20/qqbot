@@ -24,7 +24,7 @@ export class WhitelistPlugin extends PluginBase {
   private hasUserWhitelist = false;
   private hasGroupWhitelist = false;
 
-  private threadService!: ThreadService
+  private threadService!: ThreadService;
 
   async onInit(): Promise<void> {
     this.enabled = true;

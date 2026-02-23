@@ -80,10 +80,7 @@ export class MessagePipeline {
   /**
    * Create initial hook context with conversation context
    */
-  private createHookContext(
-    event: NormalizedMessageEvent,
-    context: MessageProcessingContext,
-  ): HookContext {
+  private createHookContext(event: NormalizedMessageEvent, context: MessageProcessingContext): HookContext {
     const conversationContext = this.buildConversationContext(event, context);
     return HookContextBuilder.fromMessage(event, {
       sessionId: context.sessionId,
@@ -172,7 +169,6 @@ export class MessagePipeline {
       await this.handleSendError(error, hookContext);
     }
   }
-
 
   /**
    * Build message to send (always returns segments)

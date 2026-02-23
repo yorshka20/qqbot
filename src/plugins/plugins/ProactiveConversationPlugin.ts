@@ -61,7 +61,9 @@ export class ProactiveConversationPlugin extends PluginBase {
     }
     const words = this.parseTriggerWordsContent(template.content);
     this.triggerWords[preferenceKey] = words;
-    logger.info(`[ProactiveConversationPlugin] Loaded ${words.length} trigger words for preference "${preferenceKey}" from preference/${preferenceKey}/trigger.txt`);
+    logger.info(
+      `[ProactiveConversationPlugin] Loaded ${words.length} trigger words for preference "${preferenceKey}" from preference/${preferenceKey}/trigger.txt`,
+    );
   }
 
   /**
@@ -170,7 +172,10 @@ export class ProactiveConversationPlugin extends PluginBase {
     const triggerUserId = userId ?? undefined;
     // if trigger words (from any of this group's preferences) are matched, schedule analysis directly
     const triggerWords = this.getTriggerWordsForGroup(groupId);
-    if (triggerWords.length > 0 && triggerWords.some((word) => context.message?.message?.toLowerCase().includes(word))) {
+    if (
+      triggerWords.length > 0 &&
+      triggerWords.some((word) => context.message?.message?.toLowerCase().includes(word))
+    ) {
       this.proactiveConversationService.scheduleForGroup(groupId, triggerUserId);
     } else {
       // if trigger words are not matched, accumulate trigger count

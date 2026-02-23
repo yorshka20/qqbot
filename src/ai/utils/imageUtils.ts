@@ -294,7 +294,9 @@ export async function normalizeVisionImages(
         const newDecodedLength = Buffer.from(compressed.base64, 'base64').length;
         logger.debug(`[imageUtils] Vision image compressed from ${decodedLength} to ${newDecodedLength} bytes`);
       } catch (error) {
-        logger.warn(`[imageUtils] Compression failed, using original image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        logger.warn(
+          `[imageUtils] Compression failed, using original image: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
       }
     }
 
@@ -375,11 +377,7 @@ async function extractImagesFromReplyMessage(
   messageAPI: MessageAPI,
   databaseManager: DatabaseManager,
 ): Promise<VisionImage[]> {
-  const referencedMessage = await messageAPI.getMessageFromContext(
-    replyMessageId,
-    message,
-    databaseManager,
-  );
+  const referencedMessage = await messageAPI.getMessageFromContext(replyMessageId, message, databaseManager);
 
   if (!referencedMessage.segments || referencedMessage.segments.length === 0) {
     return [];
@@ -408,10 +406,7 @@ export async function extractImagesFromMessageAndReply(
 
   // Extract images from current message (resolve resource_id via get_resource_temp_url when needed)
   if (message.segments && message.segments.length > 0) {
-    const currentImages = await extractImagesFromSegmentsAsync(
-      message.segments as MessageSegment[],
-      getResourceUrl,
-    );
+    const currentImages = await extractImagesFromSegmentsAsync(message.segments as MessageSegment[], getResourceUrl);
     images.push(...currentImages);
   }
 

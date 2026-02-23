@@ -51,8 +51,4 @@ export interface OneBot11MetaEvent {
   [key: string]: unknown;
 }
 
-export type OneBot11Event =
-  | OneBot11MessageEvent
-  | OneBot11NoticeEvent
-  | OneBot11RequestEvent
-  | OneBot11MetaEvent;
+export type OneBot11Event = OneBot11MessageEvent | OneBot11NoticeEvent | OneBot11RequestEvent | OneBot11MetaEvent;

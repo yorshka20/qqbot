@@ -1,0 +1,24 @@
+{
+   "cSpell.words": [
+    "Bilibili",
+    "Deduplicator",
+    "deepseek",
+    "Doubao",
+    "Gacha",
+    "Laozhang",
+    "Logform",
+    "novelai",
+    "Ollama",
+    "onebot",
+    "pageno",
+    "qqbot",
+    "retcode",
+    "Retryable",
+    "runpod",
+    "safesearch",
+    "saltify",
+    "searxng"
+  ],
+  "editor.defaultFormatter": "biomejs.biome",
+  "editor.formatOnSave": true
+}

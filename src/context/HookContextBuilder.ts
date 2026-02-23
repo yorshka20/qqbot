@@ -207,9 +207,7 @@ export class HookContextBuilder {
     }
 
     if (!this.conversationContext) {
-      throw new Error(
-        'HookContextBuilder: conversationContext is required. Use withConversationContext() to set it.',
-      );
+      throw new Error('HookContextBuilder: conversationContext is required. Use withConversationContext() to set it.');
     }
 
     const context: HookContext = {

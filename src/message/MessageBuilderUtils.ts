@@ -22,10 +22,7 @@ export type SendableResponse =
  * @param loggerPrefix - Prefix for logger messages
  * @returns MessageBuilder instance
  */
-export function buildMessageFromResponse(
-  response: SendableResponse,
-  loggerPrefix?: string,
-): MessageBuilder {
+export function buildMessageFromResponse(response: SendableResponse, loggerPrefix?: string): MessageBuilder {
   const prefix = loggerPrefix || '[MessageBuilderUtils]';
   // If already a MessageBuilder, return it
   if (response instanceof MessageBuilder) {

@@ -15,14 +15,8 @@ export interface EventRouterEvents {
 }
 
 export declare interface EventRouter {
-  on<U extends keyof EventRouterEvents>(
-    event: U,
-    listener: EventRouterEvents[U],
-  ): this;
-  emit<U extends keyof EventRouterEvents>(
-    event: U,
-    ...args: Parameters<EventRouterEvents[U]>
-  ): boolean;
+  on<U extends keyof EventRouterEvents>(event: U, listener: EventRouterEvents[U]): this;
+  emit<U extends keyof EventRouterEvents>(event: U, ...args: Parameters<EventRouterEvents[U]>): boolean;
 }
 
 export class EventRouter extends EventEmitter {
@@ -40,9 +34,7 @@ export class EventRouter extends EventEmitter {
       return;
     }
 
-    logger.debug(
-      `[EventRouter] Routing event: ${event.type} from ${event.protocol}`,
-    );
+    logger.debug(`[EventRouter] Routing event: ${event.type} from ${event.protocol}`);
 
     // Emit typed event
     switch (event.type) {
@@ -56,10 +48,7 @@ export class EventRouter extends EventEmitter {
         this.emit('request', event as NormalizedEvent & { type: 'request' });
         break;
       case 'meta_event':
-        this.emit(
-          'meta_event',
-          event as NormalizedEvent & { type: 'meta_event' },
-        );
+        this.emit('meta_event', event as NormalizedEvent & { type: 'meta_event' });
         break;
     }
 
@@ -67,10 +56,7 @@ export class EventRouter extends EventEmitter {
     this.emit('*', event);
   }
 
-  onEvent<T extends NormalizedEvent>(
-    eventType: string,
-    handler: EventHandler<T>,
-  ): void {
+  onEvent<T extends NormalizedEvent>(eventType: string, handler: EventHandler<T>): void {
     if (!this.handlers.has(eventType)) {
       this.handlers.set(eventType, new Set());
     }
@@ -80,10 +66,7 @@ export class EventRouter extends EventEmitter {
     this.on(eventType as any, handler as any);
   }
 
-  offEvent<T extends NormalizedEvent>(
-    eventType: string,
-    handler: EventHandler<T>,
-  ): void {
+  offEvent<T extends NormalizedEvent>(eventType: string, handler: EventHandler<T>): void {
     const handlers = this.handlers.get(eventType);
     if (handlers) {
       handlers.delete(handler as EventHandler);

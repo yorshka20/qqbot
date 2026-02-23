@@ -40,24 +40,21 @@ export class RunPodServerlessClient {
   private timeoutMs: number;
   private pollIntervalMs: number;
 
-  constructor(
-    endpointId: string,
-    apiKey: string | undefined,
-    options?: RunPodServerlessClientOptions,
-  ) {
+  constructor(endpointId: string, apiKey: string | undefined, options?: RunPodServerlessClientOptions) {
     this.endpointId = endpointId.replace(/\/$/, '');
     const resolved = apiKey ?? process.env.RUNPOD_API_KEY;
     if (!resolved?.trim()) {
-      throw new Error(
-        'RunPod API key is required: set runpod.apiKey in config or RUNPOD_API_KEY env',
-      );
+      throw new Error('RunPod API key is required: set runpod.apiKey in config or RUNPOD_API_KEY env');
     }
     this.apiKey = resolved.trim();
     this.timeoutMs = options?.timeoutMs ?? 600_000;
     this.pollIntervalMs = options?.pollIntervalMs ?? 5_000;
   }
 
-  private async run(input: { workflow: Record<string, unknown>; images: Array<{ name: string; image: string }> }): Promise<string> {
+  private async run(input: {
+    workflow: Record<string, unknown>;
+    images: Array<{ name: string; image: string }>;
+  }): Promise<string> {
     const url = `${RUNPOD_API_BASE}/${this.endpointId}/run`;
     const res = await fetch(url, {
       method: 'POST',
@@ -108,9 +105,7 @@ export class RunPodServerlessClient {
       }
       logger.debug('[RunPodServerlessClient] Poll status', { jobId, status });
     }
-    throw new Error(
-      `RunPod job ${jobId} did not complete within ${this.timeoutMs / 1000}s`,
-    );
+    throw new Error(`RunPod job ${jobId} did not complete within ${this.timeoutMs / 1000}s`);
   }
 
   /**
@@ -127,7 +122,11 @@ export class RunPodServerlessClient {
     const imageBase64 = imageBuffer.toString('base64');
     const images = [{ name: filename, image: imageBase64 }];
 
-    logger.info('[RunPodServerlessClient] Submitting job', { seed: options?.seed, durationSeconds: options?.durationSeconds, prompt });
+    logger.info('[RunPodServerlessClient] Submitting job', {
+      seed: options?.seed,
+      durationSeconds: options?.durationSeconds,
+      prompt,
+    });
 
     const jobId = await this.run({ workflow, images });
 

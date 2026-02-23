@@ -23,7 +23,7 @@ export class PluginManager {
     private hookManager: HookManager,
     private context: PluginContext,
     private conversationConfigService: ConversationConfigService,
-  ) { }
+  ) {}
 
   async loadPlugins(pluginConfigs: Array<{ name: string; enabled: boolean; config?: unknown }> = []): Promise<void> {
     const pluginConfigMap = new Map(pluginConfigs.map((p) => [p.name, p]));
@@ -182,7 +182,6 @@ export class PluginManager {
     return Array.from(this.plugins.values());
   }
 
-
   /**
    * Enable a plugin for a conversation
    * @param pluginName - Plugin name to enable
@@ -239,10 +238,7 @@ export class PluginManager {
    * @param context - Command context to extract session info
    * @returns true if plugin is enabled, false otherwise
    */
-  async isPluginEnabledForConversation(
-    pluginName: string,
-    context: CommandContext,
-  ): Promise<boolean> {
+  async isPluginEnabledForConversation(pluginName: string, context: CommandContext): Promise<boolean> {
     // Check if plugin is globally enabled first
     if (!this.enabledPlugins.has(pluginName)) {
       return false;

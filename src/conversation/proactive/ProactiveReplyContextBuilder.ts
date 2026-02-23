@@ -20,7 +20,7 @@ export interface ProactiveReplyContextBuilderDeps {
  * Each injection type has its own generator; build methods only call these and assemble.
  */
 export class ProactiveReplyContextBuilder {
-  constructor(private deps: ProactiveReplyContextBuilderDeps) { }
+  constructor(private deps: ProactiveReplyContextBuilderDeps) {}
 
   /** Thread context from existing thread (formatted messages from ThreadService). */
   getThreadContextFormatted(threadId: string): string {
@@ -38,11 +38,7 @@ export class ProactiveReplyContextBuilder {
   }
 
   /** Retrieved RAG section (## 参考知识 + chunks). */
-  async getRetrievedContext(
-    preferenceKey: string,
-    topicOrQuery: string,
-    searchQueries?: string[],
-  ): Promise<string> {
+  async getRetrievedContext(preferenceKey: string, topicOrQuery: string, searchQueries?: string[]): Promise<string> {
     const chunks = await this.deps.preferenceKnowledge.retrieve(preferenceKey, topicOrQuery, {
       limit: this.deps.searchLimit,
       searchQueries,

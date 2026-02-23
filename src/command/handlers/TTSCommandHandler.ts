@@ -160,7 +160,8 @@ export class TTSCommandHandler implements CommandHandler {
         }
       } else {
         if (options.random) {
-          referenceId = this.VOICE_MAP[Object.keys(this.VOICE_MAP)[Math.floor(Math.random() * Object.keys(this.VOICE_MAP).length)]];
+          referenceId =
+            this.VOICE_MAP[Object.keys(this.VOICE_MAP)[Math.floor(Math.random() * Object.keys(this.VOICE_MAP).length)]];
         } else {
           // Use default voice (丁真)
           referenceId = this.VOICE_MAP[this.DEFAULT_VOICE];

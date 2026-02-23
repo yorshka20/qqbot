@@ -5,10 +5,7 @@ import type { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
 import { ConversationConfigService } from '@/config/ConversationConfigService';
 import { getSessionId, getSessionType } from '@/config/SessionUtils';
-import type {
-  ProcessStageInterceptor,
-  ProcessStageInterceptorRegistry,
-} from '@/conversation/ProcessStageInterceptor';
+import type { ProcessStageInterceptor, ProcessStageInterceptorRegistry } from '@/conversation/ProcessStageInterceptor';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
@@ -38,15 +35,18 @@ export class NsfwModePlugin extends PluginBase {
   async onInit(): Promise<void> {
     const container = getContainer();
     this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
-    this.conversationConfigService = container.resolve<ConversationConfigService>(
-      DITokens.CONVERSATION_CONFIG_SERVICE,
-    );
+    this.conversationConfigService = container.resolve<ConversationConfigService>(DITokens.CONVERSATION_CONFIG_SERVICE);
     this.processStageInterceptorRegistry = container.resolve<ProcessStageInterceptorRegistry>(
       DITokens.PROCESS_STAGE_INTERCEPTOR_REGISTRY,
     );
     this.aiService = container.resolve<AIService>(DITokens.AI_SERVICE);
 
-    if (!this.commandManager || !this.conversationConfigService || !this.processStageInterceptorRegistry || !this.aiService) {
+    if (
+      !this.commandManager ||
+      !this.conversationConfigService ||
+      !this.processStageInterceptorRegistry ||
+      !this.aiService
+    ) {
       throw new Error('[NsfwModePlugin] Required dependencies not found');
     }
 

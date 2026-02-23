@@ -157,7 +157,13 @@ export class MessageBuilder {
     // Set file name if provided, otherwise extract from file path
     if (file_name) {
       fileData.file_name = file_name;
-    } else if (file && !file.startsWith('file://') && !file.startsWith('http://') && !file.startsWith('https://') && !file.startsWith('base64://')) {
+    } else if (
+      file &&
+      !file.startsWith('file://') &&
+      !file.startsWith('http://') &&
+      !file.startsWith('https://') &&
+      !file.startsWith('base64://')
+    ) {
       // Extract filename from local file path
       const pathParts = file.split(/[/\\]/);
       const fileName = pathParts[pathParts.length - 1];

@@ -6,7 +6,7 @@ import { join } from 'path';
 
 /** Default negative prompt (shared). */
 export const DEFAULT_NEGATIVE_PROMPT =
-  "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走";
+  '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走';
 
 export type Wan22WorkflowNode = { inputs: Record<string, unknown>; class_type: string };
 
@@ -32,10 +32,16 @@ function loadRemixOptimizedTemplate(): Record<string, Wan22WorkflowNode> {
   try {
     const raw = readFileSync(workflowPath, 'utf-8');
     cachedRemixOptimizedApiWorkflow = JSON.parse(raw) as Record<string, Wan22WorkflowNode>;
-    logger.debug('[wan22Workflow] Loaded remix optimized I2V workflow', { path: workflowPath, nodeCount: Object.keys(cachedRemixOptimizedApiWorkflow).length });
+    logger.debug('[wan22Workflow] Loaded remix optimized I2V workflow', {
+      path: workflowPath,
+      nodeCount: Object.keys(cachedRemixOptimizedApiWorkflow).length,
+    });
     return cachedRemixOptimizedApiWorkflow;
   } catch (err) {
-    logger.error('[wan22Workflow] Failed to load remix optimized I2V workflow', { path: workflowPath, error: err instanceof Error ? err.message : String(err) });
+    logger.error('[wan22Workflow] Failed to load remix optimized I2V workflow', {
+      path: workflowPath,
+      error: err instanceof Error ? err.message : String(err),
+    });
     throw err;
   }
 }
@@ -51,10 +57,7 @@ export function buildWan22I2VRemixWorkflowOptimized(
   const prompt = options?.prompt ?? '';
   const negativePrompt = options?.negativePrompt ?? DEFAULT_NEGATIVE_PROMPT;
   // ComfyUI requires seed >= 0; -1 means "random" elsewhere, so treat negative as random
-  const seed =
-    options?.seed !== undefined && options.seed >= 0
-      ? options.seed
-      : Math.floor(Math.random() * 2 ** 32);
+  const seed = options?.seed !== undefined && options.seed >= 0 ? options.seed : Math.floor(Math.random() * 2 ** 32);
   const durationSeconds = Math.max(1, Math.min(15, options?.durationSeconds ?? 5));
   const numFrames = Math.max(16, Math.min(240, Math.round(durationSeconds * WORKFLOW_FPS_OPTIMIZED)));
 
@@ -101,10 +104,16 @@ function loadDasiwaTemplate(): Record<string, Wan22WorkflowNode> {
   try {
     const raw = readFileSync(workflowPath, 'utf-8');
     cachedDasiwaApiWorkflow = JSON.parse(raw) as Record<string, Wan22WorkflowNode>;
-    logger.debug('[wan22Workflow] Loaded dasiwa I2V workflow', { path: workflowPath, nodeCount: Object.keys(cachedDasiwaApiWorkflow).length });
+    logger.debug('[wan22Workflow] Loaded dasiwa I2V workflow', {
+      path: workflowPath,
+      nodeCount: Object.keys(cachedDasiwaApiWorkflow).length,
+    });
     return cachedDasiwaApiWorkflow;
   } catch (err) {
-    logger.error('[wan22Workflow] Failed to load dasiwa I2V workflow', { path: workflowPath, error: err instanceof Error ? err.message : String(err) });
+    logger.error('[wan22Workflow] Failed to load dasiwa I2V workflow', {
+      path: workflowPath,
+      error: err instanceof Error ? err.message : String(err),
+    });
     throw err;
   }
 }
@@ -120,10 +129,7 @@ export function buildWan22I2VRemixWorkflowDasiwa(
   const prompt = options?.prompt ?? '';
   const negativePrompt = options?.negativePrompt ?? DEFAULT_NEGATIVE_PROMPT;
   // ComfyUI requires seed >= 0; -1 means "random" elsewhere, so treat negative as random
-  const seed =
-    options?.seed !== undefined && options.seed >= 0
-      ? options.seed
-      : Math.floor(Math.random() * 2 ** 32);
+  const seed = options?.seed !== undefined && options.seed >= 0 ? options.seed : Math.floor(Math.random() * 2 ** 32);
   const durationSeconds = Math.max(1, Math.min(15, options?.durationSeconds ?? 5));
   const numFrames = Math.max(16, Math.min(240, Math.round(durationSeconds * WORKFLOW_FPS_DASIWA)));
 
@@ -166,14 +172,26 @@ let cachedAdaptiveApiWorkflow: Record<string, Wan22WorkflowNode> | null = null;
 function loadAdaptiveTemplate(): Record<string, Wan22WorkflowNode> {
   if (cachedAdaptiveApiWorkflow) return cachedAdaptiveApiWorkflow;
 
-  const workflowPath = join(process.cwd(), 'comfyu', 'workflow', 'origin', 'video_wan2_2_14B_i2v_80GB_adaptive_api.json');
+  const workflowPath = join(
+    process.cwd(),
+    'comfyu',
+    'workflow',
+    'origin',
+    'video_wan2_2_14B_i2v_80GB_adaptive_api.json',
+  );
   try {
     const raw = readFileSync(workflowPath, 'utf-8');
     cachedAdaptiveApiWorkflow = JSON.parse(raw) as Record<string, Wan22WorkflowNode>;
-    logger.debug('[wan22Workflow] Loaded adaptive I2V workflow', { path: workflowPath, nodeCount: Object.keys(cachedAdaptiveApiWorkflow).length });
+    logger.debug('[wan22Workflow] Loaded adaptive I2V workflow', {
+      path: workflowPath,
+      nodeCount: Object.keys(cachedAdaptiveApiWorkflow).length,
+    });
     return cachedAdaptiveApiWorkflow;
   } catch (err) {
-    logger.error('[wan22Workflow] Failed to load adaptive I2V workflow', { path: workflowPath, error: err instanceof Error ? err.message : String(err) });
+    logger.error('[wan22Workflow] Failed to load adaptive I2V workflow', {
+      path: workflowPath,
+      error: err instanceof Error ? err.message : String(err),
+    });
     throw err;
   }
 }
@@ -189,10 +207,7 @@ export function buildWan22I2VRemixWorkflowOrigin(
   const prompt = options?.prompt ?? '';
   const negativePrompt = options?.negativePrompt ?? DEFAULT_NEGATIVE_PROMPT;
   // ComfyUI requires seed >= 0; -1 means "random" elsewhere, so treat negative as random
-  const seed =
-    options?.seed !== undefined && options.seed >= 0
-      ? options.seed
-      : Math.floor(Math.random() * 2 ** 32);
+  const seed = options?.seed !== undefined && options.seed >= 0 ? options.seed : Math.floor(Math.random() * 2 ** 32);
   const durationSeconds = Math.max(1, Math.min(15, options?.durationSeconds ?? 5));
   const numFrames = Math.max(16, Math.min(240, Math.round(durationSeconds * WORKFLOW_FPS_ADAPTIVE)));
 

@@ -3,14 +3,20 @@
 export { AIManager } from './AIManager';
 export { AIService } from './AIService';
 export { AIProvider } from './base/AIProvider';
-export type { Image2ImageCapability, Image2VideoCapability, LLMCapability, Text2ImageCapability, VisionCapability } from './capabilities';
+export type {
+  Image2ImageCapability,
+  Image2VideoCapability,
+  LLMCapability,
+  Text2ImageCapability,
+  VisionCapability,
+} from './capabilities';
 export type {
   CapabilityType,
   Image2ImageOptions,
   Image2VideoOptions,
   ImageGenerationResponse,
   Text2ImageOptions,
-  VisionImage
+  VisionImage,
 } from './capabilities/types';
 export { PromptManager } from './prompt/PromptManager';
 export { ProviderFactory } from './ProviderFactory';
@@ -28,4 +34,3 @@ export { ImageGenerationService } from './services/ImageGenerationService';
 export { LLMService } from './services/LLMService';
 export { VisionService } from './services/VisionService';
 export type { AIGenerateOptions, AIGenerateResponse, PromptTemplate, StreamingHandler, SystemPrompt } from './types';
-

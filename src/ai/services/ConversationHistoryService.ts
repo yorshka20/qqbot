@@ -54,13 +54,9 @@ export class ConversationHistoryService {
   /**
    * Format history entries to prompt text (User: ... / Assistant: ...)
    */
-  private formatHistory(
-    history: Array<{ role: 'user' | 'assistant'; content: string }>,
-  ): string {
+  private formatHistory(history: Array<{ role: 'user' | 'assistant'; content: string }>): string {
     const limited = history.slice(-this.maxHistoryMessages);
-    return limited
-      .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
-      .join('\n');
+    return limited.map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`).join('\n');
   }
 
   /**
@@ -97,30 +93,23 @@ export class ConversationHistoryService {
       const all = await messages.find({ conversationId: conversation.id });
       // Sort by createdAt ascending and take last N messages (each turn = user + assistant, so take 2x)
       const sorted = (all as Message[]).sort(
-        (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       );
       const recent = sorted.slice(-this.maxHistoryMessages * 2);
 
       const result = recent.map((msg) => {
         const meta = msg.metadata as Record<string, unknown> | undefined;
-        const role: 'user' | 'assistant' =
-          meta?.isBotReply === true ? 'assistant' : 'user';
+        const role: 'user' | 'assistant' = meta?.isBotReply === true ? 'assistant' : 'user';
         return { role, content: msg.content };
       });
 
       if (result.length > 0) {
-        logger.debug(
-          `[ConversationHistoryService] Loaded ${result.length} messages from DB for session ${sessionId}`,
-        );
+        logger.debug(`[ConversationHistoryService] Loaded ${result.length} messages from DB for session ${sessionId}`);
       }
       return result;
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.warn(
-        '[ConversationHistoryService] Failed to load history from DB:',
-        err,
-      );
+      logger.warn('[ConversationHistoryService] Failed to load history from DB:', err);
       return [];
     }
   }

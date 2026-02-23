@@ -44,11 +44,7 @@ import { SummarizeService } from './SummarizeService';
 import { CommandSystem } from './systems/CommandSystem';
 import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
 import { TaskSystem } from './systems/TaskSystem';
-import {
-  GroupHistoryService,
-  ThreadContextCompressionService,
-  ThreadService,
-} from './thread';
+import { GroupHistoryService, ThreadContextCompressionService, ThreadService } from './thread';
 
 export interface ConversationComponents {
   conversationManager: ConversationManager;
@@ -151,12 +147,7 @@ export class ConversationInitializer {
     // Single SummarizeService for both context memory and thread compression (provider passed at call time).
     const summarizeService = new SummarizeService(llmService, promptManager);
     container.registerInstance(DITokens.SUMMARIZE_SERVICE, summarizeService, { logRegistration: false });
-    const contextManager = new ContextManager(
-      summaryThreshold,
-      maxBufferSize,
-      useSummary,
-      summarizeService,
-    );
+    const contextManager = new ContextManager(summaryThreshold, maxBufferSize, useSummary, summarizeService);
 
     // Register conversation config services to DI container early so PluginManager can inject them
     // This must be done before PluginManager is created
@@ -300,8 +291,7 @@ export class ConversationInitializer {
    * and registers ThreadService + ProactiveConversationService.
    */
   private static configureProactiveConversationService(serviceRegistry: ServiceRegistry): void {
-    const { threadService, proactiveConversationService } =
-      this.createProactiveConversationFromContainer();
+    const { threadService, proactiveConversationService } = this.createProactiveConversationFromContainer();
     serviceRegistry.registerThreadService(threadService);
     serviceRegistry.registerProactiveConversationService(proactiveConversationService);
   }
@@ -311,8 +301,10 @@ export class ConversationInitializer {
    * ProactiveConversationService is @injectable(); the container injects all 9 deps into its constructor.
    * Returns threadService and proactiveConversationService for ServiceRegistry registration.
    */
-  private static createProactiveConversationFromContainer(
-  ): { threadService: ThreadService; proactiveConversationService: ProactiveConversationService } {
+  private static createProactiveConversationFromContainer(): {
+    threadService: ThreadService;
+    proactiveConversationService: ProactiveConversationService;
+  } {
     const container = getContainer();
     const databaseManager = container.resolve<DatabaseManager>(DITokens.DATABASE_MANAGER);
     const aiManager = container.resolve<AIManager>(DITokens.AI_MANAGER);
@@ -332,11 +324,7 @@ export class ConversationInitializer {
     // Analysis stage decides searchQueries; retrieve() runs them then one short LLM sufficiency check (option B: supplement search if needed).
     const searchService = container.resolve<SearchService>(DITokens.SEARCH_SERVICE);
     const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
-    const preferenceKnowledge = new SearXNGPreferenceKnowledgeService(
-      searchService,
-      llmService,
-      promptManager,
-    );
+    const preferenceKnowledge = new SearXNGPreferenceKnowledgeService(searchService, llmService, promptManager);
     container.registerInstance(DITokens.PREFERENCE_KNOWLEDGE_SERVICE, preferenceKnowledge, {
       logRegistration: false,
     });

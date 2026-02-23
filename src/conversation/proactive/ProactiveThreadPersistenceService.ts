@@ -22,7 +22,7 @@ export interface ProactiveThreadPersistenceService {
  * Default implementation: writes to proactive_threads table via DatabaseManager.
  */
 export class DefaultProactiveThreadPersistenceService implements ProactiveThreadPersistenceService {
-  constructor(private databaseManager: DatabaseManager) { }
+  constructor(private databaseManager: DatabaseManager) {}
 
   async saveEndedThread(thread: ProactiveThread, summary?: string): Promise<void> {
     const adapter = this.databaseManager.getAdapter();

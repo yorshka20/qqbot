@@ -72,11 +72,7 @@ export abstract class ProtocolAdapter extends EventEmitter {
     return new Promise<TResponse>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingRequests.delete(echo);
-        reject(
-          new Error(
-            `API request timeout: ${context.action} (protocol: ${context.protocol})`,
-          ),
-        );
+        reject(new Error(`API request timeout: ${context.action} (protocol: ${context.protocol})`));
       }, context.timeout);
 
       this.pendingRequests.set(echo, {
@@ -131,11 +127,7 @@ export abstract class ProtocolAdapter extends EventEmitter {
     if (response.status === 'ok' && response.retcode === 0) {
       resolve(response.data);
     } else {
-      reject(
-        new Error(
-          `API request failed: ${response.retcode} - ${response.msg || 'Unknown error'}`,
-        ),
-      );
+      reject(new Error(`API request failed: ${response.retcode} - ${response.msg || 'Unknown error'}`));
     }
 
     return true;

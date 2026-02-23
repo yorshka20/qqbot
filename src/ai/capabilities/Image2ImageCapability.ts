@@ -16,7 +16,11 @@ export interface Image2ImageCapability {
    * @param options - Generation options
    * @returns ProviderImageGenerationResponse with relativePath or base64
    */
-  generateImageFromImage(image: string, prompt: string, options?: Image2ImageOptions): Promise<ProviderImageGenerationResponse>;
+  generateImageFromImage(
+    image: string,
+    prompt: string,
+    options?: Image2ImageOptions,
+  ): Promise<ProviderImageGenerationResponse>;
 }
 
 /**

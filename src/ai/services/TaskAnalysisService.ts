@@ -20,7 +20,7 @@ export class TaskAnalysisService {
     private taskManager: TaskManager,
     private promptManager: PromptManager,
     private hookManager: HookManager,
-  ) { }
+  ) {}
 
   /**
    * Analyze conversation and generate tasks
@@ -94,7 +94,7 @@ export class TaskAnalysisService {
       const tasks = this.parseTaskListResponse(response.text, context);
 
       logger.info(
-        `[TaskAnalysisService] ✓ Task analysis completed | taskCount=${tasks.length} | tasks=${tasks.map(t => t.type).join(', ')}`,
+        `[TaskAnalysisService] ✓ Task analysis completed | taskCount=${tasks.length} | tasks=${tasks.map((t) => t.type).join(', ')}`,
       );
 
       return {
@@ -121,8 +121,7 @@ export class TaskAnalysisService {
    */
   private buildPrompt(context: ConversationContext): string {
     // Build task types description with enhanced information(excluding reply task type)
-    const taskTypes = this.taskManager.getAllTaskTypes()
-      .filter(tt => tt.name.toLowerCase() !== 'reply');
+    const taskTypes = this.taskManager.getAllTaskTypes().filter((tt) => tt.name.toLowerCase() !== 'reply');
     logger.debug(`[TaskAnalysisService] Building prompt with ${taskTypes.length} task type(s)`);
 
     const taskTypesDescription = taskTypes
@@ -167,9 +166,13 @@ export class TaskAnalysisService {
     logger.debug(`[TaskAnalysisService] Conversation history length: ${historyText.length} chars`);
 
     // Render system prompt template
-    const systemPrompt = this.promptManager.render('task.analyze.system', {
-      taskTypesDescription,
-    }, { injectBase: true });
+    const systemPrompt = this.promptManager.render(
+      'task.analyze.system',
+      {
+        taskTypesDescription,
+      },
+      { injectBase: true },
+    );
 
     // Render user prompt template
     const userPrompt = this.promptManager.render('task.analyze.user', {
@@ -346,10 +349,7 @@ export class TaskAnalysisService {
    * Parse AI response to extract task list
    * Filters out reply tasks (system will always generate one)
    */
-  private parseTaskListResponse(
-    aiResponse: string,
-    context: ConversationContext
-  ): Task[] {
+  private parseTaskListResponse(aiResponse: string, context: ConversationContext): Task[] {
     const jsonText = this.extractJSON(aiResponse);
     if (!jsonText) {
       return [];
@@ -365,27 +365,26 @@ export class TaskAnalysisService {
     const taskList = parsed.tasks;
 
     // Convert to Task objects, validate task type exists
-    return taskList.map((t: Task) => {
-      if (!t.type) {
-        logger.warn('[TaskAnalysisService] Missing type field in task, skipping', t);
-        return null;
-      }
-      const taskTypeDef = this.taskManager.getTaskType(t.type);
-      if (!taskTypeDef) {
-        logger.warn(`[TaskAnalysisService] Unknown task type from LLM: ${t.type}, skipping`);
-        return null;
-      }
-      return this.parseSingleTask(t, context);
-    }).filter((t): t is Task => t !== null);
+    return taskList
+      .map((t: Task) => {
+        if (!t.type) {
+          logger.warn('[TaskAnalysisService] Missing type field in task, skipping', t);
+          return null;
+        }
+        const taskTypeDef = this.taskManager.getTaskType(t.type);
+        if (!taskTypeDef) {
+          logger.warn(`[TaskAnalysisService] Unknown task type from LLM: ${t.type}, skipping`);
+          return null;
+        }
+        return this.parseSingleTask(t, context);
+      })
+      .filter((t): t is Task => t !== null);
   }
 
   /**
    * Parse single task from parsed JSON object
    */
-  private parseSingleTask(
-    parsed: Task,
-    context: ConversationContext
-  ): Task {
+  private parseSingleTask(parsed: Task, context: ConversationContext): Task {
     if (!parsed.type) {
       throw new Error('Task type (type) is required');
     }
@@ -408,7 +407,7 @@ export class TaskAnalysisService {
     return {
       type: parsed.type,
       parameters: parsed.parameters || {},
-      executor: taskType.executor,  // Use executor defined in task type
+      executor: taskType.executor, // Use executor defined in task type
       metadata: {
         analyzedAt: new Date().toISOString(),
         userId: context.userId,

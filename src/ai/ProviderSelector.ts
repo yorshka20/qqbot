@@ -9,7 +9,7 @@ import type { CapabilityType } from './capabilities/types';
 /**
  * Provider selection for a session (alias for ProviderSelection)
  */
-export interface SessionProviderSelection extends ProviderSelection { }
+export interface SessionProviderSelection extends ProviderSelection {}
 
 /**
  * Provider Selector
@@ -23,7 +23,7 @@ export class ProviderSelector {
   constructor(
     private aiManager: AIManager,
     private configService: ConversationConfigService,
-  ) { }
+  ) {}
 
   /**
    * Parse sessionId to extract sessionId and sessionType

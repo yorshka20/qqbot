@@ -38,7 +38,9 @@ export class TaskInitializer {
 
     // Get all registered task types
     const taskTypes = taskManager.getAllTaskTypes();
-    logger.info(`✅ [TaskInitializer] Initialized with ${taskTypes.length} task type(s): ${taskTypes.map(t => t.name).join(', ')}`);
+    logger.info(
+      `✅ [TaskInitializer] Initialized with ${taskTypes.length} task type(s): ${taskTypes.map((t) => t.name).join(', ')}`,
+    );
   }
 
   /**
@@ -52,7 +54,9 @@ export class TaskInitializer {
     const executorFiles = files.filter((file) => extname(file) === '.ts' || extname(file) === '.js');
 
     if (executorFiles.length > 0) {
-      logger.info(`📁 [TaskInitializer] Found ${executorFiles.length} task executor file(s) in directory: ${directory}`);
+      logger.info(
+        `📁 [TaskInitializer] Found ${executorFiles.length} task executor file(s) in directory: ${directory}`,
+      );
     }
 
     for (const file of executorFiles) {
@@ -69,7 +73,7 @@ export class TaskInitializer {
         }
 
         // Get task metadata from decorator (decorator executed during import)
-        const metadata = getAllTaskMetadata().find(m => m.executorClass === ExecutorClass);
+        const metadata = getAllTaskMetadata().find((m) => m.executorClass === ExecutorClass);
         if (metadata) {
           logger.debug(`[TaskInitializer] Loaded task executor: ${metadata.name} from ${file}`);
         }

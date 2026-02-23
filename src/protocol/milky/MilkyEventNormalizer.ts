@@ -45,113 +45,41 @@ export class MilkyEventNormalizer {
       case 'message_receive':
         return MilkyEventNormalizer.normalizeMessageEvent(event, baseEvent);
       case 'message_recall':
-        return MilkyEventNormalizer.normalizeNoticeEvent(
-          event,
-          baseEvent,
-          'message_recall',
-        );
+        return MilkyEventNormalizer.normalizeNoticeEvent(event, baseEvent, 'message_recall');
       case 'friend_request':
-        return MilkyEventNormalizer.normalizeRequestEvent(
-          event,
-          baseEvent,
-          'friend_request',
-        );
+        return MilkyEventNormalizer.normalizeRequestEvent(event, baseEvent, 'friend_request');
       case 'group_join_request':
-        return MilkyEventNormalizer.normalizeRequestEvent(
-          event,
-          baseEvent,
-          'group_join_request',
-        );
+        return MilkyEventNormalizer.normalizeRequestEvent(event, baseEvent, 'group_join_request');
       case 'group_invited_join_request':
-        return MilkyEventNormalizer.normalizeRequestEvent(
-          event,
-          baseEvent,
-          'group_invited_join_request',
-        );
+        return MilkyEventNormalizer.normalizeRequestEvent(event, baseEvent, 'group_invited_join_request');
       case 'group_invitation':
-        return MilkyEventNormalizer.normalizeNoticeEvent(
-          event,
-          baseEvent,
-          'group_invitation',
-        );
+        return MilkyEventNormalizer.normalizeNoticeEvent(event, baseEvent, 'group_invitation');
       case 'friend_nudge':
-        return MilkyEventNormalizer.normalizeNoticeEvent(
-          event,
-          baseEvent,
-          'friend_nudge',
-        );
+        return MilkyEventNormalizer.normalizeNoticeEvent(event, baseEvent, 'friend_nudge');
       case 'friend_file_upload':
-        return MilkyEventNormalizer.normalizeNoticeEvent(
-          event,
-          baseEvent,
-          'friend_file_upload',
-        );
+        return MilkyEventNormalizer.normalizeNoticeEvent(event, baseEvent, 'friend_file_upload');
       case 'group_admin_change':
-        return MilkyEventNormalizer.normalizeNoticeEvent(
-          event,
-          baseEvent,
-          'group_admin_change',
-        );
+        return MilkyEventNormalizer.normalizeNoticeEvent(event, baseEvent, 'group_admin_change');
       case 'group_essence_message_change':
-        return MilkyEventNormalizer.normalizeNoticeEvent(
-          event,
-          baseEvent,
-          'group_essence_message_change',
-        );
+        return MilkyEventNormalizer.normalizeNoticeEvent(event, baseEvent, 'group_essence_message_change');
       case 'group_member_increase':
-        return MilkyEventNormalizer.normalizeNoticeEvent(
-          event,
-          baseEvent,
-          'group_member_increase',
-        );
+        return MilkyEventNormalizer.normalizeNoticeEvent(event, baseEvent, 'group_member_increase');
       case 'group_member_decrease':
-        return MilkyEventNormalizer.normalizeNoticeEvent(
-          event,
-          baseEvent,
-          'group_member_decrease',
-        );
+        return MilkyEventNormalizer.normalizeNoticeEvent(event, baseEvent, 'group_member_decrease');
       case 'group_name_change':
-        return MilkyEventNormalizer.normalizeNoticeEvent(
-          event,
-          baseEvent,
-          'group_name_change',
-        );
+        return MilkyEventNormalizer.normalizeNoticeEvent(event, baseEvent, 'group_name_change');
       case 'group_message_reaction':
-        return MilkyEventNormalizer.normalizeNoticeEvent(
-          event,
-          baseEvent,
-          'group_message_reaction',
-        );
+        return MilkyEventNormalizer.normalizeNoticeEvent(event, baseEvent, 'group_message_reaction');
       case 'group_mute':
-        return MilkyEventNormalizer.normalizeNoticeEvent(
-          event,
-          baseEvent,
-          'group_mute',
-        );
+        return MilkyEventNormalizer.normalizeNoticeEvent(event, baseEvent, 'group_mute');
       case 'group_whole_mute':
-        return MilkyEventNormalizer.normalizeNoticeEvent(
-          event,
-          baseEvent,
-          'group_whole_mute',
-        );
+        return MilkyEventNormalizer.normalizeNoticeEvent(event, baseEvent, 'group_whole_mute');
       case 'group_nudge':
-        return MilkyEventNormalizer.normalizeNoticeEvent(
-          event,
-          baseEvent,
-          'group_nudge',
-        );
+        return MilkyEventNormalizer.normalizeNoticeEvent(event, baseEvent, 'group_nudge');
       case 'group_file_upload':
-        return MilkyEventNormalizer.normalizeNoticeEvent(
-          event,
-          baseEvent,
-          'group_file_upload',
-        );
+        return MilkyEventNormalizer.normalizeNoticeEvent(event, baseEvent, 'group_file_upload');
       case 'bot_offline':
-        return MilkyEventNormalizer.normalizeMetaEvent(
-          event,
-          baseEvent,
-          'bot_offline',
-        );
+        return MilkyEventNormalizer.normalizeMetaEvent(event, baseEvent, 'bot_offline');
       default:
         return baseEvent;
     }
@@ -165,10 +93,7 @@ export class MilkyEventNormalizer {
     baseEvent: BaseEvent,
   ): NormalizedMilkyMessageEvent {
     const { data } = event;
-    const messageType =
-      data.message_scene === 'group' || data.message_scene === 'temp'
-        ? 'group'
-        : 'private';
+    const messageType = data.message_scene === 'group' || data.message_scene === 'temp' ? 'group' : 'private';
 
     const normalized: NormalizedMilkyMessageEvent = {
       ...baseEvent,

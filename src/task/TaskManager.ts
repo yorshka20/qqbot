@@ -50,10 +50,7 @@ export class TaskManager {
    * Register executor class for lazy instantiation with dependency injection
    * Similar to CommandManager.createLazyHandler
    */
-  private registerLazyExecutor(
-    executorClass: new (...args: any[]) => TaskExecutor,
-    executorName: string,
-  ): void {
+  private registerLazyExecutor(executorClass: new (...args: any[]) => TaskExecutor, executorName: string): void {
     let cachedInstance: TaskExecutor | null = null;
 
     // Helper function to get or create the instance with dependency injection

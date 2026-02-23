@@ -89,7 +89,9 @@ export class BananaCommand implements CommandHandler {
           );
           logger.debug(`[BananaCommand] Extracted ${images.length} image(s) from message`);
         } catch (error) {
-          logger.warn(`[BananaCommand] Failed to extract images: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          logger.warn(
+            `[BananaCommand] Failed to extract images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          );
           // Continue without images - will use text2img
         }
       } else {
@@ -107,7 +109,9 @@ export class BananaCommand implements CommandHandler {
         try {
           inputImage = visionImageToString(images[0]!);
         } catch (error) {
-          logger.error(`[BananaCommand] Failed to convert image to string format: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          logger.error(
+            `[BananaCommand] Failed to convert image to string format: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          );
           return {
             success: false,
             error: `Failed to process image: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -292,7 +296,9 @@ export class BananaProCommand implements CommandHandler {
           );
           logger.debug(`[BananaProCommand] Extracted ${images.length} image(s) from message`);
         } catch (error) {
-          logger.warn(`[BananaProCommand] Failed to extract images: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          logger.warn(
+            `[BananaProCommand] Failed to extract images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          );
           // Continue without images - will use text2img
         }
       } else {
@@ -310,7 +316,9 @@ export class BananaProCommand implements CommandHandler {
         try {
           inputImage = visionImageToString(images[0]!);
         } catch (error) {
-          logger.error(`[BananaProCommand] Failed to convert image to string format: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          logger.error(
+            `[BananaProCommand] Failed to convert image to string format: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          );
           return {
             success: false,
             error: `Failed to process image: ${error instanceof Error ? error.message : 'Unknown error'}`,

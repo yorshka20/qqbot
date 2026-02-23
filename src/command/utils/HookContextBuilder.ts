@@ -9,7 +9,7 @@ import type { CommandContext } from '../types';
  * Create hook context for command execution with custom message
  * This utility function allows command handlers to create HookContext
  * with a different message (e.g., processed prompt) than the original command message
- * 
+ *
  * @param context - CommandContext with conversationContext already built
  * @param message - Custom message content (e.g., processed prompt)
  * @returns HookContext ready for use with AIService

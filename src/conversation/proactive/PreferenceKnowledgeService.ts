@@ -66,7 +66,7 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
     private readonly searchService: SearchService,
     private readonly llmService: LLMService,
     private readonly promptManager: PromptManager,
-  ) { }
+  ) {}
 
   async retrieve(
     preferenceKey: string,
@@ -88,11 +88,7 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
     let chunks = await this.executeQueries(preferenceKey, searchQueries, limit);
 
     if (chunks.length > 0 && this.llmService && this.promptManager) {
-      const extra = await this.checkSufficiencyAndMaybeSupplement(
-        queryOrTopic.trim() || '当前话题',
-        chunks,
-        limit,
-      );
+      const extra = await this.checkSufficiencyAndMaybeSupplement(queryOrTopic.trim() || '当前话题', chunks, limit);
       if (extra.length > 0) {
         chunks = [...chunks, ...extra];
       }
@@ -108,16 +104,9 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
   /**
    * Short LLM check: is retrieved knowledge sufficient? If not, return chunks from one supplement search.
    */
-  private async checkSufficiencyAndMaybeSupplement(
-    topic: string,
-    chunks: string[],
-    limit: number,
-  ): Promise<string[]> {
-    const chunksSummary = chunks
-      .map((c) => c.replace(/\n/g, ' ').trim().slice(0, 80))
-      .join('\n');
+  private async checkSufficiencyAndMaybeSupplement(topic: string, chunks: string[], limit: number): Promise<string[]> {
+    const chunksSummary = chunks.map((c) => c.replace(/\n/g, ' ').trim().slice(0, 80)).join('\n');
     const summaryCapped = chunksSummary.slice(0, 400);
-
 
     const prompt = this.promptManager.render('llm.proactive_knowledge_sufficient', {
       topic,
@@ -174,11 +163,7 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
   }
 
   /** Execute a list of search queries once and return combined chunks (no LLM). */
-  private async executeQueries(
-    preferenceKey: string,
-    queries: string[],
-    limit: number,
-  ): Promise<string[]> {
+  private async executeQueries(preferenceKey: string, queries: string[], limit: number): Promise<string[]> {
     const allChunks: string[] = [];
     const perQueryLimit = Math.max(2, Math.ceil(limit / queries.length));
     for (const query of queries) {

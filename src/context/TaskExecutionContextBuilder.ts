@@ -18,7 +18,7 @@ export class TaskExecutionContextBuilder {
   private taskResults?: Map<string, TaskResult>;
   private metadata?: Record<string, unknown>;
 
-  private constructor() { }
+  private constructor() {}
 
   /**
    * Create a new builder instance

@@ -190,10 +190,7 @@ export class CommandManager {
    * Check if user has required permissions
    * Checks conversation config permissions first, then falls back to default permission checker
    */
-  private async checkPermissions(
-    context: CommandContext,
-    requiredPermissions?: PermissionLevel[],
-  ): Promise<boolean> {
+  private async checkPermissions(context: CommandContext, requiredPermissions?: PermissionLevel[]): Promise<boolean> {
     // If no permissions required, allow all users
     if (!requiredPermissions || requiredPermissions.length === 0) {
       return true;
@@ -322,7 +319,7 @@ export class CommandManager {
     }
 
     // Get user role from context (if available)
-    const userRole = context.metadata.senderRole
+    const userRole = context.metadata.senderRole;
 
     // Check if user is admin - admins can always execute commands regardless of enabled state
     const isAdmin = this.permissionChecker.checkPermission(context.userId, context.messageType, ['admin'], userRole);
@@ -563,11 +560,7 @@ export class CommandManager {
    * @param sessionType - Session type ('user' or 'group')
    * @returns true if command is enabled, false otherwise
    */
-  async isCommandEnabled(
-    name: string,
-    sessionId: string,
-    sessionType: 'user' | 'group',
-  ): Promise<boolean> {
+  async isCommandEnabled(name: string, sessionId: string, sessionType: 'user' | 'group'): Promise<boolean> {
     const registration = this.getRegistration(name);
     if (!registration) {
       return false;
@@ -576,11 +569,7 @@ export class CommandManager {
     let isEnabled = registration.enabled ?? true; // Default to enabled if not set
 
     // Check conversation config
-    const conversationEnabled = await this.conversationConfigService.getCommandEnabled(
-      name,
-      sessionId,
-      sessionType,
-    );
+    const conversationEnabled = await this.conversationConfigService.getCommandEnabled(name, sessionId, sessionType);
     if (conversationEnabled !== null) {
       return conversationEnabled;
     }

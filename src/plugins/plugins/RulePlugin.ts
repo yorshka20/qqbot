@@ -197,7 +197,8 @@ export class RulePlugin extends PluginBase {
     }
 
     // Validate cron expression (basic check)
-    const cronPattern = /^(\*|([0-9]|[1-5][0-9])|\*\/[0-9]+)\s+(\*|([0-9]|[1-5][0-9])|\*\/[0-9]+)\s+(\*|([1-9]|[12][0-9]|3[01])|\*\/[0-9]+)\s+(\*|([1-9]|1[0-2])|\*\/[0-9]+)\s+(\*|([0-6])|\*\/[0-9]+)$/;
+    const cronPattern =
+      /^(\*|([0-9]|[1-5][0-9])|\*\/[0-9]+)\s+(\*|([0-9]|[1-5][0-9])|\*\/[0-9]+)\s+(\*|([1-9]|[12][0-9]|3[01])|\*\/[0-9]+)\s+(\*|([1-9]|1[0-2])|\*\/[0-9]+)\s+(\*|([0-6])|\*\/[0-9]+)$/;
     if (!cronPattern.test(rule.schedule)) {
       throw new Error(`Invalid cron expression: ${rule.schedule}`);
     }
@@ -306,11 +307,12 @@ export class RulePlugin extends PluginBase {
       if (result.success) {
         logger.info(`[RulePlugin] Rule executed successfully: group=${groupId}, command=${rule.command}`);
       } else {
-        logger.warn(`[RulePlugin] Rule execution failed: group=${groupId}, command=${rule.command}, error=${result.error}`);
+        logger.warn(
+          `[RulePlugin] Rule execution failed: group=${groupId}, command=${rule.command}, error=${result.error}`,
+        );
       }
     } catch (error) {
       logger.error(`[RulePlugin] Error executing rule for group ${groupId}:`, error);
     }
   }
-
 }

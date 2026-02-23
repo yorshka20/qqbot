@@ -36,7 +36,7 @@ export class ImagePromptService {
   constructor(
     private llmService: LLMService,
     private promptManager: PromptManager,
-  ) { }
+  ) {}
 
   /**
    * Prepare image generation parameters
@@ -63,7 +63,9 @@ export class ImagePromptService {
       return await this.preprocessPromptWithLLM(userInput, options, sessionId, templateName);
     } catch (llmError) {
       const llmErr = llmError instanceof Error ? llmError : new Error('Unknown LLM error');
-      logger.warn(`[ImagePromptService] LLM preprocessing failed, falling back to direct user input | error=${llmErr.message}`);
+      logger.warn(
+        `[ImagePromptService] LLM preprocessing failed, falling back to direct user input | error=${llmErr.message}`,
+      );
       return this.prepareDirectPrompt(userInput, options);
     }
   }
@@ -85,9 +87,13 @@ export class ImagePromptService {
     // Build LLM prompt using PromptManager
     // Default template name: 'text2img.generate' (from prompts/text2img/generate.txt)
     // Can be overridden with templateName parameter (e.g., 'text2img.generate_nai')
-    const llmPrompt = this.promptManager.render(templateName, {
-      description: userInput,
-    }, { injectBase: true });
+    const llmPrompt = this.promptManager.render(
+      templateName,
+      {
+        description: userInput,
+      },
+      { injectBase: true },
+    );
 
     logger.debug('[ImagePromptService] Calling LLM to preprocess image generation parameters...');
 
@@ -151,9 +157,13 @@ export class ImagePromptService {
     templateName: string = 'img2video.generate',
   ): Promise<I2VPromptResult> {
     try {
-      const llmPrompt = this.promptManager.render(templateName, {
-        description: userInput ?? '',
-      }, { injectBase: true });
+      const llmPrompt = this.promptManager.render(
+        templateName,
+        {
+          description: userInput ?? '',
+        },
+        { injectBase: true },
+      );
 
       logger.debug('[ImagePromptService] Calling LLM to prepare I2V prompt...');
 
@@ -196,7 +206,8 @@ export class ImagePromptService {
       try {
         const parsed = JSON.parse(jsonMatch[0]);
         if (parsed.prompt && typeof parsed.prompt === 'string') {
-          let duration = typeof parsed.duration_seconds === 'number' ? parsed.duration_seconds : DEFAULT_I2V_DURATION_SECONDS;
+          let duration =
+            typeof parsed.duration_seconds === 'number' ? parsed.duration_seconds : DEFAULT_I2V_DURATION_SECONDS;
           if (typeof parsed.duration_seconds === 'string') {
             const n = parseInt(parsed.duration_seconds, 10);
             if (!isNaN(n)) duration = n;
@@ -273,10 +284,7 @@ export class ImagePromptService {
    * @param fallbackPrompt - Fallback prompt to use if parsing fails
    * @returns Parsed image generation parameters
    */
-  private parseImageGenerationParams(
-    llmResponse: string,
-    fallbackPrompt: string,
-  ): Text2ImageOptions {
+  private parseImageGenerationParams(llmResponse: string, fallbackPrompt: string): Text2ImageOptions {
     try {
       // Try to extract JSON from the response
       // Handle cases where JSON might be wrapped in markdown code blocks
@@ -320,7 +328,9 @@ export class ImagePromptService {
         sampler: (parsed.sampler as string) || 'Euler a',
       };
 
-      logger.debug(`[ImagePromptService] Successfully parsed LLM response | prompt="${result.prompt.substring(0, 50)}..."`);
+      logger.debug(
+        `[ImagePromptService] Successfully parsed LLM response | prompt="${result.prompt.substring(0, 50)}..."`,
+      );
 
       return result;
     } catch (parseError) {

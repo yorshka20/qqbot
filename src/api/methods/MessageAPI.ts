@@ -15,7 +15,7 @@ export interface SendMessageResult {
 }
 
 export class MessageAPI {
-  constructor(private apiClient: APIClient) { }
+  constructor(private apiClient: APIClient) {}
 
   /**
    * Extract protocol from context (CommandContext or NormalizedMessageEvent)
@@ -370,9 +370,9 @@ export class MessageAPI {
           const segments = Array.isArray(dbMessage.rawContent)
             ? (dbMessage.rawContent as Array<{ type: string; data?: Record<string, unknown> }>)
             : (JSON.parse(dbMessage.rawContent as string) as Array<{
-              type: string;
-              data?: Record<string, unknown>;
-            }>);
+                type: string;
+                data?: Record<string, unknown>;
+              }>);
           normalizedMessage.segments = segments;
         } catch {
           normalizedMessage.segments = [
@@ -426,8 +426,6 @@ export class MessageAPI {
       return normalizedMessage;
     }
 
-    throw new Error(
-      `Message not found | messageSeq=${messageSeq} | protocol=${protocol} | groupId=${groupId}`,
-    );
+    throw new Error(`Message not found | messageSeq=${messageSeq} | protocol=${protocol} | groupId=${groupId}`);
   }
 }

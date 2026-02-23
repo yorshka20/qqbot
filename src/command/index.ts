@@ -12,6 +12,5 @@ export type {
   CommandRegistration,
   CommandResult,
   ParsedCommand,
-  PermissionLevel
+  PermissionLevel,
 } from './types';
-

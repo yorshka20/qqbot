@@ -181,10 +181,14 @@ export class SearchService {
       })
       .join('\n\n');
 
-    return this.promptManager.render('llm.format_search_results', {
-      totalResults: results.length.toString(),
-      formattedResults: formatted,
-    }, { injectBase: true });
+    return this.promptManager.render(
+      'llm.format_search_results',
+      {
+        totalResults: results.length.toString(),
+        formattedResults: formatted,
+      },
+      { injectBase: true },
+    );
   }
 
   /**
@@ -243,10 +247,14 @@ export class SearchService {
     const queryContext = `基于以下 ${searchResults.length} 个查询的综合搜索结果：\n${queryInfo.join('\n')}\n\n`;
 
     // Use the same template as single search results
-    return this.promptManager.render('llm.format_search_results', {
-      totalResults: limitedResults.length.toString(),
-      formattedResults: queryContext + formatted,
-    }, { injectBase: true });
+    return this.promptManager.render(
+      'llm.format_search_results',
+      {
+        totalResults: limitedResults.length.toString(),
+        formattedResults: queryContext + formatted,
+      },
+      { injectBase: true },
+    );
   }
 
   /**

@@ -26,7 +26,7 @@ export class GroupHistoryService {
   constructor(
     private databaseManager: DatabaseManager,
     private defaultLimit = 30,
-  ) { }
+  ) {}
 
   /**
    * Get last N messages for a group (from DB).
@@ -84,11 +84,7 @@ export class GroupHistoryService {
    * Get messages for a group with createdAt >= since (for incremental extract; survives bot restart when since is persisted).
    * Returns empty if no conversation or no messages. Capped at maxLimit to avoid huge payloads.
    */
-  async getMessagesSince(
-    groupId: string | number,
-    since: Date,
-    maxLimit = 2000,
-  ): Promise<GroupMessageEntry[]> {
+  async getMessagesSince(groupId: string | number, since: Date, maxLimit = 2000): Promise<GroupMessageEntry[]> {
     const adapter = this.databaseManager.getAdapter();
     if (!adapter?.isConnected()) {
       return [];

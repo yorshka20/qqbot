@@ -52,9 +52,7 @@ export function parseSearchDecision(response: string): SearchDecisionResult {
  * Parse MULTI_SEARCH format into individual queries.
  * Format: "查询1: <query> | <explanation>\n查询2: <query> | <explanation>"
  */
-export function parseMultiSearchQueries(
-  content: string,
-): Array<{ query: string; explanation: string }> {
+export function parseMultiSearchQueries(content: string): Array<{ query: string; explanation: string }> {
   const queries: Array<{ query: string; explanation: string }> = [];
   const lines = content
     .split('\n')

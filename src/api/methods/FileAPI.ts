@@ -11,7 +11,7 @@ export interface UploadFileResult {
 }
 
 export class FileAPI {
-  constructor(private apiClient: APIClient) { }
+  constructor(private apiClient: APIClient) {}
 
   /**
    * Extract protocol from context (CommandContext or NormalizedMessageEvent)

@@ -112,14 +112,10 @@ export class ComfyUICloudRunClient {
 
     const outputs = data.outputs ?? [];
     // Accept either { type: 'image', data } or RunPod-style { data } (first with data)
-    const firstImage = outputs.find(
-      (o) => (o.type === 'image' && o.data) || (o.data && !o.type),
-    );
+    const firstImage = outputs.find((o) => (o.type === 'image' && o.data) || (o.data && !o.type));
     if (!firstImage?.data || typeof firstImage.data !== 'string') {
       throw new Error(
-        data.message
-          ? `ComfyUI Cloud Run: ${data.message}`
-          : 'ComfyUI Cloud Run completed but no image in outputs',
+        data.message ? `ComfyUI Cloud Run: ${data.message}` : 'ComfyUI Cloud Run completed but no image in outputs',
       );
     }
 

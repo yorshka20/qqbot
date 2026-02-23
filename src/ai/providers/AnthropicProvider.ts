@@ -375,11 +375,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
   /**
    * Explain image(s): describe image content as text. Prompt is the full rendered text from the dedicated explain-image template.
    */
-  async explainImages(
-    images: VisionImage[],
-    prompt: string,
-    options?: AIGenerateOptions,
-  ): Promise<AIGenerateResponse> {
+  async explainImages(images: VisionImage[], prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     return this.generateWithVision(prompt, images, options);
   }
 

@@ -21,7 +21,7 @@ export class DatabasePersistenceSystem implements System {
   readonly stage = SystemStage.COMPLETE;
   readonly priority = SystemPriority.DatabasePersistence; // Lower priority, runs after other complete stage systems
 
-  constructor(private databaseManager: DatabaseManager) { }
+  constructor(private databaseManager: DatabaseManager) {}
 
   enabled(): boolean {
     return true;

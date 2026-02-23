@@ -81,7 +81,11 @@ export class NudgePlugin extends PluginBase {
 
     // Type guard: check if event has required fields for group_nudge
     const nudgeEvent = event as GroupNudgeNoticeEvent;
-    if (typeof nudgeEvent.sender_id !== 'number' || typeof nudgeEvent.receiver_id !== 'number' || typeof nudgeEvent.group_id !== 'number') {
+    if (
+      typeof nudgeEvent.sender_id !== 'number' ||
+      typeof nudgeEvent.receiver_id !== 'number' ||
+      typeof nudgeEvent.group_id !== 'number'
+    ) {
       logger.warn('[NudgePlugin] Invalid group_nudge event structure');
       return;
     }

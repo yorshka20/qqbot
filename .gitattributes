@@ -1,0 +1,2 @@
+# Normalize line endings to LF in repo and on checkout (avoids CRLF/LF flip between Windows and Mac)
+* text=auto eol=lf

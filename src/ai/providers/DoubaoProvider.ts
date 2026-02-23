@@ -181,10 +181,10 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
 
       const usage = response.usage
         ? {
-          promptTokens: response.usage.prompt_tokens,
-          completionTokens: response.usage.completion_tokens,
-          totalTokens: response.usage.total_tokens,
-        }
+            promptTokens: response.usage.prompt_tokens,
+            completionTokens: response.usage.completion_tokens,
+            totalTokens: response.usage.total_tokens,
+          }
         : undefined;
 
       return {
@@ -425,10 +425,10 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
 
       const usage = response.usage
         ? {
-          promptTokens: response.usage.prompt_tokens,
-          completionTokens: response.usage.completion_tokens,
-          totalTokens: response.usage.total_tokens,
-        }
+            promptTokens: response.usage.prompt_tokens,
+            completionTokens: response.usage.completion_tokens,
+            totalTokens: response.usage.total_tokens,
+          }
         : undefined;
 
       return {
@@ -450,11 +450,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
   /**
    * Explain image(s): describe image content as text. Prompt is the full rendered text from the dedicated explain-image template.
    */
-  async explainImages(
-    images: VisionImage[],
-    prompt: string,
-    options?: AIGenerateOptions,
-  ): Promise<AIGenerateResponse> {
+  async explainImages(images: VisionImage[], prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     return this.generateWithVision(prompt, images, options);
   }
 

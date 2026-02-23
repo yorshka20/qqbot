@@ -25,7 +25,7 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
   constructor(
     private db: Database,
     private tableName: string,
-  ) { }
+  ) {}
 
   async create(data: Omit<T, 'id' | 'createdAt' | 'updatedAt'>): Promise<T> {
     const now = new Date();
@@ -225,7 +225,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
   private db: Database | null = null;
   private models: DatabaseModel | null = null;
 
-  constructor(private dbPath: string) { }
+  constructor(private dbPath: string) {}
 
   async connect(): Promise<void> {
     if (this.db) {
@@ -445,7 +445,10 @@ export class SQLiteAdapter implements DatabaseAdapter {
       conversationConfigs: new SQLiteModelAccessor<ConversationConfig>(this.db, 'conversation_configs'),
       proactiveThreads: new SQLiteModelAccessor<ProactiveThreadRecord>(this.db, 'proactive_threads'),
       memories: new SQLiteModelAccessor<Memory>(this.db, 'memories'),
-      memoryExtractUserCursors: new SQLiteModelAccessor<MemoryExtractUserCursor>(this.db, 'memory_extract_user_cursors'),
+      memoryExtractUserCursors: new SQLiteModelAccessor<MemoryExtractUserCursor>(
+        this.db,
+        'memory_extract_user_cursors',
+      ),
     };
   }
 }

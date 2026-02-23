@@ -25,7 +25,7 @@ export class ThreadContextCompressionService {
     private threadService: ThreadService,
     private summarizeService: SummarizeService,
     private promptManager?: PromptManager,
-  ) { }
+  ) {}
 
   /**
    * Schedule compression check for all active threads in the group (async, non-blocking).
@@ -106,7 +106,7 @@ export class ThreadContextCompressionService {
       if (!summaryText) {
         logger.warn(
           `[ThreadContextCompressionService] Empty summary for thread ${threadId}, skipping replace | ` +
-          `segmentLength=${segmentLength} conversationTextLength=${conversationText.length}`,
+            `segmentLength=${segmentLength} conversationTextLength=${conversationText.length}`,
         );
         return;
       }
