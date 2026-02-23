@@ -1,96 +1,92 @@
-// Memory Service - single table for group and user memories, in-memory cache + DB sync
+// Memory Service - file-based persistence for group and user memories (like prompt templates)
 
-import type { DatabaseManager } from '@/database/DatabaseManager';
-import type { Memory } from '@/database/models/types';
 import { logger } from '@/utils/logger';
+import { readFileSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
-/** User ID used for group-level memory slot (one row per group). */
+/** User ID used for group-level memory slot (one file per group: _global_.txt). */
 export const GROUP_MEMORY_USER_ID = '_global_memory_';
 
-/** Default max length for content to avoid exceeding SQLite / prompt limits. */
+/** Default max length for content to avoid exceeding prompt limits. */
 const DEFAULT_MAX_CONTENT_LENGTH = 100_000;
 
+/** Default base directory for memory files (relative to cwd). Overridden by config. */
+const DEFAULT_MEMORY_DIR = 'data/memory';
+
+/** Filename for group-level memory inside a group directory. */
+const GROUP_MEMORY_FILENAME = '_global_.txt';
+
 export interface MemoryServiceOptions {
+  /** Base directory for memory files (resolved with process.cwd()). Default "data/memory". */
+  memoryDir?: string;
   /** Max length for memory content (truncate if exceeded). */
   maxContentLength?: number;
 }
 
 /**
- * In-memory cache: groupId -> (userId | GROUP_MEMORY_USER_ID) -> content.
- * Loaded on startup; writes go to cache then DB.
+ * File-backed memory: one directory per groupId, group memory in _global_.txt, user memory in {userId}.txt.
+ * No in-memory cache so manual edits to files are visible on next read.
  */
 export class MemoryService {
-  private cache = new Map<string, Map<string, string>>();
-  private idByKey = new Map<string, string>(); // "${groupId}:${userId}" -> record id for updates
-  private maxContentLength: number;
+  private readonly basePath: string;
+  private readonly maxContentLength: number;
 
-  constructor(
-    private databaseManager: DatabaseManager,
-    options: MemoryServiceOptions = {},
-  ) {
+  constructor(options: MemoryServiceOptions = {}) {
+    const memoryDir = options.memoryDir ?? DEFAULT_MEMORY_DIR;
+    this.basePath = join(process.cwd(), memoryDir);
     this.maxContentLength = options.maxContentLength ?? DEFAULT_MAX_CONTENT_LENGTH;
   }
 
   /**
-   * Load all memories from DB into cache. Call after DB is ready (e.g. on bot start).
+   * Resolve file path for a memory slot. Group memory uses _global_.txt; user memory uses {userId}.txt.
+   * Sanitizes groupId and userId to avoid path traversal (only alphanumeric and underscore allowed; else replaced with _).
    */
-  async loadAll(): Promise<void> {
-    this.cache.clear();
-    this.idByKey.clear();
+  private getFilePath(groupId: string, userId: string): string {
+    const safeGroupId = this.sanitizePathSegment(groupId);
+    const filename = userId === GROUP_MEMORY_USER_ID ? GROUP_MEMORY_FILENAME : `${this.sanitizePathSegment(userId)}.txt`;
+    return join(this.basePath, safeGroupId, filename);
+  }
 
-    const adapter = this.databaseManager.getAdapter();
-    if (!adapter?.isConnected()) {
-      logger.warn('[MemoryService] DB not connected, skip loadAll');
-      return;
-    }
-
-    try {
-      const model = adapter.getModel('memories');
-      const all = await model.find({});
-      const list = all as Memory[];
-
-      for (const row of list) {
-        const groupId = row.groupId;
-        const userId = row.userId;
-        const content = row.content ?? '';
-
-        let groupMap = this.cache.get(groupId);
-        if (!groupMap) {
-          groupMap = new Map<string, string>();
-          this.cache.set(groupId, groupMap);
-        }
-        groupMap.set(userId, content);
-        this.idByKey.set(`${groupId}:${userId}`, row.id);
-      }
-
-      const total = list.length;
-      logger.info(`[MemoryService] Loaded ${total} memory record(s) into cache`);
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error('Unknown');
-      logger.error('[MemoryService] loadAll failed:', err);
-    }
+  /** Allow only alphanumeric and underscore; replace other chars with _. */
+  private sanitizePathSegment(segment: string): string {
+    return segment.replace(/[^a-zA-Z0-9_]/g, '_');
   }
 
   /**
-   * Get group-level memory text for a group (isGlobalMemory=1, userId=GROUP_MEMORY_USER_ID).
+   * Get group-level memory text for a group (file: {memoryDir}/{groupId}/_global_.txt).
    */
   getGroupMemoryText(groupId: string): string {
-    const groupMap = this.cache.get(groupId);
-    if (!groupMap) {
+    const path = this.getFilePath(groupId, GROUP_MEMORY_USER_ID);
+    try {
+      const content = readFileSync(path, 'utf-8');
+      return content ?? '';
+    } catch (err: unknown) {
+      const code = err && typeof err === 'object' && 'code' in err ? (err as NodeJS.ErrnoException).code : '';
+      if (code === 'ENOENT') {
+        return '';
+      }
+      logger.warn('[MemoryService] getGroupMemoryText read failed:', path, err);
       return '';
     }
-    return groupMap.get(GROUP_MEMORY_USER_ID) ?? '';
   }
 
   /**
    * Get user-in-group memory text for (groupId, userId).
    */
   getUserMemoryText(groupId: string, userId: string): string {
-    const groupMap = this.cache.get(groupId);
-    if (!groupMap) {
+    const path = this.getFilePath(groupId, userId);
+    try {
+      const content = readFileSync(path, 'utf-8');
+      return content ?? '';
+    } catch (err: unknown) {
+      const code = err && typeof err === 'object' && 'code' in err ? (err as NodeJS.ErrnoException).code : '';
+      if (code === 'ENOENT') {
+        return '';
+      }
+      logger.warn('[MemoryService] getUserMemoryText read failed:', path, err);
       return '';
     }
-    return groupMap.get(userId) ?? '';
   }
 
   /**
@@ -115,53 +111,21 @@ export class MemoryService {
   }
 
   /**
-   * Upsert one memory record by (groupId, userId). Updates in-memory cache then DB.
+   * Upsert one memory slot by (groupId, userId). Writes to file; creates directory if needed.
    * Use GROUP_MEMORY_USER_ID for group-level memory.
+   * Empty content is written as an empty file so the slot exists and can be edited manually.
    */
-  async upsertMemory(groupId: string, userId: string, isGlobalMemory: boolean, content: string): Promise<void> {
+  async upsertMemory(groupId: string, userId: string, _isGlobalMemory: boolean, content: string): Promise<void> {
     const trimmed = this.truncate(content.trim());
-    if (!trimmed && !content.trim()) {
-      return;
-    }
 
-    const key = `${groupId}:${userId}`;
-
-    // Update cache first
-    let groupMap = this.cache.get(groupId);
-    if (!groupMap) {
-      groupMap = new Map<string, string>();
-      this.cache.set(groupId, groupMap);
-    }
-    groupMap.set(userId, trimmed);
-
-    const adapter = this.databaseManager.getAdapter();
-    if (!adapter?.isConnected()) {
-      logger.warn('[MemoryService] DB not connected, cache updated only');
-      return;
-    }
-
+    const path = this.getFilePath(groupId, userId);
     try {
-      const model = adapter.getModel('memories');
-      const existing = await model.findOne({ groupId, userId } as Partial<Memory>);
-      const record = existing as Memory | null;
-
-      if (record) {
-        await model.update(record.id, { content: trimmed, isGlobalMemory });
-      } else {
-        await model.create({
-          groupId,
-          userId,
-          isGlobalMemory,
-          content: trimmed,
-        } as Omit<Memory, 'id' | 'createdAt' | 'updatedAt'>);
-        const created = await model.findOne({ groupId, userId } as Partial<Memory>);
-        if (created) {
-          this.idByKey.set(key, (created as Memory).id);
-        }
-      }
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, trimmed, 'utf-8');
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown');
-      logger.error('[MemoryService] upsertMemory failed:', err);
+      logger.error('[MemoryService] upsertMemory failed:', path, err);
+      throw err;
     }
   }
 }

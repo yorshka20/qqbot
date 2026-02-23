@@ -9,7 +9,6 @@ import type {
   Conversation,
   ConversationConfig,
   DatabaseModel,
-  Memory,
   MemoryExtractUserCursor,
   Message,
   ModelAccessor,
@@ -235,7 +234,6 @@ export class MongoDBAdapter implements DatabaseAdapter {
       messages: new MongoModelAccessor<Message>(this.db.collection('messages')),
       conversationConfigs: new MongoModelAccessor<ConversationConfig>(this.db.collection('conversation_configs')),
       proactiveThreads: new MongoModelAccessor<ProactiveThreadRecord>(this.db.collection('proactive_threads')),
-      memories: new MongoModelAccessor<Memory>(this.db.collection('memories')),
       memoryExtractUserCursors: new MongoModelAccessor<MemoryExtractUserCursor>(
         this.db.collection('memory_extract_user_cursors'),
       ),

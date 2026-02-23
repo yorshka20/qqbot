@@ -4,7 +4,13 @@ export { CommandBuilder, type CommandBuildOptions } from './CommandBuilder';
 export { CommandManager, type PermissionChecker } from './CommandManager';
 export { CommandParser } from './CommandParser';
 export { Command, getAllCommandMetadata, getCommandMetadata } from './decorators';
-export { HelpCommand, PingCommand, RoleCommand, StatusCommand } from './handlers/BuiltinCommandHandler';
+export {
+  HelpCommand,
+  MemoryDeepCommand,
+  PingCommand,
+  RoleCommand,
+  StatusCommand,
+} from './handlers/BuiltinCommandHandler';
 export { DefaultPermissionChecker } from './PermissionChecker';
 export type {
   CommandContext,

@@ -11,7 +11,6 @@ import type {
   Conversation,
   ConversationConfig,
   DatabaseModel,
-  Memory,
   MemoryExtractUserCursor,
   Message,
   ModelAccessor,
@@ -332,16 +331,6 @@ export class SQLiteAdapter implements DatabaseAdapter {
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`,
-      `CREATE TABLE IF NOT EXISTS memories (
-        id TEXT PRIMARY KEY,
-        groupId TEXT NOT NULL,
-        userId TEXT NOT NULL,
-        isGlobalMemory INTEGER NOT NULL,
-        content TEXT NOT NULL,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
-        UNIQUE(groupId, userId)
-      )`,
       `CREATE TABLE IF NOT EXISTS memory_extract_user_cursors (
         id TEXT PRIMARY KEY,
         groupId TEXT NOT NULL,
@@ -355,6 +344,14 @@ export class SQLiteAdapter implements DatabaseAdapter {
 
     for (const statement of statements) {
       this.db.run(statement);
+    }
+
+    // Drop memories table (memory is now file-based; data no longer needed)
+    try {
+      this.db.run('DROP TABLE IF EXISTS memories');
+      logger.info('[SQLiteAdapter] Dropped memories table (memory now file-based)');
+    } catch (error) {
+      logger.warn('[SQLiteAdapter] Failed to drop memories table:', error);
     }
 
     // Add messageSeq column if it doesn't exist (migration for existing databases)
@@ -391,7 +388,6 @@ export class SQLiteAdapter implements DatabaseAdapter {
       `CREATE INDEX IF NOT EXISTS idx_conversation_configs_session ON conversation_configs(sessionId, sessionType)`,
       `CREATE INDEX IF NOT EXISTS idx_proactive_threads_groupId ON proactive_threads(groupId)`,
       `CREATE INDEX IF NOT EXISTS idx_proactive_threads_threadId ON proactive_threads(threadId)`,
-      `CREATE INDEX IF NOT EXISTS idx_memories_groupId_userId ON memories(groupId, userId)`,
       `CREATE INDEX IF NOT EXISTS idx_memory_extract_user_cursors_groupId_userId ON memory_extract_user_cursors(groupId, userId)`,
     ];
 
@@ -444,7 +440,6 @@ export class SQLiteAdapter implements DatabaseAdapter {
       messages: new SQLiteModelAccessor<Message>(this.db, 'messages'),
       conversationConfigs: new SQLiteModelAccessor<ConversationConfig>(this.db, 'conversation_configs'),
       proactiveThreads: new SQLiteModelAccessor<ProactiveThreadRecord>(this.db, 'proactive_threads'),
-      memories: new SQLiteModelAccessor<Memory>(this.db, 'memories'),
       memoryExtractUserCursors: new SQLiteModelAccessor<MemoryExtractUserCursor>(
         this.db,
         'memory_extract_user_cursors',

@@ -6,6 +6,7 @@ import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { ProactiveConversationService } from '@/conversation/proactive';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
+import type { MemoryPlugin } from '@/plugins/plugins/MemoryPlugin';
 import { PluginManager } from '@/plugins/PluginManager';
 import { inject, injectable } from 'tsyringe';
 import type { CommandManager } from '../CommandManager';
@@ -277,6 +278,60 @@ export class RoleCommand implements CommandHandler {
 
     const messageBuilder = new MessageBuilder();
     messageBuilder.text(lines.join('\n').trimEnd());
+    return {
+      success: true,
+      segments: messageBuilder.build(),
+    };
+  }
+}
+
+/**
+ * Deep memory command - trigger full-history memory extract for the current user in this group.
+ * Similar to MemoryTrigger but runs analysis over all history messages for this user in the group.
+ */
+@Command({
+  name: 'memory_deep',
+  description: 'Trigger deep memory consolidation: analyze group history and update your memory',
+  usage: '/memory_deep or /深度记忆',
+  permissions: ['user'],
+  aliases: ['深度记忆'],
+})
+@injectable()
+export class MemoryDeepCommand implements CommandHandler {
+  name = 'memory_deep';
+  description = 'Trigger deep memory consolidation: analyze group history and update your memory';
+  usage = '/memory_deep or /深度记忆';
+
+  constructor(@inject(DITokens.PLUGIN_MANAGER) private pluginManager: PluginManager) {}
+
+  execute(_args: string[], context: CommandContext): CommandResult {
+    if (context.messageType !== 'group' || context.groupId === undefined) {
+      return {
+        success: false,
+        error: '仅支持在群聊中使用，用于整理你在本群的历史记忆。',
+      };
+    }
+
+    const memoryPlugin = this.pluginManager.getPluginAs<MemoryPlugin>('memory');
+    if (!memoryPlugin) {
+      return {
+        success: false,
+        error: '记忆插件未加载，无法执行深度记忆整理。',
+      };
+    }
+    if (!this.pluginManager.getEnabledPlugins().includes('memory')) {
+      return {
+        success: false,
+        error: '记忆插件未启用，请先在当前群启用 memory 插件。',
+      };
+    }
+
+    const groupId = context.groupId.toString();
+    const userId = context.userId.toString();
+    memoryPlugin.runFullHistoryExtractForUser(groupId, userId);
+
+    const messageBuilder = new MessageBuilder();
+    messageBuilder.text('已加入深度记忆整理队列，将根据本群历史分析并更新你的记忆，完成后无需额外操作。');
     return {
       success: true,
       segments: messageBuilder.build(),

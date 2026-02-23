@@ -11,6 +11,7 @@ import type { BotSelfConfig, StaticServerConfig } from './bot';
 import type { DatabaseConfig } from './database';
 import type { MCPConfig } from './mcp';
 import type { PluginsConfig } from './plugins';
+import type { MemoryConfig } from './memory';
 import type { PromptsConfig } from './prompts';
 import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './protocol';
 import type { TTSConfig } from './tts';
@@ -43,6 +44,7 @@ export type {
   SearXNGConfig,
   TriggerStrategy,
 } from './mcp';
+export type { MemoryConfig } from './memory';
 export type { PluginsConfig } from './plugins';
 export type { PromptsConfig } from './prompts';
 export type {
@@ -65,6 +67,7 @@ export interface BotConfig {
   database: DatabaseConfig;
   ai?: AIConfig;
   contextMemory?: ContextMemoryConfig;
+  memory?: MemoryConfig;
   prompts: PromptsConfig;
   tts?: TTSConfig;
   mcp?: MCPConfig;
@@ -272,6 +275,12 @@ export class Config {
 
   getContextMemoryConfig(): ContextMemoryConfig | undefined {
     return this.config.contextMemory;
+  }
+
+  getMemoryConfig(): MemoryConfig {
+    return {
+      dir: this.config.memory?.dir ?? 'data/memory',
+    };
   }
 
   getPromptsConfig(): PromptsConfig {

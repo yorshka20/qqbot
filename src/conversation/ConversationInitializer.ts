@@ -105,10 +105,10 @@ export class ConversationInitializer {
     await databaseManager.initialize(dbConfig);
     container.registerInstance(DITokens.DATABASE_MANAGER, databaseManager, { logRegistration: false });
 
-    // Memory service: load memories from DB into cache (single table for group + user memories)
-    const memoryService = new MemoryService(databaseManager);
+    // Memory service: file-based persistence (config.memory.dir, default data/memory)
+    const memoryDir = config.getMemoryConfig().dir;
+    const memoryService = new MemoryService({ memoryDir });
     container.registerInstance(DITokens.MEMORY_SERVICE, memoryService, { logRegistration: false });
-    await memoryService.loadAll();
 
     // Phase 2.1: Create HealthCheckManager early for service health monitoring
     const healthCheckManager = new HealthCheckManager();
