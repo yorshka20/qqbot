@@ -35,8 +35,37 @@ export class MemoryExtractService {
   ) {}
 
   /**
+   * Normalize merged memory so that each bullet line contains at most one fact.
+   * Splits lines like " - A；B；C" into " - A\n - B\n - C" so output is one fact per line even if LLM merged multiple facts.
+   */
+  private normalizeOneFactPerLine(text: string): string {
+    const lines = text.split(/\r?\n/);
+    const out: string[] = [];
+    for (const line of lines) {
+      const bulletMatch = line.match(/^(\s*-\s+)(.*)$/);
+      if (!bulletMatch) {
+        out.push(line);
+        continue;
+      }
+      const prefix = bulletMatch[1];
+      const content = bulletMatch[2];
+      // Split by full-width or half-width semicolon (fact-level separator)
+      const parts = content.split(/[；;]/).map((s) => s.trim()).filter(Boolean);
+      if (parts.length <= 1) {
+        out.push(line);
+        continue;
+      }
+      for (const part of parts) {
+        out.push(prefix + part);
+      }
+    }
+    return out.join('\n');
+  }
+
+  /**
    * Merge new facts with existing memory using memory.analyze template.
    * Returns the merged memory text (one line per item); empty string if analyze returns nothing.
+   * Post-processes LLM output to ensure one fact per bullet line (splits by ；;).
    */
   async mergeWithExisting(
     existingMemory: string,
@@ -68,7 +97,8 @@ export class MemoryExtractService {
         },
         provider,
       );
-      const merged = (res.text ?? '').trim();
+      let merged = (res.text ?? '').trim();
+      merged = this.normalizeOneFactPerLine(merged);
       return merged;
     } catch (err) {
       logger.error('[MemoryExtractService] LLM analyze failed:', err);
