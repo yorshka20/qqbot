@@ -337,9 +337,17 @@ export class ReplyGenerationService {
       const searchTaskResult = taskResults.get('search');
       let accumulatedSearchResults = searchTaskResult?.success ? searchTaskResult.reply : '';
 
-      // 3. Build task results summary (exclude search, as it's handled separately)
+      // 3. Build task results summary (exclude search and explainImage, as they are handled separately)
       const otherTaskResults = new Map(taskResults);
       otherTaskResults.delete('search');
+
+      // If an explicit explainImage task ran and produced a description, extract it now and remove
+      // from the summary so it is not duplicated in the taskResults section of the prompt.
+      const explainImageResult = taskResults.get('explainImage');
+      const explainImageDescription: string =
+        explainImageResult?.success && explainImageResult.reply ? explainImageResult.reply : '';
+      otherTaskResults.delete('explainImage');
+
       const taskResultsSummary = this.buildTaskResultsSummary(otherTaskResults);
 
       // 4. Perform recursive search (max 5 iterations). Run for image messages too (user content is text + image description).
@@ -353,9 +361,11 @@ export class ReplyGenerationService {
         );
       }
 
-      // 5. Generate reply. When hasImages: explain images first, then same path as no-images with imageDescription.
-      let imageDescription = '';
-      if (hasImages && images) {
+      // 5. Generate reply. When hasImages: explain images first (unless an explainImage task already did it).
+      //    explainImageDescription is non-empty when ExplainImageTaskExecutor ran and produced a result.
+      //    In that case skip the implicit image extraction to avoid calling the vision API twice.
+      let imageDescription = explainImageDescription;
+      if (!imageDescription && hasImages && images) {
         const explainPrompt = this.promptManager.render('vision.explain_image', {
           userDescription: context.message.message || '（无）',
         });
@@ -365,7 +375,9 @@ export class ReplyGenerationService {
           sessionId,
         });
         imageDescription = explainResponse.text;
-        logger.debug(`[ReplyGenerationService] Image description: ${imageDescription}`);
+        logger.debug(`[ReplyGenerationService] Image description (implicit): ${imageDescription}`);
+      } else if (imageDescription) {
+        logger.debug(`[ReplyGenerationService] Using image description from explainImage task (${imageDescription.length} chars)`);
       }
       await this.generateReplyWithTaskResults(
         context,
