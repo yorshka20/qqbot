@@ -78,14 +78,27 @@ export class ExplainImageTaskExecutor extends BaseTaskExecutor {
       return this.success('', { hasImages: false });
     }
 
-    logger.info(`[ExplainImageTaskExecutor] Explaining ${images.length} image(s) from message`);
+    logger.info(`[ExplainImageTaskExecutor] Explaining ${images.length} image(s) from message individually`);
 
-    const description = await this.aiService.explainImages(images, userMessage, sessionId);
+    // Explain each image separately so every image gets its own focused description
+    const descriptions: string[] = [];
+    for (const image of images) {
+      const desc = await this.aiService.explainImage(image, userMessage, sessionId);
+      if (desc) {
+        descriptions.push(desc);
+      }
+    }
 
-    if (!description) {
+    if (!descriptions.length) {
       logger.warn('[ExplainImageTaskExecutor] Image explanation returned empty description');
       return this.success('', { hasImages: true, descriptionEmpty: true });
     }
+
+    // When multiple images are present, prefix each description with its index
+    const description =
+      images.length > 1
+        ? descriptions.map((d, i) => `图${i + 1}: ${d}`).join('\n\n')
+        : descriptions[0];
 
     logger.info(`[ExplainImageTaskExecutor] Image description generated (${description.length} chars)`);
     return this.success(description, { hasImages: true, imageCount: images.length });

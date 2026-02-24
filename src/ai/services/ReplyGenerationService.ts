@@ -237,16 +237,23 @@ export class ReplyGenerationService {
 
       let imageDescription = '';
       if (images && images.length > 0) {
-        // Explain images first, then use normal LLM flow with image description
+        // Explain each image individually so every image gets its own description
         const explainPrompt = this.promptManager.render('vision.explain_image', {
           userDescription: context.message.message || '（无）',
         });
-        const explainResponse = await this.visionService.explainImages(images, explainPrompt, {
-          temperature: 0.3,
-          maxTokens: 2000,
-          sessionId,
-        });
-        imageDescription = explainResponse.text;
+        const descriptions: string[] = [];
+        for (const image of images) {
+          const resp = await this.visionService.explainImages([image], explainPrompt, {
+            temperature: 0.3,
+            maxTokens: 2000,
+            sessionId,
+          });
+          if (resp.text?.trim()) descriptions.push(resp.text.trim());
+        }
+        imageDescription =
+          images.length > 1
+            ? descriptions.map((d, i) => `图${i + 1}: ${d}`).join('\n\n')
+            : (descriptions[0] ?? '');
         logger.debug(`[ReplyGenerationService] Image description: ${imageDescription}`);
       }
 

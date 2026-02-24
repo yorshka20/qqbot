@@ -492,7 +492,15 @@ export class ProactiveConversationService {
       if (!images.length) {
         return '';
       }
-      return await this.aiService.explainImages(images, lastUserEntry.content || '（无）', groupId);
+      // Explain each image individually and combine
+      const descriptions: string[] = [];
+      for (const image of images) {
+        const desc = await this.aiService.explainImage(image, lastUserEntry.content || '（无）', groupId);
+        if (desc) descriptions.push(desc);
+      }
+      return images.length > 1
+        ? descriptions.map((d, i) => `图${i + 1}: ${d}`).join('\n\n')
+        : (descriptions[0] ?? '');
     } catch (error) {
       logger.warn(
         '[ProactiveConversationService] getImageDescriptionFromLastUserMessage failed:',

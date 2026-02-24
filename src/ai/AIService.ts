@@ -138,31 +138,28 @@ export class AIService {
   }
 
   /**
-   * Explain image content using a vision-capable provider.
-   * Generic utility shared by ExplainImageTaskExecutor, ProactiveConversationService,
-   * and any other flow that needs to convert images to a text description.
+   * Explain a single image using a vision-capable provider.
+   * Each image is explained individually so callers that handle multiple images
+   * receive a separate description per image and can format them independently.
    *
-   * @param images - Vision images to explain
+   * @param image - The single vision image to explain
    * @param userDescription - User message text or context for focus (may be empty)
    * @param sessionId - Optional session id for provider selection
-   * @returns Description text, or empty string on error / no images
+   * @returns Description text, or empty string on error
    */
-  async explainImages(images: VisionImage[], userDescription: string, sessionId?: string): Promise<string> {
-    if (!images.length) {
-      return '';
-    }
+  async explainImage(image: VisionImage, userDescription: string, sessionId?: string): Promise<string> {
     try {
       const explainPrompt = this.promptManager.render('vision.explain_image', {
         userDescription: userDescription || '（无）',
       });
-      const response = await this.visionService.explainImages(images, explainPrompt, {
+      const response = await this.visionService.explainImages([image], explainPrompt, {
         temperature: 0.5,
         maxTokens: 2000,
         sessionId,
       });
       return response.text?.trim() ?? '';
     } catch (error) {
-      logger.warn('[AIService] explainImages failed:', error instanceof Error ? error.message : String(error));
+      logger.warn('[AIService] explainImage failed:', error instanceof Error ? error.message : String(error));
       return '';
     }
   }
