@@ -4,13 +4,12 @@ import { logger } from '@/utils/logger';
 import sharp from 'sharp';
 
 /**
- * Alignment for diffusion APIs (e.g. NovelAI): width/height must be multiples of this
- * (VAE latent grid requirement; commonly 8).
+ * Alignment for diffusion APIs (e.g. NovelAI): width/height must be multiples of this (64).
  */
-export const DIFFUSION_ALIGN = 8;
+export const DIFFUSION_ALIGN = 64;
 
 /**
- * Round a dimension down to a multiple of align (e.g. 8 for diffusion APIs).
+ * Round a dimension down to a multiple of align (e.g. 64 for diffusion APIs).
  * Ensures API-accepted sizes without exceeding the given value.
  */
 export function alignDimensionDown(value: number, align: number = DIFFUSION_ALIGN): number {
@@ -53,7 +52,7 @@ export async function resizeImageToBase64(
 /**
  * Resize image proportionally so the longest side does not exceed maxSide.
  * Preserves aspect ratio. Output width/height are aligned down to multiples of
- * DIFFUSION_ALIGN (8) for diffusion APIs (e.g. NovelAI). Returns raw base64 and
+ * DIFFUSION_ALIGN (64) for diffusion APIs (e.g. NovelAI). Returns raw base64 and
  * the actual output dimensions (so API callers can send matching width/height).
  *
  * @param imageBufferOrBase64 - Image as Buffer or raw base64 string
