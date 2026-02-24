@@ -5,6 +5,8 @@ import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { OllamaPreliminaryAnalysisService } from '@/ai/services/OllamaPreliminaryAnalysisService';
 import { extractImagesFromSegmentsAsync } from '@/ai/utils/imageUtils';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { HookContextBuilder } from '@/context/HookContextBuilder';
+import type { ConversationContext } from '@/context/types';
 import { DITokens } from '@/core/DITokens';
 import type { ProtocolName } from '@/core/config/protocol';
 import type { DatabaseManager } from '@/database/DatabaseManager';
@@ -14,6 +16,7 @@ import type { MemoryService } from '@/memory/MemoryService';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
+import type { TaskSystem } from '../systems/TaskSystem';
 import type { GroupHistoryService, GroupMessageEntry, ThreadContextCompressionService } from '../thread';
 import { isReadableTextForThread, type ThreadService } from '../thread';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
@@ -83,6 +86,7 @@ export class ProactiveConversationService {
     @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
     @inject(DITokens.THREAD_CONTEXT_COMPRESSION_SERVICE) private threadCompression: ThreadContextCompressionService,
+    @inject(DITokens.TASK_SYSTEM) private taskSystem: TaskSystem,
     @inject(DITokens.MEMORY_SERVICE) private memoryService?: MemoryService,
     @inject(DITokens.DATABASE_MANAGER) private databaseManager?: DatabaseManager,
   ) {
@@ -499,6 +503,66 @@ export class ProactiveConversationService {
   }
 
   /**
+   * Run task analysis and execution for the proactive reply context via TaskSystem.
+   * Creates a synthetic HookContext from the last user text and delegates to
+   * TaskSystem.analyzeAndExecuteTasks(), which performs keyword detection, LLM task
+   * analysis, and task execution — the same mechanism used by the at-bot reply flow.
+   * Results are merged into injectContext before proactive reply generation.
+   *
+   * @param injectContext - ProactiveReplyInjectContext to enrich with task results (mutated)
+   * @param lastUserText - Text to analyze (last user message content or topic)
+   * @param groupId - String group ID (for sessionId)
+   * @param groupIdNum - Numeric group ID (for ConversationContext and message)
+   */
+  private async runTaskAnalysisForProactive(
+    injectContext: { retrievedContext: string },
+    lastUserText: string,
+    groupId: string,
+    groupIdNum: number,
+  ): Promise<void> {
+    if (!lastUserText.trim()) return;
+
+    const syntheticConvContext: ConversationContext = {
+      userMessage: lastUserText,
+      history: [],
+      userId: 0,
+      groupId: groupIdNum,
+      messageType: 'group',
+      metadata: new Map(),
+    };
+
+    const hookContext = HookContextBuilder.create()
+      .withSyntheticMessage({
+        userId: 0,
+        groupId: groupIdNum,
+        messageType: 'group',
+        message: lastUserText,
+        segments: [],
+        protocol: this.preferredProtocol,
+      })
+      .withConversationContext(syntheticConvContext)
+      .withMetadata('sessionId', `group:${groupId}`)
+      .withMetadata('sessionType', 'group')
+      .build();
+
+    const taskResults = await this.taskSystem.analyzeAndExecuteTasks(hookContext);
+    if (!taskResults.size) return;
+
+    logger.info(
+      `[ProactiveConversationService] Task analysis: ${taskResults.size} result(s): ${[...taskResults.keys()].join(', ')} | groupId=${groupId}`,
+    );
+
+    // Merge search task results into retrieved context
+    const searchResult = taskResults.get('search');
+    if (searchResult?.success && searchResult.reply) {
+      injectContext.retrievedContext = injectContext.retrievedContext
+        ? `${injectContext.retrievedContext}\n\n${searchResult.reply}`
+        : searchResult.reply;
+      logger.info(`[ProactiveConversationService] Merged search results from task analysis | groupId=${groupId}`);
+    }
+  }
+
+  /**
    * Create a new thread and send one proactive reply. Uses the same filteredEntries for both thread initial context and LLM prompt (no duplicate fetch).
    * @param triggerUserId - From ScheduledAnalysisContext (message that triggered the schedule); passed from upstream, not derived here.
    */
@@ -525,6 +589,12 @@ export class ProactiveConversationService {
     if (imageDescription) {
       injectContext.imageDescription = imageDescription;
     }
+    // Task analysis: scan the last user message for task triggers (search, future task types, etc.).
+    // Image handling is done above via getImageDescriptionFromLastUserMessage; the synthetic context
+    // has no segments so the explainImage task will not trigger here.
+    const lastUserEntry = [...filteredEntries].reverse().find((e) => !e.isBotReply);
+    const lastUserText = lastUserEntry?.content || topicOrQuery;
+    await this.runTaskAnalysisForProactive(injectContext, lastUserText, groupId, groupIdNum);
 
     const replyText = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
     if (!replyText) {
@@ -561,6 +631,9 @@ export class ProactiveConversationService {
       searchQueries,
       triggerUserId,
     );
+    // Task analysis: scan topicOrQuery for task triggers (search, future task types, etc.).
+    await this.runTaskAnalysisForProactive(injectContext, topicOrQuery, thread.groupId, groupIdNum);
+
     const replyText = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
     if (!replyText) return;
     await this.sendGroupMessage(groupIdNum, replyText);

@@ -278,6 +278,43 @@ export class TaskSystem implements System {
   }
 
   /**
+   * Analyze the message in context for task triggers and execute any detected tasks.
+   * Returns the task result map without generating a reply.
+   *
+   * Used by flows that bypass the message lifecycle (e.g. proactive conversation) but
+   * still need task analysis and execution through the registered task system.
+   * The caller is responsible for incorporating task results into its own reply generation.
+   *
+   * @param context - HookContext built from a synthetic message representing the text to analyze
+   * @returns Map of task type to task result; empty map when no tasks triggered
+   */
+  async analyzeAndExecuteTasks(context: HookContext): Promise<Map<string, TaskResult>> {
+    const taskTypes = this.taskManager.getAllTaskTypes();
+    const triggeredTaskTypes = this.detectTriggeredTaskTypes(context.message.message, taskTypes);
+
+    if (triggeredTaskTypes.length === 0) {
+      return new Map();
+    }
+
+    const analysisResult = await this.aiService.analyzeTask(context);
+    if (!analysisResult.length) {
+      return new Map();
+    }
+
+    // Auto-inject explainImage if the synthetic message has image segments and LLM didn't already add it
+    const hasImageSegments = context.message.segments?.some((seg) => seg.type === 'image') ?? false;
+    if (hasImageSegments && !analysisResult.some((t) => t.type === 'explainImage')) {
+      const explainImageType = this.taskManager.getTaskType('explainImage');
+      if (explainImageType) {
+        analysisResult.push({ type: 'explainImage', parameters: {}, executor: 'explainImage' });
+      }
+    }
+
+    logger.info(`[TaskSystem] analyzeAndExecuteTasks: executing ${analysisResult.length} task(s)`);
+    return await this.executeAllTasks(analysisResult, context);
+  }
+
+  /**
    * Declare extension hooks that plugins can subscribe to
    * These hooks are declared without handlers - plugins can register their own handlers
    * The priority is used as default when plugins register handlers without specifying priority

@@ -482,9 +482,11 @@ export class ConversationInitializer {
       return new CommandSystem(services.commandManager, services.hookManager);
     });
 
-    systemRegistry.registerSystemFactory('task', () => {
-      return new TaskSystem(services.taskManager, services.hookManager, services.aiService);
-    });
+    // Create TaskSystem eagerly so it can be registered in the DI container for injection
+    // (e.g. ProactiveConversationService uses it for task analysis).
+    const taskSystem = new TaskSystem(services.taskManager, services.hookManager, services.aiService);
+    getContainer().registerInstance(DITokens.TASK_SYSTEM, taskSystem);
+    systemRegistry.registerSystemFactory('task', () => taskSystem);
 
     systemRegistry.registerSystemFactory('database-persistence', () => {
       return new DatabasePersistenceSystem(services.databaseManager);
