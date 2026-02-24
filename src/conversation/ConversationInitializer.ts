@@ -9,7 +9,8 @@ import {
   ProviderFactory,
   ProviderSelector,
 } from '@/ai';
-import { OllamaPreliminaryAnalysisService } from '@/ai/services/OllamaPreliminaryAnalysisService';
+import { ConversationHistoryService } from '@/ai/services/ConversationHistoryService';
+import { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { CommandManager } from '@/command';
@@ -34,12 +35,12 @@ import { CommandRouter } from './CommandRouter';
 import { ConversationManager } from './ConversationManager';
 import { Lifecycle } from './Lifecycle';
 import { MessagePipeline } from './MessagePipeline';
-import { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
 import {
   DefaultProactiveThreadPersistenceService,
   ProactiveConversationService,
   SearXNGPreferenceKnowledgeService,
 } from './proactive';
+import { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
 import { SummarizeService } from './SummarizeService';
 import { CommandSystem } from './systems/CommandSystem';
 import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
@@ -138,6 +139,8 @@ export class ConversationInitializer {
     const maxBufferSize = memoryConfig?.maxBufferSize ?? 30;
     const maxHistoryMessages = memoryConfig?.maxHistoryMessages ?? 10;
 
+    const conversationHistoryService = new ConversationHistoryService(maxHistoryMessages, databaseManager);
+
     const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
 
     // Memory extract service (used by Memory plugin for debounced extract from recent messages)
@@ -166,7 +169,7 @@ export class ConversationInitializer {
       services.hookManager,
       promptManager,
       services.taskManager,
-      maxHistoryMessages,
+      conversationHistoryService,
       providerSelector,
       searchService,
       messageAPI,
@@ -316,8 +319,8 @@ export class ConversationInitializer {
     container.registerInstance(DITokens.GROUP_HISTORY_SERVICE, groupHistoryService, { logRegistration: false });
     container.registerInstance(DITokens.THREAD_SERVICE, threadService, { logRegistration: false });
     container.registerInstance(
-      DITokens.OLLAMA_PRELIMINARY_ANALYSIS_SERVICE,
-      new OllamaPreliminaryAnalysisService(aiManager, promptManager),
+      DITokens.PRELIMINARY_ANALYSIS_SERVICE,
+      new PreliminaryAnalysisService(aiManager, promptManager),
       { logRegistration: false },
     );
     // Use SearXNG-based preference knowledge when SearchService is available and enabled.

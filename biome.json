@@ -6,7 +6,10 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!!**/dist"]
+    "includes": [
+      "**",
+      "!!**/dist"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -29,6 +32,11 @@
       "semicolons": "always",
       "trailingCommas": "all",
       "arrowParentheses": "always"
+    },
+    "lint": {
+      "complexity": {
+        "noStaticOnlyClass": "off"
+      }
     }
   },
   "assist": {

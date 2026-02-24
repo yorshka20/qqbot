@@ -62,6 +62,7 @@ export async function resizeImageToBase64(
 export async function resizeImageToBase64WithMaxSide(
   imageBufferOrBase64: Buffer | string,
   maxSide: number,
+  align: number = DIFFUSION_ALIGN,
 ): Promise<{ base64: string; width: number; height: number }> {
   const buffer =
     typeof imageBufferOrBase64 === 'string' ? Buffer.from(imageBufferOrBase64, 'base64') : imageBufferOrBase64;
@@ -75,8 +76,8 @@ export async function resizeImageToBase64WithMaxSide(
   let width = meta.width ?? maxSide;
   let height = meta.height ?? maxSide;
 
-  const alignedWidth = alignDimensionDown(width);
-  const alignedHeight = alignDimensionDown(height);
+  const alignedWidth = alignDimensionDown(width, align);
+  const alignedHeight = alignDimensionDown(height, align);
 
   if (alignedWidth !== width || alignedHeight !== height) {
     resized = await sharp(resized).resize(alignedWidth, alignedHeight, { fit: 'fill' }).png().toBuffer();

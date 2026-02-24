@@ -65,6 +65,8 @@ export class MemoryPlugin extends PluginBase {
   private groupHistoryService!: GroupHistoryService;
   private memoryExtractService!: MemoryExtractService;
   private databaseManager!: DatabaseManager;
+  /** Bot self ID from config; used to skip extracting memory for bot's own messages. */
+  private botSelfId = '';
 
   async onInit(): Promise<void> {
     this.enabled = true;
@@ -72,6 +74,9 @@ export class MemoryPlugin extends PluginBase {
     this.groupHistoryService = container.resolve<GroupHistoryService>(DITokens.GROUP_HISTORY_SERVICE);
     this.memoryExtractService = container.resolve<MemoryExtractService>(DITokens.MEMORY_EXTRACT_SERVICE);
     this.databaseManager = container.resolve<DatabaseManager>(DITokens.DATABASE_MANAGER);
+
+    const config = this.context.bot.getConfig();
+    this.botSelfId = config.bot.selfId;
 
     const pluginConfig = this.pluginConfig?.config as MemoryPluginConfig | undefined;
     if (pluginConfig?.groups?.length) {
@@ -264,7 +269,7 @@ export class MemoryPlugin extends PluginBase {
     return conv ? { id: conv.id } : null;
   }
 
-  /** Get user IDs to process for cold start: coldStartOnlyUserId if set, else distinct userIds in this group. */
+  /** Get user IDs to process for cold start: coldStartOnlyUserId if set, else distinct userIds in this group. Excludes bot self. */
   private async getUserIdsForColdStart(conversationId: string, groupId: string): Promise<string[]> {
     if (this.coldStartOnlyUserId) {
       return [this.coldStartOnlyUserId];
@@ -278,6 +283,9 @@ export class MemoryPlugin extends PluginBase {
     const userIds = new Set<string>();
     for (const msg of all as Message[]) {
       userIds.add(String(msg.userId));
+    }
+    if (this.botSelfId) {
+      userIds.delete(this.botSelfId);
     }
     return Array.from(userIds);
   }
@@ -353,13 +361,15 @@ export class MemoryPlugin extends PluginBase {
 
   /**
    * Normal (debounced) flow: get recent messages for the group and run extract (no group-level cursor; user progress is per user in memory_extract_user_cursors).
+   * Excludes bot's own messages from extract (bot selfId from config).
    */
   private async runExtractForGroup(groupId: string): Promise<void> {
     const entries = await this.groupHistoryService.getRecentMessages(groupId, this.maxMessagesPerExtract);
-    if (entries.length === 0) {
+    const filtered = this.botSelfId ? entries.filter((e) => String(e.userId) !== this.botSelfId) : entries;
+    if (filtered.length === 0) {
       return;
     }
-    const recentMessagesText = this.groupHistoryService.formatAsText(entries);
+    const recentMessagesText = this.groupHistoryService.formatAsText(filtered);
     await this.memoryExtractService.extractAndUpsert(groupId, recentMessagesText, {
       provider: this.extractProvider,
     });
@@ -375,11 +385,19 @@ export class MemoryPlugin extends PluginBase {
   runFullHistoryExtractForUser(groupId: string, userId: string): void {
     logger.info(`[MemoryPlugin] runFullHistoryExtractForUser started groupId=${groupId} userId=${userId}`);
     void this.runFullHistoryExtractForUserInternal(groupId, userId).catch((err) => {
-      logger.error(`[MemoryPlugin] runFullHistoryExtractForUser unhandled error groupId=${groupId} userId=${userId}`, err);
+      logger.error(
+        `[MemoryPlugin] runFullHistoryExtractForUser unhandled error groupId=${groupId} userId=${userId}`,
+        err,
+      );
     });
   }
 
   private async runFullHistoryExtractForUserInternal(groupId: string, userId: string): Promise<void> {
+    // skip bot memory
+    if (this.botSelfId && String(userId) === this.botSelfId) {
+      return;
+    }
+
     const key = `${groupId}:${userId}`;
     const progressSet = await this.loadColdStartProgress();
     if (progressSet.has(key)) {
@@ -389,6 +407,7 @@ export class MemoryPlugin extends PluginBase {
       await this.upsertMemoryExtractCursor(groupId, userId, new Date().toISOString());
       return;
     }
+
     const conversation = await this.getGroupConversation(groupId);
     if (!conversation) {
       logger.warn(`[MemoryPlugin] runFullHistoryExtractForUser: no conversation for groupId=${groupId}`);
@@ -412,7 +431,9 @@ export class MemoryPlugin extends PluginBase {
     const opts = { provider: this.extractProvider };
     try {
       for (let i = 0; i < chunks.length; i++) {
-        logger.info(`[MemoryPlugin] runFullHistoryExtractForUser chunk ${i + 1}/${chunks.length} groupId=${groupId} userId=${userId}`);
+        logger.info(
+          `[MemoryPlugin] runFullHistoryExtractForUser chunk ${i + 1}/${chunks.length} groupId=${groupId} userId=${userId}`,
+        );
         await this.memoryExtractService.extractAndUpsertUserOnly(groupId, userId, chunks[i], opts);
       }
       const latestEntry = entries[entries.length - 1];

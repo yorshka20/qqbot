@@ -87,13 +87,9 @@ export class ImagePromptService {
     // Build LLM prompt using PromptManager
     // Default template name: 'text2img.generate' (from prompts/text2img/generate.txt)
     // Can be overridden with templateName parameter (e.g., 'text2img.generate_nai')
-    const llmPrompt = this.promptManager.render(
-      templateName,
-      {
-        description: userInput,
-      },
-      { injectBase: true },
-    );
+    const llmPrompt = this.promptManager.render(templateName, {
+      description: userInput,
+    });
 
     logger.debug('[ImagePromptService] Calling LLM to preprocess image generation parameters...');
 
@@ -157,13 +153,9 @@ export class ImagePromptService {
     templateName: string = 'img2video.generate',
   ): Promise<I2VPromptResult> {
     try {
-      const llmPrompt = this.promptManager.render(
-        templateName,
-        {
-          description: userInput ?? '',
-        },
-        { injectBase: true },
-      );
+      const llmPrompt = this.promptManager.render(templateName, {
+        description: userInput ?? '',
+      });
 
       logger.debug('[ImagePromptService] Calling LLM to prepare I2V prompt...');
 
@@ -171,7 +163,7 @@ export class ImagePromptService {
         llmPrompt,
         {
           temperature: 0.3,
-          maxTokens: 500,
+          maxTokens: 1000,
           sessionId,
         },
         'deepseek',

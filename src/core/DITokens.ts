@@ -23,7 +23,7 @@ export const DITokens = {
   MESSAGE_API: 'MessageAPI',
   SUMMARIZE_SERVICE: 'SummarizeService',
   GROUP_HISTORY_SERVICE: 'GroupHistoryService',
-  OLLAMA_PRELIMINARY_ANALYSIS_SERVICE: 'OllamaPreliminaryAnalysisService',
+  PRELIMINARY_ANALYSIS_SERVICE: 'PreliminaryAnalysisService',
   PREFERENCE_KNOWLEDGE_SERVICE: 'PreferenceKnowledgeService',
   PROACTIVE_THREAD_PERSISTENCE_SERVICE: 'ProactiveThreadPersistenceService',
   THREAD_CONTEXT_COMPRESSION_SERVICE: 'ThreadContextCompressionService',

@@ -50,7 +50,6 @@ export class AIService {
   private cardRenderingService: CardRenderingService;
   private replyGenerationService: ReplyGenerationService;
   private imagePromptService: ImagePromptService;
-  private conversationHistoryService: ConversationHistoryService;
   private taskAnalysisService: TaskAnalysisService;
 
   constructor(
@@ -58,7 +57,7 @@ export class AIService {
     private hookManager: HookManager,
     private promptManager: PromptManager,
     taskManager: TaskManager,
-    maxHistoryMessages = 10,
+    private conversationHistoryService: ConversationHistoryService,
     providerSelector?: ProviderSelector,
     private searchService?: SearchService,
     messageAPI?: MessageAPI,
@@ -70,7 +69,6 @@ export class AIService {
     this.visionService = new VisionService(aiManager, providerSelector);
     this.imageGenerationService = new ImageGenerationService(aiManager, providerSelector);
     this.cardRenderingService = new CardRenderingService(aiManager);
-    this.conversationHistoryService = new ConversationHistoryService(maxHistoryMessages, databaseManager);
     this.imagePromptService = new ImagePromptService(this.llmService, this.promptManager);
     this.replyGenerationService = new ReplyGenerationService(
       this.llmService,

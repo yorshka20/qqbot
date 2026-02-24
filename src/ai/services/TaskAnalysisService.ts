@@ -66,7 +66,7 @@ export class TaskAnalysisService {
    * @param context - Conversation context
    * @returns Task analysis result
    */
-  async analyze(context: ConversationContext): Promise<TaskAnalysisResult> {
+  private async analyze(context: ConversationContext): Promise<TaskAnalysisResult> {
     try {
       // Build prompt for AI
       const prompt = this.buildPrompt(context);

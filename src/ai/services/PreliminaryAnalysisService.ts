@@ -45,7 +45,7 @@ export interface PreliminaryAnalysisOptions {
  * Uses an LLM (Ollama, Doubao, etc.) to analyze recent messages and decide whether the bot should join.
  * Does not use RAG / preference knowledge base. Provider is configurable via plugin config (analysisProvider).
  */
-export class OllamaPreliminaryAnalysisService {
+export class PreliminaryAnalysisService {
   constructor(
     private aiManager: AIManager,
     private promptManager: PromptManager,
@@ -66,16 +66,16 @@ export class OllamaPreliminaryAnalysisService {
     const providerName = options?.providerName ?? DEFAULT_ANALYSIS_PROVIDER;
     const provider = this.aiManager.getProvider(providerName);
     if (!provider || !isLLMCapability(provider)) {
-      logger.debug(`[OllamaPreliminaryAnalysisService] Provider "${providerName}" not available, skipping`);
+      logger.debug(`[PreliminaryAnalysisService] Provider "${providerName}" not available, skipping`);
       return { shouldJoin: false };
     }
 
     const llm = provider as LLMCapability;
     if (!provider.isAvailable()) {
-      logger.debug(`[OllamaPreliminaryAnalysisService] Provider "${providerName}" not available`);
+      logger.debug(`[PreliminaryAnalysisService] Provider "${providerName}" not available`);
       return { shouldJoin: false };
     }
-    logger.debug(`[OllamaPreliminaryAnalysisService] Using provider "${providerName}" for analysis`);
+    logger.debug(`[PreliminaryAnalysisService] Using provider "${providerName}" for analysis`);
 
     const idleModeInstruction = this.resolveIdleModeInstruction(options?.idleMode);
     let prompt: string;
@@ -90,11 +90,11 @@ export class OllamaPreliminaryAnalysisService {
         { injectBase: true },
       );
     } catch (err) {
-      logger.warn('[OllamaPreliminaryAnalysisService] Failed to render prompt:', err);
+      logger.warn('[PreliminaryAnalysisService] Failed to render prompt:', err);
       return { shouldJoin: false };
     }
 
-    // logger.debug(`[OllamaPreliminaryAnalysisService] Prompt: \n${prompt}`);
+    // logger.debug(`[PreliminaryAnalysisService] Prompt: \n${prompt}`);
 
     try {
       const response = await llm.generate(prompt, {
@@ -106,7 +106,7 @@ export class OllamaPreliminaryAnalysisService {
       return this.parseJsonResult(text);
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.warn(`[OllamaPreliminaryAnalysisService] Provider "${providerName}" call failed:`, err);
+      logger.warn(`[PreliminaryAnalysisService] Provider "${providerName}" call failed:`, err);
       return { shouldJoin: false };
     }
   }
@@ -124,16 +124,16 @@ export class OllamaPreliminaryAnalysisService {
     const providerName = options?.providerName ?? DEFAULT_ANALYSIS_PROVIDER;
     const provider = this.aiManager.getProvider(providerName);
     if (!provider || !isLLMCapability(provider)) {
-      logger.debug(`[OllamaPreliminaryAnalysisService] Provider "${providerName}" not available, skipping`);
+      logger.debug(`[PreliminaryAnalysisService] Provider "${providerName}" not available, skipping`);
       return { shouldJoin: false };
     }
 
     const llm = provider as LLMCapability;
     if (!provider.isAvailable()) {
-      logger.debug(`[OllamaPreliminaryAnalysisService] Provider "${providerName}" not available`);
+      logger.debug(`[PreliminaryAnalysisService] Provider "${providerName}" not available`);
       return { shouldJoin: false };
     }
-    logger.debug(`[OllamaPreliminaryAnalysisService] Using provider "${providerName}" for multi-thread analysis`);
+    logger.debug(`[PreliminaryAnalysisService] Using provider "${providerName}" for multi-thread analysis`);
 
     const threadsDescription = threads
       .map(
@@ -154,7 +154,7 @@ export class OllamaPreliminaryAnalysisService {
       { injectBase: true },
     );
 
-    logger.debug(`[OllamaPreliminaryAnalysisService] Multi-thread prompt length: ${prompt.length}`);
+    logger.debug(`[PreliminaryAnalysisService] Multi-thread prompt length: ${prompt.length}`);
 
     try {
       const response = await llm.generate(prompt, {
@@ -165,7 +165,7 @@ export class OllamaPreliminaryAnalysisService {
       return this.parseJsonResult(text);
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.warn(`[OllamaPreliminaryAnalysisService] Provider "${providerName}" call failed:`, err);
+      logger.warn(`[PreliminaryAnalysisService] Provider "${providerName}" call failed:`, err);
       return { shouldJoin: false };
     }
   }
@@ -181,7 +181,7 @@ export class OllamaPreliminaryAnalysisService {
     try {
       return this.promptManager.render('analysis.idle_instruction', {}, { injectBase: false });
     } catch (err) {
-      logger.warn('[OllamaPreliminaryAnalysisService] Failed to render idle instruction:', err);
+      logger.warn('[PreliminaryAnalysisService] Failed to render idle instruction:', err);
       return '';
     }
   }
@@ -190,7 +190,7 @@ export class OllamaPreliminaryAnalysisService {
     const defaultResult: PreliminaryAnalysisResult = { shouldJoin: false };
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      logger.debug('[OllamaPreliminaryAnalysisService] No JSON found in response');
+      logger.debug('[PreliminaryAnalysisService] No JSON found in response');
       return defaultResult;
     }
     try {
@@ -234,7 +234,7 @@ export class OllamaPreliminaryAnalysisService {
         searchQueries,
       };
     } catch {
-      logger.debug('[OllamaPreliminaryAnalysisService] Failed to parse JSON');
+      logger.debug('[PreliminaryAnalysisService] Failed to parse JSON');
       return defaultResult;
     }
   }

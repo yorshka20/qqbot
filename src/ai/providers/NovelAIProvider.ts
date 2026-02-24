@@ -2,7 +2,6 @@
 
 import type { NovelAIProviderConfig } from '@/core/config';
 import { logger } from '@/utils/logger';
-import { ResourceDownloader } from '../utils/ResourceDownloader';
 import AdmZip from 'adm-zip';
 import { mkdir, writeFile } from 'fs/promises';
 import { extname, join } from 'path';
@@ -16,6 +15,7 @@ import type {
   Text2ImageOptions,
 } from '../capabilities/types';
 import { resizeImageToBase64WithMaxSide } from '../utils/imageResize';
+import { ResourceDownloader } from '../utils/ResourceDownloader';
 
 /**
  * NovelAI Provider implementation
@@ -136,6 +136,7 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
 
   /** Max dimension for img2img input: scale proportionally, longest side not exceeding this. */
   private static readonly IMG2IMG_MAX_SIDE = 832;
+  private static readonly IMG2IMG_ALIGN = 64;
 
   /**
    * Load image from URL/file/base64 and resize proportionally so the longest side does not exceed IMG2IMG_MAX_SIDE.
@@ -148,7 +149,7 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
       timeout: 30000,
       maxSize: 10 * 1024 * 1024,
     });
-    return resizeImageToBase64WithMaxSide(base64Data, NovelAIProvider.IMG2IMG_MAX_SIDE);
+    return resizeImageToBase64WithMaxSide(base64Data, NovelAIProvider.IMG2IMG_MAX_SIDE, NovelAIProvider.IMG2IMG_ALIGN);
   }
 
   /**

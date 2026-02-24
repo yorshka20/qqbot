@@ -2,11 +2,11 @@
 
 import type { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { OllamaPreliminaryAnalysisService } from '@/ai/services/OllamaPreliminaryAnalysisService';
+import type { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
 import { extractImagesFromSegmentsAsync } from '@/ai/utils/imageUtils';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
-import { DITokens } from '@/core/DITokens';
 import type { ProtocolName } from '@/core/config/protocol';
+import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { Message } from '@/database/models/types';
 import type { NormalizedMessageEvent } from '@/events/types';
@@ -76,14 +76,14 @@ export class ProactiveConversationService {
   constructor(
     @inject(DITokens.GROUP_HISTORY_SERVICE) private groupHistoryService: GroupHistoryService,
     @inject(DITokens.THREAD_SERVICE) private threadService: ThreadService,
-    @inject(DITokens.OLLAMA_PRELIMINARY_ANALYSIS_SERVICE) private ollamaAnalysis: OllamaPreliminaryAnalysisService,
-    @inject(DITokens.PREFERENCE_KNOWLEDGE_SERVICE) private preferenceKnowledge: PreferenceKnowledgeService,
+    @inject(DITokens.PRELIMINARY_ANALYSIS_SERVICE) private preliminaryAnalysis: PreliminaryAnalysisService,
+    @inject(DITokens.PREFERENCE_KNOWLEDGE_SERVICE) preferenceKnowledge: PreferenceKnowledgeService,
     @inject(DITokens.PROACTIVE_THREAD_PERSISTENCE_SERVICE) private threadPersistence: ProactiveThreadPersistenceService,
     @inject(DITokens.AI_SERVICE) private aiService: AIService,
     @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
     @inject(DITokens.THREAD_CONTEXT_COMPRESSION_SERVICE) private threadCompression: ThreadContextCompressionService,
-    @inject(DITokens.MEMORY_SERVICE) private memoryService?: MemoryService,
+    @inject(DITokens.MEMORY_SERVICE) memoryService?: MemoryService,
     @inject(DITokens.DATABASE_MANAGER) private databaseManager?: DatabaseManager,
   ) {
     this.replyContextBuilder = new ProactiveReplyContextBuilder({
@@ -225,16 +225,16 @@ export class ProactiveConversationService {
       providerName: this.analysisProviderName,
       idleMode,
     };
-    let result: Awaited<ReturnType<typeof this.ollamaAnalysis.analyze>>;
+    let result: Awaited<ReturnType<PreliminaryAnalysisService['analyze']>>;
     if (activeThreads.length === 0) {
-      result = await this.ollamaAnalysis.analyze(preferenceText, recentMessagesText, analysisOptions);
+      result = await this.preliminaryAnalysis.analyze(preferenceText, recentMessagesText, analysisOptions);
     } else {
       const threadsForAnalysis = activeThreads.map((t) => ({
         threadId: t.threadId,
         preferenceKey: t.preferenceKey,
         contextText: this.threadService.getContextFormatted(t.threadId),
       }));
-      result = await this.ollamaAnalysis.analyzeWithThreads(
+      result = await this.preliminaryAnalysis.analyzeWithThreads(
         preferenceText,
         recentMessagesText,
         threadsForAnalysis,
@@ -242,7 +242,7 @@ export class ProactiveConversationService {
       );
     }
 
-    logger.debug(`[ProactiveConversationService] Ollama analysis result: ${JSON.stringify(result)}`);
+    logger.debug(`[ProactiveConversationService] Preliminary analysis result: ${JSON.stringify(result)}`);
 
     if (result.threadShouldEndId) {
       const threadToEnd = this.threadService.getThread(result.threadShouldEndId);
@@ -263,7 +263,7 @@ export class ProactiveConversationService {
     }
 
     if (!result.shouldJoin) {
-      logger.debug(`[ProactiveConversationService] Ollama: shouldJoin=false | groupId=${groupId}`);
+      logger.debug(`[ProactiveConversationService] Preliminary analysis: shouldJoin=false | groupId=${groupId}`);
       this.scheduleThreadCompression(groupId);
       return;
     }
