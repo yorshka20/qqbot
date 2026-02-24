@@ -28,6 +28,9 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
 
   private outputPath = join(process.cwd(), 'output', 'novelai');
 
+  /** Serialize API requests: NovelAI allows only one concurrent request. */
+  private requestQueue: Promise<void> = Promise.resolve();
+
   // Basic defaults for V4.5
   private static readonly DEFAULT_STEPS = 28;
   private static readonly DEFAULT_WIDTH = 832;
@@ -73,6 +76,23 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
 
   getCapabilities(): CapabilityType[] {
     return this._capabilities;
+  }
+
+  /**
+   * Run a function after all previously queued requests finish.
+   * Ensures only one NovelAI API request runs at a time.
+   */
+  private enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    const prev = this.requestQueue;
+    let resolveNext!: () => void;
+    this.requestQueue = new Promise<void>((resolve) => {
+      resolveNext = resolve;
+    });
+    return prev.then(() =>
+      fn().finally(() => {
+        resolveNext();
+      }),
+    );
   }
 
   /**
@@ -357,8 +377,9 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
       throw new Error('NovelAIProvider is not available: accessToken not configured');
     }
 
-    try {
-      logger.info(`[NovelAIProvider] Starting image generation for prompt: ${prompt}`);
+    return this.enqueue(async () => {
+      try {
+        logger.info(`[NovelAIProvider] Starting image generation for prompt: ${prompt}`);
 
       const width = options?.width || this.config.defaultWidth;
       const height = options?.height || this.config.defaultHeight;
@@ -489,11 +510,9 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
         return this.handleExtractionError(extractError, prompt);
       }
     } catch (error) {
-      // Return error response instead of throwing for better user experience
-      // Only throw for truly unexpected errors (like network failures during ZIP download)
-      // HTTP errors are already handled above
-      return this.handleGeneralError(error, prompt);
-    }
+        return this.handleGeneralError(error, prompt);
+      }
+    });
   }
 
   /**
@@ -510,8 +529,9 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
       throw new Error('NovelAIProvider is not available: accessToken not configured');
     }
 
-    try {
-      logger.info(`[NovelAIProvider] Starting img2img for prompt: ${prompt}`);
+    return this.enqueue(async () => {
+      try {
+        logger.info(`[NovelAIProvider] Starting img2img for prompt: ${prompt}`);
 
       const seed =
         typeof options?.seed === 'number' && options.seed >= 0 ? options.seed : Math.floor(Math.random() * 4294967295);
@@ -630,7 +650,8 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
         return this.handleExtractionError(extractError, prompt);
       }
     } catch (error) {
-      return this.handleGeneralError(error, prompt);
-    }
+        return this.handleGeneralError(error, prompt);
+      }
+    });
   }
 }
