@@ -91,7 +91,7 @@ export class ExplainImageTaskExecutor extends BaseTaskExecutor {
 
     logger.info(`[ExplainImageTaskExecutor] Explaining ${images.length} image(s) from message`);
 
-    const description = await this.aiService.generateProactiveImageDescription(images, userMessage, sessionId);
+    const description = await this.aiService.explainImages(images, userMessage, sessionId);
 
     if (!description) {
       logger.warn('[ExplainImageTaskExecutor] Image explanation returned empty description');

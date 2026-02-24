@@ -213,18 +213,16 @@ export class AIService {
   }
 
   /**
-   * Generate image description for proactive reply (explain image with user context).
-   * Used when the proactive trigger message contained images; returns text to inject as imageDescription.
-   * @param images - Vision images from the trigger message
-   * @param userDescription - User text (e.g. last message content) for focus
+   * Explain image content using a vision-capable provider.
+   * Generic utility shared by ExplainImageTaskExecutor, ProactiveConversationService,
+   * and any other flow that needs to convert images to a text description.
+   *
+   * @param images - Vision images to explain
+   * @param userDescription - User message text or context for focus (may be empty)
    * @param sessionId - Optional session id for provider selection
-   * @returns Description text or empty string on error/empty
+   * @returns Description text, or empty string on error / no images
    */
-  async generateProactiveImageDescription(
-    images: VisionImage[],
-    userDescription: string,
-    sessionId?: string,
-  ): Promise<string> {
+  async explainImages(images: VisionImage[], userDescription: string, sessionId?: string): Promise<string> {
     if (!images.length) {
       return '';
     }
@@ -239,10 +237,7 @@ export class AIService {
       });
       return response.text?.trim() ?? '';
     } catch (error) {
-      logger.warn(
-        '[AIService] generateProactiveImageDescription failed:',
-        error instanceof Error ? error.message : String(error),
-      );
+      logger.warn('[AIService] explainImages failed:', error instanceof Error ? error.message : String(error));
       return '';
     }
   }

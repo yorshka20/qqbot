@@ -488,7 +488,7 @@ export class ProactiveConversationService {
       if (!images.length) {
         return '';
       }
-      return await this.aiService.generateProactiveImageDescription(images, lastUserEntry.content || '（无）', groupId);
+      return await this.aiService.explainImages(images, lastUserEntry.content || '（无）', groupId);
     } catch (error) {
       logger.warn(
         '[ProactiveConversationService] getImageDescriptionFromLastUserMessage failed:',
