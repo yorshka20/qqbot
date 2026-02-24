@@ -3,6 +3,20 @@
 import { logger } from '@/utils/logger';
 import sharp from 'sharp';
 
+/**
+ * Alignment for diffusion APIs (e.g. NovelAI): width/height must be multiples of this
+ * (VAE latent grid requirement; commonly 8).
+ */
+export const DIFFUSION_ALIGN = 8;
+
+/**
+ * Round a dimension down to a multiple of align (e.g. 8 for diffusion APIs).
+ * Ensures API-accepted sizes without exceeding the given value.
+ */
+export function alignDimensionDown(value: number, align: number = DIFFUSION_ALIGN): number {
+  return Math.max(align, Math.floor(value / align) * align);
+}
+
 /** Max dimension for I2V input: fit within 480×832 / 832×480 (scale proportionally, max 832 per side) */
 const I2V_MAX_DIMENSION = 832;
 
@@ -38,8 +52,9 @@ export async function resizeImageToBase64(
 
 /**
  * Resize image proportionally so the longest side does not exceed maxSide.
- * Preserves aspect ratio. Returns raw base64 and the actual output dimensions
- * (so API callers can send matching width/height).
+ * Preserves aspect ratio. Output width/height are aligned down to multiples of
+ * DIFFUSION_ALIGN (8) for diffusion APIs (e.g. NovelAI). Returns raw base64 and
+ * the actual output dimensions (so API callers can send matching width/height).
  *
  * @param imageBufferOrBase64 - Image as Buffer or raw base64 string
  * @param maxSide - Maximum width or height in pixels (e.g. 832)
@@ -52,14 +67,24 @@ export async function resizeImageToBase64WithMaxSide(
   const buffer =
     typeof imageBufferOrBase64 === 'string' ? Buffer.from(imageBufferOrBase64, 'base64') : imageBufferOrBase64;
 
-  const resized = await sharp(buffer)
+  let resized = await sharp(buffer)
     .resize(maxSide, maxSide, { fit: 'inside', withoutEnlargement: true })
     .png()
     .toBuffer();
 
   const meta = await sharp(resized).metadata();
-  const width = meta.width ?? maxSide;
-  const height = meta.height ?? maxSide;
+  let width = meta.width ?? maxSide;
+  let height = meta.height ?? maxSide;
+
+  const alignedWidth = alignDimensionDown(width);
+  const alignedHeight = alignDimensionDown(height);
+
+  if (alignedWidth !== width || alignedHeight !== height) {
+    resized = await sharp(resized).resize(alignedWidth, alignedHeight, { fit: 'fill' }).png().toBuffer();
+    width = alignedWidth;
+    height = alignedHeight;
+    logger.debug(`[imageResize] Aligned dimensions to ${width}x${height} (multiple of ${DIFFUSION_ALIGN})`);
+  }
 
   const base64 = resized.toString('base64');
   logger.debug(
