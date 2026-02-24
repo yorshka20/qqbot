@@ -499,51 +499,6 @@ export class ProactiveConversationService {
   }
 
   /**
-   * Run task analysis and execution for the proactive reply context.
-   * Analyzes the last user message (or fallback to topicOrQuery) for task triggers (e.g. search),
-   * executes those tasks, and merges their results into injectContext.
-   * Image explanation tasks are handled separately via getImageDescriptionFromLastUserMessage(),
-   * so they are skipped here to avoid calling the vision API twice.
-   *
-   * @param injectContext - Context to enrich with task results (mutated in-place)
-   * @param lastUserMessage - Text of the last user message to analyze
-   * @param groupId - Numeric group ID for sessionId
-   */
-  private async runProactiveTaskAnalysis(
-    injectContext: { retrievedContext: string },
-    lastUserMessage: string,
-    groupId: number,
-  ): Promise<void> {
-    if (!this.aiService.hasProactiveTaskTriggers(lastUserMessage)) {
-      return;
-    }
-    const sessionId = `group:${groupId}`;
-    const tasks = await this.aiService.analyzeProactiveTasks(lastUserMessage, groupId, sessionId);
-    if (!tasks.length) return;
-
-    logger.info(
-      `[ProactiveConversationService] Task analysis produced ${tasks.length} task(s): ${tasks.map((t) => t.type).join(', ')} | groupId=${groupId}`,
-    );
-
-    for (const task of tasks) {
-      // explainImage is handled by getImageDescriptionFromLastUserMessage() — skip to avoid double vision call
-      if (task.type === 'explainImage') continue;
-
-      if (task.type === 'search') {
-        const query = task.parameters?.query as string | undefined;
-        if (!query) continue;
-        const searchText = await this.aiService.searchForProactive(query);
-        if (searchText) {
-          injectContext.retrievedContext = injectContext.retrievedContext
-            ? `${injectContext.retrievedContext}\n\n${searchText}`
-            : searchText;
-          logger.info(`[ProactiveConversationService] Search task added results for query="${query}" | groupId=${groupId}`);
-        }
-      }
-    }
-  }
-
-  /**
    * Create a new thread and send one proactive reply. Uses the same filteredEntries for both thread initial context and LLM prompt (no duplicate fetch).
    * @param triggerUserId - From ScheduledAnalysisContext (message that triggered the schedule); passed from upstream, not derived here.
    */
@@ -570,10 +525,6 @@ export class ProactiveConversationService {
     if (imageDescription) {
       injectContext.imageDescription = imageDescription;
     }
-    // Task analysis: scan last user message for additional task triggers (e.g. search).
-    const lastUserEntry = [...filteredEntries].reverse().find((e) => !e.isBotReply);
-    const lastUserText = lastUserEntry?.content || topicOrQuery;
-    await this.runProactiveTaskAnalysis(injectContext, lastUserText, groupIdNum);
 
     const replyText = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
     if (!replyText) {
@@ -610,10 +561,6 @@ export class ProactiveConversationService {
       searchQueries,
       triggerUserId,
     );
-    // Task analysis: scan the topic/query for additional task triggers (e.g. search).
-    // For existing threads, we use topicOrQuery as the representative message text.
-    await this.runProactiveTaskAnalysis(injectContext, topicOrQuery, groupIdNum);
-
     const replyText = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
     if (!replyText) return;
     await this.sendGroupMessage(groupIdNum, replyText);

@@ -2,11 +2,10 @@
 
 import type { AIService } from '@/ai/AIService';
 import type { VisionImage } from '@/ai/capabilities/types';
-import { extractImagesFromMessageAndReply, extractImagesFromSegmentsAsync } from '@/ai/utils/imageUtils';
+import { extractImagesFromMessageAndReply } from '@/ai/utils/imageUtils';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
-import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
 import { TaskDefinition } from '../decorators';
@@ -44,7 +43,7 @@ export class ExplainImageTaskExecutor extends BaseTaskExecutor {
   constructor(
     @inject(DITokens.AI_SERVICE) private aiService: AIService,
     @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
-    @inject(DITokens.DATABASE_MANAGER) private databaseManager?: DatabaseManager,
+    @inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager,
   ) {
     super();
   }
@@ -62,21 +61,11 @@ export class ExplainImageTaskExecutor extends BaseTaskExecutor {
     // Extract images from the current message (and any referenced reply message)
     let images: VisionImage[] = [];
     try {
-      if (this.databaseManager) {
-        images = await extractImagesFromMessageAndReply(
-          hookContext.message,
-          this.messageAPI,
-          this.databaseManager,
-        );
-      } else {
-        // Fallback: extract from segments only (no referenced-reply lookup)
-        const segments = hookContext.message.segments;
-        if (segments?.length) {
-          const getResourceUrl = (resourceId: string) =>
-            this.messageAPI.getResourceTempUrl(resourceId, hookContext.message);
-          images = await extractImagesFromSegmentsAsync(segments as MessageSegment[], getResourceUrl);
-        }
-      }
+      images = await extractImagesFromMessageAndReply(
+        hookContext.message,
+        this.messageAPI,
+        this.databaseManager,
+      );
     } catch (error) {
       logger.warn(
         '[ExplainImageTaskExecutor] Failed to extract images:',
