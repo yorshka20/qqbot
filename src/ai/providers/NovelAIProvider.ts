@@ -15,7 +15,7 @@ import type {
   ProviderImageGenerationResponse,
   Text2ImageOptions,
 } from '../capabilities/types';
-import { resizeImageToBase64 } from '../utils/imageResize';
+import { resizeImageToBase64WithMaxSide } from '../utils/imageResize';
 
 /**
  * NovelAI Provider implementation
@@ -114,16 +114,21 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
     }
   }
 
+  /** Max dimension for img2img input: scale proportionally, longest side not exceeding this. */
+  private static readonly IMG2IMG_MAX_SIDE = 832;
+
   /**
-   * Load image from URL/file/base64 and resize to target dimensions for img2img.
-   * Returns raw base64 (no data URL prefix). NovelAI API requires exact resolution or returns 400.
+   * Load image from URL/file/base64 and resize proportionally so the longest side does not exceed IMG2IMG_MAX_SIDE.
+   * Returns raw base64 and actual dimensions. NovelAI API requires parameters.width/height to match image size.
    */
-  private async loadAndResizeImageForImg2Img(image: string, width: number, height: number): Promise<string> {
+  private async loadAndResizeImageForImg2Img(
+    image: string,
+  ): Promise<{ base64: string; width: number; height: number }> {
     const base64Data = await ResourceDownloader.downloadToBase64(image, {
       timeout: 30000,
       maxSize: 10 * 1024 * 1024,
     });
-    return resizeImageToBase64(base64Data, width, height);
+    return resizeImageToBase64WithMaxSide(base64Data, NovelAIProvider.IMG2IMG_MAX_SIDE);
   }
 
   /**
@@ -508,8 +513,6 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
     try {
       logger.info(`[NovelAIProvider] Starting img2img for prompt: ${prompt}`);
 
-      const width = options?.width ?? this.config.defaultWidth ?? NovelAIProvider.DEFAULT_WIDTH;
-      const height = options?.height ?? this.config.defaultHeight ?? NovelAIProvider.DEFAULT_HEIGHT;
       const seed =
         typeof options?.seed === 'number' && options.seed >= 0 ? options.seed : Math.floor(Math.random() * 4294967295);
       const model = this.config.model || 'nai-diffusion-4-5-full';
@@ -524,16 +527,18 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
       const strength = options?.strength ?? this.config.defaultStrength ?? 0.5;
       const noise = options?.noise ?? this.config.defaultNoise ?? 0;
 
-      logger.info(
-        `[NovelAIProvider] img2img params: model=${model}, size=${width}x${height}, strength=${strength}, noise=${noise}, seed=${seed}`,
+      const { base64: imageBase64, width: imgWidth, height: imgHeight } = await this.loadAndResizeImageForImg2Img(
+        image,
       );
 
-      const imageBase64 = await this.loadAndResizeImageForImg2Img(image, width, height);
+      logger.info(
+        `[NovelAIProvider] img2img params: model=${model}, size=${imgWidth}x${imgHeight} (maxSide=832), strength=${strength}, noise=${noise}, seed=${seed}`,
+      );
 
       const parameters: Record<string, unknown> = {
         params_version: 3,
-        width,
-        height,
+        width: imgWidth,
+        height: imgHeight,
         scale: 5,
         sampler: 'k_euler_ancestral',
         steps: 28,
@@ -619,7 +624,7 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
         }
         return {
           images: [imageData],
-          metadata: { prompt, numImages: 1, width, height, steps: 28, strength, noise },
+          metadata: { prompt, numImages: 1, width: imgWidth, height: imgHeight, steps: 28, strength, noise },
         };
       } catch (extractError) {
         return this.handleExtractionError(extractError, prompt);

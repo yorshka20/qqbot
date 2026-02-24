@@ -37,6 +37,38 @@ export async function resizeImageToBase64(
 }
 
 /**
+ * Resize image proportionally so the longest side does not exceed maxSide.
+ * Preserves aspect ratio. Returns raw base64 and the actual output dimensions
+ * (so API callers can send matching width/height).
+ *
+ * @param imageBufferOrBase64 - Image as Buffer or raw base64 string
+ * @param maxSide - Maximum width or height in pixels (e.g. 832)
+ * @returns { base64, width, height }
+ */
+export async function resizeImageToBase64WithMaxSide(
+  imageBufferOrBase64: Buffer | string,
+  maxSide: number,
+): Promise<{ base64: string; width: number; height: number }> {
+  const buffer =
+    typeof imageBufferOrBase64 === 'string' ? Buffer.from(imageBufferOrBase64, 'base64') : imageBufferOrBase64;
+
+  const resized = await sharp(buffer)
+    .resize(maxSide, maxSide, { fit: 'inside', withoutEnlargement: true })
+    .png()
+    .toBuffer();
+
+  const meta = await sharp(resized).metadata();
+  const width = meta.width ?? maxSide;
+  const height = meta.height ?? maxSide;
+
+  const base64 = resized.toString('base64');
+  logger.debug(
+    `[imageResize] Resized to maxSide=${maxSide}, actual ${width}x${height}, output ${base64.length} chars base64`,
+  );
+  return { base64, width, height };
+}
+
+/**
  * Shared: compress image buffer so size does not exceed maxBytes, with optional max dimension.
  * Preserves aspect ratio. Used by I2V and vision flows.
  *
