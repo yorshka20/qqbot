@@ -14,7 +14,7 @@ import type { CommandContext, CommandHandler, CommandResult } from '../types';
   name: 'ls',
   description: 'List files in a directory (relative to project root)',
   usage: '/ls [path]',
-  permissions: ['user'],
+  permissions: ['admin'],
 })
 @injectable()
 export class LsCommand implements CommandHandler {

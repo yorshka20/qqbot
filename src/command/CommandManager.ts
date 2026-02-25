@@ -421,31 +421,52 @@ export class CommandManager {
     return null;
   }
 
+
   /**
-   * Get all registered commands
-   * Returns commands sorted alphabetically by name
-   * Builtin commands are listed before plugin commands
+   * Get all registered commands the current user has permission to use.
+   * Requires passing context, so user/group/role can be checked.
+   * @param context - The command context including user id, group, and user type.
    */
-  getAllCommands(): CommandRegistration[] {
+  getAllCommands(context: { userId: string; groupId: string; userType: PermissionLevel }): CommandRegistration[] {
     const all: CommandRegistration[] = [];
     // Use WeakSet to deduplicate by registration object reference
     // This prevents aliases from appearing as separate commands
     const seenRegistrations = new WeakSet<CommandRegistration>();
 
+    // Utility to test permission
+    const isPermitted = (permissions?: PermissionLevel[] | undefined) => {
+      // No declared permissions means allowed to all
+      if (!permissions || permissions.length === 0) return true;
+      // Owners always have permission
+      if (context.userType === 'owner') return true;
+      // Admins can do 'admin' and 'user' things
+      if (context.userType === 'admin' && permissions.includes('admin')) return true;
+      if (permissions.includes('user')) return true;
+      // Otherwise, check for explicit permission match (future: could expand to more fine-grained)
+      return permissions.includes(context.userType || 'user');
+    };
+
     // Builtin commands first
     for (const reg of this.builtinCommands.values()) {
       // Only add each registration object once, even if it's referenced by multiple keys (aliases)
       if (!seenRegistrations.has(reg)) {
-        seenRegistrations.add(reg);
-        all.push(reg);
+        // reg.handler.permissions may be present by decorator
+        const permissions = (reg.handler as any).permissions;
+        if (isPermitted(permissions)) {
+          seenRegistrations.add(reg);
+          all.push(reg);
+        }
       }
     }
 
     // Plugin commands
     for (const reg of this.commands.values()) {
       if (!seenRegistrations.has(reg)) {
-        seenRegistrations.add(reg);
-        all.push(reg);
+        const permissions = (reg.handler as any).permissions;
+        if (isPermitted(permissions)) {
+          seenRegistrations.add(reg);
+          all.push(reg);
+        }
       }
     }
 

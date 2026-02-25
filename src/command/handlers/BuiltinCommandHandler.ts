@@ -13,7 +13,7 @@ import { exec } from 'node:child_process';
 import { inject, injectable } from 'tsyringe';
 import type { CommandManager } from '../CommandManager';
 import { Command } from '../decorators';
-import type { CommandContext, CommandHandler, CommandResult } from '../types';
+import type { CommandContext, CommandHandler, CommandResult, PermissionLevel } from '../types';
 
 /** Template name for trigger words: preference.{preferenceKey}.trigger (prompts/preference/{key}/trigger.txt). */
 const TRIGGER_TEMPLATE_SUFFIX = '.trigger';
@@ -35,8 +35,12 @@ export class HelpCommand implements CommandHandler {
 
   constructor(@inject(DITokens.COMMAND_MANAGER) private commandManager: CommandManager) {}
 
-  execute(args: string[]): CommandResult {
-    const commands = this.commandManager.getAllCommands();
+  execute(args: string[], context: CommandContext): CommandResult {
+    const commands = this.commandManager.getAllCommands({
+      userId: context.userId.toString(),
+      groupId: context.groupId?.toString() ?? '',
+      userType: context.metadata.senderRole as PermissionLevel,
+    });
 
     if (args.length > 0) {
       // Show help for specific command

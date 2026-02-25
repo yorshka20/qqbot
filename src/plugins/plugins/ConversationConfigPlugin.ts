@@ -2,7 +2,7 @@
 // Provides commands to enable/disable commands and plugins per conversation
 
 import type { CommandManager } from '@/command/CommandManager';
-import type { CommandContext, CommandResult } from '@/command/types';
+import type { CommandContext, CommandResult, PermissionLevel } from '@/command/types';
 import { getSessionId, getSessionType } from '@/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -148,13 +148,10 @@ export class ConversationConfigPlugin extends PluginBase {
       return this.createErrorResult(nameValidation.error || '');
     }
 
-    // Get session info
-    const sessionId = getSessionId(context);
-    const sessionType = getSessionType(context);
     const locationDesc = this.getLocationDescription(context, isGlobal);
 
     // Process each command
-    const results = await this.processCommands(commandNames, action, sessionId, sessionType, isGlobal);
+    const results = await this.processCommands(commandNames, action, context, isGlobal);
 
     // Build response message
     return this.buildCommandResponse(results, action, locationDesc, commandNames.length === 1);
@@ -253,8 +250,7 @@ export class ConversationConfigPlugin extends PluginBase {
   private async processCommands(
     commandNames: string[],
     action: Action,
-    sessionId: string,
-    sessionType: 'user' | 'group',
+    context: CommandContext,
     isGlobal: boolean,
   ): Promise<ProcessResult[]> {
     const results: ProcessResult[] = [];
@@ -263,7 +259,11 @@ export class ConversationConfigPlugin extends PluginBase {
       const normalizedName = commandName.toLowerCase();
 
       // Check if command exists
-      const allCommands = this.commandManager.getAllCommands();
+      const allCommands = this.commandManager.getAllCommands({
+        userId: context.userId.toString(),
+        groupId: context.groupId?.toString() ?? '',
+        userType: context.metadata.senderRole as PermissionLevel,
+      });
       const command = allCommands.find((c) => c.handler.name.toLowerCase() === normalizedName);
       if (!command) {
         results.push({
@@ -275,7 +275,7 @@ export class ConversationConfigPlugin extends PluginBase {
       }
 
       // Process command
-      const result = await this.processSingleCommand(normalizedName, action, sessionId, sessionType, isGlobal);
+      const result = await this.processSingleCommand(normalizedName, action, context, isGlobal);
       results.push(result);
     }
 
@@ -288,10 +288,11 @@ export class ConversationConfigPlugin extends PluginBase {
   private async processSingleCommand(
     commandName: string,
     action: Action,
-    sessionId: string,
-    sessionType: 'user' | 'group',
+    context: CommandContext,
     isGlobal: boolean,
   ): Promise<ProcessResult> {
+    const sessionId = getSessionId(context);
+    const sessionType = getSessionType(context);
     const isEnabled = await this.commandManager.isCommandEnabled(commandName, sessionId, sessionType);
 
     if (action === 'enable') {
