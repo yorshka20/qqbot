@@ -136,36 +136,28 @@ export class AIService {
   }
 
   /**
-   * Generate image description for proactive reply (explain image with user context).
-   * Used when the proactive trigger message contained images; returns text to inject as imageDescription.
-   * @param images - Vision images from the trigger message
-   * @param userDescription - User text (e.g. last message content) for focus
+   * Explain a single image using a vision-capable provider.
+   * Each image is explained individually so callers that handle multiple images
+   * receive a separate description per image and can format them independently.
+   *
+   * @param image - The single vision image to explain
+   * @param userDescription - User message text or context for focus (may be empty)
    * @param sessionId - Optional session id for provider selection
-   * @returns Description text or empty string on error/empty
+   * @returns Description text, or empty string on error
    */
-  async generateProactiveImageDescription(
-    images: VisionImage[],
-    userDescription: string,
-    sessionId?: string,
-  ): Promise<string> {
-    if (!images.length) {
-      return '';
-    }
+  async explainImage(image: VisionImage, userDescription: string, sessionId?: string): Promise<string> {
     try {
       const explainPrompt = this.promptManager.render('vision.explain_image', {
         userDescription: userDescription || '（无）',
       });
-      const response = await this.visionService.explainImages(images, explainPrompt, {
+      const response = await this.visionService.explainImages([image], explainPrompt, {
         temperature: 0.5,
         maxTokens: 2000,
         sessionId,
       });
       return response.text?.trim() ?? '';
     } catch (error) {
-      logger.warn(
-        '[AIService] generateProactiveImageDescription failed:',
-        error instanceof Error ? error.message : String(error),
-      );
+      logger.warn('[AIService] explainImage failed:', error instanceof Error ? error.message : String(error));
       return '';
     }
   }

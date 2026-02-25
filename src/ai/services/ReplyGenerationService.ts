@@ -12,7 +12,6 @@ import type { TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../capabilities/types';
 import { PromptManager } from '../prompt/PromptManager';
-import { extractImagesFromMessageAndReply, extractImagesFromSegments } from '../utils/imageUtils';
 import { parseSearchDecision as parseSearchDecisionShared } from '../utils/searchDecisionParser';
 import { CardRenderingService } from './CardRenderingService';
 import { ConversationHistoryService } from './ConversationHistoryService';
@@ -238,16 +237,23 @@ export class ReplyGenerationService {
 
       let imageDescription = '';
       if (images && images.length > 0) {
-        // Explain images first, then use normal LLM flow with image description
+        // Explain each image individually so every image gets its own description
         const explainPrompt = this.promptManager.render('vision.explain_image', {
           userDescription: context.message.message || '（无）',
         });
-        const explainResponse = await this.visionService.explainImages(images, explainPrompt, {
-          temperature: 0.3,
-          maxTokens: 2000,
-          sessionId,
-        });
-        imageDescription = explainResponse.text;
+        const descriptions: string[] = [];
+        for (const image of images) {
+          const resp = await this.visionService.explainImages([image], explainPrompt, {
+            temperature: 0.3,
+            maxTokens: 2000,
+            sessionId,
+          });
+          if (resp.text?.trim()) descriptions.push(resp.text.trim());
+        }
+        imageDescription =
+          images.length > 1
+            ? descriptions.map((d, i) => `图${i + 1}: ${d}`).join('\n\n')
+            : (descriptions[0] ?? '');
         logger.debug(`[ReplyGenerationService] Image description: ${imageDescription}`);
       }
 
@@ -316,36 +322,30 @@ export class ReplyGenerationService {
 
       const sessionId = context.metadata.get('sessionId');
 
-      // 1. Extract images from current message and/or referenced reply message
-      let images: VisionImage[] = [];
-      if (this.messageAPI && this.databaseManager) {
-        try {
-          images = await extractImagesFromMessageAndReply(context.message, this.messageAPI, this.databaseManager);
-        } catch (error) {
-          logger.warn(
-            '[ReplyGenerationService] Failed to extract images from message and reply, falling back to text-only reply:',
-            error instanceof Error ? error.message : error,
-          );
-        }
-      } else {
-        const messageSegments = context.message.segments;
-        const hasImagesInSegments = messageSegments?.some((seg) => seg.type === 'image');
-        if (hasImagesInSegments && messageSegments) {
-          images = extractImagesFromSegments(messageSegments as any[]);
-        }
-      }
-      const hasImages = images.length > 0;
-
-      // 2. Extract search task results from taskResults
+      // 1. Extract search task results from taskResults
       const searchTaskResult = taskResults.get('search');
       let accumulatedSearchResults = searchTaskResult?.success ? searchTaskResult.reply : '';
 
-      // 3. Build task results summary (exclude search, as it's handled separately)
+      // 2. Extract explainImage task result (produced by ExplainImageTaskExecutor via TaskSystem).
+      //    TaskSystem auto-injects the explainImage task whenever the message contains image segments,
+      //    so image description always arrives here as a task result rather than being extracted
+      //    implicitly in this method. Remove it from the summary to avoid duplication in the prompt.
+      const explainImageResult = taskResults.get('explainImage');
+      const imageDescription: string =
+        explainImageResult?.success && explainImageResult.reply ? explainImageResult.reply : '';
+      if (imageDescription) {
+        logger.debug(
+          `[ReplyGenerationService] Using image description from explainImage task (${imageDescription.length} chars)`,
+        );
+      }
+
+      // 3. Build task results summary (exclude search and explainImage — both handled separately)
       const otherTaskResults = new Map(taskResults);
       otherTaskResults.delete('search');
+      otherTaskResults.delete('explainImage');
       const taskResultsSummary = this.buildTaskResultsSummary(otherTaskResults);
 
-      // 4. Perform recursive search (max 5 iterations). Run for image messages too (user content is text + image description).
+      // 4. Perform recursive search (max 5 iterations).
       if (this.searchService) {
         accumulatedSearchResults = await this.performRecursiveSearch(
           context.message.message,
@@ -356,20 +356,7 @@ export class ReplyGenerationService {
         );
       }
 
-      // 5. Generate reply. When hasImages: explain images first, then same path as no-images with imageDescription.
-      let imageDescription = '';
-      if (hasImages && images) {
-        const explainPrompt = this.promptManager.render('vision.explain_image', {
-          userDescription: context.message.message || '（无）',
-        });
-        const explainResponse = await this.visionService.explainImages(images, explainPrompt, {
-          temperature: 0.5,
-          maxTokens: 2000,
-          sessionId,
-        });
-        imageDescription = explainResponse.text;
-        logger.debug(`[ReplyGenerationService] Image description: ${imageDescription}`);
-      }
+      // 5. Generate final reply
       await this.generateReplyWithTaskResults(
         context,
         taskResultsSummary,
