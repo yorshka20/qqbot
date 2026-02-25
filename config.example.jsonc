@@ -70,6 +70,25 @@
     "host": "192.168.50.173",
     "root": "./output"
   },
+  // File read service configuration (optional)
+  "fileReadService": {
+    "root": "./",
+    "filterPaths": [
+      "node_modules",
+      "output",
+      "data",
+      "logs",
+      "config.json"
+    ],
+    "filterExtensions": [
+      "jpg",
+      "jpeg",
+      "png",
+      "gif",
+      "bmp",
+      "webp"
+    ]
+  },
   // Plugin configuration
   // Plugins must be placed in src/plugins/ directory
   "plugins": {

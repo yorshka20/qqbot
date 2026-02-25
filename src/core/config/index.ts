@@ -7,11 +7,11 @@ import { extname, resolve } from 'path';
 
 // Import all config types
 import type { AIConfig, AIProviderCapability, ContextMemoryConfig, SessionProviderConfig } from './ai';
-import type { BotSelfConfig, StaticServerConfig } from './bot';
+import type { BotSelfConfig, FileReadServiceConfig, StaticServerConfig } from './bot';
 import type { DatabaseConfig } from './database';
 import type { MCPConfig } from './mcp';
-import type { PluginsConfig } from './plugins';
 import type { MemoryConfig } from './memory';
+import type { PluginsConfig } from './plugins';
 import type { PromptsConfig } from './prompts';
 import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './protocol';
 import type { TTSConfig } from './tts';
@@ -31,7 +31,7 @@ export type {
   OllamaProviderConfig,
   OpenAIProviderConfig,
   OpenRouterProviderConfig,
-  SessionProviderConfig,
+  SessionProviderConfig
 } from './ai';
 export type { BotSelfConfig, StaticServerConfig } from './bot';
 export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './database';
@@ -42,7 +42,7 @@ export type {
   SearchConfig,
   SearchMode,
   SearXNGConfig,
-  TriggerStrategy,
+  TriggerStrategy
 } from './mcp';
 export type { MemoryConfig } from './memory';
 export type { PluginsConfig } from './plugins';
@@ -53,7 +53,7 @@ export type {
   ProtocolConfig,
   ProtocolConnectionConfig,
   ProtocolName,
-  ReconnectConfig,
+  ReconnectConfig
 } from './protocol';
 export type { TTSConfig } from './tts';
 export type { LogLevel } from './types';
@@ -72,6 +72,7 @@ export interface BotConfig {
   tts?: TTSConfig;
   mcp?: MCPConfig;
   staticServer?: StaticServerConfig;
+  fileReadService?: FileReadServiceConfig;
 }
 
 export class Config {
@@ -300,5 +301,9 @@ export class Config {
 
   getStaticServerConfig(): StaticServerConfig | undefined {
     return this.config.staticServer;
+  }
+
+  getFileReadServiceConfig(): FileReadServiceConfig | undefined {
+    return this.config.fileReadService;
   }
 }

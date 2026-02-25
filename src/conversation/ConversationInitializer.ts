@@ -28,8 +28,8 @@ import { DatabaseManager } from '@/database/DatabaseManager';
 import { HookManager } from '@/hooks/HookManager';
 import { MemoryExtractService, MemoryService } from '@/memory';
 import { MessageUtils } from '@/message/MessageUtils';
-import { FileReadService } from '@/services/FileReadService';
 import type { SearchService } from '@/search';
+import { FileReadService } from '@/services/FileReadService';
 import { TaskInitializer, TaskManager } from '@/task';
 import { logger } from '@/utils/logger';
 import { CommandRouter } from './CommandRouter';
@@ -163,7 +163,7 @@ export class ConversationInitializer {
     }
 
     // Register FileReadService (for ReadFileTaskExecutor and ls/cat commands)
-    const fileReadService = new FileReadService();
+    const fileReadService = new FileReadService(config.getFileReadServiceConfig());
     serviceRegistry.registerFileReadService(fileReadService);
 
     // Create AIService (MessageAPI from apiClient for vision reply: extract images from current + referenced messages)

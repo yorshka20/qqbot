@@ -1,40 +1,15 @@
 // File Read Service - provides safe file/directory access within project root
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, extname, isAbsolute, normalize, relative, resolve } from 'node:path';
-import { logger } from '@/utils/logger';
 import { CardRenderer } from '@/ai/utils/CardRenderer';
 import type { InfoCardData } from '@/ai/utils/cardTypes';
+import { FileReadServiceConfig } from '@/core/config/bot';
+import { logger } from '@/utils/logger';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { basename, extname, isAbsolute, normalize, relative, resolve } from 'node:path';
 
 /** Max file content length before truncation (chars) */
 const MAX_CONTENT_LENGTH = 15000;
 
-/** Binary file extensions to reject */
-const BINARY_EXTENSIONS = new Set([
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.webp',
-  '.ico',
-  '.bmp',
-  '.svg',
-  '.mp3',
-  '.mp4',
-  '.wav',
-  '.ogg',
-  '.webm',
-  '.pdf',
-  '.zip',
-  '.tar',
-  '.gz',
-  '.rar',
-  '.7z',
-  '.exe',
-  '.dll',
-  '.so',
-  '.dylib',
-]);
 
 export interface ListDirectoryResult {
   success: boolean;
@@ -55,9 +30,13 @@ export interface ReadFileAsImageResult {
  */
 export class FileReadService {
   private readonly projectRoot: string;
+  private readonly filterPaths: string[];
+  private readonly filterExtensions: string[];
 
-  constructor(projectRoot?: string) {
-    this.projectRoot = resolve(projectRoot ?? process.cwd());
+  constructor(config?: FileReadServiceConfig) {
+    this.projectRoot = resolve(config?.root ?? process.cwd());
+    this.filterPaths = config?.filterPaths ?? [];
+    this.filterExtensions = config?.filterExtensions ?? [];
   }
 
   /**
@@ -65,7 +44,7 @@ export class FileReadService {
    */
   isPathSafe(resolvedPath: string, rootPath: string = this.projectRoot): boolean {
     const rel = relative(rootPath, resolvedPath);
-    return (!rel || !rel.startsWith('..')) && !isAbsolute(rel);
+    return (!rel || !rel.startsWith('..')) && !isAbsolute(rel) && this.filterPaths.every((filter) => !rel.includes(filter));
   }
 
   /**
@@ -74,6 +53,19 @@ export class FileReadService {
   resolvePath(userPath: string): { resolved: string; error?: string } {
     const normalized = normalize(userPath).replace(/^(\.\/)+/, '');
     const resolved = resolve(this.projectRoot, normalized);
+
+    // Check for unavailable path per filters
+    if (this.filterPaths.some((filter) => resolved.includes(filter))) {
+      return { resolved: '', error: 'unavailable path' };
+    }
+
+    // Also filter any path components that are hidden (starts with .)
+    // e.g. /foo/.bar/file.txt or .env or .gitignore
+    const relFromRoot = relative(this.projectRoot, resolved);
+    const relParts = relFromRoot.split(/[\\/]/);
+    if (relParts.some(part => part.startsWith('.') && part.length > 1)) {
+      return { resolved: '', error: 'hidden path is not allowed' };
+    }
 
     if (!this.isPathSafe(resolved)) {
       return { resolved: '', error: '路径超出项目根目录' };
@@ -99,6 +91,7 @@ export class FileReadService {
 
       const entries = readdirSync(resolved, { withFileTypes: true });
       const lines = entries
+        .filter((e) => !this.filterPaths.some((filter) => e.name.includes(filter)))
         .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
         .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
@@ -130,8 +123,8 @@ export class FileReadService {
       }
 
       const ext = extname(resolved).toLowerCase();
-      if (BINARY_EXTENSIONS.has(ext)) {
-        return { success: false, error: '不支持读取二进制文件' };
+      if (this.filterExtensions.includes(ext)) {
+        return { success: false, error: 'unsupported file extension' };
       }
 
       let content = readFileSync(resolved, 'utf-8');

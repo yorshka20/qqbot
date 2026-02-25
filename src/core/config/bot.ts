@@ -14,3 +14,9 @@ export interface StaticServerConfig {
   host: string;
   root: string;
 }
+
+export interface FileReadServiceConfig {
+  root: string;
+  filterPaths: string[];
+  filterExtensions: string[];
+}
