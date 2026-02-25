@@ -183,6 +183,11 @@ export class ConversationInitializer {
     );
     serviceRegistry.registerAIServiceCapabilities(aiService);
 
+    // Create and register TaskSystem before ProactiveConversationService so DI can inject it.
+    // ProactiveConversationService constructor requires TaskSystem at position #9.
+    const taskSystem = new TaskSystem(services.taskManager, services.hookManager, aiService);
+    container.registerInstance(DITokens.TASK_SYSTEM, taskSystem, { logRegistration: false });
+
     // Proactive conversation (Phase 1): group history, thread, Ollama analysis, orchestrator (Phase 4: thread compression)
     // Dependencies resolved from DI container; see createProactiveConversationFromContainer
     this.configureProactiveConversationService(serviceRegistry);
@@ -490,10 +495,8 @@ export class ConversationInitializer {
       return new CommandSystem(services.commandManager, services.hookManager);
     });
 
-    // Create TaskSystem eagerly so it can be registered in the DI container for injection
-    // (e.g. ProactiveConversationService uses it for task analysis).
-    const taskSystem = new TaskSystem(services.taskManager, services.hookManager, services.aiService);
-    getContainer().registerInstance(DITokens.TASK_SYSTEM, taskSystem);
+    // TaskSystem was already created and registered in the container before ProactiveConversationService.
+    const taskSystem = getContainer().resolve<TaskSystem>(DITokens.TASK_SYSTEM);
     systemRegistry.registerSystemFactory('task', () => taskSystem);
 
     systemRegistry.registerSystemFactory('database-persistence', () => {
