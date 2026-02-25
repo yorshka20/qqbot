@@ -8,6 +8,7 @@ export {
   HelpCommand,
   MemoryDeepCommand,
   PingCommand,
+  RestartCommand,
   RoleCommand,
   StatusCommand,
 } from './handlers/BuiltinCommandHandler';

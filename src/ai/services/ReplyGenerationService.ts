@@ -1,7 +1,7 @@
 // Reply Generation Service - provides AI reply generation capabilities
 
 import type { MessageAPI } from '@/api/methods/MessageAPI';
-import { replaceReply, replaceReplyWithSegments, setReply } from '@/context/HookContextHelpers';
+import { replaceReply, replaceReplyWithSegments, setReply, setReplyWithSegments } from '@/context/HookContextHelpers';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
@@ -311,6 +311,9 @@ export class ReplyGenerationService {
     await this.hookManager.execute('onAIGenerationStart', context);
 
     try {
+      // Extract images from task results (any task may contribute data.imageBase64)
+      const taskResultImages = this.extractTaskResultImages(taskResults);
+
       const sessionId = context.metadata.get('sessionId');
 
       // 1. Extract images from current message and/or referenced reply message
@@ -373,6 +376,7 @@ export class ReplyGenerationService {
         accumulatedSearchResults,
         sessionId,
         imageDescription || undefined,
+        taskResultImages,
       );
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
@@ -380,6 +384,32 @@ export class ReplyGenerationService {
       await this.hookManager.execute('onAIGenerationComplete', context);
       throw err;
     }
+  }
+
+  /**
+   * Extract base64 images from task results (data.imageBase64)
+   * Any task may contribute images; reply can include both text and images
+   */
+  private extractTaskResultImages(taskResults: Map<string, TaskResult>): string[] {
+    const images: string[] = [];
+    for (const result of taskResults.values()) {
+      if (result.success && result.data?.imageBase64 && typeof result.data.imageBase64 === 'string') {
+        images.push(result.data.imageBase64);
+      }
+    }
+    return images;
+  }
+
+  /**
+   * Append task result images to context.reply (text + images)
+   */
+  private appendTaskResultImages(context: HookContext, taskResultImages: string[]): void {
+    if (taskResultImages.length === 0) return;
+    const imageSegments = taskResultImages.map((base64) => ({
+      type: 'image' as const,
+      data: { uri: `base64://${base64}`, sub_type: 'normal' as const, summary: '' },
+    }));
+    setReplyWithSegments(context, imageSegments, 'ai', { isCardImage: true });
   }
 
   /**
@@ -554,6 +584,7 @@ export class ReplyGenerationService {
    * @param searchResultsText - Search results text
    * @param sessionId - Session ID
    * @param imageDescription - Optional image description from explainImages (when message had images)
+   * @param taskResultImages - Base64 images from task results (data.imageBase64), appended to reply
    */
   private async generateReplyWithTaskResults(
     context: HookContext,
@@ -561,6 +592,7 @@ export class ReplyGenerationService {
     searchResultsText: string,
     sessionId?: string,
     imageDescription?: string,
+    taskResultImages: string[] = [],
   ): Promise<void> {
     const historyText = await this.conversationHistoryService.buildConversationHistory(context);
 
@@ -624,12 +656,14 @@ export class ReplyGenerationService {
     if (sessionId) {
       const success = await this.handleCardReply(response.text, sessionId, context);
       if (success) {
+        this.appendTaskResultImages(context, taskResultImages);
         return;
       }
       // If card reply failed, fallback to text - use replace (same AI reply update)
       // Hook: onAIGenerationComplete
       await this.hookManager.execute('onAIGenerationComplete', context);
       replaceReply(context, response.text, 'ai');
+      this.appendTaskResultImages(context, taskResultImages);
       return;
     }
 
@@ -639,6 +673,7 @@ export class ReplyGenerationService {
     // Set text reply to context
     // Use append because this is a new AI reply (no card attempt)
     setReply(context, response.text, 'ai');
+    this.appendTaskResultImages(context, taskResultImages);
   }
 
   /**

@@ -8,6 +8,8 @@ import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { PluginManager } from '@/plugins/PluginManager';
 import type { MemoryPlugin } from '@/plugins/plugins/MemoryPlugin';
+import { logger } from '@/utils/logger';
+import { exec } from 'node:child_process';
 import { inject, injectable } from 'tsyringe';
 import type { CommandManager } from '../CommandManager';
 import { Command } from '../decorators';
@@ -332,6 +334,53 @@ export class MemoryDeepCommand implements CommandHandler {
 
     const messageBuilder = new MessageBuilder();
     messageBuilder.text('已加入深度记忆整理队列，将根据本群历史分析并更新你的记忆，完成后无需额外操作。');
+    return {
+      success: true,
+      segments: messageBuilder.build(),
+    };
+  }
+}
+
+/** Delay before executing pm2 restart (ms), to allow reply to be sent first */
+const RESTART_DELAY_MS = 2000;
+
+/**
+ * Restart command - restarts the bot via pm2 restart
+ * Requires admin or owner permission
+ */
+@Command({
+  name: 'restart',
+  description: 'Restart the bot. Admin/owner only.',
+  usage: '/restart [pm2_id]',
+  permissions: ['admin', 'owner'],
+})
+@injectable()
+export class RestartCommand implements CommandHandler {
+  name = 'restart';
+  description = 'Restart the bot. Admin/owner only.';
+  usage = '/restart [pm2_id]';
+
+  execute(args: string[]): CommandResult {
+    let pm2Id = args[0] ?? '0';
+    // Sanitize: only allow alphanumeric, dash, underscore (prevent command injection)
+    if (!/^[a-zA-Z0-9_-]+$/.test(pm2Id)) {
+      return {
+        success: false,
+        error: '无效的 pm2 id，仅支持字母、数字、横线、下划线',
+      };
+    }
+
+    const messageBuilder = new MessageBuilder();
+    messageBuilder.text(`正在重启...`);
+
+    setTimeout(() => {
+      exec(`pm2 restart ${pm2Id}`, (err, stdout, stderr) => {
+        if (err) {
+          logger.error('[RestartCommand] pm2 restart failed:', { err, stdout, stderr });
+        }
+      });
+    }, RESTART_DELAY_MS);
+
     return {
       success: true,
       segments: messageBuilder.build(),

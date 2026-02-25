@@ -12,6 +12,7 @@ import { ProactiveConversationService } from '@/conversation/proactive';
 import { ThreadService } from '@/conversation/thread';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
+import type { FileReadService } from '@/services/FileReadService';
 import type { SearchService } from '@/search';
 import type { TaskManager } from '@/task/TaskManager';
 import { logger } from '@/utils/logger';
@@ -115,6 +116,13 @@ export class ServiceRegistry {
    */
   registerSearchService(searchService: SearchService): void {
     this.container.registerInstance(DITokens.SEARCH_SERVICE, searchService);
+  }
+
+  /**
+   * Register file read service (for read_file task and ls/cat commands)
+   */
+  registerFileReadService(fileReadService: FileReadService): void {
+    this.container.registerInstance(DITokens.FILE_READ_SERVICE, fileReadService);
   }
 
   /**

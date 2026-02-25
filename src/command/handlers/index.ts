@@ -1,5 +1,6 @@
 export * from './AIProviderSwitchCommandHandler';
 export * from './BananaCommandHandler';
+export * from './FileCommandHandler';
 export * from './BilibiliHotCommandHandler';
 export * from './BuiltinCommandHandler';
 export * from './I2vCommandHandler';
