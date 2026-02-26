@@ -19,6 +19,7 @@ import { logger } from '@/utils/logger';
  * NSFW Mode Plugin
  * /nsfw command toggles NSFW mode for the current session.
  * When on, all non-command messages use a fixed reply flow (llm.nsfw_reply template) instead of the normal pipeline.
+ * Applies to both group and private (user) sessions: config is keyed by (sessionId, sessionType) from the pipeline.
  */
 @Plugin({
   name: 'nsfw',
@@ -65,7 +66,7 @@ export class NsfwModePlugin extends PluginBase {
         return await this.executeNsfwCommand(args, context);
       },
       this.context,
-      ['admin'],
+      ['user'],
     );
 
     this.commandManager.register(nsfwCommandHandler, this.name);
@@ -73,8 +74,8 @@ export class NsfwModePlugin extends PluginBase {
     this.nsfwInterceptor = {
       shouldIntercept: async (ctx: HookContext): Promise<boolean> => {
         const rawSessionId = ctx.metadata.get('sessionId') as string | undefined;
-        const sessionType = ctx.metadata.get('sessionType') as 'user' | 'group' | undefined;
-        if (!rawSessionId || !sessionType) {
+        const sessionType = (ctx.metadata.get('sessionType') as 'user' | 'group' | undefined) ?? 'user';
+        if (!rawSessionId) {
           return false;
         }
         if (ctx.command) {
@@ -109,9 +110,10 @@ export class NsfwModePlugin extends PluginBase {
         );
         const rawSessionId = ctx.metadata.get('sessionId') as string | undefined;
         const sessionType = ctx.metadata.get('sessionType') as 'user' | 'group' | undefined;
+        // Support both group and private: sessionType 'user' = private chat, 'group' = group chat
         const { sessionId, sessionType: resolvedType } = this.normalizeSessionForConfig(
           rawSessionId ?? '',
-          sessionType ?? 'group',
+          sessionType ?? 'user',
         );
         const config = await this.conversationConfigService.getConfig(sessionId, resolvedType);
         await this.aiService.generateNsfwReply(ctx, {
