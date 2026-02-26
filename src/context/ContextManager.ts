@@ -1,12 +1,15 @@
 // Context Manager - builds and manages conversation contexts
 
-import type { SummarizeService } from '@/ai/services/SummarizeService';
-import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
+import type { ConversationMessageEntry, SessionHistoryStore } from '@/conversation/history';
 import { logger } from '@/utils/logger';
-import { ConversationHistoryBuffer } from './history/ConversationHistoryBuffer';
-import { ConversationHistorySummary } from './history/ConversationHistorySummary';
 import type { ContextBuilderOptions, ConversationContext, GlobalContext, SessionContext } from './types';
+
+export interface AddMessageOptions {
+  userId?: number;
+  nickname?: string;
+  messageId?: string;
+  wasAtBot?: boolean;
+}
 
 export interface BuildContextOptions extends ContextBuilderOptions {
   sessionId: string;
@@ -18,69 +21,31 @@ export interface BuildContextOptions extends ContextBuilderOptions {
 
 /**
  * Context Manager
- * Builds and manages conversation contexts
+ * Builds and manages conversation contexts; session history is owned by SessionHistoryStore (conversation/history).
  */
 export class ContextManager {
-  /** Per-session conversation history (buffer or buffer+summary); not persistent memory. */
-  private sessionHistory = new Map<string, ConversationHistoryBuffer | ConversationHistorySummary>();
   private globalContext: GlobalContext | null = null;
 
-  constructor(
-    private summaryThreshold = 20,
-    private maxBufferSize = 30,
-    private useSummary = false,
-  ) {}
+  constructor(private sessionHistoryStore: SessionHistoryStore) {}
 
-  /**
-   * Set global context
-   */
   setGlobalContext(context: GlobalContext): void {
     this.globalContext = context;
   }
 
   /**
-   * Get or create conversation history for session (in-memory buffer or summary wrapper).
-   */
-  private getSessionHistory(sessionId: string): ConversationHistoryBuffer | ConversationHistorySummary {
-    if (!this.sessionHistory.has(sessionId)) {
-      const buffer = new ConversationHistoryBuffer(this.maxBufferSize);
-      let history: ConversationHistoryBuffer | ConversationHistorySummary;
-
-      if (this.useSummary) {
-        const summarizeService = getContainer().resolve<SummarizeService>(DITokens.SUMMARIZE_SERVICE);
-        if (!summarizeService) {
-          throw new Error('[ContextManager] SummarizeService not found');
-        }
-        history = new ConversationHistorySummary(buffer, this.summaryThreshold, summarizeService);
-      } else {
-        history = buffer;
-      }
-
-      this.sessionHistory.set(sessionId, history);
-    }
-    return this.sessionHistory.get(sessionId)!;
-  }
-
-  /**
-   * Build conversation context
+   * Build conversation context (history from raw entries mapped to role+content).
    */
   buildContext(userMessage: string, options: BuildContextOptions): ConversationContext {
-    const sessionHistory = this.getSessionHistory(options.sessionId);
+    const entries = this.sessionHistoryStore.getEntries(options.sessionId);
+    const history = entries.map((e) => ({
+      role: (e.isBotReply ? 'assistant' : 'user') as 'user' | 'assistant',
+      content: e.content,
+      timestamp: e.createdAt instanceof Date ? e.createdAt : new Date(e.createdAt),
+    }));
 
-    // Get conversation history
-    const history =
-      sessionHistory instanceof ConversationHistorySummary
-        ? sessionHistory.getHistory()
-        : sessionHistory.getFormattedHistory();
-
-    // Build context
     const context: ConversationContext = {
       userMessage,
-      history: history.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-        timestamp: new Date(),
-      })),
+      history,
       userId: options.userId,
       groupId: options.groupId,
       messageType: options.sessionType === 'group' ? 'group' : 'private',
@@ -102,63 +67,60 @@ export class ContextManager {
   }
 
   /**
-   * Add message to conversation history
+   * Add message to conversation history (rich entry: userId, nickname, etc., for consistent format with DB path).
    */
-  async addMessage(sessionId: string, role: 'user' | 'assistant', content: string): Promise<void> {
-    const sessionHistory = this.getSessionHistory(sessionId);
+  async addMessage(
+    sessionId: string,
+    role: 'user' | 'assistant',
+    content: string,
+    options?: AddMessageOptions,
+  ): Promise<void> {
+    const now = new Date();
+    const entry: ConversationMessageEntry = {
+      messageId: options?.messageId ?? `mem:${now.getTime()}`,
+      userId: role === 'user' ? (options?.userId ?? 0) : 0,
+      nickname: options?.nickname,
+      content,
+      isBotReply: role === 'assistant',
+      createdAt: now,
+      wasAtBot: options?.wasAtBot,
+    };
 
-    if (sessionHistory instanceof ConversationHistorySummary) {
-      await sessionHistory.addMessage(role, content);
-    } else {
-      sessionHistory.addMessage(role, content);
-    }
+    await this.sessionHistoryStore.append(sessionId, entry);
   }
 
   /**
    * Clear conversation history for session
    */
   clearSession(sessionId: string): void {
-    const sessionHistory = this.sessionHistory.get(sessionId);
-    if (sessionHistory) {
-      sessionHistory.clear();
-    }
+    this.sessionHistoryStore.clearSession(sessionId);
   }
 
   /**
    * Get session context
    */
   getSessionContext(sessionId: string, sessionType: 'user' | 'group'): SessionContext {
-    const sessionHistory = this.getSessionHistory(sessionId);
-    const history =
-      sessionHistory instanceof ConversationHistorySummary
-        ? sessionHistory.getHistory()
-        : sessionHistory.getFormattedHistory();
-
+    const entries = this.sessionHistoryStore.getEntries(sessionId);
     return {
       sessionId,
       sessionType,
-      context: {
-        messageCount: history.length,
-      },
+      context: { messageCount: entries.length },
       metadata: new Map(),
     };
   }
 
   /**
-   * Get conversation history for a session
-   * Returns formatted history messages for use in AI context
+   * Get conversation history for a session (role + content for AI context), from raw entries.
    */
   getHistory(sessionId: string, maxMessages?: number): Array<{ role: 'user' | 'assistant'; content: string }> {
-    const sessionHistory = this.getSessionHistory(sessionId);
-    const history =
-      sessionHistory instanceof ConversationHistorySummary
-        ? sessionHistory.getHistory()
-        : sessionHistory.getFormattedHistory();
-
-    if (maxMessages && maxMessages > 0) {
+    const entries = this.sessionHistoryStore.getEntries(sessionId);
+    const history = entries.map((e) => ({
+      role: (e.isBotReply ? 'assistant' : 'user') as 'user' | 'assistant',
+      content: e.content,
+    }));
+    if (maxMessages != null && maxMessages > 0) {
       return history.slice(-maxMessages);
     }
-
     return history;
   }
 }

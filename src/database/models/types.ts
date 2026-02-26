@@ -33,7 +33,15 @@ export interface Message extends BaseModel {
   protocol: string;
   messageId?: string; // Protocol-specific message ID (for non-Milky protocols)
   messageSeq?: number; // Message sequence number (for Milky protocol, unique within groupId)
-  metadata?: Record<string, unknown>;
+  metadata?: {
+    sender?: {
+      nickname?: string;
+      card?: string;
+    };
+    timestamp?: string;
+    isBotReply?: boolean;
+    [key: string]: unknown;
+  };
 }
 
 /**

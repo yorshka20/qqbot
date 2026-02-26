@@ -3,6 +3,7 @@
 import type { ContextManager } from '@/context/ContextManager';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import { logger } from '@/utils/logger';
 import type { CapabilityType } from '../capabilities/types';
 import type { AIGenerateOptions, ConversationMessage } from '../types';
 
@@ -67,6 +68,8 @@ export abstract class AIProvider {
         content: msg.content,
       }));
     } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.error('[AIProvider] Failed to load conversation history:', err);
       return [];
     }
   }

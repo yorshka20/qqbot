@@ -460,7 +460,7 @@ export class ProactiveConversationService {
     }
     try {
       const messages = adapter.getModel('messages');
-      const dbMessage = (await messages.findOne({ id: lastUserEntry.messageId } as Partial<Message>)) as Message | null;
+      const dbMessage = await messages.findOne({ id: lastUserEntry.messageId } as Partial<Message>);
       if (!dbMessage?.rawContent) {
         return '';
       }
@@ -473,7 +473,7 @@ export class ProactiveConversationService {
       if (!Array.isArray(segments) || !segments.some((s) => s?.type === 'image')) {
         return '';
       }
-      const protocol: ProtocolName = (dbMessage.protocol as ProtocolName) || 'milky';
+      const protocol = dbMessage.protocol as ProtocolName;
       const minimalContext: NormalizedMessageEvent = {
         id: '',
         type: 'message',
