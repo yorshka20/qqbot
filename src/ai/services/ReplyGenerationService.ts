@@ -170,42 +170,36 @@ export class ReplyGenerationService {
       const sessionId = context.metadata.get('sessionId');
       const memoryVars = this.getMemoryVars(context);
 
-      // char = bot's roleplay character name; user = user's role/name (for template "演绎{{char}}以及{{user}}之外...")
-      const char = '助手';
-      const user = context.message?.sender?.nickname ?? '用户';
+      // char = bot's roleplay character name; user = user's role/name
+      const char = '';
+      const user = `${context.message?.userId?.toString() ?? '未知'}（${context.message?.sender?.nickname ?? '用户'}）`;
 
-      const prompt = this.promptManager.render(
-        'llm.nsfw_reply',
-        {
-          char,
-          user,
-          userMessage: context.message.message,
-          conversationHistory: historyText,
-          groupMemoryText: memoryVars.groupMemoryText,
-          userMemoryText: memoryVars.userMemoryText,
-          imageDescription: '',
-        },
-        { injectBase: true },
-      );
+      const prompt = this.promptManager.render('llm.nsfw_reply', {
+        char,
+        user,
+        userMessage: context.message.message,
+        conversationHistory: historyText,
+        groupMemoryText: memoryVars.groupMemoryText,
+        userMemoryText: memoryVars.userMemoryText,
+        imageDescription: '',
+      });
 
-      // Higher maxTokens to allow 300-500 word narrative replies per template
+      logger.debug(`[ReplyGenerationService] NSFW prompt: ${prompt}`);
+
+      // 300-500 word narrative replies; maxTokens capped for API limits (e.g. DeepSeek 4096)
       const response = await this.llmService.generate(
         prompt,
         {
           temperature: 0.8,
-          maxTokens: 3500,
+          maxTokens: 4096,
           sessionId,
         },
-        'ollama',
+        'deepseek',
       );
 
       logger.debug(`[ReplyGenerationService] NSFW reply received | responseLength=${response.text.length}`);
 
-      const success = await this.handleCardReply(response.text, sessionId, context);
-      if (success) {
-        return;
-      }
-
+      // NSFW mode: no card reply, output plain text only
       await this.hookManager.execute('onAIGenerationComplete', context);
       replaceReply(context, response.text, 'ai');
     } catch (error) {
