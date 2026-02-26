@@ -217,9 +217,9 @@ export class MessageOperationPlugin extends PluginBase {
       const targetMessage = await this.messageAPI.getMessageFromContext(messageSeq, noticeEvent, this.databaseManager);
 
       logger.info(
-        `[MessageOperationPlugin] Processing message as reply trigger | messageSeq=${messageSeq} | groupId=${groupId}`,
+        `[MessageOperationPlugin] Reply to message (reaction trigger) | messageSeq=${messageSeq} | groupId=${groupId}`,
       );
-      await this.conversationManager.processMessage(targetMessage, { replyTrigger: 'reaction' });
+      await this.conversationManager.replyToMessage(targetMessage);
     } catch (error) {
       logger.error(
         `[MessageOperationPlugin] Reply operation failed | messageSeq=${messageSeq} | groupId=${groupId} | error=${(error as Error).message}`,

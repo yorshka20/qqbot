@@ -76,6 +76,31 @@ export class ConversationManager {
   }
 
   /**
+   * Reply to an existing message. Runs only PROCESS then send; no full pipeline, no command routing.
+   */
+  async replyToMessage(event: NormalizedMessageEvent): Promise<MessageProcessingResult> {
+    try {
+      logger.debug(`[ConversationManager] Reply to existing message from ${event.userId}`);
+      const context: MessageProcessingContext = {
+        message: event,
+        sessionId: this.getSessionId(event),
+        sessionType: event.messageType === 'private' ? 'user' : 'group',
+        conversationId: undefined,
+        botSelfId: this.getBotSelfId(),
+        replyTrigger: 'reaction',
+      };
+      return await this.pipeline.processReplyOnly(event, context);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.error('[ConversationManager] Reply to message failed:', err);
+      return {
+        success: false,
+        error: err.message,
+      };
+    }
+  }
+
+  /**
    * Get session ID from event
    */
   private getSessionId(event: NormalizedMessageEvent): string {

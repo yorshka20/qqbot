@@ -356,7 +356,8 @@ export class ConversationInitializer {
       { logRegistration: false },
     );
 
-    this.container.registerInstance(DITokens.PROACTIVE_CONVERSATION_SERVICE, ProactiveConversationService);
+    // Register class so resolve() creates an instance with injected deps; ServiceRegistry then overwrites with that instance.
+    this.container.registerClass(DITokens.PROACTIVE_CONVERSATION_SERVICE, ProactiveConversationService);
     const proactiveConversationService = this.container.resolve<ProactiveConversationService>(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
     );

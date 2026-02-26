@@ -63,6 +63,33 @@ export class MessagePipeline {
   }
 
   /**
+   * Reply-only path: run only PROCESS (TaskSystem, AI reply) then handleReply (send).
+   * For replying to existing/historical message; does not cache message, RECEIVE, or Preprocess; no command routing.
+   */
+  async processReplyOnly(
+    event: NormalizedMessageEvent,
+    context: MessageProcessingContext,
+  ): Promise<MessageProcessingResult> {
+    const hookContext = this.createHookContext(event, context);
+    const messageId = String(event.id ?? event.messageId ?? 'unknown');
+    try {
+      this.promptManager.setCurrentMessageContext({ message: hookContext.message });
+      logger.info(
+        `[MessagePipeline] Reply-only | messageId=${messageId} | userId=${event.userId}`,
+      );
+      const success = await this.lifecycle.executeProcessOnly(hookContext);
+      if (!success) {
+        return { success: false, error: 'Processing interrupted' };
+      }
+      return await this.handleReply(event, context, hookContext, messageId);
+    } catch (error) {
+      return await this.handleError(error, event, context);
+    } finally {
+      this.promptManager.setCurrentMessageContext(null);
+    }
+  }
+
+  /**
    * Build conversation context from event and processing context
    */
   private buildConversationContext(

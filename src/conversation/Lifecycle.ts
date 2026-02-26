@@ -8,8 +8,8 @@ import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
-import type { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
 import type { CommandRouter } from './CommandRouter';
+import type { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
 
 /**
  * Message Lifecycle Orchestrator
@@ -94,6 +94,28 @@ export class Lifecycle {
       logger.error(`[Lifecycle] Lifecycle failed | messageId=${messageId} | duration=${duration}ms`, err);
 
       // Execute error hook
+      await this.handleError(context, err, messageId);
+      return false;
+    }
+  }
+
+  /**
+   * Execute only PROCESS stage (for reply to existing message).
+   * Does not run RECEIVE, PREPROCESS, PREPARE, SEND, COMPLETE; pipeline handles send via handleReply.
+   */
+  async executeProcessOnly(context: HookContext): Promise<boolean> {
+    const messageId = this.getMessageId(context);
+    logger.debug(`[Lifecycle] Starting PROCESS only | messageId=${messageId}`);
+    try {
+      const result = await this.executeStageProcess(context, messageId);
+      if (!result) {
+        return false;
+      }
+      logger.info(`[Lifecycle] PROCESS only completed | messageId=${messageId}`);
+      return true;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.error(`[Lifecycle] PROCESS only failed | messageId=${messageId}`, err);
       await this.handleError(context, err, messageId);
       return false;
     }
