@@ -2,6 +2,7 @@
 
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { replaceReply, replaceReplyWithSegments, setReply, setReplyWithSegments } from '@/context/HookContextHelpers';
+import type { ConversationHistoryService } from '@/conversation/history';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
@@ -14,7 +15,6 @@ import type { VisionImage } from '../capabilities/types';
 import { PromptManager } from '../prompt/PromptManager';
 import { parseSearchDecision as parseSearchDecisionShared } from '../utils/searchDecisionParser';
 import { CardRenderingService } from './CardRenderingService';
-import type { ConversationHistoryService } from '@/conversation/history';
 import { LLMService } from './LLMService';
 import { VisionService } from './VisionService';
 
@@ -156,8 +156,9 @@ export class ReplyGenerationService {
    * Generate reply using NSFW-mode prompt template only (fixed reply flow, no task analysis or search).
    * Used when session is in NSFW mode; reply is set to context.reply.
    * Template uses {{char}} (bot's roleplay character) and {{user}} (user's role/name) for narrative RP.
+   * Caller may pass options.char and options.instruct (e.g. from /nsfw --char=xxx --instruct=xxx) to fill the prompt template.
    */
-  async generateNsfwReply(context: HookContext): Promise<void> {
+  async generateNsfwReply(context: HookContext, options?: { char?: string; instruct?: string }): Promise<void> {
     const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
     if (!shouldContinue) {
       throw new Error('AI reply generation interrupted by hook');
@@ -170,12 +171,14 @@ export class ReplyGenerationService {
       const sessionId = context.metadata.get('sessionId');
       const memoryVars = this.getMemoryVars(context);
 
-      // char = bot's roleplay character name; user = user's role/name
-      const char = '';
+      // char = bot's roleplay character name; instruct = character persona/details (passed by caller, e.g. /nsfw --char=xxx --instruct=xxx); user = user's role/name
+      const char = options?.char ?? '';
+      const instruct = options?.instruct?.trim() ?? '';
       const user = `${context.message?.userId?.toString() ?? '未知'}（${context.message?.sender?.nickname ?? '用户'}）`;
 
       const prompt = this.promptManager.render('llm.nsfw_reply', {
         char,
+        instruct,
         user,
         userMessage: context.message.message,
         conversationHistory: historyText,

@@ -59,8 +59,8 @@ export class NsfwModePlugin extends PluginBase {
 
     const nsfwCommandHandler = new PluginCommandHandler(
       'nsfw',
-      'Toggle NSFW mode for this session (on/off). When on, replies use fixed NSFW prompt.',
-      '/nsfw [on|off]',
+      'Toggle NSFW mode for this session (on/off). When on, replies use fixed NSFW prompt. Use --char=xxx and --instruct=xxx for roleplay character and persona.',
+      '/nsfw [on|off] [--char=xxx] [--instruct=xxx]',
       async (args: string[], context: CommandContext) => {
         return await this.executeNsfwCommand(args, context);
       },
@@ -92,9 +92,9 @@ export class NsfwModePlugin extends PluginBase {
         // the same config that was written by executeNsfwCommand.
         const { sessionId, sessionType: resolvedType } = this.normalizeSessionForConfig(rawSessionId, sessionType);
         const config = await this.conversationConfigService.getConfig(sessionId, resolvedType);
-        const intercept = config.nsfwMode === true;
+        const intercept = config.nsfw?.mode === true;
         logger.debug(
-          `[NsfwModePlugin] shouldIntercept | rawSessionId=${rawSessionId} | normalized=${sessionId}|${resolvedType} | nsfwMode=${config.nsfwMode} => ${intercept}`,
+          `[NsfwModePlugin] shouldIntercept | rawSessionId=${rawSessionId} | normalized=${sessionId}|${resolvedType} | nsfw.mode=${config.nsfw?.mode} => ${intercept}`,
         );
         if (intercept) {
           logger.info(
@@ -107,7 +107,17 @@ export class NsfwModePlugin extends PluginBase {
         logger.info(
           '[NsfwModePlugin] Handling message in NSFW intercept mode | generating reply via Ollama (skip command/task)',
         );
-        await this.aiService.generateNsfwReply(ctx);
+        const rawSessionId = ctx.metadata.get('sessionId') as string | undefined;
+        const sessionType = ctx.metadata.get('sessionType') as 'user' | 'group' | undefined;
+        const { sessionId, sessionType: resolvedType } = this.normalizeSessionForConfig(
+          rawSessionId ?? '',
+          sessionType ?? 'group',
+        );
+        const config = await this.conversationConfigService.getConfig(sessionId, resolvedType);
+        await this.aiService.generateNsfwReply(ctx, {
+          char: config.nsfw?.char ?? '',
+          instruct: config.nsfw?.instruct ?? '',
+        });
       },
     };
 
@@ -146,13 +156,29 @@ export class NsfwModePlugin extends PluginBase {
   }
 
   /**
-   * Execute /nsfw command: toggle or set on/off, then reply with confirmation
+   * Execute /nsfw command: toggle or set on/off, optionally set --char=xxx and --instruct=xxx for prompt {{char}}/{{instruct}}, then reply with confirmation
    */
   private async executeNsfwCommand(args: string[], context: CommandContext): Promise<CommandResult> {
     const sessionId = getSessionId(context);
     const sessionType = getSessionType(context);
 
-    const firstArg = args[0]?.toLowerCase();
+    // Parse --char=xxx and --instruct=xxx (optional); remaining args are positionals for on/off/toggle
+    let nsfwCharArg: string | undefined;
+    let nsfwInstructArg: string | undefined;
+    const positionals = args.filter((a) => {
+      if (a.startsWith('--char=')) {
+        nsfwCharArg = a.slice('--char='.length).trim();
+        return false;
+      }
+      if (a.startsWith('--instruct=')) {
+        nsfwInstructArg = a.slice('--instruct='.length).trim();
+        return false;
+      }
+      return true;
+    });
+
+    const config = await this.conversationConfigService.getConfig(sessionId, sessionType);
+    const firstArg = positionals[0]?.toLowerCase();
     let nsfwMode: boolean;
 
     if (firstArg === 'on') {
@@ -160,15 +186,26 @@ export class NsfwModePlugin extends PluginBase {
     } else if (firstArg === 'off') {
       nsfwMode = false;
     } else {
-      // Toggle: read current config and flip
-      const config = await this.conversationConfigService.getConfig(sessionId, sessionType);
-      nsfwMode = !config.nsfwMode;
+      nsfwMode = !(config.nsfw?.mode ?? false);
     }
 
-    await this.conversationConfigService.updateConfig(sessionId, sessionType, { nsfwMode });
+    const updatePayload = {
+      nsfw: {
+        mode: nsfwMode,
+        char: nsfwCharArg !== undefined ? nsfwCharArg : (config.nsfw?.char ?? ''),
+        instruct: nsfwInstructArg !== undefined ? nsfwInstructArg : (config.nsfw?.instruct ?? ''),
+      },
+    };
+    await this.conversationConfigService.updateConfig(sessionId, sessionType, updatePayload);
 
     // Reply makes it clear which mode is now active so user does not confuse toggle result
-    const message = nsfwMode ? '已开启 NSFW 模式' : '已关闭 NSFW 模式';
+    let message = nsfwMode ? '已开启 NSFW 模式' : '已关闭 NSFW 模式';
+    if (nsfwCharArg !== undefined && nsfwCharArg.length > 0) {
+      message += `，角色：${nsfwCharArg}`;
+    }
+    if (nsfwInstructArg !== undefined && nsfwInstructArg.length > 0) {
+      message += '，已设置人设';
+    }
     const segments = new MessageBuilder().text(message).build();
 
     return {

@@ -71,8 +71,18 @@ export interface ConversationConfigData {
     users?: Record<string, string[]>; // userId -> permission levels (as strings, will be validated as PermissionLevel)
   };
   providers?: ProviderSelection; // Session-level AI provider selection
-  /** When true, session uses fixed NSFW reply flow (single template + LLM) instead of normal task/reply pipeline */
-  nsfwMode?: boolean;
+  /**
+   * NSFW session config: fixed reply flow (llm.nsfw_reply template), character name and persona.
+   * Set via /nsfw [on|off] [--char=xxx] [--instruct=xxx].
+   */
+  nsfw?: {
+    /** When true, session uses fixed NSFW reply flow instead of normal task/reply pipeline */
+    mode?: boolean;
+    /** Bot's roleplay character name for prompt {{char}} */
+    char?: string;
+    /** Character persona/details for prompt {{instruct}}; supplements {{char}} with traits, preferences, backstory. */
+    instruct?: string;
+  };
 }
 
 /**

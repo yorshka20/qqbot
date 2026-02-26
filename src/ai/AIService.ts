@@ -364,8 +364,9 @@ export class AIService {
   /**
    * Generate reply using NSFW-mode prompt template only (fixed reply flow).
    * Used when session is in NSFW mode (e.g. by NsfwModePlugin interceptor).
+   * Caller may pass options.char and options.instruct (e.g. from session config /nsfw --char=xxx --instruct=xxx) for the prompt template.
    */
-  async generateNsfwReply(context: HookContext): Promise<void> {
-    return await this.replyGenerationService.generateNsfwReply(context);
+  async generateNsfwReply(context: HookContext, options?: { char?: string; instruct?: string }): Promise<void> {
+    return await this.replyGenerationService.generateNsfwReply(context, options);
   }
 }

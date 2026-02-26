@@ -100,6 +100,12 @@ export class ConversationConfigService {
             disabled: globalConfig.plugins?.disabled ?? [],
           };
 
+    const nsfw = {
+      mode: conversationConfig.nsfw?.mode ?? false,
+      char: conversationConfig.nsfw?.char ?? '',
+      instruct: conversationConfig.nsfw?.instruct ?? '',
+    };
+
     return {
       commands,
       plugins,
@@ -109,7 +115,7 @@ export class ConversationConfigService {
           ...conversationConfig.permissions?.users,
         },
       },
-      nsfwMode: conversationConfig.nsfwMode ?? false,
+      nsfw,
     };
   }
 
@@ -124,46 +130,43 @@ export class ConversationConfigService {
     const cacheKey = this.getCacheKey(sessionId, sessionType);
     const model = this.databaseAdapter.getModel('conversationConfigs');
 
-    // Get existing config or create new
-    let existing = await model.findOne({
+    const existing = await model.findOne({
       sessionId,
       sessionType,
     });
 
-    let configData: ConversationConfigData;
+    const existingNsfw = existing?.config?.nsfw ?? { mode: false, char: '', instruct: '' };
+    const mergedNsfw = partialConfig.nsfw
+      ? {
+          mode: partialConfig.nsfw.mode !== undefined ? partialConfig.nsfw.mode : existingNsfw.mode,
+          char: partialConfig.nsfw.char !== undefined ? partialConfig.nsfw.char : existingNsfw.char,
+          instruct:
+            partialConfig.nsfw.instruct !== undefined ? partialConfig.nsfw.instruct : existingNsfw.instruct,
+        }
+      : existingNsfw;
+
+    const configData: ConversationConfigData = {
+      commands: {
+        ...existing?.config?.commands,
+        ...partialConfig.commands,
+      },
+      plugins: {
+        ...existing?.config?.plugins,
+        ...partialConfig.plugins,
+      },
+      permissions: {
+        users: {
+          ...existing?.config?.permissions?.users,
+          ...partialConfig.permissions?.users,
+        },
+      },
+      providers: partialConfig.providers !== undefined ? partialConfig.providers : existing?.config?.providers,
+      nsfw: mergedNsfw,
+    };
 
     if (existing) {
-      // Merge with existing config
-      configData = {
-        ...existing.config,
-        commands: {
-          ...existing.config.commands,
-          ...partialConfig.commands,
-        },
-        plugins: {
-          ...existing.config.plugins,
-          ...partialConfig.plugins,
-        },
-        permissions: {
-          users: {
-            ...existing.config.permissions?.users,
-            ...partialConfig.permissions?.users,
-          },
-        },
-        // Merge providers if provided
-        providers: partialConfig.providers !== undefined ? partialConfig.providers : existing.config.providers,
-        // Merge nsfwMode if provided
-        nsfwMode: partialConfig.nsfwMode !== undefined ? partialConfig.nsfwMode : existing.config.nsfwMode,
-      };
-
-      // Update in database
-      await model.update(existing.id, {
-        config: configData,
-      });
+      await model.update(existing.id, { config: configData });
     } else {
-      // Create new config
-      configData = partialConfig as ConversationConfigData;
-
       await model.create({
         sessionId,
         sessionType,
