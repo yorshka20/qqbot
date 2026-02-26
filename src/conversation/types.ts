@@ -13,6 +13,15 @@ export interface MessageProcessingResult {
 }
 
 /**
+ * Options for processMessage when the reply is triggered by something other than @bot (e.g. reaction).
+ * Passed via MessageProcessingContext into pipeline metadata.
+ */
+export interface ProcessMessageOptions {
+  /** When 'reaction', pipeline allows reply for group without @bot (e.g. MessageOperationPlugin reply operation). */
+  replyTrigger?: 'at' | 'reaction';
+}
+
+/**
  * Message processing context
  */
 export interface MessageProcessingContext {
@@ -21,4 +30,6 @@ export interface MessageProcessingContext {
   sessionId: string;
   sessionType: 'user' | 'group';
   botSelfId: string;
+  /** Propagated to hook context metadata; used by WhitelistPlugin to allow reply without @bot. */
+  replyTrigger?: 'at' | 'reaction';
 }

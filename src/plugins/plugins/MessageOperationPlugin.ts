@@ -1,5 +1,10 @@
 // MessageOperation Plugin - handles reactions on messages and triggers operations
 
+import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { ConversationManager } from '@/conversation/ConversationManager';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
+import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { NormalizedNoticeEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
 import { Plugin } from '../decorators';
@@ -9,8 +14,8 @@ interface MessageOperationPluginConfig {
   /**
    * Map of reaction ID to operation
    * Key: reaction ID (string)
-   * Value: operation type ('recall' for message recall, etc.)
-   * Example: { "38": "recall" }
+   * Value: operation type ('recall' for message recall, 'reply' for bot reply to that message)
+   * Example: { "38": "recall", "1": "reply" }
    */
   reactionOperations?: Record<string, string>;
 }
@@ -18,7 +23,7 @@ interface MessageOperationPluginConfig {
 @Plugin({
   name: 'messageOperation',
   version: '1.0.0',
-  description: 'Handles reactions on messages and triggers operations like message recall',
+  description: 'Handles reactions on messages and triggers operations (recall, reply to message)',
 })
 export class MessageOperationPlugin extends PluginBase {
   /**
@@ -27,7 +32,25 @@ export class MessageOperationPlugin extends PluginBase {
    */
   private reactionToOperationMap: Map<string, string> = new Map();
 
+  private messageAPI!: MessageAPI;
+  private databaseManager!: DatabaseManager;
+  private conversationManager!: ConversationManager;
+
   async onInit(): Promise<void> {
+    const container = getContainer();
+    if (!container.isRegistered(DITokens.MESSAGE_API)) {
+      throw new Error('[MessageOperationPlugin] MESSAGE_API not registered in DI container');
+    }
+    if (!container.isRegistered(DITokens.DATABASE_MANAGER)) {
+      throw new Error('[MessageOperationPlugin] DATABASE_MANAGER not registered in DI container');
+    }
+    if (!container.isRegistered(DITokens.CONVERSATION_MANAGER)) {
+      throw new Error('[MessageOperationPlugin] CONVERSATION_MANAGER not registered in DI container');
+    }
+    this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+    this.databaseManager = container.resolve<DatabaseManager>(DITokens.DATABASE_MANAGER);
+    this.conversationManager = container.resolve<ConversationManager>(DITokens.CONVERSATION_MANAGER);
+
     // Load plugin-specific configuration
     try {
       const pluginConfig = this.pluginConfig?.config as MessageOperationPluginConfig | undefined;
@@ -63,15 +86,11 @@ export class MessageOperationPlugin extends PluginBase {
 
     logger.debug('[MessageOperationPlugin] Received group message reaction notice:', event);
 
-    // Extract reaction data from the notice event
-    const reactionData = event as any; // Type assertion since we know it's a group_message_reaction
-
-    // In Milky protocol, the field is 'face_id' not 'reaction_id'
-    const reactionId = reactionData.face_id?.toString();
-    const messageSeq = reactionData.message_seq;
-    const groupId = reactionData.group_id;
-    const userId = reactionData.user_id;
-    const isAdd = reactionData.is_add;
+    const reactionId = event.faceId?.toString();
+    const messageSeq = event.messageSeq ?? 0;
+    const groupId = event.groupId ?? 0;
+    const userId = event.userId ?? 0;
+    const isAdd = event.isAdd;
 
     if (!reactionId || !messageSeq || !groupId || !userId) {
       logger.warn('[MessageOperationPlugin] Missing required fields in reaction notice');
@@ -124,13 +143,17 @@ export class MessageOperationPlugin extends PluginBase {
       case 'recall':
         await this.recallMessage(context);
         break;
+      case 'reply':
+        await this.replyMessage(context);
+        break;
       default:
         logger.warn(`[MessageOperationPlugin] Unknown operation: ${operation}`);
     }
   }
 
   /**
-   * Recall a message that received the configured reaction
+   * Recall a message that received the configured reaction.
+   * Context (protocol, groupId, messageType) comes from the normalized notice event (upstream MilkyEventNormalizer).
    * Note: Bot can only recall its own messages. If the message is not sent by the bot,
    * the recall operation will fail silently.
    */
@@ -141,26 +164,20 @@ export class MessageOperationPlugin extends PluginBase {
     userId: number;
     noticeEvent: NormalizedNoticeEvent;
   }): Promise<void> {
-    if (!this.context) {
-      logger.error('[MessageOperationPlugin] Plugin context not available');
+    if (!this.context || !this.messageAPI) {
+      logger.error('[MessageOperationPlugin] Plugin context or MessageAPI not available');
       return;
     }
 
     const { messageSeq, groupId, userId } = context;
+    const notice = context.noticeEvent;
 
     try {
       logger.debug(
         `[MessageOperationPlugin] Attempting to recall message | groupId=${groupId} | messageSeq=${messageSeq} | reactionUser=${userId}`,
       );
 
-      await this.api.call(
-        'recall_group_message',
-        {
-          group_id: groupId,
-          message_seq: messageSeq,
-        },
-        'milky',
-      );
+      await this.messageAPI.recallFromContext(messageSeq, notice);
 
       logger.info(
         `[MessageOperationPlugin] Message recalled successfully | messageSeq=${messageSeq} | groupId=${groupId} | reactionUser=${userId}`,
@@ -170,6 +187,42 @@ export class MessageOperationPlugin extends PluginBase {
       // the message was not sent by the bot, which is expected behavior.
       logger.debug(
         `[MessageOperationPlugin] Failed to recall message (likely not bot's message) | messageSeq=${messageSeq} | groupId=${groupId} | error=${(error as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Reply operation: treat the reacted message as "said to the bot" and run it through the pipeline.
+   */
+  private async replyMessage(context: {
+    reactionId: string;
+    messageSeq: number;
+    groupId: number;
+    userId: number;
+    noticeEvent: NormalizedNoticeEvent;
+  }): Promise<void> {
+    if (!this.context || !this.messageAPI || !this.conversationManager) {
+      logger.error('[MessageOperationPlugin] Plugin context or required services not available');
+      return;
+    }
+
+    if (!this.databaseManager.getAdapter()?.isConnected()) {
+      logger.warn('[MessageOperationPlugin] Database not available, cannot fetch message for reply operation');
+      return;
+    }
+
+    const { messageSeq, groupId, noticeEvent } = context;
+
+    try {
+      const targetMessage = await this.messageAPI.getMessageFromContext(messageSeq, noticeEvent, this.databaseManager);
+
+      logger.info(
+        `[MessageOperationPlugin] Processing message as reply trigger | messageSeq=${messageSeq} | groupId=${groupId}`,
+      );
+      await this.conversationManager.processMessage(targetMessage, { replyTrigger: 'reaction' });
+    } catch (error) {
+      logger.error(
+        `[MessageOperationPlugin] Reply operation failed | messageSeq=${messageSeq} | groupId=${groupId} | error=${(error as Error).message}`,
       );
     }
   }

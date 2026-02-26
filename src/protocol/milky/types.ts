@@ -1,6 +1,7 @@
 // Milky protocol normalized event types
 // Shared types for Milky adapter and normalizer
 
+import type { NormalizedNoticeEvent } from '@/events/types';
 import type { IncomingSegment } from '@saltify/milky-types';
 import type { BaseEvent } from '../base/types';
 
@@ -35,11 +36,8 @@ export interface NormalizedMilkyMessageEvent extends BaseEvent {
   };
 }
 
-export interface NormalizedMilkyNoticeEvent extends BaseEvent {
-  type: 'notice';
-  noticeType: string;
-  [key: string]: unknown;
-}
+/** Milky notice events use the shared normalized shape (camelCase). */
+export type NormalizedMilkyNoticeEvent = NormalizedNoticeEvent;
 
 export interface NormalizedMilkyRequestEvent extends BaseEvent {
   type: 'request';

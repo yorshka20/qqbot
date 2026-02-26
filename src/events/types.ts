@@ -25,7 +25,23 @@ export interface NormalizedMessageEvent extends BaseEvent {
 export interface NormalizedNoticeEvent extends BaseEvent {
   type: 'notice';
   noticeType: string;
-  [key: string]: unknown;
+  /** Set by normalizer for group-related notices (e.g. group_message_reaction) so the event can be used as MessageAPI context. */
+  groupId?: number;
+  /** Set by normalizer for group-related notices so the event can be used as MessageAPI context. */
+  messageType?: 'private' | 'group';
+  /** Optional; e.g. user_id from reaction data when used as context. */
+  userId?: number;
+  messageScene?: string;
+  // Group message reaction (group_message_reaction), normalized camelCase
+  faceId?: number;
+  messageSeq?: number;
+  isAdd?: boolean;
+  // Group nudge (group_nudge), normalized camelCase
+  senderId?: number;
+  receiverId?: number;
+  displayAction?: string;
+  displaySuffix?: string;
+  displayActionImgUrl?: string;
 }
 
 export interface NormalizedRequestEvent extends BaseEvent {

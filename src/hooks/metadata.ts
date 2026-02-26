@@ -21,8 +21,10 @@ export interface HookContextMetadata {
   // Proactive conversation (thread): when in active thread, reply without @bot
   inProactiveThread?: boolean;
   proactiveThreadId?: string;
-  /** Set when message was @bot; proactive plugin skips scheduling so no duplicate reply. */
+  /** Set when message was @bot or replyTrigger=reaction; proactive plugin skips scheduling so no duplicate reply. */
   triggeredByAtBot?: boolean;
+  /** How this message was chosen to trigger a reply: from event.replyTrigger (at | reaction). */
+  replyTrigger?: 'at' | 'reaction';
 
   // Context Manager metadata (internal use)
   userId?: number;

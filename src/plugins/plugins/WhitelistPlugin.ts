@@ -104,17 +104,17 @@ export class WhitelistPlugin extends PluginBase {
         context.metadata.set('whitelistGroup', true);
       }
 
-      // Core access control 2: Group chat requires @bot for same-turn reply.
-      // When user does not @bot, we do not run the reply task; only the debounced proactive
-      // analysis can decide whether to reply (in current thread, or new thread, or not at all).
-      // This avoids replying to off-topic messages when an active thread exists.
-      if (!MessageUtils.isAtBot(message, botSelfId)) {
+      // Core access control 2: Group chat allows same-turn reply when (a) user @bot, or (b) replyTrigger=reaction (e.g. reaction-triggered reply).
+      // When neither, we do not run the reply task; only the debounced proactive analysis can decide whether to reply.
+      const replyTrigger = context.metadata.get('replyTrigger');
+      const isAtBot = MessageUtils.isAtBot(message, botSelfId);
+      if (replyTrigger !== 'reaction' && !isAtBot) {
         context.metadata.set('postProcessOnly', true);
-        logger.info(`[WhitelistPlugin] Group chat not @bot | messageId=${messageId}`);
+        logger.info(`[WhitelistPlugin] Group chat not @bot and not reaction-triggered | messageId=${messageId}`);
         return true;
       }
 
-      // User @bot: allow reply task. Mark so proactive analysis can skip replying to this message (it gets direct reply).
+      // Allow reply task. Mark so proactive analysis skips replying to this message (it gets direct reply).
       context.metadata.set('triggeredByAtBot', true);
       if (groupId && this.threadService.hasActiveThread(groupId)) {
         context.metadata.set('inProactiveThread', true);

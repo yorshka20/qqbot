@@ -82,14 +82,14 @@ export class MessagePipeline {
    */
   private createHookContext(event: NormalizedMessageEvent, context: MessageProcessingContext): HookContext {
     const conversationContext = this.buildConversationContext(event, context);
-    return HookContextBuilder.fromMessage(event, {
+    const options: Parameters<typeof HookContextBuilder.fromMessage>[1] = {
       sessionId: context.sessionId,
       sessionType: context.sessionType,
       conversationId: context.conversationId,
       botSelfId: context.botSelfId,
-    })
-      .withConversationContext(conversationContext)
-      .build();
+      replyTrigger: context.replyTrigger,
+    };
+    return HookContextBuilder.fromMessage(event, options).withConversationContext(conversationContext).build();
   }
 
   /**

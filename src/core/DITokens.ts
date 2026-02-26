@@ -32,6 +32,7 @@ export const DITokens = {
   MEMORY_EXTRACT_SERVICE: 'MemoryExtractService',
   FILE_READ_SERVICE: 'FileReadService',
   PROCESS_STAGE_INTERCEPTOR_REGISTRY: 'ProcessStageInterceptorRegistry',
+  CONVERSATION_MANAGER: 'ConversationManager',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];

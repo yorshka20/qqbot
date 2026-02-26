@@ -1,10 +1,10 @@
 // Message API method wrappers
 
 import type { CommandContext } from '@/command/types';
-import { ProtocolName } from '@/core/config/protocol';
+import type { ProtocolName } from '@/core/config/protocol';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { Message } from '@/database/models/types';
-import type { NormalizedMessageEvent } from '@/events/types';
+import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import { cacheMessage, getCachedMessageBySeq } from '@/message/MessageCache';
 import { logger } from '@/utils/logger';
 import type { APIClient } from '../APIClient';
@@ -14,25 +14,49 @@ export interface SendMessageResult {
   message_seq?: number; // Milky protocol uses message_seq
 }
 
+/** Context types supported by extractProtocol, recallFromContext, getMessageFromContext. */
+export type MessageAPIContext = CommandContext | NormalizedMessageEvent | NormalizedNoticeEvent;
+
+/** Extracted fields from MessageAPIContext for API calls (notice may have optional groupId/messageType). */
+interface ExtractedContextFields {
+  protocol: ProtocolName;
+  userId?: number;
+  groupId?: number;
+  messageType?: 'private' | 'group';
+  messageScene?: string;
+}
+
 export class MessageAPI {
   constructor(private apiClient: APIClient) {}
 
   /**
-   * Extract protocol from context (CommandContext or NormalizedMessageEvent)
-   * @param context - CommandContext or NormalizedMessageEvent
-   * @returns Protocol name
-   * @throws Error if protocol is not found in context
+   * Extract protocol from context (CommandContext, NormalizedMessageEvent, or NormalizedNoticeEvent).
+   * CommandContext has protocol on metadata; event contexts have protocol on the object (BaseEvent).
    */
-  private extractProtocol(context: CommandContext | NormalizedMessageEvent): ProtocolName {
+  private extractProtocol(context: MessageAPIContext): ProtocolName {
     if ('metadata' in context && context.metadata?.protocol) {
-      // CommandContext case
       return context.metadata.protocol;
-    } else if ('protocol' in context && context.protocol) {
-      // NormalizedMessageEvent case
-      return context.protocol;
-    } else {
-      throw new Error('Protocol is required but not found in context');
     }
+    if ('protocol' in context && context.protocol) {
+      return context.protocol;
+    }
+    throw new Error('Protocol is required but not found in context');
+  }
+
+  /**
+   * Extract protocol, groupId, messageType, userId, messageScene from any supported context.
+   * NormalizedNoticeEvent may have groupId/messageType set by normalizer for group-related notices.
+   */
+  private extractContextFields(context: MessageAPIContext): ExtractedContextFields {
+    const protocol = this.extractProtocol(context);
+    const userId = 'userId' in context ? context.userId : undefined;
+    const groupId = 'groupId' in context ? context.groupId : undefined;
+    const messageType = 'messageType' in context ? context.messageType : undefined;
+    const messageScene =
+      'messageScene' in context && typeof context.messageScene === 'string'
+        ? context.messageScene
+        : undefined;
+    return { protocol, userId, groupId, messageType, messageScene };
   }
 
   /**
@@ -149,26 +173,18 @@ export class MessageAPI {
   }
 
   /**
-   * Recall message from context (CommandContext or NormalizedMessageEvent)
-   * Automatically extracts protocol, userId, groupId, messageType from context
-   * Unified handling of temp session, private, and group messages
+   * Recall message from context (CommandContext, NormalizedMessageEvent, or NormalizedNoticeEvent).
+   * Automatically extracts protocol, userId, groupId, messageType from context.
    * @param messageId - Message ID or message sequence to recall
-   * @param context - CommandContext or NormalizedMessageEvent
+   * @param context - MessageAPIContext (notice must have groupId/messageType set by normalizer for group recall)
    * @param timeout - Optional timeout in milliseconds (default: 10000)
    */
   async recallFromContext(
     messageId: number,
-    context: CommandContext | NormalizedMessageEvent,
+    context: MessageAPIContext,
     timeout: number = 10000,
   ): Promise<void> {
-    // Extract protocol from context
-    const protocol = this.extractProtocol(context);
-
-    // Extract user and group info
-    const userId = context.userId;
-    const groupId = context.groupId;
-    const messageType = context.messageType;
-    const messageScene = 'messageScene' in context ? context.messageScene : undefined;
+    const { protocol, userId, groupId, messageType, messageScene } = this.extractContextFields(context);
 
     // Determine API action and params based on message type and scene
     // Handle temporary session messages (messageScene === 'temp')
@@ -235,31 +251,24 @@ export class MessageAPI {
   }
 
   /**
-   * Get message from context by messageSeq (for Milky protocol) or messageId (for other protocols)
-   * Priority: 1. Memory cache, 2. Database query
+   * Get message from context by messageSeq (for Milky protocol) or messageId (for other protocols).
+   * Priority: 1. Memory cache, 2. Database query.
    * @param messageSeq - Message sequence (for Milky protocol)
-   * @param context - CommandContext or NormalizedMessageEvent
+   * @param context - MessageAPIContext (notice must have groupId/messageType set by normalizer for group lookup)
    * @param databaseManager - DatabaseManager for querying database (required)
    * @returns NormalizedMessageEvent if found
    * @throws Error if message not found in all sources
    */
   async getMessageFromContext(
     messageSeq: number,
-    context: CommandContext | NormalizedMessageEvent,
+    context: MessageAPIContext,
     databaseManager: DatabaseManager,
   ): Promise<NormalizedMessageEvent> {
-    // Extract protocol from context
-    const protocol = this.extractProtocol(context);
+    const { protocol, groupId, messageType, messageScene } = this.extractContextFields(context);
 
     if (protocol !== 'milky') {
       throw new Error(`getMessageFromContext only supports Milky protocol | protocol=${protocol}`);
     }
-
-    // Extract user and group info
-    const groupId = context.groupId;
-    const userId = context.userId;
-    const messageType = context.messageType;
-    const messageScene = 'messageScene' in context ? context.messageScene : undefined;
 
     // For Milky protocol:
     // - Group messages: messageSeq is unique within groupId
@@ -274,8 +283,8 @@ export class MessageAPI {
     }
 
     // Try cache first
-    if (isGroup) {
-      const cachedMessage = getCachedMessageBySeq(protocol, groupId!, messageSeq, true);
+    if (isGroup && groupId !== undefined) {
+      const cachedMessage = getCachedMessageBySeq(protocol, groupId, messageSeq, true);
       if (cachedMessage && cachedMessage.groupId === groupId) {
         return cachedMessage;
       }

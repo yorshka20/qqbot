@@ -51,8 +51,8 @@ export class MessageUtils {
       return false;
     }
 
-    const botSelfIdNum = parseInt(botSelfId, 10);
-    if (isNaN(botSelfIdNum)) {
+    const botSelfIdNum = Number(botSelfId);
+    if (Number.isNaN(botSelfIdNum)) {
       return false;
     }
 
@@ -85,8 +85,8 @@ export class MessageUtils {
 
       // atUserId could be 0
       if (atUserId !== undefined) {
-        const atUserIdNum = typeof atUserId === 'string' ? parseInt(atUserId, 10) : atUserId;
-        if (!isNaN(atUserIdNum)) {
+        const atUserIdNum = typeof atUserId === 'string' ? Number(atUserId) : atUserId;
+        if (!Number.isNaN(atUserIdNum)) {
           // In Milky protocol, @0 (user_id=0) typically means @bot itself
           // Also check if the atUserId matches botSelfId
           if (atUserIdNum === 0 || atUserIdNum === botSelfIdNum) {

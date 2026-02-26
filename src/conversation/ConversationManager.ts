@@ -5,8 +5,8 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
-import { MessagePipeline } from './MessagePipeline';
-import type { MessageProcessingContext, MessageProcessingResult } from './types';
+import type { MessagePipeline } from './MessagePipeline';
+import type { MessageProcessingContext, MessageProcessingResult, ProcessMessageOptions } from './types';
 
 /**
  * Conversation Manager
@@ -39,19 +39,25 @@ export class ConversationManager {
   }
 
   /**
-   * Process message event
+   * Process message event.
+   * @param event - Normalized message event (do not extend event with extra fields).
+   * @param options - Optional metadata (e.g. replyTrigger) passed into pipeline and hook context metadata.
    */
-  async processMessage(event: NormalizedMessageEvent): Promise<MessageProcessingResult> {
+  async processMessage(
+    event: NormalizedMessageEvent,
+    options?: ProcessMessageOptions,
+  ): Promise<MessageProcessingResult> {
     try {
       logger.debug(`[ConversationManager] Processing message from ${event.userId} (${event.messageType})`);
 
-      // Build processing context
+      // Build processing context (options.replyTrigger flows into metadata)
       const context: MessageProcessingContext = {
         message: event,
         sessionId: this.getSessionId(event),
         sessionType: event.messageType === 'private' ? 'user' : 'group',
         conversationId: undefined, // Can be loaded from database
         botSelfId: this.getBotSelfId(),
+        replyTrigger: options?.replyTrigger,
       };
 
       // Process through pipeline

@@ -12,18 +12,12 @@ import { logger } from '@/utils/logger';
 import { Plugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
-/**
- * Group nudge notice event structure from Milky protocol
- * Based on the actual event data structure
- */
+/** Group nudge notice: required fields for type guard. */
 interface GroupNudgeNoticeEvent extends NormalizedNoticeEvent {
   noticeType: 'group_nudge';
-  sender_id: number;
-  receiver_id: number;
-  group_id: number;
-  display_action?: string; // e.g., "揉了揉"
-  display_suffix?: string; // e.g., "的雷之律者的角"
-  display_action_img_url?: string; // URL to action image
+  senderId: number;
+  receiverId: number;
+  groupId: number;
 }
 
 /**
@@ -31,7 +25,10 @@ interface GroupNudgeNoticeEvent extends NormalizedNoticeEvent {
  * Used in config.jsonc plugins.list[].config
  */
 export interface NudgePluginConfig {
-  // Currently no configuration options
+  /**
+   * The message to reply when bot is nudged
+   */
+  replyMessage?: string;
 }
 
 @Plugin({
@@ -79,12 +76,11 @@ export class NudgePlugin extends PluginBase {
       return;
     }
 
-    // Type guard: check if event has required fields for group_nudge
     const nudgeEvent = event as GroupNudgeNoticeEvent;
     if (
-      typeof nudgeEvent.sender_id !== 'number' ||
-      typeof nudgeEvent.receiver_id !== 'number' ||
-      typeof nudgeEvent.group_id !== 'number'
+      typeof nudgeEvent.senderId !== 'number' ||
+      typeof nudgeEvent.receiverId !== 'number' ||
+      typeof nudgeEvent.groupId !== 'number'
     ) {
       logger.warn('[NudgePlugin] Invalid group_nudge event structure');
       return;
@@ -99,13 +95,12 @@ export class NudgePlugin extends PluginBase {
       return;
     }
 
-    // Check if bot is the receiver
-    if (nudgeEvent.receiver_id.toString() !== botSelfId.toString()) {
+    if (nudgeEvent.receiverId.toString() !== botSelfId.toString()) {
       return;
     }
 
     logger.info(
-      `[NudgePlugin] Bot was nudged | senderId=${nudgeEvent.sender_id} | groupId=${nudgeEvent.group_id} | receiverId=${nudgeEvent.receiver_id}`,
+      `[NudgePlugin] Bot was nudged | senderId=${nudgeEvent.senderId} | groupId=${nudgeEvent.groupId} | receiverId=${nudgeEvent.receiverId}`,
     );
 
     // Generate status reply
@@ -120,20 +115,19 @@ export class NudgePlugin extends PluginBase {
         timestamp: nudgeEvent.timestamp,
         protocol: nudgeEvent.protocol,
         messageType: 'group',
-        userId: nudgeEvent.sender_id,
-        groupId: nudgeEvent.group_id,
-        message: '', // Status reply is in segments, not message text
+        userId: nudgeEvent.senderId,
+        groupId: nudgeEvent.groupId,
+        message: '',
       };
 
-      // Send reply message using sendFromContext (proper method)
       await this.messageAPI.sendFromContext(messageSegments, messageEvent);
 
       logger.info(
-        `[NudgePlugin] Reply sent successfully | groupId=${nudgeEvent.group_id} | senderId=${nudgeEvent.sender_id}`,
+        `[NudgePlugin] Reply sent successfully | groupId=${nudgeEvent.groupId} | senderId=${nudgeEvent.senderId}`,
       );
     } catch (error) {
       logger.error(
-        `[NudgePlugin] Failed to send reply | groupId=${nudgeEvent.group_id} | senderId=${nudgeEvent.sender_id}:`,
+        `[NudgePlugin] Failed to send reply | groupId=${nudgeEvent.groupId} | senderId=${nudgeEvent.senderId}:`,
         error,
       );
     }
@@ -150,8 +144,7 @@ export class NudgePlugin extends PluginBase {
     const minutes = Math.floor((uptime % 3600) / 60);
     const seconds = Math.floor(uptime % 60);
 
-    // Get group ID
-    const groupId = event.group_id !== undefined ? event.group_id.toString() : 'N/A (Private message)';
+    const groupId = event.groupId !== undefined ? event.groupId.toString() : 'N/A (Private message)';
 
     // Get current AI providers for each capability
     const capabilities: CapabilityType[] = ['llm', 'vision', 'text2img', 'img2img'];

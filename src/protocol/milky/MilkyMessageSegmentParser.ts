@@ -43,6 +43,8 @@ export class MilkyMessageSegmentParser {
             return `[LightApp:${segment.data.app_name}]`;
           case 'xml':
             return `[XML]`;
+          default:
+            return '';
         }
       })
       .join('');

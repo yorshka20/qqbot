@@ -11,6 +11,14 @@ import type {
   NormalizedMilkyRequestEvent,
 } from './types';
 
+function toNumber(v: unknown): number | undefined {
+  if (v === undefined || v === null) {
+    return undefined;
+  }
+  const n = Number(v);
+  return Number.isNaN(n) ? undefined : n;
+}
+
 /**
  * Utility class for normalizing Milky protocol events
  * Handles conversion from Milky Event types to normalized BaseEvent format
@@ -131,19 +139,43 @@ export class MilkyEventNormalizer {
   }
 
   /**
-   * Normalize a notice event
+   * Normalize a notice event.
+   * Raw event.data from Milky uses snake_case; we explicitly map every field to camelCase.
+   * No spreading of event.data - only known fields are copied so the output is strictly normalized.
    */
   private static normalizeNoticeEvent(
     event: Event,
     baseEvent: BaseEvent,
     noticeType: string,
   ): NormalizedMilkyNoticeEvent {
-    return {
+    const data = (event.data ?? {}) as Record<string, unknown>;
+
+    const rawGroupId = data.group_id ?? data.peer_id;
+    const groupId =
+      rawGroupId !== undefined && rawGroupId !== null ? Number(rawGroupId) : undefined;
+    const messageType =
+      rawGroupId !== undefined && rawGroupId !== null ? ('group' as const) : undefined;
+
+    const normalized: NormalizedMilkyNoticeEvent = {
       ...baseEvent,
       type: 'notice',
       noticeType,
-      ...event.data,
+      groupId,
+      messageType,
+      userId: toNumber(data.user_id),
+      faceId: toNumber(data.face_id),
+      messageSeq: toNumber(data.message_seq),
+      isAdd: data.is_add !== undefined ? Boolean(data.is_add) : undefined,
+      senderId: toNumber(data.sender_id),
+      receiverId: toNumber(data.receiver_id),
+      messageScene: typeof data.message_scene === 'string' ? data.message_scene : undefined,
+      displayAction: typeof data.display_action === 'string' ? data.display_action : undefined,
+      displaySuffix: typeof data.display_suffix === 'string' ? data.display_suffix : undefined,
+      displayActionImgUrl:
+        typeof data.display_action_img_url === 'string' ? data.display_action_img_url : undefined,
     };
+
+    return normalized;
   }
 
   /**
