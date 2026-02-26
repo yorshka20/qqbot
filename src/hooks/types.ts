@@ -6,7 +6,7 @@ import type { ConversationContext } from '@/context/types';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { MessageSegment } from '@/message/types';
 import type { Task, TaskResult } from '@/task/types';
-import type { MetadataMap } from './metadata';
+import type { HookMetadataMap } from './metadata';
 
 /**
  * Reply content metadata (flags only, no actual content)
@@ -40,7 +40,7 @@ export interface HookContext {
   error?: Error;
   reply?: ReplyContent; // Unified reply content (preferred over metadata 'reply')
   sentMessageResponse?: SendMessageResult; // Full API response from sending message (available in onMessageSent hook after message is sent)
-  metadata: MetadataMap; // Type-safe metadata map
+  metadata: HookMetadataMap; // Type-safe metadata map
 }
 
 /**

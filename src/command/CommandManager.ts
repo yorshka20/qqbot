@@ -421,7 +421,6 @@ export class CommandManager {
     return null;
   }
 
-
   /**
    * Get all registered commands the current user has permission to use.
    * Requires passing context, so user/group/role can be checked.

@@ -44,7 +44,8 @@ export class MemoryService {
    */
   private getFilePath(groupId: string, userId: string): string {
     const safeGroupId = this.sanitizePathSegment(groupId);
-    const filename = userId === GROUP_MEMORY_USER_ID ? GROUP_MEMORY_FILENAME : `${this.sanitizePathSegment(userId)}.txt`;
+    const filename =
+      userId === GROUP_MEMORY_USER_ID ? GROUP_MEMORY_FILENAME : `${this.sanitizePathSegment(userId)}.txt`;
     return join(this.basePath, safeGroupId, filename);
   }
 

@@ -23,8 +23,7 @@ export interface ProactiveConversationPluginConfig {
 @Plugin({
   name: 'proactiveConversation',
   version: '1.0.0',
-  description:
-    'Proactive conversation: analyze group messages, create thread, and reply without @ when in thread',
+  description: 'Proactive conversation: analyze group messages, create thread, and reply without @ when in thread',
 })
 export class ProactiveConversationPlugin extends PluginBase {
   private groupIds = new Set<string>();

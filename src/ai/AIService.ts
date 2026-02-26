@@ -15,7 +15,7 @@ import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions, Vi
 import { PromptManager } from './prompt/PromptManager';
 import type { ProviderSelector } from './ProviderSelector';
 import { CardRenderingService } from './services/CardRenderingService';
-import { ConversationHistoryService } from './services/ConversationHistoryService';
+import type { ConversationHistoryService } from '@/conversation/history';
 import { ImageGenerationService } from './services/ImageGenerationService';
 import type { I2VPromptResult } from './services/ImagePromptService';
 import { ImagePromptService } from './services/ImagePromptService';

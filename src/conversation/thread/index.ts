@@ -1,9 +1,5 @@
-// Thread scope: in-memory threads per group, group history, context compression
+// Thread scope: in-memory threads per group, context compression (history loading lives in conversation/history)
 
-export {
-  GroupHistoryService,
-  type GroupMessageEntry,
-} from './GroupHistoryService';
 export {
   ThreadService,
   isReadableTextForThread,

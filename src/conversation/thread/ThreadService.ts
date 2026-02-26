@@ -2,7 +2,7 @@
 
 import { logger } from '@/utils/logger';
 import { randomUUID } from 'node:crypto';
-import type { GroupMessageEntry } from './GroupHistoryService';
+import type { ConversationMessageEntry } from '@/conversation/history';
 
 /**
  * Whether content is readable text for thread/analysis context.
@@ -55,7 +55,7 @@ export class ThreadService {
    * Create a new thread with initial context (recent messages).
    * Does not replace existing threads; group can have multiple threads.
    */
-  create(groupId: string, preferenceKey: string, initialMessages: GroupMessageEntry[]): ProactiveThread {
+  create(groupId: string, preferenceKey: string, initialMessages: ConversationMessageEntry[]): ProactiveThread {
     const threadId = randomUUID();
     const now = new Date();
     const messages: ThreadMessage[] = initialMessages
@@ -158,7 +158,11 @@ export class ThreadService {
    * messageIds: indices (0-based) into entries; only those entries are appended, in chronological order.
    * When messageIds is missing or empty, nothing is appended.
    */
-  appendGroupMessages(threadId: string, entries: GroupMessageEntry[], options?: { messageIds?: string[] }): void {
+  appendGroupMessages(
+    threadId: string,
+    entries: ConversationMessageEntry[],
+    options?: { messageIds?: string[] },
+  ): void {
     const thread = this.threadById.get(threadId);
     if (!thread) return;
     const rawIds = options?.messageIds;

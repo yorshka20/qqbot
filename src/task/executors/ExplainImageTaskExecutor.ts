@@ -61,11 +61,7 @@ export class ExplainImageTaskExecutor extends BaseTaskExecutor {
     // Extract images from the current message (and any referenced reply message)
     let images: VisionImage[] = [];
     try {
-      images = await extractImagesFromMessageAndReply(
-        hookContext.message,
-        this.messageAPI,
-        this.databaseManager,
-      );
+      images = await extractImagesFromMessageAndReply(hookContext.message, this.messageAPI, this.databaseManager);
     } catch (error) {
       logger.warn(
         '[ExplainImageTaskExecutor] Failed to extract images:',
@@ -96,9 +92,7 @@ export class ExplainImageTaskExecutor extends BaseTaskExecutor {
 
     // When multiple images are present, prefix each description with its index
     const description =
-      images.length > 1
-        ? descriptions.map((d, i) => `图${i + 1}: ${d}`).join('\n\n')
-        : descriptions[0];
+      images.length > 1 ? descriptions.map((d, i) => `图${i + 1}: ${d}`).join('\n\n') : descriptions[0];
 
     logger.info(`[ExplainImageTaskExecutor] Image description generated (${description.length} chars)`);
     return this.success(description, { hasImages: true, imageCount: images.length });

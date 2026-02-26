@@ -14,7 +14,7 @@ import type { VisionImage } from '../capabilities/types';
 import { PromptManager } from '../prompt/PromptManager';
 import { parseSearchDecision as parseSearchDecisionShared } from '../utils/searchDecisionParser';
 import { CardRenderingService } from './CardRenderingService';
-import { ConversationHistoryService } from './ConversationHistoryService';
+import type { ConversationHistoryService } from '@/conversation/history';
 import { LLMService } from './LLMService';
 import { VisionService } from './VisionService';
 
@@ -245,9 +245,7 @@ export class ReplyGenerationService {
           if (resp.text?.trim()) descriptions.push(resp.text.trim());
         }
         imageDescription =
-          images.length > 1
-            ? descriptions.map((d, i) => `图${i + 1}: ${d}`).join('\n\n')
-            : (descriptions[0] ?? '');
+          images.length > 1 ? descriptions.map((d, i) => `图${i + 1}: ${d}`).join('\n\n') : (descriptions[0] ?? '');
         logger.debug(`[ReplyGenerationService] Image description: ${imageDescription}`);
       }
 

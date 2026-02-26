@@ -3,13 +3,13 @@
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { MemoryService } from '@/memory/MemoryService';
-import type { GroupHistoryService, GroupMessageEntry } from '../thread/GroupHistoryService';
+import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
 import type { ProactiveThread, ThreadService } from '../thread/ThreadService';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 
 export interface ProactiveReplyContextBuilderDeps {
   threadService: ThreadService;
-  groupHistoryService: GroupHistoryService;
+  conversationHistoryService: ConversationHistoryService;
   promptManager: PromptManager;
   preferenceKnowledge: PreferenceKnowledgeService;
   memoryService?: MemoryService;
@@ -28,8 +28,8 @@ export class ProactiveReplyContextBuilder {
   }
 
   /** Thread context from raw entries (e.g. new thread before create). */
-  getThreadContextFromEntries(entries: GroupMessageEntry[]): string {
-    return this.deps.groupHistoryService.formatAsText(entries);
+  getThreadContextFromEntries(entries: ConversationMessageEntry[]): string {
+    return this.deps.conversationHistoryService.formatAsText(entries);
   }
 
   /** Rendered preference (persona) text (e.g. preference.full). */
@@ -105,7 +105,7 @@ export class ProactiveReplyContextBuilder {
     groupId: string,
     preferenceKey: string,
     topicOrQuery: string,
-    filteredEntries: GroupMessageEntry[],
+    filteredEntries: ConversationMessageEntry[],
     searchQueries?: string[],
     triggerUserId?: string,
   ): Promise<ProactiveReplyInjectContext> {

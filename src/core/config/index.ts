@@ -31,7 +31,7 @@ export type {
   OllamaProviderConfig,
   OpenAIProviderConfig,
   OpenRouterProviderConfig,
-  SessionProviderConfig
+  SessionProviderConfig,
 } from './ai';
 export type { BotSelfConfig, StaticServerConfig } from './bot';
 export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './database';
@@ -42,7 +42,7 @@ export type {
   SearchConfig,
   SearchMode,
   SearXNGConfig,
-  TriggerStrategy
+  TriggerStrategy,
 } from './mcp';
 export type { MemoryConfig } from './memory';
 export type { PluginsConfig } from './plugins';
@@ -53,7 +53,7 @@ export type {
   ProtocolConfig,
   ProtocolConnectionConfig,
   ProtocolName,
-  ReconnectConfig
+  ReconnectConfig,
 } from './protocol';
 export type { TTSConfig } from './tts';
 export type { LogLevel } from './types';

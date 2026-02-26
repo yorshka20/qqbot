@@ -32,11 +32,6 @@
       "semicolons": "always",
       "trailingCommas": "all",
       "arrowParentheses": "always"
-    },
-    "lint": {
-      "complexity": {
-        "noStaticOnlyClass": "off"
-      }
     }
   },
   "assist": {

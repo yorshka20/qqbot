@@ -10,7 +10,6 @@ import { basename, extname, isAbsolute, normalize, relative, resolve } from 'nod
 /** Max file content length before truncation (chars) */
 const MAX_CONTENT_LENGTH = 15000;
 
-
 export interface ListDirectoryResult {
   success: boolean;
   content?: string;
@@ -44,7 +43,9 @@ export class FileReadService {
    */
   isPathSafe(resolvedPath: string, rootPath: string = this.projectRoot): boolean {
     const rel = relative(rootPath, resolvedPath);
-    return (!rel || !rel.startsWith('..')) && !isAbsolute(rel) && this.filterPaths.every((filter) => !rel.includes(filter));
+    return (
+      (!rel || !rel.startsWith('..')) && !isAbsolute(rel) && this.filterPaths.every((filter) => !rel.includes(filter))
+    );
   }
 
   /**
@@ -63,7 +64,7 @@ export class FileReadService {
     // e.g. /foo/.bar/file.txt or .env or .gitignore
     const relFromRoot = relative(this.projectRoot, resolved);
     const relParts = relFromRoot.split(/[\\/]/);
-    if (relParts.some(part => part.startsWith('.') && part.length > 1)) {
+    if (relParts.some((part) => part.startsWith('.') && part.length > 1)) {
       return { resolved: '', error: 'hidden path is not allowed' };
     }
 

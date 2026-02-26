@@ -7,6 +7,7 @@ import { extractImagesFromSegmentsAsync } from '@/ai/utils/imageUtils';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import type { ConversationContext } from '@/context/types';
+import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
 import type { ProtocolName } from '@/core/config/protocol';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
@@ -17,7 +18,7 @@ import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
 import type { TaskSystem } from '../systems/TaskSystem';
-import type { GroupHistoryService, GroupMessageEntry, ThreadContextCompressionService } from '../thread';
+import type { ThreadContextCompressionService } from '../thread';
 import { isReadableTextForThread, type ThreadService } from '../thread';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 import { ProactiveReplyContextBuilder } from './ProactiveReplyContextBuilder';
@@ -77,7 +78,7 @@ export class ProactiveConversationService {
   private replyContextBuilder: ProactiveReplyContextBuilder;
 
   constructor(
-    @inject(DITokens.GROUP_HISTORY_SERVICE) private groupHistoryService: GroupHistoryService,
+    @inject(DITokens.CONVERSATION_HISTORY_SERVICE) private conversationHistoryService: ConversationHistoryService,
     @inject(DITokens.THREAD_SERVICE) private threadService: ThreadService,
     @inject(DITokens.PRELIMINARY_ANALYSIS_SERVICE) private preliminaryAnalysis: PreliminaryAnalysisService,
     @inject(DITokens.PREFERENCE_KNOWLEDGE_SERVICE) preferenceKnowledge: PreferenceKnowledgeService,
@@ -92,7 +93,7 @@ export class ProactiveConversationService {
   ) {
     this.replyContextBuilder = new ProactiveReplyContextBuilder({
       threadService,
-      groupHistoryService,
+      conversationHistoryService,
       promptManager,
       preferenceKnowledge,
       memoryService,
@@ -217,13 +218,10 @@ export class ProactiveConversationService {
     }
 
     const activeThreads = this.threadService.getActiveThreads(groupId);
-    const recentEntries = await this.groupHistoryService.getRecentMessages(groupId, RECENT_MESSAGES_LIMIT);
+    const recentEntries = await this.conversationHistoryService.getRecentMessages(groupId, RECENT_MESSAGES_LIMIT);
     // Filter to readable-only for analysis input (so [Record], [Image]-only etc. are not sent to LLM).
     const filteredEntries = recentEntries.filter((e) => isReadableTextForThread(e.content));
-    const recentMessagesText =
-      activeThreads.length > 0
-        ? this.groupHistoryService.formatAsTextWithIds(filteredEntries)
-        : this.groupHistoryService.formatAsText(filteredEntries);
+    const recentMessagesText = this.conversationHistoryService.formatAsText(filteredEntries);
 
     const analysisOptions = {
       providerName: this.analysisProviderName,
@@ -374,7 +372,7 @@ export class ProactiveConversationService {
    */
   private resolveMessageIdsForReply(
     thread: { messages: Array<{ createdAt: Date }>; lastActivityAt: Date },
-    filteredEntries: GroupMessageEntry[],
+    filteredEntries: ConversationMessageEntry[],
     messageIdsFromAnalysis: string[] | undefined,
   ): string[] {
     if (messageIdsFromAnalysis?.length) {
@@ -428,7 +426,7 @@ export class ProactiveConversationService {
    * present when the previous new-thread reply was sent (i.e. no genuinely new user messages since then).
    * Returns true if new thread creation should be blocked.
    */
-  private shouldBlockNewThread(groupId: string, filteredEntries: GroupMessageEntry[]): boolean {
+  private shouldBlockNewThread(groupId: string, filteredEntries: ConversationMessageEntry[]): boolean {
     const boundaryMsgId = this.lastNewThreadBoundaryByGroup.get(groupId);
     if (!boundaryMsgId) {
       return false;
@@ -449,7 +447,7 @@ export class ProactiveConversationService {
    * Used to inject imageDescription into proactive reply (same explain-image flow as normal reply).
    */
   private async getImageDescriptionFromLastUserMessage(
-    filteredEntries: GroupMessageEntry[],
+    filteredEntries: ConversationMessageEntry[],
     groupId: string,
   ): Promise<string> {
     const adapter = this.databaseManager?.getAdapter();
@@ -498,9 +496,7 @@ export class ProactiveConversationService {
         const desc = await this.aiService.explainImage(image, lastUserEntry.content || '（无）', groupId);
         if (desc) descriptions.push(desc);
       }
-      return images.length > 1
-        ? descriptions.map((d, i) => `图${i + 1}: ${d}`).join('\n\n')
-        : (descriptions[0] ?? '');
+      return images.length > 1 ? descriptions.map((d, i) => `图${i + 1}: ${d}`).join('\n\n') : (descriptions[0] ?? '');
     } catch (error) {
       logger.warn(
         '[ProactiveConversationService] getImageDescriptionFromLastUserMessage failed:',
@@ -578,7 +574,7 @@ export class ProactiveConversationService {
     groupId: string,
     groupIdNum: number,
     preferenceKey: string,
-    filteredEntries: GroupMessageEntry[],
+    filteredEntries: ConversationMessageEntry[],
     topicOrQuery: string,
     searchQueries?: string[],
     triggerUserId?: string,

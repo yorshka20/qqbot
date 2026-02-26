@@ -9,7 +9,6 @@ import {
   ProviderFactory,
   ProviderSelector,
 } from '@/ai';
-import { ConversationHistoryService } from '@/ai/services/ConversationHistoryService';
 import { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
@@ -18,6 +17,7 @@ import { DefaultPermissionChecker } from '@/command/PermissionChecker';
 import { ConversationConfigService } from '@/config/ConversationConfigService';
 import { GlobalConfigManager } from '@/config/GlobalConfigManager';
 import { ContextManager } from '@/context';
+import { ConversationHistoryService, SessionHistoryStore } from '@/conversation/history';
 import type { AIConfig, Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -46,7 +46,7 @@ import { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
 import { CommandSystem } from './systems/CommandSystem';
 import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
 import { TaskSystem } from './systems/TaskSystem';
-import { GroupHistoryService, ThreadContextCompressionService, ThreadService } from './thread';
+import { ThreadContextCompressionService, ThreadService } from './thread';
 
 export interface ConversationComponents {
   conversationManager: ConversationManager;
@@ -140,8 +140,11 @@ export class ConversationInitializer {
     const maxBufferSize = memoryConfig?.maxBufferSize ?? 30;
     const maxHistoryMessages = memoryConfig?.maxHistoryMessages ?? 10;
 
-    
-    const conversationHistoryService = new ConversationHistoryService(maxHistoryMessages, databaseManager);
+    // Single conversation history service: DB load + format (User<userId:nickname> / Assistant) + buildConversationHistory for prompt
+    const conversationHistoryService = new ConversationHistoryService(databaseManager, 30, maxHistoryMessages);
+    container.registerInstance(DITokens.CONVERSATION_HISTORY_SERVICE, conversationHistoryService, {
+      logRegistration: false,
+    });
 
     const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
     // Single SummarizeService for both context memory and thread compression (provider passed at call time).
@@ -152,7 +155,8 @@ export class ConversationInitializer {
     container.registerInstance(DITokens.MEMORY_EXTRACT_SERVICE, memoryExtractService, { logRegistration: false });
 
     container.registerInstance(DITokens.SUMMARIZE_SERVICE, summarizeService, { logRegistration: false });
-    const contextManager = new ContextManager(summaryThreshold, maxBufferSize, useSummary);
+    const sessionHistoryStore = new SessionHistoryStore(maxBufferSize, summaryThreshold, useSummary);
+    const contextManager = new ContextManager(sessionHistoryStore);
 
     // Register conversation config services to DI container early so PluginManager can inject them
     // This must be done before PluginManager is created
@@ -301,7 +305,7 @@ export class ConversationInitializer {
 
   /**
    * Configure proactive conversation service by resolving dependencies from DI container.
-   * Creates GroupHistoryService, ThreadService, OllamaAnalysis, etc. from registered tokens
+   * Creates ThreadService, OllamaAnalysis, etc. from registered tokens (ConversationHistoryService registered earlier)
    * and registers ThreadService + ProactiveConversationService.
    */
   private static configureProactiveConversationService(serviceRegistry: ServiceRegistry): void {
@@ -325,15 +329,14 @@ export class ConversationInitializer {
     const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
     const summarizeService = container.resolve<SummarizeService>(DITokens.SUMMARIZE_SERVICE);
 
-    const groupHistoryService = new GroupHistoryService(databaseManager, 30);
     const threadService = new ThreadService();
-    container.registerInstance(DITokens.GROUP_HISTORY_SERVICE, groupHistoryService, { logRegistration: false });
     container.registerInstance(DITokens.THREAD_SERVICE, threadService, { logRegistration: false });
     container.registerInstance(
       DITokens.PRELIMINARY_ANALYSIS_SERVICE,
       new PreliminaryAnalysisService(aiManager, promptManager),
       { logRegistration: false },
     );
+
     // Use SearXNG-based preference knowledge when SearchService is available and enabled.
     // Analysis stage decides searchQueries; retrieve() runs them then one short LLM sufficiency check (option B: supplement search if needed).
     const searchService = container.resolve<SearchService>(DITokens.SEARCH_SERVICE);

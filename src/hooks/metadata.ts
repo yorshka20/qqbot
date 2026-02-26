@@ -39,7 +39,7 @@ type MetadataValues<K extends MetadataKeys = MetadataKeys> = HookContextMetadata
  * Type-safe metadata map
  * Provides type-safe get/set operations for metadata
  */
-export class MetadataMap {
+export class HookMetadataMap {
   private map = new Map<MetadataKeys, MetadataValues>();
 
   /**
@@ -111,8 +111,8 @@ export class MetadataMap {
   /**
    * Create MetadataMap from array of entries
    */
-  static fromEntries(entries: Array<[MetadataKeys, MetadataValues]>): MetadataMap {
-    const metadata = new MetadataMap();
+  static fromEntries(entries: Array<[MetadataKeys, MetadataValues]>): HookMetadataMap {
+    const metadata = new HookMetadataMap();
     for (const [key, value] of entries) {
       metadata.map.set(key, value);
     }

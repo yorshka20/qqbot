@@ -4,7 +4,7 @@
 import type { CommandResult, ParsedCommand } from '@/command/types';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContextMetadata } from '@/hooks/metadata';
-import { MetadataMap } from '@/hooks/metadata';
+import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext, ReplyContent } from '@/hooks/types';
 import type { Task, TaskResult } from '@/task/types';
 import type { ConversationContext } from './types';
@@ -27,11 +27,11 @@ export class HookContextBuilder {
   private conversationContext?: ConversationContext;
   private result?: TaskResult | CommandResult;
   private error?: Error;
-  private metadata: MetadataMap;
+  private metadata: HookMetadataMap;
   private reply?: ReplyContent;
 
   private constructor() {
-    this.metadata = new MetadataMap();
+    this.metadata = new HookMetadataMap();
   }
 
   /**
@@ -85,7 +85,7 @@ export class HookContextBuilder {
     builder.error = context.error;
 
     // Copy metadata (create new MetadataMap to avoid reference issues)
-    builder.metadata = new MetadataMap();
+    builder.metadata = new HookMetadataMap();
     const metadataEntries = Array.from(context.metadata.entries()) as Array<[keyof HookContextMetadata, unknown]>;
     for (const [key, value] of metadataEntries) {
       builder.metadata.set(key, value as HookContextMetadata[typeof key]);

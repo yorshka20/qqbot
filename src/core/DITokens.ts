@@ -23,7 +23,7 @@ export const DITokens = {
   PROACTIVE_CONVERSATION_SERVICE: 'ProactiveConversationService',
   MESSAGE_API: 'MessageAPI',
   SUMMARIZE_SERVICE: 'SummarizeService',
-  GROUP_HISTORY_SERVICE: 'GroupHistoryService',
+  CONVERSATION_HISTORY_SERVICE: 'ConversationHistoryService',
   PRELIMINARY_ANALYSIS_SERVICE: 'PreliminaryAnalysisService',
   PREFERENCE_KNOWLEDGE_SERVICE: 'PreferenceKnowledgeService',
   PROACTIVE_THREAD_PERSISTENCE_SERVICE: 'ProactiveThreadPersistenceService',

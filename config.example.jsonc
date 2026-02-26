@@ -208,8 +208,7 @@
             "123456789"
           ],
           "debounceMs": 120000,
-          "extractProvider": "ollama",
-          "coldStartOnInit": false
+          "extractProvider": "ollama"
         }
       },
       // Memory Trigger Plugin - on trigger phrase (e.g. bot name), merge user input into user memory (async)

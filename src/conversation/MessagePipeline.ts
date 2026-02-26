@@ -108,7 +108,10 @@ export class MessagePipeline {
       const replyText = extractTextFromSegments(replyContent.segments);
       logger.info(`[MessagePipeline] Sending reply | messageId=${messageId} | replyLength=${replyText.length}`);
       await this.sendMessage(event, hookContext);
-      await this.saveConversationMessages(context.sessionId, event.message, replyText);
+      await this.saveConversationMessages(context.sessionId, event.message, replyText, {
+        userId: event.userId,
+        nickname: event.sender?.nickname ?? event.sender?.card,
+      });
 
       return {
         success: true,
@@ -195,16 +198,16 @@ export class MessagePipeline {
   }
 
   /**
-   * Save user message and assistant reply to conversation history
-   * This is called after successful reply generation to ensure history is available for next conversation
+   * Save user message and assistant reply to conversation history (rich: userId, nickname for consistent format).
    */
   private async saveConversationMessages(
     sessionId: string,
     userMessage: string,
     assistantReply: string,
+    options?: { userId?: number; nickname?: string },
   ): Promise<void> {
     try {
-      await this.contextManager.addMessage(sessionId, 'user', userMessage);
+      await this.contextManager.addMessage(sessionId, 'user', userMessage, options);
       await this.contextManager.addMessage(sessionId, 'assistant', assistantReply);
     } catch (error) {
       logger.warn(`[MessagePipeline] Failed to save conversation to history: ${error}`);

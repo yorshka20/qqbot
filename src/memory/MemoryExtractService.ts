@@ -50,7 +50,10 @@ export class MemoryExtractService {
       const prefix = bulletMatch[1];
       const content = bulletMatch[2];
       // Split by full-width or half-width semicolon (fact-level separator)
-      const parts = content.split(/[；;]/).map((s) => s.trim()).filter(Boolean);
+      const parts = content
+        .split(/[；;]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
       if (parts.length <= 1) {
         out.push(line);
         continue;
