@@ -269,6 +269,7 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
       const base64Data = await ResourceDownloader.downloadToBase64(image, {
         timeout: 30000, // 30 seconds timeout
         maxSize: 10 * 1024 * 1024, // 10MB max size
+        filename: `laozhang_image_${Date.now()}.png`,
       });
 
       // Try to infer MIME type from the input

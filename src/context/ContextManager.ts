@@ -1,6 +1,8 @@
 // Context Manager - builds and manages conversation contexts
 
-import type { SummarizeService } from '@/conversation/SummarizeService';
+import type { SummarizeService } from '@/ai/services/SummarizeService';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import { ConversationHistoryBuffer } from './history/ConversationHistoryBuffer';
 import { ConversationHistorySummary } from './history/ConversationHistorySummary';
@@ -27,8 +29,6 @@ export class ContextManager {
     private summaryThreshold = 20,
     private maxBufferSize = 30,
     private useSummary = false,
-    /** Required when useSummary is true. */
-    private summarizeService?: SummarizeService,
   ) {}
 
   /**
@@ -46,8 +46,12 @@ export class ContextManager {
       const buffer = new ConversationHistoryBuffer(this.maxBufferSize);
       let history: ConversationHistoryBuffer | ConversationHistorySummary;
 
-      if (this.useSummary && this.summarizeService) {
-        history = new ConversationHistorySummary(buffer, this.summaryThreshold, this.summarizeService);
+      if (this.useSummary) {
+        const summarizeService = getContainer().resolve<SummarizeService>(DITokens.SUMMARIZE_SERVICE);
+        if (!summarizeService) {
+          throw new Error('[ContextManager] SummarizeService not found');
+        }
+        history = new ConversationHistorySummary(buffer, this.summaryThreshold, summarizeService);
       } else {
         history = buffer;
       }

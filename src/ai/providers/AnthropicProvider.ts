@@ -310,6 +310,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
             timeout: 30000, // 30 seconds timeout
             maxSize: 5 * 1024 * 1024, // 5MB maximum (Anthropic API limit)
             savePath: this.config.resourceSavePath, // Use provider-specific save path if configured
+            filename: `anthropic_image_${Date.now()}`,
           });
         } else if (image.file) {
           // Read file and convert to base64
@@ -318,6 +319,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
             timeout: 5000, // 5 seconds for local file
             maxSize: 5 * 1024 * 1024, // 5MB maximum (Anthropic API limit)
             savePath: this.config.resourceSavePath, // Use provider-specific save path if configured
+            filename: `anthropic_image_${Date.now()}`,
           });
         } else {
           throw new Error('Invalid image format. Must provide base64, url, or file.');

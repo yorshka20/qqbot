@@ -252,6 +252,7 @@ export async function normalizeVisionImages(
         const base64Data = await ResourceDownloader.downloadToBase64(image.url, {
           timeout,
           maxSize,
+          filename: `image_${Date.now()}`,
         });
         normalizedImage.base64 = base64Data;
         if (!normalizedImage.mimeType) {
@@ -266,6 +267,7 @@ export async function normalizeVisionImages(
         const base64Data = await ResourceDownloader.downloadToBase64(image.file, {
           timeout: 5000,
           maxSize,
+          filename: `image_${Date.now()}`,
         });
         normalizedImage.base64 = base64Data;
         if (!normalizedImage.mimeType) {
@@ -344,6 +346,7 @@ export async function visionImageToBuffer(
     const base64Data = await ResourceDownloader.downloadToBase64(source, {
       timeout,
       maxSize,
+      filename: `image_${Date.now()}`,
     });
     return Buffer.from(base64Data, 'base64');
   }

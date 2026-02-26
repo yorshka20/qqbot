@@ -1,6 +1,6 @@
 // Conversation History Summary - compresses long session history using summaries (not persistent memory)
 
-import type { SummarizeService } from '@/conversation/SummarizeService';
+import type { SummarizeService } from '@/ai/services/SummarizeService';
 import { logger } from '@/utils/logger';
 import type { ConversationHistoryBuffer } from './ConversationHistoryBuffer';
 

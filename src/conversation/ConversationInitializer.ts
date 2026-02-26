@@ -32,6 +32,7 @@ import type { SearchService } from '@/search';
 import { FileReadService } from '@/services/FileReadService';
 import { TaskInitializer, TaskManager } from '@/task';
 import { logger } from '@/utils/logger';
+import { SummarizeService } from '../ai/services/SummarizeService';
 import { CommandRouter } from './CommandRouter';
 import { ConversationManager } from './ConversationManager';
 import { Lifecycle } from './Lifecycle';
@@ -42,7 +43,6 @@ import {
   SearXNGPreferenceKnowledgeService,
 } from './proactive';
 import { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
-import { SummarizeService } from './SummarizeService';
 import { CommandSystem } from './systems/CommandSystem';
 import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
 import { TaskSystem } from './systems/TaskSystem';
@@ -140,18 +140,19 @@ export class ConversationInitializer {
     const maxBufferSize = memoryConfig?.maxBufferSize ?? 30;
     const maxHistoryMessages = memoryConfig?.maxHistoryMessages ?? 10;
 
+    
     const conversationHistoryService = new ConversationHistoryService(maxHistoryMessages, databaseManager);
 
     const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+    // Single SummarizeService for both context memory and thread compression (provider passed at call time).
+    const summarizeService = new SummarizeService(llmService, promptManager);
 
     // Memory extract service (used by Memory plugin for debounced extract from recent messages)
     const memoryExtractService = new MemoryExtractService(promptManager, llmService, memoryService);
     container.registerInstance(DITokens.MEMORY_EXTRACT_SERVICE, memoryExtractService, { logRegistration: false });
 
-    // Single SummarizeService for both context memory and thread compression (provider passed at call time).
-    const summarizeService = new SummarizeService(llmService, promptManager);
     container.registerInstance(DITokens.SUMMARIZE_SERVICE, summarizeService, { logRegistration: false });
-    const contextManager = new ContextManager(summaryThreshold, maxBufferSize, useSummary, summarizeService);
+    const contextManager = new ContextManager(summaryThreshold, maxBufferSize, useSummary);
 
     // Register conversation config services to DI container early so PluginManager can inject them
     // This must be done before PluginManager is created

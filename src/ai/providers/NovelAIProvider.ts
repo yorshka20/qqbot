@@ -148,6 +148,7 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
     const base64Data = await ResourceDownloader.downloadToBase64(image, {
       timeout: 30000,
       maxSize: 10 * 1024 * 1024,
+      filename: `novelai_image_${Date.now()}`,
     });
     return resizeImageToBase64WithMaxSide(base64Data, NovelAIProvider.IMG2IMG_MAX_SIDE, NovelAIProvider.IMG2IMG_ALIGN);
   }
