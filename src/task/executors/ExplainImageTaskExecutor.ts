@@ -2,8 +2,9 @@
 
 import type { AIService } from '@/ai/AIService';
 import type { VisionImage } from '@/ai/capabilities/types';
-import { extractImagesFromMessageAndReply } from '@/ai/utils/imageUtils';
+import { extractImagesFromMessageAndReply, extractImagesFromSegmentsAsync } from '@/ai/utils/imageUtils';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { MessageSegment } from '@/message/types';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { logger } from '@/utils/logger';
@@ -58,10 +59,23 @@ export class ExplainImageTaskExecutor extends BaseTaskExecutor {
     const sessionId = hookContext.metadata.get('sessionId') as string | undefined;
     const userMessage = hookContext.message.message || '（无）';
 
-    // Extract images from the current message (and any referenced reply message)
+    // Extract images: prefer segments passed in task parameters (from TaskSystem when auto-injecting)
+    // to avoid context/message propagation issues. Fall back to extractImagesFromMessageAndReply.
     let images: VisionImage[] = [];
     try {
-      images = await extractImagesFromMessageAndReply(hookContext.message, this.messageAPI, this.databaseManager);
+      const paramSegments = task.parameters?.imageSegments as MessageSegment[] | undefined;
+      if (Array.isArray(paramSegments) && paramSegments.length > 0) {
+        const getResourceUrl = (resourceId: string) =>
+          this.messageAPI.getResourceTempUrl(resourceId, hookContext.message);
+        images = await extractImagesFromSegmentsAsync(paramSegments, getResourceUrl);
+        logger.debug(`[ExplainImageTaskExecutor] Extracted ${images.length} image(s) from task parameters`);
+      } else {
+        images = await extractImagesFromMessageAndReply(
+          hookContext.message,
+          this.messageAPI,
+          this.databaseManager,
+        );
+      }
     } catch (error) {
       logger.warn(
         '[ExplainImageTaskExecutor] Failed to extract images:',

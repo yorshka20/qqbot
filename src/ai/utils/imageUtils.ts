@@ -368,7 +368,7 @@ function extractReplyMessageId(segment: { type: string; data?: Record<string, un
   }
 
   const idNumber = typeof id === 'string' ? parseInt(id, 10) : Number(id);
-  return isNaN(idNumber) ? null : idNumber;
+  return Number.isNaN(idNumber) ? null : idNumber;
 }
 
 /**
