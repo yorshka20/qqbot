@@ -8,7 +8,7 @@ import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { MemoryService } from '@/memory/MemoryService';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import type { SearchService } from '@/search';
+import type { RetrievalService } from '@/retrieval';
 import type { TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../capabilities/types';
@@ -32,7 +32,7 @@ export class ReplyGenerationService {
     private promptManager: PromptManager,
     private hookManager: HookManager,
     private conversationHistoryService: ConversationHistoryService,
-    private searchService?: SearchService,
+    private retrievalService?: RetrievalService,
     private messageAPI?: MessageAPI,
     private databaseManager?: DatabaseManager,
     private memoryService?: MemoryService,
@@ -88,10 +88,10 @@ export class ReplyGenerationService {
       if (providedSearchResults) {
         logger.debug('[ReplyGenerationService] Using provided search results from caller');
         searchResultsText = providedSearchResults;
-      } else if (this.searchService) {
+      } else if (this.retrievalService) {
         // Perform smart search if search service is available and no results were provided
         searchResultsText =
-          (await this.searchService.performSmartSearch(context.message.message, this.llmService, sessionId)) ?? '';
+          (await this.retrievalService.performSmartSearch(context.message.message, this.llmService, sessionId)) ?? '';
       }
 
       const memoryVars = this.getMemoryVars(context);
@@ -341,7 +341,7 @@ export class ReplyGenerationService {
       const taskResultsSummary = this.buildTaskResultsSummary(otherTaskResults);
 
       // 4. Perform recursive search (max 5 iterations).
-      if (this.searchService) {
+      if (this.retrievalService) {
         accumulatedSearchResults = await this.performRecursiveSearch(
           context.message.message,
           taskResultsSummary,
@@ -430,7 +430,7 @@ export class ReplyGenerationService {
     sessionId?: string,
     maxIterations: number = this.MAX_SEARCH_ITERATIONS,
   ): Promise<string> {
-    if (!this.searchService) {
+    if (!this.retrievalService) {
       return existingSearchResults;
     }
 
@@ -466,8 +466,8 @@ export class ReplyGenerationService {
 
         const searchPromises = searchDecision.queries.map(async (queryInfo) => {
           try {
-            const results = await this.searchService!.search(queryInfo.query);
-            return this.searchService!.formatSearchResults(results);
+            const results = await this.retrievalService!.search(queryInfo.query);
+            return this.retrievalService!.formatSearchResults(results);
           } catch (error) {
             logger.warn(`[ReplyGenerationService] Search failed for query "${queryInfo.query}":`, error);
             return '';
@@ -480,8 +480,8 @@ export class ReplyGenerationService {
         logger.info(`[ReplyGenerationService] Performing search (iteration ${iteration}): ${searchDecision.query}`);
 
         try {
-          const results = await this.searchService.search(searchDecision.query);
-          const formatted = this.searchService.formatSearchResults(results);
+          const results = await this.retrievalService.search(searchDecision.query);
+          const formatted = this.retrievalService.formatSearchResults(results);
           searchResults = [formatted];
         } catch (error) {
           logger.warn(`[ReplyGenerationService] Search failed for query "${searchDecision.query}":`, error);
@@ -532,7 +532,7 @@ export class ReplyGenerationService {
     queries?: Array<{ query: string; explanation: string }>;
     isMultiSearch?: boolean;
   }> {
-    if (!this.searchService) {
+    if (!this.retrievalService) {
       return { needsSearch: false };
     }
 

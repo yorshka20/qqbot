@@ -13,7 +13,7 @@ import { ThreadService } from '@/conversation/thread';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { FileReadService } from '@/services/FileReadService';
-import type { SearchService } from '@/search';
+import type { RetrievalService } from '@/retrieval';
 import type { TaskManager } from '@/task/TaskManager';
 import { logger } from '@/utils/logger';
 import type { Config } from './config';
@@ -112,10 +112,10 @@ export class ServiceRegistry {
   }
 
   /**
-   * Register search service
+   * Register retrieval service (search + RAG)
    */
-  registerSearchService(searchService: SearchService): void {
-    this.container.registerInstance(DITokens.SEARCH_SERVICE, searchService);
+  registerRetrievalService(retrievalService: RetrievalService): void {
+    this.container.registerInstance(DITokens.RETRIEVAL_SERVICE, retrievalService);
   }
 
   /**

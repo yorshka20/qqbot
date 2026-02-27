@@ -6,7 +6,7 @@ import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { MemoryService } from '@/memory/MemoryService';
-import type { SearchService } from '@/search';
+import type { RetrievalService } from '@/retrieval';
 import type { TaskManager } from '@/task/TaskManager';
 import type { Task, TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
@@ -59,7 +59,7 @@ export class AIService {
     taskManager: TaskManager,
     private conversationHistoryService: ConversationHistoryService,
     providerSelector?: ProviderSelector,
-    private searchService?: SearchService,
+    private retrievalService?: RetrievalService,
     messageAPI?: MessageAPI,
     databaseManager?: DatabaseManager,
     memoryService?: MemoryService,
@@ -77,7 +77,7 @@ export class AIService {
       this.promptManager,
       this.hookManager,
       this.conversationHistoryService,
-      this.searchService,
+      this.retrievalService,
       messageAPI,
       databaseManager,
       memoryService,

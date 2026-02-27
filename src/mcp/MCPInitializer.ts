@@ -1,7 +1,7 @@
 // MCP Initializer - initializes MCP system
 
 import type { Config } from '@/core/config';
-import type { SearchService } from '@/search';
+import type { RetrievalService } from '@/retrieval';
 import { logger } from '@/utils/logger';
 import { MCPManager } from './MCPManager';
 
@@ -70,19 +70,17 @@ export class MCPInitializer {
   }
 
   /**
-   * Update SearchService with MCP manager for MCP mode
+   * Update RetrievalService with MCP manager for MCP mode
    * @param mcpSystem - MCP system
-   * @param searchService - Search service
+   * @param retrievalService - Retrieval service
    */
-  static updateSearchService(mcpSystem: MCPSystem | null, searchService: SearchService): void {
+  static updateRetrievalService(mcpSystem: MCPSystem | null, retrievalService: RetrievalService): void {
     if (!mcpSystem) {
       return;
     }
 
-    // Set MCP manager in search service (if it supports MCP mode)
-    // This will be implemented when SearchService supports MCP mode
-    searchService.setMCPManager(mcpSystem.mcpManager);
-    logger.info('[MCPInitializer] SearchService updated with MCP manager');
+    retrievalService.setMCPManager(mcpSystem.mcpManager);
+    logger.info('[MCPInitializer] RetrievalService updated with MCP manager');
   }
 
   /**

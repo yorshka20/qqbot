@@ -10,7 +10,7 @@ import { EventInitializer } from './events/EventInitializer';
 import { MCPInitializer } from './mcp/MCPInitializer';
 import { PluginInitializer } from './plugins/PluginInitializer';
 import { ProtocolAdapterInitializer } from './protocol/ProtocolAdapterInitializer';
-import { SearchService } from './search';
+import { RetrievalService } from './retrieval';
 import { logger } from './utils/logger';
 import { initStaticFileServer, stopStaticFileServer } from './utils/StaticFileServer';
 
@@ -34,12 +34,12 @@ async function main() {
     // Initialize MCP system (if enabled)
     const mcpSystem = MCPInitializer.initialize(config);
 
-    // Initialize search service (if MCP is enabled)
-    let searchService: SearchService | undefined;
+    // Initialize retrieval service (always create; search enabled when mcp.enabled, RAG when rag.enabled)
     const mcpConfig = config.getMCPConfig();
-    if (mcpConfig && mcpConfig.enabled) {
-      searchService = new SearchService(mcpConfig);
-      logger.info('[Main] SearchService initialized');
+    const ragConfig = config.getRAGConfig();
+    const retrievalService = new RetrievalService(mcpConfig, ragConfig);
+    if (mcpConfig?.enabled) {
+      logger.info('[Main] RetrievalService initialized with search');
     }
 
     // Initialize and start static file server for serving generated images
@@ -50,12 +50,10 @@ async function main() {
     }
 
     // Initialize conversation components
-    const conversationComponents = await ConversationInitializer.initialize(config, apiClient, searchService);
+    const conversationComponents = await ConversationInitializer.initialize(config, apiClient, retrievalService);
 
-    // Register SearchService health check (after HealthCheckManager is created)
-    if (searchService) {
-      searchService.registerHealthCheck();
-    }
+    // Register RetrievalService health check (after HealthCheckManager is created)
+    retrievalService.registerHealthCheck();
 
     // Initialize event system (EventRouter and handlers)
     const eventSystem = EventInitializer.initialize(config, conversationComponents.conversationManager);
@@ -78,10 +76,8 @@ async function main() {
     // Connect to MCP servers (after bot is started)
     if (mcpSystem) {
       await MCPInitializer.connectServers(mcpSystem, config);
-      // Update SearchService with MCP manager for MCP mode
-      if (searchService) {
-        MCPInitializer.updateSearchService(mcpSystem, searchService);
-      }
+      // Update RetrievalService with MCP manager for MCP mode
+      MCPInitializer.updateRetrievalService(mcpSystem, retrievalService);
     }
 
     // Load plugins after bot is started

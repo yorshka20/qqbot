@@ -1,7 +1,7 @@
 // Search task executor - handles web search queries
 
 import { DITokens } from '@/core/DITokens';
-import type { SearchService } from '@/search';
+import type { RetrievalService } from '@/retrieval';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
 import { TaskDefinition } from '../decorators';
@@ -31,7 +31,7 @@ import { BaseTaskExecutor } from './BaseTaskExecutor';
 export class SearchTaskExecutor extends BaseTaskExecutor {
   name = 'search';
 
-  constructor(@inject(DITokens.SEARCH_SERVICE) private searchService: SearchService) {
+  constructor(@inject(DITokens.RETRIEVAL_SERVICE) private retrievalService: RetrievalService) {
     super();
   }
 
@@ -42,20 +42,20 @@ export class SearchTaskExecutor extends BaseTaskExecutor {
       return this.error('请提供搜索关键词', 'Missing required parameter: query');
     }
 
-    if (!this.searchService?.isEnabled()) {
-      logger.info('[SearchTaskExecutor] SearchService is not enabled, skipping search');
+    if (!this.retrievalService?.isSearchEnabled()) {
+      logger.info('[SearchTaskExecutor] Search is not enabled, skipping search');
       return this.success('', { query, results: [] });
     }
 
     logger.info(`[SearchTaskExecutor] Executing search for query: ${query}`);
 
-    const searchResults = await this.searchService.search(query);
+    const searchResults = await this.retrievalService.search(query);
 
     if (searchResults.length === 0) {
       return this.success('', { query, results: [] });
     }
 
-    const formattedResults = this.searchService.formatSearchResults(searchResults);
+    const formattedResults = this.retrievalService.formatSearchResults(searchResults);
     logger.info(`[SearchTaskExecutor] Search completed: ${searchResults.length} results found`);
 
     return this.success(formattedResults, {

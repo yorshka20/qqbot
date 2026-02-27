@@ -29,7 +29,7 @@ import { DatabaseManager } from '@/database/DatabaseManager';
 import { HookManager } from '@/hooks/HookManager';
 import { MemoryExtractService, MemoryService } from '@/memory';
 import { MessageUtils } from '@/message/MessageUtils';
-import type { SearchService } from '@/search';
+import type { RetrievalService } from '@/retrieval';
 import { FileReadService } from '@/services/FileReadService';
 import { TaskInitializer, TaskManager } from '@/task';
 import { logger } from '@/utils/logger';
@@ -39,6 +39,7 @@ import { ConversationManager } from './ConversationManager';
 import { Lifecycle } from './Lifecycle';
 import { MessagePipeline } from './MessagePipeline';
 import {
+  DefaultPreferenceKnowledgeService,
   DefaultProactiveThreadPersistenceService,
   ProactiveConversationService,
   SearXNGPreferenceKnowledgeService,
@@ -95,7 +96,7 @@ export class ConversationInitializer {
   static async initialize(
     config: Config,
     apiClient: APIClient,
-    searchService?: SearchService,
+    retrievalService?: RetrievalService,
   ): Promise<ConversationComponents> {
     this.container = getContainer();
     // Phase 1: Infrastructure Setup
@@ -164,9 +165,9 @@ export class ConversationInitializer {
     // This must be done before PluginManager is created
     serviceRegistry.registerConversationConfigServices(conversationConfigService, globalConfigManager);
 
-    // Register SearchService to DI container if available (for SearchTaskExecutor)
-    if (searchService) {
-      serviceRegistry.registerSearchService(searchService);
+    // Register RetrievalService to DI container (for SearchTaskExecutor, etc.)
+    if (retrievalService) {
+      serviceRegistry.registerRetrievalService(retrievalService);
     }
 
     // Register FileReadService (for ReadFileTaskExecutor and ls/cat commands)
@@ -183,7 +184,7 @@ export class ConversationInitializer {
       services.taskManager,
       conversationHistoryService,
       providerSelector,
-      searchService,
+      retrievalService,
       messageAPI,
       databaseManager,
       memoryService,
@@ -337,11 +338,16 @@ export class ConversationInitializer {
       { logRegistration: false },
     );
 
-    // Use SearXNG-based preference knowledge when SearchService is available and enabled.
+    // Use SearXNG-based preference knowledge when RetrievalService is available and search enabled.
     // Analysis stage decides searchQueries; retrieve() runs them then one short LLM sufficiency check (option B: supplement search if needed).
-    const searchService = this.container.resolve<SearchService>(DITokens.SEARCH_SERVICE);
     const llmService = this.container.resolve<LLMService>(DITokens.LLM_SERVICE);
-    const preferenceKnowledge = new SearXNGPreferenceKnowledgeService(searchService, llmService, promptManager);
+    const preferenceKnowledge = this.container.isRegistered(DITokens.RETRIEVAL_SERVICE)
+      ? new SearXNGPreferenceKnowledgeService(
+          this.container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE),
+          llmService,
+          promptManager,
+        )
+      : new DefaultPreferenceKnowledgeService();
     this.container.registerInstance(DITokens.PREFERENCE_KNOWLEDGE_SERVICE, preferenceKnowledge, {
       logRegistration: false,
     });

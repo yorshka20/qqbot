@@ -17,7 +17,7 @@ export const DITokens = {
   PLUGIN_MANAGER: 'PluginManager',
   CONVERSATION_CONFIG_SERVICE: 'ConversationConfigService',
   GLOBAL_CONFIG_MANAGER: 'GlobalConfigManager',
-  SEARCH_SERVICE: 'SearchService',
+  RETRIEVAL_SERVICE: 'RetrievalService',
   HEALTH_CHECK_MANAGER: 'HealthCheckManager',
   THREAD_SERVICE: 'ThreadService',
   PROACTIVE_CONVERSATION_SERVICE: 'ProactiveConversationService',

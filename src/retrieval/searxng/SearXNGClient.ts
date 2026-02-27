@@ -22,6 +22,31 @@ export class SearXNGClient implements HealthCheckable {
     this.proxy = config.proxy;
   }
 
+  private buildHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { 'User-Agent': this.userAgent };
+    if (this.authUsername && this.authPassword) {
+      headers.Authorization = `Basic ${btoa(`${this.authUsername}:${this.authPassword}`)}`;
+    }
+    return headers;
+  }
+
+  private async withProxy<T>(fn: () => Promise<T>): Promise<T> {
+    const originalHttpProxy = process.env.HTTP_PROXY;
+    const originalHttpsProxy = process.env.HTTPS_PROXY;
+
+    if (this.proxy?.http) process.env.HTTP_PROXY = this.proxy.http;
+    if (this.proxy?.https) process.env.HTTPS_PROXY = this.proxy.https;
+
+    try {
+      return await fn();
+    } finally {
+      if (originalHttpProxy !== undefined) process.env.HTTP_PROXY = originalHttpProxy;
+      else delete process.env.HTTP_PROXY;
+      if (originalHttpsProxy !== undefined) process.env.HTTPS_PROXY = originalHttpsProxy;
+      else delete process.env.HTTPS_PROXY;
+    }
+  }
+
   /**
    * Get service name for health check identification
    */
@@ -37,68 +62,21 @@ export class SearXNGClient implements HealthCheckable {
     const startTime = Date.now();
 
     try {
-      const headers: Record<string, string> = {
-        'User-Agent': this.userAgent,
-      };
-
-      if (this.authUsername && this.authPassword) {
-        const credentials = btoa(`${this.authUsername}:${this.authPassword}`);
-        headers['Authorization'] = `Basic ${credentials}`;
-      }
-
-      // Set up proxy if configured
-      const originalHttpProxy = process.env.HTTP_PROXY;
-      const originalHttpsProxy = process.env.HTTPS_PROXY;
-
-      if (this.proxy?.http) {
-        process.env.HTTP_PROXY = this.proxy.http;
-      }
-      if (this.proxy?.https) {
-        process.env.HTTPS_PROXY = this.proxy.https;
-      }
-
-      try {
-        // Try to access the base URL
-        const response = await fetch(this.baseUrl, {
+      const response = await this.withProxy(async () => {
+        return fetch(this.baseUrl, {
           method: 'GET',
-          headers,
+          headers: this.buildHeaders(),
           signal: AbortSignal.timeout(timeout),
         });
+      });
 
-        // Restore proxy settings
-        if (originalHttpProxy !== undefined) {
-          process.env.HTTP_PROXY = originalHttpProxy;
-        } else {
-          delete process.env.HTTP_PROXY;
-        }
-        if (originalHttpsProxy !== undefined) {
-          process.env.HTTPS_PROXY = originalHttpsProxy;
-        } else {
-          delete process.env.HTTPS_PROXY;
-        }
-
-        // Service is available if we get any response (including 404, 301, etc.)
-        // This is because SearXNG might return different status codes on base URL
-        return {
-          status: HealthStatus.HEALTHY,
-          timestamp: Date.now(),
-          responseTime: Date.now() - startTime,
-          message: `Service responded with status ${response.status}`,
-        };
-      } catch (fetchError) {
-        // Restore proxy settings on error
-        if (originalHttpProxy !== undefined) {
-          process.env.HTTP_PROXY = originalHttpProxy;
-        } else {
-          delete process.env.HTTP_PROXY;
-        }
-        if (originalHttpsProxy !== undefined) {
-          process.env.HTTPS_PROXY = originalHttpsProxy;
-        } else {
-          delete process.env.HTTPS_PROXY;
-        }
-        throw fetchError;
-      }
+      // Service is available if we get any response (including 404, 301, etc.)
+      return {
+        status: HealthStatus.HEALTHY,
+        timestamp: Date.now(),
+        responseTime: Date.now() - startTime,
+        message: `Service responded with status ${response.status}`,
+      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.warn(`[SearXNGClient] Health check failed: ${errorMessage}`);
@@ -147,50 +125,12 @@ export class SearXNGClient implements HealthCheckable {
     // Retry logic with exponential backoff
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        // Build headers
-        const headers: Record<string, string> = {
-          'User-Agent': this.userAgent,
-        };
-
-        // Add Basic Auth if configured
-        if (this.authUsername && this.authPassword) {
-          const credentials = btoa(`${this.authUsername}:${this.authPassword}`);
-          headers['Authorization'] = `Basic ${credentials}`;
-        }
-
-        // Set up proxy if configured
-        const fetchOptions: RequestInit = {
-          method: 'GET',
-          headers,
-          signal: AbortSignal.timeout(10000), // 10 second timeout (reduced from 30s)
-        };
-
-        // Bun supports proxy via environment variables
-        // Set proxy environment variables if configured
-        const originalHttpProxy = process.env.HTTP_PROXY;
-        const originalHttpsProxy = process.env.HTTPS_PROXY;
-
-        if (this.proxy?.http) {
-          process.env.HTTP_PROXY = this.proxy.http;
-        }
-        if (this.proxy?.https) {
-          process.env.HTTPS_PROXY = this.proxy.https;
-        }
-
-        try {
-          const response = await fetch(url, fetchOptions);
-
-          // Restore original proxy settings
-          if (originalHttpProxy !== undefined) {
-            process.env.HTTP_PROXY = originalHttpProxy;
-          } else {
-            delete process.env.HTTP_PROXY;
-          }
-          if (originalHttpsProxy !== undefined) {
-            process.env.HTTPS_PROXY = originalHttpsProxy;
-          } else {
-            delete process.env.HTTPS_PROXY;
-          }
+        return await this.withProxy(async () => {
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: this.buildHeaders(),
+            signal: AbortSignal.timeout(10000),
+          });
 
           if (!response.ok) {
             throw new Error(`SearXNG API error: ${response.status} ${response.statusText}`);
@@ -198,7 +138,6 @@ export class SearXNGClient implements HealthCheckable {
 
           const data = (await response.json()) as SearXNGSearchResponse;
 
-          // Parse and return results
           const results: SearchResult[] = (data.results || []).map((result) => ({
             title: result.title || '',
             url: result.url || '',
@@ -209,20 +148,7 @@ export class SearXNGClient implements HealthCheckable {
 
           logger.debug(`[SearXNGClient] Search completed: ${results.length} results`);
           return results;
-        } catch (fetchError) {
-          // Restore original proxy settings on error
-          if (originalHttpProxy !== undefined) {
-            process.env.HTTP_PROXY = originalHttpProxy;
-          } else {
-            delete process.env.HTTP_PROXY;
-          }
-          if (originalHttpsProxy !== undefined) {
-            process.env.HTTPS_PROXY = originalHttpsProxy;
-          } else {
-            delete process.env.HTTPS_PROXY;
-          }
-          throw fetchError;
-        }
+        });
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
 
@@ -230,7 +156,7 @@ export class SearXNGClient implements HealthCheckable {
         const isRetryable = this.isRetryableError(lastError);
 
         if (attempt < maxRetries && isRetryable) {
-          const delay = Math.pow(2, attempt) * 1000; // Exponential backoff
+          const delay = 2 ** attempt * 1000; // Exponential backoff
           logger.warn(
             `[SearXNGClient] Search failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`,
           );

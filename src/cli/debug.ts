@@ -14,7 +14,7 @@ import type { NormalizedEvent, NormalizedMessageEvent } from '../events/types';
 import { MCPInitializer } from '../mcp/MCPInitializer';
 import { PluginInitializer } from '../plugins/PluginInitializer';
 import { ProtocolAdapterInitializer } from '../protocol/ProtocolAdapterInitializer';
-import { SearchService } from '../search';
+import { RetrievalService } from '../retrieval';
 import { logger } from '../utils/logger';
 import { initStaticFileServer } from '../utils/StaticFileServer';
 import { MockConnection } from './MockConnection';
@@ -565,12 +565,12 @@ class DebugCLI {
     // Initialize MCP system (if enabled)
     const mcpSystem = MCPInitializer.initialize(this.config);
 
-    // Initialize search service (if MCP is enabled)
-    let searchService: SearchService | undefined;
+    // Initialize retrieval service
     const mcpConfig = this.config.getMCPConfig();
+    const ragConfig = this.config.getRAGConfig();
+    const retrievalService = new RetrievalService(mcpConfig, ragConfig);
     if (mcpConfig?.enabled) {
-      searchService = new SearchService(mcpConfig);
-      logger.info('[DebugCLI] SearchService initialized');
+      logger.info('[DebugCLI] RetrievalService initialized with search');
     }
 
     // Initialize and start static file server for serving generated images
@@ -583,15 +583,13 @@ class DebugCLI {
 
     // Initialize conversation components
     this.printInfo('Initializing conversation system...');
-    const conversationComponents = await ConversationInitializer.initialize(this.config, this.apiClient, searchService);
+    const conversationComponents = await ConversationInitializer.initialize(this.config, this.apiClient, retrievalService);
     this.conversationManager = conversationComponents.conversationManager;
     this.commandManager = conversationComponents.commandManager;
 
-    // Register SearchService health check (after HealthCheckManager is created)
-    if (searchService) {
-      searchService.registerHealthCheck();
-      this.printInfo('✓ SearchService health check registered');
-    }
+    // Register RetrievalService health check (after HealthCheckManager is created)
+    retrievalService.registerHealthCheck();
+    this.printInfo('✓ RetrievalService health check registered');
 
     // Initialize event router (for plugins that might use it)
     const eventSystem = EventInitializer.initialize(this.config, conversationComponents.conversationManager);
@@ -610,10 +608,7 @@ class DebugCLI {
     // Connect to MCP servers (if enabled)
     if (mcpSystem) {
       await MCPInitializer.connectServers(mcpSystem, this.config);
-      // Update SearchService with MCP manager for MCP mode
-      if (searchService) {
-        MCPInitializer.updateSearchService(mcpSystem, searchService);
-      }
+      MCPInitializer.updateRetrievalService(mcpSystem, retrievalService);
     }
 
     // Load plugins
@@ -632,12 +627,12 @@ class DebugCLI {
     // Initialize MCP system (if enabled)
     const mcpSystem = MCPInitializer.initialize(this.config);
 
-    // Initialize search service (if MCP is enabled)
-    let searchService: SearchService | undefined;
+    // Initialize retrieval service
     const mcpConfig = this.config.getMCPConfig();
+    const ragConfig = this.config.getRAGConfig();
+    const retrievalService = new RetrievalService(mcpConfig, ragConfig);
     if (mcpConfig?.enabled) {
-      searchService = new SearchService(mcpConfig);
-      logger.info('[DebugCLI] SearchService initialized');
+      logger.info('[DebugCLI] RetrievalService initialized with search');
     }
 
     // Initialize and start static file server for serving generated images
@@ -650,15 +645,13 @@ class DebugCLI {
 
     // Initialize conversation components
     this.printInfo('Initializing conversation system...');
-    const conversationComponents = await ConversationInitializer.initialize(this.config, this.apiClient, searchService);
+    const conversationComponents = await ConversationInitializer.initialize(this.config, this.apiClient, retrievalService);
     this.conversationManager = conversationComponents.conversationManager;
     this.commandManager = conversationComponents.commandManager;
 
-    // Register SearchService health check (after HealthCheckManager is created)
-    if (searchService) {
-      searchService.registerHealthCheck();
-      this.printInfo('✓ SearchService health check registered');
-    }
+    // Register RetrievalService health check (after HealthCheckManager is created)
+    retrievalService.registerHealthCheck();
+    this.printInfo('✓ RetrievalService health check registered');
 
     // Initialize event system (EventRouter and handlers)
     const eventSystem = EventInitializer.initialize(this.config, conversationComponents.conversationManager);
@@ -684,10 +677,7 @@ class DebugCLI {
     // Connect to MCP servers (after bot is started)
     if (mcpSystem) {
       await MCPInitializer.connectServers(mcpSystem, this.config);
-      // Update SearchService with MCP manager for MCP mode
-      if (searchService) {
-        MCPInitializer.updateSearchService(mcpSystem, searchService);
-      }
+      MCPInitializer.updateRetrievalService(mcpSystem, retrievalService);
     }
 
     // Load plugins after bot is started

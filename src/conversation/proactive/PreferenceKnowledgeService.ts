@@ -2,7 +2,8 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
-import type { SearchResult, SearchService } from '@/search';
+import type { RetrievalService } from '@/retrieval';
+import type { SearchResult } from '@/retrieval';
 import { logger } from '@/utils/logger';
 
 export interface PreferenceKnowledgeRetrieveOptions {
@@ -63,7 +64,7 @@ function resultsToChunks(results: SearchResult[], snippetMaxLen = 400): string[]
  */
 export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeService {
   constructor(
-    private readonly searchService: SearchService,
+    private readonly retrievalService: RetrievalService,
     private readonly llmService: LLMService,
     private readonly promptManager: PromptManager,
   ) {}
@@ -73,8 +74,8 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
     queryOrTopic: string,
     options?: PreferenceKnowledgeRetrieveOptions,
   ): Promise<string[]> {
-    if (!this.searchService?.isEnabled()) {
-      logger.debug('[SearXNGPreferenceKnowledgeService] SearchService not enabled, skipping search');
+    if (!this.retrievalService?.isSearchEnabled()) {
+      logger.debug('[SearXNGPreferenceKnowledgeService] Search not enabled, skipping search');
       return [];
     }
 
@@ -151,7 +152,7 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
     const extraChunks: string[] = [];
     for (const q of supplementQueries) {
       try {
-        const results = await this.searchService.search(q, { maxResults: perQueryLimit });
+        const results = await this.retrievalService.search(q, { maxResults: perQueryLimit });
         extraChunks.push(...resultsToChunks(results));
       } catch (err) {
         logger.warn(
@@ -168,7 +169,7 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
     const perQueryLimit = Math.max(2, Math.ceil(limit / queries.length));
     for (const query of queries) {
       try {
-        const results = await this.searchService!.search(query.trim(), { maxResults: perQueryLimit });
+        const results = await this.retrievalService.search(query.trim(), { maxResults: perQueryLimit });
         allChunks.push(...resultsToChunks(results));
       } catch (err) {
         logger.warn(

@@ -1,4 +1,4 @@
-// Search service types
+// SearXNG search types
 
 export interface SearchResult {
   title: string;

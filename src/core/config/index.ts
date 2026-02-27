@@ -11,6 +11,7 @@ import type { BotSelfConfig, FileReadServiceConfig, StaticServerConfig } from '.
 import type { DatabaseConfig } from './database';
 import type { MCPConfig } from './mcp';
 import type { MemoryConfig } from './memory';
+import type { RAGConfig } from './rag';
 import type { PluginsConfig } from './plugins';
 import type { PromptsConfig } from './prompts';
 import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './protocol';
@@ -45,6 +46,7 @@ export type {
   TriggerStrategy,
 } from './mcp';
 export type { MemoryConfig } from './memory';
+export type { RAGConfig } from './rag';
 export type { PluginsConfig } from './plugins';
 export type { PromptsConfig } from './prompts';
 export type {
@@ -71,6 +73,7 @@ export interface BotConfig {
   prompts: PromptsConfig;
   tts?: TTSConfig;
   mcp?: MCPConfig;
+  rag?: RAGConfig;
   staticServer?: StaticServerConfig;
   fileReadService?: FileReadServiceConfig;
 }
@@ -297,6 +300,10 @@ export class Config {
 
   getMCPConfig(): MCPConfig | undefined {
     return this.config.mcp;
+  }
+
+  getRAGConfig(): RAGConfig | undefined {
+    return this.config.rag;
   }
 
   getStaticServerConfig(): StaticServerConfig | undefined {

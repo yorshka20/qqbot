@@ -409,5 +409,19 @@
       "maxResults": 5, // Maximum number of search results
       "language": "all" // Default language for search results
     }
+  },
+  // RAG configuration (optional) - vector retrieval for memory and context
+  "rag": {
+    "enabled": false,
+    "ollama": {
+      "url": "http://localhost:11434",
+      "model": "qwen3-embedding:4b"
+    },
+    "qdrant": {
+      "url": "http://localhost:6333"
+    },
+    "queryInstructionPrefix": "Instruct: Retrieve relevant conversation history\nQuery: ",
+    "defaultVectorSize": 2560,
+    "defaultDistance": "Cosine"
   }
 }
