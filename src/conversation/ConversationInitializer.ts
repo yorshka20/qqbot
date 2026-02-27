@@ -47,6 +47,7 @@ import {
 import { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
 import { CommandSystem } from './systems/CommandSystem';
 import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
+import { RAGPersistenceSystem } from './systems/RAGPersistenceSystem';
 import { TaskSystem } from './systems/TaskSystem';
 import { ThreadContextCompressionService, ThreadService } from './thread';
 
@@ -520,6 +521,11 @@ export class ConversationInitializer {
 
     systemRegistry.registerSystemFactory('database-persistence', () => {
       return new DatabasePersistenceSystem(services.databaseManager);
+    });
+
+    const retrievalService = this.container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE);
+    systemRegistry.registerSystemFactory('rag-persistence', () => {
+      return new RAGPersistenceSystem(retrievalService);
     });
 
     await systemRegistry.createSystems(systemContext);

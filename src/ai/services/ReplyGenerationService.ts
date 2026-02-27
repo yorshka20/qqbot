@@ -9,6 +9,7 @@ import type { HookContext } from '@/hooks/types';
 import type { MemoryService } from '@/memory/MemoryService';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { RetrievalService } from '@/retrieval';
+import { QdrantClient } from '@/retrieval';
 import type { TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../capabilities/types';
@@ -39,6 +40,46 @@ export class ReplyGenerationService {
   ) {}
 
   /**
+   * Build RAG-retrieved conversation section for prompt injection. Returns empty string when RAG disabled or no hits.
+   */
+  private async getRetrievedConversationSection(context: HookContext): Promise<string> {
+    if (!this.retrievalService?.isRAGEnabled()) {
+      return '';
+    }
+    const sessionId = context.metadata.get('sessionId') as string | undefined;
+    const sessionType = context.metadata.get('sessionType') as string | undefined;
+    if (!sessionId || !sessionType) {
+      return '';
+    }
+    const collectionName = QdrantClient.getConversationHistoryCollectionName(
+      sessionId,
+      sessionType,
+      context.message?.groupId,
+      context.message?.userId,
+    );
+    try {
+      const query = context.message?.message ?? '';
+      const hits = await this.retrievalService.vectorSearch(collectionName, query, {
+        limit: 5,
+        minScore: 0.7,
+      });
+      if (hits.length === 0) {
+        return '';
+      }
+      const formatted = hits.map((r) => r.content ?? '').filter(Boolean).join('\n\n');
+      if (!formatted) {
+        return '';
+      }
+      return this.promptManager.render('rag.conversation_context', {
+        retrievedConversationContext: formatted,
+      });
+    } catch (err) {
+      logger.warn('[ReplyGenerationService] RAG vectorSearch failed, skipping retrieved section:', err);
+      return '';
+    }
+  }
+
+  /**
    * Get memory text vars for prompt (groupMemoryText, userMemoryText). Empty strings when not group or no memory service.
    */
   private getMemoryVars(context: HookContext): { groupMemoryText: string; userMemoryText: string } {
@@ -53,6 +94,17 @@ export class ReplyGenerationService {
     const groupId = sessionId.replace(/^group:/, '');
     const userId = context.message?.userId?.toString() ?? '';
     return this.memoryService.getMemoryTextForReply(groupId, userId);
+  }
+
+  /**
+   * Get memory vars for reply (group + user memory text + RAG retrieved conversation section). Used when building reply prompts.
+   */
+  private async getMemoryVarsForReply(
+    context: HookContext,
+  ): Promise<{ groupMemoryText: string; userMemoryText: string; retrievedConversationSection: string }> {
+    const { groupMemoryText, userMemoryText } = this.getMemoryVars(context);
+    const retrievedConversationSection = await this.getRetrievedConversationSection(context);
+    return { groupMemoryText, userMemoryText, retrievedConversationSection };
   }
 
   /**
@@ -94,7 +146,7 @@ export class ReplyGenerationService {
           (await this.retrievalService.performSmartSearch(context.message.message, this.llmService, sessionId)) ?? '';
       }
 
-      const memoryVars = this.getMemoryVars(context);
+      const memoryVars = await this.getMemoryVarsForReply(context);
       let prompt: string;
       if (searchResultsText) {
         prompt = this.promptManager.render(
@@ -106,6 +158,7 @@ export class ReplyGenerationService {
             groupMemoryText: memoryVars.groupMemoryText,
             userMemoryText: memoryVars.userMemoryText,
             imageDescription: '',
+            retrievedConversationSection: memoryVars.retrievedConversationSection,
           },
           { injectBase: true },
         );
@@ -118,6 +171,7 @@ export class ReplyGenerationService {
             groupMemoryText: memoryVars.groupMemoryText,
             userMemoryText: memoryVars.userMemoryText,
             imageDescription: '',
+            retrievedConversationSection: memoryVars.retrievedConversationSection,
           },
           { injectBase: true },
         );
@@ -169,7 +223,7 @@ export class ReplyGenerationService {
     try {
       const historyText = await this.conversationHistoryService.buildConversationHistory(context);
       const sessionId = context.metadata.get('sessionId');
-      const memoryVars = this.getMemoryVars(context);
+      const memoryVars = await this.getMemoryVarsForReply(context);
 
       // char = bot's roleplay character name; instruct = character persona/details (passed by caller, e.g. /nsfw --char=xxx --instruct=xxx); user = user's role/name
       const char = options?.char ?? '';
@@ -185,6 +239,7 @@ export class ReplyGenerationService {
         groupMemoryText: memoryVars.groupMemoryText,
         userMemoryText: memoryVars.userMemoryText,
         imageDescription: '',
+        retrievedConversationSection: memoryVars.retrievedConversationSection,
       });
 
       logger.debug(`[ReplyGenerationService] NSFW prompt: ${prompt}`);
@@ -230,7 +285,6 @@ export class ReplyGenerationService {
     try {
       const sessionId = context.metadata.get('sessionId');
       const historyText = await this.conversationHistoryService.buildConversationHistory(context);
-      const memoryVars = this.getMemoryVars(context);
 
       let imageDescription = '';
       if (images && images.length > 0) {
@@ -252,7 +306,8 @@ export class ReplyGenerationService {
         logger.debug(`[ReplyGenerationService] Image description: ${imageDescription}`);
       }
 
-      // Build prompt with imageDescription (empty when no images)
+      // Build prompt with imageDescription (empty when no images) and memory vars (incl. RAG section)
+      const memoryVars = await this.getMemoryVarsForReply(context);
       const prompt = this.promptManager.render(
         'llm.reply',
         {
@@ -261,6 +316,7 @@ export class ReplyGenerationService {
           groupMemoryText: memoryVars.groupMemoryText,
           userMemoryText: memoryVars.userMemoryText,
           imageDescription,
+          retrievedConversationSection: memoryVars.retrievedConversationSection,
         },
         { injectBase: true },
       );
@@ -578,8 +634,8 @@ export class ReplyGenerationService {
   ): Promise<void> {
     const historyText = await this.conversationHistoryService.buildConversationHistory(context);
 
-    // Build prompt (include imageDescription in all templates)
-    const memoryVars = this.getMemoryVars(context);
+    // Build prompt (include imageDescription and memory vars in all templates)
+    const memoryVars = await this.getMemoryVarsForReply(context);
     const imageDescVar = imageDescription ?? '';
     let prompt: string;
     if (taskResultsSummary) {
@@ -594,6 +650,7 @@ export class ReplyGenerationService {
           groupMemoryText: memoryVars.groupMemoryText,
           userMemoryText: memoryVars.userMemoryText,
           imageDescription: imageDescVar,
+          retrievedConversationSection: memoryVars.retrievedConversationSection,
         },
         { injectBase: true },
       );
@@ -608,6 +665,7 @@ export class ReplyGenerationService {
           groupMemoryText: memoryVars.groupMemoryText,
           userMemoryText: memoryVars.userMemoryText,
           imageDescription: imageDescVar,
+          retrievedConversationSection: memoryVars.retrievedConversationSection,
         },
         { injectBase: true },
       );
@@ -621,6 +679,7 @@ export class ReplyGenerationService {
           groupMemoryText: memoryVars.groupMemoryText,
           userMemoryText: memoryVars.userMemoryText,
           imageDescription: imageDescVar,
+          retrievedConversationSection: memoryVars.retrievedConversationSection,
         },
         { injectBase: true },
       );

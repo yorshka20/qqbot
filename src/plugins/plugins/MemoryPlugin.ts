@@ -1,5 +1,7 @@
 // Memory Plugin - debounced memory extraction from recent messages for configured groups
 
+import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import type { ConversationHistoryService } from '@/conversation/history';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -8,15 +10,13 @@ import type { MemoryExtractUserCursor } from '@/database/models/types';
 import type { HookContext, HookResult } from '@/hooks/types';
 import type { MemoryExtractService } from '@/memory';
 import { logger } from '@/utils/logger';
-import { appendFile, mkdir, readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
 import { Hook, Plugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 export interface MemoryPluginConfig {
   /** Group IDs that have memory extraction enabled. */
   groups?: string[];
-  /** Debounce delay in ms before running extract after last message. Default 120000 (2 min). */
+  /** Debounce delay in ms before running extract after last message. Default 600000 (10 min). */
   debounceMs?: number;
   /** LLM provider for extract (e.g. "ollama"). Default "ollama". */
   extractProvider?: string;
@@ -28,7 +28,7 @@ export interface MemoryPluginConfig {
   maxMessagesPerExtract?: number;
 }
 
-const DEFAULT_DEBOUNCE_MS = 120_000;
+const DEFAULT_DEBOUNCE_MS = 600_000; // 10 min (lower frequency; config can override)
 const DEFAULT_FULL_HISTORY_MAX_LENGTH = 15_000;
 const DEFAULT_FULL_HISTORY_PROGRESS_FILE = 'data/memory_full_history_progress.txt';
 const DEFAULT_MAX_MESSAGES_PER_EXTRACT = 500;
@@ -113,7 +113,7 @@ export class MemoryPlugin extends PluginBase {
   private async appendFullHistoryProgress(key: string): Promise<void> {
     const path = this.getFullHistoryProgressPath();
     await mkdir(dirname(path), { recursive: true });
-    await appendFile(path, key + '\n');
+    await appendFile(path, `${key}\n`);
   }
 
   /** Upsert memory_extract_user_cursors so every run (trigger/skip/complete/error) leaves a record. */
@@ -267,21 +267,21 @@ export class MemoryPlugin extends PluginBase {
     }
   }
 
+  /** On message complete: schedule debounced extract for configured groups (lower frequency). */
   @Hook({
     stage: 'onMessageComplete',
     priority: 'NORMAL',
-    order: 15,
+    order: 5,
   })
   onMessageComplete(context: HookContext): HookResult {
     if (!this.enabled || this.groupIds.size === 0) {
       return true;
     }
-    const messageType = context.message?.messageType;
     const groupId = context.message?.groupId?.toString();
+    const messageType = context.message?.messageType;
     if (messageType !== 'group' || !groupId || !this.groupIds.has(groupId)) {
       return true;
     }
-    // Debounce: reset timer for this group; extract runs after debounceMs of no new messages
     this.scheduleExtract(groupId);
     return true;
   }

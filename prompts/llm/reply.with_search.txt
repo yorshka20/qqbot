@@ -12,6 +12,8 @@
 ## 关于当前用户的记忆
 {{userMemoryText}}
 
+{{retrievedConversationSection}}
+
 搜索结果：
 {{searchResults}}
 

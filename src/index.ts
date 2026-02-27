@@ -38,8 +38,10 @@ async function main() {
     const mcpConfig = config.getMCPConfig();
     const ragConfig = config.getRAGConfig();
     const retrievalService = new RetrievalService(mcpConfig, ragConfig);
-    if (mcpConfig?.enabled) {
-      logger.info('[Main] RetrievalService initialized with search');
+    if (ragConfig?.enabled) {
+      logger.info(
+        `[Main] RAG enabled | ollama=${ragConfig.ollama?.url} model=${ragConfig.ollama?.model} qdrant=${ragConfig.qdrant?.url}`,
+      );
     }
 
     // Initialize and start static file server for serving generated images

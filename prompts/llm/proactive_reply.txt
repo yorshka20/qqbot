@@ -5,6 +5,8 @@
 
 {{memoryContext}}
 
+{{retrievedConversationSection}}
+
 {{retrievedContext}}
 
 {{imageDescription}}

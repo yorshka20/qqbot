@@ -35,6 +35,31 @@ export class QdrantClient {
   private httpClient: HttpClient;
   private baseUrl: string;
 
+  /**
+   * Derive collection name for conversation history RAG: {groupId}_conversation_history (group)
+   * or user_{userId}_conversation_history (private). Used by RAGPersistenceSystem and ReplyGenerationService.
+   */
+  static getConversationHistoryCollectionName(
+    sessionId: string,
+    sessionType: string,
+    groupId?: number,
+    userId?: number,
+  ): string {
+    if (sessionType === 'group' && groupId != null) {
+      return `${groupId}_conversation_history`;
+    }
+    if (userId != null) {
+      return `user_${userId}_conversation_history`;
+    }
+    if (sessionId.startsWith('group:')) {
+      return `${sessionId.replace('group:', '')}_conversation_history`;
+    }
+    if (sessionId.startsWith('user:')) {
+      return `user_${sessionId.replace('user:', '')}_conversation_history`;
+    }
+    return `session_${sessionId.replace(/[^a-zA-Z0-9_]/g, '_')}_conversation_history`;
+  }
+
   constructor(config: QdrantConfig) {
     this.baseUrl = config.url.replace(/\/$/, '');
     const headers: Record<string, string> = {};

@@ -12,6 +12,8 @@ export class RAGService {
   private ollamaEmbedClient: OllamaEmbedClient;
   private qdrantClient: QdrantClient;
   private config: RAGConfig;
+  /** Collection names already ensured; ensure at most once per collection on first use. */
+  private ensuredCollections = new Set<string>();
 
   constructor(config: RAGConfig) {
     this.config = config;
@@ -24,15 +26,17 @@ export class RAGService {
     return this.config.enabled === true;
   }
 
-  async ensureCollection(
-    collection: string,
-    options?: { vectorSize?: number; distance?: string },
-  ): Promise<void> {
-    const vectorSize = options?.vectorSize ?? this.config.defaultVectorSize ?? 2560;
+  /** Ensure collection exists once per collection name; used internally only. */
+  private async ensureCollectionOnce(collection: string): Promise<void> {
+    if (this.ensuredCollections.has(collection)) {
+      return;
+    }
+    const vectorSize = this.config.defaultVectorSize ?? 2560;
     await this.qdrantClient.ensureCollection(collection, {
       vectorSize,
-      distance: options?.distance ?? this.config.defaultDistance,
+      distance: this.config.defaultDistance,
     });
+    this.ensuredCollections.add(collection);
   }
 
   async upsertDocuments(collection: string, documents: RAGDocument[]): Promise<void> {
@@ -41,7 +45,7 @@ export class RAGService {
     const contents = documents.map((d) => d.content);
     const vectors = await this.ollamaEmbedClient.embed(contents);
 
-    await this.ensureCollection(collection);
+    await this.ensureCollectionOnce(collection);
 
     const points = documents.map((doc, i) => ({
       id: doc.id,
@@ -61,6 +65,8 @@ export class RAGService {
     const [vector] = await this.ollamaEmbedClient.embed(queryWithPrefix);
 
     if (!vector || vector.length === 0) return [];
+
+    await this.ensureCollectionOnce(collection);
 
     const limit = options?.limit ?? 5;
     const minScore = options?.minScore ?? 0.7;

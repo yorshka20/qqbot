@@ -220,7 +220,10 @@
             "123456789"
           ],
           "triggerName": "cygnus",
-          "triggerKeywords": []
+          "triggerKeywords": [],
+          "coldStartOnTrigger": true,
+          "coldStartMaxMessages": 500,
+          "coldStartBatchSize": 40
         }
       },
       // Gacha Plugin - one-click NAI prompt generation (DeepSeek) then proxy to /nai
@@ -410,15 +413,20 @@
       "language": "all" // Default language for search results
     }
   },
-  // RAG configuration (optional) - vector retrieval for memory and context
+  // RAG configuration (optional) - vector retrieval for conversation history
+  // When enabled: messages are embedded via Ollama and stored in Qdrant; reply stage queries by vector for context.
+  // Prerequisites: Ollama running with an embedding model (e.g. ollama pull qwen3-embedding:4b), Qdrant running (e.g. docker run -p 6333:6333 qdrant/qdrant).
   "rag": {
     "enabled": false,
     "ollama": {
       "url": "http://localhost:11434",
-      "model": "qwen3-embedding:4b"
+      "model": "qwen3-embedding:4b",
+      "timeout": 30000
     },
     "qdrant": {
-      "url": "http://localhost:6333"
+      "url": "http://localhost:6333",
+      "apiKey": null,
+      "timeout": 30000
     },
     "queryInstructionPrefix": "Instruct: Retrieve relevant conversation history\nQuery: ",
     "defaultVectorSize": 2560,
