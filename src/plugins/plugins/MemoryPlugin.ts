@@ -16,7 +16,7 @@ import { PluginBase } from '../PluginBase';
 export interface MemoryPluginConfig {
   /** Group IDs that have memory extraction enabled. */
   groups?: string[];
-  /** Debounce delay in ms before running extract after last message. Default 600000 (10 min). */
+  /** Debounce delay in ms before running extract after last message. Default 600000 (10 min). Use a larger value (e.g. 10 min) to avoid extract running too often and filling the queue; small values (e.g. 10s) cause frequent group extracts and can make memory extract appear to run non-stop. */
   debounceMs?: number;
   /** LLM provider for extract (e.g. "ollama"). Default "ollama". */
   extractProvider?: string;
@@ -28,7 +28,7 @@ export interface MemoryPluginConfig {
   maxMessagesPerExtract?: number;
 }
 
-const DEFAULT_DEBOUNCE_MS = 600_000; // 10 min (lower frequency; config can override)
+const DEFAULT_DEBOUNCE_MS = 6000_000; // 100 min; short debounce (e.g. 10s) causes frequent group extracts and queue buildup
 const DEFAULT_FULL_HISTORY_MAX_LENGTH = 15_000;
 const DEFAULT_FULL_HISTORY_PROGRESS_FILE = 'data/memory_full_history_progress.txt';
 const DEFAULT_MAX_MESSAGES_PER_EXTRACT = 500;
@@ -54,6 +54,8 @@ export class MemoryPlugin extends PluginBase {
 
   /** Per-group debounce timer: clear on new message, run extract when timer fires. */
   private timersByGroup = new Map<string, ReturnType<typeof setTimeout>>();
+  /** In-memory guard: groupId:userId currently running or queued for full-history extract; avoid duplicate runs. */
+  private fullHistoryPendingKeys = new Set<string>();
   private conversationHistoryService!: ConversationHistoryService;
   private memoryExtractService!: MemoryExtractService;
   private databaseManager!: DatabaseManager;
@@ -199,16 +201,32 @@ export class MemoryPlugin extends PluginBase {
    * Run full-history extract for a single user (e.g. when user triggers via MemoryTrigger).
    * Loads all messages for that user in the group, chunks by fullHistoryMaxLength, and runs
    * one extractAndUpsertUserOnly per chunk. Fire-and-forget; does not block.
-   * Skips if this groupId:userId was already processed (recorded in full-history progress file).
+   * Skips if this groupId:userId was already processed (recorded in full-history progress file),
+   * or if a full-history run for this user is already queued/running (in-memory guard to avoid duplicate work).
    */
   runFullHistoryExtractForUser(groupId: string, userId: string): void {
-    logger.info(`[MemoryPlugin] runFullHistoryExtractForUser started groupId=${groupId} userId=${userId}`);
-    void this.runFullHistoryExtractForUserInternal(groupId, userId).catch((err) => {
-      logger.error(
-        `[MemoryPlugin] runFullHistoryExtractForUser unhandled error groupId=${groupId} userId=${userId}`,
-        err,
+    if (this.botSelfId && String(userId) === this.botSelfId) {
+      return;
+    }
+    const key = `${groupId}:${userId}`;
+    if (this.fullHistoryPendingKeys.has(key)) {
+      logger.info(
+        `[MemoryPlugin] runFullHistoryExtractForUser: already queued or running, skip groupId=${groupId} userId=${userId}`,
       );
-    });
+      return;
+    }
+    this.fullHistoryPendingKeys.add(key);
+    logger.info(`[MemoryPlugin] runFullHistoryExtractForUser started groupId=${groupId} userId=${userId}`);
+    void this.runFullHistoryExtractForUserInternal(groupId, userId)
+      .catch((err) => {
+        logger.error(
+          `[MemoryPlugin] runFullHistoryExtractForUser unhandled error groupId=${groupId} userId=${userId}`,
+          err,
+        );
+      })
+      .finally(() => {
+        this.fullHistoryPendingKeys.delete(key);
+      });
   }
 
   private async runFullHistoryExtractForUserInternal(groupId: string, userId: string): Promise<void> {
