@@ -72,6 +72,7 @@ export class MessagePipeline {
   ): Promise<MessageProcessingResult> {
     const hookContext = this.createHookContext(event, context);
     const messageId = String(event.id ?? event.messageId ?? 'unknown');
+    hookContext.metadata.set('replyOnly', true);
     try {
       this.promptManager.setCurrentMessageContext({ message: hookContext.message });
       logger.info(
@@ -81,7 +82,11 @@ export class MessagePipeline {
       if (!success) {
         return { success: false, error: 'Processing interrupted' };
       }
-      return await this.handleReply(event, context, hookContext, messageId);
+      const result = await this.handleReply(event, context, hookContext, messageId);
+      if (result.success) {
+        await this.lifecycle.runCompleteStage(hookContext, messageId);
+      }
+      return result;
     } catch (error) {
       return await this.handleError(error, event, context);
     } finally {

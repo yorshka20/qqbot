@@ -80,8 +80,11 @@ export class Lifecycle {
 
       for (const stageFn of stages) {
         const result = await stageFn(context, messageId);
-        // if stage fails, interrupt lifecycle
-        if (!result) return false;
+        // if stage fails, run COMPLETE first so RAG/DB persistence always runs, then return
+        if (!result) {
+          await this.executeStageComplete(context, messageId);
+          return false;
+        }
       }
 
       const duration = Date.now() - startTime;
@@ -97,6 +100,14 @@ export class Lifecycle {
       await this.handleError(context, err, messageId);
       return false;
     }
+  }
+
+  /**
+   * Run only the COMPLETE stage (systems + onMessageComplete).
+   * Used by reply-only path after handleReply so RAG can persist the new reply.
+   */
+  async runCompleteStage(context: HookContext, messageId: string): Promise<boolean> {
+    return await this.executeStageComplete(context, messageId);
   }
 
   /**

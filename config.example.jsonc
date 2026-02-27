@@ -220,7 +220,10 @@
             "123456789"
           ],
           "triggerName": "cygnus",
-          "triggerKeywords": []
+          "triggerKeywords": [],
+          "coldStartOnTrigger": true,
+          "coldStartMaxMessages": 500,
+          "coldStartBatchSize": 40
         }
       },
       // Gacha Plugin - one-click NAI prompt generation (DeepSeek) then proxy to /nai

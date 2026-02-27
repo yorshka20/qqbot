@@ -81,9 +81,8 @@ Search is configured under `mcp` in `BotConfig`:
 
 | Method | Description |
 |--------|-------------|
-| `ensureCollection(collection, options?)` | Create collection if not exists (vector size, distance) |
-| `upsertDocuments(collection, documents)` | Embed documents and upsert to Qdrant |
-| `vectorSearch(collection, query, options?)` | Embed query, search, return results above `minScore` |
+| `upsertDocuments(collection, documents)` | Embed documents and upsert to Qdrant (collection is ensured once on first use) |
+| `vectorSearch(collection, query, options?)` | Embed query, search, return results above `minScore` (collection is ensured once on first use) |
 
 ### Configuration
 
@@ -138,9 +137,8 @@ if (retrieval.isSearchEnabled()) {
   const formatted = retrieval.formatSearchResults(results);
 }
 
-// RAG
+// RAG (collections are ensured internally on first use)
 if (retrieval.isRAGEnabled()) {
-  await retrieval.ensureCollection('my_collection');
   await retrieval.upsertDocuments('my_collection', documents);
   const hits = await retrieval.vectorSearch('my_collection', 'query', { limit: 5 });
 }

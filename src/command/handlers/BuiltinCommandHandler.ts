@@ -1,16 +1,16 @@
 // Builtin command handlers
 
+import { exec } from 'node:child_process';
+import { inject, injectable } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
 import type { CapabilityType } from '@/ai/capabilities/types';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { ProactiveConversationService } from '@/conversation/proactive';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { PluginManager } from '@/plugins/PluginManager';
+import type { PluginManager } from '@/plugins/PluginManager';
 import type { MemoryPlugin } from '@/plugins/plugins/MemoryPlugin';
 import { logger } from '@/utils/logger';
-import { exec } from 'node:child_process';
-import { inject, injectable } from 'tsyringe';
 import type { CommandManager } from '../CommandManager';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult, PermissionLevel } from '../types';
@@ -365,7 +365,7 @@ export class RestartCommand implements CommandHandler {
   usage = '/restart [pm2_id]';
 
   execute(args: string[]): CommandResult {
-    let pm2Id = args[0] ?? '0';
+    const pm2Id = args[0] ?? '0';
     // Sanitize: only allow alphanumeric, dash, underscore (prevent command injection)
     if (!/^[a-zA-Z0-9_-]+$/.test(pm2Id)) {
       return {

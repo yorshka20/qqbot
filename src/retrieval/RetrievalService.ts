@@ -62,14 +62,6 @@ export class RetrievalService {
     return this.ragService?.isEnabled() ?? false;
   }
 
-  async ensureCollection(
-    collection: string,
-    options?: { vectorSize?: number; distance?: string },
-  ): Promise<void> {
-    if (!this.ragService) throw new Error('RAG is not enabled');
-    return this.ragService.ensureCollection(collection, options);
-  }
-
   async upsertDocuments(collection: string, documents: RAGDocument[]): Promise<void> {
     if (!this.ragService) throw new Error('RAG is not enabled');
     return this.ragService.upsertDocuments(collection, documents);

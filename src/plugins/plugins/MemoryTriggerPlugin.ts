@@ -1,11 +1,18 @@
 // Memory Trigger Plugin - on trigger phrase (e.g. bot name), update user memory then send standalone "记忆已更新" after update completes
 
+import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
+import { formatConversationEntriesToText } from '@/conversation/history';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import type { MemoryExtractService } from '@/memory';
 import type { MemoryService } from '@/memory/MemoryService';
+import type { RetrievalService } from '@/retrieval';
+import { QdrantClient } from '@/retrieval';
+import type { RAGDocument } from '@/retrieval/rag/types';
 import { logger } from '@/utils/logger';
 import { Hook, Plugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
@@ -19,7 +26,19 @@ export interface MemoryTriggerPluginConfig {
   triggerName?: string;
   /** Optional: only treat as "remember" when message also contains one of these (e.g. ["记住", "请记住"]). */
   triggerKeywords?: string[];
+  /** Run RAG cold start (backfill existing history to Qdrant) when trigger is first used in a group. Default true. */
+  coldStartOnTrigger?: boolean;
+  /** Max messages to backfill per group on cold start. Default 500. */
+  coldStartMaxMessages?: number;
+  /** Batch size for cold start upsert. Default 40. */
+  coldStartBatchSize?: number;
+  /** Progress file for RAG cold start (one groupId per line). Default "data/rag_cold_start_groups.txt". */
+  coldStartProgressFile?: string;
 }
+
+const DEFAULT_COLD_START_MAX_MESSAGES = 500;
+const DEFAULT_COLD_START_PROGRESS_FILE = 'data/rag_cold_start_groups.txt';
+const DEFAULT_COLD_START_BATCH_SIZE = 40;
 
 @Plugin({
   name: 'memoryTrigger',
@@ -31,11 +50,21 @@ export class MemoryTriggerPlugin extends PluginBase {
   private groupIds = new Set<string>();
   private triggerName = '';
   private triggerKeywords: string[] = [];
+  private coldStartOnTrigger = true;
+  private coldStartMaxMessages = DEFAULT_COLD_START_MAX_MESSAGES;
+  private coldStartBatchSize = DEFAULT_COLD_START_BATCH_SIZE;
+  private coldStartProgressFile = DEFAULT_COLD_START_PROGRESS_FILE;
+  /** Group IDs that have already run RAG cold start (loaded from file + in-memory; avoid duplicate trigger). */
+  private coldStartedGroupIds = new Set<string>();
+  /** Group IDs currently running cold start (avoid concurrent duplicate run for same group). */
+  private pendingColdStartGroupIds = new Set<string>();
 
   private memoryService!: MemoryService;
   private memoryExtractService!: MemoryExtractService;
   private pluginManager!: PluginManager;
   private messageAPI!: MessageAPI;
+  private retrievalService!: RetrievalService | null;
+  private conversationHistoryService!: ConversationHistoryService;
 
   async onInit(): Promise<void> {
     this.enabled = true;
@@ -44,15 +73,62 @@ export class MemoryTriggerPlugin extends PluginBase {
     this.memoryExtractService = container.resolve<MemoryExtractService>(DITokens.MEMORY_EXTRACT_SERVICE);
     this.pluginManager = container.resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
     this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+    this.conversationHistoryService = container.resolve<ConversationHistoryService>(
+      DITokens.CONVERSATION_HISTORY_SERVICE,
+    );
+    this.retrievalService = container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE);
 
     const pluginConfig = this.pluginConfig?.config as MemoryTriggerPluginConfig | undefined;
     if (pluginConfig?.groups?.length) {
       this.groupIds = new Set(pluginConfig.groups);
       this.triggerName = (pluginConfig.triggerName ?? '').trim();
       this.triggerKeywords = Array.isArray(pluginConfig.triggerKeywords) ? pluginConfig.triggerKeywords : [];
+      this.coldStartOnTrigger = pluginConfig.coldStartOnTrigger ?? true;
+      this.coldStartMaxMessages = pluginConfig.coldStartMaxMessages ?? DEFAULT_COLD_START_MAX_MESSAGES;
+      this.coldStartBatchSize = pluginConfig.coldStartBatchSize ?? DEFAULT_COLD_START_BATCH_SIZE;
+      this.coldStartProgressFile = pluginConfig.coldStartProgressFile ?? DEFAULT_COLD_START_PROGRESS_FILE;
+      if (this.coldStartOnTrigger) {
+        this.coldStartedGroupIds = await this.loadColdStartProgress();
+        logger.debug(
+          `[MemoryTriggerPlugin] RAG cold start progress loaded: ${this.coldStartedGroupIds.size} group(s) already done`,
+        );
+      }
       logger.info(
-        `[MemoryTriggerPlugin] Enabled for groups: ${Array.from(this.groupIds).join(', ')} triggerName=${this.triggerName}`,
+        `[MemoryTriggerPlugin] Enabled for groups: ${Array.from(this.groupIds).join(', ')} triggerName=${this.triggerName} coldStartOnTrigger=${this.coldStartOnTrigger}`,
       );
+    }
+  }
+
+  private getColdStartProgressPath(): string {
+    return join(process.cwd(), this.coldStartProgressFile);
+  }
+
+  /** Load set of groupIds that have already completed RAG cold start (persisted to file). */
+  private async loadColdStartProgress(): Promise<Set<string>> {
+    const set = new Set<string>();
+    try {
+      const path = this.getColdStartProgressPath();
+      const content = await readFile(path, 'utf-8');
+      for (const line of content.split('\n')) {
+        const id = line.trim();
+        if (id) {
+          set.add(id);
+        }
+      }
+    } catch {
+      // File may not exist yet
+    }
+    return set;
+  }
+
+  /** Append groupId to cold start progress file so we do not re-trigger after restart. */
+  private async appendColdStartProgress(groupId: string): Promise<void> {
+    try {
+      const path = this.getColdStartProgressPath();
+      await mkdir(dirname(path), { recursive: true });
+      await appendFile(path, `${groupId}\n`);
+    } catch (err) {
+      logger.warn('[MemoryTriggerPlugin] Failed to append cold start progress:', err);
     }
   }
 
@@ -96,6 +172,71 @@ export class MemoryTriggerPlugin extends PluginBase {
       }
     }
     return rest;
+  }
+
+  /**
+   * RAG cold start: backfill existing conversation history for the group to Qdrant so vector search can find it.
+   * Runs at most once per group (tracked in coldStartedGroupIds + progress file). Uses same document format as RAGPersistenceSystem.
+   */
+  private async runRAGColdStartForGroup(groupId: string): Promise<void> {
+    if (!this.coldStartOnTrigger || !this.retrievalService?.isRAGEnabled()) {
+      return;
+    }
+    if (this.coldStartedGroupIds.has(groupId)) {
+      return;
+    }
+    if (this.pendingColdStartGroupIds.has(groupId)) {
+      return;
+    }
+    this.pendingColdStartGroupIds.add(groupId);
+    try {
+      const entries = await this.conversationHistoryService.getRecentMessages(groupId, this.coldStartMaxMessages);
+      if (entries.length === 0) {
+        this.coldStartedGroupIds.add(groupId);
+        await this.appendColdStartProgress(groupId);
+        return;
+      }
+      const sessionId = groupId.startsWith('group:') ? groupId : `group:${groupId}`;
+      const groupIdNum = Number(groupId);
+      const collectionName = QdrantClient.getConversationHistoryCollectionName(
+        sessionId,
+        'group',
+        groupIdNum,
+        undefined,
+      );
+      const documents: RAGDocument[] = entries.map((entry: ConversationMessageEntry) => ({
+        id: entry.messageId,
+        content: formatConversationEntriesToText([entry]),
+        payload: {
+          sessionId,
+          sessionType: 'group',
+          groupId: groupIdNum,
+          userId: entry.userId,
+          timestamp:
+            entry.createdAt instanceof Date ? entry.createdAt.toISOString() : new Date(entry.createdAt).toISOString(),
+          isBotReply: entry.isBotReply,
+        },
+      }));
+
+      const batchSize = Math.max(1, this.coldStartBatchSize);
+      for (let i = 0; i < documents.length; i += batchSize) {
+        const chunk = documents.slice(i, i + batchSize);
+        try {
+          await this.retrievalService.upsertDocuments(collectionName, chunk);
+          logger.debug(
+            `[MemoryTriggerPlugin] RAG cold start batch ${i / batchSize + 1} groupId=${groupId} count=${chunk.length}`,
+          );
+        } catch (err) {
+          logger.warn(`[MemoryTriggerPlugin] RAG cold start upsert failed groupId=${groupId} batch at ${i}:`, err);
+          return;
+        }
+      }
+      this.coldStartedGroupIds.add(groupId);
+      await this.appendColdStartProgress(groupId);
+      logger.info(`[MemoryTriggerPlugin] RAG cold start completed groupId=${groupId} total=${documents.length}`);
+    } finally {
+      this.pendingColdStartGroupIds.delete(groupId);
+    }
   }
 
   /**
@@ -161,6 +302,12 @@ export class MemoryTriggerPlugin extends PluginBase {
     const memoryPlugin = this.pluginManager.getPluginAs<MemoryPlugin>('memory');
     if (memoryPlugin) {
       memoryPlugin.runFullHistoryExtractForUser(groupId, userId);
+    }
+    // RAG cold start: backfill existing history to Qdrant once per group (fire-and-forget)
+    if (this.coldStartOnTrigger && this.retrievalService?.isRAGEnabled()) {
+      void this.runRAGColdStartForGroup(groupId).catch((err) => {
+        logger.warn('[MemoryTriggerPlugin] RAG cold start failed:', err);
+      });
     }
     return true;
   }

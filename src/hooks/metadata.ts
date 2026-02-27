@@ -32,6 +32,9 @@ export interface HookContextMetadata {
 
   // Command metadata
   senderRole?: string;
+
+  /** Reply-only path: when true, RAG persistence writes only the new reply (not the old user message). */
+  replyOnly?: boolean;
 }
 
 type MetadataKeys = keyof HookContextMetadata;
