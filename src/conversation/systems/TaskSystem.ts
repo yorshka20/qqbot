@@ -112,10 +112,7 @@ export class TaskSystem implements System {
    * For explainImage tasks without imageSegments (e.g. user replied to an image message),
    * try to inject image segments from the referenced reply message (cache may have full segments).
    */
-  private async injectImageSegmentsFromReplyIntoExplainImageTasks(
-    tasks: Task[],
-    context: HookContext,
-  ): Promise<void> {
+  private async injectImageSegmentsFromReplyIntoExplainImageTasks(tasks: Task[], context: HookContext): Promise<void> {
     if (!this.messageAPI || !this.databaseManager) {
       return;
     }
@@ -144,8 +141,7 @@ export class TaskSystem implements System {
       );
       return;
     }
-    const refImageSegments =
-      referencedMessage.segments?.filter((seg: { type: string }) => seg.type === 'image') ?? [];
+    const refImageSegments = referencedMessage.segments?.filter((seg: { type: string }) => seg.type === 'image') ?? [];
     if (refImageSegments.length === 0) {
       return;
     }
@@ -174,7 +170,9 @@ export class TaskSystem implements System {
         return false;
       }
       const keywords = taskType.triggerKeywords;
-      return Array.isArray(keywords) && keywords.length > 0 && keywords.some((k) => messageLower.includes(k.toLowerCase()));
+      return (
+        Array.isArray(keywords) && keywords.length > 0 && keywords.some((k) => messageLower.includes(k.toLowerCase()))
+      );
     });
   }
 
@@ -268,7 +266,9 @@ export class TaskSystem implements System {
         .filter((r) => r.success && r.reply)
         .map((r) => (r.reply as string).trim())
         .filter((reply) => reply.length > 0);
-      return searchResults.length > 0 ? searchResults.join('\n\n---\n\n') : (results[0]?.reply ?? 'No search results found');
+      return searchResults.length > 0
+        ? searchResults.join('\n\n---\n\n')
+        : (results[0]?.reply ?? 'No search results found');
     }
     const parts: string[] = [];
     for (let index = 0; index < results.length; index++) {

@@ -70,11 +70,7 @@ export class ExplainImageTaskExecutor extends BaseTaskExecutor {
         images = await extractImagesFromSegmentsAsync(paramSegments, getResourceUrl);
         logger.debug(`[ExplainImageTaskExecutor] Extracted ${images.length} image(s) from task parameters`);
       } else {
-        images = await extractImagesFromMessageAndReply(
-          hookContext.message,
-          this.messageAPI,
-          this.databaseManager,
-        );
+        images = await extractImagesFromMessageAndReply(hookContext.message, this.messageAPI, this.databaseManager);
       }
     } catch (error) {
       logger.warn(

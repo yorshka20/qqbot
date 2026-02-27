@@ -53,9 +53,7 @@ export class MessageAPI {
     const groupId = 'groupId' in context ? context.groupId : undefined;
     const messageType = 'messageType' in context ? context.messageType : undefined;
     const messageScene =
-      'messageScene' in context && typeof context.messageScene === 'string'
-        ? context.messageScene
-        : undefined;
+      'messageScene' in context && typeof context.messageScene === 'string' ? context.messageScene : undefined;
     return { protocol, userId, groupId, messageType, messageScene };
   }
 
@@ -179,11 +177,7 @@ export class MessageAPI {
    * @param context - MessageAPIContext (notice must have groupId/messageType set by normalizer for group recall)
    * @param timeout - Optional timeout in milliseconds (default: 10000)
    */
-  async recallFromContext(
-    messageId: number,
-    context: MessageAPIContext,
-    timeout: number = 10000,
-  ): Promise<void> {
+  async recallFromContext(messageId: number, context: MessageAPIContext, timeout: number = 10000): Promise<void> {
     const { protocol, userId, groupId, messageType, messageScene } = this.extractContextFields(context);
 
     // Determine API action and params based on message type and scene

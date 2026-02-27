@@ -29,7 +29,10 @@ function parseRAGQueries(response: string): string[] {
 
   // Format: 查询1: keyword1\n查询2: keyword2
   const queries: string[] = [];
-  const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean);
+  const lines = trimmed
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
   for (const line of lines) {
     const match = line.match(/^查询\d+:\s*(.+)$/);
     if (match) {
@@ -44,7 +47,10 @@ function parseRAGQueries(response: string): string[] {
   }
 
   // Fallback: treat each non-empty line as one query (e.g. raw list)
-  const asLines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean);
+  const asLines = trimmed
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
   return asLines.length > 0 ? asLines : [];
 }
 
@@ -69,11 +75,7 @@ export class RAGQueryExtractionService {
    * Optional context (conversationContext, memoryContext) is passed into the prompt so the LLM can use history and memory.
    * On failure or empty result, returns [] (no search).
    */
-  async extractQueries(
-    inputText: string,
-    sessionId?: string,
-    context?: RAGQueryExtractionContext,
-  ): Promise<string[]> {
+  async extractQueries(inputText: string, sessionId?: string, context?: RAGQueryExtractionContext): Promise<string[]> {
     const trimmed = inputText.trim();
     if (!trimmed) {
       return [];

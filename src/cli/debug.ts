@@ -583,7 +583,11 @@ class DebugCLI {
 
     // Initialize conversation components
     this.printInfo('Initializing conversation system...');
-    const conversationComponents = await ConversationInitializer.initialize(this.config, this.apiClient, retrievalService);
+    const conversationComponents = await ConversationInitializer.initialize(
+      this.config,
+      this.apiClient,
+      retrievalService,
+    );
     this.conversationManager = conversationComponents.conversationManager;
     this.commandManager = conversationComponents.commandManager;
 
@@ -645,7 +649,11 @@ class DebugCLI {
 
     // Initialize conversation components
     this.printInfo('Initializing conversation system...');
-    const conversationComponents = await ConversationInitializer.initialize(this.config, this.apiClient, retrievalService);
+    const conversationComponents = await ConversationInitializer.initialize(
+      this.config,
+      this.apiClient,
+      retrievalService,
+    );
     this.conversationManager = conversationComponents.conversationManager;
     this.commandManager = conversationComponents.commandManager;
 

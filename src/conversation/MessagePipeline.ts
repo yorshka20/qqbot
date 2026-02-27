@@ -75,9 +75,7 @@ export class MessagePipeline {
     hookContext.metadata.set('replyOnly', true);
     try {
       this.promptManager.setCurrentMessageContext({ message: hookContext.message });
-      logger.info(
-        `[MessagePipeline] Reply-only | messageId=${messageId} | userId=${event.userId}`,
-      );
+      logger.info(`[MessagePipeline] Reply-only | messageId=${messageId} | userId=${event.userId}`);
       const success = await this.lifecycle.executeProcessOnly(hookContext);
       if (!success) {
         return { success: false, error: 'Processing interrupted' };

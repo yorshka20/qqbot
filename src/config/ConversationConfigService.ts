@@ -140,8 +140,7 @@ export class ConversationConfigService {
       ? {
           mode: partialConfig.nsfw.mode !== undefined ? partialConfig.nsfw.mode : existingNsfw.mode,
           char: partialConfig.nsfw.char !== undefined ? partialConfig.nsfw.char : existingNsfw.char,
-          instruct:
-            partialConfig.nsfw.instruct !== undefined ? partialConfig.nsfw.instruct : existingNsfw.instruct,
+          instruct: partialConfig.nsfw.instruct !== undefined ? partialConfig.nsfw.instruct : existingNsfw.instruct,
         }
       : existingNsfw;
 
