@@ -1,8 +1,29 @@
 // Qdrant HTTP API client
+// Qdrant point id must be ExtendedPointId: uint64 integer OR string in UUID format.
+// Arbitrary strings (e.g. message id "milky_1772197146_xjm0xvdmf") cause HTTP 400.
 
+import { validate as uuidValidate, v5 as uuidv5 } from 'uuid';
 import { HttpClient } from '@/api/http/HttpClient';
 import type { QdrantConfig } from '@/core/config/rag';
 import { logger } from '@/utils/logger';
+
+/** Use RFC DNS namespace for deterministic UUID v5 from RAG document ids (e.g. message id). Same id => same point id. */
+const RAG_POINT_ID_NAMESPACE = uuidv5.DNS;
+
+/**
+ * Convert point id to Qdrant-compatible format.
+ * Qdrant accepts only: uint64 number, or string in UUID format.
+ * Other strings are converted to deterministic UUID v5.
+ */
+function toQdrantPointId(id: string | number): string | number {
+  if (typeof id === 'number' && Number.isInteger(id) && id >= 0) {
+    return id;
+  }
+  if (typeof id === 'string' && uuidValidate(id)) {
+    return id;
+  }
+  return uuidv5(String(id), RAG_POINT_ID_NAMESPACE);
+}
 
 interface QdrantPoint {
   id: string | number;
@@ -112,7 +133,7 @@ export class QdrantClient {
 
     const body: QdrantUpsertRequest = {
       points: points.map((p) => ({
-        id: p.id,
+        id: toQdrantPointId(p.id),
         vector: p.vector,
         payload: p.payload,
       })),

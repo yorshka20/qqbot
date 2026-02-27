@@ -222,7 +222,7 @@
           "triggerName": "cygnus",
           "triggerKeywords": [],
           "coldStartOnTrigger": true,
-          "coldStartMaxMessages": 500,
+          "coldStartMaxMessages": 0,
           "coldStartBatchSize": 40
         }
       },

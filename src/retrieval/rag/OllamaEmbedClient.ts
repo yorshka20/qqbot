@@ -2,7 +2,6 @@
 
 import { HttpClient } from '@/api/http/HttpClient';
 import type { OllamaEmbedConfig } from '@/core/config/rag';
-import { logger } from '@/utils/logger';
 
 interface OllamaEmbedResponse {
   embeddings: number[][];

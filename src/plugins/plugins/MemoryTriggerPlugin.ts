@@ -1,10 +1,10 @@
 // Memory Trigger Plugin - on trigger phrase (e.g. bot name), update user memory then send standalone "记忆已更新" after update completes
 
-import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
-import { formatConversationEntriesToText } from '@/conversation/history';
+import { formatSingleEntryToText } from '@/conversation/history';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
@@ -28,16 +28,20 @@ export interface MemoryTriggerPluginConfig {
   triggerKeywords?: string[];
   /** Run RAG cold start (backfill existing history to Qdrant) when trigger is first used in a group. Default true. */
   coldStartOnTrigger?: boolean;
-  /** Max messages to backfill per group on cold start. Default 500. */
+  /** Max messages to backfill per group on cold start. 0 = all messages in DB (full backfill); >0 = cap. Default 0. */
   coldStartMaxMessages?: number;
   /** Batch size for cold start upsert. Default 40. */
   coldStartBatchSize?: number;
   /** Progress file for RAG cold start (one groupId per line). Default "data/rag_cold_start_groups.txt". */
   coldStartProgressFile?: string;
+  /** Checkpoint file for resume (groupId -> lastInsertedCount). Default "data/rag_cold_start_checkpoint.json". */
+  coldStartCheckpointFile?: string;
 }
 
-const DEFAULT_COLD_START_MAX_MESSAGES = 500;
+/** 0 = no limit (full DB backfill); >0 = cap for testing or large groups. */
+const DEFAULT_COLD_START_MAX_MESSAGES = 0;
 const DEFAULT_COLD_START_PROGRESS_FILE = 'data/rag_cold_start_groups.txt';
+const DEFAULT_COLD_START_CHECKPOINT_FILE = 'data/rag_cold_start_checkpoint.json';
 const DEFAULT_COLD_START_BATCH_SIZE = 40;
 
 @Plugin({
@@ -54,6 +58,7 @@ export class MemoryTriggerPlugin extends PluginBase {
   private coldStartMaxMessages = DEFAULT_COLD_START_MAX_MESSAGES;
   private coldStartBatchSize = DEFAULT_COLD_START_BATCH_SIZE;
   private coldStartProgressFile = DEFAULT_COLD_START_PROGRESS_FILE;
+  private coldStartCheckpointFile = DEFAULT_COLD_START_CHECKPOINT_FILE;
   /** Group IDs that have already run RAG cold start (loaded from file + in-memory; avoid duplicate trigger). */
   private coldStartedGroupIds = new Set<string>();
   /** Group IDs currently running cold start (avoid concurrent duplicate run for same group). */
@@ -87,6 +92,7 @@ export class MemoryTriggerPlugin extends PluginBase {
       this.coldStartMaxMessages = pluginConfig.coldStartMaxMessages ?? DEFAULT_COLD_START_MAX_MESSAGES;
       this.coldStartBatchSize = pluginConfig.coldStartBatchSize ?? DEFAULT_COLD_START_BATCH_SIZE;
       this.coldStartProgressFile = pluginConfig.coldStartProgressFile ?? DEFAULT_COLD_START_PROGRESS_FILE;
+      this.coldStartCheckpointFile = pluginConfig.coldStartCheckpointFile ?? DEFAULT_COLD_START_CHECKPOINT_FILE;
       if (this.coldStartOnTrigger) {
         this.coldStartedGroupIds = await this.loadColdStartProgress();
         logger.debug(
@@ -96,6 +102,8 @@ export class MemoryTriggerPlugin extends PluginBase {
       logger.info(
         `[MemoryTriggerPlugin] Enabled for groups: ${Array.from(this.groupIds).join(', ')} triggerName=${this.triggerName} coldStartOnTrigger=${this.coldStartOnTrigger}`,
       );
+      // TODO remove after test: run RAG cold start for this group on boot
+      // void this.runRAGColdStartForGroup('groupId');
     }
   }
 
@@ -129,6 +137,29 @@ export class MemoryTriggerPlugin extends PluginBase {
       await appendFile(path, `${groupId}\n`);
     } catch (err) {
       logger.warn('[MemoryTriggerPlugin] Failed to append cold start progress:', err);
+    }
+  }
+
+  /** Load checkpoint: groupId -> next index to process (already done 0..value-1). */
+  private async loadColdStartCheckpoint(): Promise<Record<string, number>> {
+    try {
+      const path = join(process.cwd(), this.coldStartCheckpointFile);
+      const content = await readFile(path, 'utf-8');
+      const data = JSON.parse(content) as Record<string, number>;
+      return typeof data === 'object' && data !== null ? data : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /** Write checkpoint so we can resume after restart. */
+  private async saveColdStartCheckpoint(checkpoint: Record<string, number>): Promise<void> {
+    try {
+      const path = join(process.cwd(), this.coldStartCheckpointFile);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, JSON.stringify(checkpoint, null, 0), 'utf-8');
+    } catch (err) {
+      logger.warn('[MemoryTriggerPlugin] Failed to save cold start checkpoint:', err);
     }
   }
 
@@ -176,7 +207,8 @@ export class MemoryTriggerPlugin extends PluginBase {
 
   /**
    * RAG cold start: backfill existing conversation history for the group to Qdrant so vector search can find it.
-   * Runs at most once per group (tracked in coldStartedGroupIds + progress file). Uses same document format as RAGPersistenceSystem.
+   * Supports resume: checkpoint (groupId -> next index) is written after each batch; on restart we continue from there.
+   * Completed groups are in coldStartedGroupIds + progress file and are skipped.
    */
   private async runRAGColdStartForGroup(groupId: string): Promise<void> {
     if (!this.coldStartOnTrigger || !this.retrievalService?.isRAGEnabled()) {
@@ -190,12 +222,32 @@ export class MemoryTriggerPlugin extends PluginBase {
     }
     this.pendingColdStartGroupIds.add(groupId);
     try {
-      const entries = await this.conversationHistoryService.getRecentMessages(groupId, this.coldStartMaxMessages);
+      const checkpoint = await this.loadColdStartCheckpoint();
+      const startIndex = checkpoint[groupId] ?? 0;
+
+      const limit = this.coldStartMaxMessages === 0 ? 0 : this.coldStartMaxMessages;
+      logger.info(
+        `[MemoryTriggerPlugin] RAG cold start groupId=${groupId} limit=${limit === 0 ? 'all' : limit} resumeFrom=${startIndex}`,
+      );
+      const entries = await this.conversationHistoryService.getRecentMessages(groupId, limit);
       if (entries.length === 0) {
         this.coldStartedGroupIds.add(groupId);
         await this.appendColdStartProgress(groupId);
+        delete checkpoint[groupId];
+        await this.saveColdStartCheckpoint(checkpoint);
         return;
       }
+      if (startIndex >= entries.length) {
+        logger.info(
+          `[MemoryTriggerPlugin] RAG cold start groupId=${groupId} already done (checkpoint=${startIndex} >= total=${entries.length}), marking complete`,
+        );
+        this.coldStartedGroupIds.add(groupId);
+        await this.appendColdStartProgress(groupId);
+        delete checkpoint[groupId];
+        await this.saveColdStartCheckpoint(checkpoint);
+        return;
+      }
+
       const sessionId = groupId.startsWith('group:') ? groupId : `group:${groupId}`;
       const groupIdNum = Number(groupId);
       const collectionName = QdrantClient.getConversationHistoryCollectionName(
@@ -204,36 +256,55 @@ export class MemoryTriggerPlugin extends PluginBase {
         groupIdNum,
         undefined,
       );
-      const documents: RAGDocument[] = entries.map((entry: ConversationMessageEntry) => ({
-        id: entry.messageId,
-        content: formatConversationEntriesToText([entry]),
-        payload: {
-          sessionId,
-          sessionType: 'group',
-          groupId: groupIdNum,
-          userId: entry.userId,
-          timestamp:
-            entry.createdAt instanceof Date ? entry.createdAt.toISOString() : new Date(entry.createdAt).toISOString(),
-          isBotReply: entry.isBotReply,
-        },
-      }));
+      const remaining = entries.slice(startIndex);
+      const documents: RAGDocument[] = remaining.map((entry: ConversationMessageEntry, i: number) => {
+        const globalIndex = startIndex + i;
+        return {
+          id: `coldstart:${groupId}:${globalIndex}:${entry.messageId ?? ''}`,
+          content: formatSingleEntryToText(entry),
+          payload: {
+            sessionId,
+            sessionType: 'group',
+            groupId: groupIdNum,
+            userId: entry.userId,
+            timestamp:
+              entry.createdAt instanceof Date ? entry.createdAt.toISOString() : new Date(entry.createdAt).toISOString(),
+            isBotReply: entry.isBotReply,
+          },
+        };
+      });
 
       const batchSize = Math.max(1, this.coldStartBatchSize);
+      const totalBatches = Math.ceil(documents.length / batchSize);
+      const totalMessages = entries.length;
+      const startMs = Date.now();
       for (let i = 0; i < documents.length; i += batchSize) {
         const chunk = documents.slice(i, i + batchSize);
         try {
           await this.retrievalService.upsertDocuments(collectionName, chunk);
-          logger.debug(
-            `[MemoryTriggerPlugin] RAG cold start batch ${i / batchSize + 1} groupId=${groupId} count=${chunk.length}`,
+          const insertedSoFar = startIndex + i + chunk.length;
+          checkpoint[groupId] = insertedSoFar;
+          await this.saveColdStartCheckpoint(checkpoint);
+          const elapsedMs = Date.now() - startMs;
+          const elapsedSec = elapsedMs / 1000;
+          const rate = elapsedSec > 0 ? ((i + chunk.length) / elapsedSec).toFixed(1) : '-';
+          logger.info(
+            `[MemoryTriggerPlugin] RAG cold start progress groupId=${groupId} batch=${Math.floor(i / batchSize) + 1}/${totalBatches} inserted=${insertedSoFar}/${totalMessages} elapsed=${(elapsedMs / 1000).toFixed(1)}s rate=${rate} pts/s`,
           );
         } catch (err) {
           logger.warn(`[MemoryTriggerPlugin] RAG cold start upsert failed groupId=${groupId} batch at ${i}:`, err);
           return;
         }
       }
+      const totalElapsedMs = Date.now() - startMs;
+      const totalRate = totalElapsedMs > 0 ? ((documents.length / totalElapsedMs) * 1000).toFixed(1) : '-';
       this.coldStartedGroupIds.add(groupId);
       await this.appendColdStartProgress(groupId);
-      logger.info(`[MemoryTriggerPlugin] RAG cold start completed groupId=${groupId} total=${documents.length}`);
+      delete checkpoint[groupId];
+      await this.saveColdStartCheckpoint(checkpoint);
+      logger.info(
+        `[MemoryTriggerPlugin] RAG cold start completed groupId=${groupId} total=${totalMessages} elapsed=${(totalElapsedMs / 1000).toFixed(1)}s avgRate=${totalRate} pts/s`,
+      );
     } finally {
       this.pendingColdStartGroupIds.delete(groupId);
     }

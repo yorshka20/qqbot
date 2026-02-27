@@ -56,6 +56,14 @@ export class LLMService {
       const p = this.aiManager.getProviderForCapability('llm', providerName);
       if (p && isLLMCapability(p) && p.isAvailable()) {
         provider = p;
+      } else if (p && !p.isAvailable()) {
+        logger.warn(
+          `[LLMService] Requested provider "${providerName}" is not available (e.g. API key missing or check failed); falling back to default`,
+        );
+      } else {
+        logger.warn(
+          `[LLMService] Requested provider "${providerName}" is not registered for LLM capability; falling back to default`,
+        );
       }
     } else if (sessionId && this.providerSelector) {
       // Use session-specific provider

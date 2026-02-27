@@ -2,7 +2,7 @@
 
 import { getReply } from '@/context/HookContextHelpers';
 import type { ConversationMessageEntry } from '@/conversation/history';
-import { formatConversationEntriesToText } from '@/conversation/history';
+import { formatSingleEntryToText } from '@/conversation/history';
 import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
 import type { HookContext } from '@/hooks/types';
@@ -15,7 +15,7 @@ import { logger } from '@/utils/logger';
  * RAG Persistence System
  * At COMPLETE stage, writes the user message and (if present) the bot reply to Qdrant as vectorized documents.
  * When context has replyOnly (e.g. reply-only path), writes only the new reply; the old message is not stored.
- * Uses the same message format as conversation history (formatConversationEntriesToText).
+ * Uses formatSingleEntryToText for stored content (no [id:0] prefix per message).
  * Failures are logged and do not interrupt the lifecycle.
  */
 export class RAGPersistenceSystem implements System {
@@ -68,7 +68,7 @@ export class RAGPersistenceSystem implements System {
       };
       documents.push({
         id: userMsgId,
-        content: formatConversationEntriesToText([userEntry]),
+        content: formatSingleEntryToText(userEntry),
         payload: {
           sessionId,
           sessionType,
@@ -92,7 +92,7 @@ export class RAGPersistenceSystem implements System {
       };
       documents.push({
         id: replyId,
-        content: formatConversationEntriesToText([replyEntry]),
+        content: formatSingleEntryToText(replyEntry),
         payload: {
           sessionId,
           sessionType,

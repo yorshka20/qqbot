@@ -44,7 +44,7 @@ export class MemoryPlugin extends PluginBase {
   /** Debounce delay in ms; extract runs after this idle time since last message. */
   private debounceMs = DEFAULT_DEBOUNCE_MS;
   /** LLM provider name for extract + analyze (e.g. "ollama"). */
-  private extractProvider = 'ollama';
+  private extractProvider = 'doubao';
   /** Full-history extract (MemoryTrigger): max character length per extract chunk. */
   private fullHistoryMaxLength = DEFAULT_FULL_HISTORY_MAX_LENGTH;
   /** Full-history progress file path (one line per "groupId:userId"). */
@@ -81,7 +81,7 @@ export class MemoryPlugin extends PluginBase {
       this.fullHistoryProgressFile = pluginConfig.fullHistoryProgressFile ?? DEFAULT_FULL_HISTORY_PROGRESS_FILE;
       this.maxMessagesPerExtract = pluginConfig.maxMessagesPerExtract ?? DEFAULT_MAX_MESSAGES_PER_EXTRACT;
       logger.info(
-        `[MemoryPlugin] Enabled | groups=${Array.from(this.groupIds).join(', ')} debounceMs=${this.debounceMs} maxPerExtract=${this.maxMessagesPerExtract}`,
+        `[MemoryPlugin] Enabled | groups=${Array.from(this.groupIds).join(', ')} debounceMs=${this.debounceMs} maxPerExtract=${this.maxMessagesPerExtract} extractProvider=${this.extractProvider}`,
       );
     }
   }

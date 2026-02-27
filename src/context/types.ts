@@ -68,6 +68,8 @@ export interface ProactiveReplyInjectContext {
   threadContext: string;
   /** Optional RAG chunks section (e.g. "## 参考知识\n\n..."). */
   retrievedContext: string;
+  /** Optional conversation history RAG section (vector search over group history; from rag.conversation_context). */
+  retrievedConversationSection?: string;
   /** Optional group + user memory section. */
   memoryContext: string;
   /** Optional session id for LLM (e.g. groupId for proactive). */

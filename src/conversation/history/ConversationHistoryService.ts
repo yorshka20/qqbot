@@ -45,6 +45,7 @@ export class ConversationHistoryService {
 
   /**
    * Get last N messages for any session (group or user) from DB.
+   * When limit is 0, returns all messages (no cap); use for RAG cold start full backfill.
    */
   async getRecentMessagesForSession(
     sessionId: string,
@@ -57,6 +58,13 @@ export class ConversationHistoryService {
     }
 
     const take = limit ?? this.defaultLimit;
+    const options: { orderBy: string; order: 'asc' | 'desc'; limit?: number } = {
+      orderBy: 'createdAt',
+      order: 'desc',
+    };
+    if (take > 0) {
+      options.limit = take;
+    }
 
     try {
       const conversations = adapter.getModel('conversations');
@@ -69,10 +77,7 @@ export class ConversationHistoryService {
       }
 
       const messages = adapter.getModel('messages');
-      const recent = await messages.find(
-        { conversationId: conversation.id },
-        { orderBy: 'createdAt', order: 'desc', limit: take },
-      );
+      const recent = await messages.find({ conversationId: conversation.id }, options);
       const chronological = recent.reverse();
 
       return chronological.map((msg) => this.mapMessageToEntry(msg));

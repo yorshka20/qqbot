@@ -2,6 +2,7 @@
 
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ProactiveReplyInjectContext } from '@/context/types';
+import type { ConversationHistoryService } from '@/conversation/history';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
@@ -12,10 +13,9 @@ import type { Task, TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
 import type { AIManager } from './AIManager';
 import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions, VisionImage } from './capabilities/types';
-import { PromptManager } from './prompt/PromptManager';
 import type { ProviderSelector } from './ProviderSelector';
+import type { PromptManager } from './prompt/PromptManager';
 import { CardRenderingService } from './services/CardRenderingService';
-import type { ConversationHistoryService } from '@/conversation/history';
 import { ImageGenerationService } from './services/ImageGenerationService';
 import type { I2VPromptResult } from './services/ImagePromptService';
 import { ImagePromptService } from './services/ImagePromptService';
@@ -112,15 +112,14 @@ export class AIService {
         preferenceText: context.preferenceText,
         threadContext: context.threadContext || '(no context)',
         retrievedContext: context.retrievedContext ?? '',
+        retrievedConversationSection: context.retrievedConversationSection ?? '',
         memoryContext: context.memoryContext ?? '',
         imageDescription: context.imageDescription ?? '',
       },
       { injectBase: true },
     );
 
-    logger.debug('generateProactiveReply context', { memory: context.memoryContext });
-
-    // logger.debug('generateProactiveReply prompt', { prompt });
+    logger.info('[AIService] generateProactiveReply prompt', { prompt });
 
     const response = await this.llmService.generate(
       prompt,

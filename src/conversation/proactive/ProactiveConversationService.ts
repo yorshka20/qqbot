@@ -15,6 +15,7 @@ import type { Message } from '@/database/models/types';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { MemoryService } from '@/memory/MemoryService';
 import type { MessageSegment } from '@/message/types';
+import type { RetrievalService } from '@/retrieval';
 import { logger } from '@/utils/logger';
 import { inject, injectable } from 'tsyringe';
 import type { TaskSystem } from '../systems/TaskSystem';
@@ -90,6 +91,7 @@ export class ProactiveConversationService {
     @inject(DITokens.TASK_SYSTEM) private taskSystem: TaskSystem,
     @inject(DITokens.MEMORY_SERVICE) memoryService?: MemoryService,
     @inject(DITokens.DATABASE_MANAGER) private databaseManager?: DatabaseManager,
+    @inject(DITokens.RETRIEVAL_SERVICE) retrievalService?: RetrievalService,
   ) {
     this.replyContextBuilder = new ProactiveReplyContextBuilder({
       threadService,
@@ -97,6 +99,7 @@ export class ProactiveConversationService {
       promptManager,
       preferenceKnowledge,
       memoryService,
+      retrievalService,
       searchLimit: this.searchLimit,
     });
   }
