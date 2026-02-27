@@ -1,9 +1,7 @@
 // Reply Generation Service - provides AI reply generation capabilities
 
-import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { replaceReply, replaceReplyWithSegments, setReply, setReplyWithSegments } from '@/context/HookContextHelpers';
 import type { ConversationHistoryService } from '@/conversation/history';
-import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { MemoryService } from '@/memory/MemoryService';
@@ -541,8 +539,8 @@ export class ReplyGenerationService {
 
         const searchPromises = searchDecision.queries.map(async (queryInfo) => {
           try {
-            const results = await this.retrievalService!.search(queryInfo.query);
-            return this.retrievalService!.formatSearchResults(results);
+            const results = await this.retrievalService.search(queryInfo.query);
+            return this.retrievalService.formatSearchResults(results);
           } catch (error) {
             logger.warn(`[ReplyGenerationService] Search failed for query "${queryInfo.query}":`, error);
             return '';
