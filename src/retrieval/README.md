@@ -84,6 +84,13 @@ Search is configured under `mcp` in `BotConfig`:
 | `upsertDocuments(collection, documents)` | Embed documents and upsert to Qdrant (collection is ensured once on first use) |
 | `vectorSearch(collection, query, options?)` | Embed query, search, return results above `minScore` (collection is ensured once on first use) |
 
+### How to enable (Ollama + Qdrant)
+
+1. **Ollama**: Run Ollama and pull an embedding model, e.g. `ollama pull qwen3-embedding:4b`. Default API is `http://localhost:11434`.
+2. **Qdrant**: Run Qdrant (e.g. Docker: `docker run -p 6333:6333 qdrant/qdrant`). Default API is `http://localhost:6333`.
+3. **Config**: In `config.jsonc` set `rag.enabled: true`, and set `rag.ollama.url` / `rag.ollama.model` and `rag.qdrant.url` to match your setup. `defaultVectorSize` must match the model (e.g. 2560 for qwen3-embedding:4b).
+4. **Usage**: No extra code — when RAG is enabled, every message is persisted to Qdrant at COMPLETE stage, and before each reply the service runs a vector search and injects the retrieved context into the prompt.
+
 ### Configuration
 
 RAG is configured under `rag` in `BotConfig`:
