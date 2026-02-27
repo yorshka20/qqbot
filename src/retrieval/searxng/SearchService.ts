@@ -18,7 +18,8 @@ export class SearchService {
   private maxResults: number;
 
   private promptManager: PromptManager;
-  private healthCheckManager: HealthCheckManager;
+  /** Resolved lazily so SearchService can be created before HealthCheckManager is registered. */
+  private _healthCheckManager: HealthCheckManager | null = null;
 
   constructor(config?: MCPConfig) {
     this.config = config || null;
@@ -31,13 +32,28 @@ export class SearchService {
 
     const container = getContainer();
     this.promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
-    this.healthCheckManager = container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
+  }
+
+  /** Resolve HealthCheckManager on first use (after it is registered by ConversationInitializer). */
+  private getHealthCheckManager(): HealthCheckManager | null {
+    if (this._healthCheckManager !== null) {
+      return this._healthCheckManager;
+    }
+    const container = getContainer();
+    if (!container.isRegistered(DITokens.HEALTH_CHECK_MANAGER)) {
+      return null;
+    }
+    this._healthCheckManager = container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
+    return this._healthCheckManager;
   }
 
   registerHealthCheck(): void {
     if (!this.searxngClient) return;
 
-    this.healthCheckManager.registerService(this.searxngClient, {
+    const healthCheckManager = this.getHealthCheckManager();
+    if (!healthCheckManager) return;
+
+    healthCheckManager.registerService(this.searxngClient, {
       cacheDuration: 60000,
       timeout: 2000,
       retries: 0,
@@ -66,7 +82,8 @@ export class SearchService {
           logger.warn('[SearchService] SearXNG client not initialized');
           return [];
         }
-        if (!(await this.healthCheckManager.isServiceHealthy('SearXNG'))) {
+        const healthCheckManager = this.getHealthCheckManager();
+        if (healthCheckManager && !(await healthCheckManager.isServiceHealthy('SearXNG'))) {
           logger.warn('[SearchService] SearXNG service is not available, skipping search');
           return [];
         }
@@ -80,7 +97,8 @@ export class SearchService {
         if (!this.mcpManager.hasTool(toolName)) {
           logger.warn(`[SearchService] Tool ${toolName} not found, falling back to direct mode`);
           if (this.searxngClient) {
-            if (!(await this.healthCheckManager.isServiceHealthy('SearXNG'))) {
+            const healthCheckManager = this.getHealthCheckManager();
+            if (healthCheckManager && !(await healthCheckManager.isServiceHealthy('SearXNG'))) {
               logger.warn('[SearchService] SearXNG service is not available, skipping search');
               return [];
             }

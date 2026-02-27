@@ -1,5 +1,6 @@
 // Database Persistence System - saves messages and conversations to database
 
+import { randomUUID } from 'node:crypto';
 import { getReply } from '@/context/HookContextHelpers';
 import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
@@ -7,7 +8,6 @@ import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookContext } from '@/hooks/types';
 import { cacheMessage } from '@/message/MessageCache';
 import { logger } from '@/utils/logger';
-import { randomUUID } from 'node:crypto';
 
 /**
  * Database Persistence System
@@ -93,6 +93,9 @@ export class DatabasePersistenceSystem implements System {
         }
       }
 
+      // Always persist segments when we have content so that reply-target messages can be restored with image segments
+      const segmentsToSave =
+        (message.segments ?? message.message) ? [{ type: 'text', data: { text: message.message } }] : undefined;
       const messageData: {
         conversationId: string;
         userId: number;
@@ -110,7 +113,7 @@ export class DatabasePersistenceSystem implements System {
         messageType: message.messageType,
         groupId: message.groupId,
         content: message.message,
-        rawContent: message.segments ? JSON.stringify(message.segments) : undefined,
+        rawContent: segmentsToSave ? JSON.stringify(segmentsToSave) : undefined,
         protocol: message.protocol || 'unknown',
         metadata,
       };

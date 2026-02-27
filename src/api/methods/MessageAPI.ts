@@ -392,6 +392,10 @@ export class MessageAPI {
           ];
         }
       } else {
+        // No rawContent in DB: restored message will have only a text fallback segment (no image/other segments)
+        logger.debug(
+          `[MessageAPI] Restored message has no rawContent, using text fallback only | messageSeq=${messageSeqFromDb}`,
+        );
         normalizedMessage.segments = [
           {
             type: 'text',

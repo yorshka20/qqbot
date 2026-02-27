@@ -193,7 +193,14 @@ export class ConversationInitializer {
 
     // Create and register TaskSystem before ProactiveConversationService so DI can inject it.
     // ProactiveConversationService constructor requires TaskSystem at position #9.
-    const taskSystem = new TaskSystem(services.taskManager, services.hookManager, aiService);
+    // MessageAPI and DatabaseManager are optional; when present, explainImage can get image segments from replied message.
+    const taskSystem = new TaskSystem(
+      services.taskManager,
+      services.hookManager,
+      aiService,
+      messageAPI,
+      databaseManager,
+    );
     this.container.registerInstance(DITokens.TASK_SYSTEM, taskSystem, { logRegistration: false });
 
     // Proactive conversation (Phase 1): group history, thread, Ollama analysis, orchestrator (Phase 4: thread compression)

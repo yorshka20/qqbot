@@ -372,6 +372,23 @@ function extractReplyMessageId(segment: { type: string; data?: Record<string, un
 }
 
 /**
+ * Get the first reply message ID from a normalized message (for reply segments).
+ * Used when the current message is a reply and we need to fetch the referenced message (e.g. for explainImage).
+ */
+export function getReplyMessageIdFromMessage(message: NormalizedMessageEvent): number | null {
+  if (!message.segments?.length) {
+    return null;
+  }
+  for (const segment of message.segments) {
+    const id = extractReplyMessageId(segment as { type: string; data?: Record<string, unknown> });
+    if (id !== null) {
+      return id;
+    }
+  }
+  return null;
+}
+
+/**
  * Extract images from referenced reply message
  */
 async function extractImagesFromReplyMessage(
