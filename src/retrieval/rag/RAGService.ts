@@ -4,7 +4,7 @@ import type { RAGConfig } from '@/core/config/rag';
 import { logger } from '@/utils/logger';
 import { OllamaEmbedClient } from './OllamaEmbedClient';
 import { QdrantClient } from './QdrantClient';
-import type { RAGDocument, RAGSearchOptions, RAGSearchResult } from './types';
+import type { RAGDocument, RAGSearchOptions, RAGSearchMultiOptions, RAGSearchResult } from './types';
 
 const DEFAULT_QUERY_PREFIX = 'Instruct: Retrieve relevant conversation history\nQuery: ';
 
@@ -85,5 +85,48 @@ export class RAGService {
         payload: r.payload ?? {},
         content: (r.payload?.content as string) ?? undefined,
       }));
+  }
+
+  /**
+   * Multi-query vector search: run one search per query, merge by id (keep best score), sort by score, return up to maxTotal.
+   * Dedupe and merge are done inside RAG so callers do not need to repeat this logic.
+   */
+  async vectorSearchMulti(
+    collection: string,
+    queries: string[],
+    options?: RAGSearchMultiOptions,
+  ): Promise<RAGSearchResult[]> {
+    const trimmed = queries.map((q) => q.trim()).filter(Boolean);
+    if (trimmed.length === 0) {
+      return [];
+    }
+    const limitPerQuery = options?.limitPerQuery ?? options?.limit ?? 5;
+    const maxTotal = options?.maxTotal ?? 10;
+    const minScore = options?.minScore ?? 0.7;
+
+    if (trimmed.length === 1) {
+      const results = await this.vectorSearch(collection, trimmed[0], {
+        limit: Math.min(limitPerQuery, maxTotal),
+        minScore,
+        filter: options?.filter,
+      });
+      return results.slice(0, maxTotal);
+    }
+
+    const byId = new Map<string | number, RAGSearchResult>();
+    for (const q of trimmed) {
+      const results = await this.vectorSearch(collection, q, {
+        limit: limitPerQuery,
+        minScore,
+        filter: options?.filter,
+      });
+      for (const r of results) {
+        const existing = byId.get(r.id);
+        if (!existing || r.score > existing.score) {
+          byId.set(r.id, r);
+        }
+      }
+    }
+    return [...byId.values()].sort((a, b) => b.score - a.score).slice(0, maxTotal);
   }
 }

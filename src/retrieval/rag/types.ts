@@ -12,6 +12,14 @@ export interface RAGSearchOptions {
   filter?: Record<string, unknown>;
 }
 
+/** Options for multi-query vector search (merge/dedupe inside RAG). */
+export interface RAGSearchMultiOptions extends RAGSearchOptions {
+  /** Max results per single query. Default 5. */
+  limitPerQuery?: number;
+  /** Max total results after merge (dedupe by id, keep best score). Default 10. */
+  maxTotal?: number;
+}
+
 export interface RAGSearchResult {
   id: string | number;
   score: number;

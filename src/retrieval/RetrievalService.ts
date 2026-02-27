@@ -6,7 +6,7 @@ import type { RAGConfig } from '@/core/config/rag';
 import type { MCPManager } from '@/mcp';
 import { logger } from '@/utils/logger';
 import { RAGService } from './rag/RAGService';
-import type { RAGDocument, RAGSearchOptions, RAGSearchResult } from './rag/types';
+import type { RAGDocument, RAGSearchMultiOptions, RAGSearchOptions, RAGSearchResult } from './rag/types';
 import { SearchService } from './searxng/SearchService';
 import type { SearchOptions, SearchResult } from './searxng/types';
 
@@ -70,5 +70,17 @@ export class RetrievalService {
   async vectorSearch(collection: string, query: string, options?: RAGSearchOptions): Promise<RAGSearchResult[]> {
     if (!this.ragService) throw new Error('RAG is not enabled');
     return this.ragService.vectorSearch(collection, query, options);
+  }
+
+  /**
+   * Multi-query vector search: pass multiple queries; RAG runs each search, merges by id (best score), returns up to maxTotal.
+   */
+  async vectorSearchMulti(
+    collection: string,
+    queries: string[],
+    options?: RAGSearchMultiOptions,
+  ): Promise<RAGSearchResult[]> {
+    if (!this.ragService) throw new Error('RAG is not enabled');
+    return this.ragService.vectorSearchMulti(collection, queries, options);
   }
 }

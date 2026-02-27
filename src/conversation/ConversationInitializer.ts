@@ -4,13 +4,14 @@
 import {
   AIManager,
   AIService,
-  CapabilityType,
+  type CapabilityType,
   LLMService,
-  PromptManager,
+  type PromptManager,
   ProviderFactory,
   ProviderSelector,
 } from '@/ai';
 import { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
+import { RAGQueryExtractionService } from '@/ai/services/RAGQueryExtractionService';
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { CommandManager } from '@/command';
@@ -20,7 +21,7 @@ import { GlobalConfigManager } from '@/config/GlobalConfigManager';
 import { ContextManager } from '@/context';
 import { ConversationHistoryService, SessionHistoryStore } from '@/conversation/history';
 import type { AIConfig, Config } from '@/core/config';
-import { DIContainer, getContainer } from '@/core/DIContainer';
+import { type DIContainer, getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { HealthCheckManager } from '@/core/health';
 import { ServiceRegistry } from '@/core/ServiceRegistry';
@@ -38,13 +39,13 @@ import { CommandRouter } from './CommandRouter';
 import { ConversationManager } from './ConversationManager';
 import { Lifecycle } from './Lifecycle';
 import { MessagePipeline } from './MessagePipeline';
+import { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
 import {
   DefaultPreferenceKnowledgeService,
   DefaultProactiveThreadPersistenceService,
   ProactiveConversationService,
   SearXNGPreferenceKnowledgeService,
 } from './proactive';
-import { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
 import { CommandSystem } from './systems/CommandSystem';
 import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
 import { RAGPersistenceSystem } from './systems/RAGPersistenceSystem';
@@ -97,7 +98,7 @@ export class ConversationInitializer {
   static async initialize(
     config: Config,
     apiClient: APIClient,
-    retrievalService?: RetrievalService,
+    retrievalService: RetrievalService,
   ): Promise<ConversationComponents> {
     this.container = getContainer();
     // Phase 1: Infrastructure Setup
@@ -151,6 +152,10 @@ export class ConversationInitializer {
     });
 
     const promptManager = this.container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+    const ragQueryExtractionService = new RAGQueryExtractionService(llmService, promptManager);
+    this.container.registerInstance(DITokens.RAG_QUERY_EXTRACTION_SERVICE, ragQueryExtractionService, {
+      logRegistration: false,
+    });
     // Single SummarizeService for both context memory and thread compression (provider passed at call time).
     const summarizeService = new SummarizeService(llmService, promptManager);
 
@@ -167,9 +172,7 @@ export class ConversationInitializer {
     serviceRegistry.registerConversationConfigServices(conversationConfigService, globalConfigManager);
 
     // Register RetrievalService to DI container (for SearchTaskExecutor, etc.)
-    if (retrievalService) {
-      serviceRegistry.registerRetrievalService(retrievalService);
-    }
+    serviceRegistry.registerRetrievalService(retrievalService);
 
     // Register FileReadService (for ReadFileTaskExecutor and ls/cat commands)
     const fileReadService = new FileReadService(config.getFileReadServiceConfig());
@@ -186,9 +189,8 @@ export class ConversationInitializer {
       conversationHistoryService,
       providerSelector,
       retrievalService,
-      messageAPI,
-      databaseManager,
       memoryService,
+      ragQueryExtractionService,
     );
     serviceRegistry.registerAIServiceCapabilities(aiService);
 

@@ -20,6 +20,7 @@ import { ImageGenerationService } from './services/ImageGenerationService';
 import type { I2VPromptResult } from './services/ImagePromptService';
 import { ImagePromptService } from './services/ImagePromptService';
 import { LLMService } from './services/LLMService';
+import type { RAGQueryExtractionService } from './services/RAGQueryExtractionService';
 import { ReplyGenerationService } from './services/ReplyGenerationService';
 import { TaskAnalysisService } from './services/TaskAnalysisService';
 import { VisionService } from './services/VisionService';
@@ -58,11 +59,10 @@ export class AIService {
     private promptManager: PromptManager,
     taskManager: TaskManager,
     private conversationHistoryService: ConversationHistoryService,
-    providerSelector?: ProviderSelector,
-    private retrievalService?: RetrievalService,
-    messageAPI?: MessageAPI,
-    databaseManager?: DatabaseManager,
-    memoryService?: MemoryService,
+    providerSelector: ProviderSelector,
+    private retrievalService: RetrievalService,
+    memoryService: MemoryService,
+    ragQueryExtractionService: RAGQueryExtractionService,
   ) {
     // Initialize business services
     this.llmService = new LLMService(aiManager, providerSelector);
@@ -77,9 +77,8 @@ export class AIService {
       this.promptManager,
       this.hookManager,
       this.conversationHistoryService,
+      ragQueryExtractionService,
       this.retrievalService,
-      messageAPI,
-      databaseManager,
       memoryService,
     );
     this.taskAnalysisService = new TaskAnalysisService(

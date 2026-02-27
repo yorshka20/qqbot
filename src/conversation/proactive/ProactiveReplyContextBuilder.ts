@@ -1,6 +1,7 @@
 // Proactive Reply Context Builder - one function per injection type; build methods only assemble
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
+import type { RAGQueryExtractionContext, RAGQueryExtractionService } from '@/ai/services/RAGQueryExtractionService';
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
 import type { MemoryService } from '@/memory/MemoryService';
@@ -17,6 +18,8 @@ export interface ProactiveReplyContextBuilderDeps {
   memoryService?: MemoryService;
   /** Optional: for conversation history vector search (RAG over group chat history). */
   retrievalService?: RetrievalService;
+  /** Required: extracts short RAG queries from topic for vector search. */
+  ragQueryExtractionService: RAGQueryExtractionService;
   searchLimit: number;
 }
 
@@ -52,15 +55,17 @@ export class ProactiveReplyContextBuilder {
 
   /**
    * Conversation history RAG section (vector search over group Qdrant collection).
-   * When searchQueries is provided (same keywords as SearXNG), runs one vector search per query and merges
-   * results (dedupe by id, sort by score) to improve hit rate vs. one long topicOrQuery.
-   * Returns empty string when RAG disabled or no retrievalService.
+   * Uses ragQueryExtractionService with optional context (conversation + memory) to get short RAG queries,
+   * then calls RAG vectorSearchMulti (internal merge/dedupe). Returns empty string when RAG disabled or no retrievalService.
    */
-  async getConversationRagSection(groupId: string, topicOrQuery: string, searchQueries?: string[]): Promise<string> {
+  async getConversationRagSection(
+    groupId: string,
+    topicOrQuery: string,
+    context: RAGQueryExtractionContext,
+  ): Promise<string> {
     if (!this.deps.retrievalService?.isRAGEnabled()) {
       return '';
     }
-    // Use group collection (not user_*): proactive reply searches over group chat history, not private chat.
     const collectionName = QdrantClient.getConversationHistoryCollectionName(
       `group:${groupId}`,
       'group',
@@ -72,33 +77,20 @@ export class ProactiveReplyContextBuilder {
     const maxTotal = 10;
 
     try {
-      let hits: Array<{ id: string | number; score: number; content?: string }>;
+      const ragQueries = await this.deps.ragQueryExtractionService.extractQueries(topicOrQuery, undefined, {
+        conversationContext: context?.conversationContext,
+        memoryContext: context?.memoryContext,
+      });
 
-      if (searchQueries && searchQueries.length > 0) {
-        const byId = new Map<string | number, { id: string | number; score: number; content?: string }>();
-        for (const q of searchQueries) {
-          const trimmed = q.trim();
-          if (!trimmed) {
-            continue;
-          }
-          const results = await this.deps.retrievalService.vectorSearch(collectionName, trimmed, {
-            limit: limitPerQuery,
-            minScore,
-          });
-          for (const r of results) {
-            const existing = byId.get(r.id);
-            if (!existing || r.score > existing.score) {
-              byId.set(r.id, { id: r.id, score: r.score, content: r.content });
-            }
-          }
-        }
-        hits = [...byId.values()].sort((a, b) => b.score - a.score).slice(0, maxTotal);
-      } else {
-        hits = await this.deps.retrievalService.vectorSearch(collectionName, topicOrQuery, {
-          limit: limitPerQuery,
-          minScore,
-        });
+      if (ragQueries.length === 0) {
+        return '';
       }
+
+      const hits = await this.deps.retrievalService.vectorSearchMulti(collectionName, ragQueries, {
+        limitPerQuery,
+        minScore,
+        maxTotal,
+      });
 
       if (hits.length === 0) {
         return '';
@@ -153,13 +145,12 @@ export class ProactiveReplyContextBuilder {
   ): Promise<ProactiveReplyInjectContext> {
     const threadContext = this.getThreadContextFormatted(threadId);
     const preferenceText = this.getPreferenceText(preferenceKey);
-    const retrievedContext = await this.getRetrievedContext(preferenceKey, topicOrQuery, searchQueries);
-    const retrievedConversationSection = await this.getConversationRagSection(
-      thread.groupId,
-      topicOrQuery,
-      searchQueries,
-    );
     const memoryContext = this.getMemoryContext(thread.groupId, triggerUserId);
+    const retrievedContext = await this.getRetrievedContext(preferenceKey, topicOrQuery, searchQueries);
+    const retrievedConversationSection = await this.getConversationRagSection(thread.groupId, topicOrQuery, {
+      conversationContext: threadContext,
+      memoryContext,
+    });
     return {
       preferenceText,
       threadContext,
@@ -189,9 +180,12 @@ export class ProactiveReplyContextBuilder {
   ): Promise<ProactiveReplyInjectContext> {
     const threadContext = this.getThreadContextFromEntries(filteredEntries);
     const preferenceText = this.getPreferenceText(preferenceKey);
-    const retrievedContext = await this.getRetrievedContext(preferenceKey, topicOrQuery, searchQueries);
-    const retrievedConversationSection = await this.getConversationRagSection(groupId, topicOrQuery, searchQueries);
     const memoryContext = this.getMemoryContext(groupId, triggerUserId);
+    const retrievedContext = await this.getRetrievedContext(preferenceKey, topicOrQuery, searchQueries);
+    const retrievedConversationSection = await this.getConversationRagSection(groupId, topicOrQuery, {
+      conversationContext: threadContext,
+      memoryContext,
+    });
     return {
       preferenceText,
       threadContext,
