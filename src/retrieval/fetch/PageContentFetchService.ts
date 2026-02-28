@@ -5,6 +5,7 @@ import { JSDOM } from 'jsdom';
 import { HttpClient } from '@/api/http/HttpClient';
 import type { SearchFetchConfig } from '@/core/config/mcp';
 import { logger } from '@/utils/logger';
+import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 
 export interface FetchEntry {
   url: string;
@@ -15,7 +16,6 @@ export interface FetchEntry {
 export interface FetchPageOptions {
   url: string;
   title: string;
-  /** Snippet fallback when fetch or parse fails. */
   snippet?: string;
 }
 
@@ -24,14 +24,6 @@ export interface FetchingUrlPayload {
   title: string;
   url: string;
   index: number;
-}
-
-/**
- * Notifier for fetch progress. Called once with all titles about to be fetched (e.g. send "正在查询：\n- title1\n- title2").
- * Callers that have MessageAPI and context implement this and pass it into retrieve/fetch flows.
- */
-export interface FetchProgressNotifier {
-  onFetchingUrls(titles: string[]): void;
 }
 
 const DEFAULT_USER_AGENT =
@@ -142,7 +134,6 @@ function cleanFetchedText(text: string): string {
 
 export interface PageContentFetchServiceOptions {
   config: SearchFetchConfig | null | undefined;
-  httpClient?: HttpClient;
 }
 
 /**
@@ -168,12 +159,10 @@ export class PageContentFetchService {
     this.fetchTimeoutMs = Math.max(2000, cfg?.fetchTimeoutMs ?? 10000);
     this.skipFetchPatterns = cfg?.skipFetchPatterns;
     this.videoSelectors = { ...DEFAULT_VIDEO_DESCRIPTION_SELECTORS, ...cfg?.videoDescriptionSelectors };
-    this.httpClient =
-      options.httpClient ??
-      new HttpClient({
-        defaultTimeout: this.fetchTimeoutMs,
-        defaultHeaders: { 'User-Agent': DEFAULT_USER_AGENT },
-      });
+    this.httpClient = new HttpClient({
+      defaultTimeout: this.fetchTimeoutMs,
+      defaultHeaders: { 'User-Agent': DEFAULT_USER_AGENT },
+    });
   }
 
   isEnabled(): boolean {

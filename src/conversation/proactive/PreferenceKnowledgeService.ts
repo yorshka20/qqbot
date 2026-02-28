@@ -5,16 +5,16 @@ import type { LLMService } from '@/ai/services/LLMService';
 import { buildSummariesFromChunks, filterAndRefineSearchResults } from '@/ai/utils/searchResultsFilterRefine';
 import type { RetrievalService, SearchResult } from '@/retrieval';
 import { FILTER_REFINE_MAX_ROUNDS, FILTER_SUPPLEMENT_MAX_RESULTS } from '@/retrieval';
-import type { FetchProgressNotifier } from '@/retrieval/fetch';
 import { extractEntriesFromChunks } from '@/retrieval/fetch';
 import { logger } from '@/utils/logger';
+import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 
 export interface PreferenceKnowledgeRetrieveOptions {
   /** Max number of chunks to return. Default implementation may ignore. */
   limit?: number;
-  /** Pre-decided search queries from analysis stage. When non-empty, execute these only (no LLM in retrieve). Empty array = no search. */
+  /** Pre-decided search queries from analysis stage. When non-empty, execute these only (no LLM in retrieve).*/
   searchQueries?: string[];
-  /** Optional notifier for fetch progress (e.g. send "正在查资料：《title》" to user). */
+  /** Optional notifier for fetch progress. */
   fetchProgressNotifier?: FetchProgressNotifier;
 }
 

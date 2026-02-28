@@ -11,10 +11,10 @@ import type { RetrievalService, SearchResult } from '@/retrieval';
 import { QdrantClient } from '@/retrieval';
 import type { TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
+import { type FetchProgressNotifier, MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import type { VisionImage } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
 import { formatRAGConversationContext } from '../utils/formatRAGConversationContext';
-import { MessageSendFetchProgressNotifier } from '../utils/MessageSendFetchProgressNotifier';
 import { parseSearchDecision as parseSearchDecisionShared } from '../utils/searchDecisionParser';
 import { buildSearchResultSummaries, filterAndRefineSearchResults } from '../utils/searchResultsFilterRefine';
 import { CardRenderingService } from './CardRenderingService';
@@ -32,7 +32,7 @@ export class ReplyGenerationService {
   private static readonly RAG_MIN_SCORE = 0.5;
 
   /** Single FetchProgressNotifier instance for reply flow; setMessageEvent() before each search. */
-  private readonly fetchProgressNotifier: MessageSendFetchProgressNotifier;
+  readonly fetchProgressNotifier: FetchProgressNotifier;
 
   constructor(
     private llmService: LLMService,
@@ -128,10 +128,8 @@ export class ReplyGenerationService {
    * Reply is set to context.reply via setReply or setReplyWithSegments
    *
    * @param context - Hook context containing message and conversation history
-   * @param providedSearchResults - Optional search results text. If provided, will be used instead of automatic search.
-   *                                This allows callers (e.g., ReplyTaskExecutor) to provide search results from search tasks.
    */
-  async generateReply(context: HookContext, providedSearchResults?: string): Promise<void> {
+  async generateReply(context: HookContext): Promise<void> {
     // Hook: onMessageBeforeAI
     const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
     if (!shouldContinue) {
@@ -150,10 +148,8 @@ export class ReplyGenerationService {
 
       // Use provided search results if available, otherwise run smart search + filter-refine (logic in retrieval layer)
       let searchResultsText = '';
-      if (providedSearchResults) {
-        logger.debug('[ReplyGenerationService] Using provided search results from caller');
-        searchResultsText = providedSearchResults;
-      } else if (this.retrievalService) {
+      if (this.retrievalService) {
+        // initialize fetch progress notifier
         this.fetchProgressNotifier.setMessageEvent(context.message);
         searchResultsText = await this.retrievalService.performSmartSearchRefined(
           context.message.message,

@@ -5,8 +5,9 @@ import { formatRAGConversationContext } from '@/ai/utils/formatRAGConversationCo
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
 import type { MemoryService } from '@/memory/MemoryService';
-import type { FetchProgressNotifier, RetrievalService } from '@/retrieval';
+import type { RetrievalService } from '@/retrieval';
 import { QdrantClient } from '@/retrieval';
+import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import type { ProactiveThread, ThreadService } from '../thread/ThreadService';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 

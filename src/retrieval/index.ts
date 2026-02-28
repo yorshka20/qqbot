@@ -4,7 +4,6 @@ export type {
   FetchEntry,
   FetchingUrlPayload,
   FetchPageOptions,
-  FetchProgressNotifier,
   PageContentFetchService,
 } from './fetch';
 export { extractEntriesFromChunks, extractUrlsFromChunks } from './fetch';

@@ -2,17 +2,29 @@
 
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { NormalizedMessageEvent } from '@/events/types';
-import type { FetchProgressNotifier } from '@/retrieval/fetch';
 import { logger } from '@/utils/logger';
+
+export interface FetchProgressNotifier {
+  onFetchingUrls(titles: string[]): void;
+  setMessageEvent(event: NormalizedMessageEvent): void;
+}
 
 /**
  * Sends fetch progress to the current message context as one message listing all titles (e.g. "正在查询：\n- xxx\n- xxx2").
- * Single instance per owner; call setMessageEvent() before each retrieve/fetch flow so messages go to the right chat.
+ * Singleton: all instances refer to the same underlying instance (constructors after the first return the same object).
  */
 export class MessageSendFetchProgressNotifier implements FetchProgressNotifier {
+  private static instance: MessageSendFetchProgressNotifier | null = null;
   private currentMessageEvent: NormalizedMessageEvent | null = null;
+  private messageAPI: MessageAPI;
 
-  constructor(private readonly messageAPI: MessageAPI) {}
+  constructor(messageAPI: MessageAPI) {
+    this.messageAPI = messageAPI;
+    if (MessageSendFetchProgressNotifier.instance) {
+      return;
+    }
+    MessageSendFetchProgressNotifier.instance = this;
+  }
 
   /** Set the message event (target chat) for the next onFetchingUrls call. */
   setMessageEvent(event: NormalizedMessageEvent): void {

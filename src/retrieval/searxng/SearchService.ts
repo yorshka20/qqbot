@@ -7,7 +7,8 @@ import type { MCPConfig } from '@/core/config/mcp';
 import type { HealthCheckManager } from '@/core/health';
 import type { MCPManager } from '@/mcp';
 import { logger } from '@/utils/logger';
-import type { FetchProgressNotifier, PageContentFetchService } from '../fetch';
+import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
+import type { PageContentFetchService } from '../fetch';
 import { SearXNGClient } from './SearXNGClient';
 import type { SearchOptions, SearchResult } from './types';
 
