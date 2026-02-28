@@ -2,13 +2,14 @@
 // IMPORTANT: reflect-metadata must be imported FIRST before any other imports
 import 'reflect-metadata';
 
-import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import readline from 'readline';
+import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import { APIClient } from '../api/APIClient';
 import { MessageAPI } from '../api/methods/MessageAPI';
 import { ConversationInitializer } from '../conversation/ConversationInitializer';
 import { Bot } from '../core/Bot';
 import type { Config, ProtocolName } from '../core/config';
+import { HealthCheckManager } from '../core/health';
 import { EventInitializer } from '../events/EventInitializer';
 import type { NormalizedEvent, NormalizedMessageEvent } from '../events/types';
 import { MCPInitializer } from '../mcp/MCPInitializer';
@@ -565,10 +566,11 @@ class DebugCLI {
     // Initialize MCP system (if enabled)
     const mcpSystem = MCPInitializer.initialize(this.config);
 
-    // Initialize retrieval service
+    // Create HealthCheckManager and retrieval service (services must be created and injected)
+    const healthCheckManager = new HealthCheckManager();
     const mcpConfig = this.config.getMCPConfig();
     const ragConfig = this.config.getRAGConfig();
-    const retrievalService = new RetrievalService(mcpConfig, ragConfig);
+    const retrievalService = new RetrievalService(mcpConfig, ragConfig, healthCheckManager);
     if (mcpConfig?.enabled) {
       logger.info('[DebugCLI] RetrievalService initialized with search');
     }
@@ -587,11 +589,12 @@ class DebugCLI {
       this.config,
       this.apiClient,
       retrievalService,
+      healthCheckManager,
     );
     this.conversationManager = conversationComponents.conversationManager;
     this.commandManager = conversationComponents.commandManager;
 
-    // Register RetrievalService health check (after HealthCheckManager is created)
+    // Register RetrievalService health check
     retrievalService.registerHealthCheck();
     this.printInfo('✓ RetrievalService health check registered');
 
@@ -631,10 +634,11 @@ class DebugCLI {
     // Initialize MCP system (if enabled)
     const mcpSystem = MCPInitializer.initialize(this.config);
 
-    // Initialize retrieval service
+    // Create HealthCheckManager and retrieval service (services must be created and injected)
+    const healthCheckManager = new HealthCheckManager();
     const mcpConfig = this.config.getMCPConfig();
     const ragConfig = this.config.getRAGConfig();
-    const retrievalService = new RetrievalService(mcpConfig, ragConfig);
+    const retrievalService = new RetrievalService(mcpConfig, ragConfig, healthCheckManager);
     if (mcpConfig?.enabled) {
       logger.info('[DebugCLI] RetrievalService initialized with search');
     }
@@ -653,11 +657,12 @@ class DebugCLI {
       this.config,
       this.apiClient,
       retrievalService,
+      healthCheckManager,
     );
     this.conversationManager = conversationComponents.conversationManager;
     this.commandManager = conversationComponents.commandManager;
 
-    // Register RetrievalService health check (after HealthCheckManager is created)
+    // Register RetrievalService health check
     retrievalService.registerHealthCheck();
     this.printInfo('✓ RetrievalService health check registered');
 

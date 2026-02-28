@@ -71,7 +71,8 @@ export class ComfyUIClient {
    */
   async uploadImage(imageBuffer: Buffer, filename: string): Promise<string> {
     const form = new FormData();
-    form.append('image', new Blob([imageBuffer]), filename);
+    // Buffer is BlobPart at runtime; use Uint8Array for strict BlobPart typing
+    form.append('image', new Blob([new Uint8Array(imageBuffer)]), filename);
     form.append('overwrite', 'true');
 
     const res = await fetch(`${this.baseUrl}/upload/image`, {

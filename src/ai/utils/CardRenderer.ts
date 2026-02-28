@@ -1,8 +1,8 @@
 // Card renderer using puppeteer-core + system Chrome/Chromium (no bundled browser)
 
-import { logger } from '@/utils/logger';
 import { existsSync } from 'node:fs';
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
+import { logger } from '@/utils/logger';
 import { cardStyles } from './cardStyles';
 import { renderCard } from './cardTemplates';
 import type { CardData } from './cardTypes';
@@ -192,7 +192,6 @@ export class CardRenderer {
         await Promise.race([
           page.waitForFunction(
             () => {
-              // @ts-expect-error - window is available in browser context
               return typeof (window as any).twemoji !== 'undefined';
             },
             { timeout: 5000 },
@@ -202,9 +201,7 @@ export class CardRenderer {
 
         // Parse emojis using twemoji
         await page.evaluate(() => {
-          // @ts-expect-error - twemoji is available in browser context
           if (typeof (window as any).twemoji !== 'undefined') {
-            // @ts-expect-error - twemoji is available in browser context
             (window as any).twemoji.parse(document.body, {
               folder: 'svg',
               ext: '.svg',
@@ -219,7 +216,6 @@ export class CardRenderer {
 
       // Wait for fonts and images to load
       await page.evaluateHandle(() => {
-        // @ts-expect-error - document is available in browser context
         return document.fonts.ready;
       });
 
@@ -228,7 +224,6 @@ export class CardRenderer {
 
       // Calculate content bounds to crop to actual content
       const bounds = await page.evaluate(() => {
-        // @ts-expect-error - document is available in browser context
         const container = document.querySelector('.container');
         if (!container) {
           return null;

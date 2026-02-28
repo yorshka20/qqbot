@@ -61,6 +61,7 @@ export class AIService {
     providerSelector: ProviderSelector,
     private retrievalService: RetrievalService,
     memoryService: MemoryService,
+    messageAPI: MessageAPI,
   ) {
     // Initialize business services
     this.llmService = new LLMService(aiManager, providerSelector);
@@ -77,6 +78,7 @@ export class AIService {
       this.conversationHistoryService,
       this.retrievalService,
       memoryService,
+      messageAPI,
     );
     this.taskAnalysisService = new TaskAnalysisService(
       this.llmService,

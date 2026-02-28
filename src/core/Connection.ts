@@ -1,9 +1,17 @@
 // Single protocol WebSocket connection management
 
+import { EventEmitter } from 'events';
 import { ConnectionError } from '@/utils/errors';
 import { logger } from '@/utils/logger';
-import { EventEmitter } from 'events';
 import type { ProtocolConfig } from './config';
+
+/** Bun WebSocket constructor options (headers not in standard DOM type) */
+interface BunWebSocketOptions {
+  headers?: Record<string, string>;
+}
+
+/** WebSocket with optional Bun-specific ping (not in standard DOM type) */
+type WebSocketWithPing = WebSocket & { ping?(data?: string | ArrayBuffer): void };
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -43,8 +51,9 @@ export class Connection extends EventEmitter {
     this.setState('connecting');
 
     try {
-      // Use Bun native WebSocket with custom headers
-      this.ws = new WebSocket(this.config.connection.url, {
+      // Use Bun native WebSocket with custom headers (Bun extends standard WebSocket ctor)
+      const WS = WebSocket as new (url: string, options?: BunWebSocketOptions) => WebSocket;
+      this.ws = new WS(this.config.connection.url, {
         headers: {
           Authorization: `Bearer ${this.config.connection.accessToken}`,
         },
@@ -99,9 +108,10 @@ export class Connection extends EventEmitter {
     }
 
     try {
-      // Use Bun native WebSocket ping method
-      if (typeof this.ws.ping === 'function') {
-        this.ws.ping(data);
+      // Use Bun native WebSocket ping method (Bun extends WebSocket with ping)
+      const ws = this.ws as WebSocketWithPing;
+      if (typeof ws.ping === 'function') {
+        ws.ping(data);
       } else {
         // Fallback: send a ping message as application data
         // This is a simple ping frame alternative
@@ -192,7 +202,7 @@ export class Connection extends EventEmitter {
     let delay = initialDelay;
 
     if (backoff === 'exponential') {
-      delay = initialDelay * Math.pow(2, this.reconnectAttempts - 1);
+      delay = initialDelay * 2 ** (this.reconnectAttempts - 1);
     } else {
       delay = initialDelay * this.reconnectAttempts;
     }
