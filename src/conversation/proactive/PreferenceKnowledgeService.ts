@@ -2,8 +2,9 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
-import type { RetrievalService } from '@/retrieval';
-import type { SearchResult } from '@/retrieval';
+import { buildSummariesFromChunks, filterAndRefineSearchResults } from '@/ai/utils/searchResultsFilterRefine';
+import type { RetrievalService, SearchResult } from '@/retrieval';
+import { FILTER_REFINE_MAX_ROUNDS, FILTER_SUPPLEMENT_MAX_RESULTS } from '@/retrieval';
 import { logger } from '@/utils/logger';
 
 export interface PreferenceKnowledgeRetrieveOptions {
@@ -49,10 +50,11 @@ export class DefaultPreferenceKnowledgeService implements PreferenceKnowledgeSer
 
 /**
  * Format search results into chunk strings (title + snippet + url).
+ * Snippets are kept complete (no truncation) so reference knowledge is fully presented.
  */
-function resultsToChunks(results: SearchResult[], snippetMaxLen = 400): string[] {
+function resultsToChunks(results: SearchResult[]): string[] {
   return results.map((r) => {
-    const snippet = (r.snippet || r.content || '').trim().substring(0, snippetMaxLen);
+    const snippet = (r.snippet || r.content || '').trim();
     return `**${r.title || '无标题'}**\n${snippet ? `摘要: ${snippet}\n` : ''}链接: ${r.url || ''}`.trim();
   });
 }
@@ -95,7 +97,58 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
       }
     }
 
-    const capped = chunks.slice(0, limit);
+    // Filter & refine: LLM judges relevance and returns refined reference or requests more queries.
+    const topic = queryOrTopic.trim() || '当前话题';
+    let refinedChunks: string[] = chunks;
+
+    if (chunks.length > 0 && this.llmService && this.promptManager) {
+      let currentChunks = chunks;
+      for (let round = 1; round <= FILTER_REFINE_MAX_ROUNDS; round++) {
+        const resultSummaries = buildSummariesFromChunks(currentChunks);
+        const result = await filterAndRefineSearchResults(this.llmService, this.promptManager, {
+          topic,
+          resultSummaries,
+          round,
+          maxRounds: FILTER_REFINE_MAX_ROUNDS,
+        });
+
+        if (result.done) {
+          refinedChunks = result.refinedText ? [result.refinedText] : [];
+          logger.debug(
+            `[SearXNGPreferenceKnowledgeService] Filter-refine round ${round}: DONE, refined length=${result.refinedText.length}`,
+          );
+          break;
+        }
+
+        if (round === FILTER_REFINE_MAX_ROUNDS) {
+          refinedChunks = currentChunks;
+          logger.debug(
+            `[SearXNGPreferenceKnowledgeService] Filter-refine round ${round}: MORE but max rounds reached, using current chunks`,
+          );
+          break;
+        }
+
+        // Run supplement queries and append to current chunks.
+        const perQueryLimit = Math.max(2, Math.ceil(FILTER_SUPPLEMENT_MAX_RESULTS / result.queries.length));
+        for (const q of result.queries) {
+          try {
+            const results = await this.retrievalService.search(q.trim(), {
+              maxResults: perQueryLimit,
+            });
+            currentChunks = [...currentChunks, ...resultsToChunks(results)];
+          } catch (err) {
+            logger.warn(
+              `[SearXNGPreferenceKnowledgeService] Filter-refine supplement search failed for "${q.slice(0, 50)}...": ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+        logger.debug(
+          `[SearXNGPreferenceKnowledgeService] Filter-refine round ${round}: MORE, ran ${result.queries.length} queries, total chunks=${currentChunks.length}`,
+        );
+      }
+    }
+
+    const capped = refinedChunks.slice(0, limit);
     logger.debug(
       `[SearXNGPreferenceKnowledgeService] Retrieved ${capped.length} chunks for preferenceKey=${preferenceKey}`,
     );

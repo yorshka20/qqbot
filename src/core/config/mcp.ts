@@ -42,8 +42,10 @@ export interface SearchConfig {
   triggerStrategy?: TriggerStrategy;
   // Maximum number of search results to return (default: 5)
   maxResults?: number;
-  // Default language for search results (default: "all")
+  // Default language for search results (default: "all"). Use "zh" for Chinese-focused results.
   language?: string;
+  // Optional comma-separated engine names (e.g. "baidu,bing") for Chinese-focused results. Engine weighting is done server-side in SearXNG settings.yml.
+  engines?: string;
   // Custom keywords for keyword-based trigger strategy
   keywords?: string[];
 }

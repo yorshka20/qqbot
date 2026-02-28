@@ -128,8 +128,7 @@ export class RAGPersistenceSystem implements System {
 
     if (buffer.length > 0) {
       const firstTime = buffer[0].createdAt instanceof Date ? buffer[0].createdAt : new Date(buffer[0].createdAt);
-      const shouldFlush =
-        now.getTime() - firstTime.getTime() >= idleMs || buffer.length >= maxMessages;
+      const shouldFlush = now.getTime() - firstTime.getTime() >= idleMs || buffer.length >= maxMessages;
       if (shouldFlush) {
         const windowDoc: RAGDocument = buildConversationWindowDocument(
           buffer,

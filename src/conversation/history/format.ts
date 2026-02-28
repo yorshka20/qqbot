@@ -19,8 +19,7 @@ export function formatContentWithSpeakerForRAG(entry: ConversationMessageEntry):
   if (entry.isBotReply) {
     return `Assistant: ${entry.content}`;
   }
-  const speaker =
-    entry.nickname != null && entry.nickname !== '' ? entry.nickname : String(entry.userId);
+  const speaker = entry.nickname != null && entry.nickname !== '' ? entry.nickname : String(entry.userId);
   return `${speaker}: ${entry.content}`;
 }
 

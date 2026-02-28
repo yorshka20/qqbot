@@ -98,6 +98,8 @@ export class SearXNGClient implements HealthCheckable {
     const timeRange = options?.timeRange;
     const language = options?.language || 'all';
     const safesearch = options?.safesearch;
+    const engines = options?.engines;
+    const categories = options?.categories;
 
     // Build query parameters
     const params = new URLSearchParams({
@@ -113,6 +115,14 @@ export class SearXNGClient implements HealthCheckable {
 
     if (safesearch !== undefined) {
       params.append('safesearch', safesearch.toString());
+    }
+
+    if (engines) {
+      params.append('engines', engines);
+    }
+
+    if (categories) {
+      params.append('categories', categories);
     }
 
     const url = `${this.baseUrl}/search?${params.toString()}`;

@@ -52,6 +52,19 @@ export class RetrievalService {
     return this.searchService.performSmartSearch(userMessage, llmService, sessionId);
   }
 
+  /** Smart search + filter-refine; returns refined text for reply. Prefer this over performSmartSearch in reply flow. */
+  async performSmartSearchRefined(userMessage: string, llmService: LLMService, sessionId?: string): Promise<string> {
+    return this.searchService.performSmartSearchRefined(userMessage, llmService, sessionId);
+  }
+
+  async performSmartSearchWithResults(
+    userMessage: string,
+    llmService: LLMService,
+    sessionId?: string,
+  ): Promise<{ formattedText: string; results: SearchResult[] }> {
+    return this.searchService.performSmartSearchWithResults(userMessage, llmService, sessionId);
+  }
+
   isSearchEnabled(): boolean {
     return this.searchService.isEnabled();
   }

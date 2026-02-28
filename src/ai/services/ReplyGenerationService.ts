@@ -6,14 +6,15 @@ import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { MemoryService } from '@/memory/MemoryService';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import type { RetrievalService } from '@/retrieval';
+import type { RetrievalService, SearchResult } from '@/retrieval';
 import { QdrantClient } from '@/retrieval';
 import type { TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
-import { parseSearchDecision as parseSearchDecisionShared } from '../utils/searchDecisionParser';
 import { formatRAGConversationContext } from '../utils/formatRAGConversationContext';
+import { parseSearchDecision as parseSearchDecisionShared } from '../utils/searchDecisionParser';
+import { buildSearchResultSummaries, filterAndRefineSearchResults } from '../utils/searchResultsFilterRefine';
 import { CardRenderingService } from './CardRenderingService';
 import type { LLMService } from './LLMService';
 import type { VisionService } from './VisionService';
@@ -139,15 +140,17 @@ export class ReplyGenerationService {
       // Get session ID for provider selection and context loading
       const sessionId = context.metadata.get('sessionId');
 
-      // Use provided search results if available, otherwise perform automatic search
+      // Use provided search results if available, otherwise run smart search + filter-refine (logic in retrieval layer)
       let searchResultsText = '';
       if (providedSearchResults) {
         logger.debug('[ReplyGenerationService] Using provided search results from caller');
         searchResultsText = providedSearchResults;
       } else if (this.retrievalService) {
-        // Perform smart search if search service is available and no results were provided
-        searchResultsText =
-          (await this.retrievalService.performSmartSearch(context.message.message, this.llmService, sessionId)) ?? '';
+        searchResultsText = await this.retrievalService.performSmartSearchRefined(
+          context.message.message,
+          this.llmService,
+          sessionId,
+        );
       }
 
       const memoryVars = await this.getMemoryVarsForReply(context);
@@ -474,14 +477,14 @@ export class ReplyGenerationService {
   /**
    * Perform recursive search with AI decision making
    * AI analyzes search results and decides if more search is needed
-   * Maximum 5 iterations
+   * Maximum 5 iterations. Accumulates SearchResult[] and runs filter-refine before returning refined text.
    *
    * @param userMessage - Original user message
    * @param taskResultsSummary - Summary of task execution results
-   * @param existingSearchResults - Previously accumulated search results
+   * @param existingSearchResults - Previously accumulated search results (text)
    * @param sessionId - Session ID for provider selection
    * @param maxIterations - Maximum number of search iterations (default: 5)
-   * @returns Accumulated search results
+   * @returns Refined search results text (filtered by LLM for relevance)
    */
   private async performRecursiveSearch(
     userMessage: string,
@@ -494,7 +497,9 @@ export class ReplyGenerationService {
       return existingSearchResults;
     }
 
-    let accumulatedResults = existingSearchResults;
+    let accumulatedText = existingSearchResults;
+    const accumulatedResults: SearchResult[] = [];
+
     let iteration = 0;
 
     while (iteration < maxIterations) {
@@ -502,12 +507,7 @@ export class ReplyGenerationService {
       logger.debug(`[ReplyGenerationService] Recursive search iteration ${iteration}/${maxIterations}`);
 
       // 1. Let AI analyze if more search is needed
-      const searchDecision = await this.makeSearchDecision(
-        userMessage,
-        taskResultsSummary,
-        accumulatedResults,
-        sessionId,
-      );
+      const searchDecision = await this.makeSearchDecision(userMessage, taskResultsSummary, accumulatedText, sessionId);
 
       // 2. If no search needed, exit loop
       if (!searchDecision.needsSearch) {
@@ -515,49 +515,44 @@ export class ReplyGenerationService {
         break;
       }
 
-      // 3. Execute search
-      let searchResults: string[] = [];
+      // 3. Execute search and accumulate raw results
+      let searchResultsFormatted: string[] = [];
       if (searchDecision.isMultiSearch && searchDecision.queries) {
-        // Multiple search queries
         logger.info(
           `[ReplyGenerationService] Performing multi-search (iteration ${iteration}):`,
           searchDecision.queries.map((q) => q.query),
         );
 
-        const searchPromises = searchDecision.queries.map(async (queryInfo) => {
+        for (const queryInfo of searchDecision.queries) {
           try {
             const results = await this.retrievalService.search(queryInfo.query);
-            return this.retrievalService.formatSearchResults(results);
+            accumulatedResults.push(...results);
+            searchResultsFormatted.push(this.retrievalService.formatSearchResults(results));
           } catch (error) {
             logger.warn(`[ReplyGenerationService] Search failed for query "${queryInfo.query}":`, error);
-            return '';
           }
-        });
-
-        searchResults = await Promise.all(searchPromises);
+        }
       } else if (searchDecision.query) {
-        // Single search query
         logger.info(`[ReplyGenerationService] Performing search (iteration ${iteration}): ${searchDecision.query}`);
 
         try {
           const results = await this.retrievalService.search(searchDecision.query);
-          const formatted = this.retrievalService.formatSearchResults(results);
-          searchResults = [formatted];
+          accumulatedResults.push(...results);
+          searchResultsFormatted = [this.retrievalService.formatSearchResults(results)];
         } catch (error) {
           logger.warn(`[ReplyGenerationService] Search failed for query "${searchDecision.query}":`, error);
-          searchResults = [''];
         }
       }
 
-      // 4. Merge search results
-      const newResults = searchResults.filter((r) => r).join('\n\n');
+      // 4. Merge search results text
+      const newResults = searchResultsFormatted.filter((r) => r).join('\n\n');
       if (newResults) {
-        if (accumulatedResults) {
-          accumulatedResults = `${accumulatedResults}\n\n--- Search Results Round ${iteration} ---\n\n${newResults}`;
+        if (accumulatedText) {
+          accumulatedText = `${accumulatedText}\n\n--- Search Results Round ${iteration} ---\n\n${newResults}`;
         } else {
-          accumulatedResults = newResults;
+          accumulatedText = newResults;
         }
-        logger.debug(`[ReplyGenerationService] Search results accumulated, total length: ${accumulatedResults.length}`);
+        logger.debug(`[ReplyGenerationService] Search results accumulated, total length: ${accumulatedText.length}`);
       } else {
         logger.warn(`[ReplyGenerationService] No search results obtained at iteration ${iteration}, stopping`);
         break;
@@ -568,7 +563,22 @@ export class ReplyGenerationService {
       logger.info(`[ReplyGenerationService] Reached maximum search iterations (${maxIterations})`);
     }
 
-    return accumulatedResults;
+    // Filter-refine: if we have raw results, run LLM filter and return refined text for reply
+    if (accumulatedResults.length > 0) {
+      const topic = userMessage.trim() || '当前话题';
+      const resultSummaries = buildSearchResultSummaries(accumulatedResults);
+      const filterResult = await filterAndRefineSearchResults(this.llmService, this.promptManager, {
+        topic,
+        resultSummaries,
+        round: 1,
+        maxRounds: 1,
+      });
+      if (filterResult.done && filterResult.refinedText) {
+        return filterResult.refinedText;
+      }
+    }
+
+    return accumulatedText;
   }
 
   /**

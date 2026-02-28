@@ -109,7 +109,7 @@ export class MemoryTriggerPlugin extends PluginBase {
         `[MemoryTriggerPlugin] Enabled for groups: ${Array.from(this.groupIds).join(', ')} triggerName=${this.triggerName} coldStartOnTrigger=${this.coldStartOnTrigger}`,
       );
       // TODO remove after test: run RAG cold start for this group on boot
-      // void this.runRAGColdStartForGroup('groupId');
+      // void this.runRAGColdStartForGroup('');
     }
   }
 

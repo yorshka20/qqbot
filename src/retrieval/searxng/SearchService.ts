@@ -2,6 +2,7 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
+import { buildSearchResultSummaries, filterAndRefineSearchResults } from '@/ai/utils/searchResultsFilterRefine';
 import type { MCPConfig } from '@/core/config/mcp';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -10,6 +11,11 @@ import type { MCPManager } from '@/mcp';
 import { logger } from '@/utils/logger';
 import { SearXNGClient } from './SearXNGClient';
 import type { SearchOptions, SearchResult } from './types';
+
+/** Max filter-refine rounds (avoid infinite loop). */
+export const FILTER_REFINE_MAX_ROUNDS = 2;
+/** Max results per supplement search when filter returns MORE. */
+export const FILTER_SUPPLEMENT_MAX_RESULTS = 4;
 
 export class SearchService {
   private searxngClient: SearXNGClient | null = null;
@@ -73,6 +79,13 @@ export class SearchService {
 
     const searchMode = this.config.search.mode;
     const maxResults = options?.maxResults || this.maxResults;
+    // Merge config defaults: language (e.g. "zh"), engines (e.g. "baidu,bing"). No default timeRange: prefer year-in-keywords for timeliness.
+    const mergedOptions: SearchOptions = {
+      ...options,
+      maxResults,
+      language: options?.language ?? this.config.search.language,
+      engines: options?.engines ?? this.config.search.engines,
+    };
 
     try {
       let results: SearchResult[] = [];
@@ -87,7 +100,7 @@ export class SearchService {
           logger.warn('[SearchService] SearXNG service is not available, skipping search');
           return [];
         }
-        results = await this.searxngClient.webSearch(query, { ...options, maxResults });
+        results = await this.searxngClient.webSearch(query, mergedOptions);
       } else if (searchMode === 'mcp') {
         if (!this.mcpManager) {
           logger.warn('[SearchService] MCP manager not initialized, skipping search');
@@ -102,7 +115,7 @@ export class SearchService {
               logger.warn('[SearchService] SearXNG service is not available, skipping search');
               return [];
             }
-            results = await this.searxngClient.webSearch(query, { ...options, maxResults });
+            results = await this.searxngClient.webSearch(query, mergedOptions);
           } else {
             logger.warn('[SearchService] MCP tool not available and SearXNG client not initialized, skipping search');
             return [];
@@ -111,10 +124,11 @@ export class SearchService {
           try {
             const toolResult = await this.mcpManager.callTool(toolName, {
               query,
-              pageno: options?.pageno || 1,
-              ...(options?.timeRange && { time_range: options.timeRange }),
-              ...(options?.language && { language: options.language }),
-              ...(options?.safesearch !== undefined && { safesearch: options.safesearch }),
+              pageno: mergedOptions.pageno ?? 1,
+              ...(mergedOptions.timeRange && { time_range: mergedOptions.timeRange }),
+              ...(mergedOptions.language && { language: mergedOptions.language }),
+              ...(mergedOptions.engines && { engines: mergedOptions.engines }),
+              ...(mergedOptions.safesearch !== undefined && { safesearch: mergedOptions.safesearch }),
             });
             const resultText = toolResult.content[0]?.text || '';
             results = this.parseMCPSearchResults(resultText);
@@ -142,7 +156,8 @@ export class SearchService {
     const formatted = results
       .slice(0, 8)
       .map((result, index) => {
-        const snippet = (result.snippet || result.content || '').substring(0, 300);
+        // Use full snippet so reference knowledge is complete (no truncation)
+        const snippet = (result.snippet || result.content || '').trim();
         let domain = '';
         try {
           domain = new URL(result.url).hostname.replace('www.', '');
@@ -179,7 +194,8 @@ export class SearchService {
 
     const formatted = limitedResults
       .map((result, index) => {
-        const snippet = (result.snippet || result.content || '').substring(0, 300);
+        // Use full snippet so reference knowledge is complete (no truncation)
+        const snippet = (result.snippet || result.content || '').trim();
         let domain = '';
         try {
           domain = new URL(result.url).hostname.replace('www.', '');
@@ -224,7 +240,59 @@ export class SearchService {
   }
 
   async performSmartSearch(userMessage: string, llmService: LLMService, sessionId?: string): Promise<string> {
-    if (!this.isEnabled()) return '';
+    const out = await this.performSmartSearchWithResults(userMessage, llmService, sessionId);
+    return out.formattedText;
+  }
+
+  /**
+   * Smart search + filter-refine loop. Returns refined reference text for reply prompts (no inline data logic in reply flow).
+   */
+  async performSmartSearchRefined(userMessage: string, llmService: LLMService, sessionId?: string): Promise<string> {
+    const { formattedText, results } = await this.performSmartSearchWithResults(userMessage, llmService, sessionId);
+    if (results.length === 0) {
+      return formattedText;
+    }
+    const topic = userMessage.trim() || '当前话题';
+    let currentResults = results;
+    let refinedText = formattedText;
+    for (let round = 1; round <= FILTER_REFINE_MAX_ROUNDS; round++) {
+      const resultSummaries = buildSearchResultSummaries(currentResults);
+      const filterResult = await filterAndRefineSearchResults(llmService, this.promptManager, {
+        topic,
+        resultSummaries,
+        round,
+        maxRounds: FILTER_REFINE_MAX_ROUNDS,
+      });
+      if (filterResult.done) {
+        refinedText = filterResult.refinedText || refinedText;
+        break;
+      }
+      if (round === FILTER_REFINE_MAX_ROUNDS) {
+        break;
+      }
+      for (const q of filterResult.queries) {
+        try {
+          const more = await this.search(q.trim(), { maxResults: FILTER_SUPPLEMENT_MAX_RESULTS });
+          currentResults = [...currentResults, ...more];
+        } catch {
+          // ignore per-query failure
+        }
+      }
+    }
+    return refinedText;
+  }
+
+  /**
+   * Same as performSmartSearch but returns both formatted text and raw SearchResult[] for downstream filter-refine step.
+   */
+  async performSmartSearchWithResults(
+    userMessage: string,
+    llmService: LLMService,
+    sessionId?: string,
+  ): Promise<{ formattedText: string; results: SearchResult[] }> {
+    if (!this.isEnabled()) {
+      return { formattedText: '', results: [] };
+    }
 
     try {
       const checkPrompt = this.promptManager.render('llm.search_decision', {
@@ -239,7 +307,9 @@ export class SearchService {
         sessionId,
       });
       const searchDecision = this.parseSearchDecision(checkResponse.text);
-      if (!searchDecision.needsSearch) return '';
+      if (!searchDecision.needsSearch) {
+        return { formattedText: '', results: [] };
+      }
 
       let searchQueries: Array<{ query: string; explanation: string }> = [];
       if (searchDecision.isMultiSearch && searchDecision.queries?.length) {
@@ -255,11 +325,16 @@ export class SearchService {
           logger.info(`[SearchService] Search triggered for query: ${query}`);
         }
       }
-      if (searchQueries.length === 0) return '';
+      if (searchQueries.length === 0) {
+        return { formattedText: '', results: [] };
+      }
 
       if (searchQueries.length === 1) {
-        const searchResults = await this.search(searchQueries[0].query);
-        return this.formatSearchResults(searchResults);
+        const results = await this.search(searchQueries[0].query);
+        return {
+          formattedText: this.formatSearchResults(results),
+          results,
+        };
       }
 
       const searchPromises = searchQueries.map(async (queryInfo, index) => {
@@ -271,11 +346,13 @@ export class SearchService {
           return { ...queryInfo, queryIndex: index + 1, results: [] };
         }
       });
-      const searchResults = await Promise.all(searchPromises);
-      return this.formatMultiSearchResults(searchResults);
+      const searchResultsArray = await Promise.all(searchPromises);
+      const allResults = searchResultsArray.flatMap((s) => s.results);
+      const formattedText = this.formatMultiSearchResults(searchResultsArray);
+      return { formattedText, results: allResults };
     } catch (error) {
       logger.warn('[SearchService] Smart search failed, continuing without search:', error);
-      return '';
+      return { formattedText: '', results: [] };
     }
   }
 
