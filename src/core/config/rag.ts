@@ -19,4 +19,8 @@ export interface RAGConfig {
   queryInstructionPrefix?: string;
   defaultVectorSize?: number;
   defaultDistance?: 'Cosine' | 'Euclid' | 'Dot';
+  /** Idle minutes after last message to close a conversation window (default 5). */
+  conversationWindowIdleMinutes?: number;
+  /** Max messages per window before closing (default 10). */
+  conversationWindowMaxMessages?: number;
 }

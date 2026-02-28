@@ -11,6 +11,20 @@ function formatSimpleTime(d: Date): string {
 }
 
 /**
+ * Format a single message entry for RAG storage: speaker label + content only (no date, no User<id> wrapper).
+ * Use for embedding so merged windows can still distinguish who said what.
+ * User: "nickname: content" or "userId: content"; bot: "Assistant: content".
+ */
+export function formatContentWithSpeakerForRAG(entry: ConversationMessageEntry): string {
+  if (entry.isBotReply) {
+    return `Assistant: ${entry.content}`;
+  }
+  const speaker =
+    entry.nickname != null && entry.nickname !== '' ? entry.nickname : String(entry.userId);
+  return `${speaker}: ${entry.content}`;
+}
+
+/**
  * Format a single message entry for storage (e.g. RAG payload). No [id:i] prefix so stored content is clean.
  * Use when persisting one message per document (e.g. Qdrant embedding).
  */

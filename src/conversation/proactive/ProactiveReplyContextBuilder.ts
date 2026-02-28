@@ -1,7 +1,6 @@
 // Proactive Reply Context Builder - one function per injection type; build methods only assemble
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { RAGQueryExtractionContext, RAGQueryExtractionService } from '@/ai/services/RAGQueryExtractionService';
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
 import type { MemoryService } from '@/memory/MemoryService';
@@ -18,8 +17,6 @@ export interface ProactiveReplyContextBuilderDeps {
   memoryService?: MemoryService;
   /** Optional: for conversation history vector search (RAG over group chat history). */
   retrievalService?: RetrievalService;
-  /** Required: extracts short RAG queries from topic for vector search. */
-  ragQueryExtractionService: RAGQueryExtractionService;
   searchLimit: number;
 }
 
@@ -55,15 +52,15 @@ export class ProactiveReplyContextBuilder {
 
   /**
    * Conversation history RAG section (vector search over group Qdrant collection).
-   * Uses ragQueryExtractionService with optional context (conversation + memory) to get short RAG queries,
-   * then calls RAG vectorSearchMulti (internal merge/dedupe). Returns empty string when RAG disabled or no retrievalService.
+   * Callers pass the trigger user message (not the analyzed topic) so retrieval matches "history relevant to what the user just said";
+   * topic is a fallback when no user text is available. No truncation (limit 10).
    */
-  async getConversationRagSection(
-    groupId: string,
-    topicOrQuery: string,
-    context: RAGQueryExtractionContext,
-  ): Promise<string> {
+  async getConversationRagSection(groupId: string, query: string): Promise<string> {
     if (!this.deps.retrievalService?.isRAGEnabled()) {
+      return '';
+    }
+    const q = query.trim();
+    if (!q) {
       return '';
     }
     const collectionName = QdrantClient.getConversationHistoryCollectionName(
@@ -72,24 +69,13 @@ export class ProactiveReplyContextBuilder {
       Number(groupId),
       undefined,
     );
-    const limitPerQuery = 5;
-    const minScore = 0.7;
-    const maxTotal = 10;
+    const limit = 10;
+    const minScore = 0.5;
 
     try {
-      const ragQueries = await this.deps.ragQueryExtractionService.extractQueries(topicOrQuery, undefined, {
-        conversationContext: context?.conversationContext,
-        memoryContext: context?.memoryContext,
-      });
-
-      if (ragQueries.length === 0) {
-        return '';
-      }
-
-      const hits = await this.deps.retrievalService.vectorSearchMulti(collectionName, ragQueries, {
-        limitPerQuery,
+      const hits = await this.deps.retrievalService.vectorSearch(collectionName, q, {
+        limit,
         minScore,
-        maxTotal,
       });
 
       if (hits.length === 0) {
@@ -147,10 +133,10 @@ export class ProactiveReplyContextBuilder {
     const preferenceText = this.getPreferenceText(preferenceKey);
     const memoryContext = this.getMemoryContext(thread.groupId, triggerUserId);
     const retrievedContext = await this.getRetrievedContext(preferenceKey, topicOrQuery, searchQueries);
-    const retrievedConversationSection = await this.getConversationRagSection(thread.groupId, topicOrQuery, {
-      conversationContext: threadContext,
-      memoryContext,
-    });
+    // Use trigger user message for RAG (same as reply flow): last user message in thread, fallback to topic
+    const lastUserMsg = [...thread.messages].reverse().find((m) => !m.isBotReply);
+    const ragQuery = lastUserMsg?.content?.trim() || topicOrQuery;
+    const retrievedConversationSection = await this.getConversationRagSection(thread.groupId, ragQuery);
     return {
       preferenceText,
       threadContext,
@@ -182,10 +168,10 @@ export class ProactiveReplyContextBuilder {
     const preferenceText = this.getPreferenceText(preferenceKey);
     const memoryContext = this.getMemoryContext(groupId, triggerUserId);
     const retrievedContext = await this.getRetrievedContext(preferenceKey, topicOrQuery, searchQueries);
-    const retrievedConversationSection = await this.getConversationRagSection(groupId, topicOrQuery, {
-      conversationContext: threadContext,
-      memoryContext,
-    });
+    // Use trigger user message for RAG (same as reply flow): last user message in entries, fallback to topic
+    const lastUserEntry = [...filteredEntries].reverse().find((e) => !e.isBotReply);
+    const ragQuery = lastUserEntry?.content?.trim() || topicOrQuery;
+    const retrievedConversationSection = await this.getConversationRagSection(groupId, ragQuery);
     return {
       preferenceText,
       threadContext,

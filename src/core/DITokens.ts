@@ -18,7 +18,6 @@ export const DITokens = {
   CONVERSATION_CONFIG_SERVICE: 'ConversationConfigService',
   GLOBAL_CONFIG_MANAGER: 'GlobalConfigManager',
   RETRIEVAL_SERVICE: 'RetrievalService',
-  RAG_QUERY_EXTRACTION_SERVICE: 'RAGQueryExtractionService',
   HEALTH_CHECK_MANAGER: 'HealthCheckManager',
   THREAD_SERVICE: 'ThreadService',
   PROACTIVE_CONVERSATION_SERVICE: 'ProactiveConversationService',

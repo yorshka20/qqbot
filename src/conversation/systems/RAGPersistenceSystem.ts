@@ -1,8 +1,9 @@
-// RAG Persistence System - writes user message and bot reply to Qdrant (with embedding) at COMPLETE stage
+// RAG Persistence System - buffers messages per session and writes time-windowed points to Qdrant at COMPLETE stage
 
 import { getReply } from '@/context/HookContextHelpers';
+import { buildConversationWindowDocument } from '@/conversation/rag/buildConversationWindowDocument';
 import type { ConversationMessageEntry } from '@/conversation/history';
-import { formatSingleEntryToText } from '@/conversation/history';
+import type { RAGConfig } from '@/core/config/rag';
 import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
 import type { HookContext } from '@/hooks/types';
@@ -11,12 +12,16 @@ import { QdrantClient } from '@/retrieval';
 import type { RAGDocument } from '@/retrieval/rag/types';
 import { logger } from '@/utils/logger';
 
+/** Default idle minutes to close a conversation window. */
+const DEFAULT_WINDOW_IDLE_MINUTES = 5;
+/** Default max messages per window. */
+const DEFAULT_WINDOW_MAX_MESSAGES = 10;
+
 /**
  * RAG Persistence System
- * At COMPLETE stage, writes the user message and (if present) the bot reply to Qdrant as vectorized documents.
- * When context has replyOnly (e.g. reply-only path), writes only the new reply; the old message is not stored.
- * Uses formatSingleEntryToText for stored content (no [id:0] prefix per message).
- * Failures are logged and do not interrupt the lifecycle.
+ * At COMPLETE stage, appends user message and (if present) bot reply to a per-session buffer.
+ * When the buffer exceeds idle time (e.g. 5 min) or message count (e.g. 10), flushes one window document to Qdrant.
+ * Content uses speaker label only (no date/User prefix). Failures are logged and do not interrupt the lifecycle.
  */
 export class RAGPersistenceSystem implements System {
   readonly name = 'rag-persistence';
@@ -24,7 +29,27 @@ export class RAGPersistenceSystem implements System {
   readonly stage = SystemStage.COMPLETE;
   readonly priority = SystemPriority.RAGPersistence;
 
-  constructor(private retrievalService: RetrievalService) {}
+  /** Per-collection buffer of entries not yet flushed. Key = collection name. */
+  private readonly bufferByCollection = new Map<string, ConversationMessageEntry[]>();
+
+  /** Session metadata per collection so we can build window payload on flush. Key = collection name. */
+  private readonly sessionMetaByCollection = new Map<
+    string,
+    { sessionId: string; sessionType: string; groupId?: number }
+  >();
+
+  constructor(
+    private retrievalService: RetrievalService,
+    private ragConfig?: RAGConfig,
+  ) {}
+
+  private getWindowIdleMinutes(): number {
+    return this.ragConfig?.conversationWindowIdleMinutes ?? DEFAULT_WINDOW_IDLE_MINUTES;
+  }
+
+  private getWindowMaxMessages(): number {
+    return this.ragConfig?.conversationWindowMaxMessages ?? DEFAULT_WINDOW_MAX_MESSAGES;
+  }
 
   enabled(): boolean {
     return true;
@@ -55,65 +80,78 @@ export class RAGPersistenceSystem implements System {
     const userMsgId = message.id;
     const replyOnly = context.metadata.get('replyOnly') === true;
 
-    const documents: RAGDocument[] = [];
+    const currentEntries: ConversationMessageEntry[] = [];
 
     if (!replyOnly) {
-      const userEntry: ConversationMessageEntry = {
+      currentEntries.push({
         messageId: userMsgId,
         userId,
         nickname: message?.sender?.nickname,
         content: message?.message ?? '',
         isBotReply: false,
         createdAt: now,
-      };
-      documents.push({
-        id: userMsgId,
-        content: formatSingleEntryToText(userEntry),
-        payload: {
-          sessionId,
-          sessionType,
-          groupId,
-          userId,
-          timestamp: now.toISOString(),
-          isBotReply: false,
-        },
       });
     }
 
     const reply = getReply(context);
     if (reply != null && reply.trim() !== '') {
-      const replyId = `${userMsgId}:reply`;
-      const replyEntry: ConversationMessageEntry = {
-        messageId: replyId,
+      currentEntries.push({
+        messageId: `${userMsgId}:reply`,
         userId: 0,
         content: reply.trim(),
         isBotReply: true,
         createdAt: now,
-      };
-      documents.push({
-        id: replyId,
-        content: formatSingleEntryToText(replyEntry),
-        payload: {
-          sessionId,
-          sessionType,
-          groupId,
-          userId,
-          timestamp: now.toISOString(),
-          isBotReply: true,
-        },
       });
     }
 
-    if (documents.length === 0) {
+    if (currentEntries.length === 0) {
       return true;
     }
 
-    try {
-      await this.retrievalService.upsertDocuments(collectionName, documents);
-      logger.debug(`[RAGPersistenceSystem] Upserted ${documents.length} document(s) to collection=${collectionName}`);
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.error('[RAGPersistenceSystem] Failed to upsert to Qdrant:', err);
+    let buffer = this.bufferByCollection.get(collectionName);
+    if (!buffer) {
+      buffer = [];
+      this.bufferByCollection.set(collectionName, buffer);
+      this.sessionMetaByCollection.set(collectionName, {
+        sessionId,
+        sessionType,
+        groupId: Number.isFinite(groupId) ? groupId : undefined,
+      });
+    }
+
+    const meta = this.sessionMetaByCollection.get(collectionName);
+    if (!meta) {
+      return true;
+    }
+    const idleMs = this.getWindowIdleMinutes() * 60 * 1000;
+    const maxMessages = this.getWindowMaxMessages();
+
+    if (buffer.length > 0) {
+      const firstTime = buffer[0].createdAt instanceof Date ? buffer[0].createdAt : new Date(buffer[0].createdAt);
+      const shouldFlush =
+        now.getTime() - firstTime.getTime() >= idleMs || buffer.length >= maxMessages;
+      if (shouldFlush) {
+        const windowDoc: RAGDocument = buildConversationWindowDocument(
+          buffer,
+          meta.sessionId,
+          meta.sessionType,
+          meta.groupId,
+        );
+        try {
+          await this.retrievalService.upsertDocuments(collectionName, [windowDoc]);
+          logger.debug(
+            `[RAGPersistenceSystem] Flushed window (${buffer.length} entries) to collection=${collectionName}`,
+          );
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error('Unknown error');
+          logger.error('[RAGPersistenceSystem] Failed to flush window to Qdrant:', err);
+        }
+        buffer.length = 0;
+      }
+    }
+
+    for (const e of currentEntries) {
+      buffer.push(e);
     }
 
     return true;

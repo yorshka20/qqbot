@@ -3,7 +3,6 @@
 import type { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
-import type { RAGQueryExtractionService } from '@/ai/services/RAGQueryExtractionService';
 import { extractImagesFromSegmentsAsync } from '@/ai/utils/imageUtils';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
@@ -90,7 +89,6 @@ export class ProactiveConversationService {
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
     @inject(DITokens.THREAD_CONTEXT_COMPRESSION_SERVICE) private threadCompression: ThreadContextCompressionService,
     @inject(DITokens.TASK_SYSTEM) private taskSystem: TaskSystem,
-    @inject(DITokens.RAG_QUERY_EXTRACTION_SERVICE) ragQueryExtractionService: RAGQueryExtractionService,
     @inject(DITokens.MEMORY_SERVICE) memoryService?: MemoryService,
     @inject(DITokens.DATABASE_MANAGER) private databaseManager?: DatabaseManager,
     @inject(DITokens.RETRIEVAL_SERVICE) retrievalService?: RetrievalService,
@@ -102,7 +100,6 @@ export class ProactiveConversationService {
       preferenceKnowledge,
       memoryService,
       retrievalService,
-      ragQueryExtractionService,
       searchLimit: this.searchLimit,
     });
   }

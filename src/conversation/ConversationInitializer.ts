@@ -11,7 +11,6 @@ import {
   ProviderSelector,
 } from '@/ai';
 import { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
-import { RAGQueryExtractionService } from '@/ai/services/RAGQueryExtractionService';
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { CommandManager } from '@/command';
@@ -152,10 +151,6 @@ export class ConversationInitializer {
     });
 
     const promptManager = this.container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
-    const ragQueryExtractionService = new RAGQueryExtractionService(llmService, promptManager);
-    this.container.registerInstance(DITokens.RAG_QUERY_EXTRACTION_SERVICE, ragQueryExtractionService, {
-      logRegistration: false,
-    });
     // Single SummarizeService for both context memory and thread compression (provider passed at call time).
     const summarizeService = new SummarizeService(llmService, promptManager);
 
@@ -190,7 +185,6 @@ export class ConversationInitializer {
       providerSelector,
       retrievalService,
       memoryService,
-      ragQueryExtractionService,
     );
     serviceRegistry.registerAIServiceCapabilities(aiService);
 
@@ -526,8 +520,9 @@ export class ConversationInitializer {
     });
 
     const retrievalService = this.container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE);
+    const ragConfig = config.getRAGConfig();
     systemRegistry.registerSystemFactory('rag-persistence', () => {
-      return new RAGPersistenceSystem(retrievalService);
+      return new RAGPersistenceSystem(retrievalService, ragConfig);
     });
 
     await systemRegistry.createSystems(systemContext);

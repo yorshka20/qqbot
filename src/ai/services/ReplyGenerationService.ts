@@ -15,7 +15,6 @@ import type { PromptManager } from '../prompt/PromptManager';
 import { parseSearchDecision as parseSearchDecisionShared } from '../utils/searchDecisionParser';
 import { CardRenderingService } from './CardRenderingService';
 import type { LLMService } from './LLMService';
-import type { RAGQueryExtractionService } from './RAGQueryExtractionService';
 import type { VisionService } from './VisionService';
 
 /**
@@ -25,9 +24,8 @@ import type { VisionService } from './VisionService';
 export class ReplyGenerationService {
   private readonly MAX_SEARCH_ITERATIONS = 5;
 
-  private static readonly RAG_LIMIT_PER_QUERY = 5;
-  private static readonly RAG_MAX_TOTAL = 20;
-  private static readonly RAG_MIN_SCORE = 0.7;
+  private static readonly RAG_LIMIT = 10;
+  private static readonly RAG_MIN_SCORE = 0.5;
 
   constructor(
     private llmService: LLMService,
@@ -36,14 +34,13 @@ export class ReplyGenerationService {
     private promptManager: PromptManager,
     private hookManager: HookManager,
     private conversationHistoryService: ConversationHistoryService,
-    private ragQueryExtractionService: RAGQueryExtractionService,
     private retrievalService: RetrievalService,
     private memoryService: MemoryService,
   ) {}
 
   /**
    * Build RAG-retrieved conversation section for prompt injection. Returns empty string when RAG disabled or no hits.
-   * Uses RAG query extraction with conversation + memory context when available, then vectorSearchMulti (merge/dedupe inside RAG).
+   * Uses the user's full message for a single vector search (no query extraction). No truncation (limit 10 results).
    */
   private async getRetrievedConversationSection(context: HookContext): Promise<string> {
     if (!this.retrievalService?.isRAGEnabled()) {
@@ -60,22 +57,14 @@ export class ReplyGenerationService {
       context.message?.groupId,
       context.message?.userId,
     );
-    const rawMessage = context.message?.message ?? '';
+    const rawMessage = (context.message?.message ?? '').trim();
+    if (!rawMessage) {
+      return '';
+    }
     try {
-      const historyText = await this.conversationHistoryService.buildConversationHistory(context);
-      const { groupMemoryText, userMemoryText } = this.getMemoryVars(context);
-      const memoryContext = [groupMemoryText, userMemoryText].filter(Boolean).join('\n\n') || '';
-      const queries = await this.ragQueryExtractionService.extractQueries(rawMessage, sessionId, {
-        conversationContext: historyText,
-        memoryContext,
-      });
-      if (queries.length === 0) {
-        return '';
-      }
-      const hits = await this.retrievalService.vectorSearchMulti(collectionName, queries, {
-        limitPerQuery: ReplyGenerationService.RAG_LIMIT_PER_QUERY,
+      const hits = await this.retrievalService.vectorSearch(collectionName, rawMessage, {
+        limit: ReplyGenerationService.RAG_LIMIT,
         minScore: ReplyGenerationService.RAG_MIN_SCORE,
-        maxTotal: ReplyGenerationService.RAG_MAX_TOTAL,
       });
       if (hits.length === 0) {
         return '';

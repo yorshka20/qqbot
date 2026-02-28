@@ -4,7 +4,7 @@ import type { ThreadService } from '@/conversation/thread';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
-import type { Message } from '@/database/models/types';
+import type { Conversation, Message } from '@/database/models/types';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { formatConversationEntriesToText } from './format';
@@ -172,6 +172,28 @@ export class ConversationHistoryService {
   }
 
   /**
+   * Get all sessions (conversations) from DB for RAG backfill. Returns sessionId and sessionType.
+   */
+  async getAllSessions(): Promise<Array<{ sessionId: string; sessionType: 'group' | 'user' }>> {
+    const adapter = this.databaseManager.getAdapter();
+    if (!adapter?.isConnected()) {
+      return [];
+    }
+    try {
+      const conversations = adapter.getModel('conversations');
+      const all = await conversations.find({}, { orderBy: 'createdAt', order: 'asc' });
+      return (all as Conversation[]).map((c) => ({
+        sessionId: String(c.sessionId),
+        sessionType: c.sessionType as 'group' | 'user',
+      }));
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.warn('[ConversationHistoryService] Failed to load all sessions:', err);
+      return [];
+    }
+  }
+
+  /**
    * Get messages for a group with createdAt >= since (for incremental extract; survives bot restart when since is persisted).
    */
   async getMessagesSince(groupId: string | number, since: Date, maxLimit = 2000): Promise<ConversationMessageEntry[]> {
@@ -269,7 +291,7 @@ export class ConversationHistoryService {
     const sessionId = context.metadata.get('sessionId');
     const sessionType = context.metadata.get('sessionType');
     if (sessionId != null && sessionType != null) {
-      const limit = this.maxHistoryMessages * 2;
+      const limit = this.maxHistoryMessages;
       const entries = await this.getRecentMessagesForSession(String(sessionId), sessionType as 'group' | 'user', limit);
       if (entries.length > 0) {
         logger.debug(`[ConversationHistoryService] Loaded ${entries.length} messages from DB for session ${sessionId}`);
