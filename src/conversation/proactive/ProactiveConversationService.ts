@@ -1,5 +1,6 @@
 // Proactive Conversation Service - orchestrates debounced analysis, Ollama, thread, and proactive reply (Phase 1 + Phase 2 RAG)
 
+import { inject, injectable } from 'tsyringe';
 import type { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
@@ -17,7 +18,6 @@ import type { MemoryService } from '@/memory/MemoryService';
 import type { MessageSegment } from '@/message/types';
 import type { RetrievalService } from '@/retrieval';
 import { logger } from '@/utils/logger';
-import { inject, injectable } from 'tsyringe';
 import type { TaskSystem } from '../systems/TaskSystem';
 import type { ThreadContextCompressionService } from '../thread';
 import { isReadableTextForThread, type ThreadService } from '../thread';
@@ -614,10 +614,6 @@ export class ProactiveConversationService {
       content: replyText,
       isBotReply: true,
     });
-
-    logger.debug('[ProactiveConversationService] Join with new thread memoryContext:', {
-      memoryContext: injectContext.memoryContext,
-    });
   }
 
   private async replyInThread(
@@ -648,10 +644,6 @@ export class ProactiveConversationService {
       userId: 0,
       content: replyText,
       isBotReply: true,
-    });
-
-    logger.debug('[ProactiveConversationService] Reply in thread memoryContext:', {
-      memoryContext: injectContext.memoryContext,
     });
   }
 

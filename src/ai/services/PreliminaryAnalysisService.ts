@@ -178,12 +178,7 @@ export class PreliminaryAnalysisService {
     if (!idleMode) {
       return '';
     }
-    try {
-      return this.promptManager.render('analysis.idle_instruction', {}, { injectBase: false });
-    } catch (err) {
-      logger.warn('[PreliminaryAnalysisService] Failed to render idle instruction:', err);
-      return '';
-    }
+    return this.promptManager.render('analysis.idle_instruction', {}, { injectBase: false });
   }
 
   private parseJsonResult(text: string): PreliminaryAnalysisResult {
