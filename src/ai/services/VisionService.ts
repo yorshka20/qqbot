@@ -73,7 +73,6 @@ export class VisionService {
 
   /**
    * Explain image(s): get text description of image content. Prompt is the full rendered text from the dedicated explain-image template.
-   * Used to feed image description into the normal LLM reply flow.
    */
   async explainImages(
     images: VisionImage[],

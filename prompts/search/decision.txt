@@ -3,12 +3,6 @@
 ## 用户原始问题
 {{userMessage}}
 
-## 已有信息
-{{existingInformation}}
-
-## 任务执行结果（如果有）
-{{taskResults}}
-
 ## 之前的搜索结果（如果有）
 {{previousSearchResults}}
 

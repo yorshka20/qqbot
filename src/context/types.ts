@@ -1,5 +1,7 @@
 // Context type definitions
 
+import type { VisionImage } from '@/ai/capabilities/types';
+
 /**
  * Conversation context - single conversation context
  */
@@ -74,6 +76,6 @@ export interface ProactiveReplyInjectContext {
   memoryContext: string;
   /** Optional session id for LLM (e.g. groupId for proactive). */
   sessionId?: string;
-  /** Optional image description from explainImages (when trigger message had images). */
-  imageDescription?: string;
+  /** When present, proactive reply is generated via vision provider (generateWithVision); otherwise via LLM. */
+  messageImages?: VisionImage[];
 }

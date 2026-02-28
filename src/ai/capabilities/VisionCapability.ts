@@ -28,7 +28,6 @@ export interface VisionCapability {
 
   /**
    * Explain image(s): describe image content as text. Prompt is the full rendered text from the dedicated explain-image template.
-   * Used to feed image description into the normal LLM reply flow.
    */
   explainImages(images: VisionImage[], prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse>;
 }

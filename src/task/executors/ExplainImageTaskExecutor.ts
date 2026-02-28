@@ -14,11 +14,8 @@ import type { Task, TaskExecutionContext, TaskResult } from '../types';
 import { BaseTaskExecutor } from './BaseTaskExecutor';
 
 /**
- * Explain Image task executor
- * Extracts images from the current message and uses a vision-capable provider
- * to generate a text description. The description is returned as the task result
- * so that it flows into generateReplyFromTaskResults() as imageDescription,
- * replacing the implicit image-extraction path.
+ * Explain Image task executor (not registered: reply flow uses vision provider when message has images).
+ * Kept for reference; uses AIService.describeImages when invoked.
  */
 @TaskDefinition({
   name: 'explainImage',
@@ -84,25 +81,13 @@ export class ExplainImageTaskExecutor extends BaseTaskExecutor {
       return this.success('', { hasImages: false });
     }
 
-    logger.info(`[ExplainImageTaskExecutor] Explaining ${images.length} image(s) from message individually`);
+    logger.info(`[ExplainImageTaskExecutor] Describing ${images.length} image(s) from message`);
 
-    // Explain each image separately so every image gets its own focused description
-    const descriptions: string[] = [];
-    for (const image of images) {
-      const desc = await this.aiService.explainImage(image, userMessage, sessionId);
-      if (desc) {
-        descriptions.push(desc);
-      }
-    }
-
-    if (!descriptions.length) {
-      logger.warn('[ExplainImageTaskExecutor] Image explanation returned empty description');
+    const description = await this.aiService.explainImages(images, userMessage, sessionId);
+    if (!description) {
+      logger.warn('[ExplainImageTaskExecutor] Image description returned empty');
       return this.success('', { hasImages: true, descriptionEmpty: true });
     }
-
-    // When multiple images are present, prefix each description with its index
-    const description =
-      images.length > 1 ? descriptions.map((d, i) => `图${i + 1}: ${d}`).join('\n\n') : descriptions[0];
 
     logger.info(`[ExplainImageTaskExecutor] Image description generated (${description.length} chars)`);
     return this.success(description, { hasImages: true, imageCount: images.length });

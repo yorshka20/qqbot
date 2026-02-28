@@ -1,10 +1,10 @@
 // Reply task executor - handles simple reply tasks
 
+import { inject, injectable } from 'tsyringe';
 import type { AIService } from '@/ai/AIService';
 import { getReply, getReplyContent } from '@/context/HookContextHelpers';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
-import { inject, injectable } from 'tsyringe';
 import { TaskDefinition } from '../decorators';
 import type { Task, TaskExecutionContext, TaskExecutor, TaskResult } from '../types';
 
@@ -52,7 +52,7 @@ export class ReplyTaskExecutor implements TaskExecutor {
       // Get result from context.reply
       // Check both text reply and card image reply
       const replyContent = getReplyContent(hookContext);
-      if (replyContent && replyContent.segments && replyContent.segments.length > 0) {
+      if (replyContent && replyContent.segments?.length > 0) {
         // Extract text from segments (may be empty for card images)
         const replyText = getReply(hookContext) || '';
 

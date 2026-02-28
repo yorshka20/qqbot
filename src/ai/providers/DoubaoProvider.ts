@@ -1,7 +1,7 @@
 // Doubao Provider implementation
 
-import { logger } from '@/utils/logger';
 import OpenAI from 'openai';
+import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType, VisionImage } from '../capabilities/types';
@@ -408,7 +408,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
         // Include reasoning content for internal use (e.g., task analysis)
         text = reasoningContent;
         if (contentText) {
-          text += '\n' + contentText;
+          text += `\n${contentText}`;
         }
         logger.debug(
           `[DoubaoProvider] Including reasoning content in vision response | reasoningLength=${reasoningContent.length} | contentLength=${contentText.length}`,

@@ -2,13 +2,15 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
-import { buildSearchResultSummaries, filterAndRefineSearchResults } from '@/ai/utils/searchResultsFilterRefine';
+import { parseSearchDecision as parseSearchDecisionShared } from '@/ai/utils/searchDecisionParser';
 import type { MCPConfig } from '@/core/config/mcp';
 import type { HealthCheckManager } from '@/core/health';
 import type { MCPManager } from '@/mcp';
 import { logger } from '@/utils/logger';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import type { PageContentFetchService } from '../fetch';
+import type { FilterAndRefineOptions, FilterRefineResult } from '../searchFilterRefine';
+import { parseFilterRefineResponse } from '../searchFilterRefine';
 import { SearXNGClient } from './SearXNGClient';
 import type { SearchOptions, SearchResult } from './types';
 
@@ -50,6 +52,59 @@ export class SearchService {
 
   getPageContentFetchService(): PageContentFetchService {
     return this.pageContentFetchService;
+  }
+
+  /** Format SearchResult[] for filter-refine prompt (title + snippet per result). */
+  private formatResultSummaries(results: SearchResult[]): string {
+    return results
+      .map((r, i) => {
+        const title = (r.title || '无标题').trim();
+        const snippet = (r.snippet || r.content || '').trim();
+        return `${i + 1}. ${title}${snippet ? `\n   ${snippet}` : ''}`;
+      })
+      .join('\n\n');
+  }
+
+  /**
+   * Filter-refine: call LLM once to judge relevance and return refined reference text (DONE) or supplement queries (MORE).
+   * On parse failure or LLM error, returns { done: true, refinedText: resultSummaries } so the pipeline can continue.
+   */
+  async filterAndRefineSearchResults(
+    llmService: LLMService,
+    options: FilterAndRefineOptions,
+  ): Promise<FilterRefineResult> {
+    const { topic, resultSummaries, round, maxRounds } = options;
+
+    const prompt = this.promptManager.render('search.results_filter_refine', {
+      topic,
+      resultSummaries: resultSummaries || '(无)',
+      round: String(round),
+      maxRounds: String(maxRounds),
+    });
+
+    let responseText: string;
+    try {
+      const response = await llmService.generate(prompt, {
+        temperature: 0.2,
+        maxTokens: 2000,
+      });
+      responseText = (response.text || '').trim();
+    } catch (err) {
+      logger.warn(
+        `[SearchService] filterAndRefineSearchResults LLM call failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return { done: true, refinedText: resultSummaries };
+    }
+
+    const parsed = parseFilterRefineResponse(responseText);
+    if (parsed) {
+      return parsed;
+    }
+
+    logger.warn(
+      '[SearchService] filterAndRefineSearchResults: could not parse DONE/MORE, using summaries as refined text',
+    );
+    return { done: true, refinedText: resultSummaries };
   }
 
   registerHealthCheck(): void {
@@ -164,47 +219,8 @@ export class SearchService {
       .join('\n\n');
 
     return this.promptManager.render(
-      'llm.format_search_results',
+      'search.format_results',
       { totalResults: results.length.toString(), formattedResults: formatted },
-      { injectBase: true },
-    );
-  }
-
-  formatMultiSearchResults(
-    searchResults: Array<{ queryIndex: number; query: string; explanation: string; results: SearchResult[] }>,
-  ): string {
-    if (searchResults.length === 0) return '';
-
-    const allResults: SearchResult[] = [];
-    const queryInfo: string[] = [];
-    searchResults.forEach(({ query, explanation, results }) => {
-      queryInfo.push(`查询: ${query} (${explanation})`);
-      allResults.push(...results.slice(0, 5));
-    });
-
-    const uniqueResults = allResults.filter(
-      (result, index, self) => index === self.findIndex((r) => r.url === result.url),
-    );
-    const limitedResults = uniqueResults.slice(0, 12);
-
-    const formatted = limitedResults
-      .map((result, index) => {
-        // Use full snippet so reference knowledge is complete (no truncation)
-        const snippet = (result.snippet || result.content || '').trim();
-        let domain = '';
-        try {
-          domain = new URL(result.url).hostname.replace('www.', '');
-        } catch {
-          domain = '未知来源';
-        }
-        return `${index + 1}. **${result.title}**\n   来源: ${domain}\n   摘要: ${snippet}\n   链接: ${result.url}`;
-      })
-      .join('\n\n');
-
-    const queryContext = `基于以下 ${searchResults.length} 个查询的综合搜索结果：\n${queryInfo.join('\n')}\n\n`;
-    return this.promptManager.render(
-      'llm.format_search_results',
-      { totalResults: limitedResults.length.toString(), formattedResults: queryContext + formatted },
       { injectBase: true },
     );
   }
@@ -264,8 +280,8 @@ export class SearchService {
       logger.info(
         `[SearchService] filter-refine round ${round}/${FILTER_REFINE_MAX_ROUNDS}, currentResultsCount=${currentResults.length}`,
       );
-      const resultSummaries = buildSearchResultSummaries(currentResults);
-      const filterResult = await filterAndRefineSearchResults(llmService, this.promptManager, {
+      const resultSummaries = this.formatResultSummaries(currentResults);
+      const filterResult = await this.filterAndRefineSearchResults(llmService, {
         topic,
         resultSummaries,
         round,
@@ -320,72 +336,91 @@ export class SearchService {
   }
 
   /**
-   * Same as performSmartSearch but returns both formatted text and raw SearchResult[] for downstream filter-refine step.
+   * Smart search with optional multi-round decision: each round LLM decides if more search is needed given accumulated results; runs search(es) and accumulates. Returns formatted text and raw results for downstream filter-refine.
+   *
+   * @param maxIterations - When > 1, multi-round: decision sees previousSearchResults each round; default 1 (single round).
    */
   async performSmartSearchWithResults(
     userMessage: string,
     llmService: LLMService,
     sessionId?: string,
+    maxIterations: number = 1,
   ): Promise<{ formattedText: string; results: SearchResult[] }> {
     if (!this.isEnabled()) {
       return { formattedText: '', results: [] };
     }
 
+    const allResults: SearchResult[] = [];
+    let accumulatedText = '';
+
     try {
-      const checkPrompt = this.promptManager.render('llm.search_decision', {
-        userMessage,
-        existingInformation: 'None',
-        taskResults: 'None',
-        previousSearchResults: 'None',
-      });
-      const checkResponse = await llmService.generate(checkPrompt, {
-        temperature: 0.3,
-        maxTokens: 150,
-        sessionId,
-      });
-      const searchDecision = this.parseSearchDecision(checkResponse.text);
-      if (!searchDecision.needsSearch) {
-        return { formattedText: '', results: [] };
-      }
+      for (let iteration = 1; iteration <= maxIterations; iteration++) {
+        const decisionPrompt = this.promptManager.render('search.decision', {
+          userMessage,
+          previousSearchResults: accumulatedText || 'None',
+        });
+        const decisionResponse = await llmService.generate(decisionPrompt, {
+          temperature: 0.3,
+          maxTokens: 200,
+          sessionId,
+        });
+        const searchDecision = parseSearchDecisionShared(decisionResponse.text);
 
-      let searchQueries: Array<{ query: string; explanation: string }> = [];
-      if (searchDecision.isMultiSearch && searchDecision.queries?.length) {
-        searchQueries = searchDecision.queries;
-        logger.info(
-          `[SearchService] Multi-search triggered with ${searchQueries.length} queries:`,
-          searchQueries.map((q) => q.query),
-        );
-      } else {
-        const query = searchDecision.query || this.extractSearchQuery(userMessage);
-        if (query) {
-          searchQueries = [{ query, explanation: 'User query' }];
-          logger.info(`[SearchService] Search triggered for query: ${query}`);
+        if (!searchDecision.needsSearch) {
+          logger.debug(`[SearchService] performSmartSearchWithResults round ${iteration}: no more search needed`);
+          break;
         }
-      }
-      if (searchQueries.length === 0) {
-        return { formattedText: '', results: [] };
-      }
 
-      if (searchQueries.length === 1) {
-        const results = await this.search(searchQueries[0].query);
-        return {
-          formattedText: this.formatSearchResults(results),
-          results,
-        };
-      }
-
-      const searchPromises = searchQueries.map(async (queryInfo, index) => {
-        try {
-          const results = await this.search(queryInfo.query);
-          return { ...queryInfo, queryIndex: index + 1, results };
-        } catch (error) {
-          logger.warn(`[SearchService] Search failed for query "${queryInfo.query}":`, error);
-          return { ...queryInfo, queryIndex: index + 1, results: [] };
+        let searchQueries: Array<{ query: string; explanation: string }> = [];
+        if (searchDecision.isMultiSearch && searchDecision.queries?.length) {
+          searchQueries = searchDecision.queries;
+          logger.info(
+            `[SearchService] Round ${iteration} multi-search (${searchQueries.length} queries):`,
+            searchQueries.map((q) => q.query),
+          );
+        } else {
+          const query = searchDecision.query || this.extractSearchQuery(userMessage);
+          if (query) {
+            searchQueries = [{ query, explanation: 'User query' }];
+            logger.info(`[SearchService] Round ${iteration} search: ${query}`);
+          }
         }
-      });
-      const searchResultsArray = await Promise.all(searchPromises);
-      const allResults = searchResultsArray.flatMap((s) => s.results);
-      const formattedText = this.formatMultiSearchResults(searchResultsArray);
+
+        if (searchQueries.length === 0) {
+          break;
+        }
+
+        if (searchQueries.length === 1) {
+          const results = await this.search(searchQueries[0].query);
+          allResults.push(...results);
+          if (results.length === 0) {
+            logger.warn(`[SearchService] Round ${iteration}: no results, stopping`);
+            break;
+          }
+          accumulatedText = this.formatSearchResults(allResults);
+          continue;
+        }
+
+        const searchPromises = searchQueries.map(async (queryInfo, index) => {
+          try {
+            const results = await this.search(queryInfo.query);
+            return { ...queryInfo, queryIndex: index + 1, results };
+          } catch (error) {
+            logger.warn(`[SearchService] Search failed for query "${queryInfo.query}":`, error);
+            return { ...queryInfo, queryIndex: index + 1, results: [] };
+          }
+        });
+        const searchResultsArray = await Promise.all(searchPromises);
+        const roundResults = searchResultsArray.flatMap((s) => s.results);
+        allResults.push(...roundResults);
+        if (roundResults.length === 0) {
+          logger.warn(`[SearchService] Round ${iteration}: no results, stopping`);
+          break;
+        }
+        accumulatedText = this.formatSearchResults(allResults);
+      }
+
+      const formattedText = allResults.length > 0 ? this.formatSearchResults(allResults) : '';
       return { formattedText, results: allResults };
     } catch (error) {
       logger.warn('[SearchService] Smart search failed, continuing without search:', error);
@@ -393,42 +428,83 @@ export class SearchService {
     }
   }
 
-  private parseSearchDecision(response: string): {
-    needsSearch: boolean;
-    query?: string;
-    queries?: Array<{ query: string; explanation: string }>;
-    isMultiSearch?: boolean;
-  } {
-    const trimmed = response.trim();
-    const upperTrimmed = trimmed.toUpperCase();
-
-    if (upperTrimmed.startsWith('MULTI_SEARCH:')) {
-      const multiSearchContent = trimmed.substring(13).trim();
-      const queries = this.parseMultiSearchQueries(multiSearchContent);
-      return { needsSearch: queries.length > 0, queries, isMultiSearch: true };
+  /**
+   * Recursive smart search + filter-refine loop + optional page fetch. Single entry for reply flow: multi-round decision/search, then filter-refine (with supplement search when MORE), then append fetched page content for top results.
+   */
+  async performRecursiveSearchRefined(
+    userMessage: string,
+    llmService: LLMService,
+    sessionId?: string,
+    maxIterations: number = 5,
+    fetchProgressNotifier?: FetchProgressNotifier,
+  ): Promise<string> {
+    const { formattedText, results } = await this.performSmartSearchWithResults(
+      userMessage,
+      llmService,
+      sessionId,
+      maxIterations,
+    );
+    if (results.length === 0) {
+      logger.info('[SearchService] performRecursiveSearchRefined: no results, skip filter-refine');
+      return formattedText;
     }
-    if (upperTrimmed.startsWith('SEARCH:')) {
-      const query = trimmed.substring(7).trim();
-      return { needsSearch: true, query: query || undefined, isMultiSearch: false };
-    }
-    return { needsSearch: false, isMultiSearch: false };
-  }
-
-  private parseMultiSearchQueries(content: string): Array<{ query: string; explanation: string }> {
-    const queries: Array<{ query: string; explanation: string }> = [];
-    const lines = content
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
-    for (const line of lines) {
-      const match = line.match(/^查询\d+:\s*(.+?)\s*\|\s*(.+)$/);
-      if (match) {
-        queries.push({ query: match[1].trim(), explanation: match[2].trim() });
-      } else {
-        queries.push({ query: line, explanation: '自动提取的搜索查询' });
+    const topic = userMessage.trim() || '当前话题';
+    logger.info(
+      `[SearchService] performRecursiveSearchRefined: topic="${topic}", resultsCount=${results.length}, starting filter-refine loop`,
+    );
+    let currentResults = results;
+    let refinedText = formattedText;
+    for (let round = 1; round <= FILTER_REFINE_MAX_ROUNDS; round++) {
+      logger.info(
+        `[SearchService] filter-refine round ${round}/${FILTER_REFINE_MAX_ROUNDS}, currentResultsCount=${currentResults.length}`,
+      );
+      const resultSummaries = this.formatResultSummaries(currentResults);
+      const filterResult = await this.filterAndRefineSearchResults(llmService, {
+        topic,
+        resultSummaries,
+        round,
+        maxRounds: FILTER_REFINE_MAX_ROUNDS,
+      });
+      if (filterResult.done) {
+        refinedText = filterResult.refinedText || refinedText;
+        logger.info(`[SearchService] filter-refine round ${round}: DONE, refinedText length=${refinedText.length}`);
+        const fetchService = this.getPageContentFetchService();
+        if (fetchService?.isEnabled()) {
+          const toFetch = currentResults.slice(0, 5).map((r) => ({
+            url: r.url,
+            title: r.title || '无标题',
+            snippet: (r.snippet || r.content || '').trim(),
+          }));
+          const fetched = await fetchService.fetchPages(toFetch, fetchProgressNotifier);
+          if (fetched.length > 0) {
+            const merged = fetched.map((e) => `### ${e.title}\n${e.text}`).join('\n\n');
+            refinedText += `\n\n## 补充全文\n\n${merged}`;
+            logger.info(`[SearchService] performRecursiveSearchRefined: appended ${fetched.length} fetched pages`);
+          }
+        }
+        break;
+      }
+      logger.info(
+        `[SearchService] filter-refine round ${round}: MORE, queries: ${JSON.stringify(filterResult.queries)}`,
+      );
+      if (round === FILTER_REFINE_MAX_ROUNDS) {
+        logger.info('[SearchService] filter-refine: max rounds reached, using current refinedText');
+        break;
+      }
+      for (const q of filterResult.queries) {
+        try {
+          const more = await this.search(q.trim(), { maxResults: FILTER_SUPPLEMENT_MAX_RESULTS });
+          currentResults = [...currentResults, ...more];
+          logger.info(
+            `[SearchService] filter-refine supplement query="${q}", got ${more.length} results, total=${currentResults.length}`,
+          );
+        } catch {
+          // ignore per-query failure
+        }
       }
     }
-    return queries;
+    logger.info(`[SearchService] performRecursiveSearchRefined: final refinedText length=${refinedText.length}`);
+    return refinedText;
   }
 
   private extractSearchQuery(message: string): string {

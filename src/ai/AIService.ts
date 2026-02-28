@@ -23,6 +23,7 @@ import { LLMService } from './services/LLMService';
 import { ReplyGenerationService } from './services/ReplyGenerationService';
 import { TaskAnalysisService } from './services/TaskAnalysisService';
 import { VisionService } from './services/VisionService';
+import type { AIGenerateResponse } from './types';
 
 /**
  * AI Service
@@ -62,6 +63,7 @@ export class AIService {
     private retrievalService: RetrievalService,
     memoryService: MemoryService,
     messageAPI: MessageAPI,
+    databaseManager: DatabaseManager,
   ) {
     // Initialize business services
     this.llmService = new LLMService(aiManager, providerSelector);
@@ -79,6 +81,7 @@ export class AIService {
       this.retrievalService,
       memoryService,
       messageAPI,
+      databaseManager,
     );
     this.taskAnalysisService = new TaskAnalysisService(
       this.llmService,
@@ -104,6 +107,11 @@ export class AIService {
    * @param providerName - Optional LLM provider (e.g. "ollama", "doubao"); when set, reply uses this provider.
    */
   async generateProactiveReply(context: ProactiveReplyInjectContext, providerName?: string): Promise<string> {
+    const genOptions = {
+      temperature: 0.5,
+      maxTokens: 10000,
+      sessionId: context.sessionId,
+    };
     const prompt = this.promptManager.render(
       'llm.proactive_reply',
       {
@@ -112,49 +120,42 @@ export class AIService {
         retrievedContext: context.retrievedContext ?? '',
         retrievedConversationSection: context.retrievedConversationSection ?? '',
         memoryContext: context.memoryContext ?? '',
-        imageDescription: context.imageDescription ?? '',
       },
       { injectBase: true },
     );
 
     logger.info('[AIService] generateProactiveReply prompt', { prompt });
 
-    const response = await this.llmService.generate(
-      prompt,
-      {
-        temperature: 0.5,
-        maxTokens: 10000,
-        sessionId: context.sessionId,
-      },
-      providerName,
-    );
+    const useVision = context.messageImages && context.messageImages.length > 0;
+    let response: AIGenerateResponse;
+    if (useVision) {
+      response = await this.visionService.generateWithVision(prompt, context.messageImages ?? [], genOptions);
+    } else {
+      response = await this.llmService.generate(prompt, genOptions, providerName);
+    }
 
-    return (response.text || '').trim();
+    return response.text.trim();
   }
 
   /**
-   * Explain a single image using a vision-capable provider.
-   * Each image is explained individually so callers that handle multiple images
-   * receive a separate description per image and can format them independently.
-   *
-   * @param image - The single vision image to explain
-   * @param userDescription - User message text or context for focus (may be empty)
-   * @param sessionId - Optional session id for provider selection
-   * @returns Description text, or empty string on error
+   * Explain image(s) using vision provider. Returns combined description text (e.g. for task executor or other callers).
    */
-  async explainImage(image: VisionImage, userDescription: string, sessionId?: string): Promise<string> {
+  async explainImages(images: VisionImage[], userDescription: string, sessionId?: string): Promise<string> {
+    if (!images.length) {
+      return '';
+    }
     try {
-      const explainPrompt = this.promptManager.render('vision.explain_image', {
+      const prompt = this.promptManager.render('vision.explain_image', {
         userDescription: userDescription || '（无）',
       });
-      const response = await this.visionService.explainImages([image], explainPrompt, {
-        temperature: 0.5,
+      const response = await this.visionService.explainImages(images, prompt, {
+        temperature: 0.3,
         maxTokens: 2000,
         sessionId,
       });
       return response.text?.trim() ?? '';
     } catch (error) {
-      logger.warn('[AIService] explainImage failed:', error instanceof Error ? error.message : String(error));
+      logger.warn('[AIService] explainImages failed:', error instanceof Error ? error.message : String(error));
       return '';
     }
   }

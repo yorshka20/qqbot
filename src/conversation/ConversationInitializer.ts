@@ -166,7 +166,7 @@ export class ConversationInitializer {
     // This must be done before PluginManager is created
     serviceRegistry.registerConversationConfigServices(conversationConfigService, globalConfigManager);
 
-    // Register RetrievalService to DI container (for SearchTaskExecutor, etc.)
+    // Register RetrievalService to DI container (for task executors that need search, etc.)
     serviceRegistry.registerRetrievalService(retrievalService);
 
     // Register FileReadService (for ReadFileTaskExecutor and ls/cat commands)
@@ -186,12 +186,13 @@ export class ConversationInitializer {
       retrievalService,
       memoryService,
       messageAPI,
+      databaseManager,
     );
     serviceRegistry.registerAIServiceCapabilities(aiService);
 
     // Create and register TaskSystem before ProactiveConversationService so DI can inject it.
     // ProactiveConversationService constructor requires TaskSystem at position #9.
-    // MessageAPI and DatabaseManager are optional; when present, explainImage can get image segments from replied message.
+    // MessageAPI and DatabaseManager are used by TaskSystem and reply flow (e.g. extract images from replied message).
     const taskSystem = new TaskSystem(
       services.taskManager,
       services.hookManager,

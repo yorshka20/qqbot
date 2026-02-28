@@ -13,6 +13,7 @@ import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNoti
 import { PageContentFetchService } from './fetch';
 import { RAGService } from './rag/RAGService';
 import type { RAGDocument, RAGSearchMultiOptions, RAGSearchOptions, RAGSearchResult } from './rag/types';
+import type { FilterAndRefineOptions, FilterRefineResult } from './searchFilterRefine';
 import { SearchService } from './searxng/SearchService';
 import type { SearchOptions, SearchResult } from './searxng/types';
 
@@ -63,24 +64,23 @@ export class RetrievalService {
     return this.searchService.formatSearchResults(results);
   }
 
-  formatMultiSearchResults(
-    searchResults: Array<{ queryIndex: number; query: string; explanation: string; results: SearchResult[] }>,
-  ): string {
-    return this.searchService.formatMultiSearchResults(searchResults);
-  }
-
-  async performSmartSearch(userMessage: string, llmService: LLMService, sessionId?: string): Promise<string> {
-    return this.searchService.performSmartSearch(userMessage, llmService, sessionId);
-  }
-
-  /** Smart search + filter-refine; returns refined text for reply. Prefer this over performSmartSearch in reply flow. */
-  async performSmartSearchRefined(
+  /**
+   * Multi-round smart search + filter-refine loop + optional page fetch. Use this for reply flow (replaces in-service search logic).
+   */
+  async performRecursiveSearchRefined(
     userMessage: string,
     llmService: LLMService,
     sessionId?: string,
+    maxIterations: number = 5,
     fetchProgressNotifier?: FetchProgressNotifier,
   ): Promise<string> {
-    return this.searchService.performSmartSearchRefined(userMessage, llmService, sessionId, fetchProgressNotifier);
+    return this.searchService.performRecursiveSearchRefined(
+      userMessage,
+      llmService,
+      sessionId,
+      maxIterations,
+      fetchProgressNotifier,
+    );
   }
 
   getPageContentFetchService(): PageContentFetchService {
@@ -91,12 +91,23 @@ export class RetrievalService {
     userMessage: string,
     llmService: LLMService,
     sessionId?: string,
+    maxIterations?: number,
   ): Promise<{ formattedText: string; results: SearchResult[] }> {
-    return this.searchService.performSmartSearchWithResults(userMessage, llmService, sessionId);
+    return this.searchService.performSmartSearchWithResults(userMessage, llmService, sessionId, maxIterations);
   }
 
   isSearchEnabled(): boolean {
     return this.searchService.isEnabled();
+  }
+
+  /**
+   * Filter-refine: LLM judges relevance of search/chunk summaries and returns refined text (DONE) or supplement queries (MORE).
+   */
+  async filterAndRefineSearchResults(
+    llmService: LLMService,
+    options: FilterAndRefineOptions,
+  ): Promise<FilterRefineResult> {
+    return this.searchService.filterAndRefineSearchResults(llmService, options);
   }
 
   // --- RAG (delegate to RAGService) ---

@@ -244,6 +244,7 @@ export async function normalizeVisionImages(
   for (const image of images) {
     const normalizedImage: VisionImage = {
       mimeType: image.mimeType,
+      base64: '',
     };
 
     if (image.url) {
@@ -287,10 +288,10 @@ export async function normalizeVisionImages(
     }
 
     // Compress if over limit so vision APIs receive images <= 500 KB
-    const decodedLength = Buffer.byteLength(normalizedImage.base64!, 'base64');
+    const decodedLength = Buffer.byteLength(normalizedImage.base64, 'base64');
     if (decodedLength > maxBytesForVision) {
       try {
-        const compressed = await compressImageToMaxBytes(normalizedImage.base64!, maxBytesForVision);
+        const compressed = await compressImageToMaxBytes(normalizedImage.base64, maxBytesForVision);
         normalizedImage.base64 = compressed.base64;
         normalizedImage.mimeType = compressed.mimeType;
         const newDecodedLength = Buffer.from(compressed.base64, 'base64').length;
@@ -373,7 +374,7 @@ function extractReplyMessageId(segment: { type: string; data?: Record<string, un
 
 /**
  * Get the first reply message ID from a normalized message (for reply segments).
- * Used when the current message is a reply and we need to fetch the referenced message (e.g. for explainImage).
+ * Used when the current message is a reply and we need to fetch the referenced message (e.g. to extract images from reply).
  */
 export function getReplyMessageIdFromMessage(message: NormalizedMessageEvent): number | null {
   if (!message.segments?.length) {

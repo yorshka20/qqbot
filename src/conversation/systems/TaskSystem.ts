@@ -1,7 +1,6 @@
 // Task System - handles task execution and drives AI capabilities
 
 import type { AIService } from '@/ai/AIService';
-import { getReplyMessageIdFromMessage } from '@/ai/utils/imageUtils';
 import { hasReply } from '@/context/HookContextHelpers';
 import { TaskExecutionContextBuilder } from '@/context/TaskExecutionContextBuilder';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
@@ -45,8 +44,6 @@ export class TaskSystem implements System {
     }
 
     const tasks = await this.resolveTasks(context);
-    this.injectExplainImageFromCurrentMessage(tasks, context);
-    await this.injectImageSegmentsFromReplyIntoExplainImageTasks(tasks, context);
 
     if (tasks.length === 0) {
       await this.executeReplyTask(context);
@@ -84,73 +81,6 @@ export class TaskSystem implements System {
       logger.info(`[TaskSystem] LLM generated ${analysisResult.length} additional task(s)`);
     }
     return analysisResult;
-  }
-
-  /**
-   * If the current message has image segments and no explainImage task exists, add one
-   * so the executor receives image segments via parameters (avoids context propagation issues).
-   */
-  private injectExplainImageFromCurrentMessage(tasks: Task[], context: HookContext): void {
-    const hasImageSegments = context.message.segments?.some((seg) => seg.type === 'image') ?? false;
-    if (!hasImageSegments || tasks.some((t) => t.type === 'explainImage')) {
-      return;
-    }
-    const explainImageType = this.taskManager.getTaskType('explainImage');
-    if (!explainImageType || !context.message.segments) {
-      return;
-    }
-    const imageSegments = context.message.segments.filter((seg) => seg.type === 'image');
-    tasks.push({
-      type: 'explainImage',
-      parameters: { imageSegments },
-      executor: 'explainImage',
-    });
-    logger.info('[TaskSystem] Auto-injected explainImage task (message contains image segments)');
-  }
-
-  /**
-   * For explainImage tasks without imageSegments (e.g. user replied to an image message),
-   * try to inject image segments from the referenced reply message (cache may have full segments).
-   */
-  private async injectImageSegmentsFromReplyIntoExplainImageTasks(tasks: Task[], context: HookContext): Promise<void> {
-    if (!this.messageAPI || !this.databaseManager) {
-      return;
-    }
-    const replyMessageId = getReplyMessageIdFromMessage(context.message);
-    if (replyMessageId === null) {
-      return;
-    }
-    const explainImageTasksWithoutSegments = tasks.filter(
-      (t) =>
-        t.type === 'explainImage' &&
-        (!t.parameters?.imageSegments || (t.parameters.imageSegments as unknown[]).length === 0),
-    );
-    if (explainImageTasksWithoutSegments.length === 0) {
-      return;
-    }
-    let referencedMessage: Awaited<ReturnType<MessageAPI['getMessageFromContext']>> | null = null;
-    try {
-      referencedMessage = await this.messageAPI.getMessageFromContext(
-        replyMessageId,
-        context.message,
-        this.databaseManager,
-      );
-    } catch (err) {
-      logger.debug(
-        `[TaskSystem] Could not get referenced message for explainImage | messageSeq=${replyMessageId} | error=${err instanceof Error ? err.message : String(err)}`,
-      );
-      return;
-    }
-    const refImageSegments = referencedMessage.segments?.filter((seg: { type: string }) => seg.type === 'image') ?? [];
-    if (refImageSegments.length === 0) {
-      return;
-    }
-    for (const task of explainImageTasksWithoutSegments) {
-      task.parameters = { ...task.parameters, imageSegments: refImageSegments };
-    }
-    logger.info(
-      `[TaskSystem] Injected ${refImageSegments.length} image segment(s) into explainImage from replied message | messageSeq=${replyMessageId}`,
-    );
   }
 
   /** Execute the default reply task when no other tasks were resolved. */
@@ -336,8 +266,6 @@ export class TaskSystem implements System {
     if (tasks.length === 0) {
       return new Map();
     }
-    this.injectExplainImageFromCurrentMessage(tasks, context);
-    await this.injectImageSegmentsFromReplyIntoExplainImageTasks(tasks, context);
     logger.info(`[TaskSystem] analyzeAndExecuteTasks: executing ${tasks.length} task(s)`);
     return await this.executeAllTasks(tasks, context);
   }

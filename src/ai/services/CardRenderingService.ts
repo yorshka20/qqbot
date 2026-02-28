@@ -4,7 +4,7 @@ import { logger } from '@/utils/logger';
 import type { AIManager } from '../AIManager';
 import type { AIProvider } from '../base/AIProvider';
 import { CardRenderer } from '../utils/CardRenderer';
-import { parseCardData, type CardData } from '../utils/cardTypes';
+import { type CardData, parseCardData } from '../utils/cardTypes';
 
 /**
  * Card Rendering Service
@@ -12,7 +12,7 @@ import { parseCardData, type CardData } from '../utils/cardTypes';
  */
 export class CardRenderingService {
   private cardRenderer: CardRenderer;
-  private static readonly CARD_RENDERING_THRESHOLD = 200; // characters
+  private static readonly CARD_RENDERING_THRESHOLD = 300; // characters
 
   constructor(private aiManager: AIManager) {
     this.cardRenderer = CardRenderer.getInstance();

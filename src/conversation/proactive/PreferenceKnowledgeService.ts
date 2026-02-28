@@ -2,9 +2,8 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
-import { buildSummariesFromChunks, filterAndRefineSearchResults } from '@/ai/utils/searchResultsFilterRefine';
 import type { RetrievalService, SearchResult } from '@/retrieval';
-import { FILTER_REFINE_MAX_ROUNDS, FILTER_SUPPLEMENT_MAX_RESULTS } from '@/retrieval';
+import { buildSummariesFromStringChunks, FILTER_REFINE_MAX_ROUNDS, FILTER_SUPPLEMENT_MAX_RESULTS } from '@/retrieval';
 import { extractEntriesFromChunks } from '@/retrieval/fetch';
 import { logger } from '@/utils/logger';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
@@ -105,11 +104,11 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
     const topic = queryOrTopic.trim() || '当前话题';
     let refinedChunks: string[] = chunks;
 
-    if (chunks.length > 0 && this.llmService && this.promptManager) {
+    if (chunks.length > 0 && this.llmService) {
       let currentChunks = chunks;
       for (let round = 1; round <= FILTER_REFINE_MAX_ROUNDS; round++) {
-        const resultSummaries = buildSummariesFromChunks(currentChunks);
-        const result = await filterAndRefineSearchResults(this.llmService, this.promptManager, {
+        const resultSummaries = buildSummariesFromStringChunks(currentChunks);
+        const result = await this.retrievalService.filterAndRefineSearchResults(this.llmService, {
           topic,
           resultSummaries,
           round,

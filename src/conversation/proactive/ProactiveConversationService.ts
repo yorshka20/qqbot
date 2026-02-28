@@ -2,6 +2,7 @@
 
 import { inject, injectable } from 'tsyringe';
 import type { AIService } from '@/ai/AIService';
+import type { VisionImage } from '@/ai/capabilities/types';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
 import { extractImagesFromSegmentsAsync } from '@/ai/utils/imageUtils';
@@ -221,7 +222,7 @@ export class ProactiveConversationService {
     const preferenceText = preferenceParts.length ? preferenceParts.join('\n\n') : '';
 
     const groupIdNum = parseInt(groupId, 10);
-    if (isNaN(groupIdNum)) {
+    if (Number.isNaN(groupIdNum)) {
       logger.warn(`[ProactiveConversationService] Invalid groupId: ${groupId}`);
       return;
     }
@@ -314,7 +315,7 @@ export class ProactiveConversationService {
       if (previousReplyPromise) {
         await previousReplyPromise;
       }
-      let resolveReplyDone: () => void;
+      let resolveReplyDone: () => void = () => {};
       const replyDonePromise = new Promise<void>((r) => {
         resolveReplyDone = r;
       });
@@ -339,10 +340,11 @@ export class ProactiveConversationService {
           topicOrQuery,
           result.searchQueries,
           triggerUserId,
+          filteredEntries,
         );
       } finally {
         this.replyInProgressByThread.delete(threadId);
-        resolveReplyDone!();
+        resolveReplyDone();
       }
       this.scheduleThreadCompression(groupId);
       return;
@@ -452,35 +454,35 @@ export class ProactiveConversationService {
   }
 
   /**
-   * If the last user message in filteredEntries had images, load message from DB, extract images, run explain and return description text.
-   * Used to inject imageDescription into proactive reply (same explain-image flow as normal reply).
+   * If the last user message in filteredEntries had images, load from DB and return VisionImage[] for vision reply.
+   * When non-empty, caller sets injectContext.messageImages so generateProactiveReply uses vision provider.
    */
-  private async getImageDescriptionFromLastUserMessage(
+  private async getImagesFromLastUserMessage(
     filteredEntries: ConversationMessageEntry[],
-    groupId: string,
-  ): Promise<string> {
+    _groupId: string,
+  ): Promise<VisionImage[]> {
     const adapter = this.databaseManager?.getAdapter();
     if (!adapter) {
-      return '';
+      return [];
     }
     const lastUserEntry = [...filteredEntries].reverse().find((e) => !e.isBotReply);
     if (!lastUserEntry?.messageId) {
-      return '';
+      return [];
     }
     try {
       const messages = adapter.getModel('messages');
       const dbMessage = await messages.findOne({ id: lastUserEntry.messageId } as Partial<Message>);
       if (!dbMessage?.rawContent) {
-        return '';
+        return [];
       }
       let segments: Array<{ type: string; data?: unknown }>;
       try {
         segments = JSON.parse(dbMessage.rawContent) as Array<{ type: string; data?: unknown }>;
       } catch {
-        return '';
+        return [];
       }
       if (!Array.isArray(segments) || !segments.some((s) => s?.type === 'image')) {
-        return '';
+        return [];
       }
       const protocol = dbMessage.protocol as ProtocolName;
       const minimalContext: NormalizedMessageEvent = {
@@ -495,23 +497,13 @@ export class ProactiveConversationService {
         segments: [],
       };
       const getResourceUrl = (resourceId: string) => this.messageAPI.getResourceTempUrl(resourceId, minimalContext);
-      const images = await extractImagesFromSegmentsAsync(segments as MessageSegment[], getResourceUrl);
-      if (!images.length) {
-        return '';
-      }
-      // Explain each image individually and combine
-      const descriptions: string[] = [];
-      for (const image of images) {
-        const desc = await this.aiService.explainImage(image, lastUserEntry.content || '（无）', groupId);
-        if (desc) descriptions.push(desc);
-      }
-      return images.length > 1 ? descriptions.map((d, i) => `图${i + 1}: ${d}`).join('\n\n') : (descriptions[0] ?? '');
+      return await extractImagesFromSegmentsAsync(segments as MessageSegment[], getResourceUrl);
     } catch (error) {
       logger.warn(
-        '[ProactiveConversationService] getImageDescriptionFromLastUserMessage failed:',
+        '[ProactiveConversationService] getImagesFromLastUserMessage failed:',
         error instanceof Error ? error.message : String(error),
       );
-      return '';
+      return [];
     }
   }
 
@@ -598,14 +590,10 @@ export class ProactiveConversationService {
       triggerUserId,
       this.fetchProgressNotifier,
     );
-    // When the last user message had images, explain them and inject as imageDescription (same flow as normal reply).
-    const imageDescription = await this.getImageDescriptionFromLastUserMessage(filteredEntries, groupId);
-    if (imageDescription) {
-      injectContext.imageDescription = imageDescription;
+    const messageImages = await this.getImagesFromLastUserMessage(filteredEntries, groupId);
+    if (messageImages.length > 0) {
+      injectContext.messageImages = messageImages;
     }
-    // Task analysis: scan the last user message for task triggers (search, future task types, etc.).
-    // Image handling is done above via getImageDescriptionFromLastUserMessage; the synthetic context
-    // has no segments so the explainImage task will not trigger here.
     const lastUserEntry = [...filteredEntries].reverse().find((e) => !e.isBotReply);
     const lastUserText = lastUserEntry?.content || topicOrQuery;
     await this.runTaskAnalysisForProactive(injectContext, lastUserText, groupId, groupIdNum);
@@ -630,6 +618,7 @@ export class ProactiveConversationService {
     topicOrQuery: string,
     searchQueries?: string[],
     triggerUserId?: string,
+    filteredEntries?: ConversationMessageEntry[],
   ): Promise<void> {
     const thread = this.threadService.getThread(threadId);
     if (!thread) return;
@@ -642,11 +631,18 @@ export class ProactiveConversationService {
       triggerUserId,
       this.fetchProgressNotifier,
     );
+    if (filteredEntries?.length) {
+      const messageImages = await this.getImagesFromLastUserMessage(filteredEntries, thread.groupId);
+      if (messageImages.length > 0) {
+        injectContext.messageImages = messageImages;
+      }
+    }
     // Task analysis: scan topicOrQuery for task triggers (search, future task types, etc.).
     await this.runTaskAnalysisForProactive(injectContext, topicOrQuery, thread.groupId, groupIdNum);
 
     const replyText = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
     if (!replyText) return;
+
     await this.sendGroupMessage(groupIdNum, replyText);
     this.threadService.appendMessage(threadId, {
       userId: 0,

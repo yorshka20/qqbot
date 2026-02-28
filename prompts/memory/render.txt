@@ -1,0 +1,5 @@
+## 关于本群的记忆
+{{groupMemoryText}}
+
+## 关于当前用户的记忆
+{{userMemoryText}}
