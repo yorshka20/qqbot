@@ -16,6 +16,7 @@ import type { Message } from '@/database/models/types';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { MemoryService } from '@/memory/MemoryService';
 import type { MessageSegment } from '@/message/types';
+import type { FetchProgressNotifier } from '@/retrieval/fetch';
 import type { RetrievalService } from '@/retrieval';
 import { logger } from '@/utils/logger';
 import type { TaskSystem } from '../systems/TaskSystem';
@@ -583,6 +584,7 @@ export class ProactiveConversationService {
     triggerUserId?: string,
   ): Promise<void> {
     const thread = this.threadService.create(groupId, preferenceKey, filteredEntries);
+    const fetchProgressNotifier = this.buildFetchProgressNotifierForGroup(groupIdNum);
     const injectContext = await this.replyContextBuilder.buildForNewThread(
       groupId,
       preferenceKey,
@@ -590,6 +592,7 @@ export class ProactiveConversationService {
       filteredEntries,
       searchQueries,
       triggerUserId,
+      fetchProgressNotifier,
     );
     // When the last user message had images, explain them and inject as imageDescription (same flow as normal reply).
     const imageDescription = await this.getImageDescriptionFromLastUserMessage(filteredEntries, groupId);
@@ -626,6 +629,7 @@ export class ProactiveConversationService {
   ): Promise<void> {
     const thread = this.threadService.getThread(threadId);
     if (!thread) return;
+    const fetchProgressNotifier = this.buildFetchProgressNotifierForGroup(groupIdNum);
     const injectContext = await this.replyContextBuilder.buildForExistingThread(
       threadId,
       thread,
@@ -633,6 +637,7 @@ export class ProactiveConversationService {
       topicOrQuery,
       searchQueries,
       triggerUserId,
+      fetchProgressNotifier,
     );
     // Task analysis: scan topicOrQuery for task triggers (search, future task types, etc.).
     await this.runTaskAnalysisForProactive(injectContext, topicOrQuery, thread.groupId, groupIdNum);
@@ -648,7 +653,13 @@ export class ProactiveConversationService {
   }
 
   private async sendGroupMessage(groupId: number, text: string): Promise<void> {
-    const syntheticContext: NormalizedMessageEvent = {
+    const syntheticContext = this.buildSyntheticGroupContext(groupId);
+    await this.messageAPI.sendFromContext(text, syntheticContext, 10000);
+    logger.info(`[ProactiveConversationService] Sent proactive message | groupId=${groupId}`);
+  }
+
+  private buildSyntheticGroupContext(groupId: number): NormalizedMessageEvent {
+    return {
       id: '',
       type: 'message',
       timestamp: Date.now(),
@@ -659,7 +670,25 @@ export class ProactiveConversationService {
       message: '',
       segments: [],
     };
-    await this.messageAPI.sendFromContext(text, syntheticContext, 10000);
-    logger.info(`[ProactiveConversationService] Sent proactive message | groupId=${groupId}`);
+  }
+
+  /** Build FetchProgressNotifier for "正在查询：\n- title1\n- title2" UX when fetching full-page content during retrieve(). */
+  private buildFetchProgressNotifierForGroup(groupIdNum: number): FetchProgressNotifier {
+    const messageAPI = this.messageAPI;
+    const syntheticContext = this.buildSyntheticGroupContext(groupIdNum);
+    return {
+      onFetchingUrls(titles) {
+        if (titles.length === 0) {
+          return;
+        }
+        const lines = titles.map((t) => `- ${t}`);
+        const text = `正在查询：\n${lines.join('\n')}`;
+        messageAPI.sendFromContext(text, syntheticContext, 5000).catch((err: unknown) => {
+          logger.debug(
+            `[ProactiveConversationService] Failed to send fetch hint: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+      },
+    };
   }
 }

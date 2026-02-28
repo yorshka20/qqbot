@@ -410,7 +410,17 @@
       "autoTrigger": true, // Automatically trigger search when needed
       "triggerStrategy": "llm", // "llm" (use LLM to judge) | "keywords" | "none"
       "maxResults": 5, // Maximum number of search results
-      "language": "all" // Default language for search results
+      "language": "all", // Default language for search results
+      // Optional: full-page fetch after filter-refine (fetch HTML for top 2-3 results, extract article/video description)
+      "fetch": {
+        "fetchFullPage": false, // Set true to fetch full page content for top results
+        "maxUrlsToFetch": 3, // Max URLs to fetch (article or video description)
+        "maxCharsPerPage": 6000, // Max characters per article page (proxy for tokens)
+        "maxCharsPerVideoDescription": 2000, // Max characters per video description
+        "fetchTimeoutMs": 10000, // Timeout in ms for each fetch
+        // "skipFetchPatterns": ["\\.pdf$", "file://"], // URL patterns to skip fetch (regex)
+        // "videoDescriptionSelectors": { "www.bilibili.com": ".desc, .video-desc" } // Host -> CSS selector for video description
+      }
     }
   },
   // RAG configuration (optional) - vector retrieval for conversation history

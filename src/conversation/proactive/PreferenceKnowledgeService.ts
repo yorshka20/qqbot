@@ -5,6 +5,8 @@ import type { LLMService } from '@/ai/services/LLMService';
 import { buildSummariesFromChunks, filterAndRefineSearchResults } from '@/ai/utils/searchResultsFilterRefine';
 import type { RetrievalService, SearchResult } from '@/retrieval';
 import { FILTER_REFINE_MAX_ROUNDS, FILTER_SUPPLEMENT_MAX_RESULTS } from '@/retrieval';
+import type { FetchProgressNotifier } from '@/retrieval/fetch';
+import { extractEntriesFromChunks } from '@/retrieval/fetch';
 import { logger } from '@/utils/logger';
 
 export interface PreferenceKnowledgeRetrieveOptions {
@@ -12,6 +14,8 @@ export interface PreferenceKnowledgeRetrieveOptions {
   limit?: number;
   /** Pre-decided search queries from analysis stage. When non-empty, execute these only (no LLM in retrieve). Empty array = no search. */
   searchQueries?: string[];
+  /** Optional notifier for fetch progress (e.g. send "正在查资料：《title》" to user). */
+  fetchProgressNotifier?: FetchProgressNotifier;
 }
 
 /**
@@ -50,7 +54,7 @@ export class DefaultPreferenceKnowledgeService implements PreferenceKnowledgeSer
 
 /**
  * Format search results into chunk strings (title + snippet + url).
- * Snippets are kept complete (no truncation) so reference knowledge is fully presented.
+ * We do not truncate; snippet is passed through as returned by SearXNG (ellipses in text come from the search engine).
  */
 function resultsToChunks(results: SearchResult[]): string[] {
   return results.map((r) => {
@@ -72,7 +76,7 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
   ) {}
 
   async retrieve(
-    preferenceKey: string,
+    _preferenceKey: string,
     queryOrTopic: string,
     options?: PreferenceKnowledgeRetrieveOptions,
   ): Promise<string[]> {
@@ -88,7 +92,7 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
       return [];
     }
 
-    let chunks = await this.executeQueries(preferenceKey, searchQueries, limit);
+    let chunks = await this.executeQueries(searchQueries, limit);
 
     if (chunks.length > 0 && this.llmService && this.promptManager) {
       const extra = await this.checkSufficiencyAndMaybeSupplement(queryOrTopic.trim() || '当前话题', chunks, limit);
@@ -113,18 +117,29 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
         });
 
         if (result.done) {
-          refinedChunks = result.refinedText ? [result.refinedText] : [];
-          logger.debug(
-            `[SearXNGPreferenceKnowledgeService] Filter-refine round ${round}: DONE, refined length=${result.refinedText.length}`,
-          );
+          // Fall back to currentChunks when refinedText is empty to avoid discarding retrieved data
+          refinedChunks = result.refinedText ? [result.refinedText] : currentChunks;
+
+          // Full-page fetch for top 2-3 entries (article or video description).
+          const fetchService = this.retrievalService.getPageContentFetchService();
+          if (fetchService.isEnabled()) {
+            const entries = extractEntriesFromChunks(currentChunks);
+            const toFetch = entries.slice(0, 5).map((e) => ({
+              url: e.url,
+              title: e.title,
+              snippet: e.snippet,
+            }));
+            const fetched = await fetchService.fetchPages(toFetch, options?.fetchProgressNotifier);
+            if (fetched.length > 0) {
+              const fetchedSection = `## 补充全文\n\n${fetched.map((e) => `### ${e.title}\n${e.text}`).join('\n\n')}`;
+              refinedChunks = [...refinedChunks, fetchedSection];
+            }
+          }
           break;
         }
 
         if (round === FILTER_REFINE_MAX_ROUNDS) {
           refinedChunks = currentChunks;
-          logger.debug(
-            `[SearXNGPreferenceKnowledgeService] Filter-refine round ${round}: MORE but max rounds reached, using current chunks`,
-          );
           break;
         }
 
@@ -138,20 +153,14 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
             currentChunks = [...currentChunks, ...resultsToChunks(results)];
           } catch (err) {
             logger.warn(
-              `[SearXNGPreferenceKnowledgeService] Filter-refine supplement search failed for "${q.slice(0, 50)}...": ${err instanceof Error ? err.message : String(err)}`,
+              `[SearXNGPreferenceKnowledgeService] filter-refine supplement search failed for "${q}": ${err instanceof Error ? err.message : String(err)}`,
             );
           }
         }
-        logger.debug(
-          `[SearXNGPreferenceKnowledgeService] Filter-refine round ${round}: MORE, ran ${result.queries.length} queries, total chunks=${currentChunks.length}`,
-        );
       }
     }
 
     const capped = refinedChunks.slice(0, limit);
-    logger.debug(
-      `[SearXNGPreferenceKnowledgeService] Retrieved ${capped.length} chunks for preferenceKey=${preferenceKey}`,
-    );
     return capped;
   }
 
@@ -197,9 +206,6 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
       return [];
     }
 
-    logger.debug(
-      `[SearXNGPreferenceKnowledgeService] Sufficiency check: supplementing with ${supplementQueries.length} query/queries`,
-    );
     const room = Math.max(0, limit - chunks.length);
     const perQueryLimit = Math.max(2, Math.ceil(room / supplementQueries.length));
     const extraChunks: string[] = [];
@@ -217,7 +223,7 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
   }
 
   /** Execute a list of search queries once and return combined chunks (no LLM). */
-  private async executeQueries(preferenceKey: string, queries: string[], limit: number): Promise<string[]> {
+  private async executeQueries(queries: string[], limit: number): Promise<string[]> {
     const allChunks: string[] = [];
     const perQueryLimit = Math.max(2, Math.ceil(limit / queries.length));
     for (const query of queries) {
@@ -230,9 +236,6 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
         );
       }
     }
-    logger.debug(
-      `[SearXNGPreferenceKnowledgeService] First pass: ${allChunks.length} chunks (analysis-decided queries) for preferenceKey=${preferenceKey}`,
-    );
     return allChunks;
   }
 }

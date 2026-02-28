@@ -5,7 +5,7 @@ import { formatRAGConversationContext } from '@/ai/utils/formatRAGConversationCo
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
 import type { MemoryService } from '@/memory/MemoryService';
-import type { RetrievalService } from '@/retrieval';
+import type { FetchProgressNotifier, RetrievalService } from '@/retrieval';
 import { QdrantClient } from '@/retrieval';
 import type { ProactiveThread, ThreadService } from '../thread/ThreadService';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
@@ -43,10 +43,15 @@ export class ProactiveReplyContextBuilder {
   }
 
   /** Retrieved RAG section (## 参考知识 + chunks). */
-  async getRetrievedContext(preferenceKey: string, topicOrQuery: string, searchQueries?: string[]): Promise<string> {
+  async getRetrievedContext(
+    preferenceKey: string,
+    topicOrQuery: string,
+    options?: { searchQueries?: string[]; fetchProgressNotifier?: FetchProgressNotifier },
+  ): Promise<string> {
     const chunks = await this.deps.preferenceKnowledge.retrieve(preferenceKey, topicOrQuery, {
       limit: this.deps.searchLimit,
-      searchQueries,
+      searchQueries: options?.searchQueries,
+      fetchProgressNotifier: options?.fetchProgressNotifier,
     });
     return chunks.length ? `## 参考知识\n\n${chunks.join('\n\n')}` : '';
   }
@@ -126,11 +131,15 @@ export class ProactiveReplyContextBuilder {
     topicOrQuery: string,
     searchQueries?: string[],
     triggerUserId?: string,
+    fetchProgressNotifier?: FetchProgressNotifier,
   ): Promise<ProactiveReplyInjectContext> {
     const threadContext = this.getThreadContextFormatted(threadId);
     const preferenceText = this.getPreferenceText(preferenceKey);
     const memoryContext = this.getMemoryContext(thread.groupId, triggerUserId);
-    const retrievedContext = await this.getRetrievedContext(preferenceKey, topicOrQuery, searchQueries);
+    const retrievedContext = await this.getRetrievedContext(preferenceKey, topicOrQuery, {
+      searchQueries,
+      fetchProgressNotifier,
+    });
     // Use trigger user message for RAG (same as reply flow): last user message in thread, fallback to topic
     const lastUserMsg = [...thread.messages].reverse().find((m) => !m.isBotReply);
     const ragQuery = lastUserMsg?.content?.trim() || topicOrQuery;
@@ -161,11 +170,15 @@ export class ProactiveReplyContextBuilder {
     filteredEntries: ConversationMessageEntry[],
     searchQueries?: string[],
     triggerUserId?: string,
+    fetchProgressNotifier?: FetchProgressNotifier,
   ): Promise<ProactiveReplyInjectContext> {
     const threadContext = this.getThreadContextFromEntries(filteredEntries);
     const preferenceText = this.getPreferenceText(preferenceKey);
     const memoryContext = this.getMemoryContext(groupId, triggerUserId);
-    const retrievedContext = await this.getRetrievedContext(preferenceKey, topicOrQuery, searchQueries);
+    const retrievedContext = await this.getRetrievedContext(preferenceKey, topicOrQuery, {
+      searchQueries,
+      fetchProgressNotifier,
+    });
     // Use trigger user message for RAG (same as reply flow): last user message in entries, fallback to topic
     const lastUserEntry = [...filteredEntries].reverse().find((e) => !e.isBotReply);
     const ragQuery = lastUserEntry?.content?.trim() || topicOrQuery;

@@ -1,5 +1,13 @@
 // Retrieval service exports
 
+export type {
+  FetchEntry,
+  FetchingUrlPayload,
+  FetchPageOptions,
+  FetchProgressNotifier,
+  PageContentFetchService,
+} from './fetch';
+export { extractEntriesFromChunks, extractUrlsFromChunks } from './fetch';
 export { RetrievalService } from './RetrievalService';
 export { OllamaEmbedClient } from './rag/OllamaEmbedClient';
 export { QdrantClient } from './rag/QdrantClient';

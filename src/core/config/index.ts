@@ -41,6 +41,7 @@ export type {
   MCPServerConfig,
   ProxyConfig,
   SearchConfig,
+  SearchFetchConfig,
   SearchMode,
   SearXNGConfig,
   TriggerStrategy,

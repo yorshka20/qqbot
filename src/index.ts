@@ -6,6 +6,7 @@ import { PromptInitializer } from './ai/prompt/PromptInitializer';
 import { APIClient } from './api/APIClient';
 import { ConversationInitializer } from './conversation/ConversationInitializer';
 import { Bot } from './core/Bot';
+import { HealthCheckManager } from './core/health';
 import { EventInitializer } from './events/EventInitializer';
 import { MCPInitializer } from './mcp/MCPInitializer';
 import { PluginInitializer } from './plugins/PluginInitializer';
@@ -34,10 +35,12 @@ async function main() {
     // Initialize MCP system (if enabled)
     const mcpSystem = MCPInitializer.initialize(config);
 
+    // Create HealthCheckManager first so it can be injected into RetrievalService / SearchService
+    const healthCheckManager = new HealthCheckManager();
     // Initialize retrieval service (always create; search enabled when mcp.enabled, RAG when rag.enabled)
     const mcpConfig = config.getMCPConfig();
     const ragConfig = config.getRAGConfig();
-    const retrievalService = new RetrievalService(mcpConfig, ragConfig);
+    const retrievalService = new RetrievalService(mcpConfig, ragConfig, healthCheckManager);
     if (ragConfig?.enabled) {
       logger.info(
         `[Main] RAG enabled | ollama=${ragConfig.ollama?.url} model=${ragConfig.ollama?.model} qdrant=${ragConfig.qdrant?.url}`,
@@ -52,7 +55,12 @@ async function main() {
     }
 
     // Initialize conversation components
-    const conversationComponents = await ConversationInitializer.initialize(config, apiClient, retrievalService);
+    const conversationComponents = await ConversationInitializer.initialize(
+      config,
+      apiClient,
+      retrievalService,
+      healthCheckManager,
+    );
 
     // Register RetrievalService health check (after HealthCheckManager is created)
     retrievalService.registerHealthCheck();

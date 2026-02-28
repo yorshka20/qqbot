@@ -47,7 +47,7 @@ export function parseFilterRefineResponse(responseText: string): FilterRefineRes
     return { done: true, refinedText: refinedText || '' };
   }
 
-  if (upper.startsWith('MORE:')) {
+  if (upper.startsWith('MORE:') || upper.startsWith('MORE：')) {
     const afterMore = trimmed.slice(5).trim();
     const queries = afterMore
       .split(/[\n|]/)
@@ -105,6 +105,6 @@ export async function filterAndRefineSearchResults(
     return parsed;
   }
 
-  logger.warn('[searchResultsFilterRefine] Could not parse DONE/MORE from response, using summaries as refined text');
+  logger.warn('[SearchFilterRefine] Could not parse DONE/MORE from response, using summaries as refined text');
   return { done: true, refinedText: resultSummaries };
 }

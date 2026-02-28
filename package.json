@@ -33,9 +33,12 @@
   "dependencies": {
     "@google/genai": "^1.36.0",
     "@modelcontextprotocol/sdk": "^1.25.2",
+    "@mozilla/readability": "^0.6.0",
     "@saltify/milky-types": "^1.1.0",
+    "@types/jsdom": "^28.0.0",
     "adm-zip": "^0.5.16",
     "better-sqlite3": "^12.6.0",
+    "jsdom": "^25.0.0",
     "jsonc-parser": "^3.3.1",
     "mongodb": "^7.0.0",
     "node-cron": "^3.0.3",

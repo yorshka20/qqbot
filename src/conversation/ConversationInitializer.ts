@@ -22,7 +22,7 @@ import { ConversationHistoryService, SessionHistoryStore } from '@/conversation/
 import type { AIConfig, Config } from '@/core/config';
 import { type DIContainer, getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { HealthCheckManager } from '@/core/health';
+import type { HealthCheckManager } from '@/core/health';
 import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { type SystemContext, SystemRegistry } from '@/core/system';
 import { DatabaseManager } from '@/database/DatabaseManager';
@@ -98,6 +98,7 @@ export class ConversationInitializer {
     config: Config,
     apiClient: APIClient,
     retrievalService: RetrievalService,
+    healthCheckManager: HealthCheckManager,
   ): Promise<ConversationComponents> {
     this.container = getContainer();
     // Phase 1: Infrastructure Setup
@@ -116,8 +117,7 @@ export class ConversationInitializer {
     const memoryService = new MemoryService({ memoryDir });
     this.container.registerInstance(DITokens.MEMORY_SERVICE, memoryService, { logRegistration: false });
 
-    // Phase 2.1: Create HealthCheckManager early for service health monitoring
-    const healthCheckManager = new HealthCheckManager();
+    // Phase 2.1: Register HealthCheckManager (created and injected by caller, e.g. index.ts)
     serviceRegistry.registerHealthCheckManager(healthCheckManager);
 
     // Phase 2.5: Initialize Conversation Config Services (required before CommandManager)
@@ -185,6 +185,7 @@ export class ConversationInitializer {
       providerSelector,
       retrievalService,
       memoryService,
+      messageAPI,
     );
     serviceRegistry.registerAIServiceCapabilities(aiService);
 

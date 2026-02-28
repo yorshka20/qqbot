@@ -1,5 +1,6 @@
 // Reply Generation Service - provides AI reply generation capabilities
 
+import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { replaceReply, replaceReplyWithSegments, setReply, setReplyWithSegments } from '@/context/HookContextHelpers';
 import type { ConversationHistoryService } from '@/conversation/history';
 import type { HookManager } from '@/hooks/HookManager';
@@ -13,6 +14,7 @@ import { logger } from '@/utils/logger';
 import type { VisionImage } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
 import { formatRAGConversationContext } from '../utils/formatRAGConversationContext';
+import { MessageSendFetchProgressNotifier } from '../utils/MessageSendFetchProgressNotifier';
 import { parseSearchDecision as parseSearchDecisionShared } from '../utils/searchDecisionParser';
 import { buildSearchResultSummaries, filterAndRefineSearchResults } from '../utils/searchResultsFilterRefine';
 import { CardRenderingService } from './CardRenderingService';
@@ -29,6 +31,9 @@ export class ReplyGenerationService {
   private static readonly RAG_LIMIT = 5;
   private static readonly RAG_MIN_SCORE = 0.5;
 
+  /** Single FetchProgressNotifier instance for reply flow; setMessageEvent() before each search. */
+  private readonly fetchProgressNotifier: MessageSendFetchProgressNotifier;
+
   constructor(
     private llmService: LLMService,
     private visionService: VisionService,
@@ -38,7 +43,10 @@ export class ReplyGenerationService {
     private conversationHistoryService: ConversationHistoryService,
     private retrievalService: RetrievalService,
     private memoryService: MemoryService,
-  ) {}
+    messageAPI: MessageAPI,
+  ) {
+    this.fetchProgressNotifier = new MessageSendFetchProgressNotifier(messageAPI);
+  }
 
   /**
    * Build RAG-retrieved conversation section for prompt injection. Returns empty string when RAG disabled or no hits.
@@ -146,10 +154,12 @@ export class ReplyGenerationService {
         logger.debug('[ReplyGenerationService] Using provided search results from caller');
         searchResultsText = providedSearchResults;
       } else if (this.retrievalService) {
+        this.fetchProgressNotifier.setMessageEvent(context.message);
         searchResultsText = await this.retrievalService.performSmartSearchRefined(
           context.message.message,
           this.llmService,
           sessionId,
+          this.fetchProgressNotifier,
         );
       }
 
@@ -566,6 +576,9 @@ export class ReplyGenerationService {
     // Filter-refine: if we have raw results, run LLM filter and return refined text for reply
     if (accumulatedResults.length > 0) {
       const topic = userMessage.trim() || '当前话题';
+      logger.info(
+        `[ReplyGenerationService] performRecursiveSearch: running filter-refine, topic="${topic}", accumulatedResultsCount=${accumulatedResults.length}`,
+      );
       const resultSummaries = buildSearchResultSummaries(accumulatedResults);
       const filterResult = await filterAndRefineSearchResults(this.llmService, this.promptManager, {
         topic,

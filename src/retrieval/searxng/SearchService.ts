@@ -4,11 +4,10 @@ import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import { buildSearchResultSummaries, filterAndRefineSearchResults } from '@/ai/utils/searchResultsFilterRefine';
 import type { MCPConfig } from '@/core/config/mcp';
-import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import type { HealthCheckManager } from '@/core/health';
 import type { MCPManager } from '@/mcp';
 import { logger } from '@/utils/logger';
+import type { FetchProgressNotifier, PageContentFetchService } from '../fetch';
 import { SearXNGClient } from './SearXNGClient';
 import type { SearchOptions, SearchResult } from './types';
 
@@ -17,6 +16,13 @@ export const FILTER_REFINE_MAX_ROUNDS = 2;
 /** Max results per supplement search when filter returns MORE. */
 export const FILTER_SUPPLEMENT_MAX_RESULTS = 4;
 
+export interface SearchServiceOptions {
+  config?: MCPConfig;
+  promptManager: PromptManager;
+  healthCheckManager: HealthCheckManager;
+  pageContentFetchService: PageContentFetchService;
+}
+
 export class SearchService {
   private searxngClient: SearXNGClient | null = null;
   private mcpManager: MCPManager | null = null;
@@ -24,42 +30,32 @@ export class SearchService {
   private maxResults: number;
 
   private promptManager: PromptManager;
-  /** Resolved lazily so SearchService can be created before HealthCheckManager is registered. */
-  private _healthCheckManager: HealthCheckManager | null = null;
+  private healthCheckManager: HealthCheckManager;
+  private pageContentFetchService: PageContentFetchService;
 
-  constructor(config?: MCPConfig) {
+  constructor(options: SearchServiceOptions) {
+    const { config, promptManager, healthCheckManager, pageContentFetchService } = options;
     this.config = config || null;
     this.maxResults = config?.search.maxResults || 8;
+    this.promptManager = promptManager;
+    this.healthCheckManager = healthCheckManager;
+    this.pageContentFetchService = pageContentFetchService;
 
     if (config?.enabled && config.search.mode === 'direct') {
       this.searxngClient = new SearXNGClient(config.searxng);
       logger.info('[SearchService] Initialized in Direct mode');
     }
-
-    const container = getContainer();
-    this.promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
   }
 
-  /** Resolve HealthCheckManager on first use (after it is registered by ConversationInitializer). */
-  private getHealthCheckManager(): HealthCheckManager | null {
-    if (this._healthCheckManager !== null) {
-      return this._healthCheckManager;
-    }
-    const container = getContainer();
-    if (!container.isRegistered(DITokens.HEALTH_CHECK_MANAGER)) {
-      return null;
-    }
-    this._healthCheckManager = container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
-    return this._healthCheckManager;
+  getPageContentFetchService(): PageContentFetchService {
+    return this.pageContentFetchService;
   }
 
   registerHealthCheck(): void {
-    if (!this.searxngClient) return;
-
-    const healthCheckManager = this.getHealthCheckManager();
-    if (!healthCheckManager) return;
-
-    healthCheckManager.registerService(this.searxngClient, {
+    if (!this.searxngClient) {
+      return;
+    }
+    this.healthCheckManager.registerService(this.searxngClient, {
       cacheDuration: 60000,
       timeout: 2000,
       retries: 0,
@@ -95,8 +91,7 @@ export class SearchService {
           logger.warn('[SearchService] SearXNG client not initialized');
           return [];
         }
-        const healthCheckManager = this.getHealthCheckManager();
-        if (healthCheckManager && !(await healthCheckManager.isServiceHealthy('SearXNG'))) {
+        if (this.healthCheckManager && !(await this.healthCheckManager.isServiceHealthy('SearXNG'))) {
           logger.warn('[SearchService] SearXNG service is not available, skipping search');
           return [];
         }
@@ -110,8 +105,7 @@ export class SearchService {
         if (!this.mcpManager.hasTool(toolName)) {
           logger.warn(`[SearchService] Tool ${toolName} not found, falling back to direct mode`);
           if (this.searxngClient) {
-            const healthCheckManager = this.getHealthCheckManager();
-            if (healthCheckManager && !(await healthCheckManager.isServiceHealthy('SearXNG'))) {
+            if (this.healthCheckManager && !(await this.healthCheckManager.isServiceHealthy('SearXNG'))) {
               logger.warn('[SearchService] SearXNG service is not available, skipping search');
               return [];
             }
@@ -246,16 +240,29 @@ export class SearchService {
 
   /**
    * Smart search + filter-refine loop. Returns refined reference text for reply prompts (no inline data logic in reply flow).
+   * When filter-refine returns DONE, optionally fetches full page for top 2-3 results and appends "补充全文" section.
    */
-  async performSmartSearchRefined(userMessage: string, llmService: LLMService, sessionId?: string): Promise<string> {
+  async performSmartSearchRefined(
+    userMessage: string,
+    llmService: LLMService,
+    sessionId?: string,
+    fetchProgressNotifier?: FetchProgressNotifier,
+  ): Promise<string> {
     const { formattedText, results } = await this.performSmartSearchWithResults(userMessage, llmService, sessionId);
     if (results.length === 0) {
+      logger.info('[SearchService] performSmartSearchRefined: no results, skip filter-refine');
       return formattedText;
     }
     const topic = userMessage.trim() || '当前话题';
+    logger.info(
+      `[SearchService] performSmartSearchRefined: topic="${topic}", resultsCount=${results.length}, starting filter-refine loop`,
+    );
     let currentResults = results;
     let refinedText = formattedText;
     for (let round = 1; round <= FILTER_REFINE_MAX_ROUNDS; round++) {
+      logger.info(
+        `[SearchService] filter-refine round ${round}/${FILTER_REFINE_MAX_ROUNDS}, currentResultsCount=${currentResults.length}`,
+      );
       const resultSummaries = buildSearchResultSummaries(currentResults);
       const filterResult = await filterAndRefineSearchResults(llmService, this.promptManager, {
         topic,
@@ -265,20 +272,49 @@ export class SearchService {
       });
       if (filterResult.done) {
         refinedText = filterResult.refinedText || refinedText;
+        logger.info(
+          `[SearchService] filter-refine round ${round}: DONE, refinedText length=${refinedText.length}, full refinedText:\n${refinedText}`,
+        );
+
+        // Full-page fetch for top 2-3 results (article or video description).
+        const fetchService = this.getPageContentFetchService();
+        if (fetchService?.isEnabled()) {
+          const toFetch = currentResults.slice(0, 5).map((r) => ({
+            url: r.url,
+            title: r.title || '无标题',
+            snippet: (r.snippet || r.content || '').trim(),
+          }));
+          const fetched = await fetchService.fetchPages(toFetch, fetchProgressNotifier);
+          if (fetched.length > 0) {
+            const merged = fetched.map((e) => `### ${e.title}\n${e.text}`).join('\n\n');
+            refinedText += `\n\n## 补充全文\n\n${merged}`;
+            logger.info(
+              `[SearchService] performSmartSearchRefined: appended ${fetched.length} fetched pages to refinedText`,
+            );
+          }
+        }
         break;
       }
+      logger.info(
+        `[SearchService] filter-refine round ${round}: MORE, queries: ${JSON.stringify(filterResult.queries)}`,
+      );
       if (round === FILTER_REFINE_MAX_ROUNDS) {
+        logger.info('[SearchService] filter-refine: max rounds reached, using current refinedText');
         break;
       }
       for (const q of filterResult.queries) {
         try {
           const more = await this.search(q.trim(), { maxResults: FILTER_SUPPLEMENT_MAX_RESULTS });
           currentResults = [...currentResults, ...more];
+          logger.info(
+            `[SearchService] filter-refine supplement search query="${q}", got ${more.length} results, totalResults=${currentResults.length}`,
+          );
         } catch {
           // ignore per-query failure
         }
       }
     }
+    logger.info(`[SearchService] performSmartSearchRefined: final refinedText length=${refinedText.length}`);
     return refinedText;
   }
 

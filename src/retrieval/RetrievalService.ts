@@ -1,10 +1,15 @@
 // Retrieval service - unified facade for web search and vector RAG
 
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { MCPConfig } from '@/core/config/mcp';
 import type { RAGConfig } from '@/core/config/rag';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
+import type { HealthCheckManager } from '@/core/health';
 import type { MCPManager } from '@/mcp';
 import { logger } from '@/utils/logger';
+import { type FetchProgressNotifier, PageContentFetchService } from './fetch';
 import { RAGService } from './rag/RAGService';
 import type { RAGDocument, RAGSearchMultiOptions, RAGSearchOptions, RAGSearchResult } from './rag/types';
 import { SearchService } from './searxng/SearchService';
@@ -13,9 +18,24 @@ import type { SearchOptions, SearchResult } from './searxng/types';
 export class RetrievalService {
   private searchService: SearchService;
   private ragService: RAGService | null = null;
+  private readonly pageContentFetchService: PageContentFetchService;
 
-  constructor(mcpConfig?: MCPConfig, ragConfig?: RAGConfig) {
-    this.searchService = new SearchService(mcpConfig);
+  constructor(
+    mcpConfig: MCPConfig | undefined,
+    ragConfig: RAGConfig | undefined,
+    healthCheckManager: HealthCheckManager,
+  ) {
+    const promptManager = getContainer().resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+    this.pageContentFetchService = new PageContentFetchService({
+      config: mcpConfig?.search?.fetch ?? undefined,
+    });
+    this.searchService = new SearchService({
+      config: mcpConfig,
+      promptManager,
+      healthCheckManager,
+      pageContentFetchService: this.pageContentFetchService,
+    });
+
     if (ragConfig?.enabled) {
       this.ragService = new RAGService(ragConfig);
       logger.info('[RetrievalService] Initialized with search + RAG');
@@ -53,8 +73,17 @@ export class RetrievalService {
   }
 
   /** Smart search + filter-refine; returns refined text for reply. Prefer this over performSmartSearch in reply flow. */
-  async performSmartSearchRefined(userMessage: string, llmService: LLMService, sessionId?: string): Promise<string> {
-    return this.searchService.performSmartSearchRefined(userMessage, llmService, sessionId);
+  async performSmartSearchRefined(
+    userMessage: string,
+    llmService: LLMService,
+    sessionId?: string,
+    fetchProgressNotifier?: FetchProgressNotifier,
+  ): Promise<string> {
+    return this.searchService.performSmartSearchRefined(userMessage, llmService, sessionId, fetchProgressNotifier);
+  }
+
+  getPageContentFetchService(): PageContentFetchService {
+    return this.searchService.getPageContentFetchService();
   }
 
   async performSmartSearchWithResults(
