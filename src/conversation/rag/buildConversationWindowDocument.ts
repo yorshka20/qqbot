@@ -48,7 +48,8 @@ export interface ConversationWindowPayload {
   startTime: string;
   endTime: string;
   participants: number[];
-  rawMessages: Array<{ userId: number; text: string; timestamp: string }>;
+  /** Each message includes userId and nickname so payload can be matched to content (content uses nickname as speaker label). */
+  rawMessages: Array<{ userId: number; nickname?: string; text: string; timestamp: string }>;
 }
 
 /**
@@ -91,6 +92,7 @@ export function buildConversationWindowDocument(
   const participants = [...new Set(entries.map((e) => e.userId))];
   const rawMessages = entries.map((e) => ({
     userId: e.userId,
+    nickname: e.nickname,
     text: e.content,
     timestamp: (e.createdAt instanceof Date ? e.createdAt : new Date(e.createdAt)).toISOString(),
   }));

@@ -1,6 +1,7 @@
 // Proactive Reply Context Builder - one function per injection type; build methods only assemble
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
+import { formatRAGConversationContext } from '@/ai/utils/formatRAGConversationContext';
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
 import type { MemoryService } from '@/memory/MemoryService';
@@ -53,7 +54,7 @@ export class ProactiveReplyContextBuilder {
   /**
    * Conversation history RAG section (vector search over group Qdrant collection).
    * Callers pass the trigger user message (not the analyzed topic) so retrieval matches "history relevant to what the user just said";
-   * topic is a fallback when no user text is available. No truncation (limit 10).
+   * topic is a fallback when no user text is available. Limit 5 results, each with time and participants.
    */
   async getConversationRagSection(groupId: string, query: string): Promise<string> {
     if (!this.deps.retrievalService?.isRAGEnabled()) {
@@ -69,7 +70,7 @@ export class ProactiveReplyContextBuilder {
       Number(groupId),
       undefined,
     );
-    const limit = 10;
+    const limit = 5;
     const minScore = 0.5;
 
     try {
@@ -81,10 +82,7 @@ export class ProactiveReplyContextBuilder {
       if (hits.length === 0) {
         return '';
       }
-      const formatted = hits
-        .map((r) => r.content ?? '')
-        .filter(Boolean)
-        .join('\n\n');
+      const formatted = formatRAGConversationContext(hits);
       if (!formatted) {
         return '';
       }

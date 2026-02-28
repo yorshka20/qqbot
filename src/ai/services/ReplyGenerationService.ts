@@ -13,6 +13,7 @@ import { logger } from '@/utils/logger';
 import type { VisionImage } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
 import { parseSearchDecision as parseSearchDecisionShared } from '../utils/searchDecisionParser';
+import { formatRAGConversationContext } from '../utils/formatRAGConversationContext';
 import { CardRenderingService } from './CardRenderingService';
 import type { LLMService } from './LLMService';
 import type { VisionService } from './VisionService';
@@ -24,7 +25,7 @@ import type { VisionService } from './VisionService';
 export class ReplyGenerationService {
   private readonly MAX_SEARCH_ITERATIONS = 5;
 
-  private static readonly RAG_LIMIT = 10;
+  private static readonly RAG_LIMIT = 5;
   private static readonly RAG_MIN_SCORE = 0.5;
 
   constructor(
@@ -40,7 +41,7 @@ export class ReplyGenerationService {
 
   /**
    * Build RAG-retrieved conversation section for prompt injection. Returns empty string when RAG disabled or no hits.
-   * Uses the user's full message for a single vector search (no query extraction). No truncation (limit 10 results).
+   * Uses the user's full message for a single vector search (no query extraction). Limit 5 results, each with time and participants.
    */
   private async getRetrievedConversationSection(context: HookContext): Promise<string> {
     if (!this.retrievalService?.isRAGEnabled()) {
@@ -69,10 +70,7 @@ export class ReplyGenerationService {
       if (hits.length === 0) {
         return '';
       }
-      const formatted = hits
-        .map((r) => r.content ?? '')
-        .filter(Boolean)
-        .join('\n\n');
+      const formatted = formatRAGConversationContext(hits);
       if (!formatted) {
         return '';
       }
