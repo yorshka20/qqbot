@@ -1,11 +1,11 @@
 // File Read Service - provides safe file/directory access within project root
 
-import { CardRenderer } from '@/ai/utils/CardRenderer';
-import type { InfoCardData } from '@/ai/utils/cardTypes';
-import { FileReadServiceConfig } from '@/core/config/bot';
-import { logger } from '@/utils/logger';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, extname, isAbsolute, normalize, relative, resolve } from 'node:path';
+import { CardRenderer } from '@/ai/utils/CardRenderer';
+import type { InfoCardData } from '@/ai/utils/cardTypes';
+import type { FileReadServiceConfig } from '@/core/config/bot';
+import { logger } from '@/utils/logger';
 
 /** Max file content length before truncation (chars) */
 const MAX_CONTENT_LENGTH = 15000;

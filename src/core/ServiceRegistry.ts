@@ -5,21 +5,21 @@ import type { AIManager } from '@/ai/AIManager';
 import type { AIService } from '@/ai/AIService';
 import type { APIClient } from '@/api/APIClient';
 import type { CommandManager } from '@/command/CommandManager';
-import { ConversationConfigService } from '@/config/ConversationConfigService';
-import { GlobalConfigManager } from '@/config/GlobalConfigManager';
+import type { ConversationConfigService } from '@/config/ConversationConfigService';
+import type { GlobalConfigManager } from '@/config/GlobalConfigManager';
 import type { ContextManager } from '@/context/ContextManager';
-import { ProactiveConversationService } from '@/conversation/proactive';
-import { ThreadService } from '@/conversation/thread';
+import type { ProactiveConversationService } from '@/conversation/proactive';
+import type { ThreadService } from '@/conversation/thread';
 import type { DatabaseManager } from '@/database/DatabaseManager';
+import type { FileReadService } from '@/file';
 import type { HookManager } from '@/hooks/HookManager';
-import type { FileReadService } from '@/services/FileReadService';
 import type { RetrievalService } from '@/retrieval';
 import type { TaskManager } from '@/task/TaskManager';
 import { logger } from '@/utils/logger';
 import type { Config } from './config';
 import { getContainer } from './DIContainer';
 import { DITokens } from './DITokens';
-import { HealthCheckManager } from './health';
+import type { HealthCheckManager } from './health';
 
 /**
  * Service Registry

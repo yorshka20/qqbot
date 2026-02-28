@@ -10,15 +10,15 @@
       "connection": {
         "url": "ws://192.168.50.97:3010/event",
         "apiUrl": "http://192.168.50.97:3010/api",
-        "accessToken": "your_access_token_here",
+        "accessToken": "your_access_token_here"
       },
       "reconnect": {
         "enabled": true,
         "maxRetries": 10,
         "backoff": "exponential",
         "initialDelay": 1000,
-        "maxDelay": 30000,
-      },
+        "maxDelay": 30000
+      }
     },
     {
       // OneBot11 protocol (fallback)
@@ -28,29 +28,29 @@
       "connection": {
         "url": "ws://192.168.50.97:3001/event",
         "apiUrl": "http://192.168.50.97:3001/api",
-        "accessToken": "your_access_token_here",
+        "accessToken": "your_access_token_here"
       },
       "reconnect": {
         "enabled": true,
         "maxRetries": 10,
         "backoff": "exponential",
         "initialDelay": 1000,
-        "maxDelay": 30000,
-      },
-    },
+        "maxDelay": 30000
+      }
+    }
   ],
   // API configuration
   "api": {
     "strategy": "priority",
-    "preferredProtocol": "milky",
+    "preferredProtocol": "milky"
   },
   // Event deduplication configuration
   "events": {
     "deduplication": {
       "enabled": true,
       "strategy": "first-received",
-      "window": 5000,
-    },
+      "window": 5000
+    }
   },
   // Bot configuration
   "bot": {
@@ -59,10 +59,7 @@
     "owner": "123123",
     // Bot admins: user IDs that have admin permission level
     // These users can adjust bot behavior and trigger special commands
-    "admins": [
-      "123123",
-      "123123"
-    ]
+    "admins": ["123123", "123123"]
   },
   // Static file server configuration (optional)
   "staticServer": {
@@ -73,21 +70,8 @@
   // File read service configuration (optional)
   "fileReadService": {
     "root": "./",
-    "filterPaths": [
-      "node_modules",
-      "output",
-      "data",
-      "logs",
-      "config.json"
-    ],
-    "filterExtensions": [
-      "jpg",
-      "jpeg",
-      "png",
-      "gif",
-      "bmp",
-      "webp"
-    ]
+    "filterPaths": ["node_modules", "output", "data", "logs", "config.json"],
+    "filterExtensions": ["jpg", "jpeg", "png", "gif", "bmp", "webp"]
   },
   // Plugin configuration
   // Plugins must be placed in src/plugins/ directory
@@ -139,31 +123,20 @@
               // Command name to execute
               "command": "cmd",
               // Command arguments
-              "args": [
-                "enable",
-                "t2i"
-              ]
+              "args": ["enable", "t2i"]
             },
             {
               "groupId": "123456789",
               "schedule": "0 22 * * *",
               "command": "cmd",
-              "args": [
-                "disable",
-                "t2i"
-              ]
+              "args": ["disable", "t2i"]
             },
             // Example: enable multiple commands at once
             {
               "groupId": "123456789",
               "schedule": "0 8 * * *",
               "command": "cmd",
-              "args": [
-                "enable",
-                "t2i",
-                "tts",
-                "help"
-              ]
+              "args": ["enable", "t2i", "tts", "help"]
             }
           ]
         }
@@ -204,9 +177,7 @@
         "name": "memory",
         "enabled": false,
         "config": {
-          "groups": [
-            "123456789"
-          ],
+          "groups": ["123456789"],
           "debounceMs": 120000,
           "extractProvider": "ollama"
         }
@@ -216,9 +187,7 @@
         "name": "memoryTrigger",
         "enabled": false,
         "config": {
-          "groups": [
-            "123456789"
-          ],
+          "groups": ["123456789"],
           "triggerName": "cygnus",
           "triggerKeywords": [],
           "coldStartOnTrigger": true,
@@ -230,8 +199,8 @@
       {
         "name": "gacha",
         "enabled": true
-      },
-    ],
+      }
+    ]
   },
   // Database configuration (required)
   // Choose one database type: "sqlite" or "mongodb"
@@ -241,7 +210,7 @@
     "sqlite": {
       // Path to SQLite database file (relative to project root or absolute path)
       "path": "data/bot.db"
-    },
+    }
     // MongoDB configuration (alternative, for production use)
     // "type": "mongodb",
     // "mongodb": {
@@ -305,7 +274,7 @@
         "defaultWidth": 832,
         "defaultHeight": 1216,
         "defaultGuidanceScale": 5.0
-      },
+      }
       // Gemini provider for text-to-image generation
       // Uses Google Gemini API (nano banana) for image generation
       // "gemini": {
@@ -417,7 +386,7 @@
         "maxUrlsToFetch": 3, // Max URLs to fetch (article or video description)
         "maxCharsPerPage": 6000, // Max characters per article page (proxy for tokens)
         "maxCharsPerVideoDescription": 2000, // Max characters per video description
-        "fetchTimeoutMs": 10000, // Timeout in ms for each fetch
+        "fetchTimeoutMs": 10000 // Timeout in ms for each fetch
         // "skipFetchPatterns": ["\\.pdf$", "file://"], // URL patterns to skip fetch (regex)
         // "videoDescriptionSelectors": { "www.bilibili.com": ".desc, .video-desc" } // Host -> CSS selector for video description
       }

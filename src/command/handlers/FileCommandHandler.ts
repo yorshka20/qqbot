@@ -1,9 +1,9 @@
 // File command handlers - ls and cat for project root file access
 
-import { DITokens } from '@/core/DITokens';
-import { MessageBuilder } from '@/message/MessageBuilder';
-import type { FileReadService } from '@/services/FileReadService';
 import { inject, injectable } from 'tsyringe';
+import { DITokens } from '@/core/DITokens';
+import type { FileReadService } from '@/file';
+import { MessageBuilder } from '@/message/MessageBuilder';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 
