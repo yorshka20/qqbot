@@ -1,11 +1,11 @@
 // OpenAI Provider implementation
 
-import { logger } from '@/utils/logger';
 import OpenAI from 'openai';
+import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
-import type { VisionCapability } from '../capabilities/VisionCapability';
 import type { CapabilityType, VisionImage } from '../capabilities/types';
+import type { VisionCapability } from '../capabilities/VisionCapability';
 import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
 
 export interface OpenAIProviderConfig {
@@ -118,7 +118,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
         model,
         messages,
         temperature,
-        max_tokens: maxTokens,
+        max_completion_tokens: maxTokens,
         top_p: options?.topP,
         frequency_penalty: options?.frequencyPenalty,
         presence_penalty: options?.presencePenalty,

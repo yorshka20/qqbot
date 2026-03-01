@@ -378,6 +378,8 @@ export class ReplyGenerationService {
     const genOptions = { temperature: 0.7, maxTokens: 2000, sessionId };
     const useVisionProvider = messageImages.length > 0;
 
+    logger.debug(`[ReplyGenerationService] generateReplyWithTaskResults`, { prompt });
+
     let response: AIGenerateResponse;
     if (useVisionProvider) {
       response = await this.visionService.generateWithVision(prompt, messageImages, genOptions);
