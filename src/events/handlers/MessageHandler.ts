@@ -18,22 +18,20 @@ export class MessageHandler {
       const role = event.sender?.role || 'member';
 
       logger.info(
-        `[Message] Group: ${groupName} (${event.groupId}) - ${senderName} (${event.userId}, ${role}): ${event.message}`,
+        `===========>[Message] Group: ${groupName} (${event.groupId}) - ${senderName} (${event.userId}, ${role}): ${event.message}`,
       );
     } else {
-      logger.info(`[Message] Private from ${event.userId}: ${event.message}`);
+      logger.info(`===========>[Message] Private from ${event.userId}: ${event.message}`);
     }
 
     // Process through conversation manager if available
-    if (this.conversationManager) {
-      try {
-        await this.conversationManager.processMessage(event);
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error('Unknown error');
-        logger.error('[MessageHandler] Error processing message:', err);
-      }
-    } else {
-      logger.warn('[MessageHandler] ConversationManager not set, message not processed');
+    try {
+      await this.conversationManager.processMessage(event);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.error('[MessageHandler] Error processing message:', err);
+    } finally {
+      logger.info('[MessageHandler] Message process completed. ===============================================');
     }
   }
 }

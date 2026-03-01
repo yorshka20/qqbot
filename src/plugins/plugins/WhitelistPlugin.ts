@@ -45,17 +45,11 @@ export class WhitelistPlugin extends PluginBase {
       if (Array.isArray(pluginConfig.userIds)) {
         this.userWhitelist = new Set(pluginConfig.userIds);
         this.hasUserWhitelist = this.userWhitelist.size > 0;
-        if (this.hasUserWhitelist) {
-          logger.info(`[WhitelistPlugin] User whitelist: ${Array.from(this.userWhitelist).join(', ')}`);
-        }
       }
 
       if (Array.isArray(pluginConfig.groupIds)) {
         this.groupWhitelist = new Set(pluginConfig.groupIds);
         this.hasGroupWhitelist = this.groupWhitelist.size > 0;
-        if (this.hasGroupWhitelist) {
-          logger.info(`[WhitelistPlugin] Group whitelist: ${Array.from(this.groupWhitelist).join(', ')}`);
-        }
       }
     } catch (error) {
       logger.error('[WhitelistPlugin] Config error:', error);
@@ -78,7 +72,6 @@ export class WhitelistPlugin extends PluginBase {
     // Core access control 1: Ignore bot's own messages
     if (botSelfId && userId === botSelfId) {
       context.metadata.set('postProcessOnly', true);
-      logger.info(`[WhitelistPlugin] Bot's own message, skip | messageId=${messageId}`);
       return true;
     }
 
@@ -110,7 +103,6 @@ export class WhitelistPlugin extends PluginBase {
       const isAtBot = MessageUtils.isAtBot(message, botSelfId);
       if (replyTrigger !== 'reaction' && !isAtBot) {
         context.metadata.set('postProcessOnly', true);
-        logger.info(`[WhitelistPlugin] Group chat not @bot and not reaction-triggered | messageId=${messageId}`);
         return true;
       }
 

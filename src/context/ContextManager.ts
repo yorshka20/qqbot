@@ -61,8 +61,6 @@ export class ContextManager {
       context.metadata.set('groupId', options.groupId);
     }
 
-    logger.debug(`[ContextManager] Built context for session: ${options.sessionId}`);
-
     return context;
   }
 
