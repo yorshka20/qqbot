@@ -2,6 +2,8 @@
 
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ProactiveReplyInjectContext } from '@/context/types';
+import { MessageBuilder } from '@/message/MessageBuilder';
+import type { MessageSegment } from '@/message/types';
 import type { ConversationHistoryService } from '@/conversation/history';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
@@ -89,6 +91,19 @@ export class AIService {
       this.promptManager,
       this.hookManager,
     );
+  }
+
+  /**
+   * Render card JSON to image segments (same pipeline as ReplyGenerationService handleCardReply).
+   * Use this when you have card-format JSON and want message segments for reply (e.g. help command).
+   * @param cardJson - Valid card data JSON string (ListCardData, InfoCardData, etc.)
+   * @returns Message segments containing the card image, or throws if rendering fails
+   */
+  async renderCardToSegments(cardJson: string): Promise<MessageSegment[]> {
+    const base64Image = await this.cardRenderingService.renderCard(cardJson);
+    const messageBuilder = new MessageBuilder();
+    messageBuilder.image({ data: base64Image });
+    return messageBuilder.build();
   }
 
   /**

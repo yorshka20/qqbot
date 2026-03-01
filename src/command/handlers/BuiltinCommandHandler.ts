@@ -2,9 +2,11 @@
 
 import { exec } from 'node:child_process';
 import { inject, injectable } from 'tsyringe';
+import type { AIService } from '@/ai/AIService';
 import type { AIManager } from '@/ai/AIManager';
 import type { CapabilityType } from '@/ai/capabilities/types';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
+import type { InfoCardData, ListCardData } from '@/ai/utils/cardTypes';
 import type { ProactiveConversationService } from '@/conversation/proactive';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
@@ -19,7 +21,8 @@ import type { CommandContext, CommandHandler, CommandResult, PermissionLevel } f
 const TRIGGER_TEMPLATE_SUFFIX = '.trigger';
 
 /**
- * Help command - shows available commands
+ * Help command - shows available commands as a card image via AIService (same card pipeline as reply handleCardReply).
+ * Falls back to text if card rendering fails (e.g. browser not available).
  */
 @Command({
   name: 'help',
@@ -33,9 +36,12 @@ export class HelpCommand implements CommandHandler {
   description = 'Show available commands. / and ! can be used as prefix.';
   usage = '/help [command]';
 
-  constructor(@inject(DITokens.COMMAND_MANAGER) private commandManager: CommandManager) {}
+  constructor(
+    @inject(DITokens.COMMAND_MANAGER) private commandManager: CommandManager,
+    @inject(DITokens.AI_SERVICE) private aiService: AIService,
+  ) {}
 
-  execute(args: string[], context: CommandContext): CommandResult {
+  async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     const commands = this.commandManager.getAllCommands({
       userId: context.userId.toString(),
       groupId: context.groupId?.toString() ?? '',
@@ -55,40 +61,73 @@ export class HelpCommand implements CommandHandler {
       }
 
       const handler = command.handler;
-      let help = `Command: ${handler.name}\n`;
+      const parts: string[] = [];
       if (handler.description) {
-        help += `Description: ${handler.description}\n`;
+        parts.push(handler.description);
       }
       if (handler.usage) {
-        help += `Usage: ${handler.usage}\n`;
+        parts.push(`Usage: ${handler.usage}`);
       }
+      const cardData: InfoCardData = {
+        type: 'info',
+        title: `/${handler.name}`,
+        content: parts.join('\n\n'),
+        level: 'tip',
+      };
 
+      try {
+        const segments = await this.aiService.renderCardToSegments(JSON.stringify(cardData));
+        return {
+          success: true,
+          segments,
+        };
+      } catch (err) {
+        logger.warn('[HelpCommand] Card render failed, falling back to text:', err);
+        const help = [handler.description, handler.usage].filter(Boolean).join('\nUsage: ');
+        const messageBuilder = new MessageBuilder();
+        messageBuilder.text(`Command: /${handler.name}\n${help}`);
+        return {
+          success: true,
+          segments: messageBuilder.build(),
+        };
+      }
+    }
+
+    // Show all commands as list card
+    const items = commands.map((c) => {
+      const h = c.handler;
+      return h.description ? `/${h.name} — ${h.description}` : `/${h.name}`;
+    });
+    items.push('💡 Use /help <command> for details');
+
+    const cardData: ListCardData = {
+      type: 'list',
+      title: 'Available Commands',
+      items,
+      emoji: '📋',
+    };
+
+    try {
+      const segments = await this.aiService.renderCardToSegments(JSON.stringify(cardData));
+      return {
+        success: true,
+        segments,
+      };
+    } catch (err) {
+      logger.warn('[HelpCommand] Card render failed, falling back to text:', err);
+      const commandList = commands
+        .map((c) => {
+          const h = c.handler;
+          return h.description ? `/${h.name} - ${h.description}` : `/${h.name}`;
+        })
+        .join('\n');
       const messageBuilder = new MessageBuilder();
-      messageBuilder.text(help);
+      messageBuilder.text(`Available commands:\n${commandList}\n\nUse /help(!help) <command> for more info`);
       return {
         success: true,
         segments: messageBuilder.build(),
       };
     }
-
-    // Show all commands
-    const commandList = commands
-      .map((c) => {
-        const handler = c.handler;
-        let line = `/${handler.name}`;
-        if (handler.description) {
-          line += ` - ${handler.description}`;
-        }
-        return line;
-      })
-      .join('\n');
-
-    const messageBuilder = new MessageBuilder();
-    messageBuilder.text(`Available commands:\n${commandList}\n\nUse /help(!help) <command> for more info`);
-    return {
-      success: true,
-      segments: messageBuilder.build(),
-    };
   }
 }
 
