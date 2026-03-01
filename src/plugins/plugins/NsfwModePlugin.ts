@@ -3,7 +3,7 @@
 import type { AIService } from '@/ai/AIService';
 import type { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
-import { ConversationConfigService } from '@/config/ConversationConfigService';
+import type { ConversationConfigService } from '@/config/ConversationConfigService';
 import { getSessionId, getSessionType } from '@/config/SessionUtils';
 import type { ProcessStageInterceptor, ProcessStageInterceptorRegistry } from '@/conversation/ProcessStageInterceptor';
 import { getContainer } from '@/core/DIContainer';
@@ -94,9 +94,6 @@ export class NsfwModePlugin extends PluginBase {
         const { sessionId, sessionType: resolvedType } = this.normalizeSessionForConfig(rawSessionId, sessionType);
         const config = await this.conversationConfigService.getConfig(sessionId, resolvedType);
         const intercept = config.nsfw?.mode === true;
-        logger.debug(
-          `[NsfwModePlugin] shouldIntercept | rawSessionId=${rawSessionId} | normalized=${sessionId}|${resolvedType} | nsfw.mode=${config.nsfw?.mode} => ${intercept}`,
-        );
         if (intercept) {
           logger.info(
             `[NsfwModePlugin] NSFW intercept mode ON | sessionId=${sessionId} | sessionType=${resolvedType} | reply will use Ollama`,
@@ -105,9 +102,6 @@ export class NsfwModePlugin extends PluginBase {
         return intercept;
       },
       handle: async (ctx: HookContext): Promise<void> => {
-        logger.info(
-          '[NsfwModePlugin] Handling message in NSFW intercept mode | generating reply via Ollama (skip command/task)',
-        );
         const rawSessionId = ctx.metadata.get('sessionId') as string | undefined;
         const sessionType = ctx.metadata.get('sessionType') as 'user' | 'group' | undefined;
         // Support both group and private: sessionType 'user' = private chat, 'group' = group chat

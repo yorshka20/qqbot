@@ -122,7 +122,7 @@ export class DatabasePersistenceSystem implements System {
       if (message.protocol === 'milky' && 'messageSeq' in message) {
         const milkyMessage = message as typeof message & { messageSeq?: number };
         const seq = milkyMessage.messageSeq;
-        if (typeof seq === 'number' && !isNaN(seq)) {
+        if (typeof seq === 'number' && !Number.isNaN(seq)) {
           messageData.messageSeq = seq;
         }
       } else if (message.messageId !== undefined) {
@@ -131,10 +131,6 @@ export class DatabasePersistenceSystem implements System {
       }
 
       await messages.create(messageData);
-
-      logger.debug(
-        `[DatabasePersistenceSystem] Saved user message | conversationId=${conversation.id} | messageId=${messageId}`,
-      );
 
       // Cache message in memory for quick lookup (e.g., for reply segments)
       cacheMessage(message);
