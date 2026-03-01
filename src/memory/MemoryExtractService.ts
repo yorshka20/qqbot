@@ -2,6 +2,7 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
+import { type ExtractStrategy, extractJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import { logger } from '@/utils/logger';
 import type { MemoryService } from './MemoryService';
 import { GROUP_MEMORY_USER_ID } from './MemoryService';
@@ -298,13 +299,20 @@ export class MemoryExtractService {
     return null;
   }
 
+  /** memory/extract prompt returns JSON (group_facts, user_facts); code block or raw. */
+  private static readonly EXTRACT_JSON_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'regex'];
+
   /**
    * Parse extract output: group_facts and user_facts[].facts can be string[] or Array<{ scope, content }>.
    */
   private parseExtractOutput(text: string): ExtractResult | null {
     try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      const jsonStr = jsonMatch ? jsonMatch[0] : text;
+      const jsonStr = extractJsonFromLlmText(text, {
+        strategies: MemoryExtractService.EXTRACT_JSON_STRATEGIES,
+      });
+      if (jsonStr == null) {
+        return null;
+      }
       const obj = JSON.parse(jsonStr) as Record<string, unknown>;
       const result: ExtractResult = {};
       if (Array.isArray(obj.group_facts)) {

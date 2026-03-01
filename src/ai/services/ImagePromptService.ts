@@ -1,31 +1,30 @@
 // Image Prompt Service - provides image generation prompt preprocessing
 
+import {
+  AdditionalParamsSchema,
+  type I2VPromptResult,
+  I2VPromptResultSchema,
+  T2IImageParamsSchema,
+} from '@/ai/schemas';
+import { type ExtractStrategy, parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import { logger } from '@/utils/logger';
 import type { Text2ImageOptions } from '../capabilities/types';
-import { PromptManager } from '../prompt/PromptManager';
-import { LLMService } from './LLMService';
-
-/**
- * Image Prompt Service
- * Provides image generation prompt preprocessing using LLM
- */
-/** Default prompt when I2V LLM/parse fails or user input is empty */
-export const DEFAULT_I2V_PROMPT = 'An1meStyl3, AnimeStyle, smooth animation';
+import type { PromptManager } from '../prompt/PromptManager';
+import type { LLMService } from './LLMService';
 
 /** Default and bounds for I2V video duration (seconds) */
 export const DEFAULT_I2V_DURATION_SECONDS = 5;
 export const MIN_I2V_DURATION_SECONDS = 1;
 export const MAX_I2V_DURATION_SECONDS = 30;
 
-export interface I2VPromptResult {
-  prompt: string;
-  durationSeconds: number;
-  /** Optional negative prompt; if omitted, workflow uses default. */
-  negativePrompt?: string;
-}
+/** I2V/T2I prompts expect JSON (often in ```json block). */
+const IMAGE_PROMPT_JSON_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'regex'];
 
+/**
+ * Image Prompt Service
+ * Provides image generation prompt preprocessing using LLM
+ */
 export class ImagePromptService {
-  // Constants for parameter limits (NovelAI specific)
   private static readonly MAX_STEPS = 50;
   private static readonly MAX_GUIDANCE_SCALE = 9;
   private static readonly DEFAULT_STEPS = 45;
@@ -36,6 +35,7 @@ export class ImagePromptService {
   constructor(
     private llmService: LLMService,
     private promptManager: PromptManager,
+    private providerName: string,
   ) {}
 
   /**
@@ -85,15 +85,11 @@ export class ImagePromptService {
     templateName: string = 'text2img.generate',
   ): Promise<{ prompt: string; options: Text2ImageOptions }> {
     // Build LLM prompt using PromptManager
-    // Default template name: 'text2img.generate' (from prompts/text2img/generate.txt)
-    // Can be overridden with templateName parameter (e.g., 'text2img.generate_nai')
     const llmPrompt = this.promptManager.render(templateName, {
       description: userInput,
     });
 
-    logger.debug('[ImagePromptService] Calling LLM to preprocess image generation parameters...');
-
-    // Call LLM to generate JSON parameters. use deepseek to generate prompt.
+    // Call LLM to generate JSON parameters. use providerName to generate prompt.
     const llmResponse = await this.llmService.generate(
       llmPrompt,
       {
@@ -101,10 +97,8 @@ export class ImagePromptService {
         maxTokens: 1000,
         sessionId,
       },
-      'deepseek',
+      this.providerName,
     );
-
-    logger.debug(`[ImagePromptService] LLM response received | responseLength=${llmResponse.text.length}`);
 
     // Parse LLM response to extract image generation parameters
     const parsedParams = this.parseImageGenerationParams(llmResponse.text, userInput);
@@ -128,10 +122,6 @@ export class ImagePromptService {
       // Additional parameters from LLM response (aspectRatio, imageSize from resolution, etc.)
       ...additionalParams,
     };
-
-    logger.info(
-      `[ImagePromptService] LLM preprocessing completed | original="${userInput.substring(0, 50)}..." | processed="${parsedParams.prompt}" | steps=${processedOptions.steps} | cfg=${processedOptions.guidance_scale}`,
-    );
 
     return {
       prompt: parsedParams.prompt,
@@ -157,8 +147,6 @@ export class ImagePromptService {
         description: userInput ?? '',
       });
 
-      logger.debug('[ImagePromptService] Calling LLM to prepare I2V prompt...');
-
       const llmResponse = await this.llmService.generate(
         llmPrompt,
         {
@@ -166,58 +154,36 @@ export class ImagePromptService {
           maxTokens: 1000,
           sessionId,
         },
-        'deepseek',
+        this.providerName,
       );
+      const result = this.parseI2VPromptResponse(llmResponse.text, userInput);
 
-      const result = this.parseI2VPromptResponse(llmResponse.text);
-      logger.info(
-        `[ImagePromptService] I2V prompt prepared | input="${(userInput ?? '').substring(0, 40)}..." | prompt="${result.prompt.substring(0, 50)}..." | duration=${result.durationSeconds}s`,
-      );
+      logger.info(`[ImagePromptService] I2V prompt prepared`, {
+        input: userInput,
+        prompt: result.prompt,
+        duration: result.durationSeconds,
+      });
+
       return result;
     } catch (llmError) {
       const llmErr = llmError instanceof Error ? llmError : new Error('Unknown LLM error');
       logger.warn(`[ImagePromptService] I2V LLM preprocessing failed, using fallback | error=${llmErr.message}`);
-      const prompt = (userInput ?? '').trim() || DEFAULT_I2V_PROMPT;
+      const prompt = userInput.trim();
       return { prompt, durationSeconds: DEFAULT_I2V_DURATION_SECONDS };
     }
   }
 
   /**
-   * Parse LLM response for I2V: expect JSON with "prompt", optional "duration_seconds", optional "negative_prompt".
-   * Returns prompt string, duration 1–30 (default 5), and optional negative prompt.
+   * Parse LLM response for I2V via schema. On parse failure, fallback to first line or default.
    */
-  private parseI2VPromptResponse(llmResponse: string): I2VPromptResult {
-    let text = llmResponse.trim();
-    // Strip markdown code blocks
-    const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-    if (codeBlockMatch) {
-      text = codeBlockMatch[1].trim();
+  private parseI2VPromptResponse(llmResponse: string, userInput: string): I2VPromptResult {
+    const text = llmResponse.trim();
+    const result = parseLlmJson(text, I2VPromptResultSchema, { strategies: IMAGE_PROMPT_JSON_STRATEGIES });
+    if (result != null) {
+      return result;
     }
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed.prompt && typeof parsed.prompt === 'string') {
-          let duration =
-            typeof parsed.duration_seconds === 'number' ? parsed.duration_seconds : DEFAULT_I2V_DURATION_SECONDS;
-          if (typeof parsed.duration_seconds === 'string') {
-            const n = parseInt(parsed.duration_seconds, 10);
-            if (!isNaN(n)) duration = n;
-          }
-          duration = Math.max(MIN_I2V_DURATION_SECONDS, Math.min(MAX_I2V_DURATION_SECONDS, Math.round(duration)));
-          const result: I2VPromptResult = { prompt: parsed.prompt.trim(), durationSeconds: duration };
-          if (typeof parsed.negative_prompt === 'string' && parsed.negative_prompt.trim()) {
-            result.negativePrompt = parsed.negative_prompt.trim();
-          }
-          return result;
-        }
-      } catch {
-        // Fall through
-      }
-    }
-    const firstLine = text.split(/\r?\n/)[0]?.trim();
-    const prompt = firstLine || text || DEFAULT_I2V_PROMPT;
-    return { prompt, durationSeconds: DEFAULT_I2V_DURATION_SECONDS };
+    logger.warn(`[ImagePromptService] Failed to parse I2V prompt response, using fallback | response=${text}`);
+    return { prompt: userInput, durationSeconds: DEFAULT_I2V_DURATION_SECONDS };
   }
 
   /**
@@ -230,11 +196,7 @@ export class ImagePromptService {
     userInput: string,
     options: Text2ImageOptions,
   ): { prompt: string; options: Text2ImageOptions } {
-    logger.debug('[ImagePromptService] Using direct user input as prompt (LLM processing skipped)');
-
     const processedOptions = this.mergeAndValidateOptions(options);
-
-    logger.info('[ImagePromptService] Using direct user input as prompt');
 
     return {
       prompt: userInput,
@@ -270,153 +232,38 @@ export class ImagePromptService {
   }
 
   /**
-   * Parse LLM response to extract image generation parameters
-   * Handles various response formats including JSON wrapped in markdown code blocks
-   * @param llmResponse - Raw LLM response text
-   * @param fallbackPrompt - Fallback prompt to use if parsing fails
-   * @returns Parsed image generation parameters
+   * Parse LLM response to extract image generation parameters via schema. On failure, return fallback options.
    */
   private parseImageGenerationParams(llmResponse: string, fallbackPrompt: string): Text2ImageOptions {
-    try {
-      // Try to extract JSON from the response
-      // Handle cases where JSON might be wrapped in markdown code blocks
-      let jsonText = llmResponse.trim();
-
-      // Remove markdown code block markers if present
-      const jsonBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-      if (jsonBlockMatch) {
-        jsonText = jsonBlockMatch[1].trim();
-      }
-
-      // Try to find JSON object in the text
-      const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        jsonText = jsonMatch[0];
-      }
-
-      // Parse JSON
-      const parsed = JSON.parse(jsonText);
-
-      // Validate required fields
-      if (!parsed.prompt || typeof parsed.prompt !== 'string') {
-        throw new Error('Missing or invalid prompt field in LLM response');
-      }
-
-      // Extract and validate parameters with defaults
-      // Limit steps and cfg_scale to reasonable values (NovelAI typically uses steps 28-50, cfg 5-11)
-      const result: Text2ImageOptions = {
-        prompt: parsed.prompt as string,
-        negative_prompt: (parsed.negative_prompt as string) || '',
-        steps: this.validateNumber(parsed.steps, ImagePromptService.DEFAULT_STEPS, 1, ImagePromptService.MAX_STEPS),
-        cfg_scale: this.validateNumber(
-          parsed.cfg_scale,
-          ImagePromptService.DEFAULT_GUIDANCE_SCALE,
-          1,
-          ImagePromptService.MAX_GUIDANCE_SCALE,
-        ),
-        seed: this.validateNumber(parsed.seed, -1, -1, Number.MAX_SAFE_INTEGER),
-        width: this.validateNumber(parsed.width, ImagePromptService.DEFAULT_WIDTH, 256, 2048),
-        height: this.validateNumber(parsed.height, ImagePromptService.DEFAULT_HEIGHT, 256, 2048),
-        sampler: (parsed.sampler as string) || 'Euler a',
-      };
-
-      logger.debug(
-        `[ImagePromptService] Successfully parsed LLM response | prompt="${result.prompt.substring(0, 50)}..."`,
-      );
-
+    const result = parseLlmJson(llmResponse.trim(), T2IImageParamsSchema, {
+      strategies: IMAGE_PROMPT_JSON_STRATEGIES,
+    });
+    if (result != null) {
       return result;
-    } catch (parseError) {
-      const parseErr = parseError instanceof Error ? parseError : new Error('Unknown parsing error');
-      logger.warn(
-        `[ImagePromptService] Failed to parse LLM response, using fallback | error=${parseErr.message} | response=${llmResponse.substring(0, 200)}`,
-      );
-
-      // Fallback: Return default parameters with user input as prompt
-      return {
-        prompt: fallbackPrompt,
-        negative_prompt:
-          'worst quality, low quality, bad anatomy, bad hands, text, error, jpeg artifacts, signature, watermark, blurry',
-        steps: ImagePromptService.DEFAULT_STEPS,
-        cfg_scale: ImagePromptService.DEFAULT_GUIDANCE_SCALE,
-        seed: -1,
-        width: ImagePromptService.DEFAULT_WIDTH,
-        height: ImagePromptService.DEFAULT_HEIGHT,
-        sampler: 'Euler a',
-      };
     }
+    logger.warn(
+      `[ImagePromptService] Failed to parse LLM response, using fallback | response=${llmResponse.substring(0, 200)}`,
+    );
+    return {
+      prompt: fallbackPrompt,
+      negative_prompt:
+        'worst quality, low quality, bad anatomy, bad hands, text, error, jpeg artifacts, signature, watermark, blurry',
+      steps: ImagePromptService.DEFAULT_STEPS,
+      cfg_scale: ImagePromptService.DEFAULT_GUIDANCE_SCALE,
+      seed: -1,
+      width: ImagePromptService.DEFAULT_WIDTH,
+      height: ImagePromptService.DEFAULT_HEIGHT,
+      sampler: 'Euler a',
+    };
   }
 
   /**
-   * Extract additional parameters from LLM JSON response
-   * Some templates output parameters directly (e.g., aspectRatio, resolution) that should be mapped to options
-   * This is a generic extractor that supports common parameter names from different templates
-   * @param llmResponse - Raw LLM response text
-   * @returns Additional parameters to merge into options
+   * Extract additional parameters from LLM JSON response via schema (aspectRatio, resolution/imageSize).
    */
   private extractAdditionalParamsFromLLMResponse(llmResponse: string): Partial<Text2ImageOptions> {
-    try {
-      // Try to extract JSON from the response
-      let jsonText = llmResponse.trim();
-
-      // Remove markdown code block markers if present
-      const jsonBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-      if (jsonBlockMatch) {
-        jsonText = jsonBlockMatch[1].trim();
-      }
-
-      // Try to find JSON object in the text
-      const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        jsonText = jsonMatch[0];
-      }
-
-      // Parse JSON
-      const parsed = JSON.parse(jsonText);
-
-      const result: Partial<Text2ImageOptions> = {};
-
-      // Extract aspectRatio if present (e.g., from generate_banana.txt)
-      if (parsed.aspectRatio && typeof parsed.aspectRatio === 'string') {
-        result.aspectRatio = parsed.aspectRatio;
-      }
-
-      // Extract imageSize from resolution if present
-      // Some templates output "resolution": "2K" or "4K" which should map to imageSize
-      if (parsed.resolution && typeof parsed.resolution === 'string') {
-        // Normalize to uppercase (e.g., "2k" -> "2K")
-        result.imageSize = parsed.resolution.toUpperCase();
-      }
-
-      // Extract imageSize directly if present
-      if (parsed.imageSize && typeof parsed.imageSize === 'string') {
-        result.imageSize = parsed.imageSize.toUpperCase();
-      }
-
-      return result;
-    } catch (error) {
-      // If parsing fails, return empty object (no additional params extracted)
-      return {};
-    }
-  }
-
-  /**
-   * Validate and normalize a number parameter
-   * @param value - Value to validate
-   * @param defaultValue - Default value if validation fails
-   * @param min - Minimum allowed value
-   * @param max - Maximum allowed value
-   * @returns Validated number
-   */
-  private validateNumber(value: unknown, defaultValue: number, min: number, max: number): number {
-    if (typeof value === 'number' && !isNaN(value)) {
-      return Math.max(min, Math.min(max, value));
-    }
-    if (typeof value === 'string') {
-      const parsed = parseFloat(value);
-      if (!isNaN(parsed)) {
-        return Math.max(min, Math.min(max, parsed));
-      }
-    }
-    return defaultValue;
+    const result = parseLlmJson(llmResponse.trim(), AdditionalParamsSchema, {
+      strategies: IMAGE_PROMPT_JSON_STRATEGIES,
+    });
+    return result ?? {};
   }
 }

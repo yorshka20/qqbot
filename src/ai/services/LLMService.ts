@@ -48,7 +48,7 @@ export class LLMService {
   /**
    * Check if provider is available
    */
-  private async getAvailableProvider(providerName?: string, sessionId?: string): Promise<LLMCapability | null> {
+  async getAvailableProvider(providerName?: string, sessionId?: string): Promise<LLMCapability | null> {
     let provider: LLMCapability | null = null;
 
     if (providerName) {

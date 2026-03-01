@@ -1,6 +1,6 @@
 // Message Cache - simple singleton for in-memory message caching
 
-import { ProtocolName } from '@/core/config/protocol';
+import type { ProtocolName } from '@/core/config/protocol';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
 
@@ -124,7 +124,6 @@ export function cacheMessage(message: NormalizedMessageEvent): void {
   // Cache by messageId if available
   if (message.messageId) {
     getMessageCache().set(message.protocol, message.messageId, message, message.groupId);
-    logger.debug(`[MessageCache] Cached message | protocol=${message.protocol} | messageId=${message.messageId}`);
   }
 
   // For Milky protocol, cache by messageSeq
@@ -137,16 +136,10 @@ export function cacheMessage(message: NormalizedMessageEvent): void {
       if (message.groupId) {
         // Group message: use groupId (messageSeq unique within group)
         getMessageCache().setBySeq(message.protocol, message.groupId, milkyMessage.messageSeq, message, true);
-        logger.debug(
-          `[MessageCache] Cached group message by messageSeq | protocol=${message.protocol} | groupId=${message.groupId} | messageSeq=${milkyMessage.messageSeq}`,
-        );
       } else if (message.messageType === 'private') {
         // Private message: messageSeq is globally unique, use 0 as placeholder for userId
         // Key format: milky:u:0:messageSeq (0 indicates global uniqueness)
         getMessageCache().setBySeq(message.protocol, 0, milkyMessage.messageSeq, message, false);
-        logger.debug(
-          `[MessageCache] Cached private message by messageSeq | protocol=${message.protocol} | messageSeq=${milkyMessage.messageSeq}`,
-        );
       }
     }
   }

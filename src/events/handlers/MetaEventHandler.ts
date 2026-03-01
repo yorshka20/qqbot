@@ -1,7 +1,7 @@
 // Meta event handler
 
-import type { NormalizedMetaEvent } from '../types';
 import { logger } from '@/utils/logger';
+import type { NormalizedMetaEvent } from '../types';
 
 export class MetaEventHandler {
   handle(event: NormalizedMetaEvent): void {

@@ -1,8 +1,13 @@
 // Summarize Service - single implementation for llm.summarize (thread compression, context memory, etc.)
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
+import { KeepIndicesSchema } from '@/ai/schemas';
 import type { LLMService } from '@/ai/services/LLMService';
+import { type ExtractStrategy, parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import { logger } from '@/utils/logger';
+
+/** cleanThreadTopic prompt expects JSON (keepIndices); usually in code block or raw. */
+const CLEAN_THREAD_TOPIC_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'regex'];
 
 export interface SummarizeOptions {
   /** Override LLM provider for this call (e.g. "ollama"). If not set, uses defaultProvider from constructor. */
@@ -44,12 +49,7 @@ export class SummarizeService {
     );
 
     const text = (response.text ?? '').trim();
-    if (!text) {
-      logger.debug(
-        `[SummarizeService] Empty summary from LLM | conversationTextLength=${conversationText.length} provider=${provider ?? 'default'}`,
-      );
-    }
-    logger.debug(`[SummarizeService] Summary generated | textLength=${text.length} provider=${provider}`);
+
     return text;
   }
 
@@ -63,8 +63,8 @@ export class SummarizeService {
     options?: SummarizeOptions,
   ): Promise<number[]> {
     const prompt = this.promptManager.render('llm.thread_clean_topic', {
-      threadContextWithIndices: threadContextWithIndices || '(empty)',
-      preferenceSummary: preferenceSummary || '(none)',
+      threadContextWithIndices,
+      preferenceSummary,
     });
     const provider = options?.provider;
     const response = await this.llmService.generate(
@@ -78,25 +78,14 @@ export class SummarizeService {
     if (!text) {
       return [];
     }
-    // Require complete JSON from model; do not accept or recover truncated output
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      logger.debug('[SummarizeService] cleanThreadTopic: no JSON in response');
+    const result = parseLlmJson(text, KeepIndicesSchema, {
+      strategies: CLEAN_THREAD_TOPIC_STRATEGIES,
+    });
+    if (result == null) {
+      logger.debug('[SummarizeService] cleanThreadTopic: no JSON in response or parse failed');
       return [];
     }
-    try {
-      const obj = JSON.parse(jsonMatch[0]) as { keepIndices?: unknown };
-      if (!Array.isArray(obj.keepIndices)) {
-        return [];
-      }
-      const indices = obj.keepIndices
-        .map((x) => (typeof x === 'number' ? x : typeof x === 'string' ? parseInt(x, 10) : NaN))
-        .filter((n) => !Number.isNaN(n) && n >= 0);
-      logger.debug(`[SummarizeService] cleanThreadTopic: keep ${indices.length} indices`);
-      return indices;
-    } catch {
-      logger.debug('[SummarizeService] cleanThreadTopic: JSON parse failed');
-      return [];
-    }
+    logger.debug(`[SummarizeService] cleanThreadTopic: keep ${result.length} indices`);
+    return result;
   }
 }

@@ -1,7 +1,7 @@
 // Routes protocol events to appropriate handlers
 
-import { logger } from '@/utils/logger';
 import { EventEmitter } from 'events';
+import { logger } from '@/utils/logger';
 import type { DeduplicationConfig } from './EventDeduplicator';
 import { EventDeduplicator } from './EventDeduplicator';
 import type { EventHandler, NormalizedEvent } from './types';

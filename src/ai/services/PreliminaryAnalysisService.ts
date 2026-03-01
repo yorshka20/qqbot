@@ -4,32 +4,34 @@ import type { AIManager } from '@/ai/AIManager';
 import type { LLMCapability } from '@/ai/capabilities/LLMCapability';
 import { isLLMCapability } from '@/ai/capabilities/LLMCapability';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
+import { type PreliminaryAnalysisResult, PreliminaryAnalysisSchema } from '@/ai/schemas';
+import { type ExtractStrategy, parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import { logger } from '@/utils/logger';
 
-export interface PreliminaryAnalysisResult {
-  shouldJoin: boolean;
-  reason?: string;
-  topic?: string;
-  /** Phase 3: which existing thread to reply in (if any) */
-  replyInThreadId?: string;
-  /** Phase 3: true to create a new thread and reply there */
-  createNew?: boolean;
-  /** Phase 3: thread id to mark as ended (no more replies) */
-  threadShouldEndId?: string;
-  /** When replying in a thread: ids of recent messages that are relevant and should be added to that thread's context */
-  messageIds?: string[];
-  /** When shouldJoin and (createNew or no replyInThreadId): which preference key to use (must be one of the listed ones). */
-  preferenceKey?: string;
-  /** When shouldJoin: optional search queries for supplementary knowledge. Empty or absent = no search. Non-empty = run these queries once in retrieve (no extra LLM). */
-  searchQueries?: string[];
-}
+/** analysis.ollama / analysis.ollama_multi expect JSON object; code block or raw. */
+const PRELIMINARY_ANALYSIS_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'braceMatch', 'regex'];
+
+export type { PreliminaryAnalysisResult } from '@/ai/schemas';
+
+/** Default result when LLM is unavailable or parse fails. */
+const DEFAULT_ANALYSIS_RESULT: PreliminaryAnalysisResult = {
+  shouldJoin: false,
+  reason: undefined,
+  topic: undefined,
+  replyInThreadId: undefined,
+  createNew: undefined,
+  threadShouldEndId: undefined,
+  messageIds: undefined,
+  preferenceKey: undefined,
+  searchQueries: undefined,
+};
 
 /** Input for multi-thread analysis: one entry per active thread */
 export interface ThreadContextForAnalysis {
   threadId: string;
   preferenceKey: string;
   contextText: string;
-  /** User ID (string) who triggered/started this thread; when latest message is from this user, AI can prefer replying in this thread for continuous conversation. */
+  /** User ID (string) who triggered/started this thread; */
   triggerUserId?: string;
 }
 
@@ -68,40 +70,31 @@ export class PreliminaryAnalysisService {
     const providerName = options?.providerName ?? DEFAULT_ANALYSIS_PROVIDER;
     const provider = this.aiManager.getProvider(providerName);
     if (!provider || !isLLMCapability(provider)) {
-      logger.debug(`[PreliminaryAnalysisService] Provider "${providerName}" not available, skipping`);
-      return { shouldJoin: false };
+      return DEFAULT_ANALYSIS_RESULT;
     }
 
     const llm = provider as LLMCapability;
     if (!provider.isAvailable()) {
-      logger.debug(`[PreliminaryAnalysisService] Provider "${providerName}" not available`);
-      return { shouldJoin: false };
+      return DEFAULT_ANALYSIS_RESULT;
     }
-    logger.debug(`[PreliminaryAnalysisService] Using provider "${providerName}" for analysis`);
 
     const idleModeInstruction = this.resolveIdleModeInstruction(options?.idleMode);
-    let prompt: string;
-    try {
-      prompt = this.promptManager.render(
-        'analysis.ollama',
-        {
-          preferenceText,
-          recentMessagesText: recentMessagesText || '(no messages)',
-          idleModeInstruction,
-        },
-        { injectBase: true },
-      );
-    } catch (err) {
-      logger.warn('[PreliminaryAnalysisService] Failed to render prompt:', err);
-      return { shouldJoin: false };
-    }
+    const prompt = this.promptManager.render(
+      'analysis.ollama',
+      {
+        preferenceText,
+        recentMessagesText,
+        idleModeInstruction,
+      },
+      { injectBase: true },
+    );
 
     // logger.debug(`[PreliminaryAnalysisService] Prompt: \n${prompt}`);
 
     try {
       const response = await llm.generate(prompt, {
-        temperature: 0.3,
-        maxTokens: 5000,
+        temperature: 0.2,
+        maxTokens: 4000,
         reasoningEffort: 'minimal', // no reasoning for quick response.
       });
       const text = (response.text || '').trim();
@@ -109,8 +102,17 @@ export class PreliminaryAnalysisService {
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.warn(`[PreliminaryAnalysisService] Provider "${providerName}" call failed:`, err);
-      return { shouldJoin: false };
+      return DEFAULT_ANALYSIS_RESULT;
     }
+  }
+
+  private buildThreadsDescription(threads: ThreadContextForAnalysis[]): string {
+    return threads
+      .map((t) => {
+        const ownerHint = t.triggerUserId ? ` | 发起用户: ${t.triggerUserId}` : '';
+        return `--- Thread id: ${t.threadId} (preference: ${t.preferenceKey}${ownerHint}) ---\n${t.contextText.slice(0, 400)}${t.contextText.length > 400 ? '...' : ''}`;
+      })
+      .join('\n\n');
   }
 
   /**
@@ -126,49 +128,39 @@ export class PreliminaryAnalysisService {
     const providerName = options?.providerName ?? DEFAULT_ANALYSIS_PROVIDER;
     const provider = this.aiManager.getProvider(providerName);
     if (!provider || !isLLMCapability(provider)) {
-      logger.debug(`[PreliminaryAnalysisService] Provider "${providerName}" not available, skipping`);
-      return { shouldJoin: false };
+      return DEFAULT_ANALYSIS_RESULT;
     }
 
     const llm = provider as LLMCapability;
     if (!provider.isAvailable()) {
-      logger.debug(`[PreliminaryAnalysisService] Provider "${providerName}" not available`);
-      return { shouldJoin: false };
+      return DEFAULT_ANALYSIS_RESULT;
     }
-    logger.debug(`[PreliminaryAnalysisService] Using provider "${providerName}" for multi-thread analysis`);
 
-    const threadsDescription = threads
-      .map((t) => {
-        const ownerHint = t.triggerUserId ? ` | 发起用户: ${t.triggerUserId}` : '';
-        return `--- Thread id: ${t.threadId} (preference: ${t.preferenceKey}${ownerHint}) ---\n${t.contextText.slice(0, 400)}${t.contextText.length > 400 ? '...' : ''}`;
-      })
-      .join('\n\n');
-
+    const threadsDescription = this.buildThreadsDescription(threads);
     const idleModeInstruction = this.resolveIdleModeInstruction(options?.idleMode);
     const prompt = this.promptManager.render(
       'analysis.ollama_multi',
       {
         preferenceText,
-        recentMessagesText: recentMessagesText || '(no messages)',
-        threadsDescription: threadsDescription || '(no threads)',
+        recentMessagesText,
+        threadsDescription,
         idleModeInstruction,
       },
       { injectBase: true },
     );
 
-    logger.debug(`[PreliminaryAnalysisService] Multi-thread prompt length: ${prompt.length}`);
-
     try {
       const response = await llm.generate(prompt, {
-        temperature: 0.3,
+        temperature: 0.2,
         maxTokens: 4000,
+        reasoningEffort: 'minimal', // no reasoning for quick response.
       });
       const text = (response.text || '').trim();
       return this.parseJsonResult(text);
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.warn(`[PreliminaryAnalysisService] Provider "${providerName}" call failed:`, err);
-      return { shouldJoin: false };
+      return DEFAULT_ANALYSIS_RESULT;
     }
   }
 
@@ -184,55 +176,13 @@ export class PreliminaryAnalysisService {
   }
 
   private parseJsonResult(text: string): PreliminaryAnalysisResult {
-    const defaultResult: PreliminaryAnalysisResult = { shouldJoin: false };
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      logger.debug('[PreliminaryAnalysisService] No JSON found in response');
-      return defaultResult;
+    const result = parseLlmJson(text, PreliminaryAnalysisSchema, {
+      strategies: PRELIMINARY_ANALYSIS_STRATEGIES,
+    });
+    if (result == null) {
+      logger.debug('[PreliminaryAnalysisService] No JSON found or failed to parse');
+      return DEFAULT_ANALYSIS_RESULT;
     }
-    try {
-      const obj = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
-      const shouldJoin = obj.shouldJoin === true;
-      const reason = typeof obj.reason === 'string' ? obj.reason : undefined;
-      const topic = typeof obj.topic === 'string' ? obj.topic : undefined;
-      const replyInThreadId =
-        typeof obj.replyInThreadId === 'string' && obj.replyInThreadId.trim() ? obj.replyInThreadId.trim() : undefined;
-      const createNew = obj.createNew === true;
-      const threadShouldEndId =
-        typeof obj.threadShouldEndId === 'string' && obj.threadShouldEndId.trim()
-          ? obj.threadShouldEndId.trim()
-          : undefined;
-      let messageIds: string[] | undefined;
-      if (Array.isArray(obj.messageIds)) {
-        messageIds = obj.messageIds
-          .map((x) => (typeof x === 'number' ? String(x) : typeof x === 'string' ? x : null))
-          .filter((x): x is string => x != null && x.length > 0);
-      }
-      const preferenceKey =
-        typeof obj.preferenceKey === 'string' && obj.preferenceKey.trim() ? obj.preferenceKey.trim() : undefined;
-      let searchQueries: string[] | undefined;
-      if (Array.isArray(obj.searchQueries)) {
-        searchQueries = obj.searchQueries
-          .map((x) => (typeof x === 'string' ? x.trim() : null))
-          .filter((x): x is string => x != null && x.length > 0);
-        if (searchQueries.length === 0) {
-          searchQueries = undefined;
-        }
-      }
-      return {
-        shouldJoin,
-        reason,
-        topic,
-        replyInThreadId,
-        createNew: createNew || undefined,
-        threadShouldEndId,
-        messageIds: messageIds?.length ? messageIds : undefined,
-        preferenceKey,
-        searchQueries,
-      };
-    } catch {
-      logger.debug('[PreliminaryAnalysisService] Failed to parse JSON');
-      return defaultResult;
-    }
+    return result;
   }
 }

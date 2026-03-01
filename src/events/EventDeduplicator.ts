@@ -1,7 +1,7 @@
 // Deduplicates events from multiple protocols
 
-import type { NormalizedEvent } from './types';
 import { logger } from '@/utils/logger';
+import type { NormalizedEvent } from './types';
 
 interface EventFingerprint {
   messageId?: number;
@@ -106,10 +106,9 @@ export class EventDeduplicator {
         }
       }
 
-      toDelete.forEach((key) => this.seenEvents.delete(key));
-      if (toDelete.length > 0) {
-        logger.debug(`[EventDeduplicator] Cleaned up ${toDelete.length} old fingerprints`);
-      }
+      toDelete.forEach((key) => {
+        this.seenEvents.delete(key);
+      });
     }, this.config.window);
   }
 

@@ -1,6 +1,6 @@
 // Message Lifecycle Orchestrator - orchestrates the message processing lifecycle
 
-import { ParsedCommand } from '@/command';
+import type { ParsedCommand } from '@/command';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';

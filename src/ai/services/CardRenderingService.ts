@@ -1,10 +1,14 @@
 // Card Rendering Service - provides card rendering capability for LLM responses
 
+import { type ExtractStrategy, extractJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import { logger } from '@/utils/logger';
 import type { AIManager } from '../AIManager';
 import type { AIProvider } from '../base/AIProvider';
 import { CardRenderer } from '../utils/CardRenderer';
 import { type CardData, parseCardData } from '../utils/cardTypes';
+
+/** Card format prompt returns JSON; may be in code block or raw. */
+const CARD_JSON_EXTRACT_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'regex'];
 
 /**
  * Card Rendering Service
@@ -56,9 +60,10 @@ export class CardRenderingService {
       return false;
     }
 
-    // Check if response is valid JSON card data
+    // Check if response is valid JSON card data (extract JSON from LLM text if wrapped in markdown/prose)
+    const jsonStr = extractJsonFromLlmText(responseText, { strategies: CARD_JSON_EXTRACT_STRATEGIES }) ?? responseText;
     try {
-      parseCardData(responseText);
+      parseCardData(jsonStr);
       return true;
     } catch {
       // Not valid JSON card data
@@ -74,8 +79,10 @@ export class CardRenderingService {
    */
   async renderCard(responseText: string): Promise<string> {
     try {
-      // Parse JSON card data
-      const cardData: CardData = parseCardData(responseText);
+      // Extract JSON from LLM text if wrapped in markdown/prose, then parse card data
+      const jsonStr =
+        extractJsonFromLlmText(responseText, { strategies: CARD_JSON_EXTRACT_STRATEGIES }) ?? responseText;
+      const cardData: CardData = parseCardData(jsonStr);
 
       // Render card to image
       logger.info('[CardRenderingService] Rendering card image');
