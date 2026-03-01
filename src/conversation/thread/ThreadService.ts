@@ -37,6 +37,8 @@ export interface ProactiveThread {
   messages: ThreadMessage[];
   createdAt: Date;
   lastActivityAt: Date;
+  /** User ID (string) who triggered the analysis that created this thread; used to treat their follow-up messages as trigger without re-checking trigger words. */
+  triggerUserId?: string;
 }
 
 /**
@@ -54,8 +56,14 @@ export class ThreadService {
   /**
    * Create a new thread with initial context (recent messages).
    * Does not replace existing threads; group can have multiple threads.
+   * @param triggerUserId - User ID (string) who triggered the analysis that created this thread; stored so their follow-up messages can skip trigger-word check.
    */
-  create(groupId: string, preferenceKey: string, initialMessages: ConversationMessageEntry[]): ProactiveThread {
+  create(
+    groupId: string,
+    preferenceKey: string,
+    initialMessages: ConversationMessageEntry[],
+    triggerUserId?: string,
+  ): ProactiveThread {
     const threadId = randomUUID();
     const now = new Date();
     const messages: ThreadMessage[] = initialMessages
@@ -75,6 +83,7 @@ export class ThreadService {
       messages,
       createdAt: now,
       lastActivityAt: now,
+      triggerUserId,
     };
 
     this.threadById.set(threadId, thread);

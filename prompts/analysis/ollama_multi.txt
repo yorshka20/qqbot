@@ -26,7 +26,7 @@
   "createNew": true 或 false,
   "threadShouldEndId": "应结束的 thread id，否则为空字符串",
   "messageIds": [应加入该 thread 的消息序号，与近期群消息 [id:序号] 对应],
-  "preferenceKey": "人设键名，createNew 为 true 时必填；replyInThreadId 有值时可省略；shouldJoin 为 false 时为空字符串",
+  "preferenceKey": "人设键名，createNew 为 true 时必填，但只能填一种；replyInThreadId 有值时可省略；shouldJoin 为 false 时为空字符串",
   "searchQueries": ["关键词1", "关键词2"] 或 []
 }
 
@@ -41,7 +41,7 @@
 
 ## 其他字段规则
 
-**replyInThreadId**：仅当最新消息与某 thread 属于同一话题、且该话题存在未回复的提问/求助时填写；若明显是新话题，留空并考虑 createNew。
+**replyInThreadId**：仅当最新消息与某 thread 属于同一话题、且该话题存在未回复的提问/求助时填写；若明显是新话题，留空并考虑 createNew。**若最新消息来自某 thread 的「发起用户」且内容与该 thread 相关，应优先填 replyInThreadId 为该 thread，以保持连续对话。**
 
 **createNew**：最新消息为**新话题**且**存在明确提问或求助意向**、有参与价值时设为 true，此时 replyInThreadId 必须为空，messageIds 可为空数组。
 

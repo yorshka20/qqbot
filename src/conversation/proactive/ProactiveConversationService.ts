@@ -245,6 +245,7 @@ export class ProactiveConversationService {
         threadId: t.threadId,
         preferenceKey: t.preferenceKey,
         contextText: this.threadService.getContextFormatted(t.threadId),
+        triggerUserId: t.triggerUserId,
       }));
       result = await this.preliminaryAnalysis.analyzeWithThreads(
         preferenceText,
@@ -580,7 +581,7 @@ export class ProactiveConversationService {
     searchQueries?: string[],
     triggerUserId?: string,
   ): Promise<void> {
-    const thread = this.threadService.create(groupId, preferenceKey, filteredEntries);
+    const thread = this.threadService.create(groupId, preferenceKey, filteredEntries, triggerUserId);
     const injectContext = await this.replyContextBuilder.buildForNewThread(
       groupId,
       preferenceKey,

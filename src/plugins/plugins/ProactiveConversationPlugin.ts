@@ -169,6 +169,14 @@ export class ProactiveConversationPlugin extends PluginBase {
 
     // Trigger userId = current message sender (from pipeline event -> hook context.message)
     const triggerUserId = userId ?? undefined;
+
+    // When thread is still active and this message is from the user who opened that thread, treat as triggered and run analysis directly (no trigger-word check or accumulator).
+    const currentThread = this.threadService.getActiveThread(groupId);
+    if (currentThread?.triggerUserId && triggerUserId && currentThread.triggerUserId === triggerUserId) {
+      this.proactiveConversationService.scheduleForGroup(groupId, triggerUserId);
+      return true;
+    }
+
     // if trigger words (from any of this group's preferences) are matched, schedule analysis directly
     const triggerWords = this.getTriggerWordsForGroup(groupId);
     if (

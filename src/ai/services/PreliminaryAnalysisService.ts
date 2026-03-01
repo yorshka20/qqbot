@@ -29,6 +29,8 @@ export interface ThreadContextForAnalysis {
   threadId: string;
   preferenceKey: string;
   contextText: string;
+  /** User ID (string) who triggered/started this thread; when latest message is from this user, AI can prefer replying in this thread for continuous conversation. */
+  triggerUserId?: string;
 }
 
 const DEFAULT_ANALYSIS_PROVIDER = 'ollama';
@@ -136,10 +138,10 @@ export class PreliminaryAnalysisService {
     logger.debug(`[PreliminaryAnalysisService] Using provider "${providerName}" for multi-thread analysis`);
 
     const threadsDescription = threads
-      .map(
-        (t) =>
-          `--- Thread id: ${t.threadId} (preference: ${t.preferenceKey}) ---\n${t.contextText.slice(0, 2000)}${t.contextText.length > 2000 ? '...' : ''}`,
-      )
+      .map((t) => {
+        const ownerHint = t.triggerUserId ? ` | 发起用户: ${t.triggerUserId}` : '';
+        return `--- Thread id: ${t.threadId} (preference: ${t.preferenceKey}${ownerHint}) ---\n${t.contextText.slice(0, 400)}${t.contextText.length > 400 ? '...' : ''}`;
+      })
       .join('\n\n');
 
     const idleModeInstruction = this.resolveIdleModeInstruction(options?.idleMode);

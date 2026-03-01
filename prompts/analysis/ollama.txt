@@ -18,7 +18,7 @@
   "shouldJoin": true 或 false,
   "reason": "简短理由",
   "topic": "主要话题，无则为空字符串",
-  "preferenceKey": "人设键名，仅当 shouldJoin 为 true 时填写，必须与上方某个 ### 标题完全一致，如 preference.tech；否则为空字符串",
+  "preferenceKey": "人设键名，仅当 shouldJoin 为 true 时填写，必须与上方某个 ### 标题完全一致，如 preference.tech，且只能填一种；否则为空字符串",
   "searchQueries": ["关键词1", "关键词2"] 或 []
 }
 
