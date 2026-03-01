@@ -4,7 +4,7 @@ import { inject, injectable } from 'tsyringe';
 import type { AIService } from '@/ai/AIService';
 import type { VisionImage } from '@/ai/capabilities/types';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
+import type { PreliminaryAnalysisResult, PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
 import { extractImagesFromSegmentsAsync } from '@/ai/utils/imageUtils';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
@@ -22,7 +22,7 @@ import { logger } from '@/utils/logger';
 import { type FetchProgressNotifier, MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import type { TaskSystem } from '../systems/TaskSystem';
 import type { ThreadContextCompressionService } from '../thread';
-import { isReadableTextForThread, type ThreadService } from '../thread';
+import { isReadableTextForThread, type ProactiveThread, type ThreadService } from '../thread';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 import { ProactiveReplyContextBuilder } from './ProactiveReplyContextBuilder';
 import type { ProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
@@ -202,13 +202,96 @@ export class ProactiveConversationService {
    */
   private async runAnalysis(context: ScheduledAnalysisContext): Promise<void> {
     const { groupId, triggerUserId, idleMode } = context;
-    const preferenceKeys = this.groupConfig.get(groupId);
-    if (!preferenceKeys?.length) return;
 
-    // Phase 5: end threads that have been idle longer than threshold (timeout-based end).
+    // Step 1: Ensure group has proactive config.
+    const preferenceKeys = this.groupConfig.get(groupId);
+    if (!preferenceKeys?.length) {
+      return;
+    }
+
+    // Step 2: Phase 5 – end threads that have been idle longer than threshold (timeout-based end).
     await this.endTimedOutThreads(groupId);
 
-    // Build combined preference text so AI knows all available preferences for this group.
+    // Step 3: Build combined preference text for analysis prompt.
+    const preferenceText = this.buildPreferenceText(preferenceKeys);
+    if (preferenceText === null) {
+      return;
+    }
+
+    const groupIdNum = parseInt(groupId, 10);
+    if (Number.isNaN(groupIdNum)) {
+      logger.warn(`[ProactiveConversationService] Invalid groupId: ${groupId}`);
+      return;
+    }
+
+    // Step 4: Load recent messages and filter to readable-only for analysis input.
+    const activeThreads = this.threadService.getActiveThreads(groupId);
+    const recentEntries = await this.conversationHistoryService.getRecentMessages(groupId, RECENT_MESSAGES_LIMIT);
+    const filteredEntries = recentEntries.filter((e) => isReadableTextForThread(e.content));
+    const recentMessagesText = this.conversationHistoryService.formatAsText(filteredEntries);
+
+    // Step 5: Trigger-user explicit end – if latest message is from current thread's trigger user and says "话题结束", end thread and send confirmation (no AI analysis).
+    if (await this.tryEndThreadByTriggerUserRequest(groupId, groupIdNum, filteredEntries)) {
+      return;
+    }
+
+    // Step 6: Run preliminary analysis (single-thread or multi-thread).
+    const result = await this.runPreliminaryAnalysis(preferenceText, recentMessagesText, activeThreads, idleMode);
+    logger.debug(`[ProactiveConversationService] Preliminary analysis result: ${JSON.stringify(result)}`);
+
+    // Step 7: Apply AI-requested thread end (result.threadShouldEndId) with grace period for recent activity.
+    await this.applyThreadShouldEndFromResult(result);
+
+    // Step 8: If analysis says do not join, schedule compression and exit.
+    if (!result.shouldJoin) {
+      logger.debug(`[ProactiveConversationService] Preliminary analysis: shouldJoin=false | groupId=${groupId}`);
+      this.scheduleThreadCompression(groupId);
+      return;
+    }
+
+    // Step 9: Resolve preferenceKey and reply target (existing thread or new); validate against group config.
+    const resolved = this.resolvePreferenceAndReplyTarget(result, groupId, preferenceKeys);
+    if (!resolved) {
+      this.scheduleThreadCompression(groupId);
+      return;
+    }
+    const { preferenceKey, replyInExisting } = resolved;
+    const topic = result.topic?.trim() || '';
+
+    logger.info(
+      `[ProactiveConversationService] Ollama: shouldJoin=true | groupId=${groupId} | preferenceKey=${preferenceKey} | result=${JSON.stringify(result)}`,
+    );
+
+    // Step 10a: Reply in existing thread.
+    if (replyInExisting) {
+      await this.executeReplyInExistingThread({
+        groupId,
+        groupIdNum,
+        replyInExisting,
+        result,
+        filteredEntries,
+        triggerUserId,
+      });
+      this.scheduleThreadCompression(groupId);
+      return;
+    }
+
+    // Step 10b: Create new thread and reply if result requests it (or no active threads).
+    await this.executeCreateNewThreadIfRequested({
+      groupId,
+      groupIdNum,
+      preferenceKey,
+      topic,
+      result,
+      activeThreads,
+      filteredEntries,
+      triggerUserId,
+    });
+    this.scheduleThreadCompression(groupId);
+  }
+
+  /** Build combined preference text for analysis prompt. Returns null on render error. */
+  private buildPreferenceText(preferenceKeys: string[]): string | null {
     const preferenceParts: string[] = [];
     try {
       for (const key of preferenceKeys) {
@@ -217,165 +300,201 @@ export class ProactiveConversationService {
       }
     } catch (err) {
       logger.warn(`[ProactiveConversationService] Failed to render preference summaries:`, err);
-      return;
+      return null;
     }
-    const preferenceText = preferenceParts.length ? preferenceParts.join('\n\n') : '';
+    return preferenceParts.length ? preferenceParts.join('\n\n') : '';
+  }
 
-    const groupIdNum = parseInt(groupId, 10);
-    if (Number.isNaN(groupIdNum)) {
-      logger.warn(`[ProactiveConversationService] Invalid groupId: ${groupId}`);
-      return;
+  /**
+   * If the latest message is from the current thread's trigger user and says "话题结束", end that thread and send confirmation.
+   * Returns true if handled (caller should return); false otherwise.
+   */
+  private async tryEndThreadByTriggerUserRequest(
+    groupId: string,
+    groupIdNum: number,
+    filteredEntries: ConversationMessageEntry[],
+  ): Promise<boolean> {
+    const lastUserEntry = [...filteredEntries].reverse().find((e) => !e.isBotReply);
+    if (!lastUserEntry?.content?.includes('话题结束')) {
+      return false;
     }
+    const currentThread = this.threadService.getActiveThread(groupId);
+    const lastUserIdStr = String(lastUserEntry.userId);
+    if (!currentThread?.triggerUserId || currentThread.triggerUserId !== lastUserIdStr) {
+      return false;
+    }
+    const topicLabel = currentThread.lastTopic || '当前';
+    await this.threadPersistence.saveEndedThread(currentThread);
+    this.threadService.endThread(currentThread.threadId);
+    await this.sendGroupMessage(groupIdNum, `已结束${topicLabel}thread。`);
+    logger.info(
+      `[ProactiveConversationService] Thread ended by trigger user (话题结束) | threadId=${currentThread.threadId} | groupId=${groupId} | topic=${topicLabel}`,
+    );
+    return true;
+  }
 
-    const activeThreads = this.threadService.getActiveThreads(groupId);
-    const recentEntries = await this.conversationHistoryService.getRecentMessages(groupId, RECENT_MESSAGES_LIMIT);
-    // Filter to readable-only for analysis input (so [Record], [Image]-only etc. are not sent to LLM).
-    const filteredEntries = recentEntries.filter((e) => isReadableTextForThread(e.content));
-    const recentMessagesText = this.conversationHistoryService.formatAsText(filteredEntries);
-
+  /** Run single-thread or multi-thread preliminary analysis. */
+  private async runPreliminaryAnalysis(
+    preferenceText: string,
+    recentMessagesText: string,
+    activeThreads: ProactiveThread[],
+    idleMode?: boolean,
+  ): Promise<PreliminaryAnalysisResult> {
     const analysisOptions = {
       providerName: this.analysisProviderName,
       idleMode,
     };
-    let result: Awaited<ReturnType<PreliminaryAnalysisService['analyze']>>;
     if (activeThreads.length === 0) {
-      result = await this.preliminaryAnalysis.analyze(preferenceText, recentMessagesText, analysisOptions);
-    } else {
-      const threadsForAnalysis = activeThreads.map((t) => ({
-        threadId: t.threadId,
-        preferenceKey: t.preferenceKey,
-        contextText: this.threadService.getContextFormatted(t.threadId),
-        triggerUserId: t.triggerUserId,
-      }));
-      result = await this.preliminaryAnalysis.analyzeWithThreads(
-        preferenceText,
-        recentMessagesText,
-        threadsForAnalysis,
-        analysisOptions,
-      );
+      return this.preliminaryAnalysis.analyze(preferenceText, recentMessagesText, analysisOptions);
     }
+    const threadsForAnalysis = activeThreads.map((t) => ({
+      threadId: t.threadId,
+      preferenceKey: t.preferenceKey,
+      contextText: this.threadService.getContextFormatted(t.threadId),
+      triggerUserId: t.triggerUserId,
+    }));
+    return this.preliminaryAnalysis.analyzeWithThreads(
+      preferenceText,
+      recentMessagesText,
+      threadsForAnalysis,
+      analysisOptions,
+    );
+  }
 
-    logger.debug(`[ProactiveConversationService] Preliminary analysis result: ${JSON.stringify(result)}`);
-
-    if (result.threadShouldEndId) {
-      const threadToEnd = this.threadService.getThread(result.threadShouldEndId);
-      if (threadToEnd) {
-        const isCurrentThread = this.threadService.getCurrentThreadId(threadToEnd.groupId) === result.threadShouldEndId;
-        const lastActivityAge = Date.now() - threadToEnd.lastActivityAt.getTime();
-        if (isCurrentThread && lastActivityAge < RECENT_ACTIVITY_GRACE_MS) {
-          logger.debug(
-            `[ProactiveConversationService] Skip ending current thread (recent activity ${Math.round(lastActivityAge / 1000)}s ago) | threadId=${result.threadShouldEndId} | groupId=${threadToEnd.groupId}`,
-          );
-        } else {
-          await this.threadPersistence.saveEndedThread(threadToEnd);
-          this.threadService.endThread(result.threadShouldEndId);
-        }
-      } else {
-        this.threadService.endThread(result.threadShouldEndId);
-      }
-    }
-
-    if (!result.shouldJoin) {
-      logger.debug(`[ProactiveConversationService] Preliminary analysis: shouldJoin=false | groupId=${groupId}`);
-      this.scheduleThreadCompression(groupId);
+  /** Apply result.threadShouldEndId: end the thread with grace period for recent activity. */
+  private async applyThreadShouldEndFromResult(result: PreliminaryAnalysisResult): Promise<void> {
+    if (!result.threadShouldEndId) {
       return;
     }
+    const threadToEnd = this.threadService.getThread(result.threadShouldEndId);
+    if (threadToEnd) {
+      const isCurrentThread = this.threadService.getCurrentThreadId(threadToEnd.groupId) === result.threadShouldEndId;
+      const lastActivityAge = Date.now() - threadToEnd.lastActivityAt.getTime();
+      if (isCurrentThread && lastActivityAge < RECENT_ACTIVITY_GRACE_MS) {
+        logger.debug(
+          `[ProactiveConversationService] Skip ending current thread (recent activity ${Math.round(lastActivityAge / 1000)}s ago) | threadId=${result.threadShouldEndId} | groupId=${threadToEnd.groupId}`,
+        );
+        return;
+      }
+      await this.threadPersistence.saveEndedThread(threadToEnd);
+      this.threadService.endThread(result.threadShouldEndId);
+    } else {
+      this.threadService.endThread(result.threadShouldEndId);
+    }
+  }
 
-    // Resolve which preference to use: from reply thread, or from result.preferenceKey for new thread. Must be in configured list.
-    let preferenceKey: string;
+  /**
+   * Resolve preferenceKey and reply target from analysis result. Returns null if preference is invalid for group.
+   */
+  private resolvePreferenceAndReplyTarget(
+    result: PreliminaryAnalysisResult,
+    groupId: string,
+    preferenceKeys: string[],
+  ): { preferenceKey: string; replyInExisting: ProactiveThread | null } | null {
     const replyInExisting = result.replyInThreadId && this.threadService.getThread(result.replyInThreadId);
     if (replyInExisting && replyInExisting.groupId === groupId) {
-      preferenceKey = replyInExisting.preferenceKey;
+      const preferenceKey = replyInExisting.preferenceKey;
       if (!preferenceKeys.includes(preferenceKey)) {
         logger.warn(
           `[ProactiveConversationService] replyInThread preferenceKey not in group config, skipping join | groupId=${groupId} | preferenceKey=${preferenceKey}`,
         );
-        this.scheduleThreadCompression(groupId);
-        return;
+        return null;
       }
-    } else {
-      preferenceKey = (result.preferenceKey ?? '').trim();
-      if (!preferenceKey || !preferenceKeys.includes(preferenceKey)) {
-        logger.warn(
-          `[ProactiveConversationService] preferenceKey not configured for group, skipping join | groupId=${groupId} | preferenceKey=${preferenceKey} | allowed=${preferenceKeys.join(',')}`,
-        );
-        this.scheduleThreadCompression(groupId);
-        return;
-      }
+      return { preferenceKey, replyInExisting };
     }
+    const preferenceKey = (result.preferenceKey ?? '').trim();
+    if (!preferenceKey || !preferenceKeys.includes(preferenceKey)) {
+      logger.warn(
+        `[ProactiveConversationService] preferenceKey not configured for group, skipping join | groupId=${groupId} | preferenceKey=${preferenceKey} | allowed=${preferenceKeys.join(',')}`,
+      );
+      return null;
+    }
+    return { preferenceKey, replyInExisting: null };
+  }
 
-    logger.info(
-      `[ProactiveConversationService] Ollama: shouldJoin=true | groupId=${groupId} | preferenceKey=${preferenceKey} | result=${JSON.stringify(result)}`,
-    );
-
-    const topicOrQuery = result.topic?.trim() || '';
-
-    if (replyInExisting && replyInExisting.groupId === groupId) {
-      const threadId = replyInExisting.threadId;
-      const previousReplyPromise = this.replyInProgressByThread.get(threadId);
-      if (previousReplyPromise) {
-        await previousReplyPromise;
+  /** Reply in an existing thread: wait for prior reply, append messages, generate and send. */
+  private async executeReplyInExistingThread(params: {
+    groupId: string;
+    groupIdNum: number;
+    replyInExisting: ProactiveThread;
+    result: PreliminaryAnalysisResult;
+    filteredEntries: ConversationMessageEntry[];
+    triggerUserId?: string;
+  }): Promise<void> {
+    const { groupId, groupIdNum, replyInExisting, result, filteredEntries, triggerUserId } = params;
+    const threadId = replyInExisting.threadId;
+    const previousReplyPromise = this.replyInProgressByThread.get(threadId);
+    if (previousReplyPromise) {
+      await previousReplyPromise;
+    }
+    let resolveReplyDone: () => void = () => {};
+    const replyDonePromise = new Promise<void>((r) => {
+      resolveReplyDone = r;
+    });
+    this.replyInProgressByThread.set(threadId, replyDonePromise);
+    try {
+      const threadNow = this.threadService.getThread(threadId);
+      if (!threadNow) {
+        logger.debug(
+          `[ProactiveConversationService] Skip reply: thread not found after wait | threadId=${threadId} | groupId=${groupId}`,
+        );
+        return;
       }
-      let resolveReplyDone: () => void = () => {};
-      const replyDonePromise = new Promise<void>((r) => {
-        resolveReplyDone = r;
+      this.threadService.setCurrentThread(groupId, threadId);
+      const messageIdsToUse = this.resolveMessageIdsForReply(replyInExisting, filteredEntries, result.messageIds);
+      this.threadService.appendGroupMessages(threadId, filteredEntries, {
+        messageIds: messageIdsToUse.length ? messageIdsToUse : undefined,
       });
-      this.replyInProgressByThread.set(threadId, replyDonePromise);
-      try {
-        const threadNow = this.threadService.getThread(threadId);
-        if (!threadNow) {
-          logger.debug(
-            `[ProactiveConversationService] Skip reply: thread not found after wait | threadId=${threadId} | groupId=${groupId}`,
-          );
-          return;
-        }
-        this.threadService.setCurrentThread(groupId, threadId);
-        const messageIdsToUse = this.resolveMessageIdsForReply(replyInExisting, filteredEntries, result.messageIds);
-        this.threadService.appendGroupMessages(threadId, filteredEntries, {
-          messageIds: messageIdsToUse.length ? messageIdsToUse : undefined,
-        });
-        await this.replyInThread(
-          threadId,
-          groupIdNum,
-          preferenceKey,
-          topicOrQuery,
-          result.searchQueries,
-          triggerUserId,
-          filteredEntries,
-        );
-      } finally {
-        this.replyInProgressByThread.delete(threadId);
-        resolveReplyDone();
-      }
-      this.scheduleThreadCompression(groupId);
-      return;
-    }
-
-    if (result.createNew || activeThreads.length === 0) {
-      if (this.shouldBlockNewThread(groupId, filteredEntries)) {
-        logger.info(
-          `[ProactiveConversationService] Blocked new thread creation (no new user messages since last new-thread reply) | groupId=${groupId} | preferenceKey=${preferenceKey}`,
-        );
-        this.scheduleThreadCompression(groupId);
-        return;
-      }
-      await this.joinWithNewThread(
-        groupId,
+      const topic = result.topic?.trim() || '';
+      await this.replyInThread(
+        threadId,
         groupIdNum,
-        preferenceKey,
-        filteredEntries,
-        topicOrQuery,
+        replyInExisting.preferenceKey,
+        topic,
         result.searchQueries,
         triggerUserId,
+        filteredEntries,
       );
-      // Record boundary: newest user message in filteredEntries, so subsequent new-thread attempts
-      // are blocked until genuinely new user messages arrive.
-      const newestUserEntry = [...filteredEntries].reverse().find((e) => !e.isBotReply);
-      if (newestUserEntry?.messageId) {
-        this.lastNewThreadBoundaryByGroup.set(groupId, newestUserEntry.messageId);
-      }
+    } finally {
+      this.replyInProgressByThread.delete(threadId);
+      resolveReplyDone();
     }
-    this.scheduleThreadCompression(groupId);
+  }
+
+  /** Create new thread and reply if result requests it; otherwise no-op. Updates lastNewThreadBoundary when a thread is created. */
+  private async executeCreateNewThreadIfRequested(params: {
+    groupId: string;
+    groupIdNum: number;
+    preferenceKey: string;
+    topic: string;
+    result: PreliminaryAnalysisResult;
+    activeThreads: ProactiveThread[];
+    filteredEntries: ConversationMessageEntry[];
+    triggerUserId?: string;
+  }): Promise<void> {
+    const { groupId, groupIdNum, preferenceKey, topic, result, activeThreads, filteredEntries, triggerUserId } = params;
+    if (!result.createNew && activeThreads.length > 0) {
+      return;
+    }
+    if (this.shouldBlockNewThread(groupId, filteredEntries)) {
+      logger.info(
+        `[ProactiveConversationService] Blocked new thread creation (no new user messages since last new-thread reply) | groupId=${groupId} | preferenceKey=${preferenceKey}`,
+      );
+      return;
+    }
+    await this.joinWithNewThread(
+      groupId,
+      groupIdNum,
+      preferenceKey,
+      filteredEntries,
+      topic,
+      result.searchQueries,
+      triggerUserId,
+    );
+    const newestUserEntry = [...filteredEntries].reverse().find((e) => !e.isBotReply);
+    if (newestUserEntry?.messageId) {
+      this.lastNewThreadBoundaryByGroup.set(groupId, newestUserEntry.messageId);
+    }
   }
 
   /**
@@ -577,15 +696,15 @@ export class ProactiveConversationService {
     groupIdNum: number,
     preferenceKey: string,
     filteredEntries: ConversationMessageEntry[],
-    topicOrQuery: string,
+    topic: string,
     searchQueries?: string[],
     triggerUserId?: string,
   ): Promise<void> {
-    const thread = this.threadService.create(groupId, preferenceKey, filteredEntries, triggerUserId);
+    const thread = this.threadService.create(groupId, preferenceKey, filteredEntries, triggerUserId, topic);
     const injectContext = await this.replyContextBuilder.buildForNewThread(
       groupId,
       preferenceKey,
-      topicOrQuery,
+      topic,
       filteredEntries,
       searchQueries,
       triggerUserId,
@@ -596,7 +715,7 @@ export class ProactiveConversationService {
       injectContext.messageImages = messageImages;
     }
     const lastUserEntry = [...filteredEntries].reverse().find((e) => !e.isBotReply);
-    const lastUserText = lastUserEntry?.content || topicOrQuery;
+    const lastUserText = lastUserEntry?.content || topic;
     await this.runTaskAnalysisForProactive(injectContext, lastUserText, groupId, groupIdNum);
 
     const replyText = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
@@ -616,7 +735,7 @@ export class ProactiveConversationService {
     threadId: string,
     groupIdNum: number,
     preferenceKey: string,
-    topicOrQuery: string,
+    topic: string,
     searchQueries?: string[],
     triggerUserId?: string,
     filteredEntries?: ConversationMessageEntry[],
@@ -627,7 +746,7 @@ export class ProactiveConversationService {
       threadId,
       thread,
       preferenceKey,
-      topicOrQuery,
+      topic,
       searchQueries,
       triggerUserId,
       this.fetchProgressNotifier,
@@ -639,7 +758,7 @@ export class ProactiveConversationService {
       }
     }
     // Task analysis: scan topicOrQuery for task triggers (search, future task types, etc.).
-    await this.runTaskAnalysisForProactive(injectContext, topicOrQuery, thread.groupId, groupIdNum);
+    await this.runTaskAnalysisForProactive(injectContext, topic, thread.groupId, groupIdNum);
 
     const replyText = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
     if (!replyText) return;

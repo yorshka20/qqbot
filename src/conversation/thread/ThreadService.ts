@@ -39,6 +39,8 @@ export interface ProactiveThread {
   lastActivityAt: Date;
   /** User ID (string) who triggered the analysis that created this thread; used to treat their follow-up messages as trigger without re-checking trigger words. */
   triggerUserId?: string;
+  /** Topic summary for this thread; used when trigger user ends thread (e.g. "已结束{lastTopic}thread"). */
+  lastTopic?: string;
 }
 
 /**
@@ -57,12 +59,14 @@ export class ThreadService {
    * Create a new thread with initial context (recent messages).
    * Does not replace existing threads; group can have multiple threads.
    * @param triggerUserId - User ID (string) who triggered the analysis that created this thread; stored so their follow-up messages can skip trigger-word check.
+   * @param topic - Topic from preliminary analysis result; stored for "已结束{topic}thread" when trigger user ends the thread.
    */
   create(
     groupId: string,
     preferenceKey: string,
     initialMessages: ConversationMessageEntry[],
     triggerUserId?: string,
+    topic?: string,
   ): ProactiveThread {
     const threadId = randomUUID();
     const now = new Date();
@@ -76,6 +80,7 @@ export class ThreadService {
         wasAtBot: m.wasAtBot === true,
       }));
 
+    const lastTopic = topic?.trim() || undefined;
     const thread: ProactiveThread = {
       threadId,
       groupId,
@@ -84,6 +89,7 @@ export class ThreadService {
       createdAt: now,
       lastActivityAt: now,
       triggerUserId,
+      lastTopic,
     };
 
     this.threadById.set(threadId, thread);
@@ -282,6 +288,16 @@ export class ThreadService {
    */
   getThread(threadId: string): ProactiveThread | null {
     return this.threadById.get(threadId) ?? null;
+  }
+
+  /**
+   * Set the topic for a thread (used when replying so we can show "已结束{topic}thread" when trigger user ends it).
+   */
+  setThreadTopic(threadId: string, topic: string): void {
+    const thread = this.threadById.get(threadId);
+    if (thread && topic.trim()) {
+      thread.lastTopic = topic.trim();
+    }
   }
 
   /**
