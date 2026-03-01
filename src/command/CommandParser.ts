@@ -8,8 +8,10 @@ export class CommandParser {
 
   /**
    * Parse command from message.
-   * Handles both plain command (e.g. "/i2v prompt") and mixed-content (e.g. "[Image:...]\n/i2v prompt"):
-   * tries (1) whole message, (2) each line, (3) substring from first command prefix to end.
+   * A command must start with a prefix (e.g. '/' or '!'): we try (1) whole message, (2) each line.
+   * We do NOT treat substrings that merely contain a prefix as command (e.g. "hello/world" is not a command).
+   * When using segment-based extraction, only text segments are used; image/reply are separate segment types
+   * and do not appear in the extracted string, so "[Image:...] + command" as a single text segment is not expected.
    * Returns null if message is not a command.
    */
   parse(message: string): ParsedCommand | null {
@@ -17,7 +19,7 @@ export class CommandParser {
     if (result) {
       return result;
     }
-    // Try each line (handles "[Image:...]\n/i2v prompt")
+    // Try each line (e.g. "some text\n/help" -> command on second line)
     const lines = message.split(/\n/);
     for (const line of lines) {
       const trimmed = line.trim();
@@ -27,16 +29,6 @@ export class CommandParser {
       const lineResult = this.parseOne(trimmed);
       if (lineResult) {
         return lineResult;
-      }
-    }
-    // Try from first command prefix to end (handles "[Image:...]/i2v prompt" with no newline)
-    for (const p of this.prefixes) {
-      const idx = message.indexOf(p);
-      if (idx !== -1) {
-        const suffixResult = this.parseOne(message.slice(idx).trim());
-        if (suffixResult) {
-          return suffixResult;
-        }
       }
     }
     return null;

@@ -144,11 +144,11 @@ export class ProviderFactory {
           return new LaozhangProvider({
             type: 'laozhang',
             apiKey: laozhangConfig.apiKey,
-            model: laozhangConfig.model,
             baseURL: laozhangConfig.baseURL,
-            defaultAspectRatio: laozhangConfig.defaultAspectRatio,
-            defaultImageSize: laozhangConfig.defaultImageSize,
             resourceSavePath: laozhangConfig.resourceSavePath,
+            llm: laozhangConfig.llm,
+            vision: laozhangConfig.vision,
+            text2img: laozhangConfig.text2img,
           });
         }
         case 'runpod': {

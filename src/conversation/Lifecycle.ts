@@ -259,7 +259,6 @@ export class Lifecycle {
     }
 
     // Fallback to message string if no command found from segments.
-    // Parser.parse() handles mixed-content (e.g. [Image:...]/i2v prompt) internally.
     if (!command) {
       command = this.commandRouter.route(context.message.message);
     }

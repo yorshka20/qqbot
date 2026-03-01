@@ -1,20 +1,23 @@
 // Laozhang AI Provider implementation
 
+import { mkdir, writeFile } from 'fs/promises';
+import { join } from 'path';
 import { HttpClient } from '@/api/http/HttpClient';
 import type { LaozhangProviderConfig } from '@/core/config/ai';
 import { logger } from '@/utils/logger';
-import { mkdir, writeFile } from 'fs/promises';
-import { join } from 'path';
 import { AIProvider } from '../base/AIProvider';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
+import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';
 import type {
   CapabilityType,
   Image2ImageOptions,
   ProviderImageGenerationResponse,
   Text2ImageOptions,
+  VisionImage,
 } from '../capabilities/types';
-import { ResourceDownloader } from '../utils/ResourceDownloader';
+import type { VisionCapability } from '../capabilities/VisionCapability';
+import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
 import {
   handleFinishReason,
   handleGeneralError,
@@ -22,6 +25,7 @@ import {
   handleNoCandidates,
   handleNoImageData,
 } from '../utils/geminiErrorHandler';
+import { ResourceDownloader } from '../utils/ResourceDownloader';
 
 /**
  * Laozhang/Gemini API response types
@@ -44,11 +48,18 @@ interface LaozhangApiResponse {
   };
 }
 
+type LaoZhangRatioKey = (typeof LaozhangProvider.SUPPORTED_ASPECT_RATIOS)[number];
+type LaoZhangImageSizeKey = (typeof LaozhangProvider.SUPPORTED_IMAGE_SIZES)[number];
+
 /**
  * Laozhang AI Provider implementation
- * Text-to-image and image-to-image generation using Laozhang AI API (Gemini API forwarder)
+ * LLM, vision, text2img and img2img via Laozhang AI API (Gemini API forwarder).
+ * Capabilities are enabled by config: llm, vision, text2img each optional and independent.
  */
-export class LaozhangProvider extends AIProvider implements Text2ImageCapability, Image2ImageCapability {
+export class LaozhangProvider
+  extends AIProvider
+  implements Text2ImageCapability, Image2ImageCapability, LLMCapability, VisionCapability
+{
   readonly name = 'laozhang';
   private config: LaozhangProviderConfig;
   private _capabilities: CapabilityType[];
@@ -61,10 +72,11 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
   private static readonly DEFAULT_BASE_URL = 'https://api.laozhang.ai';
   private static readonly DEFAULT_ASPECT_RATIO = '16:9';
   private static readonly DEFAULT_IMAGE_SIZE = '2K';
-  private static readonly TIMEOUT = 10 * 60 * 1000; // 10 minutes timeout for image generation
+  private static readonly TIMEOUT = 10 * 60 * 1000; // 10 minutes for image generation
+  private static readonly LLM_TIMEOUT = 60 * 1000; // 1 minute for LLM/vision
 
   // Supported aspect ratios
-  private static readonly SUPPORTED_ASPECT_RATIOS = [
+  static readonly SUPPORTED_ASPECT_RATIOS = [
     '1:1',
     '16:9',
     '9:16',
@@ -78,23 +90,28 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
   ] as const;
 
   // Supported image sizes
-  private static readonly SUPPORTED_IMAGE_SIZES = ['1K', '2K', '4K'] as const;
+  static readonly SUPPORTED_IMAGE_SIZES = ['1K', '2K', '4K'] as const;
 
   constructor(config: LaozhangProviderConfig) {
     super();
-    this.config = {
-      model: LaozhangProvider.DEFAULT_MODEL,
-      baseURL: LaozhangProvider.DEFAULT_BASE_URL,
-      defaultAspectRatio: LaozhangProvider.DEFAULT_ASPECT_RATIO,
-      defaultImageSize: LaozhangProvider.DEFAULT_IMAGE_SIZE,
-      ...config,
-    };
+    this.config = config;
 
-    this._capabilities = ['text2img', 'img2img'];
+    // Build capabilities from structured config: llm, vision, text2img(+img2img)
+    this._capabilities = [];
+    if (config.llm) {
+      this._capabilities.push('llm');
+      this.setContextConfig(config.llm.enableContext ?? false, config.llm.contextMessageCount ?? 10);
+    }
+    if (config.vision) {
+      this._capabilities.push('vision');
+    }
+    if (config.text2img) {
+      this._capabilities.push('text2img', 'img2img');
+    }
 
     // Configure HttpClient
     this.httpClient = new HttpClient({
-      baseURL: this.config.baseURL,
+      baseURL: this.config.baseURL ?? LaozhangProvider.DEFAULT_BASE_URL,
       defaultHeaders: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.config.apiKey}`,
@@ -103,6 +120,21 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
     });
 
     logger.info('[LaozhangProvider] Initialized');
+  }
+
+  /** Text2img model from config.text2img */
+  private getText2ImgModel(): string {
+    return this.config.text2img?.model ?? LaozhangProvider.DEFAULT_MODEL;
+  }
+
+  /** Default aspect ratio from config.text2img */
+  private getDefaultAspectRatio(): string {
+    return this.config.text2img?.defaultAspectRatio ?? LaozhangProvider.DEFAULT_ASPECT_RATIO;
+  }
+
+  /** Default image size from config.text2img */
+  private getDefaultImageSize(): string {
+    return this.config.text2img?.defaultImageSize ?? LaozhangProvider.DEFAULT_IMAGE_SIZE;
   }
 
   isAvailable(): boolean {
@@ -118,10 +150,10 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
 
   getConfig(): Record<string, unknown> {
     return {
-      model: this.config.model,
-      baseURL: this.config.baseURL,
-      defaultAspectRatio: this.config.defaultAspectRatio,
-      defaultImageSize: this.config.defaultImageSize,
+      baseURL: this.config.baseURL ?? LaozhangProvider.DEFAULT_BASE_URL,
+      llm: this.config.llm ?? undefined,
+      vision: this.config.vision ?? undefined,
+      text2img: this.config.text2img ?? undefined,
     };
   }
 
@@ -133,7 +165,7 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
    * Validate aspect ratio
    */
   private validateAspectRatio(ratio: string): boolean {
-    return LaozhangProvider.SUPPORTED_ASPECT_RATIOS.includes(ratio as any);
+    return LaozhangProvider.SUPPORTED_ASPECT_RATIOS.includes(ratio as LaoZhangRatioKey);
   }
 
   /**
@@ -141,7 +173,7 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
    */
   private validateImageSize(size: string): boolean {
     const normalizedSize = size.toUpperCase();
-    return LaozhangProvider.SUPPORTED_IMAGE_SIZES.includes(normalizedSize as any);
+    return LaozhangProvider.SUPPORTED_IMAGE_SIZES.includes(normalizedSize as LaoZhangImageSizeKey);
   }
 
   /**
@@ -160,9 +192,10 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
       return options.aspectRatio as string;
     }
 
-    // Priority 2: config.defaultAspectRatio
-    if (this.config.defaultAspectRatio && this.validateAspectRatio(this.config.defaultAspectRatio)) {
-      return this.config.defaultAspectRatio;
+    // Priority 2: config default aspect ratio
+    const defaultRatio = this.getDefaultAspectRatio();
+    if (defaultRatio && this.validateAspectRatio(defaultRatio)) {
+      return defaultRatio;
     }
 
     // Fallback
@@ -179,9 +212,10 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
       return this.normalizeImageSize(options.imageSize as string);
     }
 
-    // Priority 2: config.defaultImageSize
-    if (this.config.defaultImageSize && this.validateImageSize(this.config.defaultImageSize)) {
-      return this.normalizeImageSize(this.config.defaultImageSize);
+    // Priority 2: config default image size
+    const defaultSize = this.getDefaultImageSize();
+    if (defaultSize && this.validateImageSize(defaultSize)) {
+      return this.normalizeImageSize(defaultSize);
     }
 
     // Fallback (already uppercase)
@@ -197,9 +231,10 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
       return options.aspectRatio as string;
     }
 
-    // Priority 2: config.defaultAspectRatio
-    if (this.config.defaultAspectRatio && this.validateAspectRatio(this.config.defaultAspectRatio)) {
-      return this.config.defaultAspectRatio;
+    // Priority 2: config default aspect ratio
+    const defaultRatio = this.getDefaultAspectRatio();
+    if (defaultRatio && this.validateAspectRatio(defaultRatio)) {
+      return defaultRatio;
     }
 
     // Fallback
@@ -219,7 +254,7 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
       const sanitized = JSON.parse(JSON.stringify(response));
 
       // Recursively find and truncate large strings (base64 data, thoughtSignature, etc.)
-      const sanitizeObject = (obj: any): any => {
+      const sanitizeObject = (obj: unknown): unknown => {
         if (!obj || typeof obj !== 'object') {
           return obj;
         }
@@ -228,7 +263,7 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
           return obj.map((item) => sanitizeObject(item));
         }
 
-        const result: any = {};
+        const result: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(obj)) {
           // Truncate any long string fields (base64 data, signatures, etc.)
           if (typeof value === 'string' && value.length > 200) {
@@ -236,7 +271,7 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
             result[key] = `${value.substring(0, 50)}... [${value.length} chars truncated]`;
           } else if (key === 'inlineData' && value && typeof value === 'object' && 'data' in value) {
             // Handle inlineData.data specifically
-            const dataValue = (value as any).data;
+            const dataValue = (value as Record<string, unknown>).data;
             if (typeof dataValue === 'string' && dataValue.length > 100) {
               result[key] = {
                 ...(value as object),
@@ -254,9 +289,133 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
 
       return sanitizeObject(sanitized);
     } catch (error) {
+      logger.error(
+        `[LaozhangProvider] Failed to sanitize response for logging: ${error instanceof Error ? error.message : String(error)}`,
+      );
       // If JSON parsing fails, return a simple representation
-      return { ...(response as object), _error: 'Failed to sanitize response for logging' };
+      return { ...(response as Record<string, unknown>), _error: 'Failed to sanitize response for logging' };
     }
+  }
+
+  /**
+   * Convert VisionImage[] to Gemini inlineData parts for vision requests
+   */
+  private async visionImagesToInlineParts(
+    images: VisionImage[],
+  ): Promise<Array<{ inlineData: { mimeType: string; data: string } }>> {
+    const parts: Array<{ inlineData: { mimeType: string; data: string } }> = [];
+    for (const img of images) {
+      let resource: string;
+      if (img.base64) {
+        resource = `data:${img.mimeType || 'image/jpeg'};base64,${img.base64}`;
+      } else if (img.file) {
+        resource = img.file.startsWith('file://') ? img.file : img.file;
+      } else if (img.url) {
+        resource = img.url;
+      } else {
+        continue;
+      }
+      const { data, mimeType } = await this.loadImageAsBase64(resource);
+      parts.push({ inlineData: { mimeType, data } });
+    }
+    return parts;
+  }
+
+  /**
+   * Call Gemini generateContent for text response (LLM or vision). Returns combined text from parts.
+   */
+  private async generateContentText(
+    model: string,
+    contentsParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>,
+    options?: { temperature?: number; maxTokens?: number },
+  ): Promise<{ text: string; usage?: AIGenerateResponse['usage'] }> {
+    const endpoint = `/v1beta/models/${model}:generateContent`;
+    const payload = {
+      contents: [{ parts: contentsParts }],
+      generationConfig: {
+        temperature: options?.temperature ?? 0.7,
+        maxOutputTokens: options?.maxTokens ?? 2000,
+      },
+    };
+    const response = await this.httpClient.post<LaozhangApiResponse>(endpoint, payload, {
+      timeout: LaozhangProvider.LLM_TIMEOUT,
+    });
+    const noCandidatesError = handleNoCandidates(response, '');
+    if (noCandidatesError) {
+      throw new Error(noCandidatesError.text || 'No candidates in response');
+    }
+    const candidate = response.candidates?.[0];
+    if (!candidate?.content?.parts) {
+      throw new Error('Invalid response structure');
+    }
+    const text = candidate.content.parts.map((p) => p.text ?? '').join('');
+    return {
+      text,
+      usage: undefined, // Laozhang/Gemini may not return token usage in same shape
+    };
+  }
+
+  async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
+    if (!this.config.llm) {
+      throw new Error('LaozhangProvider: llm not configured');
+    }
+    const model = this.config.llm.model;
+    const temperature = options?.temperature ?? this.config.llm.temperature ?? 0.7;
+    const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens ?? 2000;
+    const history = await this.loadHistory(options);
+    const parts: Array<{ text: string }> = [];
+    for (const msg of history) {
+      parts.push({ text: `${msg.role}: ${msg.content}\n\n` });
+    }
+    parts.push({ text: prompt });
+    const fullPrompt = parts.map((p) => p.text).join('');
+    const { text, usage } = await this.generateContentText(model, [{ text: fullPrompt }], {
+      temperature,
+      maxTokens,
+    });
+    return { text, usage };
+  }
+
+  async generateStream(
+    prompt: string,
+    handler: StreamingHandler,
+    options?: AIGenerateOptions,
+  ): Promise<AIGenerateResponse> {
+    const result = await this.generate(prompt, options);
+    handler(result.text);
+    return result;
+  }
+
+  async generateWithVision(
+    prompt: string,
+    images: VisionImage[],
+    options?: AIGenerateOptions,
+  ): Promise<AIGenerateResponse> {
+    if (!this.config.vision) {
+      throw new Error('LaozhangProvider: vision not configured');
+    }
+    const model = this.config.vision.model;
+    const imageParts = await this.visionImagesToInlineParts(images);
+    const contentsParts = [{ text: prompt }, ...imageParts];
+    return this.generateContentText(model, contentsParts, {
+      temperature: options?.temperature ?? 0.7,
+      maxTokens: options?.maxTokens ?? 2000,
+    });
+  }
+
+  async generateStreamWithVision(
+    prompt: string,
+    images: VisionImage[],
+    handler: StreamingHandler,
+    options?: AIGenerateOptions,
+  ): Promise<AIGenerateResponse> {
+    const result = await this.generateWithVision(prompt, images, options);
+    handler(result.text);
+    return result;
+  }
+
+  async explainImages(images: VisionImage[], prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
+    return this.generateWithVision(prompt, images, options);
   }
 
   /**
@@ -349,7 +508,7 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
       logger.info(`[LaozhangProvider] Starting image generation for prompt: ${prompt}`);
 
       // Support model override via options.model
-      const model = options?.model || this.config.model || LaozhangProvider.DEFAULT_MODEL;
+      const model = options?.model || this.getText2ImgModel();
       const aspectRatio = this.resolveAspectRatio(options);
       const imageSize = this.resolveImageSize(options);
 
@@ -397,7 +556,21 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
       }
 
       // At this point, response.candidates is guaranteed to exist and have at least one element
-      const candidate = response.candidates![0]!;
+      const candidate = response.candidates?.[0];
+      if (!candidate) {
+        return {
+          images: [],
+          text: '',
+          metadata: {
+            prompt,
+            numImages: 0,
+          },
+          error: {
+            code: 'no_candidates',
+            message: 'No candidates in response',
+          },
+        };
+      }
 
       // Check finish reason for errors
       const finishReasonError = handleFinishReason(candidate, prompt);
@@ -412,7 +585,7 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
       }
 
       // At this point, candidate.content and candidate.content.parts are guaranteed to exist
-      const parts = candidate.content!.parts!;
+      const parts = candidate.content?.parts ?? [];
 
       // Find image part in response
       let imageData: string | null = null;
@@ -490,7 +663,7 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
     try {
       logger.info(`[LaozhangProvider] Starting image-to-image transformation for prompt: ${prompt}`);
 
-      const model = this.config.model || LaozhangProvider.DEFAULT_MODEL;
+      const model = this.getText2ImgModel();
       const aspectRatio = this.resolveAspectRatioForImage2Image(options);
       const imageSize = this.resolveImageSize(options);
 
@@ -549,7 +722,21 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
       }
 
       // At this point, response.candidates is guaranteed to exist and have at least one element
-      const candidate = response.candidates![0]!;
+      const candidate = response.candidates?.[0];
+      if (!candidate) {
+        return {
+          images: [],
+          text: '',
+          metadata: {
+            prompt,
+            numImages: 0,
+          },
+          error: {
+            code: 'no_candidates',
+            message: 'No candidates in response',
+          },
+        };
+      }
 
       // Check finish reason for errors
       const finishReasonError = handleFinishReason(candidate, prompt);
@@ -564,7 +751,7 @@ export class LaozhangProvider extends AIProvider implements Text2ImageCapability
       }
 
       // At this point, candidate.content and candidate.content.parts are guaranteed to exist
-      const parts = candidate.content!.parts!;
+      const parts = candidate.content?.parts ?? [];
 
       // Find image part in response
       let imageData: string | null = null;

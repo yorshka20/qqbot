@@ -297,15 +297,24 @@
       //   "enableContext": true,
       //   "contextMessageCount": 10
       // },
-      // Laozhang AI provider for text-to-image generation
-      // Uses Laozhang AI API (Gemini API forwarder)
+      // Laozhang AI provider (LLM, vision, text2img/img2img). Config by capability.
       // "laozhang": {
       //   "type": "laozhang",
       //   "apiKey": "your_laozhang_api_key_here",
-      //   "model": "gemini-3-pro-image-preview", // Default: "gemini-3-pro-image-preview"
-      //   "baseURL": "https://api.laozhang.ai", // Default: "https://api.laozhang.ai"
-      //   "defaultAspectRatio": "16:9", // Options: "1:1", "16:9", "9:16", "4:3", "3:4", "21:9", "3:2", "2:3", "5:4", "4:5", default: "16:9"
-      //   "defaultImageSize": "2K" // Options: "1K", "2K", "4K", default: "2K"
+      //   "baseURL": "https://api.laozhang.ai",
+      //   "llm": {
+      //     "model": "gemini-2.0-flash",
+      //     "temperature": 0.7,
+      //     "maxTokens": 2000,
+      //     "enableContext": true,
+      //     "contextMessageCount": 10
+      //   },
+      //   "vision": { "model": "gemini-2.0-flash" },
+      //   "text2img": {
+      //     "model": "gemini-3-pro-image-preview",
+      //     "defaultAspectRatio": "16:9",
+      //     "defaultImageSize": "2K"
+      //   }
       // },
       // RunPod Serverless provider (T2I + I2V) - configure under ai.providers.runpod only
       // "runpod": {

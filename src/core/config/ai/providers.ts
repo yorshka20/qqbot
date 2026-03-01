@@ -120,14 +120,38 @@ export interface DoubaoProviderConfig {
   contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
 }
 
+/** Laozhang config per capability: model and optional LLM options */
+export interface LaozhangLLmConfig {
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+  enableContext?: boolean;
+  contextMessageCount?: number; // default: 10
+}
+
+/** Laozhang config for vision (image understanding) */
+export interface LaozhangVisionConfig {
+  model: string;
+}
+
+/** Laozhang config for text2img/img2img (banana/banana-pro) */
+export interface LaozhangText2ImgConfig {
+  model?: string; // default: 'gemini-3-pro-image-preview'
+  defaultAspectRatio?: string; // "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "21:9" | "3:2" | "2:3" | "5:4" | "4:5", default: "16:9"
+  defaultImageSize?: string; // "1K" | "2K" | "4K", default: "2K"
+}
+
 export interface LaozhangProviderConfig {
   type: 'laozhang';
   apiKey: string;
-  model?: string; // Default: 'gemini-3-pro-image-preview'
   baseURL?: string; // Default: 'https://api.laozhang.ai'
-  defaultAspectRatio?: string; // One of: "1:1", "16:9", "9:16", "4:3", "3:4", "21:9", "3:2", "2:3", "5:4", "4:5", default: "16:9"
-  defaultImageSize?: string; // One of: "1K", "2K", "4K", default: "2K"
   resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/laozhang')
+  /** When set, enables LLM capability (reply generation). */
+  llm?: LaozhangLLmConfig;
+  /** When set, enables vision capability (image understanding). */
+  vision?: LaozhangVisionConfig;
+  /** When set, enables text2img/img2img (banana/banana-pro). If omitted, laozhang only provides llm/vision when those are set. */
+  text2img?: LaozhangText2ImgConfig;
 }
 
 /** RunPod Serverless provider (T2I + I2V). Same pattern as other providers: all config in ai.providers.runpod. */

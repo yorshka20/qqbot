@@ -67,6 +67,10 @@ export interface Image2VideoOptions {
  * This is converted to ImageGenerationResponse by ImageGenerationService
  */
 export interface ProviderImageGenerationResponse {
+  error?: {
+    code: string;
+    message: string;
+  };
   images: Array<{
     relativePath?: string; // Relative path from output directory (e.g., 'novelai/image.png') - for locally saved files
     url?: string; // External URL (for providers that return URLs directly, e.g., LocalText2ImageProvider)
