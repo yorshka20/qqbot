@@ -5,6 +5,7 @@ import { extractTextFromSegments } from '@/ai/utils/imageUtils';
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ContextManager, ConversationContext } from '@/context';
+import { enterMessageContext } from '@/context/MessageContextStorage';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { getReplyContent } from '@/context/HookContextHelpers';
 import type { NormalizedMessageEvent } from '@/events/types';
@@ -18,7 +19,9 @@ import type { MessageProcessingContext, MessageProcessingResult } from './types'
 
 /**
  * Message Pipeline
- * Processes messages through the complete flow using Lifecycle
+ * Processes messages through the complete flow using Lifecycle.
+ * Each process run registers its message context in a Map (keyed by sessionId_messageId); the key is set in
+ * async local storage so PromptManager can look up the correct context for this async chain when rendering.
  */
 export class MessagePipeline {
   private messageAPI: MessageAPI;
@@ -39,27 +42,24 @@ export class MessagePipeline {
    */
   async process(event: NormalizedMessageEvent, context: MessageProcessingContext): Promise<MessageProcessingResult> {
     const hookContext = this.createHookContext(event, context);
-    try {
-      // Cache message early for quick lookup (e.g., for reply segments)
-      cacheMessage(event);
+    const messageId = String(event.id ?? event.messageId ?? 'unknown');
+    const contextKey = `${context.sessionId}_${messageId}`;
 
-      // Set current message context so PromptManager injectBase can resolve groupId and userInfo by itself
-      this.promptManager.setCurrentMessageContext({ message: hookContext.message });
+    return enterMessageContext(contextKey, { message: hookContext.message }, async () => {
+      try {
+        cacheMessage(event);
+        logger.info(`[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId}`);
 
-      const messageId = String(event.id ?? event.messageId ?? 'unknown');
-      logger.info(`[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId}`);
+        const success = await this.lifecycle.execute(hookContext);
+        if (!success) {
+          return { success: false, error: 'Processing interrupted' };
+        }
 
-      const success = await this.lifecycle.execute(hookContext);
-      if (!success) {
-        return { success: false, error: 'Processing interrupted' };
+        return await this.handleReply(event, context, hookContext, messageId);
+      } catch (error) {
+        return await this.handleError(error, event, context);
       }
-
-      return await this.handleReply(event, context, hookContext, messageId);
-    } catch (error) {
-      return await this.handleError(error, event, context);
-    } finally {
-      this.promptManager.setCurrentMessageContext(null);
-    }
+    });
   }
 
   /**
@@ -73,23 +73,24 @@ export class MessagePipeline {
     const hookContext = this.createHookContext(event, context);
     const messageId = String(event.id ?? event.messageId ?? 'unknown');
     hookContext.metadata.set('replyOnly', true);
-    try {
-      this.promptManager.setCurrentMessageContext({ message: hookContext.message });
-      logger.info(`[MessagePipeline] Reply-only | messageId=${messageId} | userId=${event.userId}`);
-      const success = await this.lifecycle.executeProcessOnly(hookContext);
-      if (!success) {
-        return { success: false, error: 'Processing interrupted' };
+    const contextKey = `${context.sessionId}_${messageId}`;
+
+    return enterMessageContext(contextKey, { message: hookContext.message }, async () => {
+      try {
+        logger.info(`[MessagePipeline] Reply-only | messageId=${messageId} | userId=${event.userId}`);
+        const success = await this.lifecycle.executeProcessOnly(hookContext);
+        if (!success) {
+          return { success: false, error: 'Processing interrupted' };
+        }
+        const result = await this.handleReply(event, context, hookContext, messageId);
+        if (result.success) {
+          await this.lifecycle.runCompleteStage(hookContext, messageId);
+        }
+        return result;
+      } catch (error) {
+        return await this.handleError(error, event, context);
       }
-      const result = await this.handleReply(event, context, hookContext, messageId);
-      if (result.success) {
-        await this.lifecycle.runCompleteStage(hookContext, messageId);
-      }
-      return result;
-    } catch (error) {
-      return await this.handleError(error, event, context);
-    } finally {
-      this.promptManager.setCurrentMessageContext(null);
-    }
+    });
   }
 
   /**

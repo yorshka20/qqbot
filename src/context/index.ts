@@ -15,6 +15,11 @@ export {
   setReply,
   setReplyWithSegments,
 } from './HookContextHelpers';
+export {
+  enterMessageContext,
+  getCurrentMessageContext,
+  type MessageContextValue,
+} from './MessageContextStorage';
 export { TaskExecutionContextBuilder } from './TaskExecutionContextBuilder';
 export type {
   BuildContextOptions,

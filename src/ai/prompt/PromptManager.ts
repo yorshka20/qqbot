@@ -3,6 +3,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { basename, extname, join, resolve } from 'path';
+import { getCurrentMessageContext } from '@/context/MessageContextStorage';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
 
@@ -195,8 +196,8 @@ export class PromptManager {
 
     const baseTemplate = this.getTemplate(BASE_TEMPLATE_NAME);
     if (baseTemplate) {
-      // Inject base template; groupId and userInfo are resolved from current message context (set by pipeline).
-      const msg = this.currentMessageContext?.message;
+      // Prefer Map lookup by current key (per concurrent pipeline run); fallback to pipeline-set currentMessageContext.
+      const msg = getCurrentMessageContext()?.message ?? this.currentMessageContext?.message;
       const groupId = msg?.messageType === 'group' && msg?.groupId != null ? String(msg.groupId) : '（无）';
       const userInfo = msg ? `userId：${msg.userId}，nickname：${msg.sender?.nickname ?? '未知'}` : '（无）';
       const baseVars: Record<string, string> = {
