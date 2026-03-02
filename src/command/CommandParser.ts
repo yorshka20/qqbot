@@ -1,7 +1,7 @@
 // Command parser - parses command format from message
 
-import type { ParsedCommand } from './types';
 import { logger } from '@/utils/logger';
+import type { ParsedCommand } from './types';
 
 export class CommandParser {
   constructor(private prefixes: string[] = ['/', '!']) {}

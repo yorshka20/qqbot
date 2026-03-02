@@ -18,9 +18,10 @@ export type {
   Text2ImageOptions,
   VisionImage,
 } from './capabilities/types';
-export { PromptManager } from './prompt/PromptManager';
 export { ProviderFactory } from './ProviderFactory';
 export { ProviderRegistry } from './ProviderRegistry';
+export { ProviderSelector } from './ProviderSelector';
+export { PromptManager } from './prompt/PromptManager';
 export { AnthropicProvider } from './providers/AnthropicProvider';
 export { DeepSeekProvider } from './providers/DeepSeekProvider';
 export { GoogleCloudRunProvider } from './providers/GoogleCloudRunProvider';
@@ -28,7 +29,6 @@ export { LocalText2ImageProvider } from './providers/LocalText2ImageProvider';
 export { OllamaProvider } from './providers/OllamaProvider';
 export { OpenAIProvider } from './providers/OpenAIProvider';
 export { RunPodProvider } from './providers/RunPodProvider';
-export { ProviderSelector } from './ProviderSelector';
 export { CardRenderingService } from './services/CardRenderingService';
 export { ImageGenerationService } from './services/ImageGenerationService';
 export { LLMService } from './services/LLMService';

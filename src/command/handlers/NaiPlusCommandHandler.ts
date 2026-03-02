@@ -1,4 +1,5 @@
-import { AIService, Image2ImageOptions, Text2ImageOptions } from '@/ai';
+import { inject, injectable } from 'tsyringe';
+import type { AIService, Image2ImageOptions, Text2ImageOptions } from '@/ai';
 import { extractImagesFromMessageAndReply, visionImageToString } from '@/ai/utils/imageUtils';
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
@@ -7,10 +8,9 @@ import type { DatabaseManager } from '@/database/DatabaseManager';
 import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
-import { inject, injectable } from 'tsyringe';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
-import { CommandContext, CommandHandler, CommandResult } from '../types';
+import type { CommandContext, CommandHandler, CommandResult } from '../types';
 import { generateSeed } from '../utils/CommandImageUtils';
 import { createHookContextForCommand } from '../utils/HookContextBuilder';
 

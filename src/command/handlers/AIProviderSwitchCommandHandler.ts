@@ -1,10 +1,10 @@
-import { AIManager, CapabilityType } from '@/ai';
-import { Config } from '@/core/config';
+import { inject, injectable } from 'tsyringe';
+import type { AIManager, CapabilityType } from '@/ai';
+import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { inject, injectable } from 'tsyringe';
 import { Command } from '../decorators';
-import { CommandHandler, CommandResult } from '../types';
+import type { CommandHandler, CommandResult } from '../types';
 
 @Command({
   name: 'provider',

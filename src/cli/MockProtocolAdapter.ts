@@ -2,7 +2,7 @@
 // Returns mock responses for all API calls without actually sending them
 
 import type { APIContext } from '@/api/types';
-import { Connection } from '@/core/Connection';
+import type { Connection } from '@/core/Connection';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import { ProtocolAdapter } from '@/protocol/base/ProtocolAdapter';
 import type { BaseEvent } from '@/protocol/base/types';

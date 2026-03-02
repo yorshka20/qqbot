@@ -1,10 +1,10 @@
 // Plugin Initializer - initializes PluginManager and loads plugins
 
 import type { APIClient } from '@/api/APIClient';
-import { ConversationConfigService } from '@/config/ConversationConfigService';
+import type { ConversationConfigService } from '@/config/ConversationConfigService';
+import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { Config } from '@/core/config';
 import type { EventRouter } from '@/events/EventRouter';
 import type { HookManager } from '@/hooks/HookManager';
 import { logger } from '@/utils/logger';

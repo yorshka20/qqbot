@@ -61,12 +61,11 @@ export abstract class BaseHttpHealthCheck implements HealthCheckable {
 
         // Check if should retry
         if (attempt < retries) {
-          const delay = Math.pow(2, attempt) * 500; // Exponential backoff: 500ms, 1s, 2s...
+          const delay = 2 ** attempt * 500; // Exponential backoff: 500ms, 1s, 2s...
           logger.debug(
             `[${this.serviceName}] Health check failed (attempt ${attempt + 1}/${retries + 1}), retrying in ${delay}ms...`,
           );
           await this.delay(delay);
-          continue;
         }
       }
     }

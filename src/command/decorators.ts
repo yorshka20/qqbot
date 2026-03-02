@@ -68,7 +68,7 @@ const registeredClasses = new WeakSet<new (...args: any[]) => CommandHandler>();
  * @param options - Command options (name, description, permissions, etc.)
  */
 export function Command(options: CommandOptions) {
-  return function <T extends new (...args: any[]) => CommandHandler>(target: T): T {
+  return <T extends new (...args: any[]) => CommandHandler>(target: T): T => {
     // Also check if this class has already been registered (additional safety check)
     if (registeredClasses.has(target)) {
       return target;

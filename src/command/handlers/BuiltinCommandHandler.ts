@@ -2,8 +2,8 @@
 
 import { exec } from 'node:child_process';
 import { inject, injectable } from 'tsyringe';
-import type { AIService } from '@/ai/AIService';
 import type { AIManager } from '@/ai/AIManager';
+import type { AIService } from '@/ai/AIService';
 import type { CapabilityType } from '@/ai/capabilities/types';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { InfoCardData, ListCardData } from '@/ai/utils/cardTypes';

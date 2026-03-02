@@ -1,8 +1,9 @@
 // Simple static file server for serving generated images
-import { logger } from '@/utils/logger';
+
 import { serve } from 'bun';
 import { readFile } from 'fs/promises';
 import { extname } from 'path';
+import { logger } from '@/utils/logger';
 
 export class StaticFileServer {
   private port: number;

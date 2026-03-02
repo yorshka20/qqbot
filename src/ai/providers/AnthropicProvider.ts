@@ -4,8 +4,8 @@ import { HttpClient } from '@/api/http/HttpClient';
 import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
-import type { VisionCapability } from '../capabilities/VisionCapability';
 import type { CapabilityType, VisionImage } from '../capabilities/types';
+import type { VisionCapability } from '../capabilities/VisionCapability';
 import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
 
@@ -298,7 +298,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       // Add images to content
       for (const image of images) {
         let imageData: string;
-        let mimeType = image.mimeType || 'image/jpeg';
+        const mimeType = image.mimeType || 'image/jpeg';
 
         // Use ResourceDownloader to handle various input formats
         if (image.base64) {

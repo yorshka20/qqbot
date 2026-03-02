@@ -1,10 +1,10 @@
 // Database manager - creates and manages database adapter instance
 
-import type { DatabaseAdapter } from './base/DatabaseAdapter';
-import { SQLiteAdapter } from './adapters/SQLiteAdapter';
-import { MongoDBAdapter } from './adapters/MongoDBAdapter';
 import type { DatabaseConfig } from '@/core/config';
 import { logger } from '@/utils/logger';
+import { MongoDBAdapter } from './adapters/MongoDBAdapter';
+import { SQLiteAdapter } from './adapters/SQLiteAdapter';
+import type { DatabaseAdapter } from './base/DatabaseAdapter';
 
 export class DatabaseManager {
   private adapter: DatabaseAdapter | null = null;

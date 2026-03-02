@@ -1,7 +1,7 @@
 // File API method wrappers for Milky protocol
 
 import type { CommandContext } from '@/command/types';
-import { ProtocolName } from '@/core/config/protocol';
+import type { ProtocolName } from '@/core/config/protocol';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
 import type { APIClient } from '../APIClient';

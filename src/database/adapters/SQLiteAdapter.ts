@@ -1,10 +1,10 @@
 // SQLite database adapter implementation
 
-import { logger } from '@/utils/logger';
 import { Database } from 'bun:sqlite';
 import { randomUUID } from 'node:crypto';
 import { mkdir, stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { logger } from '@/utils/logger';
 import type { DatabaseAdapter } from '../base/DatabaseAdapter';
 import type {
   BaseModel,

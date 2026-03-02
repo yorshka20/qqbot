@@ -1,9 +1,9 @@
 // Configuration management - main entry point
 
-import { ConfigError } from '@/utils/errors';
 import { existsSync, readFileSync } from 'fs';
 import { parse as parseJsonc } from 'jsonc-parser';
 import { extname, resolve } from 'path';
+import { ConfigError } from '@/utils/errors';
 
 // Import all config types
 import type { AIConfig, AIProviderCapability, ContextMemoryConfig, SessionProviderConfig } from './ai';
@@ -11,10 +11,10 @@ import type { BotSelfConfig, FileReadServiceConfig, StaticServerConfig } from '.
 import type { DatabaseConfig } from './database';
 import type { MCPConfig } from './mcp';
 import type { MemoryConfig } from './memory';
-import type { RAGConfig } from './rag';
 import type { PluginsConfig } from './plugins';
 import type { PromptsConfig } from './prompts';
 import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './protocol';
+import type { RAGConfig } from './rag';
 import type { TTSConfig } from './tts';
 
 // Re-export all types for convenience
@@ -47,7 +47,6 @@ export type {
   TriggerStrategy,
 } from './mcp';
 export type { MemoryConfig } from './memory';
-export type { RAGConfig } from './rag';
 export type { PluginsConfig } from './plugins';
 export type { PromptsConfig } from './prompts';
 export type {
@@ -58,6 +57,7 @@ export type {
   ProtocolName,
   ReconnectConfig,
 } from './protocol';
+export type { RAGConfig } from './rag';
 export type { TTSConfig } from './tts';
 export type { LogLevel } from './types';
 

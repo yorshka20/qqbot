@@ -1,9 +1,9 @@
+import { injectable } from 'tsyringe';
 import { HttpClient } from '@/api/http/HttpClient';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
-import { injectable } from 'tsyringe';
 import { Command } from '../decorators';
-import { CommandContext, CommandHandler, CommandResult } from '../types';
+import type { CommandContext, CommandHandler, CommandResult } from '../types';
 
 // Fetch hot search data from Bilibili API
 type BilibiliHotSearchResponse = {

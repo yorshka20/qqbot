@@ -7,13 +7,13 @@ import { AnthropicProvider } from './providers/AnthropicProvider';
 import { DeepSeekProvider } from './providers/DeepSeekProvider';
 import { DoubaoProvider } from './providers/DoubaoProvider';
 import { GeminiProvider } from './providers/GeminiProvider';
+import { GoogleCloudRunProvider } from './providers/GoogleCloudRunProvider';
 import { LaozhangProvider } from './providers/LaozhangProvider';
 import { LocalText2ImageProvider } from './providers/LocalText2ImageProvider';
 import { NovelAIProvider } from './providers/NovelAIProvider';
 import { OllamaProvider } from './providers/OllamaProvider';
 import { OpenAIProvider } from './providers/OpenAIProvider';
 import { OpenRouterProvider } from './providers/OpenRouterProvider';
-import { GoogleCloudRunProvider } from './providers/GoogleCloudRunProvider';
 import { RunPodProvider } from './providers/RunPodProvider';
 
 /**
@@ -189,7 +189,7 @@ export class ProviderFactory {
     const providers: Array<{ name: string; provider: AIProvider }> = [];
 
     for (const [name, config] of Object.entries(providersConfig)) {
-      const provider = this.createProvider(name, config);
+      const provider = ProviderFactory.createProvider(name, config);
       if (provider) {
         providers.push({ name, provider });
       }

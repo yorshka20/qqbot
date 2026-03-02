@@ -1,14 +1,14 @@
-import { AIService, ImageGenerationResponse, Text2ImageOptions } from '@/ai';
-import { AIManager } from '@/ai/AIManager';
+import { inject, injectable } from 'tsyringe';
+import type { AIService, ImageGenerationResponse, Text2ImageOptions } from '@/ai';
+import type { AIManager } from '@/ai/AIManager';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
-import { inject, injectable } from 'tsyringe';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
-import { CommandContext, CommandHandler, CommandResult } from '../types';
+import type { CommandContext, CommandHandler, CommandResult } from '../types';
 import { generateSeed } from '../utils/CommandImageUtils';
 import { createHookContextForCommand } from '../utils/HookContextBuilder';
 

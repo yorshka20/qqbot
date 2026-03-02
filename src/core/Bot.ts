@@ -1,9 +1,9 @@
 // Main bot orchestrator class
 
-import { logger } from '@/utils/logger';
 import { EventEmitter } from 'events';
-import { Config } from './config';
+import { logger } from '@/utils/logger';
 import { ConnectionManager } from './ConnectionManager';
+import { Config } from './config';
 
 export interface BotEvents {
   ready: () => void;

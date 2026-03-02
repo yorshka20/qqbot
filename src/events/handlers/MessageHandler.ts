@@ -31,7 +31,7 @@ export class MessageHandler {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error('[MessageHandler] Error processing message:', err);
     } finally {
-      logger.info('[MessageHandler] Message process completed. ===============================================');
+      logger.info('======================= [MessageHandler] Message process completed. ========================');
     }
   }
 }

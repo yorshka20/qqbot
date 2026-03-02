@@ -3,7 +3,7 @@
 import type { APIClient } from '@/api/APIClient';
 import type { EventRouter } from '@/events/EventRouter';
 import type { EventHandler, NormalizedEvent } from '@/events/types';
-import { PluginOptions } from './decorators';
+import type { PluginOptions } from './decorators';
 import type { PluginConfigEntry, PluginContext } from './types';
 
 export abstract class PluginBase {

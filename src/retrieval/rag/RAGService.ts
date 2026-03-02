@@ -4,7 +4,7 @@ import type { RAGConfig } from '@/core/config/rag';
 import { logger } from '@/utils/logger';
 import { OllamaEmbedClient } from './OllamaEmbedClient';
 import { QdrantClient } from './QdrantClient';
-import type { RAGDocument, RAGSearchOptions, RAGSearchMultiOptions, RAGSearchResult } from './types';
+import type { RAGDocument, RAGSearchMultiOptions, RAGSearchOptions, RAGSearchResult } from './types';
 
 const DEFAULT_QUERY_PREFIX = 'Instruct: Retrieve relevant conversation history\nQuery: ';
 

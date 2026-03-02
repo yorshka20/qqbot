@@ -2,8 +2,8 @@
 
 import { HttpClient } from '@/api/http/HttpClient';
 import type { APIContext } from '@/api/types';
+import type { Connection } from '@/core/Connection';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
-import { Connection } from '@/core/Connection';
 import { logger } from '@/utils/logger';
 import { ProtocolAdapter } from '../base/ProtocolAdapter';
 import type { BaseEvent } from '../base/types';

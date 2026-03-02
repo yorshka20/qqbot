@@ -3,9 +3,9 @@
 // Import all task executors to ensure decorators are executed
 import '@/task/executors';
 
-import { logger } from '@/utils/logger';
 import { readdirSync } from 'fs';
 import { extname, join } from 'path';
+import { logger } from '@/utils/logger';
 import { getAllTaskMetadata } from './decorators';
 import type { TaskManager } from './TaskManager';
 import type { TaskExecutor } from './types';

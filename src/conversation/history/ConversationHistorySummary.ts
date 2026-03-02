@@ -2,8 +2,8 @@
 
 import type { SummarizeService } from '@/ai/services/SummarizeService';
 import { logger } from '@/utils/logger';
-import type { ConversationMessageEntry } from './ConversationHistoryService';
 import type { ConversationHistoryBuffer } from './ConversationHistoryBuffer';
+import type { ConversationMessageEntry } from './ConversationHistoryService';
 import { formatConversationEntriesToText } from './format';
 import type { ISessionHistory } from './SessionHistory';
 

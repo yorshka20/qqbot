@@ -1,8 +1,8 @@
 // T2I workflow - load ComfyUI API-format txt2img template and build workflow with prompt/seed/size/steps/cfg.
 
-import { logger } from '@/utils/logger';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { logger } from '@/utils/logger';
 
 /** Workflow node shape (same as RunPod input.workflow entries). */
 export type T2IWorkflowNode = { inputs: Record<string, unknown>; class_type: string };

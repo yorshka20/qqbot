@@ -1,8 +1,8 @@
 // Global dependency injection container management
 // Provides a centralized container for dependency injection using TSyringe
 
-import { logger } from '@/utils/logger';
 import { container, type DependencyContainer } from 'tsyringe';
+import { logger } from '@/utils/logger';
 
 /**
  * Global DI Container Manager

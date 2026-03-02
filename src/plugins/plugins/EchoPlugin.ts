@@ -1,7 +1,7 @@
 // Echo Plugin - automatically converts admin messages to TTS
 
 import { CommandBuilder } from '@/command/CommandBuilder';
-import { CommandManager } from '@/command/CommandManager';
+import type { CommandManager } from '@/command/CommandManager';
 import { CommandContextBuilder } from '@/context/CommandContextBuilder';
 import { replaceReplyWithSegments } from '@/context/HookContextHelpers';
 import { getContainer } from '@/core/DIContainer';

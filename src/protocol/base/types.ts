@@ -1,6 +1,6 @@
 // Base protocol types
 
-import { ProtocolName } from '@/core/config';
+import type { ProtocolName } from '@/core/config';
 
 export interface BaseEvent {
   id: string;

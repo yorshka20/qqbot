@@ -1,10 +1,10 @@
 // Prompt Manager - manages prompt templates
 // Part of AI module - prompt management is integrated into AI scope
 
-import type { NormalizedMessageEvent } from '@/events/types';
-import { logger } from '@/utils/logger';
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { basename, extname, join, resolve } from 'path';
+import type { NormalizedMessageEvent } from '@/events/types';
+import { logger } from '@/utils/logger';
 
 export interface PromptTemplate {
   name: string;

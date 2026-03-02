@@ -1,7 +1,6 @@
 // Context Manager - builds and manages conversation contexts
 
 import type { ConversationMessageEntry, SessionHistoryStore } from '@/conversation/history';
-import { logger } from '@/utils/logger';
 import type { ContextBuilderOptions, ConversationContext, GlobalContext, SessionContext } from './types';
 
 export interface AddMessageOptions {

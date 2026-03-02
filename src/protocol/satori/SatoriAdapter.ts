@@ -1,7 +1,7 @@
 // Satori protocol adapter implementation
 
+import type { Connection } from '@/core/Connection';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
-import { Connection } from '@/core/Connection';
 import { ProtocolAdapter } from '../base/ProtocolAdapter';
 import type { BaseEvent } from '../base/types';
 import type { SatoriEvent } from './types';

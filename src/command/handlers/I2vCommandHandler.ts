@@ -1,5 +1,8 @@
 // I2V command - image-to-video via RunPod provider (ComfyUI Wan2.2 I2V)
 
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { join } from 'path';
+import { inject, injectable } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
 import type { AIService } from '@/ai/AIService';
 import { isImage2VideoCapability } from '@/ai/capabilities/Image2VideoCapability';
@@ -14,9 +17,6 @@ import type { DatabaseManager } from '@/database/DatabaseManager';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { uploadFileBuffer } from '@/utils/fileUpload';
 import { logger } from '@/utils/logger';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { join } from 'path';
-import { inject, injectable } from 'tsyringe';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';

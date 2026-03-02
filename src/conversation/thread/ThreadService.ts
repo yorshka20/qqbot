@@ -1,8 +1,8 @@
 // Thread Service - in-memory threads per group (Phase 1 single; Phase 3 multiple per group)
 
-import { logger } from '@/utils/logger';
 import { randomUUID } from 'node:crypto';
 import type { ConversationMessageEntry } from '@/conversation/history';
+import { logger } from '@/utils/logger';
 
 /**
  * Whether content is readable text for thread/analysis context.

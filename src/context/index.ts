@@ -1,10 +1,10 @@
 // Context module exports
 
 export { CommandContextBuilder } from './CommandContextBuilder';
-export { ContextManager } from './ContextManager';
 export type { AddMessageOptions } from './ContextManager';
-export { HookContextBuilder } from './HookContextBuilder';
+export { ContextManager } from './ContextManager';
 export type { MessageContextOptions } from './HookContextBuilder';
+export { HookContextBuilder } from './HookContextBuilder';
 export {
   clearReply,
   getReply,

@@ -1,9 +1,9 @@
 // Search task executor - handles web search queries
 
+import { inject, injectable } from 'tsyringe';
 import { DITokens } from '@/core/DITokens';
 import type { RetrievalService } from '@/retrieval';
 import { logger } from '@/utils/logger';
-import { inject, injectable } from 'tsyringe';
 import { TaskDefinition } from '../decorators';
 import type { Task, TaskExecutionContext, TaskResult } from '../types';
 import { BaseTaskExecutor } from './BaseTaskExecutor';

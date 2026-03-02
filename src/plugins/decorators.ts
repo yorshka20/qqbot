@@ -58,7 +58,7 @@ const hookRegistry = new Map<new (...args: any[]) => Plugin, HookMetadata[]>();
  * @param options - Plugin options (name, version, description, etc.)
  */
 export function Plugin(options: PluginOptions) {
-  return function <T extends new (...args: any[]) => Plugin>(target: T): T {
+  return <T extends new (...args: any[]) => Plugin>(target: T): T => {
     // Store metadata on class
     const metadata: PluginMetadata = {
       ...options,
@@ -87,7 +87,7 @@ export function Plugin(options: PluginOptions) {
  * @param options - Hook options (stage, priority)
  */
 export function Hook(options: HookOptions) {
-  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor): PropertyDescriptor {
+  return (target: any, propertyKey: string, descriptor: PropertyDescriptor): PropertyDescriptor => {
     // Get plugin class (target is the prototype, constructor is the class)
     const pluginClass = target.constructor as new (...args: any[]) => Plugin;
 

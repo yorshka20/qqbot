@@ -65,6 +65,7 @@ export type {
   DeepSeekProviderConfig,
   DoubaoProviderConfig,
   GeminiProviderConfig,
+  GoogleCloudRunProviderConfig,
   LaozhangLLmConfig,
   LaozhangProviderConfig,
   LaozhangText2ImgConfig,
@@ -75,5 +76,4 @@ export type {
   OpenAIProviderConfig,
   OpenRouterProviderConfig,
   RunPodProviderConfig,
-  GoogleCloudRunProviderConfig,
 } from './providers';

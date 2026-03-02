@@ -1,10 +1,10 @@
 // Resource downloader utility - handles downloading and converting media resources to base64
 
-import { HttpClient } from '@/api/http/HttpClient';
-import { logger } from '@/utils/logger';
 import { createHash } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { basename, extname, join } from 'path';
+import { HttpClient } from '@/api/http/HttpClient';
+import { logger } from '@/utils/logger';
 
 export interface ResourceDownloadOptions {
   /**
@@ -54,12 +54,12 @@ export class ResourceDownloader {
    * Get or create default HttpClient instance
    */
   private static getHttpClient(timeout: number): HttpClient {
-    if (!this.defaultHttpClient) {
-      this.defaultHttpClient = new HttpClient({
+    if (!ResourceDownloader.defaultHttpClient) {
+      ResourceDownloader.defaultHttpClient = new HttpClient({
         defaultTimeout: timeout,
       });
     }
-    return this.defaultHttpClient;
+    return ResourceDownloader.defaultHttpClient;
   }
 
   /**
@@ -92,7 +92,7 @@ export class ResourceDownloader {
   static async downloadToBase64(resource: string, options: ResourceDownloadOptions = {}): Promise<string> {
     const timeout = options.timeout ?? 30000; // 30 seconds default
     const maxSize = options.maxSize ?? 10 * 1024 * 1024; // 10MB default
-    const savePath = options.savePath ?? this.defaultSavePath;
+    const savePath = options.savePath ?? ResourceDownloader.defaultSavePath;
 
     try {
       // Handle data URL format: data:image/png;base64,...
@@ -109,7 +109,7 @@ export class ResourceDownloader {
           // Try to extract MIME type from data URL
           const mimeTypeMatch = resource.match(/data:([^;]+)/);
           const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'application/octet-stream';
-          const filePath = this.saveFile(buffer, resource, savePath, options.filename, mimeType);
+          const filePath = ResourceDownloader.saveFile(buffer, resource, savePath, options.filename, mimeType);
           logger.debug(`[ResourceDownloader] Saved file to: ${filePath}`);
         }
 
@@ -124,7 +124,7 @@ export class ResourceDownloader {
         // Save to local file if savePath is provided
         if (savePath) {
           const buffer = Buffer.from(base64Data, 'base64');
-          const filePath = this.saveFile(buffer, resource, savePath, options.filename);
+          const filePath = ResourceDownloader.saveFile(buffer, resource, savePath, options.filename);
           logger.debug(`[ResourceDownloader] Saved file to: ${filePath}`);
         }
 
@@ -135,7 +135,7 @@ export class ResourceDownloader {
       // Handle HTTP/HTTPS URLs
       if (resource.startsWith('http://') || resource.startsWith('https://')) {
         logger.debug(`[ResourceDownloader] Downloading resource from URL: ${resource}`);
-        const httpClient = this.getHttpClient(timeout);
+        const httpClient = ResourceDownloader.getHttpClient(timeout);
         const arrayBuffer = await httpClient.get<ArrayBuffer>(resource);
 
         // Check file size if maxSize is set
@@ -148,7 +148,7 @@ export class ResourceDownloader {
         // Save to local file if savePath is provided
         if (savePath) {
           const buffer = Buffer.from(arrayBuffer);
-          const filePath = this.saveFile(buffer, resource, savePath, options.filename);
+          const filePath = ResourceDownloader.saveFile(buffer, resource, savePath, options.filename);
           logger.debug(`[ResourceDownloader] Saved file to: ${filePath}`);
         }
 
@@ -164,18 +164,18 @@ export class ResourceDownloader {
       if (resource.startsWith('file://')) {
         const filePath = resource.substring(7); // Remove 'file://' prefix
         logger.debug(`[ResourceDownloader] Reading file: ${filePath}`);
-        return this.readFileToBase64(filePath, maxSize);
+        return ResourceDownloader.readFileToBase64(filePath, maxSize);
       }
 
       // Try to read as local file path
       try {
         logger.debug(`[ResourceDownloader] Attempting to read as file: ${resource}`);
-        return this.readFileToBase64(resource, maxSize);
+        return ResourceDownloader.readFileToBase64(resource, maxSize);
       } catch (fileError) {
         // If file read fails, assume it's already a base64 string
         logger.debug('[ResourceDownloader] File read failed, treating as raw base64 string');
         // Validate base64 format (basic check)
-        if (this.isValidBase64(resource)) {
+        if (ResourceDownloader.isValidBase64(resource)) {
           return resource;
         }
         throw new Error(
@@ -252,20 +252,20 @@ export class ResourceDownloader {
               filename = urlFilename;
             } else {
               // Generate filename from URL hash
-              filename = this.generateFilenameFromResource(resource, mimeType);
+              filename = ResourceDownloader.generateFilenameFromResource(resource, mimeType);
             }
           } catch {
-            filename = this.generateFilenameFromResource(resource, mimeType);
+            filename = ResourceDownloader.generateFilenameFromResource(resource, mimeType);
           }
         } else {
           // Generate filename from resource hash
-          filename = this.generateFilenameFromResource(resource, mimeType);
+          filename = ResourceDownloader.generateFilenameFromResource(resource, mimeType);
         }
       }
 
       // Ensure filename has extension
       if (!extname(filename)) {
-        const extension = this.getExtensionFromMimeType(mimeType) || '.bin';
+        const extension = ResourceDownloader.getExtensionFromMimeType(mimeType) || '.bin';
         filename = `${filename}${extension}`;
       }
 
@@ -286,7 +286,7 @@ export class ResourceDownloader {
    */
   private static generateFilenameFromResource(resource: string, mimeType?: string): string {
     const hash = createHash('md5').update(resource).digest('hex').substring(0, 12);
-    const extension = this.getExtensionFromMimeType(mimeType) || '.bin';
+    const extension = ResourceDownloader.getExtensionFromMimeType(mimeType) || '.bin';
     return `${hash}${extension}`;
   }
 
@@ -328,6 +328,6 @@ export class ResourceDownloader {
    * @returns Array of base64 strings in the same order as input
    */
   static async downloadMultipleToBase64(resources: string[], options: ResourceDownloadOptions = {}): Promise<string[]> {
-    return Promise.all(resources.map((resource) => this.downloadToBase64(resource, options)));
+    return Promise.all(resources.map((resource) => ResourceDownloader.downloadToBase64(resource, options)));
   }
 }

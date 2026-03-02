@@ -1,10 +1,10 @@
 // NovelAI Provider implementation
 
-import type { NovelAIProviderConfig } from '@/core/config';
-import { logger } from '@/utils/logger';
 import AdmZip from 'adm-zip';
 import { mkdir, writeFile } from 'fs/promises';
 import { extname, join } from 'path';
+import type { NovelAIProviderConfig } from '@/core/config';
+import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
 import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';

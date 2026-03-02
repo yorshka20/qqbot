@@ -1,10 +1,10 @@
 // Base protocol adapter abstract class
 
-import type { APIContext } from '@/api/types';
-import type { ProtocolConfig, ProtocolName } from '@/core/config';
-import { Connection } from '@/core/Connection';
-import { logger } from '@/utils/logger';
 import { EventEmitter } from 'events';
+import type { APIContext } from '@/api/types';
+import type { Connection } from '@/core/Connection';
+import type { ProtocolConfig, ProtocolName } from '@/core/config';
+import { logger } from '@/utils/logger';
 import type { BaseAPIRequest, BaseAPIResponse, BaseEvent } from './types';
 
 export abstract class ProtocolAdapter extends EventEmitter {

@@ -4,8 +4,7 @@ import type { ProtocolName } from '@/core/config';
 import type { ProtocolAdapter } from '@/protocol/base/ProtocolAdapter';
 import { APIError } from '@/utils/errors';
 import { logger } from '@/utils/logger';
-import type { APIStrategy } from './types';
-import { APIContext } from './types';
+import type { APIContext, APIStrategy } from './types';
 
 export class APIRouter {
   private adapters = new Map<ProtocolName, ProtocolAdapter>();

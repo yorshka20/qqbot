@@ -3,7 +3,7 @@
 
 import type { CommandContext, CommandContextMetadata } from '@/command/types';
 import type { ConversationContext } from '@/context/types';
-import { NormalizedMessageEvent } from '@/events/types';
+import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext } from '@/hooks/types';
 
 /**

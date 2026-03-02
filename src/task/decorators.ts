@@ -73,7 +73,7 @@ const registeredClasses = new WeakSet<new (...args: any[]) => TaskExecutor>();
  * @param options - Task options (name, description, executor, parameters, etc.)
  */
 export function TaskDefinition(options: TaskOptions) {
-  return function <T extends new (...args: any[]) => TaskExecutor>(target: T): T {
+  return <T extends new (...args: any[]) => TaskExecutor>(target: T): T => {
     // Check if this class has already been registered
     if (registeredClasses.has(target)) {
       return target;

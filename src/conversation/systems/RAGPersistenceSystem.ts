@@ -1,8 +1,8 @@
 // RAG Persistence System - buffers messages per session and writes time-windowed points to Qdrant at COMPLETE stage
 
 import { getReply } from '@/context/HookContextHelpers';
-import { buildConversationWindowDocument } from '@/conversation/rag/buildConversationWindowDocument';
 import type { ConversationMessageEntry } from '@/conversation/history';
+import { buildConversationWindowDocument } from '@/conversation/rag/buildConversationWindowDocument';
 import type { RAGConfig } from '@/core/config/rag';
 import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
@@ -60,8 +60,8 @@ export class RAGPersistenceSystem implements System {
       return true;
     }
 
-    const sessionId = context.metadata.get('sessionId') as string | undefined;
-    const sessionType = context.metadata.get('sessionType') as string | undefined;
+    const sessionId = context.metadata.get('sessionId');
+    const sessionType = context.metadata.get('sessionType');
     if (!sessionId || !sessionType) {
       return true;
     }

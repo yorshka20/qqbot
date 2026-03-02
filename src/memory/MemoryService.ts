@@ -1,9 +1,9 @@
 // Memory Service - file-based persistence for group and user memories (like prompt templates)
 
-import { logger } from '@/utils/logger';
 import { readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { logger } from '@/utils/logger';
 
 /** User ID used for group-level memory slot (one file per group: _global_.txt). */
 export const GROUP_MEMORY_USER_ID = '_global_memory_';

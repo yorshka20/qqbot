@@ -35,7 +35,7 @@ export class MilkyAPIResponseHandler {
     }
 
     // Handle Milky API response format: { status: string, retcode: number, data?: T }
-    if (this.isMilkyAPIResponse(data)) {
+    if (MilkyAPIResponseHandler.isMilkyAPIResponse(data)) {
       if (data.retcode === 0) {
         // Success - return the data field, or the whole response if no data field
         return (data.data ?? data) as TResponse;
@@ -58,14 +58,14 @@ export class MilkyAPIResponseHandler {
   static async handleResponse<TResponse = unknown>(response: Response): Promise<TResponse> {
     // Handle HTTP errors first
     if (!response.ok) {
-      await this.handleHTTPError(response);
+      await MilkyAPIResponseHandler.handleHTTPError(response);
     }
 
     // Parse JSON response (response.json() will throw if parsing fails)
     const data = await response.json();
 
     // Handle Milky API response format
-    return this.handleParsedResponse<TResponse>(data);
+    return MilkyAPIResponseHandler.handleParsedResponse<TResponse>(data);
   }
 
   /**

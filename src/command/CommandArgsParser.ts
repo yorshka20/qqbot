@@ -134,7 +134,7 @@ export class CommandArgsParser {
             options[definition.property] = true;
           } else if (optionValue !== undefined) {
             // Convert value to appropriate type
-            const convertedValue = this.convertValue(optionValue, definition.type);
+            const convertedValue = CommandArgsParser.convertValue(optionValue, definition.type);
 
             // Validate number types
             if ((definition.type === 'number' || definition.type === 'float') && isNaN(convertedValue as number)) {
@@ -145,8 +145,6 @@ export class CommandArgsParser {
             // Set the property with the correct name
             options[definition.property] = convertedValue;
           } else {
-            // Non-boolean option without value, skip
-            continue;
           }
         }
         // Unknown options are silently ignored

@@ -1,8 +1,8 @@
 // MongoDB database adapter implementation
 
-import { logger } from '@/utils/logger';
 import { randomUUID } from 'crypto';
-import { Collection, Db, MongoClient } from 'mongodb';
+import { type Collection, type Db, MongoClient } from 'mongodb';
+import { logger } from '@/utils/logger';
 import type { DatabaseAdapter } from '../base/DatabaseAdapter';
 import type {
   BaseModel,

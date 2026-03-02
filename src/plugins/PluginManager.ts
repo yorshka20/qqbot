@@ -1,14 +1,14 @@
 // Plugin loading and lifecycle management
 
+import { existsSync, readdirSync, statSync } from 'fs';
+import { extname, join } from 'path';
 import type { CommandContext } from '@/command/types';
-import { ConversationConfigService } from '@/config/ConversationConfigService';
+import type { ConversationConfigService } from '@/config/ConversationConfigService';
 import { getSessionId, getSessionType } from '@/config/SessionUtils';
-import { HookManager } from '@/hooks/HookManager';
+import type { HookManager } from '@/hooks/HookManager';
 import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookHandler } from '@/hooks/types';
 import { logger } from '@/utils/logger';
-import { existsSync, readdirSync, statSync } from 'fs';
-import { extname, join } from 'path';
 import { getPluginHooks, getPluginMetadata, type HookMetadata } from './decorators';
 import type { Plugin, PluginContext } from './types';
 

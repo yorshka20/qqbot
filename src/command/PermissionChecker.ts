@@ -66,11 +66,11 @@ export class DefaultPermissionChecker implements IPermissionChecker {
     permission: PermissionLevel,
   ): boolean {
     switch (permission) {
-      case 'user':
+      case 'user': {
         // All users have this permission
         return true;
-
-      case 'group_admin':
+      }
+      case 'group_admin': {
         // Only group administrators - check role from QQ protocol data
         // Must be a group message and have a role
         if (messageType !== 'group' || !userRole) {
@@ -80,8 +80,8 @@ export class DefaultPermissionChecker implements IPermissionChecker {
         // Different protocols may return: 'admin', 'administrator', 'moderator', etc.
         const normalizedRole = userRole.toLowerCase();
         return normalizedRole === 'admin' || normalizedRole === 'administrator' || normalizedRole === 'moderator';
-
-      case 'group_owner':
+      }
+      case 'group_owner': {
         // Only group owners - check role from QQ protocol data
         // Must be a group message and have a role
         if (messageType !== 'group' || !userRole) {
@@ -91,16 +91,16 @@ export class DefaultPermissionChecker implements IPermissionChecker {
         // Different protocols may return: 'owner', 'master', etc.
         const normalizedOwnerRole = userRole.toLowerCase();
         return normalizedOwnerRole === 'owner' || normalizedOwnerRole === 'master';
-
-      case 'admin':
+      }
+      case 'admin': {
         // Bot administrators: check by user ID only
         // User must be in admins list or be the owner
         return this.adminIds.has(userId.toString()) || userId.toString() === this.ownerId;
-
-      case 'owner':
+      }
+      case 'owner': {
         // Bot owner only
         return userId.toString() === this.ownerId;
-
+      }
       default:
         logger.warn(`[PermissionChecker] Unknown permission level: ${permission}`);
         return false;

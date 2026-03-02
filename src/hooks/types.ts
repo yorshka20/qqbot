@@ -4,7 +4,7 @@ import type { SendMessageResult } from '@/api/methods/MessageAPI';
 import type { CommandResult, ParsedCommand } from '@/command/types';
 import type { ConversationContext } from '@/context/types';
 import type { NormalizedMessageEvent } from '@/events/types';
-import { MessageSegment } from '@/message/types';
+import type { MessageSegment } from '@/message/types';
 import type { Task, TaskResult } from '@/task/types';
 import type { HookMetadataMap } from './metadata';
 

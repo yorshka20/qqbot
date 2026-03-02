@@ -1,13 +1,13 @@
+import { inject, injectable } from 'tsyringe';
 import type { APIClient } from '@/api/APIClient';
 import { HttpClient } from '@/api/http/HttpClient';
 import { FileAPI } from '@/api/methods/FileAPI';
-import { Config } from '@/core/config';
+import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { MessageUtils } from '@/message/MessageUtils';
 import { uploadFileBuffer } from '@/utils/fileUpload';
 import { logger } from '@/utils/logger';
-import { inject, injectable } from 'tsyringe';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';

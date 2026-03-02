@@ -1,9 +1,9 @@
 // Command type definitions
 
 import type { ConversationContext } from '@/context/types';
-import { ProtocolName } from '@/core/config';
-import { NormalizedMessageEvent } from '@/events/types';
-import { MessageSegment } from '@/message/types';
+import type { ProtocolName } from '@/core/config';
+import type { NormalizedMessageEvent } from '@/events/types';
+import type { MessageSegment } from '@/message/types';
 
 /**
  * Parsed command structure

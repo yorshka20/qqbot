@@ -3,7 +3,7 @@
 // import handler to register commands
 import './handlers';
 
-import { ConversationConfigService } from '@/config/ConversationConfigService';
+import type { ConversationConfigService } from '@/config/ConversationConfigService';
 import { getSessionId, getSessionType } from '@/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
 import type { HookManager } from '@/hooks/HookManager';
@@ -586,7 +586,7 @@ export class CommandManager {
       return false;
     }
 
-    let isEnabled = registration.enabled ?? true; // Default to enabled if not set
+    const isEnabled = registration.enabled ?? true; // Default to enabled if not set
 
     // Check conversation config
     const conversationEnabled = await this.conversationConfigService.getCommandEnabled(name, sessionId, sessionType);

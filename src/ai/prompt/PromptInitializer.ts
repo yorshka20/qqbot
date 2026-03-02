@@ -1,10 +1,10 @@
 // Prompt Initializer - initializes PromptManager and registers it to DI container
 
+import { resolve } from 'path';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
-import { resolve } from 'path';
 import { PromptManager } from './PromptManager';
 
 export interface PromptSystem {

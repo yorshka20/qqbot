@@ -1,8 +1,8 @@
 // Wan2.2 I2V workflow - supports two API JSONs: optimized remix and adaptive. Do not build API from workflow.
 
-import { logger } from '@/utils/logger';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { logger } from '@/utils/logger';
 
 /** Default negative prompt (shared). */
 export const DEFAULT_NEGATIVE_PROMPT =

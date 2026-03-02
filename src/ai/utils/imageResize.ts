@@ -1,7 +1,7 @@
 // Image resize utility for img2img - resize to exact dimensions and return raw base64
 
-import { logger } from '@/utils/logger';
 import sharp from 'sharp';
+import { logger } from '@/utils/logger';
 
 /**
  * Alignment for diffusion APIs (e.g. NovelAI): width/height must be multiples of this (64).

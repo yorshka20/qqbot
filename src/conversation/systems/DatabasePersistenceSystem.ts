@@ -5,6 +5,7 @@ import { getReply } from '@/context/HookContextHelpers';
 import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
 import type { DatabaseManager } from '@/database/DatabaseManager';
+import type { Message } from '@/database/models/types';
 import type { HookContext } from '@/hooks/types';
 import { cacheMessage } from '@/message/MessageCache';
 import { logger } from '@/utils/logger';
@@ -28,7 +29,6 @@ export class DatabasePersistenceSystem implements System {
   }
 
   async execute(context: HookContext): Promise<boolean> {
-    const messageId = context.message?.id || context.message?.messageId || 'unknown';
     const sessionId = context.metadata.get('sessionId');
     const sessionType = context.metadata.get('sessionType');
 
@@ -96,18 +96,7 @@ export class DatabasePersistenceSystem implements System {
       // Always persist segments when we have content so that reply-target messages can be restored with image segments
       const segmentsToSave =
         (message.segments ?? message.message) ? [{ type: 'text', data: { text: message.message } }] : undefined;
-      const messageData: {
-        conversationId: string;
-        userId: number;
-        messageType: 'private' | 'group';
-        groupId?: number;
-        content: string;
-        rawContent?: string;
-        protocol: string;
-        messageId?: string;
-        messageSeq?: number;
-        metadata: Record<string, unknown>;
-      } = {
+      const messageData: Omit<Message, 'id' | 'createdAt' | 'updatedAt'> = {
         conversationId: conversation.id,
         userId: message.userId,
         messageType: message.messageType,

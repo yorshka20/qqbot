@@ -1,5 +1,7 @@
 // Rule Plugin - executes commands on schedule based on configured rules
 
+import type { ScheduledTask } from 'node-cron';
+import { schedule } from 'node-cron';
 import { CommandBuilder } from '@/command/CommandBuilder';
 import type { CommandManager } from '@/command/CommandManager';
 import { CommandContextBuilder } from '@/context/CommandContextBuilder';
@@ -10,8 +12,6 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
 import { logger } from '@/utils/logger';
-import type { ScheduledTask } from 'node-cron';
-import { schedule } from 'node-cron';
 import { Plugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 

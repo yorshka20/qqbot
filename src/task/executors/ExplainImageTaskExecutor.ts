@@ -1,14 +1,14 @@
 // Explain image task executor - describes image content via vision AI and feeds result into LLM reply flow
 
+import { inject, injectable } from 'tsyringe';
 import type { AIService } from '@/ai/AIService';
 import type { VisionImage } from '@/ai/capabilities/types';
 import { extractImagesFromMessageAndReply, extractImagesFromSegmentsAsync } from '@/ai/utils/imageUtils';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { MessageSegment } from '@/message/types';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
+import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
-import { inject, injectable } from 'tsyringe';
 import { TaskDefinition } from '../decorators';
 import type { Task, TaskExecutionContext, TaskResult } from '../types';
 import { BaseTaskExecutor } from './BaseTaskExecutor';

@@ -8,8 +8,8 @@ import type { HookContext, HookResult } from './types';
 
 export type { AIHooks } from './AIHooks';
 export type { CommandHooks } from './CommandHooks';
-export { getHookPriority, HookPriority } from './HookPriority';
 export type { CoreHookName, HookPriorityVariant } from './HookPriority';
+export { getHookPriority, HookPriority } from './HookPriority';
 export type { MessageHooks } from './MessageHooks';
 export type { TaskHooks } from './TaskHooks';
 export type { HookContext, HookHandler, HookRegistration, HookResult } from './types';

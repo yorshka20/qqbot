@@ -25,7 +25,7 @@ const CATEGORY_MAP: Record<string, string[]> = {
  * Strip thinking blocks and extract content inside <提示词>...</提示词>
  */
 function extractPromptBlock(text: string): string {
-  let cleaned = text
+  const cleaned = text
     .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
     .replace(/<Think>[\s\S]*?<\/Think>/gi, '')
     .replace(/[\s\S]*?<\/think>/gi, '');
@@ -67,7 +67,7 @@ export function parseStandardPrompt(text: string): ParsedSlots {
     }
 
     if (currentCategory && result[currentCategory]) {
-      const parts = trimmed.split(/\s*[|｜\/]\s*/);
+      const parts = trimmed.split(/\s*[|｜/]\s*/);
       if (parts.length >= 1) {
         const en = parts[0].trim().replace(/^[-*•]\s*/, '');
         const zh = parts[1]?.trim() ?? '?';

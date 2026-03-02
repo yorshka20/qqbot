@@ -3,10 +3,8 @@
 import type { AIService } from '@/ai/AIService';
 import { hasReply } from '@/context/HookContextHelpers';
 import { TaskExecutionContextBuilder } from '@/context/TaskExecutionContextBuilder';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
-import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookContext } from '@/hooks/types';
@@ -30,8 +28,6 @@ export class TaskSystem implements System {
     private taskManager: TaskManager,
     private hookManager: HookManager,
     private aiService: AIService,
-    private messageAPI?: MessageAPI,
-    private databaseManager?: DatabaseManager,
   ) {}
 
   enabled(): boolean {
