@@ -188,6 +188,8 @@ export class ThreadService {
     const unique = [...new Set(indices)].sort((a, b) => a - b);
     const toAppend = unique.map((i) => entries[i]);
     for (const e of toAppend) {
+      // Bot replies are added only via appendMessage(); skip from group history to avoid duplicate (Assistant + User<botId>).
+      if (e.isBotReply) continue;
       if (!isReadableTextForThread(e.content)) continue;
       thread.messages.push({
         userId: e.userId,

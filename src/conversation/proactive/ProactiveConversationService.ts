@@ -499,18 +499,29 @@ export class ProactiveConversationService {
 
   /**
    * Resolve which message indices to append when replying in an existing thread.
-   * When analysis returns messageIds, use them. Otherwise append only entries strictly newer than the thread's last message (trigger messages only), so all trigger messages are in context even with multiple consecutive runs.
+   * When analysis returns messageIds, use them but filter to only indices newer than thread's last message and not bot replies (avoid duplicates).
+   * Otherwise append only entries strictly newer than the thread's last message (trigger messages only).
    */
   private resolveMessageIdsForReply(
     thread: { messages: Array<{ createdAt: Date }>; lastActivityAt: Date },
     filteredEntries: ConversationMessageEntry[],
     messageIdsFromAnalysis: string[] | undefined,
   ): string[] {
-    if (messageIdsFromAnalysis?.length) {
-      return messageIdsFromAnalysis;
-    }
     const lastMsg = thread.messages[thread.messages.length - 1];
     const lastTime = lastMsg ? new Date(lastMsg.createdAt).getTime() : new Date(thread.lastActivityAt).getTime();
+
+    if (messageIdsFromAnalysis?.length) {
+      // Only append entries strictly newer than thread's last message and not bot replies, to avoid duplicating content already in thread.
+      return messageIdsFromAnalysis.filter((id) => {
+        const i = parseInt(id, 10);
+        if (Number.isNaN(i) || i < 0 || i >= filteredEntries.length) return false;
+        const e = filteredEntries[i];
+        if (e.isBotReply) return false;
+        const t = (e.createdAt instanceof Date ? e.createdAt : new Date(e.createdAt)).getTime();
+        return t > lastTime;
+      });
+    }
+
     return filteredEntries
       .map((e, i) => ({
         i,
