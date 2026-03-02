@@ -6,7 +6,10 @@ import { PromptInitializer } from './ai/prompt/PromptInitializer';
 import { APIClient } from './api/APIClient';
 import { ConversationInitializer } from './conversation/ConversationInitializer';
 import { Bot } from './core/Bot';
+import { getContainer } from './core/DIContainer';
+import { DITokens } from './core/DITokens';
 import { HealthCheckManager } from './core/health';
+import { ServiceRegistry } from './core/ServiceRegistry';
 import { EventInitializer } from './events/EventInitializer';
 import { MCPInitializer } from './mcp/MCPInitializer';
 import { PluginInitializer } from './plugins/PluginInitializer';
@@ -31,6 +34,9 @@ async function main() {
 
     // Initialize prompt system (before conversation initialization)
     PromptInitializer.initialize(config);
+
+    // Plugin system
+    PluginInitializer.initialize(config);
 
     // Initialize MCP system (if enabled)
     const mcpSystem = MCPInitializer.initialize(config);
@@ -69,16 +75,14 @@ async function main() {
     const eventSystem = EventInitializer.initialize(config, conversationComponents.conversationManager);
     const eventRouter = eventSystem.eventRouter;
 
+    // Register EventRouter to container
+    getContainer().registerInstance(DITokens.EVENT_ROUTER, eventRouter);
+
+    // Verify all required services (EVENT_ROUTER and others now registered)
+    new ServiceRegistry().verifyServices();
+
     // Initialize protocol adapter system (BEFORE starting bot)
     ProtocolAdapterInitializer.initialize(config, connectionManager, eventRouter, apiClient);
-
-    // Initialize plugin system
-    const pluginSystem = PluginInitializer.initialize(
-      config,
-      conversationComponents.hookManager,
-      apiClient,
-      eventRouter,
-    );
 
     // Start bot (this will trigger connection events)
     await bot.start();
@@ -91,7 +95,7 @@ async function main() {
     }
 
     // Load plugins after bot is started
-    await PluginInitializer.loadPlugins(pluginSystem, config);
+    await PluginInitializer.loadPlugins(config);
 
     logger.info('[Main] Bot initialized and ready');
 

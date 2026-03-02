@@ -110,19 +110,21 @@ export class ConversationInitializer {
     const dbConfig = config.getDatabaseConfig();
     const databaseManager = new DatabaseManager();
     await databaseManager.initialize(dbConfig);
-    this.container.registerInstance(DITokens.DATABASE_MANAGER, databaseManager, { logRegistration: false });
+    this.container.registerInstance(DITokens.DATABASE_MANAGER, databaseManager);
 
     // Memory service: file-based persistence (config.memory.dir, default data/memory)
     const memoryDir = config.getMemoryConfig().dir;
     const memoryService = new MemoryService({ memoryDir });
-    this.container.registerInstance(DITokens.MEMORY_SERVICE, memoryService, { logRegistration: false });
+    this.container.registerInstance(DITokens.MEMORY_SERVICE, memoryService);
 
     // Phase 2.1: Register HealthCheckManager (created and injected by caller, e.g. index.ts)
     serviceRegistry.registerHealthCheckManager(healthCheckManager);
 
     // Phase 2.5: Initialize Conversation Config Services (required before CommandManager)
     const globalConfigManager = new GlobalConfigManager();
+    this.container.registerInstance(DITokens.GLOBAL_CONFIG_MANAGER, globalConfigManager);
     const conversationConfigService = new ConversationConfigService(databaseManager.getAdapter(), globalConfigManager);
+    this.container.registerInstance(DITokens.CONVERSATION_CONFIG_SERVICE, conversationConfigService);
 
     // Phase 2.6: Create remaining core services (CommandManager requires ConversationConfigService)
     const services = await this.createCoreServices(config, conversationConfigService, databaseManager);
@@ -136,7 +138,7 @@ export class ConversationInitializer {
     // Phase 4: Create LLMService and ContextManager
     const providerSelector = new ProviderSelector(services.aiManager, conversationConfigService);
     const llmService = new LLMService(services.aiManager, providerSelector);
-    this.container.registerInstance(DITokens.LLM_SERVICE, llmService, { logRegistration: false });
+    this.container.registerInstance(DITokens.LLM_SERVICE, llmService);
 
     const memoryConfig = config.getContextMemoryConfig();
     const useSummary = memoryConfig?.useSummary ?? false;
@@ -146,9 +148,7 @@ export class ConversationInitializer {
 
     // Single conversation history service: DB load + format (User<userId:nickname> / Assistant) + buildConversationHistory for prompt
     const conversationHistoryService = new ConversationHistoryService(databaseManager, 30, maxHistoryMessages);
-    this.container.registerInstance(DITokens.CONVERSATION_HISTORY_SERVICE, conversationHistoryService, {
-      logRegistration: false,
-    });
+    this.container.registerInstance(DITokens.CONVERSATION_HISTORY_SERVICE, conversationHistoryService);
 
     const promptManager = this.container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
     // Single SummarizeService for both context memory and thread compression (provider passed at call time).
@@ -156,15 +156,11 @@ export class ConversationInitializer {
 
     // Memory extract service (used by Memory plugin for debounced extract from recent messages)
     const memoryExtractService = new MemoryExtractService(promptManager, llmService, memoryService);
-    this.container.registerInstance(DITokens.MEMORY_EXTRACT_SERVICE, memoryExtractService, { logRegistration: false });
+    this.container.registerInstance(DITokens.MEMORY_EXTRACT_SERVICE, memoryExtractService);
 
-    this.container.registerInstance(DITokens.SUMMARIZE_SERVICE, summarizeService, { logRegistration: false });
+    this.container.registerInstance(DITokens.SUMMARIZE_SERVICE, summarizeService);
     const sessionHistoryStore = new SessionHistoryStore(maxBufferSize, summaryThreshold, useSummary);
     const contextManager = new ContextManager(sessionHistoryStore);
-
-    // Register conversation config services to DI container early so PluginManager can inject them
-    // This must be done before PluginManager is created
-    serviceRegistry.registerConversationConfigServices(conversationConfigService, globalConfigManager);
 
     // Register RetrievalService to DI container (for task executors that need search, etc.)
     serviceRegistry.registerRetrievalService(retrievalService);
@@ -175,7 +171,7 @@ export class ConversationInitializer {
 
     // Create AIService (MessageAPI from apiClient for vision reply: extract images from current + referenced messages)
     const messageAPI = new MessageAPI(apiClient);
-    this.container.registerInstance(DITokens.MESSAGE_API, messageAPI, { logRegistration: false });
+    this.container.registerInstance(DITokens.MESSAGE_API, messageAPI);
     const aiService = new AIService(
       services.aiManager,
       services.hookManager,
@@ -193,11 +189,11 @@ export class ConversationInitializer {
     // Create and register TaskSystem before ProactiveConversationService so DI can inject it.
     // ProactiveConversationService constructor requires TaskSystem at position #9.
     const taskSystem = new TaskSystem(services.taskManager, services.hookManager, aiService);
-    this.container.registerInstance(DITokens.TASK_SYSTEM, taskSystem, { logRegistration: false });
+    this.container.registerInstance(DITokens.TASK_SYSTEM, taskSystem);
 
     // Proactive conversation (Phase 1): group history, thread, Ollama analysis, orchestrator (Phase 4: thread compression)
     // Dependencies resolved from DI container; see createProactiveConversationFromContainer
-    this.configureProactiveConversationService(serviceRegistry);
+    this.configureProactiveConversationService();
 
     const completeServices: CompleteServices = {
       ...services,
@@ -215,8 +211,6 @@ export class ConversationInitializer {
 
     // Phase 6: Register and initialize systems (includes service wiring and config loading)
     await this.registerAndInitializeSystems(components, completeServices, config);
-
-    serviceRegistry.verifyServices();
 
     return components;
   }
@@ -239,7 +233,7 @@ export class ConversationInitializer {
     hookManager: HookManager;
   }> {
     const aiManager = new AIManager();
-    this.container.registerInstance(DITokens.AI_MANAGER, aiManager, { logRegistration: false });
+    this.container.registerInstance(DITokens.AI_MANAGER, aiManager);
 
     const botConfig = config.getConfig();
     const permissionChecker = new DefaultPermissionChecker({
@@ -305,22 +299,11 @@ export class ConversationInitializer {
   }
 
   /**
-   * Configure proactive conversation service by resolving dependencies from DI container.
-   * Creates ThreadService, OllamaAnalysis, etc. from registered tokens (ConversationHistoryService registered earlier)
-   * and registers ThreadService + ProactiveConversationService.
-   */
-  private static configureProactiveConversationService(serviceRegistry: ServiceRegistry): void {
-    const { threadService, proactiveConversationService } = this.createProactiveConversationFromContainer();
-    serviceRegistry.registerThreadService(threadService);
-    serviceRegistry.registerProactiveConversationService(proactiveConversationService);
-  }
-
-  /**
    * Register proactive-related dependencies into the container, then resolve ProactiveConversationService.
    * ProactiveConversationService is @injectable(); the container injects all 9 deps into its constructor.
    * Returns threadService and proactiveConversationService for ServiceRegistry registration.
    */
-  private static createProactiveConversationFromContainer(): {
+  private static configureProactiveConversationService(): {
     threadService: ThreadService;
     proactiveConversationService: ProactiveConversationService;
   } {
@@ -330,11 +313,10 @@ export class ConversationInitializer {
     const summarizeService = this.container.resolve<SummarizeService>(DITokens.SUMMARIZE_SERVICE);
 
     const threadService = new ThreadService();
-    this.container.registerInstance(DITokens.THREAD_SERVICE, threadService, { logRegistration: false });
+    this.container.registerInstance(DITokens.THREAD_SERVICE, threadService);
     this.container.registerInstance(
       DITokens.PRELIMINARY_ANALYSIS_SERVICE,
       new PreliminaryAnalysisService(aiManager, promptManager),
-      { logRegistration: false },
     );
 
     // Use SearXNG-based preference knowledge when RetrievalService is available and search enabled.
@@ -347,18 +329,14 @@ export class ConversationInitializer {
           promptManager,
         )
       : new DefaultPreferenceKnowledgeService();
-    this.container.registerInstance(DITokens.PREFERENCE_KNOWLEDGE_SERVICE, preferenceKnowledge, {
-      logRegistration: false,
-    });
+    this.container.registerInstance(DITokens.PREFERENCE_KNOWLEDGE_SERVICE, preferenceKnowledge);
     this.container.registerInstance(
       DITokens.PROACTIVE_THREAD_PERSISTENCE_SERVICE,
       new DefaultProactiveThreadPersistenceService(databaseManager),
-      { logRegistration: false },
     );
     this.container.registerInstance(
       DITokens.THREAD_CONTEXT_COMPRESSION_SERVICE,
       new ThreadContextCompressionService(threadService, summarizeService, promptManager),
-      { logRegistration: false },
     );
 
     // Register class so resolve() creates an instance with injected deps; ServiceRegistry then overwrites with that instance.
@@ -451,9 +429,7 @@ export class ConversationInitializer {
     const systemRegistry = new SystemRegistry();
     const commandRouter = new CommandRouter(['/', '!']);
     const processStageInterceptorRegistry = new ProcessStageInterceptorRegistry();
-    this.container.registerInstance(DITokens.PROCESS_STAGE_INTERCEPTOR_REGISTRY, processStageInterceptorRegistry, {
-      logRegistration: false,
-    });
+    this.container.registerInstance(DITokens.PROCESS_STAGE_INTERCEPTOR_REGISTRY, processStageInterceptorRegistry);
 
     // Initialize MessageUtils with command prefixes
     MessageUtils.initialize(['/', '!']);
@@ -469,7 +445,7 @@ export class ConversationInitializer {
       promptManager,
     );
     const conversationManager = new ConversationManager(pipeline);
-    this.container.registerInstance(DITokens.CONVERSATION_MANAGER, conversationManager, { logRegistration: false });
+    this.container.registerInstance(DITokens.CONVERSATION_MANAGER, conversationManager);
 
     return {
       conversationManager,

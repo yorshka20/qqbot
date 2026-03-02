@@ -9,7 +9,10 @@ import { MessageAPI } from '../api/methods/MessageAPI';
 import { ConversationInitializer } from '../conversation/ConversationInitializer';
 import { Bot } from '../core/Bot';
 import type { Config, ProtocolName } from '../core/config';
+import { getContainer } from '../core/DIContainer';
+import { DITokens } from '../core/DITokens';
 import { HealthCheckManager } from '../core/health';
+import { ServiceRegistry } from '../core/ServiceRegistry';
 import { EventInitializer } from '../events/EventInitializer';
 import type { NormalizedEvent, NormalizedMessageEvent } from '../events/types';
 import { MCPInitializer } from '../mcp/MCPInitializer';
@@ -484,6 +487,9 @@ class DebugCLI {
       // Initialize prompt system (before conversation initialization)
       PromptInitializer.initialize(this.config);
 
+      // Plugin system: register factory before ConversationInitializer (same as main index)
+      PluginInitializer.initialize(this.config);
+
       if (this.isMockMode) {
         await this.initializeMockMode();
       } else {
@@ -602,15 +608,14 @@ class DebugCLI {
     const eventSystem = EventInitializer.initialize(this.config, conversationComponents.conversationManager);
     this.eventRouter = eventSystem.eventRouter;
 
-    // Initialize plugin system
+    // Register EventRouter so PluginManager factory can resolve it via context.events
+    getContainer().registerInstance(DITokens.EVENT_ROUTER, this.eventRouter);
+
+    new ServiceRegistry().verifyServices();
+
+    // Resolve PluginManager from container (factory was registered in start(); deps now available)
     this.printInfo('Initializing plugin system...');
-    const pluginSystem = PluginInitializer.initialize(
-      this.config,
-      conversationComponents.hookManager,
-      this.apiClient,
-      this.eventRouter,
-    );
-    this.pluginManager = pluginSystem.pluginManager;
+    this.pluginManager = getContainer().resolve(DITokens.PLUGIN_MANAGER);
 
     // Connect to MCP servers (if enabled)
     if (mcpSystem) {
@@ -619,7 +624,7 @@ class DebugCLI {
     }
 
     // Load plugins
-    await PluginInitializer.loadPlugins(pluginSystem, this.config);
+    await PluginInitializer.loadPlugins(this.config);
   }
 
   private async initializeRealMode(): Promise<void> {
@@ -670,18 +675,17 @@ class DebugCLI {
     const eventSystem = EventInitializer.initialize(this.config, conversationComponents.conversationManager);
     this.eventRouter = eventSystem.eventRouter;
 
+    // Register EventRouter so PluginManager factory can resolve it via context.events
+    getContainer().registerInstance(DITokens.EVENT_ROUTER, this.eventRouter);
+
+    new ServiceRegistry().verifyServices();
+
     // Initialize protocol adapter system (BEFORE starting bot)
     ProtocolAdapterInitializer.initialize(this.config, connectionManager, this.eventRouter, this.apiClient);
 
-    // Initialize plugin system
+    // Resolve PluginManager from container (factory was registered in start(); deps now available)
     this.printInfo('Initializing plugin system...');
-    const pluginSystem = PluginInitializer.initialize(
-      this.config,
-      conversationComponents.hookManager,
-      this.apiClient,
-      this.eventRouter,
-    );
-    this.pluginManager = pluginSystem.pluginManager;
+    this.pluginManager = getContainer().resolve(DITokens.PLUGIN_MANAGER);
 
     // Start bot (this will trigger connection events)
     this.printInfo('Starting bot...');
@@ -694,7 +698,7 @@ class DebugCLI {
     }
 
     // Load plugins after bot is started
-    await PluginInitializer.loadPlugins(pluginSystem, this.config);
+    await PluginInitializer.loadPlugins(this.config);
 
     // Set up event handlers to display events in CLI
     const { MessageHandler } = await import('../events/handlers/MessageHandler');

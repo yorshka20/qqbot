@@ -35,10 +35,11 @@ export class RunPodProvider extends AIProvider implements Text2ImageCapability, 
   constructor(options: RunPodProviderOptions) {
     super();
     this.options = { ...options };
-    logger.info('[RunPodProvider] Initialized', {
-      endpointId: options.endpointId,
-      t2iEndpointId: options.t2iEndpointId,
-    });
+    logger.info(
+      '[RunPodProvider] Initialized | endpointId: %s, t2iEndpointId: %s',
+      options.endpointId,
+      options.t2iEndpointId,
+    );
   }
 
   isAvailable(): boolean {

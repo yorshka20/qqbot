@@ -1,4 +1,6 @@
 // Plugin Initializer - initializes PluginManager and loads plugins
+// Must run BEFORE ConversationInitializer. Registers a factory for PLUGIN_MANAGER;
+// PluginManager is created on first resolve (after ConversationInitializer has registered deps).
 
 import type { APIClient } from '@/api/APIClient';
 import type { ConversationConfigService } from '@/config/ConversationConfigService';
@@ -14,69 +16,52 @@ export interface PluginSystem {
   pluginManager: PluginManager;
 }
 
+/** Cached PluginManager instance (created on first resolve from factory). */
+let cachedPluginManager: PluginManager | null = null;
+
 /**
  * Plugin Initializer
- * Initializes PluginManager and loads plugins
+ * Must run BEFORE ConversationInitializer. Only registers a factory for PLUGIN_MANAGER;
+ * the factory runs on first resolve (after ConversationInitializer has registered deps).
  */
 export class PluginInitializer {
   /**
-   * Initialize plugin system
-   * @param config - Bot configuration
-   * @param hookManager - Hook manager
-   * @param apiClient - API client
-   * @param eventRouter - Event router
-   * @returns Initialized plugin system
+   * Register plugin system: must run BEFORE ConversationInitializer.
+   * Registers a factory for PLUGIN_MANAGER; instance is created on first resolve.
+   * @param config - Passed in at call site; used as PluginManager's config (same instance as loadPlugins(config) later).
    */
-  static initialize(
-    config: Config,
-    hookManager: HookManager,
-    apiClient: APIClient,
-    eventRouter: EventRouter,
-  ): PluginSystem {
-    logger.info('[PluginInitializer] Starting initialization...');
+  static initialize(config: Config): void {
+    logger.info('[PluginInitializer] Registering PluginManager factory (no later than ConversationInitializer)...');
 
-    // Get ConversationConfigService from DI container
-    // It must be registered by ConversationInitializer before this method is called
     const container = getContainer();
-    if (!container.isRegistered(DITokens.CONVERSATION_CONFIG_SERVICE)) {
-      throw new Error(
-        '[PluginInitializer] ConversationConfigService is not registered. Ensure ConversationInitializer.initialize() is called before PluginInitializer.initialize().',
-      );
-    }
 
-    const conversationConfigService = container.resolve<ConversationConfigService>(
-      DITokens.CONVERSATION_CONFIG_SERVICE,
-    );
-
-    const pluginManager = new PluginManager(
-      hookManager,
-      {
-        api: apiClient,
-        events: eventRouter,
-        bot: {
-          getConfig: () => config.getConfig(),
-        },
-      },
-      conversationConfigService,
-    );
-
-    logger.info('[PluginInitializer] PluginManager initialized');
-
-    // Register PluginManager to DI container
-    container.registerInstance(DITokens.PLUGIN_MANAGER, pluginManager);
-
-    return {
-      pluginManager,
-    };
+    container.registerFactory(DITokens.PLUGIN_MANAGER, (c) => {
+      if (cachedPluginManager !== null) {
+        return cachedPluginManager;
+      }
+      const deps = {
+        apiClient: c.resolve<APIClient>(DITokens.API_CLIENT),
+        eventRouter: c.resolve<EventRouter>(DITokens.EVENT_ROUTER),
+        config,
+        hookManager: c.resolve<HookManager>(DITokens.HOOK_MANAGER),
+        conversationConfigService: c.resolve<ConversationConfigService>(
+          DITokens.CONVERSATION_CONFIG_SERVICE,
+        ),
+      };
+      cachedPluginManager = new PluginManager(deps);
+      logger.info('[PluginInitializer] PluginManager created (first resolve)');
+      return cachedPluginManager;
+    });
   }
 
   /**
-   * Load plugins after bot is started
-   * @param pluginSystem - Plugin system from initialize
-   * @param config - Bot configuration
+   * Load plugins after bot is started.
+   * @param config - Bot configuration (passed in directly)
    */
-  static async loadPlugins(pluginSystem: PluginSystem, config: Config): Promise<void> {
+  static async loadPlugins(config: Config): Promise<void> {
+    const container = getContainer();
+    const pluginManager = container.resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
     const pluginsConfig = config.getPluginsConfig();
-    await pluginSystem.pluginManager.loadPlugins(pluginsConfig.list);
+    await pluginManager.loadPlugins(pluginsConfig.list);
   }
 }

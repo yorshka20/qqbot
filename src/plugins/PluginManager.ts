@@ -1,10 +1,13 @@
 // Plugin loading and lifecycle management
 
+import type { APIClient } from '@/api/APIClient';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { extname, join } from 'path';
 import type { CommandContext } from '@/command/types';
 import type { ConversationConfigService } from '@/config/ConversationConfigService';
 import { getSessionId, getSessionType } from '@/config/SessionUtils';
+import type { Config } from '@/core/config';
+import type { EventRouter } from '@/events/EventRouter';
 import type { HookManager } from '@/hooks/HookManager';
 import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookHandler } from '@/hooks/types';
@@ -12,18 +15,47 @@ import { logger } from '@/utils/logger';
 import { getPluginHooks, getPluginMetadata, type HookMetadata } from './decorators';
 import type { Plugin, PluginContext } from './types';
 
+/**
+ * Constructor dependencies for PluginManager (all explicit; no context object).
+ * PluginContext is built internally when passing to plugins.
+ * Config is resolved from container when the factory runs.
+ */
+export interface PluginManagerDeps {
+  apiClient: APIClient;
+  eventRouter: EventRouter;
+  config: Config;
+  hookManager: HookManager;
+  conversationConfigService: ConversationConfigService;
+}
+
 export class PluginManager {
   private plugins = new Map<string, Plugin>();
   private enabledPlugins = new Set<string>();
-
   // Plugin directory is fixed to src/plugins/plugins
   private readonly pluginDirectory = join(process.cwd(), 'src', 'plugins', 'plugins');
 
-  constructor(
-    private hookManager: HookManager,
-    private context: PluginContext,
-    private conversationConfigService: ConversationConfigService,
-  ) {}
+  private readonly apiClient: APIClient;
+  private readonly eventRouter: EventRouter;
+  private readonly config: Config;
+  private readonly hookManager: HookManager;
+  private readonly conversationConfigService: ConversationConfigService;
+
+  constructor(deps: PluginManagerDeps) {
+    this.apiClient = deps.apiClient;
+    this.eventRouter = deps.eventRouter;
+    this.config = deps.config;
+    this.hookManager = deps.hookManager;
+    this.conversationConfigService = deps.conversationConfigService;
+  }
+
+  /** Build PluginContext for plugins (used in loadConfig). */
+  private getContext(): PluginContext {
+    return {
+      api: this.apiClient,
+      events: this.eventRouter,
+      bot: { getConfig: () => this.config.getConfig() },
+    };
+  }
 
   async loadPlugins(pluginConfigs: Array<{ name: string; enabled: boolean; config?: unknown }> = []): Promise<void> {
     const pluginConfigMap = new Map(pluginConfigs.map((p) => [p.name, p]));
@@ -103,7 +135,7 @@ export class PluginManager {
 
         // setup plugin context and configuration
         const pluginConfig = pluginConfigMap.get(plugin.name);
-        plugin.loadConfig(this.context, pluginConfig);
+        plugin.loadConfig(this.getContext(), pluginConfig);
 
         await plugin.onInit?.();
 

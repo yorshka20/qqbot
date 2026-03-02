@@ -27,9 +27,7 @@ export class GoogleCloudRunProvider extends AIProvider implements Text2ImageCapa
   constructor(options: GoogleCloudRunProviderOptions) {
     super();
     this.options = { ...options };
-    logger.info('[GoogleCloudRunProvider] Initialized', {
-      baseUrl: options.baseUrl,
-    });
+    logger.info('[GoogleCloudRunProvider] Initialized | baseUrl: %s', options.baseUrl);
   }
 
   isAvailable(): boolean {

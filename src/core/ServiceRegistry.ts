@@ -35,12 +35,8 @@ export class ServiceRegistry {
    */
   registerInfrastructureServices(config: Config, apiClient: APIClient): void {
     // Register config and API client first (they're needed by many services)
-    this.container.registerInstance(DITokens.CONFIG, config, {
-      logRegistration: false,
-    });
-    this.container.registerInstance(DITokens.API_CLIENT, apiClient, {
-      logRegistration: false,
-    });
+    this.container.registerInstance(DITokens.CONFIG, config);
+    this.container.registerInstance(DITokens.API_CLIENT, apiClient);
   }
 
   /**
@@ -101,17 +97,6 @@ export class ServiceRegistry {
   }
 
   /**
-   * Register conversation config services
-   */
-  registerConversationConfigServices(
-    conversationConfigService: ConversationConfigService,
-    globalConfigManager: GlobalConfigManager,
-  ): void {
-    this.container.registerInstance(DITokens.CONVERSATION_CONFIG_SERVICE, conversationConfigService);
-    this.container.registerInstance(DITokens.GLOBAL_CONFIG_MANAGER, globalConfigManager);
-  }
-
-  /**
    * Register retrieval service (search + RAG)
    */
   registerRetrievalService(retrievalService: RetrievalService): void {
@@ -167,8 +152,6 @@ export class ServiceRegistry {
     commandManager: CommandManager;
     taskManager: TaskManager;
     hookManager: HookManager;
-    conversationConfigService: ConversationConfigService;
-    globalConfigManager: GlobalConfigManager;
   }): void {
     // DATABASE_MANAGER and AI_MANAGER may already be registered early for ProactiveConversationService DI
     if (!this.container.isRegistered(DITokens.DATABASE_MANAGER)) {
@@ -181,7 +164,6 @@ export class ServiceRegistry {
     this.registerCommandService(services.commandManager);
     this.registerTaskService(services.taskManager);
     this.registerHookService(services.hookManager);
-    this.registerConversationConfigServices(services.conversationConfigService, services.globalConfigManager);
   }
 
   /**

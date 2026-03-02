@@ -43,13 +43,8 @@ export class DIContainer {
    * @param options.allowOverride - Allow overriding existing registration (default: false)
    * @param options.logRegistration - Log registration (default: true)
    */
-  registerInstance<T>(
-    token: string,
-    instance: T,
-    options?: { allowOverride?: boolean; logRegistration?: boolean },
-  ): void {
+  registerInstance<T>(token: string, instance: T, options?: { allowOverride?: boolean }): void {
     const allowOverride = options?.allowOverride ?? false;
-    const logRegistration = options?.logRegistration ?? true;
 
     // Check if already registered
     if (this.registeredTokens.has(token) && !allowOverride) {
@@ -61,23 +56,21 @@ export class DIContainer {
     this._container.register(token, { useValue: instance });
     this.registeredTokens.add(token);
 
-    if (logRegistration) {
-      logger.debug(`[DIContainer] Registered service instance: ${token}`);
-    }
+    logger.debug(`[DIContainer] Registered service instance: ${token}`);
   }
 
   /**
    * Register a service class (transient)
    */
-  registerClass<T>(token: string, constructor: new (...args: any[]) => T): void {
-    this._container.register(token, { useClass: constructor });
+  registerClass<T>(token: string, ctor: new (...args: any[]) => T): void {
+    this._container.register(token, { useClass: ctor });
   }
 
   /**
    * Register a service class as singleton
    */
-  registerSingleton<T>(token: string, constructor: new (...args: any[]) => T): void {
-    this._container.registerSingleton(token, constructor);
+  registerSingleton<T>(token: string, ctor: new (...args: any[]) => T): void {
+    this._container.registerSingleton(token, ctor);
   }
 
   /**

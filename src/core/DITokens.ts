@@ -15,6 +15,7 @@ export const DITokens = {
   PROMPT_MANAGER: 'PromptManager',
   LLM_SERVICE: 'LLMService',
   PLUGIN_MANAGER: 'PluginManager',
+  EVENT_ROUTER: 'EventRouter',
   CONVERSATION_CONFIG_SERVICE: 'ConversationConfigService',
   GLOBAL_CONFIG_MANAGER: 'GlobalConfigManager',
   RETRIEVAL_SERVICE: 'RetrievalService',

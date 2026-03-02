@@ -69,12 +69,7 @@ export class RAGPersistenceSystem implements System {
     const message = context.message;
     const groupId = Number(message?.groupId);
     const userId = Number(message?.userId);
-    const collectionName = QdrantClient.getConversationHistoryCollectionName(
-      sessionId,
-      sessionType,
-      Number.isFinite(groupId) ? groupId : undefined,
-      Number.isFinite(userId) ? userId : undefined,
-    );
+    const collectionName = QdrantClient.getConversationHistoryCollectionName(sessionId, sessionType, groupId, userId);
 
     const now = new Date();
     const userMsgId = message.id;
@@ -115,7 +110,7 @@ export class RAGPersistenceSystem implements System {
       this.sessionMetaByCollection.set(collectionName, {
         sessionId,
         sessionType,
-        groupId: Number.isFinite(groupId) ? groupId : undefined,
+        groupId,
       });
     }
 
@@ -123,36 +118,53 @@ export class RAGPersistenceSystem implements System {
     if (!meta) {
       return true;
     }
-    const idleMs = this.getWindowIdleMinutes() * 60 * 1000;
-    const maxMessages = this.getWindowMaxMessages();
 
+    // try to flush buffer if it meets the criteria
     if (buffer.length > 0) {
-      const firstTime = buffer[0].createdAt instanceof Date ? buffer[0].createdAt : new Date(buffer[0].createdAt);
-      const shouldFlush = now.getTime() - firstTime.getTime() >= idleMs || buffer.length >= maxMessages;
-      if (shouldFlush) {
-        const windowDoc: RAGDocument = buildConversationWindowDocument(
-          buffer,
-          meta.sessionId,
-          meta.sessionType,
-          meta.groupId,
-        );
-        try {
-          await this.retrievalService.upsertDocuments(collectionName, [windowDoc]);
-          logger.debug(
-            `[RAGPersistenceSystem] Flushed window (${buffer.length} entries) to collection=${collectionName}`,
-          );
-        } catch (error) {
-          const err = error instanceof Error ? error : new Error('Unknown error');
-          logger.error('[RAGPersistenceSystem] Failed to flush window to Qdrant:', err);
-        }
+      const flushed = await this.tryFlushBuffer(collectionName, buffer, meta, now);
+      if (flushed) {
         buffer.length = 0;
       }
     }
 
+    // accumulate messages into buffer
     for (const e of currentEntries) {
       buffer.push(e);
     }
 
     return true;
+  }
+
+  private async tryFlushBuffer(
+    collectionName: string,
+    buffer: ConversationMessageEntry[],
+    meta: { sessionId: string; sessionType: string; groupId?: number },
+    now: Date,
+  ): Promise<boolean> {
+    const idleMs = this.getWindowIdleMinutes() * 60 * 1000;
+    const maxMessages = this.getWindowMaxMessages();
+
+    const firstTime = buffer[0].createdAt instanceof Date ? buffer[0].createdAt : new Date(buffer[0].createdAt);
+    const shouldFlush = now.getTime() - firstTime.getTime() >= idleMs || buffer.length >= maxMessages;
+    if (shouldFlush) {
+      const windowDoc: RAGDocument = buildConversationWindowDocument(
+        buffer,
+        meta.sessionId,
+        meta.sessionType,
+        meta.groupId,
+      );
+      try {
+        await this.retrievalService.upsertDocuments(collectionName, [windowDoc]);
+        logger.debug(
+          `[RAGPersistenceSystem] Flushed window (${buffer.length} entries) to collection=${collectionName}`,
+        );
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        logger.error('[RAGPersistenceSystem] Failed to flush window to Qdrant:', err);
+      }
+      buffer.length = 0;
+    }
+
+    return shouldFlush;
   }
 }

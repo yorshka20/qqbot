@@ -61,10 +61,11 @@ export class LocalText2ImageProvider extends AIProvider implements Text2ImageCap
       defaultTimeout: this.config.timeout,
     });
 
-    logger.info('[LocalText2ImageProvider] Initialized', {
-      baseUrl: this.config.baseUrl,
-      endpoint: this.config.endpoint,
-    });
+    logger.info(
+      '[LocalText2ImageProvider] Initialized | baseUrl: %s, endpoint: %s',
+      this.config.baseUrl,
+      this.config.endpoint,
+    );
   }
 
   isAvailable(): boolean {
