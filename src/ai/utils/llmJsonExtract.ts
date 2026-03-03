@@ -5,7 +5,77 @@
  */
 
 import type { z } from 'zod';
+import { type SearchDecisionResult, SearchDecisionSchema } from '@/ai/schemas';
 import { logger } from '@/utils/logger';
+
+/**
+ * Parse MULTI_SEARCH text format into individual queries.
+ * Format: "查询1: <query> | <explanation>\n查询2: <query> | <explanation>"
+ */
+function parseMultiSearchQueries(content: string): Array<{ query: string; explanation: string }> {
+  const queries: Array<{ query: string; explanation: string }> = [];
+  const lines = content
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line);
+
+  for (const line of lines) {
+    const match = line.match(/^查询\d+:\s*(.+?)\s*\|\s*(.+)$/);
+    if (match) {
+      const [, query, explanation] = match;
+      queries.push({
+        query: query.trim(),
+        explanation: explanation.trim(),
+      });
+    } else {
+      queries.push({
+        query: line,
+        explanation: 'Auto-extracted search query',
+      });
+    }
+  }
+  return queries;
+}
+
+/**
+ * Parse search decision from LLM response.
+ * Tries JSON first (via parseLlmJson), then falls back to plain text:
+ * NO_SEARCH, SEARCH: <query>, MULTI_SEARCH:\n查询1: ... | ...
+ */
+export function parseSearchDecision(response: string): SearchDecisionResult {
+  const trimmed = response.trim();
+
+  const fromJson = parseLlmJson(trimmed, SearchDecisionSchema);
+  if (fromJson !== null) {
+    return fromJson;
+  }
+
+  const upperTrimmed = trimmed.toUpperCase();
+
+  if (upperTrimmed.startsWith('MULTI_SEARCH:')) {
+    const multiSearchContent = trimmed.substring(13).trim();
+    const queries = parseMultiSearchQueries(multiSearchContent);
+    return {
+      needsSearch: queries.length > 0,
+      queries,
+      isMultiSearch: true,
+    };
+  }
+
+  if (upperTrimmed.startsWith('SEARCH:')) {
+    const query = trimmed.substring(7).trim();
+    return {
+      needsSearch: query.length > 0,
+      query: query || undefined,
+      isMultiSearch: false,
+    };
+  }
+
+  return {
+    needsSearch: false,
+    isMultiSearch: false,
+  };
+}
 
 export type ExtractStrategy = 'answer' | 'codeBlock' | 'braceMatch' | 'line' | 'regex';
 

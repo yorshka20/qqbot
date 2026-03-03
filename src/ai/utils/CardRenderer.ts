@@ -26,10 +26,6 @@ export class CardRenderer {
   private isInitializing = false;
   private initPromise: Promise<void> | null = null;
 
-  private constructor() {
-    // Private constructor for singleton pattern
-  }
-
   /**
    * Get singleton instance
    */
@@ -186,9 +182,9 @@ export class CardRenderer {
         waitUntil: 'networkidle0',
       });
 
-      // Wait for twemoji library to load and then parse emojis
-      try {
-        // Wait for twemoji library to be available
+      // Wait for twemoji library to be available
+      await Promise.all([
+        // Wait for twemoji library to load and then parse emojis
         await Promise.race([
           page.waitForFunction(
             () => {
@@ -197,27 +193,23 @@ export class CardRenderer {
             { timeout: 5000 },
           ),
           new Promise((resolve) => setTimeout(resolve, 5000)),
-        ]);
+        ]),
 
         // Parse emojis using twemoji
-        await page.evaluate(() => {
+        page.evaluate(() => {
           if (typeof (window as any).twemoji !== 'undefined') {
             (window as any).twemoji.parse(document.body, {
               folder: 'svg',
               ext: '.svg',
             });
           }
-        });
+        }),
 
-        logger.debug('[CardRenderer] Twemoji parsed successfully');
-      } catch (error) {
-        logger.warn('[CardRenderer] Failed to load or parse twemoji, continuing without emoji replacement:', error);
-      }
-
-      // Wait for fonts and images to load
-      await page.evaluateHandle(() => {
-        return document.fonts.ready;
-      });
+        // Wait for fonts and images to load (evaluate waits for returned Promise)
+        page.evaluate(() => {
+          return document.fonts.ready;
+        }),
+      ]);
 
       // Wait a bit for layout to settle
       await new Promise((r) => setTimeout(r, 500));

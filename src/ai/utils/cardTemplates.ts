@@ -45,9 +45,6 @@ const ALLOWED_CONTENT_TAGS = new Set([
   'br',
 ]);
 
-/** Allowed class for table: content-table */
-const ALLOWED_TABLE_CLASS = 'content-table';
-
 /**
  * Sanitize HTML from AI: keep only allowed tags and class="content-table" on table.
  * Removes script, style, and all other tags/attributes to prevent XSS.

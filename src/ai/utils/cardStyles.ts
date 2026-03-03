@@ -15,6 +15,7 @@ export const cardStyles = `
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-radius: 24px;
     padding: 30px;
+    padding-bottom: 14px;
     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
     width: 800px;
     box-sizing: border-box;

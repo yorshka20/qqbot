@@ -2,7 +2,7 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
-import { parseSearchDecision as parseSearchDecisionShared } from '@/ai/utils/searchDecisionParser';
+import { parseSearchDecision as parseSearchDecisionShared } from '@/ai/utils/llmJsonExtract';
 import type { MCPConfig } from '@/core/config/mcp';
 import type { HealthCheckManager } from '@/core/health';
 import type { MCPManager } from '@/mcp';
