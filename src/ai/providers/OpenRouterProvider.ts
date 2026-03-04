@@ -112,6 +112,10 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
       const history = await this.loadHistory(options);
       const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
 
+      if (options?.systemPrompt) {
+        messages.push({ role: 'system', content: options.systemPrompt });
+      }
+
       // Add history messages
       for (const msg of history) {
         messages.push({
@@ -180,6 +184,10 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
       // Load conversation history if context is enabled
       const history = await this.loadHistory(options);
       const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
+
+      if (options?.systemPrompt) {
+        messages.push({ role: 'system', content: options.systemPrompt });
+      }
 
       // Add history messages
       for (const msg of history) {

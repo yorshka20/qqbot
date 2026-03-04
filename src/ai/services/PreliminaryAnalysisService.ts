@@ -79,15 +79,12 @@ export class PreliminaryAnalysisService {
     }
 
     const idleModeInstruction = this.resolveIdleModeInstruction(options?.idleMode);
-    const prompt = this.promptManager.render(
-      'analysis.ollama',
-      {
-        preferenceText,
-        recentMessagesText,
-        idleModeInstruction,
-      },
-      { injectBase: true },
-    );
+    const baseSystemPrompt = this.promptManager.renderBasePrompt();
+    const prompt = this.promptManager.render('analysis.ollama', {
+      preferenceText,
+      recentMessagesText,
+      idleModeInstruction,
+    });
 
     // logger.debug(`[PreliminaryAnalysisService] Prompt: \n${prompt}`);
 
@@ -96,6 +93,7 @@ export class PreliminaryAnalysisService {
         temperature: 0.2,
         maxTokens: 4000,
         reasoningEffort: 'minimal', // no reasoning for quick response.
+        systemPrompt: baseSystemPrompt,
       });
       const text = (response.text || '').trim();
       return this.parseJsonResult(text);
@@ -138,22 +136,20 @@ export class PreliminaryAnalysisService {
 
     const threadsDescription = this.buildThreadsDescription(threads);
     const idleModeInstruction = this.resolveIdleModeInstruction(options?.idleMode);
-    const prompt = this.promptManager.render(
-      'analysis.ollama_multi',
-      {
-        preferenceText,
-        recentMessagesText,
-        threadsDescription,
-        idleModeInstruction,
-      },
-      { injectBase: true },
-    );
+    const baseSystemPrompt = this.promptManager.renderBasePrompt();
+    const prompt = this.promptManager.render('analysis.ollama_multi', {
+      preferenceText,
+      recentMessagesText,
+      threadsDescription,
+      idleModeInstruction,
+    });
 
     try {
       const response = await llm.generate(prompt, {
         temperature: 0.2,
         maxTokens: 4000,
         reasoningEffort: 'minimal', // no reasoning for quick response.
+        systemPrompt: baseSystemPrompt,
       });
       const text = (response.text || '').trim();
       return this.parseJsonResult(text);
@@ -172,7 +168,7 @@ export class PreliminaryAnalysisService {
     if (!idleMode) {
       return '';
     }
-    return this.promptManager.render('analysis.idle_instruction', {}, { injectBase: false });
+    return this.promptManager.render('analysis.idle_instruction', {});
   }
 
   private parseJsonResult(text: string): PreliminaryAnalysisResult {

@@ -364,6 +364,9 @@ export class LaozhangProvider
     const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens ?? 2000;
     const history = await this.loadHistory(options);
     const parts: Array<{ text: string }> = [];
+    if (options?.systemPrompt) {
+      parts.push({ text: `system: ${options.systemPrompt}\n\n` });
+    }
     for (const msg of history) {
       parts.push({ text: `${msg.role}: ${msg.content}\n\n` });
     }
@@ -396,7 +399,11 @@ export class LaozhangProvider
     }
     const model = this.config.vision.model;
     const imageParts = await this.visionImagesToInlineParts(images);
-    const contentsParts = [{ text: prompt }, ...imageParts];
+    const systemPrompt = [];
+    if (options?.systemPrompt) {
+      systemPrompt.push({ text: `system: ${options.systemPrompt}\n\n` });
+    }
+    const contentsParts = [...systemPrompt, { text: prompt }, ...imageParts];
     return this.generateContentText(model, contentsParts, {
       temperature: options?.temperature ?? 0.7,
       maxTokens: options?.maxTokens ?? 2000,

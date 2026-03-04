@@ -126,8 +126,8 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
       const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
 
       // Prepend system message when provided (e.g. for gacha prompt generation)
-      if (options?.systemPrompt?.trim()) {
-        messages.push({ role: 'system', content: options.systemPrompt.trim() });
+      if (options?.systemPrompt) {
+        messages.push({ role: 'system', content: options.systemPrompt });
       }
 
       // Add history messages
@@ -199,8 +199,8 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
       const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
 
       // Prepend system message when provided (e.g. for gacha prompt generation)
-      if (options?.systemPrompt?.trim()) {
-        messages.push({ role: 'system', content: options.systemPrompt.trim() });
+      if (options?.systemPrompt) {
+        messages.push({ role: 'system', content: options.systemPrompt });
       }
 
       // Add history messages

@@ -6,7 +6,7 @@ This directory contains prompt templates used by the AI service. Templates are o
 
 ```
 prompts/
-├── base.txt          # Base prompt (optional). Injected at the start of every rendered prompt to define global AI behavior (style, accuracy, timeliness, etc.). Omit or leave empty to disable.
+├── base.txt          # Base prompt (optional). Rendered separately and sent as system role to define global behavior.
 ├── llm/              # Language Model prompts
 │   └── reply.txt     # Main reply template
 ├── vision/           # Vision/Multimodal prompts
@@ -59,20 +59,17 @@ Common variables used in templates:
 
 ## Base Prompt
 
-A template named **base** (file: `prompts/base.txt`) is treated as the **base prompt**. By default it is **not** prepended; pass `{ injectBase: true }` only where a flow needs global context (typically once per flow):
-
-```typescript
-promptManager.render('llm.reply', vars, { injectBase: true });
-```
+A template named **base** (file: `prompts/base.txt`) is rendered via `promptManager.renderBasePrompt()` and should be passed to model calls as `systemPrompt`.
 
 ## Usage in Code
 
 ```typescript
-// Render a template (no base by default)
+// Render user prompt template
 const prompt = promptManager.render('llm.reply', {
   userMessage: 'Hello',
   conversationHistory: 'Previous messages...',
-}, { injectBase: true });
+});
+const systemPrompt = promptManager.renderBasePrompt();
 ```
 
 ## Configuration

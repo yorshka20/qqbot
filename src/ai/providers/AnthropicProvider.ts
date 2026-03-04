@@ -26,6 +26,45 @@ interface AnthropicMessage {
     | Array<{ type: 'text' | 'image'; text?: string; source?: { type: string; media_type: string; data: string } }>;
 }
 
+interface AnthropicMessagesRequestBody {
+  model: string;
+  max_tokens: number;
+  temperature: number;
+  messages: AnthropicMessage[];
+  system?: string;
+}
+
+interface AnthropicStreamRequestBody extends AnthropicMessagesRequestBody {
+  stream: true;
+}
+
+interface AnthropicVisionRequestBody {
+  model: string;
+  max_tokens: number;
+  temperature: number;
+  messages: Array<{ role: 'user'; content: AnthropicMessage['content'] }>;
+  system?: string;
+}
+
+interface AnthropicMessagesResponse {
+  content: Array<{ type: string; text: string }>;
+  usage?: { input_tokens: number; output_tokens: number };
+  model: string;
+}
+
+interface AnthropicStreamChunk {
+  type: string;
+  delta?: { text?: string };
+  usage?: { input_tokens: number; output_tokens: number };
+}
+
+function isAnthropicStreamChunk(value: unknown): value is AnthropicStreamChunk {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  return typeof Reflect.get(value, 'type') === 'string';
+}
+
 /**
  * Anthropic Provider implementation
  * Implements LLM and Vision capabilities
@@ -140,16 +179,17 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         content: prompt,
       });
 
-      const data = (await this.httpClient.post('/messages', {
+      const requestBody: AnthropicMessagesRequestBody = {
         model,
         max_tokens: maxTokens,
         temperature,
         messages,
-      })) as {
-        content: Array<{ type: string; text: string }>;
-        usage?: { input_tokens: number; output_tokens: number };
-        model: string;
       };
+      if (options?.systemPrompt) {
+        requestBody.system = options.systemPrompt;
+      }
+
+      const data = await this.httpClient.post<AnthropicMessagesResponse>('/messages', requestBody);
 
       const text = data.content[0]?.text || '';
       const usage = data.usage
@@ -205,15 +245,20 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       });
 
       // Use HttpClient stream method for streaming requests
+      const requestBody: AnthropicStreamRequestBody = {
+        model,
+        max_tokens: maxTokens,
+        temperature,
+        messages,
+        stream: true,
+      };
+      if (options?.systemPrompt) {
+        requestBody.system = options.systemPrompt;
+      }
+
       const stream = await this.httpClient.stream('/messages', {
         method: 'POST',
-        body: {
-          model,
-          max_tokens: maxTokens,
-          temperature,
-          messages,
-          stream: true,
-        },
+        body: requestBody,
       });
 
       const reader = stream.getReader();
@@ -238,22 +283,21 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
                 continue;
               }
 
-              const data = JSON.parse(jsonStr) as {
-                type: string;
-                delta?: { text?: string };
-                usage?: { input_tokens: number; output_tokens: number };
-              };
-
-              if (data.type === 'content_block_delta' && data.delta?.text) {
-                fullText += data.delta.text;
-                handler(data.delta.text);
+              const parsed = JSON.parse(jsonStr);
+              if (!isAnthropicStreamChunk(parsed)) {
+                continue;
               }
 
-              if (data.type === 'message_stop' && data.usage) {
+              if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                fullText += parsed.delta.text;
+                handler(parsed.delta.text);
+              }
+
+              if (parsed.type === 'message_stop' && parsed.usage) {
                 usage = {
-                  promptTokens: data.usage.input_tokens,
-                  completionTokens: data.usage.output_tokens,
-                  totalTokens: data.usage.input_tokens + data.usage.output_tokens,
+                  promptTokens: parsed.usage.input_tokens,
+                  completionTokens: parsed.usage.output_tokens,
+                  totalTokens: parsed.usage.input_tokens + parsed.usage.output_tokens,
                 };
               }
             } catch (parseError) {
@@ -335,7 +379,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         });
       }
 
-      const data = (await this.httpClient.post('/messages', {
+      const requestBody: AnthropicVisionRequestBody = {
         model,
         max_tokens: maxTokens,
         temperature,
@@ -345,11 +389,12 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
             content,
           },
         ],
-      })) as {
-        content: Array<{ type: string; text: string }>;
-        usage?: { input_tokens: number; output_tokens: number };
-        model: string;
       };
+      if (options?.systemPrompt) {
+        requestBody.system = options.systemPrompt;
+      }
+
+      const data = await this.httpClient.post<AnthropicMessagesResponse>('/messages', requestBody);
 
       const text = data.content[0]?.text || '';
       const usage = data.usage

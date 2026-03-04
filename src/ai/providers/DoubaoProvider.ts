@@ -117,8 +117,8 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
 
       // Prepend system message when provided (e.g. for gacha prompt generation)
-      if (options?.systemPrompt?.trim()) {
-        messages.push({ role: 'system', content: options.systemPrompt.trim() });
+      if (options?.systemPrompt) {
+        messages.push({ role: 'system', content: options.systemPrompt });
       }
 
       // Add history messages
@@ -163,7 +163,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
         // Include reasoning content for internal use (e.g., task analysis)
         text = reasoningContent;
         if (content) {
-          text += '\n' + content;
+          text += `\n${content}`;
         }
         logger.debug(
           `[DoubaoProvider] Including reasoning content in response | reasoningLength=${reasoningContent.length} | contentLength=${content.length}`,
@@ -225,8 +225,8 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
 
       // Prepend system message when provided (e.g. for gacha prompt generation)
-      if (options?.systemPrompt?.trim()) {
-        messages.push({ role: 'system', content: options.systemPrompt.trim() });
+      if (options?.systemPrompt) {
+        messages.push({ role: 'system', content: options.systemPrompt });
       }
 
       // Add history messages
@@ -373,14 +373,13 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
         });
       }
 
+      const systemPrompt = [];
+      if (options?.systemPrompt) {
+        systemPrompt.push({ role: 'system', content: options.systemPrompt });
+      }
       const createParams = {
         model,
-        messages: [
-          {
-            role: 'user' as const,
-            content,
-          },
-        ],
+        messages: [...systemPrompt, { role: 'user', content }],
         temperature,
         max_tokens: maxTokens,
         top_p: options?.topP,
@@ -503,6 +502,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       const streamResult = await this.client.chat.completions.create({
         model,
         messages: [
+          ...(options?.systemPrompt ? ([{ role: 'system' as const, content: options.systemPrompt }] as const) : []),
           {
             role: 'user',
             content,

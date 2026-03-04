@@ -117,7 +117,7 @@ export class AIService {
     }
     await this.hookManager.execute('onAIGenerationStart', context);
     try {
-      const result = await this.taskAnalyzer.analyze(context.context, { injectBase: true });
+      const result = await this.taskAnalyzer.analyze(context.context);
       await this.hookManager.execute('onAIGenerationComplete', context);
       return result.tasks;
     } catch (error) {
@@ -148,17 +148,27 @@ export class AIService {
         retrievedConversationSection: context.retrievedConversationSection ?? '',
         memoryContext: context.memoryContext ?? '',
       },
-      { injectBase: true },
     );
+    const baseSystemPrompt = this.promptManager.renderBasePrompt();
 
     logger.info('[AIService] generateProactiveReply prompt', { prompt });
 
     const useVision = context.messageImages && context.messageImages.length > 0;
     let response: AIGenerateResponse;
     if (useVision) {
-      response = await this.visionService.generateWithVision(prompt, context.messageImages ?? [], genOptions);
+      response = await this.visionService.generateWithVision(prompt, context.messageImages ?? [], {
+        ...genOptions,
+        systemPrompt: baseSystemPrompt,
+      });
     } else {
-      response = await this.llmService.generate(prompt, genOptions, providerName);
+      response = await this.llmService.generate(
+        prompt,
+        {
+          ...genOptions,
+          systemPrompt: baseSystemPrompt,
+        },
+        providerName,
+      );
     }
 
     return response.text.trim();

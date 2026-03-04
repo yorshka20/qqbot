@@ -80,6 +80,7 @@ export class MemoryExtractService {
       return existingMemory.trim();
     }
     const provider = options.provider ?? DEFAULT_EXTRACT_PROVIDER;
+    const baseSystemPrompt = this.promptManager.renderBasePrompt();
     const prompt = this.promptManager.render(
       'memory.analyze',
       {
@@ -87,7 +88,6 @@ export class MemoryExtractService {
         newFacts: newFacts.trim(),
         adminUserId: this.promptManager.adminUserId,
       },
-      { injectBase: true },
     );
 
     // logger.info('[MemoryExtractService] Analyze full prompt:\n' + prompt);
@@ -98,6 +98,7 @@ export class MemoryExtractService {
         {
           temperature: 0.4,
           maxTokens: 20000,
+          systemPrompt: baseSystemPrompt,
         },
         provider,
       );
@@ -134,6 +135,7 @@ export class MemoryExtractService {
   ): Promise<void> {
     const provider = options.provider ?? DEFAULT_EXTRACT_PROVIDER;
     const inputText = recentMessagesText || '(no messages)';
+    const baseSystemPrompt = this.promptManager.renderBasePrompt();
     const targetUserSection = this.promptManager.render('memory.extract_single_user', {
       targetUserId: userId,
     });
@@ -144,7 +146,6 @@ export class MemoryExtractService {
         recentMessagesText: inputText,
         targetUserSection,
       },
-      { injectBase: true },
     );
 
     // logger.info('[MemoryExtractService] Extract full prompt:\n' + prompt);
@@ -156,6 +157,7 @@ export class MemoryExtractService {
         {
           temperature: 0.4,
           maxTokens: 20000, // use long context for extract.
+          systemPrompt: baseSystemPrompt,
         },
         provider,
       );

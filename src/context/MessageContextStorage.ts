@@ -34,7 +34,7 @@ export async function enterMessageContext<T>(
 }
 
 /**
- * Get the message context for the current async chain (used by PromptManager when rendering with injectBase).
+ * Get the message context for the current async chain (used by PromptManager when rendering base system prompt).
  * Returns the value from the Map for the key stored in async local storage.
  */
 export function getCurrentMessageContext(): MessageContextValue | undefined {

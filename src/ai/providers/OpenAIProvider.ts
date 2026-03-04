@@ -89,7 +89,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('OpenAI client not initialized');
     }
 
-    const model = (this.config.model || 'gpt-3.5-turbo') as string;
+    const model = this.config.model || 'gpt-3.5-turbo';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
@@ -99,6 +99,10 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
       // Load conversation history if context is enabled
       const history = await this.loadHistory(options);
       const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
+
+      if (options?.systemPrompt) {
+        messages.push({ role: 'system', content: options.systemPrompt });
+      }
 
       // Add history messages
       for (const msg of history) {
@@ -158,7 +162,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('OpenAI client not initialized');
     }
 
-    const model = (this.config.model || 'gpt-3.5-turbo') as string;
+    const model = this.config.model || 'gpt-3.5-turbo';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
@@ -168,6 +172,10 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
       // Load conversation history if context is enabled
       const history = await this.loadHistory(options);
       const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
+
+      if (options?.systemPrompt) {
+        messages.push({ role: 'system', content: options.systemPrompt });
+      }
 
       // Add history messages
       for (const msg of history) {
@@ -239,7 +247,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('OpenAI client not initialized');
     }
 
-    const model = (this.config.model || 'gpt-4-vision-preview') as string;
+    const model = this.config.model || 'gpt-4-vision-preview';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
@@ -274,14 +282,24 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
         });
       }
 
+      const messages: Array<
+        | { role: 'system'; content: string }
+        | {
+            role: 'user';
+            content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
+          }
+      > = [];
+      if (options?.systemPrompt) {
+        messages.push({ role: 'system', content: options.systemPrompt });
+      }
+      messages.push({
+        role: 'user',
+        content,
+      });
+
       const response = await this.client.chat.completions.create({
         model,
-        messages: [
-          {
-            role: 'user',
-            content,
-          },
-        ],
+        messages,
         temperature,
         max_completion_tokens: maxTokens,
         top_p: options?.topP,
@@ -334,7 +352,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('OpenAI client not initialized');
     }
 
-    const model = (this.config.model || 'gpt-4-vision-preview') as string;
+    const model = this.config.model || 'gpt-4-vision-preview';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
@@ -366,14 +384,24 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
         });
       }
 
+      const messages: Array<
+        | { role: 'system'; content: string }
+        | {
+            role: 'user';
+            content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
+          }
+      > = [];
+      if (options?.systemPrompt) {
+        messages.push({ role: 'system', content: options.systemPrompt });
+      }
+      messages.push({
+        role: 'user',
+        content,
+      });
+
       const stream = await this.client.chat.completions.create({
         model,
-        messages: [
-          {
-            role: 'user',
-            content,
-          },
-        ],
+        messages,
         temperature,
         max_completion_tokens: maxTokens,
         top_p: options?.topP,

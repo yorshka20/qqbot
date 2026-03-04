@@ -195,6 +195,7 @@ export class ReplyGenerationService {
         userMemoryText: memoryVars.userMemoryText,
         retrievedConversationSection: memoryVars.retrievedConversationSection,
       });
+      const baseSystemPrompt = this.promptManager.renderBasePrompt();
 
       // 300-500 word narrative replies; maxTokens capped for API limits (e.g. DeepSeek 4096)
       const response = await this.llmService.generate(
@@ -203,6 +204,7 @@ export class ReplyGenerationService {
           temperature: 0.8,
           maxTokens: 4096,
           sessionId,
+          systemPrompt: baseSystemPrompt,
         },
         'deepseek', // now only deepseek supports NSFW mode
       );
@@ -373,9 +375,10 @@ export class ReplyGenerationService {
     taskResultImages: string[] = [],
   ): Promise<void> {
     const injectRecords = await this.buildReplyPromptInjectRecords(context, taskResultsSummary, searchResultsText);
-    const prompt = this.promptManager.render('llm.reply', injectRecords, { injectBase: true });
+    const prompt = this.promptManager.render('llm.reply', injectRecords);
+    const baseSystemPrompt = this.promptManager.renderBasePrompt();
 
-    const genOptions = { temperature: 0.7, maxTokens: 2000, sessionId };
+    const genOptions = { temperature: 0.7, maxTokens: 2000, sessionId, systemPrompt: baseSystemPrompt };
     const useVisionProvider = messageImages.length > 0;
 
     logger.debug(`[ReplyGenerationService] generateReplyWithTaskResults`, { prompt });
@@ -474,8 +477,8 @@ export class ReplyGenerationService {
       {
         responseText,
       },
-      { injectBase: true },
     );
+    const baseSystemPrompt = this.promptManager.renderBasePrompt();
 
     logger.debug('[ReplyGenerationService] Converting text to card format using LLM');
 
@@ -484,6 +487,7 @@ export class ReplyGenerationService {
       temperature: 0.3, // Lower temperature for more consistent JSON output
       maxTokens: 2000,
       sessionId,
+      systemPrompt: baseSystemPrompt,
     });
 
     logger.debug(

@@ -109,8 +109,12 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
   private async buildMessages(
     prompt: string,
     options?: AIGenerateOptions,
-  ): Promise<Array<{ role: 'user' | 'assistant'; content: string }>> {
-    const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  ): Promise<Array<{ role: 'user' | 'assistant' | 'system'; content: string }>> {
+    const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
+
+    if (options?.systemPrompt) {
+      messages.push({ role: 'system', content: options.systemPrompt });
+    }
 
     // Load conversation history if context is enabled
     if (this.enableContext) {
@@ -137,7 +141,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
    * Call Ollama chat API (non-streaming)
    */
   private async callChatAPI(
-    messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
     options?: AIGenerateOptions,
   ): Promise<OllamaGenerateResponse> {
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
@@ -163,7 +167,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
    * Call Ollama chat API (streaming)
    */
   private async callChatAPIStream(
-    messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
     options?: AIGenerateOptions,
   ): Promise<ReadableStream<Uint8Array>> {
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;

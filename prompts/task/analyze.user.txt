@@ -3,7 +3,8 @@
 对话历史：
 {{conversationHistory}}
 
-用户消息：{{userMessage}}
+用户消息：
+{{userMessage}}
 
 ## 分析要求
 

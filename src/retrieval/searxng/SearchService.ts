@@ -218,11 +218,10 @@ export class SearchService {
       })
       .join('\n\n');
 
-    return this.promptManager.render(
-      'search.format_results',
-      { totalResults: results.length.toString(), formattedResults: formatted },
-      { injectBase: true },
-    );
+    return this.promptManager.render('search.format_results', {
+      totalResults: results.length.toString(),
+      formattedResults: formatted,
+    });
   }
 
   private parseMCPSearchResults(resultText: string): SearchResult[] {
