@@ -1,6 +1,7 @@
 // Context type definitions
 
 import type { VisionImage } from '@/ai/capabilities/types';
+import type { ConversationMessageEntry } from '@/conversation/history';
 
 /**
  * Conversation context - single conversation context
@@ -66,8 +67,10 @@ export interface BuildContextOptions extends ContextBuilderOptions {
 export interface ProactiveReplyInjectContext {
   /** Rendered preference (persona) text (e.g. preference.full). */
   preferenceText: string;
-  /** Formatted thread messages for context. */
+  /** Formatted thread messages for context (legacy string path). */
   threadContext: string;
+  /** Structured role history for proactive mode. */
+  historyEntries?: ConversationMessageEntry[];
   /** Optional RAG chunks section (e.g. "## 参考知识\n\n..."). */
   retrievedContext: string;
   /** Optional conversation history RAG section (vector search over group history; from rag.conversation_context). */

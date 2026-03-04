@@ -1,7 +1,7 @@
 // Database Persistence System - saves messages and conversations to database
 
 import { randomUUID } from 'node:crypto';
-import { getReply } from '@/context/HookContextHelpers';
+import { getReply, getReplyContent } from '@/context/HookContextHelpers';
 import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
 import type { DatabaseManager } from '@/database/DatabaseManager';
@@ -67,6 +67,7 @@ export class DatabasePersistenceSystem implements System {
       const messages = adapter.getModel('messages');
       const message = context.message;
       const reply = getReply(context);
+      const replyContent = getReplyContent(context);
 
       // Save user message
       // For Milky protocol, save all important fields to metadata
@@ -94,8 +95,11 @@ export class DatabasePersistenceSystem implements System {
       }
 
       // Always persist segments when we have content so that reply-target messages can be restored with image segments
-      const segmentsToSave =
-        (message.segments ?? message.message) ? [{ type: 'text', data: { text: message.message } }] : undefined;
+      const segmentsToSave = message.segments?.length
+        ? message.segments
+        : message.message
+          ? [{ type: 'text', data: { text: message.message } }]
+          : undefined;
       const messageData: Omit<Message, 'id' | 'createdAt' | 'updatedAt'> = {
         conversationId: conversation.id,
         userId: message.userId,
@@ -134,6 +138,7 @@ export class DatabasePersistenceSystem implements System {
           messageType: message.messageType,
           groupId: message.groupId,
           content: reply,
+          rawContent: replyContent?.segments?.length ? JSON.stringify(replyContent.segments) : undefined,
           protocol: message.protocol || 'unknown',
           metadata: {
             isBotReply: true,

@@ -96,27 +96,26 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
     try {
       logger.debug(`[OpenAIProvider] Generating with model: ${model}`);
 
-      // Load conversation history if context is enabled
-      const history = await this.loadHistory(options);
-      const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
-
-      if (options?.systemPrompt) {
-        messages.push({ role: 'system', content: options.systemPrompt });
-      }
-
-      // Add history messages
-      for (const msg of history) {
+      let messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+      if (options?.messages?.length) {
+        messages = options.messages.map((m) => ({ role: m.role, content: m.content }));
+      } else {
+        const history = await this.loadHistory(options);
+        messages = [];
+        if (options?.systemPrompt) {
+          messages.push({ role: 'system', content: options.systemPrompt });
+        }
+        for (const msg of history) {
+          messages.push({
+            role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
+            content: msg.content,
+          });
+        }
         messages.push({
-          role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-          content: msg.content,
+          role: 'user',
+          content: prompt,
         });
       }
-
-      // Add current user message
-      messages.push({
-        role: 'user',
-        content: prompt,
-      });
 
       const response = await this.client.chat.completions.create({
         model,
@@ -169,27 +168,26 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
     try {
       logger.debug(`[OpenAIProvider] Generating stream with model: ${model}`);
 
-      // Load conversation history if context is enabled
-      const history = await this.loadHistory(options);
-      const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
-
-      if (options?.systemPrompt) {
-        messages.push({ role: 'system', content: options.systemPrompt });
-      }
-
-      // Add history messages
-      for (const msg of history) {
+      let messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+      if (options?.messages?.length) {
+        messages = options.messages.map((m) => ({ role: m.role, content: m.content }));
+      } else {
+        const history = await this.loadHistory(options);
+        messages = [];
+        if (options?.systemPrompt) {
+          messages.push({ role: 'system', content: options.systemPrompt });
+        }
+        for (const msg of history) {
+          messages.push({
+            role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
+            content: msg.content,
+          });
+        }
         messages.push({
-          role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-          content: msg.content,
+          role: 'user',
+          content: prompt,
         });
       }
-
-      // Add current user message
-      messages.push({
-        role: 'user',
-        content: prompt,
-      });
 
       const stream = await this.client.chat.completions.create({
         model,

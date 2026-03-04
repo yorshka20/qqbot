@@ -20,6 +20,7 @@ import type { ProviderSelector } from './ProviderSelector';
 import type { PromptManager } from './prompt/PromptManager';
 import { ProviderRouter } from './routing/ProviderRouter';
 import type { I2VPromptResult } from './schemas';
+import { PromptMessageAssembler } from './prompt/PromptMessageAssembler';
 import { CardRenderingService } from './services/CardRenderingService';
 import { ImageGenerationService } from './services/ImageGenerationService';
 import { ImagePromptService } from './services/ImagePromptService';
@@ -55,6 +56,7 @@ export class AIService {
   private replyGenerationService: ReplyGenerationService;
   private imagePromptService: ImagePromptService;
   private taskAnalyzer: TaskAnalyzer;
+  private messageAssembler: PromptMessageAssembler;
 
   constructor(
     aiManager: AIManager,
@@ -92,6 +94,7 @@ export class AIService {
       databaseManager,
     );
     this.taskAnalyzer = new TaskAnalyzer(this.llmService, taskManager, this.promptManager);
+    this.messageAssembler = new PromptMessageAssembler();
   }
 
   /**
@@ -141,33 +144,36 @@ export class AIService {
       maxTokens: 10000,
       sessionId: context.sessionId,
     };
-    const prompt = this.promptManager.render('llm.proactive_reply', {
-      preferenceText: context.preferenceText,
-      threadContext: context.threadContext || '(no context)',
-      retrievedContext: context.retrievedContext ?? '',
-      retrievedConversationSection: context.retrievedConversationSection ?? '',
-      memoryContext: context.memoryContext ?? '',
-    });
     const baseSystemPrompt = this.promptManager.renderBasePrompt();
+    const sceneSystemPrompt = this.promptManager.render('llm.proactive.system', {
+      preferenceText: context.preferenceText,
+    });
+    const finalUserQuery = this.promptManager.render('llm.proactive.user_frame', {
+      currentRequest: '请基于当前 thread 连续语境给出你的主动回复。',
+    });
+    const messages = this.messageAssembler.buildProactiveMessages({
+      baseSystem: baseSystemPrompt,
+      sceneSystem: sceneSystemPrompt,
+      historyEntries: context.historyEntries ?? [],
+      finalUserBlocks: {
+        memoryContext: context.memoryContext ?? '',
+        ragContext: context.retrievedConversationSection ?? '',
+        searchResults: context.retrievedContext ?? '',
+        currentQuery: finalUserQuery,
+      },
+    });
 
-    logger.info('[AIService] generateProactiveReply prompt', { prompt });
+    logger.info('[AIService] generateProactiveReply', { messageCount: messages.length });
 
     const useVision = context.messageImages && context.messageImages.length > 0;
     let response: AIGenerateResponse;
     if (useVision) {
-      response = await this.visionService.generateWithVision(prompt, context.messageImages ?? [], {
+      const flattenedPrompt = messages.map((m) => `${m.role.toUpperCase()}:\n${m.content}`).join('\n\n');
+      response = await this.visionService.generateWithVision(flattenedPrompt, context.messageImages ?? [], {
         ...genOptions,
-        systemPrompt: baseSystemPrompt,
       });
     } else {
-      response = await this.llmService.generate(
-        prompt,
-        {
-          ...genOptions,
-          systemPrompt: baseSystemPrompt,
-        },
-        providerName,
-      );
+      response = await this.llmService.generateMessages(messages, genOptions, providerName);
     }
 
     return response.text.trim();

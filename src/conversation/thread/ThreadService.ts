@@ -21,6 +21,7 @@ export function isReadableTextForThread(content: string): boolean {
 
 export interface ThreadMessage {
   userId: number;
+  nickname?: string;
   content: string;
   isBotReply: boolean;
   createdAt: Date;
@@ -74,6 +75,7 @@ export class ThreadService {
       .filter((m) => isReadableTextForThread(m.content))
       .map((m) => ({
         userId: m.userId,
+        nickname: m.nickname,
         content: m.content,
         isBotReply: m.isBotReply,
         createdAt: m.createdAt instanceof Date ? m.createdAt : new Date(m.createdAt),

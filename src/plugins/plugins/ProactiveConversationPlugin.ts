@@ -164,8 +164,10 @@ export class ProactiveConversationPlugin extends PluginBase {
     const userId = context.message?.userId?.toString();
     if (botSelfId && userId === botSelfId) return true;
 
-    // Do not run proactive analysis when the message was @ bot: that message already gets a direct reply.
-    if (context.metadata.get('triggeredByAtBot') === true) return true;
+    // Do not run proactive analysis when the message already triggered direct reply (@bot / wake-word).
+    if (context.metadata.get('triggeredByAtBot') || context.metadata.get('triggeredByWakeWord')) {
+      return true;
+    }
 
     // Trigger userId = current message sender (from pipeline event -> hook context.message)
     const triggerUserId = userId ?? undefined;

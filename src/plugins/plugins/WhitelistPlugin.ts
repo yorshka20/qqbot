@@ -1,3 +1,5 @@
+import type { PromptManager } from '@/ai/prompt/PromptManager';
+import type { ProactiveConversationService } from '@/conversation/proactive';
 import type { ThreadService } from '@/conversation/thread';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -10,6 +12,8 @@ import { PluginBase } from '../PluginBase';
 interface WhitelistPluginConfig {
   userIds?: string[];
   groupIds?: string[];
+  /** Optional global wake words that can trigger direct reply without @bot. */
+  wakeWords?: string[];
 }
 
 @RegisterPlugin({
@@ -23,21 +27,29 @@ export class WhitelistPlugin extends PluginBase {
   private groupWhitelist: Set<string> = new Set();
   private hasUserWhitelist = false;
   private hasGroupWhitelist = false;
+  private globalWakeWords: string[] = [];
 
   private threadService!: ThreadService;
+  private proactiveConversationService!: ProactiveConversationService;
 
   async onInit(): Promise<void> {
     this.enabled = true;
     // Get dependencies from DI container
     const container = getContainer();
     this.threadService = container.resolve<ThreadService>(DITokens.THREAD_SERVICE);
+    this.proactiveConversationService = container.resolve<ProactiveConversationService>(
+      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+    );
 
     if (!this.threadService) {
       throw new Error('[WhitelistPlugin] ThreadService not found');
     }
+    if (!this.proactiveConversationService) {
+      throw new Error('[WhitelistPlugin] ProactiveConversationService not found');
+    }
 
     try {
-      const pluginConfig = this.pluginConfig?.config as WhitelistPluginConfig | undefined;
+      const pluginConfig = this.pluginConfig?.config as WhitelistPluginConfig;
       if (!pluginConfig) {
         return;
       }
@@ -46,14 +58,48 @@ export class WhitelistPlugin extends PluginBase {
         this.userWhitelist = new Set(pluginConfig.userIds);
         this.hasUserWhitelist = this.userWhitelist.size > 0;
       }
-
       if (Array.isArray(pluginConfig.groupIds)) {
         this.groupWhitelist = new Set(pluginConfig.groupIds);
         this.hasGroupWhitelist = this.groupWhitelist.size > 0;
       }
+      if (Array.isArray(pluginConfig.wakeWords)) {
+        this.globalWakeWords = pluginConfig.wakeWords.map((w) => w.trim().toLowerCase()).filter(Boolean);
+      }
     } catch (error) {
       logger.error('[WhitelistPlugin] Config error:', error);
     }
+  }
+
+  private parseTriggerWords(content: string): string[] {
+    return content
+      .split(/\r?\n/)
+      .map((line) => line.trim().toLowerCase())
+      .filter((line) => line.length > 0 && !line.startsWith('#'));
+  }
+
+  private getGroupWakeWords(groupId: string | undefined): string[] {
+    if (!groupId) return [];
+    const container = getContainer();
+    if (!container.isRegistered(DITokens.PROMPT_MANAGER)) {
+      return [];
+    }
+    const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+    const preferenceKeys = this.proactiveConversationService?.getGroupPreferenceKeys(groupId) ?? [];
+    const words = new Set<string>();
+    for (const key of preferenceKeys) {
+      const tpl = promptManager.getTemplate(`${key}.trigger`);
+      for (const word of this.parseTriggerWords(tpl?.content ?? '')) {
+        words.add(word);
+      }
+    }
+    return Array.from(words);
+  }
+
+  private matchesWakeWord(groupId: string | undefined, message: string): boolean {
+    const text = message.toLowerCase();
+    const groupWords = this.getGroupWakeWords(groupId);
+    const allWords = [...new Set([...groupWords, ...this.globalWakeWords])];
+    return allWords.some((w) => text.includes(w));
   }
 
   @Hook({
@@ -83,6 +129,7 @@ export class WhitelistPlugin extends PluginBase {
         return true;
       }
       context.metadata.set('whitelistUser', true);
+      context.metadata.set('contextMode', 'normal');
     } else {
       // Group chat
       if (this.hasGroupWhitelist) {
@@ -101,13 +148,19 @@ export class WhitelistPlugin extends PluginBase {
       // When neither, we do not run the reply task; only the debounced proactive analysis can decide whether to reply.
       const replyTrigger = context.metadata.get('replyTrigger');
       const isAtBot = MessageUtils.isAtBot(message, botSelfId);
-      if (replyTrigger !== 'reaction' && !isAtBot) {
+      const isWakeWord = this.matchesWakeWord(groupId, message.message ?? '');
+      if (replyTrigger !== 'reaction' && !isAtBot && !isWakeWord) {
         context.metadata.set('postProcessOnly', true);
         return true;
       }
 
       // Allow reply task. Mark so proactive analysis skips replying to this message (it gets direct reply).
-      context.metadata.set('triggeredByAtBot', true);
+      if (isWakeWord && !isAtBot) {
+        context.metadata.set('triggeredByWakeWord', true);
+      } else {
+        context.metadata.set('triggeredByAtBot', true);
+      }
+      context.metadata.set('contextMode', 'normal');
       if (groupId && this.threadService.hasActiveThread(groupId)) {
         context.metadata.set('inProactiveThread', true);
       }

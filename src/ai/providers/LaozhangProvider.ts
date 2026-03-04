@@ -362,15 +362,21 @@ export class LaozhangProvider
     const model = this.config.llm.model;
     const temperature = options?.temperature ?? this.config.llm.temperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens ?? 2000;
-    const history = await this.loadHistory(options);
     const parts: Array<{ text: string }> = [];
-    if (options?.systemPrompt) {
-      parts.push({ text: `system: ${options.systemPrompt}\n\n` });
+    if (options?.messages?.length) {
+      for (const msg of options.messages) {
+        parts.push({ text: `${msg.role}: ${msg.content}\n\n` });
+      }
+    } else {
+      const history = await this.loadHistory(options);
+      if (options?.systemPrompt) {
+        parts.push({ text: `system: ${options.systemPrompt}\n\n` });
+      }
+      for (const msg of history) {
+        parts.push({ text: `${msg.role}: ${msg.content}\n\n` });
+      }
+      parts.push({ text: prompt });
     }
-    for (const msg of history) {
-      parts.push({ text: `${msg.role}: ${msg.content}\n\n` });
-    }
-    parts.push({ text: prompt });
     const fullPrompt = parts.map((p) => p.text).join('');
     const { text, usage } = await this.generateContentText(model, [{ text: fullPrompt }], {
       temperature,

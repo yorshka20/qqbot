@@ -161,23 +161,25 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     try {
       logger.debug(`[AnthropicProvider] Generating with model: ${model}`);
 
-      // Load conversation history if context is enabled
-      const history = await this.loadHistory(options);
-      const messages: AnthropicMessage[] = [];
-
-      // Add history messages
-      for (const msg of history) {
+      let messages: AnthropicMessage[];
+      if (options?.messages?.length) {
+        messages = options.messages
+          .filter((m) => m.role !== 'system')
+          .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }));
+      } else {
+        const history = await this.loadHistory(options);
+        messages = [];
+        for (const msg of history) {
+          messages.push({
+            role: msg.role === 'assistant' ? 'assistant' : 'user',
+            content: msg.content,
+          });
+        }
         messages.push({
-          role: msg.role === 'assistant' ? 'assistant' : 'user',
-          content: msg.content,
+          role: 'user',
+          content: prompt,
         });
       }
-
-      // Add current user message
-      messages.push({
-        role: 'user',
-        content: prompt,
-      });
 
       const requestBody: AnthropicMessagesRequestBody = {
         model,
@@ -185,7 +187,10 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         temperature,
         messages,
       };
-      if (options?.systemPrompt) {
+      const explicitSystem = options?.messages?.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
+      if (explicitSystem?.trim()) {
+        requestBody.system = explicitSystem;
+      } else if (options?.systemPrompt) {
         requestBody.system = options.systemPrompt;
       }
 
@@ -226,23 +231,25 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     try {
       logger.debug(`[AnthropicProvider] Generating stream with model: ${model}`);
 
-      // Load conversation history if context is enabled
-      const history = await this.loadHistory(options);
-      const messages: AnthropicMessage[] = [];
-
-      // Add history messages
-      for (const msg of history) {
+      let messages: AnthropicMessage[];
+      if (options?.messages?.length) {
+        messages = options.messages
+          .filter((m) => m.role !== 'system')
+          .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }));
+      } else {
+        const history = await this.loadHistory(options);
+        messages = [];
+        for (const msg of history) {
+          messages.push({
+            role: msg.role === 'assistant' ? 'assistant' : 'user',
+            content: msg.content,
+          });
+        }
         messages.push({
-          role: msg.role === 'assistant' ? 'assistant' : 'user',
-          content: msg.content,
+          role: 'user',
+          content: prompt,
         });
       }
-
-      // Add current user message
-      messages.push({
-        role: 'user',
-        content: prompt,
-      });
 
       // Use HttpClient stream method for streaming requests
       const requestBody: AnthropicStreamRequestBody = {
@@ -252,7 +259,10 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         messages,
         stream: true,
       };
-      if (options?.systemPrompt) {
+      const explicitSystem = options?.messages?.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
+      if (explicitSystem?.trim()) {
+        requestBody.system = explicitSystem;
+      } else if (options?.systemPrompt) {
         requestBody.system = options.systemPrompt;
       }
 

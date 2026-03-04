@@ -5,7 +5,7 @@ import type { AIManager } from '../AIManager';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import { isLLMCapability } from '../capabilities/LLMCapability';
 import type { ProviderSelector } from '../ProviderSelector';
-import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
+import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, StreamingHandler } from '../types';
 
 /**
  * LLM Service
@@ -104,6 +104,19 @@ export class LLMService {
   }
 
   /**
+   * Generate using prebuilt role-based messages.
+   * Providers must skip automatic history loading when options.messages is set.
+   */
+  async generateMessages(
+    messages: ChatMessage[],
+    options?: Omit<AIGenerateOptions, 'messages'>,
+    providerName?: string,
+  ): Promise<AIGenerateResponse> {
+    const prompt = messages[messages.length - 1]?.content ?? '';
+    return this.generate(prompt, { ...(options ?? {}), messages }, providerName);
+  }
+
+  /**
    * Generate text with streaming
    */
   async generateStream(
@@ -125,5 +138,15 @@ export class LLMService {
     }
 
     return await provider.generateStream(prompt, handler, options);
+  }
+
+  async generateStreamMessages(
+    messages: ChatMessage[],
+    handler: StreamingHandler,
+    options?: Omit<AIGenerateOptions, 'messages'>,
+    providerName?: string,
+  ): Promise<AIGenerateResponse> {
+    const prompt = messages[messages.length - 1]?.content ?? '';
+    return this.generateStream(prompt, handler, { ...(options ?? {}), messages }, providerName);
   }
 }

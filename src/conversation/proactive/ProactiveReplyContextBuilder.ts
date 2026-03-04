@@ -28,6 +28,10 @@ export interface ProactiveReplyContextBuilderDeps {
 export class ProactiveReplyContextBuilder {
   constructor(private deps: ProactiveReplyContextBuilderDeps) {}
 
+  private normalizeStaticBlock(text: string): string {
+    return text.replace(/\r\n/g, '\n').replace(/[ \t]+$/gm, '').trim();
+  }
+
   /** Thread context from existing thread (formatted messages from ThreadService). */
   getThreadContextFormatted(threadId: string): string {
     return this.deps.threadService.getContextFormatted(threadId);
@@ -108,10 +112,10 @@ export class ProactiveReplyContextBuilder {
     const { groupMemoryText, userMemoryText } = this.deps.memoryService.getMemoryTextForReply(groupId, userId);
     const parts: string[] = [];
     if (groupMemoryText) {
-      parts.push(`## 关于本群的记忆\n\n${groupMemoryText}`);
+      parts.push(`## 关于本群的记忆\n\n${this.normalizeStaticBlock(groupMemoryText)}`);
     }
     if (userMemoryText) {
-      parts.push(`## 关于当前发言用户的记忆\n\n${userMemoryText}`);
+      parts.push(`## 关于当前发言用户的记忆\n\n${this.normalizeStaticBlock(userMemoryText)}`);
     }
     return parts.join('\n\n');
   }
@@ -135,6 +139,16 @@ export class ProactiveReplyContextBuilder {
     fetchProgressNotifier?: FetchProgressNotifier,
   ): Promise<ProactiveReplyInjectContext> {
     const threadContext = this.getThreadContextFormatted(threadId);
+    const historyEntries: ConversationMessageEntry[] = thread.messages.map((m, idx) => ({
+      messageId: `thread:${threadId}:${idx}`,
+      userId: m.userId,
+      nickname: m.nickname,
+      content: m.content,
+      segments: undefined,
+      isBotReply: m.isBotReply,
+      createdAt: m.createdAt instanceof Date ? m.createdAt : new Date(m.createdAt),
+      wasAtBot: m.wasAtBot,
+    }));
     const preferenceText = this.getPreferenceText(preferenceKey);
     const memoryContext = this.getMemoryContext(thread.groupId, triggerUserId);
     const retrievedContext = await this.getRetrievedContext(preferenceKey, topicOrQuery, {
@@ -148,6 +162,7 @@ export class ProactiveReplyContextBuilder {
     return {
       preferenceText,
       threadContext,
+      historyEntries,
       retrievedContext,
       retrievedConversationSection,
       memoryContext,
@@ -187,6 +202,7 @@ export class ProactiveReplyContextBuilder {
     return {
       preferenceText,
       threadContext,
+      historyEntries: filteredEntries,
       retrievedContext,
       retrievedConversationSection,
       memoryContext,

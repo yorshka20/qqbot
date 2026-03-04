@@ -6,6 +6,7 @@ import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { Conversation, Message } from '@/database/models/types';
 import type { HookContext } from '@/hooks/types';
+import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { formatConversationEntriesToText } from './format';
 
@@ -15,6 +16,7 @@ export interface ConversationMessageEntry {
   userId: number;
   nickname?: string;
   content: string;
+  segments?: MessageSegment[];
   isBotReply: boolean;
   createdAt: Date;
   /** True when message was @ bot (direct reply already sent); used to mark in thread context. */
@@ -240,10 +242,26 @@ export class ConversationHistoryService {
       userId: msg.userId,
       nickname: typeof nickname === 'string' ? nickname : undefined,
       content: msg.content,
+      segments: this.parseRawSegments(msg.rawContent),
       isBotReply: meta.isBotReply === true,
       createdAt: new Date(msg.createdAt),
       wasAtBot: meta.wasAtBot === true,
     };
+  }
+
+  private parseRawSegments(rawContent?: string): MessageSegment[] | undefined {
+    if (!rawContent || rawContent.trim() === '') {
+      return undefined;
+    }
+    try {
+      const parsed = JSON.parse(rawContent) as unknown;
+      if (!Array.isArray(parsed)) {
+        return undefined;
+      }
+      return parsed as MessageSegment[];
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -281,6 +299,7 @@ export class ConversationHistoryService {
         userId: msg.role === 'user' ? userId : 0,
         nickname: undefined,
         content: msg.content,
+        segments: undefined,
         isBotReply: msg.role === 'assistant',
         createdAt: msg.timestamp instanceof Date ? msg.timestamp : new Date(msg.timestamp ?? Date.now()),
         wasAtBot: undefined,
@@ -300,5 +319,46 @@ export class ConversationHistoryService {
     }
 
     return '';
+  }
+
+  /**
+   * Get session messages after a specific time, sorted by createdAt ascending.
+   * Uses a DB filter in-memory for adapter compatibility.
+   */
+  async getMessagesSinceForSession(
+    sessionId: string,
+    sessionType: 'group' | 'user',
+    since: Date,
+    maxLimit = 500,
+  ): Promise<ConversationMessageEntry[]> {
+    const adapter = this.databaseManager.getAdapter();
+    if (!adapter?.isConnected()) {
+      return [];
+    }
+
+    try {
+      const conversations = adapter.getModel('conversations');
+      const conversation = await conversations.findOne({
+        sessionId: String(sessionId),
+        sessionType,
+      });
+      if (!conversation) {
+        return [];
+      }
+
+      const messages = adapter.getModel('messages');
+      const all = await messages.find({ conversationId: conversation.id });
+      const sinceTs = since.getTime();
+      const filtered = (all as Message[])
+        .filter((m) => new Date(m.createdAt).getTime() >= sinceTs)
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        .slice(0, maxLimit);
+
+      return filtered.map((m) => this.mapMessageToEntry(m));
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.warn('[ConversationHistoryService] Failed to load session messages since time:', err);
+      return [];
+    }
   }
 }

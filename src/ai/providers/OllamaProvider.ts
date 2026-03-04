@@ -110,6 +110,10 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
     prompt: string,
     options?: AIGenerateOptions,
   ): Promise<Array<{ role: 'user' | 'assistant' | 'system'; content: string }>> {
+    if (options?.messages?.length) {
+      return options.messages.map((m) => ({ role: m.role, content: m.content }));
+    }
+
     const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
 
     if (options?.systemPrompt) {

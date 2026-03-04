@@ -9,6 +9,12 @@ export interface ConversationMessage {
 }
 
 /**
+ * Chat message payload for role-based generation.
+ * Content is string-only for broad provider compatibility.
+ */
+export type ChatMessage = ConversationMessage;
+
+/**
  * AI generation options
  */
 export interface AIGenerateOptions {
@@ -35,6 +41,11 @@ export interface AIGenerateOptions {
    * Optional system message. When set, providers send it as high-priority system instructions.
    */
   systemPrompt?: string;
+  /**
+   * Optional role-based messages. When provided, providers must send these messages directly
+   * and skip automatic history loading to avoid duplicate context injection.
+   */
+  messages?: ChatMessage[];
 }
 
 /**

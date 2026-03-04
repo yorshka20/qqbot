@@ -17,6 +17,7 @@ export interface PromptTemplate {
 
 /** Reserved template name for base prompt (file: prompts/base.txt). */
 const BASE_TEMPLATE_NAME = 'base';
+const BASE_SYSTEM_TEMPLATE_NAME = 'base.system';
 
 /**
  * Prompt Manager - manages and loads prompt templates
@@ -219,7 +220,7 @@ export class PromptManager {
    * This output is intended to be sent as system role.
    */
   renderBasePrompt(): string | undefined {
-    const baseTemplate = this.getTemplate(BASE_TEMPLATE_NAME);
+    const baseTemplate = this.getTemplate(BASE_SYSTEM_TEMPLATE_NAME) ?? this.getTemplate(BASE_TEMPLATE_NAME);
     if (!baseTemplate) {
       return undefined;
     }

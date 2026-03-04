@@ -2,12 +2,17 @@
 
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { replaceReply, replaceReplyWithSegments, setReplyWithSegments } from '@/context/HookContextHelpers';
-import type { ConversationHistoryService } from '@/conversation/history';
+import {
+  type ConversationHistoryService,
+  type ConversationMessageEntry,
+  NormalEpisodeService,
+} from '@/conversation/history';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { MemoryService } from '@/memory/MemoryService';
 import { MessageBuilder } from '@/message/MessageBuilder';
+import type { MessageSegment } from '@/message/types';
 import type { RetrievalService } from '@/retrieval';
 import { QdrantClient } from '@/retrieval';
 import type { TaskResult } from '@/task/types';
@@ -15,8 +20,9 @@ import { logger } from '@/utils/logger';
 import { type FetchProgressNotifier, MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import type { VisionImage } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
+import { PromptMessageAssembler } from '../prompt/PromptMessageAssembler';
 import type { ProviderRouter } from '../routing/ProviderRouter';
-import type { AIGenerateResponse } from '../types';
+import type { AIGenerateResponse, ChatMessage } from '../types';
 import { formatRAGConversationContext } from '../utils/formatRAGConversationContext';
 import { extractImagesFromMessageAndReply } from '../utils/imageUtils';
 import { CardRenderingService } from './CardRenderingService';
@@ -38,7 +44,10 @@ export class ReplyGenerationService {
   private static readonly RAG_MIN_SCORE = 0.5;
 
   /** Single FetchProgressNotifier instance for reply flow; setMessageEvent() before each search. */
-  readonly fetchProgressNotifier: FetchProgressNotifier;
+  private fetchProgressNotifier: FetchProgressNotifier;
+
+  private readonly episodeService = new NormalEpisodeService();
+  private readonly messageAssembler = new PromptMessageAssembler();
 
   constructor(
     private llmService: LLMService,
@@ -326,41 +335,117 @@ export class ReplyGenerationService {
     return summaries.join('\n\n');
   }
 
-  /**
-   * Make prompt inject records for reply prompt.
-   * @param context - Hook context
-   * @param taskResultsSummary - Summary of task results
-   * @param searchResultsText - Summary of search results
-   * @returns Prompt inject records
-   */
-  private async buildReplyPromptInjectRecords(
+  private getMessageIdString(context: HookContext): string {
+    return String(context.message.id ?? context.message.messageId ?? `msg:${Date.now()}`);
+  }
+
+  private async buildNormalHistoryEntries(
+    context: HookContext,
+  ): Promise<{ historyEntries: ConversationMessageEntry[]; softContextText: string; sessionId: string }> {
+    const sessionId = String(context.metadata.get('sessionId') ?? '');
+    const sessionType = (context.metadata.get('sessionType') as 'group' | 'user' | undefined) ?? 'group';
+    const now = new Date(context.message.timestamp || Date.now());
+    const episode = this.episodeService.resolveEpisode({
+      sessionId,
+      messageId: this.getMessageIdString(context),
+      now,
+      userMessage: context.message.message,
+    });
+
+    const hardEntries = await this.conversationHistoryService.getMessagesSinceForSession(
+      sessionId,
+      sessionType,
+      episode.startedAt,
+      500,
+    );
+
+    const softStart = new Date(now.getTime() - 5 * 60 * 1000);
+    const recent = await this.conversationHistoryService.getMessagesSinceForSession(
+      sessionId,
+      sessionType,
+      softStart,
+      200,
+    );
+    const softEntries = recent.slice(Math.max(0, recent.length - 10));
+    const hardIds = new Set(hardEntries.map((e) => e.messageId));
+    const dedupedSoft = softEntries.filter((e) => !hardIds.has(e.messageId));
+
+    const softContextText = dedupedSoft
+      .map((e) => {
+        const nick = e.nickname ?? '';
+        const speaker = e.isBotReply ? 'assistant' : `${e.userId}:${nick}`;
+        return `[${speaker}] ${this.extractTextAndImageTags(e.segments, e.content)}`;
+      })
+      .join('\n');
+
+    return { historyEntries: hardEntries, softContextText, sessionId };
+  }
+
+  private extractTextAndImageTags(segments: MessageSegment[] | undefined, fallbackText: string): string {
+    if (!segments?.length) return fallbackText;
+    const text = segments
+      .filter((s): s is MessageSegment & { type: 'text' } => s.type === 'text')
+      .map((s) => (s.type === 'text' ? String(s.data.text ?? '') : ''))
+      .join('')
+      .trim();
+    const imageTags = segments
+      .filter((s) => s.type === 'image')
+      .map((s) => `<image uri="${String(s.data.uri ?? s.data.temp_url ?? s.data.resource_id ?? '')}" />`)
+      .join('\n');
+    if (text && imageTags) return `${text}\n${imageTags}`;
+    return text || imageTags || fallbackText;
+  }
+
+  private flattenMessagesForVision(messages: ChatMessage[]): string {
+    return messages.map((m) => `${m.role.toUpperCase()}:\n${m.content}`).join('\n\n');
+  }
+
+  private async buildReplyMessages(
     context: HookContext,
     taskResultsSummary: string,
     searchResultsText: string,
     userMessage: string,
-  ): Promise<Record<string, string>> {
-    const [retrievedConversationSection, conversationHistory] = await Promise.all([
+  ): Promise<{ messages: ChatMessage[]; sessionId: string }> {
+    const [retrievedConversationSection, memoryContextText, normalHistory] = await Promise.all([
       this.getRetrievedConversationSection(context),
-      this.conversationHistoryService.buildConversationHistory(context),
+      Promise.resolve(this.getMemoryContextText(context)),
+      this.buildNormalHistoryEntries(context),
     ]);
-    const memoryContextText = this.getMemoryContextText(context);
     const taskResultText = this.getTaskResultsSummary(taskResultsSummary);
     const searchResultText = this.getSearchResultsSummary(searchResultsText);
 
-    return {
+    const baseSystemPrompt = this.promptManager.renderBasePrompt();
+    const sceneSystemPrompt = this.promptManager.render('llm.reply.system', {});
+    const frameCurrentQuery = this.promptManager.render('llm.reply.user_frame', {
       userMessage,
-      conversationHistory,
-      memoryContextText,
-      retrievedConversationSection,
-      taskResultText,
-      searchResultText,
-    };
+    });
+    const messages = this.messageAssembler.buildNormalMessages({
+      baseSystem: baseSystemPrompt,
+      sceneSystem: sceneSystemPrompt,
+      historyEntries: normalHistory.historyEntries,
+      finalUserBlocks: {
+        softContext: normalHistory.softContextText,
+        memoryContext: memoryContextText,
+        ragContext: retrievedConversationSection,
+        searchResults: searchResultText,
+        taskResults: taskResultText,
+        currentQuery: frameCurrentQuery,
+      },
+    });
+    const serialized = this.messageAssembler.serializeForFingerprint(messages);
+    // logger async
+    new Promise(() => {
+      const fingerprint = NormalEpisodeService.hashMessages(serialized);
+      logger.info(
+        `[ReplyGenerationService] Prompt fingerprint=${fingerprint} | messageCount=${messages.length} | historyCount=${normalHistory.historyEntries.length} | softCount=${normalHistory.softContextText ? normalHistory.softContextText.split('\n').length : 0}`,
+      );
+    });
+    return { messages, sessionId: normalHistory.sessionId };
   }
 
   /**
-   * Build final reply prompt and generate response (shared by generateReplyFromTaskResults, generateReplyWithVision).
-   * Uses llm.reply only; task and search results are assembled via renderReplyExtraContext (llm.reply_extra_context fragment) into extraContextSection.
-   * When messageImages.length > 0 uses vision-capable provider (generateWithVision); otherwise uses default LLM (generate).
+   * Build final reply messages and generate response.
+   * Uses role-based messages. Vision fallback flattens messages into deterministic text prompt.
    *
    * @param context - Hook context
    * @param taskResultsSummary - Optional summary of task results (e.g. readFile). Injected as taskResults segment (may be empty).
@@ -380,28 +465,22 @@ export class ReplyGenerationService {
     const { providerName, userMessage, reason, confidence, usedExplicitPrefix } = this.providerRouter.routeReplyInput(
       context.message.message,
     );
-    const injectRecords = await this.buildReplyPromptInjectRecords(
-      context,
-      taskResultsSummary,
-      searchResultsText,
-      userMessage,
-    );
-    const prompt = this.promptManager.render('llm.reply', injectRecords);
-    const baseSystemPrompt = this.promptManager.renderBasePrompt();
-
-    const genOptions = { temperature: 0.7, maxTokens: 2000, sessionId, systemPrompt: baseSystemPrompt };
+    const built = await this.buildReplyMessages(context, taskResultsSummary, searchResultsText, userMessage);
+    const messages = built.messages;
+    const genOptions = { temperature: 0.7, maxTokens: 2000, sessionId };
     const useVisionProvider = messageImages.length > 0;
 
-    logger.debug(`[ReplyGenerationService] generateReplyWithTaskResults`, { prompt });
+    logger.debug(`[ReplyGenerationService] generateReplyWithTaskResults`, { messageCount: messages.length });
     logger.info(
       `[ReplyGenerationService] Provider routing | reason=${reason} | confidence=${confidence} | explicitPrefix=${usedExplicitPrefix} | provider=${providerName ?? 'default'}`,
     );
 
     let response: AIGenerateResponse;
     if (useVisionProvider) {
-      response = await this.visionService.generateWithVision(prompt, messageImages, genOptions);
+      const flattenedPrompt = this.flattenMessagesForVision(messages);
+      response = await this.visionService.generateWithVision(flattenedPrompt, messageImages, genOptions);
     } else {
-      response = await this.llmService.generate(prompt, genOptions, providerName);
+      response = await this.llmService.generateMessages(messages, genOptions, providerName);
     }
 
     logger.debug(`[ReplyGenerationService] LLM response received | responseLength=${response.text.length}`);
