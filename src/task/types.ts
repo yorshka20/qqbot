@@ -122,6 +122,7 @@ export interface TaskExecutionContext {
  */
 export interface TaskAnalysisResult {
   tasks: Task[];
+  suggestedProvider?: string;
   confidence?: number;
   reasoning?: string;
 }

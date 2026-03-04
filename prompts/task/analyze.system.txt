@@ -15,12 +15,18 @@
 只输出以下结构，不要输出任何其他文字：
 
 ANSWER:
-{"tasks":[{"type":"...","parameters":{...}}]}
+{"tasks":[{"type":"...","parameters":{...}}],"suggestedProvider":"provider_name_or_empty"}
 
 当无额外任务时：
 
 ANSWER:
-{"tasks":[]}
+{"tasks":[],"suggestedProvider":""}
+
+## suggestedProvider 规则
+- 该字段是可选的 provider 建议，仅用于回复阶段路由，不影响任务执行。
+- 明确指定时仅输出 provider 名称字符串（例如：`anthropic`、`openai`、`deepseek`）。
+- 无明确建议时输出空字符串 `""`（或省略该字段）。
+- 对于复杂编程、调试、架构分析，优先建议 `anthropic`；一般问答或闲聊可建议 `deepseek`；无法判断则留空。
 
 ## 约束
 - 必须是可被 `JSON.parse` 直接解析的 JSON。

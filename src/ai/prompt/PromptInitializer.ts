@@ -7,10 +7,6 @@ import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import { PromptManager } from './PromptManager';
 
-export interface PromptSystem {
-  promptManager: PromptManager;
-}
-
 /**
  * Prompt Initializer
  * Initializes PromptManager and registers it to DI container
@@ -19,9 +15,8 @@ export class PromptInitializer {
   /**
    * Initialize prompt system
    * @param config - Bot configuration
-   * @returns Initialized prompt system
    */
-  static initialize(config: Config): PromptSystem {
+  static initialize(config: Config): void {
     logger.info('[PromptInitializer] Starting initialization...');
 
     // Load prompt templates early (before conversation initialization)
@@ -43,9 +38,5 @@ export class PromptInitializer {
     const container = getContainer();
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager);
     logger.debug('[PromptInitializer] PromptManager registered to DI container');
-
-    return {
-      promptManager,
-    };
   }
 }

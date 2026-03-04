@@ -15,6 +15,7 @@ import { logger } from '@/utils/logger';
 import { type FetchProgressNotifier, MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import type { VisionImage } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
+import type { ProviderRouter } from '../routing/ProviderRouter';
 import type { AIGenerateResponse } from '../types';
 import { formatRAGConversationContext } from '../utils/formatRAGConversationContext';
 import { extractImagesFromMessageAndReply } from '../utils/imageUtils';
@@ -43,6 +44,7 @@ export class ReplyGenerationService {
     private llmService: LLMService,
     private visionService: VisionService,
     private cardRenderingService: CardRenderingService,
+    private providerRouter: ProviderRouter,
     private promptManager: PromptManager,
     private hookManager: HookManager,
     private conversationHistoryService: ConversationHistoryService,
@@ -335,6 +337,7 @@ export class ReplyGenerationService {
     context: HookContext,
     taskResultsSummary: string,
     searchResultsText: string,
+    userMessage: string,
   ): Promise<Record<string, string>> {
     const [retrievedConversationSection, conversationHistory] = await Promise.all([
       this.getRetrievedConversationSection(context),
@@ -345,7 +348,7 @@ export class ReplyGenerationService {
     const searchResultText = this.getSearchResultsSummary(searchResultsText);
 
     return {
-      userMessage: context.message.message,
+      userMessage,
       conversationHistory,
       memoryContextText,
       retrievedConversationSection,
@@ -374,7 +377,15 @@ export class ReplyGenerationService {
     messageImages: VisionImage[] = [],
     taskResultImages: string[] = [],
   ): Promise<void> {
-    const injectRecords = await this.buildReplyPromptInjectRecords(context, taskResultsSummary, searchResultsText);
+    const { providerName, userMessage, reason, confidence, usedExplicitPrefix } = this.providerRouter.routeReplyInput(
+      context.message.message,
+    );
+    const injectRecords = await this.buildReplyPromptInjectRecords(
+      context,
+      taskResultsSummary,
+      searchResultsText,
+      userMessage,
+    );
     const prompt = this.promptManager.render('llm.reply', injectRecords);
     const baseSystemPrompt = this.promptManager.renderBasePrompt();
 
@@ -382,12 +393,15 @@ export class ReplyGenerationService {
     const useVisionProvider = messageImages.length > 0;
 
     logger.debug(`[ReplyGenerationService] generateReplyWithTaskResults`, { prompt });
+    logger.info(
+      `[ReplyGenerationService] Provider routing | reason=${reason} | confidence=${confidence} | explicitPrefix=${usedExplicitPrefix} | provider=${providerName ?? 'default'}`,
+    );
 
     let response: AIGenerateResponse;
     if (useVisionProvider) {
       response = await this.visionService.generateWithVision(prompt, messageImages, genOptions);
     } else {
-      response = await this.llmService.generate(prompt, genOptions);
+      response = await this.llmService.generate(prompt, genOptions, providerName);
     }
 
     logger.debug(`[ReplyGenerationService] LLM response received | responseLength=${response.text.length}`);
@@ -472,13 +486,9 @@ export class ReplyGenerationService {
    */
   private async convertToCardFormat(responseText: string, sessionId?: string): Promise<string> {
     // Use dedicated conversion prompt template
-    const prompt = this.promptManager.render(
-      'llm.reply.convert_to_card',
-      {
-        responseText,
-      },
-    );
-    const baseSystemPrompt = this.promptManager.renderBasePrompt();
+    const prompt = this.promptManager.render('llm.reply.convert_to_card', {
+      responseText,
+    });
 
     logger.debug('[ReplyGenerationService] Converting text to card format using LLM');
 
@@ -487,7 +497,6 @@ export class ReplyGenerationService {
       temperature: 0.3, // Lower temperature for more consistent JSON output
       maxTokens: 2000,
       sessionId,
-      systemPrompt: baseSystemPrompt,
     });
 
     logger.debug(

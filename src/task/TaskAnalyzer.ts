@@ -43,15 +43,17 @@ export class TaskAnalyzer {
       systemPrompt,
     });
 
-    // Parse AI response to extract task list
-    const tasks = this.parseTaskListResponse(response.text, context);
+    // Parse AI response to extract task list + optional provider suggestion
+    const parsedResult = this.parseTaskListResponse(response.text, context);
+    const tasks = parsedResult.tasks;
 
     logger.info(
-      `[TaskAnalyzer] ✓ Task analysis completed | taskCount=${tasks.length} | tasks=${tasks.map((t) => t.type).join(', ')}`,
+      `[TaskAnalyzer] ✓ Task analysis completed | taskCount=${tasks.length} | tasks=${tasks.map((t) => t.type).join(', ')} | suggestedProvider=${parsedResult.suggestedProvider ?? 'none'}`,
     );
 
     return {
       tasks,
+      suggestedProvider: parsedResult.suggestedProvider,
       confidence: 0.8, // Default confidence, can be improved with better parsing
     };
   }
@@ -104,10 +106,7 @@ export class TaskAnalyzer {
 
     // Base prompt should be system role, followed by task-analyzer specific system prompt.
     const basePrompt = this.promptManager.renderBasePrompt();
-    const systemPrompt = this.promptManager.render(
-      'task.analyze.system',
-      { taskTypesDescription },
-    );
+    const systemPrompt = this.promptManager.render('task.analyze.system', { taskTypesDescription });
 
     // Render user prompt template
     const userPrompt = this.promptManager.render('task.analyze.user', {
@@ -122,26 +121,29 @@ export class TaskAnalyzer {
     return { systemPrompt: mergedSystemPrompt, userPrompt };
   }
 
-  private parseTaskListResponse(aiResponse: string, context: ConversationContext): Task[] {
+  private parseTaskListResponse(
+    aiResponse: string,
+    context: ConversationContext,
+  ): TaskAnalysisResult {
     const jsonText = extractJsonFromLlmText(aiResponse, {
       strategies: TaskAnalyzer.TASK_JSON_EXTRACT_STRATEGIES,
     });
     if (!jsonText) {
-      return [];
+      return { tasks: [] };
     }
 
-    let parsed: { tasks: Task[] };
+    let parsed: { tasks: Task[]; suggestedProvider?: unknown };
     try {
-      parsed = JSON.parse(jsonText) as { tasks: Task[] };
+      parsed = JSON.parse(jsonText) as { tasks: Task[]; suggestedProvider?: unknown };
     } catch (parseError) {
       const errorMsg = parseError instanceof Error ? parseError.message : 'Unknown error';
       logger.error(`[TaskAnalyzer] ✗ Failed to parse JSON: ${errorMsg}`);
-      return [];
+      return { tasks: [] };
     }
 
     if (!parsed.tasks || !Array.isArray(parsed.tasks)) {
       logger.error(`[TaskAnalyzer] ✗ Invalid JSON format: expected {"tasks": [...]}, got: ${JSON.stringify(parsed)}`);
-      return [];
+      return { tasks: [] };
     }
 
     const taskList = parsed.tasks;
@@ -173,7 +175,18 @@ export class TaskAnalyzer {
       }
     }
 
-    return validTasks;
+    return {
+      tasks: validTasks,
+      suggestedProvider: this.normalizeSuggestedProvider(parsed.suggestedProvider),
+    };
+  }
+
+  private normalizeSuggestedProvider(provider: unknown): string | undefined {
+    if (typeof provider !== 'string') {
+      return undefined;
+    }
+    const normalized = provider.trim().toLowerCase();
+    return normalized.length > 0 ? normalized : undefined;
   }
 
   /**

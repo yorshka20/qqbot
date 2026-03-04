@@ -73,10 +73,15 @@ export class TaskSystem implements System {
       return [];
     }
     const analysisResult = await this.aiService.analyzeTask(context);
-    if (analysisResult.length > 0) {
-      logger.info(`[TaskSystem] LLM generated ${analysisResult.length} additional task(s)`);
+    if (analysisResult.suggestedProvider) {
+      context.metadata.set('suggestedProvider', analysisResult.suggestedProvider);
+    } else {
+      context.metadata.delete('suggestedProvider');
     }
-    return analysisResult;
+    if (analysisResult.tasks.length > 0) {
+      logger.info(`[TaskSystem] LLM generated ${analysisResult.tasks.length} additional task(s)`);
+    }
+    return analysisResult.tasks;
   }
 
   /** Execute the default reply task when no other tasks were resolved. */
