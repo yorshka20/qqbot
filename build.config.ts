@@ -45,8 +45,6 @@ export const buildConfigs: Record<string, BuildConfig> = {
       asset: '[name]-[hash].[ext]',
     },
     external: [
-      'puppeteer-core',
-      'sharp',
       '@google/genai',
       '@modelcontextprotocol/sdk',
       '@mozilla/readability',
@@ -60,7 +58,9 @@ export const buildConfigs: Record<string, BuildConfig> = {
       'mongodb',
       'node-cron',
       'openai',
+      'puppeteer-core',
       'reflect-metadata',
+      'sharp',
       'tsyringe',
       'uuid',
       'winston',

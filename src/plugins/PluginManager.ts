@@ -1,8 +1,8 @@
 // Plugin loading and lifecycle management
 
-import type { APIClient } from '@/api/APIClient';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { extname, join } from 'path';
+import type { APIClient } from '@/api/APIClient';
 import type { CommandContext } from '@/command/types';
 import type { ConversationConfigService } from '@/config/ConversationConfigService';
 import { getSessionId, getSessionType } from '@/config/SessionUtils';
@@ -104,6 +104,11 @@ export class PluginManager {
       }
 
       if (extname(entry) !== '.ts' && extname(entry) !== '.js') {
+        continue;
+      }
+
+      // Skip test/spec files - they use describe/it only inside test runner
+      if (/\.(test|spec)\.(ts|js)$/i.test(entry)) {
         continue;
       }
 

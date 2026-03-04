@@ -13,12 +13,13 @@ export interface ConnectionManagerEvents {
   allDisconnected: () => void;
 }
 
-export declare interface ConnectionManager {
+/** Typed event overloads for ConnectionManager (avoids unsafe class/interface merge). */
+export interface ConnectionManagerEventOverloads {
   on<U extends keyof ConnectionManagerEvents>(event: U, listener: ConnectionManagerEvents[U]): this;
   emit<U extends keyof ConnectionManagerEvents>(event: U, ...args: Parameters<ConnectionManagerEvents[U]>): boolean;
 }
 
-export class ConnectionManager extends EventEmitter {
+export class ConnectionManager extends EventEmitter implements ConnectionManagerEventOverloads {
   private connections = new Map<string, Connection>();
   private config: Config;
 
