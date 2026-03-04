@@ -9,7 +9,7 @@ import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/typ
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
-import { Plugin } from '../decorators';
+import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 /** Group nudge notice: required fields for type guard. */
@@ -31,7 +31,7 @@ export interface NudgePluginConfig {
   replyMessage?: string;
 }
 
-@Plugin({
+@RegisterPlugin({
   name: 'nudge',
   version: '1.0.0',
   description: 'Automatically replies when bot is nudged (戳一戳)',

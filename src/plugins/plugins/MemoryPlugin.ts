@@ -10,7 +10,7 @@ import type { MemoryExtractUserCursor } from '@/database/models/types';
 import type { HookContext, HookResult } from '@/hooks/types';
 import type { MemoryExtractService } from '@/memory';
 import { logger } from '@/utils/logger';
-import { Hook, Plugin } from '../decorators';
+import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 export interface MemoryPluginConfig {
@@ -33,7 +33,7 @@ const DEFAULT_FULL_HISTORY_MAX_LENGTH = 15_000;
 const DEFAULT_FULL_HISTORY_PROGRESS_FILE = 'data/memory_full_history_progress.txt';
 const DEFAULT_MAX_MESSAGES_PER_EXTRACT = 500;
 
-@Plugin({
+@RegisterPlugin({
   name: 'memory',
   version: '1.0.0',
   description: 'Memory: debounced extract from recent messages for configured groups, inject into replies',

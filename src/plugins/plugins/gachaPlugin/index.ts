@@ -10,7 +10,7 @@ import { getSessionId } from '@/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
-import { Plugin } from '@/plugins/decorators';
+import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
 import { logger } from '@/utils/logger';
@@ -22,7 +22,7 @@ const GACHA_USAGE = '/gacha [theme]';
  * Gacha Plugin
  * Registers /gacha command: generate NAI-format prompt with DeepSeek, then proxy to /nai to generate image.
  */
-@Plugin({
+@RegisterPlugin({
   name: 'gacha',
   version: '1.0.0',
   description: 'One-click gacha: generate NAI prompt with DeepSeek then run NAI',

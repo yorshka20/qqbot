@@ -57,7 +57,7 @@ const hookRegistry = new Map<new (...args: any[]) => Plugin, HookMetadata[]>();
  *
  * @param options - Plugin options (name, version, description, etc.)
  */
-export function Plugin(options: PluginOptions) {
+export function RegisterPlugin(options: PluginOptions) {
   return <T extends new (...args: any[]) => Plugin>(target: T): T => {
     // Store metadata on class
     const metadata: PluginMetadata = {

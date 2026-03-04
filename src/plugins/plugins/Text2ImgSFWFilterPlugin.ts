@@ -3,7 +3,7 @@
 
 import type { HookContext, HookResult } from '@/hooks/types';
 import { logger } from '@/utils/logger';
-import { Hook, Plugin } from '../decorators';
+import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 interface Text2ImgSFWFilterPluginConfig {
@@ -12,7 +12,7 @@ interface Text2ImgSFWFilterPluginConfig {
   groupSfwUsers?: Record<string, number[]>;
 }
 
-@Plugin({
+@RegisterPlugin({
   name: 'text2imgSfwFilter',
   version: '1.0.0',
   description: 'Forces specific users to use SFW template for text2img commands',

@@ -4,6 +4,10 @@ import 'reflect-metadata';
 
 import readline from 'readline';
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
+import type { CommandManager } from '@/command/CommandManager';
+import type { ConversationManager } from '@/conversation/ConversationManager';
+import type { EventRouter } from '@/events/EventRouter';
+import type { PluginManager } from '@/plugins/PluginManager';
 import { APIClient } from '../api/APIClient';
 import { MessageAPI } from '../api/methods/MessageAPI';
 import { ConversationInitializer } from '../conversation/ConversationInitializer';
@@ -19,6 +23,7 @@ import { MCPInitializer } from '../mcp/MCPInitializer';
 import { PluginInitializer } from '../plugins/PluginInitializer';
 import { ProtocolAdapterInitializer } from '../protocol/ProtocolAdapterInitializer';
 import { RetrievalService } from '../retrieval';
+import type { TaskManager } from '../task';
 import { logger } from '../utils/logger';
 import { initStaticFileServer } from '../utils/StaticFileServer';
 import { MockConnection } from './MockConnection';
@@ -34,16 +39,17 @@ interface Command {
 class DebugCLI {
   private bot: Bot | null = null;
   private apiClient: APIClient;
-  private eventRouter: any;
+  private eventRouter: EventRouter | null = null;
   private messageAPI: MessageAPI;
   private rl: readline.Interface;
   private commands: Map<string, Command> = new Map();
   private isRunning = false;
   private isMockMode: boolean;
   private config: Config;
-  private conversationManager: any;
-  private commandManager: any;
-  private pluginManager: any;
+  private conversationManager: ConversationManager | null = null;
+  private commandManager: CommandManager | null = null;
+  private taskManager: TaskManager | null = null;
+  private pluginManager: PluginManager | null = null;
 
   constructor(configPath: string | undefined, mockMode: boolean) {
     this.isMockMode = mockMode;
@@ -211,7 +217,7 @@ class DebugCLI {
           return;
         }
         // Get all registered commands from CommandManager
-        const commands = this.commandManager.getAllCommands?.() || [];
+        const commands = this.commandManager?.getAllCommands({ userId: '0', groupId: '0', userType: 'admin' }) || [];
         if (commands.length === 0) {
           this.printInfo('No commands registered');
           return;
@@ -238,7 +244,8 @@ class DebugCLI {
           return;
         }
         // Get all loaded plugins from PluginManager
-        const plugins = this.pluginManager.getAllPlugins?.() || [];
+        const plugins = this.pluginManager?.getAllPlugins() || [];
+        const enabledPluginNames = new Set(this.pluginManager.getEnabledPlugins());
         if (plugins.length === 0) {
           this.printInfo('No plugins loaded');
           return;
@@ -247,7 +254,7 @@ class DebugCLI {
         for (const plugin of plugins) {
           const name = plugin.name || 'unknown';
           const version = plugin.version || 'unknown';
-          const enabled = plugin.enabled !== false ? 'enabled' : 'disabled';
+          const enabled = enabledPluginNames.has(name) ? 'enabled' : 'disabled';
           this.printInfo(`  ${name.padEnd(20)} v${version} (${enabled})`);
         }
         this.printInfo('');
@@ -363,6 +370,7 @@ class DebugCLI {
     if (atBot) {
       this.printInfo('  (@bot mentioned)');
     }
+    this.printTaskAnalyzerHint(message);
 
     // Process message
     if (!this.conversationManager) {
@@ -393,6 +401,51 @@ class DebugCLI {
         logger.debug('Error stack:', error.stack);
       }
     }
+  }
+
+  private printTaskAnalyzerHint(message: string): void {
+    if (!this.taskManager) {
+      return;
+    }
+
+    const trimmed = message.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    if (trimmed.startsWith('/') || trimmed.startsWith('!')) {
+      this.printInfo('[TaskSystem] Command-like input detected, TaskSystem will skip task analysis.');
+      return;
+    }
+
+    const taskTypes = this.taskManager.getAllTaskTypes();
+    const messageLower = trimmed.toLowerCase();
+    const matchedKeywords: string[] = [];
+
+    for (const taskType of taskTypes) {
+      if (taskType.name.toLowerCase() === 'reply') {
+        continue;
+      }
+      const keywords = taskType.triggerKeywords ?? [];
+      for (const keyword of keywords) {
+        if (messageLower.includes(keyword.toLowerCase())) {
+          matchedKeywords.push(keyword);
+        }
+      }
+    }
+
+    if (matchedKeywords.length === 0) {
+      this.printInfo('[TaskSystem] No task trigger keyword matched, TaskAnalyzer will not run for this message.');
+      return;
+    }
+
+    this.printInfo(`[TaskSystem] Trigger keywords matched: ${[...new Set(matchedKeywords)].join(', ')}`);
+  }
+
+  private registerDebugCoreServices(retrievalService: RetrievalService, healthCheckManager: HealthCheckManager): void {
+    const container = getContainer();
+    container.registerInstance(DITokens.HEALTH_CHECK_MANAGER, healthCheckManager, { allowOverride: true });
+    container.registerInstance(DITokens.RETRIEVAL_SERVICE, retrievalService, { allowOverride: true });
   }
 
   private createMockMessageEvent(
@@ -577,6 +630,7 @@ class DebugCLI {
     const mcpConfig = this.config.getMCPConfig();
     const ragConfig = this.config.getRAGConfig();
     const retrievalService = new RetrievalService(mcpConfig, ragConfig, healthCheckManager);
+    this.registerDebugCoreServices(retrievalService, healthCheckManager);
     if (mcpConfig?.enabled) {
       logger.info('[DebugCLI] RetrievalService initialized with search');
     }
@@ -591,14 +645,10 @@ class DebugCLI {
 
     // Initialize conversation components
     this.printInfo('Initializing conversation system...');
-    const conversationComponents = await ConversationInitializer.initialize(
-      this.config,
-      this.apiClient,
-      retrievalService,
-      healthCheckManager,
-    );
+    const conversationComponents = await ConversationInitializer.initialize(this.config, this.apiClient);
     this.conversationManager = conversationComponents.conversationManager;
     this.commandManager = conversationComponents.commandManager;
+    this.taskManager = conversationComponents.taskManager;
 
     // Register RetrievalService health check
     retrievalService.registerHealthCheck();
@@ -609,7 +659,7 @@ class DebugCLI {
     this.eventRouter = eventSystem.eventRouter;
 
     // Register EventRouter so PluginManager factory can resolve it via context.events
-    getContainer().registerInstance(DITokens.EVENT_ROUTER, this.eventRouter);
+    getContainer().registerInstance(DITokens.EVENT_ROUTER, this.eventRouter, { allowOverride: true });
 
     new ServiceRegistry().verifyServices();
 
@@ -644,6 +694,7 @@ class DebugCLI {
     const mcpConfig = this.config.getMCPConfig();
     const ragConfig = this.config.getRAGConfig();
     const retrievalService = new RetrievalService(mcpConfig, ragConfig, healthCheckManager);
+    this.registerDebugCoreServices(retrievalService, healthCheckManager);
     if (mcpConfig?.enabled) {
       logger.info('[DebugCLI] RetrievalService initialized with search');
     }
@@ -658,14 +709,10 @@ class DebugCLI {
 
     // Initialize conversation components
     this.printInfo('Initializing conversation system...');
-    const conversationComponents = await ConversationInitializer.initialize(
-      this.config,
-      this.apiClient,
-      retrievalService,
-      healthCheckManager,
-    );
+    const conversationComponents = await ConversationInitializer.initialize(this.config, this.apiClient);
     this.conversationManager = conversationComponents.conversationManager;
     this.commandManager = conversationComponents.commandManager;
+    this.taskManager = conversationComponents.taskManager;
 
     // Register RetrievalService health check
     retrievalService.registerHealthCheck();
@@ -676,7 +723,7 @@ class DebugCLI {
     this.eventRouter = eventSystem.eventRouter;
 
     // Register EventRouter so PluginManager factory can resolve it via context.events
-    getContainer().registerInstance(DITokens.EVENT_ROUTER, this.eventRouter);
+    getContainer().registerInstance(DITokens.EVENT_ROUTER, this.eventRouter, { allowOverride: true });
 
     new ServiceRegistry().verifyServices();
 

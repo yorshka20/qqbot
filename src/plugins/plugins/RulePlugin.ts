@@ -12,7 +12,7 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
 import { logger } from '@/utils/logger';
-import { Plugin } from '../decorators';
+import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 /**
@@ -56,7 +56,7 @@ interface RulePluginConfig {
  * Rule Plugin
  * Executes commands on schedule based on configured rules
  */
-@Plugin({
+@RegisterPlugin({
   name: 'rule',
   version: '1.0.0',
   description: 'Executes commands on schedule based on configured rules',

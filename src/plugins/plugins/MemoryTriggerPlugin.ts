@@ -17,7 +17,7 @@ import type { RetrievalService } from '@/retrieval';
 import { QdrantClient } from '@/retrieval';
 import type { RAGDocument } from '@/retrieval/rag/types';
 import { logger } from '@/utils/logger';
-import { Hook, Plugin } from '../decorators';
+import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 import type { PluginManager } from '../PluginManager';
 import type { MemoryPlugin } from './MemoryPlugin';
@@ -50,7 +50,7 @@ const DEFAULT_COLD_START_BATCH_SIZE = 40;
 const COLD_START_WINDOW_IDLE_MINUTES = 5;
 const COLD_START_WINDOW_MAX_MESSAGES = 10;
 
-@Plugin({
+@RegisterPlugin({
   name: 'memoryTrigger',
   version: '1.0.0',
   description:

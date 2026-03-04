@@ -7,7 +7,7 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext, HookResult } from '@/hooks/types';
 import { logger } from '@/utils/logger';
-import { Hook, Plugin } from '../decorators';
+import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 /** Template name pattern for trigger words: prompts/preference/{preferenceKey}/trigger.txt (one word per line). */
@@ -20,7 +20,7 @@ export interface ProactiveConversationPluginConfig {
   analysisProvider?: string;
 }
 
-@Plugin({
+@RegisterPlugin({
   name: 'proactiveConversation',
   version: '1.0.0',
   description: 'Proactive conversation: analyze group messages, create thread, and reply without @ when in thread',

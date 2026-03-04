@@ -7,7 +7,7 @@ import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { NormalizedNoticeEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
-import { Plugin } from '../decorators';
+import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 interface MessageOperationPluginConfig {
@@ -20,7 +20,7 @@ interface MessageOperationPluginConfig {
   reactionOperations?: Record<string, string>;
 }
 
-@Plugin({
+@RegisterPlugin({
   name: 'messageOperation',
   version: '1.0.0',
   description: 'Handles reactions on messages and triggers operations (recall, reply to message)',

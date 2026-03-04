@@ -7,7 +7,7 @@ import { getSessionId, getSessionType } from '@/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { Plugin } from '@/plugins/decorators';
+import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
 import type { PluginManager } from '@/plugins/PluginManager';
@@ -51,7 +51,7 @@ interface LocationDescription {
  * Manages conversation-level configuration
  * Provides /cmd command to enable/disable commands and plugins
  */
-@Plugin({
+@RegisterPlugin({
   name: 'conversationConfig',
   version: '1.0.0',
   description: 'Manages conversation-level configuration',

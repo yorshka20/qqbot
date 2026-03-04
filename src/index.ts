@@ -28,6 +28,8 @@ async function main() {
     const config = bot.getConfig();
     const connectionManager = bot.getConnectionManager();
 
+    const container = getContainer();
+
     // Initialize API client
     const apiConfig = config.getAPIConfig();
     const apiClient = new APIClient(apiConfig.strategy, apiConfig.preferredProtocol);
@@ -43,10 +45,12 @@ async function main() {
 
     // Create HealthCheckManager first so it can be injected into RetrievalService / SearchService
     const healthCheckManager = new HealthCheckManager();
+    container.registerInstance(DITokens.HEALTH_CHECK_MANAGER, healthCheckManager);
     // Initialize retrieval service (always create; search enabled when mcp.enabled, RAG when rag.enabled)
     const mcpConfig = config.getMCPConfig();
     const ragConfig = config.getRAGConfig();
     const retrievalService = new RetrievalService(mcpConfig, ragConfig, healthCheckManager);
+    container.registerInstance(DITokens.RETRIEVAL_SERVICE, retrievalService);
     if (ragConfig?.enabled) {
       logger.info(
         `[Main] RAG enabled | ollama=${ragConfig.ollama?.url} model=${ragConfig.ollama?.model} qdrant=${ragConfig.qdrant?.url}`,
@@ -61,12 +65,7 @@ async function main() {
     }
 
     // Initialize conversation components
-    const conversationComponents = await ConversationInitializer.initialize(
-      config,
-      apiClient,
-      retrievalService,
-      healthCheckManager,
-    );
+    const conversationComponents = await ConversationInitializer.initialize(config, apiClient);
 
     // Register RetrievalService health check (after HealthCheckManager is created)
     retrievalService.registerHealthCheck();
@@ -74,9 +73,8 @@ async function main() {
     // Initialize event system (EventRouter and handlers)
     const eventSystem = EventInitializer.initialize(config, conversationComponents.conversationManager);
     const eventRouter = eventSystem.eventRouter;
-
     // Register EventRouter to container
-    getContainer().registerInstance(DITokens.EVENT_ROUTER, eventRouter);
+    container.registerInstance(DITokens.EVENT_ROUTER, eventRouter);
 
     // Verify all required services (EVENT_ROUTER and others now registered)
     new ServiceRegistry().verifyServices();

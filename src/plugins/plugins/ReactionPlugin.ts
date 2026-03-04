@@ -4,7 +4,7 @@ import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext, HookResult } from '@/hooks/types';
 import type { NormalizedMilkyMessageEvent } from '@/protocol/milky/types';
 import { logger } from '@/utils/logger';
-import { Hook, Plugin } from '../decorators';
+import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 interface ReactionPluginConfig {
@@ -17,7 +17,7 @@ interface ReactionPluginConfig {
   reactions?: Record<string, string>;
 }
 
-@Plugin({
+@RegisterPlugin({
   name: 'reaction',
   version: '1.0.0',
   description: 'Sends group message reaction when message contains configured keywords',

@@ -10,7 +10,7 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { Plugin } from '@/plugins/decorators';
+import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
 import { logger } from '@/utils/logger';
@@ -21,7 +21,7 @@ import { logger } from '@/utils/logger';
  * When on, all non-command messages use a fixed reply flow (llm.nsfw_reply template) instead of the normal pipeline.
  * Applies to both group and private (user) sessions: config is keyed by (sessionId, sessionType) from the pipeline.
  */
-@Plugin({
+@RegisterPlugin({
   name: 'nsfw',
   version: '1.0.0',
   description: 'Toggle NSFW mode per session; when on, uses fixed reply flow with dedicated prompt',

@@ -4,7 +4,7 @@ import { DITokens } from '@/core/DITokens';
 import type { HookContext, HookResult } from '@/hooks/types';
 import { MessageUtils } from '@/message/MessageUtils';
 import { logger } from '@/utils/logger';
-import { Hook, Plugin } from '../decorators';
+import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 interface WhitelistPluginConfig {
@@ -12,7 +12,7 @@ interface WhitelistPluginConfig {
   groupIds?: string[];
 }
 
-@Plugin({
+@RegisterPlugin({
   name: 'whitelist',
   version: '1.0.0',
   description:

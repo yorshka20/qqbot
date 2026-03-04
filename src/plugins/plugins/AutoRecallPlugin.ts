@@ -5,14 +5,14 @@ import { MessageAPI } from '@/api/methods/MessageAPI';
 import { getReplyContent } from '@/context/HookContextHelpers';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
-import { Hook, Plugin } from '../decorators';
+import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 interface AutoRecallPluginConfig {
   recallDelay?: number; // Delay in milliseconds before recalling (default: 60000 = 1 minute)
 }
 
-@Plugin({
+@RegisterPlugin({
   name: 'autoRecall',
   version: '1.0.0',
   description: 'Automatically recalls messages with images in private/temp chats',

@@ -10,14 +10,14 @@ import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { MessageUtils } from '@/message/MessageUtils';
 import { logger } from '@/utils/logger';
-import { Hook, Plugin } from '../decorators';
+import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 /**
  * Echo Plugin
  * Automatically converts admin messages (non-command, non-at-bot) to TTS
  */
-@Plugin({
+@RegisterPlugin({
   name: 'echo',
   version: '1.0.0',
   description: 'Automatically converts admin messages to TTS',
