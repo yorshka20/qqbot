@@ -18,6 +18,7 @@ import type {
 } from '../capabilities/types';
 import type { VisionCapability } from '../capabilities/VisionCapability';
 import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
+import { contentToPlainString } from '../utils/contentUtils';
 import {
   handleFinishReason,
   handleGeneralError,
@@ -365,7 +366,7 @@ export class LaozhangProvider
     const parts: Array<{ text: string }> = [];
     if (options?.messages?.length) {
       for (const msg of options.messages) {
-        parts.push({ text: `${msg.role}: ${msg.content}\n\n` });
+        parts.push({ text: `${msg.role}: ${contentToPlainString(msg.content)}\n\n` });
       }
     } else {
       const history = await this.loadHistory(options);

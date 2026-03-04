@@ -7,6 +7,7 @@ import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType } from '../capabilities/types';
 import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
+import { contentToPlainString } from '../utils/contentUtils';
 
 /**
  * OpenRouter Provider implementation
@@ -110,7 +111,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
 
       let messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
       if (options?.messages?.length) {
-        messages = options.messages.map((m) => ({ role: m.role, content: m.content }));
+        messages = options.messages.map((m) => ({ role: m.role, content: contentToPlainString(m.content) }));
       } else {
         const history = await this.loadHistory(options);
         messages = [];
@@ -120,7 +121,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
         for (const msg of history) {
           messages.push({
             role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-            content: msg.content,
+            content: contentToPlainString(msg.content),
           });
         }
         messages.push({
@@ -182,7 +183,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
 
       let messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
       if (options?.messages?.length) {
-        messages = options.messages.map((m) => ({ role: m.role, content: m.content }));
+        messages = options.messages.map((m) => ({ role: m.role, content: contentToPlainString(m.content) }));
       } else {
         const history = await this.loadHistory(options);
         messages = [];
@@ -192,7 +193,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
         for (const msg of history) {
           messages.push({
             role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-            content: msg.content,
+            content: contentToPlainString(msg.content),
           });
         }
         messages.push({

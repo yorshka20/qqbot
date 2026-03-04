@@ -414,8 +414,7 @@ async function extractImagesFromReplyMessage(
  * @param message - NormalizedMessageEvent containing segments
  * @param messageAPI - MessageAPI instance for fetching referenced messages
  * @param databaseManager - DatabaseManager for querying database (required)
- * @returns Array of VisionImage objects extracted from current and referenced messages
- * @throws Error if referenced message cannot be retrieved
+ * @returns Array of VisionImage objects extracted from current and referenced messages (referenced message failures are skipped with a warning)
  */
 export async function extractImagesFromMessageAndReply(
   message: NormalizedMessageEvent,
@@ -452,10 +451,10 @@ export async function extractImagesFromMessageAndReply(
           logger.debug(`[imageUtils] Extracted ${referencedImages.length} image(s) from referenced message`);
         }
       } catch (error) {
-        logger.error(
+        // Referenced message may be missing (e.g. not stored, or evicted). Skip vision for it; do not throw.
+        logger.warn(
           `[imageUtils] Failed to extract images from referenced message | messageId=${replyMessageId} | error=${error instanceof Error ? error.message : 'Unknown error'}`,
         );
-        throw error;
       }
     }
   }

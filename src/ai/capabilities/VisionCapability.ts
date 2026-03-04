@@ -1,7 +1,7 @@
 // Vision Capability interface - multimodal vision understanding capability
 
 import type { AIProvider } from '../base/AIProvider';
-import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
+import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, StreamingHandler } from '../types';
 import type { VisionImage } from './types';
 
 /**
@@ -15,6 +15,12 @@ export interface VisionCapability {
    * Supports multimodal input: text prompt + images
    */
   generateWithVision(prompt: string, images: VisionImage[], options?: AIGenerateOptions): Promise<AIGenerateResponse>;
+
+  /**
+   * Generate from full messages (history + current). Message content can be string or ContentPart[] (text + image_url).
+   * Used when history contains images; provider sends messages as-is to API (OpenAI-style content array).
+   */
+  generateWithVisionMessages?(messages: ChatMessage[], options?: AIGenerateOptions): Promise<AIGenerateResponse>;
 
   /**
    * Generate text with vision and streaming support

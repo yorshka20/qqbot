@@ -6,6 +6,10 @@ import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType } from '../capabilities/types';
 import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
+import { contentToPlainString } from '../utils/contentUtils';
+
+/** DeepSeek API max_tokens valid range [1, 8192] */
+const DEEPSEEK_MAX_TOKENS_LIMIT = 8192;
 
 export interface DeepSeekProviderConfig {
   apiKey: string;
@@ -116,14 +120,15 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     const model = this.config.model || 'deepseek-chat';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const rawMaxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const maxTokens = Math.min(Math.max(1, Math.floor(rawMaxTokens)), DEEPSEEK_MAX_TOKENS_LIMIT);
 
     try {
       logger.debug(`[DeepSeekProvider] Generating with model: ${model}`);
 
       let messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
       if (options?.messages?.length) {
-        messages = options.messages.map((m) => ({ role: m.role, content: m.content }));
+        messages = options.messages.map((m) => ({ role: m.role, content: contentToPlainString(m.content) }));
       } else {
         const history = await this.loadHistory(options);
         messages = [];
@@ -133,7 +138,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
         for (const msg of history) {
           messages.push({
             role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-            content: msg.content,
+            content: contentToPlainString(msg.content),
           });
         }
         messages.push({
@@ -142,7 +147,11 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
         });
       }
 
-      const data = (await this.httpClient.post('/chat/completions', {
+      const data = await this.httpClient.post<{
+        choices: Array<{ message: { content: string } }>;
+        usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+        model: string;
+      }>('/chat/completions', {
         model,
         messages,
         temperature,
@@ -151,11 +160,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
         frequency_penalty: options?.frequencyPenalty,
         presence_penalty: options?.presencePenalty,
         stop: options?.stop,
-      })) as {
-        choices: Array<{ message: { content: string } }>;
-        usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
-        model: string;
-      };
+      });
 
       const text = data.choices[0]?.message?.content || '';
       const usage = data.usage
@@ -187,14 +192,15 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
   ): Promise<AIGenerateResponse> {
     const model = this.config.model || 'deepseek-chat';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const rawMaxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const maxTokens = Math.min(Math.max(1, Math.floor(rawMaxTokens)), DEEPSEEK_MAX_TOKENS_LIMIT);
 
     try {
       logger.debug(`[DeepSeekProvider] Generating stream with model: ${model}`);
 
       let messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
       if (options?.messages?.length) {
-        messages = options.messages.map((m) => ({ role: m.role, content: m.content }));
+        messages = options.messages.map((m) => ({ role: m.role, content: contentToPlainString(m.content) }));
       } else {
         const history = await this.loadHistory(options);
         messages = [];
@@ -204,7 +210,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
         for (const msg of history) {
           messages.push({
             role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-            content: msg.content,
+            content: contentToPlainString(msg.content),
           });
         }
         messages.push({

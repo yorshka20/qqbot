@@ -1,5 +1,6 @@
 // Conversation History Service - single implementation for loading history from DB and formatting (User<userId:nickname> / Assistant)
 
+import type { SummarizeService } from '@/ai/services/SummarizeService';
 import type { ThreadService } from '@/conversation/thread';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -29,11 +30,14 @@ export interface ConversationMessageEntry {
  * and building conversation history string for prompt (thread first, then in-memory, then DB fallback).
  */
 export class ConversationHistoryService {
+  private summarizeService: SummarizeService;
   constructor(
     private databaseManager: DatabaseManager,
     private defaultLimit = 30,
     private maxHistoryMessages = 10,
-  ) {}
+  ) {
+    this.summarizeService = getContainer().resolve<SummarizeService>(DITokens.SUMMARIZE_SERVICE);
+  }
 
   /**
    * Get last N messages for a group (from DB).
@@ -249,8 +253,9 @@ export class ConversationHistoryService {
     };
   }
 
-  private parseRawSegments(rawContent?: string): MessageSegment[] | undefined {
-    if (!rawContent || rawContent.trim() === '') {
+  private parseRawSegments(rawContent?: unknown): MessageSegment[] | undefined {
+    // DB may return non-string (e.g. auto-parsed JSON); only treat string as rawContent
+    if (typeof rawContent !== 'string' || rawContent.trim() === '') {
       return undefined;
     }
     try {
@@ -271,6 +276,37 @@ export class ConversationHistoryService {
    */
   formatAsText(entries: ConversationMessageEntry[]): string {
     return formatConversationEntriesToText(entries);
+  }
+
+  /**
+   * When entries exceed maxEntries, summarize the oldest segment into one assistant entry (summary roll).
+   * Resolves SummarizeService from DI when needed; when not registered, oldest entries are dropped (no summary).
+   *
+   * @param entries - Chronological history entries (oldest first)
+   * @param maxEntries - Max entries to keep; when exceeded, oldest are summarized into one
+   * @param now - Used for summary entry messageId
+   */
+  async replaceOldestWithSummary(
+    entries: ConversationMessageEntry[],
+    maxEntries: number,
+    now: Date,
+  ): Promise<ConversationMessageEntry[]> {
+    if (entries.length <= maxEntries) {
+      return entries;
+    }
+    const numToSummarize = entries.length - (maxEntries - 1);
+    const toSummarize = entries.slice(0, numToSummarize);
+    const rest = entries.slice(numToSummarize);
+    const conversationText = this.formatAsText(toSummarize);
+    const summaryText = await this.summarizeService.summarize(conversationText);
+    const summaryEntry: ConversationMessageEntry = {
+      messageId: `summary:${now.getTime()}`,
+      userId: 0,
+      content: summaryText.trim() || '[Previous conversation summary]',
+      isBotReply: true,
+      createdAt: toSummarize[0].createdAt,
+    };
+    return [summaryEntry, ...rest];
   }
 
   /**
@@ -323,7 +359,7 @@ export class ConversationHistoryService {
 
   /**
    * Get session messages after a specific time, sorted by createdAt ascending.
-   * Uses a DB filter in-memory for adapter compatibility.
+   * Fetches at most maxLimit messages from DB (desc by createdAt) then filters by since, so we never load the full conversation.
    */
   async getMessagesSinceForSession(
     sessionId: string,
@@ -347,9 +383,13 @@ export class ConversationHistoryService {
       }
 
       const messages = adapter.getModel('messages');
-      const all = await messages.find({ conversationId: conversation.id });
       const sinceTs = since.getTime();
-      const filtered = (all as Message[])
+      // Fetch only the last maxLimit messages (most recent first) to avoid loading entire conversation.
+      const recent = await messages.find(
+        { conversationId: conversation.id },
+        { orderBy: 'createdAt', order: 'desc', limit: maxLimit },
+      );
+      const filtered = (recent as Message[])
         .filter((m) => new Date(m.createdAt).getTime() >= sinceTs)
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
         .slice(0, maxLimit);

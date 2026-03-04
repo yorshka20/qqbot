@@ -22,9 +22,13 @@ import type { VisionImage } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
 import { PromptMessageAssembler } from '../prompt/PromptMessageAssembler';
 import type { ProviderRouter } from '../routing/ProviderRouter';
-import type { AIGenerateResponse, ChatMessage } from '../types';
+import type { AIGenerateResponse, ChatMessage, ContentPart } from '../types';
 import { formatRAGConversationContext } from '../utils/formatRAGConversationContext';
-import { extractImagesFromMessageAndReply } from '../utils/imageUtils';
+import {
+  extractImagesFromMessageAndReply,
+  extractImagesFromSegmentsAsync,
+  normalizeVisionImages,
+} from '../utils/imageUtils';
 import { CardRenderingService } from './CardRenderingService';
 import type { LLMService } from './LLMService';
 import type { VisionService } from './VisionService';
@@ -37,6 +41,9 @@ import type { VisionService } from './VisionService';
  * - generateReplyFromTaskResults: main entry (TaskSystem / ReplyTaskExecutor); when message has images uses vision provider, else default LLM.
  * - generateNsfwReply: no search (fixed NSFW prompt only).
  */
+/** Normal mode: max history entries in prompt (stable size for cache hit). Excludes current user message; when exceeded, oldest are summarized. Initial context window (5 min) is defined in NormalEpisodeService.CONTEXT_WINDOW_MS. */
+const NORMAL_MAX_HISTORY_ENTRIES = 24;
+
 export class ReplyGenerationService {
   private readonly MAX_SEARCH_ITERATIONS = 5;
 
@@ -48,6 +55,9 @@ export class ReplyGenerationService {
 
   private readonly episodeService = new NormalEpisodeService();
   private readonly messageAssembler = new PromptMessageAssembler();
+
+  /** Per-episode history cache so prompt prefix stays stable until summary roll (for LLM cache). */
+  private readonly episodeHistoryCache = new Map<string, ConversationMessageEntry[]>();
 
   constructor(
     private llmService: LLMService,
@@ -339,9 +349,17 @@ export class ReplyGenerationService {
     return String(context.message.id ?? context.message.messageId ?? `msg:${Date.now()}`);
   }
 
-  private async buildNormalHistoryEntries(
-    context: HookContext,
-  ): Promise<{ historyEntries: ConversationMessageEntry[]; softContextText: string; sessionId: string }> {
+  /**
+   * Build history for normal (episode) mode.
+   * - New episode (no cache): initial context = messages in [startedAt - 5min, startedAt], max NORMAL_MAX_HISTORY_ENTRIES. This is fixed for the whole episode.
+   * - Existing episode (has cache): same context (cached) + new messages since last cached; no 5-min re-filter so prefix stays stable for LLM cache.
+   */
+  private async buildNormalHistoryEntries(context: HookContext): Promise<{
+    historyEntries: ConversationMessageEntry[];
+    softContextText: string;
+    sessionId: string;
+    episodeKey: string;
+  }> {
     const sessionId = String(context.metadata.get('sessionId') ?? '');
     const sessionType = (context.metadata.get('sessionType') as 'group' | 'user' | undefined) ?? 'group';
     const now = new Date(context.message.timestamp || Date.now());
@@ -351,36 +369,71 @@ export class ReplyGenerationService {
       now,
       userMessage: context.message.message,
     });
+    const episodeKey = this.episodeService.buildEpisodeKey(sessionId, episode);
+    const currentMessageId = this.getMessageIdString(context);
 
-    const hardEntries = await this.conversationHistoryService.getMessagesSinceForSession(
-      sessionId,
-      sessionType,
-      episode.startedAt,
-      500,
-    );
+    let entries: ConversationMessageEntry[];
+    const cached = this.episodeHistoryCache.get(episodeKey);
 
-    const softStart = new Date(now.getTime() - 5 * 60 * 1000);
-    const recent = await this.conversationHistoryService.getMessagesSinceForSession(
-      sessionId,
-      sessionType,
-      softStart,
-      200,
-    );
-    const softEntries = recent.slice(Math.max(0, recent.length - 10));
-    const hardIds = new Set(hardEntries.map((e) => e.messageId));
-    const dedupedSoft = softEntries.filter((e) => !hardIds.has(e.messageId));
+    if (cached != null && cached.length > 0) {
+      // Existing episode: use same context (cached), append only new messages since last cached. No 5-min filter.
+      const lastCached = cached[cached.length - 1];
+      const sinceAfterLast = new Date(lastCached.createdAt.getTime() + 1);
+      const newMessages = await this.conversationHistoryService.getMessagesSinceForSession(
+        sessionId,
+        sessionType,
+        sinceAfterLast,
+        NORMAL_MAX_HISTORY_ENTRIES + 10,
+      );
+      const appended = newMessages.filter((e) => e.messageId !== currentMessageId);
+      const combined = [...cached, ...appended];
+      // Truncate only in reply path; summary/context maintenance runs outside reply flow.
+      entries = combined.length > NORMAL_MAX_HISTORY_ENTRIES ? combined.slice(-NORMAL_MAX_HISTORY_ENTRIES) : combined;
+      this.episodeHistoryCache.set(episodeKey, entries);
+    } else {
+      // New episode: initial context = [episode.contextWindowStart, episode.startedAt], max NORMAL_MAX_HISTORY_ENTRIES. This is the fixed context for the whole episode.
+      const raw = await this.conversationHistoryService.getMessagesSinceForSession(
+        sessionId,
+        sessionType,
+        episode.contextWindowStart,
+        NORMAL_MAX_HISTORY_ENTRIES,
+      );
+      const startedAtTs = episode.startedAt.getTime();
+      entries = raw
+        .filter((e) => e.createdAt.getTime() <= startedAtTs && e.messageId !== currentMessageId)
+        .slice(-NORMAL_MAX_HISTORY_ENTRIES);
+      this.episodeHistoryCache.set(episodeKey, entries);
+    }
 
-    const softContextText = dedupedSoft
-      .map((e) => {
-        const nick = e.nickname ?? '';
-        const speaker = e.isBotReply ? 'assistant' : `${e.userId}:${nick}`;
-        return `[${speaker}] ${this.extractTextAndImageTags(e.segments, e.content)}`;
-      })
-      .join('\n');
-
-    return { historyEntries: hardEntries, softContextText, sessionId };
+    return { historyEntries: entries, softContextText: '', sessionId, episodeKey };
   }
 
+  /**
+   * Maintain episode context window outside reply path outside reply path: when cache exceeds limit, replace oldest with summary and update cache.
+   * Called fire-and-forget after reply completes so the next reply sees a stable summarized prefix.
+   */
+  private async maintainEpisodeContext(episodeKey: string | undefined): Promise<void> {
+    if (!episodeKey) {
+      return;
+    }
+    const cached = this.episodeHistoryCache.get(episodeKey);
+    if (!cached || cached.length <= NORMAL_MAX_HISTORY_ENTRIES) {
+      return;
+    }
+    try {
+      const replaced = await this.conversationHistoryService.replaceOldestWithSummary(
+        cached,
+        NORMAL_MAX_HISTORY_ENTRIES,
+        new Date(),
+      );
+      this.episodeHistoryCache.set(episodeKey, replaced);
+    } catch (err) {
+      logger.warn('[ReplyGenerationService] maintainEpisodeContext failed:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  /** Used when building soft-context or image tags for history; kept for future use. */
+  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: reserved for soft-context or image-tag formatting
   private extractTextAndImageTags(segments: MessageSegment[] | undefined, fallbackText: string): string {
     if (!segments?.length) return fallbackText;
     const text = segments
@@ -396,8 +449,38 @@ export class ReplyGenerationService {
     return text || imageTags || fallbackText;
   }
 
+  /** Used by VisionService fallback when provider has no generateWithVisionMessages; kept for consistency. */
+  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: used indirectly via vision fallback path
   private flattenMessagesForVision(messages: ChatMessage[]): string {
-    return messages.map((m) => `${m.role.toUpperCase()}:\n${m.content}`).join('\n\n');
+    return messages
+      .map((m) => {
+        const contentStr =
+          typeof m.content === 'string'
+            ? m.content
+            : m.content.map((p) => (p.type === 'text' ? p.text : '[image]')).join('\n');
+        return `${m.role.toUpperCase()}:\n${contentStr}`;
+      })
+      .join('\n\n');
+  }
+
+  /** Build ContentPart[] for one history entry when provider has vision: text + image_url (data URL). */
+  private buildContentPartsForEntry(entry: ConversationMessageEntry, normalizedImages: VisionImage[]): ContentPart[] {
+    const textFromSegments = entry.segments
+      ?.filter((s): s is MessageSegment & { type: 'text' } => s.type === 'text')
+      .map((s) => String(s.data?.text ?? ''))
+      .join('')
+      .trim();
+    const textContent = textFromSegments || entry.content || '';
+    const prefix = entry.isBotReply ? '' : `[speaker:${entry.userId}:${entry.nickname ?? ''}] `;
+    const parts: ContentPart[] = [{ type: 'text', text: prefix + textContent || '(no text)' }];
+    for (const img of normalizedImages) {
+      const mime = img.mimeType || 'image/jpeg';
+      const url = img.base64 ? `data:${mime};base64,${img.base64}` : img.url;
+      if (url) {
+        parts.push({ type: 'image_url', image_url: { url } });
+      }
+    }
+    return parts;
   }
 
   private async buildReplyMessages(
@@ -405,7 +488,9 @@ export class ReplyGenerationService {
     taskResultsSummary: string,
     searchResultsText: string,
     userMessage: string,
-  ): Promise<{ messages: ChatMessage[]; sessionId: string }> {
+    hasVision: boolean,
+    messageImages: VisionImage[] = [],
+  ): Promise<{ messages: ChatMessage[]; sessionId: string; episodeKey: string }> {
     const [retrievedConversationSection, memoryContextText, normalHistory] = await Promise.all([
       this.getRetrievedConversationSection(context),
       Promise.resolve(this.getMemoryContextText(context)),
@@ -432,15 +517,70 @@ export class ReplyGenerationService {
         currentQuery: frameCurrentQuery,
       },
     });
+
+    // When provider has vision, replace history entries that contain images with ContentPart[] (text + base64 image_url).
+    if (hasVision && normalHistory.historyEntries.length > 0) {
+      const getResourceUrl = (resourceId: string) => this.messageAPI.getResourceTempUrl(resourceId, context.message);
+      const systemCount = 2; // baseSystem + sceneSystem
+      for (let i = 0; i < normalHistory.historyEntries.length; i++) {
+        const entry = normalHistory.historyEntries[i];
+        const hasImage = entry.segments?.some((s) => s.type === 'image');
+        if (!hasImage || !entry.segments?.length) {
+          continue;
+        }
+        try {
+          const visionImages = await extractImagesFromSegmentsAsync(entry.segments, getResourceUrl);
+          if (visionImages.length === 0) {
+            continue;
+          }
+          const normalized = await normalizeVisionImages(visionImages, {
+            timeout: 15000,
+            maxSize: 5 * 1024 * 1024,
+          });
+          const parts = this.buildContentPartsForEntry(entry, normalized);
+          const msgIndex = systemCount + i;
+          if (msgIndex < messages.length) {
+            messages[msgIndex] = { ...messages[msgIndex], content: parts };
+          }
+        } catch (err) {
+          logger.warn(
+            `[ReplyGenerationService] Failed to resolve history images for entry ${entry.messageId}, keeping text placeholder:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
+    }
+
+    // When vision and current message has images, normalize once and attach to last user message so VisionService uses as-is.
+    if (hasVision && messageImages.length > 0) {
+      const normalized = await normalizeVisionImages(messageImages, {
+        timeout: 30000,
+        maxSize: 10 * 1024 * 1024,
+      });
+      const imageParts: ContentPart[] = normalized
+        .filter((img) => img.base64 || img.url)
+        .map((img) => ({
+          type: 'image_url' as const,
+          image_url: {
+            url: img.base64 ? `data:${img.mimeType || 'image/jpeg'};base64,${img.base64}` : (img.url ?? ''),
+          },
+        }));
+      const last = messages[messages.length - 1];
+      const lastContent: ContentPart[] =
+        typeof last.content === 'string'
+          ? [{ type: 'text', text: last.content }, ...imageParts]
+          : [...(last.content as ContentPart[]), ...imageParts];
+      messages[messages.length - 1] = { ...last, content: lastContent };
+    }
+
     const serialized = this.messageAssembler.serializeForFingerprint(messages);
-    // logger async
     new Promise(() => {
       const fingerprint = NormalEpisodeService.hashMessages(serialized);
       logger.info(
         `[ReplyGenerationService] Prompt fingerprint=${fingerprint} | messageCount=${messages.length} | historyCount=${normalHistory.historyEntries.length} | softCount=${normalHistory.softContextText ? normalHistory.softContextText.split('\n').length : 0}`,
       );
-    });
-    return { messages, sessionId: normalHistory.sessionId };
+    }).catch(() => {});
+    return { messages, sessionId: normalHistory.sessionId, episodeKey: normalHistory.episodeKey };
   }
 
   /**
@@ -465,20 +605,31 @@ export class ReplyGenerationService {
     const { providerName, userMessage, reason, confidence, usedExplicitPrefix } = this.providerRouter.routeReplyInput(
       context.message.message,
     );
-    const built = await this.buildReplyMessages(context, taskResultsSummary, searchResultsText, userMessage);
+    const useVisionProvider = messageImages.length > 0;
+    const built = await this.buildReplyMessages(
+      context,
+      taskResultsSummary,
+      searchResultsText,
+      userMessage,
+      useVisionProvider,
+      messageImages,
+    );
     const messages = built.messages;
     const genOptions = { temperature: 0.7, maxTokens: 2000, sessionId };
-    const useVisionProvider = messageImages.length > 0;
 
-    logger.debug(`[ReplyGenerationService] generateReplyWithTaskResults`, { messageCount: messages.length });
+    logger.debug(`[ReplyGenerationService] generateReplyWithTaskResults`, {
+      messageCount: messages.length,
+      useVision: useVisionProvider,
+      messages: JSON.stringify(messages, null, 2),
+    });
     logger.info(
       `[ReplyGenerationService] Provider routing | reason=${reason} | confidence=${confidence} | explicitPrefix=${usedExplicitPrefix} | provider=${providerName ?? 'default'}`,
     );
 
     let response: AIGenerateResponse;
     if (useVisionProvider) {
-      const flattenedPrompt = this.flattenMessagesForVision(messages);
-      response = await this.visionService.generateWithVision(flattenedPrompt, messageImages, genOptions);
+      // Current message images already inlined in buildReplyMessages; pass empty so VisionService uses messages as-is.
+      response = await this.visionService.generateWithVisionMessages(messages, [], genOptions);
     } else {
       response = await this.llmService.generateMessages(messages, genOptions, providerName);
     }
@@ -490,6 +641,7 @@ export class ReplyGenerationService {
       const success = await this.handleCardReply(response.text, sessionId, context);
       if (success) {
         this.appendTaskResultImages(context, taskResultImages);
+        void this.maintainEpisodeContext(built.episodeKey).catch(() => {});
         return;
       }
     }
@@ -500,6 +652,9 @@ export class ReplyGenerationService {
     // If card reply failed or skipped, use text reply - use replace (same AI reply update)
     // Set text reply to context
     replaceReply(context, response.text, 'ai');
+
+    // Maintain episode context outside reply path (fire-and-forget): summarize when over limit so next reply sees stable prefix.
+    void this.maintainEpisodeContext(built.episodeKey).catch(() => {});
   }
 
   private shouldUseCardReply(responseText: string, sessionId: string): boolean {

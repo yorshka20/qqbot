@@ -6,7 +6,8 @@ import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType, VisionImage } from '../capabilities/types';
 import type { VisionCapability } from '../capabilities/VisionCapability';
-import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
+import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, ContentPart, StreamingHandler } from '../types';
+import { contentToPlainString } from '../utils/contentUtils';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
 
 export interface AnthropicProviderConfig {
@@ -63,6 +64,24 @@ function isAnthropicStreamChunk(value: unknown): value is AnthropicStreamChunk {
     return false;
   }
   return typeof Reflect.get(value, 'type') === 'string';
+}
+
+/** Convert our ChatMessage content (string | ContentPart[]) to Anthropic message content. */
+function toAnthropicContent(content: ChatMessage['content']): AnthropicMessage['content'] {
+  if (typeof content === 'string') {
+    return content;
+  }
+  return content.map((part: ContentPart) => {
+    if (part.type === 'text') {
+      return { type: 'text' as const, text: part.text };
+    }
+    // type === 'image_url': convert to Anthropic image block (base64 source)
+    const url = part.image_url.url;
+    const dataUrlMatch = /^data:([^;]+);base64,(.+)$/.exec(url);
+    const mediaType = dataUrlMatch ? dataUrlMatch[1] : 'image/jpeg';
+    const data = dataUrlMatch ? dataUrlMatch[2] : url.replace(/^data:[^;]+;base64,/, '');
+    return { type: 'image' as const, source: { type: 'base64', media_type: mediaType, data } };
+  });
 }
 
 /**
@@ -165,14 +184,17 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       if (options?.messages?.length) {
         messages = options.messages
           .filter((m) => m.role !== 'system')
-          .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }));
+          .map((m) => ({
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            content: toAnthropicContent(m.content),
+          }));
       } else {
         const history = await this.loadHistory(options);
         messages = [];
         for (const msg of history) {
           messages.push({
             role: msg.role === 'assistant' ? 'assistant' : 'user',
-            content: msg.content,
+            content: toAnthropicContent(msg.content),
           });
         }
         messages.push({
@@ -187,7 +209,10 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         temperature,
         messages,
       };
-      const explicitSystem = options?.messages?.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
+      const explicitSystem = options?.messages
+        ?.filter((m) => m.role === 'system')
+        .map((m) => contentToPlainString(m.content))
+        .join('\n\n');
       if (explicitSystem?.trim()) {
         requestBody.system = explicitSystem;
       } else if (options?.systemPrompt) {
@@ -235,14 +260,17 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       if (options?.messages?.length) {
         messages = options.messages
           .filter((m) => m.role !== 'system')
-          .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }));
+          .map((m) => ({
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            content: toAnthropicContent(m.content),
+          }));
       } else {
         const history = await this.loadHistory(options);
         messages = [];
         for (const msg of history) {
           messages.push({
             role: msg.role === 'assistant' ? 'assistant' : 'user',
-            content: msg.content,
+            content: toAnthropicContent(msg.content),
           });
         }
         messages.push({
@@ -259,9 +287,12 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         messages,
         stream: true,
       };
-      const explicitSystem = options?.messages?.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
-      if (explicitSystem?.trim()) {
-        requestBody.system = explicitSystem;
+      const explicitSystemStream = options?.messages
+        ?.filter((m) => m.role === 'system')
+        .map((m) => contentToPlainString(m.content))
+        .join('\n\n');
+      if (explicitSystemStream?.trim()) {
+        requestBody.system = explicitSystemStream;
       } else if (options?.systemPrompt) {
         requestBody.system = options.systemPrompt;
       }

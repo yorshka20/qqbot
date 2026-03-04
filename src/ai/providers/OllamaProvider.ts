@@ -6,6 +6,7 @@ import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType } from '../capabilities/types';
 import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
+import { contentToPlainString } from '../utils/contentUtils';
 
 export interface OllamaProviderConfig {
   baseUrl: string;
@@ -111,7 +112,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
     options?: AIGenerateOptions,
   ): Promise<Array<{ role: 'user' | 'assistant' | 'system'; content: string }>> {
     if (options?.messages?.length) {
-      return options.messages.map((m) => ({ role: m.role, content: m.content }));
+      return options.messages.map((m) => ({ role: m.role, content: contentToPlainString(m.content) }));
     }
 
     const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];

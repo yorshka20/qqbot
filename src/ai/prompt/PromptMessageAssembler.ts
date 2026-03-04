@@ -1,6 +1,7 @@
 import type { ChatMessage } from '@/ai/types';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import type { MessageSegment } from '@/message/types';
+import { contentToPlainString } from '../utils/contentUtils';
 
 export interface FinalUserBlocks {
   softContext?: string;
@@ -46,7 +47,7 @@ export class PromptMessageAssembler {
   }
 
   serializeForFingerprint(messages: ChatMessage[]): string {
-    return messages.map((m) => `${m.role}\n${m.content}`).join('\n\n---\n\n');
+    return messages.map((m) => `${m.role}\n${contentToPlainString(m.content)}`).join('\n\n---\n\n');
   }
 
   private buildMessagesCore(
@@ -126,7 +127,9 @@ export class PromptMessageAssembler {
   }
 
   private normalize(value: string): string {
-    return value.replace(/\r\n/g, '\n').replace(/[ \t]+$/gm, '').trim();
+    return value
+      .replace(/\r\n/g, '\n')
+      .replace(/[ \t]+$/gm, '')
+      .trim();
   }
 }
-

@@ -6,7 +6,13 @@ import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType, VisionImage } from '../capabilities/types';
 import type { VisionCapability } from '../capabilities/VisionCapability';
-import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
+import type {
+  AIGenerateOptions,
+  AIGenerateResponse,
+  ChatCompletionMessageParam,
+  ChatMessage,
+  StreamingHandler,
+} from '../types';
 
 export interface OpenAIProviderConfig {
   apiKey: string;
@@ -96,9 +102,9 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
     try {
       logger.debug(`[OpenAIProvider] Generating with model: ${model}`);
 
-      let messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+      let messages: ChatCompletionMessageParam[];
       if (options?.messages?.length) {
-        messages = options.messages.map((m) => ({ role: m.role, content: m.content }));
+        messages = options.messages.map((m) => ({ role: m.role, content: m.content })) as ChatCompletionMessageParam[];
       } else {
         const history = await this.loadHistory(options);
         messages = [];
@@ -168,9 +174,9 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
     try {
       logger.debug(`[OpenAIProvider] Generating stream with model: ${model}`);
 
-      let messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+      let messages: ChatCompletionMessageParam[];
       if (options?.messages?.length) {
-        messages = options.messages.map((m) => ({ role: m.role, content: m.content }));
+        messages = options.messages.map((m) => ({ role: m.role, content: m.content })) as ChatCompletionMessageParam[];
       } else {
         const history = await this.loadHistory(options);
         messages = [];
@@ -230,6 +236,50 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
       logger.error('[OpenAIProvider] Stream generation failed:', err);
       throw err;
     }
+  }
+
+  /**
+   * Generate from full messages (history + current). Content can be string or ContentPart[].
+   */
+  async generateWithVisionMessages(messages: ChatMessage[], options?: AIGenerateOptions): Promise<AIGenerateResponse> {
+    if (!this.client) {
+      throw new Error('OpenAI client not initialized');
+    }
+    const model = this.config.model || 'gpt-4-vision-preview';
+    const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
+    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const apiMessages = messages.map((m) => ({
+      role: m.role,
+      content:
+        typeof m.content === 'string'
+          ? m.content
+          : (m.content as Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>),
+    })) as ChatCompletionMessageParam[];
+    const response = await this.client.chat.completions.create({
+      model,
+      messages: apiMessages,
+      temperature,
+      max_completion_tokens: maxTokens,
+      top_p: options?.topP,
+      frequency_penalty: options?.frequencyPenalty,
+      presence_penalty: options?.presencePenalty,
+      stop: options?.stop,
+    });
+    const text = response.choices[0]?.message?.content || '';
+    return {
+      text,
+      usage: response.usage
+        ? {
+            promptTokens: response.usage.prompt_tokens,
+            completionTokens: response.usage.completion_tokens,
+            totalTokens: response.usage.total_tokens,
+          }
+        : undefined,
+      metadata: {
+        model: response.model,
+        finishReason: response.choices[0]?.finish_reason,
+      },
+    };
   }
 
   /**

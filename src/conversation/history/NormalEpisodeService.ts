@@ -4,6 +4,8 @@ export interface NormalEpisodeState {
   id: string;
   sessionId: string;
   startedAt: Date;
+  /** Context window start: initial history is [contextWindowStart, startedAt], max N entries. Kept so context is stable for the whole episode. */
+  contextWindowStart: Date;
   startMessageId: string;
   lastTriggerAt: Date;
   turnCount: number;
@@ -24,6 +26,9 @@ export class NormalEpisodeService {
   private readonly RESET_KEYWORDS = ['新话题', '重置上下文', 'reset context', 'new topic'];
   private states = new Map<string, NormalEpisodeState>();
 
+  /** Default 5 min: initial context for new episode is [contextWindowStart, startedAt], max N entries. */
+  private static readonly CONTEXT_WINDOW_MS = 5 * 60 * 1000;
+
   constructor(
     private readonly idleTimeoutMs = 30 * 60 * 1000,
     private readonly maxTurnsPerEpisode = 24,
@@ -37,6 +42,7 @@ export class NormalEpisodeService {
         id: randomUUID(),
         sessionId: input.sessionId,
         startedAt: input.now,
+        contextWindowStart: new Date(input.now.getTime() - NormalEpisodeService.CONTEXT_WINDOW_MS),
         startMessageId: input.messageId,
         lastTriggerAt: input.now,
         turnCount: 1,

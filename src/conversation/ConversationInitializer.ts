@@ -136,6 +136,11 @@ export class ConversationInitializer {
     const llmService = new LLMService(services.aiManager, providerSelector);
     container.registerInstance(DITokens.LLM_SERVICE, llmService);
 
+    const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+    // SummarizeService is reused by context memory and proactive thread compression. Must be registered before ConversationHistoryService (it resolves it in constructor).
+    const summarizeService = new SummarizeService(llmService, promptManager);
+    container.registerInstance(DITokens.SUMMARIZE_SERVICE, summarizeService);
+
     const memoryConfig = config.getContextMemoryConfig();
     const useSummary = memoryConfig?.useSummary ?? false;
     const summaryThreshold = memoryConfig?.summaryThreshold ?? 20;
@@ -146,15 +151,10 @@ export class ConversationInitializer {
     const conversationHistoryService = new ConversationHistoryService(databaseManager, 30, maxHistoryMessages);
     container.registerInstance(DITokens.CONVERSATION_HISTORY_SERVICE, conversationHistoryService);
 
-    const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
-    // SummarizeService is reused by context memory and proactive thread compression.
-    const summarizeService = new SummarizeService(llmService, promptManager);
-
     // Memory extraction is triggered by memory-related hooks/tasks.
     const memoryExtractService = new MemoryExtractService(promptManager, llmService, memoryService);
     container.registerInstance(DITokens.MEMORY_EXTRACT_SERVICE, memoryExtractService);
 
-    container.registerInstance(DITokens.SUMMARIZE_SERVICE, summarizeService);
     const sessionHistoryStore = new SessionHistoryStore(maxBufferSize, summaryThreshold, useSummary);
     const contextManager = new ContextManager(sessionHistoryStore);
 
@@ -331,7 +331,9 @@ export class ConversationInitializer {
     );
 
     container.registerClass(DITokens.PROACTIVE_CONVERSATION_SERVICE, ProactiveConversationService);
-    const proactiveConversationService = container.resolve<ProactiveConversationService>(DITokens.PROACTIVE_CONVERSATION_SERVICE);
+    const proactiveConversationService = container.resolve<ProactiveConversationService>(
+      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+    );
     const threadServiceResolved = container.resolve<ThreadService>(DITokens.THREAD_SERVICE);
     return { threadService: threadServiceResolved, proactiveConversationService };
   }
