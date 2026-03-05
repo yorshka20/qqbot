@@ -101,10 +101,12 @@ export class AIService {
    * Render card JSON to image segments (same pipeline as ReplyGenerationService handleCardReply).
    * Use this when you have card-format JSON and want message segments for reply (e.g. help command).
    * @param cardJson - Valid card data JSON string (ListCardData, InfoCardData, etc.)
+   * @param providerName - Provider name for card footer; when omitted, uses default LLM provider
    * @returns Message segments containing the card image, or throws if rendering fails
    */
-  async renderCardToSegments(cardJson: string): Promise<MessageSegment[]> {
-    const base64Image = await this.cardRenderingService.renderCard(cardJson);
+  async renderCardToSegments(cardJson: string, providerName?: string): Promise<MessageSegment[]> {
+    const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
+    const base64Image = await this.cardRenderingService.renderCard(cardJson, provider);
     const messageBuilder = new MessageBuilder();
     messageBuilder.image({ data: base64Image });
     return messageBuilder.build();

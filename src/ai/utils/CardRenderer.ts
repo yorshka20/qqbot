@@ -135,8 +135,10 @@ export class CardRenderer {
 
   /**
    * Render card data to PNG image buffer
+   * @param cardData - Card data to render
+   * @param options - Provider name (e.g. doubao, claude, deepseek) shown after "AI Assistant" in footer; required on all paths
    */
-  async render(cardData: CardData): Promise<Buffer> {
+  async render(cardData: CardData, options: { provider: string }): Promise<Buffer> {
     await this.init();
 
     if (!this.browser) {
@@ -151,6 +153,9 @@ export class CardRenderer {
       // Render card HTML
       const cardHTML = renderCard(cardData);
 
+      // Footer: "AI Assistant" + provider name (required on all paths)
+      const footerText = `🤖 AI Assistant · ${options.provider}`;
+
       // Build full HTML document
       const fullHTML = `
         <!DOCTYPE html>
@@ -164,7 +169,7 @@ export class CardRenderer {
           <body>
             <div class="container">
               ${cardHTML}
-              <div class="footer">🤖 AI Assistant</div>
+              <div class="footer">${footerText}</div>
             </div>
           </body>
         </html>

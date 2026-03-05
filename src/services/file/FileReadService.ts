@@ -110,8 +110,10 @@ export class FileReadService {
 
   /**
    * Read file content and render as card image
+   * @param path - File path (within project root)
+   * @param providerName - Provider name for card footer; when omitted, uses "system"
    */
-  async readFileAsImage(path: string): Promise<ReadFileAsImageResult> {
+  async readFileAsImage(path: string, providerName?: string): Promise<ReadFileAsImageResult> {
     const { resolved, error } = this.resolvePath(path);
     if (error) {
       return { success: false, error };
@@ -143,7 +145,8 @@ export class FileReadService {
       };
 
       const cardRenderer = CardRenderer.getInstance();
-      const buffer = await cardRenderer.render(cardData);
+      const provider = providerName ?? 'system';
+      const buffer = await cardRenderer.render(cardData, { provider });
       const imageBase64 = buffer.toString('base64');
 
       logger.info(`[FileReadService] Rendered file as image: ${basename(resolved)}${truncated ? ' (truncated)' : ''}`);

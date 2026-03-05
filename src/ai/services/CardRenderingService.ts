@@ -42,6 +42,14 @@ export class CardRenderingService {
   }
 
   /**
+   * Get default LLM provider name for card footer when no specific provider is in context (e.g. help command, system cards).
+   */
+  getDefaultProviderName(): string {
+    const provider = this.aiManager.getDefaultProvider('llm');
+    return provider?.name ?? 'default';
+  }
+
+  /**
    * Check if card rendering should be used
    * Conditions:
    * 1. Provider is not local (not ollama)
@@ -74,19 +82,20 @@ export class CardRenderingService {
   /**
    * Render card from LLM response text
    * @param responseText - LLM response text (should be JSON card data)
+   * @param providerName - Provider name (e.g. doubao, claude, deepseek) shown in card footer; required on all paths
    * @returns Base64 encoded image buffer
    * @throws Error if JSON parsing or rendering fails
    */
-  async renderCard(responseText: string): Promise<string> {
+  async renderCard(responseText: string, providerName: string): Promise<string> {
     try {
       // Extract JSON from LLM text if wrapped in markdown/prose, then parse card data
       const jsonStr =
         extractJsonFromLlmText(responseText, { strategies: CARD_JSON_EXTRACT_STRATEGIES }) ?? responseText;
       const cardData: CardData = parseCardData(jsonStr);
 
-      // Render card to image
+      // Render card to image (provider required for footer on all paths)
       logger.info('[CardRenderingService] Rendering card image');
-      const imageBuffer = await this.cardRenderer.render(cardData);
+      const imageBuffer = await this.cardRenderer.render(cardData, { provider: providerName });
 
       // Convert buffer to base64
       const base64Image = imageBuffer.toString('base64');

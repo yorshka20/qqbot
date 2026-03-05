@@ -415,9 +415,7 @@ export class ReplyGenerationService {
         500,
       );
       const startedAtTs = episode.startedAt.getTime();
-      const inWindow = raw.filter(
-        (e) => e.createdAt.getTime() <= startedAtTs && e.messageId !== currentMessageId,
-      );
+      const inWindow = raw.filter((e) => e.createdAt.getTime() <= startedAtTs && e.messageId !== currentMessageId);
       entries = inWindow.slice(-NormalEpisodeService.EPISODE_CONTEXT_WINDOW_SIZE);
       // When 10-min window is empty, try last N from DB but still restrict to same 10-min window (never use old messages).
       if (entries.length === 0) {
@@ -636,9 +634,9 @@ export class ReplyGenerationService {
     messageImages: VisionImage[] = [],
     taskResultImages: string[] = [],
   ): Promise<void> {
-    const { providerName, userMessage, reason, confidence, usedExplicitPrefix } = this.providerRouter.routeReplyInput(
-      context.message.message,
-    );
+    const rawInput = context.message.message ?? '';
+    const { providerName, userMessage, reason, confidence, usedExplicitPrefix } =
+      this.providerRouter.routeReplyInput(rawInput);
     const useVisionProvider = messageImages.length > 0;
     const built = await this.buildReplyMessages(
       context,
@@ -651,8 +649,22 @@ export class ReplyGenerationService {
     const messages = built.messages;
     const genOptions = { temperature: 0.7, maxTokens: 2000, sessionId };
 
+    // Log reply flow and raw messages sent to provider (base64 in image_url replaced to avoid log explosion)
     logger.info(
       `[ReplyGenerationService] Provider routing | reason=${reason} | confidence=${confidence} | explicitPrefix=${usedExplicitPrefix} | provider=${providerName ?? 'default'}`,
+    );
+    const rawMessagesForLog = JSON.stringify(
+      messages,
+      (_, value) => {
+        if (typeof value === 'string' && value.startsWith('data:') && value.includes('base64,')) {
+          return '[base64 omitted]';
+        }
+        return value;
+      },
+      2,
+    );
+    logger.debug(
+      `[ReplyGenerationService] Raw messages sent to provider (provider=${providerName ?? 'default'}):\n${rawMessagesForLog}`,
     );
 
     let response: AIGenerateResponse;
@@ -666,8 +678,8 @@ export class ReplyGenerationService {
     logger.debug(`[ReplyGenerationService] LLM response received | responseLength=${response.text.length}`);
 
     // Try to handle as card reply if applicable
-    if (this.shouldUseCardReply(response.text, sessionId)) {
-      const success = await this.handleCardReply(response.text, sessionId, context);
+    if (this.shouldUseCardReply(response.text, sessionId, providerName)) {
+      const success = await this.handleCardReply(response.text, sessionId, context, providerName);
       if (success) {
         this.appendTaskResultImages(context, taskResultImages);
         void this.maintainEpisodeContext(built.episodeKey).catch(() => {});
@@ -699,20 +711,27 @@ export class ReplyGenerationService {
    * @param responseText - Original text response
    * @param sessionId - Session ID for provider selection
    * @param context - Hook context for setting reply
+   * @param providerName - Optional provider name (e.g. doubao, claude, deepseek) shown in card footer
    * @returns true if card was successfully rendered, false if should use text reply
    */
-  private async handleCardReply(responseText: string, sessionId: string, context: HookContext): Promise<boolean> {
+  private async handleCardReply(
+    responseText: string,
+    sessionId: string,
+    context: HookContext,
+    providerName?: string,
+  ): Promise<boolean> {
     try {
       // Convert text to card format
       logger.info('[ReplyGenerationService] Converting response to card format');
       const cardFormatText = await this.convertToCardFormat(responseText, sessionId);
 
       // Check if conversion was successful (valid JSON card data)
-      const shouldRender = this.cardRenderingService.shouldUseCardRendering(cardFormatText, sessionId);
+      const shouldRender = this.cardRenderingService.shouldUseCardRendering(cardFormatText, sessionId, providerName);
       if (shouldRender) {
         logger.info('[ReplyGenerationService] Rendering card image for response');
-        // Render card to image using CardRenderingService
-        const base64Image = await this.cardRenderingService.renderCard(cardFormatText);
+        // Render card to image using CardRenderingService (provider required on all paths)
+        const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
+        const base64Image = await this.cardRenderingService.renderCard(cardFormatText, provider);
 
         // Store image data in context reply using segments
         // Use replace because card image is the final form of this AI reply
@@ -765,7 +784,8 @@ export class ReplyGenerationService {
         return null;
       }
       logger.info('[ReplyGenerationService] Rendering card image for proactive reply');
-      const base64Image = await this.cardRenderingService.renderCard(cardFormatText);
+      const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
+      const base64Image = await this.cardRenderingService.renderCard(cardFormatText, provider);
       const messageBuilder = new MessageBuilder();
       messageBuilder.image({ data: base64Image });
       return {
