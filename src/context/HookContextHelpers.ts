@@ -137,7 +137,8 @@ export function replaceReplyWithSegments(
 }
 
 /**
- * Get reply text from HookContext (extracts text from segments)
+ * Get reply text from HookContext (for persistence/history: prefers card text when reply is card image)
+ * When reply is a card image, returns the stored card text so history/context/cache store text, not image.
  *
  * @param context - Hook context
  * @returns Reply text or undefined if no reply exists
@@ -145,6 +146,9 @@ export function replaceReplyWithSegments(
 export function getReply(context: HookContext): string | undefined {
   if (!context.reply?.segments) {
     return undefined;
+  }
+  if (context.reply.metadata?.cardTextForHistory != null && context.reply.metadata.cardTextForHistory !== '') {
+    return context.reply.metadata.cardTextForHistory;
   }
   return extractTextFromSegments(context.reply.segments);
 }

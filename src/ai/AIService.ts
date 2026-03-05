@@ -195,6 +195,22 @@ export class AIService {
   }
 
   /**
+   * Optionally convert reply text to card and return segments + text for history.
+   * Used by proactive reply flow: send returned segments, persist textForHistory in thread/history.
+   * @param replyText - Raw reply text from LLM
+   * @param sessionId - Session ID (e.g. groupId for proactive)
+   * @param providerName - Optional provider name (e.g. analysisProviderName for proactive)
+   * @returns { segments, textForHistory } when card rendered; null to use replyText as-is for both send and history
+   */
+  async processReplyMaybeCard(
+    replyText: string,
+    sessionId: string,
+    providerName?: string,
+  ): Promise<{ segments: MessageSegment[]; textForHistory: string } | null> {
+    return this.replyGenerationService.processReplyMaybeCard(replyText, sessionId, providerName);
+  }
+
+  /**
    * Explain image(s) using vision provider. Returns combined description text (e.g. for task executor or other callers).
    */
   async explainImages(images: VisionImage[], userDescription: string, sessionId?: string): Promise<string> {

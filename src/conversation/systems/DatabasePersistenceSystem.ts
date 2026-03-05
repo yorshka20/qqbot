@@ -128,17 +128,22 @@ export class DatabasePersistenceSystem implements System {
       // Cache message in memory for quick lookup (e.g., for reply segments)
       cacheMessage(message);
 
-      // Save bot reply if exists
+      // Save bot reply if exists.
+      // reply comes from getReply(context): for card reply it is cardTextForHistory (card JSON text); for text reply it is extracted text.
+      // Card text is stored in content so that when loading from DB we use message.content to get the card text (LLM-readable).
+      // For card reply we omit rawContent to avoid storing the image; for non-card we keep rawContent (segments) when present.
       if (reply) {
         const botSelfId = context.metadata.get('botSelfId');
         const botUserId = typeof botSelfId === 'string' ? parseInt(botSelfId, 10) : botSelfId || 0;
+        const isCardReply = replyContent?.metadata?.isCardImage === true;
         await messages.create({
           conversationId: conversation.id,
           userId: botUserId,
           messageType: message.messageType,
           groupId: message.groupId,
           content: reply,
-          rawContent: replyContent?.segments?.length ? JSON.stringify(replyContent.segments) : undefined,
+          rawContent:
+            !isCardReply && replyContent?.segments?.length ? JSON.stringify(replyContent.segments) : undefined,
           protocol: message.protocol || 'unknown',
           metadata: {
             isBotReply: true,

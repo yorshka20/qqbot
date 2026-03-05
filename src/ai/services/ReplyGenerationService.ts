@@ -1,6 +1,5 @@
 // Reply Generation Service - provides AI reply generation capabilities
 
-import { networkConditions } from 'puppeteer-core';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { replaceReply, replaceReplyWithSegments, setReplyWithSegments } from '@/context/HookContextHelpers';
 import {
@@ -660,10 +659,10 @@ export class ReplyGenerationService {
     void this.maintainEpisodeContext(built.episodeKey).catch(() => {});
   }
 
-  private shouldUseCardReply(responseText: string, sessionId: string): boolean {
+  private shouldUseCardReply(responseText: string, sessionId: string, providerName?: string): boolean {
     const cardThreshold = CardRenderingService.getThreshold();
     // Check if card rendering service is available (not local provider)
-    const canUseCardFormat = this.cardRenderingService.shouldUseCardFormatPrompt(sessionId);
+    const canUseCardFormat = this.cardRenderingService.shouldUseCardFormatPrompt(sessionId, providerName);
     return responseText.length >= cardThreshold && canUseCardFormat;
   }
 
@@ -696,7 +695,7 @@ export class ReplyGenerationService {
           context,
           messageBuilder.build(),
           'ai',
-          { isCardImage: true }, // Set flag in metadata
+          { isCardImage: true, cardTextForHistory: cardFormatText }, // Store card text for history/cache; image only for sending
         );
 
         logger.info('[ReplyGenerationService] Card image rendered and stored in reply');
@@ -711,6 +710,45 @@ export class ReplyGenerationService {
       const cardErr = cardError instanceof Error ? cardError : new Error('Unknown card error');
       logger.warn('[ReplyGenerationService] Failed to convert to card format, falling back to text:', cardErr);
       return false;
+    }
+  }
+
+  /**
+   * Optionally convert reply text to card and render to image segments.
+   * Used by flows that do not use HookContext (e.g. proactive reply). Caller sends segments and persists textForHistory.
+   * @param replyText - Raw reply text from LLM
+   * @param sessionId - Session ID for provider selection
+   * @param providerName - Optional provider name (e.g. for proactive flow)
+   * @returns { segments, textForHistory } when card was rendered; null when card skipped or failed (caller uses replyText as-is)
+   */
+  async processReplyMaybeCard(
+    replyText: string,
+    sessionId: string,
+    providerName?: string,
+  ): Promise<{ segments: MessageSegment[]; textForHistory: string } | null> {
+    if (!this.shouldUseCardReply(replyText, sessionId, providerName)) {
+      return null;
+    }
+    try {
+      logger.info('[ReplyGenerationService] Converting proactive response to card format');
+      const cardFormatText = await this.convertToCardFormat(replyText, sessionId);
+      const shouldRender = this.cardRenderingService.shouldUseCardRendering(cardFormatText, sessionId, providerName);
+      if (!shouldRender) {
+        logger.debug('[ReplyGenerationService] Card conversion failed or invalid for proactive reply');
+        return null;
+      }
+      logger.info('[ReplyGenerationService] Rendering card image for proactive reply');
+      const base64Image = await this.cardRenderingService.renderCard(cardFormatText);
+      const messageBuilder = new MessageBuilder();
+      messageBuilder.image({ data: base64Image });
+      return {
+        segments: messageBuilder.build(),
+        textForHistory: cardFormatText,
+      };
+    } catch (cardError) {
+      const cardErr = cardError instanceof Error ? cardError : new Error('Unknown card error');
+      logger.warn('[ReplyGenerationService] Proactive card render failed, falling back to text:', cardErr);
+      return null;
     }
   }
 

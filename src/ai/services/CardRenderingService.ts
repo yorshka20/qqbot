@@ -16,7 +16,7 @@ const CARD_JSON_EXTRACT_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'regex'];
  */
 export class CardRenderingService {
   private cardRenderer: CardRenderer;
-  private static readonly CARD_RENDERING_THRESHOLD = 300; // characters
+  private static readonly CARD_RENDERING_THRESHOLD = 150; // characters
 
   constructor(private aiManager: AIManager) {
     this.cardRenderer = CardRenderer.getInstance();

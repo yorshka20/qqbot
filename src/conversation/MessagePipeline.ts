@@ -1,13 +1,12 @@
 // Message Pipeline - processes messages through the complete flow
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import { extractTextFromSegments } from '@/ai/utils/imageUtils';
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ContextManager, ConversationContext } from '@/context';
-import { enterMessageContext } from '@/context/MessageContextStorage';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
-import { getReplyContent } from '@/context/HookContextHelpers';
+import { getReply, getReplyContent } from '@/context/HookContextHelpers';
+import { enterMessageContext } from '@/context/MessageContextStorage';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
@@ -136,7 +135,8 @@ export class MessagePipeline {
     const postProcessOnly = hookContext.metadata.get('postProcessOnly');
 
     if (replyContent?.segments && replyContent.segments.length > 0) {
-      const replyText = extractTextFromSegments(replyContent.segments);
+      // Use getReply so card replies persist card text (not image) to history/cache
+      const replyText = getReply(hookContext) ?? '';
       logger.info(`[MessagePipeline] Sending reply | messageId=${messageId} | replyLength=${replyText.length}`);
       await this.sendMessage(event, hookContext);
       await this.saveConversationMessages(context.sessionId, event.message, replyText, {

@@ -735,10 +735,18 @@ export class ProactiveConversationService {
       logger.warn('[ProactiveConversationService] Empty proactive reply');
       return;
     }
-    await this.sendGroupMessage(groupIdNum, replyText);
+    // Optionally render as card (same pipeline as ReplyGenerationService); store card text in thread for LLM-readable history
+    const cardResult = await this.aiService.processReplyMaybeCard(
+      replyText,
+      groupId,
+      this.analysisProviderName,
+    );
+    const toSend = cardResult ? cardResult.segments : replyText;
+    const toAppend = cardResult ? cardResult.textForHistory : replyText;
+    await this.sendGroupMessage(groupIdNum, toSend);
     this.threadService.appendMessage(thread.threadId, {
       userId: 0,
-      content: replyText,
+      content: toAppend,
       isBotReply: true,
     });
   }
@@ -775,17 +783,25 @@ export class ProactiveConversationService {
     const replyText = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
     if (!replyText) return;
 
-    await this.sendGroupMessage(groupIdNum, replyText);
+    // Optionally render as card (same pipeline as ReplyGenerationService); store card text in thread for LLM-readable history
+    const cardResult = await this.aiService.processReplyMaybeCard(
+      replyText,
+      thread.groupId,
+      this.analysisProviderName,
+    );
+    const toSend = cardResult ? cardResult.segments : replyText;
+    const toAppend = cardResult ? cardResult.textForHistory : replyText;
+    await this.sendGroupMessage(groupIdNum, toSend);
     this.threadService.appendMessage(threadId, {
       userId: 0,
-      content: replyText,
+      content: toAppend,
       isBotReply: true,
     });
   }
 
-  private async sendGroupMessage(groupId: number, text: string): Promise<void> {
+  private async sendGroupMessage(groupId: number, message: string | MessageSegment[]): Promise<void> {
     const syntheticContext = this.buildSyntheticGroupContext(groupId);
-    await this.messageAPI.sendFromContext(text, syntheticContext, 10000);
+    await this.messageAPI.sendFromContext(message, syntheticContext, 10000);
     logger.info(`[ProactiveConversationService] Sent proactive message | groupId=${groupId}`);
   }
 

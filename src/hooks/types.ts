@@ -9,10 +9,12 @@ import type { Task, TaskResult } from '@/task/types';
 import type { HookMetadataMap } from './metadata';
 
 /**
- * Reply content metadata (flags only, no actual content)
+ * Reply content metadata (flags and optional text for history when reply is card image)
  */
 export interface ReplyMetadata {
   isCardImage?: boolean; // Flag indicating card image message format
+  /** When set (e.g. for card reply), history/context/cache should store this text instead of extracting from segments (LLM-readable; image is only for sending). */
+  cardTextForHistory?: string;
   // Other flags can be added here in the future
 }
 
