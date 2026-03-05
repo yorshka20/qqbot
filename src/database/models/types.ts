@@ -121,9 +121,12 @@ export interface MemoryExtractUserCursor extends BaseModel {
  */
 export interface ModelAccessor<T extends BaseModel> {
   /**
-   * Create a new record
+   * Create a new record.
+   * createdAt/updatedAt are optional; when provided (e.g. message event time), they are used instead of server now.
    */
-  create(data: Omit<T, 'id' | 'createdAt' | 'updatedAt'>): Promise<T>;
+  create(
+    data: Omit<T, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<BaseModel, 'createdAt' | 'updatedAt'>>,
+  ): Promise<T>;
 
   /**
    * Find by ID

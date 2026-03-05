@@ -11,6 +11,9 @@ import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNoti
 import type { ProactiveThread, ThreadService } from '../thread/ThreadService';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 
+/** Max history entries in proactive prompt; when exceeded, front is summarized and summary becomes stable start (in memory). */
+const PROACTIVE_MAX_HISTORY_ENTRIES = 24;
+
 export interface ProactiveReplyContextBuilderDeps {
   threadService: ThreadService;
   conversationHistoryService: ConversationHistoryService;
@@ -142,7 +145,7 @@ export class ProactiveReplyContextBuilder {
     fetchProgressNotifier?: FetchProgressNotifier,
   ): Promise<ProactiveReplyInjectContext> {
     const threadContext = this.getThreadContextFormatted(threadId);
-    const historyEntries: ConversationMessageEntry[] = thread.messages.map((m, idx) => ({
+    let historyEntries: ConversationMessageEntry[] = thread.messages.map((m, idx) => ({
       messageId: `thread:${threadId}:${idx}`,
       userId: m.userId,
       nickname: m.nickname,
@@ -152,6 +155,17 @@ export class ProactiveReplyContextBuilder {
       createdAt: m.createdAt instanceof Date ? m.createdAt : new Date(m.createdAt),
       wasAtBot: m.wasAtBot,
     }));
+    // When over limit, summarize front so summary becomes stable start (in memory); next build sees same start.
+    if (historyEntries.length > PROACTIVE_MAX_HISTORY_ENTRIES) {
+      const replaced = await this.deps.conversationHistoryService.replaceOldestWithSummary(
+        historyEntries,
+        PROACTIVE_MAX_HISTORY_ENTRIES,
+        new Date(),
+      );
+      const numToReplace = historyEntries.length - (PROACTIVE_MAX_HISTORY_ENTRIES - 1);
+      this.deps.threadService.replaceEarliestWithSummary(threadId, numToReplace, replaced[0].content);
+      historyEntries = replaced;
+    }
     const preferenceText = this.getPreferenceText(preferenceKey);
     const memoryContext = this.getMemoryContext(thread.groupId, triggerUserId);
     const retrievedContext = await this.getRetrievedContext(preferenceKey, topicOrQuery, {
@@ -170,7 +184,7 @@ export class ProactiveReplyContextBuilder {
       retrievedContext,
       retrievedConversationSection,
       memoryContext,
-      sessionId: thread.groupId,
+      sessionId: `group:${thread.groupId}`,
       lastUserMessage,
     };
   }
@@ -212,7 +226,7 @@ export class ProactiveReplyContextBuilder {
       retrievedContext,
       retrievedConversationSection,
       memoryContext,
-      sessionId: groupId,
+      sessionId: typeof groupId === 'number' ? `group:${groupId}` : groupId.startsWith('group:') ? groupId : `group:${groupId}`,
       lastUserMessage,
     };
   }

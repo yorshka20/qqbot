@@ -25,6 +25,34 @@ export interface ConversationMessageEntry {
 }
 
 /**
+ * Normalize sessionId to canonical form for DB/history lookup.
+ * Ensures group sessions use "group:{groupId}" and user sessions use "user:{userId}" so history and persistence always match.
+ */
+export function normalizeSessionId(
+  sessionId: unknown,
+  sessionType: 'group' | 'user',
+  fallbackGroupId?: number,
+  fallbackUserId?: number,
+): string {
+  const s = sessionId != null ? String(sessionId).trim() : '';
+  if (sessionType === 'group') {
+    if (s.startsWith('group:')) {
+      return s;
+    }
+    const id = fallbackGroupId ?? (s ? parseInt(s, 10) : NaN);
+    return Number.isNaN(id) ? (s || 'group:0') : `group:${id}`;
+  }
+  if (sessionType === 'user') {
+    if (s.startsWith('user:')) {
+      return s;
+    }
+    const id = fallbackUserId ?? (s ? parseInt(s, 10) : NaN);
+    return Number.isNaN(id) ? (s || 'user:0') : `user:${id}`;
+  }
+  return s || 'unknown:0';
+}
+
+/**
  * Conversation History Service
  * Single module for: loading recent messages from DB (group or any session), formatting with User<userId:nickname> / Assistant,
  * and building conversation history string for prompt (thread first, then in-memory, then DB fallback).
@@ -412,7 +440,6 @@ export class ConversationHistoryService {
       const limit = this.maxHistoryMessages;
       const entries = await this.getRecentMessagesForSession(String(sessionId), sessionType as 'group' | 'user', limit);
       if (entries.length > 0) {
-        logger.debug(`[ConversationHistoryService] Loaded ${entries.length} messages from DB for session ${sessionId}`);
         return this.formatAsText(entries);
       }
     }
@@ -423,6 +450,7 @@ export class ConversationHistoryService {
   /**
    * Get session messages after a specific time, sorted by createdAt ascending.
    * Fetches at most maxLimit messages from DB (desc by createdAt) then filters by since, so we never load the full conversation.
+   * Uses normalized sessionId so lookup matches DB persistence (group:groupId / user:userId).
    */
   async getMessagesSinceForSession(
     sessionId: string,
@@ -435,10 +463,11 @@ export class ConversationHistoryService {
       return [];
     }
 
+    const canonicalSessionId = normalizeSessionId(sessionId, sessionType);
     try {
       const conversations = adapter.getModel('conversations');
       const conversation = await conversations.findOne({
-        sessionId: String(sessionId),
+        sessionId: canonicalSessionId,
         sessionType,
       });
       if (!conversation) {

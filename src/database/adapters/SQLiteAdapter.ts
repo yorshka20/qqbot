@@ -26,14 +26,18 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
     private tableName: string,
   ) {}
 
-  async create(data: Omit<T, 'id' | 'createdAt' | 'updatedAt'>): Promise<T> {
+  async create(
+    data: Omit<T, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<BaseModel, 'createdAt' | 'updatedAt'>>,
+  ): Promise<T> {
     const now = new Date();
+    const createdAt = this.toDate((data as Record<string, unknown>).createdAt) ?? now;
+    const updatedAt = this.toDate((data as Record<string, unknown>).updatedAt) ?? now;
     const id = randomUUID();
     const record = {
       ...data,
       id,
-      createdAt: now,
-      updatedAt: now,
+      createdAt,
+      updatedAt,
     } as T;
 
     const keys = Object.keys(record).filter((k) => k !== 'id' && k !== 'createdAt' && k !== 'updatedAt');
@@ -54,9 +58,28 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
 
     const sql = `INSERT INTO ${this.tableName} (id, ${keys.join(', ')}, createdAt, updatedAt) VALUES (?, ${placeholders}, ?, ?)`;
     const stmt = this.db.query(sql);
-    stmt.run(id, ...values, now.toISOString(), now.toISOString());
+    stmt.run(id, ...values, createdAt.toISOString(), updatedAt.toISOString());
 
     return record;
+  }
+
+  /** Convert value to Date for createdAt/updatedAt; supports Date, number (ms or seconds if < 1e12), ISO string. */
+  private toDate(value: unknown): Date | null {
+    if (value == null) {
+      return null;
+    }
+    if (value instanceof Date) {
+      return value;
+    }
+    if (typeof value === 'number' && !Number.isNaN(value)) {
+      const ms = value > 0 && value < 1e12 ? value * 1000 : value;
+      return new Date(ms);
+    }
+    if (typeof value === 'string') {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    return null;
   }
 
   async findById(id: string): Promise<T | null> {

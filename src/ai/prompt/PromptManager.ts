@@ -212,8 +212,6 @@ export class PromptManager {
       logger.warn(`[PromptManager] Unresolved variables in template ${templateName}: ${unresolved.join(', ')}`);
     }
 
-    logger.debug(`[PromptManager] Rendered template ${templateName}:`, { rendered });
-
     return rendered.trim();
   }
 

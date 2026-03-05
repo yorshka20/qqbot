@@ -26,8 +26,11 @@ export class NormalEpisodeService {
   private readonly RESET_KEYWORDS = ['新话题', '重置上下文', 'reset context', 'new topic'];
   private states = new Map<string, NormalEpisodeState>();
 
-  /** Default 5 min: initial context for new episode is [contextWindowStart, startedAt], max N entries. */
-  private static readonly CONTEXT_WINDOW_MS = 5 * 60 * 1000;
+  /** Default 10 min: initial context for new episode is [contextWindowStart, startedAt], max N entries. */
+  private static readonly CONTEXT_WINDOW_MS = 10 * 60 * 1000;
+
+  /** Episode initial context window: at most this many messages within the 10-min window (stable start for cache). */
+  static readonly EPISODE_CONTEXT_WINDOW_SIZE = 10;
 
   constructor(
     private readonly idleTimeoutMs = 30 * 60 * 1000,

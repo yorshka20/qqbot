@@ -41,7 +41,10 @@ export class MilkyEventNormalizer {
       return null;
     }
 
-    const timestamp = event.time || Date.now();
+    // Milky sends event.time in seconds; normalize to ms for BaseEvent.
+    const raw = event.time || Date.now();
+    const timestamp =
+      typeof raw === 'number' && raw > 0 && raw < 1e12 ? raw * 1000 : raw;
     const baseEvent: BaseEvent = {
       id: `milky_${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
       type: event.event_type,

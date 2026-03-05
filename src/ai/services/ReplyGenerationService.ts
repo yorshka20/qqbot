@@ -6,6 +6,7 @@ import {
   type ConversationHistoryService,
   type ConversationMessageEntry,
   NormalEpisodeService,
+  normalizeSessionId,
 } from '@/conversation/history';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
@@ -41,7 +42,7 @@ import type { VisionService } from './VisionService';
  * - generateReplyFromTaskResults: main entry (TaskSystem / ReplyTaskExecutor); when message has images uses vision provider, else default LLM.
  * - generateNsfwReply: no search (fixed NSFW prompt only).
  */
-/** Normal mode: max history entries in prompt (stable size for cache hit). Excludes current user message; when exceeded, oldest are summarized. Initial context window (5 min) is defined in NormalEpisodeService.CONTEXT_WINDOW_MS. */
+/** Normal mode: max history entries in prompt (stable size for cache hit). Excludes current user message; when exceeded, oldest are summarized. Initial context window (10 min) is defined in NormalEpisodeService.CONTEXT_WINDOW_MS. */
 const NORMAL_MAX_HISTORY_ENTRIES = 24;
 
 export class ReplyGenerationService {
@@ -351,60 +352,93 @@ export class ReplyGenerationService {
 
   /**
    * Build history for normal (episode) mode.
-   * - New episode (no cache): initial context = messages in [startedAt - 5min, startedAt], max NORMAL_MAX_HISTORY_ENTRIES. This is fixed for the whole episode.
-   * - Existing episode (has cache): same context (cached) + new messages since last cached; no 5-min re-filter so prefix stays stable for LLM cache.
+   * - SessionId is normalized so history and DB persistence use the same key (group:groupId / user:userId).
+   * - New episode (no cache): initial context = last EPISODE_CONTEXT_WINDOW_SIZE (10) messages within 10 min before trigger; stable start for the episode.
+   * - Existing episode (has cache): same start (cached prefix) + new messages from DB since last cached; when over cap, summarize front and set summary as new start (in memory).
    */
   private async buildNormalHistoryEntries(context: HookContext): Promise<{
     historyEntries: ConversationMessageEntry[];
     sessionId: string;
     episodeKey: string;
   }> {
-    const sessionId = String(context.metadata.get('sessionId') ?? '');
+    const rawSessionId = context.metadata.get('sessionId');
     const sessionType = (context.metadata.get('sessionType') as 'group' | 'user' | undefined) ?? 'group';
-    const now = new Date(context.message.timestamp || Date.now());
+    const canonicalSessionId = normalizeSessionId(
+      rawSessionId,
+      sessionType,
+      context.metadata.get('groupId'),
+      context.metadata.get('userId'),
+    );
+    const now = new Date(context.message.timestamp ?? Date.now());
     const episode = this.episodeService.resolveEpisode({
-      sessionId,
+      sessionId: canonicalSessionId,
       messageId: this.getMessageIdString(context),
       now,
       userMessage: context.message.message,
     });
-    const episodeKey = this.episodeService.buildEpisodeKey(sessionId, episode);
+    const episodeKey = this.episodeService.buildEpisodeKey(canonicalSessionId, episode);
     const currentMessageId = this.getMessageIdString(context);
 
     let entries: ConversationMessageEntry[];
     const cached = this.episodeHistoryCache.get(episodeKey);
 
     if (cached != null && cached.length > 0) {
-      // Existing episode: use same context (cached), append only new messages since last cached. No 5-min filter.
+      // Existing episode: stable start (cached) + new messages since last cached up to (excluding) current trigger.
       const lastCached = cached[cached.length - 1];
       const sinceAfterLast = new Date(lastCached.createdAt.getTime() + 1);
       const newMessages = await this.conversationHistoryService.getMessagesSinceForSession(
-        sessionId,
+        canonicalSessionId,
         sessionType,
         sinceAfterLast,
         NORMAL_MAX_HISTORY_ENTRIES + 10,
       );
       const appended = newMessages.filter((e) => e.messageId !== currentMessageId);
       const combined = [...cached, ...appended];
-      // Truncate only in reply path; summary/context maintenance runs outside reply flow.
-      entries = combined.length > NORMAL_MAX_HISTORY_ENTRIES ? combined.slice(-NORMAL_MAX_HISTORY_ENTRIES) : combined;
-      this.episodeHistoryCache.set(episodeKey, entries);
+      if (combined.length > NORMAL_MAX_HISTORY_ENTRIES) {
+        // Summarize front (oldest) into one entry; that becomes the new stable start (in memory only).
+        entries = await this.conversationHistoryService.replaceOldestWithSummary(
+          combined,
+          NORMAL_MAX_HISTORY_ENTRIES,
+          new Date(),
+        );
+        this.episodeHistoryCache.set(episodeKey, entries);
+      } else {
+        entries = combined;
+        this.episodeHistoryCache.set(episodeKey, entries);
+      }
     } else {
-      // New episode: initial context = [episode.contextWindowStart, episode.startedAt], max NORMAL_MAX_HISTORY_ENTRIES. This is the fixed context for the whole episode.
+      // New episode: last EPISODE_CONTEXT_WINDOW_SIZE (10) messages within 10 min before trigger; that defines the stable start.
       const raw = await this.conversationHistoryService.getMessagesSinceForSession(
-        sessionId,
+        canonicalSessionId,
         sessionType,
         episode.contextWindowStart,
-        NORMAL_MAX_HISTORY_ENTRIES,
+        500,
       );
       const startedAtTs = episode.startedAt.getTime();
-      entries = raw
-        .filter((e) => e.createdAt.getTime() <= startedAtTs && e.messageId !== currentMessageId)
-        .slice(-NORMAL_MAX_HISTORY_ENTRIES);
+      const inWindow = raw.filter(
+        (e) => e.createdAt.getTime() <= startedAtTs && e.messageId !== currentMessageId,
+      );
+      entries = inWindow.slice(-NormalEpisodeService.EPISODE_CONTEXT_WINDOW_SIZE);
+      // When 10-min window is empty, try last N from DB but still restrict to same 10-min window (never use old messages).
+      if (entries.length === 0) {
+        const contextWindowStartTs = episode.contextWindowStart.getTime();
+        const recent = await this.conversationHistoryService.getRecentMessagesForSession(
+          canonicalSessionId,
+          sessionType,
+          100,
+        );
+        const inWindowFromRecent = recent.filter(
+          (e) =>
+            e.messageId !== currentMessageId &&
+            e.createdAt.getTime() >= contextWindowStartTs &&
+            e.createdAt.getTime() <= startedAtTs,
+        );
+        entries = inWindowFromRecent.slice(-NormalEpisodeService.EPISODE_CONTEXT_WINDOW_SIZE);
+      }
       this.episodeHistoryCache.set(episodeKey, entries);
     }
 
-    return { historyEntries: entries, sessionId, episodeKey };
+    return { historyEntries: entries, sessionId: canonicalSessionId, episodeKey };
   }
 
   /**
@@ -518,8 +552,6 @@ export class ReplyGenerationService {
       finalUserBlocks,
     });
 
-    logger.debug('[ReplyGenerationService] buildReplyMessages messages', { messages });
-
     // When provider has vision, replace history entries that contain images with ContentPart[] (text + base64 image_url).
     if (hasVision && normalHistory.historyEntries.length > 0) {
       const getResourceUrl = (resourceId: string) => this.messageAPI.getResourceTempUrl(resourceId, context.message);
@@ -619,11 +651,6 @@ export class ReplyGenerationService {
     const messages = built.messages;
     const genOptions = { temperature: 0.7, maxTokens: 2000, sessionId };
 
-    logger.debug(`[ReplyGenerationService] generateReplyWithTaskResults`, {
-      messageCount: messages.length,
-      useVision: useVisionProvider,
-      messages: JSON.stringify(messages, null, 2),
-    });
     logger.info(
       `[ReplyGenerationService] Provider routing | reason=${reason} | confidence=${confidence} | explicitPrefix=${usedExplicitPrefix} | provider=${providerName ?? 'default'}`,
     );

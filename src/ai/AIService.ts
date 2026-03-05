@@ -132,8 +132,8 @@ export class AIService {
     }
   }
 
-  /** Proactive reply: max history entries in prompt so context is thread-recent (from thread start can be large). */
-  private static readonly PROACTIVE_MAX_HISTORY_ENTRIES = 20;
+  /** Proactive reply: max history entries in prompt; aligned with ProactiveReplyContextBuilder (summarization when over limit). */
+  private static readonly PROACTIVE_MAX_HISTORY_ENTRIES = 24;
 
   /**
    * Generate a single proactive reply for group participation.

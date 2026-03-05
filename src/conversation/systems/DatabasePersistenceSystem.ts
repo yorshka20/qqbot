@@ -2,6 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { getReply, getReplyContent } from '@/context/HookContextHelpers';
+import { normalizeSessionId } from '@/conversation/history';
 import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
 import type { DatabaseManager } from '@/database/DatabaseManager';
@@ -36,10 +37,18 @@ export class DatabasePersistenceSystem implements System {
   }
 
   async execute(context: HookContext): Promise<boolean> {
-    const sessionId = context.metadata.get('sessionId');
-    const sessionType = context.metadata.get('sessionType');
-
-    if (!sessionId || !sessionType) {
+    const rawSessionId = context.metadata.get('sessionId');
+    const sessionType = (context.metadata.get('sessionType') as 'group' | 'user') ?? 'group';
+    if (!sessionType) {
+      return true;
+    }
+    const sessionId = normalizeSessionId(
+      rawSessionId,
+      sessionType,
+      context.metadata.get('groupId'),
+      context.metadata.get('userId'),
+    );
+    if (!sessionId || sessionId.startsWith('unknown:')) {
       return true;
     }
 
@@ -66,9 +75,6 @@ export class DatabasePersistenceSystem implements System {
           lastMessageAt: now,
           metadata: {},
         });
-        logger.debug(
-          `[DatabasePersistenceSystem] Created conversation | conversationId=${conversationId} | sessionId=${sessionId}`,
-        );
       }
 
       const messages = adapter.getModel('messages');
@@ -141,7 +147,14 @@ export class DatabasePersistenceSystem implements System {
         messageData.messageId = message.messageId.toString();
       }
 
-      await messages.create(messageData);
+      // Use message event time for createdAt so DB reflects when the user sent the message (not server insert time).
+      // Normalize: protocol may send seconds (e.g. Milky) or ms; store as Date, adapter writes UTC ISO.
+      const userMessageTime = this.messageTimestampToDate(message.timestamp);
+      await messages.create({
+        ...messageData,
+        createdAt: userMessageTime,
+        updatedAt: userMessageTime,
+      });
 
       // Cache message in memory for quick lookup (e.g., for reply segments)
       cacheMessage(message);
@@ -182,5 +195,16 @@ export class DatabasePersistenceSystem implements System {
       logger.error('[DatabasePersistenceSystem] Failed to save to database:', err);
       return true;
     }
+  }
+
+  /**
+   * Message event timestamp is always in ms (normalized at protocol layer).
+   */
+  private messageTimestampToDate(timestamp: number | undefined): Date {
+    const raw = timestamp ?? Date.now();
+    if (typeof raw !== 'number' || Number.isNaN(raw)) {
+      return new Date();
+    }
+    return new Date(raw);
   }
 }

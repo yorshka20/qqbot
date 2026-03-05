@@ -21,19 +21,41 @@ import type {
 class MongoModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
   constructor(private collection: Collection) {}
 
-  async create(data: Omit<T, 'id' | 'createdAt' | 'updatedAt'>): Promise<T> {
+  async create(
+    data: Omit<T, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<BaseModel, 'createdAt' | 'updatedAt'>>,
+  ): Promise<T> {
     const now = new Date();
+    const createdAt = this.toDate((data as Record<string, unknown>).createdAt) ?? now;
+    const updatedAt = this.toDate((data as Record<string, unknown>).updatedAt) ?? now;
     const id = randomUUID();
     const record = {
       ...data,
       _id: id,
       id,
-      createdAt: now,
-      updatedAt: now,
+      createdAt,
+      updatedAt,
     } as T & { _id: string };
 
     await this.collection.insertOne(record as unknown as Record<string, unknown>);
     return record;
+  }
+
+  private toDate(value: unknown): Date | null {
+    if (value == null) {
+      return null;
+    }
+    if (value instanceof Date) {
+      return value;
+    }
+    if (typeof value === 'number' && !Number.isNaN(value)) {
+      const ms = value > 0 && value < 1e12 ? value * 1000 : value;
+      return new Date(ms);
+    }
+    if (typeof value === 'string') {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    return null;
   }
 
   async findById(id: string): Promise<T | null> {
