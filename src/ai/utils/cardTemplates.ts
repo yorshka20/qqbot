@@ -152,36 +152,44 @@ export function infoCard(data: InfoCardData): string {
 }
 
 /**
- * Comparison card template
+ * Comparison card template (pros/cons style with left=positive, right=negative)
  */
 export function comparisonCard(data: ComparisonCardData): string {
   const title = escapeHtml(data.title);
   const rows = data.items
-    .map(
-      (item) => `
-        <tr>
-          <td class="label">${escapeHtml(item.label)}</td>
-          <td>${sanitizeContentHtml(item.left)}</td>
-          <td>${sanitizeContentHtml(item.right)}</td>
-        </tr>
-      `,
-    )
+    .map((item) => {
+      const label = escapeHtml(item.label);
+      const leftContent = sanitizeContentHtml(item.left);
+      const rightContent = item.right.trim() === '' ? '' : sanitizeContentHtml(item.right);
+      const rightCellClass = rightContent === '' ? 'comparison-cell empty-cell' : 'comparison-cell right-cell';
+      return `
+          <div class="comparison-row">
+            <div class="comparison-row-label">
+              <span class="row-label-text">${label}</span>
+            </div>
+            <div class="comparison-cell left-cell">${leftContent}</div>
+            <div class="${rightCellClass}">${rightContent}</div>
+          </div>
+        `;
+    })
     .join('');
   return `
     <div class="comparison-card">
-      <h2>${title}</h2>
-      <table class="comparison-table">
-        <thead>
-          <tr>
-            <th></th>
-            <th>选项 A</th>
-            <th>选项 B</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows}
-        </tbody>
-      </table>
+      <div class="comparison-card-title">${title}</div>
+      <div class="comparison-col-headers">
+        <div></div>
+        <div class="comparison-col-header left-header">
+          <span class="col-header-icon">✓</span>
+          值得肯定
+        </div>
+        <div class="comparison-col-header right-header">
+          <span class="col-header-icon">✗</span>
+          争议 / 缺陷
+        </div>
+      </div>
+      <div class="comparison-rows">
+        ${rows}
+      </div>
     </div>
   `;
 }

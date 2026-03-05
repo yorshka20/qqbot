@@ -92,6 +92,23 @@ export const cardStyles = `
     content: "";
     margin-top: 0.6em;
   }
+  /* QA: strong/em on blue-gray gradient - use dark text for contrast (audit) */
+  .question strong {
+    color: #1a1f36;
+    font-weight: 700;
+  }
+  .answer-content strong {
+    color: #1e3a5f;
+    font-weight: 700;
+  }
+  .answer-content em {
+    color: #5b21b6;
+    font-style: normal;
+    background: rgba(91, 33, 182, 0.12);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
 
   /* 列表卡片 */
   .list-card {
@@ -142,6 +159,11 @@ export const cardStyles = `
     line-height: 1.7;
     color: #2c3e50;
   }
+  /* List: strong on #f8f9fa - darker for WCAG AA (audit) */
+  .styled-list li span:last-child strong {
+    color: #334155;
+    font-weight: 700;
+  }
 
   /* 信息框 */
   .info-box {
@@ -191,45 +213,184 @@ export const cardStyles = `
     content: "";
     margin-top: 0.6em;
   }
+  /* Info box: per-level strong/em to avoid blue-on-blue, green-on-green, purple-on-purple (audit) */
+  .info-box.info .info-header strong,
+  .info-box.info .info-content strong {
+    color: #0d47a1;
+    font-weight: 700;
+  }
+  .info-box.info .info-content em {
+    color: #1565c0;
+    font-style: normal;
+    background: rgba(21, 101, 192, 0.15);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+  .info-box.warning .info-header strong,
+  .info-box.warning .info-content strong {
+    color: #bf360c;
+    font-weight: 700;
+  }
+  .info-box.warning .info-content em {
+    color: #e65100;
+    font-style: normal;
+    background: rgba(230, 81, 0, 0.12);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+  .info-box.success .info-header strong,
+  .info-box.success .info-content strong {
+    color: #1b5e20;
+    font-weight: 700;
+  }
+  .info-box.success .info-content em {
+    color: #2e7d32;
+    font-style: normal;
+    background: rgba(46, 125, 50, 0.12);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+  .info-box.tip .info-header strong,
+  .info-box.tip .info-content strong {
+    color: #6a1b9a;
+    font-weight: 700;
+  }
+  .info-box.tip .info-content em {
+    color: #7b1fa2;
+    font-style: normal;
+    background: rgba(123, 31, 162, 0.12);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
 
-  /* 对比表格 */
-  .comparison-card h2 {
-    color: #2c3e50;
-    margin-bottom: 24px;
-    font-size: 22px;
-  }
-  .comparison-table {
-    width: 100%;
-    border-collapse: collapse;
+  /* Comparison card (pros/cons style) */
+  .comparison-card {
     margin: 0;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-    border-radius: 12px;
-    overflow: hidden;
   }
-  .comparison-table th {
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: white;
-    padding: 16px;
-    text-align: left;
+  .comparison-card-title {
+    font-size: 21px;
+    font-weight: 700;
+    color: #1a1f36;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid #f0f0f0;
+    letter-spacing: 0.01em;
+  }
+  .comparison-col-headers {
+    display: grid;
+    grid-template-columns: 96px 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .comparison-col-header {
+    padding: 10px 14px;
+    font-size: 13px;
     font-weight: 600;
-    font-size: 15px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    border-radius: 8px;
   }
-  .comparison-table td {
-    padding: 16px;
-    border-bottom: 1px solid #e0e0e0;
-    background: white;
-    font-size: 15px;
+  .comparison-col-header.left-header {
+    background: #edfaf1;
+    color: #1a7a3c;
+    border: 1px solid #b7eacb;
   }
-  .comparison-table tr:last-child td {
-    border-bottom: none;
+  .comparison-col-header.right-header {
+    background: #fff1f2;
+    color: #b91c2c;
+    border: 1px solid #fecdd3;
   }
-  .comparison-table tr:hover td {
-    background: #f5f7fa;
+  .col-header-icon {
+    font-size: 14px;
+    line-height: 1;
   }
-  .comparison-table .label {
+  .comparison-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .comparison-row {
+    display: grid;
+    grid-template-columns: 96px 1fr 1fr;
+    gap: 6px;
+  }
+  .comparison-row-label {
+    display: flex;
+    align-items: flex-start;
+    padding-top: 14px;
+  }
+  .row-label-text {
+    font-size: 13px;
     font-weight: 600;
-    color: #667eea;
-    min-width: 120px;
+    color: #6b7280;
+    line-height: 1.5;
+    letter-spacing: 0.01em;
+    padding-right: 8px;
+    border-right: 2px solid #e5e7eb;
+    width: 100%;
+  }
+  .comparison-cell {
+    padding: 14px 16px;
+    font-size: 14px;
+    line-height: 1.75;
+    color: #374151;
+    border-radius: 8px;
+  }
+  .comparison-cell.left-cell {
+    background: #f6fef9;
+    border: 1px solid #d1fae5;
+  }
+  .comparison-cell.right-cell {
+    background: #fff9f9;
+    border: 1px solid #fee2e2;
+  }
+  .comparison-cell.empty-cell {
+    background: transparent;
+    border: none;
+  }
+  .comparison-cell ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .comparison-cell ul li {
+    position: relative;
+    padding-left: 14px;
+    margin: 6px 0;
+    line-height: 1.7;
+  }
+  .left-cell ul li::before {
+    content: '';
+    position: absolute;
+    left: 1px;
+    top: 8px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #34d399;
+  }
+  .right-cell ul li::before {
+    content: '';
+    position: absolute;
+    left: 1px;
+    top: 8px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #f87171;
+  }
+  .comparison-cell p {
+    margin: 0;
+    line-height: 1.8;
+  }
+  .comparison-cell strong {
+    color: #111827;
+    font-weight: 700;
   }
 
   /* 知识卡片 - 分层白底块、减少留白感、排版更紧凑清晰 */
@@ -282,6 +443,19 @@ export const cardStyles = `
     display: block;
     content: "";
     margin-top: 0.5em;
+  }
+  /* Knowledge: definition strong OK on white; em use darker purple for contrast (audit) */
+  .definition strong {
+    color: #1e3a5f;
+    font-weight: 700;
+  }
+  .definition em {
+    color: #5b21b6;
+    font-style: normal;
+    background: rgba(91, 33, 182, 0.08);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 500;
   }
   .examples {
     background: #ffffff;
@@ -374,6 +548,10 @@ export const cardStyles = `
     opacity: 0.85;
     font-weight: 500;
   }
+  /* Stats: explicit label color on blue-gray background for contrast (audit) */
+  .stat-item:not(.highlight) .stat-label {
+    color: #374151;
+  }
 
   strong { 
     color: #667eea; 
@@ -389,20 +567,16 @@ export const cardStyles = `
     font-weight: 500;
   }
   
-  /* Ensure strong and em work in all contexts */
+  /* Fallback strong/em for card content not overridden above (e.g. comparison-cell) */
   .answer-content strong,
   .info-content strong,
   .definition strong {
-    color: #667eea;
     font-weight: 700;
   }
-  
   .answer-content em,
   .info-content em,
   .definition em {
-    color: #764ba2;
     font-style: normal;
-    background: rgba(118, 75, 162, 0.1);
     padding: 3px 8px;
     border-radius: 4px;
     font-weight: 500;
@@ -413,7 +587,7 @@ export const cardStyles = `
   .info-content code,
   .definition code,
   .styled-list li span:last-child code,
-  .comparison-table td code {
+  .comparison-cell code {
     font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 0.9em;
     background: rgba(0,0,0,0.06);
@@ -525,7 +699,7 @@ export const cardStyles = `
   .footer {
     margin-top: 28px;
     padding-top: 18px;
-    border-top: 2px solid #e8e8e8;
+    border-top: 2px solid #fff;
     text-align: center;
     color: #999;
     font-size: 13px;
