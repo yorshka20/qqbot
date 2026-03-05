@@ -144,11 +144,15 @@ export function replaceReplyWithSegments(
  * @returns Reply text or undefined if no reply exists
  */
 export function getReply(context: HookContext): string | undefined {
-  if (!context.reply?.segments) {
+  if (!context.reply) {
     return undefined;
   }
+  // Card reply: prefer stored card text (even if segments were missing) so we never lose card text
   if (context.reply.metadata?.cardTextForHistory != null && context.reply.metadata.cardTextForHistory !== '') {
     return context.reply.metadata.cardTextForHistory;
+  }
+  if (!context.reply.segments || context.reply.segments.length === 0) {
+    return undefined;
   }
   return extractTextFromSegments(context.reply.segments);
 }
