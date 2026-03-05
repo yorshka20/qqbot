@@ -1,6 +1,6 @@
 // Message Cache - simple singleton for in-memory message caching
 
-import type { ProtocolName } from '@/core/config/protocol';
+import type { ProtocolName } from '@/core/config/types/protocol';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
 

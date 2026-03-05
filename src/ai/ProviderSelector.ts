@@ -1,6 +1,6 @@
 // Provider Selector - manages session-level provider selection
 
-import type { ConversationConfigService } from '@/config/ConversationConfigService';
+import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import type { ProviderSelection } from '@/database/models/types';
 import { logger } from '@/utils/logger';
 import type { AIManager } from './AIManager';

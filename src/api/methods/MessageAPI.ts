@@ -1,7 +1,7 @@
 // Message API method wrappers
 
 import type { CommandContext } from '@/command/types';
-import type { ProtocolName } from '@/core/config/protocol';
+import type { ProtocolName } from '@/core/config/types/protocol';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { Message } from '@/database/models/types';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';

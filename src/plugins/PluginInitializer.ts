@@ -3,7 +3,7 @@
 // PluginManager is created on first resolve (after ConversationInitializer has registered deps).
 
 import type { APIClient } from '@/api/APIClient';
-import type { ConversationConfigService } from '@/config/ConversationConfigService';
+import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';

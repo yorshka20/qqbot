@@ -1,6 +1,6 @@
 // Capability type definitions
 
-import type { AIProviderCapability } from '@/core/config/ai';
+import type { AIProviderCapability } from '@/core/config/types/ai';
 
 /**
  * Vision image input type

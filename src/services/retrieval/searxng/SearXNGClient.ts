@@ -1,6 +1,6 @@
 // SearXNG HTTP API client (Direct mode)
 
-import type { SearXNGConfig } from '@/core/config/mcp';
+import type { SearXNGConfig } from '@/core/config/types/mcp';
 import type { HealthCheckOptions, HealthCheckResult } from '@/core/health';
 import { HealthStatus } from '@/core/health';
 import type { HealthCheckable } from '@/core/health/types';

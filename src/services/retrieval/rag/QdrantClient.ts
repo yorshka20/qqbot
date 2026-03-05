@@ -4,7 +4,7 @@
 
 import { validate as uuidValidate, v5 as uuidv5 } from 'uuid';
 import { HttpClient } from '@/api/http/HttpClient';
-import type { QdrantConfig } from '@/core/config/rag';
+import type { QdrantConfig } from '@/core/config/types/rag';
 import { logger } from '@/utils/logger';
 
 /** Use RFC DNS namespace for deterministic UUID v5 from RAG document ids (e.g. message id). Same id => same point id. */

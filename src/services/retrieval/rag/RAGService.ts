@@ -1,6 +1,6 @@
 // RAG service - vector retrieval via Ollama embed + Qdrant
 
-import type { RAGConfig } from '@/core/config/rag';
+import type { RAGConfig } from '@/core/config/types/rag';
 import { logger } from '@/utils/logger';
 import { OllamaEmbedClient } from './OllamaEmbedClient';
 import { QdrantClient } from './QdrantClient';

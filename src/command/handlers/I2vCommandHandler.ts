@@ -11,7 +11,7 @@ import { extractImagesFromMessageAndReply, visionImageToBuffer } from '@/ai/util
 import type { APIClient } from '@/api/APIClient';
 import { FileAPI } from '@/api/methods/FileAPI';
 import { MessageAPI } from '@/api/methods/MessageAPI';
-import { getSessionId } from '@/config/SessionUtils';
+import { getSessionId } from '@/core/config/SessionUtils';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { MessageBuilder } from '@/message/MessageBuilder';

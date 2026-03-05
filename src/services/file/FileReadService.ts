@@ -4,7 +4,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, extname, isAbsolute, normalize, relative, resolve } from 'node:path';
 import { CardRenderer } from '@/ai/utils/CardRenderer';
 import type { InfoCardData } from '@/ai/utils/cardTypes';
-import type { FileReadServiceConfig } from '@/core/config/bot';
+import type { FileReadServiceConfig } from '@/core/config/types/bot';
 import { logger } from '@/utils/logger';
 
 /** Max file content length before truncation (chars) */

@@ -1,7 +1,7 @@
 // Message utility functions - centralized message analysis helpers
 
 import { CommandParser } from '@/command/CommandParser';
-import type { BotSelfConfig } from '@/core/config/bot';
+import type { BotSelfConfig } from '@/core/config/types/bot';
 import type { NormalizedMessageEvent } from '@/events/types';
 
 /**

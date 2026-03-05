@@ -1,6 +1,6 @@
 // Protocol configuration types
 
-import type { APIStrategy, BackoffStrategy, DeduplicationStrategy } from './types';
+import type { APIStrategy, BackoffStrategy, DeduplicationStrategy } from './const';
 
 export type ProtocolName = 'milky' | 'onebot11' | 'satori';
 

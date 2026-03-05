@@ -4,19 +4,23 @@ import { existsSync, readFileSync } from 'fs';
 import { parse as parseJsonc } from 'jsonc-parser';
 import { extname, resolve } from 'path';
 import { ConfigError } from '@/utils/errors';
-
 // Import all config types
-import type { AIConfig, AIProviderCapability, ContextMemoryConfig, SessionProviderConfig } from './ai';
-import type { BotSelfConfig, FileReadServiceConfig, StaticServerConfig } from './bot';
-import type { DatabaseConfig } from './database';
-import type { MCPConfig } from './mcp';
-import type { MemoryConfig } from './memory';
-import type { PluginsConfig } from './plugins';
-import type { PromptsConfig } from './prompts';
-import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './protocol';
-import type { RAGConfig } from './rag';
-import type { TTSConfig } from './tts';
+import type { AIConfig, AIProviderCapability, ContextMemoryConfig, SessionProviderConfig } from './types/ai';
+import type { BotSelfConfig, FileReadServiceConfig, StaticServerConfig } from './types/bot';
+import type { DatabaseConfig } from './types/database';
+import type { MCPConfig } from './types/mcp';
+import type { MemoryConfig } from './types/memory';
+import type { PluginsConfig } from './types/plugins';
+import type { PromptsConfig } from './types/prompts';
+import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './types/protocol';
+import type { RAGConfig } from './types/rag';
+import type { TTSConfig } from './types/tts';
 
+// Re-export runtime/conversation config (merged from former src/config)
+export { ConversationConfigService, type SessionType } from '../../conversation/ConversationConfigService';
+export { updateEnabledDisabled } from './ConfigUtils';
+export { GlobalConfigManager } from './GlobalConfigManager';
+export { getSessionId, getSessionType } from './SessionUtils';
 // Re-export all types for convenience
 export type {
   AIConfig,
@@ -33,9 +37,10 @@ export type {
   OpenAIProviderConfig,
   OpenRouterProviderConfig,
   SessionProviderConfig,
-} from './ai';
-export type { BotSelfConfig, StaticServerConfig } from './bot';
-export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './database';
+} from './types/ai';
+export type { BotSelfConfig, StaticServerConfig } from './types/bot';
+export type { LogLevel } from './types/const';
+export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './types/database';
 export type {
   MCPConfig,
   MCPServerConfig,
@@ -45,10 +50,10 @@ export type {
   SearchMode,
   SearXNGConfig,
   TriggerStrategy,
-} from './mcp';
-export type { MemoryConfig } from './memory';
-export type { PluginsConfig } from './plugins';
-export type { PromptsConfig } from './prompts';
+} from './types/mcp';
+export type { MemoryConfig } from './types/memory';
+export type { PluginsConfig } from './types/plugins';
+export type { PromptsConfig } from './types/prompts';
 export type {
   APIConfig,
   EventDeduplicationConfig,
@@ -56,10 +61,9 @@ export type {
   ProtocolConnectionConfig,
   ProtocolName,
   ReconnectConfig,
-} from './protocol';
-export type { RAGConfig } from './rag';
-export type { TTSConfig } from './tts';
-export type { LogLevel } from './types';
+} from './types/protocol';
+export type { RAGConfig } from './types/rag';
+export type { TTSConfig } from './types/tts';
 
 export interface BotConfig {
   protocols: ProtocolConfig[];

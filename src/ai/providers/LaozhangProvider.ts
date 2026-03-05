@@ -3,7 +3,7 @@
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { HttpClient } from '@/api/http/HttpClient';
-import type { LaozhangProviderConfig } from '@/core/config/ai';
+import type { LaozhangProviderConfig } from '@/core/config/types/ai';
 import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';

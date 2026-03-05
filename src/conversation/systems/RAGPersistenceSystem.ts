@@ -3,7 +3,7 @@
 import { getReply } from '@/context/HookContextHelpers';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { buildConversationWindowDocument } from '@/conversation/rag/buildConversationWindowDocument';
-import type { RAGConfig } from '@/core/config/rag';
+import type { RAGConfig } from '@/core/config/types/rag';
 import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
 import type { HookContext } from '@/hooks/types';

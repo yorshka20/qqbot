@@ -3,8 +3,8 @@
 import type { DatabaseAdapter } from '@/database/base/DatabaseAdapter';
 import type { ConversationConfigData } from '@/database/models/types';
 import { logger } from '@/utils/logger';
-import { updateEnabledDisabled } from './ConfigUtils';
-import type { GlobalConfigManager } from './GlobalConfigManager';
+import { updateEnabledDisabled } from '../core/config/ConfigUtils';
+import type { GlobalConfigManager } from '../core/config/GlobalConfigManager';
 
 export type SessionType = 'user' | 'group';
 

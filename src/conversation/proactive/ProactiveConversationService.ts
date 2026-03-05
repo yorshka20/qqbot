@@ -10,7 +10,7 @@ import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import type { ConversationContext } from '@/context/types';
 import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
-import type { ProtocolName } from '@/core/config/protocol';
+import type { ProtocolName } from '@/core/config/types/protocol';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { Message } from '@/database/models/types';

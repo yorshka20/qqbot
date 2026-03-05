@@ -3,9 +3,9 @@
 import type { AIService } from '@/ai/AIService';
 import type { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
-import type { ConversationConfigService } from '@/config/ConversationConfigService';
-import { getSessionId, getSessionType } from '@/config/SessionUtils';
+import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import type { ProcessStageInterceptor, ProcessStageInterceptorRegistry } from '@/conversation/ProcessStageInterceptor';
+import { getSessionId, getSessionType } from '@/core/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';

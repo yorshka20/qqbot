@@ -3,7 +3,7 @@
 import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 import { HttpClient } from '@/api/http/HttpClient';
-import type { SearchFetchConfig } from '@/core/config/mcp';
+import type { SearchFetchConfig } from '@/core/config/types/mcp';
 import { logger } from '@/utils/logger';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 

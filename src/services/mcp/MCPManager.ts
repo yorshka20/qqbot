@@ -1,6 +1,6 @@
 // MCP Manager - manages multiple MCP clients
 
-import type { MCPConfig } from '@/core/config/mcp';
+import type { MCPConfig } from '@/core/config/types/mcp';
 import { logger } from '@/utils/logger';
 import { MCPClient } from './MCPClient';
 import type { MCPTool, MCPToolCallResult } from './types';

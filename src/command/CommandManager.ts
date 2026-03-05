@@ -3,8 +3,8 @@
 // import handler to register commands
 import './handlers';
 
-import type { ConversationConfigService } from '@/config/ConversationConfigService';
-import { getSessionId, getSessionType } from '@/config/SessionUtils';
+import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
+import { getSessionId, getSessionType } from '@/core/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';

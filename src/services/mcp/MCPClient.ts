@@ -2,7 +2,7 @@
 
 import { Client } from '@modelcontextprotocol/sdk/client';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import type { MCPConfig, MCPRuntime } from '@/core/config/mcp';
+import type { MCPConfig, MCPRuntime } from '@/core/config/types/mcp';
 import { logger } from '@/utils/logger';
 import type { MCPTool, MCPToolCallResult } from './types';
 

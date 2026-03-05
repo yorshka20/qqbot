@@ -1,7 +1,7 @@
 // Ollama embed client - calls /api/embed and returns normalized vectors
 
 import { HttpClient } from '@/api/http/HttpClient';
-import type { OllamaEmbedConfig } from '@/core/config/rag';
+import type { OllamaEmbedConfig } from '@/core/config/types/rag';
 
 interface OllamaEmbedResponse {
   embeddings: number[][];

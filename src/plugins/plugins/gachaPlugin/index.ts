@@ -6,7 +6,7 @@ import { CommandBuilder } from '@/command/CommandBuilder';
 import type { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
 import { createHookContextForCommand } from '@/command/utils/HookContextBuilder';
-import { getSessionId } from '@/config/SessionUtils';
+import { getSessionId } from '@/core/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';

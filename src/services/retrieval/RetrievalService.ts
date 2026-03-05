@@ -2,8 +2,8 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
-import type { MCPConfig } from '@/core/config/mcp';
-import type { RAGConfig } from '@/core/config/rag';
+import type { MCPConfig } from '@/core/config/types/mcp';
+import type { RAGConfig } from '@/core/config/types/rag';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HealthCheckManager } from '@/core/health';

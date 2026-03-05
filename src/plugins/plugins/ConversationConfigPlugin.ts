@@ -3,7 +3,7 @@
 
 import type { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult, PermissionLevel } from '@/command/types';
-import { getSessionId, getSessionType } from '@/config/SessionUtils';
+import { getSessionId, getSessionType } from '@/core/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
