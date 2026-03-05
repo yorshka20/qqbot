@@ -171,19 +171,18 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
    * Short LLM check: is retrieved knowledge sufficient? If not, return chunks from one supplement search.
    */
   private async checkSufficiencyAndMaybeSupplement(topic: string, chunks: string[], limit: number): Promise<string[]> {
-    const chunksSummary = chunks.map((c) => c.replace(/\n/g, ' ').trim().slice(0, 80)).join('\n');
-    const summaryCapped = chunksSummary.slice(0, 400);
+    const chunksSummary = chunks.map((c, i) => `${i + 1}. ${c.replace(/\n/g, ' ').trim()}`).join('\n');
 
     const prompt = this.promptManager.render('llm.proactive_knowledge_sufficient', {
       topic,
-      chunksSummary: summaryCapped || '(无)',
+      chunksSummary,
     });
 
     let responseText: string;
     try {
       const response = await this.llmService.generate(prompt, {
         temperature: 0.2,
-        maxTokens: 150,
+        maxTokens: 1500,
       });
       responseText = (response.text || '').trim();
     } catch (err) {

@@ -325,7 +325,7 @@ export class MemoryTriggerPlugin extends PluginBase {
   private mergeAndUpsertUserMemory(groupId: string, userId: string, content: string): Promise<void> {
     const existing = this.memoryService.getUserMemoryText(groupId, userId);
     return this.memoryExtractService
-      .mergeWithExisting(existing, content)
+      .mergeWithExisting(existing, content, 'user')
       .then((merged) => {
         if (merged) {
           return this.memoryService.upsertMemory(groupId, userId, false, merged);
