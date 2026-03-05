@@ -50,6 +50,69 @@ export class ConversationHistoryService {
   }
 
   /**
+   * Append a bot reply to the group conversation in DB for **non-pipeline** reply paths only (proactive reply, "已结束 thread").
+   * Pipeline replies (user @ bot, reply-only) are persisted by DatabasePersistenceSystem in COMPLETE stage; they never call this,
+   * so there is no duplicate. Proactive sends do not go through the pipeline, so this is the only place they are written to DB.
+   * Stores the given text as message content so that getRecentMessages and analysis see card text, not image placeholder.
+   *
+   * @param groupId - Group ID (string or number)
+   * @param content - Reply text to store (card text when reply was rendered as card; plain text otherwise)
+   * @param options - Optional botUserId (default 0)
+   */
+  async appendBotReplyToGroup(
+    groupId: string | number,
+    content: string,
+    options?: { botUserId?: number },
+  ): Promise<void> {
+    const adapter = this.databaseManager.getAdapter();
+    if (!adapter?.isConnected()) {
+      return;
+    }
+    const sessionId =
+      typeof groupId === 'number' ? `group:${groupId}` : groupId.startsWith('group:') ? groupId : `group:${groupId}`;
+    const groupIdNum = typeof groupId === 'number' ? groupId : parseInt(String(groupId).replace(/^group:/, ''), 10) || 0;
+    const botUserId = options?.botUserId ?? 0;
+    try {
+      const conversations = adapter.getModel('conversations');
+      let conversation: Conversation | null = await conversations.findOne({
+        sessionId,
+        sessionType: 'group',
+      });
+      const now = new Date();
+      if (!conversation) {
+        conversation = await conversations.create({
+          sessionId,
+          sessionType: 'group',
+          messageCount: 0,
+          lastMessageAt: now,
+          metadata: {},
+        });
+      }
+      const messages = adapter.getModel('messages');
+      await messages.create({
+        conversationId: conversation.id,
+        userId: botUserId,
+        messageType: 'group',
+        groupId: groupIdNum,
+        content,
+        protocol: 'unknown',
+        metadata: {
+          isBotReply: true,
+          timestamp: now.toISOString(),
+        },
+      });
+      const messageCount = await messages.count({ conversationId: conversation.id });
+      await conversations.update(conversation.id, {
+        messageCount,
+        lastMessageAt: now,
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : error;
+      logger.warn('[ConversationHistoryService] Failed to append bot reply to group:', err);
+    }
+  }
+
+  /**
    * Get last N messages for any session (group or user) from DB.
    * When limit is 0, returns all messages (no cap); use for RAG cold start full backfill.
    */

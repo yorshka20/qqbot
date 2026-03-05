@@ -326,7 +326,9 @@ export class ProactiveConversationService {
     const topicLabel = currentThread.lastTopic || '当前';
     await this.threadPersistence.saveEndedThread(currentThread);
     this.threadService.endThread(currentThread.threadId);
-    await this.sendGroupMessage(groupIdNum, `已结束${topicLabel}thread。`);
+    const endMessage = `已结束${topicLabel}thread。`;
+    await this.sendGroupMessage(groupIdNum, endMessage);
+    await this.conversationHistoryService.appendBotReplyToGroup(groupId, endMessage);
     logger.info(
       `[ProactiveConversationService] Thread ended by trigger user (话题结束) | threadId=${currentThread.threadId} | groupId=${groupId} | topic=${topicLabel}`,
     );
@@ -743,12 +745,14 @@ export class ProactiveConversationService {
     );
     const toSend = cardResult ? cardResult.segments : replyText;
     const toAppend = cardResult ? cardResult.textForHistory : replyText;
-    await this.sendGroupMessage(groupIdNum, toSend);
+    // Update thread and DB before/on send so the next message or analysis run already sees this reply (no need to wait for echo).
     this.threadService.appendMessage(thread.threadId, {
       userId: 0,
       content: toAppend,
       isBotReply: true,
     });
+    await this.sendGroupMessage(groupIdNum, toSend);
+    await this.conversationHistoryService.appendBotReplyToGroup(groupId, toAppend);
   }
 
   private async replyInThread(
@@ -791,12 +795,14 @@ export class ProactiveConversationService {
     );
     const toSend = cardResult ? cardResult.segments : replyText;
     const toAppend = cardResult ? cardResult.textForHistory : replyText;
-    await this.sendGroupMessage(groupIdNum, toSend);
+    // Update thread and DB before/on send so the next message or analysis run already sees this reply (no need to wait for echo).
     this.threadService.appendMessage(threadId, {
       userId: 0,
       content: toAppend,
       isBotReply: true,
     });
+    await this.sendGroupMessage(groupIdNum, toSend);
+    await this.conversationHistoryService.appendBotReplyToGroup(thread.groupId, toAppend);
   }
 
   private async sendGroupMessage(groupId: number, message: string | MessageSegment[]): Promise<void> {

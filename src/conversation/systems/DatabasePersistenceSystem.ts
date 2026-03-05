@@ -12,9 +12,16 @@ import { logger } from '@/utils/logger';
 
 /**
  * Database Persistence System
- * Saves messages and conversations to database after processing
- * Executes in COMPLETE stage to ensure all data is saved
- * Also caches messages in memory for quick lookup
+ * Saves messages and conversations to database after processing.
+ * Executes in COMPLETE stage so that every reply path has already produced context.reply before we run.
+ *
+ * Guarantee (no loss, no duplicate):
+ * - Pipeline reply paths (full lifecycle, reply-only): we persist the trigger user message + bot reply here
+ *   (reply is persisted in the same run that sends it; send happens in MessagePipeline.handleReply after COMPLETE).
+ * - Proactive reply path: does not go through this system; ProactiveConversationService calls
+ *   ConversationHistoryService.appendBotReplyToGroup() after sending, so the reply is written to DB there.
+ * - Bot's own message (echo): we skip persisting entirely so we never store the echo as a second record;
+ *   the real reply was already stored in the run that sent it (or via appendBotReplyToGroup for proactive).
  */
 export class DatabasePersistenceSystem implements System {
   readonly name = 'database-persistence';
@@ -69,7 +76,17 @@ export class DatabasePersistenceSystem implements System {
       const reply = getReply(context);
       const replyContent = getReplyContent(context);
 
-      // Save user message
+      // Skip this entire run when the *incoming* message is from the bot (echo). We do not persist the echo; the real reply was already stored in the run that handled the user message (below we persist user message + bot reply for that run).
+      const botSelfId = context.metadata.get('botSelfId');
+      const isFromBot =
+        botSelfId != null &&
+        message.userId != null &&
+        String(message.userId) === String(botSelfId);
+      if (isFromBot) {
+        return true;
+      }
+
+      // Save *trigger* user message (the one that caused this run)
       // For Milky protocol, save all important fields to metadata
       const metadata: Record<string, unknown> = {
         sender: message.sender,
@@ -95,17 +112,18 @@ export class DatabasePersistenceSystem implements System {
       }
 
       // Always persist segments when we have content so that reply-target messages can be restored with image segments
+      const userMessageContent = message.message ?? '';
       const segmentsToSave = message.segments?.length
         ? message.segments
-        : message.message
-          ? [{ type: 'text', data: { text: message.message } }]
+        : userMessageContent
+          ? [{ type: 'text', data: { text: userMessageContent } }]
           : undefined;
       const messageData: Omit<Message, 'id' | 'createdAt' | 'updatedAt'> = {
         conversationId: conversation.id,
         userId: message.userId,
         messageType: message.messageType,
         groupId: message.groupId,
-        content: message.message,
+        content: userMessageContent,
         rawContent: segmentsToSave ? JSON.stringify(segmentsToSave) : undefined,
         protocol: message.protocol || 'unknown',
         metadata,
@@ -128,12 +146,11 @@ export class DatabasePersistenceSystem implements System {
       // Cache message in memory for quick lookup (e.g., for reply segments)
       cacheMessage(message);
 
-      // Save bot reply if exists.
+      // Save bot reply for *this* run (only reached when message was from user; echo run already returned above).
       // reply comes from getReply(context): for card reply it is cardTextForHistory (card JSON text); for text reply it is extracted text.
       // Card text is stored in content so that when loading from DB we use message.content to get the card text (LLM-readable).
       // For card reply we omit rawContent to avoid storing the image; for non-card we keep rawContent (segments) when present.
       if (reply) {
-        const botSelfId = context.metadata.get('botSelfId');
         const botUserId = typeof botSelfId === 'string' ? parseInt(botSelfId, 10) : botSelfId || 0;
         const isCardReply = replyContent?.metadata?.isCardImage === true;
         await messages.create({
