@@ -18,9 +18,9 @@ import type { AIManager } from './AIManager';
 import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions, VisionImage } from './capabilities/types';
 import type { ProviderSelector } from './ProviderSelector';
 import type { PromptManager } from './prompt/PromptManager';
+import { PromptMessageAssembler } from './prompt/PromptMessageAssembler';
 import { ProviderRouter } from './routing/ProviderRouter';
 import type { I2VPromptResult } from './schemas';
-import { PromptMessageAssembler } from './prompt/PromptMessageAssembler';
 import { CardRenderingService } from './services/CardRenderingService';
 import { ImageGenerationService } from './services/ImageGenerationService';
 import { ImagePromptService } from './services/ImagePromptService';
@@ -132,6 +132,9 @@ export class AIService {
     }
   }
 
+  /** Proactive reply: max history entries in prompt so context is thread-recent (from thread start can be large). */
+  private static readonly PROACTIVE_MAX_HISTORY_ENTRIES = 20;
+
   /**
    * Generate a single proactive reply for group participation.
    * All injectable text (preference, thread, RAG, memory) is provided via context from the context layer.
@@ -141,29 +144,41 @@ export class AIService {
   async generateProactiveReply(context: ProactiveReplyInjectContext, providerName?: string): Promise<string> {
     const genOptions = {
       temperature: 0.5,
-      maxTokens: 10000,
+      maxTokens: 2000,
       sessionId: context.sessionId,
     };
     const baseSystemPrompt = this.promptManager.renderBasePrompt();
     const sceneSystemPrompt = this.promptManager.render('llm.proactive.system', {
       preferenceText: context.preferenceText,
     });
+    const lastUserMessage = context.lastUserMessage?.trim() ?? '（无）';
     const finalUserQuery = this.promptManager.render('llm.proactive.user_frame', {
-      currentRequest: '请基于当前 thread 连续语境给出你的主动回复。',
+      lastUserMessage,
     });
+    // Scope history to last N entries so prompt reflects "thread recent" context, not entire thread from start
+    const rawHistory = context.historyEntries ?? [];
+    const historyEntries =
+      rawHistory.length <= AIService.PROACTIVE_MAX_HISTORY_ENTRIES
+        ? rawHistory
+        : rawHistory.slice(-AIService.PROACTIVE_MAX_HISTORY_ENTRIES);
+
+    const memoryContext = context.memoryContext ?? '';
+    const ragContext = context.retrievedConversationSection ?? '';
+    const searchResults = context.retrievedContext ?? '';
+
+    const finalUserBlocks = {
+      memoryContext,
+      ragContext,
+      searchResults,
+      currentQuery: finalUserQuery,
+    };
+
     const messages = this.messageAssembler.buildProactiveMessages({
       baseSystem: baseSystemPrompt,
       sceneSystem: sceneSystemPrompt,
-      historyEntries: context.historyEntries ?? [],
-      finalUserBlocks: {
-        memoryContext: context.memoryContext ?? '',
-        ragContext: context.retrievedConversationSection ?? '',
-        searchResults: context.retrievedContext ?? '',
-        currentQuery: finalUserQuery,
-      },
+      historyEntries,
+      finalUserBlocks,
     });
-
-    logger.info('[AIService] generateProactiveReply', { messageCount: messages.length });
 
     const useVision = context.messageImages && context.messageImages.length > 0;
     let response: AIGenerateResponse;

@@ -79,6 +79,8 @@ export interface ProactiveReplyInjectContext {
   memoryContext: string;
   /** Optional session id for LLM (e.g. groupId for proactive). */
   sessionId?: string;
+  /** Last user message in the thread (for current_query so the model knows what to respond to). */
+  lastUserMessage?: string;
   /** When present, proactive reply is generated via vision provider (generateWithVision); otherwise via LLM. */
   messageImages?: VisionImage[];
 }

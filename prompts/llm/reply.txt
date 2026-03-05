@@ -1,3 +1,5 @@
+# Legacy monolithic template (reference only). Active flow uses: base.system + llm.reply.system + llm.reply.user_frame + assembled blocks in PromptMessageAssembler.
+
 你是 QQ 群聊助手，直接、简洁地回答问题。
 
 ## 参考信息说明

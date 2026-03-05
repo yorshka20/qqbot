@@ -212,21 +212,20 @@ export class PromptManager {
       logger.warn(`[PromptManager] Unresolved variables in template ${templateName}: ${unresolved.join(', ')}`);
     }
 
+    logger.debug(`[PromptManager] Rendered template ${templateName}:`, { rendered });
+
     return rendered.trim();
   }
 
   /**
-   * Render base prompt (prompts/base.txt) with runtime context variables.
-   * This output is intended to be sent as system role.
+   * Render base system prompt with stable variables only (currentDate, adminUserId) to avoid cache miss.
+   * groupId and userInfo are not injected so the same prompt is reused across messages in the same day.
    */
   renderBasePrompt(): string | undefined {
     const baseTemplate = this.getTemplate(BASE_SYSTEM_TEMPLATE_NAME) ?? this.getTemplate(BASE_TEMPLATE_NAME);
     if (!baseTemplate) {
       return undefined;
     }
-    const msg = getCurrentMessageContext()?.message ?? this.currentMessageContext?.message;
-    const groupId = msg?.messageType === 'group' && msg?.groupId != null ? String(msg.groupId) : '（无）';
-    const userInfo = msg ? `userId：${msg.userId}，nickname：${msg.sender?.nickname ?? '未知'}` : '（无）';
     const baseVars: Record<string, string> = {
       currentDate: new Date().toLocaleDateString('zh-CN', {
         year: 'numeric',
@@ -234,8 +233,6 @@ export class PromptManager {
         day: 'numeric',
         weekday: 'long',
       }),
-      groupId,
-      userInfo,
       adminUserId: this.adminUserId || '（无管理员）',
     };
     return this.renderTemplateContent(baseTemplate, BASE_TEMPLATE_NAME, baseVars);

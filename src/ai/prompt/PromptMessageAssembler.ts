@@ -4,7 +4,6 @@ import type { MessageSegment } from '@/message/types';
 import { contentToPlainString } from '../utils/contentUtils';
 
 export interface FinalUserBlocks {
-  softContext?: string;
   memoryContext?: string;
   ragContext?: string;
   searchResults?: string;
@@ -80,14 +79,20 @@ export class PromptMessageAssembler {
 
   private buildFinalUserContent(blocks: FinalUserBlocks): string {
     const normalize = (v?: string): string => this.normalize(v ?? '');
-    const sections = [
-      `<soft_context>\n${normalize(blocks.softContext)}\n</soft_context>`,
-      `<memory_context>\n${normalize(blocks.memoryContext)}\n</memory_context>`,
-      `<rag_context>\n${normalize(blocks.ragContext)}\n</rag_context>`,
-      `<search_results>\n${normalize(blocks.searchResults)}\n</search_results>`,
-      `<task_results>\n${normalize(blocks.taskResults)}\n</task_results>`,
-      `<current_query>\n${normalize(blocks.currentQuery)}\n</current_query>`,
-    ];
+    const sections: string[] = [];
+    if (normalize(blocks.memoryContext)) {
+      sections.push(`<memory_context>\n${normalize(blocks.memoryContext)}\n</memory_context>`);
+    }
+    if (normalize(blocks.ragContext)) {
+      sections.push(`<rag_context>\n${normalize(blocks.ragContext)}\n</rag_context>`);
+    }
+    if (normalize(blocks.searchResults)) {
+      sections.push(`<search_results>\n${normalize(blocks.searchResults)}\n</search_results>`);
+    }
+    if (normalize(blocks.taskResults)) {
+      sections.push(`<task_results>\n${normalize(blocks.taskResults)}\n</task_results>`);
+    }
+    sections.push(`<current_query>\n${normalize(blocks.currentQuery)}\n</current_query>`);
     return sections.join('\n\n');
   }
 

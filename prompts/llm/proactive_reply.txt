@@ -1,3 +1,5 @@
+# Legacy monolithic template (reference only). Active flow uses: base.system + llm.proactive.system + llm.proactive.user_frame + assembled blocks in PromptMessageAssembler.
+
 你正在以自己的人设主动参与群聊，生成一条简洁自然的回复。
 
 ## 参考信息说明

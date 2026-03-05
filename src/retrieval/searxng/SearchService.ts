@@ -18,6 +18,8 @@ import type { SearchOptions, SearchResult } from './types';
 export const FILTER_REFINE_MAX_ROUNDS = 2;
 /** Max results per supplement search when filter returns MORE. */
 export const FILTER_SUPPLEMENT_MAX_RESULTS = 4;
+/** Max results to show in search.decision prompt so LLM sees enough accumulated results across rounds (avoids repeated search). */
+export const SEARCH_DECISION_MAX_RESULTS = 24;
 
 export interface SearchServiceOptions {
   config?: MCPConfig;
@@ -200,11 +202,16 @@ export class SearchService {
     }
   }
 
-  formatSearchResults(results: SearchResult[]): string {
+  /**
+   * Format search results for prompt (e.g. search.decision or search.result).
+   * @param results - All results to consider
+   * @param maxItems - Max items to include (default 8). Use SEARCH_DECISION_MAX_RESULTS when building previousSearchResults for multi-round decision so the LLM sees more accumulated results.
+   */
+  formatSearchResults(results: SearchResult[], maxItems: number = 8): string {
     if (results.length === 0) return '';
 
     const formatted = results
-      .slice(0, 8)
+      .slice(0, maxItems)
       .map((result, index) => {
         // Use full snippet so reference knowledge is complete (no truncation)
         const snippet = (result.snippet || result.content || '').trim();
@@ -396,7 +403,7 @@ export class SearchService {
             logger.warn(`[SearchService] Round ${iteration}: no results, stopping`);
             break;
           }
-          accumulatedText = this.formatSearchResults(allResults);
+          accumulatedText = this.formatSearchResults(allResults, SEARCH_DECISION_MAX_RESULTS);
           continue;
         }
 
@@ -413,10 +420,10 @@ export class SearchService {
         const roundResults = searchResultsArray.flatMap((s) => s.results);
         allResults.push(...roundResults);
         if (roundResults.length === 0) {
-          logger.warn(`[SearchService] Round ${iteration}: no results, stopping`);
-          break;
-        }
-        accumulatedText = this.formatSearchResults(allResults);
+            logger.warn(`[SearchService] Round ${iteration}: no results, stopping`);
+            break;
+          }
+        accumulatedText = this.formatSearchResults(allResults, SEARCH_DECISION_MAX_RESULTS);
       }
 
       const formattedText = allResults.length > 0 ? this.formatSearchResults(allResults) : '';

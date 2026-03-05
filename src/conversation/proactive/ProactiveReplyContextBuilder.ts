@@ -159,6 +159,7 @@ export class ProactiveReplyContextBuilder {
     const lastUserMsg = [...thread.messages].reverse().find((m) => !m.isBotReply);
     const ragQuery = lastUserMsg?.content?.trim() || topicOrQuery;
     const retrievedConversationSection = await this.getConversationRagSection(thread.groupId, ragQuery);
+    const lastUserMessage = lastUserMsg?.content?.trim() ?? '';
     return {
       preferenceText,
       threadContext,
@@ -167,6 +168,7 @@ export class ProactiveReplyContextBuilder {
       retrievedConversationSection,
       memoryContext,
       sessionId: thread.groupId,
+      lastUserMessage,
     };
   }
 
@@ -199,6 +201,7 @@ export class ProactiveReplyContextBuilder {
     const lastUserEntry = [...filteredEntries].reverse().find((e) => !e.isBotReply);
     const ragQuery = lastUserEntry?.content?.trim() || topicOrQuery;
     const retrievedConversationSection = await this.getConversationRagSection(groupId, ragQuery);
+    const lastUserMessage = lastUserEntry?.content?.trim() ?? topicOrQuery.trim();
     return {
       preferenceText,
       threadContext,
@@ -207,6 +210,7 @@ export class ProactiveReplyContextBuilder {
       retrievedConversationSection,
       memoryContext,
       sessionId: groupId,
+      lastUserMessage,
     };
   }
 }

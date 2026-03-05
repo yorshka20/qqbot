@@ -1,5 +1,6 @@
 // Reply Generation Service - provides AI reply generation capabilities
 
+import { networkConditions } from 'puppeteer-core';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { replaceReply, replaceReplyWithSegments, setReplyWithSegments } from '@/context/HookContextHelpers';
 import {
@@ -356,7 +357,6 @@ export class ReplyGenerationService {
    */
   private async buildNormalHistoryEntries(context: HookContext): Promise<{
     historyEntries: ConversationMessageEntry[];
-    softContextText: string;
     sessionId: string;
     episodeKey: string;
   }> {
@@ -405,7 +405,7 @@ export class ReplyGenerationService {
       this.episodeHistoryCache.set(episodeKey, entries);
     }
 
-    return { historyEntries: entries, softContextText: '', sessionId, episodeKey };
+    return { historyEntries: entries, sessionId, episodeKey };
   }
 
   /**
@@ -504,19 +504,22 @@ export class ReplyGenerationService {
     const frameCurrentQuery = this.promptManager.render('llm.reply.user_frame', {
       userMessage,
     });
+    const finalUserBlocks = {
+      memoryContext: memoryContextText,
+      ragContext: retrievedConversationSection,
+      searchResults: searchResultText,
+      taskResults: taskResultText,
+      currentQuery: frameCurrentQuery,
+    };
+
     const messages = this.messageAssembler.buildNormalMessages({
       baseSystem: baseSystemPrompt,
       sceneSystem: sceneSystemPrompt,
       historyEntries: normalHistory.historyEntries,
-      finalUserBlocks: {
-        softContext: normalHistory.softContextText,
-        memoryContext: memoryContextText,
-        ragContext: retrievedConversationSection,
-        searchResults: searchResultText,
-        taskResults: taskResultText,
-        currentQuery: frameCurrentQuery,
-      },
+      finalUserBlocks,
     });
+
+    logger.debug('[ReplyGenerationService] buildReplyMessages messages', { messages });
 
     // When provider has vision, replace history entries that contain images with ContentPart[] (text + base64 image_url).
     if (hasVision && normalHistory.historyEntries.length > 0) {
@@ -577,7 +580,7 @@ export class ReplyGenerationService {
     new Promise(() => {
       const fingerprint = NormalEpisodeService.hashMessages(serialized);
       logger.info(
-        `[ReplyGenerationService] Prompt fingerprint=${fingerprint} | messageCount=${messages.length} | historyCount=${normalHistory.historyEntries.length} | softCount=${normalHistory.softContextText ? normalHistory.softContextText.split('\n').length : 0}`,
+        `[ReplyGenerationService] Prompt fingerprint=${fingerprint} | messageCount=${messages.length} | historyCount=${normalHistory.historyEntries.length}`,
       );
     }).catch(() => {});
     return { messages, sessionId: normalHistory.sessionId, episodeKey: normalHistory.episodeKey };
