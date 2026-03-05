@@ -1,2 +1,1 @@
-## 任务执行结果
 {{taskResultsText}}

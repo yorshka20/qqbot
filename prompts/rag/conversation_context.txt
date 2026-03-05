@@ -1,3 +1,1 @@
-## 相关历史对话（RAG，语义检索结果，供参考）
-
 {{retrievedConversationContext}}

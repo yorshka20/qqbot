@@ -74,6 +74,7 @@ export class MemoryExtractService {
   async mergeWithExisting(
     existingMemory: string,
     newFacts: string,
+    memoryType: 'user' | 'global',
     options: MemoryExtractServiceOptions = {},
   ): Promise<string> {
     if (!newFacts.trim()) {
@@ -81,23 +82,19 @@ export class MemoryExtractService {
     }
     const provider = options.provider ?? DEFAULT_EXTRACT_PROVIDER;
     const baseSystemPrompt = this.promptManager.renderBasePrompt();
-    const prompt = this.promptManager.render(
-      'memory.analyze',
-      {
-        existingMemory: existingMemory || '(无)',
-        newFacts: newFacts.trim(),
-        adminUserId: this.promptManager.adminUserId,
-      },
-    );
-
-    // logger.info('[MemoryExtractService] Analyze full prompt:\n' + prompt);
+    const prompt = this.promptManager.render('memory.analyze', {
+      existingMemory: existingMemory || '(无)',
+      newFacts: newFacts.trim(),
+      adminUserId: this.promptManager.adminUserId,
+      memoryType,
+    });
 
     try {
       const res = await this.llmService.generate(
         prompt,
         {
           temperature: 0.4,
-          maxTokens: 20000,
+          maxTokens: 10000,
           systemPrompt: baseSystemPrompt,
         },
         provider,
@@ -139,14 +136,11 @@ export class MemoryExtractService {
     const targetUserSection = this.promptManager.render('memory.extract_single_user', {
       targetUserId: userId,
     });
-    const prompt = this.promptManager.render(
-      'memory.extract',
-      {
-        groupId,
-        recentMessagesText: inputText,
-        targetUserSection,
-      },
-    );
+    const prompt = this.promptManager.render('memory.extract', {
+      groupId,
+      recentMessagesText: inputText,
+      targetUserSection,
+    });
 
     // logger.info('[MemoryExtractService] Extract full prompt:\n' + prompt);
 
@@ -188,7 +182,7 @@ export class MemoryExtractService {
         return;
       }
       const existing = this.memoryService.getUserMemoryText(groupId, userId);
-      const merged = await this.mergeWithExisting(existing, newFactsText, options);
+      const merged = await this.mergeWithExisting(existing, newFactsText, 'user', options);
       if (merged) {
         await this.memoryService.upsertMemory(groupId, userId, false, merged);
       }
@@ -256,7 +250,7 @@ export class MemoryExtractService {
       if (parsed.groupFacts && parsed.groupFacts.length > 0) {
         const existing = this.memoryService.getGroupMemoryText(groupId);
         const newFactsText = parsed.groupFacts.join('\n');
-        const merged = await this.mergeWithExisting(existing, newFactsText, options);
+        const merged = await this.mergeWithExisting(existing, newFactsText, 'global', options);
         if (merged) {
           await this.memoryService.upsertMemory(groupId, GROUP_MEMORY_USER_ID, true, merged);
         }
@@ -270,7 +264,7 @@ export class MemoryExtractService {
         }
         const existing = this.memoryService.getUserMemoryText(groupId, u.userId);
         const newFactsText = u.facts.join('\n');
-        const merged = await this.mergeWithExisting(existing, newFactsText, options);
+        const merged = await this.mergeWithExisting(existing, newFactsText, 'user', options);
         if (merged) {
           await this.memoryService.upsertMemory(groupId, u.userId, false, merged);
         }

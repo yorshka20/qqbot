@@ -315,7 +315,7 @@ export class ProactiveConversationService {
     filteredEntries: ConversationMessageEntry[],
   ): Promise<boolean> {
     const lastUserEntry = [...filteredEntries].reverse().find((e) => !e.isBotReply);
-    if (!lastUserEntry?.content?.includes('结束') && !lastUserEntry?.content?.includes('话题')) {
+    if (!lastUserEntry?.content?.includes('结束') || !lastUserEntry?.content?.includes('话题')) {
       return false;
     }
     const currentThread = this.threadService.getActiveThread(groupId);
