@@ -10,7 +10,7 @@ import { ProactiveConversationPlugin } from './ProactiveConversationPlugin';
 function makeGroupHookContext(messageText: string): HookContext {
   const metadata = new HookMetadataMap();
   metadata.set('botSelfId', '123');
-  metadata.set('triggeredByWakeWord', true);
+  metadata.set('replyTriggerType', 'wakeWordConfig');
   return {
     message: {
       id: 'm1',

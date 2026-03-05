@@ -21,12 +21,10 @@ export interface HookContextMetadata {
   // Proactive conversation (thread): when in active thread, reply without @bot
   inProactiveThread?: boolean;
   proactiveThreadId?: string;
-  /** Set when message was @bot or replyTrigger=reaction; proactive plugin skips scheduling so no duplicate reply. */
-  triggeredByAtBot?: boolean;
-  /** Set when message is matched by wake word; direct reply is allowed without @bot. */
-  triggeredByWakeWord?: boolean;
   /** How this message was chosen to trigger a reply: from event.replyTrigger (at | reaction). */
   replyTrigger?: 'at' | 'reaction';
+  /** Resolved trigger type for this reply; set by MessageTriggerPlugin when message is allowed for reply. Undefined = not triggered. */
+  replyTriggerType?: 'at' | 'reaction' | 'wakeWordConfig' | 'wakeWordPreference' | 'providerName';
   /** Conversation mode selected for this processing run. */
   contextMode?: 'normal' | 'proactive';
 

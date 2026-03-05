@@ -77,13 +77,19 @@
   // Plugins must be placed in src/plugins/ directory
   "plugins": {
     "list": [
-      // Example: Whitelist plugin
+      // MessageTriggerPlugin: unified reply trigger. Sets context.replyTriggerType (at | reaction | wakeWordConfig | wakeWordPreference | providerName).
+      // {
+      //   "name": "messageTrigger",
+      //   "enabled": true,
+      //   "config": { "wakeWords": [], "providerNamesAsTrigger": true }
+      // },
+      // Whitelist plugin: access control only (userIds for private, groupIds for group). Trigger logic is in messageTrigger.
       // {
       //   "name": "whitelist",
       //   "enabled": true,
       //   "config": {
-      //     "enabled": true,
-      //     "userIds": ["123456789", "987654321"]
+      //     "userIds": ["123456789"],
+      //     "groupIds": ["123456789"]
       //   }
       // },
       // Message Operation Plugin - handles reactions on messages

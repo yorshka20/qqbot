@@ -164,8 +164,8 @@ export class ProactiveConversationPlugin extends PluginBase {
     const userId = context.message?.userId?.toString();
     if (botSelfId && userId === botSelfId) return true;
 
-    // Do not run proactive analysis when the message already triggered direct reply (@bot / wake-word).
-    if (context.metadata.get('triggeredByAtBot') || context.metadata.get('triggeredByWakeWord')) {
+    // Do not run proactive analysis when the message already triggered direct reply.
+    if (context.metadata.get('replyTriggerType')) {
       return true;
     }
 

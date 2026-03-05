@@ -65,7 +65,6 @@ export class DatabasePersistenceSystem implements System {
       });
 
       const now = new Date();
-      const conversationId = conversation?.id || randomUUID();
 
       if (!conversation) {
         conversation = await conversations.create({
@@ -84,10 +83,7 @@ export class DatabasePersistenceSystem implements System {
 
       // Skip this entire run when the *incoming* message is from the bot (echo). We do not persist the echo; the real reply was already stored in the run that handled the user message (below we persist user message + bot reply for that run).
       const botSelfId = context.metadata.get('botSelfId');
-      const isFromBot =
-        botSelfId != null &&
-        message.userId != null &&
-        String(message.userId) === String(botSelfId);
+      const isFromBot = botSelfId != null && message.userId != null && String(message.userId) === String(botSelfId);
       if (isFromBot) {
         return true;
       }
@@ -98,7 +94,8 @@ export class DatabasePersistenceSystem implements System {
         sender: message.sender,
         timestamp: message.timestamp,
       };
-      if (context.metadata.get('triggeredByAtBot') === true) {
+      const triggerType = context.metadata.get('replyTriggerType');
+      if (triggerType === 'at' || triggerType === 'reaction') {
         metadata.wasAtBot = true;
       }
 
