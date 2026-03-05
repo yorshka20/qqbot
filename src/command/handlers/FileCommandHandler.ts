@@ -2,8 +2,8 @@
 
 import { inject, injectable } from 'tsyringe';
 import { DITokens } from '@/core/DITokens';
-import type { FileReadService } from '@/file';
 import { MessageBuilder } from '@/message/MessageBuilder';
+import type { FileReadService } from '@/services/file';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 

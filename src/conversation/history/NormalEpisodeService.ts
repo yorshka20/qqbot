@@ -64,10 +64,7 @@ export class NormalEpisodeService {
     return `${sessionId}:episode:${episode.id}`;
   }
 
-  private shouldResetEpisode(
-    existing: NormalEpisodeState | undefined,
-    input: NormalEpisodeDecisionInput,
-  ): boolean {
+  private shouldResetEpisode(existing: NormalEpisodeState | undefined, input: NormalEpisodeDecisionInput): boolean {
     if (!existing) return true;
     if (input.now.getTime() - existing.lastTriggerAt.getTime() > this.idleTimeoutMs) {
       return true;
@@ -86,4 +83,3 @@ export class NormalEpisodeService {
     return createHash('sha256').update(serialized).digest('hex').slice(0, 16);
   }
 }
-

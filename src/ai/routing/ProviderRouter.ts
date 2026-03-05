@@ -53,7 +53,7 @@ export class ProviderRouter {
 
   routeReplyInput(message: string): ProviderReplyRoutingResult {
     const routeResult = this.route(message);
-    const userMessage = routeResult.isExplicitPrefix ? routeResult.strippedMessage : message ?? '';
+    const userMessage = routeResult.isExplicitPrefix ? routeResult.strippedMessage : (message ?? '');
 
     return {
       providerName: routeResult.providerName ?? undefined,

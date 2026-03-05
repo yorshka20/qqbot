@@ -2,9 +2,13 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
-import type { RetrievalService, SearchResult } from '@/retrieval';
-import { buildSummariesFromStringChunks, FILTER_REFINE_MAX_ROUNDS, FILTER_SUPPLEMENT_MAX_RESULTS } from '@/retrieval';
-import { extractEntriesFromChunks } from '@/retrieval/fetch';
+import type { RetrievalService, SearchResult } from '@/services/retrieval';
+import {
+  buildSummariesFromStringChunks,
+  FILTER_REFINE_MAX_ROUNDS,
+  FILTER_SUPPLEMENT_MAX_RESULTS,
+} from '@/services/retrieval';
+import { extractEntriesFromChunks } from '@/services/retrieval/fetch';
 import { logger } from '@/utils/logger';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 

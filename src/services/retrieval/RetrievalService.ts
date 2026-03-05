@@ -7,7 +7,7 @@ import type { RAGConfig } from '@/core/config/rag';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HealthCheckManager } from '@/core/health';
-import type { MCPManager } from '@/mcp';
+import type { MCPManager } from '@/services/mcp';
 import { logger } from '@/utils/logger';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import { PageContentFetchService } from './fetch';

@@ -2,7 +2,7 @@
 
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { formatContentWithSpeakerForRAG } from '@/conversation/history';
-import type { RAGDocument } from '@/retrieval/rag/types';
+import type { RAGDocument } from '@/services/retrieval/rag/types';
 
 /**
  * Group sorted entries into windows by idle minutes or max messages per window.

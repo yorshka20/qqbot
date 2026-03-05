@@ -85,13 +85,10 @@ export class GachaPlugin extends PluginBase {
     const requestLine = theme
       ? `Theme: ${theme} [Seed: ${randomSeed}]`
       : `Random creative anime illustration [Seed: ${randomSeed}]`;
-    const userMessage = this.promptManager.render(
-      'gacha.nai_user',
-      {
-        requestLine,
-        style: 'CONCISE (15-20 tags MAX)',
-      },
-    );
+    const userMessage = this.promptManager.render('gacha.nai_user', {
+      requestLine,
+      style: 'CONCISE (15-20 tags MAX)',
+    });
 
     const systemPrompt = this.promptManager.render('gacha.nai_system', {});
     const sessionId = getSessionId(context);

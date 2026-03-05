@@ -9,7 +9,7 @@ import type { HookContext } from '@/hooks/types';
 import type { MemoryService } from '@/memory/MemoryService';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
-import type { RetrievalService } from '@/retrieval';
+import type { RetrievalService } from '@/services/retrieval';
 import { TaskAnalyzer } from '@/task/TaskAnalyzer';
 import type { TaskManager } from '@/task/TaskManager';
 import type { TaskAnalysisResult, TaskResult } from '@/task/types';

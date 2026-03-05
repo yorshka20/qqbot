@@ -62,4 +62,3 @@ describe('PromptMessageAssembler', () => {
     expect(messages[1].content).toContain('<image_segment uri="https://example.com/a.png" summary="img" />');
   });
 });
-

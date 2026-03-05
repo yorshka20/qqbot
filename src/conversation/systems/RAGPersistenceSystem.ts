@@ -7,9 +7,9 @@ import type { RAGConfig } from '@/core/config/rag';
 import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
 import type { HookContext } from '@/hooks/types';
-import type { RetrievalService } from '@/retrieval';
-import { QdrantClient } from '@/retrieval';
-import type { RAGDocument } from '@/retrieval/rag/types';
+import type { RetrievalService } from '@/services/retrieval';
+import { QdrantClient } from '@/services/retrieval';
+import type { RAGDocument } from '@/services/retrieval/rag/types';
 import { logger } from '@/utils/logger';
 
 /** Default idle minutes to close a conversation window. */

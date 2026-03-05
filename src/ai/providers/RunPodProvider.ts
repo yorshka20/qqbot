@@ -1,6 +1,6 @@
 // RunPod Serverless Provider - T2I (text-to-image) and I2V (image-to-video) via ComfyUI
 
-import { RunPodServerlessClient, type RunPodServerlessClientOptions } from '@/runpod';
+import { RunPodServerlessClient, type RunPodServerlessClientOptions } from '@/services/runpod';
 import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { Image2VideoCapability } from '../capabilities/Image2VideoCapability';

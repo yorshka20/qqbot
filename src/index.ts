@@ -11,10 +11,10 @@ import { DITokens } from './core/DITokens';
 import { HealthCheckManager } from './core/health';
 import { ServiceRegistry } from './core/ServiceRegistry';
 import { EventInitializer } from './events/EventInitializer';
-import { MCPInitializer } from './mcp/MCPInitializer';
 import { PluginInitializer } from './plugins/PluginInitializer';
 import { ProtocolAdapterInitializer } from './protocol/ProtocolAdapterInitializer';
-import { RetrievalService } from './retrieval';
+import { MCPInitializer } from './services/mcp/MCPInitializer';
+import { RetrievalService } from './services/retrieval';
 import { logger } from './utils/logger';
 import { initStaticFileServer, stopStaticFileServer } from './utils/StaticFileServer';
 

@@ -2,7 +2,7 @@
 
 import { inject, injectable } from 'tsyringe';
 import { DITokens } from '@/core/DITokens';
-import type { FileReadService } from '@/file';
+import type { FileReadService } from '@/services/file';
 import { logger } from '@/utils/logger';
 import { TaskDefinition } from '../decorators';
 import type { Task, TaskExecutionContext, TaskResult } from '../types';

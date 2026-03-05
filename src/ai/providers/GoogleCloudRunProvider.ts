@@ -1,6 +1,6 @@
 // Google Cloud Run ComfyUI Provider - T2I (text-to-image) via synchronous workflow API
 
-import { ComfyUICloudRunClient } from '@/googlecloud';
+import { ComfyUICloudRunClient } from '@/services/googlecloud';
 import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';

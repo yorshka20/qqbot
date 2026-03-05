@@ -5,8 +5,8 @@ import { formatRAGConversationContext } from '@/ai/utils/formatRAGConversationCo
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
 import type { MemoryService } from '@/memory/MemoryService';
-import type { RetrievalService } from '@/retrieval';
-import { QdrantClient } from '@/retrieval';
+import type { RetrievalService } from '@/services/retrieval';
+import { QdrantClient } from '@/services/retrieval';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import type { ProactiveThread, ThreadService } from '../thread/ThreadService';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
@@ -29,7 +29,10 @@ export class ProactiveReplyContextBuilder {
   constructor(private deps: ProactiveReplyContextBuilderDeps) {}
 
   private normalizeStaticBlock(text: string): string {
-    return text.replace(/\r\n/g, '\n').replace(/[ \t]+$/gm, '').trim();
+    return text
+      .replace(/\r\n/g, '\n')
+      .replace(/[ \t]+$/gm, '')
+      .trim();
   }
 
   /** Thread context from existing thread (formatted messages from ThreadService). */

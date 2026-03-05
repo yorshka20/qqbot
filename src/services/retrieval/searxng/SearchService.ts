@@ -5,7 +5,7 @@ import type { LLMService } from '@/ai/services/LLMService';
 import { parseSearchDecision as parseSearchDecisionShared } from '@/ai/utils/llmJsonExtract';
 import type { MCPConfig } from '@/core/config/mcp';
 import type { HealthCheckManager } from '@/core/health';
-import type { MCPManager } from '@/mcp';
+import type { MCPManager } from '@/services/mcp';
 import { logger } from '@/utils/logger';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import type { PageContentFetchService } from '../fetch';
@@ -420,9 +420,9 @@ export class SearchService {
         const roundResults = searchResultsArray.flatMap((s) => s.results);
         allResults.push(...roundResults);
         if (roundResults.length === 0) {
-            logger.warn(`[SearchService] Round ${iteration}: no results, stopping`);
-            break;
-          }
+          logger.warn(`[SearchService] Round ${iteration}: no results, stopping`);
+          break;
+        }
         accumulatedText = this.formatSearchResults(allResults, SEARCH_DECISION_MAX_RESULTS);
       }
 

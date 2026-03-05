@@ -44,9 +44,7 @@ export class PluginInitializer {
         eventRouter: c.resolve<EventRouter>(DITokens.EVENT_ROUTER),
         config,
         hookManager: c.resolve<HookManager>(DITokens.HOOK_MANAGER),
-        conversationConfigService: c.resolve<ConversationConfigService>(
-          DITokens.CONVERSATION_CONFIG_SERVICE,
-        ),
+        conversationConfigService: c.resolve<ConversationConfigService>(DITokens.CONVERSATION_CONFIG_SERVICE),
       };
       cachedPluginManager = new PluginManager(deps);
       logger.info('[PluginInitializer] PluginManager created (first resolve)');

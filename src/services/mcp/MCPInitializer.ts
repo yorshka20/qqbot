@@ -1,7 +1,7 @@
 // MCP Initializer - initializes MCP system
 
 import type { Config } from '@/core/config';
-import type { RetrievalService } from '@/retrieval';
+import type { RetrievalService } from '@/services/retrieval';
 import { logger } from '@/utils/logger';
 import { MCPManager } from './MCPManager';
 

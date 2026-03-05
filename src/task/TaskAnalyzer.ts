@@ -126,10 +126,7 @@ export class TaskAnalyzer {
     return messages;
   }
 
-  private parseTaskListResponse(
-    aiResponse: string,
-    context: ConversationContext,
-  ): TaskAnalysisResult {
+  private parseTaskListResponse(aiResponse: string, context: ConversationContext): TaskAnalysisResult {
     const jsonText = extractJsonFromLlmText(aiResponse, {
       strategies: TaskAnalyzer.TASK_JSON_EXTRACT_STRATEGIES,
     });

@@ -17,7 +17,7 @@ import type { Message } from '@/database/models/types';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { MemoryService } from '@/memory/MemoryService';
 import type { MessageSegment } from '@/message/types';
-import type { RetrievalService } from '@/retrieval';
+import type { RetrievalService } from '@/services/retrieval';
 import { logger } from '@/utils/logger';
 import { type FetchProgressNotifier, MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import type { TaskSystem } from '../systems/TaskSystem';
