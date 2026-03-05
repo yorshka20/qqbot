@@ -52,6 +52,26 @@ describe('ProviderRouter', () => {
     expect(reply1.usedExplicitPrefix).toBe(true);
   });
 
+  it('routes prefix with comma or colon (EN/CN) and strips message', () => {
+    const aiManager = createMockAIManager(['anthropic', 'doubao', 'openai']);
+    const router = new ProviderRouter(aiManager);
+
+    expect(router.route('claude, xxx').providerName).toBe('anthropic');
+    expect(router.route('claude, xxx').strippedMessage).toBe('xxx');
+
+    expect(router.route('claude，yyy').providerName).toBe('anthropic');
+    expect(router.route('claude，yyy').strippedMessage).toBe('yyy');
+
+    expect(router.route('claude: zzz').providerName).toBe('anthropic');
+    expect(router.route('claude: zzz').strippedMessage).toBe('zzz');
+
+    expect(router.route('claude：今天').providerName).toBe('anthropic');
+    expect(router.route('claude：今天').strippedMessage).toBe('今天');
+
+    expect(router.route('豆包，你好').providerName).toBe('doubao');
+    expect(router.route('豆包，你好').strippedMessage).toBe('你好');
+  });
+
   it('returns no_match when no prefix present', () => {
     const aiManager = createMockAIManager(['anthropic']);
     const router = new ProviderRouter(aiManager);

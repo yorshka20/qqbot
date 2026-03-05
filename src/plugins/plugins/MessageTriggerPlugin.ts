@@ -1,12 +1,13 @@
 // Message Trigger Plugin - single place that decides whether to run the reply pipeline (trigger only; no side effects)
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
+import type { PrefixInvitationCheckService } from '@/ai/services/PrefixInvitationCheckService';
 import { ProviderRouter } from '@/ai/routing/ProviderRouter';
 import type { ProactiveConversationService } from '@/conversation/proactive';
 import type { ThreadService } from '@/conversation/thread';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { HookContext, HookResult } from '@/hooks/types';
+import type { HookContext } from '@/hooks/types';
 import { MessageUtils } from '@/message/MessageUtils';
 import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
@@ -15,8 +16,6 @@ import { PluginBase } from '../PluginBase';
 export interface MessageTriggerPluginConfig {
   /** Global wake words that can trigger direct reply without @bot. */
   wakeWords?: string[];
-  /** When true (default), message starting with provider alias (e.g. "claude", "deepseek") + space/colon triggers reply with that provider. */
-  providerNamesAsTrigger?: boolean;
 }
 
 @RegisterPlugin({
@@ -27,11 +26,11 @@ export interface MessageTriggerPluginConfig {
 })
 export class MessageTriggerPlugin extends PluginBase {
   private globalWakeWords: string[] = [];
-  private providerNamesAsTrigger = true;
 
   private promptManager!: PromptManager;
   private proactiveConversationService!: ProactiveConversationService;
   private threadService!: ThreadService;
+  private prefixInvitationCheckService!: PrefixInvitationCheckService;
 
   async onInit(): Promise<void> {
     this.enabled = true;
@@ -41,17 +40,15 @@ export class MessageTriggerPlugin extends PluginBase {
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
     );
     this.threadService = container.resolve<ThreadService>(DITokens.THREAD_SERVICE);
+    this.prefixInvitationCheckService = container.resolve<PrefixInvitationCheckService>(
+      DITokens.PREFIX_INVITATION_CHECK_SERVICE,
+    );
 
     const pluginConfig = this.pluginConfig?.config as MessageTriggerPluginConfig | undefined;
-    if (pluginConfig) {
-      if (Array.isArray(pluginConfig.wakeWords)) {
-        this.globalWakeWords = pluginConfig.wakeWords.map((w) => w.trim().toLowerCase()).filter(Boolean);
-      }
-      this.providerNamesAsTrigger = pluginConfig.providerNamesAsTrigger ?? true;
+    if (pluginConfig?.wakeWords && Array.isArray(pluginConfig.wakeWords)) {
+      this.globalWakeWords = pluginConfig.wakeWords.map((w) => w.trim().toLowerCase()).filter(Boolean);
     }
-    logger.info(
-      `[MessageTriggerPlugin] Enabled | wakeWords=${this.globalWakeWords.length} providerNamesAsTrigger=${this.providerNamesAsTrigger}`,
-    );
+    logger.info(`[MessageTriggerPlugin] Enabled | wakeWords=${this.globalWakeWords.length}`);
   }
 
   private parseTriggerWords(content: string): string[] {
@@ -94,11 +91,8 @@ export class MessageTriggerPlugin extends PluginBase {
     return null;
   }
 
-  /** True when message starts with a known provider alias followed by space or colon (and has content after). */
+  /** True when message starts with a known provider alias (prefix match only). Always enabled. */
   private matchesProviderNameTrigger(message: string): boolean {
-    if (!this.providerNamesAsTrigger) {
-      return false;
-    }
     const raw = (message ?? '').trim();
     if (!raw) {
       return false;
@@ -106,15 +100,7 @@ export class MessageTriggerPlugin extends PluginBase {
     const lower = raw.toLowerCase();
     const prefixes = ProviderRouter.getProviderTriggerPrefixes();
     for (const p of prefixes) {
-      if (!lower.startsWith(p)) {
-        continue;
-      }
-      const restStart = p.length;
-      if (restStart >= lower.length) {
-        continue;
-      }
-      const nextChar = lower[restStart];
-      if (nextChar === ' ' || nextChar === ':' || nextChar === '：') {
+      if (lower.startsWith(p)) {
         return true;
       }
     }
@@ -126,7 +112,7 @@ export class MessageTriggerPlugin extends PluginBase {
     priority: 'HIGHEST',
     order: -1,
   })
-  onMessagePreprocess(context: HookContext): HookResult {
+  async onMessagePreprocess(context: HookContext): Promise<boolean> {
     const message = context.message;
     const messageType = message.messageType;
     const userId = message.userId?.toString();
@@ -157,6 +143,18 @@ export class MessageTriggerPlugin extends PluginBase {
     if (!allowed) {
       context.metadata.set('postProcessOnly', true);
       return true;
+    }
+
+    // When trigger is provider-name prefix, run lightweight LLM check (using default LLM) to avoid wasting tokens
+    if (isProviderNameTrigger) {
+      const result = await this.prefixInvitationCheckService.check(messageText);
+      if (!result.shouldReply) {
+        logger.debug(
+          `[MessageTriggerPlugin] Prefix-invitation check said no reply | reason=${result.reason ?? 'none'}`,
+        );
+        context.metadata.set('postProcessOnly', true);
+        return true;
+      }
     }
 
     // Allow reply; set single trigger type for downstream

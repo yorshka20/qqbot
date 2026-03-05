@@ -33,6 +33,9 @@ export class ProviderRouter {
     豆包: 'doubao',
   };
 
+  /** Separator chars after provider prefix: space, comma (EN/CN), colon (EN/CN). */
+  private static readonly PREFIX_SEPARATORS = /[\s,，:：]/;
+
   /** Prefix strings that can trigger provider routing (for MessageTriggerPlugin). Same set as PREFIX_ALIASES keys. */
   static getProviderTriggerPrefixes(): string[] {
     return Object.keys(ProviderRouter.PREFIX_ALIASES);
@@ -42,19 +45,10 @@ export class ProviderRouter {
 
   route(message: string): ProviderRouteResult {
     const text = message ?? '';
-
-    // Try colon prefix first (e.g., "claude: ...", "豆包: ...").
-    const explicitColon = this.routeByExplicitPrefixColon(text);
-    if (explicitColon.providerName) {
-      return explicitColon;
+    const result = this.routeByExplicitPrefix(text);
+    if (result.providerName) {
+      return result;
     }
-
-    // Then try space-separated prefix (e.g., "claude 你好", "deepseek 写代码").
-    const explicitSpace = this.routeByExplicitPrefixSpace(text);
-    if (explicitSpace.providerName) {
-      return explicitSpace;
-    }
-
     return {
       providerName: null,
       confidence: 'low',
@@ -77,10 +71,14 @@ export class ProviderRouter {
     };
   }
 
-  /** Colon prefix only, e.g. "gpt: xxx", "claude: xxx", "豆包: xxx". */
-  private routeByExplicitPrefixColon(message: string): ProviderRouteResult {
-    const match = message.match(/^\s*([\p{L}][\p{L}\p{N}_-]{0,31})\s*[:：]\s*([\s\S]*)$/u);
-    if (!match) {
+  /**
+   * Explicit prefix: message starts with a known provider alias followed by a separator.
+   * Separator: space, comma (EN , / CN ，), or colon (EN : / CN ：).
+   * E.g. "claude xxx", "claude: xxx", "claude，xxx", "claude, xxx", "claude：xxx".
+   */
+  private routeByExplicitPrefix(message: string): ProviderRouteResult {
+    const trimmed = message.trimStart();
+    if (!trimmed) {
       return {
         providerName: null,
         confidence: 'low',
@@ -89,63 +87,44 @@ export class ProviderRouter {
         strippedMessage: message,
       };
     }
-
-    const rawPrefix = match[1];
-    const strippedMessage = (match[2] ?? '').trimStart();
-    const normalized = this.normalizeProviderName(rawPrefix);
-
-    if (!normalized || !this.isLlmProviderAvailable(normalized)) {
+    const lower = trimmed.toLowerCase();
+    const prefixes = ProviderRouter.getProviderTriggerPrefixes();
+    for (const prefix of prefixes) {
+      if (!lower.startsWith(prefix)) {
+        continue;
+      }
+      const afterPrefix = trimmed.slice(prefix.length);
+      if (afterPrefix.length === 0) {
+        continue;
+      }
+      if (!ProviderRouter.PREFIX_SEPARATORS.test(afterPrefix[0])) {
+        continue;
+      }
+      const strippedMessage = afterPrefix.replace(/^[\s,，:：]+\s*/, '');
+      const normalized = this.normalizeProviderName(prefix);
+      if (!normalized || !this.isLlmProviderAvailable(normalized)) {
+        return {
+          providerName: null,
+          confidence: 'low',
+          reason: 'prefix_provider_unavailable',
+          isExplicitPrefix: false,
+          strippedMessage: message,
+        };
+      }
       return {
-        providerName: null,
-        confidence: 'low',
-        reason: 'prefix_provider_unavailable',
-        isExplicitPrefix: false,
-        strippedMessage: message,
+        providerName: normalized,
+        confidence: 'high',
+        reason: 'explicit_prefix',
+        isExplicitPrefix: true,
+        strippedMessage,
       };
     }
-
     return {
-      providerName: normalized,
-      confidence: 'high',
-      reason: 'explicit_prefix',
-      isExplicitPrefix: true,
-      strippedMessage,
-    };
-  }
-
-  /** Space-separated prefix, e.g. "claude 你好", "deepseek 写代码". First word must be a known provider alias. */
-  private routeByExplicitPrefixSpace(message: string): ProviderRouteResult {
-    const match = message.match(/^\s*([\p{L}\p{N}_-]+)\s+([\s\S]*)$/u);
-    if (!match) {
-      return {
-        providerName: null,
-        confidence: 'low',
-        reason: 'prefix_not_matched',
-        isExplicitPrefix: false,
-        strippedMessage: message,
-      };
-    }
-
-    const rawPrefix = match[1];
-    const strippedMessage = (match[2] ?? '').trimStart();
-    const normalized = this.normalizeProviderName(rawPrefix);
-
-    if (!normalized || !this.isLlmProviderAvailable(normalized)) {
-      return {
-        providerName: null,
-        confidence: 'low',
-        reason: 'prefix_provider_unavailable',
-        isExplicitPrefix: false,
-        strippedMessage: message,
-      };
-    }
-
-    return {
-      providerName: normalized,
-      confidence: 'high',
-      reason: 'explicit_prefix_space',
-      isExplicitPrefix: true,
-      strippedMessage,
+      providerName: null,
+      confidence: 'low',
+      reason: 'prefix_not_matched',
+      isExplicitPrefix: false,
+      strippedMessage: message,
     };
   }
 

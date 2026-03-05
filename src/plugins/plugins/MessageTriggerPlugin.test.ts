@@ -60,7 +60,7 @@ describe('MessageTriggerPlugin', () => {
     getContainer().clear();
   });
 
-  async function initPlugin(config: { wakeWords?: string[]; providerNamesAsTrigger?: boolean } = {}) {
+  async function initPlugin(config: { wakeWords?: string[] } = {}) {
     const container = getContainer();
     const promptManager = new PromptManager();
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
@@ -70,6 +70,11 @@ describe('MessageTriggerPlugin', () => {
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
+    container.registerInstance(
+      DITokens.PREFIX_INVITATION_CHECK_SERVICE,
+      { check: async () => ({ shouldReply: true, reason: undefined }) },
+      { allowOverride: true },
+    );
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',
@@ -91,7 +96,7 @@ describe('MessageTriggerPlugin', () => {
   it('sets postProcessOnly for bot own messages', async () => {
     const plugin = await initPlugin();
     const context = makeHookContext({ messageText: 'hello', userId: 123, botSelfId: '123' });
-    plugin.onMessagePreprocess(context);
+    await plugin.onMessagePreprocess(context);
     expect(context.metadata.get('postProcessOnly')).toBe(true);
   });
 
@@ -103,32 +108,32 @@ describe('MessageTriggerPlugin', () => {
       userId: 456,
       groupId: undefined as unknown as number,
     });
-    plugin.onMessagePreprocess(context);
+    await plugin.onMessagePreprocess(context);
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
   });
 
   it('allows group message when wake word in config is present and sets replyTriggerType', async () => {
     const plugin = await initPlugin({ wakeWords: ['wakebot'] });
     const context = makeHookContext({ messageText: 'please wakebot now' });
-    plugin.onMessagePreprocess(context);
+    await plugin.onMessagePreprocess(context);
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
     expect(context.metadata.get('replyTriggerType')).toBe('wakeWordConfig');
     expect(context.metadata.get('contextMode')).toBe('normal');
   });
 
   it('allows group message when message starts with provider name (space) and sets replyTriggerType', async () => {
-    const plugin = await initPlugin({ providerNamesAsTrigger: true });
+    const plugin = await initPlugin();
     const context = makeHookContext({ messageText: 'claude 你好' });
-    plugin.onMessagePreprocess(context);
+    await plugin.onMessagePreprocess(context);
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
     expect(context.metadata.get('replyTriggerType')).toBe('providerName');
     expect(context.metadata.get('contextMode')).toBe('normal');
   });
 
   it('allows group message when message starts with provider name (colon)', async () => {
-    const plugin = await initPlugin({ providerNamesAsTrigger: true });
+    const plugin = await initPlugin();
     const context = makeHookContext({ messageText: 'deepseek: 写一段代码' });
-    plugin.onMessagePreprocess(context);
+    await plugin.onMessagePreprocess(context);
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
     expect(context.metadata.get('replyTriggerType')).toBe('providerName');
   });
@@ -136,7 +141,7 @@ describe('MessageTriggerPlugin', () => {
   it('sets postProcessOnly when no trigger matched (group)', async () => {
     const plugin = await initPlugin();
     const context = makeHookContext({ messageText: 'random message without trigger' });
-    plugin.onMessagePreprocess(context);
+    await plugin.onMessagePreprocess(context);
     expect(context.metadata.get('postProcessOnly')).toBe(true);
     expect(context.metadata.get('replyTriggerType')).toBeUndefined();
   });
@@ -144,7 +149,7 @@ describe('MessageTriggerPlugin', () => {
   it('sets replyTriggerType when replyTrigger is reaction', async () => {
     const plugin = await initPlugin();
     const context = makeHookContext({ messageText: 'hello', replyTrigger: 'reaction' });
-    plugin.onMessagePreprocess(context);
+    await plugin.onMessagePreprocess(context);
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
     expect(context.metadata.get('replyTriggerType')).toBe('reaction');
   });
@@ -156,7 +161,7 @@ describe('MessageTriggerPlugin', () => {
       botSelfId: '123',
       segments: [{ type: 'at', data: { qq: 123 } }],
     });
-    plugin.onMessagePreprocess(context);
+    await plugin.onMessagePreprocess(context);
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
     expect(context.metadata.get('replyTriggerType')).toBe('at');
   });
@@ -177,6 +182,11 @@ describe('MessageTriggerPlugin', () => {
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
+    container.registerInstance(
+      DITokens.PREFIX_INVITATION_CHECK_SERVICE,
+      { check: async () => ({ shouldReply: true, reason: undefined }) },
+      { allowOverride: true },
+    );
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',
@@ -194,7 +204,7 @@ describe('MessageTriggerPlugin', () => {
     await plugin.onInit?.();
 
     const context = makeHookContext({ messageText: 'please wakebot now', groupId: 1 });
-    plugin.onMessagePreprocess(context);
+    await plugin.onMessagePreprocess(context);
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
     expect(context.metadata.get('replyTriggerType')).toBe('wakeWordPreference');
   });
@@ -214,6 +224,11 @@ describe('MessageTriggerPlugin', () => {
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
+    container.registerInstance(
+      DITokens.PREFIX_INVITATION_CHECK_SERVICE,
+      { check: async () => ({ shouldReply: true, reason: undefined }) },
+      { allowOverride: true },
+    );
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',
@@ -231,14 +246,43 @@ describe('MessageTriggerPlugin', () => {
     await plugin.onInit?.();
 
     const context = makeHookContext({ messageText: 'please wakebot now', groupId: 1 });
-    plugin.onMessagePreprocess(context);
+    await plugin.onMessagePreprocess(context);
     expect(context.metadata.get('replyTriggerType')).toBe('wakeWordPreference');
   });
 
-  it('does not treat provider prefix as trigger when providerNamesAsTrigger is false', async () => {
-    const plugin = await initPlugin({ providerNamesAsTrigger: false });
-    const context = makeHookContext({ messageText: 'claude 你好' });
-    plugin.onMessagePreprocess(context);
+  it('sets postProcessOnly when prefix-invitation check says no reply (provider-name trigger)', async () => {
+    const container = getContainer();
+    const promptManager = new PromptManager();
+    container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
+    container.registerInstance(
+      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+      { getGroupPreferenceKeys: () => [] },
+      { allowOverride: true },
+    );
+    container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
+    container.registerInstance(
+      DITokens.PREFIX_INVITATION_CHECK_SERVICE,
+      { check: async () => ({ shouldReply: false, reason: 'vague or no request' }) },
+      { allowOverride: true },
+    );
+
+    const plugin = new MessageTriggerPlugin({
+      name: 'messageTrigger',
+      version: 'test',
+      description: 'test',
+    });
+    plugin.loadConfig(
+      {
+        api: {} as never,
+        events: {} as never,
+        bot: { getConfig: () => ({}) as never },
+      },
+      { name: 'messageTrigger', enabled: true, config: {} },
+    );
+    await plugin.onInit?.();
+
+    const context = makeHookContext({ messageText: 'claude' });
+    await plugin.onMessagePreprocess(context);
     expect(context.metadata.get('postProcessOnly')).toBe(true);
     expect(context.metadata.get('replyTriggerType')).toBeUndefined();
   });

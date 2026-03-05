@@ -9,6 +9,7 @@ export {
   I2VPromptResultSchema,
   T2IImageParamsSchema,
 } from './imagePrompt';
+export { type PrefixInvitationResult, PrefixInvitationSchema } from './prefixInvitation';
 export { type PreliminaryAnalysisResult, PreliminaryAnalysisSchema } from './preliminaryAnalysis';
 export { type SearchDecisionResult, SearchDecisionSchema } from './searchDecision';
 export { KeepIndicesSchema } from './summarize';

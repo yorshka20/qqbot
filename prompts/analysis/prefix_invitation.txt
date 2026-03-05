@@ -1,0 +1,11 @@
+用户在一个群聊里发了一条消息。消息以模型/提供方名称开头（如 "claude"、"gpt"、"deepseek"），后面可能有分隔符（空格、逗号、冒号）再接更多内容。
+
+**用户消息：**
+{{messageText}}
+
+**任务：** 判断这条消息是否明确在邀请机器人回复。例如：
+- shouldReply=true：用户在模型名后面提出了问题、给出了指令或请求帮助（如「claude 写一段代码」「gpt: 解释一下」）。
+- shouldReply=false：消息只有模型名、或内容含糊/无关（如「claude」「claude？？」、没有明确请求）。
+
+只输出一个 JSON 对象，不要输出其他内容：
+{"shouldReply": true 或 false, "reason": "可选的一行理由"}

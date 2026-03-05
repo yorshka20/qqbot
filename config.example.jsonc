@@ -77,11 +77,11 @@
   // Plugins must be placed in src/plugins/ directory
   "plugins": {
     "list": [
-      // MessageTriggerPlugin: unified reply trigger. Sets context.replyTriggerType (at | reaction | wakeWordConfig | wakeWordPreference | providerName).
+      // MessageTriggerPlugin: unified reply trigger. Provider-name prefix always triggers; a lightweight LLM check (default provider) confirms invite before full reply.
       // {
       //   "name": "messageTrigger",
       //   "enabled": true,
-      //   "config": { "wakeWords": [], "providerNamesAsTrigger": true }
+      //   "config": { "wakeWords": [] }
       // },
       // Whitelist plugin: access control only (userIds for private, groupIds for group). Trigger logic is in messageTrigger.
       // {
@@ -172,6 +172,8 @@
               "groupId": "1",
               "preferenceKey": "preference.blender"
             }
+            // Casual chat: bot actively responds to user summons (在吗/出来/聊聊 etc.)
+            // { "groupId": "1", "preferenceKey": "preference.casual" },
             // Multiple preferences per group: add more entries with same groupId
             // { "groupId": "1", "preferenceKey": "preference.mihoyo" },
             // { "groupId": "1", "preferenceKey": "preference.tech" }
