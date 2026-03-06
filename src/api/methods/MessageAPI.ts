@@ -245,6 +245,99 @@ export class MessageAPI {
   }
 
   /**
+   * Build NormalizedMessageEvent from a DB Message. Single place for this conversion so we don't duplicate
+   * the same logic in two call sites (cache hit with image → prefer DB for bot reply, and cache miss → load from DB).
+   * Bot reply: never uses rawContent for segments so referenced card shows cardText only.
+   */
+  private buildNormalizedFromDbMessage(
+    dbMessage: Message,
+    protocol: ProtocolName,
+    messageScene?: string,
+  ): NormalizedMessageEvent {
+    const dbProtocol = dbMessage.protocol;
+    const validProtocols: ProtocolName[] = ['milky', 'onebot11', 'satori'];
+    const messageProtocol: ProtocolName = validProtocols.includes(dbProtocol as ProtocolName)
+      ? (dbProtocol as ProtocolName)
+      : protocol;
+
+    const messageSeqFromDb = dbMessage.messageSeq;
+    let restoredMessageScene: string | undefined = messageScene;
+    if (dbMessage.metadata && typeof dbMessage.metadata === 'object') {
+      const metadata = dbMessage.metadata as Record<string, unknown>;
+      if (typeof metadata.messageScene === 'string') {
+        restoredMessageScene = metadata.messageScene;
+      }
+    }
+
+    const normalizedMessage: NormalizedMessageEvent = {
+      id: dbMessage.id,
+      type: 'message',
+      timestamp: dbMessage.createdAt.getTime(),
+      protocol: messageProtocol,
+      messageType: dbMessage.messageType,
+      userId: dbMessage.userId,
+      message: dbMessage.content,
+      messageId: dbMessage.messageId ? parseInt(dbMessage.messageId, 10) : undefined,
+      messageScene: restoredMessageScene,
+    };
+
+    if (messageProtocol === 'milky' && messageSeqFromDb !== undefined) {
+      (normalizedMessage as NormalizedMessageEvent & { messageSeq?: number }).messageSeq = messageSeqFromDb;
+      logger.debug(
+        `[MessageAPI] Restored messageSeq from database | messageSeq=${messageSeqFromDb} | groupId=${dbMessage.groupId}`,
+      );
+    }
+
+    // Bot reply (e.g. card image): never use rawContent for segments; use content only so referenced message shows cardText, not image. Card image is never stored in DB or cache.
+    const isBotReply =
+      dbMessage.metadata && typeof dbMessage.metadata === 'object' && dbMessage.metadata.isBotReply === true;
+    if (isBotReply) {
+      normalizedMessage.segments = [{ type: 'text', data: { text: dbMessage.content } }];
+    } else {
+      if (dbMessage.rawContent) {
+        try {
+          const segments = Array.isArray(dbMessage.rawContent)
+            ? (dbMessage.rawContent as Array<{ type: string; data?: Record<string, unknown> }>)
+            : (JSON.parse(dbMessage.rawContent as string) as Array<{ type: string; data?: Record<string, unknown> }>);
+          normalizedMessage.segments = segments;
+        } catch {
+          normalizedMessage.segments = [{ type: 'text', data: { text: dbMessage.content } }];
+        }
+      } else {
+        logger.debug(
+          `[MessageAPI] Restored message has no rawContent, using text fallback only | messageSeq=${messageSeqFromDb}`,
+        );
+        normalizedMessage.segments = [{ type: 'text', data: { text: dbMessage.content } }];
+      }
+    }
+
+    if (dbMessage.groupId) {
+      normalizedMessage.groupId = dbMessage.groupId;
+    }
+
+    if (dbMessage.metadata && typeof dbMessage.metadata === 'object') {
+      const metadata = dbMessage.metadata as Record<string, unknown>;
+      if (metadata.sender && typeof metadata.sender === 'object') {
+        const sender = metadata.sender as Record<string, unknown>;
+        normalizedMessage.sender = {
+          userId: typeof sender.userId === 'number' ? sender.userId : dbMessage.userId,
+          nickname: typeof sender.nickname === 'string' ? sender.nickname : undefined,
+          card: typeof sender.card === 'string' ? sender.card : undefined,
+          role: typeof sender.role === 'string' ? sender.role : undefined,
+        };
+      }
+      if (messageProtocol === 'milky') {
+        const milkyMessage = normalizedMessage as NormalizedMessageEvent & { groupName?: string };
+        if (typeof (metadata as { groupName?: string }).groupName === 'string') {
+          milkyMessage.groupName = (metadata as { groupName?: string }).groupName;
+        }
+      }
+    }
+
+    return normalizedMessage;
+  }
+
+  /**
    * Get message from context by messageSeq (for Milky protocol) or messageId (for other protocols).
    * Priority: 1. Memory cache, 2. Database query.
    * @param messageSeq - Message sequence (for Milky protocol)
@@ -276,50 +369,57 @@ export class MessageAPI {
       );
     }
 
-    // Try cache first
+    const queryCriteria: Partial<Message> = isGroup
+      ? { protocol, groupId, messageSeq }
+      : { protocol, messageSeq, messageType: 'private' };
+
+    // Try cache first (no DB needed for cache hit without image segments)
+    let cached: NormalizedMessageEvent | undefined;
     if (isGroup && groupId !== undefined) {
-      const cachedMessage = getCachedMessageBySeq(protocol, groupId, messageSeq, true);
-      if (cachedMessage && cachedMessage.groupId === groupId) {
-        return cachedMessage;
-      }
+      const c = getCachedMessageBySeq(protocol, groupId, messageSeq, true);
+      cached = c && c.groupId === groupId ? c : undefined;
     } else {
-      // For private messages, messageSeq is globally unique
-      // Use 0 as placeholder to query cache (private messages cached with userId=0)
-      const cachedMessage = getCachedMessageBySeq(protocol, 0, messageSeq, false);
-      if (cachedMessage && cachedMessage.messageType === 'private') {
-        return cachedMessage;
-      }
+      const c = getCachedMessageBySeq(protocol, 0, messageSeq, false);
+      cached = c && c.messageType === 'private' ? c : undefined;
     }
 
+    if (cached) {
+      const hasImageSegment = cached.segments?.some((s) => s.type === 'image');
+      if (!hasImageSegment) {
+        return cached;
+      }
+      // Cache hit with image segments may be bot card echo; prefer DB so referenced message shows cardText, not image.
+    }
+
+    // Need DB: resolve adapter once (for cache hit with image override, or cache miss)
     const adapter = databaseManager.getAdapter();
-    if (!adapter || !adapter.isConnected()) {
+    if (!adapter?.isConnected()) {
       throw new Error(
         `Database not connected | messageSeq=${messageSeq} | protocol=${protocol} | ${isGroup ? `groupId=${groupId}` : 'private'}`,
       );
     }
-
     const messages = adapter.getModel('messages');
-    let dbMessage: Message | null = null;
 
-    // Query by messageSeq
-    // Group: protocol + groupId + messageSeq (messageSeq unique within group)
-    // Private: protocol + messageSeq + messageType (messageSeq globally unique)
-    try {
-      if (isGroup) {
-        dbMessage = await messages.findOne({
-          protocol,
-          groupId,
-          messageSeq,
-        } as Partial<Message>);
-      } else {
-        // For private messages, messageSeq is globally unique in Milky protocol
-        // Query by protocol + messageSeq + messageType only
-        dbMessage = await messages.findOne({
-          protocol,
-          messageSeq,
-          messageType: 'private',
-        } as Partial<Message>);
+    if (cached) {
+      try {
+        const dbMessage = await messages.findOne(queryCriteria);
+        const isBotReply =
+          dbMessage?.metadata && typeof dbMessage.metadata === 'object' && dbMessage.metadata.isBotReply === true;
+        if (dbMessage && isBotReply) {
+          const normalized = this.buildNormalizedFromDbMessage(dbMessage, protocol, messageScene);
+          cacheMessage(normalized);
+          return normalized;
+        }
+      } catch {
+        // Fall through to return cached
       }
+      return cached;
+    }
+
+    // Cache miss: load from DB
+    let dbMessage: Message | null = null;
+    try {
+      dbMessage = await messages.findOne(queryCriteria);
     } catch (error) {
       throw new Error(
         `Failed to query message from database | messageSeq=${messageSeq} | protocol=${protocol} | ${isGroup ? `groupId=${groupId}` : 'private'} | error=${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -327,109 +427,8 @@ export class MessageAPI {
     }
 
     if (dbMessage) {
-      // Convert database Message to NormalizedMessageEvent
-      const dbProtocol = dbMessage.protocol;
-      const validProtocols: ProtocolName[] = ['milky', 'onebot11', 'satori'];
-      const messageProtocol: ProtocolName = validProtocols.includes(dbProtocol as ProtocolName)
-        ? (dbProtocol as ProtocolName)
-        : protocol;
-
-      // Extract messageSeq from dedicated column (not metadata)
-      const messageSeqFromDb = dbMessage.messageSeq;
-
-      // Extract messageScene from metadata (for Milky protocol) or use from context
-      let restoredMessageScene: string | undefined = messageScene;
-      if (dbMessage.metadata && typeof dbMessage.metadata === 'object') {
-        const metadata = dbMessage.metadata as Record<string, unknown>;
-        if (typeof metadata.messageScene === 'string') {
-          restoredMessageScene = metadata.messageScene;
-        }
-      }
-
-      const normalizedMessage: NormalizedMessageEvent = {
-        id: dbMessage.id,
-        type: 'message',
-        timestamp: dbMessage.createdAt.getTime(),
-        protocol: messageProtocol,
-        messageType: dbMessage.messageType,
-        userId: dbMessage.userId,
-        message: dbMessage.content,
-        messageId: dbMessage.messageId ? parseInt(dbMessage.messageId, 10) : undefined,
-        messageScene: restoredMessageScene,
-      };
-
-      // For Milky protocol, restore messageSeq from metadata
-      if (messageProtocol === 'milky' && messageSeqFromDb !== undefined) {
-        (normalizedMessage as NormalizedMessageEvent & { messageSeq?: number }).messageSeq = messageSeqFromDb;
-        logger.debug(
-          `[MessageAPI] Restored messageSeq from database | messageSeq=${messageSeqFromDb} | groupId=${dbMessage.groupId}`,
-        );
-      }
-
-      // Parse segments from rawContent if available
-      // Note: SQLite adapter deserializes jsonFields (including rawContent) so it may already be an array
-      if (dbMessage.rawContent) {
-        try {
-          const segments = Array.isArray(dbMessage.rawContent)
-            ? (dbMessage.rawContent as Array<{ type: string; data?: Record<string, unknown> }>)
-            : (JSON.parse(dbMessage.rawContent as string) as Array<{
-                type: string;
-                data?: Record<string, unknown>;
-              }>);
-          normalizedMessage.segments = segments;
-        } catch {
-          normalizedMessage.segments = [
-            {
-              type: 'text',
-              data: { text: dbMessage.content },
-            },
-          ];
-        }
-      } else {
-        // No rawContent in DB: restored message will have only a text fallback segment (no image/other segments)
-        logger.debug(
-          `[MessageAPI] Restored message has no rawContent, using text fallback only | messageSeq=${messageSeqFromDb}`,
-        );
-        normalizedMessage.segments = [
-          {
-            type: 'text',
-            data: { text: dbMessage.content },
-          },
-        ];
-      }
-
-      if (dbMessage.groupId) {
-        normalizedMessage.groupId = dbMessage.groupId;
-      }
-
-      if (dbMessage.metadata && typeof dbMessage.metadata === 'object') {
-        const metadata = dbMessage.metadata as Record<string, unknown>;
-
-        // Restore sender information
-        if (metadata.sender && typeof metadata.sender === 'object') {
-          const sender = metadata.sender as Record<string, unknown>;
-          normalizedMessage.sender = {
-            userId: typeof sender.userId === 'number' ? sender.userId : dbMessage.userId,
-            nickname: typeof sender.nickname === 'string' ? sender.nickname : undefined,
-            card: typeof sender.card === 'string' ? sender.card : undefined,
-            role: typeof sender.role === 'string' ? sender.role : undefined,
-          };
-        }
-
-        // Restore Milky-specific fields (messageScene already restored above)
-        if (messageProtocol === 'milky') {
-          const milkyMessage = normalizedMessage as NormalizedMessageEvent & {
-            groupName?: string;
-          };
-
-          if (typeof metadata.groupName === 'string') {
-            milkyMessage.groupName = metadata.groupName;
-          }
-        }
-      }
-
+      const normalizedMessage = this.buildNormalizedFromDbMessage(dbMessage, protocol, messageScene);
       cacheMessage(normalizedMessage);
-
       return normalizedMessage;
     }
 

@@ -400,6 +400,7 @@ async function extractImagesFromReplyMessage(
 ): Promise<VisionImage[]> {
   const referencedMessage = await messageAPI.getMessageFromContext(replyMessageId, message, databaseManager);
 
+  // Bot reply is always restored as text-only (getMessageFromContext never returns card image for bot reply).
   if (!referencedMessage.segments || referencedMessage.segments.length === 0) {
     return [];
   }
@@ -441,6 +442,7 @@ export async function extractImagesFromMessageAndReply(
       }
 
       try {
+        // Bot reply is always restored as text-only by getMessageFromContext (card image never stored in cache/DB).
         let referencedImages: VisionImage[];
         if (referencedMessage?.segments && referencedMessage.segments.length > 0) {
           referencedImages = await extractImagesFromSegmentsAsync(
@@ -448,16 +450,13 @@ export async function extractImagesFromMessageAndReply(
             getResourceUrl,
           );
           if (referencedImages.length > 0) {
-            logger.debug(`[imageUtils] Extracted ${referencedImages.length} image(s) from pre-resolved referenced message`);
+            logger.debug(
+              `[imageUtils] Extracted ${referencedImages.length} image(s) from pre-resolved referenced message`,
+            );
           }
         } else {
           logger.debug(`[imageUtils] Fetching referenced message | messageId=${replyMessageId}`);
-          referencedImages = await extractImagesFromReplyMessage(
-            replyMessageId,
-            message,
-            messageAPI,
-            databaseManager,
-          );
+          referencedImages = await extractImagesFromReplyMessage(replyMessageId, message, messageAPI, databaseManager);
           if (referencedImages.length > 0) {
             logger.debug(`[imageUtils] Extracted ${referencedImages.length} image(s) from referenced message`);
           }
