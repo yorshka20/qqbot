@@ -3,6 +3,7 @@
 
 import type { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult, PermissionLevel } from '@/command/types';
+import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { getSessionId, getSessionType } from '@/core/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -46,6 +47,8 @@ interface LocationDescription {
   isGlobal: boolean;
 }
 
+const FORWARD_USAGE = '/forward on/off | toggle — 本群是否使用合并转发发送回复（仅群聊）';
+
 /**
  * Conversation Config Plugin
  * Manages conversation-level configuration
@@ -59,11 +62,13 @@ interface LocationDescription {
 export class ConversationConfigPlugin extends PluginBase {
   private commandManager!: CommandManager;
   private pluginManager!: PluginManager;
+  private conversationConfigService!: ConversationConfigService;
 
   async onInit(): Promise<void> {
     const container = getContainer();
     this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
     this.pluginManager = container.resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
+    this.conversationConfigService = container.resolve<ConversationConfigService>(DITokens.CONVERSATION_CONFIG_SERVICE);
 
     if (!this.commandManager) {
       throw new Error('[ConversationConfigPlugin] CommandManager not found');
@@ -95,7 +100,18 @@ export class ConversationConfigPlugin extends PluginBase {
       registration.permissions = ['group_admin', 'group_owner', 'admin'];
     }
 
-    logger.info('[ConversationConfigPlugin] Registered /cmd command');
+    const forwardHandler = new PluginCommandHandler(
+      'forward',
+      FORWARD_USAGE,
+      FORWARD_USAGE,
+      async (args: string[], context: CommandContext) => {
+        return await this.executeForwardCommand(args, context);
+      },
+      this.context,
+    );
+    this.commandManager.register(forwardHandler, this.name);
+
+    logger.info('[ConversationConfigPlugin] Registered /cmd and /forward commands');
   }
 
   async onDisable(): Promise<void> {
@@ -103,7 +119,38 @@ export class ConversationConfigPlugin extends PluginBase {
     logger.info('[ConversationConfigPlugin] Disabling conversation config plugin');
 
     this.commandManager.unregister('cmd', this.name);
-    logger.info('[ConversationConfigPlugin] Unregistered /cmd command');
+    this.commandManager.unregister('forward', this.name);
+    logger.info('[ConversationConfigPlugin] Unregistered /cmd and /forward commands');
+  }
+
+  /**
+   * Execute /forward command: toggle use-forward-msg for current group only.
+   */
+  private async executeForwardCommand(args: string[], context: CommandContext): Promise<CommandResult> {
+    if (context.messageType !== 'group') {
+      return this.createErrorResult('仅支持在群聊中使用 /forward');
+    }
+
+    const sessionId = getSessionId(context);
+    const sessionType = getSessionType(context);
+    if (sessionType !== 'group' || !sessionId) {
+      return this.createErrorResult('无法获取当前群会话');
+    }
+
+    const current = await this.conversationConfigService.getUseForwardMsg(sessionId, sessionType);
+    let newValue: boolean;
+
+    const sub = args[0]?.toLowerCase();
+    if (sub === 'on') {
+      newValue = true;
+    } else if (sub === 'off') {
+      newValue = false;
+    } else {
+      newValue = !current;
+    }
+
+    await this.conversationConfigService.updateConfig(sessionId, sessionType, { useForwardMsg: newValue });
+    return this.createSuccessResult(`本群已${newValue ? '开启' : '关闭'}「合并转发」发送回复。`);
   }
 
   /**

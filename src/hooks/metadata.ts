@@ -15,6 +15,8 @@ export interface HookContextMetadata {
 
   // Access Control & Processing Mode
   postProcessOnly?: boolean;
+  /** When true, this group has opted in to send replies as forward (Milky); set at process start from conversation config. */
+  groupUseForwardMsg?: boolean;
   whitelistUser?: boolean;
   whitelistGroup?: boolean;
 

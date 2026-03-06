@@ -106,17 +106,30 @@ export class ConversationConfigService {
       instruct: conversationConfig.nsfw?.instruct ?? '',
     };
 
+    const permissions = {
+      users: {
+        ...globalConfig.permissions?.users,
+        ...conversationConfig.permissions?.users,
+      },
+    };
+
+    const useForwardMsg = conversationConfig.useForwardMsg ?? false;
+
     return {
       commands,
       plugins,
-      permissions: {
-        users: {
-          ...globalConfig.permissions?.users,
-          ...conversationConfig.permissions?.users,
-        },
-      },
+      permissions,
       nsfw,
+      useForwardMsg,
     };
+  }
+
+  /**
+   * Get whether to send reply as forward message for this session (group only; used for Milky).
+   */
+  async getUseForwardMsg(sessionId: string, sessionType: SessionType): Promise<boolean> {
+    const config = await this.getConfig(sessionId, sessionType);
+    return config.useForwardMsg === true;
   }
 
   /**
@@ -161,6 +174,10 @@ export class ConversationConfigService {
       },
       providers: partialConfig.providers !== undefined ? partialConfig.providers : existing?.config?.providers,
       nsfw: mergedNsfw,
+      useForwardMsg:
+        partialConfig.useForwardMsg !== undefined
+          ? partialConfig.useForwardMsg
+          : (existing?.config?.useForwardMsg ?? false),
     };
 
     if (existing) {

@@ -182,11 +182,12 @@ export class MessageAPI {
   /**
    * Send a single forward message containing multiple logical messages (Milky protocol only).
    * Each item in messages becomes one node in the forward; the user sees one forward card and can expand to see all.
+   * Image segments are sent as http(s) URI so the protocol implementation can download to its temp file (LLOneBot fails with base64: ENOENT when opening temp file).
    *
    * @param messages - Array of messages to include in the forward (each: segments + optional senderName/senderId)
    * @param context - CommandContext (use originalMessage for target; bot from conversationContext) or NormalizedMessageEvent
    * @param timeout - Optional timeout in milliseconds (default: 10000)
-   * @param options - Optional botUserId when context is NormalizedMessageEvent (when CommandContext, uses conversationContext.botSelfId)
+   * @param options - botUserId is required: the bot's own QQ user id (must not be 0)
    * @returns Full API response (e.g. message_seq for Milky)
    */
   async sendForwardFromContext(
@@ -203,10 +204,17 @@ export class MessageAPI {
       throw new Error('sendForwardFromContext requires at least one message');
     }
 
-    // botUserId: from options when caller is pipeline (event + options.botUserId); default 0 for backward compatibility
-    const rawBot = options?.botUserId ?? 0;
-    const botUserId = typeof rawBot === 'number' && !Number.isNaN(rawBot) ? rawBot : 0;
+    // botUserId is required for forward; must be the bot's own QQ user id (not 0)
+    const rawBot = options?.botUserId;
+    const botUserId = typeof rawBot === 'number' && !Number.isNaN(rawBot) && rawBot > 0 ? rawBot : undefined;
+    if (botUserId === undefined) {
+      throw new Error(
+        "Forward message requires options.botUserId to be the bot's own QQ user id (positive number). Set config.bot.selfId.",
+      );
+    }
 
+    // Keep image segments as http(s) URI so protocol implementation (e.g. LLOneBot) can download
+    // to its temp file. Sending base64 causes ENOENT when it tries to open the temp file.
     const nodes = messages.map((m) => {
       const milkySegments = segmentsToMilkyOutgoing(m.segments);
       return {
@@ -216,10 +224,15 @@ export class MessageAPI {
       };
     });
 
+    // Milky: https://milky.ntqqrev.org/struct/OutgoingSegment — forward segment has type "forward", data.messages = OutgoingForwardedMessage[]
     const forwardSegment = {
       type: 'forward' as const,
       data: { messages: nodes },
     };
+
+    logger.debug(
+      `[MessageAPI] sendForwardFromContext | group_id=${groupId} | nodes=${nodes.length} | botUserId=${botUserId} | firstNodeSegments=${nodes[0]?.segments?.length ?? 0}`,
+    );
 
     if (messageScene === 'temp' && groupId) {
       return this.apiClient.call<SendMessageResult>(

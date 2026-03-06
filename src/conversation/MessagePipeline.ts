@@ -13,6 +13,7 @@ import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { cacheMessage } from '@/message/MessageCache';
 import { logger } from '@/utils/logger';
+import type { ConversationConfigService } from './ConversationConfigService';
 import type { Lifecycle } from './Lifecycle';
 import type { MessageProcessingContext, MessageProcessingResult } from './types';
 
@@ -30,7 +31,7 @@ export class MessagePipeline {
     private hookManager: HookManager,
     private apiClient: APIClient,
     private contextManager: ContextManager,
-    private promptManager: PromptManager,
+    private conversationConfigService: ConversationConfigService,
   ) {
     // Create MessageAPI instance from APIClient
     this.messageAPI = new MessageAPI(this.apiClient);
@@ -40,7 +41,7 @@ export class MessagePipeline {
    * Process message through the complete pipeline
    */
   async process(event: NormalizedMessageEvent, context: MessageProcessingContext): Promise<MessageProcessingResult> {
-    const hookContext = this.createHookContext(event, context);
+    const hookContext = await this.createHookContext(event, context);
     const messageId = String(event.id ?? event.messageId ?? 'unknown');
     const contextKey = `${context.sessionId}_${messageId}`;
 
@@ -69,7 +70,7 @@ export class MessagePipeline {
     event: NormalizedMessageEvent,
     context: MessageProcessingContext,
   ): Promise<MessageProcessingResult> {
-    const hookContext = this.createHookContext(event, context);
+    const hookContext = await this.createHookContext(event, context);
     const messageId = String(event.id ?? event.messageId ?? 'unknown');
     hookContext.metadata.set('replyOnly', true);
     const contextKey = `${context.sessionId}_${messageId}`;
@@ -108,9 +109,12 @@ export class MessagePipeline {
   }
 
   /**
-   * Create initial hook context with conversation context
+   * Create initial hook context with conversation context and group-use-forward flag.
    */
-  private createHookContext(event: NormalizedMessageEvent, context: MessageProcessingContext): HookContext {
+  private async createHookContext(
+    event: NormalizedMessageEvent,
+    context: MessageProcessingContext,
+  ): Promise<HookContext> {
     const conversationContext = this.buildConversationContext(event, context);
     const options: Parameters<typeof HookContextBuilder.fromMessage>[1] = {
       sessionId: context.sessionId,
@@ -119,7 +123,17 @@ export class MessagePipeline {
       botSelfId: context.botSelfId,
       replyTrigger: context.replyTrigger,
     };
-    return HookContextBuilder.fromMessage(event, options).withConversationContext(conversationContext).build();
+    const hookContext = HookContextBuilder.fromMessage(event, options)
+      .withConversationContext(conversationContext)
+      .build();
+    const groupId = event.groupId != null ? event.groupId.toString() : undefined;
+    if (groupId) {
+      const groupUseForwardMsg = await this.conversationConfigService.getUseForwardMsg(groupId, 'group');
+      hookContext.metadata.set('groupUseForwardMsg', groupUseForwardMsg);
+    } else {
+      hookContext.metadata.set('groupUseForwardMsg', false);
+    }
+    return hookContext;
   }
 
   /**
@@ -184,7 +198,7 @@ export class MessagePipeline {
   }
 
   /**
-   * Send message (normal or as forward based on reply.metadata.sendAsForward)
+   * Send message (normal or as forward). All replies respect the group's useForwardMsg config (Milky only).
    */
   private async sendMessage(event: NormalizedMessageEvent, hookContext: HookContext): Promise<void> {
     const shouldContinue = await this.hookManager.execute('onMessageBeforeSend', hookContext);
@@ -199,18 +213,25 @@ export class MessagePipeline {
       throw new Error('ReplyContent.segments is required but missing or empty');
     }
 
-    const useForward = replyContent.metadata?.sendAsForward === true && event.protocol === 'milky';
+    const groupUseForward = hookContext.metadata.get('groupUseForwardMsg') === true;
+    const useForwardActual = event.protocol === 'milky' && groupUseForward;
+    logger.debug(
+      `[MessagePipeline] sendMessage | useForward=${useForwardActual} | groupUseForwardMsg=${groupUseForward} | protocol=${event.protocol}`,
+    );
     let sentMessageResponse: SendMessageResult;
 
     try {
-      if (useForward) {
-        const botSelfId = hookContext.metadata.get('botSelfId');
-        const botUserId = botSelfId != null ? parseInt(String(botSelfId), 10) : undefined;
+      if (useForwardActual) {
+        const botSelfId = Number(hookContext.metadata.get('botSelfId'));
+
+        if (botSelfId === undefined || Number.isNaN(botSelfId)) {
+          throw new Error("Forward message requires bot self ID. Set config.bot.selfId to the bot's own QQ user id.");
+        }
         sentMessageResponse = await this.messageAPI.sendForwardFromContext(
           [{ segments: replyContent.segments, senderName: 'Bot' }],
           event,
           10000,
-          botUserId !== undefined && !Number.isNaN(botUserId) ? { botUserId } : undefined,
+          { botUserId: botSelfId },
         );
       } else {
         sentMessageResponse = await this.messageAPI.sendFromContext(replyContent.segments, event, 10000);

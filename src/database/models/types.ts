@@ -83,6 +83,8 @@ export interface ConversationConfigData {
     /** Character persona/details for prompt {{instruct}}; supplements {{char}} with traits, preferences, backstory. */
     instruct?: string;
   };
+  /** When true, send reply as forward message (Milky only). Toggled per group via /forward on|off. */
+  useForwardMsg?: boolean;
 }
 
 /**

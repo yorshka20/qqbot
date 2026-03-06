@@ -169,6 +169,11 @@ export class ProactiveConversationPlugin extends PluginBase {
       return true;
     }
 
+    // Do not run proactive analysis for command messages; command uses its own send path and should not trigger LLM.
+    if (context.command) {
+      return true;
+    }
+
     // Trigger userId = current message sender (from pipeline event -> hook context.message)
     const triggerUserId = userId ?? undefined;
 

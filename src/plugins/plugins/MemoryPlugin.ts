@@ -295,6 +295,10 @@ export class MemoryPlugin extends PluginBase {
     if (!this.enabled || this.groupIds.size === 0) {
       return true;
     }
+    // Do not schedule memory extract for command messages; command content should not be processed by LLM.
+    if (context.command) {
+      return true;
+    }
     const groupId = context.message?.groupId?.toString();
     const messageType = context.message?.messageType;
     if (messageType !== 'group' || !groupId || !this.groupIds.has(groupId)) {
