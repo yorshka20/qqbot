@@ -60,7 +60,9 @@ export function normalizeGroupId(groupId: string | number): { sessionId: string;
   if (typeof groupId === 'number' && !Number.isNaN(groupId)) {
     return { sessionId: `group:${groupId}`, groupIdNum: groupId };
   }
-  const s = String(groupId).trim().replace(/^group:/i, '');
+  const s = String(groupId)
+    .trim()
+    .replace(/^group:/i, '');
   const groupIdNum = parseInt(s, 10) || 0;
   return { sessionId: `group:${groupIdNum}`, groupIdNum };
 }

@@ -740,11 +740,7 @@ export class ProactiveConversationService {
       return;
     }
     // Optionally render as card (same pipeline as ReplyGenerationService); store card text in thread for LLM-readable history
-    const cardResult = await this.aiService.processReplyMaybeCard(
-      replyText,
-      groupId,
-      this.analysisProviderName,
-    );
+    const cardResult = await this.aiService.processReplyMaybeCard(replyText, groupId, this.analysisProviderName);
     const toSend = cardResult ? cardResult.segments : replyText;
     const toAppend = cardResult ? cardResult.textForHistory : replyText;
     // Update thread and DB before/on send so the next message or analysis run already sees this reply (no need to wait for echo).
@@ -792,11 +788,7 @@ export class ProactiveConversationService {
     if (!replyText) return;
 
     // Optionally render as card (same pipeline as ReplyGenerationService); store card text in thread for LLM-readable history
-    const cardResult = await this.aiService.processReplyMaybeCard(
-      replyText,
-      thread.groupId,
-      this.analysisProviderName,
-    );
+    const cardResult = await this.aiService.processReplyMaybeCard(replyText, thread.groupId, this.analysisProviderName);
     const toSend = cardResult ? cardResult.segments : replyText;
     const toAppend = cardResult ? cardResult.textForHistory : replyText;
     // Update thread and DB before/on send so the next message or analysis run already sees this reply (no need to wait for echo).
@@ -811,7 +803,10 @@ export class ProactiveConversationService {
     });
   }
 
-  private async sendGroupMessage(groupId: number, message: string | MessageSegment[]): Promise<SendMessageResult | undefined> {
+  private async sendGroupMessage(
+    groupId: number,
+    message: string | MessageSegment[],
+  ): Promise<SendMessageResult | undefined> {
     const syntheticContext = this.buildSyntheticGroupContext(groupId);
     const result = await this.messageAPI.sendFromContext(message, syntheticContext, 10000);
     logger.info(`[ProactiveConversationService] Sent proactive message | groupId=${groupId}`);

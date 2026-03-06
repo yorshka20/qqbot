@@ -1,8 +1,8 @@
 // Message Trigger Plugin - single place that decides whether to run the reply pipeline (trigger only; no side effects)
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { PrefixInvitationCheckService } from '@/ai/services/PrefixInvitationCheckService';
 import { ProviderRouter } from '@/ai/routing/ProviderRouter';
+import type { PrefixInvitationCheckService } from '@/ai/services/PrefixInvitationCheckService';
 import type { ProactiveConversationService } from '@/conversation/proactive';
 import type { ThreadService } from '@/conversation/thread';
 import { getContainer } from '@/core/DIContainer';

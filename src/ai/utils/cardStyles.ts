@@ -701,9 +701,8 @@ export const cardStyles = `
     padding-top: 18px;
     border-top: 2px solid #fff;
     text-align: center;
-    color: #999;
+    color: #fff;
     font-size: 13px;
-    opacity: 0.8;
   }
 
   h2 { 
