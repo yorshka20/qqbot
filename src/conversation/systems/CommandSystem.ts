@@ -47,10 +47,12 @@ export class CommandSystem implements System {
     // Hook: onCommandExecuted
     await this.hookManager.execute('onCommandExecuted', context);
 
-    // Set reply using helper function
+    // Set reply using helper function; pipeline will send (as forward or normal based on reply.metadata.sendAsForward)
     // Use replace instead of append because command result is the final result
     if (commandResult.success && commandResult.segments && commandResult.segments.length > 0) {
-      replaceReplyWithSegments(context, commandResult.segments, 'command');
+      replaceReplyWithSegments(context, commandResult.segments, 'command', {
+        sendAsForward: commandResult.sentAsForward,
+      });
     }
 
     return true;

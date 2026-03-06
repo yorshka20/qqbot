@@ -156,7 +156,8 @@ export class NovelAICommand implements CommandHandler {
         logger.info(`[NovelAICommand] Using img2img with ${images.length} image(s)`);
         let inputImage: string;
         try {
-          inputImage = visionImageToString(images[0]!);
+          const firstImage = images[0];
+          inputImage = firstImage ? visionImageToString(firstImage) : '';
         } catch (error) {
           logger.error(
             `[NovelAICommand] Failed to convert image to string: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -165,6 +166,9 @@ export class NovelAICommand implements CommandHandler {
             success: false,
             error: `Failed to process image: ${error instanceof Error ? error.message : 'Unknown error'}`,
           };
+        }
+        if (!inputImage) {
+          return { success: false, error: 'No image could be extracted for img2img' };
         }
         const img2imgOptions: Image2ImageOptions = {
           width: typeof options?.width === 'number' ? options.width : undefined,
@@ -226,9 +230,11 @@ export class NovelAICommand implements CommandHandler {
           await this.generateImage(hookContext, currentOptions, context, i, numImages);
         }
 
+        // Mark send-as-forward for Milky so pipeline sends one forward card (test)
         return {
           success: true,
           segments: firstImageSegments,
+          sentAsForward: true,
         };
       }
 
@@ -242,9 +248,11 @@ export class NovelAICommand implements CommandHandler {
         };
       }
 
+      // Mark send-as-forward for Milky so pipeline sends one forward card (test)
       return {
         success: true,
         segments: imageSegments,
+        sentAsForward: true,
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');

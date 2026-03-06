@@ -21,6 +21,8 @@ export interface ParsedCommand {
 export interface CommandResult {
   success: boolean;
   segments?: MessageSegment[]; // Message segments (images, audio, text, etc.) - required if success is true
+  /** When true, pipeline should send this reply as a forward message (see ReplyMetadata.sendAsForward). */
+  sentAsForward?: boolean;
   error?: string;
   data?: Record<string, unknown>;
 }

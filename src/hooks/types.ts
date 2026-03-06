@@ -15,6 +15,8 @@ export interface ReplyMetadata {
   isCardImage?: boolean; // Flag indicating card image message format
   /** When set (e.g. for card reply), history/context/cache should store this text instead of extracting from segments (LLM-readable; image is only for sending). */
   cardTextForHistory?: string;
+  /** When true, pipeline should send this reply as a forward message (Milky only; one card containing the segments). */
+  sendAsForward?: boolean;
   // Other flags can be added here in the future
 }
 

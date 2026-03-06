@@ -99,7 +99,8 @@ export class NaiPlusCommand implements CommandHandler {
         logger.info(`[NaiPlusCommand] Using img2img with ${images.length} image(s)`);
         let inputImage: string;
         try {
-          inputImage = visionImageToString(images[0]!);
+          const firstImage = images[0];
+          inputImage = firstImage ? visionImageToString(firstImage) : '';
         } catch (error) {
           logger.error(
             `[NaiPlusCommand] Failed to convert image to string: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -108,6 +109,9 @@ export class NaiPlusCommand implements CommandHandler {
             success: false,
             error: `Failed to process image: ${error instanceof Error ? error.message : 'Unknown error'}`,
           };
+        }
+        if (!inputImage) {
+          return { success: false, error: 'No image could be extracted for img2img' };
         }
         const img2imgOptions: Image2ImageOptions = {
           width: typeof options?.width === 'number' ? options.width : undefined,
@@ -221,9 +225,11 @@ export class NaiPlusCommand implements CommandHandler {
           }
         }
 
+        // Mark send-as-forward for Milky so pipeline sends one forward card (test)
         return {
           success: true,
           segments: firstImageSegments,
+          sentAsForward: true,
         };
       }
 
@@ -231,7 +237,7 @@ export class NaiPlusCommand implements CommandHandler {
       // Generate image using NovelAI provider with LLM preprocessing
       // Check if plugin forces LLM processing (for SFW filter)
       const forceLLMProcess = context.conversationContext.metadata?.get('text2imgForceLLMProcess') === true;
-      const skipLLMProcess = forceLLMProcess ? false : false; // Always false for single image
+      const skipLLMProcess = !forceLLMProcess;
       const finalTemplateName = templateName || 'text2img.generate_nai';
       const response = await this.aiService.generateImg(
         hookContext,
@@ -257,9 +263,11 @@ export class NaiPlusCommand implements CommandHandler {
         imageSegments = messageBuilder.build();
       }
 
+      // Mark send-as-forward for Milky so pipeline sends one forward card (test)
       return {
         success: true,
         segments: imageSegments,
+        sentAsForward: true,
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');

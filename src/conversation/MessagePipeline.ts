@@ -2,6 +2,7 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { APIClient } from '@/api/APIClient';
+import type { SendMessageResult } from '@/api/methods/MessageAPI';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ContextManager, ConversationContext } from '@/context';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
@@ -11,7 +12,6 @@ import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { cacheMessage } from '@/message/MessageCache';
-import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { Lifecycle } from './Lifecycle';
 import type { MessageProcessingContext, MessageProcessingResult } from './types';
@@ -184,7 +184,7 @@ export class MessagePipeline {
   }
 
   /**
-   * Send message
+   * Send message (normal or as forward based on reply.metadata.sendAsForward)
    */
   private async sendMessage(event: NormalizedMessageEvent, hookContext: HookContext): Promise<void> {
     const shouldContinue = await this.hookManager.execute('onMessageBeforeSend', hookContext);
@@ -193,29 +193,34 @@ export class MessagePipeline {
       return;
     }
 
+    // handleReply only calls sendMessage when reply has segments; throw if missing so we never silently skip
+    const replyContent = getReplyContent(hookContext);
+    if (!replyContent || !replyContent.segments || replyContent.segments.length === 0) {
+      throw new Error('ReplyContent.segments is required but missing or empty');
+    }
+
+    const useForward = replyContent.metadata?.sendAsForward === true && event.protocol === 'milky';
+    let sentMessageResponse: SendMessageResult;
+
     try {
-      const messageToSend = this.buildMessageToSend(hookContext);
-      const sentMessageResponse = await this.messageAPI.sendFromContext(messageToSend, event, 10000);
+      if (useForward) {
+        const botSelfId = hookContext.metadata.get('botSelfId');
+        const botUserId = botSelfId != null ? parseInt(String(botSelfId), 10) : undefined;
+        sentMessageResponse = await this.messageAPI.sendForwardFromContext(
+          [{ segments: replyContent.segments, senderName: 'Bot' }],
+          event,
+          10000,
+          botUserId !== undefined && !Number.isNaN(botUserId) ? { botUserId } : undefined,
+        );
+      } else {
+        sentMessageResponse = await this.messageAPI.sendFromContext(replyContent.segments, event, 10000);
+      }
       // Save full API response for plugins to access all fields (e.g., message_id, message_seq, etc.)
       hookContext.sentMessageResponse = sentMessageResponse;
       await this.hookManager.execute('onMessageSent', hookContext);
     } catch (error) {
       await this.handleSendError(error, hookContext);
     }
-  }
-
-  /**
-   * Build message to send (always returns segments)
-   */
-  private buildMessageToSend(hookContext: HookContext): MessageSegment[] {
-    const replyContent = getReplyContent(hookContext);
-
-    // Segments is a required field, so it should always exist if replyContent exists
-    if (!replyContent || !replyContent.segments || replyContent.segments.length === 0) {
-      throw new Error('ReplyContent.segments is required but missing or empty');
-    }
-
-    return replyContent.segments;
   }
 
   /**

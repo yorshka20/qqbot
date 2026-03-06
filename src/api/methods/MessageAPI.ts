@@ -6,12 +6,21 @@ import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { Message } from '@/database/models/types';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import { cacheMessage, getCachedMessageBySeq } from '@/message/MessageCache';
+import type { MessageSegment } from '@/message/types';
+import { segmentsToMilkyOutgoing } from '@/protocol/milky/MilkySegmentConverter';
 import { logger } from '@/utils/logger';
 import type { APIClient } from '../APIClient';
 
 export interface SendMessageResult {
   message_id?: number; // Some protocols use message_id
   message_seq?: number; // Milky protocol uses message_seq
+}
+
+/** One logical message in a forward: segments plus optional sender display. */
+export interface ForwardMessageInput {
+  segments: MessageSegment[];
+  senderName?: string;
+  senderId?: number;
 }
 
 /** Context types supported by extractProtocol, recallFromContext, getMessageFromContext. */
@@ -168,6 +177,75 @@ export class MessageAPI {
 
     // If no valid message type found, throw error
     throw new Error('Unable to determine message type from context');
+  }
+
+  /**
+   * Send a single forward message containing multiple logical messages (Milky protocol only).
+   * Each item in messages becomes one node in the forward; the user sees one forward card and can expand to see all.
+   *
+   * @param messages - Array of messages to include in the forward (each: segments + optional senderName/senderId)
+   * @param context - CommandContext (use originalMessage for target; bot from conversationContext) or NormalizedMessageEvent
+   * @param timeout - Optional timeout in milliseconds (default: 10000)
+   * @param options - Optional botUserId when context is NormalizedMessageEvent (when CommandContext, uses conversationContext.botSelfId)
+   * @returns Full API response (e.g. message_seq for Milky)
+   */
+  async sendForwardFromContext(
+    messages: ForwardMessageInput[],
+    context: CommandContext | NormalizedMessageEvent,
+    timeout: number = 10000,
+    options?: { botUserId?: number },
+  ): Promise<SendMessageResult> {
+    const { protocol, userId, groupId, messageType, messageScene } = this.extractContextFields(context);
+    if (protocol !== 'milky') {
+      throw new Error('Forward message is only supported for Milky protocol');
+    }
+    if (!messages || messages.length === 0) {
+      throw new Error('sendForwardFromContext requires at least one message');
+    }
+
+    // botUserId: from options when caller is pipeline (event + options.botUserId); default 0 for backward compatibility
+    const rawBot = options?.botUserId ?? 0;
+    const botUserId = typeof rawBot === 'number' && !Number.isNaN(rawBot) ? rawBot : 0;
+
+    const nodes = messages.map((m) => {
+      const milkySegments = segmentsToMilkyOutgoing(m.segments);
+      return {
+        user_id: m.senderId ?? botUserId,
+        sender_name: m.senderName ?? 'Bot',
+        segments: milkySegments,
+      };
+    });
+
+    const forwardSegment = {
+      type: 'forward' as const,
+      data: { messages: nodes },
+    };
+
+    if (messageScene === 'temp' && groupId) {
+      return this.apiClient.call<SendMessageResult>(
+        'send_private_msg',
+        { user_id: userId, group_id: groupId, message: [forwardSegment] },
+        protocol,
+        timeout,
+      );
+    }
+    if (messageType === 'private') {
+      return this.apiClient.call<SendMessageResult>(
+        'send_private_msg',
+        { user_id: userId, message: [forwardSegment] },
+        protocol,
+        timeout,
+      );
+    }
+    if (groupId) {
+      return this.apiClient.call<SendMessageResult>(
+        'send_group_msg',
+        { group_id: groupId, message: [forwardSegment] },
+        protocol,
+        timeout,
+      );
+    }
+    throw new Error('Unable to determine message type from context for forward');
   }
 
   /**
