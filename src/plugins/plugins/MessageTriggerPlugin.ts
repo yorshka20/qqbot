@@ -51,6 +51,15 @@ export class MessageTriggerPlugin extends PluginBase {
     logger.info(`[MessageTriggerPlugin] Enabled | wakeWords=${this.globalWakeWords.length}`);
   }
 
+  /**
+   * Strip leading segment placeholders (e.g. [Reply:xxx], [Image:xxx]) from pipeline message text
+   * so that prefix/wake-word matching runs against the actual user input.
+   */
+  private getTextForTriggerMatch(message: string): string {
+    const stripped = (message ?? '').replace(/^(\s*\[[^\]]+\]\s*)+/, '');
+    return stripped.trim();
+  }
+
   private parseTriggerWords(content: string): string[] {
     return content
       .split(/\r?\n/)
@@ -78,7 +87,7 @@ export class MessageTriggerPlugin extends PluginBase {
     groupId: string | undefined,
     message: string,
   ): 'wakeWordPreference' | 'wakeWordConfig' | null {
-    const text = message.toLowerCase();
+    const text = this.getTextForTriggerMatch(message).toLowerCase();
     const preferenceWords = this.getGroupWakeWords(groupId);
     const matchedPreference = preferenceWords.some((w) => text.includes(w));
     if (matchedPreference) {
@@ -93,7 +102,7 @@ export class MessageTriggerPlugin extends PluginBase {
 
   /** True when message starts with a known provider alias (prefix match only). Always enabled. */
   private matchesProviderNameTrigger(message: string): boolean {
-    const raw = (message ?? '').trim();
+    const raw = this.getTextForTriggerMatch(message);
     if (!raw) {
       return false;
     }
@@ -147,7 +156,8 @@ export class MessageTriggerPlugin extends PluginBase {
 
     // When trigger is provider-name prefix, run lightweight LLM check (using default LLM) to avoid wasting tokens
     if (isProviderNameTrigger) {
-      const result = await this.prefixInvitationCheckService.check(messageText);
+      const textForCheck = this.getTextForTriggerMatch(messageText);
+      const result = await this.prefixInvitationCheckService.check(textForCheck);
       if (!result.shouldReply) {
         logger.debug(
           `[MessageTriggerPlugin] Prefix-invitation check said no reply | reason=${result.reason ?? 'none'}`,

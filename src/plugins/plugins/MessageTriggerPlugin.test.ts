@@ -250,6 +250,41 @@ describe('MessageTriggerPlugin', () => {
     expect(context.metadata.get('replyTriggerType')).toBe('wakeWordPreference');
   });
 
+  it('allows provider-name trigger when message has leading [Reply:xxx] (reply to another message)', async () => {
+    const plugin = await initPlugin();
+    // Format from MilkyMessageSegmentParser.segmentsToText
+    const context = makeHookContext({ messageText: '[Reply:12345]claude 你好' });
+    await plugin.onMessagePreprocess(context);
+    expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+    expect(context.metadata.get('replyTriggerType')).toBe('providerName');
+  });
+
+  it('allows provider-name trigger when message has leading [Image:xxx]', async () => {
+    const plugin = await initPlugin();
+    const context = makeHookContext({ messageText: '[Image:resource_abc]deepseek: 写一段代码' });
+    await plugin.onMessagePreprocess(context);
+    expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+    expect(context.metadata.get('replyTriggerType')).toBe('providerName');
+  });
+
+  it('allows provider-name trigger when message has multiple leading segments [Reply][Image] text', async () => {
+    const plugin = await initPlugin();
+    const context = makeHookContext({
+      messageText: '[Reply:1][Image:img1] claude 帮我总结',
+    });
+    await plugin.onMessagePreprocess(context);
+    expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+    expect(context.metadata.get('replyTriggerType')).toBe('providerName');
+  });
+
+  it('allows wake word when message has leading [Reply:xxx]', async () => {
+    const plugin = await initPlugin({ wakeWords: ['wakebot'] });
+    const context = makeHookContext({ messageText: '[Reply:999]please wakebot now' });
+    await plugin.onMessagePreprocess(context);
+    expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+    expect(context.metadata.get('replyTriggerType')).toBe('wakeWordConfig');
+  });
+
   it('sets postProcessOnly when prefix-invitation check says no reply (provider-name trigger)', async () => {
     const container = getContainer();
     const promptManager = new PromptManager();
