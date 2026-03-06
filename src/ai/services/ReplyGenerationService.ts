@@ -267,7 +267,9 @@ export class ReplyGenerationService {
       const taskResultImages = this.extractTaskResultImages(taskResults);
       const sessionId = context.metadata.get('sessionId');
 
-      // 0. Resolve referenced (quoted) message once for text injection and image extraction
+      // 0. Resolve referenced (quoted) message once for text injection and image extraction.
+      // Injection point: when resolved, userMessageOverride is built and passed to generateReplyWithTaskResults ->
+      // buildReplyMessages -> final user block (current_query); when resolution fails, prompt keeps raw message only.
       let referencedMessage: NormalizedMessageEvent | null = null;
       let userMessageOverride: string | undefined;
       const replyMessageId = getReplyMessageIdFromMessage(context.message);
@@ -283,9 +285,15 @@ export class ReplyGenerationService {
           const referencedText = refText + (hasImage ? '（含图片）' : '');
           if (referencedText) {
             userMessageOverride = `被引用的消息：${referencedText}\n\n当前问题：${context.message.message ?? ''}`;
+            logger.debug(
+              `[ReplyGenerationService] Injected referenced message into prompt | messageSeq=${replyMessageId} | refLength=${referencedText.length}`,
+            );
           }
-        } catch (_err) {
+        } catch (err) {
           referencedMessage = null;
+          logger.debug(
+            `[ReplyGenerationService] Referenced message not found, skipping text injection | messageSeq=${replyMessageId} | error=${err instanceof Error ? err.message : 'Unknown'}`,
+          );
         }
       }
 
