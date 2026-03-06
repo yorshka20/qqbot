@@ -313,12 +313,15 @@ export class ReplyGenerationService {
       // 2. Build task results summary
       const taskResultsSummary = this.buildTaskResultsSummary(taskResults);
 
-      // 3. Optional recursive search (outsourced to RetrievalService: multi-round decision + filter-refine + optional page fetch)
+      // 3. Optional recursive search (outsourced to RetrievalService: multi-round decision + filter-refine + optional page fetch).
+      // Use stripped user message (no provider prefix): e.g. "claude 北京天气" -> "北京天气" so the search-decision LLM sees the actual question and can decide to search (instead of "claude ..." which may be interpreted as non-searchable).
+      const { userMessage: messageForSearch } = this.providerRouter.routeReplyInput(context.message.message ?? '');
+
       let accumulatedSearchResults = '';
       if (this.retrievalService?.isSearchEnabled()) {
         this.fetchProgressNotifier.setMessageEvent(context.message);
         accumulatedSearchResults = await this.retrievalService.performRecursiveSearchRefined(
-          context.message.message,
+          messageForSearch,
           this.llmService,
           sessionId,
           this.MAX_SEARCH_ITERATIONS,
