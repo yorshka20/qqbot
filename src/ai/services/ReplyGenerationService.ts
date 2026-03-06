@@ -9,6 +9,7 @@ import {
   normalizeSessionId,
 } from '@/conversation/history';
 import type { DatabaseManager } from '@/database/DatabaseManager';
+import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { MemoryService } from '@/memory/MemoryService';
@@ -28,6 +29,7 @@ import { formatRAGConversationContext } from '../utils/formatRAGConversationCont
 import {
   extractImagesFromMessageAndReply,
   extractImagesFromSegmentsAsync,
+  getReplyMessageIdFromMessage,
   normalizeVisionImages,
 } from '../utils/imageUtils';
 import { CardRenderingService } from './CardRenderingService';
@@ -44,6 +46,9 @@ import type { VisionService } from './VisionService';
  */
 /** Normal mode: max history entries in prompt (stable size for cache hit). Excludes current user message; when exceeded, oldest are summarized. Initial context window (10 min) is defined in NormalEpisodeService.CONTEXT_WINDOW_MS. */
 const NORMAL_MAX_HISTORY_ENTRIES = 24;
+
+/** Provider used only for convert-to-card LLM call (cheap); never use main reply provider (e.g. anthropic). */
+const CONVERT_TO_CARD_PROVIDER = 'doubao';
 
 export class ReplyGenerationService {
   private readonly MAX_SEARCH_ITERATIONS = 5;
@@ -262,10 +267,37 @@ export class ReplyGenerationService {
       const taskResultImages = this.extractTaskResultImages(taskResults);
       const sessionId = context.metadata.get('sessionId');
 
+      // 0. Resolve referenced (quoted) message once for text injection and image extraction
+      let referencedMessage: NormalizedMessageEvent | null = null;
+      let userMessageOverride: string | undefined;
+      const replyMessageId = getReplyMessageIdFromMessage(context.message);
+      if (replyMessageId !== null) {
+        try {
+          referencedMessage = await this.messageAPI.getMessageFromContext(
+            replyMessageId,
+            context.message,
+            this.databaseManager,
+          );
+          const refText = (referencedMessage.message ?? '').trim();
+          const hasImage = referencedMessage.segments?.some((s) => s.type === 'image');
+          const referencedText = refText + (hasImage ? '（含图片）' : '');
+          if (referencedText) {
+            userMessageOverride = `被引用的消息：${referencedText}\n\n当前问题：${context.message.message ?? ''}`;
+          }
+        } catch (_err) {
+          referencedMessage = null;
+        }
+      }
+
       // 1. Extract images from user message (and referenced reply message) for vision provider when present
       let messageImages: VisionImage[] = [];
       try {
-        messageImages = await extractImagesFromMessageAndReply(context.message, this.messageAPI, this.databaseManager);
+        messageImages = await extractImagesFromMessageAndReply(
+          context.message,
+          this.messageAPI,
+          this.databaseManager,
+          referencedMessage,
+        );
       } catch (err) {
         logger.warn('[ReplyGenerationService] Failed to extract message images, continuing without vision:', err);
       }
@@ -294,6 +326,7 @@ export class ReplyGenerationService {
         sessionId,
         messageImages,
         taskResultImages,
+        userMessageOverride,
       );
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
@@ -605,14 +638,17 @@ export class ReplyGenerationService {
       messages[messages.length - 1] = { ...last, content: lastContent };
     }
 
-    const serialized = this.messageAssembler.serializeForFingerprint(messages);
-    new Promise(() => {
-      const fingerprint = NormalEpisodeService.hashMessages(serialized);
-      logger.info(
-        `[ReplyGenerationService] Prompt fingerprint=${fingerprint} | messageCount=${messages.length} | historyCount=${normalHistory.historyEntries.length}`,
-      );
-    }).catch(() => {});
+    this.messageHashCheck(messages);
+
     return { messages, sessionId: normalHistory.sessionId, episodeKey: normalHistory.episodeKey };
+  }
+
+  private messageHashCheck(messages: ChatMessage[]) {
+    return new Promise(() => {
+      const serialized = this.messageAssembler.serializeForFingerprint(messages);
+      const fingerprint = NormalEpisodeService.hashMessages(serialized);
+      logger.info(`[ReplyGenerationService] Prompt fingerprint=${fingerprint} | messageCount=${messages.length}`);
+    });
   }
 
   /**
@@ -625,6 +661,7 @@ export class ReplyGenerationService {
    * @param sessionId - Session ID
    * @param messageImages - Images from user message (and referenced message). When non-empty, reply is generated via vision provider.
    * @param taskResultImages - Base64 images from task results (data.imageBase64), appended to reply
+   * @param userMessageOverride - When set (e.g. with referenced message text prepended), used as the user message for routing and prompt instead of context.message.message
    */
   private async generateReplyWithTaskResults(
     context: HookContext,
@@ -633,8 +670,9 @@ export class ReplyGenerationService {
     sessionId: string,
     messageImages: VisionImage[] = [],
     taskResultImages: string[] = [],
+    userMessageOverride?: string,
   ): Promise<void> {
-    const rawInput = context.message.message ?? '';
+    const rawInput = userMessageOverride ?? context.message.message ?? '';
     const { providerName, userMessage, reason, confidence, usedExplicitPrefix } =
       this.providerRouter.routeReplyInput(rawInput);
     const useVisionProvider = messageImages.length > 0;
@@ -677,7 +715,6 @@ export class ReplyGenerationService {
 
     logger.debug(`[ReplyGenerationService] LLM response received | responseLength=${response.text.length}`);
 
-    // Try to handle as card reply if applicable
     if (this.shouldUseCardReply(response.text, sessionId, providerName)) {
       const success = await this.handleCardReply(response.text, sessionId, context, providerName);
       if (success) {
@@ -690,8 +727,7 @@ export class ReplyGenerationService {
     // Hook: onAIGenerationComplete
     await this.hookManager.execute('onAIGenerationComplete', context);
 
-    // If card reply failed or skipped, use text reply - use replace (same AI reply update)
-    // Set text reply to context
+    // Fallback to text when card path skipped or shouldUseCardRendering returned false
     replaceReply(context, response.text, 'ai');
 
     // Maintain episode context outside reply path (fire-and-forget): summarize when over limit so next reply sees stable prefix.
@@ -721,7 +757,7 @@ export class ReplyGenerationService {
     providerName?: string,
   ): Promise<boolean> {
     try {
-      // Convert text to card format
+      // Convert text to card format (use cheap provider only; never pass main reply provider)
       logger.info('[ReplyGenerationService] Converting response to card format');
       const cardFormatText = await this.convertToCardFormat(responseText, sessionId);
 
@@ -800,26 +836,25 @@ export class ReplyGenerationService {
   }
 
   /**
-   * Convert text response to card format JSON
-   * This method is called when response length exceeds threshold
-   * @param responseText - Original text response
-   * @param sessionId - Session ID for provider selection
-   * @returns Card format JSON string
+   * Convert text response to card format JSON.
+   * Always uses a cheap provider (doubao), never the main reply provider (e.g. anthropic).
    */
   private async convertToCardFormat(responseText: string, sessionId?: string): Promise<string> {
-    // Use dedicated conversion prompt template
     const prompt = this.promptManager.render('llm.reply.convert_to_card', {
       responseText,
     });
 
     logger.debug('[ReplyGenerationService] Converting text to card format using LLM');
 
-    // Generate card format response
-    const cardResponse = await this.llmService.generate(prompt, {
-      temperature: 0.3, // Lower temperature for more consistent JSON output
-      maxTokens: 2000,
-      sessionId,
-    });
+    const cardResponse = await this.llmService.generate(
+      prompt,
+      {
+        temperature: 0.3,
+        maxTokens: 2000,
+        sessionId,
+      },
+      CONVERT_TO_CARD_PROVIDER,
+    );
 
     logger.debug(
       `[ReplyGenerationService] Card format conversion completed | responseLength=${cardResponse.text.length}`,

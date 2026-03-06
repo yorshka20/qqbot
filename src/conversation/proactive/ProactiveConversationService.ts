@@ -6,7 +6,7 @@ import type { VisionImage } from '@/ai/capabilities/types';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { PreliminaryAnalysisResult, PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
 import { extractImagesFromSegmentsAsync } from '@/ai/utils/imageUtils';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { MessageAPI, SendMessageResult } from '@/api/methods/MessageAPI';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import type { ConversationContext } from '@/context/types';
 import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
@@ -327,8 +327,10 @@ export class ProactiveConversationService {
     await this.threadPersistence.saveEndedThread(currentThread);
     this.threadService.endThread(currentThread.threadId);
     const endMessage = `已结束${topicLabel}thread。`;
-    await this.sendGroupMessage(groupIdNum, endMessage);
-    await this.conversationHistoryService.appendBotReplyToGroup(groupId, endMessage);
+    const sendResult = await this.sendGroupMessage(groupIdNum, endMessage);
+    await this.conversationHistoryService.appendBotReplyToGroup(groupId, endMessage, {
+      messageSeq: sendResult?.message_seq,
+    });
     logger.info(
       `[ProactiveConversationService] Thread ended by trigger user (话题结束) | threadId=${currentThread.threadId} | groupId=${groupId} | topic=${topicLabel}`,
     );
@@ -751,8 +753,10 @@ export class ProactiveConversationService {
       content: toAppend,
       isBotReply: true,
     });
-    await this.sendGroupMessage(groupIdNum, toSend);
-    await this.conversationHistoryService.appendBotReplyToGroup(groupId, toAppend);
+    const sendResult = await this.sendGroupMessage(groupIdNum, toSend);
+    await this.conversationHistoryService.appendBotReplyToGroup(groupId, toAppend, {
+      messageSeq: sendResult?.message_seq,
+    });
   }
 
   private async replyInThread(
@@ -801,14 +805,17 @@ export class ProactiveConversationService {
       content: toAppend,
       isBotReply: true,
     });
-    await this.sendGroupMessage(groupIdNum, toSend);
-    await this.conversationHistoryService.appendBotReplyToGroup(thread.groupId, toAppend);
+    const sendResult = await this.sendGroupMessage(groupIdNum, toSend);
+    await this.conversationHistoryService.appendBotReplyToGroup(thread.groupId, toAppend, {
+      messageSeq: sendResult?.message_seq,
+    });
   }
 
-  private async sendGroupMessage(groupId: number, message: string | MessageSegment[]): Promise<void> {
+  private async sendGroupMessage(groupId: number, message: string | MessageSegment[]): Promise<SendMessageResult | undefined> {
     const syntheticContext = this.buildSyntheticGroupContext(groupId);
-    await this.messageAPI.sendFromContext(message, syntheticContext, 10000);
+    const result = await this.messageAPI.sendFromContext(message, syntheticContext, 10000);
     logger.info(`[ProactiveConversationService] Sent proactive message | groupId=${groupId}`);
+    return result;
   }
 
   private buildSyntheticGroupContext(groupId: number): NormalizedMessageEvent {

@@ -1,12 +1,12 @@
 // Database Persistence System - saves messages and conversations to database
 
-import { randomUUID } from 'node:crypto';
 import { getReply, getReplyContent } from '@/context/HookContextHelpers';
 import { normalizeSessionId } from '@/conversation/history';
-import type { System } from '@/core/system';
+import type { System, SystemContext } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { Message } from '@/database/models/types';
+import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookContext } from '@/hooks/types';
 import { cacheMessage } from '@/message/MessageCache';
 import { logger } from '@/utils/logger';
@@ -17,12 +17,12 @@ import { logger } from '@/utils/logger';
  * Executes in COMPLETE stage so that every reply path has already produced context.reply before we run.
  *
  * Guarantee (no loss, no duplicate):
- * - Pipeline reply paths (full lifecycle, reply-only): we persist the trigger user message + bot reply here
- *   (reply is persisted in the same run that sends it; send happens in MessagePipeline.handleReply after COMPLETE).
+ * - Pipeline reply paths: we persist the trigger user message here (COMPLETE). Bot reply is persisted in
+ *   onMessageSent after send, so message_seq is available and no context metadata is needed.
  * - Proactive reply path: does not go through this system; ProactiveConversationService calls
  *   ConversationHistoryService.appendBotReplyToGroup() after sending, so the reply is written to DB there.
  * - Bot's own message (echo): we skip persisting entirely so we never store the echo as a second record;
- *   the real reply was already stored in the run that sent it (or via appendBotReplyToGroup for proactive).
+ *   the real reply was already stored in onMessageSent (or via appendBotReplyToGroup for proactive).
  */
 export class DatabasePersistenceSystem implements System {
   readonly name = 'database-persistence';
@@ -33,6 +33,109 @@ export class DatabasePersistenceSystem implements System {
   constructor(private databaseManager: DatabaseManager) {}
 
   enabled(): boolean {
+    return true;
+  }
+
+  initialize?(context: SystemContext): void {
+    context.hookManager.addHandler(
+      'onMessageSent',
+      this.handleMessageSent.bind(this),
+      getHookPriority('onMessageSent', 'NORMAL'),
+    );
+  }
+
+  /**
+   * Persist bot reply after send. We have the send API result here (sentMessageResponse);
+   * for Milky, the adapter returns the server's response data as-is, so message_seq is present when the server returns it.
+   * Optional in type only because SendMessageResult is shared with other protocols (e.g. OneBot uses message_id).
+   * Only log error when protocol is Milky and message_seq is missing (Milky send response should include it).
+   */
+  private async handleMessageSent(context: HookContext): Promise<boolean> {
+    // Reply content and send result: onMessageSent runs right after MessagePipeline.sendMessage(), so sentMessageResponse is set
+    const reply = getReply(context);
+    const replyContent = getReplyContent(context);
+    const messageSeq = context.sentMessageResponse?.message_seq;
+
+    if (!reply) {
+      return true;
+    }
+
+    // message_seq is required for reply lookup (e.g. user quotes this bot message later). Milky send response should include it
+    const hasValidMessageSeq = typeof messageSeq === 'number' && !Number.isNaN(messageSeq);
+    if (!hasValidMessageSeq && context.message.protocol === 'milky') {
+      logger.error(
+        '[DatabasePersistenceSystem] Milky send response missing message_seq; bot reply cannot be found by reply lookup',
+      );
+    }
+
+    try {
+      const adapter = this.databaseManager.getAdapter();
+      if (!adapter?.isConnected()) {
+        return true;
+      }
+
+      // Resolve session and conversation (same rules as execute(); reply-only path may create conversation here)
+      const rawSessionId = context.metadata.get('sessionId');
+      const sessionType = context.metadata.get('sessionType') as 'group' | 'user' | undefined;
+      if (!sessionType) {
+        return true;
+      }
+      const sessionId = normalizeSessionId(
+        rawSessionId,
+        sessionType,
+        context.metadata.get('groupId'),
+        context.metadata.get('userId'),
+      );
+      if (!sessionId || sessionId.startsWith('unknown:')) {
+        return true;
+      }
+
+      const conversations = adapter.getModel('conversations');
+      let conversation = await conversations.findOne({ sessionId, sessionType });
+      const now = new Date();
+      if (!conversation) {
+        conversation = await conversations.create({
+          sessionId,
+          sessionType,
+          messageCount: 0,
+          lastMessageAt: now,
+          metadata: {},
+        });
+      }
+
+      // Insert bot reply row: content from context.reply, message_seq from send API so later reply lookup can find it
+      const messages = adapter.getModel('messages');
+      const message = context.message;
+      const botSelfId = context.metadata.get('botSelfId');
+      const botUserId = typeof botSelfId === 'string' ? parseInt(botSelfId, 10) : botSelfId || 0;
+      const isCardReply = replyContent?.metadata?.isCardImage === true;
+      const botReplyData: Omit<Message, 'id' | 'createdAt' | 'updatedAt'> = {
+        conversationId: conversation.id,
+        userId: botUserId,
+        messageType: message.messageType,
+        groupId: message.groupId,
+        content: reply,
+        rawContent: !isCardReply && replyContent?.segments?.length ? JSON.stringify(replyContent.segments) : undefined,
+        protocol: message.protocol || 'unknown',
+        messageSeq,
+        metadata: { isBotReply: true, timestamp: now.toISOString() },
+      };
+      await messages.create({
+        ...botReplyData,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      // Bump conversation message count and lastMessageAt
+      const messageCount = await messages.count({ conversationId: conversation.id });
+      await conversations.update(conversation.id, { messageCount, lastMessageAt: now });
+      logger.debug(
+        `[DatabasePersistenceSystem] Persisted bot reply after send | messageSeq=${hasValidMessageSeq ? messageSeq : 'N/A'} | conversationId=${conversation.id}`,
+      );
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.warn(`[DatabasePersistenceSystem] Failed to persist bot reply in onMessageSent: ${err.message}`);
+    }
     return true;
   }
 
@@ -78,8 +181,6 @@ export class DatabasePersistenceSystem implements System {
 
       const messages = adapter.getModel('messages');
       const message = context.message;
-      const reply = getReply(context);
-      const replyContent = getReplyContent(context);
 
       // Skip this entire run when the *incoming* message is from the bot (echo). We do not persist the echo; the real reply was already stored in the run that handled the user message (below we persist user message + bot reply for that run).
       const botSelfId = context.metadata.get('botSelfId');
@@ -156,30 +257,9 @@ export class DatabasePersistenceSystem implements System {
       // Cache message in memory for quick lookup (e.g., for reply segments)
       cacheMessage(message);
 
-      // Save bot reply for *this* run (only reached when message was from user; echo run already returned above).
-      // reply comes from getReply(context): for card reply it is cardTextForHistory (card JSON text); for text reply it is extracted text.
-      // Card text is stored in content so that when loading from DB we use message.content to get the card text (LLM-readable).
-      // For card reply we omit rawContent to avoid storing the image; for non-card we keep rawContent (segments) when present.
-      if (reply) {
-        const botUserId = typeof botSelfId === 'string' ? parseInt(botSelfId, 10) : botSelfId || 0;
-        const isCardReply = replyContent?.metadata?.isCardImage === true;
-        await messages.create({
-          conversationId: conversation.id,
-          userId: botUserId,
-          messageType: message.messageType,
-          groupId: message.groupId,
-          content: reply,
-          rawContent:
-            !isCardReply && replyContent?.segments?.length ? JSON.stringify(replyContent.segments) : undefined,
-          protocol: message.protocol || 'unknown',
-          metadata: {
-            isBotReply: true,
-            timestamp: now.toISOString(),
-          },
-        });
-      }
+      // Bot reply is persisted in onMessageSent (after send) so message_seq is available; no persistence here.
 
-      // Update conversation
+      // Update conversation (user message only; bot reply will bump count in onMessageSent)
       const messageCount = await messages.count({ conversationId: conversation.id });
       await conversations.update(conversation.id, {
         messageCount,

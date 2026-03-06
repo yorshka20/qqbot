@@ -3,7 +3,7 @@
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { ConversationHistoryService } from '@/conversation/history';
+import { type ConversationHistoryService, normalizeGroupId } from '@/conversation/history';
 import {
   buildConversationWindowDocument,
   groupEntriesIntoWindows,
@@ -259,8 +259,7 @@ export class MemoryTriggerPlugin extends PluginBase {
       }
 
       const windows = groupEntriesIntoWindows(entries, COLD_START_WINDOW_IDLE_MINUTES, COLD_START_WINDOW_MAX_MESSAGES);
-      const sessionId = groupId.startsWith('group:') ? groupId : `group:${groupId}`;
-      const groupIdNum = Number(groupId);
+      const { sessionId, groupIdNum } = normalizeGroupId(groupId);
       const collectionName = QdrantClient.getConversationHistoryCollectionName(
         sessionId,
         'group',

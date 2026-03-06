@@ -3,7 +3,11 @@
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { formatRAGConversationContext } from '@/ai/utils/formatRAGConversationContext';
 import type { ProactiveReplyInjectContext } from '@/context/types';
-import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
+import {
+  type ConversationHistoryService,
+  type ConversationMessageEntry,
+  normalizeGroupId,
+} from '@/conversation/history';
 import type { MemoryService } from '@/memory/MemoryService';
 import type { RetrievalService } from '@/services/retrieval';
 import { QdrantClient } from '@/services/retrieval';
@@ -226,7 +230,7 @@ export class ProactiveReplyContextBuilder {
       retrievedContext,
       retrievedConversationSection,
       memoryContext,
-      sessionId: typeof groupId === 'number' ? `group:${groupId}` : groupId.startsWith('group:') ? groupId : `group:${groupId}`,
+      sessionId: normalizeGroupId(groupId).sessionId,
       lastUserMessage,
     };
   }

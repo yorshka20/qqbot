@@ -413,13 +413,15 @@ async function extractImagesFromReplyMessage(
  * Supports both current message images and images from referenced messages
  * @param message - NormalizedMessageEvent containing segments
  * @param messageAPI - MessageAPI instance for fetching referenced messages
- * @param databaseManager - DatabaseManager for querying database (required)
+ * @param databaseManager - DatabaseManager for querying database (required when referencedMessage not provided)
+ * @param referencedMessage - Optional pre-resolved referenced message; when provided, used for image extraction instead of fetching (avoids double fetch)
  * @returns Array of VisionImage objects extracted from current and referenced messages (referenced message failures are skipped with a warning)
  */
 export async function extractImagesFromMessageAndReply(
   message: NormalizedMessageEvent,
   messageAPI: MessageAPI,
   databaseManager: DatabaseManager,
+  referencedMessage?: NormalizedMessageEvent | null,
 ): Promise<VisionImage[]> {
   const images: VisionImage[] = [];
   const getResourceUrl = (resourceId: string) => messageAPI.getResourceTempUrl(resourceId, message);
@@ -430,7 +432,7 @@ export async function extractImagesFromMessageAndReply(
     images.push(...currentImages);
   }
 
-  // Extract images from referenced reply message
+  // Extract images from referenced reply message (use pre-resolved when provided, else fetch)
   if (message.segments && message.segments.length > 0) {
     for (const segment of message.segments) {
       const replyMessageId = extractReplyMessageId(segment);
@@ -439,17 +441,28 @@ export async function extractImagesFromMessageAndReply(
       }
 
       try {
-        logger.debug(`[imageUtils] Fetching referenced message | messageId=${replyMessageId}`);
-        const referencedImages = await extractImagesFromReplyMessage(
-          replyMessageId,
-          message,
-          messageAPI,
-          databaseManager,
-        );
-        images.push(...referencedImages);
-        if (referencedImages.length > 0) {
-          logger.debug(`[imageUtils] Extracted ${referencedImages.length} image(s) from referenced message`);
+        let referencedImages: VisionImage[];
+        if (referencedMessage?.segments && referencedMessage.segments.length > 0) {
+          referencedImages = await extractImagesFromSegmentsAsync(
+            referencedMessage.segments as MessageSegment[],
+            getResourceUrl,
+          );
+          if (referencedImages.length > 0) {
+            logger.debug(`[imageUtils] Extracted ${referencedImages.length} image(s) from pre-resolved referenced message`);
+          }
+        } else {
+          logger.debug(`[imageUtils] Fetching referenced message | messageId=${replyMessageId}`);
+          referencedImages = await extractImagesFromReplyMessage(
+            replyMessageId,
+            message,
+            messageAPI,
+            databaseManager,
+          );
+          if (referencedImages.length > 0) {
+            logger.debug(`[imageUtils] Extracted ${referencedImages.length} image(s) from referenced message`);
+          }
         }
+        images.push(...referencedImages);
       } catch (error) {
         // Referenced message may be missing (e.g. not stored, or evicted). Skip vision for it; do not throw.
         logger.warn(

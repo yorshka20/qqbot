@@ -7,8 +7,8 @@ import type { AIProvider } from '../base/AIProvider';
 import { CardRenderer } from '../utils/CardRenderer';
 import { type CardData, parseCardData } from '../utils/cardTypes';
 
-/** Card format prompt returns JSON; may be in code block or raw. */
-const CARD_JSON_EXTRACT_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'regex'];
+/** Card format prompt returns JSON; may be in code block, prose, or raw. braceMatch helps when LLM wraps JSON in text. */
+const CARD_JSON_EXTRACT_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'braceMatch', 'regex'];
 
 /**
  * Card Rendering Service
@@ -32,7 +32,7 @@ export class CardRenderingService {
   /**
    * Get current LLM provider
    */
-  private getCurrentProvider(sessionId?: string, providerName?: string): AIProvider | null {
+  private getCurrentProvider(_sessionId?: string, providerName?: string): AIProvider | null {
     if (providerName) {
       return this.aiManager.getProviderForCapability('llm', providerName) || null;
     }
@@ -57,24 +57,18 @@ export class CardRenderingService {
    * 3. Response is valid JSON card data
    */
   shouldUseCardRendering(responseText: string, sessionId?: string, providerName?: string): boolean {
-    // Check length threshold
     if (responseText.length < CardRenderingService.CARD_RENDERING_THRESHOLD) {
       return false;
     }
-
-    // Check if provider is local
     const provider = this.getCurrentProvider(sessionId, providerName);
     if (this.isLocalProvider(provider)) {
       return false;
     }
-
-    // Check if response is valid JSON card data (extract JSON from LLM text if wrapped in markdown/prose)
     const jsonStr = extractJsonFromLlmText(responseText, { strategies: CARD_JSON_EXTRACT_STRATEGIES }) ?? responseText;
     try {
       parseCardData(jsonStr);
       return true;
     } catch {
-      // Not valid JSON card data
       return false;
     }
   }

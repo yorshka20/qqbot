@@ -40,16 +40,29 @@ export function normalizeSessionId(
       return s;
     }
     const id = fallbackGroupId ?? (s ? parseInt(s, 10) : NaN);
-    return Number.isNaN(id) ? (s || 'group:0') : `group:${id}`;
+    return Number.isNaN(id) ? s || 'group:0' : `group:${id}`;
   }
   if (sessionType === 'user') {
     if (s.startsWith('user:')) {
       return s;
     }
     const id = fallbackUserId ?? (s ? parseInt(s, 10) : NaN);
-    return Number.isNaN(id) ? (s || 'user:0') : `user:${id}`;
+    return Number.isNaN(id) ? s || 'user:0' : `user:${id}`;
   }
   return s || 'unknown:0';
+}
+
+/**
+ * Normalize groupId (string "group:123" or raw number) to canonical sessionId and numeric id for DB.
+ * Use this at service boundaries so callers can pass either form; no inline ternary elsewhere.
+ */
+export function normalizeGroupId(groupId: string | number): { sessionId: string; groupIdNum: number } {
+  if (typeof groupId === 'number' && !Number.isNaN(groupId)) {
+    return { sessionId: `group:${groupId}`, groupIdNum: groupId };
+  }
+  const s = String(groupId).trim().replace(/^group:/i, '');
+  const groupIdNum = parseInt(s, 10) || 0;
+  return { sessionId: `group:${groupIdNum}`, groupIdNum };
 }
 
 /**
@@ -72,8 +85,7 @@ export class ConversationHistoryService {
    * Uses sessionId format "group:{groupId}" to match ConversationManager / DatabasePersistenceSystem.
    */
   async getRecentMessages(groupId: string | number, limit?: number): Promise<ConversationMessageEntry[]> {
-    const sessionId =
-      typeof groupId === 'number' ? `group:${groupId}` : groupId.startsWith('group:') ? groupId : `group:${groupId}`;
+    const { sessionId } = normalizeGroupId(groupId);
     return this.getRecentMessagesForSession(sessionId, 'group', limit ?? this.defaultLimit);
   }
 
@@ -83,22 +95,20 @@ export class ConversationHistoryService {
    * so there is no duplicate. Proactive sends do not go through the pipeline, so this is the only place they are written to DB.
    * Stores the given text as message content so that getRecentMessages and analysis see card text, not image placeholder.
    *
-   * @param groupId - Group ID (string or number)
+   * @param groupId - Group ID (string "group:123" or number); normalized at entry so no inline checks below.
    * @param content - Reply text to store (card text when reply was rendered as card; plain text otherwise)
-   * @param options - Optional botUserId (default 0)
+   * @param options - Optional botUserId (default 0), messageSeq (when provided, e.g. from send response, so reply lookups can find this message)
    */
   async appendBotReplyToGroup(
     groupId: string | number,
     content: string,
-    options?: { botUserId?: number },
+    options?: { botUserId?: number; messageSeq?: number },
   ): Promise<void> {
     const adapter = this.databaseManager.getAdapter();
     if (!adapter?.isConnected()) {
       return;
     }
-    const sessionId =
-      typeof groupId === 'number' ? `group:${groupId}` : groupId.startsWith('group:') ? groupId : `group:${groupId}`;
-    const groupIdNum = typeof groupId === 'number' ? groupId : parseInt(String(groupId).replace(/^group:/, ''), 10) || 0;
+    const { sessionId, groupIdNum } = normalizeGroupId(groupId);
     const botUserId = options?.botUserId ?? 0;
     try {
       const conversations = adapter.getModel('conversations');
@@ -117,6 +127,7 @@ export class ConversationHistoryService {
         });
       }
       const messages = adapter.getModel('messages');
+      const messageSeq = options?.messageSeq;
       await messages.create({
         conversationId: conversation.id,
         userId: botUserId,
@@ -124,6 +135,7 @@ export class ConversationHistoryService {
         groupId: groupIdNum,
         content,
         protocol: 'unknown',
+        messageSeq,
         metadata: {
           isBotReply: true,
           timestamp: now.toISOString(),
@@ -199,7 +211,7 @@ export class ConversationHistoryService {
       return [];
     }
 
-    const sessionId = groupId.startsWith('group:') ? groupId : `group:${groupId}`;
+    const { sessionId } = normalizeGroupId(groupId);
 
     try {
       const conversations = adapter.getModel('conversations');
@@ -239,7 +251,7 @@ export class ConversationHistoryService {
       return [];
     }
 
-    const sessionId = groupId.startsWith('group:') ? groupId : `group:${groupId}`;
+    const { sessionId } = normalizeGroupId(groupId);
 
     try {
       const conversations = adapter.getModel('conversations');
@@ -299,7 +311,7 @@ export class ConversationHistoryService {
       return [];
     }
 
-    const sessionId = `group:${groupId}`;
+    const { sessionId } = normalizeGroupId(groupId);
     const sinceTime = since.getTime();
 
     try {
