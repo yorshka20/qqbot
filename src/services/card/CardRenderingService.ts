@@ -50,30 +50,6 @@ export class CardRenderingService {
   }
 
   /**
-   * Check if card rendering should be used
-   * Conditions:
-   * 1. Provider is not local (not ollama)
-   * 2. Response length >= threshold
-   * 3. Response is valid JSON card data
-   */
-  shouldUseCardRendering(responseText: string, sessionId?: string, providerName?: string): boolean {
-    if (responseText.length < CardRenderingService.CARD_RENDERING_THRESHOLD) {
-      return false;
-    }
-    const provider = this.getCurrentProvider(sessionId, providerName);
-    if (this.isLocalProvider(provider)) {
-      return false;
-    }
-    const jsonStr = extractJsonFromLlmText(responseText, { strategies: CARD_JSON_EXTRACT_STRATEGIES }) ?? responseText;
-    try {
-      parseCardDeck(jsonStr);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
    * Render card from LLM response text
    * @param responseText - LLM response text (should be JSON card data)
    * @param providerName - Provider name (e.g. doubao, claude, deepseek) shown in card footer; required on all paths

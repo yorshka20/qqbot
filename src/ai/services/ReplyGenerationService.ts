@@ -767,38 +767,35 @@ export class ReplyGenerationService {
     context: HookContext,
     providerName?: string,
   ): Promise<boolean> {
+    if (!this.shouldUseCardReply(responseText, sessionId, providerName)) {
+      return false;
+    }
+
     try {
       // Convert text to card format (use cheap provider only; never pass main reply provider)
       logger.info('[ReplyGenerationService] Converting response to card format');
       const cardFormatText = await this.convertToCardFormat(responseText, sessionId);
+      logger.debug(`[ReplyGenerationService] Card format text: ${cardFormatText}`);
+      logger.info('[ReplyGenerationService] Rendering card image for response');
+      // Render card to image using CardRenderingService (provider required on all paths)
+      const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
+      const base64Image = await this.cardRenderingService.renderCard(cardFormatText, provider);
 
-      // Check if conversion was successful (valid JSON card data)
-      const shouldRender = this.cardRenderingService.shouldUseCardRendering(cardFormatText, sessionId, providerName);
-      if (shouldRender) {
-        logger.info('[ReplyGenerationService] Rendering card image for response');
-        // Render card to image using CardRenderingService (provider required on all paths)
-        const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
-        const base64Image = await this.cardRenderingService.renderCard(cardFormatText, provider);
+      // Store image data in context reply using segments
+      // Use replace because card image is the final form of this AI reply
+      const messageBuilder = new MessageBuilder();
+      messageBuilder.image({ data: base64Image });
+      replaceReplyWithSegments(
+        context,
+        messageBuilder.build(),
+        'ai',
+        { isCardImage: true, cardTextForHistory: cardFormatText }, // Store card text for history/cache; image only for sending
+      );
 
-        // Store image data in context reply using segments
-        // Use replace because card image is the final form of this AI reply
-        const messageBuilder = new MessageBuilder();
-        messageBuilder.image({ data: base64Image });
-        replaceReplyWithSegments(
-          context,
-          messageBuilder.build(),
-          'ai',
-          { isCardImage: true, cardTextForHistory: cardFormatText }, // Store card text for history/cache; image only for sending
-        );
-
-        logger.info('[ReplyGenerationService] Card image rendered and stored in reply');
-        // Hook: onAIGenerationComplete
-        await this.hookManager.execute('onAIGenerationComplete', context);
-        return true;
-      } else {
-        logger.debug('[ReplyGenerationService] Card conversion failed or invalid, falling back to text');
-        return false;
-      }
+      logger.info('[ReplyGenerationService] Card image rendered and stored in reply');
+      // Hook: onAIGenerationComplete
+      await this.hookManager.execute('onAIGenerationComplete', context);
+      return true;
     } catch (cardError) {
       const cardErr = cardError instanceof Error ? cardError : new Error('Unknown card error');
       logger.warn('[ReplyGenerationService] Failed to convert to card format, falling back to text:', cardErr);
@@ -822,14 +819,10 @@ export class ReplyGenerationService {
     if (!this.shouldUseCardReply(replyText, sessionId, providerName)) {
       return null;
     }
+
     try {
       logger.info('[ReplyGenerationService] Converting proactive response to card format');
       const cardFormatText = await this.convertToCardFormat(replyText, sessionId);
-      const shouldRender = this.cardRenderingService.shouldUseCardRendering(cardFormatText, sessionId, providerName);
-      if (!shouldRender) {
-        logger.debug('[ReplyGenerationService] Card conversion failed or invalid for proactive reply');
-        return null;
-      }
       logger.info('[ReplyGenerationService] Rendering card image for proactive reply');
       const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
       const base64Image = await this.cardRenderingService.renderCard(cardFormatText, provider);
@@ -857,13 +850,11 @@ export class ReplyGenerationService {
       cardDeckNote: getCardDeckNoteForPrompt(),
     });
 
-    logger.debug('[ReplyGenerationService] Converting text to card format using LLM');
-
     const cardResponse = await this.llmService.generate(
       prompt,
       {
-        temperature: 0.3,
-        maxTokens: 2000,
+        temperature: 0.2,
+        maxTokens: 4000,
         sessionId,
       },
       CONVERT_TO_CARD_PROVIDER,
