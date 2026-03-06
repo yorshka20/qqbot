@@ -1,31 +1,63 @@
 // Doubao Provider implementation
+// Uses Volcengine Ark Responses API: POST /api/v3/responses
+// Request: model, input[] with content as input_text / input_image parts.
+// See: https://www.volcengine.com/docs/82379/1585135
 
-import OpenAI from 'openai';
+import { HttpClient } from '@/api/http/HttpClient';
 import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType, VisionImage } from '../capabilities/types';
 import type { VisionCapability } from '../capabilities/VisionCapability';
-import type {
-  AIGenerateOptions,
-  AIGenerateResponse,
-  ChatCompletionMessageParam,
-  ChatMessage,
-  StreamingHandler,
-} from '../types';
+import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, StreamingHandler } from '../types';
 
-// Extended types for Doubao API with reasoning_effort and reasoning_content support
-// Note: reasoning_effort is a Doubao-specific parameter not in OpenAI types
-// reasoning_content appears in response messages and stream deltas
-type DoubaoChatCompletionMessage = OpenAI.Chat.Completions.ChatCompletionMessage & {
-  reasoning_content?: string;
-};
+// Responses API: input item content parts (official format)
+type ResponsesInputTextPart = { type: 'input_text'; text: string };
+type ResponsesInputImagePart = { type: 'input_image'; image_url: string };
+type ResponsesInputContentPart = ResponsesInputTextPart | ResponsesInputImagePart;
 
-type DoubaoChatCompletionDelta = {
-  role?: 'assistant';
-  content?: string;
-  reasoning_content?: string;
-};
+/** One message in the input array for POST /responses */
+interface ResponsesInputItem {
+  role: 'user' | 'assistant' | 'system';
+  content: ResponsesInputContentPart[];
+}
+
+/** Non-stream response from POST /responses (Responses API) */
+interface ResponsesApiResponse {
+  id?: string;
+  model?: string;
+  /** Top-level text output (common in Responses API) */
+  output_text?: string;
+  /** Alternative: output array (e.g. output[].content[].text) */
+  output?: Array<{
+    type?: string;
+    content?: Array<{ type?: string; text?: string }>;
+    text?: string;
+  }>;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+  };
+}
+
+/** SSE stream chunk for Responses API (may use output_text or choices.delta) */
+interface ResponsesStreamChunk {
+  output_text?: string;
+  choices?: Array<{
+    delta?: { content?: string; reasoning_content?: string };
+    finish_reason?: string | null;
+  }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    input_tokens?: number;
+    output_tokens?: number;
+  };
+}
 
 export interface DoubaoProviderConfig {
   apiKey: string;
@@ -41,17 +73,18 @@ export interface DoubaoProviderConfig {
 /**
  * Doubao Provider implementation
  * Implements LLM and Vision capabilities
- * Supports Doubao API with reasoning_effort parameter and reasoning_content response
+ * Uses Volcengine Ark Responses API (POST /responses) with input[] and input_text/input_image.
  */
 export class DoubaoProvider extends AIProvider implements LLMCapability, VisionCapability {
   readonly name = 'doubao';
-  private client: OpenAI | null = null;
+  private httpClient: HttpClient;
   private config: DoubaoProviderConfig;
   private _capabilities: CapabilityType[];
 
   constructor(config: DoubaoProviderConfig) {
     super();
     this.config = config;
+    const baseURL = config.baseURL || 'https://ark.cn-beijing.volces.com/api/v3';
 
     // Explicitly declare supported capabilities
     // Doubao supports both LLM and Vision
@@ -60,11 +93,16 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     // Set context configuration
     this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);
 
+    this.httpClient = new HttpClient({
+      baseURL,
+      defaultHeaders: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      defaultTimeout: 120000, // 2 minutes, aligned with other AI providers
+    });
+
     if (this.isAvailable()) {
-      this.client = new OpenAI({
-        apiKey: config.apiKey,
-        baseURL: config.baseURL || 'https://ark.cn-beijing.volces.com/api/v3',
-      });
       logger.info('[DoubaoProvider] Initialized');
     }
   }
@@ -74,17 +112,26 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
   }
 
   async checkAvailability(): Promise<boolean> {
-    if (!this.isAvailable() || !this.client) {
+    if (!this.isAvailable()) {
       return false;
     }
 
     try {
-      // Test API connection by making a simple request
-      await this.client.models.list();
+      await this.httpClient.post(
+        '/responses',
+        {
+          model: this.config.model || 'doubao-seed-1-6-lite-251015',
+          input: [{ role: 'user', content: [{ type: 'input_text', text: 'test' }] }],
+        },
+        { timeout: 5000 },
+      );
       return true;
     } catch (error) {
       logger.debug('[DoubaoProvider] Availability check failed:', error);
-      return false;
+      if (error instanceof Error && error.message.includes('timeout')) {
+        return false;
+      }
+      return true;
     }
   }
 
@@ -106,100 +153,70 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
   }
 
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
-    if (!this.client) {
+    if (!this.isAvailable()) {
       throw new Error('Doubao client not initialized');
     }
 
     const model = (this.config.model || 'doubao-seed-1-6-lite-251015') as string;
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
-    const reasoningEffort = options?.reasoningEffort ?? this.config.reasoningEffort ?? 'medium';
 
     try {
       logger.debug(`[DoubaoProvider] Generating with model: ${model}`);
 
-      let messages: ChatCompletionMessageParam[];
-      if (options?.messages?.length) {
-        messages = options.messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })) as ChatCompletionMessageParam[];
-      } else {
-        const history = await this.loadHistory(options);
-        messages = [];
-        if (options?.systemPrompt) {
-          messages.push({ role: 'system', content: options.systemPrompt });
-        }
-        for (const msg of history) {
-          messages.push({
-            role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-            content: msg.content,
-          });
-        }
-        messages.push({
-          role: 'user',
-          content: prompt,
-        });
-      }
+      const input = await this.buildResponsesInput(prompt, options);
 
-      const response = await this.client.chat.completions.create({
+      const body: Record<string, unknown> = {
         model,
-        messages,
+        input,
         temperature,
         max_tokens: maxTokens,
         top_p: options?.topP,
         frequency_penalty: options?.frequencyPenalty,
         presence_penalty: options?.presencePenalty,
         stop: options?.stop,
-        reasoning_effort: options?.includeReasoning ? reasoningEffort : 'minimal',
-      });
-      // Extract reasoning_content and content
-      const message = response.choices[0]?.message as DoubaoChatCompletionMessage;
-      const reasoningContent = message?.reasoning_content || '';
-      const content = message?.content || '';
+      };
 
-      // Determine whether to include reasoning content in the response
-      // Default: false (only include the final answer, not the reasoning process)
-      // This prevents users from seeing the internal reasoning process in normal replies
+      const response = await this.httpClient.post<ResponsesApiResponse>('/responses', body);
+
+      const { text, reasoningContent } = this.extractTextFromResponsesApiResponse(response);
       const includeReasoning = options?.includeReasoning ?? false;
 
-      // Combine reasoning_content and content based on includeReasoning option
-      let text = '';
-
+      let finalText = '';
       if (includeReasoning && reasoningContent) {
-        // Include reasoning content for internal use (e.g., task analysis)
-        text = reasoningContent;
-        if (content) {
-          text += `\n${content}`;
+        finalText = reasoningContent;
+        if (text) {
+          finalText += `\n${text}`;
         }
         logger.debug(
-          `[DoubaoProvider] Including reasoning content in response | reasoningLength=${reasoningContent.length} | contentLength=${content.length}`,
+          `[DoubaoProvider] Including reasoning content in response | reasoningLength=${reasoningContent.length} | contentLength=${text.length}`,
         );
       } else {
-        // Default: only return content (the final answer), not the reasoning process
-        // This is the expected behavior for user-facing replies
-        text = content;
+        finalText = text;
         if (reasoningContent && !includeReasoning) {
           logger.debug(
-            `[DoubaoProvider] Reasoning content present but excluded from response | reasoningLength=${reasoningContent.length} | contentLength=${content.length}`,
+            `[DoubaoProvider] Reasoning content present but excluded from response | reasoningLength=${reasoningContent.length} | contentLength=${text.length}`,
           );
         }
       }
 
       const usage = response.usage
-        ? {
-            promptTokens: response.usage.prompt_tokens,
-            completionTokens: response.usage.completion_tokens,
-            totalTokens: response.usage.total_tokens,
-          }
+        ? (() => {
+            const promptTokens = response.usage.prompt_tokens ?? response.usage.input_tokens ?? 0;
+            const completionTokens = response.usage.completion_tokens ?? response.usage.output_tokens ?? 0;
+            return {
+              promptTokens,
+              completionTokens,
+              totalTokens: response.usage.total_tokens ?? promptTokens + completionTokens,
+            };
+          })()
         : undefined;
 
       return {
-        text,
+        text: finalText,
         usage,
         metadata: {
           model: response.model,
-          finishReason: response.choices[0]?.finish_reason,
           reasoningContent: reasoningContent || undefined,
         },
       };
@@ -215,45 +232,22 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     handler: StreamingHandler,
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
-    if (!this.client) {
+    if (!this.isAvailable()) {
       throw new Error('Doubao client not initialized');
     }
 
     const model = (this.config.model || 'doubao-seed-1-6-lite-251015') as string;
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
-    const reasoningEffort = this.config.reasoningEffort || 'medium';
 
     try {
       logger.debug(`[DoubaoProvider] Generating stream with model: ${model}`);
 
-      let messages: ChatCompletionMessageParam[];
-      if (options?.messages?.length) {
-        messages = options.messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })) as ChatCompletionMessageParam[];
-      } else {
-        const history = await this.loadHistory(options);
-        messages = [];
-        if (options?.systemPrompt) {
-          messages.push({ role: 'system', content: options.systemPrompt });
-        }
-        for (const msg of history) {
-          messages.push({
-            role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-            content: msg.content,
-          });
-        }
-        messages.push({
-          role: 'user',
-          content: prompt,
-        });
-      }
+      const input = await this.buildResponsesInput(prompt, options);
 
-      const streamResult = await this.client.chat.completions.create({
+      const body: Record<string, unknown> = {
         model,
-        messages,
+        input,
         temperature,
         max_tokens: maxTokens,
         top_p: options?.topP,
@@ -261,71 +255,39 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
         presence_penalty: options?.presencePenalty,
         stop: options?.stop,
         stream: true,
-        reasoning_effort: reasoningEffort,
+      };
+
+      const stream = await this.httpClient.stream('/responses', {
+        method: 'POST',
+        body,
       });
 
-      const stream = streamResult as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
-
-      let fullText = '';
-      let fullReasoningContent = '';
-      let usage: AIGenerateResponse['usage'] | undefined;
-
-      for await (const chunk of stream) {
-        // Handle reasoning_content from delta
-        const delta = chunk.choices[0]?.delta as DoubaoChatCompletionDelta;
-        const reasoningDelta = delta?.reasoning_content || '';
-        if (reasoningDelta) {
-          fullReasoningContent += reasoningDelta;
-          handler(reasoningDelta);
-        }
-
-        // Handle content from delta
-        const content = delta?.content || '';
-        if (content) {
-          fullText += content;
-          handler(content);
-        }
-
-        // Capture usage if available
-        if (chunk.usage) {
-          usage = {
-            promptTokens: chunk.usage.prompt_tokens,
-            completionTokens: chunk.usage.completion_tokens,
-            totalTokens: chunk.usage.total_tokens,
-          };
-        }
-      }
-
-      // Determine whether to include reasoning content in the response
-      // Default: false (only include the final answer, not the reasoning process)
+      const result = await this.parseResponsesStream(stream, handler);
       const includeReasoning = options?.includeReasoning ?? false;
 
-      // Combine reasoning_content and content based on includeReasoning option
       let finalText = '';
-      if (includeReasoning && fullReasoningContent) {
-        // Include reasoning content for internal use (e.g., task analysis)
-        finalText = fullReasoningContent;
-        if (fullText) {
-          finalText += '\n' + fullText;
+      if (includeReasoning && result.fullReasoningContent) {
+        finalText = result.fullReasoningContent;
+        if (result.fullText) {
+          finalText += '\n' + result.fullText;
         }
         logger.debug(
-          `[DoubaoProvider] Including reasoning content in stream response | reasoningLength=${fullReasoningContent.length} | contentLength=${fullText.length}`,
+          `[DoubaoProvider] Including reasoning content in stream response | reasoningLength=${result.fullReasoningContent.length} | contentLength=${result.fullText.length}`,
         );
       } else {
-        // Default: only return content (the final answer), not the reasoning process
-        finalText = fullText;
-        if (fullReasoningContent && !includeReasoning) {
+        finalText = result.fullText;
+        if (result.fullReasoningContent && !includeReasoning) {
           logger.debug(
-            `[DoubaoProvider] Reasoning content present but excluded from stream response | reasoningLength=${fullReasoningContent.length} | contentLength=${fullText.length}`,
+            `[DoubaoProvider] Reasoning content present but excluded from stream response | reasoningLength=${result.fullReasoningContent.length} | contentLength=${result.fullText.length}`,
           );
         }
       }
 
       return {
         text: finalText,
-        usage,
+        usage: result.usage,
         metadata: {
-          reasoningContent: fullReasoningContent || undefined,
+          reasoningContent: result.fullReasoningContent || undefined,
         },
       };
     } catch (error) {
@@ -336,60 +298,204 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
   }
 
   /**
+   * Build input array for Responses API (input_text / input_image content parts).
+   */
+  private async buildResponsesInput(prompt: string, options?: AIGenerateOptions): Promise<ResponsesInputItem[]> {
+    if (options?.messages?.length) {
+      return options.messages.map((m) => this.chatMessageToResponsesInputItem(m));
+    }
+
+    const history = await this.loadHistory(options);
+    const input: ResponsesInputItem[] = [];
+    if (options?.systemPrompt) {
+      input.push({
+        role: 'system',
+        content: [{ type: 'input_text', text: options.systemPrompt }],
+      });
+    }
+    for (const msg of history) {
+      input.push({
+        role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
+        content: [{ type: 'input_text', text: msg.content }],
+      });
+    }
+    input.push({ role: 'user', content: [{ type: 'input_text', text: prompt }] });
+    return input;
+  }
+
+  /**
+   * Convert ChatMessage to Responses API input item (content as input_text / input_image).
+   */
+  private chatMessageToResponsesInputItem(m: ChatMessage): ResponsesInputItem {
+    if (typeof m.content === 'string') {
+      return { role: m.role, content: [{ type: 'input_text', text: m.content }] };
+    }
+    const content: ResponsesInputContentPart[] = m.content.map((part) => {
+      if (part.type === 'text') {
+        return { type: 'input_text', text: part.text };
+      }
+      const url = typeof part.image_url === 'string' ? part.image_url : (part.image_url?.url ?? '');
+      return { type: 'input_image', image_url: url };
+    });
+    return { role: m.role, content };
+  }
+
+  /**
+   * Extract text and optional reasoning from Responses API response body.
+   */
+  private extractTextFromResponsesApiResponse(response: ResponsesApiResponse): {
+    text: string;
+    reasoningContent: string;
+  } {
+    let text = response.output_text ?? '';
+    const reasoningContent = '';
+
+    if (response.output?.length) {
+      for (const item of response.output) {
+        if (item.text) {
+          text = text ? `${text}\n${item.text}` : item.text;
+        }
+        if (item.content?.length) {
+          for (const c of item.content) {
+            if (c.text) {
+              text = text ? `${text}\n${c.text}` : c.text;
+            }
+          }
+        }
+      }
+    }
+
+    return { text, reasoningContent };
+  }
+
+  /**
+   * Parse SSE stream from Responses API (supports output_text delta or choices[0].delta).
+   */
+  private async parseResponsesStream(
+    stream: ReadableStream<Uint8Array>,
+    handler: StreamingHandler,
+  ): Promise<{
+    fullText: string;
+    fullReasoningContent: string;
+    usage: AIGenerateResponse['usage'] | undefined;
+  }> {
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+    let fullReasoningContent = '';
+    let usage: AIGenerateResponse['usage'] | undefined;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n').filter((line) => line.trim() && line.startsWith('data: '));
+
+        for (const line of lines) {
+          try {
+            const jsonStr = line.substring(6); // Remove 'data: ' prefix
+            if (jsonStr === '[DONE]') {
+              continue;
+            }
+
+            const data = JSON.parse(jsonStr) as ResponsesStreamChunk;
+
+            // Responses API may send output_text in each chunk
+            if (data.output_text) {
+              fullText += data.output_text;
+              handler(data.output_text);
+            }
+
+            // Or OpenAI-style choices[0].delta
+            const delta = data.choices?.[0]?.delta;
+            if (delta) {
+              const reasoningDelta = delta.reasoning_content || '';
+              if (reasoningDelta) {
+                fullReasoningContent += reasoningDelta;
+                handler(reasoningDelta);
+              }
+              const content = delta.content || '';
+              if (content) {
+                fullText += content;
+                handler(content);
+              }
+            }
+
+            if (data.usage) {
+              const promptTokens = data.usage.prompt_tokens ?? data.usage.input_tokens ?? 0;
+              const completionTokens = data.usage.completion_tokens ?? data.usage.output_tokens ?? 0;
+              usage = {
+                promptTokens,
+                completionTokens,
+                totalTokens: data.usage.total_tokens ?? promptTokens + completionTokens,
+              };
+            }
+          } catch (parseError) {
+            logger.debug('[DoubaoProvider] Failed to parse stream chunk:', parseError);
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return { fullText, fullReasoningContent, usage };
+  }
+
+  /**
    * Generate from full messages (history + current). Content can be string or ContentPart[].
    */
   async generateWithVisionMessages(messages: ChatMessage[], options?: AIGenerateOptions): Promise<AIGenerateResponse> {
-    if (!this.client) {
+    if (!this.isAvailable()) {
       throw new Error('Doubao client not initialized');
     }
+
     const model = (this.config.model || 'doubao-seed-1-6-lite-251015') as string;
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
-    const reasoningEffort = this.config.reasoningEffort || 'medium';
 
-    const apiMessages = messages.map((m) => ({
-      role: m.role,
-      content:
-        typeof m.content === 'string'
-          ? m.content
-          : (m.content as Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>),
-    })) as ChatCompletionMessageParam[];
+    const input: ResponsesInputItem[] = messages.map((m) => this.chatMessageToResponsesInputItem(m));
 
-    const createParams = {
+    const body: Record<string, unknown> = {
       model,
-      messages: apiMessages,
+      input,
       temperature,
       max_tokens: maxTokens,
       top_p: options?.topP,
       frequency_penalty: options?.frequencyPenalty,
       presence_penalty: options?.presencePenalty,
       stop: options?.stop,
-      reasoning_effort: reasoningEffort,
-    } as OpenAI.Chat.Completions.ChatCompletionCreateParams & { reasoning_effort?: string };
+    };
 
-    const response = (await this.client.chat.completions.create(
-      createParams,
-    )) as OpenAI.Chat.Completions.ChatCompletion;
-    const message = response.choices[0]?.message as DoubaoChatCompletionMessage;
-    const reasoningContent = message?.reasoning_content || '';
-    const contentText = message?.content || '';
+    const response = await this.httpClient.post<ResponsesApiResponse>('/responses', body);
+    const { text: contentText, reasoningContent } = this.extractTextFromResponsesApiResponse(response);
     const includeReasoning = options?.includeReasoning ?? false;
     const text =
       includeReasoning && reasoningContent
         ? `${reasoningContent}${contentText ? `\n${contentText}` : ''}`
         : contentText;
+
+    const usage = response.usage
+      ? (() => {
+          const promptTokens = response.usage.prompt_tokens ?? response.usage.input_tokens ?? 0;
+          const completionTokens = response.usage.completion_tokens ?? response.usage.output_tokens ?? 0;
+          return {
+            promptTokens,
+            completionTokens,
+            totalTokens: response.usage.total_tokens ?? promptTokens + completionTokens,
+          };
+        })()
+      : undefined;
+
     return {
       text,
-      usage: response.usage
-        ? {
-            promptTokens: response.usage.prompt_tokens,
-            completionTokens: response.usage.completion_tokens,
-            totalTokens: response.usage.total_tokens,
-          }
-        : undefined,
+      usage,
       metadata: {
         model: response.model,
-        finishReason: response.choices[0]?.finish_reason,
         reasoningContent: reasoningContent || undefined,
       },
     };
@@ -397,82 +503,48 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
 
   /**
    * Generate text with vision (multimodal input)
-   * Supports Doubao Vision models
+   * Supports Doubao Vision models via Responses API input_text + input_image.
    */
   async generateWithVision(
     prompt: string,
     images: VisionImage[],
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
-    if (!this.client) {
+    if (!this.isAvailable()) {
       throw new Error('Doubao client not initialized');
     }
 
     const model = (this.config.model || 'doubao-seed-1-6-lite-251015') as string;
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
-    const reasoningEffort = this.config.reasoningEffort || 'medium';
 
     try {
       logger.debug(`[DoubaoProvider] Generating with vision, model: ${model}`);
 
-      // Build content array with text and images
-      const content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = [
-        { type: 'text', text: prompt },
-      ];
-
-      // Add images to content (VisionService normalizes to base64 only; we send data URL to API)
-      for (const image of images) {
-        let imageUrl: string;
-        if (image.base64) {
-          const mimeType = image.mimeType || 'image/jpeg';
-          imageUrl = `data:${mimeType};base64,${image.base64}`;
-        } else if (image.url) {
-          imageUrl = image.url;
-        } else {
-          throw new Error(
-            'Invalid image format. Images should be normalized by VisionService (url or base64 required).',
-          );
-        }
-
-        content.push({
-          type: 'image_url',
-          image_url: { url: imageUrl },
-        });
-      }
-
-      const systemPrompt = [];
+      const userContent = this.buildResponsesVisionContent(prompt, images);
+      const input: ResponsesInputItem[] = [];
       if (options?.systemPrompt) {
-        systemPrompt.push({ role: 'system', content: options.systemPrompt });
+        input.push({ role: 'system', content: [{ type: 'input_text', text: options.systemPrompt }] });
       }
-      const createParams = {
+      input.push({ role: 'user', content: userContent });
+
+      const body: Record<string, unknown> = {
         model,
-        messages: [...systemPrompt, { role: 'user', content }],
+        input,
         temperature,
         max_tokens: maxTokens,
         top_p: options?.topP,
         frequency_penalty: options?.frequencyPenalty,
         presence_penalty: options?.presencePenalty,
         stop: options?.stop,
-        reasoning_effort: reasoningEffort,
-      } as OpenAI.Chat.Completions.ChatCompletionCreateParams & { reasoning_effort?: string };
-      const response = (await this.client.chat.completions.create(
-        createParams,
-      )) as OpenAI.Chat.Completions.ChatCompletion;
+      };
 
-      // Extract reasoning_content and content
-      const message = response.choices[0]?.message as DoubaoChatCompletionMessage;
-      const reasoningContent = message?.reasoning_content || '';
-      const contentText = message?.content || '';
-
-      // Determine whether to include reasoning content in the response
-      // Default: false (only include the final answer, not the reasoning process)
+      const response = await this.httpClient.post<ResponsesApiResponse>('/responses', body);
+      const { text: contentText, reasoningContent } = this.extractTextFromResponsesApiResponse(response);
       const includeReasoning = options?.includeReasoning ?? false;
 
-      // Combine reasoning_content and content based on includeReasoning option
       let text = '';
       if (includeReasoning && reasoningContent) {
-        // Include reasoning content for internal use (e.g., task analysis)
         text = reasoningContent;
         if (contentText) {
           text += `\n${contentText}`;
@@ -481,7 +553,6 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
           `[DoubaoProvider] Including reasoning content in vision response | reasoningLength=${reasoningContent.length} | contentLength=${contentText.length}`,
         );
       } else {
-        // Default: only return content (the final answer), not the reasoning process
         text = contentText;
         if (reasoningContent && !includeReasoning) {
           logger.debug(
@@ -491,11 +562,15 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       }
 
       const usage = response.usage
-        ? {
-            promptTokens: response.usage.prompt_tokens,
-            completionTokens: response.usage.completion_tokens,
-            totalTokens: response.usage.total_tokens,
-          }
+        ? (() => {
+            const promptTokens = response.usage.prompt_tokens ?? response.usage.input_tokens ?? 0;
+            const completionTokens = response.usage.completion_tokens ?? response.usage.output_tokens ?? 0;
+            return {
+              promptTokens,
+              completionTokens,
+              totalTokens: response.usage.total_tokens ?? promptTokens + completionTokens,
+            };
+          })()
         : undefined;
 
       return {
@@ -503,7 +578,6 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
         usage,
         metadata: {
           model: response.model,
-          finishReason: response.choices[0]?.finish_reason,
           reasoningContent: reasoningContent || undefined,
         },
       };
@@ -515,6 +589,27 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
   }
 
   /**
+   * Build Responses API content array for vision (input_text + input_image; image_url is string).
+   */
+  private buildResponsesVisionContent(prompt: string, images: VisionImage[]): ResponsesInputContentPart[] {
+    const content: ResponsesInputContentPart[] = [{ type: 'input_text', text: prompt }];
+
+    for (const image of images) {
+      let imageUrl: string;
+      if (image.base64) {
+        const mimeType = image.mimeType || 'image/jpeg';
+        imageUrl = `data:${mimeType};base64,${image.base64}`;
+      } else if (image.url) {
+        imageUrl = image.url;
+      } else {
+        throw new Error('Invalid image format. Images should be normalized by VisionService (url or base64 required).');
+      }
+      content.push({ type: 'input_image', image_url: imageUrl });
+    }
+    return content;
+  }
+
+  /**
    * Explain image(s): describe image content as text. Prompt is the full rendered text from the dedicated explain-image template.
    */
   async explainImages(images: VisionImage[], prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
@@ -522,7 +617,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
   }
 
   /**
-   * Generate text with vision and streaming support
+   * Generate text with vision and streaming support (Responses API).
    */
   async generateStreamWithVision(
     prompt: string,
@@ -530,52 +625,27 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     handler: StreamingHandler,
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
-    if (!this.client) {
+    if (!this.isAvailable()) {
       throw new Error('Doubao client not initialized');
     }
 
     const model = (this.config.model || 'doubao-seed-1-6-lite-251015') as string;
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
-    const reasoningEffort = this.config.reasoningEffort || 'medium';
 
     try {
       logger.debug(`[DoubaoProvider] Generating stream with vision, model: ${model}`);
 
-      // Build content array with text and images
-      const content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = [
-        { type: 'text', text: prompt },
-      ];
-
-      // Add images to content (VisionService normalizes to base64 only; we send data URL to API)
-      for (const image of images) {
-        let imageUrl: string;
-        if (image.base64) {
-          const mimeType = image.mimeType || 'image/jpeg';
-          imageUrl = `data:${mimeType};base64,${image.base64}`;
-        } else if (image.url) {
-          imageUrl = image.url;
-        } else {
-          throw new Error(
-            'Invalid image format. Images should be normalized by VisionService (url or base64 required).',
-          );
-        }
-
-        content.push({
-          type: 'image_url',
-          image_url: { url: imageUrl },
-        });
+      const userContent = this.buildResponsesVisionContent(prompt, images);
+      const input: ResponsesInputItem[] = [];
+      if (options?.systemPrompt) {
+        input.push({ role: 'system', content: [{ type: 'input_text', text: options.systemPrompt }] });
       }
+      input.push({ role: 'user', content: userContent });
 
-      const streamResult = await this.client.chat.completions.create({
+      const body: Record<string, unknown> = {
         model,
-        messages: [
-          ...(options?.systemPrompt ? ([{ role: 'system' as const, content: options.systemPrompt }] as const) : []),
-          {
-            role: 'user',
-            content,
-          },
-        ],
+        input,
         temperature,
         max_tokens: maxTokens,
         top_p: options?.topP,
@@ -583,70 +653,39 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
         presence_penalty: options?.presencePenalty,
         stop: options?.stop,
         stream: true,
-        reasoning_effort: reasoningEffort,
-      } as OpenAI.Chat.Completions.ChatCompletionCreateParams & { reasoning_effort?: string });
-      const stream = streamResult as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
+      };
 
-      let fullText = '';
-      let fullReasoningContent = '';
-      let usage: AIGenerateResponse['usage'] | undefined;
+      const stream = await this.httpClient.stream('/responses', {
+        method: 'POST',
+        body,
+      });
 
-      for await (const chunk of stream) {
-        // Handle reasoning_content from delta
-        const delta = chunk.choices[0]?.delta as DoubaoChatCompletionDelta;
-        const reasoningDelta = delta?.reasoning_content || '';
-        if (reasoningDelta) {
-          fullReasoningContent += reasoningDelta;
-          handler(reasoningDelta);
-        }
-
-        // Handle content from delta
-        const contentDelta = chunk.choices[0]?.delta?.content || '';
-        if (contentDelta) {
-          fullText += contentDelta;
-          handler(contentDelta);
-        }
-
-        // Capture usage if available
-        if (chunk.usage) {
-          usage = {
-            promptTokens: chunk.usage.prompt_tokens,
-            completionTokens: chunk.usage.completion_tokens,
-            totalTokens: chunk.usage.total_tokens,
-          };
-        }
-      }
-
-      // Determine whether to include reasoning content in the response
-      // Default: false (only include the final answer, not the reasoning process)
+      const result = await this.parseResponsesStream(stream, handler);
       const includeReasoning = options?.includeReasoning ?? false;
 
-      // Combine reasoning_content and content based on includeReasoning option
       let finalText = '';
-      if (includeReasoning && fullReasoningContent) {
-        // Include reasoning content for internal use (e.g., task analysis)
-        finalText = fullReasoningContent;
-        if (fullText) {
-          finalText += '\n' + fullText;
+      if (includeReasoning && result.fullReasoningContent) {
+        finalText = result.fullReasoningContent;
+        if (result.fullText) {
+          finalText += `\n${result.fullText}`;
         }
         logger.debug(
-          `[DoubaoProvider] Including reasoning content in vision stream response | reasoningLength=${fullReasoningContent.length} | contentLength=${fullText.length}`,
+          `[DoubaoProvider] Including reasoning content in vision stream response | reasoningLength=${result.fullReasoningContent.length} | contentLength=${result.fullText.length}`,
         );
       } else {
-        // Default: only return content (the final answer), not the reasoning process
-        finalText = fullText;
-        if (fullReasoningContent && !includeReasoning) {
+        finalText = result.fullText;
+        if (result.fullReasoningContent && !includeReasoning) {
           logger.debug(
-            `[DoubaoProvider] Reasoning content present but excluded from vision stream response | reasoningLength=${fullReasoningContent.length} | contentLength=${fullText.length}`,
+            `[DoubaoProvider] Reasoning content present but excluded from vision stream response | reasoningLength=${result.fullReasoningContent.length} | contentLength=${result.fullText.length}`,
           );
         }
       }
 
       return {
         text: finalText,
-        usage,
+        usage: result.usage,
         metadata: {
-          reasoningContent: fullReasoningContent || undefined,
+          reasoningContent: result.fullReasoningContent || undefined,
         },
       };
     } catch (error) {
