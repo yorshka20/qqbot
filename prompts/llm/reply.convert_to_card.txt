@@ -1,47 +1,44 @@
 将以下回复内容重新组织为卡片格式 JSON。
 
-**必须返回纯 JSON，不包含任何说明文字或 markdown 代码块标记（如 ```json）。**
+## ⚠️ 格式硬性要求
 
-## 卡片类型
+- 输出**必须**是一个合法 JSON 数组，形如 `[{...}]` 或 `[{...},{...}]`
+- **不得**包含任何说明文字、注释、前缀、后缀
+- **不得**使用 markdown 代码块标记（禁止 ` ```json ` 或 ` ``` `）
+- 单张卡片也必须包在数组里：`[{单张卡片}]`
 
-根据内容选择最合适的一种：
+{{cardDeckNote}}
 
-**1. 基础问答 `qa`**
-```
-{"type":"qa","question":"用户的问题","answer":"回答内容"}
-```
+---
 
-**2. 列表/步骤 `list`**
-```
-{"type":"list","title":"标题","emoji":"📋","items":["第一项","第二项"]}
-```
+## 卡片选择与组合规则
 
-**3. 提示/警告 `info`**
-```
-{"type":"info","title":"标题","content":"详细内容","level":"info"}
-```
-`level` 可选值：`info` `warning` `success` `tip`
+**单卡场景**（内容聚焦，用一种卡片即可完整表达）：
+- 问答 → `qa`
+- 术语解释 → `knowledge`
+- 一句核心结论 → `highlight` 或 `quote`
+- 数据罗列 → `stats`
+- 流程/教程 → `steps`
+- 简单列表 → `list`
+- 提示/警告 → `info`
+- 两方对比 → `comparison`
 
-**4. 对比分析 `comparison`**
-```
-{"type":"comparison","title":"对比主题","items":[{"label":"维度","left":"选项A","right":"选项B"}]}
-```
+**多卡场景**（内容有明显分区，或单卡无法完整承载）：
+- 先用 `highlight`/`quote` 抛出核心结论，再用 `list`/`steps` 展开细节
+- 先用 `qa` 回答问题，再用 `stats`/`comparison` 补充数据
+- 卡片数量建议 **1–3 张**，最多不超过 4 张；宁可内容精炼，不要堆砌
 
-**5. 知识解释 `knowledge`**
-```
-{"type":"knowledge","term":"术语","definition":"解释","examples":["例子1","例子2"]}
-```
-`examples` 可选。
+---
 
-**6. 数据统计 `stats`**
-```
-{"type":"stats","title":"标题","data":[{"label":"指标","value":"100","highlight":true}]}
-```
-`highlight` 可选。
+## 可用卡片类型
+
+{{cardTypeSpec}}
+
+---
 
 ## 字符串字段内的 HTML
 
-`answer`、`content`、`definition`、`items` 各项、`left`/`right` 等字符串字段内部请直接写 HTML，不要写 Markdown。
+`answer`、`content`、`definition`、`items` 各项、`left`/`right`、`detail`、`summary` 等字符串字段内部请直接写 HTML，不要写 Markdown。
 
 | 标签 | 用途 |
 |------|------|
@@ -50,18 +47,17 @@
 | `<em>` | 补充说明轻微强调 |
 | `<code>` | 行内代码、命令、变量 |
 | `<pre><code>` | 多行代码块 |
-| `<h2>` `<h3>` | 内容内小节/子节标题 |
+| `<h3>` | 内容内小节标题（不用 `<h2>`） |
 | `<ul><li>` | 无序列表 |
 | `<ol><li>` | 有序列表（步骤、排名） |
 | `<table>` | 对比、多列数据，可加 `class="content-table"` |
-| `<br>` | 行内强制换行，优先用 `<p>` |
+| `<br>` | 行内强制换行（优先用 `<p>`） |
 
 禁止：`<script>` `<style>` `<iframe>` 及其他未列出标签。
 
-**排版建议：** 结论先行（先用 `<p>` 概括），再用标题/列表/表格展开细节；关键词用 `<strong>`，命令用 `<code>`。
+**排版建议：** 先用 `<p>` 写核心结论，再用标题/列表/表格展开；关键词用 `<strong>`，命令用 `<code>`。
 
-**示例 answer：**
-`<p>可以用以下命令查看版本。</p><h3>步骤</h3><ol><li>打开终端</li><li>执行：<code>node --version</code></li></ol><pre><code>npm install\nnpm run build</code></pre>`
+---
 
 ## 待转换内容
 

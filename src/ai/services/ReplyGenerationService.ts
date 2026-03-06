@@ -15,6 +15,7 @@ import type { HookContext } from '@/hooks/types';
 import type { MemoryService } from '@/memory/MemoryService';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
+import { CardRenderingService, getCardDeckNoteForPrompt, getCardTypeSpecForPrompt } from '@/services/card';
 import type { RetrievalService } from '@/services/retrieval';
 import { QdrantClient } from '@/services/retrieval';
 import type { TaskResult } from '@/task/types';
@@ -32,7 +33,6 @@ import {
   getReplyMessageIdFromMessage,
   normalizeVisionImages,
 } from '../utils/imageUtils';
-import { CardRenderingService } from './CardRenderingService';
 import type { LLMService } from './LLMService';
 import type { VisionService } from './VisionService';
 
@@ -853,6 +853,8 @@ export class ReplyGenerationService {
   private async convertToCardFormat(responseText: string, sessionId?: string): Promise<string> {
     const prompt = this.promptManager.render('llm.reply.convert_to_card', {
       responseText,
+      cardTypeSpec: getCardTypeSpecForPrompt(),
+      cardDeckNote: getCardDeckNoteForPrompt(),
     });
 
     logger.debug('[ReplyGenerationService] Converting text to card format using LLM');

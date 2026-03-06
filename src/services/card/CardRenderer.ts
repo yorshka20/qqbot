@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
 import { logger } from '@/utils/logger';
 import { cardStyles } from './cardStyles';
-import { renderCard } from './cardTemplates';
+import { renderCardDeck } from './cardTemplates';
 import type { CardData } from './cardTypes';
 
 /** Default path to Google Chrome on macOS. */
@@ -134,24 +134,25 @@ export class CardRenderer {
   }
 
   /**
-   * Render card data to PNG image buffer
-   * @param cardData - Card data to render
+   * Render card(s) to PNG image buffer.
+   * Accepts single card or array of cards (deck); multiple cards are laid out in order.
+   * @param cardData - Single card or array of cards to render
    * @param options - Provider name (e.g. doubao, claude, deepseek) shown after "AI Assistant" in footer; required on all paths
    */
-  async render(cardData: CardData, options: { provider: string }): Promise<Buffer> {
+  async render(cardData: CardData | CardData[], options: { provider: string }): Promise<Buffer> {
     await this.init();
 
     if (!this.browser) {
       throw new Error('Browser not initialized');
     }
 
+    const cards = Array.isArray(cardData) ? cardData : [cardData];
+    const cardHTML = renderCardDeck(cards);
+
     let page: Page | null = null;
 
     try {
       page = await this.browser.newPage();
-
-      // Render card HTML
-      const cardHTML = renderCard(cardData);
 
       // Footer: "AI Assistant" + provider name (required on all paths)
       const footerText = `🤖 AI Assistant · ${options.provider}`;

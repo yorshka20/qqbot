@@ -228,11 +228,7 @@ sequenceDiagram
         SS->>SS: Execute search
         SS-->>AS: Search results text
     end
-    alt Has search results
-        AS->>AS: Build prompt: llm.reply.with_search
-    else No search results
-        AS->>AS: Build prompt: llm.reply
-    end
+    AS->>AS: Build prompt: llm.reply (extra segment: llm.reply_extra_context when task/search present)
     AS->>LS: generate(prompt)
     LS->>AP: Generate response
     AP-->>LS: Response text

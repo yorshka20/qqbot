@@ -1,0 +1,1301 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      /* ===== Audit page layout ===== */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
+        padding: 30px;
+        background: #d0d4e0;
+        display: flex;
+        flex-direction: column;
+        gap: 40px;
+        align-items: flex-start;
+      }
+      .section-label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #666;
+        margin-bottom: -30px;
+      }
+      .issue {
+        outline: 3px solid red;
+        outline-offset: 2px;
+      }
+      .audit-note {
+        background: #fff3cd;
+        border-left: 4px solid #f59e0b;
+        padding: 8px 12px;
+        font-size: 12px;
+        color: #92400e;
+        margin-top: 8px;
+        border-radius: 4px;
+        width: 800px;
+      }
+      .audit-ok {
+        background: #d1fae5;
+        border-left: 4px solid #10b981;
+        padding: 8px 12px;
+        font-size: 12px;
+        color: #065f46;
+        margin-top: 8px;
+        border-radius: 4px;
+        width: 800px;
+      }
+
+      /* ===== cardStyles.ts (full) ===== */
+      .container {
+        background: #667eea;
+        border-radius: 24px;
+        padding: 24px;
+        padding-bottom: 0;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        width: 800px;
+        box-sizing: border-box;
+      }
+      .card-inner {
+        background: white;
+        border-radius: 16px;
+        padding: 35px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      }
+      .container > .card-inner + .card-inner {
+        margin-top: 24px;
+      }
+      .qa-card {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        border-radius: 16px;
+        padding: 28px;
+        margin: 0;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      }
+      .question {
+        display: flex;
+        align-items: center;
+        margin-bottom: 24px;
+        font-size: 19px;
+        font-weight: 600;
+        color: #2c3e50;
+      }
+      .q-icon {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        margin-right: 14px;
+        flex-shrink: 0;
+        font-size: 16px;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+      }
+      .answer {
+        display: flex;
+        align-items: flex-start;
+      }
+      .a-icon {
+        background: linear-gradient(135deg, #764ba2, #667eea);
+        color: white;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        margin-right: 14px;
+        flex-shrink: 0;
+        font-size: 16px;
+        box-shadow: 0 4px 12px rgba(118, 75, 162, 0.3);
+      }
+      .answer-content {
+        line-height: 1.9;
+        color: #2c3e50;
+        font-size: 16px;
+        word-wrap: break-word;
+        flex: 1;
+      }
+      .answer-content br {
+        display: block;
+        content: "";
+        margin-top: 0.6em;
+      }
+      .question strong {
+        color: #1a1f36;
+        font-weight: 700;
+      }
+      .answer-content strong {
+        color: #1e3a5f;
+        font-weight: 700;
+      }
+      .answer-content em {
+        color: #5b21b6;
+        font-style: normal;
+        background: rgba(91, 33, 182, 0.12);
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-weight: 500;
+      }
+      .list-card {
+        margin: 0;
+      }
+      .list-card h2 {
+        color: #2c3e50;
+        margin: 0 0 24px 0;
+        font-size: 24px;
+        padding-bottom: 12px;
+        border-bottom: 3px solid;
+        border-image: linear-gradient(90deg, #667eea, #764ba2) 1;
+      }
+      .styled-list {
+        list-style: none;
+      }
+      .styled-list li {
+        display: flex;
+        align-items: flex-start;
+        padding: 16px 18px;
+        margin: 12px 0;
+        background: #f6f7f9;
+        border-radius: 12px;
+        transition: all 0.3s;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+      .styled-list .number {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+        min-width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 15px;
+        margin-right: 14px;
+        flex-shrink: 0;
+        box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
+      }
+      .styled-list li span:last-child {
+        line-height: 1.7;
+        color: #2c3e50;
+      }
+      .styled-list li span:last-child strong {
+        color: #334155;
+        font-weight: 700;
+      }
+      .info-box {
+        padding: 24px;
+        border-radius: 12px;
+        margin: 0;
+        border-left: 5px solid;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+      }
+      .info-box.info {
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        border-color: #2196f3;
+      }
+      .info-box.warning {
+        background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+        border-color: #ff9800;
+      }
+      .info-box.success {
+        background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+        border-color: #4caf50;
+      }
+      .info-box.tip {
+        background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
+        border-color: #9c27b0;
+      }
+      .info-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 14px;
+        font-size: 17px;
+        font-weight: 600;
+      }
+      .info-header .icon {
+        font-size: 26px;
+        margin-right: 12px;
+      }
+      .info-content {
+        line-height: 1.8;
+        color: #2c3e50;
+        font-size: 15px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+      .info-content br {
+        display: block;
+        content: "";
+        margin-top: 0.6em;
+      }
+      .info-box.info .info-header strong,
+      .info-box.info .info-content strong {
+        color: #0d47a1;
+        font-weight: 700;
+      }
+      .info-box.info .info-content em {
+        color: #1565c0;
+        font-style: normal;
+        background: rgba(21, 101, 192, 0.15);
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-weight: 500;
+      }
+      .info-box.warning .info-header strong,
+      .info-box.warning .info-content strong {
+        color: #bf360c;
+        font-weight: 700;
+      }
+      .info-box.warning .info-content em {
+        color: #e65100;
+        font-style: normal;
+        background: rgba(230, 81, 0, 0.12);
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-weight: 500;
+      }
+      .info-box.success .info-header strong,
+      .info-box.success .info-content strong {
+        color: #1b5e20;
+        font-weight: 700;
+      }
+      .info-box.success .info-content em {
+        color: #2e7d32;
+        font-style: normal;
+        background: rgba(46, 125, 50, 0.12);
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-weight: 500;
+      }
+      .info-box.tip .info-header strong,
+      .info-box.tip .info-content strong {
+        color: #6a1b9a;
+        font-weight: 700;
+      }
+      .info-box.tip .info-content em {
+        color: #7b1fa2;
+        font-style: normal;
+        background: rgba(123, 31, 162, 0.12);
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-weight: 500;
+      }
+      .comparison-card {
+        margin: 0;
+      }
+      .comparison-card-title {
+        font-size: 21px;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+        border-bottom: 2px solid #f0f0f0;
+        letter-spacing: 0.01em;
+      }
+      .card-inner .comparison-card-title {
+        color: #2c3e50;
+        border-bottom-color: #e5e7eb;
+      }
+      .comparison-col-headers {
+        display: grid;
+        grid-template-columns: 96px 1fr 1fr;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+      .comparison-col-header {
+        padding: 10px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        border-radius: 8px;
+      }
+      .comparison-col-header.left-header {
+        background: #edfaf1;
+        color: #1a7a3c;
+        border: 1px solid #b7eacb;
+      }
+      .comparison-col-header.right-header {
+        background: #fff1f2;
+        color: #b91c2c;
+        border: 1px solid #fecdd3;
+      }
+      .col-header-icon {
+        font-size: 14px;
+        line-height: 1;
+      }
+      .comparison-rows {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .comparison-row {
+        display: grid;
+        grid-template-columns: 96px 1fr 1fr;
+        gap: 6px;
+      }
+      .comparison-row-label {
+        display: flex;
+        align-items: flex-start;
+      }
+      .row-label-text {
+        font-size: 13px;
+        font-weight: 600;
+        color: #6b7280;
+        line-height: 1.5;
+        letter-spacing: 0.01em;
+        padding-right: 8px;
+        border-right: 2px solid #e5e7eb;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        text-align: left;
+      }
+      .comparison-cell {
+        padding: 14px 16px;
+        font-size: 14px;
+        line-height: 1.75;
+        color: #374151;
+        border-radius: 8px;
+      }
+      .comparison-cell.left-cell {
+        background: #f6fef9;
+        border: 1px solid #d1fae5;
+      }
+      .comparison-cell.right-cell {
+        background: #fff9f9;
+        border: 1px solid #fee2e2;
+      }
+      .comparison-cell.empty-cell {
+        background: transparent;
+        border: none;
+      }
+      .comparison-cell ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .comparison-cell ul li {
+        position: relative;
+        padding-left: 14px;
+        margin: 6px 0;
+        line-height: 1.7;
+      }
+      .left-cell ul li::before {
+        content: "";
+        position: absolute;
+        left: 1px;
+        top: 8px;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #34d399;
+      }
+      .right-cell ul li::before {
+        content: "";
+        position: absolute;
+        left: 1px;
+        top: 8px;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #f87171;
+      }
+      .comparison-cell p {
+        margin: 0;
+        line-height: 1.8;
+      }
+      .comparison-cell strong {
+        color: #111827;
+        font-weight: 700;
+      }
+      .knowledge-card {
+        background: linear-gradient(180deg, #faf8f5 0%, #f0ebe3 100%);
+        border-radius: 16px;
+        padding: 28px 30px;
+        margin: 0;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      }
+      .term-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 22px;
+        padding-bottom: 16px;
+        border-bottom: 2px solid rgba(216, 67, 21, 0.15);
+      }
+      .term-icon {
+        font-size: 32px;
+        margin-right: 14px;
+        flex-shrink: 0;
+      }
+      .term-header h2 {
+        color: #c62828;
+        font-size: 22px;
+        font-weight: 700;
+        line-height: 1.35;
+        letter-spacing: 0.02em;
+      }
+      .definition {
+        background: #ffffff;
+        padding: 26px 28px;
+        border-radius: 12px;
+        line-height: 1.85;
+        color: #2c3e50;
+        margin-bottom: 20px;
+        font-size: 15px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        box-shadow:
+          0 4px 16px rgba(0, 0, 0, 0.06),
+          0 1px 3px rgba(0, 0, 0, 0.04);
+        border: 1px solid rgba(0, 0, 0, 0.04);
+      }
+      .definition p {
+        margin: 0 0 12px 0;
+      }
+      .definition p:last-child {
+        margin-bottom: 0;
+      }
+      .definition br {
+        display: block;
+        content: "";
+        margin-top: 0.5em;
+      }
+      .definition strong {
+        color: #1e3a5f;
+        font-weight: 700;
+      }
+      .definition em {
+        color: #5b21b6;
+        font-style: normal;
+        background: rgba(91, 33, 182, 0.08);
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-weight: 500;
+      }
+      .examples {
+        background: #ffffff;
+        padding: 24px 28px;
+        border-radius: 12px;
+        box-shadow:
+          0 4px 16px rgba(0, 0, 0, 0.06),
+          0 1px 3px rgba(0, 0, 0, 0.04);
+        border: 1px solid rgba(0, 0, 0, 0.04);
+      }
+      .examples-title {
+        display: flex;
+        align-items: center;
+        font-weight: 700;
+        color: #c62828;
+        margin-bottom: 16px;
+        font-size: 15px;
+      }
+      .examples-title .icon {
+        margin-right: 8px;
+        font-size: 18px;
+      }
+      .examples strong {
+        background: #e3f2fd;
+        color: #1565c0;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+      }
+      .examples ul {
+        list-style: none;
+        padding-left: 0;
+        margin: 0;
+      }
+      .examples li {
+        padding: 8px 0 8px 22px;
+        position: relative;
+        line-height: 1.75;
+        color: #2c3e50;
+        font-size: 15px;
+      }
+      .examples li:before {
+        content: "▸";
+        position: absolute;
+        left: 0;
+        color: #c62828;
+        font-size: 14px;
+        font-weight: bold;
+      }
+      .stats-card h2 {
+        color: #2c3e50;
+        margin-bottom: 28px;
+        font-size: 24px;
+        text-align: center;
+        font-weight: 700;
+      }
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 20px;
+      }
+      .stat-item {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 28px 20px;
+        border-radius: 14px;
+        text-align: center;
+        transition: all 0.3s;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+      }
+      .stat-item.highlight {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+      }
+      .stat-value {
+        font-size: 36px;
+        font-weight: 800;
+        margin-bottom: 10px;
+        color: #2c3e50;
+      }
+      .stat-item.highlight .stat-value {
+        color: white;
+      }
+      .stat-label {
+        font-size: 15px;
+        opacity: 0.85;
+        font-weight: 500;
+      }
+      .stat-item:not(.highlight) .stat-label {
+        color: #374151;
+      }
+      .quote-card {
+        margin: 0;
+        padding: 28px 32px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #fefce8 0%, #fef9c3 100%);
+        border-left: 5px solid #eab308;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+      }
+      .quote-card .quote-text {
+        margin: 0 0 12px 0;
+        font-size: 18px;
+        line-height: 1.75;
+        color: #1c1917;
+        font-style: italic;
+      }
+      .quote-card .quote-source {
+        font-size: 14px;
+        color: #78716c;
+        text-align: right;
+      }
+      .steps-card {
+        margin: 0;
+      }
+      .steps-card .steps-title {
+        color: #2c3e50;
+        margin-bottom: 20px;
+        font-size: 22px;
+        font-weight: 700;
+        padding-bottom: 12px;
+        border-bottom: 3px solid;
+        border-image: linear-gradient(90deg, #0d9488, #06b6d4) 1;
+      }
+      .steps-list {
+        list-style: none;
+        padding-left: 0;
+        margin: 0;
+      }
+      .steps-list .step-item {
+        display: flex;
+        align-items: flex-start;
+        padding: 14px 18px;
+        margin: 10px 0;
+        background: linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%);
+        border-radius: 12px;
+        border-left: 4px solid #0d9488;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+      }
+      .steps-list .step-number {
+        flex-shrink: 0;
+        width: 28px;
+        height: 28px;
+        margin-right: 14px;
+        background: linear-gradient(135deg, #0d9488, #06b6d4);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 14px;
+      }
+      .steps-list .step-content {
+        line-height: 1.7;
+        color: #2c3e50;
+        font-size: 15px;
+      }
+      .highlight-card {
+        margin: 0;
+        padding: 28px 32px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+        border: 2px solid #3b82f6;
+        box-shadow: 0 4px 16px rgba(59, 130, 246, 0.15);
+      }
+      .highlight-card .highlight-title {
+        color: #1e40af;
+        font-size: 20px;
+        font-weight: 700;
+        margin-bottom: 14px;
+      }
+      .highlight-card .highlight-summary {
+        font-size: 17px;
+        line-height: 1.75;
+        color: #1e3a8a;
+        font-weight: 500;
+      }
+      .highlight-card .highlight-detail {
+        margin-top: 16px;
+        padding-top: 14px;
+        border-top: 1px solid rgba(59, 130, 246, 0.3);
+        font-size: 15px;
+        line-height: 1.7;
+        color: #2c3e50;
+      }
+      strong {
+        color: #667eea;
+        font-weight: 700;
+      }
+      em {
+        color: #764ba2;
+        font-style: normal;
+        background: rgba(118, 75, 162, 0.1);
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-weight: 500;
+      }
+      .answer-content strong,
+      .info-content strong,
+      .definition strong {
+        font-weight: 700;
+      }
+      .answer-content em,
+      .info-content em,
+      .definition em {
+        font-style: normal;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-weight: 500;
+      }
+      .answer-content code,
+      .info-content code,
+      .definition code,
+      .styled-list li span:last-child code,
+      .comparison-cell code {
+        font-family: "Consolas", "Monaco", "Courier New", monospace;
+        font-size: 0.9em;
+        background: rgba(0, 0, 0, 0.06);
+        padding: 2px 6px;
+        border-radius: 4px;
+        word-break: break-all;
+      }
+      .answer-content pre,
+      .info-content pre,
+      .definition pre {
+        margin: 12px 0;
+        padding: 14px 16px;
+        background: rgba(0, 0, 0, 0.06);
+        border-radius: 8px;
+        overflow-x: auto;
+        font-family: "Consolas", "Monaco", "Courier New", monospace;
+        font-size: 14px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+      .answer-content pre code,
+      .info-content pre code,
+      .definition pre code {
+        background: none;
+        padding: 0;
+      }
+      .answer-content h2,
+      .info-content h2,
+      .definition h2 {
+        font-size: 1.05em;
+        margin: 16px 0 10px 0;
+        font-weight: 700;
+        color: #2c3e50;
+      }
+      .answer-content h3,
+      .info-content h3,
+      .definition h3 {
+        font-size: 1em;
+        margin: 14px 0 8px 0;
+        font-weight: 600;
+        color: #2c3e50;
+      }
+      .answer-content p,
+      .info-content p,
+      .definition p {
+        line-height: 1.9;
+        margin: 10px 0;
+        color: #2c3e50;
+        font-size: inherit;
+      }
+      .answer-content ul,
+      .info-content ul,
+      .definition ul,
+      .answer-content ol,
+      .info-content ol,
+      .definition ol {
+        margin: 10px 0;
+        padding-left: 24px;
+      }
+      .answer-content ul {
+        list-style-type: disc;
+      }
+      .answer-content ol {
+        list-style-type: decimal;
+      }
+      .info-content ul {
+        list-style-type: disc;
+      }
+      .info-content ol {
+        list-style-type: decimal;
+      }
+      .definition ul {
+        list-style-type: disc;
+      }
+      .definition ol {
+        list-style-type: decimal;
+      }
+      .answer-content li,
+      .info-content li,
+      .definition li {
+        margin: 6px 0;
+        line-height: 1.7;
+      }
+      .answer-content table,
+      .info-content table,
+      .definition table,
+      .answer-content table.content-table,
+      .info-content table.content-table,
+      .definition table.content-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0;
+        font-size: 14px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .answer-content th,
+      .info-content th,
+      .definition th,
+      .answer-content td,
+      .info-content td,
+      .definition td {
+        padding: 10px 14px;
+        border: 1px solid #e0e0e0;
+        text-align: left;
+      }
+      .answer-content thead th,
+      .info-content thead th,
+      .definition thead th {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+        font-weight: 600;
+      }
+      .footer {
+        margin-top: 24px;
+        padding: 16px 0;
+        border-top: 2px solid #fff;
+        text-align: center;
+        color: #fff;
+        font-size: 13px;
+      }
+      .card-inner .footer {
+        border-top-color: #e8e8e8;
+        color: #999;
+      }
+      h2 {
+        margin: 24px 0 18px 0;
+        font-weight: 700;
+      }
+      p {
+        line-height: 1.9;
+        margin: 14px 0;
+        color: #2c3e50;
+        font-size: 16px;
+      }
+      img.emoji {
+        height: 1.25em;
+        width: 1.25em;
+        margin: 0 0.05em 0 0.1em;
+        vertical-align: -0.15em;
+        display: inline-block;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Index: all card templates from cardTemplates.ts -->
+    <div class="section-label">
+      Card templates (9): qa · list · comparison · info · knowledge · stats ·
+      quote · steps · highlight
+    </div>
+
+    <!-- 1. QA CARD (qaCard) -->
+    <div class="section-label">① QA Card</div>
+    <div class="container">
+      <div class="card-inner">
+        <div class="qa-card">
+          <div class="question">
+            <span class="q-icon">Q</span>
+            <span>什么是向量数据库？<strong>加粗文字在问题里</strong></span>
+          </div>
+          <div class="answer">
+            <span class="a-icon">A</span>
+            <div class="answer-content">
+              向量数据库是专门存储高维向量的数据库系统。<strong>这是strong文字</strong>，<em>这是em文字</em>，正常文字继续。
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">🤖 AI Assistant · anthropic</div>
+    </div>
+    <div class="audit-note">
+      ⚠️ <strong>问题：</strong>全局 <code>strong { color: #667eea }</code> 会把
+      QA 问题文字里的 strong 变成紫蓝色，而 .question 背景是浅蓝灰渐变
+      (#f5f7fa→#c3cfe2)，蓝字在蓝底上对比度不足。<br />
+      ⚠️ <strong>问题：</strong>全局 <code>em</code> 加了紫色半透明背景，在 QA
+      的浅蓝灰底上可读但稍显突兀，背景叠加后颜色偏灰紫。
+    </div>
+
+    <!-- 2. LIST CARD (listCard) -->
+    <div class="section-label">② List Card</div>
+    <div class="container">
+      <div class="card-inner">
+        <div class="list-card">
+          <h2>📋 推荐列表示例</h2>
+          <ul class="styled-list">
+            <li>
+              <span class="number">1</span
+              ><span
+                >第一项内容，<strong>strong文字</strong>，<em>em标注</em></span
+              >
+            </li>
+            <li>
+              <span class="number">2</span><span>第二项普通内容文字</span>
+            </li>
+            <li><span class="number">3</span><span>第三项内容</span></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer">🤖 AI Assistant · anthropic</div>
+    </div>
+    <div class="audit-ok">
+      ✅ List card 整体对比度良好。白色背景 (#f8f9fa)
+      上的深色文字清晰，编号圆圈白字对比 OK。
+    </div>
+    <div class="audit-note">
+      ⚠️ <strong>问题：</strong>li 内的 <code>strong</code> 颜色
+      #667eea（蓝紫），在 #f8f9fa 浅灰背景上对比度约 3.8:1，略低于 WCAG AA 标准
+      4.5:1（正文）。视觉上偏淡。
+    </div>
+
+    <!-- 3. COMPARISON CARD (comparisonCard) -->
+    <div class="section-label">③ Comparison Card</div>
+    <div class="container">
+      <div class="card-inner">
+        <div class="comparison-card">
+          <div class="comparison-card-title">🔍方案对比示例</div>
+          <div class="comparison-col-headers">
+            <div></div>
+            <div class="comparison-col-header left-header">自建部署</div>
+            <div class="comparison-col-header right-header">云服务</div>
+          </div>
+          <div class="comparison-rows">
+            <div class="comparison-row">
+              <div class="comparison-row-label">
+                <span class="row-label-text">性能</span>
+              </div>
+              <div class="comparison-cell left-cell">
+                <p>响应快，<strong>延迟低</strong>，适合实时场景。</p>
+              </div>
+              <div class="comparison-cell right-cell">
+                <p>受网络与厂商 SLA 影响，偶有抖动。</p>
+              </div>
+            </div>
+            <div class="comparison-row">
+              <div class="comparison-row-label">
+                <span class="row-label-text">成本</span>
+              </div>
+              <div class="comparison-cell left-cell">
+                <p>开源方案，无授权费用；需自建运维。</p>
+              </div>
+              <div class="comparison-cell right-cell">
+                <p>按量付费，<em>人力成本</em>更低。</p>
+              </div>
+            </div>
+            <div class="comparison-row">
+              <div class="comparison-row-label">
+                <span class="row-label-text">扩展性</span>
+              </div>
+              <div class="comparison-cell left-cell">
+                <ul>
+                  <li>水平扩展简单</li>
+                  <li>支持插件与二次开发</li>
+                </ul>
+              </div>
+              <div class="comparison-cell empty-cell"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">🤖 AI Assistant · anthropic</div>
+    </div>
+
+    <!-- 4a. INFO CARD — level: info (infoCard) -->
+    <div class="section-label">④ Info Card — level: info</div>
+    <div class="container">
+      <div class="card-inner">
+        <div class="info-box info">
+          <div class="info-header">
+            <span class="icon">💡</span><strong>Info 标题</strong>
+          </div>
+          <div class="info-content">
+            这是 info
+            级别的内容，<strong>strong文字</strong>，<em>em文字</em>，正常内容。
+          </div>
+        </div>
+      </div>
+      <div class="footer">🤖 AI Assistant · anthropic</div>
+    </div>
+
+    <!-- 4b. INFO CARD — level: warning (infoCard) -->
+    <div class="section-label">⑤ Info Card — level: warning</div>
+    <div class="container">
+      <div class="card-inner">
+        <div class="info-box warning">
+          <div class="info-header">
+            <span class="icon">⚠️</span><strong>Warning 标题</strong>
+          </div>
+          <div class="info-content">
+            这是 warning
+            级别的内容，<strong>strong文字</strong>，<em>em文字</em>。
+          </div>
+        </div>
+      </div>
+      <div class="footer">🤖 AI Assistant · anthropic</div>
+    </div>
+
+    <!-- 4c. INFO CARD — level: success (infoCard) -->
+    <div class="section-label">⑥ Info Card — level: success</div>
+    <div class="container">
+      <div class="card-inner">
+        <div class="info-box success">
+          <div class="info-header">
+            <span class="icon">✅</span><strong>Success 标题</strong>
+          </div>
+          <div class="info-content">
+            这是 success
+            级别的内容，<strong>strong文字</strong>，<em>em文字</em>。
+          </div>
+        </div>
+      </div>
+      <div class="footer">🤖 AI Assistant · anthropic</div>
+    </div>
+
+    <!-- 4d. INFO CARD — level: tip (infoCard) -->
+    <div class="section-label">⑦ Info Card — level: tip</div>
+    <div class="container">
+      <div class="card-inner">
+        <div class="info-box tip">
+          <div class="info-header">
+            <span class="icon">💭</span><strong>Tip 标题</strong>
+          </div>
+          <div class="info-content">
+            这是 tip 级别的内容，<strong>strong文字</strong>，<em>em文字</em>。
+          </div>
+        </div>
+      </div>
+      <div class="footer">🤖 AI Assistant · anthropic</div>
+    </div>
+
+    <!-- 5. KNOWLEDGE CARD (knowledgeCard) -->
+    <div class="section-label">⑧ Knowledge Card</div>
+    <div class="container">
+      <div class="card-inner">
+        <div class="knowledge-card">
+          <div class="term-header">
+            <span class="term-icon">📖</span>
+            <h2>量子纠缠</h2>
+          </div>
+          <div class="definition">
+            <p>
+              量子纠缠是一种量子力学现象，<strong>strong文字示例</strong>，<em>em文字示例</em>，两个粒子即使相距遥远，其量子态仍然相互关联。
+            </p>
+          </div>
+          <div class="examples">
+            <div class="examples-title">
+              <span class="icon">📝</span>实际应用举例
+            </div>
+            <ul>
+              <li>量子密钥分发（QKD）中的安全通信</li>
+              <li><strong>量子计算</strong>中的算法加速</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="footer">🤖 AI Assistant · anthropic</div>
+    </div>
+    <div class="audit-note">
+      ⚠️ <strong>问题：</strong>knowledge-card 背景是暖米色渐变
+      (#faf8f5→#f0ebe3)，其中 definition/examples 块是白底正常。<br />
+      · definition 里的 strong (#667eea 蓝紫) 在白底上 OK。<br />
+      · examples 里的 <code>.examples strong</code> 有独立覆盖样式（蓝底蓝字
+      #e3f2fd/#1565c0），对比度良好 ✅。<br />
+      · <strong>em</strong> 在白底上：紫色背景 rgba(118,75,162,0.1) + 紫字
+      #764ba2 → 对比度约 4.6:1，勉强达标但色调冗余。
+    </div>
+
+    <!-- 6. STATS CARD (statsCard) -->
+    <div class="section-label">⑨ Stats Card</div>
+    <div class="container">
+      <div class="card-inner">
+        <div class="stats-card">
+          <h2>数据概览</h2>
+          <div class="stats-grid">
+            <div class="stat-item">
+              <div class="stat-value">1.2K</div>
+              <div class="stat-label">日活用户</div>
+            </div>
+            <div class="stat-item highlight">
+              <div class="stat-value">98%</div>
+              <div class="stat-label">响应率（highlight）</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">42ms</div>
+              <div class="stat-label">平均延迟</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">🤖 AI Assistant · anthropic</div>
+    </div>
+    <div class="audit-note">
+      ⚠️ <strong>问题：</strong>普通 stat-item 背景
+      #f5f7fa→#c3cfe2（蓝灰），<code>.stat-value</code> 颜色 #2c3e50（深蓝灰）→
+      OK。<br />
+      但 <code>.stat-label</code> 没有指定颜色，继承全局
+      color，理论上是黑色，但实测在蓝灰底上 opacity:0.85
+      后颜色偏浅，对比度需注意。<br />
+      · highlight 项白字在紫色渐变上：✅ 对比度充足。
+    </div>
+
+    <!-- 7. QUOTE CARD (quoteCard) -->
+    <div class="section-label">⑩ Quote Card</div>
+    <div class="container">
+      <div class="card-inner">
+        <div class="quote-card">
+          <blockquote class="quote-text">
+            技术的本质是<strong>解决问题</strong>，而不是堆砌<em>术语</em>。
+          </blockquote>
+          <div class="quote-source">— 示例出处</div>
+        </div>
+      </div>
+      <div class="footer">🤖 AI Assistant · anthropic</div>
+    </div>
+
+    <!-- 8. STEPS CARD (stepsCard) -->
+    <div class="section-label">⑪ Steps Card</div>
+    <div class="container">
+      <div class="card-inner">
+        <div class="steps-card">
+          <h2 class="steps-title">部署步骤示例</h2>
+          <ol class="steps-list">
+            <li class="step-item">
+              <span class="step-number">1</span>
+              <span class="step-content"
+                >安装依赖：<code>npm install</code></span
+              >
+            </li>
+            <li class="step-item">
+              <span class="step-number">2</span>
+              <span class="step-content"
+                >配置环境变量并<strong>检查</strong>连接</span
+              >
+            </li>
+            <li class="step-item">
+              <span class="step-number">3</span>
+              <span class="step-content"
+                >执行 <code>npm run build</code> 并启动服务</span
+              >
+            </li>
+          </ol>
+        </div>
+      </div>
+      <div class="footer">🤖 AI Assistant · anthropic</div>
+    </div>
+
+    <!-- 9. HIGHLIGHT CARD (highlightCard) -->
+    <div class="section-label">⑫ Highlight Card</div>
+    <div class="container">
+      <div class="card-inner">
+        <div class="highlight-card">
+          <h2 class="highlight-title">核心结论</h2>
+          <div class="highlight-summary">
+            建议采用<strong>方案 A</strong
+            >，在现有资源下<em>风险最低</em>、收益最明确。
+          </div>
+          <div class="highlight-detail">
+            <p>补充说明：实施周期约 2 周，需前后端协同。详细排期见下方列表。</p>
+          </div>
+        </div>
+      </div>
+      <div class="footer">🤖 AI Assistant · anthropic</div>
+    </div>
+
+    <!-- Multi-card deck sample: all card types in one container -->
+    <div class="section-label">多卡混合编排示例（含全部 9 种卡片）</div>
+    <div class="container">
+      <div class="card-inner">
+        <div class="qa-card">
+          <div class="question">
+            <span class="q-icon">Q</span>
+            <span>什么是多卡编排？</span>
+          </div>
+          <div class="answer">
+            <span class="a-icon">A</span>
+            <div class="answer-content">
+              <p>即在一张图内按顺序展示多种卡片类型，如本区域所示。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-inner">
+        <div class="list-card">
+          <h2>📋 卡片类型一览</h2>
+          <ul class="styled-list">
+            <li>
+              <span class="number">1</span><span>QA · List · Comparison</span>
+            </li>
+            <li>
+              <span class="number">2</span><span>Info · Knowledge · Stats</span>
+            </li>
+            <li>
+              <span class="number">3</span
+              ><span>Quote · Steps · Highlight</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <div class="card-inner">
+        <div class="comparison-card">
+          <div class="comparison-card-title">方案对比</div>
+          <div class="comparison-col-headers">
+            <div></div>
+            <div class="comparison-col-header left-header">自建</div>
+            <div class="comparison-col-header right-header">云服务</div>
+          </div>
+          <div class="comparison-rows">
+            <div class="comparison-row">
+              <div class="comparison-row-label">
+                <span class="row-label-text">成本</span>
+              </div>
+              <div class="comparison-cell left-cell"><p>一次性投入</p></div>
+              <div class="comparison-cell right-cell"><p>按量付费</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-inner">
+        <div class="info-box info">
+          <div class="info-header">
+            <span class="icon">💡</span><strong>提示</strong>
+          </div>
+          <div class="info-content">多卡时每张卡独立一块，便于分段阅读。</div>
+        </div>
+      </div>
+      <div class="card-inner">
+        <div class="knowledge-card">
+          <div class="term-header">
+            <span class="term-icon">📖</span>
+            <h2>Card Deck</h2>
+          </div>
+          <div class="definition">
+            <p>卡片组：多张卡片按序排列，渲染为一张长图。</p>
+          </div>
+          <div class="examples">
+            <div class="examples-title">
+              <span class="icon">📝</span>实际应用举例
+            </div>
+            <ul>
+              <li>回复总结 + 步骤列表 + 结论高亮</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="card-inner">
+        <div class="stats-card">
+          <h2>数据快览</h2>
+          <div class="stats-grid">
+            <div class="stat-item">
+              <div class="stat-value">9</div>
+              <div class="stat-label">卡片类型</div>
+            </div>
+            <div class="stat-item highlight">
+              <div class="stat-value">1</div>
+              <div class="stat-label">本 deck</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-inner">
+        <div class="quote-card">
+          <blockquote class="quote-text">
+            一张图里可以承载多种表达形式。
+          </blockquote>
+          <div class="quote-source">— 多卡编排</div>
+        </div>
+      </div>
+      <div class="card-inner">
+        <div class="steps-card">
+          <h2 class="steps-title">使用流程</h2>
+          <ol class="steps-list">
+            <li class="step-item">
+              <span class="step-number">1</span>
+              <span class="step-content">LLM 输出卡片数组 JSON</span>
+            </li>
+            <li class="step-item">
+              <span class="step-number">2</span>
+              <span class="step-content"
+                >parseCardDeck → renderCardDeck → 截图</span
+              >
+            </li>
+          </ol>
+        </div>
+      </div>
+      <div class="card-inner">
+        <div class="highlight-card">
+          <h2 class="highlight-title">小结</h2>
+          <div class="highlight-summary">
+            本区域为多卡混合编排示例，包含全部 9 种卡片类型。
+          </div>
+        </div>
+      </div>
+      <div class="footer">🤖 AI Assistant · anthropic</div>
+    </div>
+  </body>
+</html>

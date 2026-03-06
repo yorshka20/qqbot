@@ -12,29 +12,29 @@ export const cardStyles = `
   }
   
   .container {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: #667eea;
     border-radius: 24px;
-    padding: 30px;
-    padding-bottom: 14px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    padding: 24px;
+    padding-bottom: 0;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     width: 800px;
     box-sizing: border-box;
   }
-  
   .card-inner {
     background: white;
     border-radius: 16px;
     padding: 35px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
   }
-
-  /* 问答卡片 */
+  .container > .card-inner + .card-inner {
+    margin-top: 24px;
+  }
   .qa-card {
     background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
     border-radius: 16px;
     padding: 28px;
     margin: 0;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   }
   .question {
     display: flex;
@@ -82,17 +82,14 @@ export const cardStyles = `
     line-height: 1.9;
     color: #2c3e50;
     font-size: 16px;
-    white-space: pre-wrap;
     word-wrap: break-word;
     flex: 1;
   }
-  
   .answer-content br {
     display: block;
     content: "";
     margin-top: 0.6em;
   }
-  /* QA: strong/em on blue-gray gradient - use dark text for contrast (audit) */
   .question strong {
     color: #1a1f36;
     font-weight: 700;
@@ -109,14 +106,12 @@ export const cardStyles = `
     border-radius: 4px;
     font-weight: 500;
   }
-
-  /* 列表卡片 */
   .list-card {
     margin: 0;
   }
   .list-card h2 {
     color: #2c3e50;
-    margin-bottom: 24px;
+    margin: 0 0 24px 0;
     font-size: 24px;
     padding-bottom: 12px;
     border-bottom: 3px solid;
@@ -130,15 +125,10 @@ export const cardStyles = `
     align-items: flex-start;
     padding: 16px 18px;
     margin: 12px 0;
-    background: #f8f9fa;
+    background: #f6f7f9;
     border-radius: 12px;
     transition: all 0.3s;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  }
-  .styled-list li:hover {
-    background: #e9ecef;
-    transform: translateX(5px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   }
   .styled-list .number {
     background: linear-gradient(135deg, #667eea, #764ba2);
@@ -159,19 +149,16 @@ export const cardStyles = `
     line-height: 1.7;
     color: #2c3e50;
   }
-  /* List: strong on #f8f9fa - darker for WCAG AA (audit) */
   .styled-list li span:last-child strong {
     color: #334155;
     font-weight: 700;
   }
-
-  /* 信息框 */
   .info-box {
     padding: 24px;
     border-radius: 12px;
     margin: 0;
     border-left: 5px solid;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
   }
   .info-box.info {
     background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
@@ -207,13 +194,11 @@ export const cardStyles = `
     white-space: pre-wrap;
     word-wrap: break-word;
   }
-  
   .info-content br {
     display: block;
     content: "";
     margin-top: 0.6em;
   }
-  /* Info box: per-level strong/em to avoid blue-on-blue, green-on-green, purple-on-purple (audit) */
   .info-box.info .info-header strong,
   .info-box.info .info-content strong {
     color: #0d47a1;
@@ -266,19 +251,21 @@ export const cardStyles = `
     border-radius: 4px;
     font-weight: 500;
   }
-
-  /* Comparison card (pros/cons style) */
   .comparison-card {
     margin: 0;
   }
   .comparison-card-title {
     font-size: 21px;
     font-weight: 700;
-    color: #1a1f36;
+    color: #fff;
     margin-bottom: 20px;
     padding-bottom: 16px;
     border-bottom: 2px solid #f0f0f0;
     letter-spacing: 0.01em;
+  }
+  .card-inner .comparison-card-title {
+    color: #2c3e50;
+    border-bottom-color: #e5e7eb;
   }
   .comparison-col-headers {
     display: grid;
@@ -322,7 +309,6 @@ export const cardStyles = `
   .comparison-row-label {
     display: flex;
     align-items: flex-start;
-    padding-top: 14px;
   }
   .row-label-text {
     font-size: 13px;
@@ -333,6 +319,10 @@ export const cardStyles = `
     padding-right: 8px;
     border-right: 2px solid #e5e7eb;
     width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    text-align: left;
   }
   .comparison-cell {
     padding: 14px 16px;
@@ -365,7 +355,7 @@ export const cardStyles = `
     line-height: 1.7;
   }
   .left-cell ul li::before {
-    content: '';
+    content: "";
     position: absolute;
     left: 1px;
     top: 8px;
@@ -375,7 +365,7 @@ export const cardStyles = `
     background: #34d399;
   }
   .right-cell ul li::before {
-    content: '';
+    content: "";
     position: absolute;
     left: 1px;
     top: 8px;
@@ -392,14 +382,12 @@ export const cardStyles = `
     color: #111827;
     font-weight: 700;
   }
-
-  /* 知识卡片 - 分层白底块、减少留白感、排版更紧凑清晰 */
   .knowledge-card {
     background: linear-gradient(180deg, #faf8f5 0%, #f0ebe3 100%);
     border-radius: 16px;
     padding: 28px 30px;
     margin: 0;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   }
   .term-header {
     display: flex;
@@ -430,8 +418,10 @@ export const cardStyles = `
     font-size: 15px;
     white-space: pre-wrap;
     word-wrap: break-word;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
-    border: 1px solid rgba(0,0,0,0.04);
+    box-shadow:
+      0 4px 16px rgba(0, 0, 0, 0.06),
+      0 1px 3px rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(0, 0, 0, 0.04);
   }
   .definition p {
     margin: 0 0 12px 0;
@@ -444,7 +434,6 @@ export const cardStyles = `
     content: "";
     margin-top: 0.5em;
   }
-  /* Knowledge: definition strong OK on white; em use darker purple for contrast (audit) */
   .definition strong {
     color: #1e3a5f;
     font-weight: 700;
@@ -461,8 +450,10 @@ export const cardStyles = `
     background: #ffffff;
     padding: 24px 28px;
     border-radius: 12px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
-    border: 1px solid rgba(0,0,0,0.04);
+    box-shadow:
+      0 4px 16px rgba(0, 0, 0, 0.06),
+      0 1px 3px rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(0, 0, 0, 0.04);
   }
   .examples-title {
     display: flex;
@@ -503,8 +494,6 @@ export const cardStyles = `
     font-size: 14px;
     font-weight: bold;
   }
-
-  /* 统计卡片 */
   .stats-card h2 {
     color: #2c3e50;
     margin-bottom: 28px;
@@ -523,16 +512,12 @@ export const cardStyles = `
     border-radius: 14px;
     text-align: center;
     transition: all 0.3s;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
   }
   .stat-item.highlight {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
-  }
-  .stat-item:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 12px 28px rgba(0,0,0,0.15);
   }
   .stat-value {
     font-size: 36px;
@@ -548,26 +533,115 @@ export const cardStyles = `
     opacity: 0.85;
     font-weight: 500;
   }
-  /* Stats: explicit label color on blue-gray background for contrast (audit) */
   .stat-item:not(.highlight) .stat-label {
     color: #374151;
   }
-
-  strong { 
-    color: #667eea; 
-    font-weight: 700; 
+  .quote-card {
+    margin: 0;
+    padding: 28px 32px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #fefce8 0%, #fef9c3 100%);
+    border-left: 5px solid #eab308;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
   }
-  
-  em { 
-    color: #764ba2; 
-    font-style: normal; 
+  .quote-card .quote-text {
+    margin: 0 0 12px 0;
+    font-size: 18px;
+    line-height: 1.75;
+    color: #1c1917;
+    font-style: italic;
+  }
+  .quote-card .quote-source {
+    font-size: 14px;
+    color: #78716c;
+    text-align: right;
+  }
+  .steps-card {
+    margin: 0;
+  }
+  .steps-card .steps-title {
+    color: #2c3e50;
+    margin-bottom: 20px;
+    font-size: 22px;
+    font-weight: 700;
+    padding-bottom: 12px;
+    border-bottom: 3px solid;
+    border-image: linear-gradient(90deg, #0d9488, #06b6d4) 1;
+  }
+  .steps-list {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+  }
+  .steps-list .step-item {
+    display: flex;
+    align-items: flex-start;
+    padding: 14px 18px;
+    margin: 10px 0;
+    background: linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%);
+    border-radius: 12px;
+    border-left: 4px solid #0d9488;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  }
+  .steps-list .step-number {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    margin-right: 14px;
+    background: linear-gradient(135deg, #0d9488, #06b6d4);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .steps-list .step-content {
+    line-height: 1.7;
+    color: #2c3e50;
+    font-size: 15px;
+  }
+  .highlight-card {
+    margin: 0;
+    padding: 28px 32px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border: 2px solid #3b82f6;
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.15);
+  }
+  .highlight-card .highlight-title {
+    color: #1e40af;
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 14px;
+  }
+  .highlight-card .highlight-summary {
+    font-size: 17px;
+    line-height: 1.75;
+    color: #1e3a8a;
+    font-weight: 500;
+  }
+  .highlight-card .highlight-detail {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(59, 130, 246, 0.3);
+    font-size: 15px;
+    line-height: 1.7;
+    color: #2c3e50;
+  }
+  strong {
+    color: #667eea;
+    font-weight: 700;
+  }
+  em {
+    color: #764ba2;
+    font-style: normal;
     background: rgba(118, 75, 162, 0.1);
-    padding: 3px 8px; 
+    padding: 3px 8px;
     border-radius: 4px;
     font-weight: 500;
   }
-  
-  /* Fallback strong/em for card content not overridden above (e.g. comparison-cell) */
   .answer-content strong,
   .info-content strong,
   .definition strong {
@@ -581,8 +655,6 @@ export const cardStyles = `
     border-radius: 4px;
     font-weight: 500;
   }
-
-  /* Content HTML: inline code */
   .answer-content code,
   .info-content code,
   .definition code,
@@ -590,7 +662,7 @@ export const cardStyles = `
   .comparison-cell code {
     font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 0.9em;
-    background: rgba(0,0,0,0.06);
+    background: rgba(0, 0, 0, 0.06);
     padding: 2px 6px;
     border-radius: 4px;
     word-break: break-all;
@@ -600,7 +672,7 @@ export const cardStyles = `
   .definition pre {
     margin: 12px 0;
     padding: 14px 16px;
-    background: rgba(0,0,0,0.06);
+    background: rgba(0, 0, 0, 0.06);
     border-radius: 8px;
     overflow-x: auto;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
@@ -615,7 +687,6 @@ export const cardStyles = `
     background: none;
     padding: 0;
   }
-  /* Content HTML: headings (smaller than card title) */
   .answer-content h2,
   .info-content h2,
   .definition h2 {
@@ -632,7 +703,6 @@ export const cardStyles = `
     font-weight: 600;
     color: #2c3e50;
   }
-  /* Content HTML: paragraphs */
   .answer-content p,
   .info-content p,
   .definition p {
@@ -641,7 +711,6 @@ export const cardStyles = `
     color: #2c3e50;
     font-size: inherit;
   }
-  /* Content HTML: lists inside content */
   .answer-content ul,
   .info-content ul,
   .definition ul,
@@ -651,19 +720,30 @@ export const cardStyles = `
     margin: 10px 0;
     padding-left: 24px;
   }
-  .answer-content ul { list-style-type: disc; }
-  .answer-content ol { list-style-type: decimal; }
-  .info-content ul { list-style-type: disc; }
-  .info-content ol { list-style-type: decimal; }
-  .definition ul { list-style-type: disc; }
-  .definition ol { list-style-type: decimal; }
+  .answer-content ul {
+    list-style-type: disc;
+  }
+  .answer-content ol {
+    list-style-type: decimal;
+  }
+  .info-content ul {
+    list-style-type: disc;
+  }
+  .info-content ol {
+    list-style-type: decimal;
+  }
+  .definition ul {
+    list-style-type: disc;
+  }
+  .definition ol {
+    list-style-type: decimal;
+  }
   .answer-content li,
   .info-content li,
   .definition li {
     margin: 6px 0;
     line-height: 1.7;
   }
-  /* Content HTML: table (optional class content-table) */
   .answer-content table,
   .info-content table,
   .definition table,
@@ -674,7 +754,7 @@ export const cardStyles = `
     border-collapse: collapse;
     margin: 12px 0;
     font-size: 14px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -695,33 +775,32 @@ export const cardStyles = `
     color: white;
     font-weight: 600;
   }
-
   .footer {
-    margin-top: 28px;
-    padding-top: 18px;
+    margin-top: 24px;
+    padding: 16px 0;
     border-top: 2px solid #fff;
     text-align: center;
     color: #fff;
     font-size: 13px;
   }
-
-  h2 { 
-    margin: 24px 0 18px 0; 
+  .card-inner .footer {
+    border-top-color: #e8e8e8;
+    color: #999;
+  }
+  h2 {
+    margin: 24px 0 18px 0;
     font-weight: 700;
   }
-  
-  p { 
-    line-height: 1.9; 
-    margin: 14px 0; 
+  p {
+    line-height: 1.9;
+    margin: 14px 0;
     color: #2c3e50;
     font-size: 16px;
   }
-
-  /* Twemoji 图片样式 */
   img.emoji {
     height: 1.25em;
     width: 1.25em;
-    margin: 0 .05em 0 .1em;
+    margin: 0 0.05em 0 0.1em;
     vertical-align: -0.15em;
     display: inline-block;
   }

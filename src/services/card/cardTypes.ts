@@ -1,6 +1,6 @@
 // Card data types for LLM response rendering
 
-export type CardType = 'qa' | 'list' | 'info' | 'comparison' | 'knowledge' | 'stats';
+export type CardType = 'qa' | 'list' | 'info' | 'comparison' | 'knowledge' | 'stats' | 'quote' | 'steps' | 'highlight';
 
 export type InfoBoxLevel = 'info' | 'warning' | 'success' | 'tip';
 
@@ -41,11 +41,14 @@ export interface InfoCardData extends BaseCardData {
 }
 
 /**
- * Comparison card data
+ * Comparison card data.
+ * leftHeader/rightHeader: column headers (e.g. item names, "方案A"/"方案B"), not fixed "pros/cons".
  */
 export interface ComparisonCardData extends BaseCardData {
   type: 'comparison';
   title: string;
+  leftHeader: string;
+  rightHeader: string;
   items: Array<{
     label: string;
     left: string;
@@ -77,6 +80,34 @@ export interface StatsCardData extends BaseCardData {
 }
 
 /**
+ * Quote card data (citation / key sentence)
+ */
+export interface QuoteCardData extends BaseCardData {
+  type: 'quote';
+  text: string;
+  source?: string;
+}
+
+/**
+ * Steps card data (ordered steps / timeline)
+ */
+export interface StepsCardData extends BaseCardData {
+  type: 'steps';
+  title: string;
+  steps: string[];
+}
+
+/**
+ * Highlight card data (single conclusion / takeaway)
+ */
+export interface HighlightCardData extends BaseCardData {
+  type: 'highlight';
+  title: string;
+  summary: string;
+  detail?: string;
+}
+
+/**
  * Union type for all card data types
  */
 export type CardData =
@@ -85,7 +116,10 @@ export type CardData =
   | InfoCardData
   | ComparisonCardData
   | KnowledgeCardData
-  | StatsCardData;
+  | StatsCardData
+  | QuoteCardData
+  | StepsCardData
+  | HighlightCardData;
 
 /**
  * Type guard for Q&A card data
@@ -138,7 +172,13 @@ export function isComparisonCardData(data: unknown): data is ComparisonCardData 
     return false;
   }
   const obj = data as Record<string, unknown>;
-  if (obj.type !== 'comparison' || typeof obj.title !== 'string' || !Array.isArray(obj.items)) {
+  if (
+    obj.type !== 'comparison' ||
+    typeof obj.title !== 'string' ||
+    typeof obj.leftHeader !== 'string' ||
+    typeof obj.rightHeader !== 'string' ||
+    !Array.isArray(obj.items)
+  ) {
     return false;
   }
   return obj.items.every(
@@ -189,6 +229,54 @@ export function isStatsCardData(data: unknown): data is StatsCardData {
 }
 
 /**
+ * Type guard for quote card data
+ */
+export function isQuoteCardData(data: unknown): data is QuoteCardData {
+  if (typeof data !== 'object' || data === null) {
+    return false;
+  }
+  const obj = data as Record<string, unknown>;
+  if (obj.type !== 'quote' || typeof obj.text !== 'string') {
+    return false;
+  }
+  if (obj.source !== undefined && typeof obj.source !== 'string') {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Type guard for steps card data
+ */
+export function isStepsCardData(data: unknown): data is StepsCardData {
+  if (typeof data !== 'object' || data === null) {
+    return false;
+  }
+  const obj = data as Record<string, unknown>;
+  if (obj.type !== 'steps' || typeof obj.title !== 'string' || !Array.isArray(obj.steps)) {
+    return false;
+  }
+  return obj.steps.every((step: unknown) => typeof step === 'string');
+}
+
+/**
+ * Type guard for highlight card data
+ */
+export function isHighlightCardData(data: unknown): data is HighlightCardData {
+  if (typeof data !== 'object' || data === null) {
+    return false;
+  }
+  const obj = data as Record<string, unknown>;
+  if (obj.type !== 'highlight' || typeof obj.title !== 'string' || typeof obj.summary !== 'string') {
+    return false;
+  }
+  if (obj.detail !== undefined && typeof obj.detail !== 'string') {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Type guard for card data
  */
 export function isCardData(data: unknown): data is CardData {
@@ -210,21 +298,39 @@ export function isCardData(data: unknown): data is CardData {
       return isKnowledgeCardData(data);
     case 'stats':
       return isStatsCardData(data);
+    case 'quote':
+      return isQuoteCardData(data);
+    case 'steps':
+      return isStepsCardData(data);
+    case 'highlight':
+      return isHighlightCardData(data);
     default:
       return false;
   }
 }
 
 /**
- * Parse and validate card data from JSON string
+ * Parse and validate card deck from JSON string.
+ * Root must be a non-empty array of card objects. Single card = [one card].
+ * @returns Non-empty array of CardData
  */
-export function parseCardData(jsonString: string): CardData {
+export function parseCardDeck(jsonString: string): CardData[] {
   try {
-    const data = JSON.parse(jsonString);
-    if (isCardData(data)) {
-      return data;
+    const parsed = JSON.parse(jsonString);
+    if (!Array.isArray(parsed)) {
+      throw new Error('Card deck must be a JSON array (e.g. [{"type":"qa",...}] for single card)');
     }
-    throw new Error('Invalid card data format');
+    if (parsed.length === 0) {
+      throw new Error('Card deck array must not be empty');
+    }
+    const cards: CardData[] = [];
+    for (let i = 0; i < parsed.length; i++) {
+      if (!isCardData(parsed[i])) {
+        throw new Error(`Invalid card at index ${i}`);
+      }
+      cards.push(parsed[i]);
+    }
+    return cards;
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error(`Invalid JSON format: ${error.message}`);

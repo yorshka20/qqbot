@@ -3,11 +3,14 @@
 import type {
   CardData,
   ComparisonCardData,
+  HighlightCardData,
   InfoCardData,
   KnowledgeCardData,
   ListCardData,
   QACardData,
+  QuoteCardData,
   StatsCardData,
+  StepsCardData,
 } from './cardTypes';
 
 /**
@@ -152,10 +155,13 @@ export function infoCard(data: InfoCardData): string {
 }
 
 /**
- * Comparison card template (pros/cons style with left=positive, right=negative)
+ * Comparison card template.
+ * leftHeader/rightHeader are column headers (e.g. item names), not fixed labels.
  */
 export function comparisonCard(data: ComparisonCardData): string {
   const title = escapeHtml(data.title);
+  const leftHeader = escapeHtml(data.leftHeader);
+  const rightHeader = escapeHtml(data.rightHeader);
   const rows = data.items
     .map((item) => {
       const label = escapeHtml(item.label);
@@ -175,17 +181,11 @@ export function comparisonCard(data: ComparisonCardData): string {
     .join('');
   return `
     <div class="comparison-card">
-      <div class="comparison-card-title">${title}</div>
+      <div class="comparison-card-title">🔍${title}</div>
       <div class="comparison-col-headers">
         <div></div>
-        <div class="comparison-col-header left-header">
-          <span class="col-header-icon">✓</span>
-          值得肯定
-        </div>
-        <div class="comparison-col-header right-header">
-          <span class="col-header-icon">✗</span>
-          争议 / 缺陷
-        </div>
+        <div class="comparison-col-header left-header">${leftHeader}</div>
+        <div class="comparison-col-header right-header">${rightHeader}</div>
       </div>
       <div class="comparison-rows">
         ${rows}
@@ -248,6 +248,61 @@ export function statsCard(data: StatsCardData): string {
 }
 
 /**
+ * Quote card template (citation / key sentence)
+ */
+export function quoteCard(data: QuoteCardData): string {
+  const text = sanitizeContentHtml(data.text);
+  const source = data.source ? `<div class="quote-source">${escapeHtml(data.source)}</div>` : '';
+  return `
+    <div class="quote-card">
+      <blockquote class="quote-text">${text}</blockquote>
+      ${source}
+    </div>
+  `;
+}
+
+/**
+ * Steps card template (ordered steps / timeline)
+ */
+export function stepsCard(data: StepsCardData): string {
+  const title = escapeHtml(data.title);
+  const stepsHtml = data.steps
+    .map(
+      (step, i) => `
+        <li class="step-item">
+          <span class="step-number">${i + 1}</span>
+          <span class="step-content">${sanitizeContentHtml(step)}</span>
+        </li>
+      `,
+    )
+    .join('');
+  return `
+    <div class="steps-card">
+      <h2 class="steps-title">${title}</h2>
+      <ol class="steps-list">
+        ${stepsHtml}
+      </ol>
+    </div>
+  `;
+}
+
+/**
+ * Highlight card template (single conclusion / takeaway)
+ */
+export function highlightCard(data: HighlightCardData): string {
+  const title = escapeHtml(data.title);
+  const summary = sanitizeContentHtml(data.summary);
+  const detail = data.detail ? `<div class="highlight-detail">${sanitizeContentHtml(data.detail)}</div>` : '';
+  return `
+    <div class="highlight-card">
+      <h2 class="highlight-title">${title}</h2>
+      <div class="highlight-summary">${summary}</div>
+      ${detail}
+    </div>
+  `;
+}
+
+/**
  * Render card data to HTML
  */
 export function renderCard(data: CardData): string {
@@ -264,7 +319,23 @@ export function renderCard(data: CardData): string {
       return knowledgeCard(data);
     case 'stats':
       return statsCard(data);
+    case 'quote':
+      return quoteCard(data);
+    case 'steps':
+      return stepsCard(data);
+    case 'highlight':
+      return highlightCard(data);
     default:
       throw new Error(`Unknown card type: ${(data as { type: string }).type}`);
   }
+}
+
+/**
+ * Render multiple cards to HTML (deck). Each card is wrapped in .card-inner for consistent layout.
+ */
+export function renderCardDeck(cards: CardData[]): string {
+  if (cards.length === 0) {
+    throw new Error('Card deck must not be empty');
+  }
+  return cards.map((card) => `<div class="card-inner">${renderCard(card)}</div>`).join('\n');
 }

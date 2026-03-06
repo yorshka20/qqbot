@@ -45,8 +45,7 @@ export function segmentsToMilkyOutgoing(segments: MessageSegment[]): OutgoingSeg
         break;
       }
       case 'reply': {
-        const messageSeq =
-          typeof seg.data.id === 'string' ? parseInt(seg.data.id, 10) : Number(seg.data.id);
+        const messageSeq = typeof seg.data.id === 'string' ? parseInt(seg.data.id, 10) : Number(seg.data.id);
         if (!Number.isNaN(messageSeq)) {
           out.push({ type: 'reply', data: { message_seq: messageSeq } });
         }

@@ -2,9 +2,9 @@
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, extname, isAbsolute, normalize, relative, resolve } from 'node:path';
-import { CardRenderer } from '@/ai/utils/CardRenderer';
-import type { InfoCardData } from '@/ai/utils/cardTypes';
 import type { FileReadServiceConfig } from '@/core/config/types/bot';
+import { CardRenderer } from '@/services/card';
+import type { InfoCardData } from '@/services/card/cardTypes';
 import { logger } from '@/utils/logger';
 
 /** Max file content length before truncation (chars) */
@@ -133,7 +133,7 @@ export class FileReadService {
       let content = readFileSync(resolved, 'utf-8');
       let truncated = false;
       if (content.length > MAX_CONTENT_LENGTH) {
-        content = content.slice(0, MAX_CONTENT_LENGTH) + '\n\n...(内容已截断)';
+        content = `${content.slice(0, MAX_CONTENT_LENGTH)}\n\n...(内容已截断)`;
         truncated = true;
       }
 
