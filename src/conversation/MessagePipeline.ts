@@ -214,9 +214,11 @@ export class MessagePipeline {
     }
 
     const groupUseForward = hookContext.metadata.get('groupUseForwardMsg') === true;
-    const useForwardActual = event.protocol === 'milky' && groupUseForward;
+    const hasImage = replyContent.segments.some((s) => s.type === 'image');
+    // Only pure-text replies use forward; replies with image are sent as normal message (forward cannot send image reliably).
+    const useForwardActual = event.protocol === 'milky' && groupUseForward && !hasImage;
     logger.debug(
-      `[MessagePipeline] sendMessage | useForward=${useForwardActual} | groupUseForwardMsg=${groupUseForward} | protocol=${event.protocol}`,
+      `[MessagePipeline] sendMessage | useForward=${useForwardActual} | groupUseForwardMsg=${groupUseForward} | hasImage=${hasImage} | protocol=${event.protocol}`,
     );
     let sentMessageResponse: SendMessageResult;
 

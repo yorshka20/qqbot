@@ -2,13 +2,10 @@
 
 import type { AIManager } from '@/ai/AIManager';
 import type { AIProvider } from '@/ai/base/AIProvider';
-import { type ExtractStrategy, extractJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
+import { extractExpectedJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import { logger } from '@/utils/logger';
 import { CardRenderer } from './CardRenderer';
 import { type CardData, parseCardDeck } from './cardTypes';
-
-/** Card format prompt returns JSON; may be in code block, prose, or raw. braceMatch helps when LLM wraps JSON in text. */
-const CARD_JSON_EXTRACT_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'braceMatch', 'regex'];
 
 /**
  * Card Rendering Service
@@ -58,9 +55,8 @@ export class CardRenderingService {
    */
   async renderCard(responseText: string, providerName: string): Promise<string> {
     try {
-      // Extract JSON from LLM text if wrapped in markdown/prose, then parse card deck (single or multiple cards)
-      const jsonStr =
-        extractJsonFromLlmText(responseText, { strategies: CARD_JSON_EXTRACT_STRATEGIES }) ?? responseText;
+      // Expected JSON only: use dedicated JSON extractor (codeBlock, braceMatch, regex); do not mix with non-JSON strategies
+      const jsonStr = extractExpectedJsonFromLlmText(responseText) ?? responseText;
       const cards: CardData[] = parseCardDeck(jsonStr);
 
       // Render card(s) to image (provider required for footer on all paths)

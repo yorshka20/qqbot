@@ -4,7 +4,12 @@
 
 import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
-import { extractJsonFromLlmText, parseLlmJson, parseSearchDecision } from './llmJsonExtract';
+import {
+  extractExpectedJsonFromLlmText,
+  extractJsonFromLlmText,
+  parseLlmJson,
+  parseSearchDecision,
+} from './llmJsonExtract';
 
 describe('extractJsonFromLlmText', () => {
   test('extracts plain JSON object', () => {
@@ -75,9 +80,28 @@ describe('extractJsonFromLlmText', () => {
     expect(extractJsonFromLlmText('   ')).toBeNull();
   });
 
-  test('returns null when no valid JSON object', () => {
+  test('returns null when no valid JSON', () => {
     expect(extractJsonFromLlmText('hello world')).toBeNull();
-    expect(extractJsonFromLlmText('["array only"]')).toBeNull();
+  });
+
+  test('extracts valid JSON array', () => {
+    const result = extractJsonFromLlmText('["array only"]');
+    expect(result).not.toBeNull();
+    if (result != null) {
+      expect(JSON.parse(result)).toEqual(['array only']);
+    }
+  });
+
+  test('extractExpectedJsonFromLlmText extracts card-deck array from wrapped text', () => {
+    const wrapped = 'Here is the card:\n[{"type":"qa","question":"Q","answer":"A"}]';
+    const result = extractExpectedJsonFromLlmText(wrapped);
+    expect(result).not.toBeNull();
+    if (result != null) {
+      const parsed = JSON.parse(result);
+      expect(Array.isArray(parsed)).toBe(true);
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0]).toEqual({ type: 'qa', question: 'Q', answer: 'A' });
+    }
   });
 
   test('respects strategy subset', () => {

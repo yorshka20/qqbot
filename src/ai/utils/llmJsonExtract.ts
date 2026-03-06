@@ -2,6 +2,12 @@
  * Unified extraction of JSON from LLM response text.
  * Handles markdown code blocks, ANSWER: markers, reasoning-prefixed output, and plain JSON.
  * Supports Zod schema for validated, typed result (parseLlmJson(text, schema)).
+ *
+ * **Separation of concerns:**
+ * - Content **expected to be JSON** (e.g. card deck, structured LLM output): use
+ *   `extractExpectedJsonFromLlmText` or `parseExpectedJsonFromLlmText` only. Do not mix with non-JSON strategies.
+ * - Content **expected not to be JSON** (e.g. search query plain text like SEARCH:/MULTI_SEARCH:): parse as
+ *   plain text only; do not use the JSON-specific extractors.
  */
 
 import type { z } from 'zod';
@@ -39,13 +45,13 @@ function parseMultiSearchQueries(content: string): Array<{ query: string; explan
 
 /**
  * Parse search decision from LLM response.
- * Tries JSON first (via parseLlmJson), then falls back to plain text:
- * NO_SEARCH, SEARCH: <query>, MULTI_SEARCH:\n查询1: ... | ...
+ * When response might be JSON, uses dedicated JSON parser only (parseExpectedJsonFromLlmText).
+ * Otherwise parses plain text: NO_SEARCH, SEARCH: <query>, MULTI_SEARCH:\n查询1: ... | ...
  */
 export function parseSearchDecision(response: string): SearchDecisionResult {
   const trimmed = response.trim();
 
-  const fromJson = parseLlmJson(trimmed, SearchDecisionSchema);
+  const fromJson = parseExpectedJsonFromLlmText(trimmed, SearchDecisionSchema);
   if (fromJson !== null) {
     return fromJson;
   }
@@ -88,9 +94,13 @@ export interface ExtractOptions {
 
 const DEFAULT_STRATEGIES: ExtractStrategy[] = ['answer', 'codeBlock', 'braceMatch', 'line', 'regex'];
 
+/** Use only when LLM output is expected to be JSON (e.g. card deck). Do not use for plain-text (e.g. search query). */
+export const JSON_ONLY_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'braceMatch', 'regex'];
+
 const DEFAULT_ANSWER_MARKER = /ANSWER:\s*([\s\S]*?)(?:\n\n|$)/;
 const CODE_BLOCK_REGEX = /```(?:json)?\s*([\s\S]*?)\s*```/;
 const GREEDY_JSON_OBJECT_REGEX = /\{[\s\S]*\}/;
+const GREEDY_JSON_ARRAY_REGEX = /\[[\s\S]*\]/;
 
 /**
  * Try to parse a string as JSON. Returns parsed value or null if invalid.
@@ -112,6 +122,64 @@ function stripCodeBlock(text: string): string {
     return codeBlockMatch[1].trim();
   }
   return text;
+}
+
+/**
+ * Extract a balanced JSON array substring [...] from text (find last ']', then matching '[').
+ * Returns null if no balanced array found.
+ */
+function extractBalancedJsonArray(text: string): string | null {
+  const lastBracket = text.lastIndexOf(']');
+  if (lastBracket === -1) {
+    return null;
+  }
+  let bracketCount = 0;
+  let startIndex = -1;
+  for (let i = lastBracket; i >= 0; i--) {
+    const char = text[i];
+    if (char === ']') {
+      bracketCount++;
+    } else if (char === '[') {
+      bracketCount--;
+      if (bracketCount === 0) {
+        startIndex = i;
+        break;
+      }
+    }
+  }
+  if (startIndex !== -1) {
+    return text.substring(startIndex, lastBracket + 1);
+  }
+  return null;
+}
+
+/**
+ * Extract a balanced JSON object substring {...} from text (find last '}', then matching '{').
+ * Returns null if no balanced object found.
+ */
+function extractBalancedJsonObject(text: string): string | null {
+  const lastBrace = text.lastIndexOf('}');
+  if (lastBrace === -1) {
+    return null;
+  }
+  let braceCount = 0;
+  let startIndex = -1;
+  for (let i = lastBrace; i >= 0; i--) {
+    const char = text[i];
+    if (char === '}') {
+      braceCount++;
+    } else if (char === '{') {
+      braceCount--;
+      if (braceCount === 0) {
+        startIndex = i;
+        break;
+      }
+    }
+  }
+  if (startIndex !== -1) {
+    return text.substring(startIndex, lastBrace + 1);
+  }
+  return null;
 }
 
 /**
@@ -151,26 +219,17 @@ export function extractJsonFromLlmText(text: string, options?: ExtractOptions): 
         break;
       }
       case 'braceMatch': {
-        const lastBrace = trimmed.lastIndexOf('}');
-        if (lastBrace === -1) {
-          break;
-        }
-        let braceCount = 0;
-        let startIndex = -1;
-        for (let i = lastBrace; i >= 0; i--) {
-          const char = trimmed[i];
-          if (char === '}') {
-            braceCount++;
-          } else if (char === '{') {
-            braceCount--;
-            if (braceCount === 0) {
-              startIndex = i;
-              break;
-            }
-          }
-        }
-        if (startIndex !== -1) {
-          candidate = trimmed.substring(startIndex, lastBrace + 1);
+        // Try both array and object; prefer the outermost (longer) valid JSON so "[{...}]" yields array, "{\"tasks\": [...]}" yields object
+        const arrayCandidate = extractBalancedJsonArray(trimmed);
+        const objectCandidate = extractBalancedJsonObject(trimmed);
+        const arrayValid = arrayCandidate != null && tryParseJson(arrayCandidate) !== null;
+        const objectValid = objectCandidate != null && tryParseJson(objectCandidate) !== null;
+        if (arrayValid && objectValid && arrayCandidate != null && objectCandidate != null) {
+          candidate = arrayCandidate.length >= objectCandidate.length ? arrayCandidate : objectCandidate;
+        } else if (arrayValid) {
+          candidate = arrayCandidate;
+        } else if (objectValid) {
+          candidate = objectCandidate;
         }
         break;
       }
@@ -186,9 +245,17 @@ export function extractJsonFromLlmText(text: string, options?: ExtractOptions): 
         break;
       }
       case 'regex': {
-        const match = trimmed.match(GREEDY_JSON_OBJECT_REGEX);
-        if (match) {
-          candidate = match[0];
+        // Try both array and object; prefer the longer valid JSON (outermost)
+        const arrayMatch = trimmed.match(GREEDY_JSON_ARRAY_REGEX);
+        const objectMatch = trimmed.match(GREEDY_JSON_OBJECT_REGEX);
+        const arrayStr = arrayMatch != null && tryParseJson(arrayMatch[0]) !== null ? arrayMatch[0] : null;
+        const objectStr = objectMatch != null && tryParseJson(objectMatch[0]) !== null ? objectMatch[0] : null;
+        if (arrayStr != null && objectStr != null) {
+          candidate = arrayStr.length >= objectStr.length ? arrayStr : objectStr;
+        } else if (arrayStr != null) {
+          candidate = arrayStr;
+        } else if (objectStr != null) {
+          candidate = objectStr;
         }
         break;
       }
@@ -218,6 +285,51 @@ export function parseLlmJson<T>(
   options?: ExtractOptions,
 ): T | null {
   const extracted = extractJsonFromLlmText(text, options);
+  if (extracted == null) {
+    return null;
+  }
+  const parsed = tryParseJson(extracted);
+  if (parsed === null) {
+    return null;
+  }
+  const result = schema.safeParse(parsed);
+  if (result.success) {
+    return result.data as T;
+  }
+  return null;
+}
+
+/**
+ * Extract JSON from LLM text when the content is **expected to be JSON** (e.g. card deck, structured output).
+ * Uses only JSON-suited strategies (codeBlock, braceMatch, regex); does not use answer/line or other
+ * non-JSON strategies. Supports both JSON objects and arrays (e.g. card deck [{...}]).
+ *
+ * Do not use for content that is expected to be plain text (e.g. search query SEARCH:/MULTI_SEARCH:).
+ *
+ * @param text - Raw LLM response text
+ * @param options - Optional strategy list (default: JSON_ONLY_STRATEGIES)
+ * @returns Extracted JSON string or null if none found or invalid
+ */
+export function extractExpectedJsonFromLlmText(text: string, options?: ExtractOptions): string | null {
+  const strategies = options?.strategies ?? JSON_ONLY_STRATEGIES;
+  return extractJsonFromLlmText(text, { ...options, strategies });
+}
+
+/**
+ * Extract and parse JSON from LLM text when the content is **expected to be JSON**, with Zod schema validation.
+ * Use only for expected-JSON responses. Do not use for plain-text (e.g. search query).
+ *
+ * @param text - Raw LLM response text
+ * @param schema - Zod schema for validation
+ * @param options - Optional strategy list (default: JSON_ONLY_STRATEGIES)
+ * @returns Parsed and validated value, or null
+ */
+export function parseExpectedJsonFromLlmText<T>(
+  text: string,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  options?: ExtractOptions,
+): T | null {
+  const extracted = extractExpectedJsonFromLlmText(text, options);
   if (extracted == null) {
     return null;
   }
