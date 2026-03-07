@@ -16,10 +16,26 @@ type ResponsesInputTextPart = { type: 'input_text'; text: string };
 type ResponsesInputImagePart = { type: 'input_image'; image_url: string };
 type ResponsesInputContentPart = ResponsesInputTextPart | ResponsesInputImagePart;
 
-/** One message in the input array for POST /responses */
+/**
+ * One message in the input array for POST /responses.
+ * For cache to hit, use content as string for text-only messages (documented cache format).
+ * Use content as parts array only when multimodal (e.g. input_image).
+ */
 interface ResponsesInputItem {
   role: 'user' | 'assistant' | 'system';
-  content: ResponsesInputContentPart[];
+  content: string | ResponsesInputContentPart[];
+}
+
+/**
+ * Per migration doc (https://www.volcengine.com/docs/82379/1585128):
+ * "The Responses API accepts input in either string or array format."
+ * For a single user text message, pass input as string to match documented format and enable cache.
+ */
+function normalizeResponsesInputForRequest(input: ResponsesInputItem[]): string | ResponsesInputItem[] {
+  if (input.length === 1 && input[0].role === 'user' && typeof input[0].content === 'string') {
+    return input[0].content;
+  }
+  return input;
 }
 
 /** Non-stream response from POST /responses (Responses API) */
@@ -121,7 +137,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
         '/responses',
         {
           model: this.config.model || 'doubao-seed-1-6-lite-251015',
-          input: [{ role: 'user', content: [{ type: 'input_text', text: 'test' }] }],
+          input: [{ role: 'user', content: 'test' }],
         },
         { timeout: 5000 },
       );
@@ -168,7 +184,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
 
       const body: Record<string, unknown> = {
         model,
-        input,
+        input: normalizeResponsesInputForRequest(input),
         temperature,
         max_output_tokens: maxTokens,
         top_p: options?.topP,
@@ -247,7 +263,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
 
       const body: Record<string, unknown> = {
         model,
-        input,
+        input: normalizeResponsesInputForRequest(input),
         temperature,
         max_output_tokens: maxTokens,
         top_p: options?.topP,
@@ -298,7 +314,9 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
   }
 
   /**
-   * Build input array for Responses API (input_text / input_image content parts).
+   * Build input array for Responses API.
+   * Uses string content for text-only messages so context cache can match (documented format).
+   * Uses content parts array only for multimodal (images).
    */
   private async buildResponsesInput(prompt: string, options?: AIGenerateOptions): Promise<ResponsesInputItem[]> {
     if (options?.messages?.length) {
@@ -308,27 +326,30 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     const history = await this.loadHistory(options);
     const input: ResponsesInputItem[] = [];
     if (options?.systemPrompt) {
-      input.push({
-        role: 'system',
-        content: [{ type: 'input_text', text: options.systemPrompt }],
-      });
+      input.push({ role: 'system', content: options.systemPrompt });
     }
     for (const msg of history) {
       input.push({
         role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-        content: [{ type: 'input_text', text: msg.content }],
+        content: msg.content,
       });
     }
-    input.push({ role: 'user', content: [{ type: 'input_text', text: prompt }] });
+    input.push({ role: 'user', content: prompt });
     return input;
   }
 
   /**
-   * Convert ChatMessage to Responses API input item (content as input_text / input_image).
+   * Convert ChatMessage to Responses API input item.
+   * Text-only: content as string (cache-friendly). Multimodal: content as input_text/input_image parts.
    */
   private chatMessageToResponsesInputItem(m: ChatMessage): ResponsesInputItem {
     if (typeof m.content === 'string') {
-      return { role: m.role, content: [{ type: 'input_text', text: m.content }] };
+      return { role: m.role, content: m.content };
+    }
+    const hasImage = m.content.some((part) => part.type !== 'text');
+    if (!hasImage) {
+      const text = m.content.map((part) => (part.type === 'text' ? part.text : '')).join('\n');
+      return { role: m.role, content: text };
     }
     const content: ResponsesInputContentPart[] = m.content.map((part) => {
       if (part.type === 'text') {
@@ -462,7 +483,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
 
     const body: Record<string, unknown> = {
       model,
-      input,
+      input: normalizeResponsesInputForRequest(input),
       temperature,
       max_output_tokens: maxTokens,
       top_p: options?.topP,
@@ -530,7 +551,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
 
       const body: Record<string, unknown> = {
         model,
-        input,
+        input: normalizeResponsesInputForRequest(input),
         temperature,
         max_output_tokens: maxTokens,
         top_p: options?.topP,
@@ -645,7 +666,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
 
       const body: Record<string, unknown> = {
         model,
-        input,
+        input: normalizeResponsesInputForRequest(input),
         temperature,
         max_output_tokens: maxTokens,
         top_p: options?.topP,
