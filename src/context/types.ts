@@ -1,6 +1,7 @@
 // Context type definitions
 
 import type { VisionImage } from '@/ai/capabilities/types';
+import type { ConversationHistoryRole } from '@/ai/types';
 import type { ConversationMessageEntry } from '@/conversation/history';
 
 /**
@@ -9,7 +10,7 @@ import type { ConversationMessageEntry } from '@/conversation/history';
 export interface ConversationContext {
   userMessage: string;
   history: Array<{
-    role: 'user' | 'assistant';
+    role: ConversationHistoryRole;
     content: string;
     timestamp: Date;
   }>;

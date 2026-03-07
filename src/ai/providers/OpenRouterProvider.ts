@@ -6,7 +6,7 @@ import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType } from '../capabilities/types';
-import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
+import type { AIGenerateOptions, AIGenerateResponse, ChatMessageRole, StreamingHandler } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
 
 /**
@@ -109,7 +109,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
     try {
       logger.debug(`[OpenRouterProvider] Generating with model: ${model}`);
 
-      let messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+      let messages: Array<{ role: ChatMessageRole; content: string }>;
       if (options?.messages?.length) {
         messages = options.messages.map((m) => ({ role: m.role, content: contentToPlainString(m.content) }));
       } else {
@@ -181,7 +181,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
     try {
       logger.debug(`[OpenRouterProvider] Generating stream with model: ${model}`);
 
-      let messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+      let messages: Array<{ role: ChatMessageRole; content: string }>;
       if (options?.messages?.length) {
         messages = options.messages.map((m) => ({ role: m.role, content: contentToPlainString(m.content) }));
       } else {

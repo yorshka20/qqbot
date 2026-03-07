@@ -5,7 +5,13 @@ import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType } from '../capabilities/types';
-import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
+import type {
+  AIGenerateOptions,
+  AIGenerateResponse,
+  ChatMessageRole,
+  ChatMessageRoleBase,
+  StreamingHandler,
+} from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
 
 export interface OllamaProviderConfig {
@@ -110,12 +116,12 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
   private async buildMessages(
     prompt: string,
     options?: AIGenerateOptions,
-  ): Promise<Array<{ role: 'user' | 'assistant' | 'system'; content: string }>> {
+  ): Promise<Array<{ role: ChatMessageRole; content: string }>> {
     if (options?.messages?.length) {
       return options.messages.map((m) => ({ role: m.role, content: contentToPlainString(m.content) }));
     }
 
-    const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
+    const messages: Array<{ role: ChatMessageRoleBase; content: string }> = [];
 
     if (options?.systemPrompt) {
       messages.push({ role: 'system', content: options.systemPrompt });
@@ -146,7 +152,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
    * Call Ollama chat API (non-streaming)
    */
   private async callChatAPI(
-    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+    messages: Array<{ role: ChatMessageRole; content: string }>,
     options?: AIGenerateOptions,
   ): Promise<OllamaGenerateResponse> {
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
@@ -172,7 +178,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
    * Call Ollama chat API (streaming)
    */
   private async callChatAPIStream(
-    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+    messages: Array<{ role: ChatMessageRole; content: string }>,
     options?: AIGenerateOptions,
   ): Promise<ReadableStream<Uint8Array>> {
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;

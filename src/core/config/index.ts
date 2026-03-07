@@ -271,6 +271,13 @@ export class Config {
   }
 
   /**
+   * Whether to use native tool use for reply generation (default: true).
+   */
+  getUseToolUse(): boolean {
+    return this.config.ai?.useToolUse !== false;
+  }
+
+  /**
    * Get default provider name for a capability
    */
   getDefaultProviderName(capability: AIProviderCapability): string | undefined {

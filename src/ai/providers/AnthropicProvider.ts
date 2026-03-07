@@ -6,7 +6,14 @@ import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType, VisionImage } from '../capabilities/types';
 import type { VisionCapability } from '../capabilities/VisionCapability';
-import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, ContentPart, StreamingHandler } from '../types';
+import type {
+  AIGenerateOptions,
+  AIGenerateResponse,
+  ChatMessage,
+  ContentPart,
+  ConversationHistoryRole,
+  StreamingHandler,
+} from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
 
@@ -21,7 +28,7 @@ export interface AnthropicProviderConfig {
 }
 
 interface AnthropicMessage {
-  role: 'user' | 'assistant';
+  role: ConversationHistoryRole;
   content:
     | string
     | Array<{ type: 'text' | 'image'; text?: string; source?: { type: string; media_type: string; data: string } }>;
@@ -70,6 +77,9 @@ function isAnthropicStreamChunk(value: unknown): value is AnthropicStreamChunk {
 function toAnthropicContent(content: ChatMessage['content']): AnthropicMessage['content'] {
   if (typeof content === 'string') {
     return content;
+  }
+  if (!Array.isArray(content)) {
+    return '';
   }
   return content.map((part: ContentPart) => {
     if (part.type === 'text') {

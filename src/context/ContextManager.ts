@@ -1,5 +1,6 @@
 // Context Manager - builds and manages conversation contexts
 
+import type { ConversationHistoryRole } from '@/ai/types';
 import type { ConversationMessageEntry, SessionHistoryStore } from '@/conversation/history';
 import type { ContextBuilderOptions, ConversationContext, GlobalContext, SessionContext } from './types';
 
@@ -37,7 +38,7 @@ export class ContextManager {
   buildContext(userMessage: string, options: BuildContextOptions): ConversationContext {
     const entries = this.sessionHistoryStore.getEntries(options.sessionId);
     const history = entries.map((e) => ({
-      role: (e.isBotReply ? 'assistant' : 'user') as 'user' | 'assistant',
+      role: (e.isBotReply ? 'assistant' : 'user') as ConversationHistoryRole,
       content: e.content,
       timestamp: e.createdAt instanceof Date ? e.createdAt : new Date(e.createdAt),
     }));
@@ -68,7 +69,7 @@ export class ContextManager {
    */
   async addMessage(
     sessionId: string,
-    role: 'user' | 'assistant',
+    role: ConversationHistoryRole,
     content: string,
     options?: AddMessageOptions,
   ): Promise<void> {
@@ -109,10 +110,10 @@ export class ContextManager {
   /**
    * Get conversation history for a session (role + content for AI context), from raw entries.
    */
-  getHistory(sessionId: string, maxMessages?: number): Array<{ role: 'user' | 'assistant'; content: string }> {
+  getHistory(sessionId: string, maxMessages?: number): Array<{ role: ConversationHistoryRole; content: string }> {
     const entries = this.sessionHistoryStore.getEntries(sessionId);
     const history = entries.map((e) => ({
-      role: (e.isBotReply ? 'assistant' : 'user') as 'user' | 'assistant',
+      role: (e.isBotReply ? 'assistant' : 'user') as ConversationHistoryRole,
       content: e.content,
     }));
     if (maxMessages != null && maxMessages > 0) {

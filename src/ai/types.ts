@@ -6,10 +6,26 @@
 import type OpenAI from 'openai';
 
 /**
+ * Base chat message roles (text dialogue; no tool).
+ * Use for conversation history and provider API messages that do not include tool role.
+ */
+export type ChatMessageRoleBase = 'user' | 'assistant' | 'system';
+
+/**
+ * Full chat message role (includes tool for tool-use round-trips).
+ */
+export type ChatMessageRole = ChatMessageRoleBase | 'tool';
+
+/**
+ * Role for conversation history entries (user and assistant only; no system in history).
+ */
+export type ConversationHistoryRole = 'user' | 'assistant';
+
+/**
  * Message in conversation history (plain text only; used by context/history loading).
  */
 export interface ConversationMessage {
-  role: 'user' | 'assistant' | 'system';
+  role: ChatMessageRoleBase;
   content: string;
 }
 
@@ -33,14 +49,30 @@ export type ContentPart = ContentPartText | ContentPartImage;
 export type ChatMessageContent = string | ContentPart[];
 
 /**
+ * Tool call payload (for assistant messages with tool_calls).
+ * Used when building messages for tool-use round-trips (OpenAI-compatible).
+ */
+export interface ChatMessageToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+/**
  * Chat message payload for role-based generation.
  * Structurally compatible with OpenAI ChatCompletionMessageParam for system / user / assistant.
  * When provider has vision, content can be ContentPart[] so history can include inline images (base64 data URL).
  * Non-OpenAI providers (e.g. Anthropic) convert ContentPart[] to their own format.
+ * For tool-use: assistant may have tool_calls; role 'tool' carries tool_call_id and content.
  */
 export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: ChatMessageContent;
+  role: ChatMessageRole;
+  /** Required for user/system; optional for assistant (e.g. when only tool_calls); for role 'tool' use string. */
+  content?: ChatMessageContent;
+  /** When role is 'tool', required for OpenAI: id of the tool call this result belongs to. */
+  tool_call_id?: string;
+  /** When role is 'assistant' and LLM returned tool_calls (e.g. OpenAI). */
+  tool_calls?: ChatMessageToolCall[];
 }
 
 /**
@@ -82,6 +114,11 @@ export interface AIGenerateOptions {
    * Upstream and middle layer use OpenAI-standard ChatMessage[] (string | ContentPart[]); each provider converts to its own API format.
    */
   messages?: ChatMessage[];
+  /**
+   * Optional tool definitions for function calling.
+   * When provided and non-empty, provider may return functionCall in response.
+   */
+  tools?: ToolDefinition[];
 }
 
 /**
@@ -95,6 +132,10 @@ export interface AIGenerateResponse {
     totalTokens: number;
   };
   metadata?: Record<string, unknown>;
+  /** When request had tools and model chose to call a function (provider returned tool_calls). */
+  functionCall?: FunctionCall;
+  /** Provider's tool_call id (e.g. OpenAI); required to send tool result in next round. */
+  toolCallId?: string;
 }
 
 /**
@@ -111,4 +152,55 @@ export interface PromptTemplate {
 export interface SystemPrompt {
   content: string;
   variables?: Record<string, string>;
+}
+
+/**
+ * Tool/Function calling types (OpenAI-compatible)
+ */
+
+/** Tool definition for function calling */
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: {
+    type: 'object';
+    properties: Record<
+      string,
+      {
+        type: string;
+        description?: string;
+        enum?: string[];
+        default?: unknown;
+        items?: { type: string };
+      }
+    >;
+    required?: string[];
+  };
+}
+
+/** Function call from LLM */
+export interface FunctionCall {
+  name: string;
+  arguments: string; // JSON string
+}
+
+/** Tool call result */
+export interface ToolResult {
+  tool: string;
+  result: unknown;
+  error?: string;
+}
+
+/** Tool Use generation options */
+export interface ToolUseGenerateOptions extends AIGenerateOptions {
+  tools?: ToolDefinition[];
+  maxToolRounds?: number; // Maximum rounds of tool calling (default: 3)
+  toolExecutor?: (call: FunctionCall) => Promise<unknown>; // Function to execute tool calls
+}
+
+/** Tool Use generation response */
+export interface ToolUseGenerateResponse extends AIGenerateResponse {
+  functionCall?: FunctionCall; // If LLM wants to call a function
+  toolCalls?: ToolResult[]; // All tool calls made during generation
+  stopReason?: 'end_turn' | 'tool_use' | 'max_rounds'; // Why generation stopped
 }

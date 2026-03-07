@@ -44,6 +44,11 @@ export interface AIConfig {
   sessionProviders?: Record<string, SessionProviderConfig>;
   // Auto-switch configuration
   autoSwitch?: AutoSwitchConfig;
+  /**
+   * Use native tool/function calling for reply generation (single LLM call with tools).
+   * When true (default), TaskSystem uses ToolUseReplyService; when false, uses legacy TaskAnalyzer + ReplyGenerationService.
+   */
+  useToolUse?: boolean;
 }
 
 export interface ContextMemoryConfig {
