@@ -15,6 +15,9 @@ import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
 import { logger } from '@/utils/logger';
 
+/** Prefix for exemption: messages starting with this (case-insensitive) are not replied to by NSFW interceptor. */
+const SKIP_PREFIX = 'skip';
+
 /**
  * NSFW Mode Plugin
  * /nsfw command toggles NSFW mode for the current session.
@@ -73,20 +76,20 @@ export class NsfwModePlugin extends PluginBase {
 
     this.nsfwInterceptor = {
       shouldIntercept: async (ctx: HookContext): Promise<boolean> => {
-        const rawSessionId = ctx.metadata.get('sessionId') as string | undefined;
-        const sessionType = (ctx.metadata.get('sessionType') as 'user' | 'group' | undefined) ?? 'user';
+        const rawSessionId = ctx.metadata.get('sessionId');
+        const sessionType = ctx.metadata.get('sessionType');
         if (!rawSessionId) {
           return false;
         }
         if (ctx.command) {
           return false;
         }
-        // Do not intercept bot's own messages (e.g. echo of "已开启 NSFW 模式")
-        const botSelfId = ctx.metadata.get('botSelfId');
-        const messageUserId = ctx.message?.userId?.toString();
-        if (botSelfId && messageUserId === botSelfId) {
+
+        // skip some messages
+        if (this.shouldSkipMessage(ctx)) {
           return false;
         }
+
         // Pipeline metadata uses prefixed sessionId (e.g. "group:111"); ConversationConfigService
         // and /nsfw command use raw id + sessionType (e.g. "111", "group"). Normalize so we read
         // the same config that was written by executeNsfwCommand.
@@ -99,8 +102,8 @@ export class NsfwModePlugin extends PluginBase {
         return intercept;
       },
       handle: async (ctx: HookContext): Promise<void> => {
-        const rawSessionId = ctx.metadata.get('sessionId') as string | undefined;
-        const sessionType = ctx.metadata.get('sessionType') as 'user' | 'group' | undefined;
+        const rawSessionId = ctx.metadata.get('sessionId');
+        const sessionType = ctx.metadata.get('sessionType');
         // Support both group and private: sessionType 'user' = private chat, 'group' = group chat
         const { sessionId, sessionType: resolvedType } = this.normalizeSessionForConfig(
           rawSessionId ?? '',
@@ -116,6 +119,31 @@ export class NsfwModePlugin extends PluginBase {
 
     this.processStageInterceptorRegistry.register(this.nsfwInterceptor);
     logger.info('[NsfwModePlugin] Registered /nsfw command and process-stage interceptor');
+  }
+
+  private shouldSkipMessage(ctx: HookContext): boolean {
+    // Do not intercept bot's own messages (e.g. echo of "已开启 NSFW 模式")
+    const botSelfId = ctx.metadata.get('botSelfId');
+    const messageUserId = ctx.message?.userId?.toString();
+    if (botSelfId && messageUserId === botSelfId) {
+      return true;
+    }
+
+    // Only reply to pure text: do not intercept when message contains image or expression (face)
+    const hasImageOrFace = ctx.message.segments?.some(
+      (seg) => seg != null && (seg.type === 'image' || seg.type === 'face'),
+    );
+    if (hasImageOrFace) {
+      return true;
+    }
+
+    // Exemption: prefix match (e.g. "skip" / "Skip") — do not reply to this message
+    const messageText = (ctx.message.message ?? '').trim();
+    if (messageText.length > 0 && messageText.toLowerCase().startsWith(SKIP_PREFIX.toLowerCase())) {
+      return true;
+    }
+
+    return false;
   }
 
   async onDisable(): Promise<void> {

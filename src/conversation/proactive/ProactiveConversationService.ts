@@ -320,7 +320,8 @@ export class ProactiveConversationService {
     }
     const currentThread = this.threadService.getActiveThread(groupId);
     const lastUserIdStr = String(lastUserEntry.userId);
-    if (!currentThread?.triggerUserId || currentThread.triggerUserId !== lastUserIdStr) {
+    const adminUserId = this.promptManager.adminUserId;
+    if (!currentThread || (currentThread?.triggerUserId !== lastUserIdStr && lastUserIdStr !== adminUserId)) {
       return false;
     }
     const topicLabel = currentThread.lastTopic || '当前';
