@@ -36,8 +36,9 @@ export class ConversationConfigService {
     const cacheKey = this.getCacheKey(sessionId, sessionType);
 
     // Check cache first
-    if (this.configCache.has(cacheKey)) {
-      return this.configCache.get(cacheKey)!;
+    const cache = this.configCache.get(cacheKey);
+    if (cache) {
+      return cache;
     }
 
     // Load from database

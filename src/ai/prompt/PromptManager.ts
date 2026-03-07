@@ -74,13 +74,12 @@ export class PromptManager {
 
       this.templates.set(name, template);
 
-      if (!this.namespaces.has(namespace)) {
-        this.namespaces.set(namespace, new Map());
+      let namespaceMap = this.namespaces.get(namespace);
+      if (!namespaceMap) {
+        namespaceMap = new Map();
+        this.namespaces.set(namespace, namespaceMap);
       }
-      const namespaceMap = this.namespaces.get(namespace);
-      if (namespaceMap) {
-        namespaceMap.set(name, template);
-      }
+      namespaceMap.set(name, template);
 
       logger.info(`[PromptManager] Loaded template: ${name} from ${resolvedPath} (namespace: ${namespace})`);
     } catch (error) {
@@ -149,10 +148,12 @@ export class PromptManager {
 
     // Also register in namespace
     if (template.namespace) {
-      if (!this.namespaces.has(template.namespace)) {
-        this.namespaces.set(template.namespace, new Map());
+      let namespaceMap = this.namespaces.get(template.namespace);
+      if (!namespaceMap) {
+        namespaceMap = new Map();
+        this.namespaces.set(template.namespace, namespaceMap);
       }
-      this.namespaces.get(template.namespace)?.set(template.name, template);
+      namespaceMap.set(template.name, template);
     }
 
     logger.info(

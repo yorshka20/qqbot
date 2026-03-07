@@ -450,7 +450,7 @@ export class CommandManager {
       // Only add each registration object once, even if it's referenced by multiple keys (aliases)
       if (!seenRegistrations.has(reg)) {
         // reg.handler.permissions may be present by decorator
-        const permissions = (reg.handler as any).permissions;
+        const permissions = reg.handler.permissions;
         if (isPermitted(permissions)) {
           seenRegistrations.add(reg);
           all.push(reg);
@@ -461,7 +461,7 @@ export class CommandManager {
     // Plugin commands
     for (const reg of this.commands.values()) {
       if (!seenRegistrations.has(reg)) {
-        const permissions = (reg.handler as any).permissions;
+        const permissions = reg.handler.permissions;
         if (isPermitted(permissions)) {
           seenRegistrations.add(reg);
           all.push(reg);

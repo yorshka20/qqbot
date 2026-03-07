@@ -72,8 +72,10 @@ export function RegisterPlugin(options: PluginOptions) {
     pluginRegistry.push(metadata);
 
     // Initialize hooks array for this plugin class
-    if (!hookRegistry.has(target)) {
-      hookRegistry.set(target, []);
+    let hookListForPlugin = hookRegistry.get(target);
+    if (!hookListForPlugin) {
+      hookListForPlugin = [];
+      hookRegistry.set(target, hookListForPlugin);
     }
 
     return target;
@@ -101,10 +103,12 @@ export function Hook(options: HookOptions) {
     };
 
     // Get or create hooks array for this plugin class
-    if (!hookRegistry.has(pluginClass)) {
-      hookRegistry.set(pluginClass, []);
+    let hookList = hookRegistry.get(pluginClass);
+    if (!hookList) {
+      hookList = [];
+      hookRegistry.set(pluginClass, hookList);
     }
-    hookRegistry.get(pluginClass)!.push(hookMetadata);
+    hookList.push(hookMetadata);
 
     return descriptor;
   };

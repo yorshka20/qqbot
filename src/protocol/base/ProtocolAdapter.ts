@@ -116,13 +116,14 @@ export abstract class ProtocolAdapter extends EventEmitter {
     }
 
     const response = message as BaseAPIResponse;
-    if (!response.echo || !this.pendingRequests.has(response.echo)) {
+    const pending = response.echo ? this.pendingRequests.get(response.echo) : undefined;
+    if (!pending) {
       return false;
     }
 
-    const { resolve, reject, timer } = this.pendingRequests.get(response.echo)!;
+    const { resolve, reject, timer } = pending;
     clearTimeout(timer);
-    this.pendingRequests.delete(response.echo);
+    this.pendingRequests.delete(response.echo ?? '');
 
     if (response.status === 'ok' && response.retcode === 0) {
       resolve(response.data);

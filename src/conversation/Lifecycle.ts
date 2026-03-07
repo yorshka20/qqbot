@@ -37,11 +37,12 @@ export class Lifecycle {
    */
   registerSystem(system: System): void {
     const stage = system.stage;
-    if (!this.systems.has(stage)) {
-      this.systems.set(stage, []);
+    let stageSystems = this.systems.get(stage);
+    if (!stageSystems) {
+      stageSystems = [];
+      this.systems.set(stage, stageSystems);
     }
 
-    const stageSystems = this.systems.get(stage)!;
     stageSystems.push(system);
 
     // Sort by priority (higher first)

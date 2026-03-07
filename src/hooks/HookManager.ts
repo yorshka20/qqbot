@@ -34,11 +34,11 @@ export class HookManager {
    */
   register(hookName: HookName, priority: number): void {
     // Initialize hook list if needed
-    if (!this.hooks.has(hookName)) {
-      this.hooks.set(hookName, []);
+    let hookList = this.hooks.get(hookName);
+    if (!hookList) {
+      hookList = [];
+      this.hooks.set(hookName, hookList);
     }
-
-    const hookList = this.hooks.get(hookName)!;
 
     // Check if handler is already registered (prevent duplicate registration)
     if (hookList.some((reg) => reg.hookName === hookName)) {
@@ -70,7 +70,10 @@ export class HookManager {
       this.register(hookName, priority);
     }
 
-    const hookList = this.hooks.get(hookName)!;
+    const hookList = this.hooks.get(hookName);
+    if (!hookList) {
+      return;
+    }
 
     // Find or create registration with matching priority
     let registration = hookList.find((reg) => reg.priority === priority);

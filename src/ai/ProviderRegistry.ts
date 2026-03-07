@@ -19,11 +19,11 @@ export class ProviderRegistry {
     const capabilities = provider.getCapabilities();
 
     for (const capability of capabilities) {
-      if (!this.capabilityProviders.has(capability)) {
-        this.capabilityProviders.set(capability, new Map());
+      let providers = this.capabilityProviders.get(capability);
+      if (!providers) {
+        providers = new Map();
+        this.capabilityProviders.set(capability, providers);
       }
-
-      const providers = this.capabilityProviders.get(capability)!;
       providers.set(provider.name, provider);
 
       logger.debug(`[ProviderRegistry] Registered provider ${provider.name} for capability: ${capability}`);

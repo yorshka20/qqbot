@@ -82,22 +82,19 @@ export class NsfwModePlugin extends PluginBase {
           return false;
         }
         // Do not intercept bot's own messages (e.g. echo of "已开启 NSFW 模式")
-        const botSelfId = ctx.metadata.get('botSelfId') as string | undefined;
+        const botSelfId = ctx.metadata.get('botSelfId');
         const messageUserId = ctx.message?.userId?.toString();
         if (botSelfId && messageUserId === botSelfId) {
-          logger.debug("[NsfwModePlugin] Bot's own message, skip intercept");
           return false;
         }
-        // Pipeline metadata uses prefixed sessionId (e.g. "group:758290153"); ConversationConfigService
-        // and /nsfw command use raw id + sessionType (e.g. "758290153", "group"). Normalize so we read
+        // Pipeline metadata uses prefixed sessionId (e.g. "group:111"); ConversationConfigService
+        // and /nsfw command use raw id + sessionType (e.g. "111", "group"). Normalize so we read
         // the same config that was written by executeNsfwCommand.
         const { sessionId, sessionType: resolvedType } = this.normalizeSessionForConfig(rawSessionId, sessionType);
         const config = await this.conversationConfigService.getConfig(sessionId, resolvedType);
         const intercept = config.nsfw?.mode === true;
         if (intercept) {
-          logger.info(
-            `[NsfwModePlugin] NSFW intercept mode ON | sessionId=${sessionId} | sessionType=${resolvedType} | reply will use Ollama`,
-          );
+          logger.info(`[NsfwModePlugin] NSFW intercept mode ON | sessionId=${sessionId} | sessionType=${resolvedType}`);
         }
         return intercept;
       },
@@ -134,7 +131,7 @@ export class NsfwModePlugin extends PluginBase {
   }
 
   /**
-   * Normalize pipeline sessionId (e.g. "group:758290153") to the (sessionId, sessionType) pair
+   * Normalize pipeline sessionId (e.g. "group:111") to the (sessionId, sessionType) pair
    * used by ConversationConfigService and by /nsfw command (SessionUtils), so interceptor and
    * command read/write the same config.
    */

@@ -57,10 +57,12 @@ export class EventRouter extends EventEmitter {
   }
 
   onEvent<T extends NormalizedEvent>(eventType: string, handler: EventHandler<T>): void {
-    if (!this.handlers.has(eventType)) {
-      this.handlers.set(eventType, new Set());
+    let handlers = this.handlers.get(eventType);
+    if (!handlers) {
+      handlers = new Set();
+      this.handlers.set(eventType, handlers);
     }
-    this.handlers.get(eventType)!.add(handler as EventHandler);
+    handlers.add(handler as EventHandler);
 
     // Also subscribe to the event emitter
     this.on(eventType as any, handler as any);
