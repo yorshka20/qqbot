@@ -208,6 +208,22 @@ export class Config {
     return this.config;
   }
 
+  /**
+   * Bot's own QQ user id as number for API use (e.g. forward message).
+   * Parsed from config.bot.selfId; undefined if missing or invalid.
+   */
+  getBotUserId(): number | undefined {
+    const raw = this.config?.bot?.selfId;
+    if (raw == null || raw === '') {
+      return undefined;
+    }
+    const n = typeof raw === 'number' ? raw : parseInt(String(raw), 10);
+    if (Number.isNaN(n) || n <= 0) {
+      return undefined;
+    }
+    return n;
+  }
+
   getEnabledProtocols(): ProtocolConfig[] {
     return this.config.protocols.filter((p) => p.enabled).sort((a, b) => a.priority - b.priority);
   }

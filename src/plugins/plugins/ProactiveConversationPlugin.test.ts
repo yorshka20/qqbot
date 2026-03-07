@@ -67,7 +67,6 @@ describe('ProactiveConversationPlugin wake-word dedupe', () => {
       {
         api: {} as never,
         events: {} as never,
-        bot: { getConfig: () => ({}) as never },
       },
       {
         name: 'proactiveConversation',

@@ -4,6 +4,7 @@ import { CommandBuilder } from '@/command/CommandBuilder';
 import type { CommandManager } from '@/command/CommandManager';
 import { CommandContextBuilder } from '@/context/CommandContextBuilder';
 import { replaceReplyWithSegments } from '@/context/HookContextHelpers';
+import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
@@ -61,8 +62,8 @@ export class EchoPlugin extends PluginBase {
 
   private shouldTrigger(context: HookContext): boolean {
     const botSelfId = context.metadata.get('botSelfId');
-    const config = this.context?.bot.getConfig();
-    const botConfig = config?.bot;
+    const config = getContainer().resolve<Config>(DITokens.CONFIG);
+    const botConfig = config.getConfig().bot;
 
     const isEnabled = this.enabled;
     const isAdmin = MessageUtils.isAdmin(context.message.userId, botConfig);

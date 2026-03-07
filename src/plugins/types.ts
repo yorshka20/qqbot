@@ -1,16 +1,16 @@
 // Plugin type definitions
 
 import type { APIClient } from '@/api/APIClient';
-import type { BotConfig } from '@/core/config';
 import type { EventRouter } from '@/events/EventRouter';
 import type { PluginHooks } from '@/hooks';
 
+/**
+ * Context passed to plugins at load and available as this.context.
+ * For config (and config.getBotUserId etc.), resolve Config from DI: getContainer().resolve(DITokens.CONFIG).
+ */
 export interface PluginContext {
   api: APIClient;
   events: EventRouter;
-  bot: {
-    getConfig: () => BotConfig;
-  };
 }
 
 export interface PluginInfo {

@@ -48,12 +48,11 @@ export class PluginManager {
     this.conversationConfigService = deps.conversationConfigService;
   }
 
-  /** Build PluginContext for plugins (used in loadConfig). */
+  /** Build PluginContext for plugins (used in loadConfig). Config: resolve from DI (DITokens.CONFIG). */
   private getContext(): PluginContext {
     return {
       api: this.apiClient,
       events: this.eventRouter,
-      bot: { getConfig: () => this.config.getConfig() },
     };
   }
 

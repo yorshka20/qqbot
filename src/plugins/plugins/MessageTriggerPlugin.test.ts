@@ -85,7 +85,6 @@ describe('MessageTriggerPlugin', () => {
       {
         api: {} as never,
         events: {} as never,
-        bot: { getConfig: () => ({}) as never },
       },
       { name: 'messageTrigger', enabled: true, config },
     );
@@ -197,7 +196,6 @@ describe('MessageTriggerPlugin', () => {
       {
         api: {} as never,
         events: {} as never,
-        bot: { getConfig: () => ({}) as never },
       },
       { name: 'messageTrigger', enabled: true, config: {} },
     );
@@ -239,7 +237,6 @@ describe('MessageTriggerPlugin', () => {
       {
         api: {} as never,
         events: {} as never,
-        bot: { getConfig: () => ({}) as never },
       },
       { name: 'messageTrigger', enabled: true, config: { wakeWords: ['wakebot'] } },
     );
@@ -310,7 +307,6 @@ describe('MessageTriggerPlugin', () => {
       {
         api: {} as never,
         events: {} as never,
-        bot: { getConfig: () => ({}) as never },
       },
       { name: 'messageTrigger', enabled: true, config: {} },
     );

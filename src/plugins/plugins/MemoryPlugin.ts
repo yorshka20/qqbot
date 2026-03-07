@@ -3,6 +3,7 @@
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { ConversationHistoryService } from '@/conversation/history';
+import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
@@ -71,8 +72,8 @@ export class MemoryPlugin extends PluginBase {
     this.memoryExtractService = container.resolve<MemoryExtractService>(DITokens.MEMORY_EXTRACT_SERVICE);
     this.databaseManager = container.resolve<DatabaseManager>(DITokens.DATABASE_MANAGER);
 
-    const config = this.context.bot.getConfig();
-    this.botSelfId = config.bot.selfId;
+    const config = container.resolve<Config>(DITokens.CONFIG);
+    this.botSelfId = config.getConfig().bot.selfId;
 
     const pluginConfig = this.pluginConfig?.config as MemoryPluginConfig | undefined;
     if (pluginConfig?.groups?.length) {

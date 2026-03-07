@@ -50,7 +50,6 @@ describe('WhitelistPlugin access control', () => {
       {
         api: {} as never,
         events: {} as never,
-        bot: { getConfig: () => ({}) as never },
       },
       { name: 'whitelist', enabled: true, config: {} },
     );
@@ -72,7 +71,6 @@ describe('WhitelistPlugin access control', () => {
       {
         api: {} as never,
         events: {} as never,
-        bot: { getConfig: () => ({}) as never },
       },
       { name: 'whitelist', enabled: true, config: { userIds: ['999'] } },
     );
@@ -100,7 +98,6 @@ describe('WhitelistPlugin access control', () => {
       {
         api: {} as never,
         events: {} as never,
-        bot: { getConfig: () => ({}) as never },
       },
       { name: 'whitelist', enabled: true, config: { userIds: ['456'] } },
     );
@@ -129,7 +126,6 @@ describe('WhitelistPlugin access control', () => {
       {
         api: {} as never,
         events: {} as never,
-        bot: { getConfig: () => ({}) as never },
       },
       { name: 'whitelist', enabled: true, config: { groupIds: ['999'] } },
     );
@@ -151,7 +147,6 @@ describe('WhitelistPlugin access control', () => {
       {
         api: {} as never,
         events: {} as never,
-        bot: { getConfig: () => ({}) as never },
       },
       { name: 'whitelist', enabled: true, config: { groupIds: ['1'] } },
     );
@@ -174,7 +169,6 @@ describe('WhitelistPlugin access control', () => {
       {
         api: {} as never,
         events: {} as never,
-        bot: { getConfig: () => ({}) as never },
       },
       { name: 'whitelist', enabled: true, config: {} },
     );

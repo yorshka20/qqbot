@@ -3,6 +3,7 @@
 import type { AIManager } from '@/ai/AIManager';
 import type { CapabilityType } from '@/ai/capabilities/types';
 import { MessageAPI } from '@/api/methods/MessageAPI';
+import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
@@ -86,16 +87,13 @@ export class NudgePlugin extends PluginBase {
       return;
     }
 
-    // Get bot self ID from config
-    const botConfig = this.context?.bot.getConfig();
-    const botSelfId = botConfig?.bot?.selfId;
-
+    const config = getContainer().resolve<Config>(DITokens.CONFIG);
+    const botSelfId = config.getConfig().bot?.selfId;
     if (!botSelfId) {
       logger.warn('[NudgePlugin] Bot selfId not found in config');
       return;
     }
-
-    if (nudgeEvent.receiverId.toString() !== botSelfId.toString()) {
+    if (nudgeEvent.receiverId.toString() !== String(botSelfId)) {
       return;
     }
 

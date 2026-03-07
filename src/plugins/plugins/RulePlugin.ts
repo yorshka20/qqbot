@@ -7,7 +7,7 @@ import type { CommandManager } from '@/command/CommandManager';
 import { CommandContextBuilder } from '@/context/CommandContextBuilder';
 import type { ContextManager } from '@/context/ContextManager';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
-import type { ProtocolName } from '@/core/config';
+import type { Config, ProtocolName } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
@@ -89,23 +89,14 @@ export class RulePlugin extends PluginBase {
       throw new Error('[RulePlugin] ContextManager not found');
     }
 
-    // Get bot configuration
-    const config = this.context?.bot.getConfig();
-    if (config) {
-      // Get bot selfId from config
-      const botConfig = config.bot;
-      if (botConfig && botConfig.selfId) {
-        const selfIdNum = parseInt(botConfig.selfId);
-        if (!isNaN(selfIdNum)) {
-          this.botSelfId = selfIdNum;
-        }
-      }
-
-      // Get preferred protocol
-      const apiConfig = config.api;
-      if (apiConfig.preferredProtocol) {
-        this.preferredProtocol = apiConfig.preferredProtocol;
-      }
+    const config = getContainer().resolve<Config>(DITokens.CONFIG);
+    const botUserId = config.getBotUserId();
+    if (botUserId !== undefined) {
+      this.botSelfId = botUserId;
+    }
+    const preferred = config.getAPIConfig().preferredProtocol;
+    if (preferred) {
+      this.preferredProtocol = preferred;
     }
 
     logger.info('[RulePlugin] Initialized');
