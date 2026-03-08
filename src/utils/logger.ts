@@ -3,6 +3,7 @@
 import { existsSync, mkdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import winston from 'winston';
+import { getCurrentMessageContext } from '@/context/MessageContextStorage';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -78,6 +79,24 @@ const levelColors: Record<string, string> = {
   debug: colors.gray,
 };
 
+/** Prefix for console: colored [logTag] when current async chain has message context with logTag/logColor. */
+function getMessageContextPrefixConsole(): string {
+  const ctx = getCurrentMessageContext();
+  if (ctx?.logTag && ctx?.logColor) {
+    return `${ctx.logColor}[${ctx.logTag}]${colors.reset} `;
+  }
+  return '';
+}
+
+/** Prefix for file: plain [logTag] when current async chain has message context with logTag. */
+function getMessageContextPrefixFile(): string {
+  const ctx = getCurrentMessageContext();
+  if (ctx?.logTag) {
+    return `[${ctx.logTag}] `;
+  }
+  return '';
+}
+
 class FileLogger implements Logger {
   private winstonLogger: winston.Logger;
   private logsDir: string;
@@ -105,7 +124,8 @@ class FileLogger implements Logger {
         } else if (Object.keys(meta).length) {
           metaStr = formatMeta(meta);
         }
-        return `[${timestamp}] [${level.toUpperCase()}] ${message}${metaStr}`;
+        const msgPrefix = getMessageContextPrefixFile();
+        return `[${timestamp}] [${level.toUpperCase()}] ${msgPrefix}${message}${metaStr}`;
       }),
     );
 
@@ -150,7 +170,8 @@ class FileLogger implements Logger {
 
         const levelStr = `${color}${levelUpper.padEnd(5)}${reset}`;
         const timeStr = `${dim}${timestamp}${reset}`;
-        return `${timeStr} ${levelStr} ${message}${metaStr}`;
+        const msgPrefix = getMessageContextPrefixConsole();
+        return `${timeStr} ${levelStr} ${msgPrefix}${message}${metaStr}`;
       }),
     );
 
@@ -199,7 +220,8 @@ class FileLogger implements Logger {
           } else if (Object.keys(meta).length) {
             metaStr = formatMeta(meta);
           }
-          return `[${timestamp}] [${level.toUpperCase()}] ${message}${metaStr}`;
+          const msgPrefix = getMessageContextPrefixFile();
+          return `[${timestamp}] [${level.toUpperCase()}] ${msgPrefix}${message}${metaStr}`;
         }),
       );
 

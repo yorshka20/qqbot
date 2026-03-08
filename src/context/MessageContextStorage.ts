@@ -7,6 +7,10 @@ import type { NormalizedMessageEvent } from '@/events/types';
 
 export interface MessageContextValue {
   message: NormalizedMessageEvent;
+  /** Optional short tag for log lines (e.g. last 6 chars of messageId). Used to distinguish messages in pipeline debug. */
+  logTag?: string;
+  /** Optional ANSI color code for console (e.g. \\x1b[36m). When set with logTag, logger prepends colored [logTag] to each line in this async chain. */
+  logColor?: string;
 }
 
 /** Map: key (e.g. sessionId_messageId) -> context for that message. Cleared when processing finishes. */
