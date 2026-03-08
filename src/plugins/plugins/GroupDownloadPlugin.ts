@@ -2,7 +2,7 @@
 
 import { createHash } from 'crypto';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { extname, join } from 'path';
 import { ResourceDownloader } from '@/ai/utils/ResourceDownloader';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { getContainer } from '@/core/DIContainer';
@@ -47,12 +47,26 @@ function hashForFilename(s: string): string {
 }
 
 /**
- * Generate a short unique filename (no dedup). Used for image / file / video.
+ * Get file extension from URL path (respect source suffix). Returns e.g. ".jpg" or "".
+ */
+function getExtensionFromUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const base = u.pathname.split('/').pop() ?? '';
+    const e = extname(base);
+    return e && /^\.\w+$/.test(e) ? e : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Generate a short unique filename (no dedup). ext should include dot, e.g. ".jpg" or "".
  */
 function uniqueFilename(prefix: string, ext: string): string {
   const ts = Date.now();
   const r = Math.random().toString(36).slice(2, 8);
-  const dotExt = ext.startsWith('.') ? ext : `.${ext}`;
+  const dotExt = ext?.startsWith('.') ? ext : ext ? `.${ext}` : '';
   return `${prefix}_${ts}_${r}${dotExt}`;
 }
 
@@ -112,16 +126,16 @@ export class GroupDownloadPlugin extends PluginBase {
       const segType = segment?.type;
       const data = segment?.data as Record<string, unknown> | undefined;
 
-      // image: unique short name, no dedup (repeat probability low)
+      // image: unique short name, no dedup; extension from URL
       if (segType === 'image') {
-        await this.downloadSegment(event, data, saveDir, 'image', i, ['.jpg', '.png', '.gif', '.webp'], false);
+        await this.downloadSegment(event, data, saveDir, 'image', i, false);
       } else if (segType === 'market_face') {
-        // 表情/贴纸: deterministic name + dedup (same sticker → skip)
-        await this.downloadSegment(event, data, saveDir, 'sticker', i, ['.gif', '.png', '.webp'], false);
+        // 表情/贴纸: deterministic name + dedup; extension from URL
+        await this.downloadSegment(event, data, saveDir, 'sticker', i, false);
       } else if (segType === 'file') {
-        await this.downloadSegment(event, data, saveDir, 'file', i, [], true);
+        await this.downloadSegment(event, data, saveDir, 'file', i, true);
       } else if (segType === 'video') {
-        await this.downloadSegment(event, data, saveDir, 'video', i, ['.mp4', '.webm', '.mov'], false);
+        await this.downloadSegment(event, data, saveDir, 'video', i, false);
       }
     }
   }
@@ -161,14 +175,10 @@ export class GroupDownloadPlugin extends PluginBase {
   }
 
   /**
-   * Build deterministic filename for sticker dedup only. Same sticker → same short hash → skip if exists.
+   * Build deterministic filename for sticker dedup only. Extension from URL (respect source suffix).
    */
-  private getStickerDedupFilename(
-    data: Record<string, unknown> | undefined,
-    url: string,
-    defaultExts: string[],
-  ): string {
-    const ext = defaultExts[0] ?? '.gif';
+  private getStickerDedupFilename(data: Record<string, unknown> | undefined, url: string): string {
+    const ext = getExtensionFromUrl(url) || '.bin';
     const dotExt = ext.startsWith('.') ? ext : `.${ext}`;
     const resourceId = getDataValue(data, 'resource_id') ?? getDataValue(data, 'image_id');
     const id = resourceId ?? url;
@@ -181,8 +191,7 @@ export class GroupDownloadPlugin extends PluginBase {
     saveDir: string,
     kind: 'image' | 'file' | 'video' | 'sticker',
     index: number,
-    defaultExts: string[],
-    isFile = false,
+    isFile: boolean,
   ): Promise<void> {
     const url = await this.resolveUrl(event, data, isFile);
     if (!url) {
@@ -190,26 +199,24 @@ export class GroupDownloadPlugin extends PluginBase {
       return;
     }
 
-    const ext = defaultExts[0] ?? (isFile ? '.bin' : '.png');
-    const dotExt = ext.startsWith('.') ? ext : `.${ext}`;
-    // Only sticker is deduped; image / file / video always get a unique filename and are downloaded
+    // Respect source file extension: from URL path or from file_name (file segment)
     let filename: string;
     if (kind === 'sticker') {
-      filename = this.getStickerDedupFilename(data, url, defaultExts);
+      filename = this.getStickerDedupFilename(data, url);
       const filePath = join(saveDir, filename);
       if (existsSync(filePath)) {
         logger.debug(`[GroupDownloadPlugin] Skip duplicate sticker (already exists): ${filename}`);
         return;
       }
+    } else if (isFile) {
+      const name = getDataValue(data, 'file_name', 'file_name');
+      const safeName = name ? name.replace(/[^\w.-]/g, '_') || 'file' : '';
+      filename = safeName
+        ? `${uniqueFilename('f', '')}_${safeName}`
+        : uniqueFilename('file', getExtensionFromUrl(url) || '.bin');
     } else {
-      if (isFile) {
-        const name = getDataValue(data, 'file_name', 'file_name');
-        filename = name
-          ? `${uniqueFilename('f', '')}_${name.replace(/[^\w.-]/g, '_') || 'file'}`
-          : uniqueFilename('file', dotExt);
-      } else {
-        filename = uniqueFilename(kind, dotExt);
-      }
+      const ext = getExtensionFromUrl(url) || '.bin';
+      filename = uniqueFilename(kind, ext);
     }
 
     try {
