@@ -147,7 +147,7 @@ export default function App() {
         </div>
       </header>
 
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 overflow-auto">
         <Sidebar
           typeFilter={typeFilter}
           sortOrder={sortOrder}
@@ -156,7 +156,7 @@ export default function App() {
           onSortOrderChange={setSortOrder}
           onGroupByChange={setGroupBy}
         />
-        <main className="flex-1 min-w-0 overflow-auto p-4">
+        <main className="flex-1 min-w-0 min-h-0 p-4">
           {loading ? (
             <div className="flex items-center justify-center py-24">
               <div className="flex flex-col items-center gap-3 text-zinc-500">

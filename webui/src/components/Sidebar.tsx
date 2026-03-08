@@ -3,7 +3,7 @@
  * Uses lucide-react for icons.
  */
 
-import { Folder, Image, Video, Music, FileText, Layers, ArrowDownUp, Calendar, CalendarRange } from 'lucide-react';
+import { ArrowDownUp, Calendar, CalendarRange, FileText, Folder, Image, Layers, Music, Video } from 'lucide-react';
 import type { FilterType, GroupBy, SortOrder } from '../utils/fileType';
 
 interface SidebarProps {
@@ -47,7 +47,7 @@ export function Sidebar({
 }: SidebarProps) {
   return (
     <aside
-      className="w-52 shrink-0 border-r border-zinc-200 bg-white flex flex-col overflow-hidden"
+      className="sticky top-0 left-0 z-10 h-[calc(100vh-3.5rem)] w-52 shrink-0 border-r border-zinc-200 bg-white flex flex-col overflow-y-auto"
       aria-label="Filters and view options"
     >
       <div className="p-3 border-b border-zinc-100">
