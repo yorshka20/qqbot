@@ -83,8 +83,8 @@ const levelColors: Record<string, string> = {
 function getMessageContextPrefixConsole(): string {
   const ctx = getCurrentMessageContext();
   if (ctx?.logTag && ctx?.logColor) {
-    // Background + black text for tag, then reset
-    return `${ctx.logColor}\x1b[30m[${ctx.logTag}]${colors.reset} `;
+    // Background + white text for tag, then reset
+    return `${ctx.logColor}\x1b[37m[${ctx.logTag}]${colors.reset} `;
   }
   return '';
 }
@@ -179,8 +179,8 @@ class FileLogger implements Logger {
           ctx.logWholeLineBackground = false;
           const plainPrefix = ctx.logTag ? `[${ctx.logTag}] ` : '';
           const plainLine = `${timestamp} ${levelUpper.padEnd(5)} ${plainPrefix}${message}${metaStrPlain}`;
-          // Background + black text for whole line (SGR: bg;30 then reset)
-          const bgAndFg = ctx.logColor.endsWith('m') ? ctx.logColor.slice(0, -1) + ';30m' : `${ctx.logColor}\x1b[30m`;
+          // Background + white text for whole line (readable on dark terminal)
+          const bgAndFg = ctx.logColor.endsWith('m') ? ctx.logColor.slice(0, -1) + ';37m' : `${ctx.logColor}\x1b[37m`;
           return `${bgAndFg}${plainLine}${reset}`;
         }
 
