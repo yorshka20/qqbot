@@ -97,6 +97,19 @@ export class NudgePlugin extends PluginBase {
       return;
     }
 
+    // Whitelist is highest constraint: never respond in non-whitelist groups (notice has no pipeline context)
+    const whitelistConfig = config.getPluginConfig('whitelist') as { groupIds?: string[] } | undefined;
+    const groupIds = Array.isArray(whitelistConfig?.groupIds) ? whitelistConfig.groupIds : [];
+    if (groupIds.length > 0) {
+      const groupIdStr = String(nudgeEvent.groupId);
+      if (!groupIds.includes(groupIdStr)) {
+        logger.info(
+          `[NudgePlugin] Group not in whitelist, skipping nudge reply | groupId=${nudgeEvent.groupId}`,
+        );
+        return;
+      }
+    }
+
     logger.info(
       `[NudgePlugin] Bot was nudged | senderId=${nudgeEvent.senderId} | groupId=${nudgeEvent.groupId} | receiverId=${nudgeEvent.receiverId}`,
     );

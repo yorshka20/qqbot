@@ -42,10 +42,53 @@ export class WhitelistPlugin extends PluginBase {
     }
   }
 
+  /**
+   * Run earliest in RECEIVE so postProcessOnly is set before any other handler (e.g. LightAppPlugin).
+   * Ensures non-whitelist groups never trigger any bot response.
+   */
+  @Hook({
+    stage: 'onMessageReceived',
+    priority: 'HIGHEST',
+    order: -10,
+  })
+  onMessageReceived(context: HookContext): HookResult {
+    const message = context.message;
+    const messageId = message.id || message.messageId || 'unknown';
+    const messageType = message.messageType;
+    const userId = message.userId?.toString();
+    const groupId = message.groupId?.toString();
+    const botSelfId = context.metadata.get('botSelfId');
+
+    // Core access control 1: Ignore bot's own messages
+    if (botSelfId && userId === botSelfId) {
+      context.metadata.set('postProcessOnly', true);
+      return true;
+    }
+
+    if (messageType === 'private') {
+      if (this.hasUserWhitelist && !this.userWhitelist.has(userId)) {
+        context.metadata.set('postProcessOnly', true);
+        logger.info(`[WhitelistPlugin] User not in whitelist | messageId=${messageId} | userId=${userId}`);
+        return true;
+      }
+    } else {
+      // Group: set postProcessOnly when not in whitelist (highest constraint)
+      if (this.hasGroupWhitelist) {
+        if (!groupId || !this.groupWhitelist.has(groupId)) {
+          context.metadata.set('postProcessOnly', true);
+          logger.info(`[WhitelistPlugin] Group not in whitelist | messageId=${messageId} | groupId=${groupId}`);
+          return true;
+        }
+      }
+    }
+
+    return true;
+  }
+
   @Hook({
     stage: 'onMessagePreprocess',
     priority: 'HIGHEST',
-    order: 0,
+    order: -10,
   })
   onMessagePreprocess(context: HookContext): HookResult {
     const message = context.message;

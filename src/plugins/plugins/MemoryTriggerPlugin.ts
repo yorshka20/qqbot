@@ -347,6 +347,10 @@ export class MemoryTriggerPlugin extends PluginBase {
     if (!this.enabled || this.groupIds.size === 0 || !this.memoryService) {
       return true;
     }
+    // Whitelist is highest constraint: never respond in non-whitelist groups
+    if (context.metadata.get('postProcessOnly')) {
+      return true;
+    }
     const sessionType = context.metadata.get('sessionType');
     const groupId = context.message?.groupId?.toString();
     if (sessionType !== 'group' || !groupId || !this.groupIds.has(groupId)) {

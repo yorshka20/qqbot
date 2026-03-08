@@ -156,6 +156,15 @@ export class HookManager {
             logger.info(`🚫 [HookManager] Hook ${hookName} interrupted | messageId=${messageId}`);
             return false;
           }
+
+          // Whitelist is highest constraint: once postProcessOnly is set (e.g. by WhitelistPlugin),
+          // skip remaining handlers so message exits to COMPLETE without being handled by other plugins
+          if (context.metadata.get('postProcessOnly')) {
+            logger.info(
+              `🎣 [HookManager] postProcessOnly set, skipping remaining handlers for ${hookName} | messageId=${messageId}`,
+            );
+            return true;
+          }
         } catch (error) {
           const err = error instanceof Error ? error : new Error('Unknown error');
           logger.error(`🚫 [HookManager] Error in hook ${hookName} | messageId=${messageId}`, err);

@@ -86,6 +86,15 @@ export class Lifecycle {
           await this.executeStageComplete(context, messageId);
           return false;
         }
+        // Whitelist is highest constraint: when postProcessOnly is set (e.g. by WhitelistPlugin in RECEIVE),
+        // skip remaining stages and go directly to COMPLETE so other plugins never handle the message
+        if (context.metadata.get('postProcessOnly')) {
+          logger.debug(
+            `[Lifecycle] postProcessOnly set, skipping to COMPLETE | messageId=${messageId}`,
+          );
+          await this.executeStageComplete(context, messageId);
+          return true;
+        }
       }
 
       const duration = Date.now() - startTime;

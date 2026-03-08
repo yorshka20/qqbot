@@ -129,6 +129,11 @@ export class MessageTriggerPlugin extends PluginBase {
     const botSelfId = context.metadata.get('botSelfId');
     const messageText = message.message ?? '';
 
+    // Whitelist is highest constraint: if already set (e.g. by WhitelistPlugin), do not change it
+    if (context.metadata.get('postProcessOnly')) {
+      return true;
+    }
+
     // Bot self: do not run reply pipeline
     if (botSelfId && userId === botSelfId) {
       context.metadata.set('postProcessOnly', true);

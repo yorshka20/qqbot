@@ -63,6 +63,11 @@ export class ReactionPlugin extends PluginBase {
       return true;
     }
 
+    // Whitelist is highest constraint: never respond in non-whitelist groups
+    if (context.metadata.get('postProcessOnly')) {
+      return true;
+    }
+
     const messageId = context.message?.id || context.message?.messageId || 'unknown';
 
     if (this.keywordToReactionMap.size === 0) {

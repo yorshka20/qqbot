@@ -102,6 +102,10 @@ export class LightAppPlugin extends PluginBase {
     if (!this.enabled) {
       return true;
     }
+    // Whitelist is highest constraint: never respond in non-whitelist groups
+    if (context.metadata.get('postProcessOnly')) {
+      return true;
+    }
     const message = context.message;
     if (this.groupOnly && message.messageType !== 'group') {
       return true;

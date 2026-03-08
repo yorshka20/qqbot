@@ -2,6 +2,7 @@
 
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationManager } from '@/conversation/ConversationManager';
+import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
@@ -106,6 +107,20 @@ export class MessageOperationPlugin extends PluginBase {
     const operation = this.reactionToOperationMap.get(reactionId);
     if (!operation) {
       return;
+    }
+
+    // Whitelist is highest constraint: never respond in non-whitelist groups (notice has no pipeline context)
+    const config = getContainer().resolve<Config>(DITokens.CONFIG);
+    const whitelistConfig = config.getPluginConfig('whitelist') as { groupIds?: string[] } | undefined;
+    const groupIds = Array.isArray(whitelistConfig?.groupIds) ? whitelistConfig.groupIds : [];
+    if (groupIds.length > 0) {
+      const groupIdStr = String(groupId);
+      if (!groupIds.includes(groupIdStr)) {
+        logger.info(
+          `[MessageOperationPlugin] Group not in whitelist, skipping operation | groupId=${groupId} | operation=${operation}`,
+        );
+        return;
+      }
     }
 
     logger.info(

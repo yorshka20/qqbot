@@ -116,7 +116,7 @@ describe('WhitelistPlugin access control', () => {
     expect(context.metadata.get('contextMode')).toBe('normal');
   });
 
-  it('sets postProcessOnly when group not in whitelist', async () => {
+  it('sets postProcessOnly when group not in whitelist (onMessageReceived runs first)', async () => {
     const plugin = new WhitelistPlugin({
       name: 'whitelist',
       version: 'test',
@@ -132,9 +132,13 @@ describe('WhitelistPlugin access control', () => {
     await plugin.onInit?.();
 
     const context = makeHookContext({ messageText: 'hello', groupId: 1 });
-    plugin.onMessagePreprocess(context);
-
+    plugin.onMessageReceived(context);
     expect(context.metadata.get('postProcessOnly')).toBe(true);
+
+    // Preprocess also sets it (and whitelistGroup for allowed groups)
+    const context2 = makeHookContext({ messageText: 'hello', groupId: 1 });
+    plugin.onMessagePreprocess(context2);
+    expect(context2.metadata.get('postProcessOnly')).toBe(true);
   });
 
   it('allows group message when group in whitelist', async () => {
@@ -157,6 +161,27 @@ describe('WhitelistPlugin access control', () => {
 
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
     expect(context.metadata.get('whitelistGroup')).toBe(true);
+  });
+
+  it('onMessageReceived does not set postProcessOnly when group in whitelist', async () => {
+    const plugin = new WhitelistPlugin({
+      name: 'whitelist',
+      version: 'test',
+      description: 'test',
+    });
+    plugin.loadConfig(
+      {
+        api: {} as never,
+        events: {} as never,
+      },
+      { name: 'whitelist', enabled: true, config: { groupIds: ['1'] } },
+    );
+    await plugin.onInit?.();
+
+    const context = makeHookContext({ messageText: 'hello', groupId: 1 });
+    plugin.onMessageReceived(context);
+
+    expect(context.metadata.get('postProcessOnly')).toBeUndefined();
   });
 
   it('allows all groups when no group whitelist configured', async () => {

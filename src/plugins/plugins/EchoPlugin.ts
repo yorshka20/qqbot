@@ -61,6 +61,11 @@ export class EchoPlugin extends PluginBase {
   }
 
   private shouldTrigger(context: HookContext): boolean {
+    // Whitelist is highest constraint: never respond in non-whitelist groups
+    if (context.metadata.get('postProcessOnly')) {
+      return false;
+    }
+
     const botSelfId = context.metadata.get('botSelfId');
     const config = getContainer().resolve<Config>(DITokens.CONFIG);
     const botConfig = config.getConfig().bot;
