@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { CommandBuilder } from '@/command/CommandBuilder';
 import type { PromptTemplate } from '@/ai/prompt/PromptManager';
 import { PromptManager } from '@/ai/prompt/PromptManager';
+import { CommandBuilder } from '@/command/CommandBuilder';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { HookMetadataMap } from '@/hooks/metadata';

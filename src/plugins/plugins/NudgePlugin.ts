@@ -103,9 +103,7 @@ export class NudgePlugin extends PluginBase {
     if (groupIds.length > 0) {
       const groupIdStr = String(nudgeEvent.groupId);
       if (!groupIds.includes(groupIdStr)) {
-        logger.info(
-          `[NudgePlugin] Group not in whitelist, skipping nudge reply | groupId=${nudgeEvent.groupId}`,
-        );
+        logger.info(`[NudgePlugin] Group not in whitelist, skipping nudge reply | groupId=${nudgeEvent.groupId}`);
         return;
       }
     }

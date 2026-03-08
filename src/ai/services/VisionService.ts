@@ -202,7 +202,7 @@ export class VisionService {
       const lastContent: ContentPart[] =
         typeof last.content === 'string'
           ? [{ type: 'text', text: last.content }, ...imageParts]
-          : [...last.content, ...imageParts];
+          : [...(last.content ?? []), ...imageParts];
       finalMessages = [...messages.slice(0, -1), { ...last, content: lastContent }];
     }
 
@@ -239,7 +239,7 @@ export class VisionService {
         textParts.push(`${m.role}:\n${m.content}`);
       } else {
         const parts: string[] = [];
-        for (const p of m.content) {
+        for (const p of m.content ?? []) {
           if (p.type === 'text') {
             parts.push(p.text);
           } else {

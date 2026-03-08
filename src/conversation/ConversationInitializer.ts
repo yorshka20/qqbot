@@ -182,7 +182,8 @@ export class ConversationInitializer {
     serviceRegistry.registerAIServiceCapabilities(aiService);
 
     // TaskSystem must exist before ProactiveConversationService is resolved from DI.
-    const taskSystem = new TaskSystem(services.taskManager, services.hookManager, aiService);
+    const useToolUse = config.getUseToolUse();
+    const taskSystem = new TaskSystem(services.taskManager, services.hookManager, aiService, useToolUse);
     container.registerInstance(DITokens.TASK_SYSTEM, taskSystem);
 
     // ProactiveConversationService and its dependencies are assembled via container resolution.

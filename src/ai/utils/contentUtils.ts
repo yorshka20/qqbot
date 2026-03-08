@@ -11,5 +11,5 @@ export function contentToPlainString(content: ChatMessage['content']): string {
   if (typeof content === 'string') {
     return content;
   }
-  return content.map((part) => (part.type === 'text' ? part.text : '[Image]')).join('\n');
+  return (content ?? []).map((part) => (part.type === 'text' ? part.text : '[Image]')).join('\n');
 }

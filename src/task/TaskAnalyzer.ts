@@ -14,6 +14,13 @@ import type { Task, TaskAnalysisResult, TaskType } from './types';
  * Task Analyzer - analyzes conversation using AI and generates tasks
  */
 export class TaskAnalyzer {
+  private static readonly LEGACY_EXCLUDED_TASK_TYPES = new Set([
+    'reply',
+    'search',
+    'get_memory',
+    'search_memory',
+    'rag_search',
+  ]);
   private messageAssembler = new PromptMessageAssembler();
   /**
    * Parse AI response to extract task list.
@@ -65,7 +72,9 @@ export class TaskAnalyzer {
    */
   private buildMessages(context: ConversationContext) {
     // Build task types description with enhanced information(excluding reply task type)
-    const taskTypes = this.taskManager.getAllTaskTypes().filter((tt) => tt.name.toLowerCase() !== 'reply');
+    const taskTypes = this.taskManager
+      .getAllTaskTypes()
+      .filter((tt) => !TaskAnalyzer.LEGACY_EXCLUDED_TASK_TYPES.has(tt.name.toLowerCase()));
 
     const taskTypesDescription = taskTypes
       .map((tt) => {

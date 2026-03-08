@@ -110,8 +110,7 @@ export class I2vCommandHandler implements CommandHandler {
         // --d: use user input directly as prompt, skip LLM
         prompt = promptArg?.trim() ?? '';
         negativePrompt = '';
-        durationSeconds =
-          options.duration != null ? Math.max(1, Math.min(30, Math.round(options.duration))) : 5;
+        durationSeconds = options.duration != null ? Math.max(1, Math.min(30, Math.round(options.duration))) : 5;
       } else {
         const sessionId = getSessionId(context);
         const aiResult = await this.aiService.prepareI2VPrompt(promptArg ?? '', sessionId, 'img2video.generate');
