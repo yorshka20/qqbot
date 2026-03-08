@@ -1,6 +1,6 @@
 // Memory Service - file-based persistence for group and user memories (like prompt templates)
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { logger } from '@/utils/logger';
@@ -22,6 +22,13 @@ export interface MemoryServiceOptions {
   memoryDir?: string;
   /** Max length for memory content (truncate if exceeded). */
   maxContentLength?: number;
+}
+
+export interface MemorySearchResult {
+  userId: string;
+  isGroupMemory: boolean;
+  snippet: string;
+  content: string;
 }
 
 /**
@@ -101,6 +108,88 @@ export class MemoryService {
   }
 
   /**
+   * Get one memory slot directly. When userId is omitted, returns group memory.
+   */
+  getMemory(groupId: string, userId?: string): { userId: string; isGroupMemory: boolean; content: string } {
+    const targetUserId = userId?.trim() ? userId.trim() : GROUP_MEMORY_USER_ID;
+    const isGroupMemory = targetUserId === GROUP_MEMORY_USER_ID;
+    const content = isGroupMemory ? this.getGroupMemoryText(groupId) : this.getUserMemoryText(groupId, targetUserId);
+    return {
+      userId: targetUserId,
+      isGroupMemory,
+      content,
+    };
+  }
+
+  /**
+   * Search memories within one group. By default searches both group memory and all user memories.
+   */
+  searchMemories(
+    groupId: string,
+    query: string,
+    options?: {
+      userId?: string;
+      includeGroupMemory?: boolean;
+      limit?: number;
+    },
+  ): MemorySearchResult[] {
+    const trimmedQuery = query.trim().toLowerCase();
+    if (!trimmedQuery) {
+      return [];
+    }
+
+    const safeGroupId = this.sanitizePathSegment(groupId);
+    const groupDir = join(this.basePath, safeGroupId);
+    if (!existsSync(groupDir)) {
+      return [];
+    }
+
+    const includeGroupMemory = options?.includeGroupMemory !== false;
+    const specificUserId = options?.userId?.trim();
+    const limit = Math.max(1, options?.limit ?? 10);
+    const results: MemorySearchResult[] = [];
+
+    const candidateUserIds = specificUserId
+      ? [specificUserId]
+      : readdirSync(groupDir)
+          .filter((entry) => entry.endsWith('.txt'))
+          .map((entry) => entry.replace(/\.txt$/, ''))
+          .filter((entry) => entry !== GROUP_MEMORY_FILENAME.replace(/\.txt$/, ''));
+
+    if (includeGroupMemory) {
+      const groupContent = this.getGroupMemoryText(groupId);
+      const snippet = this.extractSnippet(groupContent, trimmedQuery);
+      if (snippet) {
+        results.push({
+          userId: GROUP_MEMORY_USER_ID,
+          isGroupMemory: true,
+          snippet,
+          content: groupContent,
+        });
+      }
+    }
+
+    for (const userId of candidateUserIds) {
+      const content = this.getUserMemoryText(groupId, userId);
+      const snippet = this.extractSnippet(content, trimmedQuery);
+      if (!snippet) {
+        continue;
+      }
+      results.push({
+        userId,
+        isGroupMemory: false,
+        snippet,
+        content,
+      });
+      if (results.length >= limit) {
+        break;
+      }
+    }
+
+    return results.slice(0, limit);
+  }
+
+  /**
    * Truncate content to max length.
    * todo: use llm to summarize.
    */
@@ -109,6 +198,20 @@ export class MemoryService {
       return content;
     }
     return content.slice(0, this.maxContentLength);
+  }
+
+  private extractSnippet(content: string, queryLower: string): string | null {
+    if (!content) {
+      return null;
+    }
+    const lower = content.toLowerCase();
+    const index = lower.indexOf(queryLower);
+    if (index === -1) {
+      return null;
+    }
+    const start = Math.max(0, index - 60);
+    const end = Math.min(content.length, index + queryLower.length + 120);
+    return content.slice(start, end).trim();
   }
 
   /**
