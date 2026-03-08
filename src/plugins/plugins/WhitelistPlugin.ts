@@ -29,12 +29,13 @@ export class WhitelistPlugin extends PluginBase {
         return;
       }
 
+      // Normalize to string so lookup matches message.userId/groupId (which we .toString())
       if (Array.isArray(pluginConfig.userIds)) {
-        this.userWhitelist = new Set(pluginConfig.userIds);
+        this.userWhitelist = new Set(pluginConfig.userIds.map((id) => String(id)));
         this.hasUserWhitelist = this.userWhitelist.size > 0;
       }
       if (Array.isArray(pluginConfig.groupIds)) {
-        this.groupWhitelist = new Set(pluginConfig.groupIds);
+        this.groupWhitelist = new Set(pluginConfig.groupIds.map((id) => String(id)));
         this.hasGroupWhitelist = this.groupWhitelist.size > 0;
       }
     } catch (error) {

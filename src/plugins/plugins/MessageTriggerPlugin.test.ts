@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { CommandBuilder } from '@/command/CommandBuilder';
 import type { PromptTemplate } from '@/ai/prompt/PromptManager';
 import { PromptManager } from '@/ai/prompt/PromptManager';
 import { getContainer } from '@/core/DIContainer';
@@ -16,6 +17,7 @@ function makeHookContext(opts: {
   botSelfId?: string;
   replyTrigger?: 'at' | 'reaction';
   segments?: Array<{ type: string; data?: Record<string, unknown> }>;
+  command?: { name: string; args: string[] };
 }): HookContext {
   const {
     messageText,
@@ -25,13 +27,16 @@ function makeHookContext(opts: {
     botSelfId = '123',
     replyTrigger,
     segments = [],
+    command: commandOpt,
   } = opts;
+  const command = commandOpt ? CommandBuilder.build(commandOpt.name, commandOpt.args) : undefined;
   const metadata = new HookMetadataMap();
   metadata.set('botSelfId', botSelfId);
   if (replyTrigger) {
     metadata.set('replyTrigger', replyTrigger);
   }
   return {
+    command,
     message: {
       id: 'm1',
       type: 'message',
@@ -142,6 +147,18 @@ describe('MessageTriggerPlugin', () => {
     const context = makeHookContext({ messageText: 'random message without trigger' });
     await plugin.onMessagePreprocess(context);
     expect(context.metadata.get('postProcessOnly')).toBe(true);
+    expect(context.metadata.get('replyTriggerType')).toBeUndefined();
+  });
+
+  it('does not set postProcessOnly when context.command is set (command handled by CommandSystem)', async () => {
+    const plugin = await initPlugin();
+    const context = makeHookContext({
+      messageText: '/echo',
+      groupId: 304077769,
+      command: { name: 'echo', args: [] },
+    });
+    await plugin.onMessagePreprocess(context);
+    expect(context.metadata.get('postProcessOnly')).toBeUndefined();
     expect(context.metadata.get('replyTriggerType')).toBeUndefined();
   });
 

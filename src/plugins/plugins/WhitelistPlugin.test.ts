@@ -205,4 +205,30 @@ describe('WhitelistPlugin access control', () => {
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
     expect(context.metadata.get('whitelistGroup')).toBe(true);
   });
+
+  it('allows group when groupIds in config are numbers (normalized to string for lookup)', async () => {
+    const plugin = new WhitelistPlugin({
+      name: 'whitelist',
+      version: 'test',
+      description: 'test',
+    });
+    // Config may have numeric groupIds from JSON; plugin normalizes to string so message.groupId matches
+    plugin.loadConfig(
+      {
+        api: {} as never,
+        events: {} as never,
+      },
+      { name: 'whitelist', enabled: true, config: { groupIds: [304077769] } },
+    );
+    await plugin.onInit?.();
+
+    const context = makeHookContext({ messageText: '/echo', groupId: 304077769 });
+    plugin.onMessageReceived(context);
+    expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+
+    const context2 = makeHookContext({ messageText: '/echo', groupId: 304077769 });
+    plugin.onMessagePreprocess(context2);
+    expect(context2.metadata.get('postProcessOnly')).toBeUndefined();
+    expect(context2.metadata.get('whitelistGroup')).toBe(true);
+  });
 });

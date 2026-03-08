@@ -122,6 +122,11 @@ export class MessageTriggerPlugin extends PluginBase {
     order: -1,
   })
   async onMessagePreprocess(context: HookContext): Promise<boolean> {
+    // Commands are handled by CommandSystem in PROCESS; this plugin only decides reply-pipeline trigger. Skip entirely.
+    if (context.command) {
+      return true;
+    }
+
     const message = context.message;
     const messageType = message.messageType;
     const userId = message.userId?.toString();
