@@ -23,6 +23,8 @@ export interface LightAppPluginConfig {
   prefix?: string;
   /** Only send in group (default: true). If false, also send in private. */
   groupOnly?: boolean;
+  /** Group IDs where the plugin is enabled. When absent or empty, all groups are allowed. */
+  groupIds?: string[];
 }
 
 @RegisterPlugin({
@@ -36,6 +38,8 @@ export class LightAppPlugin extends PluginBase {
   private prefix = '小程序链接：';
   private groupOnly = true;
   private config!: Config;
+  /** When non-empty, only these group IDs get light_app URL extraction. Empty = all groups. */
+  private allowedGroupIds = new Set<string>();
 
   async onInit(): Promise<void> {
     this.enabled = true;
@@ -47,8 +51,13 @@ export class LightAppPlugin extends PluginBase {
     if (pluginConfig?.groupOnly !== undefined) {
       this.groupOnly = Boolean(pluginConfig.groupOnly);
     }
+    if (pluginConfig?.groupIds && Array.isArray(pluginConfig.groupIds)) {
+      this.allowedGroupIds = new Set(pluginConfig.groupIds.map((id) => String(id).trim()).filter(Boolean));
+    }
     this.config = getContainer().resolve<Config>(DITokens.CONFIG);
-    logger.info(`[LightAppPlugin] Enabled | prefix="${this.prefix}" | groupOnly=${this.groupOnly}`);
+    logger.info(
+      `[LightAppPlugin] Enabled | prefix="${this.prefix}" | groupOnly=${this.groupOnly} | groupIds=${this.allowedGroupIds.size > 0 ? Array.from(this.allowedGroupIds).join(',') : 'all'}`,
+    );
   }
 
   /**
@@ -96,6 +105,12 @@ export class LightAppPlugin extends PluginBase {
     const message = context.message;
     if (this.groupOnly && message.messageType !== 'group') {
       return true;
+    }
+    if (message.messageType === 'group' && this.allowedGroupIds.size > 0 && message.groupId != null) {
+      const groupIdStr = String(message.groupId);
+      if (!this.allowedGroupIds.has(groupIdStr)) {
+        return true;
+      }
     }
     const segments = message.segments;
     if (!Array.isArray(segments) || segments.length === 0) {
