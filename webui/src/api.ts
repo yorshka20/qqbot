@@ -34,3 +34,15 @@ export async function moveFile(from: string, to: string): Promise<void> {
     throw new Error(err.error ?? `Move failed: ${res.status}`)
   }
 }
+
+export async function renameFile(path: string, newName: string): Promise<void> {
+  const res = await fetch('/api/files/rename', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, newName: newName.trim() }),
+  })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Rename failed: ${res.status}`)
+  }
+}
