@@ -1,6 +1,6 @@
 // Doubao Provider implementation
 // Uses Volcengine Ark Responses API: POST /api/v3/responses
-// Request: model, input[] with content as input_text / input_image parts.
+// Request/response shapes follow Ark API; parsing is based on doubao-seed-1-8-251228 response format.
 // See: https://www.volcengine.com/docs/82379/1585135
 
 import { HttpClient } from '@/api/http/HttpClient';
@@ -9,46 +9,97 @@ import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType, VisionImage } from '../capabilities/types';
 import type { VisionCapability } from '../capabilities/VisionCapability';
-import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, StreamingHandler } from '../types';
+import type {
+  AIGenerateOptions,
+  AIGenerateResponse,
+  ChatMessage,
+  ChatMessageRoleBase,
+  StreamingHandler,
+  ToolDefinition,
+} from '../types';
 
-// Responses API: input item content parts (official format)
-type ResponsesInputTextPart = { type: 'input_text'; text: string };
-type ResponsesInputImagePart = { type: 'input_image'; image_url: string };
-type ResponsesInputContentPart = ResponsesInputTextPart | ResponsesInputImagePart;
+// ---------------------------------------------------------------------------
+// Ark Responses API: request types (what we send)
+// ---------------------------------------------------------------------------
 
-/**
- * One message in the input array for POST /responses.
- * For cache to hit, use content as string for text-only messages (documented cache format).
- * Use content as parts array only when multimodal (e.g. input_image).
- */
-interface ResponsesInputItem {
-  role: 'user' | 'assistant' | 'system';
-  content: string | ResponsesInputContentPart[];
+/** Input content part: text or image (official Ark format). */
+type ArkInputTextPart = { type: 'input_text'; text: string };
+type ArkInputImagePart = { type: 'input_image'; image_url: string };
+type ArkInputContentPart = ArkInputTextPart | ArkInputImagePart;
+
+/** One item in the input array. Role user/system/assistant; content string or parts; no tool_calls/role tool in request (Ark limits). */
+interface ArkInputItem {
+  role: ChatMessageRoleBase;
+  content?: string | ArkInputContentPart[];
 }
 
-/**
- * Per migration doc (https://www.volcengine.com/docs/82379/1585128):
- * "The Responses API accepts input in either string or array format."
- * For a single user text message, pass input as string to match documented format and enable cache.
- */
-function normalizeResponsesInputForRequest(input: ResponsesInputItem[]): string | ResponsesInputItem[] {
-  if (input.length === 1 && input[0].role === 'user' && typeof input[0].content === 'string') {
-    return input[0].content;
-  }
-  return input;
+/** Tool definition in request body: flat shape (Ark does not use nested "function"). */
+type ArkToolItem =
+  | {
+      type: 'function';
+      name: string;
+      description: string;
+      parameters: ToolDefinition['parameters'];
+    }
+  | {
+      type: 'web_search';
+    };
+
+/** Request body for POST /api/v3/responses. */
+interface ArkResponsesRequest {
+  model: string;
+  /** Single user text (cache-friendly) or array of input items. */
+  input: string | ArkInputItem[];
+  temperature?: number;
+  max_output_tokens?: number;
+  top_p?: number;
+  frequency_penalty?: number;
+  presence_penalty?: number;
+  stop?: string[];
+  stream?: boolean;
+  tools?: ArkToolItem[];
+  tool_choice?: string;
 }
 
-/** Non-stream response from POST /responses (Responses API) */
-interface ResponsesApiResponse {
+// ---------------------------------------------------------------------------
+// Ark Responses API: response types (doubao-seed-1-8 shape from real responses)
+// ---------------------------------------------------------------------------
+
+/** Output item: reasoning (summary text), function_call (name, arguments, call_id), or message (assistant content). */
+type ArkOutputItem =
+  | {
+      type: 'reasoning';
+      id?: string;
+      summary?: Array<{ type?: string; text?: string }>;
+      status?: string;
+    }
+  | {
+      type: 'function_call';
+      name: string;
+      arguments: string;
+      call_id: string;
+      id?: string;
+      status?: string;
+    }
+  | {
+      type: 'message';
+      role: 'assistant';
+      content?: Array<{ type?: string; text?: string }>;
+      status?: string;
+      id?: string;
+    };
+
+/** Non-stream response body from POST /responses. */
+interface ArkResponsesResponse {
   id?: string;
   model?: string;
-  /** Top-level text output (common in Responses API) */
   output_text?: string;
-  /** Alternative: output array (e.g. output[].content[].text) */
-  output?: Array<{
-    type?: string;
-    content?: Array<{ type?: string; text?: string }>;
-    text?: string;
+  output?: ArkOutputItem[];
+  choices?: Array<{
+    message?: {
+      content?: string;
+      tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }>;
+    };
   }>;
   usage?: {
     input_tokens?: number;
@@ -59,7 +110,16 @@ interface ResponsesApiResponse {
   };
 }
 
-/** SSE stream chunk for Responses API (may use output_text or choices.delta) */
+/** Parsed result from Ark response (text, reasoning, usage, optional tool call). */
+interface ArkParsedResult {
+  text: string;
+  reasoningContent: string;
+  usage?: AIGenerateResponse['usage'];
+  functionCall?: AIGenerateResponse['functionCall'];
+  toolCallId?: string;
+}
+
+/** SSE stream chunk for Responses API. */
 interface ResponsesStreamChunk {
   output_text?: string;
   choices?: Array<{
@@ -73,6 +133,84 @@ interface ResponsesStreamChunk {
     input_tokens?: number;
     output_tokens?: number;
   };
+}
+
+/** Default model when config.model is not set (config should set e.g. doubao-seed-1-8-251228). */
+const DEFAULT_DOUBAO_MODEL = 'doubao-seed-1-6-lite-251015';
+
+/**
+ * Normalize input for request: single user string when possible (cache-friendly), else array.
+ * When tools are used or input has multiple/assistant items, always send array.
+ */
+function normalizeInputForRequest(input: ArkInputItem[], options: { hasTools: boolean }): string | ArkInputItem[] {
+  if (options.hasTools) {
+    return input;
+  }
+  if (input.length === 1 && input[0].role === 'user' && typeof input[0].content === 'string') {
+    return input[0].content;
+  }
+  return input;
+}
+
+/**
+ * Parse Ark Responses API response into a single result (text, reasoning, usage, tool call).
+ * Based on doubao-seed-1-8-251228 response shape: output[] with type reasoning | function_call | message.
+ */
+function parseArkResponse(response: ArkResponsesResponse): ArkParsedResult {
+  let text = response.output_text ?? '';
+  let reasoningContent = '';
+
+  if (response.output?.length) {
+    for (const item of response.output) {
+      if (item.type === 'reasoning' && item.summary?.length) {
+        for (const s of item.summary) {
+          if (s.text) {
+            reasoningContent += (reasoningContent ? '\n' : '') + s.text;
+          }
+        }
+      }
+      if (item.type === 'message' && item.role === 'assistant' && item.content?.length) {
+        for (const c of item.content) {
+          const t = (c as { type?: string; text?: string }).text;
+          if (t) {
+            text = text ? `${text}\n${t}` : t;
+          }
+        }
+      }
+    }
+  }
+
+  if (!text && response.choices?.[0]?.message?.content) {
+    const c = response.choices[0].message.content;
+    text = typeof c === 'string' ? c : '';
+  }
+
+  const usage = response.usage
+    ? {
+        promptTokens: response.usage.prompt_tokens ?? response.usage.input_tokens ?? 0,
+        completionTokens: response.usage.completion_tokens ?? response.usage.output_tokens ?? 0,
+        totalTokens:
+          response.usage.total_tokens ??
+          (response.usage.prompt_tokens ?? response.usage.input_tokens ?? 0) +
+            (response.usage.completion_tokens ?? response.usage.output_tokens ?? 0),
+      }
+    : undefined;
+
+  let functionCall: ArkParsedResult['functionCall'];
+  let toolCallId: string | undefined;
+  const fnCallItem = response.output?.find(
+    (o): o is Extract<ArkOutputItem, { type: 'function_call' }> => o.type === 'function_call',
+  );
+  if (fnCallItem) {
+    functionCall = {
+      name: fnCallItem.name,
+      arguments:
+        typeof fnCallItem.arguments === 'string' ? fnCallItem.arguments : JSON.stringify(fnCallItem.arguments ?? {}),
+    };
+    toolCallId = fnCallItem.call_id ?? fnCallItem.id;
+  }
+
+  return { text, reasoningContent, usage, functionCall, toolCallId };
 }
 
 export interface DoubaoProviderConfig {
@@ -136,7 +274,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       await this.httpClient.post(
         '/responses',
         {
-          model: this.config.model || 'doubao-seed-1-6-lite-251015',
+          model: this.config.model ?? DEFAULT_DOUBAO_MODEL,
           input: [{ role: 'user', content: 'test' }],
         },
         { timeout: 5000 },
@@ -153,10 +291,10 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
 
   getConfig(): Record<string, unknown> {
     return {
-      model: this.config.model || 'doubao-seed-1-6-lite-251015',
-      defaultTemperature: this.config.defaultTemperature || 0.7,
-      defaultMaxTokens: this.config.defaultMaxTokens || 2000,
-      reasoningEffort: this.config.reasoningEffort || 'medium',
+      model: this.config.model ?? DEFAULT_DOUBAO_MODEL,
+      defaultTemperature: this.config.defaultTemperature ?? 0.7,
+      defaultMaxTokens: this.config.defaultMaxTokens ?? 2000,
+      reasoningEffort: this.config.reasoningEffort ?? 'medium',
     };
   }
 
@@ -173,74 +311,77 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('Doubao client not initialized');
     }
 
-    const model = (this.config.model || 'doubao-seed-1-6-lite-251015') as string;
-    const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
-
+    const model = this.config.model ?? DEFAULT_DOUBAO_MODEL;
     try {
       logger.debug(`[DoubaoProvider] Generating with model: ${model}`);
 
-      const input = await this.buildResponsesInput(prompt, options);
+      const input = await this.buildArkInput(prompt, options);
+      const hasTools = !!options?.tools?.length || !!options?.nativeWebSearch;
+      const body = this.buildRequestBody(model, input, hasTools, options);
 
-      const body: Record<string, unknown> = {
-        model,
-        input: normalizeResponsesInputForRequest(input),
-        temperature,
-        max_output_tokens: maxTokens,
-        top_p: options?.topP,
-        frequency_penalty: options?.frequencyPenalty,
-        presence_penalty: options?.presencePenalty,
-        stop: options?.stop,
-      };
+      const response = await this.httpClient.post<ArkResponsesResponse>('/responses', body);
+      const parsed = parseArkResponse(response);
 
-      const response = await this.httpClient.post<ResponsesApiResponse>('/responses', body);
-
-      const { text, reasoningContent } = this.extractTextFromResponsesApiResponse(response);
       const includeReasoning = options?.includeReasoning ?? false;
+      const finalText =
+        includeReasoning && parsed.reasoningContent
+          ? parsed.reasoningContent + (parsed.text ? `\n${parsed.text}` : '')
+          : parsed.text;
 
-      let finalText = '';
-      if (includeReasoning && reasoningContent) {
-        finalText = reasoningContent;
-        if (text) {
-          finalText += `\n${text}`;
-        }
-        logger.debug(
-          `[DoubaoProvider] Including reasoning content in response | reasoningLength=${reasoningContent.length} | contentLength=${text.length}`,
-        );
-      } else {
-        finalText = text;
-        if (reasoningContent && !includeReasoning) {
-          logger.debug(
-            `[DoubaoProvider] Reasoning content present but excluded from response | reasoningLength=${reasoningContent.length} | contentLength=${text.length}`,
-          );
-        }
-      }
-
-      const usage = response.usage
-        ? (() => {
-            const promptTokens = response.usage.prompt_tokens ?? response.usage.input_tokens ?? 0;
-            const completionTokens = response.usage.completion_tokens ?? response.usage.output_tokens ?? 0;
-            return {
-              promptTokens,
-              completionTokens,
-              totalTokens: response.usage.total_tokens ?? promptTokens + completionTokens,
-            };
-          })()
-        : undefined;
-
-      return {
+      const result: AIGenerateResponse = {
         text: finalText,
-        usage,
+        usage: parsed.usage,
         metadata: {
           model: response.model,
-          reasoningContent: reasoningContent || undefined,
+          reasoningContent: parsed.reasoningContent || undefined,
         },
+        functionCall: parsed.functionCall,
+        toolCallId: parsed.toolCallId,
       };
+      return result;
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error('[DoubaoProvider] Generation failed:', err);
       throw err;
     }
+  }
+
+  /** Build request body for POST /responses from model, input, and options. */
+  private buildRequestBody(
+    model: string,
+    input: ArkInputItem[],
+    hasTools: boolean,
+    options?: AIGenerateOptions,
+  ): ArkResponsesRequest {
+    const body: ArkResponsesRequest = {
+      model,
+      input: normalizeInputForRequest(input, { hasTools }),
+      temperature: options?.temperature ?? this.config.defaultTemperature ?? 0.7,
+      max_output_tokens: options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000,
+      top_p: options?.topP,
+      frequency_penalty: options?.frequencyPenalty,
+      presence_penalty: options?.presencePenalty,
+      stop: options?.stop,
+    };
+    if (hasTools) {
+      const tools: ArkToolItem[] = [];
+      if (options?.nativeWebSearch) {
+        tools.push({ type: 'web_search' });
+      }
+      if (options?.tools?.length) {
+        tools.push(
+          ...options.tools.map((t) => ({
+            type: 'function' as const,
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters,
+          })),
+        );
+      }
+      body.tools = tools;
+      body.tool_choice = 'auto';
+    }
+    return body;
   }
 
   async generateStream(
@@ -252,26 +393,13 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('Doubao client not initialized');
     }
 
-    const model = (this.config.model || 'doubao-seed-1-6-lite-251015') as string;
-    const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
-
+    const model = this.config.model ?? DEFAULT_DOUBAO_MODEL;
     try {
       logger.debug(`[DoubaoProvider] Generating stream with model: ${model}`);
 
-      const input = await this.buildResponsesInput(prompt, options);
-
-      const body: Record<string, unknown> = {
-        model,
-        input: normalizeResponsesInputForRequest(input),
-        temperature,
-        max_output_tokens: maxTokens,
-        top_p: options?.topP,
-        frequency_penalty: options?.frequencyPenalty,
-        presence_penalty: options?.presencePenalty,
-        stop: options?.stop,
-        stream: true,
-      };
+      const input = await this.buildArkInput(prompt, options);
+      const body = this.buildRequestBody(model, input, false, options) as ArkResponsesRequest & { stream: boolean };
+      body.stream = true;
 
       const stream = await this.httpClient.stream('/responses', {
         method: 'POST',
@@ -314,17 +442,18 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
   }
 
   /**
-   * Build input array for Responses API.
-   * Uses string content for text-only messages so context cache can match (documented format).
-   * Uses content parts array only for multimodal (images).
+   * Build input array for Ark Responses API.
+   * Single-user string is normalized in request for cache; array when tools or multi-turn.
+   * Ark does not accept tool_calls on assistant or role "tool"; we drop assistant-with-tool_calls and send tool result as user.
    */
-  private async buildResponsesInput(prompt: string, options?: AIGenerateOptions): Promise<ResponsesInputItem[]> {
+  private async buildArkInput(prompt: string, options?: AIGenerateOptions): Promise<ArkInputItem[]> {
     if (options?.messages?.length) {
-      return options.messages.map((m) => this.chatMessageToResponsesInputItem(m));
+      const filtered = options.messages.filter((m) => !(m.role === 'assistant' && m.tool_calls?.length));
+      return filtered.map((m) => this.chatMessageToArkInputItem(m));
     }
 
     const history = await this.loadHistory(options);
-    const input: ResponsesInputItem[] = [];
+    const input: ArkInputItem[] = [];
     if (options?.systemPrompt) {
       input.push({ role: 'system', content: options.systemPrompt });
     }
@@ -339,54 +468,34 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
   }
 
   /**
-   * Convert ChatMessage to Responses API input item.
-   * Text-only: content as string (cache-friendly). Multimodal: content as input_text/input_image parts.
+   * Convert ChatMessage to Ark input item.
+   * Tool messages become user "[Tool result] ..."; assistant with tool_calls is filtered out before this.
    */
-  private chatMessageToResponsesInputItem(m: ChatMessage): ResponsesInputItem {
+  private chatMessageToArkInputItem(m: ChatMessage): ArkInputItem {
+    if (m.role === 'tool') {
+      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
+      return { role: 'user', content: `[Tool result] ${content}` };
+    }
     if (typeof m.content === 'string') {
-      return { role: m.role, content: m.content };
+      return { role: m.role as ChatMessageRoleBase, content: m.content };
     }
-    const hasImage = m.content.some((part) => part.type !== 'text');
+    if (!m.content || !Array.isArray(m.content)) {
+      return { role: m.role as ChatMessageRoleBase, content: '' };
+    }
+    const parts = m.content as Array<{ type?: string; text?: string; image_url?: string | { url?: string } }>;
+    const hasImage = parts.some((part) => part.type !== 'text');
     if (!hasImage) {
-      const text = m.content.map((part) => (part.type === 'text' ? part.text : '')).join('\n');
-      return { role: m.role, content: text };
+      const text = parts.map((part) => (part.type === 'text' ? (part.text ?? '') : '')).join('\n');
+      return { role: m.role as ChatMessageRoleBase, content: text };
     }
-    const content: ResponsesInputContentPart[] = m.content.map((part) => {
+    const content: ArkInputContentPart[] = parts.map((part) => {
       if (part.type === 'text') {
-        return { type: 'input_text', text: part.text };
+        return { type: 'input_text', text: part.text ?? '' };
       }
       const url = typeof part.image_url === 'string' ? part.image_url : (part.image_url?.url ?? '');
       return { type: 'input_image', image_url: url };
     });
-    return { role: m.role, content };
-  }
-
-  /**
-   * Extract text and optional reasoning from Responses API response body.
-   */
-  private extractTextFromResponsesApiResponse(response: ResponsesApiResponse): {
-    text: string;
-    reasoningContent: string;
-  } {
-    let text = response.output_text ?? '';
-    const reasoningContent = '';
-
-    if (response.output?.length) {
-      for (const item of response.output) {
-        if (item.text) {
-          text = text ? `${text}\n${item.text}` : item.text;
-        }
-        if (item.content?.length) {
-          for (const c of item.content) {
-            if (c.text) {
-              text = text ? `${text}\n${c.text}` : c.text;
-            }
-          }
-        }
-      }
-    }
-
-    return { text, reasoningContent };
+    return { role: m.role as ChatMessageRoleBase, content };
   }
 
   /**
@@ -475,49 +584,25 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('Doubao client not initialized');
     }
 
-    const model = (this.config.model || 'doubao-seed-1-6-lite-251015') as string;
-    const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const model = this.config.model ?? DEFAULT_DOUBAO_MODEL;
+    const filtered = messages.filter((m) => !(m.role === 'assistant' && m.tool_calls?.length));
+    const input: ArkInputItem[] = filtered.map((m) => this.chatMessageToArkInputItem(m));
+    const body = this.buildRequestBody(model, input, !!options?.tools?.length, options);
 
-    const input: ResponsesInputItem[] = messages.map((m) => this.chatMessageToResponsesInputItem(m));
-
-    const body: Record<string, unknown> = {
-      model,
-      input: normalizeResponsesInputForRequest(input),
-      temperature,
-      max_output_tokens: maxTokens,
-      top_p: options?.topP,
-      frequency_penalty: options?.frequencyPenalty,
-      presence_penalty: options?.presencePenalty,
-      stop: options?.stop,
-    };
-
-    const response = await this.httpClient.post<ResponsesApiResponse>('/responses', body);
-    const { text: contentText, reasoningContent } = this.extractTextFromResponsesApiResponse(response);
+    const response = await this.httpClient.post<ArkResponsesResponse>('/responses', body);
+    const parsed = parseArkResponse(response);
     const includeReasoning = options?.includeReasoning ?? false;
     const text =
-      includeReasoning && reasoningContent
-        ? `${reasoningContent}${contentText ? `\n${contentText}` : ''}`
-        : contentText;
-
-    const usage = response.usage
-      ? (() => {
-          const promptTokens = response.usage.prompt_tokens ?? response.usage.input_tokens ?? 0;
-          const completionTokens = response.usage.completion_tokens ?? response.usage.output_tokens ?? 0;
-          return {
-            promptTokens,
-            completionTokens,
-            totalTokens: response.usage.total_tokens ?? promptTokens + completionTokens,
-          };
-        })()
-      : undefined;
+      includeReasoning && parsed.reasoningContent
+        ? parsed.reasoningContent + (parsed.text ? `\n${parsed.text}` : '')
+        : parsed.text;
 
     return {
       text,
-      usage,
+      usage: parsed.usage,
       metadata: {
         model: response.model,
-        reasoningContent: reasoningContent || undefined,
+        reasoningContent: parsed.reasoningContent || undefined,
       },
     };
   }
@@ -535,71 +620,32 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('Doubao client not initialized');
     }
 
-    const model = (this.config.model || 'doubao-seed-1-6-lite-251015') as string;
-    const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
-
+    const model = this.config.model ?? DEFAULT_DOUBAO_MODEL;
     try {
       logger.debug(`[DoubaoProvider] Generating with vision, model: ${model}`);
 
-      const userContent = this.buildResponsesVisionContent(prompt, images);
-      const input: ResponsesInputItem[] = [];
+      const userContent = this.buildVisionContent(prompt, images);
+      const input: ArkInputItem[] = [];
       if (options?.systemPrompt) {
         input.push({ role: 'system', content: [{ type: 'input_text', text: options.systemPrompt }] });
       }
       input.push({ role: 'user', content: userContent });
 
-      const body: Record<string, unknown> = {
-        model,
-        input: normalizeResponsesInputForRequest(input),
-        temperature,
-        max_output_tokens: maxTokens,
-        top_p: options?.topP,
-        frequency_penalty: options?.frequencyPenalty,
-        presence_penalty: options?.presencePenalty,
-        stop: options?.stop,
-      };
-
-      const response = await this.httpClient.post<ResponsesApiResponse>('/responses', body);
-      const { text: contentText, reasoningContent } = this.extractTextFromResponsesApiResponse(response);
+      const body = this.buildRequestBody(model, input, false, options);
+      const response = await this.httpClient.post<ArkResponsesResponse>('/responses', body);
+      const parsed = parseArkResponse(response);
       const includeReasoning = options?.includeReasoning ?? false;
-
-      let text = '';
-      if (includeReasoning && reasoningContent) {
-        text = reasoningContent;
-        if (contentText) {
-          text += `\n${contentText}`;
-        }
-        logger.debug(
-          `[DoubaoProvider] Including reasoning content in vision response | reasoningLength=${reasoningContent.length} | contentLength=${contentText.length}`,
-        );
-      } else {
-        text = contentText;
-        if (reasoningContent && !includeReasoning) {
-          logger.debug(
-            `[DoubaoProvider] Reasoning content present but excluded from vision response | reasoningLength=${reasoningContent.length} | contentLength=${contentText.length}`,
-          );
-        }
-      }
-
-      const usage = response.usage
-        ? (() => {
-            const promptTokens = response.usage.prompt_tokens ?? response.usage.input_tokens ?? 0;
-            const completionTokens = response.usage.completion_tokens ?? response.usage.output_tokens ?? 0;
-            return {
-              promptTokens,
-              completionTokens,
-              totalTokens: response.usage.total_tokens ?? promptTokens + completionTokens,
-            };
-          })()
-        : undefined;
+      const text =
+        includeReasoning && parsed.reasoningContent
+          ? parsed.reasoningContent + (parsed.text ? `\n${parsed.text}` : '')
+          : parsed.text;
 
       return {
         text,
-        usage,
+        usage: parsed.usage,
         metadata: {
           model: response.model,
-          reasoningContent: reasoningContent || undefined,
+          reasoningContent: parsed.reasoningContent || undefined,
         },
       };
     } catch (error) {
@@ -609,11 +655,9 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     }
   }
 
-  /**
-   * Build Responses API content array for vision (input_text + input_image; image_url is string).
-   */
-  private buildResponsesVisionContent(prompt: string, images: VisionImage[]): ResponsesInputContentPart[] {
-    const content: ResponsesInputContentPart[] = [{ type: 'input_text', text: prompt }];
+  /** Build Ark input content array for vision (input_text + input_image). */
+  private buildVisionContent(prompt: string, images: VisionImage[]): ArkInputContentPart[] {
+    const content: ArkInputContentPart[] = [{ type: 'input_text', text: prompt }];
 
     for (const image of images) {
       let imageUrl: string;
@@ -650,31 +694,19 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('Doubao client not initialized');
     }
 
-    const model = (this.config.model || 'doubao-seed-1-6-lite-251015') as string;
-    const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
-
+    const model = this.config.model ?? DEFAULT_DOUBAO_MODEL;
     try {
       logger.debug(`[DoubaoProvider] Generating stream with vision, model: ${model}`);
 
-      const userContent = this.buildResponsesVisionContent(prompt, images);
-      const input: ResponsesInputItem[] = [];
+      const userContent = this.buildVisionContent(prompt, images);
+      const input: ArkInputItem[] = [];
       if (options?.systemPrompt) {
         input.push({ role: 'system', content: [{ type: 'input_text', text: options.systemPrompt }] });
       }
       input.push({ role: 'user', content: userContent });
 
-      const body: Record<string, unknown> = {
-        model,
-        input: normalizeResponsesInputForRequest(input),
-        temperature,
-        max_output_tokens: maxTokens,
-        top_p: options?.topP,
-        frequency_penalty: options?.frequencyPenalty,
-        presence_penalty: options?.presencePenalty,
-        stop: options?.stop,
-        stream: true,
-      };
+      const body = this.buildRequestBody(model, input, false, options) as ArkResponsesRequest & { stream: boolean };
+      body.stream = true;
 
       const stream = await this.httpClient.stream('/responses', {
         method: 'POST',

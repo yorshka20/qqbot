@@ -13,6 +13,7 @@ import type {
   ContentPart,
   ConversationHistoryRole,
   StreamingHandler,
+  ToolDefinition,
 } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
@@ -29,9 +30,7 @@ export interface AnthropicProviderConfig {
 
 interface AnthropicMessage {
   role: ConversationHistoryRole;
-  content:
-    | string
-    | Array<{ type: 'text' | 'image'; text?: string; source?: { type: string; media_type: string; data: string } }>;
+  content: AnthropicContent;
 }
 
 interface AnthropicMessagesRequestBody {
@@ -40,6 +39,8 @@ interface AnthropicMessagesRequestBody {
   temperature: number;
   messages: AnthropicMessage[];
   system?: string;
+  tools?: AnthropicTool[];
+  tool_choice?: { type: 'auto' | 'any' | 'none' | 'tool'; name?: string };
 }
 
 interface AnthropicStreamRequestBody extends AnthropicMessagesRequestBody {
@@ -55,9 +56,10 @@ interface AnthropicVisionRequestBody {
 }
 
 interface AnthropicMessagesResponse {
-  content: Array<{ type: string; text: string }>;
+  content: AnthropicContentBlock[];
   usage?: { input_tokens: number; output_tokens: number };
   model: string;
+  stop_reason?: string | null;
 }
 
 interface AnthropicStreamChunk {
@@ -73,8 +75,62 @@ function isAnthropicStreamChunk(value: unknown): value is AnthropicStreamChunk {
   return typeof Reflect.get(value, 'type') === 'string';
 }
 
+type AnthropicTextBlock = { type: 'text'; text: string };
+type AnthropicImageBlock = { type: 'image'; source: { type: string; media_type: string; data: string } };
+type AnthropicToolUseBlock = { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> };
+type AnthropicToolResultBlock = {
+  type: 'tool_result';
+  tool_use_id: string;
+  content: string | AnthropicTextBlock[];
+  is_error?: boolean;
+};
+type AnthropicContentBlock = AnthropicTextBlock | AnthropicImageBlock | AnthropicToolUseBlock | AnthropicToolResultBlock;
+type AnthropicContent = string | AnthropicContentBlock[];
+type AnthropicClientTool = {
+  name: string;
+  description?: string;
+  input_schema: ToolDefinition['parameters'];
+};
+type AnthropicWebSearchTool = {
+  type: 'web_search_20250305';
+  name: 'web_search';
+  max_uses?: number;
+};
+type AnthropicTool = AnthropicClientTool | AnthropicWebSearchTool;
+
+const ANTHROPIC_DEFAULT_MODEL = 'claude-3-sonnet-20240229';
+const ANTHROPIC_WEB_SEARCH_TOOL_NAME = 'web_search';
+const ANTHROPIC_WEB_SEARCH_TOOL_TYPE = 'web_search_20250305';
+const ANTHROPIC_WEB_SEARCH_MAX_USES = 5;
+const ANTHROPIC_PAUSE_TURN_MAX_CONTINUATIONS = 3;
+
+function toAnthropicTextBlocks(text: string): AnthropicTextBlock[] {
+  return [{ type: 'text', text }];
+}
+
+function parseToolArguments(argumentsText: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(argumentsText);
+    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function stringifyToolResultContent(content: ChatMessage['content']): string {
+  return typeof content === 'string' ? content : contentToPlainString(content);
+}
+
+function extractAnthropicText(blocks: AnthropicContentBlock[]): string {
+  return blocks
+    .filter((block): block is AnthropicTextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n')
+    .trim();
+}
+
 /** Convert our ChatMessage content (string | ContentPart[]) to Anthropic message content. */
-function toAnthropicContent(content: ChatMessage['content']): AnthropicMessage['content'] {
+function toAnthropicContent(content: ChatMessage['content']): AnthropicContent {
   if (typeof content === 'string') {
     return content;
   }
@@ -183,55 +239,46 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
   }
 
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
-    const model = this.config.model || 'claude-3-sonnet-20240229';
+    const model = this.config.model || ANTHROPIC_DEFAULT_MODEL;
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
     try {
       logger.debug(`[AnthropicProvider] Generating with model: ${model}`);
 
-      let messages: AnthropicMessage[];
-      if (options?.messages?.length) {
-        messages = options.messages
-          .filter((m) => m.role !== 'system')
-          .map((m) => ({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
-            content: toAnthropicContent(m.content),
-          }));
-      } else {
-        const history = await this.loadHistory(options);
-        messages = [];
-        for (const msg of history) {
-          messages.push({
-            role: msg.role === 'assistant' ? 'assistant' : 'user',
-            content: toAnthropicContent(msg.content),
-          });
+      let messages = await this.buildAnthropicMessages(prompt, options);
+      const tools = this.buildAnthropicTools(options);
+      const explicitSystem = this.buildAnthropicSystemPrompt(options);
+      let data: AnthropicMessagesResponse | null = null;
+
+      for (let continuation = 0; continuation <= ANTHROPIC_PAUSE_TURN_MAX_CONTINUATIONS; continuation++) {
+        const requestBody: AnthropicMessagesRequestBody = {
+          model,
+          max_tokens: maxTokens,
+          temperature,
+          messages,
+        };
+        if (explicitSystem?.trim()) {
+          requestBody.system = explicitSystem;
         }
-        messages.push({
-          role: 'user',
-          content: prompt,
-        });
+        if (tools.length > 0) {
+          requestBody.tools = tools;
+          requestBody.tool_choice = { type: 'auto' };
+        }
+
+        data = await this.httpClient.post<AnthropicMessagesResponse>('/messages', requestBody);
+        if (data.stop_reason !== 'pause_turn') {
+          break;
+        }
+        logger.debug('[AnthropicProvider] Received pause_turn, continuing server-tool turn');
+        messages = [...messages, { role: 'assistant', content: data.content }];
       }
 
-      const requestBody: AnthropicMessagesRequestBody = {
-        model,
-        max_tokens: maxTokens,
-        temperature,
-        messages,
-      };
-      const explicitSystem = options?.messages
-        ?.filter((m) => m.role === 'system')
-        .map((m) => contentToPlainString(m.content))
-        .join('\n\n');
-      if (explicitSystem?.trim()) {
-        requestBody.system = explicitSystem;
-      } else if (options?.systemPrompt) {
-        requestBody.system = options.systemPrompt;
+      if (!data) {
+        throw new Error('Anthropic response missing');
       }
 
-      const data = await this.httpClient.post<AnthropicMessagesResponse>('/messages', requestBody);
-
-      const text = data.content[0]?.text || '';
+      const text = extractAnthropicText(data.content);
       const usage = data.usage
         ? {
             promptTokens: data.usage.input_tokens,
@@ -240,13 +287,24 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
           }
         : undefined;
 
-      return {
+      const result: AIGenerateResponse = {
         text,
         usage,
         metadata: {
           model: data.model,
         },
       };
+
+      const toolUseBlock = data.content.find((block): block is AnthropicToolUseBlock => block.type === 'tool_use');
+      if (toolUseBlock) {
+        result.functionCall = {
+          name: toolUseBlock.name,
+          arguments: JSON.stringify(toolUseBlock.input ?? {}),
+        };
+        result.toolCallId = toolUseBlock.id;
+      }
+
+      return result;
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error('[AnthropicProvider] Generation failed:', err);
@@ -259,35 +317,15 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     handler: StreamingHandler,
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
-    const model = this.config.model || 'claude-3-sonnet-20240229';
+    const model = this.config.model || ANTHROPIC_DEFAULT_MODEL;
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
     try {
       logger.debug(`[AnthropicProvider] Generating stream with model: ${model}`);
 
-      let messages: AnthropicMessage[];
-      if (options?.messages?.length) {
-        messages = options.messages
-          .filter((m) => m.role !== 'system')
-          .map((m) => ({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
-            content: toAnthropicContent(m.content),
-          }));
-      } else {
-        const history = await this.loadHistory(options);
-        messages = [];
-        for (const msg of history) {
-          messages.push({
-            role: msg.role === 'assistant' ? 'assistant' : 'user',
-            content: toAnthropicContent(msg.content),
-          });
-        }
-        messages.push({
-          role: 'user',
-          content: prompt,
-        });
-      }
+      const messages = await this.buildAnthropicMessages(prompt, options);
+      const tools = this.buildAnthropicTools(options);
 
       // Use HttpClient stream method for streaming requests
       const requestBody: AnthropicStreamRequestBody = {
@@ -297,14 +335,13 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         messages,
         stream: true,
       };
-      const explicitSystemStream = options?.messages
-        ?.filter((m) => m.role === 'system')
-        .map((m) => contentToPlainString(m.content))
-        .join('\n\n');
+      const explicitSystemStream = this.buildAnthropicSystemPrompt(options);
       if (explicitSystemStream?.trim()) {
         requestBody.system = explicitSystemStream;
-      } else if (options?.systemPrompt) {
-        requestBody.system = options.systemPrompt;
+      }
+      if (tools.length > 0) {
+        requestBody.tools = tools;
+        requestBody.tool_choice = { type: 'auto' };
       }
 
       const stream = await this.httpClient.stream('/messages', {
@@ -384,11 +421,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       logger.debug(`[AnthropicProvider] Generating with vision, model: ${model}`);
 
       // Build content array with text and images
-      const content: Array<{
-        type: 'text' | 'image';
-        text?: string;
-        source?: { type: string; media_type: string; data: string };
-      }> = [{ type: 'text', text: prompt }];
+      const content: AnthropicContentBlock[] = [{ type: 'text', text: prompt }];
 
       // Add images to content
       for (const image of images) {
@@ -447,7 +480,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
 
       const data = await this.httpClient.post<AnthropicMessagesResponse>('/messages', requestBody);
 
-      const text = data.content[0]?.text || '';
+      const text = extractAnthropicText(data.content);
       const usage = data.usage
         ? {
             promptTokens: data.usage.input_tokens,
@@ -490,5 +523,109 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     // In a real implementation, you would stream the response
     handler(response.text);
     return response;
+  }
+
+  private buildAnthropicSystemPrompt(options?: AIGenerateOptions): string | undefined {
+    const explicitSystem = options?.messages
+      ?.filter((m) => m.role === 'system')
+      .map((m) => contentToPlainString(m.content))
+      .join('\n\n');
+    if (explicitSystem?.trim()) {
+      return explicitSystem;
+    }
+    return options?.systemPrompt;
+  }
+
+  private async buildAnthropicMessages(prompt: string, options?: AIGenerateOptions): Promise<AnthropicMessage[]> {
+    if (options?.messages?.length) {
+      return this.mapChatMessagesToAnthropic(options.messages);
+    }
+
+    const history = await this.loadHistory(options);
+    const messages: AnthropicMessage[] = [];
+    for (const msg of history) {
+      messages.push({
+        role: msg.role === 'assistant' ? 'assistant' : 'user',
+        content: toAnthropicContent(msg.content),
+      });
+    }
+    messages.push({
+      role: 'user',
+      content: prompt,
+    });
+    return messages;
+  }
+
+  private mapChatMessagesToAnthropic(messages: ChatMessage[]): AnthropicMessage[] {
+    const mapped: AnthropicMessage[] = [];
+
+    for (const message of messages) {
+      if (message.role === 'system') {
+        continue;
+      }
+
+      if (message.role === 'assistant' && message.tool_calls?.length) {
+        const content: AnthropicContentBlock[] = [];
+        const assistantText = contentToPlainString(message.content).trim();
+        if (assistantText) {
+          content.push(...toAnthropicTextBlocks(assistantText));
+        }
+        for (const toolCall of message.tool_calls) {
+          content.push({
+            type: 'tool_use',
+            id: toolCall.id,
+            name: toolCall.name,
+            input: parseToolArguments(toolCall.arguments),
+          });
+        }
+        mapped.push({ role: 'assistant', content });
+        continue;
+      }
+
+      if (message.role === 'tool') {
+        mapped.push({
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: message.tool_call_id ?? '',
+              content: stringifyToolResultContent(message.content),
+            },
+          ],
+        });
+        continue;
+      }
+
+      mapped.push({
+        role: message.role === 'assistant' ? 'assistant' : 'user',
+        content: toAnthropicContent(message.content),
+      });
+    }
+
+    return mapped;
+  }
+
+  private buildAnthropicTools(options?: AIGenerateOptions): AnthropicTool[] {
+    const tools: AnthropicTool[] = [];
+
+    if (options?.nativeWebSearch) {
+      tools.push({
+        type: ANTHROPIC_WEB_SEARCH_TOOL_TYPE,
+        name: ANTHROPIC_WEB_SEARCH_TOOL_NAME,
+        max_uses: ANTHROPIC_WEB_SEARCH_MAX_USES,
+      });
+    }
+
+    if (options?.tools?.length) {
+      tools.push(
+        ...options.tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          input_schema: tool.parameters,
+        })),
+      );
+    }
+
+    return tools;
   }
 }

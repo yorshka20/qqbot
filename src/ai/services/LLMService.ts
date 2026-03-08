@@ -5,7 +5,17 @@ import type { AIManager } from '../AIManager';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import { isLLMCapability } from '../capabilities/LLMCapability';
 import type { ProviderSelector } from '../ProviderSelector';
-import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, StreamingHandler } from '../types';
+import type {
+  AIGenerateOptions,
+  AIGenerateResponse,
+  ChatMessage,
+  FunctionCall,
+  StreamingHandler,
+  ToolDefinition,
+  ToolResult,
+  ToolUseGenerateOptions,
+  ToolUseGenerateResponse,
+} from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
 
 /**
@@ -13,6 +23,9 @@ import { contentToPlainString } from '../utils/contentUtils';
  * Provides LLM text generation capability
  */
 export class LLMService {
+  private readonly supportedProviders = ['openai', 'anthropic', 'doubao', 'gemini', 'deepseek'];
+  private readonly providersWithNativeWebSearch = ['doubao', 'anthropic'];
+
   constructor(
     private aiManager: AIManager,
     private providerSelector?: ProviderSelector,
@@ -88,6 +101,16 @@ export class LLMService {
     return provider;
   }
 
+  async supportsNativeWebSearch(providerName?: string, sessionId?: string): Promise<boolean> {
+    const provider = await this.getAvailableProvider(providerName, sessionId);
+    if (!provider) {
+      return false;
+    }
+    const resolvedProviderName =
+      provider && 'name' in provider ? (provider as { name: string }).name : (providerName ?? '');
+    return this.providerSupportsNativeWebSearch(resolvedProviderName);
+  }
+
   /**
    * Generate text using LLM capability
    */
@@ -150,5 +173,193 @@ export class LLMService {
     const lastContent = messages[messages.length - 1]?.content;
     const prompt = lastContent !== undefined ? contentToPlainString(lastContent) : '';
     return this.generateStream(prompt, handler, { ...(options ?? {}), messages }, providerName);
+  }
+
+  /**
+   * Generate with tool/function calling support
+   * Implements multi-round tool calling loop
+   */
+  async generateWithTools(
+    messages: ChatMessage[],
+    tools: ToolDefinition[],
+    options?: ToolUseGenerateOptions,
+    providerName?: string,
+  ): Promise<ToolUseGenerateResponse> {
+    const sessionId = options?.sessionId;
+    const maxRounds = options?.maxToolRounds ?? 3;
+    const toolExecutor = options?.toolExecutor;
+
+    let provider = await this.getAvailableProvider(providerName, sessionId);
+
+    // Check if provider supports tool use
+    let currentProviderName =
+      provider && 'name' in provider ? (provider as { name: string }).name : (providerName ?? '');
+    const supportsToolUse = provider && this.providerSupportsToolUse(currentProviderName);
+
+    // If provider doesn't support tool use, try fallback to doubao
+    if (provider && !supportsToolUse) {
+      logger.warn(`[LLMService] Provider "${currentProviderName}" doesn't support tool use, falling back to doubao`);
+      const doubaoProvider = await this.getAvailableProvider('doubao', sessionId);
+      if (doubaoProvider && this.providerSupportsToolUse('doubao')) {
+        provider = doubaoProvider;
+        currentProviderName = 'doubao';
+      } else {
+        logger.warn('[LLMService] Doubao fallback not available, will proceed without tool use');
+        // Proceed without tool use - just generate normally
+        return {
+          ...(await this.generateMessages(messages, options, providerName)),
+          stopReason: 'end_turn',
+        };
+      }
+    }
+
+    if (!provider) {
+      logger.warn('[LLMService] No available provider for tool use');
+      return {
+        ...this.getFallbackResponse(contentToPlainString(messages[messages.length - 1]?.content ?? '')),
+        stopReason: 'end_turn',
+      };
+    }
+
+    const currentMessages = [...messages];
+    let round = 0;
+    const allToolCalls: ToolResult[] = [];
+
+    while (round < maxRounds) {
+      // Generate with tools
+      const response = await this.generateMessagesWithToolSupport(currentMessages, tools, options, currentProviderName);
+
+      // Check if there's a function call
+      if (!response.functionCall) {
+        // No tool call, return final response
+        return {
+          ...response,
+          toolCalls: allToolCalls,
+          stopReason: 'end_turn',
+        };
+      }
+
+      // Execute the tool if executor is provided
+      if (toolExecutor) {
+        try {
+          const toolResult = await toolExecutor(response.functionCall);
+          allToolCalls.push({
+            tool: response.functionCall.name,
+            result: toolResult,
+          });
+
+          const toolResultContent = JSON.stringify(toolResult);
+          if (response.toolCallId) {
+            // OpenAI/DeepSeek format: assistant with tool_calls + tool message
+            currentMessages.push({
+              role: 'assistant',
+              content: '',
+              tool_calls: [
+                {
+                  id: response.toolCallId,
+                  name: response.functionCall.name,
+                  arguments: response.functionCall.arguments,
+                },
+              ],
+            });
+            currentMessages.push({
+              role: 'tool',
+              tool_call_id: response.toolCallId,
+              content: toolResultContent,
+            });
+          } else {
+            currentMessages.push({ role: 'assistant', content: '' });
+            currentMessages.push({
+              role: 'user',
+              content: `Tool result for ${response.functionCall.name}: ${toolResultContent}`,
+            });
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          logger.error(`[LLMService] Tool execution error:`, error);
+          allToolCalls.push({
+            tool: response.functionCall.name,
+            result: null,
+            error: errorMessage,
+          });
+
+          const errorContent = `Tool execution failed: ${errorMessage}`;
+          if (response.toolCallId) {
+            currentMessages.push({
+              role: 'assistant',
+              content: '',
+              tool_calls: [
+                {
+                  id: response.toolCallId,
+                  name: response.functionCall.name,
+                  arguments: response.functionCall.arguments,
+                },
+              ],
+            });
+            currentMessages.push({
+              role: 'tool',
+              tool_call_id: response.toolCallId,
+              content: errorContent,
+            });
+          } else {
+            currentMessages.push({
+              role: 'user',
+              content: errorContent,
+            });
+          }
+        }
+      } else {
+        // No executor provided, return the function call for external handling
+        return {
+          ...response,
+          toolCalls: allToolCalls,
+          stopReason: 'tool_use',
+        };
+      }
+
+      round++;
+    }
+
+    // Max rounds reached, force final generation
+    logger.warn(`[LLMService] Max tool rounds (${maxRounds}) reached, forcing final response`);
+    const finalResponse = await this.generateMessages(currentMessages, options, currentProviderName);
+
+    return {
+      ...finalResponse,
+      toolCalls: allToolCalls,
+      stopReason: 'max_rounds',
+    };
+  }
+
+  /**
+   * Check if provider supports tool use
+   */
+  private providerSupportsToolUse(providerName: string): boolean {
+    // List of providers that support tool/function calling
+    return this.supportedProviders.includes(providerName.toLowerCase());
+  }
+
+  private providerSupportsNativeWebSearch(providerName: string): boolean {
+    return this.providersWithNativeWebSearch.includes(providerName.toLowerCase());
+  }
+
+  /**
+   * Generate messages with tool support (provider-specific implementation)
+   * Passes tools in options; providers that support tool use return functionCall and tool_call_id.
+   */
+  private async generateMessagesWithToolSupport(
+    messages: ChatMessage[],
+    tools: ToolDefinition[],
+    options: ToolUseGenerateOptions | undefined,
+    providerName: string,
+  ): Promise<ToolUseGenerateResponse> {
+    const lastContent = messages[messages.length - 1]?.content;
+    const prompt = lastContent !== undefined ? contentToPlainString(lastContent) : '';
+    const response = await this.generate(prompt, { ...(options ?? {}), messages, tools }, providerName);
+    return {
+      ...response,
+      functionCall: response.functionCall,
+      toolCallId: response.toolCallId,
+    };
   }
 }

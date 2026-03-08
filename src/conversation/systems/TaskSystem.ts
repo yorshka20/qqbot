@@ -19,6 +19,8 @@ import { logger } from '@/utils/logger';
  * - Executes all tasks (including reply) through TaskManager
  */
 export class TaskSystem implements System {
+  private static readonly LEGACY_EXCLUDED_TASK_TYPES = new Set(['search', 'get_memory', 'search_memory', 'rag_search']);
+
   readonly name = 'task';
   readonly version = '1.0.0';
   readonly stage = SystemStage.PROCESS;
@@ -28,7 +30,14 @@ export class TaskSystem implements System {
     private taskManager: TaskManager,
     private hookManager: HookManager,
     private aiService: AIService,
-  ) {}
+    private useToolUse: boolean,
+  ) {
+    if (this.useToolUse) {
+      logger.info('[TaskSystem] Tool Use (native function calling) is ENABLED');
+    } else {
+      logger.info('[TaskSystem] Using legacy TaskAnalyzer approach');
+    }
+  }
 
   enabled(): boolean {
     return true;
@@ -39,6 +48,17 @@ export class TaskSystem implements System {
       return true;
     }
 
+    // If Tool Use is enabled, use the new approach
+    if (this.useToolUse) {
+      await this.aiService.generateReplyWithToolUse(context);
+      return true;
+    }
+
+    return await this.legacyExecute(context);
+  }
+
+  private async legacyExecute(context: HookContext): Promise<boolean> {
+    // Legacy approach: TaskAnalyzer + task execution + reply generation
     const tasks = await this.resolveTasks(context);
 
     if (tasks.length === 0) {
@@ -67,7 +87,9 @@ export class TaskSystem implements System {
 
   /** Run keyword detection and LLM analysis; returns task list (may be empty). */
   private async resolveTasks(context: HookContext): Promise<Task[]> {
-    const taskTypes = this.taskManager.getAllTaskTypes();
+    const taskTypes = this.taskManager
+      .getAllTaskTypes()
+      .filter((taskType) => !TaskSystem.LEGACY_EXCLUDED_TASK_TYPES.has(taskType.name.toLowerCase()));
     const triggeredTaskTypes = this.detectTriggeredTaskTypes(context.message.message, taskTypes);
     if (triggeredTaskTypes.length === 0) {
       return [];

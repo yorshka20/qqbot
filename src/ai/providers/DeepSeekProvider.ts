@@ -5,7 +5,14 @@ import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType } from '../capabilities/types';
-import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
+import type {
+  AIGenerateOptions,
+  AIGenerateResponse,
+  ChatMessage,
+  ChatMessageRole,
+  StreamingHandler,
+  ToolDefinition,
+} from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
 
 /** DeepSeek API max_tokens valid range [1, 8192] */
@@ -117,6 +124,36 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
     return this._capabilities;
   }
 
+  /**
+   * Map ChatMessage[] to DeepSeek/OpenAI API format (supports tool role and assistant tool_calls)
+   */
+  private mapMessagesToApi(messages: ChatMessage[]): Array<Record<string, unknown>> {
+    return messages.map((m) => {
+      if (m.role === 'tool') {
+        return {
+          role: 'tool',
+          tool_call_id: m.tool_call_id ?? '',
+          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? ''),
+        };
+      }
+      if (m.role === 'assistant' && m.tool_calls?.length) {
+        return {
+          role: 'assistant',
+          content: m.content ?? '',
+          tool_calls: m.tool_calls.map((tc) => ({
+            id: tc.id,
+            type: 'function',
+            function: { name: tc.name, arguments: tc.arguments },
+          })),
+        };
+      }
+      return {
+        role: m.role,
+        content: contentToPlainString(m.content),
+      };
+    });
+  }
+
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     const model = this.config.model || 'deepseek-chat';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
@@ -126,9 +163,9 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
     try {
       logger.debug(`[DeepSeekProvider] Generating with model: ${model}`);
 
-      let messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+      let messages: Array<Record<string, unknown>>;
       if (options?.messages?.length) {
-        messages = options.messages.map((m) => ({ role: m.role, content: contentToPlainString(m.content) }));
+        messages = this.mapMessagesToApi(options.messages);
       } else {
         const history = await this.loadHistory(options);
         messages = [];
@@ -147,11 +184,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
         });
       }
 
-      const data = await this.httpClient.post<{
-        choices: Array<{ message: { content: string } }>;
-        usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
-        model: string;
-      }>('/chat/completions', {
+      const body: Record<string, unknown> = {
         model,
         messages,
         temperature,
@@ -160,9 +193,33 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
         frequency_penalty: options?.frequencyPenalty,
         presence_penalty: options?.presencePenalty,
         stop: options?.stop,
-      });
+      };
 
-      const text = data.choices[0]?.message?.content || '';
+      if (options?.tools?.length) {
+        body.tools = options.tools.map((t: ToolDefinition) => ({
+          type: 'function',
+          function: {
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters,
+          },
+        }));
+        body.tool_choice = 'auto';
+      }
+
+      const data = await this.httpClient.post<{
+        choices: Array<{
+          message: {
+            content?: string;
+            tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }>;
+          };
+        }>;
+        usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+        model: string;
+      }>('/chat/completions', body);
+
+      const msg = data.choices[0]?.message;
+      const text = msg?.content ?? '';
       const usage = data.usage
         ? {
             promptTokens: data.usage.prompt_tokens,
@@ -171,13 +228,24 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
           }
         : undefined;
 
-      return {
+      const result: AIGenerateResponse = {
         text,
         usage,
-        metadata: {
-          model: data.model,
-        },
+        metadata: { model: data.model },
       };
+
+      const toolCalls = msg?.tool_calls;
+      if (toolCalls?.length) {
+        const tc = toolCalls[0];
+        const fn = tc.function;
+        result.functionCall = {
+          name: fn?.name ?? '',
+          arguments: typeof fn?.arguments === 'string' ? fn.arguments : JSON.stringify(fn?.arguments ?? {}),
+        };
+        result.toolCallId = tc.id ?? undefined;
+      }
+
+      return result;
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error('[DeepSeekProvider] Generation failed:', err);
@@ -198,7 +266,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
     try {
       logger.debug(`[DeepSeekProvider] Generating stream with model: ${model}`);
 
-      let messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+      let messages: Array<{ role: ChatMessageRole; content: string }>;
       if (options?.messages?.length) {
         messages = options.messages.map((m) => ({ role: m.role, content: contentToPlainString(m.content) }));
       } else {

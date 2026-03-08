@@ -119,6 +119,11 @@ export interface AIGenerateOptions {
    * When provided and non-empty, provider may return functionCall in response.
    */
   tools?: ToolDefinition[];
+  /**
+   * Enable provider-native web search / grounding when supported by the selected provider.
+   * This is separate from app-defined tools such as local file, memory, or RAG access.
+   */
+  nativeWebSearch?: boolean;
 }
 
 /**

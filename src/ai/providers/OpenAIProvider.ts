@@ -11,7 +11,9 @@ import type {
   AIGenerateResponse,
   ChatCompletionMessageParam,
   ChatMessage,
+  ChatMessageRoleBase,
   StreamingHandler,
+  ToolDefinition,
 } from '../types';
 
 export interface OpenAIProviderConfig {
@@ -90,6 +92,36 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
     return this._capabilities;
   }
 
+  /**
+   * Map ChatMessage[] to OpenAI API format (supports tool role and assistant tool_calls)
+   */
+  private mapMessagesToOpenAI(messages: ChatMessage[]): ChatCompletionMessageParam[] {
+    return messages.map((m) => {
+      if (m.role === 'tool') {
+        return {
+          role: 'tool' as const,
+          tool_call_id: m.tool_call_id ?? '',
+          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? ''),
+        };
+      }
+      if (m.role === 'assistant' && m.tool_calls?.length) {
+        return {
+          role: 'assistant' as const,
+          content: m.content ?? '',
+          tool_calls: m.tool_calls.map((tc) => ({
+            id: tc.id,
+            type: 'function' as const,
+            function: { name: tc.name, arguments: tc.arguments },
+          })),
+        };
+      }
+      return {
+        role: m.role as ChatMessageRoleBase,
+        content: m.content ?? '',
+      };
+    }) as ChatCompletionMessageParam[];
+  }
+
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     if (!this.client) {
       throw new Error('OpenAI client not initialized');
@@ -104,7 +136,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
 
       let messages: ChatCompletionMessageParam[];
       if (options?.messages?.length) {
-        messages = options.messages.map((m) => ({ role: m.role, content: m.content })) as ChatCompletionMessageParam[];
+        messages = this.mapMessagesToOpenAI(options.messages);
       } else {
         const history = await this.loadHistory(options);
         messages = [];
@@ -123,7 +155,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
         });
       }
 
-      const response = await this.client.chat.completions.create({
+      const body: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
         model,
         messages,
         temperature,
@@ -132,9 +164,24 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
         frequency_penalty: options?.frequencyPenalty,
         presence_penalty: options?.presencePenalty,
         stop: options?.stop,
-      });
+      };
 
-      const text = response.choices[0]?.message?.content || '';
+      if (options?.tools?.length) {
+        body.tools = options.tools.map((t) => ({
+          type: 'function' as const,
+          function: {
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters,
+          },
+        }));
+        body.tool_choice = 'auto';
+      }
+
+      const response = await this.client.chat.completions.create(body);
+
+      const msg = response.choices[0]?.message;
+      const text = msg?.content ?? (typeof msg?.content === 'string' ? msg.content : '') ?? '';
       const usage = response.usage
         ? {
             promptTokens: response.usage.prompt_tokens,
@@ -143,7 +190,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
           }
         : undefined;
 
-      return {
+      const result: AIGenerateResponse = {
         text,
         usage,
         metadata: {
@@ -151,6 +198,21 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
           finishReason: response.choices[0]?.finish_reason,
         },
       };
+
+      const toolCalls = msg?.tool_calls;
+      if (toolCalls?.length) {
+        const tc = toolCalls[0];
+        const fn = tc.type === 'function' ? tc.function : undefined;
+        if (fn) {
+          result.functionCall = {
+            name: fn.name ?? '',
+            arguments: typeof fn.arguments === 'string' ? fn.arguments : JSON.stringify(fn.arguments ?? {}),
+          };
+          result.toolCallId = tc.id ?? undefined;
+        }
+      }
+
+      return result;
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error('[OpenAIProvider] Generation failed:', err);

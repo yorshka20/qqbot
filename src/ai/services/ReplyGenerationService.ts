@@ -34,6 +34,7 @@ import {
   normalizeVisionImages,
 } from '../utils/imageUtils';
 import type { LLMService } from './LLMService';
+import type { ToolUseReplyService } from './ToolUseReplyService';
 import type { VisionService } from './VisionService';
 
 /**
@@ -77,6 +78,7 @@ export class ReplyGenerationService {
     private memoryService: MemoryService,
     private messageAPI: MessageAPI,
     private databaseManager: DatabaseManager,
+    private toolUseReplyService?: ToolUseReplyService,
   ) {
     this.fetchProgressNotifier = new MessageSendFetchProgressNotifier(messageAPI);
   }
@@ -315,10 +317,13 @@ export class ReplyGenerationService {
 
       // 3. Optional recursive search (outsourced to RetrievalService: multi-round decision + filter-refine + optional page fetch).
       // Use stripped user message (no provider prefix): e.g. "claude 北京天气" -> "北京天气" so the search-decision LLM sees the actual question and can decide to search (instead of "claude ..." which may be interpreted as non-searchable).
-      const { userMessage: messageForSearch } = this.providerRouter.routeReplyInput(context.message.message ?? '');
+      const { providerName: routedProviderName, userMessage: messageForSearch } = this.providerRouter.routeReplyInput(
+        context.message.message ?? '',
+      );
 
       let accumulatedSearchResults = '';
-      if (this.retrievalService?.isSearchEnabled()) {
+      const nativeWebSearchEnabled = await this.supportsNativeWebSearch(routedProviderName, sessionId);
+      if (this.retrievalService?.isSearchEnabled() && !nativeWebSearchEnabled) {
         this.fetchProgressNotifier.setMessageEvent(context.message);
         accumulatedSearchResults = await this.retrievalService.performRecursiveSearchRefined(
           messageForSearch,
@@ -532,7 +537,7 @@ export class ReplyGenerationService {
         const contentStr =
           typeof m.content === 'string'
             ? m.content
-            : m.content.map((p) => (p.type === 'text' ? p.text : '[image]')).join('\n');
+            : (m.content ?? []).map((p) => (p.type === 'text' ? p.text : '[image]')).join('\n');
         return `${m.role.toUpperCase()}:\n${contentStr}`;
       })
       .join('\n\n');
@@ -563,6 +568,7 @@ export class ReplyGenerationService {
     taskResultsSummary: string,
     searchResultsText: string,
     userMessage: string,
+    toolUsageInstructions: string,
     hasVision: boolean,
     messageImages: VisionImage[] = [],
   ): Promise<{ messages: ChatMessage[]; sessionId: string; episodeKey: string }> {
@@ -575,7 +581,9 @@ export class ReplyGenerationService {
     const searchResultText = this.getSearchResultsSummary(searchResultsText);
 
     const baseSystemPrompt = this.promptManager.renderBasePrompt();
-    const sceneSystemPrompt = this.promptManager.render('llm.reply.system', {});
+    const sceneSystemPrompt = this.promptManager.render('llm.reply.system', {
+      toolUsageInstructions,
+    });
     const frameCurrentQuery = this.promptManager.render('llm.reply.user_frame', {
       userMessage,
     });
@@ -687,11 +695,20 @@ export class ReplyGenerationService {
     const { providerName, userMessage, reason, confidence, usedExplicitPrefix } =
       this.providerRouter.routeReplyInput(rawInput);
     const useVisionProvider = messageImages.length > 0;
+    const nativeWebSearchEnabled = !useVisionProvider && (await this.supportsNativeWebSearch(providerName, sessionId));
+    const toolDefinitions =
+      this.toolUseReplyService?.getAvailableToolDefinitions({ nativeWebSearchEnabled }) ?? [];
+    const toolUsageInstructions =
+      this.toolUseReplyService?.getToolUsageInstructions(toolDefinitions, { nativeWebSearchEnabled }) ??
+      (nativeWebSearchEnabled
+        ? '当前没有本地可用工具；若需要查询公开互联网的最新信息，请直接使用 provider 内建搜索，再基于结果回答。'
+        : '当前没有可用工具，请直接回答。');
     const built = await this.buildReplyMessages(
       context,
       taskResultsSummary,
       searchResultsText,
       userMessage,
+      toolUsageInstructions,
       useVisionProvider,
       messageImages,
     );
@@ -721,7 +738,24 @@ export class ReplyGenerationService {
       // Current message images already inlined in buildReplyMessages; pass empty so VisionService uses messages as-is.
       response = await this.visionService.generateWithVisionMessages(messages, [], genOptions);
     } else {
-      response = await this.llmService.generateMessages(messages, genOptions, providerName);
+      if (this.toolUseReplyService && toolDefinitions.length > 0) {
+        const text = await this.toolUseReplyService.generateReplyFromMessages(context, messages, {
+          tools: toolDefinitions,
+          providerName,
+          sessionId,
+          temperature: genOptions.temperature,
+          maxTokens: genOptions.maxTokens,
+          maxToolRounds: 4,
+          nativeWebSearchEnabled,
+        });
+        response = { text };
+      } else {
+        response = await this.llmService.generateMessages(
+          messages,
+          { ...genOptions, nativeWebSearch: nativeWebSearchEnabled },
+          providerName,
+        );
+      }
     }
 
     logger.debug(`[ReplyGenerationService] LLM response received | responseLength=${response.text.length}`);
@@ -865,5 +899,15 @@ export class ReplyGenerationService {
     );
 
     return cardResponse.text;
+  }
+
+  private async supportsNativeWebSearch(providerName?: string, sessionId?: string): Promise<boolean> {
+    const candidate = this.llmService as LLMService & {
+      supportsNativeWebSearch?: (providerName?: string, sessionId?: string) => Promise<boolean>;
+    };
+    if (typeof candidate.supportsNativeWebSearch !== 'function') {
+      return false;
+    }
+    return candidate.supportsNativeWebSearch(providerName, sessionId);
   }
 }

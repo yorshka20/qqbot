@@ -1,6 +1,11 @@
 // AI Service - provides AI capabilities as a service
 
+import { SubAgentExecutor } from '@/agent/SubAgentExecutor';
+import { SubAgentManager } from '@/agent/SubAgentManager';
+import { ToolRunner } from '@/agent/ToolRunner';
+import type { SubAgentConfig, SubAgentType } from '@/agent/types';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { setReply } from '@/context/HookContextHelpers';
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { ConversationHistoryService } from '@/conversation/history';
 import type { DatabaseManager } from '@/database/DatabaseManager';
@@ -13,7 +18,7 @@ import { CardRenderingService } from '@/services/card';
 import type { RetrievalService } from '@/services/retrieval';
 import { TaskAnalyzer } from '@/task/TaskAnalyzer';
 import type { TaskManager } from '@/task/TaskManager';
-import type { TaskAnalysisResult, TaskResult } from '@/task/types';
+import type { TaskAnalysisResult, TaskResult, TaskType } from '@/task/types';
 import { logger } from '@/utils/logger';
 import type { AIManager } from './AIManager';
 import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions, VisionImage } from './capabilities/types';
@@ -26,8 +31,9 @@ import { ImageGenerationService } from './services/ImageGenerationService';
 import { ImagePromptService } from './services/ImagePromptService';
 import { LLMService } from './services/LLMService';
 import { ReplyGenerationService } from './services/ReplyGenerationService';
+import { ToolUseReplyService } from './services/ToolUseReplyService';
 import { VisionService } from './services/VisionService';
-import type { AIGenerateResponse } from './types';
+import type { AIGenerateResponse, ToolDefinition } from './types';
 
 /**
  * AI Service
@@ -54,9 +60,11 @@ export class AIService {
   private imageGenerationService: ImageGenerationService;
   private cardRenderingService: CardRenderingService;
   private replyGenerationService: ReplyGenerationService;
+  private toolUseReplyService: ToolUseReplyService;
   private imagePromptService: ImagePromptService;
   private taskAnalyzer: TaskAnalyzer;
   private messageAssembler: PromptMessageAssembler;
+  private subAgentManager: SubAgentManager;
 
   constructor(
     aiManager: AIManager,
@@ -80,6 +88,17 @@ export class AIService {
       this.promptManager,
       aiManager.getDefaultProvider('llm')?.name || 'deepseek',
     );
+    // SubAgent: create manager, ToolRunner (executes tools via TaskManager executors), and executor
+    const subAgentManager = new SubAgentManager();
+    this.subAgentManager = subAgentManager;
+    const subAgentToolDefs = this.buildToolDefinitionsFromTaskTypes(
+      taskManager.getAllTaskTypes().filter((tt) => tt.name !== 'reply'),
+    );
+    const toolRunner = new ToolRunner(taskManager, subAgentManager, hookManager);
+    const subAgentExecutor = new SubAgentExecutor(this.llmService, subAgentManager, subAgentToolDefs, toolRunner);
+    subAgentManager.setExecutor(subAgentExecutor);
+
+    this.toolUseReplyService = new ToolUseReplyService(this.llmService, taskManager, this.promptManager, hookManager);
     this.replyGenerationService = new ReplyGenerationService(
       this.llmService,
       this.visionService,
@@ -92,9 +111,79 @@ export class AIService {
       memoryService,
       messageAPI,
       databaseManager,
+      this.toolUseReplyService,
     );
     this.taskAnalyzer = new TaskAnalyzer(this.llmService, taskManager, this.promptManager);
     this.messageAssembler = new PromptMessageAssembler();
+  }
+
+  /**
+   * Build ToolDefinition[] from TaskType[] (for SubAgentExecutor and tool use)
+   */
+  private buildToolDefinitionsFromTaskTypes(taskTypes: TaskType[]): ToolDefinition[] {
+    return taskTypes.map((tt) => ({
+      name: tt.name,
+      description: tt.description,
+      parameters: this.convertTaskParamsToSchema(tt.parameters || {}),
+    }));
+  }
+
+  private convertTaskParamsToSchema(params: TaskType['parameters']): ToolDefinition['parameters'] {
+    const properties: Record<string, { type: string; description?: string }> = {};
+    const required: string[] = [];
+    for (const [key, def] of Object.entries(params || {})) {
+      properties[key] = { type: def.type, description: def.description || '' };
+      if (def.required) {
+        required.push(key);
+      }
+    }
+    return { type: 'object', properties, required };
+  }
+
+  getSubAgentManager(): SubAgentManager {
+    return this.subAgentManager;
+  }
+
+  async spawnSubAgent(
+    type: SubAgentType,
+    task: {
+      description: string;
+      input: unknown;
+      parentContext?: {
+        userId: number;
+        groupId?: number;
+        messageType: 'private' | 'group';
+        protocol?: string;
+        conversationId?: string;
+        messageId?: string;
+      };
+    },
+    configOverrides?: Partial<SubAgentConfig>,
+    parentId?: string,
+  ): Promise<string> {
+    return this.subAgentManager.spawn(parentId, type, task, configOverrides);
+  }
+
+  async runSubAgent(
+    type: SubAgentType,
+    task: {
+      description: string;
+      input: unknown;
+      parentContext?: {
+        userId: number;
+        groupId?: number;
+        messageType: 'private' | 'group';
+        protocol?: string;
+        conversationId?: string;
+        messageId?: string;
+      };
+    },
+    configOverrides?: Partial<SubAgentConfig>,
+    parentId?: string,
+  ): Promise<unknown> {
+    const sessionId = await this.subAgentManager.spawn(parentId, type, task, configOverrides);
+    await this.subAgentManager.execute(sessionId);
+    return this.subAgentManager.wait(sessionId);
   }
 
   /**
@@ -432,6 +521,30 @@ export class AIService {
    */
   async generateReplyFromTaskResults(context: HookContext, taskResults: Map<string, TaskResult>): Promise<void> {
     return await this.replyGenerationService.generateReplyFromTaskResults(context, taskResults);
+  }
+
+  /**
+   * Generate reply using native tool/function calling
+   * This is the new approach that merges TaskAnalyzer and ReplyGenerationService into a single LLM call
+   * @param context - Hook context
+   * @returns Reply text (sets context.reply)
+   */
+  async generateReplyWithToolUse(context: HookContext): Promise<void> {
+    const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
+    if (!shouldContinue) {
+      return;
+    }
+
+    await this.hookManager.execute('onAIGenerationStart', context);
+    try {
+      const replyText = await this.toolUseReplyService.generateReply(context);
+      setReply(context, replyText, 'ai');
+      await this.hookManager.execute('onAIGenerationComplete', context);
+    } catch (error) {
+      logger.error('[AIService] Tool use reply generation failed:', error);
+      setReply(context, '抱歉，生成回复时出错了。', 'ai');
+      await this.hookManager.execute('onAIGenerationComplete', context);
+    }
   }
 
   /**
