@@ -47,7 +47,7 @@ export function Sidebar({
 }: SidebarProps) {
   return (
     <aside
-      className="sticky top-0 left-0 z-10 h-[calc(100vh-3.5rem)] w-52 shrink-0 border-r border-zinc-200 bg-white flex flex-col overflow-y-auto"
+      className="w-52 shrink-0 border-r border-zinc-200 bg-white flex flex-col overflow-y-auto min-h-0"
       aria-label="Filters and view options"
     >
       <div className="p-3 border-b border-zinc-100">
