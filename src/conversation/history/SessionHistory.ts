@@ -1,9 +1,10 @@
 // Session history interface - contract for per-session in-memory window (Buffer and Summary implement this)
 
+import type { ConversationHistoryRole } from '@/ai/types';
 import type { ConversationMessageEntry } from './ConversationHistoryService';
 
 /** Formatted message for context (role + content only). */
-export type FormattedHistoryItem = { role: 'user' | 'assistant'; content: string };
+export type FormattedHistoryItem = { role: ConversationHistoryRole; content: string };
 
 /**
  * Contract for a session's in-memory history. Two functions: raw entries and formatted string (CHS format only).

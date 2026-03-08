@@ -1,10 +1,8 @@
 // File Read Service - provides safe file/directory access within project root
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, extname, isAbsolute, normalize, relative, resolve } from 'node:path';
+import { extname, isAbsolute, normalize, relative, resolve } from 'node:path';
 import type { FileReadServiceConfig } from '@/core/config/types/bot';
-import { CardRenderer } from '@/services/card';
-import type { InfoCardData } from '@/services/card/cardTypes';
 import { logger } from '@/utils/logger';
 
 /** Max file content length before truncation (chars) */
@@ -12,13 +10,13 @@ const MAX_CONTENT_LENGTH = 15000;
 
 export interface ListDirectoryResult {
   success: boolean;
-  content?: string;
+  content: string;
   error?: string;
 }
 
-export interface ReadFileAsImageResult {
+export interface ReadFileResult {
   success: boolean;
-  imageBase64?: string;
+  content: string;
   error?: string;
 }
 
@@ -81,13 +79,13 @@ export class FileReadService {
   listDirectory(path: string): ListDirectoryResult {
     const { resolved, error } = this.resolvePath(path);
     if (error) {
-      return { success: false, error };
+      return { success: false, content: '', error };
     }
 
     try {
       const stat = statSync(resolved);
       if (!stat.isDirectory()) {
-        return { success: false, error: '路径不是目录' };
+        return { success: false, content: '', error: '路径不是目录' };
       }
 
       const entries = readdirSync(resolved, { withFileTypes: true });
@@ -101,67 +99,50 @@ export class FileReadService {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('ENOENT')) {
-        return { success: false, error: '路径不存在' };
+        return { success: false, content: '', error: '路径不存在' };
       }
       logger.warn('[FileReadService] listDirectory failed:', err);
-      return { success: false, error: `读取目录失败: ${msg}` };
+      return { success: false, content: '', error: `读取目录失败: ${msg}` };
     }
   }
 
   /**
-   * Read file content and render as card image
+   * Read file content only (no card render). Use for read_file task; caller may render as card if needed.
    * @param path - File path (within project root)
-   * @param providerName - Provider name for card footer; when omitted, uses "system"
    */
-  async readFileAsImage(path: string, providerName?: string): Promise<ReadFileAsImageResult> {
+  readFile(path: string): ReadFileResult {
     const { resolved, error } = this.resolvePath(path);
     if (error) {
-      return { success: false, error };
+      return { success: false, content: '', error };
     }
 
     try {
       const stat = statSync(resolved);
       if (!stat.isFile()) {
-        return { success: false, error: '路径不是文件' };
+        return { success: false, content: '', error: '路径不是文件' };
       }
 
       const ext = extname(resolved).toLowerCase();
       if (this.filterExtensions.includes(ext)) {
-        return { success: false, error: 'unsupported file extension' };
+        return { success: false, content: '', error: 'unsupported file extension' };
       }
 
       let content = readFileSync(resolved, 'utf-8');
-      let truncated = false;
       if (content.length > MAX_CONTENT_LENGTH) {
         content = `${content.slice(0, MAX_CONTENT_LENGTH)}\n\n...(内容已截断)`;
-        truncated = true;
       }
 
-      const cardData: InfoCardData = {
-        type: 'info',
-        title: basename(resolved),
-        content: content,
-        level: 'info',
-      };
-
-      const cardRenderer = CardRenderer.getInstance();
-      const provider = providerName ?? 'system';
-      const buffer = await cardRenderer.render(cardData, { provider });
-      const imageBase64 = buffer.toString('base64');
-
-      logger.info(`[FileReadService] Rendered file as image: ${basename(resolved)}${truncated ? ' (truncated)' : ''}`);
-
-      return { success: true, imageBase64 };
+      return { success: true, content };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('ENOENT')) {
-        return { success: false, error: '文件不存在' };
+        return { success: false, content: '', error: '文件不存在' };
       }
       if (msg.includes('EISDIR')) {
-        return { success: false, error: '路径是目录，请使用 ls 查看' };
+        return { success: false, content: '', error: '路径是目录，请使用 ls 查看' };
       }
-      logger.warn('[FileReadService] readFileAsImage failed:', err);
-      return { success: false, error: `读取文件失败: ${msg}` };
+      logger.warn('[FileReadService] readFile failed:', err);
+      return { success: false, content: '', error: `读取文件失败: ${msg}` };
     }
   }
 }

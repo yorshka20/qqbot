@@ -1,2 +1,2 @@
-export type { ListDirectoryResult, ReadFileAsImageResult } from './FileReadService';
+export type { ListDirectoryResult, ReadFileResult } from './FileReadService';
 export { FileReadService } from './FileReadService';

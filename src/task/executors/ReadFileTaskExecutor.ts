@@ -10,7 +10,8 @@ import { BaseTaskExecutor } from './BaseTaskExecutor';
 
 /**
  * Read file task executor
- * Handles listing directory contents and reading file content (rendered as image)
+ * Handles listing directory contents and reading file content (text only; card render is caller's responsibility).
+ * List and read are implemented as separate methods for easier extension (e.g. stat, exists).
  */
 @TaskDefinition({
   name: 'read_file',
@@ -41,7 +42,7 @@ export class ReadFileTaskExecutor extends BaseTaskExecutor {
     super();
   }
 
-  async execute(task: Task, context: TaskExecutionContext): Promise<TaskResult> {
+  async execute(task: Task, _context: TaskExecutionContext): Promise<TaskResult> {
     const path = task.parameters?.path as string | undefined;
     const action = task.parameters?.action as string | undefined;
 
@@ -56,24 +57,37 @@ export class ReadFileTaskExecutor extends BaseTaskExecutor {
     logger.info(`[ReadFileTaskExecutor] Executing ${action} for path: ${path}`);
 
     if (action === 'list') {
-      const result = this.fileReadService.listDirectory(path);
-      if (!result.success) {
-        return this.error(result.error ?? '未知错误', result.error ?? 'listDirectory failed');
-      }
-      return this.success(result.content ?? '', { action: 'list', path });
+      return this.executeList(path);
     }
 
-    // action === 'read'
-    const result = await this.fileReadService.readFileAsImage(path);
+    return this.executeRead(path);
+  }
+
+  /**
+   * List directory contents (ls-style). Extracted for extension (e.g. future stat/glob).
+   */
+  private executeList(path: string): TaskResult {
+    const result = this.fileReadService.listDirectory(path);
     if (!result.success) {
-      return this.error(result.error ?? '未知错误', result.error ?? 'readFileAsImage failed');
+      return this.error(result.error ?? '未知错误', result.error ?? 'listDirectory failed');
     }
+    const content = result.content ?? '';
+    return this.success(content, { action: 'list', path, content });
+  }
 
-    return this.success('[文件内容已渲染为图片]', {
+  /**
+   * Read file content as text. Extracted for extension (e.g. future readLines, grep).
+   */
+  private executeRead(path: string): TaskResult {
+    const result = this.fileReadService.readFile(path);
+    if (!result.success) {
+      return this.error(result.error ?? '未知错误', result.error ?? 'readFile failed');
+    }
+    const content = result.content ?? '';
+    return this.success('文件已读取', {
       action: 'read',
       path,
-      imageBase64: result.imageBase64,
-      isImageReply: true,
+      content,
     });
   }
 }

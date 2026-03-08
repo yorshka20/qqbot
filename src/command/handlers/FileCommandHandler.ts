@@ -1,8 +1,11 @@
 // File command handlers - ls and cat for project root file access
 
+import { basename } from 'node:path';
 import { inject, injectable } from 'tsyringe';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
+import type { InfoCardData } from '@/services/card';
+import { CardRenderer } from '@/services/card';
 import type { FileReadService } from '@/services/file';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
@@ -70,8 +73,7 @@ export class CatCommand implements CommandHandler {
       };
     }
 
-    const result = await this.fileReadService.readFileAsImage(path);
-
+    const result = this.fileReadService.readFile(path);
     if (!result.success) {
       return {
         success: false,
@@ -79,8 +81,19 @@ export class CatCommand implements CommandHandler {
       };
     }
 
+    // Caller renders as image (card); FileReadService only returns string content
+    const cardData: InfoCardData = {
+      type: 'info',
+      title: basename(path),
+      content: result.content ?? '',
+      level: 'info',
+    };
+    const cardRenderer = CardRenderer.getInstance();
+    const buffer = await cardRenderer.render(cardData, { provider: 'system' });
+    const imageBase64 = buffer.toString('base64');
+
     const messageBuilder = new MessageBuilder();
-    messageBuilder.image({ data: result.imageBase64! });
+    messageBuilder.image({ data: imageBase64 });
     return {
       success: true,
       segments: messageBuilder.build(),
