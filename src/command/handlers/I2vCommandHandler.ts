@@ -27,7 +27,7 @@ const OUTPUT_DIR = join(process.cwd(), 'output', 'runpod');
 @Command({
   name: 'i2v',
   description: 'Image-to-video: generate video from image using RunPod Serverless ComfyUI (Wan2.2 I2V Remix)',
-  usage: '/i2v [prompt] [--seed=<number>] [--duration=<1-30>] (send with one image)',
+  usage: '/i2v [prompt] [--seed=<number>] [--duration=<1-30>] [--d] (send with one image)',
   permissions: ['user'],
   aliases: ['图生视频'],
 })
@@ -35,12 +35,14 @@ const OUTPUT_DIR = join(process.cwd(), 'output', 'runpod');
 export class I2vCommandHandler implements CommandHandler {
   name = 'i2v';
   description = 'Image-to-video: generate video from image using RunPod Serverless ComfyUI (Wan2.2 I2V Remix)';
-  usage = '/i2v [prompt] [--seed=<number>] [--duration=<1-30>] (send with one image)';
+  usage = '/i2v [prompt] [--seed=<number>] [--duration=<1-30>] [--d] (send with one image)';
 
   private readonly argsConfig: ParserConfig = {
     options: {
       seed: { property: 'seed', type: 'number' },
       duration: { property: 'duration', type: 'number' },
+      // --d: use user input directly as prompt, skip LLM
+      d: { property: 'd', type: 'boolean' },
     },
   };
 
@@ -84,7 +86,7 @@ export class I2vCommandHandler implements CommandHandler {
       return {
         success: false,
         error:
-          'Please send one image (with or without reply). Usage: /i2v [prompt] [--seed=<number>] [--duration=<1-30>]',
+          'Please send one image (with or without reply). Usage: /i2v [prompt] [--seed=<number>] [--duration=<1-30>] [--d]',
       };
     }
 
@@ -93,30 +95,46 @@ export class I2vCommandHandler implements CommandHandler {
     }
 
     try {
-      const { text: promptArg, options } = CommandArgsParser.parse<{ seed?: number; duration?: number }>(
-        args,
-        this.argsConfig,
-      );
-      const sessionId = getSessionId(context);
-      const aiResult = await this.aiService.prepareI2VPrompt(promptArg ?? '', sessionId, 'img2video.generate');
+      const { text: promptArg, options } = CommandArgsParser.parse<{
+        seed?: number;
+        duration?: number;
+        d?: boolean;
+      }>(args, this.argsConfig);
 
-      // User --duration overrides AI duration
-      const durationSeconds =
-        options.duration != null ? Math.max(1, Math.min(30, Math.round(options.duration))) : aiResult.durationSeconds;
+      const useDirectPrompt = options.d === true;
+      let prompt: string;
+      let negativePrompt: string;
+      let durationSeconds: number;
+
+      if (useDirectPrompt) {
+        // --d: use user input directly as prompt, skip LLM
+        prompt = promptArg?.trim() ?? '';
+        negativePrompt = '';
+        durationSeconds =
+          options.duration != null ? Math.max(1, Math.min(30, Math.round(options.duration))) : 5;
+      } else {
+        const sessionId = getSessionId(context);
+        const aiResult = await this.aiService.prepareI2VPrompt(promptArg ?? '', sessionId, 'img2video.generate');
+        prompt = aiResult.prompt ?? '';
+        negativePrompt = aiResult.negativePrompt ?? '';
+        // User --duration overrides AI duration
+        durationSeconds =
+          options.duration != null ? Math.max(1, Math.min(30, Math.round(options.duration))) : aiResult.durationSeconds;
+      }
 
       let imageBuffer = await visionImageToBuffer(images[0]!, { timeout: 30000, maxSize: 10 * 1024 * 1024 });
       logger.info(
-        `[I2vCommandHandler] Image fetched: ${imageBuffer.length} bytes, prompt: ${aiResult.prompt}, duration: ${durationSeconds}s`,
+        `[I2vCommandHandler] Image fetched: ${imageBuffer.length} bytes, prompt: ${prompt}, duration: ${durationSeconds}s${useDirectPrompt ? ' (direct)' : ''}`,
       );
 
       // Scale proportionally to fit within 480×832 / 832×480, file size under 500 KB (keeps aspect ratio)
       imageBuffer = await prepareImageForI2v(imageBuffer);
       logger.info(`[I2vCommandHandler] Image after prepare: ${imageBuffer.length} bytes`);
 
-      const videoBuffer = await i2vProvider.generateVideoFromImage(imageBuffer, aiResult.prompt, {
+      const videoBuffer = await i2vProvider.generateVideoFromImage(imageBuffer, prompt, {
         seed: options.seed,
         durationSeconds,
-        negativePrompt: aiResult.negativePrompt,
+        negativePrompt,
       });
 
       // Save to local output directory

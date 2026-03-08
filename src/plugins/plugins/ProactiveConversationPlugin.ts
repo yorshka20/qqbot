@@ -153,6 +153,11 @@ export class ProactiveConversationPlugin extends PluginBase {
   onMessageComplete(context: HookContext): HookResult {
     if (!this.enabled || this.groupIds.size === 0) return true;
 
+    // Whitelist is highest constraint: do not schedule proactive for non-whitelist groups
+    if (context.metadata.get('postProcessOnly')) {
+      return true;
+    }
+
     const messageType = context.message?.messageType;
     const groupId = context.message?.groupId?.toString();
     if (messageType !== 'group' || !groupId) return true;

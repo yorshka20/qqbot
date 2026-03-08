@@ -10,6 +10,7 @@ import type { MessageAPI, SendMessageResult } from '@/api/methods/MessageAPI';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import type { ConversationContext } from '@/context/types';
 import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
+import type { Config } from '@/core/config';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
@@ -94,6 +95,7 @@ export class ProactiveConversationService {
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
     @inject(DITokens.THREAD_CONTEXT_COMPRESSION_SERVICE) private threadCompression: ThreadContextCompressionService,
     @inject(DITokens.TASK_SYSTEM) private taskSystem: TaskSystem,
+    @inject(DITokens.CONFIG) private config: Config,
     @inject(DITokens.MEMORY_SERVICE) memoryService?: MemoryService,
     @inject(DITokens.DATABASE_MANAGER) private databaseManager?: DatabaseManager,
     @inject(DITokens.RETRIEVAL_SERVICE) retrievalService?: RetrievalService,
@@ -808,6 +810,17 @@ export class ProactiveConversationService {
     groupId: number,
     message: string | MessageSegment[],
   ): Promise<SendMessageResult | undefined> {
+    const whitelistConfig = this.config.getPluginConfig('whitelist') as { groupIds?: string[] } | undefined;
+    const groupIds = Array.isArray(whitelistConfig?.groupIds) ? whitelistConfig.groupIds : [];
+    if (groupIds.length > 0) {
+      const groupIdStr = String(groupId);
+      if (!groupIds.includes(groupIdStr)) {
+        logger.info(
+          `[ProactiveConversationService] Group not in whitelist, skipping proactive send | groupId=${groupId}`,
+        );
+        return undefined;
+      }
+    }
     const syntheticContext = this.buildSyntheticGroupContext(groupId);
     const result = await this.messageAPI.sendFromContext(message, syntheticContext, 10000);
     logger.info(`[ProactiveConversationService] Sent proactive message | groupId=${groupId}`);
