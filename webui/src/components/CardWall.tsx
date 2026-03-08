@@ -1,8 +1,7 @@
 import { Loader2 } from 'lucide-react';
+import { getOutputBase } from '../config';
 import type { FileItem } from '../types';
 import { ResourceCard } from './ResourceCard';
-
-const OUTPUT_BASE = '/output';
 
 interface CardWallProps {
   items: FileItem[];
@@ -60,7 +59,7 @@ export function CardWall({
         <ResourceCard
           key={item.path}
           item={item}
-          baseUrl={OUTPUT_BASE}
+          baseUrl={getOutputBase()}
           onOpenDir={onOpenDir}
           onSelectFile={onSelectFile}
           onRename={onRename}

@@ -1,6 +1,7 @@
 /**
  * Static file server: composes OutputStaticHost (pure /output/ hosting) and
  * FileManagerBackend (API only). UI runs on dev server.
+ * Sends CORS headers so the webui can be deployed on a different origin (e.g. another host on the LAN).
  */
 
 import { serve } from 'bun';
@@ -9,6 +10,20 @@ import type { StaticServerConfig } from '@/core/config/types/bot';
 import { logger } from '@/utils/logger';
 import { FileManagerBackend } from './FileManagerBackend';
 import { OutputStaticHost } from './OutputStaticHost';
+
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+function withCors(res: Response): Response {
+  const h = new Headers(res.headers);
+  for (const [k, v] of Object.entries(CORS_HEADERS)) {
+    h.set(k, v);
+  }
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
+}
 
 export type StaticFileServerInstance = {
   getBaseURL(): string;
@@ -43,19 +58,23 @@ export class StaticFileServer implements StaticFileServerInstance {
     const fetchHandler = async (req: Request) => {
       const pathname = new URL(req.url).pathname;
 
-      // 1. File manager (API + SPA) — frontend backend
+      if (req.method === 'OPTIONS' && (pathname.startsWith('/api/files') || pathname.startsWith('/output'))) {
+        return new Response(null, { status: 204, headers: CORS_HEADERS });
+      }
+
+      // 1. File manager (API) — frontend backend
       const backendResponse = await this.fileManagerBackend.handle(pathname, req);
       if (backendResponse !== null) {
-        return backendResponse;
+        return withCors(backendResponse);
       }
 
       // 2. Pure static file hosting — /output/*
       const hostResponse = await this.outputHost.handle(pathname, req);
       if (hostResponse !== null) {
-        return hostResponse;
+        return withCors(hostResponse);
       }
 
-      return new Response('Not Found', { status: 404 });
+      return withCors(new Response('Not Found', { status: 404 }));
     };
 
     let lastError: unknown;

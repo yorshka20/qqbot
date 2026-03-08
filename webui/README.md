@@ -38,3 +38,24 @@ This starts the bot and the webui dev server in parallel (concurrently).
 - **Backend (8888)** does not serve the React app; it only serves `/output/*` and `/api/files`.
 - **Frontend (5173)** is the only thing you open in the browser; it talks to the backend via the Vite proxy, so all fetch and asset URLs are same-origin (`/api/...`, `/output/...`).
 - No build step: you always use the dev server for the UI.
+
+## Separate deployment (webui and static file server on different hosts)
+
+You can run the webui on one machine and the static file server (bot + file API + `/output/`) on another (e.g. another machine on the LAN).
+
+1. **Build the webui** with the server base URL set:
+
+   ```bash
+   cd webui
+   VITE_STATIC_SERVER_BASE=http://192.168.1.100:3456 bun run build
+   ```
+
+   Or create a `.env` (see `.env.example`) with:
+
+   ```
+   VITE_STATIC_SERVER_BASE=http://192.168.1.100:3456
+   ```
+
+   Then run `bun run build`. All file API and `/output/` requests will go to that base URL.
+
+2. **CORS**: If the webui origin (e.g. `http://localhost:5173`) and the static server origin (e.g. `http://192.168.1.100:3456`) differ, the static file server must send `Access-Control-Allow-Origin` (or allow the webui origin). Configure CORS on the server or put both behind the same reverse proxy.

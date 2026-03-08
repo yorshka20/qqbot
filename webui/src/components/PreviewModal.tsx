@@ -4,7 +4,8 @@
  */
 
 import * as Dialog from '@radix-ui/react-dialog';
-import { IMAGE_EXT, VIDEO_EXT, AUDIO_EXT } from '../utils/fileType';
+import { getOutputBase } from '../config';
+import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from '../utils/fileType';
 
 function ext(name: string): string {
   const i = name.lastIndexOf('.');
@@ -18,11 +19,16 @@ interface PreviewModalProps {
 }
 
 export function PreviewModal({ path, name, onClose }: PreviewModalProps) {
-  const url = `/output/${path}`;
+  const url = `${getOutputBase()}/${path}`;
   const e = ext(name);
 
   return (
-    <Dialog.Root open={true} onOpenChange={(o) => { if (!o) onClose(); }}>
+    <Dialog.Root
+      open={true}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70" />
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] max-w-[90vw] -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-xl bg-white shadow-2xl flex flex-col focus:outline-none">
@@ -49,7 +55,12 @@ export function PreviewModal({ path, name, onClose }: PreviewModalProps) {
             {!IMAGE_EXT.has(e) && !VIDEO_EXT.has(e) && !AUDIO_EXT.has(e) && (
               <div className="text-center text-zinc-600">
                 <p className="mb-3 text-sm">No preview available.</p>
-                <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 font-medium">
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 font-medium"
+                >
                   Download file
                 </a>
               </div>

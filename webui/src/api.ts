@@ -1,11 +1,16 @@
+import { getFileApiBase } from './config'
 import type { ListResponse } from './types'
+
+function apiBase(): string {
+  return getFileApiBase()
+}
 
 export async function listFiles(path: string): Promise<ListResponse> {
   const params = new URLSearchParams()
   if (path) {
     params.set('path', path)
   }
-  const res = await fetch(`/api/files/list?${params}`)
+  const res = await fetch(`${apiBase()}/list?${params}`)
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string }
     throw new Error(err.error ?? `List failed: ${res.status}`)
@@ -14,7 +19,7 @@ export async function listFiles(path: string): Promise<ListResponse> {
 }
 
 export async function deleteFile(path: string): Promise<void> {
-  const res = await fetch(`/api/files?path=${encodeURIComponent(path)}`, {
+  const res = await fetch(`${apiBase()}?path=${encodeURIComponent(path)}`, {
     method: 'DELETE',
   })
   if (!res.ok) {
@@ -24,7 +29,7 @@ export async function deleteFile(path: string): Promise<void> {
 }
 
 export async function moveFile(from: string, to: string): Promise<void> {
-  const res = await fetch('/api/files/move', {
+  const res = await fetch(`${apiBase()}/move`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ from, to }),
@@ -36,7 +41,7 @@ export async function moveFile(from: string, to: string): Promise<void> {
 }
 
 export async function renameFile(path: string, newName: string): Promise<void> {
-  const res = await fetch('/api/files/rename', {
+  const res = await fetch(`${apiBase()}/rename`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path, newName: newName.trim() }),
