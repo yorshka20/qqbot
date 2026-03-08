@@ -695,12 +695,26 @@ export class ReplyGenerationService {
     const { providerName, userMessage, reason, confidence, usedExplicitPrefix } =
       this.providerRouter.routeReplyInput(rawInput);
     const useVisionProvider = messageImages.length > 0;
-    const nativeWebSearchEnabled = !useVisionProvider && (await this.supportsNativeWebSearch(providerName, sessionId));
+    const resolvedVisionProviderName = useVisionProvider
+      ? await this.visionService.getAvailableProviderName(providerName, sessionId)
+      : null;
+    const selectedProviderName = useVisionProvider ? (resolvedVisionProviderName ?? providerName) : providerName;
+    const canUseVisionToolUse = useVisionProvider
+      ? Boolean(resolvedVisionProviderName && (await this.supportsToolUse(resolvedVisionProviderName, sessionId)))
+      : false;
+    const nativeWebSearchEnabled = await this.supportsNativeWebSearch(selectedProviderName, sessionId);
+    const effectiveNativeSearchEnabled = useVisionProvider ? canUseVisionToolUse && nativeWebSearchEnabled : nativeWebSearchEnabled;
     const toolDefinitions =
-      this.toolUseReplyService?.getAvailableToolDefinitions({ nativeWebSearchEnabled }) ?? [];
+      useVisionProvider && !canUseVisionToolUse
+        ? []
+        : (this.toolUseReplyService?.getAvailableToolDefinitions({
+            nativeWebSearchEnabled: effectiveNativeSearchEnabled,
+          }) ?? []);
     const toolUsageInstructions =
-      this.toolUseReplyService?.getToolUsageInstructions(toolDefinitions, { nativeWebSearchEnabled }) ??
-      (nativeWebSearchEnabled
+      this.toolUseReplyService?.getToolUsageInstructions(toolDefinitions, {
+        nativeWebSearchEnabled: effectiveNativeSearchEnabled,
+      }) ??
+      (effectiveNativeSearchEnabled
         ? '当前没有本地可用工具；若需要查询公开互联网的最新信息，请直接使用 provider 内建搜索，再基于结果回答。'
         : '当前没有可用工具，请直接回答。');
     const built = await this.buildReplyMessages(
@@ -735,25 +749,43 @@ export class ReplyGenerationService {
 
     let response: AIGenerateResponse;
     if (useVisionProvider) {
-      // Current message images already inlined in buildReplyMessages; pass empty so VisionService uses messages as-is.
-      response = await this.visionService.generateWithVisionMessages(messages, [], genOptions);
-    } else {
-      if (this.toolUseReplyService && toolDefinitions.length > 0) {
+      if (this.toolUseReplyService && canUseVisionToolUse) {
         const text = await this.toolUseReplyService.generateReplyFromMessages(context, messages, {
           tools: toolDefinitions,
-          providerName,
+          providerName: resolvedVisionProviderName ?? undefined,
           sessionId,
           temperature: genOptions.temperature,
           maxTokens: genOptions.maxTokens,
           maxToolRounds: 4,
-          nativeWebSearchEnabled,
+          nativeWebSearchEnabled: effectiveNativeSearchEnabled,
+        });
+        response = { text };
+      } else {
+        // Current message images already inlined in buildReplyMessages; pass empty so VisionService uses messages as-is.
+        response = await this.visionService.generateWithVisionMessages(
+          messages,
+          [],
+          genOptions,
+          resolvedVisionProviderName ?? undefined,
+        );
+      }
+    } else {
+      if (this.toolUseReplyService && toolDefinitions.length > 0) {
+        const text = await this.toolUseReplyService.generateReplyFromMessages(context, messages, {
+          tools: toolDefinitions,
+          providerName: selectedProviderName,
+          sessionId,
+          temperature: genOptions.temperature,
+          maxTokens: genOptions.maxTokens,
+          maxToolRounds: 4,
+          nativeWebSearchEnabled: effectiveNativeSearchEnabled,
         });
         response = { text };
       } else {
         response = await this.llmService.generateMessages(
           messages,
-          { ...genOptions, nativeWebSearch: nativeWebSearchEnabled },
-          providerName,
+          { ...genOptions, nativeWebSearch: effectiveNativeSearchEnabled },
+          selectedProviderName,
         );
       }
     }
@@ -909,5 +941,15 @@ export class ReplyGenerationService {
       return false;
     }
     return candidate.supportsNativeWebSearch(providerName, sessionId);
+  }
+
+  private async supportsToolUse(providerName?: string, sessionId?: string): Promise<boolean> {
+    const candidate = this.llmService as LLMService & {
+      supportsToolUse?: (providerName?: string, sessionId?: string) => Promise<boolean>;
+    };
+    if (typeof candidate.supportsToolUse !== 'function') {
+      return false;
+    }
+    return candidate.supportsToolUse(providerName, sessionId);
   }
 }

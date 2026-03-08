@@ -5,7 +5,7 @@ import { SubAgentManager } from '@/agent/SubAgentManager';
 import { ToolRunner } from '@/agent/ToolRunner';
 import type { SubAgentConfig, SubAgentType } from '@/agent/types';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
-import { setReply } from '@/context/HookContextHelpers';
+import { HookContextBuilder } from '@/context/HookContextBuilder';
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { ConversationHistoryService } from '@/conversation/history';
 import type { DatabaseManager } from '@/database/DatabaseManager';
@@ -33,7 +33,8 @@ import { LLMService } from './services/LLMService';
 import { ReplyGenerationService } from './services/ReplyGenerationService';
 import { ToolUseReplyService } from './services/ToolUseReplyService';
 import { VisionService } from './services/VisionService';
-import type { AIGenerateResponse, ToolDefinition } from './types';
+import type { AIGenerateResponse, ChatMessage, ContentPart, ToolDefinition } from './types';
+import { normalizeVisionImages } from './utils/imageUtils';
 
 /**
  * AI Service
@@ -239,10 +240,29 @@ export class AIService {
       sessionId: context.sessionId,
     };
     const baseSystemPrompt = this.promptManager.renderBasePrompt();
+    const lastUserMessage = context.lastUserMessage?.trim() ?? '（无）';
+    const useVision = Boolean(context.messageImages?.length);
+    const effectiveProviderName = useVision
+      ? ((await this.visionService.getAvailableProviderName(providerName, context.sessionId)) ?? providerName)
+      : providerName;
+    const canUseToolUse = useVision
+      ? Boolean(
+          effectiveProviderName && (await this.llmService.supportsToolUse(effectiveProviderName, context.sessionId)),
+        )
+      : await this.llmService.supportsToolUse(effectiveProviderName, context.sessionId);
+    const nativeWebSearchEnabled = canUseToolUse
+      ? await this.llmService.supportsNativeWebSearch(effectiveProviderName, context.sessionId)
+      : false;
+    const tools = canUseToolUse ? this.toolUseReplyService.getAvailableToolDefinitions({ nativeWebSearchEnabled }) : [];
+    const toolUsageInstructions = canUseToolUse
+      ? this.toolUseReplyService.getToolUsageInstructions(tools, { nativeWebSearchEnabled })
+      : '当前没有可用工具，请直接回答。';
     const sceneSystemPrompt = this.promptManager.render('llm.proactive.system', {
       preferenceText: context.preferenceText,
     });
-    const lastUserMessage = context.lastUserMessage?.trim() ?? '（无）';
+    const proactiveSystemPrompt = canUseToolUse
+      ? `${sceneSystemPrompt}\n\n${toolUsageInstructions}`
+      : sceneSystemPrompt;
     const finalUserQuery = this.promptManager.render('llm.proactive.user_frame', {
       lastUserMessage,
     });
@@ -266,23 +286,123 @@ export class AIService {
 
     const messages = this.messageAssembler.buildProactiveMessages({
       baseSystem: baseSystemPrompt,
-      sceneSystem: sceneSystemPrompt,
+      sceneSystem: proactiveSystemPrompt,
       historyEntries,
       finalUserBlocks,
     });
+    const proactiveMessages = useVision
+      ? await this.attachVisionImagesToLastUserMessage(messages, context.messageImages ?? [])
+      : messages;
 
-    const useVision = context.messageImages && context.messageImages.length > 0;
+    const proactiveHookContext = this.buildProactiveToolHookContext(context, lastUserMessage);
     let response: AIGenerateResponse;
     if (useVision) {
-      const flattenedPrompt = messages.map((m) => `${m.role.toUpperCase()}:\n${m.content}`).join('\n\n');
-      response = await this.visionService.generateWithVision(flattenedPrompt, context.messageImages ?? [], {
-        ...genOptions,
-      });
+      if (canUseToolUse && effectiveProviderName) {
+        const text = await this.toolUseReplyService.generateReplyFromMessages(proactiveHookContext, proactiveMessages, {
+          tools,
+          providerName: effectiveProviderName,
+          sessionId: context.sessionId,
+          temperature: genOptions.temperature,
+          maxTokens: genOptions.maxTokens,
+          maxToolRounds: 4,
+          nativeWebSearchEnabled,
+        });
+        response = { text };
+      } else {
+        response = await this.visionService.generateWithVisionMessages(
+          proactiveMessages,
+          [],
+          {
+            ...genOptions,
+          },
+          effectiveProviderName,
+        );
+      }
     } else {
-      response = await this.llmService.generateMessages(messages, genOptions, providerName);
+      if (canUseToolUse) {
+        const text = await this.toolUseReplyService.generateReplyFromMessages(proactiveHookContext, proactiveMessages, {
+          tools,
+          providerName: effectiveProviderName,
+          sessionId: context.sessionId,
+          temperature: genOptions.temperature,
+          maxTokens: genOptions.maxTokens,
+          maxToolRounds: 4,
+          nativeWebSearchEnabled,
+        });
+        response = { text };
+      } else {
+        response = await this.llmService.generateMessages(proactiveMessages, genOptions, effectiveProviderName);
+      }
     }
 
     return response.text.trim();
+  }
+
+  private async attachVisionImagesToLastUserMessage(
+    messages: ChatMessage[],
+    images: VisionImage[],
+  ): Promise<ChatMessage[]> {
+    if (messages.length === 0 || images.length === 0) {
+      return messages;
+    }
+
+    const normalized = await normalizeVisionImages(images, {
+      timeout: 30000,
+      maxSize: 10 * 1024 * 1024,
+    });
+    const imageParts: ContentPart[] = normalized
+      .filter((img) => img.base64 || img.url)
+      .map((img) => ({
+        type: 'image_url' as const,
+        image_url: {
+          url: img.base64 ? `data:${img.mimeType || 'image/jpeg'};base64,${img.base64}` : (img.url ?? ''),
+        },
+      }));
+    if (imageParts.length === 0) {
+      return messages;
+    }
+
+    const last = messages[messages.length - 1];
+    const lastContent: ContentPart[] =
+      typeof last.content === 'string'
+        ? [{ type: 'text', text: last.content }, ...imageParts]
+        : [...(last.content ?? []), ...imageParts];
+    return [...messages.slice(0, -1), { ...last, content: lastContent }];
+  }
+
+  private buildProactiveToolHookContext(context: ProactiveReplyInjectContext, lastUserMessage: string): HookContext {
+    const sessionId = context.sessionId ?? 'group:0';
+    const groupIdMatch = /^group:(\d+)$/.exec(sessionId);
+    const groupId = groupIdMatch ? parseInt(groupIdMatch[1], 10) : 0;
+    const history = (context.historyEntries ?? []).map((entry) => ({
+      role: entry.isBotReply ? ('assistant' as const) : ('user' as const),
+      content: entry.content,
+      timestamp: entry.createdAt instanceof Date ? entry.createdAt : new Date(entry.createdAt),
+    }));
+
+    return HookContextBuilder.create()
+      .withSyntheticMessage({
+        userId: 0,
+        groupId,
+        messageType: 'group',
+        message: lastUserMessage,
+        segments: [],
+        protocol: 'milky',
+      })
+      .withConversationContext({
+        userMessage: lastUserMessage,
+        history,
+        userId: 0,
+        groupId,
+        messageType: 'group',
+        metadata: new Map(),
+      })
+      .withMetadata('sessionId', sessionId)
+      .withMetadata('sessionType', 'group')
+      .withMetadata('contextMode', 'proactive')
+      .withMetadata('groupId', groupId)
+      .withMetadata('userId', 0)
+      .build();
   }
 
   /**
@@ -530,21 +650,7 @@ export class AIService {
    * @returns Reply text (sets context.reply)
    */
   async generateReplyWithToolUse(context: HookContext): Promise<void> {
-    const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
-    if (!shouldContinue) {
-      return;
-    }
-
-    await this.hookManager.execute('onAIGenerationStart', context);
-    try {
-      const replyText = await this.toolUseReplyService.generateReply(context);
-      setReply(context, replyText, 'ai');
-      await this.hookManager.execute('onAIGenerationComplete', context);
-    } catch (error) {
-      logger.error('[AIService] Tool use reply generation failed:', error);
-      setReply(context, '抱歉，生成回复时出错了。', 'ai');
-      await this.hookManager.execute('onAIGenerationComplete', context);
-    }
+    await this.replyGenerationService.generateReplyFromTaskResults(context, new Map());
   }
 
   /**

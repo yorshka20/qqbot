@@ -111,6 +111,16 @@ export class LLMService {
     return this.providerSupportsNativeWebSearch(resolvedProviderName);
   }
 
+  async supportsToolUse(providerName?: string, sessionId?: string): Promise<boolean> {
+    const provider = await this.getAvailableProvider(providerName, sessionId);
+    if (!provider) {
+      return false;
+    }
+    const resolvedProviderName =
+      provider && 'name' in provider ? (provider as { name: string }).name : (providerName ?? '');
+    return this.providerSupportsToolUse(resolvedProviderName);
+  }
+
   /**
    * Generate text using LLM capability
    */

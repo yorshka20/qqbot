@@ -71,6 +71,34 @@ export class VisionService {
     return await provider.generateWithVision(prompt, normalizedImages, options);
   }
 
+  async getAvailableProviderName(providerName?: string, sessionId?: string): Promise<string | null> {
+    if (providerName) {
+      const preferred = this.aiManager.getProviderForCapability('vision', providerName);
+      if (preferred && isVisionCapability(preferred)) {
+        return 'name' in preferred ? ((preferred as { name: string }).name ?? providerName) : providerName;
+      }
+    }
+
+    if (sessionId && this.providerSelector) {
+      const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'vision');
+      if (sessionProviderName) {
+        const sessionProvider = this.aiManager.getProviderForCapability('vision', sessionProviderName);
+        if (sessionProvider && isVisionCapability(sessionProvider)) {
+          return 'name' in sessionProvider
+            ? ((sessionProvider as { name: string }).name ?? sessionProviderName)
+            : sessionProviderName;
+        }
+      }
+    }
+
+    const defaultProvider = this.aiManager.getDefaultProvider('vision');
+    if (defaultProvider && isVisionCapability(defaultProvider)) {
+      return 'name' in defaultProvider ? ((defaultProvider as { name: string }).name ?? null) : null;
+    }
+
+    return null;
+  }
+
   /**
    * Explain image(s): get text description of image content. Prompt is the full rendered text from the dedicated explain-image template.
    */
@@ -182,6 +210,7 @@ export class VisionService {
     messages: ChatMessage[],
     currentMessageImages: VisionImage[],
     options?: AIGenerateOptions,
+    providerName?: string,
   ): Promise<AIGenerateResponse> {
     if (messages.length === 0) {
       throw new Error('At least one message is required');
@@ -208,6 +237,12 @@ export class VisionService {
 
     let provider: VisionCapability | null = null;
     const sessionId = options?.sessionId;
+    if (providerName) {
+      const preferredProvider = this.aiManager.getProviderForCapability('vision', providerName);
+      if (preferredProvider && isVisionCapability(preferredProvider)) {
+        provider = preferredProvider;
+      }
+    }
     if (sessionId && this.providerSelector) {
       const name = await this.providerSelector.getProviderForSession(sessionId, 'vision');
       if (name) {
