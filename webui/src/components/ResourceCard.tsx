@@ -1,8 +1,6 @@
+import { FileText, Folder, Music, Play } from 'lucide-react';
 import type { FileItem } from '../types';
-
-const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
-const VIDEO_EXT = new Set(['.mp4', '.webm', '.ogg', '.mov']);
-const AUDIO_EXT = new Set(['.mp3', '.wav', '.ogg', '.m4a']);
+import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from '../utils/fileType';
 
 function ext(name: string): string {
   const i = name.lastIndexOf('.');
@@ -61,10 +59,7 @@ export function ResourceCard({
       <div className="aspect-square w-full bg-zinc-100 flex items-center justify-center overflow-hidden shrink-0 relative z-10 pointer-events-none">
         {item.isDir ? (
           <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-zinc-400">
-            <svg className="w-16 h-16" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
-              <title>Folder</title>
-              <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
-            </svg>
+            <Folder className="w-16 h-16" aria-hidden />
             <span className="text-xs font-medium text-zinc-500">Folder</span>
           </div>
         ) : isImage ? (
@@ -89,27 +84,18 @@ export function ResourceCard({
                 className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center text-white"
                 aria-hidden
               >
-                <svg className="w-6 h-6 ml-0.5" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
-                  <title>Play</title>
-                  <path d="M8 5v14l11-7z" />
-                </svg>
+                <Play className="w-6 h-6 ml-0.5 fill-current" aria-hidden />
               </span>
             </div>
           </div>
         ) : isAudio ? (
           <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-zinc-400">
-            <svg className="w-14 h-14" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
-              <title>Audio file</title>
-              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-            </svg>
+            <Music className="w-14 h-14" aria-hidden />
             <span className="text-xs font-medium text-zinc-500">Audio</span>
           </div>
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-zinc-400">
-            <svg className="w-14 h-14" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
-              <title>File</title>
-              <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" />
-            </svg>
+            <FileText className="w-14 h-14" aria-hidden />
             <span className="text-xs font-medium text-zinc-500">File</span>
           </div>
         )}

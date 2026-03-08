@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Loader2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { deleteFile, listFiles, moveFile, renameFile } from './api';
 import { Breadcrumb } from './components/Breadcrumb';
 import { CardWall } from './components/CardWall';
@@ -6,7 +7,9 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { MoveModal } from './components/MoveModal';
 import { PreviewModal } from './components/PreviewModal';
 import { RenameModal } from './components/RenameModal';
+import { Sidebar } from './components/Sidebar';
 import type { FileItem } from './types';
+import { type FilterType, filterByType, type GroupBy, groupItems, type SortOrder, sortByDate } from './utils/fileType';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState('');
@@ -14,6 +17,10 @@ export default function App() {
   const [items, setItems] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [typeFilter, setTypeFilter] = useState<FilterType>('all');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('dateDesc');
+  const [groupBy, setGroupBy] = useState<GroupBy>('none');
 
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [moveTarget, setMoveTarget] = useState<string | null>(null);
@@ -123,9 +130,15 @@ export default function App() {
     [renameTarget, previewFile?.path, currentPath, load],
   );
 
+  const groupedItems = useMemo(() => {
+    const filtered = filterByType(items, typeFilter);
+    const sorted = sortByDate(filtered, sortOrder);
+    return groupItems(sorted, groupBy);
+  }, [items, typeFilter, sortOrder, groupBy]);
+
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900 flex flex-col">
-      <header className="border-b border-zinc-200 bg-white shrink-0">
+      <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white shrink-0">
         <div className="px-4 py-3 flex items-center gap-4 flex-wrap">
           <h1 className="text-lg font-semibold text-zinc-900 shrink-0">Output 资源</h1>
           <nav className="min-w-0 flex-1">
@@ -134,18 +147,60 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 min-w-0 overflow-auto p-4">
-        <CardWall
-          items={items}
-          loading={loading}
-          error={error}
-          onOpenDir={handleOpenDir}
-          onSelectFile={handleSelectFile}
-          onRename={handleRenameClick}
-          onMove={handleMoveClick}
-          onDelete={handleDeleteClick}
+      <div className="flex-1 flex min-h-0">
+        <Sidebar
+          typeFilter={typeFilter}
+          sortOrder={sortOrder}
+          groupBy={groupBy}
+          onTypeFilterChange={setTypeFilter}
+          onSortOrderChange={setSortOrder}
+          onGroupByChange={setGroupBy}
         />
-      </main>
+        <main className="flex-1 min-w-0 overflow-auto p-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-24">
+              <div className="flex flex-col items-center gap-3 text-zinc-500">
+                <Loader2 className="w-10 h-10 animate-spin text-zinc-400" aria-hidden />
+                <span className="text-sm font-medium">Loading…</span>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-800 text-sm">{error}</div>
+          ) : groupedItems.length === 1 && !groupedItems[0].label ? (
+            <CardWall
+              items={groupedItems[0].items}
+              loading={false}
+              error={null}
+              emptyMessage="No items match the current filter."
+              onOpenDir={handleOpenDir}
+              onSelectFile={handleSelectFile}
+              onRename={handleRenameClick}
+              onMove={handleMoveClick}
+              onDelete={handleDeleteClick}
+            />
+          ) : (
+            <div className="flex flex-col gap-8">
+              {groupedItems.map((group) => (
+                <section key={group.label || 'all'}>
+                  {group.label ? (
+                    <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider mb-3">{group.label}</h2>
+                  ) : null}
+                  <CardWall
+                    items={group.items}
+                    loading={false}
+                    error={null}
+                    onOpenDir={handleOpenDir}
+                    onSelectFile={handleSelectFile}
+                    onRename={handleRenameClick}
+                    onMove={handleMoveClick}
+                    onDelete={handleDeleteClick}
+                  />
+                </section>
+              ))}
+            </div>
+          )}
+        </main>
+      </div>
 
       {previewFile && (
         <PreviewModal path={previewFile.path} name={previewFile.name} onClose={() => setPreviewFile(null)} />
@@ -162,6 +217,7 @@ export default function App() {
       />
 
       <RenameModal
+        key={renameTarget?.path ?? 'closed'}
         open={renameTarget !== null}
         path={renameTarget?.path ?? ''}
         currentName={renameTarget?.name ?? ''}
