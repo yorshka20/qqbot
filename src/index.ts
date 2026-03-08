@@ -15,8 +15,8 @@ import { PluginInitializer } from './plugins/PluginInitializer';
 import { ProtocolAdapterInitializer } from './protocol/ProtocolAdapterInitializer';
 import { MCPInitializer } from './services/mcp/MCPInitializer';
 import { RetrievalService } from './services/retrieval';
+import { initStaticFileServer, stopStaticFileServer } from './services/staticServer';
 import { logger } from './utils/logger';
-import { initStaticFileServer, stopStaticFileServer } from './utils/StaticFileServer';
 
 async function main() {
   logger.info('Starting bot...');
@@ -61,7 +61,7 @@ async function main() {
     // This must be done BEFORE ConversationInitializer because ImageGenerationService needs it
     const staticServerConfig = config.getStaticServerConfig();
     if (staticServerConfig) {
-      await initStaticFileServer(staticServerConfig.port, staticServerConfig.root, staticServerConfig.host);
+      await initStaticFileServer(staticServerConfig);
     }
 
     // Initialize conversation components

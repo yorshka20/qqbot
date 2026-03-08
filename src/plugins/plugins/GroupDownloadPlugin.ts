@@ -60,6 +60,18 @@ function getExtensionFromUrl(url: string): string {
   }
 }
 
+/** Default extension by kind when URL has no suffix (avoid .bin for preview). */
+const DEFAULT_EXT_BY_KIND: Record<'image' | 'sticker' | 'video' | 'file', string> = {
+  image: '.png',
+  sticker: '.gif',
+  video: '.mp4',
+  file: '.dat',
+};
+
+function getDefaultExtension(kind: 'image' | 'sticker' | 'video' | 'file'): string {
+  return DEFAULT_EXT_BY_KIND[kind] ?? '.dat';
+}
+
 /**
  * Generate a short unique filename (no dedup). ext should include dot, e.g. ".jpg" or "".
  */
@@ -175,10 +187,10 @@ export class GroupDownloadPlugin extends PluginBase {
   }
 
   /**
-   * Build deterministic filename for sticker dedup only. Extension from URL (respect source suffix).
+   * Build deterministic filename for sticker dedup only. Extension from URL, fallback to .gif.
    */
   private getStickerDedupFilename(data: Record<string, unknown> | undefined, url: string): string {
-    const ext = getExtensionFromUrl(url) || '.bin';
+    const ext = getExtensionFromUrl(url) || getDefaultExtension('sticker');
     const dotExt = ext.startsWith('.') ? ext : `.${ext}`;
     const resourceId = getDataValue(data, 'resource_id') ?? getDataValue(data, 'image_id');
     const id = resourceId ?? url;
@@ -213,9 +225,9 @@ export class GroupDownloadPlugin extends PluginBase {
       const safeName = name ? name.replace(/[^\w.-]/g, '_') || 'file' : '';
       filename = safeName
         ? `${uniqueFilename('f', '')}_${safeName}`
-        : uniqueFilename('file', getExtensionFromUrl(url) || '.bin');
+        : uniqueFilename('file', getExtensionFromUrl(url) || getDefaultExtension('file'));
     } else {
-      const ext = getExtensionFromUrl(url) || '.bin';
+      const ext = getExtensionFromUrl(url) || getDefaultExtension(kind);
       filename = uniqueFilename(kind, ext);
     }
 

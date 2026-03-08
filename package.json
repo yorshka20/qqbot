@@ -5,11 +5,12 @@
   "main": "src/index.ts",
   "type": "module",
   "scripts": {
-    "dev": "LOG_LEVEL=debug bun run src/index.ts",
+    "dev": "concurrently -n bot,ui -c blue,green \"LOG_LEVEL=debug bun run src/index.ts\" \"cd webui && bun run dev\"",
     "build": "bun run scripts/build.ts production",
     "build:dev": "bun run scripts/build.ts development",
     "build:all": "bun run scripts/build.ts bundleAll",
     "build:watch": "bun build src/index.ts --outdir dist --target bun --watch",
+    "build:admin": "cd webui && bun run build",
     "start": "bun dist/index.js",
     "debug": "bun run src/cli/debug.ts LOG_LEVEL=debug --mock",
     "type-check": "tsc --noEmit",
@@ -54,6 +55,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "concurrently": "^9.1.0",
     "@biomejs/biome": "^2.4.6",
     "@types/adm-zip": "^0.5.7",
     "@types/better-sqlite3": "^7.6.13",

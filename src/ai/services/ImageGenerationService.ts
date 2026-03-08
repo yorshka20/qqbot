@@ -1,6 +1,6 @@
 // Image Generation Service - provides image generation capabilities
 
-import { getStaticFileServer, type StaticFileServer } from '@/utils/StaticFileServer';
+import { getStaticFileServer, type StaticFileServer } from '@/services/staticServer';
 import type { AIManager } from '../AIManager';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
 import { isImage2ImageCapability } from '../capabilities/Image2ImageCapability';

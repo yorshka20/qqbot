@@ -23,9 +23,9 @@ import { PluginInitializer } from '../plugins/PluginInitializer';
 import { ProtocolAdapterInitializer } from '../protocol/ProtocolAdapterInitializer';
 import { MCPInitializer } from '../services/mcp/MCPInitializer';
 import { RetrievalService } from '../services/retrieval';
+import { initStaticFileServer } from '../services/staticServer';
 import type { TaskManager } from '../task';
 import { logger } from '../utils/logger';
-import { initStaticFileServer } from '../utils/StaticFileServer';
 import { MockConnection } from './MockConnection';
 import { MockProtocolAdapter } from './MockProtocolAdapter';
 
@@ -639,7 +639,7 @@ class DebugCLI {
     // This must be done BEFORE ConversationInitializer because ImageGenerationService needs it
     const staticServerConfig = this.config.getStaticServerConfig();
     if (staticServerConfig) {
-      await initStaticFileServer(staticServerConfig.port, staticServerConfig.root, staticServerConfig.host);
+      await initStaticFileServer(staticServerConfig);
       this.printInfo('✓ Static file server initialized');
     }
 
@@ -703,7 +703,7 @@ class DebugCLI {
     // This must be done BEFORE ConversationInitializer because ImageGenerationService needs it
     const staticServerConfig = this.config.getStaticServerConfig();
     if (staticServerConfig) {
-      await initStaticFileServer(staticServerConfig.port, staticServerConfig.root, staticServerConfig.host);
+      await initStaticFileServer(staticServerConfig);
       this.printInfo('✓ Static file server initialized');
     }
 
