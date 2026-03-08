@@ -72,6 +72,27 @@ const colors = {
   gray: '\x1b[90m',
 };
 
+/** Convert foreground ANSI code (e.g. \\x1b[36m) to background code (e.g. \\x1b[46m). Used for prefix highlight. */
+function foregroundToBackground(fgEscape: string): string | null {
+  // Match CSI + number + m (avoid control char in regex by matching after known prefix)
+  if (!fgEscape.startsWith('\x1b[')) {
+    return null;
+  }
+  const match = fgEscape.slice(2).match(/^(\d+)m/);
+  if (!match) {
+    return null;
+  }
+  const n = parseInt(match[1], 10);
+  // 30-37 foreground -> 40-47 background; 90-97 bright fg -> 100-107 bright bg (not all terms support)
+  if (n >= 30 && n <= 37) {
+    return `\x1b[${n + 10}m`;
+  }
+  if (n >= 90 && n <= 97) {
+    return `\x1b[${n + 10}m`;
+  }
+  return null;
+}
+
 const levelColors: Record<string, string> = {
   error: colors.red + colors.bright,
   warn: colors.yellow + colors.bright,
@@ -79,10 +100,17 @@ const levelColors: Record<string, string> = {
   debug: colors.gray,
 };
 
-/** Prefix for console: colored [logTag] when current async chain has message context with logTag/logColor. */
-function getMessageContextPrefixConsole(): string {
+/** Prefix for console. When whole-line color is used (see console format), use plain tag; else use background highlight. */
+function getMessageContextPrefixConsole(wholeLineColor: boolean): string {
   const ctx = getCurrentMessageContext();
   if (ctx?.logTag && ctx?.logColor) {
+    if (wholeLineColor) {
+      return `[${ctx.logTag}] `;
+    }
+    const bg = foregroundToBackground(ctx.logColor);
+    if (bg) {
+      return `${bg}\x1b[30m[${ctx.logTag}]${colors.reset} `;
+    }
     return `${ctx.logColor}[${ctx.logTag}]${colors.reset} `;
   }
   return '';
@@ -157,6 +185,8 @@ class FileLogger implements Logger {
         const reset = colors.reset;
         const dim = colors.dim;
         const gray = colors.gray;
+        const ctx = getCurrentMessageContext();
+        const wholeLineColor = Boolean(ctx?.logColor);
 
         let metaStr = '';
         if (stack) {
@@ -170,8 +200,12 @@ class FileLogger implements Logger {
 
         const levelStr = `${color}${levelUpper.padEnd(5)}${reset}`;
         const timeStr = `${dim}${timestamp}${reset}`;
-        const msgPrefix = getMessageContextPrefixConsole();
-        return `${timeStr} ${levelStr} ${msgPrefix}${message}${metaStr}`;
+        const msgPrefix = getMessageContextPrefixConsole(wholeLineColor);
+        let line = `${timeStr} ${levelStr} ${msgPrefix}${message}${metaStr}`;
+        if (wholeLineColor && ctx?.logColor) {
+          line = `${ctx.logColor}${line}${reset}`;
+        }
+        return line;
       }),
     );
 

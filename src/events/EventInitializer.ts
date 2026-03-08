@@ -1,8 +1,11 @@
 // Event Initializer - initializes EventRouter and all event handlers
 
+import { enterMessageContext } from '@/context/MessageContextStorage';
 import type { ConversationManager } from '@/conversation/ConversationManager';
 import type { Config } from '@/core/config';
+import type { NormalizedMessageEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
+import { getLogColorForKey, getLogTag } from '@/utils/messageLogContext';
 import { EventRouter } from './EventRouter';
 import { MessageHandler } from './handlers/MessageHandler';
 import { MetaEventHandler } from './handlers/MetaEventHandler';
@@ -38,9 +41,12 @@ export class EventInitializer {
     const requestHandler = new RequestHandler();
     const metaEventHandler = new MetaEventHandler();
 
-    // Register handlers to event router
-    eventRouter.on('message', (event) => {
-      messageHandler.handle(event);
+    // Register handlers to event router. Enter message context so logger can color by message (from first log in MessageHandler through pipeline).
+    eventRouter.on('message', async (event: NormalizedMessageEvent) => {
+      const messageId = String(event.id ?? event.messageId ?? 'unknown');
+      const logTag = getLogTag(messageId);
+      const logColor = getLogColorForKey(messageId);
+      await enterMessageContext(messageId, { message: event, logTag, logColor }, () => messageHandler.handle(event));
     });
 
     eventRouter.on('notice', (event) => {
