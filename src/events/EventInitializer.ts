@@ -46,7 +46,9 @@ export class EventInitializer {
       const messageId = String(event.id ?? event.messageId ?? 'unknown');
       const logTag = getLogTag(messageId);
       const logColor = getLogColorForKey(messageId);
-      await enterMessageContext(messageId, { message: event, logTag, logColor }, () => messageHandler.handle(event));
+      await enterMessageContext(messageId, { message: event, logTag, logColor, logWholeLineBackground: true }, () =>
+        messageHandler.handle(event),
+      );
     });
 
     eventRouter.on('notice', (event) => {

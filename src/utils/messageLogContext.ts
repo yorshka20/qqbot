@@ -1,15 +1,16 @@
 // Shared helpers for per-message log tagging and coloring (used from EventRouter entry and MessagePipeline).
+// All coloring is BACKGROUND only (no text/foreground color).
 
-/** ANSI foreground colors for per-message log tags (distinct so concurrent messages are easy to tell apart). */
-const LOG_TAG_COLORS = ['\x1b[36m', '\x1b[32m', '\x1b[33m', '\x1b[34m', '\x1b[35m'] as const; // cyan, green, yellow, blue, magenta
+/** ANSI background codes (40–47): cyan, green, yellow, blue, magenta. */
+const LOG_BG_COLORS = ['\x1b[46m', '\x1b[42m', '\x1b[43m', '\x1b[44m', '\x1b[45m'] as const;
 
-/** Pick a stable color from key (e.g. messageId) for consistent per-message coloring. */
+/** Pick a stable background color from key (e.g. messageId). Returns ANSI background code (e.g. \\x1b[46m). */
 export function getLogColorForKey(key: string): string {
   let n = 0;
   for (let i = 0; i < key.length; i++) {
     n = (n * 31 + key.charCodeAt(i)) >>> 0;
   }
-  return LOG_TAG_COLORS[n % LOG_TAG_COLORS.length];
+  return LOG_BG_COLORS[n % LOG_BG_COLORS.length];
 }
 
 /** Short tag for logs (last 6 chars of messageId or full id if shorter). */

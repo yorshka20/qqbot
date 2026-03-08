@@ -72,27 +72,6 @@ const colors = {
   gray: '\x1b[90m',
 };
 
-/** Convert foreground ANSI code (e.g. \\x1b[36m) to background code (e.g. \\x1b[46m). Used for prefix highlight. */
-function foregroundToBackground(fgEscape: string): string | null {
-  // Match CSI + number + m (avoid control char in regex by matching after known prefix)
-  if (!fgEscape.startsWith('\x1b[')) {
-    return null;
-  }
-  const match = fgEscape.slice(2).match(/^(\d+)m/);
-  if (!match) {
-    return null;
-  }
-  const n = parseInt(match[1], 10);
-  // 30-37 foreground -> 40-47 background; 90-97 bright fg -> 100-107 bright bg (not all terms support)
-  if (n >= 30 && n <= 37) {
-    return `\x1b[${n + 10}m`;
-  }
-  if (n >= 90 && n <= 97) {
-    return `\x1b[${n + 10}m`;
-  }
-  return null;
-}
-
 const levelColors: Record<string, string> = {
   error: colors.red + colors.bright,
   warn: colors.yellow + colors.bright,
@@ -100,18 +79,12 @@ const levelColors: Record<string, string> = {
   debug: colors.gray,
 };
 
-/** Prefix for console. When whole-line color is used (see console format), use plain tag; else use background highlight. */
-function getMessageContextPrefixConsole(wholeLineColor: boolean): string {
+/** Prefix for console: [logTag] with background only (no text color). ctx.logColor is already an ANSI background code. */
+function getMessageContextPrefixConsole(): string {
   const ctx = getCurrentMessageContext();
   if (ctx?.logTag && ctx?.logColor) {
-    if (wholeLineColor) {
-      return `[${ctx.logTag}] `;
-    }
-    const bg = foregroundToBackground(ctx.logColor);
-    if (bg) {
-      return `${bg}\x1b[30m[${ctx.logTag}]${colors.reset} `;
-    }
-    return `${ctx.logColor}[${ctx.logTag}]${colors.reset} `;
+    // Background + black text for tag, then reset
+    return `${ctx.logColor}\x1b[30m[${ctx.logTag}]${colors.reset} `;
   }
   return '';
 }
@@ -186,26 +159,36 @@ class FileLogger implements Logger {
         const dim = colors.dim;
         const gray = colors.gray;
         const ctx = getCurrentMessageContext();
-        const wholeLineColor = Boolean(ctx?.logColor);
 
         let metaStr = '';
+        let metaStrPlain = '';
         if (stack) {
           metaStr = `\n${dim}${stack}${reset}`;
+          metaStrPlain = `\n${stack}`;
         } else if (Object.keys(meta).length) {
-          metaStr = formatMeta(meta)
+          const formatted = formatMeta(meta);
+          metaStr = formatted
             .split('\n')
             .map((line) => `${gray}${line}${reset}`)
             .join('\n');
+          metaStrPlain = formatted;
         }
 
+        // First log for this message: whole-line BACKGROUND (no text color). Then turn off so rest are prefix-only.
+        if (ctx?.logColor && ctx?.logWholeLineBackground) {
+          ctx.logWholeLineBackground = false;
+          const plainPrefix = ctx.logTag ? `[${ctx.logTag}] ` : '';
+          const plainLine = `${timestamp} ${levelUpper.padEnd(5)} ${plainPrefix}${message}${metaStrPlain}`;
+          // Background + black text for whole line (SGR: bg;30 then reset)
+          const bgAndFg = ctx.logColor.endsWith('m') ? ctx.logColor.slice(0, -1) + ';30m' : `${ctx.logColor}\x1b[30m`;
+          return `${bgAndFg}${plainLine}${reset}`;
+        }
+
+        // Subsequent logs: only prefix has background; rest of line normal (no extra text color)
         const levelStr = `${color}${levelUpper.padEnd(5)}${reset}`;
         const timeStr = `${dim}${timestamp}${reset}`;
-        const msgPrefix = getMessageContextPrefixConsole(wholeLineColor);
-        let line = `${timeStr} ${levelStr} ${msgPrefix}${message}${metaStr}`;
-        if (wholeLineColor && ctx?.logColor) {
-          line = `${ctx.logColor}${line}${reset}`;
-        }
-        return line;
+        const msgPrefix = getMessageContextPrefixConsole();
+        return `${timeStr} ${levelStr} ${msgPrefix}${message}${metaStr}`;
       }),
     );
 

@@ -9,8 +9,10 @@ export interface MessageContextValue {
   message: NormalizedMessageEvent;
   /** Optional short tag for log lines (e.g. last 6 chars of messageId). Used to distinguish messages in pipeline debug. */
   logTag?: string;
-  /** Optional ANSI color code for console (e.g. \\x1b[36m). When set with logTag, logger prepends colored [logTag] to each line in this async chain. */
+  /** Optional ANSI background code for console (e.g. \\x1b[46m). Used for whole-line bg (first log) or prefix bg only (rest). No text/foreground color. */
   logColor?: string;
+  /** When true, the next console log for this message uses whole-line background; logger then sets this to false so subsequent logs use prefix-only background. */
+  logWholeLineBackground?: boolean;
 }
 
 /** Map: key (e.g. sessionId_messageId) -> context for that message. Cleared when processing finishes. */

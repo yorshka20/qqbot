@@ -47,21 +47,27 @@ export class MessagePipeline {
     const logTag = getLogTag(messageId);
     const logColor = getLogColorForKey(messageId);
 
-    return enterMessageContext(contextKey, { message: hookContext.message, logTag, logColor }, async () => {
-      try {
-        cacheMessage(event);
-        logger.info(`[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId}`);
+    return enterMessageContext(
+      contextKey,
+      { message: hookContext.message, logTag, logColor, logWholeLineBackground: false },
+      async () => {
+        try {
+          cacheMessage(event);
+          logger.info(
+            `[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId}`,
+          );
 
-        const success = await this.lifecycle.execute(hookContext);
-        if (!success) {
-          return { success: false, error: 'Processing interrupted' };
+          const success = await this.lifecycle.execute(hookContext);
+          if (!success) {
+            return { success: false, error: 'Processing interrupted' };
+          }
+
+          return await this.handleReply(event, context, hookContext, messageId);
+        } catch (error) {
+          return await this.handleError(error, event, context);
         }
-
-        return await this.handleReply(event, context, hookContext, messageId);
-      } catch (error) {
-        return await this.handleError(error, event, context);
-      }
-    });
+      },
+    );
   }
 
   /**
@@ -79,22 +85,26 @@ export class MessagePipeline {
     const logTag = getLogTag(messageId);
     const logColor = getLogColorForKey(messageId);
 
-    return enterMessageContext(contextKey, { message: hookContext.message, logTag, logColor }, async () => {
-      try {
-        logger.info(`[MessagePipeline] Reply-only | messageId=${messageId} | userId=${event.userId}`);
-        const success = await this.lifecycle.executeProcessOnly(hookContext);
-        if (!success) {
-          return { success: false, error: 'Processing interrupted' };
+    return enterMessageContext(
+      contextKey,
+      { message: hookContext.message, logTag, logColor, logWholeLineBackground: false },
+      async () => {
+        try {
+          logger.info(`[MessagePipeline] Reply-only | messageId=${messageId} | userId=${event.userId}`);
+          const success = await this.lifecycle.executeProcessOnly(hookContext);
+          if (!success) {
+            return { success: false, error: 'Processing interrupted' };
+          }
+          const result = await this.handleReply(event, context, hookContext, messageId);
+          if (result.success) {
+            await this.lifecycle.runCompleteStage(hookContext, messageId);
+          }
+          return result;
+        } catch (error) {
+          return await this.handleError(error, event, context);
         }
-        const result = await this.handleReply(event, context, hookContext, messageId);
-        if (result.success) {
-          await this.lifecycle.runCompleteStage(hookContext, messageId);
-        }
-        return result;
-      } catch (error) {
-        return await this.handleError(error, event, context);
-      }
-    });
+      },
+    );
   }
 
   /**
