@@ -8,6 +8,8 @@ import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
+import type { FileReadService } from '@/services/file';
+import { formatBytes as fmtBytes, runDeduplication } from '@/utils/fileDedup';
 import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
@@ -21,6 +23,13 @@ export interface GroupDownloadPluginConfig {
    * images, files, and videos downloaded to output/downloads/{groupid}
    */
   groupIds?: string[];
+
+  /**
+   * How often to run content-based deduplication on downloaded files (milliseconds).
+   * Example: 3600000 for every hour, 86400000 for every day.
+   * Omit or set to 0 to disable scheduled dedup.
+   */
+  deduplicateIntervalMs?: number;
 }
 
 /**
@@ -90,14 +99,22 @@ function uniqueFilename(prefix: string, ext: string): string {
 })
 export class GroupDownloadPlugin extends PluginBase {
   private messageAPI!: MessageAPI;
+  private fileService: FileReadService | null = null;
   private groupIdSet: Set<string> = new Set();
+  private deduplicateTimer: ReturnType<typeof setInterval> | undefined;
 
   async onInit(): Promise<void> {
-    if (!getContainer().isRegistered(DITokens.MESSAGE_API)) {
+    const container = getContainer();
+    if (!container.isRegistered(DITokens.MESSAGE_API)) {
       logger.warn('[GroupDownloadPlugin] MESSAGE_API not registered; plugin will not download resources.');
       return;
     }
-    this.messageAPI = getContainer().resolve<MessageAPI>(DITokens.MESSAGE_API);
+    this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+
+    // Resolve FileReadService for scheduled dedup (optional)
+    if (container.isRegistered(DITokens.FILE_READ_SERVICE)) {
+      this.fileService = container.resolve<FileReadService>(DITokens.FILE_READ_SERVICE);
+    }
 
     try {
       const pluginConfig = this.pluginConfig?.config as GroupDownloadPluginConfig | undefined;
@@ -107,12 +124,62 @@ export class GroupDownloadPlugin extends PluginBase {
       } else {
         logger.info('[GroupDownloadPlugin] No groupIds configured; plugin enabled but will not download.');
       }
+
+      // Start scheduled dedup if configured
+      const intervalMs = pluginConfig?.deduplicateIntervalMs ?? 0;
+      if (intervalMs > 0 && this.fileService) {
+        this.deduplicateTimer = setInterval(() => {
+          void this.runScheduledDedup();
+        }, intervalMs);
+        logger.info(`[GroupDownloadPlugin] Scheduled dedup enabled: every ${Math.round(intervalMs / 60000)} min.`);
+      }
     } catch (error) {
       logger.error('[GroupDownloadPlugin] Config error:', error);
     }
 
     this.on('message', this.handleMessage.bind(this));
   }
+
+  async onDisable(): Promise<void> {
+    if (this.deduplicateTimer !== undefined) {
+      clearInterval(this.deduplicateTimer);
+      this.deduplicateTimer = undefined;
+      logger.info('[GroupDownloadPlugin] Scheduled dedup timer cleared.');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Scheduled dedup
+  // ---------------------------------------------------------------------------
+
+  private async runScheduledDedup(): Promise<void> {
+    if (!this.fileService || this.groupIdSet.size === 0) {
+      return;
+    }
+
+    const dirs = [...this.groupIdSet].map((id) => join(DOWNLOAD_ROOT, id));
+    logger.info(`[GroupDownloadPlugin] Running scheduled dedup on ${dirs.length} group dir(s)...`);
+
+    try {
+      const result = await runDeduplication(dirs, this.fileService, false);
+      if (result.duplicatesFound > 0) {
+        logger.info(
+          `[GroupDownloadPlugin] Dedup complete: ${result.duplicatesFound} duplicate(s) removed, ${fmtBytes(result.bytesFreed)} freed.`,
+        );
+      } else {
+        logger.debug(`[GroupDownloadPlugin] Dedup complete: no duplicates found (${result.totalFiles} files scanned).`);
+      }
+      if (result.errors.length > 0) {
+        logger.warn(`[GroupDownloadPlugin] Dedup encountered ${result.errors.length} error(s).`);
+      }
+    } catch (err) {
+      logger.error('[GroupDownloadPlugin] Scheduled dedup failed:', err);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Message handling & download
+  // ---------------------------------------------------------------------------
 
   private async handleMessage(event: NormalizedMessageEvent): Promise<void> {
     if (!this.enabled || this.groupIdSet.size === 0) {

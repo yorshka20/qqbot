@@ -1,7 +1,7 @@
 // File Read Service - provides safe file/directory access within project root
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { extname, isAbsolute, normalize, relative, resolve } from 'node:path';
+import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, extname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import type { FileReadServiceConfig } from '@/core/config/types/bot';
 import { logger } from '@/utils/logger';
 
@@ -20,10 +20,44 @@ export interface ReadFileResult {
   error?: string;
 }
 
+/** Raw file entry for programmatic directory scanning */
+export interface RawFileEntry {
+  /** Absolute path to the file */
+  path: string;
+  /** Filename only */
+  name: string;
+  /** File size in bytes */
+  size: number;
+  /** Last-modified timestamp in ms */
+  mtimeMs: number;
+}
+
+export interface ScanDirectoryResult {
+  success: boolean;
+  entries: RawFileEntry[];
+  error?: string;
+}
+
+export interface DeleteFileResult {
+  success: boolean;
+  error?: string;
+}
+
+export interface WriteFileResult {
+  success: boolean;
+  error?: string;
+}
+
+export interface ReadFileBinaryResult {
+  success: boolean;
+  data?: Buffer;
+  error?: string;
+}
+
 /**
- * File Read Service
- * Provides safe file listing and reading within project root.
- * Used by ReadFileTaskExecutor and ls/cat commands.
+ * File Service
+ * Provides safe file listing, reading, writing, and deletion within project root.
+ * Used by ReadFileTaskExecutor, DeduplicateFilesTaskExecutor, and ls/cat commands.
  */
 export class FileReadService {
   private readonly projectRoot: string;
@@ -48,6 +82,7 @@ export class FileReadService {
 
   /**
    * Resolve and validate path. Returns null if invalid or unsafe.
+   * Accepts both relative paths (from project root) and absolute paths (within project root).
    */
   resolvePath(userPath: string): { resolved: string; error?: string } {
     const normalized = normalize(userPath).replace(/^(\.\/)+/, '');
@@ -107,6 +142,50 @@ export class FileReadService {
   }
 
   /**
+   * Scan a directory returning raw file entries for programmatic use.
+   * Non-hidden files only; honors filterPaths.
+   * Accepts both relative (from project root) and absolute paths within project root.
+   */
+  scanDirectory(dirPath: string): ScanDirectoryResult {
+    const { resolved, error } = this.resolvePath(dirPath);
+    if (error) {
+      return { success: false, entries: [], error };
+    }
+
+    try {
+      const stat = statSync(resolved);
+      if (!stat.isDirectory()) {
+        return { success: false, entries: [], error: '路径不是目录' };
+      }
+
+      const names = readdirSync(resolved);
+      const entries: RawFileEntry[] = [];
+
+      for (const name of names) {
+        if (name.startsWith('.')) continue; // skip hidden files
+        const full = join(resolved, name);
+        try {
+          const st = statSync(full);
+          if (st.isFile()) {
+            entries.push({ path: full, name, size: st.size, mtimeMs: st.mtimeMs });
+          }
+        } catch {
+          // skip inaccessible files
+        }
+      }
+
+      return { success: true, entries };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('ENOENT')) {
+        return { success: false, entries: [], error: '路径不存在' };
+      }
+      logger.warn('[FileReadService] scanDirectory failed:', err);
+      return { success: false, entries: [], error: `扫描目录失败: ${msg}` };
+    }
+  }
+
+  /**
    * Read file content only (no card render). Use for read_file task; caller may render as card if needed.
    * @param path - File path (within project root)
    */
@@ -143,6 +222,84 @@ export class FileReadService {
       }
       logger.warn('[FileReadService] readFile failed:', err);
       return { success: false, content: '', error: `读取文件失败: ${msg}` };
+    }
+  }
+
+  /**
+   * Read file content as binary Buffer.
+   * Suitable for hashing or binary processing. No size limit applied.
+   * Accepts both relative (from project root) and absolute paths within project root.
+   */
+  readFileBinary(path: string): ReadFileBinaryResult {
+    const { resolved, error } = this.resolvePath(path);
+    if (error) {
+      return { success: false, error };
+    }
+
+    try {
+      const stat = statSync(resolved);
+      if (!stat.isFile()) {
+        return { success: false, error: '路径不是文件' };
+      }
+
+      const data = readFileSync(resolved);
+      return { success: true, data };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('ENOENT')) {
+        return { success: false, error: '文件不存在' };
+      }
+      logger.warn('[FileReadService] readFileBinary failed:', err);
+      return { success: false, error: `读取文件失败: ${msg}` };
+    }
+  }
+
+  /**
+   * Write text content to a file within the project root.
+   * Creates parent directories if needed.
+   */
+  writeFile(path: string, content: string): WriteFileResult {
+    const { resolved, error } = this.resolvePath(path);
+    if (error) {
+      return { success: false, error };
+    }
+
+    try {
+      mkdirSync(dirname(resolved), { recursive: true });
+      writeFileSync(resolved, content, 'utf-8');
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('[FileReadService] writeFile failed:', err);
+      return { success: false, error: `写入文件失败: ${msg}` };
+    }
+  }
+
+  /**
+   * Delete a file within the project root.
+   * Accepts both relative (from project root) and absolute paths within project root.
+   */
+  deleteFile(path: string): DeleteFileResult {
+    const { resolved, error } = this.resolvePath(path);
+    if (error) {
+      return { success: false, error };
+    }
+
+    try {
+      const stat = statSync(resolved);
+      if (!stat.isFile()) {
+        return { success: false, error: '路径不是文件' };
+      }
+
+      unlinkSync(resolved);
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('ENOENT')) {
+        return { success: false, error: '文件不存在' };
+      }
+      logger.warn('[FileReadService] deleteFile failed:', err);
+      return { success: false, error: `删除文件失败: ${msg}` };
     }
   }
 }

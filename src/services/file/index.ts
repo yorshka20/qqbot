@@ -1,2 +1,10 @@
-export type { ListDirectoryResult, ReadFileResult } from './FileReadService';
+export type {
+  DeleteFileResult,
+  ListDirectoryResult,
+  RawFileEntry,
+  ReadFileBinaryResult,
+  ReadFileResult,
+  ScanDirectoryResult,
+  WriteFileResult,
+} from './FileReadService';
 export { FileReadService } from './FileReadService';
