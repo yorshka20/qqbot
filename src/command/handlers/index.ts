@@ -3,6 +3,7 @@ export * from './BananaCommandHandler';
 export * from './BilibiliHotCommandHandler';
 export * from './BuiltinCommandHandler';
 export * from './FileCommandHandler';
+export * from './GroupDedupCommandHandler';
 export * from './I2vCommandHandler';
 export * from './NaiPlusCommandHandler';
 export * from './NovelAICommandHandler';
