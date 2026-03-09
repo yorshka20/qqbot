@@ -89,6 +89,50 @@ export class ResourceDownloader {
    * const base64 = await ResourceDownloader.downloadToBase64('base64://iVBORw0KG...');
    * ```
    */
+  /**
+   * Infer MIME type from resource string (data URL prefix or file extension).
+   * Used by downloadImageToBase64WithMimeType.
+   */
+  private static inferImageMimeType(resource: string): string {
+    if (resource.startsWith('data:')) {
+      const match = resource.match(/data:([^;]+)/);
+      if (match) {
+        return match[1];
+      }
+    }
+    const lower = resource.toLowerCase();
+    if (lower.endsWith('.png')) {
+      return 'image/png';
+    }
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+      return 'image/jpeg';
+    }
+    if (lower.endsWith('.webp')) {
+      return 'image/webp';
+    }
+    if (lower.endsWith('.gif')) {
+      return 'image/gif';
+    }
+    return 'image/jpeg';
+  }
+
+  /**
+   * Download image resource to base64 and infer MIME type.
+   * Reusable for providers that need { data, mimeType } (e.g. Gemini/Laozhang vision, img2img).
+   *
+   * @param resource - URL, data URL, file path, or base64 URI
+   * @param options - Same as downloadToBase64 (timeout, maxSize, savePath, filename)
+   * @returns { data: base64 string, mimeType: string }
+   */
+  static async downloadImageToBase64WithMimeType(
+    resource: string,
+    options: ResourceDownloadOptions = {},
+  ): Promise<{ data: string; mimeType: string }> {
+    const data = await ResourceDownloader.downloadToBase64(resource, options);
+    const mimeType = ResourceDownloader.inferImageMimeType(resource);
+    return { data, mimeType };
+  }
+
   static async downloadToBase64(resource: string, options: ResourceDownloadOptions = {}): Promise<string> {
     const timeout = options.timeout ?? 30000; // 30 seconds default
     const maxSize = options.maxSize ?? 10 * 1024 * 1024; // 10MB default

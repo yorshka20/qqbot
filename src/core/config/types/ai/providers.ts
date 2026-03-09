@@ -99,13 +99,37 @@ export interface NovelAIProviderConfig {
   resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/novelai')
 }
 
+/** Gemini config per capability: LLM (reply generation) */
+export interface GeminiLLmConfig {
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+  enableContext?: boolean;
+  contextMessageCount?: number; // default: 10
+}
+
+/** Gemini config for vision (image understanding) */
+export interface GeminiVisionConfig {
+  model: string;
+}
+
+/** Gemini config for text2img and img2img (t2i / i2i). When set, enables both capabilities. */
+export interface GeminiText2ImgConfig {
+  model?: string; // default: 'gemini-2.5-flash-image'
+  defaultWidth?: number;
+  defaultHeight?: number;
+}
+
 export interface GeminiProviderConfig {
   type: 'gemini';
   apiKey: string;
-  model?: string; // Default: 'gemini-2.5-flash-image'
-  defaultWidth?: number;
-  defaultHeight?: number;
   resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/gemini')
+  /** When set, enables LLM capability (reply generation). */
+  llm?: GeminiLLmConfig;
+  /** When set, enables vision capability (image understanding). */
+  vision?: GeminiVisionConfig;
+  /** When set, enables text2img and img2img. If omitted, gemini only provides llm/vision when those are set. */
+  text2img?: GeminiText2ImgConfig;
 }
 
 export interface DoubaoProviderConfig {

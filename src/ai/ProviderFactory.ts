@@ -120,10 +120,10 @@ export class ProviderFactory {
           return new GeminiProvider({
             type: 'gemini',
             apiKey: geminiConfig.apiKey,
-            model: geminiConfig.model,
-            defaultWidth: geminiConfig.defaultWidth,
-            defaultHeight: geminiConfig.defaultHeight,
             resourceSavePath: geminiConfig.resourceSavePath,
+            llm: geminiConfig.llm,
+            vision: geminiConfig.vision,
+            text2img: geminiConfig.text2img,
           });
         }
         case 'doubao': {

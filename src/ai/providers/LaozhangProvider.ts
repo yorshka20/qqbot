@@ -316,7 +316,11 @@ export class LaozhangProvider
       } else {
         continue;
       }
-      const { data, mimeType } = await this.loadImageAsBase64(resource);
+      const { data, mimeType } = await ResourceDownloader.downloadImageToBase64WithMimeType(resource, {
+        timeout: 30000,
+        maxSize: 10 * 1024 * 1024,
+        filename: `laozhang_image_${Date.now()}.png`,
+      });
       parts.push({ inlineData: { mimeType, data } });
     }
     return parts;
@@ -430,45 +434,6 @@ export class LaozhangProvider
 
   async explainImages(images: VisionImage[], prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     return this.generateWithVision(prompt, images, options);
-  }
-
-  /**
-   * Load image and convert to base64
-   * Supports URL, file path, or base64 string
-   */
-  private async loadImageAsBase64(image: string): Promise<{ data: string; mimeType: string }> {
-    try {
-      // Use ResourceDownloader to handle various input formats
-      const base64Data = await ResourceDownloader.downloadToBase64(image, {
-        timeout: 30000, // 30 seconds timeout
-        maxSize: 10 * 1024 * 1024, // 10MB max size
-        filename: `laozhang_image_${Date.now()}.png`,
-      });
-
-      // Try to infer MIME type from the input
-      let mimeType = 'image/jpeg'; // Default
-      if (image.startsWith('data:')) {
-        // Extract MIME type from data URL
-        const match = image.match(/data:([^;]+)/);
-        if (match) {
-          mimeType = match[1];
-        }
-      } else if (image.toLowerCase().endsWith('.png')) {
-        mimeType = 'image/png';
-      } else if (image.toLowerCase().endsWith('.jpg') || image.toLowerCase().endsWith('.jpeg')) {
-        mimeType = 'image/jpeg';
-      } else if (image.toLowerCase().endsWith('.webp')) {
-        mimeType = 'image/webp';
-      }
-
-      return {
-        data: base64Data,
-        mimeType,
-      };
-    } catch (error) {
-      logger.error(`[LaozhangProvider] Failed to load image: ${image}`, error);
-      throw new Error(`Failed to load image: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
   }
 
   /**
@@ -683,8 +648,15 @@ export class LaozhangProvider
 
       logger.info(`[LaozhangProvider] Parameters: model=${model}, aspectRatio=${aspectRatio}, imageSize=${imageSize}`);
 
-      // Load input image and convert to base64
-      const { data: imageBase64, mimeType: imageMimeType } = await this.loadImageAsBase64(image);
+      // Load input image and convert to base64 (reuse shared util)
+      const { data: imageBase64, mimeType: imageMimeType } = await ResourceDownloader.downloadImageToBase64WithMimeType(
+        image,
+        {
+          timeout: 30000,
+          maxSize: 10 * 1024 * 1024,
+          filename: `laozhang_image_${Date.now()}.png`,
+        },
+      );
 
       // Build API endpoint
       const endpoint = `/v1beta/models/${model}:generateContent`;

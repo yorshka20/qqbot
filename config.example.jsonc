@@ -59,7 +59,10 @@
     "owner": "123123",
     // Bot admins: user IDs that have admin permission level
     // These users can adjust bot behavior and trigger special commands
-    "admins": ["123123", "123123"]
+    "admins": [
+      "123123",
+      "123123"
+    ]
   },
   // Static file server configuration (optional)
   "staticServer": {
@@ -70,8 +73,21 @@
   // File read service configuration (optional)
   "fileReadService": {
     "root": "./",
-    "filterPaths": ["node_modules", "output", "data", "logs", "config.json"],
-    "filterExtensions": ["jpg", "jpeg", "png", "gif", "bmp", "webp"]
+    "filterPaths": [
+      "node_modules",
+      "output",
+      "data",
+      "logs",
+      "config.json"
+    ],
+    "filterExtensions": [
+      "jpg",
+      "jpeg",
+      "png",
+      "gif",
+      "bmp",
+      "webp"
+    ]
   },
   // Plugin configuration
   // Plugins must be placed in src/plugins/ directory
@@ -129,20 +145,31 @@
               // Command name to execute
               "command": "cmd",
               // Command arguments
-              "args": ["enable", "t2i"]
+              "args": [
+                "enable",
+                "t2i"
+              ]
             },
             {
               "groupId": "123456789",
               "schedule": "0 22 * * *",
               "command": "cmd",
-              "args": ["disable", "t2i"]
+              "args": [
+                "disable",
+                "t2i"
+              ]
             },
             // Example: enable multiple commands at once
             {
               "groupId": "123456789",
               "schedule": "0 8 * * *",
               "command": "cmd",
-              "args": ["enable", "t2i", "tts", "help"]
+              "args": [
+                "enable",
+                "t2i",
+                "tts",
+                "help"
+              ]
             }
           ]
         }
@@ -185,7 +212,9 @@
         "name": "memory",
         "enabled": false,
         "config": {
-          "groups": ["123456789"],
+          "groups": [
+            "123456789"
+          ],
           "debounceMs": 120000,
           "extractProvider": "ollama"
         }
@@ -195,7 +224,9 @@
         "name": "memoryTrigger",
         "enabled": false,
         "config": {
-          "groups": ["123456789"],
+          "groups": [
+            "123456789"
+          ],
           "triggerName": "cygnus",
           "triggerKeywords": [],
           "coldStartOnTrigger": true,
@@ -283,14 +314,23 @@
         "defaultHeight": 1216,
         "defaultGuidanceScale": 5.0
       }
-      // Gemini provider for text-to-image generation
-      // Uses Google Gemini API (nano banana) for image generation
+      // Gemini provider (LLM, vision, text2img, img2img). Config by capability, same pattern as laozhang.
       // "gemini": {
       //   "type": "gemini",
       //   "apiKey": "your_gemini_api_key_here",
-      //   "model": "gemini-2.5-flash-image", // Default: "gemini-2.5-flash-image"
-      //   "defaultWidth": 1024, // Default: 1024
-      //   "defaultHeight": 1024, // Default: 1024
+      //   "llm": {
+      //     "model": "gemini-2.0-flash",
+      //     "temperature": 0.7,
+      //     "maxTokens": 2000,
+      //     "enableContext": true,
+      //     "contextMessageCount": 10
+      //   },
+      //   "vision": { "model": "gemini-2.0-flash" },
+      //   "text2img": {
+      //     "model": "gemini-2.5-flash-image",
+      //     "defaultWidth": 1024,
+      //     "defaultHeight": 1024
+      //   }
       // },
       // Doubao provider for LLM and Vision
       // Uses Doubao API (compatible with OpenAI SDK)

@@ -28,6 +28,7 @@ export class ProviderRouter {
     gpt: 'openai',
     openai: 'openai',
     gemini: 'gemini',
+    哈基米: 'gemini',
     deepseek: 'deepseek',
     doubao: 'doubao',
     豆包: 'doubao',

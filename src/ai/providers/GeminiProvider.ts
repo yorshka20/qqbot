@@ -6,8 +6,19 @@ import { join } from 'path';
 import type { GeminiProviderConfig } from '@/core/config/types/ai';
 import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
+import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
+import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';
-import type { CapabilityType, ProviderImageGenerationResponse, Text2ImageOptions } from '../capabilities/types';
+import type {
+  CapabilityType,
+  Image2ImageOptions,
+  ProviderImageGenerationResponse,
+  Text2ImageOptions,
+  VisionImage,
+} from '../capabilities/types';
+import type { VisionCapability } from '../capabilities/VisionCapability';
+import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler, ToolDefinition } from '../types';
+import { contentToPlainString } from '../utils/contentUtils';
 import {
   handleFinishReason,
   handleGeneralError,
@@ -15,12 +26,17 @@ import {
   handleNoCandidates,
   handleNoImageData,
 } from '../utils/geminiErrorHandler';
+import { ResourceDownloader } from '../utils/ResourceDownloader';
 
 /**
  * Gemini Provider implementation
- * Text-to-image generation using Google Gemini API (nano banana)
+ * LLM, vision, text2img and img2img via Google Gemini API.
+ * Capabilities are enabled by config: llm, vision, text2img each optional and independent.
  */
-export class GeminiProvider extends AIProvider implements Text2ImageCapability {
+export class GeminiProvider
+  extends AIProvider
+  implements Text2ImageCapability, Image2ImageCapability, LLMCapability, VisionCapability
+{
   readonly name = 'gemini';
   private config: GeminiProviderConfig;
   private _capabilities: CapabilityType[];
@@ -28,29 +44,49 @@ export class GeminiProvider extends AIProvider implements Text2ImageCapability {
 
   private outputPath = join(process.cwd(), 'output', 'gemini');
 
-  // Default values
-  private static readonly DEFAULT_MODEL = 'gemini-2.5-flash-image';
+  // Default values for text2img when not overridden by config
+  private static readonly DEFAULT_T2I_MODEL = 'gemini-2.5-flash-image';
   private static readonly DEFAULT_WIDTH = 1024;
   private static readonly DEFAULT_HEIGHT = 1024;
 
   constructor(config: GeminiProviderConfig) {
     super();
-    this.config = {
-      model: GeminiProvider.DEFAULT_MODEL,
-      defaultWidth: GeminiProvider.DEFAULT_WIDTH,
-      defaultHeight: GeminiProvider.DEFAULT_HEIGHT,
-      ...config,
-    };
+    this.config = config;
 
-    this._capabilities = ['text2img'];
+    // Build capabilities from structured config: llm, vision, text2img (+ img2img)
+    this._capabilities = [];
+    if (config.llm) {
+      this._capabilities.push('llm');
+      this.setContextConfig(config.llm.enableContext ?? false, config.llm.contextMessageCount ?? 10);
+    }
+    if (config.vision) {
+      this._capabilities.push('vision');
+    }
+    if (config.text2img) {
+      this._capabilities.push('text2img', 'img2img');
+    }
 
     // Initialize GoogleGenAI client
-    // API key can be passed via config or GEMINI_API_KEY environment variable
     this.client = new GoogleGenAI({
       apiKey: this.config.apiKey,
     });
 
     logger.info('[GeminiProvider] Initialized');
+  }
+
+  /** Text2img/img2img model from config.text2img */
+  private getText2ImgModel(): string {
+    return this.config.text2img?.model ?? GeminiProvider.DEFAULT_T2I_MODEL;
+  }
+
+  /** Default width from config.text2img */
+  private getDefaultWidth(): number {
+    return this.config.text2img?.defaultWidth ?? GeminiProvider.DEFAULT_WIDTH;
+  }
+
+  /** Default height from config.text2img */
+  private getDefaultHeight(): number {
+    return this.config.text2img?.defaultHeight ?? GeminiProvider.DEFAULT_HEIGHT;
   }
 
   isAvailable(): boolean {
@@ -66,9 +102,9 @@ export class GeminiProvider extends AIProvider implements Text2ImageCapability {
 
   getConfig(): Record<string, unknown> {
     return {
-      model: this.config.model,
-      defaultWidth: this.config.defaultWidth,
-      defaultHeight: this.config.defaultHeight,
+      llm: this.config.llm ?? undefined,
+      vision: this.config.vision ?? undefined,
+      text2img: this.config.text2img ?? undefined,
     };
   }
 
@@ -86,12 +122,10 @@ export class GeminiProvider extends AIProvider implements Text2ImageCapability {
       const outputDir = this.outputPath;
       await mkdir(outputDir, { recursive: true });
 
-      // Generate filename using timestamp and original filename
       const timestamp = Date.now();
       const filename = `${timestamp}_${originalFilename}`;
       const filepath = join(outputDir, filename);
 
-      // Convert to buffer if needed
       let imageBuffer: Buffer;
       if (imageData instanceof Buffer) {
         imageBuffer = imageData;
@@ -102,9 +136,7 @@ export class GeminiProvider extends AIProvider implements Text2ImageCapability {
       }
       await writeFile(filepath, imageBuffer);
 
-      // Build relative path: providerName/filename
       const relativePath = `gemini/${filename}`;
-
       logger.info(`[GeminiProvider] Saved image to: ${filepath} (${imageBuffer.length} bytes)`);
       return relativePath;
     } catch (error) {
@@ -116,19 +148,239 @@ export class GeminiProvider extends AIProvider implements Text2ImageCapability {
   }
 
   /**
-   * Generate image from text prompt
+   * Map ToolDefinition[] to Gemini API tools format (functionDeclarations).
    */
+  private static mapToolsToGemini(
+    tools: ToolDefinition[],
+  ): Array<{
+    functionDeclarations: Array<{
+      name?: string;
+      description?: string;
+      parameters?: unknown;
+      parametersJsonSchema?: unknown;
+    }>;
+  }> {
+    if (!tools.length) {
+      return [];
+    }
+    const functionDeclarations = tools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      parametersJsonSchema: t.parameters,
+    }));
+    return [{ functionDeclarations }];
+  }
+
+  /**
+   * Call generateContent for text response (LLM or vision). Optional tools for function calling.
+   * Returns text, usage, and if the model chose to call a function: functionCall + toolCallId.
+   */
+  private async generateContentText(
+    model: string,
+    parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>,
+    options?: {
+      temperature?: number;
+      maxTokens?: number;
+      tools?: ToolDefinition[];
+    },
+  ): Promise<{
+    text: string;
+    usage?: AIGenerateResponse['usage'];
+    functionCall?: AIGenerateResponse['functionCall'];
+    toolCallId?: string;
+  }> {
+    const config: Record<string, unknown> = {
+      temperature: options?.temperature ?? 0.7,
+      maxOutputTokens: options?.maxTokens ?? 2000,
+    };
+    if (options?.tools?.length) {
+      config.tools = GeminiProvider.mapToolsToGemini(options.tools);
+      config.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
+    }
+
+    const response = await this.client.models.generateContent({
+      model,
+      contents: parts,
+      config,
+    });
+
+    const noCandidatesError = handleNoCandidates(response, '');
+    if (noCandidatesError) {
+      throw new Error(noCandidatesError.text || 'No candidates in response');
+    }
+
+    const candidate = response.candidates?.[0];
+    if (!candidate?.content?.parts) {
+      throw new Error('Invalid response structure');
+    }
+
+    const text = (response as { text?: string }).text ?? candidate.content.parts.map((p) => p.text ?? '').join('');
+    const out: {
+      text: string;
+      usage?: AIGenerateResponse['usage'];
+      functionCall?: AIGenerateResponse['functionCall'];
+      toolCallId?: string;
+    } = {
+      text: text ?? '',
+      usage: undefined,
+    };
+
+    const functionCalls = (
+      response as { functionCalls?: Array<{ id?: string; name?: string; args?: Record<string, unknown> }> }
+    ).functionCalls;
+    if (functionCalls?.length) {
+      const fc = functionCalls[0];
+      if (fc?.name) {
+        let argsStr: string;
+        if (typeof fc.args === 'object' && fc.args !== null) {
+          argsStr = JSON.stringify(fc.args);
+        } else if (typeof fc.args === 'string') {
+          argsStr = fc.args;
+        } else {
+          argsStr = '{}';
+        }
+        out.functionCall = { name: fc.name, arguments: argsStr };
+        out.toolCallId = fc.id;
+      }
+    }
+
+    return out;
+  }
+
+  /**
+   * Convert VisionImage[] to inlineData parts for vision requests
+   */
+  private async visionImagesToInlineParts(
+    images: VisionImage[],
+  ): Promise<Array<{ inlineData: { mimeType: string; data: string } }>> {
+    const result: Array<{ inlineData: { mimeType: string; data: string } }> = [];
+    for (const img of images) {
+      let resource: string;
+      if (img.base64) {
+        resource = `data:${img.mimeType || 'image/jpeg'};base64,${img.base64}`;
+      } else if (img.file) {
+        resource = img.file.startsWith('file://') ? img.file : img.file;
+      } else if (img.url) {
+        resource = img.url;
+      } else {
+        continue;
+      }
+      const { data, mimeType } = await ResourceDownloader.downloadImageToBase64WithMimeType(resource, {
+        timeout: 30000,
+        maxSize: 10 * 1024 * 1024,
+        filename: `gemini_image_${Date.now()}.png`,
+      });
+      result.push({ inlineData: { mimeType, data } });
+    }
+    return result;
+  }
+
+  // ---------- LLMCapability ----------
+
+  async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
+    if (!this.config.llm) {
+      throw new Error('GeminiProvider: llm not configured');
+    }
+    const model = options?.model ?? this.config.llm.model;
+    const temperature = options?.temperature ?? this.config.llm.temperature ?? 0.7;
+    const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens ?? 2000;
+
+    const parts: Array<{ text: string }> = [];
+    if (options?.messages?.length) {
+      for (const msg of options.messages) {
+        parts.push({ text: `${msg.role}: ${contentToPlainString(msg.content)}\n\n` });
+      }
+    } else {
+      const history = await this.loadHistory(options);
+      if (options?.systemPrompt) {
+        parts.push({ text: `system: ${options.systemPrompt}\n\n` });
+      }
+      for (const msg of history) {
+        parts.push({ text: `${msg.role}: ${msg.content}\n\n` });
+      }
+    }
+    parts.push({ text: prompt });
+    const fullPrompt = parts.map((p) => p.text).join('');
+
+    const result = await this.generateContentText(model, [{ text: fullPrompt }], {
+      temperature,
+      maxTokens,
+      tools: options?.tools,
+    });
+    return {
+      text: result.text,
+      usage: result.usage,
+      functionCall: result.functionCall,
+      toolCallId: result.toolCallId,
+    };
+  }
+
+  async generateStream(
+    prompt: string,
+    handler: StreamingHandler,
+    options?: AIGenerateOptions,
+  ): Promise<AIGenerateResponse> {
+    const result = await this.generate(prompt, options);
+    handler(result.text);
+    return result;
+  }
+
+  // ---------- VisionCapability ----------
+
+  async generateWithVision(
+    prompt: string,
+    images: VisionImage[],
+    options?: AIGenerateOptions,
+  ): Promise<AIGenerateResponse> {
+    if (!this.config.vision) {
+      throw new Error('GeminiProvider: vision not configured');
+    }
+    const model = this.config.vision.model;
+    const imageParts = await this.visionImagesToInlineParts(images);
+    const contentsParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
+    if (options?.systemPrompt) {
+      contentsParts.push({ text: `system: ${options.systemPrompt}\n\n` });
+    }
+    contentsParts.push({ text: prompt });
+    contentsParts.push(...imageParts);
+
+    return this.generateContentText(model, contentsParts, {
+      temperature: options?.temperature ?? 0.7,
+      maxTokens: options?.maxTokens ?? 2000,
+    });
+  }
+
+  async generateStreamWithVision(
+    prompt: string,
+    images: VisionImage[],
+    handler: StreamingHandler,
+    options?: AIGenerateOptions,
+  ): Promise<AIGenerateResponse> {
+    const result = await this.generateWithVision(prompt, images, options);
+    handler(result.text);
+    return result;
+  }
+
+  async explainImages(images: VisionImage[], prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
+    return this.generateWithVision(prompt, images, options);
+  }
+
+  // ---------- Text2ImageCapability ----------
+
   async generateImage(prompt: string, options?: Text2ImageOptions): Promise<ProviderImageGenerationResponse> {
     if (!this.isAvailable()) {
       throw new Error('GeminiProvider is not available: apiKey not configured');
+    }
+    if (!this.config.text2img) {
+      throw new Error('GeminiProvider: text2img not configured');
     }
 
     try {
       logger.info(`[GeminiProvider] Starting image generation for prompt: ${prompt}`);
 
-      const model = this.config.model || GeminiProvider.DEFAULT_MODEL;
-      const width = options?.width || this.config.defaultWidth;
-      const height = options?.height || this.config.defaultHeight;
+      const model = options?.model ?? this.getText2ImgModel();
+      const width = options?.width ?? this.getDefaultWidth();
+      const height = options?.height ?? this.getDefaultHeight();
 
       logger.info(`[GeminiProvider] Parameters: model=${model}, size=${width}x${height}`);
 
@@ -139,34 +391,33 @@ export class GeminiProvider extends AIProvider implements Text2ImageCapability {
 
       logger.debug(`[GeminiProvider] Response received`, response);
 
-      // Response structure: candidates[0].content.parts[] with inlineData
-      // Check for no candidates error
       const noCandidatesError = handleNoCandidates(response, prompt);
       if (noCandidatesError) {
         return noCandidatesError;
       }
 
-      // At this point, response.candidates is guaranteed to exist and have at least one element
-      const candidate = response.candidates![0]!;
-
-      // Check finish reason for errors
+      const candidate = response.candidates?.[0];
+      if (!candidate) {
+        return {
+          images: [],
+          text: '',
+          metadata: { prompt, numImages: 0 },
+          error: { code: 'no_candidates', message: 'No candidates in response' },
+        };
+      }
       const finishReasonError = handleFinishReason(candidate, prompt);
       if (finishReasonError) {
         return finishReasonError;
       }
 
-      // Check for invalid content structure
       const invalidContentError = handleInvalidContent(candidate, prompt);
       if (invalidContentError) {
         return invalidContentError;
       }
 
-      // At this point, candidate.content and candidate.content.parts are guaranteed to exist
-      const parts = candidate.content!.parts!;
-
-      // Find image part in response
+      const parts = candidate.content?.parts ?? [];
       let imageData: string | null = null;
-      let text: string = '';
+      let text = '';
       let mimeType = 'image/png';
 
       for (const part of parts) {
@@ -183,25 +434,19 @@ export class GeminiProvider extends AIProvider implements Text2ImageCapability {
       }
 
       if (!imageData) {
-        // No image data found - check if there's a text explanation
         return handleNoImageData(text, prompt);
       }
 
       logger.info(`[GeminiProvider] Extracted image data (${imageData.length} chars, mimeType: ${mimeType})`);
 
-      // Determine file extension from mime type
       const extension = mimeType === 'image/jpeg' || mimeType === 'image/jpg' ? '.jpg' : '.png';
       const originalFilename = `gemini_image${extension}`;
-
-      // Save image to local file
       const relativePath = await this.saveImageToFile(imageData, originalFilename);
 
-      // Build response
       const imageDataResponse: { relativePath?: string; base64?: string } = {};
       if (relativePath) {
         imageDataResponse.relativePath = relativePath;
       } else {
-        // Fallback to base64 if file save failed
         imageDataResponse.base64 = imageData;
         logger.warn('[GeminiProvider] File save failed, using base64 fallback');
       }
@@ -219,7 +464,120 @@ export class GeminiProvider extends AIProvider implements Text2ImageCapability {
         },
       };
     } catch (error) {
-      // Return error message in text field instead of throwing
+      return handleGeneralError(error, prompt);
+    }
+  }
+
+  // ---------- Image2ImageCapability ----------
+
+  async generateImageFromImage(
+    image: string,
+    prompt: string,
+    options?: Image2ImageOptions,
+  ): Promise<ProviderImageGenerationResponse> {
+    if (!this.isAvailable()) {
+      throw new Error('GeminiProvider is not available: apiKey not configured');
+    }
+    if (!this.config.text2img) {
+      throw new Error('GeminiProvider: text2img not configured (required for img2img)');
+    }
+
+    try {
+      logger.info(`[GeminiProvider] Starting image-to-image transformation for prompt: ${prompt}`);
+
+      const model = options?.model ?? this.getText2ImgModel();
+      const width = options?.width ?? this.getDefaultWidth();
+      const height = options?.height ?? this.getDefaultHeight();
+
+      const { data: imageBase64, mimeType: imageMimeType } = await ResourceDownloader.downloadImageToBase64WithMimeType(
+        image,
+        {
+          timeout: 30000,
+          maxSize: 10 * 1024 * 1024,
+          filename: `gemini_image_${Date.now()}.png`,
+        },
+      );
+
+      const response = await this.client.models.generateContent({
+        model,
+        contents: [{ text: prompt }, { inlineData: { mimeType: imageMimeType, data: imageBase64 } }],
+      });
+
+      const noCandidatesError = handleNoCandidates(response, prompt);
+      if (noCandidatesError) {
+        return noCandidatesError;
+      }
+
+      const candidate = response.candidates?.[0];
+      if (!candidate) {
+        return {
+          images: [],
+          text: '',
+          metadata: { prompt, numImages: 0 },
+          error: { code: 'no_candidates', message: 'No candidates in response' },
+        };
+      }
+
+      const finishReasonError = handleFinishReason(candidate, prompt);
+      if (finishReasonError) {
+        return finishReasonError;
+      }
+
+      const invalidContentError = handleInvalidContent(candidate, prompt);
+      if (invalidContentError) {
+        return invalidContentError;
+      }
+
+      const parts = candidate.content?.parts ?? [];
+      let imageData: string | null = null;
+      let text = '';
+      let mimeType = 'image/png';
+
+      for (const part of parts) {
+        if (part.text) {
+          text = part.text;
+        } else if (part.inlineData) {
+          const data = part.inlineData.data;
+          if (data) {
+            imageData = data;
+            mimeType = part.inlineData.mimeType || 'image/png';
+            break;
+          }
+        }
+      }
+
+      if (!imageData) {
+        return handleNoImageData(text, prompt);
+      }
+
+      logger.info(`[GeminiProvider] Extracted image data (${imageData.length} chars, mimeType: ${mimeType})`);
+
+      const extension = mimeType === 'image/jpeg' || mimeType === 'image/jpg' ? '.jpg' : '.png';
+      const originalFilename = `gemini_img2img${extension}`;
+      const relativePath = await this.saveImageToFile(imageData, originalFilename);
+
+      const imageDataResponse: { relativePath?: string; base64?: string } = {};
+      if (relativePath) {
+        imageDataResponse.relativePath = relativePath;
+      } else {
+        imageDataResponse.base64 = imageData;
+        logger.warn('[GeminiProvider] File save failed, using base64 fallback');
+      }
+
+      return {
+        images: [imageDataResponse],
+        text,
+        metadata: {
+          prompt,
+          numImages: 1,
+          width,
+          height,
+          model,
+          mimeType,
+          inputImage: image.substring(0, 100),
+        },
+      };
+    } catch (error) {
       return handleGeneralError(error, prompt);
     }
   }
