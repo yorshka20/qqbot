@@ -1,11 +1,10 @@
-import { join } from 'node:path';
 import { inject, injectable } from 'tsyringe';
 import type { AIService } from '@/ai';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { InfoCardData } from '@/services/card';
 import type { FileReadService } from '@/services/file';
-import { formatBytes, resolveGroupDirs, runDeduplication } from '@/utils/fileDedup';
+import { formatBytes, runDeduplication } from '@/utils/fileDedup';
 import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
@@ -42,14 +41,8 @@ export class GroupDedupCommandHandler implements CommandHandler {
     }
 
     logger.info(`[GroupDedupCommandHandler] Starting manual dedup | groupId=${groupId}`);
-    const dirs = resolveGroupDirs(join(process.cwd(), DOWNLOAD_ROOT), groupId);
-    if (dirs.length === 0) {
-      return {
-        success: true,
-        segments: new MessageBuilder().text(`未找到任何群下载目录（${DOWNLOAD_ROOT}）。`).build(),
-      };
-    }
-    const result = await runDeduplication(dirs, this.fileService, false);
+    const targetDir = `${DOWNLOAD_ROOT}/${groupId}`;
+    const result = await runDeduplication([targetDir], this.fileService, false);
 
     const lines: string[] = [
       `群 ${groupId} 去重完成：`,
@@ -67,13 +60,11 @@ export class GroupDedupCommandHandler implements CommandHandler {
       lines.push(`- 已删除文件：\n${preview}${more}`);
     }
 
-    if (result.errors.length > 0) {
-      const missingDirError = result.errors.find((item) => item.file.endsWith(`/${groupId}`) && item.error.includes('不存在'));
-      if (missingDirError) {
-        lines.push(`- 目录状态：未找到 ${DOWNLOAD_ROOT}/${groupId}，请先确认该群已有下载文件`);
-      } else {
-        lines.push(`- 错误：${result.errors.length} 个（详见日志）`);
-      }
+    const hasMissingDirError = result.errors.some((item) => item.error.includes('路径不存在'));
+    if (hasMissingDirError && result.totalFiles === 0 && result.duplicatesFound === 0) {
+      lines.push(`- 目录状态：未找到 ${targetDir}，该群可能还没有下载文件`);
+    } else if (result.errors.length > 0) {
+      lines.push(`- 错误：${result.errors.length} 个（详见日志）`);
     }
 
     const outputText = lines.join('\n');
