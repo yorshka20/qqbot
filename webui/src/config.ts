@@ -7,24 +7,26 @@
  * Or in .env:
  *   VITE_STATIC_SERVER_BASE=http://192.168.1.100:3456
  *
- * When unset or empty, defaults to http://localhost:8888 (same as dev proxy target).
+ * When unset or empty, uses relative paths (same origin). So when you open the webui at
+ * http://192.168.50.209:5173, API requests go to http://192.168.50.209:5173/api/... and
+ * the dev server proxy forwards them to the backend (e.g. localhost:8888 on the server).
  */
 
-const DEFAULT_STATIC_SERVER_BASE = 'http://localhost:8888';
+const base = (import.meta.env.VITE_STATIC_SERVER_BASE as string | undefined)?.trim() || '';
 
-const base = (import.meta.env.VITE_STATIC_SERVER_BASE as string | undefined)?.trim() || DEFAULT_STATIC_SERVER_BASE;
-
-/** Base URL for the static file server (no trailing slash). Defaults to http://localhost:8888. */
+/** Base URL for the static file server (no trailing slash). Empty string means same origin (relative paths). */
 export function getStaticServerBase(): string {
-  return base.replace(/\/$/, '');
+  return base ? base.replace(/\/$/, '') : '';
 }
 
-/** Base URL for file API requests: getStaticServerBase() + '/api/files'. */
+/** Base URL for file API requests: same-origin '/api/files' when no base set, else getStaticServerBase() + '/api/files'. */
 export function getFileApiBase(): string {
-  return `${getStaticServerBase()}/api/files`;
+  const serverBase = getStaticServerBase();
+  return serverBase ? `${serverBase}/api/files` : '/api/files';
 }
 
-/** Base URL for output (static) resources: getStaticServerBase() + '/output'. */
+/** Base URL for output (static) resources: same-origin '/output' when no base set, else getStaticServerBase() + '/output'. */
 export function getOutputBase(): string {
-  return `${getStaticServerBase()}/output`;
+  const serverBase = getStaticServerBase();
+  return serverBase ? `${serverBase}/output` : '/output';
 }
