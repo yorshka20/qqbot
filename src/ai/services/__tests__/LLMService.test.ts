@@ -4,8 +4,8 @@ import {
   createAIManagerWithProvider,
   getIntegrationProvider,
   INTEGRATION_TEST_TIMEOUT_MS,
-} from './integrationTestHelpers';
-import { LLMService } from './LLMService';
+} from '../integrationTestHelpers';
+import { LLMService } from '../LLMService';
 
 function createMockAIManager(): AIManager {
   return {

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 import type { AIService } from '@/ai/AIService';
+import { TaskSystem } from '@/conversation/systems/TaskSystem';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import type { TaskManager } from '@/task/TaskManager';
 import type { Task, TaskResult, TaskType } from '@/task/types';
-import { TaskSystem } from './TaskSystem';
 
 function makeContext(opts: { message: string; hasReply?: boolean; hasCommand?: boolean }): HookContext {
   const metadata = new HookMetadataMap();

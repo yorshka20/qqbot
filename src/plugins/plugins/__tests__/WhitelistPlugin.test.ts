@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
-import { WhitelistPlugin } from './WhitelistPlugin';
+import { WhitelistPlugin } from '../WhitelistPlugin';
 
 function makeHookContext(opts: {
   messageText: string;

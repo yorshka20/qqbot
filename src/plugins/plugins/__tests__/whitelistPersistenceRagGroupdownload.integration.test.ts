@@ -11,22 +11,22 @@ import 'reflect-metadata';
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { PromptManager } from '@/ai/prompt/PromptManager';
 import { CommandBuilder } from '@/command/CommandBuilder';
-import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
-import { SystemPriority, SystemStage } from '@/core/system';
-import type { System } from '@/core/system';
-import { HookMetadataMap } from '@/hooks/metadata';
-import { getHookPriority } from '@/hooks/HookPriority';
-import type { HookContext } from '@/hooks/types';
-import { getPluginHooks } from '@/plugins/decorators';
-import type { NormalizedMessageEvent } from '@/events/types';
 import { CommandRouter } from '@/conversation/CommandRouter';
 import { Lifecycle } from '@/conversation/Lifecycle';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
+import type { System } from '@/core/system';
+import { SystemPriority, SystemStage } from '@/core/system';
+import type { NormalizedMessageEvent } from '@/events/types';
 import { HookManager } from '@/hooks/HookManager';
-import { MessageTriggerPlugin } from './MessageTriggerPlugin';
-import { ProactiveConversationPlugin } from './ProactiveConversationPlugin';
-import { WhitelistPlugin } from './WhitelistPlugin';
-import { GroupDownloadPlugin } from './GroupDownloadPlugin';
+import { getHookPriority } from '@/hooks/HookPriority';
+import { HookMetadataMap } from '@/hooks/metadata';
+import type { HookContext } from '@/hooks/types';
+import { getPluginHooks } from '@/plugins/decorators';
+import { GroupDownloadPlugin } from '../GroupDownloadPlugin';
+import { MessageTriggerPlugin } from '../MessageTriggerPlugin';
+import { ProactiveConversationPlugin } from '../ProactiveConversationPlugin';
+import { WhitelistPlugin } from '../WhitelistPlugin';
 
 // ---- Spy systems: only record that COMPLETE stage ran (trigger); no real DB/RAG write ----
 
@@ -108,7 +108,11 @@ function registerPluginHooks(
       continue;
     }
     const priority = getHookPriority(hookMeta.hookName, hookMeta.priority, hookMeta.order);
-    hookManager.addHandler(hookMeta.hookName, (handler as (ctx: HookContext) => boolean | Promise<boolean>).bind(plugin), priority);
+    hookManager.addHandler(
+      hookMeta.hookName,
+      (handler as (ctx: HookContext) => boolean | Promise<boolean>).bind(plugin),
+      priority,
+    );
   }
 }
 
@@ -159,7 +163,10 @@ describe('Whitelist functional: non-whitelist skipped but DB+RAG run', () => {
       { allowOverride: true },
     );
     const trigger = new MessageTriggerPlugin({ name: 'messageTrigger', version: 'test', description: 'test' });
-    trigger.loadConfig({ api: {} as never, events: {} as never }, { name: 'messageTrigger', enabled: true, config: {} });
+    trigger.loadConfig(
+      { api: {} as never, events: {} as never },
+      { name: 'messageTrigger', enabled: true, config: {} },
+    );
     await trigger.onInit?.();
     registerPluginHooks(hookManager, trigger, MessageTriggerPlugin);
   }
@@ -226,11 +233,18 @@ describe('Whitelist functional: whitelist group can trigger proactive, messageTr
     );
 
     const trigger = new MessageTriggerPlugin({ name: 'messageTrigger', version: 'test', description: 'test' });
-    trigger.loadConfig({ api: {} as never, events: {} as never }, { name: 'messageTrigger', enabled: true, config: { wakeWords: ['wakebot'] } });
+    trigger.loadConfig(
+      { api: {} as never, events: {} as never },
+      { name: 'messageTrigger', enabled: true, config: { wakeWords: ['wakebot'] } },
+    );
     await trigger.onInit?.();
     registerPluginHooks(hookManager, trigger, MessageTriggerPlugin);
 
-    const proactive = new ProactiveConversationPlugin({ name: 'proactiveConversation', version: 'test', description: 'test' });
+    const proactive = new ProactiveConversationPlugin({
+      name: 'proactiveConversation',
+      version: 'test',
+      description: 'test',
+    });
     proactive.loadConfig(
       { api: {} as never, events: {} as never },
       { name: 'proactiveConversation', enabled: true, config: { groups: [{ groupId: '1', preferenceKey: 'acg' }] } },

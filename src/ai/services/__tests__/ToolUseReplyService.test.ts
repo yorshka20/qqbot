@@ -10,9 +10,9 @@ import {
   createAIManagerWithProvider,
   getIntegrationProvider,
   INTEGRATION_TOOL_USE_TIMEOUT_MS,
-} from './integrationTestHelpers';
-import { LLMService } from './LLMService';
-import { ToolUseReplyService } from './ToolUseReplyService';
+} from '../integrationTestHelpers';
+import { LLMService } from '../LLMService';
+import { ToolUseReplyService } from '../ToolUseReplyService';
 
 function makeHookContext(messageText: string): HookContext {
   const metadata = new HookMetadataMap();

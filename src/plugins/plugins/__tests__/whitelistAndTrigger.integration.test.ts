@@ -14,9 +14,9 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
-import { MessageTriggerPlugin } from './MessageTriggerPlugin';
-import { ProactiveConversationPlugin } from './ProactiveConversationPlugin';
-import { WhitelistPlugin } from './WhitelistPlugin';
+import { MessageTriggerPlugin } from '../MessageTriggerPlugin';
+import { ProactiveConversationPlugin } from '../ProactiveConversationPlugin';
+import { WhitelistPlugin } from '../WhitelistPlugin';
 
 function makeHookContext(opts: {
   messageText: string;

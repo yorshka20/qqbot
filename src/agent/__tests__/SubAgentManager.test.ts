@@ -11,8 +11,8 @@ import { ProviderFactory } from '@/ai/ProviderFactory';
 import { LLMService } from '@/ai/services/LLMService';
 import type { FunctionCall, ToolDefinition } from '@/ai/types';
 import { Config } from '@/core/config';
-import { SubAgentManager } from './SubAgentManager';
-import { SubAgentType } from './types';
+import { SubAgentManager } from '../SubAgentManager';
+import { SubAgentType } from '../types';
 
 // ---------------------------------------------------------------------------
 // Unit tests (no real LLM; mock executor)

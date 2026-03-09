@@ -1,12 +1,12 @@
 import 'reflect-metadata';
 import { afterEach, describe, expect, it, mock } from 'bun:test';
-import { CommandBuilder } from '@/command/CommandBuilder';
 import { PromptManager } from '@/ai/prompt/PromptManager';
+import { CommandBuilder } from '@/command/CommandBuilder';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
-import { ProactiveConversationPlugin } from './ProactiveConversationPlugin';
+import { ProactiveConversationPlugin } from '../ProactiveConversationPlugin';
 
 interface ProactiveContextOverrides {
   whitelistDenied?: boolean;
@@ -45,9 +45,7 @@ function makeGroupHookContext(messageText: string, overrides?: ProactiveContextO
   if (overrides?.whitelistGroup !== undefined) {
     metadata.set('whitelistGroup', overrides.whitelistGroup);
   }
-  const command = overrides?.command
-    ? CommandBuilder.build(overrides.command.name, overrides.command.args)
-    : undefined;
+  const command = overrides?.command ? CommandBuilder.build(overrides.command.name, overrides.command.args) : undefined;
   return {
     command,
     message: {
@@ -338,7 +336,10 @@ describe('ProactiveConversationPlugin skip and schedule coverage', () => {
     );
     container.registerInstance(
       DITokens.THREAD_SERVICE,
-      { getActiveThread: (gid: string) => (gid === '1' ? { triggerUserId: '456' } : null), getCurrentThreadId: () => '' },
+      {
+        getActiveThread: (gid: string) => (gid === '1' ? { triggerUserId: '456' } : null),
+        getCurrentThreadId: () => '',
+      },
       { allowOverride: true },
     );
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });

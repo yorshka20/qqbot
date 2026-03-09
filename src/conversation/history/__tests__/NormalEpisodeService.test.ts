@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { NormalEpisodeService } from './NormalEpisodeService';
+import { NormalEpisodeService } from '@/conversation/history/NormalEpisodeService';
 
 describe('NormalEpisodeService', () => {
   it('keeps episode within timeout and rotates after timeout', () => {

@@ -8,10 +8,10 @@ import { TaskInitializer } from '@/task/TaskInitializer';
 import type { TaskManager } from '@/task/TaskManager';
 import { TaskManager as TaskManagerImpl } from '@/task/TaskManager';
 import type { Task, TaskExecutionContext, TaskResult } from '@/task/types';
-import type { SubAgentManager } from './SubAgentManager';
-import { ToolRunner } from './ToolRunner';
-import type { SubAgentSession } from './types';
-import { SubAgentType } from './types';
+import type { SubAgentManager } from '../SubAgentManager';
+import { ToolRunner } from '../ToolRunner';
+import type { SubAgentSession } from '../types';
+import { SubAgentType } from '../types';
 
 function createMockSession(overrides?: Partial<SubAgentSession>): SubAgentSession {
   return {

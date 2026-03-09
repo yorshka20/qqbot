@@ -42,6 +42,7 @@ export class GroupDedupCommandHandler implements CommandHandler {
 
     logger.info(`[GroupDedupCommandHandler] Starting manual dedup | groupId=${groupId}`);
     const targetDir = `${DOWNLOAD_ROOT}/${groupId}`;
+    const resolvedTarget = this.fileService.resolvePath(targetDir);
     const result = await runDeduplication([targetDir], this.fileService, false);
 
     const lines: string[] = [
@@ -63,6 +64,11 @@ export class GroupDedupCommandHandler implements CommandHandler {
     const hasMissingDirError = result.errors.some((item) => item.error.includes('路径不存在'));
     if (hasMissingDirError && result.totalFiles === 0 && result.duplicatesFound === 0) {
       lines.push(`- 目录状态：未找到 ${targetDir}，该群可能还没有下载文件`);
+      if (resolvedTarget.resolved) {
+        lines.push(`- 实际解析路径：${resolvedTarget.resolved}`);
+      }
+    } else if (resolvedTarget.error) {
+      lines.push(`- 路径检查：${targetDir}（${resolvedTarget.error}）`);
     } else if (result.errors.length > 0) {
       lines.push(`- 错误：${result.errors.length} 个（详见日志）`);
     }
