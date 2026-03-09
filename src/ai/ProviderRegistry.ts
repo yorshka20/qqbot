@@ -93,4 +93,12 @@ export class ProviderRegistry {
     const providers = this.getProvidersForCapability(capability);
     return providers.length > 0;
   }
+
+  /**
+   * Get all capability types that have at least one registered provider, sorted alphabetically.
+   */
+  getRegisteredCapabilities(): CapabilityType[] {
+    const keys = Array.from(this.capabilityProviders.keys());
+    return keys.sort();
+  }
 }

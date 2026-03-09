@@ -84,7 +84,11 @@ type AnthropicToolResultBlock = {
   content: string | AnthropicTextBlock[];
   is_error?: boolean;
 };
-type AnthropicContentBlock = AnthropicTextBlock | AnthropicImageBlock | AnthropicToolUseBlock | AnthropicToolResultBlock;
+type AnthropicContentBlock =
+  | AnthropicTextBlock
+  | AnthropicImageBlock
+  | AnthropicToolUseBlock
+  | AnthropicToolResultBlock;
 type AnthropicContent = string | AnthropicContentBlock[];
 type AnthropicClientTool = {
   name: string;

@@ -85,8 +85,6 @@ export class MessageOperationPlugin extends PluginBase {
       return;
     }
 
-    logger.debug('[MessageOperationPlugin] Received group message reaction notice:', event);
-
     const reactionId = event.faceId?.toString();
     const messageSeq = event.messageSeq ?? 0;
     const groupId = event.groupId ?? 0;
@@ -94,7 +92,6 @@ export class MessageOperationPlugin extends PluginBase {
     const isAdd = event.isAdd;
 
     if (!reactionId || !messageSeq || !groupId || !userId) {
-      logger.warn('[MessageOperationPlugin] Missing required fields in reaction notice');
       return;
     }
 
@@ -116,9 +113,6 @@ export class MessageOperationPlugin extends PluginBase {
     if (groupIds.length > 0) {
       const groupIdStr = String(groupId);
       if (!groupIds.includes(groupIdStr)) {
-        logger.info(
-          `[MessageOperationPlugin] Group not in whitelist, skipping operation | groupId=${groupId} | operation=${operation}`,
-        );
         return;
       }
     }
@@ -184,19 +178,11 @@ export class MessageOperationPlugin extends PluginBase {
       return;
     }
 
-    const { messageSeq, groupId, userId } = context;
+    const { messageSeq, groupId } = context;
     const notice = context.noticeEvent;
 
     try {
-      logger.debug(
-        `[MessageOperationPlugin] Attempting to recall message | groupId=${groupId} | messageSeq=${messageSeq} | reactionUser=${userId}`,
-      );
-
       await this.messageAPI.recallFromContext(messageSeq, notice);
-
-      logger.info(
-        `[MessageOperationPlugin] Message recalled successfully | messageSeq=${messageSeq} | groupId=${groupId} | reactionUser=${userId}`,
-      );
     } catch (error) {
       // Bot can only recall its own messages. If recall fails, it's likely because
       // the message was not sent by the bot, which is expected behavior.
@@ -221,19 +207,11 @@ export class MessageOperationPlugin extends PluginBase {
       return;
     }
 
-    if (!this.databaseManager.getAdapter()?.isConnected()) {
-      logger.warn('[MessageOperationPlugin] Database not available, cannot fetch message for reply operation');
-      return;
-    }
-
     const { messageSeq, groupId, noticeEvent } = context;
 
     try {
       const targetMessage = await this.messageAPI.getMessageFromContext(messageSeq, noticeEvent, this.databaseManager);
 
-      logger.info(
-        `[MessageOperationPlugin] Reply to message (reaction trigger) | messageSeq=${messageSeq} | groupId=${groupId}`,
-      );
       await this.conversationManager.replyToMessage(targetMessage);
     } catch (error) {
       logger.error(

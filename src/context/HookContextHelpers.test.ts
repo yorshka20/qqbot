@@ -3,10 +3,7 @@ import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import { isNoReplyPath } from './HookContextHelpers';
 
-function makeContext(metadataOverrides: {
-  postProcessOnly?: boolean;
-  whitelistDenied?: boolean;
-}): HookContext {
+function makeContext(metadataOverrides: { postProcessOnly?: boolean; whitelistDenied?: boolean }): HookContext {
   const metadata = new HookMetadataMap();
   if (metadataOverrides.postProcessOnly !== undefined) {
     metadata.set('postProcessOnly', metadataOverrides.postProcessOnly);

@@ -3,12 +3,12 @@
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { isNoReplyPath } from '@/context/HookContextHelpers';
 import { type ConversationHistoryService, normalizeGroupId } from '@/conversation/history';
 import {
   buildConversationWindowDocument,
   groupEntriesIntoWindows,
 } from '@/conversation/rag/buildConversationWindowDocument';
-import { isNoReplyPath } from '@/context/HookContextHelpers';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';

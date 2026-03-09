@@ -244,10 +244,7 @@ export class ToolUseReplyService {
       {
         toolUsageInstructions,
       },
-      [
-        '你正在参与一段即时对话，请先理解上下文，再决定是否调用工具。',
-        toolUsageInstructions,
-      ].join('\n\n'),
+      ['你正在参与一段即时对话，请先理解上下文，再决定是否调用工具。', toolUsageInstructions].join('\n\n'),
     );
     const currentQuery = this.safeRender(
       'llm.reply.user_frame',

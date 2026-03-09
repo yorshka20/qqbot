@@ -114,6 +114,13 @@ export class AIManager implements HealthCheckable {
   }
 
   /**
+   * Get all capability types that have at least one registered provider (from registry, canonical order).
+   */
+  getRegisteredCapabilities(): CapabilityType[] {
+    return this.registry.getRegisteredCapabilities();
+  }
+
+  /**
    * Get available providers (configured and ready)
    */
   getAvailableProviders(): AIProvider[] {

@@ -9,7 +9,7 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { FileReadService } from '@/services/file';
-import { formatBytes as fmtBytes, runDeduplication } from '@/utils/fileDedup';
+import { runDeduplication } from '@/utils/fileDedup';
 import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
@@ -144,7 +144,6 @@ export class GroupDownloadPlugin extends PluginBase {
     if (this.deduplicateTimer !== undefined) {
       clearInterval(this.deduplicateTimer);
       this.deduplicateTimer = undefined;
-      logger.info('[GroupDownloadPlugin] Scheduled dedup timer cleared.');
     }
   }
 
@@ -158,20 +157,9 @@ export class GroupDownloadPlugin extends PluginBase {
     }
 
     const dirs = [...this.groupIdSet].map((id) => join(DOWNLOAD_ROOT, id));
-    logger.info(`[GroupDownloadPlugin] Running scheduled dedup on ${dirs.length} group dir(s)...`);
 
     try {
-      const result = await runDeduplication(dirs, this.fileService, false);
-      if (result.duplicatesFound > 0) {
-        logger.info(
-          `[GroupDownloadPlugin] Dedup complete: ${result.duplicatesFound} duplicate(s) removed, ${fmtBytes(result.bytesFreed)} freed.`,
-        );
-      } else {
-        logger.debug(`[GroupDownloadPlugin] Dedup complete: no duplicates found (${result.totalFiles} files scanned).`);
-      }
-      if (result.errors.length > 0) {
-        logger.warn(`[GroupDownloadPlugin] Dedup encountered ${result.errors.length} error(s).`);
-      }
+      await runDeduplication(dirs, this.fileService, false);
     } catch (err) {
       logger.error('[GroupDownloadPlugin] Scheduled dedup failed:', err);
     }
@@ -206,15 +194,20 @@ export class GroupDownloadPlugin extends PluginBase {
       const data = segment?.data as Record<string, unknown> | undefined;
 
       // image: unique short name, no dedup; extension from URL
-      if (segType === 'image') {
-        await this.downloadSegment(event, data, saveDir, 'image', i, false);
-      } else if (segType === 'market_face') {
-        // 表情/贴纸: deterministic name + dedup; extension from URL
-        await this.downloadSegment(event, data, saveDir, 'sticker', i, false);
-      } else if (segType === 'file') {
-        await this.downloadSegment(event, data, saveDir, 'file', i, true);
-      } else if (segType === 'video') {
-        await this.downloadSegment(event, data, saveDir, 'video', i, false);
+      switch (segType) {
+        case 'image':
+          await this.downloadSegment(event, data, saveDir, 'image', false);
+          break;
+        case 'market_face':
+          // 表情/贴纸: deterministic name + dedup; extension from URL
+          await this.downloadSegment(event, data, saveDir, 'sticker', false);
+          break;
+        case 'file':
+          await this.downloadSegment(event, data, saveDir, 'file', true);
+          break;
+        case 'video':
+          await this.downloadSegment(event, data, saveDir, 'video', false);
+          break;
       }
     }
   }
@@ -269,12 +262,10 @@ export class GroupDownloadPlugin extends PluginBase {
     data: Record<string, unknown> | undefined,
     saveDir: string,
     kind: 'image' | 'file' | 'video' | 'sticker',
-    index: number,
     isFile: boolean,
   ): Promise<void> {
     const url = await this.resolveUrl(event, data, isFile);
     if (!url) {
-      logger.debug(`[GroupDownloadPlugin] No download URL for ${kind} segment index=${index}`);
       return;
     }
 
@@ -284,7 +275,6 @@ export class GroupDownloadPlugin extends PluginBase {
       filename = this.getStickerDedupFilename(data, url);
       const filePath = join(saveDir, filename);
       if (existsSync(filePath)) {
-        logger.debug(`[GroupDownloadPlugin] Skip duplicate sticker (already exists): ${filename}`);
         return;
       }
     } else if (isFile) {
@@ -305,7 +295,6 @@ export class GroupDownloadPlugin extends PluginBase {
         timeout: 60000,
         maxSize: 0,
       });
-      logger.info(`[GroupDownloadPlugin] Saved ${kind} to ${saveDir}/${filename}`);
     } catch (err) {
       logger.warn(
         `[GroupDownloadPlugin] Failed to download ${kind} | url=${url.slice(0, 60)}... | error=${err instanceof Error ? err.message : String(err)}`,
