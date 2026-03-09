@@ -1,9 +1,9 @@
 // Echo Plugin - automatically converts admin messages to TTS
 
+import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { CommandBuilder } from '@/command/CommandBuilder';
 import type { CommandManager } from '@/command/CommandManager';
 import { CommandContextBuilder } from '@/context/CommandContextBuilder';
-import { isNoReplyPath, replaceReplyWithSegments } from '@/context/HookContextHelpers';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -26,12 +26,14 @@ import { PluginBase } from '../PluginBase';
 export class EchoPlugin extends PluginBase {
   private commandManager!: CommandManager;
   private hookManager!: HookManager;
+  private messageAPI!: MessageAPI;
 
   async onInit(): Promise<void> {
     // Get CommandManager and HookManager from DI container
     const container = getContainer();
     this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
     this.hookManager = container.resolve<HookManager>(DITokens.HOOK_MANAGER);
+    this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
 
     if (!this.commandManager) {
       throw new Error('CommandManager not found');
@@ -39,6 +41,10 @@ export class EchoPlugin extends PluginBase {
 
     if (!this.hookManager) {
       throw new Error('HookManager not found');
+    }
+
+    if (!this.messageAPI) {
+      throw new Error('MessageAPI not found');
     }
   }
 
@@ -61,8 +67,8 @@ export class EchoPlugin extends PluginBase {
   }
 
   private shouldTrigger(context: HookContext): boolean {
-    // Whitelist is highest constraint: never respond in non-whitelist groups
-    if (isNoReplyPath(context)) {
+    // Whitelist is highest constraint: never respond in non-whitelist groups (Echo sends directly, so we only check whitelistDenied)
+    if (context.metadata.get('whitelistDenied')) {
       return false;
     }
 
@@ -106,8 +112,7 @@ export class EchoPlugin extends PluginBase {
   }
 
   /**
-   * Trigger TTS command programmatically
-   * Executes command synchronously and sets reply in hookContext metadata.
+   * Trigger TTS command programmatically and send result directly (no pipeline reply).
    * TTS only accepts plain text; skips when text looks like a command.
    */
   private async triggerTTSCommand(text: string, context: HookContext): Promise<void> {
@@ -128,13 +133,12 @@ export class EchoPlugin extends PluginBase {
 
       logger.info(`[EchoPlugin] Triggering TTS command for text: ${text.substring(0, 50)}...`);
 
-      // Execute command with hookManager and hookContext to ensure reply is set in context
       const result = await this.commandManager.execute(command, commandContext, this.hookManager, context);
 
       if (result.success && result.segments && result.segments.length > 0) {
-        // Use replace instead of append because plugin result is the final result
-        replaceReplyWithSegments(context, result.segments, 'plugin');
-        logger.info(`[EchoPlugin] TTS command executed successfully, segments set`);
+        // Send TTS result directly; do not set context.reply (no pipeline, no DB persistence for TTS)
+        await this.messageAPI.sendFromContext(result.segments, context.message, 10000);
+        logger.info(`[EchoPlugin] TTS sent successfully`);
       } else {
         logger.warn(`[EchoPlugin] TTS command failed or no segments: ${result.error || 'no segments'}`);
       }
@@ -145,8 +149,7 @@ export class EchoPlugin extends PluginBase {
 
   /**
    * Hook: onMessagePreprocess
-   * Check if message is from admin, not a command, and not @bot, then trigger TTS command
-   * Executes synchronously to ensure reply is set before processing mode checks
+   * Check if message is from admin, not a command, and not @bot, then trigger TTS and send directly (no pipeline reply).
    */
   @Hook({
     stage: 'onMessagePreprocess',
@@ -160,8 +163,6 @@ export class EchoPlugin extends PluginBase {
 
     const messageText = context.message.message?.trim() || '';
 
-    // Trigger TTS command synchronously to ensure reply is set in hookContext
-    // This allows the reply to be sent even if plugins set postProcessOnly later
     await this.triggerTTSCommand(messageText, context);
 
     return true;
