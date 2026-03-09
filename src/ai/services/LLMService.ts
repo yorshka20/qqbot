@@ -165,6 +165,8 @@ export class LLMService {
       model: modelName ?? options?.model,
     };
 
+    logger.debug(`[LLMService] generateLite: ${prompt} | ${JSON.stringify(mergedOptions)}`);
+
     return await provider.generate(prompt, mergedOptions);
   }
 

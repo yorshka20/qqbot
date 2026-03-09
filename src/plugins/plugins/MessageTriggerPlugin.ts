@@ -138,7 +138,8 @@ export class MessageTriggerPlugin extends PluginBase {
 
     try {
       const prompt = this.promptManager.render('analysis.prefix_invitation', { messageText });
-      const response = await this.llmService.generateLite(prompt, {}, liteProvider, liteModel);
+      const response = await this.llmService.generateLite(prompt, { maxTokens: 100 }, liteProvider, liteModel);
+      logger.debug(`[MessageTriggerPlugin] Prefix-invitation LLM response: ${response.text}`);
       const text = (response.text ?? '').trim();
       const raw = parseLlmTrueFalse(text);
       if (raw === null) {
