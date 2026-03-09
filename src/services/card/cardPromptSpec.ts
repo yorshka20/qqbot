@@ -90,6 +90,7 @@ export function getCardDeckNoteForPrompt(): string {
     '**输出形式：** 始终返回一个 JSON 数组，数组项为卡片对象。单卡即 `[一张卡]`，多卡即 `[卡1, 卡2, ...]`，按顺序从上到下渲染成一张图。',
     '单卡示例：`[{"type":"qa","question":"...","answer":"..."}]`',
     '多卡示例：`[{"type":"qa",...},{"type":"list","title":"...","items":[...]}]`',
+    '若所用接口仅支持单个 JSON 对象（非数组），请用 `{"result": [卡片数组]}` 包裹，例如：`{"result":[{"type":"qa",...}]}`。',
   ].join('\n');
 }
 

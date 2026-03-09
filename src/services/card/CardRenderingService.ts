@@ -56,7 +56,9 @@ export class CardRenderingService {
   async renderCard(responseText: string, providerName: string): Promise<string> {
     try {
       // Expected JSON only: use dedicated JSON extractor (codeBlock, braceMatch, regex); do not mix with non-JSON strategies
-      const jsonStr = extractExpectedJsonFromLlmText(responseText) ?? responseText;
+      let jsonStr = extractExpectedJsonFromLlmText(responseText) ?? responseText;
+      // When provider returns a single object (e.g. response_format.json_object), model may wrap array as {"result": [...]}
+      jsonStr = this.normalizeCardDeckJson(jsonStr);
       const cards: CardData[] = parseCardDeck(jsonStr);
 
       // Render card(s) to image (provider required for footer on all paths)
@@ -73,6 +75,25 @@ export class CardRenderingService {
       logger.error('[CardRenderingService] Failed to render card:', err);
       throw new Error(`Failed to render card: ${err.message}`);
     }
+  }
+
+  /**
+   * Normalize extracted JSON to a string that parseCardDeck accepts (root = array).
+   * If the LLM returned a single object with key "result" (array), unwrap to that array JSON string.
+   */
+  private normalizeCardDeckJson(jsonStr: string): string {
+    try {
+      const parsed = JSON.parse(jsonStr.trim());
+      if (Array.isArray(parsed)) {
+        return jsonStr.trim();
+      }
+      if (typeof parsed === 'object' && parsed !== null && Array.isArray(parsed.result)) {
+        return JSON.stringify(parsed.result);
+      }
+    } catch {
+      // Not valid JSON or not the expected shape; fall through and return as-is for parseCardDeck to throw
+    }
+    return jsonStr;
   }
 
   /**

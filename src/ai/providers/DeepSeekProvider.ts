@@ -212,6 +212,11 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
         stop: options?.stop,
       };
 
+      // When jsonMode is set, require valid JSON output (single object; for array output use {"result": [...]} in prompt).
+      if (options?.jsonMode) {
+        body.response_format = { type: 'json_object' };
+      }
+
       if (options?.tools?.length) {
         body.tools = options.tools.map((t: ToolDefinition) => ({
           type: 'function',
@@ -305,19 +310,23 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
       }
 
       // Use HttpClient stream method for streaming requests
+      const streamBody: Record<string, unknown> = {
+        model,
+        messages,
+        temperature,
+        max_tokens: maxTokens,
+        top_p: options?.topP,
+        frequency_penalty: options?.frequencyPenalty,
+        presence_penalty: options?.presencePenalty,
+        stop: options?.stop,
+        stream: true,
+      };
+      if (options?.jsonMode) {
+        streamBody.response_format = { type: 'json_object' };
+      }
       const stream = await this.httpClient.stream('/chat/completions', {
         method: 'POST',
-        body: {
-          model,
-          messages,
-          temperature,
-          max_tokens: maxTokens,
-          top_p: options?.topP,
-          frequency_penalty: options?.frequencyPenalty,
-          presence_penalty: options?.presencePenalty,
-          stop: options?.stop,
-          stream: true,
-        },
+        body: streamBody,
       });
 
       const reader = stream.getReader();

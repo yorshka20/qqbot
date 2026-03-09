@@ -921,6 +921,9 @@ export class ReplyGenerationService {
         maxTokens: 3000,
         sessionId,
         model: convertLlmModel,
+        jsonMode: true,
+        systemPrompt:
+          'You must respond with valid JSON only: a single JSON array of card objects. No markdown code blocks, no explanatory text, no prefix or suffix. First character of your response must be [ and last character must be ].',
       },
       convertLlmProvider,
     );

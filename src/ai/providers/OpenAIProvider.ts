@@ -166,6 +166,10 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
         stop: options?.stop,
       };
 
+      if (options?.jsonMode) {
+        body.response_format = { type: 'json_object' };
+      }
+
       if (options?.tools?.length) {
         body.tools = options.tools.map((t) => ({
           type: 'function' as const,
@@ -257,7 +261,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
         });
       }
 
-      const stream = await this.client.chat.completions.create({
+      const streamBody: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
         model,
         messages,
         temperature,
@@ -267,7 +271,11 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
         presence_penalty: options?.presencePenalty,
         stop: options?.stop,
         stream: true,
-      });
+      };
+      if (options?.jsonMode) {
+        streamBody.response_format = { type: 'json_object' };
+      }
+      const stream = await this.client.chat.completions.create(streamBody);
 
       let fullText = '';
       let usage: AIGenerateResponse['usage'] | undefined;

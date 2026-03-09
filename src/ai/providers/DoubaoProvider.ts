@@ -59,6 +59,8 @@ interface ArkResponsesRequest {
   stream?: boolean;
   tools?: ArkToolItem[];
   tool_choice?: string;
+  /** When set (e.g. jsonMode), ask for JSON output; OpenAI-compatible shape. */
+  response_format?: { type: 'json_object' };
 }
 
 // ---------------------------------------------------------------------------
@@ -353,7 +355,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     }
     messages.push({ role: 'user', content: prompt });
 
-    const body = {
+    const body: Record<string, unknown> = {
       model,
       messages,
       temperature: options?.temperature ?? this.config.defaultTemperature ?? 0.7,
@@ -363,6 +365,9 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       presence_penalty: options?.presencePenalty,
       stop: options?.stop,
     };
+    if (options?.jsonMode) {
+      body.response_format = { type: 'json_object' };
+    }
 
     logger.debug(`[DoubaoProvider] Generating with model (chat/completions): ${model}`);
     const data = await this.httpClient.post<ArkChatCompletionsResponse>('/chat/completions', body);
@@ -446,6 +451,9 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       presence_penalty: options?.presencePenalty,
       stop: options?.stop,
     };
+    if (options?.jsonMode) {
+      body.response_format = { type: 'json_object' };
+    }
     if (hasTools) {
       const tools: ArkToolItem[] = [];
       if (options?.nativeWebSearch) {

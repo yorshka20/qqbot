@@ -131,6 +131,25 @@ function tryParseJson(candidate: string): unknown | null {
 }
 
 /**
+ * Parse JSON text and ensure the result is a single object (not a top-level array).
+ * Some providers (e.g. response_format.json_object) only guarantee a JSON object; if the model
+ * returns an array (e.g. [{}]), wrap it as { result: array } so downstream can use obj.result.
+ *
+ * @param text - JSON string (e.g. LLM response when jsonMode was true)
+ * @returns { value, wrapped } where value is the parsed object; wrapped is true if original was array
+ */
+export function ensureJsonObject(text: string): { value: Record<string, unknown>; wrapped: boolean } | null {
+  const parsed = tryParseJson(text.trim());
+  if (parsed === null || typeof parsed !== 'object') {
+    return null;
+  }
+  if (Array.isArray(parsed)) {
+    return { value: { result: parsed }, wrapped: true };
+  }
+  return { value: parsed as Record<string, unknown>, wrapped: false };
+}
+
+/**
  * Strip markdown code block from text if present.
  */
 function stripCodeBlock(text: string): string {

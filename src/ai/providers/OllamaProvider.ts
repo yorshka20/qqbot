@@ -160,7 +160,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
     const thinking = options?.includeReasoning ?? false;
     const model = options?.model ?? this.config.model;
 
-    return this.httpClient.post<OllamaGenerateResponse>('/api/chat', {
+    const body: Record<string, unknown> = {
       model,
       messages,
       options: {
@@ -172,7 +172,11 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
         num_ctx: maxTokens,
       },
       stream: false,
-    });
+    };
+    if (options?.jsonMode) {
+      body.format = 'json';
+    }
+    return this.httpClient.post<OllamaGenerateResponse>('/api/chat', body);
   }
 
   /**
@@ -186,19 +190,23 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
     const model = options?.model ?? this.config.model;
 
+    const streamBody: Record<string, unknown> = {
+      model,
+      messages,
+      options: {
+        temperature,
+        num_predict: maxTokens,
+        top_p: options?.topP,
+        repeat_penalty: options?.frequencyPenalty ? 1 + options.frequencyPenalty : undefined,
+      },
+      stream: true,
+    };
+    if (options?.jsonMode) {
+      streamBody.format = 'json';
+    }
     return this.httpClient.stream('/api/chat', {
       method: 'POST',
-      body: {
-        model,
-        messages,
-        options: {
-          temperature,
-          num_predict: maxTokens,
-          top_p: options?.topP,
-          repeat_penalty: options?.frequencyPenalty ? 1 + options.frequencyPenalty : undefined,
-        },
-        stream: true,
-      },
+      body: streamBody,
     });
   }
 

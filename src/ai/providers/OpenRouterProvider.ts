@@ -130,11 +130,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
         });
       }
 
-      const response = await this.httpClient.post<{
-        choices: Array<{ message: { content: string }; finish_reason?: string }>;
-        usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
-        model: string;
-      }>('/chat/completions', {
+      const postBody: Record<string, unknown> = {
         model,
         messages,
         temperature,
@@ -143,7 +139,15 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
         frequency_penalty: options?.frequencyPenalty,
         presence_penalty: options?.presencePenalty,
         stop: options?.stop,
-      });
+      };
+      if (options?.jsonMode) {
+        postBody.response_format = { type: 'json_object' };
+      }
+      const response = await this.httpClient.post<{
+        choices: Array<{ message: { content: string }; finish_reason?: string }>;
+        usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+        model: string;
+      }>('/chat/completions', postBody);
 
       const text = response.choices[0]?.message?.content || '';
       const usage = response.usage
@@ -203,19 +207,23 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
       }
 
       // Use streaming endpoint
+      const streamBody: Record<string, unknown> = {
+        model,
+        messages,
+        temperature,
+        max_tokens: maxTokens,
+        top_p: options?.topP,
+        frequency_penalty: options?.frequencyPenalty,
+        presence_penalty: options?.presencePenalty,
+        stop: options?.stop,
+        stream: true,
+      };
+      if (options?.jsonMode) {
+        streamBody.response_format = { type: 'json_object' };
+      }
       const stream = await this.httpClient.stream('/chat/completions', {
         method: 'POST',
-        body: {
-          model,
-          messages,
-          temperature,
-          max_tokens: maxTokens,
-          top_p: options?.topP,
-          frequency_penalty: options?.frequencyPenalty,
-          presence_penalty: options?.presencePenalty,
-          stop: options?.stop,
-          stream: true,
-        },
+        body: streamBody,
       });
 
       const reader = stream.getReader();

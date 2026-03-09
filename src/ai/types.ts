@@ -94,6 +94,14 @@ export interface AIGenerateOptions {
   stop?: string[];
   stream?: boolean;
   /**
+   * When true, request the provider to return valid JSON (e.g. response_format.json_object).
+   * Supported by: OpenAI, OpenRouter, DeepSeek, Doubao, Ollama (format: "json").
+   * Note: Many APIs only guarantee a single JSON object (not top-level array). For array output
+   * (e.g. [{}]), ask in the prompt for {"result": [...]} and use the "result" key after parsing,
+   * or use ensureJsonObject() to wrap array responses into { result: array }.
+   */
+  jsonMode?: boolean;
+  /**
    * Session ID for automatic context loading
    * If provided and provider has context enabled, will automatically load history from ContextManager
    */
