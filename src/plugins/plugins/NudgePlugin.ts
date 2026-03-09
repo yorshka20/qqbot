@@ -9,7 +9,6 @@ import type { HealthCheckManager } from '@/core/health';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
-import type { PluginManager } from '@/plugins/PluginManager';
 import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
@@ -48,7 +47,6 @@ export class NudgePlugin extends PluginBase {
   private messageAPI!: MessageAPI;
   private aiManager!: AIManager | null;
   private healthCheckManager!: HealthCheckManager | null;
-  private pluginManager!: PluginManager | null;
 
   async onInit(): Promise<void> {
     this.messageAPI = new MessageAPI(this.api);
@@ -59,11 +57,6 @@ export class NudgePlugin extends PluginBase {
       this.healthCheckManager = container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER) ?? null;
     } catch {
       this.healthCheckManager = null;
-    }
-    try {
-      this.pluginManager = container.resolve<PluginManager>(DITokens.PLUGIN_MANAGER) ?? null;
-    } catch {
-      this.pluginManager = null;
     }
 
     if (!this.aiManager) {
@@ -189,12 +182,16 @@ export class NudgePlugin extends PluginBase {
     const capabilities = this.aiManager ? this.aiManager.getRegisteredCapabilities() : [];
     const providerLines: string[] = [];
 
-    // Optional: per-provider health from HealthCheckManager cache (no blocking)
+    // Per-provider health: run check (uses cache when valid, else fetches) so status is always shown
     let providerHealth: Record<string, boolean> | null = null;
     if (this.healthCheckManager) {
-      const cached = this.healthCheckManager.getCachedResult('AIManager');
-      if (cached?.details && typeof cached.details.providers === 'object' && cached.details.providers !== null) {
-        providerHealth = cached.details.providers as Record<string, boolean>;
+      try {
+        const result = await this.healthCheckManager.checkHealth('AIManager', { timeout: 8000 });
+        if (result.details && typeof result.details.providers === 'object' && result.details.providers !== null) {
+          providerHealth = result.details.providers as Record<string, boolean>;
+        }
+      } catch {
+        // keep providerHealth null, lines will show without ✅/❌
       }
     }
 
@@ -212,17 +209,12 @@ export class NudgePlugin extends PluginBase {
       providerLines.push('  ❌ AI Manager not available');
     }
 
-    // Plugin info from PluginManager
-    const enabledPlugins = this.pluginManager ? this.pluginManager.getEnabledPlugins() : [];
-    const pluginsStr = enabledPlugins.length > 0 ? `${enabledPlugins.join(', ')} (${enabledPlugins.length})` : 'none';
-
     const status = `🤖 Bot Status
 ━━━━━━━━━━
 ⏱️ Uptime: ${uptimeStr}
 💾 Memory: ${memoryStr}
 🆔 Bot ID: ${botIdStr}
 👥 Group ID: ${groupId}
-📦 Plugins: ${pluginsStr}
 🧠 AI Providers:
 ${providerLines.join('\n')}`;
 

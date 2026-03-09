@@ -7,8 +7,9 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { NormalizedNoticeEvent } from '@/events/types';
+import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
-import { RegisterPlugin } from '../decorators';
+import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 interface MessageOperationPluginConfig {
@@ -67,19 +68,28 @@ export class MessageOperationPlugin extends PluginBase {
       logger.error('[MessageOperationPlugin] Error loading config:', error);
       this.enabled = false;
     }
+  }
 
-    // Register notice event handler for reaction events
-    this.on('notice', this.handleNotice.bind(this));
+  @Hook({
+    stage: 'onNoticeReceived',
+    priority: 'NORMAL',
+    order: 0,
+  })
+  onNoticeReceived(context: HookContext): boolean {
+    if (!this.enabled) {
+      return true;
+    }
+
+    if (context.notice) {
+      this.handleNotice(context.notice);
+    }
+    return true;
   }
 
   /**
    * Handle notice events, specifically group message reactions
    */
-  private async handleNotice(event: NormalizedNoticeEvent): Promise<void> {
-    if (!this.enabled) {
-      return;
-    }
-
+  private handleNotice(event: NormalizedNoticeEvent): void {
     // Only handle group message reaction notices
     if (event.noticeType !== 'group_message_reaction') {
       return;
@@ -122,17 +132,13 @@ export class MessageOperationPlugin extends PluginBase {
     );
 
     // Execute the operation
-    try {
-      await this.executeOperation(operation, {
-        reactionId,
-        messageSeq,
-        groupId,
-        userId,
-        noticeEvent: event,
-      });
-    } catch (error) {
-      logger.error(`[MessageOperationPlugin] Error executing operation ${operation}:`, error);
-    }
+    this.executeOperation(operation, {
+      reactionId,
+      messageSeq,
+      groupId,
+      userId,
+      noticeEvent: event,
+    });
   }
 
   /**

@@ -89,7 +89,7 @@ export class Lifecycle {
         }
         // Skip to COMPLETE when access denied or no direct reply path (whitelistDenied or postProcessOnly)
         if (isNoReplyPath(context)) {
-          logger.debug(`[Lifecycle] no-reply path, skipping to COMPLETE | messageId=${messageId}`);
+          logger.debug(`[Lifecycle] ⚪ COMPLETE (no-reply path) | messageId=${messageId}`);
           await this.executeStageComplete(context, messageId);
           return true;
         }

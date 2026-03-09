@@ -655,7 +655,11 @@ class DebugCLI {
     this.printInfo('✓ RetrievalService health check registered');
 
     // Initialize event router (for plugins that might use it)
-    const eventSystem = EventInitializer.initialize(this.config, conversationComponents.conversationManager);
+    const eventSystem = EventInitializer.initialize(
+      this.config,
+      conversationComponents.conversationManager,
+      conversationComponents.hookManager,
+    );
     this.eventRouter = eventSystem.eventRouter;
 
     // Register EventRouter so PluginManager factory can resolve it via context.events
@@ -719,7 +723,11 @@ class DebugCLI {
     this.printInfo('✓ RetrievalService health check registered');
 
     // Initialize event system (EventRouter and handlers)
-    const eventSystem = EventInitializer.initialize(this.config, conversationComponents.conversationManager);
+    const eventSystem = EventInitializer.initialize(
+      this.config,
+      conversationComponents.conversationManager,
+      conversationComponents.hookManager,
+    );
     this.eventRouter = eventSystem.eventRouter;
 
     // Register EventRouter so PluginManager factory can resolve it via context.events

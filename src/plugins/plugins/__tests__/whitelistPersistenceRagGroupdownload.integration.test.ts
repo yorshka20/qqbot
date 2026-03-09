@@ -291,27 +291,19 @@ describe('Whitelist functional: whitelist group can trigger proactive, messageTr
   });
 });
 
-describe('GroupDownload functional: message event reaches plugin and handler is triggered (no real download)', () => {
+describe('GroupDownload functional: plugin uses onMessageComplete hook at COMPLETE stage (no real download)', () => {
   afterEach(() => {
     getContainer().clear();
   });
 
-  it('when message event is emitted, GroupDownload handler is invoked (trigger only; no file download)', async () => {
-    const messageHandlers: Array<(event: NormalizedMessageEvent) => void> = [];
-    const mockEvents = {
-      onEvent<T>(eventType: string, handler: (event: T) => void): void {
-        if (eventType === 'message') {
-          messageHandlers.push(handler as (event: NormalizedMessageEvent) => void);
-        }
-      },
-      offEvent: () => {},
-      emitMessage(event: NormalizedMessageEvent): void {
-        for (const h of messageHandlers) {
-          h(event);
-        }
-      },
-    };
+  it('GroupDownloadPlugin registers onMessageComplete hook so it runs at COMPLETE stage', () => {
+    const hooks = getPluginHooks(GroupDownloadPlugin);
+    expect(hooks.length).toBe(1);
+    expect(hooks[0].hookName).toBe('onMessageComplete');
+    expect(hooks[0].methodName).toBe('onMessageComplete');
+  });
 
+  it('when lifecycle runs COMPLETE (onMessageComplete), GroupDownload handler is actually invoked', async () => {
     getContainer().registerInstance(
       DITokens.MESSAGE_API,
       { getResourceTempUrl: async () => null },
@@ -324,26 +316,32 @@ describe('GroupDownload functional: message event reaches plugin and handler is 
       description: 'test',
     });
     plugin.loadConfig(
-      { api: {} as never, events: mockEvents as never },
+      { api: {} as never, events: {} as never },
       { name: 'groupDownload', enabled: true, config: { groupIds: ['1'] } },
     );
     await plugin.onInit?.();
 
-    const event: NormalizedMessageEvent = {
-      id: 'e1',
-      messageId: 1,
-      type: 'message',
-      userId: 456,
-      groupId: 1,
-      messageType: 'group',
-      message: 'hello',
-      segments: [],
-      sender: { userId: 456 },
-      timestamp: Date.now(),
-      protocol: 'milky',
+    const original = plugin.onMessageComplete.bind(plugin);
+    let handlerCalled = false;
+    (plugin as unknown as { onMessageComplete: (ctx: HookContext) => boolean }).onMessageComplete = (ctx) => {
+      handlerCalled = true;
+      return original(ctx);
     };
-    mockEvents.emitMessage(event);
 
-    expect(messageHandlers.length).toBe(1);
+    const hookManager = new HookManager();
+    const hooks = getPluginHooks(GroupDownloadPlugin);
+    for (const hookMeta of hooks) {
+      const handler = (plugin as unknown as Record<string, (ctx: HookContext) => boolean>)[hookMeta.methodName];
+      if (typeof handler !== 'function') {
+        continue;
+      }
+      const priority = getHookPriority(hookMeta.hookName, hookMeta.priority, hookMeta.order);
+      hookManager.addHandler(hookMeta.hookName, handler.bind(plugin), priority);
+    }
+
+    const context = makeHookContext({ messageText: 'hello', groupId: 1, segments: [] });
+    await hookManager.execute('onMessageComplete', context);
+
+    expect(handlerCalled).toBe(true);
   });
 });

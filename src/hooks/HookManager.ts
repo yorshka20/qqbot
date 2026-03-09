@@ -141,7 +141,9 @@ export class HookManager {
       return true;
     }
 
-    const messageId = context.message?.id || context.message?.messageId || 'unknown';
+    const messageId = context.notice
+      ? `notice:${context.notice.noticeType}`
+      : context.message?.id || context.message?.messageId || 'unknown';
 
     logger.info(`🎣 [HookManager] Executing hook: ${hookName} | messageId=${messageId}`);
 

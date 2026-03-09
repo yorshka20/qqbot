@@ -1,17 +1,19 @@
 // GroupDownload Plugin - automatically downloads images, files, and videos from configured groups to local disk
 
-import { createHash } from 'crypto';
-import { existsSync } from 'fs';
-import { extname, join } from 'path';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { ResourceDownloader } from '@/ai/utils/ResourceDownloader';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
+import type { HookContext } from '@/hooks/types';
 import type { FileReadService } from '@/services/file';
 import { runDeduplication } from '@/utils/fileDedup';
+import { getDefaultExtension, getExtensionFromUrl, hashForFilename, uniqueFilename } from '@/utils/fileNameHelpers';
 import { logger } from '@/utils/logger';
-import { RegisterPlugin } from '../decorators';
+import { getDataValue } from '@/utils/segmentData';
+import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 /** Output directory root; files are saved under output/downloads/{groupid} */
@@ -30,65 +32,6 @@ export interface GroupDownloadPluginConfig {
    * Omit or set to 0 to disable scheduled dedup.
    */
   deduplicateIntervalMs?: number;
-}
-
-/**
- * Get a value from segment data supporting both camelCase and snake_case keys.
- */
-function getDataValue(data: Record<string, unknown> | undefined, ...keys: string[]): string | undefined {
-  if (!data || typeof data !== 'object') {
-    return undefined;
-  }
-  for (const key of keys) {
-    const v = data[key];
-    if (typeof v === 'string' && v) {
-      return v;
-    }
-  }
-  return undefined;
-}
-
-/**
- * Generate a short hash from string (for short deterministic filename, e.g. sticker dedup).
- */
-function hashForFilename(s: string): string {
-  return createHash('md5').update(s).digest('hex').slice(0, 12);
-}
-
-/**
- * Get file extension from URL path (respect source suffix). Returns e.g. ".jpg" or "".
- */
-function getExtensionFromUrl(url: string): string {
-  try {
-    const u = new URL(url);
-    const base = u.pathname.split('/').pop() ?? '';
-    const e = extname(base);
-    return e && /^\.\w+$/.test(e) ? e : '';
-  } catch {
-    return '';
-  }
-}
-
-/** Default extension by kind when URL has no suffix (avoid .bin for preview). */
-const DEFAULT_EXT_BY_KIND: Record<'image' | 'sticker' | 'video' | 'file', string> = {
-  image: '.png',
-  sticker: '.gif',
-  video: '.mp4',
-  file: '.dat',
-};
-
-function getDefaultExtension(kind: 'image' | 'sticker' | 'video' | 'file'): string {
-  return DEFAULT_EXT_BY_KIND[kind] ?? '.dat';
-}
-
-/**
- * Generate a short unique filename (no dedup). ext should include dot, e.g. ".jpg" or "".
- */
-function uniqueFilename(prefix: string, ext: string): string {
-  const ts = Date.now();
-  const r = Math.random().toString(36).slice(2, 8);
-  const dotExt = ext?.startsWith('.') ? ext : ext ? `.${ext}` : '';
-  return `${prefix}_${ts}_${r}${dotExt}`;
 }
 
 @RegisterPlugin({
@@ -136,8 +79,6 @@ export class GroupDownloadPlugin extends PluginBase {
     } catch (error) {
       logger.error('[GroupDownloadPlugin] Config error:', error);
     }
-
-    this.on('message', this.handleMessage.bind(this));
   }
 
   async onDisable(): Promise<void> {
@@ -166,8 +107,18 @@ export class GroupDownloadPlugin extends PluginBase {
   }
 
   // ---------------------------------------------------------------------------
-  // Message handling & download
+  // Message handling & download (runs at COMPLETE stage so it always executes)
   // ---------------------------------------------------------------------------
+
+  @Hook({
+    stage: 'onMessageComplete',
+    priority: 'NORMAL',
+    order: 0,
+  })
+  onMessageComplete(context: HookContext): boolean {
+    this.handleMessage(context.message);
+    return true;
+  }
 
   private async handleMessage(event: NormalizedMessageEvent): Promise<void> {
     if (!this.enabled || this.groupIdSet.size === 0) {

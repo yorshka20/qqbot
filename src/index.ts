@@ -71,7 +71,11 @@ async function main() {
     retrievalService.registerHealthCheck();
 
     // Initialize event system (EventRouter and handlers)
-    const eventSystem = EventInitializer.initialize(config, conversationComponents.conversationManager);
+    const eventSystem = EventInitializer.initialize(
+      config,
+      conversationComponents.conversationManager,
+      conversationComponents.hookManager,
+    );
     const eventRouter = eventSystem.eventRouter;
     // Register EventRouter to container
     container.registerInstance(DITokens.EVENT_ROUTER, eventRouter);

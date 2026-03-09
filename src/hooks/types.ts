@@ -3,7 +3,7 @@
 import type { SendMessageResult } from '@/api/methods/MessageAPI';
 import type { CommandResult, ParsedCommand } from '@/command/types';
 import type { ConversationContext } from '@/context/types';
-import type { NormalizedMessageEvent } from '@/events/types';
+import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import type { MessageSegment } from '@/message/types';
 import type { Task, TaskResult } from '@/task/types';
 import type { HookMetadataMap } from './metadata';
@@ -32,11 +32,15 @@ export interface ReplyContent {
 }
 
 /**
- * Hook Context - unified context object passed to all hooks
+ * Hook Context - unified context object passed to all hooks.
+ * For message lifecycle: message is set, notice is absent.
+ * For notice lifecycle (onNoticeReceived): message is a minimal placeholder for logging, notice is set.
  */
 export interface HookContext {
   message: NormalizedMessageEvent;
   context: ConversationContext;
+  /** Set when hook is run for a notice event (e.g. onNoticeReceived). */
+  notice?: NormalizedNoticeEvent;
   command?: ParsedCommand;
   task?: Task;
   aiResponse?: string;

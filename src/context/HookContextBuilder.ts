@@ -2,7 +2,7 @@
 // Provides a unified way to create HookContext instances
 
 import type { CommandResult, ParsedCommand } from '@/command/types';
-import type { NormalizedMessageEvent } from '@/events/types';
+import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import type { HookContextMetadata } from '@/hooks/metadata';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext, ReplyContent } from '@/hooks/types';
@@ -21,6 +21,7 @@ export type MessageContextOptions = Partial<HookContextMetadata>;
  */
 export class HookContextBuilder {
   private message?: NormalizedMessageEvent;
+  private notice?: NormalizedNoticeEvent;
   private command?: ParsedCommand;
   private task?: Task;
   private aiResponse?: string;
@@ -95,7 +96,39 @@ export class HookContextBuilder {
     if (context.reply) {
       builder.reply = context.reply;
     }
+    if (context.notice !== undefined) {
+      builder.notice = context.notice;
+    }
 
+    return builder;
+  }
+
+  /**
+   * Create a builder from a notice event (for onNoticeReceived hook).
+   * Sets a minimal message and conversation context for logging; hook handlers should use context.notice.
+   */
+  static fromNotice(notice: NormalizedNoticeEvent): HookContextBuilder {
+    const builder = new HookContextBuilder();
+    builder.notice = notice;
+    builder.message = {
+      id: `notice:${notice.noticeType}`,
+      type: 'message',
+      timestamp: notice.timestamp ?? Date.now(),
+      protocol: notice.protocol ?? 'unknown',
+      userId: notice.userId ?? 0,
+      groupId: notice.groupId,
+      messageType: notice.messageType ?? 'group',
+      message: '',
+      segments: [],
+    } as NormalizedMessageEvent;
+    builder.conversationContext = {
+      userMessage: '',
+      history: [],
+      userId: notice.userId ?? 0,
+      groupId: notice.groupId,
+      messageType: notice.messageType ?? 'group',
+      metadata: new Map(),
+    };
     return builder;
   }
 
@@ -104,6 +137,14 @@ export class HookContextBuilder {
    */
   withMessage(message: NormalizedMessageEvent): this {
     this.message = message;
+    return this;
+  }
+
+  /**
+   * Set the notice event (for onNoticeReceived hook context)
+   */
+  withNotice(notice: NormalizedNoticeEvent): this {
+    this.notice = notice;
     return this;
   }
 
@@ -233,6 +274,9 @@ export class HookContextBuilder {
     }
     if (this.reply !== undefined) {
       context.reply = this.reply;
+    }
+    if (this.notice !== undefined) {
+      context.notice = this.notice;
     }
 
     return context;
