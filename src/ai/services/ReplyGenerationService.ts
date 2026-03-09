@@ -512,37 +512,6 @@ export class ReplyGenerationService {
     }
   }
 
-  /** Used when building soft-context or image tags for history; kept for future use. */
-  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: reserved for soft-context or image-tag formatting
-  private extractTextAndImageTags(segments: MessageSegment[] | undefined, fallbackText: string): string {
-    if (!segments?.length) return fallbackText;
-    const text = segments
-      .filter((s): s is MessageSegment & { type: 'text' } => s.type === 'text')
-      .map((s) => (s.type === 'text' ? String(s.data.text ?? '') : ''))
-      .join('')
-      .trim();
-    const imageTags = segments
-      .filter((s) => s.type === 'image')
-      .map((s) => `<image uri="${String(s.data.uri ?? s.data.temp_url ?? s.data.resource_id ?? '')}" />`)
-      .join('\n');
-    if (text && imageTags) return `${text}\n${imageTags}`;
-    return text || imageTags || fallbackText;
-  }
-
-  /** Used by VisionService fallback when provider has no generateWithVisionMessages; kept for consistency. */
-  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: used indirectly via vision fallback path
-  private flattenMessagesForVision(messages: ChatMessage[]): string {
-    return messages
-      .map((m) => {
-        const contentStr =
-          typeof m.content === 'string'
-            ? m.content
-            : (m.content ?? []).map((p) => (p.type === 'text' ? p.text : '[image]')).join('\n');
-        return `${m.role.toUpperCase()}:\n${contentStr}`;
-      })
-      .join('\n\n');
-  }
-
   /** Build ContentPart[] for one history entry when provider has vision: text + image_url (data URL). */
   private buildContentPartsForEntry(entry: ConversationMessageEntry, normalizedImages: VisionImage[]): ContentPart[] {
     const textFromSegments = entry.segments
@@ -601,6 +570,8 @@ export class ReplyGenerationService {
       historyEntries: normalHistory.historyEntries,
       finalUserBlocks,
     });
+
+    logger.debug(`[ReplyGenerationService] Reply messages: ${JSON.stringify(messages, null, 2)}`);
 
     // When provider has vision, replace history entries that contain images with ContentPart[] (text + base64 image_url).
     if (hasVision && normalHistory.historyEntries.length > 0) {
@@ -703,7 +674,9 @@ export class ReplyGenerationService {
       ? Boolean(resolvedVisionProviderName && (await this.supportsToolUse(resolvedVisionProviderName, sessionId)))
       : false;
     const nativeWebSearchEnabled = await this.supportsNativeWebSearch(selectedProviderName, sessionId);
-    const effectiveNativeSearchEnabled = useVisionProvider ? canUseVisionToolUse && nativeWebSearchEnabled : nativeWebSearchEnabled;
+    const effectiveNativeSearchEnabled = useVisionProvider
+      ? canUseVisionToolUse && nativeWebSearchEnabled
+      : nativeWebSearchEnabled;
     const toolDefinitions =
       useVisionProvider && !canUseVisionToolUse
         ? []

@@ -1,5 +1,6 @@
 // Reaction Plugin - sends reaction when message contains configured keywords
 
+import { isNoReplyPath } from '@/context/HookContextHelpers';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext, HookResult } from '@/hooks/types';
 import type { NormalizedMilkyMessageEvent } from '@/protocol/milky/types';
@@ -64,7 +65,7 @@ export class ReactionPlugin extends PluginBase {
     }
 
     // Whitelist is highest constraint: never respond in non-whitelist groups
-    if (context.metadata.get('postProcessOnly')) {
+    if (isNoReplyPath(context)) {
       return true;
     }
 

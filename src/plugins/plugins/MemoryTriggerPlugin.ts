@@ -8,6 +8,7 @@ import {
   buildConversationWindowDocument,
   groupEntriesIntoWindows,
 } from '@/conversation/rag/buildConversationWindowDocument';
+import { isNoReplyPath } from '@/context/HookContextHelpers';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
@@ -348,7 +349,7 @@ export class MemoryTriggerPlugin extends PluginBase {
       return true;
     }
     // Whitelist is highest constraint: never respond in non-whitelist groups
-    if (context.metadata.get('postProcessOnly')) {
+    if (isNoReplyPath(context)) {
       return true;
     }
     const sessionType = context.metadata.get('sessionType');

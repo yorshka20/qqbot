@@ -3,7 +3,7 @@
 import { CommandBuilder } from '@/command/CommandBuilder';
 import type { CommandManager } from '@/command/CommandManager';
 import { CommandContextBuilder } from '@/context/CommandContextBuilder';
-import { replaceReplyWithSegments } from '@/context/HookContextHelpers';
+import { isNoReplyPath, replaceReplyWithSegments } from '@/context/HookContextHelpers';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -62,7 +62,7 @@ export class EchoPlugin extends PluginBase {
 
   private shouldTrigger(context: HookContext): boolean {
     // Whitelist is highest constraint: never respond in non-whitelist groups
-    if (context.metadata.get('postProcessOnly')) {
+    if (isNoReplyPath(context)) {
       return false;
     }
 

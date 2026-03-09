@@ -44,8 +44,10 @@ export class WhitelistPlugin extends PluginBase {
   }
 
   /**
-   * Run earliest in RECEIVE so postProcessOnly is set before any other handler (e.g. LightAppPlugin).
-   * Ensures non-whitelist groups never trigger any bot response.
+   * Run earliest in RECEIVE only. Sets whitelistDenied / postProcessOnly / whitelistUser / whitelistGroup.
+   * Bot or private not in whitelist: postProcessOnly (Lifecycle skips to COMPLETE after RECEIVE).
+   * Group not in whitelist: whitelistDenied only (PREPROCESS runs, then Lifecycle skips to COMPLETE).
+   * Group/private in whitelist: whitelistGroup or whitelistUser (no deny flags).
    */
   @Hook({
     stage: 'onMessageReceived',
@@ -63,72 +65,32 @@ export class WhitelistPlugin extends PluginBase {
     // Core access control 1: Ignore bot's own messages
     if (botSelfId && userId === botSelfId) {
       context.metadata.set('postProcessOnly', true);
+      context.metadata.set('whitelistDenied', true);
       return true;
     }
 
     if (messageType === 'private') {
       if (this.hasUserWhitelist && !this.userWhitelist.has(userId)) {
         context.metadata.set('postProcessOnly', true);
-        logger.info(`[WhitelistPlugin] User not in whitelist | messageId=${messageId} | userId=${userId}`);
-        return true;
-      }
-    } else {
-      // Group: set postProcessOnly when not in whitelist (highest constraint)
-      if (this.hasGroupWhitelist) {
-        if (!groupId || !this.groupWhitelist.has(groupId)) {
-          context.metadata.set('postProcessOnly', true);
-          logger.info(`[WhitelistPlugin] Group not in whitelist | messageId=${messageId} | groupId=${groupId}`);
-          return true;
-        }
-      }
-    }
-
-    return true;
-  }
-
-  @Hook({
-    stage: 'onMessagePreprocess',
-    priority: 'HIGHEST',
-    order: -10,
-  })
-  onMessagePreprocess(context: HookContext): HookResult {
-    const message = context.message;
-    const messageId = message.id || message.messageId || 'unknown';
-    const messageType = message.messageType;
-    const userId = message.userId?.toString();
-    const groupId = message.groupId?.toString();
-    const botSelfId = context.metadata.get('botSelfId');
-
-    // Core access control 1: Ignore bot's own messages
-    if (botSelfId && userId === botSelfId) {
-      context.metadata.set('postProcessOnly', true);
-      return true;
-    }
-
-    // Whitelist check: only applies if whitelist is configured and non-empty
-    if (messageType === 'private') {
-      if (this.hasUserWhitelist && !this.userWhitelist.has(userId)) {
-        context.metadata.set('postProcessOnly', true);
+        context.metadata.set('whitelistDenied', true);
         logger.info(`[WhitelistPlugin] User not in whitelist | messageId=${messageId} | userId=${userId}`);
         return true;
       }
       context.metadata.set('whitelistUser', true);
-      context.metadata.set('contextMode', 'normal');
-    } else {
-      // Group chat: whitelist only; trigger logic is in MessageTriggerPlugin
-      if (this.hasGroupWhitelist) {
-        if (!groupId || !this.groupWhitelist.has(groupId)) {
-          context.metadata.set('postProcessOnly', true);
-          logger.info(`[WhitelistPlugin] Group not in whitelist | messageId=${messageId} | groupId=${groupId}`);
-          return true;
-        }
-        context.metadata.set('whitelistGroup', true);
-      } else {
-        context.metadata.set('whitelistGroup', true);
-      }
-      // contextMode and inProactiveThread are set by MessageTriggerPlugin when it allows reply
+      return true;
     }
 
+    // Group: set whitelistDenied only when not in whitelist (so PREPROCESS still runs)
+    if (this.hasGroupWhitelist) {
+      if (!groupId || !this.groupWhitelist.has(groupId)) {
+        context.metadata.set('whitelistDenied', true);
+        logger.info(`[WhitelistPlugin] Group not in whitelist | messageId=${messageId} | groupId=${groupId}`);
+        return true;
+      }
+      context.metadata.set('whitelistGroup', true);
+    } else {
+      context.metadata.set('whitelistGroup', true);
+    }
     return true;
   }
 }

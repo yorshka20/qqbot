@@ -97,6 +97,15 @@ describe('MessageTriggerPlugin', () => {
     return plugin;
   }
 
+  it('does not set replyTriggerType when postProcessOnly already set (e.g. by WhitelistPlugin)', async () => {
+    const plugin = await initPlugin({ wakeWords: ['wakebot'] });
+    const context = makeHookContext({ messageText: 'wakebot hello', groupId: 1 });
+    context.metadata.set('postProcessOnly', true);
+    await plugin.onMessagePreprocess(context);
+    expect(context.metadata.get('postProcessOnly')).toBe(true);
+    expect(context.metadata.get('replyTriggerType')).toBeUndefined();
+  });
+
   it('sets postProcessOnly for bot own messages', async () => {
     const plugin = await initPlugin();
     const context = makeHookContext({ messageText: 'hello', userId: 123, botSelfId: '123' });
@@ -297,6 +306,43 @@ describe('MessageTriggerPlugin', () => {
     await plugin.onMessagePreprocess(context);
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
     expect(context.metadata.get('replyTriggerType')).toBe('wakeWordConfig');
+  });
+
+  it('sets inProactiveThread when threadService.hasActiveThread returns true for group', async () => {
+    const container = getContainer();
+    container.registerInstance(DITokens.PROMPT_MANAGER, new PromptManager(), { allowOverride: true });
+    container.registerInstance(
+      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+      { getGroupPreferenceKeys: () => [] },
+      { allowOverride: true },
+    );
+    container.registerInstance(
+      DITokens.THREAD_SERVICE,
+      { hasActiveThread: (gid: string) => gid === '1' },
+      { allowOverride: true },
+    );
+    container.registerInstance(
+      DITokens.PREFIX_INVITATION_CHECK_SERVICE,
+      { check: async () => ({ shouldReply: true, reason: undefined }) },
+      { allowOverride: true },
+    );
+
+    const plugin = new MessageTriggerPlugin({
+      name: 'messageTrigger',
+      version: 'test',
+      description: 'test',
+    });
+    plugin.loadConfig(
+      { api: {} as never, events: {} as never },
+      { name: 'messageTrigger', enabled: true, config: { wakeWords: ['wakebot'] } },
+    );
+    await plugin.onInit?.();
+
+    const context = makeHookContext({ messageText: 'wakebot hi', groupId: 1 });
+    await plugin.onMessagePreprocess(context);
+    expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+    expect(context.metadata.get('replyTriggerType')).toBe('wakeWordConfig');
+    expect(context.metadata.get('inProactiveThread')).toBe(true);
   });
 
   it('sets postProcessOnly when prefix-invitation check says no reply (provider-name trigger)', async () => {

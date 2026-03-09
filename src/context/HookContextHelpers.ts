@@ -185,3 +185,11 @@ export function hasReply(context: HookContext): boolean {
 export function clearReply(context: HookContext): void {
   context.reply = undefined;
 }
+
+/**
+ * True when the pipeline must not produce a direct reply: either access denied (whitelistDenied) or no direct reply path (postProcessOnly).
+ * Use for reply-related plugins (Echo, TaskSystem, etc.). Proactive uses only whitelistDenied.
+ */
+export function isNoReplyPath(context: HookContext): boolean {
+  return !!(context.metadata.get('postProcessOnly') || context.metadata.get('whitelistDenied'));
+}

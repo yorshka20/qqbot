@@ -2,6 +2,7 @@
 
 import type { ParsedCommand } from '@/command';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
+import { isNoReplyPath } from '@/context/HookContextHelpers';
 import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';
 import type { HookManager } from '@/hooks/HookManager';
@@ -86,10 +87,9 @@ export class Lifecycle {
           await this.executeStageComplete(context, messageId);
           return false;
         }
-        // Whitelist is highest constraint: when postProcessOnly is set (e.g. by WhitelistPlugin in RECEIVE),
-        // skip remaining stages and go directly to COMPLETE so other plugins never handle the message
-        if (context.metadata.get('postProcessOnly')) {
-          logger.debug(`[Lifecycle] postProcessOnly set, skipping to COMPLETE | messageId=${messageId}`);
+        // Skip to COMPLETE when access denied or no direct reply path (whitelistDenied or postProcessOnly)
+        if (isNoReplyPath(context)) {
+          logger.debug(`[Lifecycle] no-reply path, skipping to COMPLETE | messageId=${messageId}`);
           await this.executeStageComplete(context, messageId);
           return true;
         }

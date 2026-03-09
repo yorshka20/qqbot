@@ -1,7 +1,7 @@
 // Task System - handles task execution and drives AI capabilities
 
 import type { AIService } from '@/ai/AIService';
-import { hasReply } from '@/context/HookContextHelpers';
+import { hasReply, isNoReplyPath } from '@/context/HookContextHelpers';
 import { TaskExecutionContextBuilder } from '@/context/TaskExecutionContextBuilder';
 import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
@@ -71,7 +71,7 @@ export class TaskSystem implements System {
     return true;
   }
 
-  /** Skip when command handled, reply already set, or postProcessOnly. */
+  /** Skip when command handled, reply already set, postProcessOnly, or whitelistDenied. */
   private shouldSkipExecution(context: HookContext): boolean {
     if (context.command) {
       return true;
@@ -79,7 +79,7 @@ export class TaskSystem implements System {
     if (hasReply(context)) {
       return true;
     }
-    if (context.metadata.get('postProcessOnly')) {
+    if (isNoReplyPath(context)) {
       return true;
     }
     return false;

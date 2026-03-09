@@ -2,6 +2,7 @@
 // parse json_payload, extract URLs, and send them as a forward message
 
 import { MessageAPI } from '@/api/methods/MessageAPI';
+import { isNoReplyPath } from '@/context/HookContextHelpers';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -103,7 +104,7 @@ export class LightAppPlugin extends PluginBase {
       return true;
     }
     // Whitelist is highest constraint: never respond in non-whitelist groups
-    if (context.metadata.get('postProcessOnly')) {
+    if (isNoReplyPath(context)) {
       return true;
     }
     const message = context.message;

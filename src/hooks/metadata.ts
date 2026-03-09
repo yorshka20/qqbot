@@ -14,7 +14,10 @@ export interface HookContextMetadata {
   botSelfId: string;
 
   // Access Control & Processing Mode
+  /** No direct reply path: skip PROCESS (set by WhitelistPlugin for bot/private deny, or by MessageTriggerPlugin when no @/wake word). Lifecycle skips to COMPLETE. Proactive can still run when whitelistGroup. */
   postProcessOnly?: boolean;
+  /** Access denied: set by WhitelistPlugin (bot, private/group not in whitelist). No reply, no proactive; only persistence and event-based plugins. */
+  whitelistDenied?: boolean;
   /** When true, this group has opted in to send replies as forward (Milky); set at process start from conversation config. */
   groupUseForwardMsg?: boolean;
   whitelistUser?: boolean;

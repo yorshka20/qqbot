@@ -64,30 +64,34 @@ These keys control whether and how the message should be processed.
 ### `postProcessOnly`
 
 - **Type**: `boolean`
-- **Set By**: `WhitelistPlugin` (PREPROCESS stage)
-- **Read By**: `TaskSystem`, `MessagePipeline`
-- **Purpose**: When `true`, indicates the message should be collected (for context building) but no reply should be generated
-- **Usage**:
-  - Set to `true` for non-whitelist users/groups
-  - Set to `true` for group messages without @bot
-  - Set to `true` for bot's own messages
-- **Lifecycle**: Set in PREPROCESS, checked in PROCESS
+- **Set By**: `WhitelistPlugin` (RECEIVE stage) for bot message or private not in whitelist; `MessageTriggerPlugin` (PREPROCESS) when there is no direct reply trigger (no @, no wake word) for a whitelist message.
+- **Read By**: `TaskSystem`, `MessagePipeline`, `Lifecycle`, `HookManager`
+- **Purpose**: When `true`, no direct reply path: skip PROCESS/PREPARE/SEND; COMPLETE and onMessageComplete still run (e.g. proactive can schedule).
+- **Lifecycle**: Set in RECEIVE (access deny) or PREPROCESS (no trigger); Lifecycle skips to COMPLETE when this or `whitelistDenied` is set.
+
+### `whitelistDenied`
+
+- **Type**: `boolean`
+- **Set By**: `WhitelistPlugin` (RECEIVE stage only) when: bot message, private not in user whitelist, or group not in group whitelist.
+- **Read By**: `Lifecycle`, `HookManager`, `ProactiveConversationPlugin` (only flag used to skip proactive), `TaskSystem`, and plugins that respect access control (Echo, LightApp, MemoryTrigger, Reaction).
+- **Purpose**: Access denied; no reply and no proactive; PREPROCESS and COMPLETE still run (e.g. non-whitelist group gets DB/RAG persistence and GroupDownload via event).
+- **Lifecycle**: Set in RECEIVE; Lifecycle skips to COMPLETE when this or `postProcessOnly` is set after each stage.
 
 ### `whitelistUser`
 
 - **Type**: `boolean`
-- **Set By**: `WhitelistPlugin` (PREPROCESS stage)
+- **Set By**: `WhitelistPlugin` (RECEIVE stage) when private message sender is in user whitelist
 - **Read By**: None (used for internal state tracking)
 - **Purpose**: Indicates whether the message sender is in the user whitelist
-- **Lifecycle**: Set in PREPROCESS, may influence processing logic
+- **Lifecycle**: Set in RECEIVE, may influence processing logic
 
 ### `whitelistGroup`
 
 - **Type**: `boolean`
-- **Set By**: `WhitelistPlugin` (PREPROCESS stage)
-- **Read By**: `ReactionPlugin`
+- **Set By**: `WhitelistPlugin` (RECEIVE stage) when group is in group whitelist
+- **Read By**: `ReactionPlugin`, `HookManager` (ProactiveConversationPlugin skips only on `whitelistDenied`, not on `postProcessOnly`/`whitelistGroup`)
 - **Purpose**: Indicates whether the message is from a whitelisted group
-- **Lifecycle**: Set in PREPROCESS, used by plugins that need group whitelist status
+- **Lifecycle**: Set in RECEIVE, used by plugins that need group whitelist status
 
 ---
 
@@ -166,10 +170,14 @@ These keys are used for command execution and permission checking.
 
 ## Metadata Flow by Stage
 
+### RECEIVE Stage
+
+- **Set**: `postProcessOnly`, `whitelistDenied`, `whitelistUser`, `whitelistGroup` (WhitelistPlugin)
+
 ### PREPROCESS Stage
 
-- **Set**: `postProcessOnly`, `whitelistUser`, `whitelistGroup`, `context.reply` (EchoPlugin)
-- **Read**: `botSelfId`, `whitelistGroup` (ReactionPlugin)
+- **Set**: `postProcessOnly` (MessageTriggerPlugin when no direct reply trigger), `context.reply` (EchoPlugin)
+- **Read**: `botSelfId`, `whitelistGroup` (ReactionPlugin), `whitelistDenied` (HookManager)
 
 ### PROCESS Stage
 
@@ -195,7 +203,7 @@ These keys are used for command execution and permission checking.
 
 1. **Initialization**: Always initialize core metadata keys (`sessionId`, `sessionType`, `conversationId`, `botSelfId`) at the start of message processing.
 
-2. **Access Control**: Access control keys (`postProcessOnly`, `whitelistUser`, `whitelistGroup`) should be set early in PREPROCESS stage to avoid unnecessary processing.
+2. **Access Control**: Access control keys (`whitelistDenied`, `postProcessOnly`, `whitelistUser`, `whitelistGroup`) are set in RECEIVE stage by WhitelistPlugin; `postProcessOnly` may also be set in PREPROCESS by MessageTriggerPlugin when there is no direct reply trigger.
 
 3. **Reply Handling**: Use `context.reply` field (not metadata) for reply content. Use helper functions (`setReply()`, `getReply()`, etc.) from `@/context/HookContextHelpers` for type-safe operations. Be aware that multiple systems may set replies - last writer wins, so consider checking for existing replies before overwriting.
 

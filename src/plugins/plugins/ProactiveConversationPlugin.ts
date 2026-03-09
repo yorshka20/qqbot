@@ -153,8 +153,8 @@ export class ProactiveConversationPlugin extends PluginBase {
   onMessageComplete(context: HookContext): HookResult {
     if (!this.enabled || this.groupIds.size === 0) return true;
 
-    // Whitelist is highest constraint: do not schedule proactive for non-whitelist groups
-    if (context.metadata.get('postProcessOnly')) {
+    // Do not schedule proactive when access denied. Proactive does not use postProcessOnly: "no direct reply" still allows proactive in whitelist groups.
+    if (context.metadata.get('whitelistDenied')) {
       return true;
     }
 

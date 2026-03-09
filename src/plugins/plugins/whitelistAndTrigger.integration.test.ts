@@ -1,12 +1,13 @@
 /**
- * Integration tests: WhitelistPlugin + MessageTriggerPlugin in pipeline order.
+ * Integration tests: WhitelistPlugin + MessageTriggerPlugin (+ ProactiveConversationPlugin) in pipeline order.
  * Ensures:
- * - Non-whitelist group: all processing forbidden (postProcessOnly set, no command nor message handling).
- * - Whitelist group: command and message handling both work (postProcessOnly not set, pipeline continues).
+ * - Non-whitelist group: whitelistDenied set by WhitelistPlugin (RECEIVE only); Lifecycle skips to COMPLETE after PREPROCESS.
+ * - Whitelist group: command and message handling both work (whitelistGroup set, pipeline continues).
+ * - Whitelist group + no direct trigger: postProcessOnly set by MessageTrigger; ProactiveConversationPlugin still schedules (only skips on whitelistDenied).
  */
 import 'reflect-metadata';
 
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { PromptManager } from '@/ai/prompt/PromptManager';
 import { CommandBuilder } from '@/command/CommandBuilder';
 import { getContainer } from '@/core/DIContainer';
@@ -14,6 +15,7 @@ import { DITokens } from '@/core/DITokens';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import { MessageTriggerPlugin } from './MessageTriggerPlugin';
+import { ProactiveConversationPlugin } from './ProactiveConversationPlugin';
 import { WhitelistPlugin } from './WhitelistPlugin';
 
 function makeHookContext(opts: {
@@ -103,8 +105,8 @@ describe('Whitelist + MessageTrigger integration', () => {
     getContainer().clear();
   });
 
-  describe('non-whitelist group: all processing forbidden', () => {
-    it('sets postProcessOnly so command and message are not processed', async () => {
+  describe('non-whitelist group: whitelistDenied set, pipeline skips to COMPLETE', () => {
+    it('sets whitelistDenied so command and message are not processed', async () => {
       const whitelist = await initWhitelist({ groupIds: ['999'] });
       const trigger = await initMessageTrigger();
 
@@ -120,23 +122,24 @@ describe('Whitelist + MessageTrigger integration', () => {
       });
 
       whitelist.onMessageReceived(contextCmd);
-      whitelist.onMessagePreprocess(contextCmd);
-      expect(contextCmd.metadata.get('postProcessOnly')).toBe(true);
+      expect(contextCmd.metadata.get('whitelistDenied')).toBe(true);
+      expect(contextCmd.metadata.get('postProcessOnly')).toBeUndefined();
 
       await trigger.onMessagePreprocess(contextCmd);
-      expect(contextCmd.metadata.get('postProcessOnly')).toBe(true);
+      expect(contextCmd.metadata.get('whitelistDenied')).toBe(true);
 
       whitelist.onMessageReceived(contextMsg);
-      whitelist.onMessagePreprocess(contextMsg);
-      expect(contextMsg.metadata.get('postProcessOnly')).toBe(true);
+      expect(contextMsg.metadata.get('whitelistDenied')).toBe(true);
+      expect(contextMsg.metadata.get('postProcessOnly')).toBeUndefined();
 
       await trigger.onMessagePreprocess(contextMsg);
+      expect(contextMsg.metadata.get('whitelistDenied')).toBe(true);
       expect(contextMsg.metadata.get('postProcessOnly')).toBe(true);
     });
   });
 
   describe('whitelist group: command and message handling work', () => {
-    it('command is not blocked (postProcessOnly not set, pipeline continues to PROCESS)', async () => {
+    it('command is not blocked (whitelistGroup set, pipeline continues to PROCESS)', async () => {
       const whitelist = await initWhitelist({ groupIds: ['1'] });
       const trigger = await initMessageTrigger();
 
@@ -147,8 +150,8 @@ describe('Whitelist + MessageTrigger integration', () => {
       });
 
       whitelist.onMessageReceived(context);
-      whitelist.onMessagePreprocess(context);
       expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+      expect(context.metadata.get('whitelistDenied')).toBeUndefined();
       expect(context.metadata.get('whitelistGroup')).toBe(true);
 
       await trigger.onMessagePreprocess(context);
@@ -167,7 +170,6 @@ describe('Whitelist + MessageTrigger integration', () => {
       });
 
       whitelist.onMessageReceived(context);
-      whitelist.onMessagePreprocess(context);
       expect(context.metadata.get('postProcessOnly')).toBeUndefined();
       expect(context.metadata.get('whitelistGroup')).toBe(true);
 
@@ -190,7 +192,6 @@ describe('Whitelist + MessageTrigger integration', () => {
       });
 
       whitelist.onMessageReceived(context);
-      whitelist.onMessagePreprocess(context);
       expect(context.metadata.get('postProcessOnly')).toBeUndefined();
       expect(context.metadata.get('whitelistGroup')).toBe(true);
 
@@ -198,6 +199,51 @@ describe('Whitelist + MessageTrigger integration', () => {
       expect(context.metadata.get('postProcessOnly')).toBeUndefined();
       expect(context.metadata.get('replyTriggerType')).toBe('at');
       expect(context.metadata.get('contextMode')).toBe('normal');
+    });
+  });
+
+  describe('whitelist group + no trigger: postProcessOnly set, proactive still schedules', () => {
+    it('after Whitelist + MessageTrigger, ProactiveConversationPlugin schedules (whitelistDenied false)', async () => {
+      const whitelist = await initWhitelist({ groupIds: ['1'] });
+      const trigger = await initMessageTrigger();
+      const scheduleForGroup = mock(() => {});
+      const container = getContainer();
+      const promptManager = new PromptManager();
+      promptManager.registerTemplate({
+        name: 'acg.trigger',
+        namespace: 'preference',
+        content: 'hello',
+      });
+      container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
+      container.registerInstance(
+        DITokens.PROACTIVE_CONVERSATION_SERVICE,
+        { getGroupPreferenceKeys: () => [], setGroupConfig: () => {}, setAnalysisProvider: () => {}, scheduleForGroup },
+        { allowOverride: true },
+      );
+      container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
+
+      const proactive = new ProactiveConversationPlugin({
+        name: 'proactiveConversation',
+        version: 'test',
+        description: 'test',
+      });
+      proactive.loadConfig(
+        { api: {} as never, events: {} as never },
+        { name: 'proactiveConversation', enabled: true, config: { groups: [{ groupId: '1', preferenceKey: 'acg' }] } },
+      );
+      await proactive.onInit?.();
+
+      const context = makeHookContext({ messageText: 'say hello please', groupId: 1 });
+      whitelist.onMessageReceived(context);
+      expect(context.metadata.get('whitelistDenied')).toBeUndefined();
+      expect(context.metadata.get('whitelistGroup')).toBe(true);
+
+      await trigger.onMessagePreprocess(context);
+      expect(context.metadata.get('postProcessOnly')).toBe(true);
+      expect(context.metadata.get('replyTriggerType')).toBeUndefined();
+
+      proactive.onMessageComplete(context);
+      expect(scheduleForGroup).toHaveBeenCalled();
     });
   });
 });

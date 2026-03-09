@@ -10,6 +10,7 @@ export {
   getReply,
   getReplyContent,
   hasReply,
+  isNoReplyPath,
   replaceReply,
   replaceReplyWithSegments,
   setReply,

@@ -40,7 +40,7 @@ function makeHookContext(opts: {
 }
 
 describe('WhitelistPlugin access control', () => {
-  it('sets postProcessOnly for bot own messages', async () => {
+  it('sets postProcessOnly and whitelistDenied for bot own messages', async () => {
     const plugin = new WhitelistPlugin({
       name: 'whitelist',
       version: 'test',
@@ -56,12 +56,13 @@ describe('WhitelistPlugin access control', () => {
     await plugin.onInit?.();
 
     const context = makeHookContext({ messageText: 'hello', userId: 123, botSelfId: '123' });
-    plugin.onMessagePreprocess(context);
+    plugin.onMessageReceived(context);
 
     expect(context.metadata.get('postProcessOnly')).toBe(true);
+    expect(context.metadata.get('whitelistDenied')).toBe(true);
   });
 
-  it('sets postProcessOnly when user not in whitelist (private)', async () => {
+  it('sets postProcessOnly and whitelistDenied when user not in whitelist (private)', async () => {
     const plugin = new WhitelistPlugin({
       name: 'whitelist',
       version: 'test',
@@ -82,9 +83,10 @@ describe('WhitelistPlugin access control', () => {
       userId: 456,
       groupId: undefined,
     });
-    plugin.onMessagePreprocess(context);
+    plugin.onMessageReceived(context);
 
     expect(context.metadata.get('postProcessOnly')).toBe(true);
+    expect(context.metadata.get('whitelistDenied')).toBe(true);
     expect(context.metadata.get('whitelistUser')).toBeUndefined();
   });
 
@@ -109,14 +111,14 @@ describe('WhitelistPlugin access control', () => {
       userId: 456,
       groupId: undefined,
     });
-    plugin.onMessagePreprocess(context);
+    plugin.onMessageReceived(context);
 
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+    expect(context.metadata.get('whitelistDenied')).toBeUndefined();
     expect(context.metadata.get('whitelistUser')).toBe(true);
-    expect(context.metadata.get('contextMode')).toBe('normal');
   });
 
-  it('sets postProcessOnly when group not in whitelist (onMessageReceived runs first)', async () => {
+  it('sets whitelistDenied only when group not in whitelist (RECEIVE only; no postProcessOnly so PREPROCESS runs)', async () => {
     const plugin = new WhitelistPlugin({
       name: 'whitelist',
       version: 'test',
@@ -133,12 +135,37 @@ describe('WhitelistPlugin access control', () => {
 
     const context = makeHookContext({ messageText: 'hello', groupId: 1 });
     plugin.onMessageReceived(context);
-    expect(context.metadata.get('postProcessOnly')).toBe(true);
+    expect(context.metadata.get('whitelistDenied')).toBe(true);
+    expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+    expect(context.metadata.get('whitelistGroup')).toBeUndefined();
+  });
 
-    // Preprocess also sets it (and whitelistGroup for allowed groups)
-    const context2 = makeHookContext({ messageText: 'hello', groupId: 1 });
-    plugin.onMessagePreprocess(context2);
-    expect(context2.metadata.get('postProcessOnly')).toBe(true);
+  it('allows private message when no user whitelist configured (whitelistUser set, no deny)', async () => {
+    const plugin = new WhitelistPlugin({
+      name: 'whitelist',
+      version: 'test',
+      description: 'test',
+    });
+    plugin.loadConfig(
+      {
+        api: {} as never,
+        events: {} as never,
+      },
+      { name: 'whitelist', enabled: true, config: {} },
+    );
+    await plugin.onInit?.();
+
+    const context = makeHookContext({
+      messageText: 'hello',
+      messageType: 'private',
+      userId: 456,
+      groupId: undefined,
+    });
+    plugin.onMessageReceived(context);
+
+    expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+    expect(context.metadata.get('whitelistDenied')).toBeUndefined();
+    expect(context.metadata.get('whitelistUser')).toBe(true);
   });
 
   it('allows group message when group in whitelist', async () => {
@@ -157,9 +184,10 @@ describe('WhitelistPlugin access control', () => {
     await plugin.onInit?.();
 
     const context = makeHookContext({ messageText: 'hello', groupId: 1 });
-    plugin.onMessagePreprocess(context);
+    plugin.onMessageReceived(context);
 
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+    expect(context.metadata.get('whitelistDenied')).toBeUndefined();
     expect(context.metadata.get('whitelistGroup')).toBe(true);
   });
 
@@ -200,9 +228,10 @@ describe('WhitelistPlugin access control', () => {
     await plugin.onInit?.();
 
     const context = makeHookContext({ messageText: 'hello', groupId: 1 });
-    plugin.onMessagePreprocess(context);
+    plugin.onMessageReceived(context);
 
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+    expect(context.metadata.get('whitelistDenied')).toBeUndefined();
     expect(context.metadata.get('whitelistGroup')).toBe(true);
   });
 
@@ -225,10 +254,7 @@ describe('WhitelistPlugin access control', () => {
     const context = makeHookContext({ messageText: '/echo', groupId: 304077769 });
     plugin.onMessageReceived(context);
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
-
-    const context2 = makeHookContext({ messageText: '/echo', groupId: 304077769 });
-    plugin.onMessagePreprocess(context2);
-    expect(context2.metadata.get('postProcessOnly')).toBeUndefined();
-    expect(context2.metadata.get('whitelistGroup')).toBe(true);
+    expect(context.metadata.get('whitelistDenied')).toBeUndefined();
+    expect(context.metadata.get('whitelistGroup')).toBe(true);
   });
 });
