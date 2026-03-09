@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { inject, injectable } from 'tsyringe';
 import type { AIService } from '@/ai';
 import { DITokens } from '@/core/DITokens';
@@ -41,9 +42,12 @@ export class GroupDedupCommandHandler implements CommandHandler {
     }
 
     logger.info(`[GroupDedupCommandHandler] Starting manual dedup | groupId=${groupId}`);
-    const targetDir = `${DOWNLOAD_ROOT}/${groupId}`;
-    const resolvedTarget = this.fileService.resolvePath(targetDir);
-    const result = await runDeduplication([targetDir], this.fileService, false);
+    // Use same path resolution as DeduplicateFilesTaskExecutor and GroupDownloadPlugin (cwd + DOWNLOAD_ROOT)
+    const targetDirAbsolute = join(process.cwd(), DOWNLOAD_ROOT, groupId);
+    const targetDirRelative = `${DOWNLOAD_ROOT}/${groupId}`;
+    // noCheck for resolvePath so message does not show "unavailable path" for the same path we scan (admin-only command)
+    const resolvedTarget = this.fileService.resolvePath(targetDirRelative, true);
+    const result = await runDeduplication([targetDirAbsolute], this.fileService, false);
 
     const lines: string[] = [
       `群 ${groupId} 去重完成：`,
@@ -63,12 +67,10 @@ export class GroupDedupCommandHandler implements CommandHandler {
 
     const hasMissingDirError = result.errors.some((item) => item.error.includes('路径不存在'));
     if (hasMissingDirError && result.totalFiles === 0 && result.duplicatesFound === 0) {
-      lines.push(`- 目录状态：未找到 ${targetDir}，该群可能还没有下载文件`);
-      if (resolvedTarget.resolved) {
-        lines.push(`- 实际解析路径：${resolvedTarget.resolved}`);
-      }
+      lines.push(`- 目录状态：未找到 ${targetDirRelative}，该群可能还没有下载文件`);
+      lines.push(`- 实际扫描路径：${targetDirAbsolute}`);
     } else if (resolvedTarget.error) {
-      lines.push(`- 路径检查：${targetDir}（${resolvedTarget.error}）`);
+      lines.push(`- 路径检查：${targetDirRelative}（${resolvedTarget.error}）`);
     } else if (result.errors.length > 0) {
       lines.push(`- 错误：${result.errors.length} 个（详见日志）`);
     }

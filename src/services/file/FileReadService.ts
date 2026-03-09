@@ -71,37 +71,41 @@ export class FileReadService {
   }
 
   /**
-   * Check if resolved path is within project root (no path traversal)
+   * Check if resolved path is within project root (no path traversal).
+   * When noCheck is true, only traversal is checked; filterPaths are skipped (caller must restrict who uses noCheck).
    */
-  isPathSafe(resolvedPath: string, rootPath: string = this.projectRoot): boolean {
+  isPathSafe(resolvedPath: string, rootPath: string = this.projectRoot, noCheck = false): boolean {
     const rel = relative(rootPath, resolvedPath);
-    return (
-      (!rel || !rel.startsWith('..')) && !isAbsolute(rel) && this.filterPaths.every((filter) => !rel.includes(filter))
-    );
+    const withinRoot = (!rel || !rel.startsWith('..')) && !isAbsolute(rel);
+    if (noCheck) {
+      return withinRoot;
+    }
+    return withinRoot && this.filterPaths.every((filter) => !rel.includes(filter));
   }
 
   /**
    * Resolve and validate path. Returns null if invalid or unsafe.
    * Accepts both relative paths (from project root) and absolute paths (within project root).
+   * When noCheck is true, filterPaths are skipped (caller must restrict who uses noCheck).
    */
-  resolvePath(userPath: string): { resolved: string; error?: string } {
+  resolvePath(userPath: string, noCheck = false): { resolved: string; error?: string } {
     const normalized = normalize(userPath).replace(/^(\.\/)+/, '');
     const resolved = resolve(this.projectRoot, normalized);
+    const relFromRoot = relative(this.projectRoot, resolved);
 
-    // Check for unavailable path per filters
-    if (this.filterPaths.some((filter) => resolved.includes(filter))) {
+    // Check for unavailable path per filters (skip when noCheck)
+    if (!noCheck && this.filterPaths.some((filter) => resolved.includes(filter))) {
       return { resolved: '', error: 'unavailable path' };
     }
 
     // Also filter any path components that are hidden (starts with .)
     // e.g. /foo/.bar/file.txt or .env or .gitignore
-    const relFromRoot = relative(this.projectRoot, resolved);
     const relParts = relFromRoot.split(/[\\/]/);
     if (relParts.some((part) => part.startsWith('.') && part.length > 1)) {
       return { resolved: '', error: 'hidden path is not allowed' };
     }
 
-    if (!this.isPathSafe(resolved)) {
+    if (!this.isPathSafe(resolved, this.projectRoot, noCheck)) {
       return { resolved: '', error: '路径超出项目根目录' };
     }
 
@@ -143,11 +147,11 @@ export class FileReadService {
 
   /**
    * Scan a directory returning raw file entries for programmatic use.
-   * Non-hidden files only; honors filterPaths.
+   * Non-hidden files only; honors filterPaths unless noCheck is true (caller must restrict who uses noCheck).
    * Accepts both relative (from project root) and absolute paths within project root.
    */
-  scanDirectory(dirPath: string): ScanDirectoryResult {
-    const { resolved, error } = this.resolvePath(dirPath);
+  scanDirectory(dirPath: string, noCheck = false): ScanDirectoryResult {
+    const { resolved, error } = this.resolvePath(dirPath, noCheck);
     if (error) {
       return { success: false, entries: [], error };
     }
@@ -229,9 +233,10 @@ export class FileReadService {
    * Read file content as binary Buffer.
    * Suitable for hashing or binary processing. No size limit applied.
    * Accepts both relative (from project root) and absolute paths within project root.
+   * When noCheck is true, filterPaths are skipped (caller must restrict who uses noCheck).
    */
-  readFileBinary(path: string): ReadFileBinaryResult {
-    const { resolved, error } = this.resolvePath(path);
+  readFileBinary(path: string, noCheck = false): ReadFileBinaryResult {
+    const { resolved, error } = this.resolvePath(path, noCheck);
     if (error) {
       return { success: false, error };
     }
@@ -278,9 +283,10 @@ export class FileReadService {
   /**
    * Delete a file within the project root.
    * Accepts both relative (from project root) and absolute paths within project root.
+   * When noCheck is true, filterPaths are skipped (caller must restrict who uses noCheck).
    */
-  deleteFile(path: string): DeleteFileResult {
-    const { resolved, error } = this.resolvePath(path);
+  deleteFile(path: string, noCheck = false): DeleteFileResult {
+    const { resolved, error } = this.resolvePath(path, noCheck);
     if (error) {
       return { success: false, error };
     }

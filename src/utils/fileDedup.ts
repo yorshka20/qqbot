@@ -56,8 +56,8 @@ async function deduplicateDir(
   dryRun: boolean,
   result: DeduplicateResult,
 ): Promise<void> {
-  // Pass 1: collect entries
-  const scanResult = fileService.scanDirectory(dir);
+  // Pass 1: collect entries (noCheck: dedup is only used by trusted callers e.g. admin command)
+  const scanResult = fileService.scanDirectory(dir, true);
   if (!scanResult.success) {
     result.errors.push({ file: dir, error: scanResult.error ?? 'scanDirectory failed' });
     return;
@@ -91,7 +91,7 @@ async function deduplicateDir(
   const md5Map = new Map<string, string>(); // path → md5
 
   for (const entry of candidates.flat()) {
-    const readResult = fileService.readFileBinary(entry.path);
+    const readResult = fileService.readFileBinary(entry.path, true);
     if (!readResult.success || !readResult.data) {
       result.errors.push({
         file: entry.path,
@@ -129,7 +129,7 @@ async function deduplicateDir(
       result.bytesFreed += dup.size;
 
       if (!dryRun) {
-        const delResult = fileService.deleteFile(dup.path);
+        const delResult = fileService.deleteFile(dup.path, true);
         if (delResult.success) {
           result.deletedFiles.push(dup.path);
           logger.info(`[fileDedup] Deleted duplicate: ${dup.path}`);
@@ -150,6 +150,7 @@ async function deduplicateDir(
 /**
  * Run deduplication over one or more flat directories.
  * Each directory is scanned independently; results are aggregated.
+ * Internally uses FileReadService with noCheck (only trusted callers should invoke dedup).
  *
  * @param dirs - Absolute or project-root-relative paths to scan
  * @param fileService - FileReadService instance for safe file access
