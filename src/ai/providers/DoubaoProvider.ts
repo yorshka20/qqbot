@@ -110,6 +110,18 @@ interface ArkResponsesResponse {
   };
 }
 
+/** Response body from POST /chat/completions (used by lite models that do not support /responses). */
+interface ArkChatCompletionsResponse {
+  choices?: Array<{
+    message?: { content?: string };
+  }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+}
+
 /** Parsed result from Ark response (text, reasoning, usage, optional tool call). */
 interface ArkParsedResult {
   text: string;
@@ -137,6 +149,14 @@ interface ResponsesStreamChunk {
 
 /** Default model when config.model is not set (config should set e.g. doubao-seed-1-8-251228). */
 const DEFAULT_DOUBAO_MODEL = 'doubao-seed-1-6-lite-251015';
+
+/**
+ * Whether this model must use Ark Chat Completions API (POST /chat/completions) instead of Responses API.
+ * Lite models (e.g. doubao-1-5-lite-32k-250115) do not have access to the Responses API.
+ */
+function useChatCompletionsForModel(model: string): boolean {
+  return model.toLowerCase().includes('lite');
+}
 
 /**
  * Normalize input for request: single user string when possible (cache-friendly), else array.
@@ -306,12 +326,75 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     return this._capabilities;
   }
 
+  /**
+   * Lite generation: always uses Ark Chat Completions API (POST /chat/completions).
+   * Use for cheap/fast tasks (e.g. prefix-invitation check). Avoids Responses API which lite models do not support.
+   */
+  async generateLite(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
+    if (!this.isAvailable()) {
+      throw new Error('Doubao client not initialized');
+    }
+    const model = options?.model ?? this.config.model ?? DEFAULT_DOUBAO_MODEL;
+    return this.generateViaChatCompletions(prompt, model, options);
+  }
+
+  /**
+   * Generate using Ark Chat Completions API (POST /chat/completions).
+   * Used for lite models that do not have access to the Responses API.
+   */
+  private async generateViaChatCompletions(
+    prompt: string,
+    model: string,
+    options?: AIGenerateOptions,
+  ): Promise<AIGenerateResponse> {
+    const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
+    if (options?.systemPrompt) {
+      messages.push({ role: 'system', content: options.systemPrompt });
+    }
+    messages.push({ role: 'user', content: prompt });
+
+    const body = {
+      model,
+      messages,
+      temperature: options?.temperature ?? this.config.defaultTemperature ?? 0.7,
+      max_tokens: options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000,
+      top_p: options?.topP,
+      frequency_penalty: options?.frequencyPenalty,
+      presence_penalty: options?.presencePenalty,
+      stop: options?.stop,
+    };
+
+    logger.debug(`[DoubaoProvider] Generating with model (chat/completions): ${model}`);
+    const data = await this.httpClient.post<ArkChatCompletionsResponse>('/chat/completions', body);
+
+    const text = data.choices?.[0]?.message?.content ?? '';
+    const usage = data.usage
+      ? {
+          promptTokens: data.usage.prompt_tokens ?? 0,
+          completionTokens: data.usage.completion_tokens ?? 0,
+          totalTokens: data.usage.total_tokens ?? 0,
+        }
+      : undefined;
+
+    return {
+      text,
+      usage,
+      metadata: { model },
+    };
+  }
+
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     if (!this.isAvailable()) {
       throw new Error('Doubao client not initialized');
     }
 
     const model = options?.model ?? this.config.model ?? DEFAULT_DOUBAO_MODEL;
+
+    // Lite models (e.g. doubao-1-5-lite-32k-250115) do not support Responses API; use Chat Completions API.
+    if (useChatCompletionsForModel(model)) {
+      return this.generateViaChatCompletions(prompt, model, options);
+    }
+
     try {
       logger.debug(`[DoubaoProvider] Generating with model: ${model}`);
 

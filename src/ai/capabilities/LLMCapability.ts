@@ -17,6 +17,12 @@ export interface LLMCapability {
    * Generate text with streaming support
    */
   generateStream(prompt: string, handler: StreamingHandler, options?: AIGenerateOptions): Promise<AIGenerateResponse>;
+
+  /**
+   * Optional: lightweight generation (e.g. via Chat API for Doubao) for cheap/fast tasks.
+   * When not implemented, LLMService falls back to generate() with lite options.
+   */
+  generateLite?(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse>;
 }
 
 /**

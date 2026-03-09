@@ -167,6 +167,12 @@ export class LLMService {
 
     logger.debug(`[LLMService] generateLite: ${prompt} | ${JSON.stringify(mergedOptions)}`);
 
+    const cap = provider as { generateLite?: (p: string, o?: AIGenerateOptions) => Promise<AIGenerateResponse> };
+    if (typeof cap.generateLite === 'function') {
+      return await cap.generateLite(prompt, mergedOptions);
+    }
+
+    // if provider does not support generateLite, use generate with lite defaults
     return await provider.generate(prompt, mergedOptions);
   }
 
