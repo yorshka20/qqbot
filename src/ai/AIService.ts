@@ -18,7 +18,7 @@ import { CardRenderingService } from '@/services/card';
 import type { RetrievalService } from '@/services/retrieval';
 import { TaskAnalyzer } from '@/task/TaskAnalyzer';
 import type { TaskManager } from '@/task/TaskManager';
-import type { TaskAnalysisResult, TaskResult, TaskType } from '@/task/types';
+import type { TaskAnalysisResult, TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
 import type { AIManager } from './AIManager';
 import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions, VisionImage } from './capabilities/types';
@@ -31,9 +31,14 @@ import { ImageGenerationService } from './services/ImageGenerationService';
 import { ImagePromptService } from './services/ImagePromptService';
 import { LLMService } from './services/LLMService';
 import { ReplyGenerationService } from './services/ReplyGenerationService';
-import { ToolUseReplyService } from './services/ToolUseReplyService';
 import { VisionService } from './services/VisionService';
-import type { AIGenerateResponse, ChatMessage, ContentPart, ToolDefinition } from './types';
+import {
+  buildToolUsageInstructions,
+  executeToolCall,
+  getReplyToolDefinitions,
+  taskTypesToToolDefinitions,
+} from './tools/replyTools';
+import type { AIGenerateResponse, ChatMessage, ContentPart } from './types';
 import { normalizeVisionImages } from './utils/imageUtils';
 
 /**
@@ -61,7 +66,6 @@ export class AIService {
   private imageGenerationService: ImageGenerationService;
   private cardRenderingService: CardRenderingService;
   private replyGenerationService: ReplyGenerationService;
-  private toolUseReplyService: ToolUseReplyService;
   private imagePromptService: ImagePromptService;
   private taskAnalyzer: TaskAnalyzer;
   private messageAssembler: PromptMessageAssembler;
@@ -71,7 +75,7 @@ export class AIService {
     aiManager: AIManager,
     private hookManager: HookManager,
     private promptManager: PromptManager,
-    taskManager: TaskManager,
+    private taskManager: TaskManager,
     private conversationHistoryService: ConversationHistoryService,
     providerSelector: ProviderSelector,
     private retrievalService: RetrievalService,
@@ -89,17 +93,16 @@ export class AIService {
       this.promptManager,
       aiManager.getDefaultProvider('llm')?.name || 'deepseek',
     );
+
     // SubAgent: create manager, ToolRunner (executes tools via TaskManager executors), and executor
     const subAgentManager = new SubAgentManager();
     this.subAgentManager = subAgentManager;
-    const subAgentToolDefs = this.buildToolDefinitionsFromTaskTypes(
-      taskManager.getAllTaskTypes().filter((tt) => tt.name !== 'reply'),
-    );
+    const subAgentTaskTypes = taskManager.getAllTaskTypes().filter((tt) => tt.name !== 'reply');
+    const subAgentToolDefs = taskTypesToToolDefinitions(subAgentTaskTypes);
     const toolRunner = new ToolRunner(taskManager, subAgentManager, hookManager);
     const subAgentExecutor = new SubAgentExecutor(this.llmService, subAgentManager, subAgentToolDefs, toolRunner);
     subAgentManager.setExecutor(subAgentExecutor);
 
-    this.toolUseReplyService = new ToolUseReplyService(this.llmService, taskManager, this.promptManager, hookManager);
     this.replyGenerationService = new ReplyGenerationService(
       this.llmService,
       this.visionService,
@@ -112,33 +115,10 @@ export class AIService {
       memoryService,
       messageAPI,
       databaseManager,
-      this.toolUseReplyService,
+      taskManager,
     );
     this.taskAnalyzer = new TaskAnalyzer(this.llmService, taskManager, this.promptManager);
     this.messageAssembler = new PromptMessageAssembler();
-  }
-
-  /**
-   * Build ToolDefinition[] from TaskType[] (for SubAgentExecutor and tool use)
-   */
-  private buildToolDefinitionsFromTaskTypes(taskTypes: TaskType[]): ToolDefinition[] {
-    return taskTypes.map((tt) => ({
-      name: tt.name,
-      description: tt.description,
-      parameters: this.convertTaskParamsToSchema(tt.parameters || {}),
-    }));
-  }
-
-  private convertTaskParamsToSchema(params: TaskType['parameters']): ToolDefinition['parameters'] {
-    const properties: Record<string, { type: string; description?: string }> = {};
-    const required: string[] = [];
-    for (const [key, def] of Object.entries(params || {})) {
-      properties[key] = { type: def.type, description: def.description || '' };
-      if (def.required) {
-        required.push(key);
-      }
-    }
-    return { type: 'object', properties, required };
   }
 
   getSubAgentManager(): SubAgentManager {
@@ -253,9 +233,9 @@ export class AIService {
     const nativeWebSearchEnabled = canUseToolUse
       ? await this.llmService.supportsNativeWebSearch(effectiveProviderName, context.sessionId)
       : false;
-    const tools = canUseToolUse ? this.toolUseReplyService.getAvailableToolDefinitions({ nativeWebSearchEnabled }) : [];
+    const tools = canUseToolUse ? getReplyToolDefinitions(this.taskManager, { nativeWebSearchEnabled }) : [];
     const toolUsageInstructions = canUseToolUse
-      ? this.toolUseReplyService.getToolUsageInstructions(tools, { nativeWebSearchEnabled })
+      ? buildToolUsageInstructions(this.taskManager, tools, { nativeWebSearchEnabled })
       : '当前没有可用工具，请直接回答。';
     const contextInstruct = this.promptManager.render('llm.context.instruct');
     const toolInstruct = this.promptManager.render('llm.tool.instruct', { toolUsageInstructions });
@@ -296,19 +276,26 @@ export class AIService {
       : messages;
 
     const proactiveHookContext = this.buildProactiveToolHookContext(context, lastUserMessage);
+    const toolExecutor = (call: { name: string; arguments: string }) =>
+      executeToolCall(call, proactiveHookContext, this.taskManager, this.hookManager);
+
     let response: AIGenerateResponse;
     if (useVision) {
-      if (canUseToolUse && effectiveProviderName) {
-        const text = await this.toolUseReplyService.generateReplyFromMessages(proactiveHookContext, proactiveMessages, {
+      if (canUseToolUse && effectiveProviderName && tools.length > 0) {
+        const toolUseResponse = await this.llmService.generateWithTools(
+          proactiveMessages,
           tools,
-          providerName: effectiveProviderName,
-          sessionId: context.sessionId,
-          temperature: genOptions.temperature,
-          maxTokens: genOptions.maxTokens,
-          maxToolRounds: 4,
-          nativeWebSearchEnabled,
-        });
-        response = { text };
+          {
+            temperature: genOptions.temperature,
+            maxTokens: genOptions.maxTokens,
+            maxToolRounds: 4,
+            sessionId: context.sessionId,
+            nativeWebSearch: nativeWebSearchEnabled,
+            toolExecutor,
+          },
+          effectiveProviderName,
+        );
+        response = { text: toolUseResponse.text };
       } else {
         response = await this.visionService.generateWithVisionMessages(
           proactiveMessages,
@@ -320,17 +307,21 @@ export class AIService {
         );
       }
     } else {
-      if (canUseToolUse) {
-        const text = await this.toolUseReplyService.generateReplyFromMessages(proactiveHookContext, proactiveMessages, {
+      if (canUseToolUse && tools.length > 0) {
+        const toolUseResponse = await this.llmService.generateWithTools(
+          proactiveMessages,
           tools,
-          providerName: effectiveProviderName,
-          sessionId: context.sessionId,
-          temperature: genOptions.temperature,
-          maxTokens: genOptions.maxTokens,
-          maxToolRounds: 4,
-          nativeWebSearchEnabled,
-        });
-        response = { text };
+          {
+            temperature: genOptions.temperature,
+            maxTokens: genOptions.maxTokens,
+            maxToolRounds: 4,
+            sessionId: context.sessionId,
+            nativeWebSearch: nativeWebSearchEnabled,
+            toolExecutor,
+          },
+          effectiveProviderName,
+        );
+        response = { text: toolUseResponse.text };
       } else {
         response = await this.llmService.generateMessages(proactiveMessages, genOptions, effectiveProviderName);
       }

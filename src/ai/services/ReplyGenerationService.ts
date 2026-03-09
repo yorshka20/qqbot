@@ -18,6 +18,7 @@ import type { MessageSegment } from '@/message/types';
 import { CardRenderingService, getCardDeckNoteForPrompt, getCardTypeSpecForPrompt } from '@/services/card';
 import type { RetrievalService } from '@/services/retrieval';
 import { QdrantClient } from '@/services/retrieval';
+import type { TaskManager } from '@/task/TaskManager';
 import type { TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
 import { type FetchProgressNotifier, MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
@@ -25,6 +26,7 @@ import type { VisionImage } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
 import { PromptMessageAssembler } from '../prompt/PromptMessageAssembler';
 import type { ProviderRouter } from '../routing/ProviderRouter';
+import { buildToolUsageInstructions, executeToolCall, getReplyToolDefinitions } from '../tools/replyTools';
 import type { AIGenerateResponse, ChatMessage, ContentPart } from '../types';
 import { formatRAGConversationContext } from '../utils/formatRAGConversationContext';
 import {
@@ -34,7 +36,6 @@ import {
   normalizeVisionImages,
 } from '../utils/imageUtils';
 import type { LLMService } from './LLMService';
-import type { ToolUseReplyService } from './ToolUseReplyService';
 import type { VisionService } from './VisionService';
 
 /**
@@ -78,7 +79,7 @@ export class ReplyGenerationService {
     private memoryService: MemoryService,
     private messageAPI: MessageAPI,
     private databaseManager: DatabaseManager,
-    private toolUseReplyService?: ToolUseReplyService,
+    private taskManager: TaskManager,
   ) {
     this.fetchProgressNotifier = new MessageSendFetchProgressNotifier(messageAPI);
   }
@@ -665,14 +666,19 @@ export class ReplyGenerationService {
     taskResultImages: string[] = [],
     userMessageOverride?: string,
   ): Promise<void> {
+    // Step 1: Routing
     const rawInput = userMessageOverride ?? context.message.message ?? '';
     const { providerName, userMessage, reason, confidence, usedExplicitPrefix } =
       this.providerRouter.routeReplyInput(rawInput);
+
+    // Step 2: Vision and provider
     const useVisionProvider = messageImages.length > 0;
     const resolvedVisionProviderName = useVisionProvider
       ? await this.visionService.getAvailableProviderName(providerName, sessionId)
       : null;
     const selectedProviderName = useVisionProvider ? (resolvedVisionProviderName ?? providerName) : providerName;
+
+    // Step 3: Capabilities
     const canUseVisionToolUse = useVisionProvider
       ? Boolean(resolvedVisionProviderName && (await this.supportsToolUse(resolvedVisionProviderName, sessionId)))
       : false;
@@ -680,19 +686,17 @@ export class ReplyGenerationService {
     const effectiveNativeSearchEnabled = useVisionProvider
       ? canUseVisionToolUse && nativeWebSearchEnabled
       : nativeWebSearchEnabled;
+
+    // Step 4: Tools (none when vision provider is used but does not support tool use)
     const toolDefinitions =
       useVisionProvider && !canUseVisionToolUse
         ? []
-        : (this.toolUseReplyService?.getAvailableToolDefinitions({
-            nativeWebSearchEnabled: effectiveNativeSearchEnabled,
-          }) ?? []);
-    const toolUsageInstructions =
-      this.toolUseReplyService?.getToolUsageInstructions(toolDefinitions, {
-        nativeWebSearchEnabled: effectiveNativeSearchEnabled,
-      }) ??
-      (effectiveNativeSearchEnabled
-        ? '当前没有本地可用工具；若需要查询公开互联网的最新信息，请直接使用 provider 内建搜索，再基于结果回答。'
-        : '当前没有可用工具，请直接回答。');
+        : getReplyToolDefinitions(this.taskManager, { nativeWebSearchEnabled: effectiveNativeSearchEnabled });
+
+    // Step 5: Tool usage instructions for prompt
+    const toolUsageInstructions = buildToolUsageInstructions(this.taskManager, toolDefinitions, {
+      nativeWebSearchEnabled: effectiveNativeSearchEnabled,
+    });
     const built = await this.buildReplyMessages(
       context,
       taskResultsSummary,
@@ -724,18 +728,25 @@ export class ReplyGenerationService {
     );
 
     let response: AIGenerateResponse;
+    const toolExecutor = (call: { name: string; arguments: string }) =>
+      executeToolCall(call, context, this.taskManager, this.hookManager);
+
     if (useVisionProvider) {
-      if (this.toolUseReplyService && canUseVisionToolUse) {
-        const text = await this.toolUseReplyService.generateReplyFromMessages(context, messages, {
-          tools: toolDefinitions,
-          providerName: resolvedVisionProviderName ?? undefined,
-          sessionId,
-          temperature: genOptions.temperature,
-          maxTokens: genOptions.maxTokens,
-          maxToolRounds: 4,
-          nativeWebSearchEnabled: effectiveNativeSearchEnabled,
-        });
-        response = { text };
+      if (canUseVisionToolUse && toolDefinitions.length > 0) {
+        const toolUseResponse = await this.llmService.generateWithTools(
+          messages,
+          toolDefinitions,
+          {
+            temperature: genOptions.temperature,
+            maxTokens: genOptions.maxTokens,
+            maxToolRounds: 4,
+            sessionId,
+            nativeWebSearch: effectiveNativeSearchEnabled,
+            toolExecutor,
+          },
+          resolvedVisionProviderName ?? undefined,
+        );
+        response = { text: toolUseResponse.text };
       } else {
         // Current message images already inlined in buildReplyMessages; pass empty so VisionService uses messages as-is.
         response = await this.visionService.generateWithVisionMessages(
@@ -746,17 +757,21 @@ export class ReplyGenerationService {
         );
       }
     } else {
-      if (this.toolUseReplyService && toolDefinitions.length > 0) {
-        const text = await this.toolUseReplyService.generateReplyFromMessages(context, messages, {
-          tools: toolDefinitions,
-          providerName: selectedProviderName,
-          sessionId,
-          temperature: genOptions.temperature,
-          maxTokens: genOptions.maxTokens,
-          maxToolRounds: 4,
-          nativeWebSearchEnabled: effectiveNativeSearchEnabled,
-        });
-        response = { text };
+      if (toolDefinitions.length > 0) {
+        const toolUseResponse = await this.llmService.generateWithTools(
+          messages,
+          toolDefinitions,
+          {
+            temperature: genOptions.temperature,
+            maxTokens: genOptions.maxTokens,
+            maxToolRounds: 4,
+            sessionId,
+            nativeWebSearch: effectiveNativeSearchEnabled,
+            toolExecutor,
+          },
+          selectedProviderName,
+        );
+        response = { text: toolUseResponse.text };
       } else {
         response = await this.llmService.generateMessages(
           messages,
