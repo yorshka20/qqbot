@@ -317,7 +317,8 @@
       // Gemini provider (LLM, vision, text2img, img2img). Config by capability, same pattern as laozhang.
       // "gemini": {
       //   "type": "gemini",
-      //   "apiKey": "your_gemini_api_key_here",
+      //   "apiKeyFree": "your_gemini_free_tier_key",
+      //   "apiKeyPaid": "your_gemini_paid_tier_key",
       //   "llm": {
       //     "model": "gemini-2.0-flash",
       //     "temperature": 0.7,

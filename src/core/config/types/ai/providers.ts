@@ -122,7 +122,10 @@ export interface GeminiText2ImgConfig {
 
 export interface GeminiProviderConfig {
   type: 'gemini';
-  apiKey: string;
+  /** Free tier API key. Runtime mode switch via GeminiProvider.setKeyMode('free'|'paid'). */
+  apiKeyFree: string;
+  /** Paid tier API key. Runtime mode switch via GeminiProvider.setKeyMode('free'|'paid'). */
+  apiKeyPaid: string;
   resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/gemini')
   /** When set, enables LLM capability (reply generation). */
   llm?: GeminiLLmConfig;

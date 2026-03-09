@@ -119,7 +119,8 @@ export class ProviderFactory {
           const geminiConfig = config as Extract<AIProviderConfig, { type: 'gemini' }>;
           return new GeminiProvider({
             type: 'gemini',
-            apiKey: geminiConfig.apiKey,
+            apiKeyFree: geminiConfig.apiKeyFree,
+            apiKeyPaid: geminiConfig.apiKeyPaid,
             resourceSavePath: geminiConfig.resourceSavePath,
             llm: geminiConfig.llm,
             vision: geminiConfig.vision,

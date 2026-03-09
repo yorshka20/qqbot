@@ -28,10 +28,14 @@ import {
 } from '../utils/geminiErrorHandler';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
 
+/** Runtime key mode for Gemini (free vs paid tier). Switch via GeminiProvider.setKeyMode(). */
+export type GeminiKeyMode = 'free' | 'paid';
+
 /**
  * Gemini Provider implementation
  * LLM, vision, text2img and img2img via Google Gemini API.
  * Capabilities are enabled by config: llm, vision, text2img each optional and independent.
+ * Supports free/paid key modes: set apiKeyFree and apiKeyPaid, then switch at runtime via GeminiProvider.setKeyMode().
  */
 export class GeminiProvider
   extends AIProvider
@@ -40,7 +44,9 @@ export class GeminiProvider
   readonly name = 'gemini';
   private config: GeminiProviderConfig;
   private _capabilities: CapabilityType[];
-  private client: GoogleGenAI;
+  /** Cached clients per key so we use the key for current mode; model unchanged. */
+  private clientFree: GoogleGenAI | null = null;
+  private clientPaid: GoogleGenAI | null = null;
 
   private outputPath = join(process.cwd(), 'output', 'gemini');
 
@@ -48,6 +54,15 @@ export class GeminiProvider
   private static readonly DEFAULT_T2I_MODEL = 'gemini-2.5-flash-image';
   private static readonly DEFAULT_WIDTH = 1024;
   private static readonly DEFAULT_HEIGHT = 1024;
+
+  /** Runtime key mode (free/paid). Default 'free'. Switch via GeminiProvider.setKeyMode(). */
+  private static _keyMode: GeminiKeyMode = 'free';
+  static getKeyMode(): GeminiKeyMode {
+    return GeminiProvider._keyMode;
+  }
+  static setKeyMode(mode: GeminiKeyMode): void {
+    GeminiProvider._keyMode = mode;
+  }
 
   constructor(config: GeminiProviderConfig) {
     super();
@@ -66,12 +81,29 @@ export class GeminiProvider
       this._capabilities.push('text2img', 'img2img');
     }
 
-    // Initialize GoogleGenAI client
-    this.client = new GoogleGenAI({
-      apiKey: this.config.apiKey,
-    });
+    // Clients are created lazily in getClient() using the key for current mode
+    logger.info('[GeminiProvider] Initialized (free/paid key mode supported)');
+  }
 
-    logger.info('[GeminiProvider] Initialized');
+  /** Resolve API key for current runtime mode (free or paid). Model is unchanged. */
+  private getEffectiveApiKey(): string | undefined {
+    const mode = GeminiProvider.getKeyMode();
+    return mode === 'free' ? this.config.apiKeyFree : this.config.apiKeyPaid;
+  }
+
+  /** Return GoogleGenAI client for current key mode; creates and caches per key. */
+  private getClient(): GoogleGenAI {
+    const mode = GeminiProvider.getKeyMode();
+    if (mode === 'free') {
+      if (!this.clientFree) {
+        this.clientFree = new GoogleGenAI({ apiKey: this.config.apiKeyFree });
+      }
+      return this.clientFree;
+    }
+    if (!this.clientPaid) {
+      this.clientPaid = new GoogleGenAI({ apiKey: this.config.apiKeyPaid });
+    }
+    return this.clientPaid;
   }
 
   /** Text2img/img2img model from config.text2img */
@@ -90,7 +122,7 @@ export class GeminiProvider
   }
 
   isAvailable(): boolean {
-    return !!this.config.apiKey;
+    return !!this.getEffectiveApiKey();
   }
 
   async checkAvailability(): Promise<boolean> {
@@ -150,9 +182,7 @@ export class GeminiProvider
   /**
    * Map ToolDefinition[] to Gemini API tools format (functionDeclarations).
    */
-  private static mapToolsToGemini(
-    tools: ToolDefinition[],
-  ): Array<{
+  private static mapToolsToGemini(tools: ToolDefinition[]): Array<{
     functionDeclarations: Array<{
       name?: string;
       description?: string;
@@ -198,7 +228,7 @@ export class GeminiProvider
       config.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
     }
 
-    const response = await this.client.models.generateContent({
+    const response = await this.getClient().models.generateContent({
       model,
       contents: parts,
       config,
@@ -369,7 +399,7 @@ export class GeminiProvider
 
   async generateImage(prompt: string, options?: Text2ImageOptions): Promise<ProviderImageGenerationResponse> {
     if (!this.isAvailable()) {
-      throw new Error('GeminiProvider is not available: apiKey not configured');
+      throw new Error('GeminiProvider is not available: apiKeyFree/apiKeyPaid not configured');
     }
     if (!this.config.text2img) {
       throw new Error('GeminiProvider: text2img not configured');
@@ -384,7 +414,7 @@ export class GeminiProvider
 
       logger.info(`[GeminiProvider] Parameters: model=${model}, size=${width}x${height}`);
 
-      const response = await this.client.models.generateContent({
+      const response = await this.getClient().models.generateContent({
         model,
         contents: prompt,
       });
@@ -476,7 +506,7 @@ export class GeminiProvider
     options?: Image2ImageOptions,
   ): Promise<ProviderImageGenerationResponse> {
     if (!this.isAvailable()) {
-      throw new Error('GeminiProvider is not available: apiKey not configured');
+      throw new Error('GeminiProvider is not available: apiKeyFree/apiKeyPaid not configured');
     }
     if (!this.config.text2img) {
       throw new Error('GeminiProvider: text2img not configured (required for img2img)');
@@ -498,7 +528,7 @@ export class GeminiProvider
         },
       );
 
-      const response = await this.client.models.generateContent({
+      const response = await this.getClient().models.generateContent({
         model,
         contents: [{ text: prompt }, { inlineData: { mimeType: imageMimeType, data: imageBase64 } }],
       });
