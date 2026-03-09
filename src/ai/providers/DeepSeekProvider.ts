@@ -155,7 +155,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
   }
 
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
-    const model = this.config.model || 'deepseek-chat';
+    const model = options?.model ?? this.config.model ?? 'deepseek-chat';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const rawMaxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
     const maxTokens = Math.min(Math.max(1, Math.floor(rawMaxTokens)), DEEPSEEK_MAX_TOKENS_LIMIT);
@@ -258,7 +258,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
     handler: StreamingHandler,
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
-    const model = this.config.model || 'deepseek-chat';
+    const model = options?.model ?? this.config.model ?? 'deepseek-chat';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const rawMaxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
     const maxTokens = Math.min(Math.max(1, Math.floor(rawMaxTokens)), DEEPSEEK_MAX_TOKENS_LIMIT);

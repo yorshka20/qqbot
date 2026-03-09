@@ -311,7 +311,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('Doubao client not initialized');
     }
 
-    const model = this.config.model ?? DEFAULT_DOUBAO_MODEL;
+    const model = options?.model ?? this.config.model ?? DEFAULT_DOUBAO_MODEL;
     try {
       logger.debug(`[DoubaoProvider] Generating with model: ${model}`);
 
@@ -393,7 +393,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('Doubao client not initialized');
     }
 
-    const model = this.config.model ?? DEFAULT_DOUBAO_MODEL;
+    const model = options?.model ?? this.config.model ?? DEFAULT_DOUBAO_MODEL;
     try {
       logger.debug(`[DoubaoProvider] Generating stream with model: ${model}`);
 
@@ -584,7 +584,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('Doubao client not initialized');
     }
 
-    const model = this.config.model ?? DEFAULT_DOUBAO_MODEL;
+    const model = options?.model ?? this.config.model ?? DEFAULT_DOUBAO_MODEL;
     const filtered = messages.filter((m) => !(m.role === 'assistant' && m.tool_calls?.length));
     const input: ArkInputItem[] = filtered.map((m) => this.chatMessageToArkInputItem(m));
     const body = this.buildRequestBody(model, input, !!options?.tools?.length, options);
@@ -620,7 +620,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('Doubao client not initialized');
     }
 
-    const model = this.config.model ?? DEFAULT_DOUBAO_MODEL;
+    const model = options?.model ?? this.config.model ?? DEFAULT_DOUBAO_MODEL;
     try {
       logger.debug(`[DoubaoProvider] Generating with vision, model: ${model}`);
 
@@ -694,7 +694,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('Doubao client not initialized');
     }
 
-    const model = this.config.model ?? DEFAULT_DOUBAO_MODEL;
+    const model = options?.model ?? this.config.model ?? DEFAULT_DOUBAO_MODEL;
     try {
       logger.debug(`[DoubaoProvider] Generating stream with vision, model: ${model}`);
 

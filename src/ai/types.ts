@@ -85,6 +85,7 @@ export type ChatCompletionMessageParam = OpenAI.Chat.ChatCompletionMessageParam;
  * AI generation options
  */
 export interface AIGenerateOptions {
+  model?: string;
   temperature?: number;
   maxTokens?: number;
   topP?: number;

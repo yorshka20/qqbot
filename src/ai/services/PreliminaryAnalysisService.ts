@@ -168,7 +168,7 @@ export class PreliminaryAnalysisService {
     if (!idleMode) {
       return '';
     }
-    return this.promptManager.render('analysis.idle_instruction', {});
+    return this.promptManager.render('analysis.idle_instruction');
   }
 
   private parseJsonResult(text: string): PreliminaryAnalysisResult {

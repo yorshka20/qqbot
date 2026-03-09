@@ -26,7 +26,6 @@ export const DITokens = {
   SUMMARIZE_SERVICE: 'SummarizeService',
   CONVERSATION_HISTORY_SERVICE: 'ConversationHistoryService',
   PRELIMINARY_ANALYSIS_SERVICE: 'PreliminaryAnalysisService',
-  PREFIX_INVITATION_CHECK_SERVICE: 'PrefixInvitationCheckService',
   PREFERENCE_KNOWLEDGE_SERVICE: 'PreferenceKnowledgeService',
   PROACTIVE_THREAD_PERSISTENCE_SERVICE: 'ProactiveThreadPersistenceService',
   THREAD_CONTEXT_COMPRESSION_SERVICE: 'ThreadContextCompressionService',

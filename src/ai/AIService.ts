@@ -257,12 +257,13 @@ export class AIService {
     const toolUsageInstructions = canUseToolUse
       ? this.toolUseReplyService.getToolUsageInstructions(tools, { nativeWebSearchEnabled })
       : '当前没有可用工具，请直接回答。';
-    const sceneSystemPrompt = this.promptManager.render('llm.proactive.system', {
+    const contextInstruct = this.promptManager.render('llm.context.instruct');
+    const toolInstruct = this.promptManager.render('llm.tool.instruct', { toolUsageInstructions });
+    const proactiveSystemPrompt = this.promptManager.render('llm.proactive.system', {
+      contextInstruct,
       preferenceText: context.preferenceText,
+      toolInstruct,
     });
-    const proactiveSystemPrompt = canUseToolUse
-      ? `${sceneSystemPrompt}\n\n${toolUsageInstructions}`
-      : sceneSystemPrompt;
     const finalUserQuery = this.promptManager.render('llm.proactive.user_frame', {
       lastUserMessage,
     });

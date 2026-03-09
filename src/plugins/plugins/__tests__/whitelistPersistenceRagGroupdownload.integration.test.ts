@@ -158,10 +158,11 @@ describe('Whitelist functional: non-whitelist skipped but DB+RAG run', () => {
       { allowOverride: true },
     );
     container.registerInstance(
-      DITokens.PREFIX_INVITATION_CHECK_SERVICE,
-      { check: async () => ({ shouldReply: true, reason: undefined }) },
+      DITokens.LLM_SERVICE,
+      { generateLite: async () => ({ text: 'true' }) },
       { allowOverride: true },
     );
+    container.registerInstance(DITokens.CONFIG, { getAIConfig: () => undefined }, { allowOverride: true });
     const trigger = new MessageTriggerPlugin({ name: 'messageTrigger', version: 'test', description: 'test' });
     trigger.loadConfig(
       { api: {} as never, events: {} as never },
@@ -227,10 +228,11 @@ describe('Whitelist functional: whitelist group can trigger proactive, messageTr
       { allowOverride: true },
     );
     container.registerInstance(
-      DITokens.PREFIX_INVITATION_CHECK_SERVICE,
-      { check: async () => ({ shouldReply: true, reason: undefined }) },
+      DITokens.LLM_SERVICE,
+      { generateLite: async () => ({ text: 'true' }) },
       { allowOverride: true },
     );
+    container.registerInstance(DITokens.CONFIG, { getAIConfig: () => undefined }, { allowOverride: true });
 
     const trigger = new MessageTriggerPlugin({ name: 'messageTrigger', version: 'test', description: 'test' });
     trigger.loadConfig(

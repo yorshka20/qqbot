@@ -138,6 +138,37 @@ export class LLMService {
   }
 
   /**
+   * Generate with lite defaults (low temperature, small maxTokens) for cheap/fast tasks (e.g. prefix-invitation, analysis).
+   * Supports explicit provider and model override (e.g. doubao, doubao-1-5-lite-32k-250115).
+   */
+  async generateLite(
+    prompt: string,
+    options?: AIGenerateOptions,
+    providerName?: string,
+    modelName?: string,
+  ): Promise<AIGenerateResponse> {
+    const provider = await this.getAvailableProvider(providerName, options?.sessionId);
+
+    if (!provider) {
+      logger.warn('[LLMService] No available LLM provider for generateLite, returning fallback response');
+      return this.getFallbackResponse(prompt);
+    }
+
+    const liteDefaults: AIGenerateOptions = {
+      temperature: 0.1,
+      maxTokens: 256,
+      reasoningEffort: 'minimal',
+    };
+    const mergedOptions: AIGenerateOptions = {
+      ...liteDefaults,
+      ...options,
+      model: modelName ?? options?.model,
+    };
+
+    return await provider.generate(prompt, mergedOptions);
+  }
+
+  /**
    * Generate using prebuilt role-based messages (OpenAI-standard ChatMessage[]). Each provider converts to its own format.
    */
   async generateMessages(

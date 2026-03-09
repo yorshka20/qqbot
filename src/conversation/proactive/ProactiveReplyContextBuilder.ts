@@ -54,7 +54,7 @@ export class ProactiveReplyContextBuilder {
 
   /** Rendered preference (persona) text (e.g. preference.full). */
   getPreferenceText(preferenceKey: string): string {
-    return this.deps.promptManager.render(`${preferenceKey}.full`, {});
+    return this.deps.promptManager.render(`${preferenceKey}.full`);
   }
 
   /** Retrieved RAG section (## 参考知识 + chunks). */

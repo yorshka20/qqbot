@@ -360,7 +360,7 @@ export class LaozhangProvider
     if (!this.config.llm) {
       throw new Error('LaozhangProvider: llm not configured');
     }
-    const model = this.config.llm.model;
+    const model = options?.model ?? this.config.llm.model;
     const temperature = options?.temperature ?? this.config.llm.temperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens ?? 2000;
     const parts: Array<{ text: string }> = [];

@@ -9,7 +9,6 @@ import {
   ProviderFactory,
   ProviderSelector,
 } from '@/ai';
-import { PrefixInvitationCheckService } from '@/ai/services/PrefixInvitationCheckService';
 import { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
@@ -311,10 +310,6 @@ export class ConversationInitializer {
     container.registerInstance(
       DITokens.PRELIMINARY_ANALYSIS_SERVICE,
       new PreliminaryAnalysisService(aiManager, promptManager),
-    );
-    container.registerInstance(
-      DITokens.PREFIX_INVITATION_CHECK_SERVICE,
-      new PrefixInvitationCheckService(aiManager, promptManager),
     );
 
     // Use SearXNG-backed preference knowledge when RetrievalService is available.

@@ -90,7 +90,7 @@ export class GachaPlugin extends PluginBase {
       style: 'CONCISE (15-20 tags MAX)',
     });
 
-    const systemPrompt = this.promptManager.render('gacha.nai_system', {});
+    const systemPrompt = this.promptManager.render('gacha.nai_system');
     const sessionId = getSessionId(context);
 
     let rawResponse: string;

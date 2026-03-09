@@ -9,6 +9,20 @@ import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import { MessageTriggerPlugin } from '../MessageTriggerPlugin';
 
+/** Creates a mock LLMService whose generateLite() returns plain "true" or "false" for prefix-invitation check. */
+function createMockLLMServiceForPrefixCheck(shouldReply: boolean) {
+  return {
+    generateLite: async () => ({ text: shouldReply ? 'true' : 'false' }),
+  };
+}
+
+/** Mock Config with optional liteLlm for tests. */
+function createMockConfig(liteLlm?: { provider?: string; model?: string }) {
+  return {
+    getAIConfig: () => (liteLlm !== undefined ? { liteLlm } : undefined),
+  };
+}
+
 function makeHookContext(opts: {
   messageText: string;
   messageType?: 'private' | 'group';
@@ -75,11 +89,8 @@ describe('MessageTriggerPlugin', () => {
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
-    container.registerInstance(
-      DITokens.PREFIX_INVITATION_CHECK_SERVICE,
-      { check: async () => ({ shouldReply: true, reason: undefined }) },
-      { allowOverride: true },
-    );
+    container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
+    container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',
@@ -207,11 +218,8 @@ describe('MessageTriggerPlugin', () => {
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
-    container.registerInstance(
-      DITokens.PREFIX_INVITATION_CHECK_SERVICE,
-      { check: async () => ({ shouldReply: true, reason: undefined }) },
-      { allowOverride: true },
-    );
+    container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
+    container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',
@@ -248,11 +256,8 @@ describe('MessageTriggerPlugin', () => {
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
-    container.registerInstance(
-      DITokens.PREFIX_INVITATION_CHECK_SERVICE,
-      { check: async () => ({ shouldReply: true, reason: undefined }) },
-      { allowOverride: true },
-    );
+    container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
+    container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',
@@ -321,11 +326,8 @@ describe('MessageTriggerPlugin', () => {
       { hasActiveThread: (gid: string) => gid === '1' },
       { allowOverride: true },
     );
-    container.registerInstance(
-      DITokens.PREFIX_INVITATION_CHECK_SERVICE,
-      { check: async () => ({ shouldReply: true, reason: undefined }) },
-      { allowOverride: true },
-    );
+    container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
+    container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',
@@ -348,6 +350,12 @@ describe('MessageTriggerPlugin', () => {
   it('sets postProcessOnly when prefix-invitation check says no reply (provider-name trigger)', async () => {
     const container = getContainer();
     const promptManager = new PromptManager();
+    // Register template so the plugin runs the LLM check path (mock LLMService.generateLite provides the response).
+    promptManager.registerTemplate({
+      name: 'analysis.prefix_invitation',
+      namespace: 'analysis',
+      content: '{{messageText}}',
+    });
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
@@ -355,11 +363,10 @@ describe('MessageTriggerPlugin', () => {
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
-    container.registerInstance(
-      DITokens.PREFIX_INVITATION_CHECK_SERVICE,
-      { check: async () => ({ shouldReply: false, reason: 'vague or no request' }) },
-      { allowOverride: true },
-    );
+    container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(false), {
+      allowOverride: true,
+    });
+    container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',

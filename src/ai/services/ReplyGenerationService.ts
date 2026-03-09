@@ -548,10 +548,13 @@ export class ReplyGenerationService {
     ]);
     const taskResultText = this.getTaskResultsSummary(taskResultsSummary);
     const searchResultText = this.getSearchResultsSummary(searchResultsText);
-
     const baseSystemPrompt = this.promptManager.renderBasePrompt();
+    const contextInstruct = this.promptManager.render('llm.context.instruct');
+    const toolInstruct = this.promptManager.render('llm.tool.instruct', { toolUsageInstructions });
+
     const sceneSystemPrompt = this.promptManager.render('llm.reply.system', {
-      toolUsageInstructions,
+      contextInstruct,
+      toolInstruct,
     });
     const frameCurrentQuery = this.promptManager.render('llm.reply.user_frame', {
       userMessage,

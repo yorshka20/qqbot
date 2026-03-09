@@ -243,7 +243,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
   }
 
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
-    const model = this.config.model || ANTHROPIC_DEFAULT_MODEL;
+    const model = options?.model ?? this.config.model ?? ANTHROPIC_DEFAULT_MODEL;
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
@@ -321,7 +321,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     handler: StreamingHandler,
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
-    const model = this.config.model || ANTHROPIC_DEFAULT_MODEL;
+    const model = options?.model ?? this.config.model ?? ANTHROPIC_DEFAULT_MODEL;
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
@@ -417,7 +417,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     images: VisionImage[],
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
-    const model = this.config.model || 'claude-3-opus-20240229';
+    const model = options?.model ?? this.config.model ?? 'claude-3-opus-20240229';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 

@@ -158,9 +158,10 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
     const thinking = options?.includeReasoning ?? false;
+    const model = options?.model ?? this.config.model;
 
     return this.httpClient.post<OllamaGenerateResponse>('/api/chat', {
-      model: this.config.model,
+      model,
       messages,
       options: {
         temperature,
@@ -183,11 +184,12 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
   ): Promise<ReadableStream<Uint8Array>> {
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const model = options?.model ?? this.config.model;
 
     return this.httpClient.stream('/api/chat', {
       method: 'POST',
       body: {
-        model: this.config.model,
+        model,
         messages,
         options: {
           temperature,
@@ -201,8 +203,9 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
   }
 
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
+    const model = options?.model ?? this.config.model;
     try {
-      logger.debug(`[OllamaProvider] Generating with model: ${this.config.model}`);
+      logger.debug(`[OllamaProvider] Generating with model: ${model}`);
 
       // Always use chat API - it supports both single messages and conversation history
       // This simplifies the code and makes it consistent with other providers
@@ -233,7 +236,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
         text,
         usage,
         metadata: {
-          model: data.model || this.config.model,
+          model: data.model || model,
           done: data.done,
         },
       };
@@ -302,8 +305,9 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
     handler: StreamingHandler,
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
+    const model = options?.model ?? this.config.model;
     try {
-      logger.debug(`[OllamaProvider] Generating stream with model: ${this.config.model}`);
+      logger.debug(`[OllamaProvider] Generating stream with model: ${model}`);
 
       // Always use chat API - it supports both single messages and conversation history
       // This simplifies the code and makes it consistent with other providers

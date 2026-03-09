@@ -2,9 +2,11 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { ProviderRouter } from '@/ai/routing/ProviderRouter';
-import type { PrefixInvitationCheckService } from '@/ai/services/PrefixInvitationCheckService';
+import type { LLMService } from '@/ai/services/LLMService';
+import { parseLlmTrueFalse } from '@/ai/utils/llmJsonExtract';
 import type { ProactiveConversationService } from '@/conversation/proactive';
 import type { ThreadService } from '@/conversation/thread';
+import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
@@ -27,22 +29,22 @@ export interface MessageTriggerPluginConfig {
 export class MessageTriggerPlugin extends PluginBase {
   private globalWakeWords: string[] = [];
 
+  private llmService!: LLMService;
   private promptManager!: PromptManager;
   private proactiveConversationService!: ProactiveConversationService;
   private threadService!: ThreadService;
-  private prefixInvitationCheckService!: PrefixInvitationCheckService;
+  private config!: Config;
 
   async onInit(): Promise<void> {
     this.enabled = true;
     const container = getContainer();
+    this.llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
     this.promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
     this.proactiveConversationService = container.resolve<ProactiveConversationService>(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
     );
     this.threadService = container.resolve<ThreadService>(DITokens.THREAD_SERVICE);
-    this.prefixInvitationCheckService = container.resolve<PrefixInvitationCheckService>(
-      DITokens.PREFIX_INVITATION_CHECK_SERVICE,
-    );
+    this.config = container.resolve<Config>(DITokens.CONFIG);
 
     const pluginConfig = this.pluginConfig?.config as MessageTriggerPluginConfig | undefined;
     if (pluginConfig?.wakeWords && Array.isArray(pluginConfig.wakeWords)) {
@@ -116,6 +118,44 @@ export class MessageTriggerPlugin extends PluginBase {
     return false;
   }
 
+  /**
+   * One-shot LLM check: whether the user message (which started with a provider prefix) clearly invites a reply.
+   * Uses generateLite with config ai.liteLlm (provider + model) when set; otherwise default provider and no model override.
+   * @returns true to allow reply, false to skip (fail closed on error or unrecognized response).
+   */
+  private async checkPrefixInvitation(messageText: string): Promise<boolean> {
+    const template = this.promptManager.getTemplate('analysis.prefix_invitation');
+    if (!template) {
+      logger.debug(
+        '[MessageTriggerPlugin] Template analysis.prefix_invitation not found; skipping prefix-invitation check',
+      );
+      return true;
+    }
+
+    const aiConfig = this.config.getAIConfig();
+    const liteProvider = aiConfig?.liteLlm?.provider;
+    const liteModel = aiConfig?.liteLlm?.model;
+
+    try {
+      const prompt = this.promptManager.render('analysis.prefix_invitation', { messageText });
+      const response = await this.llmService.generateLite(prompt, {}, liteProvider, liteModel);
+      const text = (response.text ?? '').trim();
+      const raw = parseLlmTrueFalse(text);
+      if (raw === null) {
+        logger.warn('[MessageTriggerPlugin] Prefix-invitation LLM response not true/false; treating as no reply');
+        return false;
+      }
+      return raw;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.warn(
+        `[MessageTriggerPlugin] Prefix-invitation LLM call failed (provider=${liteProvider ?? 'default'}, model=${liteModel ?? 'default'}):`,
+        err,
+      );
+      return false;
+    }
+  }
+
   @Hook({
     stage: 'onMessagePreprocess',
     priority: 'HIGHEST',
@@ -164,14 +204,12 @@ export class MessageTriggerPlugin extends PluginBase {
       return true;
     }
 
-    // When trigger is provider-name prefix, run lightweight LLM check (using default LLM) to avoid wasting tokens
+    // When trigger is provider-name prefix, run one-shot LLM check (prompt + provider) to avoid wasting tokens
     if (isProviderNameTrigger) {
       const textForCheck = this.getTextForTriggerMatch(messageText);
-      const result = await this.prefixInvitationCheckService.check(textForCheck);
-      if (!result.shouldReply) {
-        logger.debug(
-          `[MessageTriggerPlugin] Prefix-invitation check said no reply | reason=${result.reason ?? 'none'}`,
-        );
+      const shouldReply = await this.checkPrefixInvitation(textForCheck);
+      if (!shouldReply) {
+        logger.debug('[MessageTriggerPlugin] Prefix-invitation check said no reply');
         context.metadata.set('postProcessOnly', true);
         return true;
       }

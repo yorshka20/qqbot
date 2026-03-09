@@ -15,6 +15,23 @@ import { type SearchDecisionResult, SearchDecisionSchema } from '@/ai/schemas';
 import { logger } from '@/utils/logger';
 
 /**
+ * Parse LLM response that is plain "true" or "false" (case-insensitive).
+ * Uses first non-empty line (or full trimmed text). Reusable for boolean yes/no prompts (e.g. prefix-invitation).
+ * @returns true, false, or null if unrecognized (caller may treat null as fail-closed).
+ */
+export function parseLlmTrueFalse(text: string): boolean | null {
+  const line = text.split(/\r?\n/)[0]?.trim() ?? text.trim();
+  const lower = line.toLowerCase();
+  if (lower === 'true') {
+    return true;
+  }
+  if (lower === 'false') {
+    return false;
+  }
+  return null;
+}
+
+/**
  * Parse MULTI_SEARCH text format into individual queries.
  * Format: "查询1: <query> | <explanation>\n查询2: <query> | <explanation>"
  */

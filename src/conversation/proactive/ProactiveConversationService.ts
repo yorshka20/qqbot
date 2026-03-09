@@ -297,7 +297,7 @@ export class ProactiveConversationService {
     const preferenceParts: string[] = [];
     try {
       for (const key of preferenceKeys) {
-        const summary = this.promptManager.render(`${key}.summary`, {});
+        const summary = this.promptManager.render(`${key}.summary`);
         preferenceParts.push(`### ${key}\n${summary}`);
       }
     } catch (err) {

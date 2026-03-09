@@ -1,5 +1,6 @@
 import { describe, expect, it, test } from 'bun:test';
 import type { AIManager } from '@/ai/AIManager';
+import type { AIGenerateOptions } from '@/ai/types';
 import {
   createAIManagerWithProvider,
   getIntegrationProvider,
@@ -36,6 +37,42 @@ describe('LLMService', () => {
       expect(svc.providerSupportsToolUse('ollama')).toBe(false);
       expect(svc.providerSupportsToolUse('unknown')).toBe(false);
       expect(svc.providerSupportsToolUse('')).toBe(false);
+    });
+  });
+
+  describe('generateLite', () => {
+    it('calls provider.generate with lite defaults and optional provider/model', async () => {
+      let lastOptions: AIGenerateOptions | undefined;
+      const mockProvider = {
+        name: 'mock',
+        getCapabilities: () => ['llm'],
+        isAvailable: () => true,
+        generate: async (_prompt: string, options?: Record<string, unknown>) => {
+          lastOptions = options;
+          return { text: '{"result": "ok"}' };
+        },
+      };
+      const aiManager = {
+        getProviderForCapability: (_cap: string, name?: string) => (name ? mockProvider : null),
+        getDefaultProvider: () => mockProvider,
+      } as unknown as AIManager;
+      const llmService = new LLMService(aiManager);
+
+      await llmService.generateLite('test prompt');
+      expect(lastOptions).toBeDefined();
+      expect(lastOptions?.temperature).toBe(0.1);
+      expect(lastOptions?.maxTokens).toBe(256);
+      expect(lastOptions?.reasoningEffort).toBe('minimal');
+
+      await llmService.generateLite('test', undefined, 'mock', 'doubao-1-5-lite-32k-250115');
+      expect(lastOptions?.model).toBe('doubao-1-5-lite-32k-250115');
+    });
+
+    it('returns fallback when no provider available', async () => {
+      const aiManager = createMockAIManager();
+      const llmService = new LLMService(aiManager);
+      const res = await llmService.generateLite('hello', undefined, 'nonexistent');
+      expect(res.text).toContain('unavailable');
     });
   });
 

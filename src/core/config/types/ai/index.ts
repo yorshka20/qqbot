@@ -49,6 +49,11 @@ export interface AIConfig {
    * When true (default), TaskSystem uses ToolUseReplyService; when false, uses legacy TaskAnalyzer + ReplyGenerationService.
    */
   useToolUse?: boolean;
+  /**
+   * Provider and model for lightweight/fast LLM calls (e.g. prefix-invitation, analysis).
+   * If omitted, lite callers fall back to default LLM and no model override.
+   */
+  liteLlm?: { provider?: string; model?: string };
 }
 
 export interface ContextMemoryConfig {

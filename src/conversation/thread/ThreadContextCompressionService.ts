@@ -60,7 +60,7 @@ export class ThreadContextCompressionService {
       return;
     }
 
-    const preferenceSummary = this.promptManager.render(`${preferenceKey}.summary`, {});
+    const preferenceSummary = this.promptManager.render(`${preferenceKey}.summary`);
     this.compressingThreadIds.add(threadId);
     try {
       const contextWithIndices = this.threadService.getContextFormattedWithIndices(threadId);

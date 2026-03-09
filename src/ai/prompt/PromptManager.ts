@@ -182,7 +182,7 @@ export class PromptManager {
   /**
    * Render template with variables (single template only, no base injection).
    */
-  render(name: string, variables: Record<string, string>): string {
+  render(name: string, variables?: Record<string, string>): string {
     const template = this.getTemplate(name);
     if (!template) {
       throw new Error(`Template "${name}" not found`);
@@ -197,14 +197,16 @@ export class PromptManager {
   private renderTemplateContent(
     template: PromptTemplate,
     templateName: string,
-    variables: Record<string, string>,
+    variables?: Record<string, string>,
   ): string {
     let rendered = template.content;
 
-    // Simple variable replacement: {{variableName}}
-    for (const [key, value] of Object.entries(variables)) {
-      const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
-      rendered = rendered.replace(regex, value);
+    if (variables) {
+      // Simple variable replacement: {{variableName}}
+      for (const [key, value] of Object.entries(variables)) {
+        const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+        rendered = rendered.replace(regex, value);
+      }
     }
 
     // Check for unresolved variables

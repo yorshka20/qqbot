@@ -127,7 +127,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('OpenAI client not initialized');
     }
 
-    const model = this.config.model || 'gpt-3.5-turbo';
+    const model = options?.model ?? this.config.model ?? 'gpt-3.5-turbo';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
@@ -229,7 +229,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('OpenAI client not initialized');
     }
 
-    const model = this.config.model || 'gpt-3.5-turbo';
+    const model = options?.model ?? this.config.model ?? 'gpt-3.5-turbo';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
@@ -307,7 +307,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
     if (!this.client) {
       throw new Error('OpenAI client not initialized');
     }
-    const model = this.config.model || 'gpt-4-vision-preview';
+    const model = options?.model ?? this.config.model ?? 'gpt-4-vision-preview';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
     const apiMessages = messages.map((m) => ({
@@ -357,7 +357,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('OpenAI client not initialized');
     }
 
-    const model = this.config.model || 'gpt-4-vision-preview';
+    const model = options?.model ?? this.config.model ?? 'gpt-4-vision-preview';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
@@ -462,7 +462,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('OpenAI client not initialized');
     }
 
-    const model = this.config.model || 'gpt-4-vision-preview';
+    const model = options?.model ?? this.config.model ?? 'gpt-4-vision-preview';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 

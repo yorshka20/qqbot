@@ -86,10 +86,11 @@ async function initMessageTrigger(config: { wakeWords?: string[] } = {}) {
   );
   container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
   container.registerInstance(
-    DITokens.PREFIX_INVITATION_CHECK_SERVICE,
-    { check: async () => ({ shouldReply: true, reason: undefined }) },
+    DITokens.LLM_SERVICE,
+    { generateLite: async () => ({ text: 'true' }) },
     { allowOverride: true },
   );
+  container.registerInstance(DITokens.CONFIG, { getAIConfig: () => undefined }, { allowOverride: true });
   const plugin = new MessageTriggerPlugin({
     name: 'messageTrigger',
     version: 'test',

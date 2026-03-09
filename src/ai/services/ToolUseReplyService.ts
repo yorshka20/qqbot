@@ -239,13 +239,22 @@ export class ToolUseReplyService {
   ): Promise<ChatMessage[]> {
     const basePrompt = this.promptManager.renderBasePrompt();
     const toolUsageInstructions = this.getToolUsageInstructions(tools, { nativeWebSearchEnabled });
-    const sceneSystemPrompt = this.safeRender(
-      'llm.reply.system',
-      {
-        toolUsageInstructions,
-      },
-      ['你正在参与一段即时对话，请先理解上下文，再决定是否调用工具。', toolUsageInstructions].join('\n\n'),
-    );
+    let sceneSystemPrompt: string;
+    try {
+      const contextInstruct = this.promptManager.render('llm.context.instruct');
+      const toolInstruct = this.promptManager.render('llm.tool.instruct', { toolUsageInstructions });
+      sceneSystemPrompt = this.promptManager.render('llm.reply.system', {
+        contextInstruct,
+        toolInstruct,
+      });
+    } catch (error) {
+      logger.debug(
+        `[ToolUseReplyService] LLM scene or fragment template unavailable, using fallback: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      sceneSystemPrompt = ['你正在参与一段即时对话，请先理解上下文，再决定是否调用工具。', toolUsageInstructions].join(
+        '\n\n',
+      );
+    }
     const currentQuery = this.safeRender(
       'llm.reply.user_frame',
       {
