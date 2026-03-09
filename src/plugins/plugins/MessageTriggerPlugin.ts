@@ -124,22 +124,13 @@ export class MessageTriggerPlugin extends PluginBase {
    * @returns true to allow reply, false to skip (fail closed on error or unrecognized response).
    */
   private async checkPrefixInvitation(messageText: string): Promise<boolean> {
-    const template = this.promptManager.getTemplate('analysis.prefix_invitation');
-    if (!template) {
-      logger.debug(
-        '[MessageTriggerPlugin] Template analysis.prefix_invitation not found; skipping prefix-invitation check',
-      );
-      return true;
-    }
-
     const aiConfig = this.config.getAIConfig();
-    const liteProvider = aiConfig?.liteLlm?.provider;
-    const liteModel = aiConfig?.liteLlm?.model;
+    const liteProvider = aiConfig?.liteLlm?.provider ?? 'deepseek';
+    const liteModel = aiConfig?.liteLlm?.model ?? '';
 
     try {
       const prompt = this.promptManager.render('analysis.prefix_invitation', { messageText });
       const response = await this.llmService.generateLite(prompt, { maxTokens: 100 }, liteProvider, liteModel);
-      logger.debug(`[MessageTriggerPlugin] Prefix-invitation LLM response: ${response.text}`);
       const text = (response.text ?? '').trim();
       const raw = parseLlmTrueFalse(text);
       if (raw === null) {

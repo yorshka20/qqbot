@@ -54,6 +54,11 @@ export interface AIConfig {
    * If omitted, lite callers fall back to default LLM and no model override.
    */
   liteLlm?: { provider?: string; model?: string };
+  /**
+   * Provider and model for convert-to-card LLM call (cheap).
+   * If omitted, convert-to-card uses default LLM and no model override.
+   */
+  convertLlm?: { provider?: string; model?: string };
 }
 
 export interface ContextMemoryConfig {

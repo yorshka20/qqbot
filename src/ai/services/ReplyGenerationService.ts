@@ -8,6 +8,9 @@ import {
   NormalEpisodeService,
   normalizeSessionId,
 } from '@/conversation/history';
+import type { Config } from '@/core/config';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
@@ -49,14 +52,13 @@ import type { VisionService } from './VisionService';
 /** Normal mode: max history entries in prompt (stable size for cache hit). Excludes current user message; when exceeded, oldest are summarized. Initial context window (10 min) is defined in NormalEpisodeService.CONTEXT_WINDOW_MS. */
 const NORMAL_MAX_HISTORY_ENTRIES = 24;
 
-/** Provider used only for convert-to-card LLM call (cheap); never use main reply provider (e.g. anthropic). */
-const CONVERT_TO_CARD_PROVIDER = 'doubao';
-
 export class ReplyGenerationService {
   private readonly MAX_SEARCH_ITERATIONS = 5;
 
   private static readonly RAG_LIMIT = 5;
   private static readonly RAG_MIN_SCORE = 0.5;
+
+  private config: Config;
 
   /** Single FetchProgressNotifier instance for reply flow; setMessageEvent() before each search. */
   private fetchProgressNotifier: FetchProgressNotifier;
@@ -82,6 +84,7 @@ export class ReplyGenerationService {
     private taskManager: TaskManager,
   ) {
     this.fetchProgressNotifier = new MessageSendFetchProgressNotifier(messageAPI);
+    this.config = getContainer().resolve<Config>(DITokens.CONFIG);
   }
 
   /**
@@ -907,14 +910,19 @@ export class ReplyGenerationService {
       cardDeckNote: getCardDeckNoteForPrompt(),
     });
 
+    const aiConfig = this.config.getAIConfig();
+    const convertLlmProvider = aiConfig?.convertLlm?.provider ?? 'deepseek';
+    const convertLlmModel = aiConfig?.convertLlm?.model ?? '';
+
     const cardResponse = await this.llmService.generate(
       prompt,
       {
         temperature: 0.2,
-        maxTokens: 4000,
+        maxTokens: 3000,
         sessionId,
+        model: convertLlmModel,
       },
-      CONVERT_TO_CARD_PROVIDER,
+      convertLlmProvider,
     );
 
     logger.debug(

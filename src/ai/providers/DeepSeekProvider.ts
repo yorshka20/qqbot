@@ -154,6 +154,23 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
     });
   }
 
+  async generateLite(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
+    const model = options?.model ?? this.config.model ?? 'deepseek-chat';
+    const temperature = options?.temperature ?? 0.1;
+    const maxTokens = options?.maxTokens ?? 256;
+
+    const injectOptions: AIGenerateOptions = {
+      model,
+      temperature,
+      maxTokens,
+      ...options,
+      tools: [],
+      reasoningEffort: 'minimal',
+    };
+
+    return this.generate(prompt, injectOptions);
+  }
+
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'deepseek-chat';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
