@@ -5,7 +5,7 @@ import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { InfoCardData } from '@/services/card';
 import type { FileReadService } from '@/services/file';
-import { formatBytes, runDeduplication } from '@/utils/fileDedup';
+import { formatBytes, resolveGroupDirs, runDeduplication } from '@/utils/fileDedup';
 import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
@@ -41,17 +41,15 @@ export class GroupDedupCommandHandler implements CommandHandler {
       };
     }
 
-    const targetDir = join(DOWNLOAD_ROOT, groupId);
-    const dirCheck = this.fileService.scanDirectory(targetDir);
-    if (!dirCheck.success) {
+    logger.info(`[GroupDedupCommandHandler] Starting manual dedup | groupId=${groupId}`);
+    const dirs = resolveGroupDirs(join(process.cwd(), DOWNLOAD_ROOT), groupId);
+    if (dirs.length === 0) {
       return {
-        success: false,
-        error: `群 ${groupId} 下载目录不可用：${targetDir}（${dirCheck.error ?? '未知错误'}）`,
+        success: true,
+        segments: new MessageBuilder().text(`未找到任何群下载目录（${DOWNLOAD_ROOT}）。`).build(),
       };
     }
-
-    logger.info(`[GroupDedupCommandHandler] Starting manual dedup | groupId=${groupId}`);
-    const result = await runDeduplication([targetDir], this.fileService, false);
+    const result = await runDeduplication(dirs, this.fileService, false);
 
     const lines: string[] = [
       `群 ${groupId} 去重完成：`,
@@ -70,7 +68,12 @@ export class GroupDedupCommandHandler implements CommandHandler {
     }
 
     if (result.errors.length > 0) {
-      lines.push(`- 错误：${result.errors.length} 个（详见日志）`);
+      const missingDirError = result.errors.find((item) => item.file.endsWith(`/${groupId}`) && item.error.includes('不存在'));
+      if (missingDirError) {
+        lines.push(`- 目录状态：未找到 ${DOWNLOAD_ROOT}/${groupId}，请先确认该群已有下载文件`);
+      } else {
+        lines.push(`- 错误：${result.errors.length} 个（详见日志）`);
+      }
     }
 
     const outputText = lines.join('\n');

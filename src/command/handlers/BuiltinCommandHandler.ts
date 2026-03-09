@@ -394,32 +394,23 @@ const RESTART_DELAY_MS = 2000;
 @Command({
   name: 'restart',
   description: 'Restart the bot. Admin/owner only.',
-  usage: '/restart [pm2_id]',
+  usage: '/restart',
   permissions: ['admin', 'owner'],
 })
 @injectable()
 export class RestartCommand implements CommandHandler {
   name = 'restart';
   description = 'Restart the bot. Admin/owner only.';
-  usage = '/restart [pm2_id]';
+  usage = '/restart';
 
   execute(args: string[]): CommandResult {
-    const pm2Id = args[0] ?? '0';
-    // Sanitize: only allow alphanumeric, dash, underscore (prevent command injection)
-    if (!/^[a-zA-Z0-9_-]+$/.test(pm2Id)) {
-      return {
-        success: false,
-        error: '无效的 pm2 id，仅支持字母、数字、横线、下划线',
-      };
-    }
-
     const messageBuilder = new MessageBuilder();
     messageBuilder.text(`正在重启...`);
 
     setTimeout(() => {
-      exec(`pm2 restart ${pm2Id}`, (err, stdout, stderr) => {
+      exec(`bun start`, (err, stdout, stderr) => {
         if (err) {
-          logger.error('[RestartCommand] pm2 restart failed:', { err, stdout, stderr });
+          logger.error('[RestartCommand] bun start failed:', { err, stdout, stderr });
         }
       });
     }, RESTART_DELAY_MS);
