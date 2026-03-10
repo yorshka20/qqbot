@@ -313,12 +313,9 @@ export class ScheduleFileService {
       return { triggerType: 'onEvent', eventType };
     }
 
-    // schedule.md only holds cron and onEvent; once items are DB-only and not synced from file
     if (s.startsWith('once ')) {
-      logger.warn(
-        `[ScheduleFileService] Section "## ${name}": "once" triggers are not synced from schedule.md, skipping`,
-      );
-      return null;
+      const triggerAt = s.replace(/^once\s+/i, '').trim();
+      return { triggerType: 'once', triggerAt };
     }
 
     logger.warn(`[ScheduleFileService] Section "## ${name}": cannot parse trigger "${raw}", skipping`);

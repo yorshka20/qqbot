@@ -157,16 +157,16 @@ export class ScheduleCommand implements CommandHandler {
 
   // ─── LLM Parsing ─────────────────────────────────────────────────────────────
 
-  private async parseWithLLM(input: string, groupId?: string): Promise<ScheduleParsed | null> {
+  private async parseWithLLM(input: string, groupId: string): Promise<ScheduleParsed | null> {
     const today = new Date().toISOString();
 
     const prompt = this.promptManager.render('agenda.schedule_parse', {
       today,
       input,
-      groupIdLine: groupId ? `当前群ID: ${groupId}` : '',
+      groupIdLine: `当前群ID: ${groupId}`,
     });
 
-    const response = await this.llmService.generateLite(prompt, { maxTokens: 512, jsonMode: true });
+    const response = await this.llmService.generateLite(prompt, { maxTokens: 512, jsonMode: true }, 'deepseek');
     if (!response.text) return null;
 
     return parseLlmJson(response.text, ScheduleParseSchema, { strategies: JSON_ONLY_STRATEGIES });
