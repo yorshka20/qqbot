@@ -77,6 +77,13 @@ export class ScheduleCommand implements CommandHandler {
     }
 
     const groupId = context.groupId?.toString();
+    const userId = context.userId.toString();
+    if (!groupId || !userId) {
+      return {
+        success: false,
+        error: '无法获取群组ID或用户ID',
+      };
+    }
 
     // Parse natural language description with LLM
     let parsed: ScheduleParsed | null = null;
@@ -129,6 +136,7 @@ export class ScheduleCommand implements CommandHandler {
         triggerAt: trigger.triggerAt,
         eventType: trigger.eventType,
         groupId,
+        userId,
         intent: parsed.intent,
         cooldownMs,
         maxSteps: 3,
