@@ -119,6 +119,28 @@ export interface MemoryExtractUserCursor extends BaseModel {
 }
 
 /**
+ * AgendaItem - persisted scheduled intent for the proactive action framework.
+ * Trigger types: 'cron' (node-cron expr), 'once' (fire once at triggerAt), 'onEvent' (internal event bus).
+ */
+export interface AgendaItem extends BaseModel {
+  name: string;
+  groupId?: string;
+  userId?: string;
+  triggerType: 'cron' | 'once' | 'onEvent';
+  cronExpr?: string;
+  triggerAt?: string;
+  eventType?: string;
+  eventFilter?: string; // JSON string
+  intent: string;
+  cooldownMs: number;
+  maxSteps: number;
+  enabled: boolean;
+  lastRunAt?: string;
+  nextRunAt?: string;
+  metadata?: string; // JSON string
+}
+
+/**
  * Model accessor interface
  */
 export interface ModelAccessor<T extends BaseModel> {
@@ -171,4 +193,5 @@ export interface DatabaseModel {
   conversationConfigs: ModelAccessor<ConversationConfig>;
   proactiveThreads: ModelAccessor<ProactiveThreadRecord>;
   memoryExtractUserCursors: ModelAccessor<MemoryExtractUserCursor>;
+  agendaItems: ModelAccessor<AgendaItem>;
 }

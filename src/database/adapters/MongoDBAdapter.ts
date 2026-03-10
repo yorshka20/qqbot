@@ -5,6 +5,7 @@ import { type Collection, type Db, MongoClient } from 'mongodb';
 import { logger } from '@/utils/logger';
 import type { DatabaseAdapter } from '../base/DatabaseAdapter';
 import type {
+  AgendaItem,
   BaseModel,
   Conversation,
   ConversationConfig,
@@ -259,6 +260,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
       memoryExtractUserCursors: new MongoModelAccessor<MemoryExtractUserCursor>(
         this.db.collection('memory_extract_user_cursors'),
       ),
+      agendaItems: new MongoModelAccessor<AgendaItem>(this.db.collection('agenda_items')),
     };
   }
 }

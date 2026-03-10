@@ -1,15 +1,14 @@
 // Service Registry - manages service registration to DI container
 // Provides a clear, organized way to register services with proper lifecycle management
 
+import type { AgendaComponents } from '@/agenda';
 import type { AIManager } from '@/ai/AIManager';
 import type { AIService } from '@/ai/AIService';
 import type { APIClient } from '@/api/APIClient';
 import type { CommandManager } from '@/command/CommandManager';
 import type { ContextManager } from '@/context/ContextManager';
-import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import type { ProactiveConversationService } from '@/conversation/proactive';
 import type { ThreadService } from '@/conversation/thread';
-import type { GlobalConfigManager } from '@/core/config/GlobalConfigManager';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { FileReadService } from '@/services/file';
@@ -180,6 +179,19 @@ export class ServiceRegistry {
    */
   registerProactiveConversationService(proactiveConversationService: ProactiveConversationService): void {
     this.container.registerInstance(DITokens.PROACTIVE_CONVERSATION_SERVICE, proactiveConversationService);
+  }
+
+  /**
+   * Register agenda framework services (AgendaService, AgentLoop, InternalEventBus).
+   * Called from ConversationInitializer after agenda components are initialized.
+   */
+  registerAgendaServices(components: AgendaComponents): void {
+    this.container.registerInstance(DITokens.AGENDA_SERVICE, components.agendaService);
+    this.container.registerInstance(DITokens.AGENT_LOOP, components.agentLoop);
+    this.container.registerInstance(DITokens.INTERNAL_EVENT_BUS, components.internalEventBus);
+    this.container.registerInstance(DITokens.AGENDA_REPORTER, components.reporter);
+    this.container.registerInstance(DITokens.SCHEDULE_FILE_SERVICE, components.scheduleFileService);
+    logger.debug('[ServiceRegistry] Registered agenda framework services');
   }
 
   /**
