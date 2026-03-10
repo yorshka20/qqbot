@@ -48,6 +48,8 @@ export class TTSCommandHandler implements CommandHandler {
     卢本伟: 'e5c5bebffac04f858878e21f8598deb1',
     永雏塔菲: '55b28b196e1c4fff9a55cd32a46eff25',
     派蒙: 'efc1ce3726a64bbc947d53a1465204aa',
+    嘉然: 'e11b0496fc9f4cb180db1dd238f67833',
+    东雪莲: 'eaa47f801d914afe93ea453cc42729f3',
   };
 
   private readonly DEFAULT_VOICE = '派蒙';
