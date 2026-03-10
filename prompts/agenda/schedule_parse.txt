@@ -1,0 +1,19 @@
+今天是 {{today}}。请将以下自然语言描述解析为定时任务配置，输出严格的JSON格式。
+
+触发格式规则（trigger字段）:
+  - 固定周期 → "cron <cron表达式>"  例: "cron 0 16 * * *" (每天16点)
+  - 指定时间 → "once <ISO8601>"      例: "once 2026-06-01T08:00:00"
+  - 群事件   → "onEvent <事件类型>"  例: "onEvent group_member_join"
+
+冷却时间建议: cron每天一次用"23h"，每小时用"59min"，once任务不需要设置。
+
+输出JSON格式:
+{
+  "name": "简短任务名(5-15字)",
+  "trigger": "触发字符串",
+  "cooldown": "冷却时间(可选)",
+  "intent": "详细描述bot触发后应该做什么"
+}
+
+用户描述: {{input}}
+{{groupIdLine}}

@@ -2,10 +2,11 @@
 // ScheduleFileService (markdown → DB sync), and AgendaReporter (daily reports).
 
 import { join } from 'node:path';
+import type { PromptManager } from '@/ai';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { ProtocolName } from '@/core/config/types/protocol';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
+import type { ProtocolName } from '@/core/config/types/protocol';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { logger } from '@/utils/logger';
 import { AgendaReporter } from './AgendaReporter';
@@ -38,6 +39,7 @@ export class AgendaInitializer {
     llmService: LLMService;
     messageAPI: MessageAPI;
     conversationHistoryService: ConversationHistoryService;
+    promptManager: PromptManager;
     preferredProtocol?: ProtocolName;
     /** Base directory for agenda data files. Defaults to `data/agenda` relative to cwd. */
     dataDir?: string;
@@ -57,14 +59,9 @@ export class AgendaInitializer {
 
     const reporter = new AgendaReporter(reportsDir);
 
-    const agendaService = new AgendaService(
-      deps.databaseManager,
-      agentLoop,
-      internalEventBus,
-      reporter,
-    );
+    const agendaService = new AgendaService(deps.databaseManager, agentLoop, internalEventBus, reporter);
 
-    const scheduleFileService = new ScheduleFileService(scheduleFilePath, agendaService);
+    const scheduleFileService = new ScheduleFileService(scheduleFilePath, agendaService, deps.promptManager);
 
     // Ensure schedule.md exists (writes template on first run)
     await scheduleFileService.ensureFileExists();

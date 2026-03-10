@@ -9,4 +9,5 @@ export * from './I2vCommandHandler';
 export * from './NaiPlusCommandHandler';
 export * from './NovelAICommandHandler';
 export * from './Text2ImgCommandHandler';
+export * from './ScheduleCommandHandler';
 export * from './TTSCommandHandler';

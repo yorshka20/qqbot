@@ -190,12 +190,13 @@ export class ConversationInitializer {
     ConversationInitializer.configureProactiveConversationService(container);
 
     // Agenda framework: AgendaService + AgentLoop + InternalEventBus.
-    // Requires LLMService, MessageAPI, and ConversationHistoryService (all available above).
+    // Requires LLMService, MessageAPI, ConversationHistoryService, PromptManager (all available above).
     const agendaComponents = await AgendaInitializer.initialize({
       databaseManager,
       llmService: container.resolve<LLMService>(DITokens.LLM_SERVICE),
       messageAPI,
       conversationHistoryService,
+      promptManager: container.resolve<PromptManager>(DITokens.PROMPT_MANAGER),
     });
     serviceRegistry.registerAgendaServices(agendaComponents);
 

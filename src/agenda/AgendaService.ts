@@ -63,14 +63,10 @@ export class AgendaService {
     }
     this.onceTimers.clear();
 
-    for (const [itemId, handler] of this.eventHandlers.entries()) {
-      const item = this.eventHandlers.get(itemId);
-      if (item) {
-        // We need the eventType to unsubscribe; store it alongside the handler
-        const eventType = (handler as { _eventType?: string })._eventType;
-        if (eventType) {
-          this.eventBus.unsubscribe(eventType, handler);
-        }
+    for (const handler of this.eventHandlers.values()) {
+      const eventType = (handler as { _eventType?: string })._eventType;
+      if (eventType) {
+        this.eventBus.unsubscribe(eventType, handler);
       }
     }
     this.eventHandlers.clear();
@@ -82,7 +78,6 @@ export class AgendaService {
   /** Create a new AgendaItem and schedule it if enabled. */
   async createItem(data: CreateAgendaItemData): Promise<AgendaItem> {
     const accessor = this.getAccessor();
-    const now = new Date().toISOString();
 
     const item = await accessor.create({
       ...data,
@@ -289,8 +284,8 @@ export class AgendaService {
       return;
     }
 
-    // Cooldown gate
-    if (!this.cooldownPassed(fresh)) {
+    // Cooldown gate (cron items skip this: the cron expression already controls frequency)
+    if (fresh.triggerType !== 'cron' && !this.cooldownPassed(fresh)) {
       logger.debug(`[AgendaService] Item "${fresh.name}" in cooldown; skipping`);
       return;
     }

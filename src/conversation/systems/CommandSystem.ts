@@ -49,11 +49,7 @@ export class CommandSystem implements System {
 
     // Set reply and resolve sendAsForward upstream; pipeline only reads reply.metadata.sendAsForward
     if (commandResult.success && commandResult.segments && commandResult.segments.length > 0) {
-      const sendAsForward = computeSendAsForward(
-        context,
-        commandResult.segments,
-        commandResult.sentAsForward,
-      );
+      const sendAsForward = computeSendAsForward(context, commandResult.segments, commandResult.sentAsForward);
       replaceReplyWithSegments(context, commandResult.segments, 'command', { sendAsForward });
     }
 

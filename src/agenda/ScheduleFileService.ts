@@ -24,11 +24,13 @@
 //   - Each `## Heading` → one AgendaItem (name = heading text)
 //   - Metadata = list items `- key: \`value\`` or `- key: value`
 //   - Intent = paragraph text after metadata block (non-list, non-empty)
-//   - Items are upserted by name; items not in file are NOT deleted (manual DB items survive)
+//   - File-sourced items (metadata.source === 'file') are tombstone (disabled) when removed from file
+//   - Manual DB items (no source tag) are never touched by sync
 //   - `---` separators are cosmetic, ignored by parser
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import type { PromptManager } from '@/ai';
 import { logger } from '@/utils/logger';
 import type { AgendaService } from './AgendaService';
 import type { AgendaItem, AgendaTriggerType, CreateAgendaItemData } from './types';
@@ -49,33 +51,31 @@ interface ParsedScheduleItem {
   enabled: boolean;
 }
 
-const DEFAULT_SCHEDULE_TEMPLATE = [
-  '# Bot Schedule',
-  '',
-  '> Bot每次启动时读取此文件，自动同步到任务库。手动添加任务后重启bot生效，或调用 agendaService.syncFromFile() 热更新。',
-  '',
-  '<!-- ──────────────── 任务格式说明 ────────────────',
-  '每个任务用 ## 标题 开始。',
-  '元数据用列表形式定义，之后的段落文本为"意图"（告诉bot要做什么）。',
-  '',
-  '触发方式:',
-  '  - 触发: `cron 0 8 * * *`          (每天8点)',
-  '  - 触发: `onEvent group_member_join` (有人加群时)',
-  '  - 触发: `once 2026-06-01T08:00:00`  (指定时间执行一次)',
-  '',
-  '冷却时间: `30s` / `5min` / `2h` / `86400000`（毫秒）',
-  '─────────────────────────────────────────────── -->',
-  '',
-].join('\n');
+/** Data for appending a new section to schedule.md (e.g. from /schedule command) */
+export interface AppendItemData {
+  name: string;
+  triggerType: AgendaTriggerType;
+  cronExpr?: string;
+  triggerAt?: string;
+  eventType?: string;
+  groupId?: string;
+  cooldownMs?: number;
+  intent: string;
+}
+
+/** JSON metadata tag that marks a DB item as originating from the schedule file */
+const FILE_SOURCE_META = JSON.stringify({ source: 'file' });
 
 export class ScheduleFileService {
   constructor(
     private scheduleFilePath: string,
     private agendaService: AgendaService,
+    private promptManager: PromptManager,
   ) {}
 
   /**
-   * Read schedule.md, parse items, and upsert them into the AgendaService DB.
+   * Read schedule.md, parse items, upsert them into the AgendaService DB,
+   * and tombstone (disable) any file-sourced DB items no longer present in the file.
    * Called on startup and can be called to hot-reload.
    */
   async syncFromFile(): Promise<void> {
@@ -90,11 +90,13 @@ export class ScheduleFileService {
 
     let created = 0;
     let updated = 0;
+    const fileNames = new Set(parsed.map((p) => p.name));
 
     for (const p of parsed) {
       const existing = await this.findByName(p.name);
       if (existing) {
         // Update trigger/intent/cooldown fields but preserve runtime state (lastRunAt, etc.)
+        // Always (re-)tag as file-sourced so tombstone logic can track it.
         await this.agendaService.updateItem(existing.id, {
           triggerType: p.triggerType,
           cronExpr: p.cronExpr,
@@ -107,15 +109,39 @@ export class ScheduleFileService {
           cooldownMs: p.cooldownMs,
           maxSteps: p.maxSteps,
           enabled: p.enabled,
+          metadata: FILE_SOURCE_META,
         });
         updated++;
       } else {
-        await this.agendaService.createItem(p as CreateAgendaItemData);
+        await this.agendaService.createItem({
+          ...(p as CreateAgendaItemData),
+          metadata: FILE_SOURCE_META,
+        });
         created++;
       }
     }
 
-    logger.info(`[ScheduleFileService] Sync done: ${created} created, ${updated} updated from ${this.scheduleFilePath}`);
+    // Tombstone: disable file-sourced DB items that are no longer in the file
+    const allItems = await this.agendaService.listItems();
+    let tombstoned = 0;
+    for (const item of allItems) {
+      if (!item.metadata) continue;
+      try {
+        const meta = JSON.parse(item.metadata) as Record<string, unknown>;
+        if (meta.source !== 'file') continue;
+      } catch {
+        continue;
+      }
+      if (!fileNames.has(item.name) && item.enabled) {
+        await this.agendaService.setEnabled(item.id, false);
+        tombstoned++;
+        logger.info(`[ScheduleFileService] Tombstoned removed item "${item.name}" (disabled)`);
+      }
+    }
+
+    logger.info(
+      `[ScheduleFileService] Sync done: ${created} created, ${updated} updated, ${tombstoned} tombstoned from ${this.scheduleFilePath}`,
+    );
   }
 
   /**
@@ -126,11 +152,36 @@ export class ScheduleFileService {
       await readFile(this.scheduleFilePath, 'utf-8');
       // File exists, nothing to do
     } catch {
-      // File not found — write the template
+      // File not found — write the template from prompts/agenda/schedule_default.txt
       await mkdir(dirname(this.scheduleFilePath), { recursive: true });
-      await writeFile(this.scheduleFilePath, DEFAULT_SCHEDULE_TEMPLATE, 'utf-8');
+      const templateContent = this.promptManager.render('agenda.schedule_default');
+      await writeFile(this.scheduleFilePath, `${templateContent}\n`, 'utf-8');
       logger.info(`[ScheduleFileService] Created default schedule file at ${this.scheduleFilePath}`);
     }
+  }
+
+  /**
+   * Append a new ## section to schedule.md.
+   * Used by /schedule command to persist a newly created task to the file.
+   */
+  async appendItem(data: AppendItemData): Promise<void> {
+    const triggerStr = this.formatTrigger(data);
+    const cooldownStr = data.cooldownMs != null ? String(data.cooldownMs) : '60000';
+
+    const lines: string[] = ['', '---', '', `## ${data.name}`, `- 触发: \`${triggerStr}\``];
+
+    if (data.groupId) {
+      lines.push(`- 群: \`${data.groupId}\``);
+    }
+
+    lines.push(`- 冷却: \`${cooldownStr}\``);
+    lines.push('');
+    lines.push(data.intent);
+    lines.push('');
+
+    await mkdir(dirname(this.scheduleFilePath), { recursive: true });
+    await appendFile(this.scheduleFilePath, lines.join('\n'), 'utf-8');
+    logger.info(`[ScheduleFileService] Appended item "${data.name}" to ${this.scheduleFilePath}`);
   }
 
   // ─── Parsing ─────────────────────────────────────────────────────────────────
@@ -244,8 +295,9 @@ export class ScheduleFileService {
 
   /**
    * Parse trigger string: `cron 0 8 * * *` | `onEvent group_member_join` | `once 2026-06-01T08:00:00`
+   * Public so external callers (e.g. ScheduleCommandHandler) can validate trigger strings.
    */
-  private parseTrigger(
+  parseTrigger(
     raw: string,
     name: string,
   ): Pick<ParsedScheduleItem, 'triggerType' | 'cronExpr' | 'triggerAt' | 'eventType'> | null {
@@ -272,8 +324,9 @@ export class ScheduleFileService {
 
   /**
    * Parse duration: `30s`, `5min`, `2h`, `1d`, or raw ms number string.
+   * Public so external callers (e.g. ScheduleCommandHandler) can reuse the parser.
    */
-  private parseDuration(raw: string): number {
+  parseDuration(raw: string): number {
     const s = raw.trim().toLowerCase();
 
     const units: Record<string, number> = {
@@ -298,7 +351,19 @@ export class ScheduleFileService {
     return Number.isNaN(ms) ? 60_000 : ms;
   }
 
-  // ─── Helpers ─────────────────────────────────────────────────────────────────
+  // ─── Private Helpers ──────────────────────────────────────────────────────────
+
+  /** Format trigger fields back to the schedule.md string representation. */
+  private formatTrigger(data: Pick<AppendItemData, 'triggerType' | 'cronExpr' | 'triggerAt' | 'eventType'>): string {
+    switch (data.triggerType) {
+      case 'cron':
+        return `cron ${data.cronExpr ?? ''}`;
+      case 'once':
+        return `once ${data.triggerAt ?? ''}`;
+      case 'onEvent':
+        return `onEvent ${data.eventType ?? ''}`;
+    }
+  }
 
   private async readFile(): Promise<string | null> {
     try {

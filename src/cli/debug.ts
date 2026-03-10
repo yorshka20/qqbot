@@ -650,6 +650,10 @@ class DebugCLI {
     this.commandManager = conversationComponents.commandManager;
     this.taskManager = conversationComponents.taskManager;
 
+    // Agenda framework is initialized inside ConversationInitializer; verify it's available for /schedule etc.
+    getContainer().resolve(DITokens.SCHEDULE_FILE_SERVICE);
+    this.printInfo('✓ Agenda framework initialized');
+
     // Register RetrievalService health check
     retrievalService.registerHealthCheck();
     this.printInfo('✓ RetrievalService health check registered');
@@ -717,6 +721,10 @@ class DebugCLI {
     this.conversationManager = conversationComponents.conversationManager;
     this.commandManager = conversationComponents.commandManager;
     this.taskManager = conversationComponents.taskManager;
+
+    // Agenda framework is initialized inside ConversationInitializer; verify it's available for /schedule etc.
+    getContainer().resolve(DITokens.SCHEDULE_FILE_SERVICE);
+    this.printInfo('✓ Agenda framework initialized');
 
     // Register RetrievalService health check
     retrievalService.registerHealthCheck();

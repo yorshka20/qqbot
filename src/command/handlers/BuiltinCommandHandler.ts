@@ -1,6 +1,6 @@
 // Builtin command handlers
 
-import { exec } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { inject, injectable } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
 import type { AIService } from '@/ai/AIService';
@@ -384,35 +384,38 @@ export class MemoryDeepCommand implements CommandHandler {
   }
 }
 
-/** Delay before executing pm2 restart (ms), to allow reply to be sent first */
+/** Delay before spawning deploy script (ms), to allow reply to be sent first */
 const RESTART_DELAY_MS = 2000;
 
 /**
- * Restart command - restarts the bot via pm2 restart
- * Requires admin or owner permission
+ * Restart command - runs full deploy (git pull, bun install, pm2 delete + start) then restarts.
+ * Spawns start.sh in a detached process so it keeps running after this process is killed by pm2 delete.
+ * Requires admin or owner permission.
  */
 @Command({
   name: 'restart',
-  description: 'Restart the bot. Admin/owner only.',
+  description: 'Update code (git pull), install deps, then restart the bot. Admin/owner only.',
   usage: '/restart',
   permissions: ['admin', 'owner'],
 })
 @injectable()
 export class RestartCommand implements CommandHandler {
   name = 'restart';
-  description = 'Restart the bot. Admin/owner only.';
+  description = 'Update code (git pull), install deps, then restart the bot. Admin/owner only.';
   usage = '/restart';
 
   execute(args: string[]): CommandResult {
     const messageBuilder = new MessageBuilder();
-    messageBuilder.text(`正在重启...`);
+    messageBuilder.text(`正在拉取代码并重启（git pull → bun i → pm2 重启）...`);
 
     setTimeout(() => {
-      exec(`bun start`, (err, stdout, stderr) => {
-        if (err) {
-          logger.error('[RestartCommand] bun start failed:', { err, stdout, stderr });
-        }
+      const child = spawn('bun', ['run', 'start'], {
+        cwd: process.cwd(),
+        detached: true,
+        stdio: 'ignore',
       });
+      child.unref();
+      logger.info('[RestartCommand] spawned detached deploy (bun run start), this process will be killed by pm2 delete');
     }, RESTART_DELAY_MS);
 
     return {

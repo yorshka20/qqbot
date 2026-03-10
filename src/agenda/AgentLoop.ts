@@ -10,7 +10,6 @@ import type { ProtocolName } from '@/core/config/types/protocol';
 import { logger } from '@/utils/logger';
 import type { AgendaEventContext, AgendaItem } from './types';
 
-const DEFAULT_MAX_STEPS = 3;
 const DEFAULT_PROVIDER: string | undefined = undefined; // Use system default LLM provider
 
 /**
@@ -22,7 +21,8 @@ const DEFAULT_PROVIDER: string | undefined = undefined; // Use system default LL
  * Cooldown and enabled-checks are done by AgendaService before calling run().
  *
  * Design principle: keep it thin. This is "the shell that translates intent to action."
- * Step budget (maxSteps) guards against runaway loops; current implementation uses 1 LLM call.
+ * Makes exactly one LLM call per run. The AgendaItem.maxSteps field is reserved for future
+ * multi-step expansion (tool calls, follow-up actions), but is not used today.
  */
 export class AgentLoop {
   private preferredProtocol: ProtocolName = 'milky';
@@ -70,25 +70,14 @@ export class AgentLoop {
 
   /**
    * Generate a reply for the given intent using the LLM.
-   * Step 1: fetch recent conversation context (cheap, DB read)
-   * Step 2: call LLM with system + user prompt (1 LLM step; within maxSteps budget)
+   * Fetches recent conversation context, then makes one LLM call.
    */
   private async generateReply(
     item: AgendaItem,
     groupId: string,
     eventContext?: AgendaEventContext,
   ): Promise<string | null> {
-    const maxSteps = item.maxSteps ?? DEFAULT_MAX_STEPS;
-
-    // Step 1: fetch recent context (costs 0 LLM tokens)
     const conversationContext = await this.fetchRecentContext(groupId);
-
-    // Step 2: LLM call (1 step used out of maxSteps budget)
-    if (maxSteps < 1) {
-      logger.warn(`[AgentLoop] Item "${item.name}": maxSteps < 1, cannot call LLM`);
-      return null;
-    }
-
     const messages = this.buildPrompt(item, conversationContext, eventContext);
 
     try {
