@@ -91,7 +91,7 @@ export class PreliminaryAnalysisService {
     // prefer use generateLite if available, otherwise use generate
     const generate = llm.generateLite ?? llm.generate;
     try {
-      const response = await generate(prompt, {
+      const response = await generate.call(llm, prompt, {
         temperature: 0.2,
         maxTokens: 400,
         jsonMode: true,
@@ -149,7 +149,7 @@ export class PreliminaryAnalysisService {
     // prefer use generateLite if available, otherwise use generate
     const generate = llm.generateLite ?? llm.generate;
     try {
-      const response = await generate(prompt, {
+      const response = await generate.call(llm, prompt, {
         temperature: 0.2,
         maxTokens: 400,
         jsonMode: true,
