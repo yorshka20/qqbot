@@ -126,7 +126,7 @@ export class EchoPlugin extends PluginBase {
 
     try {
       // Build command using CommandBuilder
-      const command = CommandBuilder.build('tts', [text, '--random']);
+      const command = CommandBuilder.build('tts', [text, '--voice=派蒙']);
 
       // Construct CommandContext using builder
       const commandContext = CommandContextBuilder.fromHookContext(context).build();

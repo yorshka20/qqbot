@@ -40,15 +40,17 @@ export class TTSCommandHandler implements CommandHandler {
     丁真: '54a5170264694bfc8e9ad98df7bd89c3',
     赛马娘: '561fcedfdf0e4e1399d1bc4930d50c0e',
     孙笑川: 'e80ea225770f42f79d50aa98be3cedfc',
-    丰川祥子: '8ce20e146c9545619e5f6f4c95564a2d',
+    丰川祥子: 'f544cd9b956740c4a1bdee2e93a23d20',
     雷军: 'aebaa2305aa2452fbdc8f41eec852a79',
     特朗普: '5196af35f6ff4a0dbf541793fc9f2157',
     日语: 'fbea303b64374bffb8843569404b095e',
     高松灯: 'b4f70fdef5f943c2bf43db00e80ad680',
     卢本伟: 'e5c5bebffac04f858878e21f8598deb1',
+    永雏塔菲: '55b28b196e1c4fff9a55cd32a46eff25',
+    派蒙: 'efc1ce3726a64bbc947d53a1465204aa',
   };
 
-  private readonly DEFAULT_VOICE = '高松灯';
+  private readonly DEFAULT_VOICE = '派蒙';
 
   // Maximum text length (in characters)
   private readonly MAX_TEXT_LENGTH = 1000;
