@@ -227,9 +227,11 @@ export class TTSCommandHandler implements CommandHandler {
 
       const messageSegments = messageBuilder.build();
 
+      // Record (voice) and file segments must be sent directly; do not use forward message.
       return {
         success: true,
         segments: messageSegments,
+        sentAsForward: false,
       };
     } catch (error) {
       // Handle different error types (Error, ErrorEvent, etc.)

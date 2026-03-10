@@ -227,12 +227,11 @@ export class MessagePipeline {
       throw new Error('ReplyContent.segments is required but missing or empty');
     }
 
-    const groupUseForward = hookContext.metadata.get('groupUseForwardMsg') === true;
-    const hasImage = replyContent.segments.some((s) => s.type === 'image');
-    // Only pure-text replies use forward; replies with image are sent as normal message (forward cannot send image reliably).
-    const useForwardActual = event.protocol === 'milky' && groupUseForward && !hasImage;
+    // Forward vs direct is decided upstream when reply is set; pipeline only reads the flag.
+    const useForwardActual =
+      event.protocol === 'milky' && replyContent.metadata?.sendAsForward === true;
     logger.debug(
-      `[MessagePipeline] sendMessage | useForward=${useForwardActual} | groupUseForwardMsg=${groupUseForward} | hasImage=${hasImage} | protocol=${event.protocol}`,
+      `[MessagePipeline] sendMessage | useForward=${useForwardActual} | sendAsForward=${replyContent.metadata?.sendAsForward} | protocol=${event.protocol}`,
     );
     let sentMessageResponse: SendMessageResult;
 

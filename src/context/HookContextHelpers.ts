@@ -137,6 +137,23 @@ export function replaceReplyWithSegments(
 }
 
 /**
+ * Resolve whether this reply should be sent as forward (Milky). Call this when setting reply upstream.
+ * When explicitValue is set (e.g. from command result), it wins; otherwise group config + segment types decide
+ * (image/record cannot be forwarded reliably).
+ */
+export function computeSendAsForward(
+  context: HookContext,
+  segments: MessageSegment[],
+  explicitValue?: boolean,
+): boolean {
+  if (explicitValue !== undefined) return explicitValue;
+  const groupUseForward = context.metadata.get('groupUseForwardMsg') === true;
+  const hasImage = segments.some((s) => s.type === 'image');
+  const hasRecord = segments.some((s) => s.type === 'record');
+  return groupUseForward && !hasImage && !hasRecord;
+}
+
+/**
  * Get reply text from HookContext (for persistence/history: prefers card text when reply is card image)
  * When reply is a card image, returns the stored card text so history/context/cache store text, not image.
  *

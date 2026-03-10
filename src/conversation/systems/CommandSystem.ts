@@ -2,7 +2,7 @@
 
 import type { CommandManager } from '@/command/CommandManager';
 import { CommandContextBuilder } from '@/context/CommandContextBuilder';
-import { replaceReplyWithSegments } from '@/context/HookContextHelpers';
+import { computeSendAsForward, replaceReplyWithSegments } from '@/context/HookContextHelpers';
 import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
 import type { HookManager } from '@/hooks/HookManager';
@@ -47,12 +47,14 @@ export class CommandSystem implements System {
     // Hook: onCommandExecuted
     await this.hookManager.execute('onCommandExecuted', context);
 
-    // Set reply using helper function; pipeline will send (as forward or normal based on reply.metadata.sendAsForward)
-    // Use replace instead of append because command result is the final result
+    // Set reply and resolve sendAsForward upstream; pipeline only reads reply.metadata.sendAsForward
     if (commandResult.success && commandResult.segments && commandResult.segments.length > 0) {
-      replaceReplyWithSegments(context, commandResult.segments, 'command', {
-        sendAsForward: commandResult.sentAsForward,
-      });
+      const sendAsForward = computeSendAsForward(
+        context,
+        commandResult.segments,
+        commandResult.sentAsForward,
+      );
+      replaceReplyWithSegments(context, commandResult.segments, 'command', { sendAsForward });
     }
 
     return true;

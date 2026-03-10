@@ -7,6 +7,7 @@ export type { MessageContextOptions } from './HookContextBuilder';
 export { HookContextBuilder } from './HookContextBuilder';
 export {
   clearReply,
+  computeSendAsForward,
   getReply,
   getReplyContent,
   hasReply,

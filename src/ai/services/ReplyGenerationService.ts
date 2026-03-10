@@ -1,7 +1,12 @@
 // Reply Generation Service - provides AI reply generation capabilities
 
 import type { MessageAPI } from '@/api/methods/MessageAPI';
-import { replaceReply, replaceReplyWithSegments, setReplyWithSegments } from '@/context/HookContextHelpers';
+import {
+  computeSendAsForward,
+  replaceReply,
+  replaceReplyWithSegments,
+  setReplyWithSegments,
+} from '@/context/HookContextHelpers';
 import {
   type ConversationHistoryService,
   type ConversationMessageEntry,
@@ -244,7 +249,10 @@ export class ReplyGenerationService {
 
       // NSFW mode: no card reply, output plain text only
       await this.hookManager.execute('onAIGenerationComplete', context);
-      replaceReply(context, response.text, 'ai');
+      const textSegments = [{ type: 'text' as const, data: { text: response.text } }];
+      replaceReply(context, response.text, 'ai', {
+        sendAsForward: computeSendAsForward(context, textSegments),
+      });
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error('[ReplyGenerationService] Failed to generate NSFW reply:', err);
@@ -379,7 +387,10 @@ export class ReplyGenerationService {
       type: 'image' as const,
       data: { uri: `base64://${base64}`, sub_type: 'normal' as const, summary: '' },
     }));
-    setReplyWithSegments(context, imageSegments, 'ai', { isCardImage: true });
+    setReplyWithSegments(context, imageSegments, 'ai', {
+      isCardImage: true,
+      sendAsForward: computeSendAsForward(context, imageSegments),
+    });
   }
 
   /**
@@ -799,7 +810,10 @@ export class ReplyGenerationService {
     await this.hookManager.execute('onAIGenerationComplete', context);
 
     // Fallback to text when card path skipped or shouldUseCardRendering returned false
-    replaceReply(context, response.text, 'ai');
+    const textSegments = [{ type: 'text' as const, data: { text: response.text } }];
+    replaceReply(context, response.text, 'ai', {
+      sendAsForward: computeSendAsForward(context, textSegments),
+    });
 
     // Maintain episode context outside reply path (fire-and-forget): summarize when over limit so next reply sees stable prefix.
     void this.maintainEpisodeContext(built.episodeKey).catch(() => {});
@@ -845,12 +859,12 @@ export class ReplyGenerationService {
       // Use replace because card image is the final form of this AI reply
       const messageBuilder = new MessageBuilder();
       messageBuilder.image({ data: base64Image });
-      replaceReplyWithSegments(
-        context,
-        messageBuilder.build(),
-        'ai',
-        { isCardImage: true, cardTextForHistory: cardFormatText }, // Store card text for history/cache; image only for sending
-      );
+      const cardSegments = messageBuilder.build();
+      replaceReplyWithSegments(context, cardSegments, 'ai', {
+        isCardImage: true,
+        cardTextForHistory: cardFormatText,
+        sendAsForward: computeSendAsForward(context, cardSegments),
+      });
 
       logger.info('[ReplyGenerationService] Card image rendered and stored in reply');
       // Hook: onAIGenerationComplete
