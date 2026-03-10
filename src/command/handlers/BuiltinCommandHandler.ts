@@ -1,6 +1,7 @@
 // Builtin command handlers
 
 import { spawn } from 'node:child_process';
+import path from 'node:path';
 import { inject, injectable } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
 import type { AIService } from '@/ai/AIService';
@@ -384,12 +385,16 @@ export class MemoryDeepCommand implements CommandHandler {
   }
 }
 
-/** Delay before spawning deploy script (ms), to allow reply to be sent first */
+/** Delay before running restart script (ms), to allow reply to be sent first */
 const RESTART_DELAY_MS = 2000;
 
+/** Log file for restart script stdout/stderr when run via nohup */
+const RESTART_LOG = '/tmp/qqbot-restart.log';
+
 /**
- * Restart command - runs full deploy (git pull, bun install, pm2 delete + start) then restarts.
- * Spawns start.sh in a detached process so it keeps running after this process is killed by pm2 delete.
+ * Restart command: bot exits, then git pull + install + pm2 restart via start.sh.
+ * Spawns the restart script in a new session (nohup) so it keeps running after
+ * this process is killed by "pm2 delete" inside start.sh.
  * Requires admin or owner permission.
  */
 @Command({
@@ -404,18 +409,36 @@ export class RestartCommand implements CommandHandler {
   description = 'Update code (git pull), install deps, then restart the bot. Admin/owner only.';
   usage = '/restart';
 
-  execute(args: string[]): CommandResult {
+  execute(_args: string[]): CommandResult {
     const messageBuilder = new MessageBuilder();
-    messageBuilder.text(`正在拉取代码并重启（git pull → bun i → pm2 重启）...`);
+    messageBuilder.text(`正在拉取代码并重启...`);
+
+    const scriptPath = path.join(process.cwd(), 'start.sh');
+    const delaySec = RESTART_DELAY_MS / 1000;
+    const env = {
+      ...process.env,
+      RESTART_SCRIPT: scriptPath,
+      RESTART_DELAY_S: String(delaySec),
+    };
 
     setTimeout(() => {
-      const child = spawn('bun', ['run', 'start'], {
-        cwd: process.cwd(),
-        detached: true,
-        stdio: 'ignore',
-      });
+      // Run restart in nohup so it survives when this process is killed by pm2 delete.
+      // Inner bash is reparented to init when our child (outer bash) is killed.
+      const child = spawn(
+        'bash',
+        ['-c', 'nohup bash -c "sleep $RESTART_DELAY_S; \\"$RESTART_SCRIPT\\"" </dev/null >>"$RESTART_LOG" 2>&1 &'],
+        {
+          env: { ...env, RESTART_LOG },
+          cwd: process.cwd(),
+          detached: true,
+          stdio: 'ignore',
+        },
+      );
       child.unref();
-      logger.info('[RestartCommand] spawned detached deploy (bun run start), this process will be killed by pm2 delete');
+      logger.info(
+        '[RestartCommand] spawned nohup restart script (delay %ds then start.sh); bot will exit when pm2 delete runs',
+        delaySec,
+      );
     }, RESTART_DELAY_MS);
 
     return {
