@@ -30,8 +30,6 @@ export class PromptInitializer {
     const adminUserId = config.getConfig().bot.owner;
     const promptManager = new PromptManager(promptDirectory, adminUserId);
 
-    // Always auto-load templates from directory
-    promptManager.loadTemplatesFromDirectory();
     logger.info(`[PromptInitializer] PromptManager initialized and templates loaded from: ${promptDirectory}`);
 
     // Register PromptManager to DI container early (before conversation initialization)

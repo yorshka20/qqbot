@@ -210,16 +210,16 @@ export class Config {
 
   /**
    * Bot's own QQ user id as number for API use (e.g. forward message).
-   * Parsed from config.bot.selfId; undefined if missing or invalid.
+   * Parsed from config.bot.selfId; 0 if missing or invalid.
    */
-  getBotUserId(): number | undefined {
+  getBotUserId(): number {
     const raw = this.config?.bot?.selfId;
     if (raw == null || raw === '') {
-      return undefined;
+      return 0;
     }
     const n = typeof raw === 'number' ? raw : parseInt(String(raw), 10);
     if (Number.isNaN(n) || n <= 0) {
-      return undefined;
+      return 0;
     }
     return n;
   }

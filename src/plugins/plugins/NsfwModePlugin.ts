@@ -78,7 +78,7 @@ export class NsfwModePlugin extends PluginBase {
       shouldIntercept: async (ctx: HookContext): Promise<boolean> => {
         const rawSessionId = ctx.metadata.get('sessionId');
         const sessionType = ctx.metadata.get('sessionType');
-        if (!rawSessionId) {
+        if (!rawSessionId || !sessionType) {
           return false;
         }
         if (ctx.command) {
@@ -105,10 +105,7 @@ export class NsfwModePlugin extends PluginBase {
         const rawSessionId = ctx.metadata.get('sessionId');
         const sessionType = ctx.metadata.get('sessionType');
         // Support both group and private: sessionType 'user' = private chat, 'group' = group chat
-        const { sessionId, sessionType: resolvedType } = this.normalizeSessionForConfig(
-          rawSessionId ?? '',
-          sessionType ?? 'user',
-        );
+        const { sessionId, sessionType: resolvedType } = this.normalizeSessionForConfig(rawSessionId, sessionType);
         const config = await this.conversationConfigService.getConfig(sessionId, resolvedType);
         await this.aiService.generateNsfwReply(ctx, {
           char: config.nsfw?.char ?? '',

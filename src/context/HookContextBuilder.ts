@@ -3,8 +3,8 @@
 
 import type { CommandResult, ParsedCommand } from '@/command/types';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
-import type { HookContextMetadata } from '@/hooks/metadata';
-import { HookMetadataMap } from '@/hooks/metadata';
+import type { HookContextMetadata, HookMetadataMap } from '@/hooks/metadata';
+import { createDefaultHookMetadata } from '@/hooks/metadata';
 import type { HookContext, ReplyContent } from '@/hooks/types';
 import type { Task, TaskResult } from '@/task/types';
 import type { ConversationContext } from './types';
@@ -32,7 +32,7 @@ export class HookContextBuilder {
   private reply?: ReplyContent;
 
   private constructor() {
-    this.metadata = new HookMetadataMap();
+    this.metadata = createDefaultHookMetadata();
   }
 
   /**
@@ -53,18 +53,8 @@ export class HookContextBuilder {
   static fromMessage(message: NormalizedMessageEvent, options?: MessageContextOptions): HookContextBuilder {
     const builder = new HookContextBuilder();
     builder.message = message;
-
-    if (options) {
-      // Set metadata values from options (type-safe, only known keys from HookContextMetadata)
-      // Using Object.keys ensures we only iterate over defined properties
-      for (const key of Object.keys(options) as Array<keyof HookContextMetadata>) {
-        const value = options[key];
-        if (value !== undefined) {
-          builder.metadata.set(key, value);
-        }
-      }
-    }
-
+    // All required metadata fields get defaults; options override
+    builder.metadata = createDefaultHookMetadata(options ?? {});
     return builder;
   }
 
@@ -84,22 +74,9 @@ export class HookContextBuilder {
     builder.conversationContext = context.context;
     builder.result = context.result;
     builder.error = context.error;
-
-    // Copy metadata (create new MetadataMap to avoid reference issues)
-    builder.metadata = new HookMetadataMap();
-    const metadataEntries = Array.from(context.metadata.entries()) as Array<[keyof HookContextMetadata, unknown]>;
-    for (const [key, value] of metadataEntries) {
-      builder.metadata.set(key, value as HookContextMetadata[typeof key]);
-    }
-
-    // Copy reply if exists
-    if (context.reply) {
-      builder.reply = context.reply;
-    }
-    if (context.notice !== undefined) {
-      builder.notice = context.notice;
-    }
-
+    builder.metadata = context.metadata.clone();
+    builder.reply = context.reply;
+    builder.notice = context.notice;
     return builder;
   }
 
@@ -110,23 +87,35 @@ export class HookContextBuilder {
   static fromNotice(notice: NormalizedNoticeEvent): HookContextBuilder {
     const builder = new HookContextBuilder();
     builder.notice = notice;
+    const sessionType = notice.messageType === 'private' ? 'user' : 'group';
+    const userId = notice.userId ?? 0;
+    const groupId = notice.groupId ?? 0;
+    const sessionId = sessionType === 'group' && notice.groupId != null ? `group:${notice.groupId}` : `user:${userId}`;
+    builder.metadata = createDefaultHookMetadata({
+      sessionId,
+      sessionType,
+      userId,
+      groupId,
+      senderRole: '',
+    });
+    const messageType = notice.messageType ?? 'group';
     builder.message = {
       id: `notice:${notice.noticeType}`,
       type: 'message',
       timestamp: notice.timestamp ?? Date.now(),
       protocol: notice.protocol ?? 'unknown',
-      userId: notice.userId ?? 0,
+      userId,
       groupId: notice.groupId,
-      messageType: notice.messageType ?? 'group',
+      messageType,
       message: '',
       segments: [],
     } as NormalizedMessageEvent;
     builder.conversationContext = {
       userMessage: '',
       history: [],
-      userId: notice.userId ?? 0,
+      userId,
       groupId: notice.groupId,
-      messageType: notice.messageType ?? 'group',
+      messageType,
       metadata: new Map(),
     };
     return builder;
@@ -238,7 +227,7 @@ export class HookContextBuilder {
 
   /**
    * Build the HookContext instance
-   * Message is required, so it throws if not set
+   * Message and conversationContext are required; throws if not set
    */
   build(): HookContext {
     if (!this.message) {
@@ -246,7 +235,6 @@ export class HookContextBuilder {
         'HookContextBuilder: message is required. Use withMessage() or withSyntheticMessage() to set it.',
       );
     }
-
     if (!this.conversationContext) {
       throw new Error('HookContextBuilder: conversationContext is required. Use withConversationContext() to set it.');
     }

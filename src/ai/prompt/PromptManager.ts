@@ -29,28 +29,20 @@ export class PromptManager {
   private templates = new Map<string, PromptTemplate>();
   private templateDirectory: string;
   private namespaces = new Map<string, Map<string, PromptTemplate>>(); // namespace -> templates
-  /** Current message context set by pipeline before processing; used by renderBasePrompt() to resolve groupId and userInfo. */
-  private currentMessageContext: { message: NormalizedMessageEvent } | null = null;
   /** Bot owner user id from config (bot.owner); used by renderBasePrompt() for {{adminUserId}}. */
   readonly adminUserId: string;
 
   constructor(templateDirectory?: string, adminUserId?: string) {
     this.templateDirectory = templateDirectory || resolve(process.cwd(), 'prompts');
     this.adminUserId = adminUserId ?? '';
-  }
 
-  /**
-   * Set current message context for base prompt rendering (groupId, userInfo).
-   * Pipeline should call this at the start of message processing and clear with setCurrentMessageContext(null) when done.
-   */
-  setCurrentMessageContext(ctx: { message: NormalizedMessageEvent } | null): void {
-    this.currentMessageContext = ctx;
+    this.loadTemplatesFromDirectory();
   }
 
   /**
    * Load prompt template from file
    */
-  loadTemplate(name: string, filePath: string, namespace: string): void {
+  private loadTemplate(name: string, filePath: string, namespace: string): void {
     // Skip README file
     if (name === 'README') {
       return;
@@ -98,7 +90,7 @@ export class PromptManager {
    *     vision/
    *       explain_image.txt
    */
-  loadTemplatesFromDirectory(directory?: string): void {
+  private loadTemplatesFromDirectory(directory?: string): void {
     const dir = directory || this.templateDirectory;
 
     if (!existsSync(dir)) {

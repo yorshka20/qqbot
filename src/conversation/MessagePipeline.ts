@@ -135,6 +135,9 @@ export class MessagePipeline {
       sessionType: context.sessionType,
       conversationId: context.conversationId,
       botSelfId: context.botSelfId,
+      userId: event.userId,
+      groupId: event.groupId,
+      senderRole: event.sender?.role,
       replyTrigger: context.replyTrigger,
     };
     const hookContext = HookContextBuilder.fromMessage(event, options)
@@ -197,8 +200,11 @@ export class MessagePipeline {
     const errorContext = HookContextBuilder.fromMessage(event, {
       sessionId: context.sessionId,
       sessionType: context.sessionType,
-      conversationId: context.conversationId,
+      conversationId: context.conversationId ?? '',
       botSelfId: context.botSelfId,
+      userId: event.userId,
+      groupId: event.groupId ?? 0,
+      senderRole: event.sender?.role ?? '',
     })
       .withConversationContext(conversationContext)
       .withError(err)
@@ -228,8 +234,7 @@ export class MessagePipeline {
     }
 
     // Forward vs direct is decided upstream when reply is set; pipeline only reads the flag.
-    const useForwardActual =
-      event.protocol === 'milky' && replyContent.metadata?.sendAsForward === true;
+    const useForwardActual = event.protocol === 'milky' && replyContent.metadata?.sendAsForward === true;
     logger.debug(
       `[MessagePipeline] sendMessage | useForward=${useForwardActual} | sendAsForward=${replyContent.metadata?.sendAsForward} | protocol=${event.protocol}`,
     );
@@ -238,8 +243,7 @@ export class MessagePipeline {
     try {
       if (useForwardActual) {
         const botSelfId = Number(hookContext.metadata.get('botSelfId'));
-
-        if (botSelfId === undefined || Number.isNaN(botSelfId)) {
+        if (Number.isNaN(botSelfId) || botSelfId <= 0) {
           throw new Error("Forward message requires bot self ID. Set config.bot.selfId to the bot's own QQ user id.");
         }
         sentMessageResponse = await this.messageAPI.sendForwardFromContext(

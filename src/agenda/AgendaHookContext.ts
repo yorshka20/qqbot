@@ -5,17 +5,18 @@
 
 import type { ConversationContext } from '@/context/types';
 import type { NormalizedMessageEvent } from '@/events/types';
-import { HookMetadataMap } from '@/hooks/metadata';
+import { createDefaultHookMetadata } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import type { AgendaEventContext, AgendaItem } from './types';
 
 export function buildAgendaHookContext(
   item: AgendaItem,
   groupId: string,
-  eventContext?: AgendaEventContext,
+  eventContext: AgendaEventContext,
 ): HookContext {
-  const groupIdNum = Number(groupId) || 0;
-  const userId = eventContext?.userId ? Number(eventContext.userId) || 0 : 0;
+  const groupIdNum = Number(groupId);
+  const userId = Number(eventContext.userId);
+  const botSelfId = eventContext.botSelfId;
 
   const message: NormalizedMessageEvent = {
     id: `agenda-${item.id}-${Date.now()}`,
@@ -23,7 +24,7 @@ export function buildAgendaHookContext(
     timestamp: Date.now(),
     protocol: 'milky',
     messageType: 'group',
-    userId: userId || groupIdNum,
+    userId,
     groupId: groupIdNum,
     message: `[日程任务] ${item.name}: ${item.intent}`,
     rawMessage: undefined,
@@ -39,10 +40,15 @@ export function buildAgendaHookContext(
     metadata: new Map(),
   };
 
-  const metadata = new HookMetadataMap();
-  metadata.set('sessionId', groupId);
-  metadata.set('sessionType', 'group');
-  metadata.set('botSelfId', '0');
+  const metadata = createDefaultHookMetadata({
+    sessionId: groupId,
+    sessionType: 'group',
+    conversationId: `agenda-${groupId}-${item.id}`,
+    botSelfId: String(botSelfId ?? 0),
+    userId,
+    groupId: groupIdNum,
+    senderRole: '',
+  });
 
   return {
     message,

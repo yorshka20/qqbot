@@ -464,12 +464,8 @@ export class AIService {
       throw new Error('Image generation interrupted by hook');
     }
 
-    // Get session ID for provider selection
+    // Get session ID for provider selection (required metadata)
     const sessionId = context.metadata.get('sessionId');
-    const sessionType = context.metadata.get('sessionType');
-    if (!sessionId || !sessionType) {
-      throw new Error('sessionId and sessionType must be set in metadata');
-    }
 
     // Hook: onAIGenerationStart
     await this.hookManager.execute('onAIGenerationStart', context);
@@ -568,12 +564,8 @@ export class AIService {
       throw new Error('Image transformation interrupted by hook');
     }
 
-    // Get session ID for provider selection
+    // Get session ID for provider selection (required metadata)
     const sessionId = context.metadata.get('sessionId');
-    const sessionType = context.metadata.get('sessionType');
-    if (!sessionId || !sessionType) {
-      throw new Error('sessionId and sessionType must be set in metadata');
-    }
 
     // Hook: onAIGenerationStart
     await this.hookManager.execute('onAIGenerationStart', context);

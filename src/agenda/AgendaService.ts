@@ -9,6 +9,9 @@
 // DB: AgendaItem records are persisted so they survive restarts; schedules are re-hydrated on start.
 
 import cron from 'node-cron';
+import type { Config } from '@/core/config';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { logger } from '@/utils/logger';
 import type { AgendaReporter } from './AgendaReporter';
@@ -28,13 +31,17 @@ export class AgendaService {
   private onceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Bound event handlers keyed by AgendaItem.id (for removal on disable/delete) */
   private eventHandlers = new Map<string, (event: AgendaSystemEvent) => void>();
+  /** Config */
+  private config: Config;
 
   constructor(
     private databaseManager: DatabaseManager,
     private agentLoop: AgentLoop,
     private eventBus: InternalEventBus,
     private reporter?: AgendaReporter,
-  ) {}
+  ) {
+    this.config = getContainer().resolve<Config>(DITokens.CONFIG);
+  }
 
   // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -172,7 +179,13 @@ export class AgendaService {
     }
 
     const task = cron.schedule(item.cronExpr, async () => {
-      await this.fireItem(item);
+      await this.fireItem(item, {
+        eventType: 'cron',
+        groupId: item.groupId,
+        userId: item.userId,
+        botSelfId: String(this.config.getBotUserId()),
+        data: undefined,
+      });
     });
 
     this.cronTasks.set(item.id, task);
@@ -198,7 +211,13 @@ export class AgendaService {
 
     const timer = setTimeout(async () => {
       this.onceTimers.delete(item.id);
-      await this.fireItem(item);
+      await this.fireItem(item, {
+        eventType: 'once',
+        groupId: item.groupId,
+        userId: item.userId,
+        botSelfId: String(this.config.getBotUserId()),
+        data: undefined,
+      });
     }, delay);
 
     this.onceTimers.set(item.id, timer);
@@ -233,6 +252,7 @@ export class AgendaService {
         eventType: event.type,
         groupId: event.groupId,
         userId: event.userId,
+        botSelfId: event.botSelfId,
         data: event.data,
       };
       await this.fireItem(item, eventContext);
@@ -275,7 +295,7 @@ export class AgendaService {
   /**
    * Fire an agenda item: check cooldown, run AgentLoop, update lastRunAt.
    */
-  private async fireItem(item: AgendaItem, eventContext?: AgendaEventContext): Promise<void> {
+  private async fireItem(item: AgendaItem, eventContext: AgendaEventContext): Promise<void> {
     // Re-fetch from DB to get latest state (may have been updated/disabled since schedule was set)
     const fresh = await this.getItem(item.id);
     if (!fresh || !fresh.enabled) {

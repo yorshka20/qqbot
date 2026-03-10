@@ -17,9 +17,9 @@ export interface AgendaItem extends BaseModel {
   /** Human-readable name (e.g. "daily hotspot broadcast") */
   name: string;
   /** Target group ID (required for group actions) */
-  groupId?: string;
+  groupId: string;
   /** Target user ID (for private message actions, future use) */
-  userId?: string;
+  userId: string;
   /** Trigger type */
   triggerType: AgendaTriggerType;
   /** Cron expression (for 'cron' trigger, e.g. "0 8 * * *") */
@@ -54,9 +54,11 @@ export interface AgendaEventContext {
   /** The system event type that fired */
   eventType: string;
   /** Group ID from the event */
-  groupId?: string;
+  groupId: string;
   /** User ID from the event */
-  userId?: string;
+  userId: string;
+  /** Bot self ID from the event */
+  botSelfId: string;
   /** Additional event data */
   data?: Record<string, unknown>;
 }
@@ -68,7 +70,8 @@ export interface AgendaEventContext {
 export interface AgendaSystemEvent {
   /** Event type string. Reserved: 'group_member_join', 'keyword_match', 'group_nudge' */
   type: string;
-  groupId?: string;
-  userId?: string;
+  groupId: string;
+  userId: string;
+  botSelfId: string;
   data?: Record<string, unknown>;
 }

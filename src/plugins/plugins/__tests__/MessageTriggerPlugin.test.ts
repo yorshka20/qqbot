@@ -82,6 +82,7 @@ describe('MessageTriggerPlugin', () => {
   async function initPlugin(config: { wakeWords?: string[] } = {}) {
     const container = getContainer();
     const promptManager = new PromptManager();
+
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,

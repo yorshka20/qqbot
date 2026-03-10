@@ -45,7 +45,7 @@ export class AgentLoop {
    * @param item - The agenda item to run
    * @param eventContext - Optional event context (for onEvent items)
    */
-  async run(item: AgendaItem, eventContext?: AgendaEventContext): Promise<void> {
+  async run(item: AgendaItem, eventContext: AgendaEventContext): Promise<void> {
     const groupId = item.groupId ?? eventContext?.groupId;
     if (!groupId) {
       logger.warn(`[AgentLoop] Item "${item.name}" has no groupId; skipping`);
@@ -77,7 +77,7 @@ export class AgentLoop {
   private async generateReply(
     item: AgendaItem,
     groupId: string,
-    eventContext?: AgendaEventContext,
+    eventContext: AgendaEventContext,
   ): Promise<string | null> {
     const conversationContext = await this.fetchRecentContext(groupId);
     const tools = getReplyToolDefinitions(this.taskManager);

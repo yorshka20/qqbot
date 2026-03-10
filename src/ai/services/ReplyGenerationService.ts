@@ -100,8 +100,8 @@ export class ReplyGenerationService {
     if (!this.retrievalService?.isRAGEnabled()) {
       return '';
     }
-    const sessionId = context.metadata.get('sessionId') as string | undefined;
-    const sessionType = context.metadata.get('sessionType') as string | undefined;
+    const sessionId = context.metadata.get('sessionId');
+    const sessionType = context.metadata.get('sessionType');
     if (!sessionId || !sessionType) {
       return '';
     }
@@ -144,8 +144,8 @@ export class ReplyGenerationService {
       return { groupMemoryText: '', userMemoryText: '' };
     }
     const sessionType = context.metadata.get('sessionType');
-    const sessionId = context.metadata.get('sessionId') as string | undefined;
-    if (sessionType !== 'group' || !sessionId || !sessionId.startsWith('group:')) {
+    const sessionId = context.metadata.get('sessionId');
+    if (sessionType !== 'group' || !sessionId.startsWith('group:')) {
       return { groupMemoryText: '', userMemoryText: '' };
     }
     const groupId = sessionId.replace(/^group:/, '');
@@ -426,7 +426,7 @@ export class ReplyGenerationService {
     episodeKey: string;
   }> {
     const rawSessionId = context.metadata.get('sessionId');
-    const sessionType = (context.metadata.get('sessionType') as 'group' | 'user' | undefined) ?? 'group';
+    const sessionType = context.metadata.get('sessionType');
     const canonicalSessionId = normalizeSessionId(
       rawSessionId,
       sessionType,

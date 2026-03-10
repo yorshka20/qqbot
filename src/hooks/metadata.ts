@@ -10,22 +10,22 @@ export interface HookContextMetadata {
   // Session & Context Information
   sessionId: string;
   sessionType: 'user' | 'group';
-  conversationId?: string;
+  conversationId: string;
   botSelfId: string;
 
   // Access Control & Processing Mode
   /** No direct reply path: skip PROCESS (set by WhitelistPlugin for bot/private deny, or by MessageTriggerPlugin when no @/wake word). Lifecycle skips to COMPLETE. Proactive can still run when whitelistGroup. */
-  postProcessOnly?: boolean;
+  postProcessOnly: boolean;
   /** Access denied: set by WhitelistPlugin (bot, private/group not in whitelist). No reply, no proactive; only persistence and event-based plugins. */
-  whitelistDenied?: boolean;
+  whitelistDenied: boolean;
   /** When true, this group has opted in to send replies as forward (Milky); set at process start from conversation config. */
-  groupUseForwardMsg?: boolean;
-  whitelistUser?: boolean;
-  whitelistGroup?: boolean;
+  groupUseForwardMsg: boolean;
+  whitelistUser: boolean;
+  whitelistGroup: boolean;
 
   // Proactive conversation (thread): when in active thread, reply without @bot
-  inProactiveThread?: boolean;
-  proactiveThreadId?: string;
+  inProactiveThread: boolean;
+  proactiveThreadId: string;
   /** How this message was chosen to trigger a reply: from event.replyTrigger (at | reaction). */
   replyTrigger?: 'at' | 'reaction';
   /** Resolved trigger type for this reply; set by MessageTriggerPlugin when message is allowed for reply. Undefined = not triggered. */
@@ -34,21 +34,69 @@ export interface HookContextMetadata {
   contextMode?: 'normal' | 'proactive';
 
   // Context Manager metadata (internal use)
-  userId?: number;
-  groupId?: number;
+  userId: number;
+  groupId: number;
 
   // Command metadata
-  senderRole?: string;
+  senderRole: string;
 
   // Task analyzer/provider routing metadata
   suggestedProvider?: string;
 
   /** Reply-only path: when true, RAG persistence writes only the new reply (not the old user message). */
-  replyOnly?: boolean;
+  replyOnly: boolean;
 }
 
 type MetadataKeys = keyof HookContextMetadata;
 type MetadataValues<K extends MetadataKeys = MetadataKeys> = HookContextMetadata[K];
+
+/** Default values for all required metadata fields (used when constructing new HookContext) */
+const DEFAULT_METADATA: Required<
+  Omit<HookContextMetadata, 'replyTrigger' | 'replyTriggerType' | 'contextMode' | 'suggestedProvider'>
+> = {
+  sessionId: '',
+  sessionType: 'group',
+  conversationId: '',
+  botSelfId: '',
+  postProcessOnly: false,
+  whitelistDenied: false,
+  groupUseForwardMsg: false,
+  whitelistUser: false,
+  whitelistGroup: false,
+  inProactiveThread: false,
+  proactiveThreadId: '',
+  userId: 0,
+  groupId: 0,
+  senderRole: 'user',
+  replyOnly: false,
+};
+
+const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
+  'replyTrigger',
+  'replyTriggerType',
+  'contextMode',
+  'suggestedProvider',
+];
+
+/**
+ * Create a HookMetadataMap with all required fields set.
+ * Pass partial to override defaults; optional fields (replyTrigger, replyTriggerType, contextMode, suggestedProvider) can be set in partial.
+ * Use at HookContext construction sites so downstream code can assume all required fields are present.
+ */
+export function createDefaultHookMetadata(partial?: Partial<HookContextMetadata>): HookMetadataMap {
+  const map = new HookMetadataMap();
+  type RequiredKey = keyof typeof DEFAULT_METADATA;
+  for (const key of Object.keys(DEFAULT_METADATA) as RequiredKey[]) {
+    map.set(key, (partial?.[key] ?? DEFAULT_METADATA[key]) as HookContextMetadata[RequiredKey]);
+  }
+  for (const key of OPTIONAL_METADATA_KEYS) {
+    const value = partial?.[key];
+    if (value !== undefined) {
+      map.set(key, value);
+    }
+  }
+  return map;
+}
 
 /**
  * Type-safe metadata map
@@ -132,5 +180,12 @@ export class HookMetadataMap {
       metadata.map.set(key, value);
     }
     return metadata;
+  }
+
+  /**
+   * Return a shallow copy of this metadata map (new map instance, same key-value pairs)
+   */
+  clone(): HookMetadataMap {
+    return HookMetadataMap.fromEntries([...this.entries()]);
   }
 }

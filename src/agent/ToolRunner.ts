@@ -4,7 +4,7 @@ import type { FunctionCall } from '@/ai/types';
 import { TaskExecutionContextBuilder } from '@/context/TaskExecutionContextBuilder';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
-import { HookMetadataMap } from '@/hooks/metadata';
+import { createDefaultHookMetadata } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import type { TaskManager } from '@/task/TaskManager';
 import type { Task, TaskExecutionContext, TaskResult } from '@/task/types';
@@ -70,19 +70,17 @@ export class ToolRunner implements IToolRunner {
   }
 
   private buildSyntheticHookContext(session: SubAgentSession): HookContext {
-    const userId = typeof session.context.userId === 'number' ? session.context.userId : 0;
-    const groupId = typeof session.context.groupId === 'number' ? session.context.groupId : undefined;
+    const userId = Number(session.context.userId);
+    const groupId = Number(session.context.groupId);
     const messageType = session.context.messageType ?? 'private';
-    const metadata = new HookMetadataMap();
-    metadata.set('sessionId', groupId !== undefined ? `group:${groupId}` : `user:${userId}`);
-    metadata.set('sessionType', groupId !== undefined ? 'group' : 'user');
-    metadata.set('userId', userId);
-    if (groupId !== undefined) {
-      metadata.set('groupId', groupId);
-    }
-    if (session.context.conversationId) {
-      metadata.set('conversationId', session.context.conversationId);
-    }
+    const isGroup = groupId !== 0;
+    const metadata = createDefaultHookMetadata({
+      sessionId: isGroup ? `group:${groupId}` : `user:${userId}`,
+      sessionType: isGroup ? 'group' : 'user',
+      userId,
+      groupId,
+      conversationId: session.context.conversationId ?? '',
+    });
 
     const messageText = this.buildSyntheticMessageText(session);
     const syntheticMessage: NormalizedMessageEvent = {
