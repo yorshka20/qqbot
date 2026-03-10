@@ -721,7 +721,7 @@ export class ReplyGenerationService {
       messageImages,
     );
     const messages = built.messages;
-    const genOptions = { temperature: 0.7, maxTokens: 2000, sessionId };
+    const genOptions = { temperature: 0.7, maxTokens: 2000, sessionId, reasoningEffort: 'medium' as const };
 
     // Log reply flow and raw messages sent to provider (base64 in image_url replaced to avoid log explosion)
     logger.info(
@@ -798,7 +798,7 @@ export class ReplyGenerationService {
     logger.debug(`[ReplyGenerationService] LLM response received | responseLength=${response.text.length}`);
 
     if (this.shouldUseCardReply(response.text, sessionId, providerName)) {
-      const success = await this.handleCardReply(response.text, sessionId, context, providerName);
+      const success = await this.handleCardReply(response.text, sessionId, { context, providerName });
       if (success) {
         this.appendTaskResultImages(context, taskResultImages);
         void this.maintainEpisodeContext(built.episodeKey).catch(() => {});
@@ -816,7 +816,7 @@ export class ReplyGenerationService {
     });
 
     // Maintain episode context outside reply path (fire-and-forget): summarize when over limit so next reply sees stable prefix.
-    void this.maintainEpisodeContext(built.episodeKey).catch(() => {});
+    this.maintainEpisodeContext(built.episodeKey).catch(() => {});
   }
 
   private shouldUseCardReply(responseText: string, sessionId: string, providerName?: string): boolean {
@@ -827,77 +827,22 @@ export class ReplyGenerationService {
   }
 
   /**
-   * Handle card reply rendering if applicable
-   * Checks if response should be rendered as card and handles the conversion and rendering
-   * @param responseText - Original text response
-   * @param sessionId - Session ID for provider selection
-   * @param context - Hook context for setting reply
-   * @param providerName - Optional provider name (e.g. doubao, claude, deepseek) shown in card footer
-   * @returns true if card was successfully rendered, false if should use text reply
+   * Internal: convert reply text to card and render to image segments.
+   * Shared by handleCardReply (with context) and handleCardReply (without context, e.g. proactive).
    */
-  private async handleCardReply(
+  private async renderReplyAsCardInternal(
     responseText: string,
     sessionId: string,
-    context: HookContext,
     providerName?: string,
-  ): Promise<boolean> {
+  ): Promise<{ segments: MessageSegment[]; textForHistory: string } | null> {
     if (!this.shouldUseCardReply(responseText, sessionId, providerName)) {
-      return false;
+      return null;
     }
-
     try {
-      // Convert text to card format (use cheap provider only; never pass main reply provider)
       logger.info('[ReplyGenerationService] Converting response to card format');
       const cardFormatText = await this.convertToCardFormat(responseText, sessionId);
       logger.debug(`[ReplyGenerationService] Card format text: ${cardFormatText}`);
       logger.info('[ReplyGenerationService] Rendering card image for response');
-      // Render card to image using CardRenderingService (provider required on all paths)
-      const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
-      const base64Image = await this.cardRenderingService.renderCard(cardFormatText, provider);
-
-      // Store image data in context reply using segments
-      // Use replace because card image is the final form of this AI reply
-      const messageBuilder = new MessageBuilder();
-      messageBuilder.image({ data: base64Image });
-      const cardSegments = messageBuilder.build();
-      replaceReplyWithSegments(context, cardSegments, 'ai', {
-        isCardImage: true,
-        cardTextForHistory: cardFormatText,
-        sendAsForward: computeSendAsForward(context, cardSegments),
-      });
-
-      logger.info('[ReplyGenerationService] Card image rendered and stored in reply');
-      // Hook: onAIGenerationComplete
-      await this.hookManager.execute('onAIGenerationComplete', context);
-      return true;
-    } catch (cardError) {
-      const cardErr = cardError instanceof Error ? cardError : new Error('Unknown card error');
-      logger.warn('[ReplyGenerationService] Failed to convert to card format, falling back to text:', cardErr);
-      return false;
-    }
-  }
-
-  /**
-   * Optionally convert reply text to card and render to image segments.
-   * Used by flows that do not use HookContext (e.g. proactive reply). Caller sends segments and persists textForHistory.
-   * @param replyText - Raw reply text from LLM
-   * @param sessionId - Session ID for provider selection
-   * @param providerName - Optional provider name (e.g. for proactive flow)
-   * @returns { segments, textForHistory } when card was rendered; null when card skipped or failed (caller uses replyText as-is)
-   */
-  async processReplyMaybeCard(
-    replyText: string,
-    sessionId: string,
-    providerName?: string,
-  ): Promise<{ segments: MessageSegment[]; textForHistory: string } | null> {
-    if (!this.shouldUseCardReply(replyText, sessionId, providerName)) {
-      return null;
-    }
-
-    try {
-      logger.info('[ReplyGenerationService] Converting proactive response to card format');
-      const cardFormatText = await this.convertToCardFormat(replyText, sessionId);
-      logger.info('[ReplyGenerationService] Rendering card image for proactive reply');
       const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
       const base64Image = await this.cardRenderingService.renderCard(cardFormatText, provider);
       const messageBuilder = new MessageBuilder();
@@ -908,9 +853,50 @@ export class ReplyGenerationService {
       };
     } catch (cardError) {
       const cardErr = cardError instanceof Error ? cardError : new Error('Unknown card error');
-      logger.warn('[ReplyGenerationService] Proactive card render failed, falling back to text:', cardErr);
+      logger.warn('[ReplyGenerationService] Failed to convert to card format, falling back to text:', cardErr);
       return null;
     }
+  }
+
+  /**
+   * Handle card reply: with context (main reply flow) sets reply and runs hook; without context (e.g. proactive) returns segments + textForHistory.
+   * Same pipeline as other reply flows; caller without context sends segments and persists textForHistory.
+   * @param responseText - Original text response
+   * @param sessionId - Session ID for provider selection
+   * @param options - When context is set: set reply on context, run hook, return boolean. When context omitted: return { segments, textForHistory } or null.
+   * @returns With context: true if card was used, false otherwise. Without context: { segments, textForHistory } or null.
+   */
+  async handleCardReply(
+    responseText: string,
+    sessionId: string,
+    options: { context: HookContext; providerName?: string },
+  ): Promise<boolean>;
+  async handleCardReply(
+    responseText: string,
+    sessionId: string,
+    options?: { providerName?: string },
+  ): Promise<{ segments: MessageSegment[]; textForHistory: string } | null>;
+  async handleCardReply(
+    responseText: string,
+    sessionId: string,
+    options?: { context?: HookContext; providerName?: string },
+  ): Promise<boolean | { segments: MessageSegment[]; textForHistory: string } | null> {
+    const result = await this.renderReplyAsCardInternal(responseText, sessionId, options?.providerName);
+    if (!result) {
+      return options?.context != null ? false : null;
+    }
+    if (options?.context != null) {
+      const context = options.context;
+      replaceReplyWithSegments(context, result.segments, 'ai', {
+        isCardImage: true,
+        cardTextForHistory: result.textForHistory,
+        sendAsForward: computeSendAsForward(context, result.segments),
+      });
+      logger.info('[ReplyGenerationService] Card image rendered and stored in reply');
+      await this.hookManager.execute('onAIGenerationComplete', context);
+      return true;
+    }
+    return result;
   }
 
   /**
@@ -928,16 +914,14 @@ export class ReplyGenerationService {
     const convertLlmProvider = aiConfig?.convertLlm?.provider ?? 'deepseek';
     const convertLlmModel = aiConfig?.convertLlm?.model ?? '';
 
-    const cardResponse = await this.llmService.generate(
+    const cardResponse = await this.llmService.generateLite(
       prompt,
       {
         temperature: 0.2,
-        maxTokens: 3000,
+        maxTokens: 2000,
         sessionId,
         model: convertLlmModel,
         jsonMode: true,
-        systemPrompt:
-          'You must respond with valid JSON only: a single JSON array of card objects. No markdown code blocks, no explanatory text, no prefix or suffix. First character of your response must be [ and last character must be ].',
       },
       convertLlmProvider,
     );

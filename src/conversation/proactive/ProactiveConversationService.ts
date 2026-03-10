@@ -53,7 +53,7 @@ const RECENT_ACTIVITY_GRACE_MS = 2 * 60 * 1_000;
 
 /**
  * Proactive Conversation Service (Phase 1)
- * Schedules per-group debounced analysis; when timer fires, runs Ollama and optionally sends a proactive reply.
+ * Schedules per-group debounced analysis; when timer fires, runs LLM and optionally sends a proactive reply.
  * Analysis runs are serialized per group (queued, not skipped) so each run sees prior replies in thread context.
  * Dependencies are injected via DI container (see DITokens).
  */
@@ -62,7 +62,7 @@ export class ProactiveConversationService {
   /** groupId -> preferenceKeys[] (multiple preferences per group). */
   private groupConfig = new Map<string, string[]>();
   /** LLM provider name for preliminary analysis (e.g. "ollama", "doubao"). */
-  private analysisProviderName = 'ollama';
+  private analysisProviderName = 'deepseek';
   private timersByGroup = new Map<string, ReturnType<typeof setTimeout>>();
   private preferredProtocol: ProtocolName = 'milky';
   private searchLimit = 8;
@@ -160,7 +160,7 @@ export class ProactiveConversationService {
    * per-group runs are serialized and each run sees the full result of the previous one.
    * @param triggerUserId - User ID of the message that triggered this schedule; saved on context and passed down to reply (for memory injection).
    */
-  scheduleForGroup(groupId: string, triggerUserId?: string, idleMode?: boolean): void {
+  scheduleForGroup(groupId: string, triggerUserId: string, idleMode?: boolean): void {
     const keys = this.groupConfig.get(groupId);
     if (!keys?.length) {
       return;
@@ -220,8 +220,8 @@ export class ProactiveConversationService {
       return;
     }
 
-    const groupIdNum = parseInt(groupId, 10);
-    if (Number.isNaN(groupIdNum)) {
+    const groupIdNum = Number(groupId);
+    if (Number.isNaN(groupIdNum) || groupIdNum <= 0) {
       logger.warn(`[ProactiveConversationService] Invalid groupId: ${groupId}`);
       return;
     }
@@ -257,11 +257,13 @@ export class ProactiveConversationService {
       this.scheduleThreadCompression(groupId);
       return;
     }
+
+    // get preferenceKey and replyInExisting
     const { preferenceKey, replyInExisting } = resolved;
     const topic = result.topic?.trim() || '';
 
     logger.info(
-      `[ProactiveConversationService] Ollama: shouldJoin=true | groupId=${groupId} | preferenceKey=${preferenceKey} | result=${JSON.stringify(result)}`,
+      `[ProactiveConversationService] Analysis: shouldJoin=true | groupId=${groupId} | preferenceKey=${preferenceKey} | result=${JSON.stringify(result)}`,
     );
 
     // Step 10a: Reply in existing thread.
@@ -274,36 +276,31 @@ export class ProactiveConversationService {
         filteredEntries,
         triggerUserId,
       });
-      this.scheduleThreadCompression(groupId);
-      return;
+    } else {
+      // Step 10b: Create new thread and reply if result requests it (or no active threads).
+      await this.executeCreateNewThreadIfRequested({
+        groupId,
+        groupIdNum,
+        preferenceKey,
+        topic,
+        result,
+        activeThreads,
+        filteredEntries,
+        triggerUserId,
+      });
     }
 
-    // Step 10b: Create new thread and reply if result requests it (or no active threads).
-    await this.executeCreateNewThreadIfRequested({
-      groupId,
-      groupIdNum,
-      preferenceKey,
-      topic,
-      result,
-      activeThreads,
-      filteredEntries,
-      triggerUserId,
-    });
     this.scheduleThreadCompression(groupId);
   }
 
   /** Build combined preference text for analysis prompt. Returns null on render error. */
-  private buildPreferenceText(preferenceKeys: string[]): string | null {
+  private buildPreferenceText(preferenceKeys: string[]): string {
     const preferenceParts: string[] = [];
-    try {
-      for (const key of preferenceKeys) {
-        const summary = this.promptManager.render(`${key}.summary`);
-        preferenceParts.push(`### ${key}\n${summary}`);
-      }
-    } catch (err) {
-      logger.warn(`[ProactiveConversationService] Failed to render preference summaries:`, err);
-      return null;
+    for (const key of preferenceKeys) {
+      const summary = this.promptManager.render(`${key}.summary`);
+      preferenceParts.push(`### ${key}\n${summary}`);
     }
+
     return preferenceParts.length ? preferenceParts.join('\n\n') : '';
   }
 
@@ -345,15 +342,18 @@ export class ProactiveConversationService {
     preferenceText: string,
     recentMessagesText: string,
     activeThreads: ProactiveThread[],
-    idleMode?: boolean,
+    idleMode: boolean = false,
   ): Promise<PreliminaryAnalysisResult> {
     const analysisOptions = {
       providerName: this.analysisProviderName,
       idleMode,
     };
+    // new thread
     if (activeThreads.length === 0) {
       return this.preliminaryAnalysis.analyze(preferenceText, recentMessagesText, analysisOptions);
     }
+
+    // existing threads
     const threadsForAnalysis = activeThreads.map((t) => ({
       threadId: t.threadId,
       preferenceKey: t.preferenceKey,
@@ -429,16 +429,17 @@ export class ProactiveConversationService {
     triggerUserId?: string;
   }): Promise<void> {
     const { groupId, groupIdNum, replyInExisting, result, filteredEntries, triggerUserId } = params;
-    const threadId = replyInExisting.threadId;
+    const { threadId, preferenceKey } = replyInExisting;
     const previousReplyPromise = this.replyInProgressByThread.get(threadId);
     if (previousReplyPromise) {
       await previousReplyPromise;
     }
+    const topic = result.topic?.trim() || '';
+
     let resolveReplyDone: () => void = () => {};
-    const replyDonePromise = new Promise<void>((r) => {
-      resolveReplyDone = r;
-    });
+    const replyDonePromise = new Promise<void>((r) => (resolveReplyDone = r));
     this.replyInProgressByThread.set(threadId, replyDonePromise);
+
     try {
       const threadNow = this.threadService.getThread(threadId);
       if (!threadNow) {
@@ -448,15 +449,15 @@ export class ProactiveConversationService {
         return;
       }
       this.threadService.setCurrentThread(groupId, threadId);
-      const messageIdsToUse = this.resolveMessageIdsForReply(replyInExisting, filteredEntries, result.messageIds);
+      const messageIdsToUse = this.resolveMessageIdsForReply(threadNow, filteredEntries, result.messageIds);
       this.threadService.appendGroupMessages(threadId, filteredEntries, {
         messageIds: messageIdsToUse.length ? messageIdsToUse : undefined,
       });
-      const topic = result.topic?.trim() || '';
+
       await this.replyInThread(
-        threadId,
+        threadNow,
         groupIdNum,
-        replyInExisting.preferenceKey,
+        preferenceKey,
         topic,
         result.searchQueries,
         triggerUserId,
@@ -759,7 +760,7 @@ export class ProactiveConversationService {
   }
 
   private async replyInThread(
-    threadId: string,
+    thread: ProactiveThread,
     groupIdNum: number,
     preferenceKey: string,
     topic: string,
@@ -767,10 +768,8 @@ export class ProactiveConversationService {
     triggerUserId?: string,
     filteredEntries?: ConversationMessageEntry[],
   ): Promise<void> {
-    const thread = this.threadService.getThread(threadId);
-    if (!thread) return;
     const injectContext = await this.replyContextBuilder.buildForExistingThread(
-      threadId,
+      thread.threadId,
       thread,
       preferenceKey,
       topic,
@@ -788,14 +787,17 @@ export class ProactiveConversationService {
     await this.runTaskAnalysisForProactive(injectContext, topic, thread.groupId, groupIdNum);
 
     const replyText = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
-    if (!replyText) return;
+    if (!replyText) {
+      logger.warn('[ProactiveConversationService] Empty proactive reply (existing thread)');
+      return;
+    }
 
     // Optionally render as card (same pipeline as ReplyGenerationService); store card text in thread for LLM-readable history
     const cardResult = await this.aiService.processReplyMaybeCard(replyText, thread.groupId, this.analysisProviderName);
     const toSend = cardResult ? cardResult.segments : replyText;
     const toAppend = cardResult ? cardResult.textForHistory : replyText;
     // Update thread and DB before/on send so the next message or analysis run already sees this reply (no need to wait for echo).
-    this.threadService.appendMessage(threadId, {
+    this.threadService.appendMessage(thread.threadId, {
       userId: 0,
       content: toAppend,
       isBotReply: true,

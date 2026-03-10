@@ -140,6 +140,7 @@ export class ProactiveConversationPlugin extends PluginBase {
 
     const currentThreadId = this.threadService.getCurrentThreadId(groupId);
     if (currentThreadId) {
+      logger.debug(`[ProactiveConversationPlugin] Current thread id: ${currentThreadId}`);
       context.metadata.set('proactiveThreadId', currentThreadId);
     }
     return true;
@@ -166,8 +167,9 @@ export class ProactiveConversationPlugin extends PluginBase {
 
     // Do not trigger analysis on bot's own messages (avoid repeated proactive replies)
     const botSelfId = context.metadata.get('botSelfId');
-    const userId = context.message?.userId?.toString();
-    if (botSelfId && userId === botSelfId) return true;
+    // Trigger userId = current message sender (from pipeline event -> hook context.message)
+    const triggerUserId = context.message.userId.toString();
+    if (botSelfId && triggerUserId === botSelfId) return true;
 
     // Do not run proactive analysis when the message already triggered direct reply.
     if (context.metadata.get('replyTriggerType')) {
@@ -179,12 +181,9 @@ export class ProactiveConversationPlugin extends PluginBase {
       return true;
     }
 
-    // Trigger userId = current message sender (from pipeline event -> hook context.message)
-    const triggerUserId = userId ?? undefined;
-
     // When thread is still active and this message is from the user who opened that thread, treat as triggered and run analysis directly (no trigger-word check or accumulator).
     const currentThread = this.threadService.getActiveThread(groupId);
-    if (currentThread?.triggerUserId && triggerUserId && currentThread.triggerUserId === triggerUserId) {
+    if (currentThread?.triggerUserId && currentThread.triggerUserId === triggerUserId) {
       this.proactiveConversationService.scheduleForGroup(groupId, triggerUserId);
       return true;
     }

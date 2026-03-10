@@ -141,12 +141,7 @@ export class LLMService {
    * Generate with lite defaults (low temperature, small maxTokens) for cheap/fast tasks (e.g. prefix-invitation, analysis).
    * Supports explicit provider and model override (e.g. doubao, doubao-1-5-lite-32k-250115).
    */
-  async generateLite(
-    prompt: string,
-    options?: AIGenerateOptions,
-    providerName?: string,
-    modelName?: string,
-  ): Promise<AIGenerateResponse> {
+  async generateLite(prompt: string, options?: AIGenerateOptions, providerName?: string): Promise<AIGenerateResponse> {
     const provider = await this.getAvailableProvider(providerName, options?.sessionId);
 
     if (!provider) {
@@ -162,7 +157,6 @@ export class LLMService {
     const mergedOptions: AIGenerateOptions = {
       ...liteDefaults,
       ...options,
-      model: modelName ?? options?.model,
     };
 
     logger.debug(`[LLMService] generateLite: ${prompt} | ${JSON.stringify(mergedOptions)}`);

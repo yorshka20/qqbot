@@ -50,6 +50,7 @@ export class TaskSystem implements System {
 
     // If Tool Use is enabled, use the new approach
     if (this.useToolUse) {
+      // todo: use actual reply system to send msg
       await this.aiService.generateReplyWithToolUse(context);
       return true;
     }

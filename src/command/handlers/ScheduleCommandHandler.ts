@@ -16,6 +16,7 @@ import type { ScheduleFileService } from '@/agenda/ScheduleFileService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import { JSON_ONLY_STRATEGIES, parseLlmJson } from '@/ai/utils/llmJsonExtract';
+import { AIConfig, type Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
@@ -65,6 +66,7 @@ export class ScheduleCommand implements CommandHandler {
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
     @inject(DITokens.AGENDA_SERVICE) private agendaService: AgendaService,
     @inject(DITokens.SCHEDULE_FILE_SERVICE) private scheduleFileService: ScheduleFileService,
+    @inject(DITokens.CONFIG) private config: Config,
   ) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
@@ -167,6 +169,9 @@ export class ScheduleCommand implements CommandHandler {
 
   private async parseWithLLM(input: string, groupId: string): Promise<ScheduleParsed | null> {
     const today = new Date().toISOString();
+    const aiConfig = this.config.getAIConfig();
+    const liteProvider = aiConfig?.liteLlm?.provider ?? 'deepseek';
+    const liteModel = aiConfig?.liteLlm?.model ?? '';
 
     const prompt = this.promptManager.render('agenda.schedule_parse', {
       today,
@@ -174,7 +179,11 @@ export class ScheduleCommand implements CommandHandler {
       groupIdLine: `当前群ID: ${groupId}`,
     });
 
-    const response = await this.llmService.generateLite(prompt, { maxTokens: 512, jsonMode: true }, 'deepseek');
+    const response = await this.llmService.generateLite(
+      prompt,
+      { maxTokens: 512, jsonMode: true, model: liteModel },
+      liteProvider,
+    );
     if (!response.text) return null;
 
     return parseLlmJson(response.text, ScheduleParseSchema, { strategies: JSON_ONLY_STRATEGIES });

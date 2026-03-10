@@ -58,7 +58,7 @@ export class MessageTriggerPlugin extends PluginBase {
    * so that prefix/wake-word matching runs against the actual user input.
    */
   private getTextForTriggerMatch(message: string): string {
-    const stripped = (message ?? '').replace(/^(\s*\[[^\]]+\]\s*)+/, '');
+    const stripped = message.replace(/^(\s*\[[^\]]+\]\s*)+/, '');
     return stripped.trim();
   }
 
@@ -130,8 +130,8 @@ export class MessageTriggerPlugin extends PluginBase {
 
     try {
       const prompt = this.promptManager.render('analysis.prefix_invitation', { messageText });
-      const response = await this.llmService.generateLite(prompt, { maxTokens: 100 }, liteProvider, liteModel);
-      const text = (response.text ?? '').trim();
+      const response = await this.llmService.generateLite(prompt, { maxTokens: 100, model: liteModel }, liteProvider);
+      const text = response.text;
       const raw = parseLlmTrueFalse(text);
       if (raw === null) {
         logger.warn('[MessageTriggerPlugin] Prefix-invitation LLM response not true/false; treating as no reply');
@@ -161,10 +161,10 @@ export class MessageTriggerPlugin extends PluginBase {
 
     const message = context.message;
     const messageType = message.messageType;
-    const userId = message.userId?.toString();
+    const userId = message.userId.toString();
     const groupId = message.groupId?.toString();
     const botSelfId = context.metadata.get('botSelfId');
-    const messageText = message.message ?? '';
+    const messageText = message.message;
 
     // Whitelist is highest constraint: if already set (e.g. by WhitelistPlugin), do not change it
     if (context.metadata.get('postProcessOnly')) {

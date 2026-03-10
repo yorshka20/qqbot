@@ -64,7 +64,7 @@ describe('LLMService', () => {
       expect(lastOptions?.maxTokens).toBe(256);
       expect(lastOptions?.reasoningEffort).toBe('minimal');
 
-      await llmService.generateLite('test', undefined, 'mock', 'doubao-1-5-lite-32k-250115');
+      await llmService.generateLite('test', { model: 'doubao-1-5-lite-32k-250115' }, 'doubao');
       expect(lastOptions?.model).toBe('doubao-1-5-lite-32k-250115');
     });
 

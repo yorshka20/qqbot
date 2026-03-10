@@ -88,14 +88,16 @@ export class PreliminaryAnalysisService {
 
     // logger.debug(`[PreliminaryAnalysisService] Prompt: \n${prompt}`);
 
+    // prefer use generateLite if available, otherwise use generate
+    const generate = llm.generateLite ?? llm.generate;
     try {
-      const response = await llm.generate(prompt, {
+      const response = await generate(prompt, {
         temperature: 0.2,
-        maxTokens: 4000,
-        reasoningEffort: 'minimal', // no reasoning for quick response.
+        maxTokens: 400,
+        jsonMode: true,
         systemPrompt: baseSystemPrompt,
       });
-      const text = (response.text || '').trim();
+      const text = response.text;
       return this.parseJsonResult(text);
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
@@ -144,14 +146,16 @@ export class PreliminaryAnalysisService {
       idleModeInstruction,
     });
 
+    // prefer use generateLite if available, otherwise use generate
+    const generate = llm.generateLite ?? llm.generate;
     try {
-      const response = await llm.generate(prompt, {
+      const response = await generate(prompt, {
         temperature: 0.2,
-        maxTokens: 4000,
-        reasoningEffort: 'minimal', // no reasoning for quick response.
+        maxTokens: 400,
+        jsonMode: true,
         systemPrompt: baseSystemPrompt,
       });
-      const text = (response.text || '').trim();
+      const text = response.text;
       return this.parseJsonResult(text);
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');

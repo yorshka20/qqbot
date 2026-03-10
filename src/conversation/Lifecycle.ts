@@ -83,15 +83,11 @@ export class Lifecycle {
       for (const stageFn of stages) {
         const result = await stageFn(context, messageId);
         // if stage fails, run COMPLETE first so RAG/DB persistence always runs, then return
-        if (!result) {
-          await this.executeStageComplete(context, messageId);
-          return false;
-        }
         // Skip to COMPLETE when access denied or no direct reply path (whitelistDenied or postProcessOnly)
-        if (isNoReplyPath(context)) {
+        if (!result || isNoReplyPath(context)) {
           logger.debug(`[Lifecycle] ⚪ COMPLETE (no-reply path) | messageId=${messageId}`);
           await this.executeStageComplete(context, messageId);
-          return true;
+          return false;
         }
       }
 

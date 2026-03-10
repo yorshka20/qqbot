@@ -399,7 +399,7 @@ export class AIService {
 
   /**
    * Optionally convert reply text to card and return segments + text for history.
-   * Used by proactive reply flow: send returned segments, persist textForHistory in thread/history.
+   * Uses same pipeline as ReplyGenerationService.handleCardReply (no context). Proactive flow: send returned segments, persist textForHistory in thread/history.
    * @param replyText - Raw reply text from LLM
    * @param sessionId - Session ID (e.g. groupId for proactive)
    * @param providerName - Optional provider name (e.g. analysisProviderName for proactive)
@@ -410,7 +410,7 @@ export class AIService {
     sessionId: string,
     providerName?: string,
   ): Promise<{ segments: MessageSegment[]; textForHistory: string } | null> {
-    return this.replyGenerationService.processReplyMaybeCard(replyText, sessionId, providerName);
+    return this.replyGenerationService.handleCardReply(replyText, sessionId, { providerName });
   }
 
   /**
