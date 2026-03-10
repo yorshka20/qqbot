@@ -189,10 +189,9 @@ export class AgendaService {
     const delay = triggerAt - Date.now();
 
     if (delay <= 0) {
-      logger.debug(`[AgendaService] Once item "${item.name}" triggerAt is in the past; checking if should run`);
-      // Run immediately only if never run before
+      logger.debug(`[AgendaService] Once item "${item.name}" triggerAt is in the past; deleting and skipping`);
       if (!item.lastRunAt) {
-        void this.fireItem(item);
+        void this.deleteItem(item.id);
       }
       return;
     }
@@ -296,16 +295,20 @@ export class AgendaService {
 
     try {
       await this.agentLoop.run(fresh, eventContext);
-      await this.getAccessor().update(fresh.id, { lastRunAt: startedAtIso });
       await this.reporter?.recordRun({
         item: fresh,
         startedAt,
         durationMs: Date.now() - startedAt.getTime(),
         success: true,
       });
+      if (fresh.triggerType === 'once') {
+        await this.deleteItem(fresh.id);
+      } else {
+        await this.getAccessor().update(fresh.id, { lastRunAt: startedAtIso });
+      }
     } catch (err) {
       logger.error(`[AgendaService] Item "${fresh.name}" execution failed:`, err);
-      // Still update lastRunAt to respect cooldown even on failure
+      // Still update lastRunAt to respect cooldown even on failure (once items remain for retry semantics)
       await this.getAccessor().update(fresh.id, { lastRunAt: startedAtIso });
       const errMsg = err instanceof Error ? err.message : String(err);
       await this.reporter?.recordRun({

@@ -66,6 +66,17 @@ export interface AppendItemData {
 /** JSON metadata tag that marks a DB item as originating from the schedule file */
 const FILE_SOURCE_META = JSON.stringify({ source: 'file' });
 
+/** Parsed section metadata keys (camelCase only). Raw file keys are normalized to these. */
+interface ScheduleSectionMeta {
+  trigger?: string;
+  groupId?: string;
+  userId?: string;
+  cooldown?: string;
+  steps?: string;
+  enabled?: string;
+  eventFilter?: string;
+}
+
 export class ScheduleFileService {
   constructor(
     private scheduleFilePath: string,
@@ -208,7 +219,7 @@ export class ScheduleFileService {
     const name = lines[0].replace(/^##\s+/, '').trim();
     if (!name) return null;
 
-    const meta: Record<string, string> = {};
+    const meta: ScheduleSectionMeta = {};
     const intentLines: string[] = [];
     let inMetaBlock = true; // metadata comes first (list items)
 
@@ -221,12 +232,13 @@ export class ScheduleFileService {
         continue;
       }
 
-      // Metadata: `- key: value` or `- key: \`value\``
+      // Metadata: `- key: value` or `- key: \`value\`` (keys normalized to camelCase)
       const metaMatch = line.match(/^-\s+([^:：]+)[：:]\s+`?([^`\n]+)`?\s*$/);
       if (metaMatch && inMetaBlock) {
-        const key = metaMatch[1].trim().toLowerCase();
+        const rawKey = metaMatch[1].trim();
         const value = metaMatch[2].trim();
-        meta[key] = value;
+        const key = this.normalizeMetaKey(rawKey);
+        if (key) meta[key] = value;
         continue;
       }
 
@@ -254,31 +266,19 @@ export class ScheduleFileService {
       return null;
     }
 
-    // Parse trigger
-    const triggerRaw = meta['触发'] ?? meta['trigger'] ?? '';
+    const triggerRaw = meta.trigger ?? '';
     const trigger = this.parseTrigger(triggerRaw, name);
     if (!trigger) return null;
 
-    // Parse groupId
-    const groupId = meta['群'] ?? meta['groupid'] ?? meta['group'] ?? undefined;
-
-    // Parse userId
-    const userId = meta['用户'] ?? meta['userid'] ?? meta['user'] ?? undefined;
-
-    // Parse cooldown
-    const cooldownRaw = meta['冷却'] ?? meta['cooldown'] ?? meta['cooldownms'] ?? '60000';
+    const groupId = meta.groupId;
+    const userId = meta.userId;
+    const cooldownRaw = meta.cooldown ?? '60000';
     const cooldownMs = this.parseDuration(cooldownRaw);
-
-    // Parse maxSteps
-    const stepsRaw = meta['步数'] ?? meta['steps'] ?? meta['maxsteps'] ?? '3';
+    const stepsRaw = meta.steps ?? '3';
     const maxSteps = Math.max(1, Number.parseInt(stepsRaw, 10) || 3);
-
-    // Parse enabled
-    const enabledRaw = meta['启用'] ?? meta['enabled'] ?? 'true';
+    const enabledRaw = meta.enabled ?? 'true';
     const enabled = enabledRaw.toLowerCase() !== 'false' && enabledRaw !== '0';
-
-    // Parse eventFilter (JSON)
-    const eventFilter = meta['事件过滤'] ?? meta['eventfilter'] ?? undefined;
+    const eventFilter = meta.eventFilter;
 
     return {
       name,
@@ -313,9 +313,12 @@ export class ScheduleFileService {
       return { triggerType: 'onEvent', eventType };
     }
 
+    // schedule.md only holds cron and onEvent; once items are DB-only and not synced from file
     if (s.startsWith('once ')) {
-      const triggerAt = s.slice(5).trim();
-      return { triggerType: 'once', triggerAt };
+      logger.warn(
+        `[ScheduleFileService] Section "## ${name}": "once" triggers are not synced from schedule.md, skipping`,
+      );
+      return null;
     }
 
     logger.warn(`[ScheduleFileService] Section "## ${name}": cannot parse trigger "${raw}", skipping`);
@@ -340,10 +343,10 @@ export class ScheduleFileService {
       day: 86_400_000,
     };
 
-    for (const [suffix, mult] of Object.entries(units)) {
+    for (const [suffix, multiplier] of Object.entries(units)) {
       if (s.endsWith(suffix)) {
         const num = Number.parseFloat(s.slice(0, -suffix.length));
-        if (!Number.isNaN(num)) return Math.round(num * mult);
+        if (!Number.isNaN(num)) return Math.round(num * multiplier);
       }
     }
 
@@ -352,6 +355,28 @@ export class ScheduleFileService {
   }
 
   // ─── Private Helpers ──────────────────────────────────────────────────────────
+
+  /** Normalize metadata key to camelCase (keyof ScheduleSectionMeta). Returns the key to set on meta. */
+  private normalizeMetaKey(rawKey: string): keyof ScheduleSectionMeta | null {
+    const lower = rawKey.toLowerCase();
+    const map: Record<string, keyof ScheduleSectionMeta> = {
+      触发: 'trigger',
+      trigger: 'trigger',
+      群: 'groupId',
+      group: 'groupId',
+      用户: 'userId',
+      user: 'userId',
+      冷却: 'cooldown',
+      cooldown: 'cooldown',
+      步数: 'steps',
+      steps: 'steps',
+      启用: 'enabled',
+      enabled: 'enabled',
+      事件过滤: 'eventFilter',
+      eventFilter: 'eventFilter',
+    };
+    return map[rawKey] ?? map[lower] ?? null;
+  }
 
   /** Format trigger fields back to the schedule.md string representation. */
   private formatTrigger(data: Pick<AppendItemData, 'triggerType' | 'cronExpr' | 'triggerAt' | 'eventType'>): string {

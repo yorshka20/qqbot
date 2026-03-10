@@ -8,6 +8,8 @@ import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import type { DatabaseManager } from '@/database/DatabaseManager';
+import type { HookManager } from '@/hooks/HookManager';
+import type { TaskManager } from '@/task/TaskManager';
 import { logger } from '@/utils/logger';
 import { AgendaReporter } from './AgendaReporter';
 import { AgendaService } from './AgendaService';
@@ -40,6 +42,8 @@ export class AgendaInitializer {
     messageAPI: MessageAPI;
     conversationHistoryService: ConversationHistoryService;
     promptManager: PromptManager;
+    taskManager: TaskManager;
+    hookManager: HookManager;
     preferredProtocol?: ProtocolName;
     /** Base directory for agenda data files. Defaults to `data/agenda` relative to cwd. */
     dataDir?: string;
@@ -52,7 +56,14 @@ export class AgendaInitializer {
 
     const internalEventBus = new InternalEventBus();
 
-    const agentLoop = new AgentLoop(deps.llmService, deps.messageAPI, deps.conversationHistoryService);
+    const agentLoop = new AgentLoop(
+      deps.llmService,
+      deps.messageAPI,
+      deps.conversationHistoryService,
+      deps.promptManager,
+      deps.taskManager,
+      deps.hookManager,
+    );
     if (deps.preferredProtocol) {
       agentLoop.setPreferredProtocol(deps.preferredProtocol);
     }

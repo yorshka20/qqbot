@@ -105,17 +105,21 @@ export class ScheduleCommand implements CommandHandler {
     const cooldownMs = parsed.cooldown ? this.scheduleFileService.parseDuration(parsed.cooldown) : 60_000;
 
     try {
-      // 1. Append to schedule.md (persists across restarts)
-      await this.scheduleFileService.appendItem({
-        name: parsed.name,
-        triggerType: trigger.triggerType,
-        cronExpr: trigger.cronExpr,
-        triggerAt: trigger.triggerAt,
-        eventType: trigger.eventType,
-        groupId,
-        cooldownMs,
-        intent: parsed.intent,
-      });
+      const isOnce = trigger.triggerType === 'once';
+
+      if (!isOnce) {
+        // 1. Append to schedule.md (cron/onEvent only; once items are DB-only)
+        await this.scheduleFileService.appendItem({
+          name: parsed.name,
+          triggerType: trigger.triggerType,
+          cronExpr: trigger.cronExpr,
+          triggerAt: trigger.triggerAt,
+          eventType: trigger.eventType,
+          groupId,
+          cooldownMs,
+          intent: parsed.intent,
+        });
+      }
 
       // 2. Create in DB and schedule immediately
       const item = await this.agendaService.createItem({
@@ -129,7 +133,7 @@ export class ScheduleCommand implements CommandHandler {
         cooldownMs,
         maxSteps: 3,
         enabled: true,
-        metadata: JSON.stringify({ source: 'file' }),
+        metadata: isOnce ? undefined : JSON.stringify({ source: 'file' }),
       });
 
       const mb = new MessageBuilder();

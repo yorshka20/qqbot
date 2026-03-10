@@ -13,6 +13,7 @@
     "novelai",
     "Ollama",
     "onebot",
+    "onevent",
     "pageno",
     "Qdrant",
     "qqbot",
@@ -22,7 +23,8 @@
     "runpod",
     "safesearch",
     "saltify",
-    "searxng"
+    "searxng",
+    "tombstoned"
   ],
   "editor.defaultFormatter": "biomejs.biome",
   "editor.formatOnSave": true,

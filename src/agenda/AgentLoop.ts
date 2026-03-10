@@ -1,13 +1,18 @@
-// AgentLoop - executes an AgendaItem's intent via LLM → send message pipeline
-// Reuses LLMService (generateMessages) and ConversationHistoryService for context.
+// AgentLoop - LLM Q&A loop driven by scheduled intent (not by user message).
+// Bot uses the schedule's intent as the "question" to the LLM; the loop runs multi-round (plan → tool calls → message) until the task is done, then sends the final reply.
 
+import type { PromptManager } from '@/ai';
 import type { LLMService } from '@/ai/services/LLMService';
+import { buildToolUsageInstructions, executeToolCall, getReplyToolDefinitions } from '@/ai/tools/replyTools';
 import type { ChatMessage } from '@/ai/types';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { normalizeGroupId } from '@/conversation/history/ConversationHistoryService';
 import type { ProtocolName } from '@/core/config/types/protocol';
+import type { HookManager } from '@/hooks/HookManager';
+import type { TaskManager } from '@/task/TaskManager';
 import { logger } from '@/utils/logger';
+import { buildAgendaHookContext } from './AgendaHookContext';
 import type { AgendaEventContext, AgendaItem } from './types';
 
 const DEFAULT_PROVIDER: string | undefined = undefined; // Use system default LLM provider
@@ -15,14 +20,9 @@ const DEFAULT_PROVIDER: string | undefined = undefined; // Use system default LL
 /**
  * AgentLoop
  *
- * Executes one AgendaItem: builds context, calls LLM with the item's intent,
- * then sends the response to the target group.
- *
- * Cooldown and enabled-checks are done by AgendaService before calling run().
- *
- * Design principle: keep it thin. This is "the shell that translates intent to action."
- * Makes exactly one LLM call per run. The AgendaItem.maxSteps field is reserved for future
- * multi-step expansion (tool calls, follow-up actions), but is not used today.
+ * Same shape as the normal reply LLM loop (user question → LLM + tools → reply), but the "question" is the schedule's intent.
+ * taskManager and hookManager are required: the loop always uses generateWithTools and runs over multiple rounds to complete the task.
+ * System prompt from template agenda.agent_loop_system (PromptManager).
  */
 export class AgentLoop {
   private preferredProtocol: ProtocolName = 'milky';
@@ -31,6 +31,9 @@ export class AgentLoop {
     private llmService: LLMService,
     private messageAPI: MessageAPI,
     private conversationHistoryService: ConversationHistoryService,
+    private promptManager: PromptManager,
+    private taskManager: TaskManager,
+    private hookManager: HookManager,
   ) {}
 
   setPreferredProtocol(protocol: ProtocolName): void {
@@ -69,8 +72,7 @@ export class AgentLoop {
   // ─── Private Helpers ────────────────────────────────────────────────────────
 
   /**
-   * Generate a reply for the given intent using the LLM.
-   * Fetches recent conversation context, then makes one LLM call.
+   * Run the LLM loop for this intent: build messages (intent as "user question"), then generateWithTools (multi-round) until done.
    */
   private async generateReply(
     item: AgendaItem,
@@ -78,10 +80,23 @@ export class AgentLoop {
     eventContext?: AgendaEventContext,
   ): Promise<string | null> {
     const conversationContext = await this.fetchRecentContext(groupId);
-    const messages = this.buildPrompt(item, conversationContext, eventContext);
+    const tools = getReplyToolDefinitions(this.taskManager);
+    const toolInstruct = buildToolUsageInstructions(this.taskManager, tools);
+    const messages = this.buildPrompt(item, conversationContext, eventContext, toolInstruct);
 
     try {
-      const response = await this.llmService.generateMessages(messages, {}, DEFAULT_PROVIDER);
+      const agendaContext = buildAgendaHookContext(item, groupId, eventContext);
+      const toolExecutor = (call: { name: string; arguments: string }) =>
+        executeToolCall(call, agendaContext, this.taskManager, this.hookManager);
+      const response = await this.llmService.generateWithTools(
+        messages,
+        tools,
+        {
+          maxToolRounds: Math.max(1, item.maxSteps ?? 3),
+          toolExecutor,
+        },
+        DEFAULT_PROVIDER,
+      );
       return response.text?.trim() || null;
     } catch (err) {
       logger.error(`[AgentLoop] LLM call failed for item "${item.name}":`, err);
@@ -113,12 +128,15 @@ export class AgentLoop {
 
   /**
    * Build the ChatMessage[] prompt for the LLM.
+   * System prompt from template agenda.agent_loop_system with toolInstruct.
    */
-  private buildPrompt(item: AgendaItem, conversationContext: string, eventContext?: AgendaEventContext): ChatMessage[] {
-    const systemPrompt =
-      '你是一个群聊机器人助手。你需要根据给定的任务意图，生成一条自然、合适的中文消息直接发送到群里。' +
-      '直接输出消息内容本身，不要加引号、前缀或任何解释。';
-
+  private buildPrompt(
+    item: AgendaItem,
+    conversationContext: string,
+    eventContext: AgendaEventContext | undefined,
+    toolInstruct: string,
+  ): ChatMessage[] {
+    const systemPrompt = this.promptManager.render('agenda.agent_loop_system', { toolInstruct });
     const lines: string[] = [`任务意图: ${item.intent}`];
 
     if (eventContext) {
@@ -134,8 +152,6 @@ export class AgentLoop {
     if (conversationContext) {
       lines.push('', '近期群聊记录:', conversationContext);
     }
-
-    lines.push('', '请根据以上意图生成消息:');
 
     return [
       { role: 'system', content: systemPrompt },
