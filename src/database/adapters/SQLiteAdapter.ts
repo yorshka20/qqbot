@@ -7,6 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { logger } from '@/utils/logger';
 import type { DatabaseAdapter } from '../base/DatabaseAdapter';
 import type {
+  AgendaItem,
   BaseModel,
   Conversation,
   ConversationConfig,
@@ -363,6 +364,26 @@ export class SQLiteAdapter implements DatabaseAdapter {
         updatedAt TEXT NOT NULL,
         UNIQUE(groupId, userId)
       )`,
+      `CREATE TABLE IF NOT EXISTS agenda_items (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        groupId TEXT,
+        userId TEXT,
+        triggerType TEXT NOT NULL CHECK(triggerType IN ('cron', 'once', 'onEvent')),
+        cronExpr TEXT,
+        triggerAt TEXT,
+        eventType TEXT,
+        eventFilter TEXT,
+        intent TEXT NOT NULL,
+        cooldownMs INTEGER NOT NULL DEFAULT 60000,
+        maxSteps INTEGER NOT NULL DEFAULT 3,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        lastRunAt TEXT,
+        nextRunAt TEXT,
+        metadata TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`,
     ];
 
     for (const statement of statements) {
@@ -412,6 +433,9 @@ export class SQLiteAdapter implements DatabaseAdapter {
       `CREATE INDEX IF NOT EXISTS idx_proactive_threads_groupId ON proactive_threads(groupId)`,
       `CREATE INDEX IF NOT EXISTS idx_proactive_threads_threadId ON proactive_threads(threadId)`,
       `CREATE INDEX IF NOT EXISTS idx_memory_extract_user_cursors_groupId_userId ON memory_extract_user_cursors(groupId, userId)`,
+      `CREATE INDEX IF NOT EXISTS idx_agenda_items_enabled ON agenda_items(enabled)`,
+      `CREATE INDEX IF NOT EXISTS idx_agenda_items_triggerType ON agenda_items(triggerType)`,
+      `CREATE INDEX IF NOT EXISTS idx_agenda_items_eventType ON agenda_items(eventType)`,
     ];
 
     for (const statement of indexStatements) {
@@ -467,6 +491,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
         this.db,
         'memory_extract_user_cursors',
       ),
+      agendaItems: new SQLiteModelAccessor<AgendaItem>(this.db, 'agenda_items'),
     };
   }
 }

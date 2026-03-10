@@ -34,6 +34,12 @@ export const DITokens = {
   FILE_READ_SERVICE: 'FileReadService',
   PROCESS_STAGE_INTERCEPTOR_REGISTRY: 'ProcessStageInterceptorRegistry',
   CONVERSATION_MANAGER: 'ConversationManager',
+  // Agenda framework (proactive action)
+  AGENDA_SERVICE: 'AgendaService',
+  AGENT_LOOP: 'AgentLoop',
+  INTERNAL_EVENT_BUS: 'InternalEventBus',
+  AGENDA_REPORTER: 'AgendaReporter',
+  SCHEDULE_FILE_SERVICE: 'ScheduleFileService',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];

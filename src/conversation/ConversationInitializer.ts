@@ -1,5 +1,6 @@
 // Conversation Initializer - initializes all conversation-related components
 
+import { AgendaInitializer } from '@/agenda';
 import {
   AIManager,
   AIService,
@@ -187,6 +188,16 @@ export class ConversationInitializer {
 
     // ProactiveConversationService and its dependencies are assembled via container resolution.
     ConversationInitializer.configureProactiveConversationService(container);
+
+    // Agenda framework: AgendaService + AgentLoop + InternalEventBus.
+    // Requires LLMService, MessageAPI, and ConversationHistoryService (all available above).
+    const agendaComponents = await AgendaInitializer.initialize({
+      databaseManager,
+      llmService: container.resolve<LLMService>(DITokens.LLM_SERVICE),
+      messageAPI,
+      conversationHistoryService,
+    });
+    serviceRegistry.registerAgendaServices(agendaComponents);
 
     const completeServices: CompleteServices = {
       ...services,
