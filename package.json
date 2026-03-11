@@ -18,7 +18,8 @@
     "lint": "biome check src",
     "lint:fix": "biome check --write src",
     "format": "biome format --write src",
-    "test": "bun test"
+    "test": "bun test",
+    "prepare": "husky"
   },
   "keywords": [
     "qqbot",
@@ -55,12 +56,13 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0",
     "@biomejs/biome": "^2.4.6",
     "@types/adm-zip": "^0.5.7",
     "@types/better-sqlite3": "^7.6.13",
     "@types/bun": "latest",
     "@types/node-cron": "^3.0.11",
+    "concurrently": "^9.1.0",
+    "husky": "^9.1.7",
     "prettier": "^3.8.1",
     "typescript": "^5.9.3"
   }
