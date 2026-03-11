@@ -42,6 +42,11 @@ export class ProviderRouter {
     return Object.keys(ProviderRouter.PREFIX_ALIASES);
   }
 
+  /** Alias → internal provider name (for prompts, e.g. prefix-invitation). */
+  static getProviderAliasMap(): Record<string, string> {
+    return { ...ProviderRouter.PREFIX_ALIASES };
+  }
+
   constructor(private aiManager: AIManager) {}
 
   route(message: string): ProviderRouteResult {

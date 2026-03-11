@@ -3,6 +3,7 @@
 
 import type { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
+import { ProviderRouter } from '@/ai/routing/ProviderRouter';
 import type { LLMService } from '@/ai/services/LLMService';
 import { parseLlmTrueFalse } from '@/ai/utils/llmJsonExtract';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
@@ -61,9 +62,7 @@ export class MessageTriggerPlugin extends PluginBase {
     const pluginConfig = this.pluginConfig?.config as MessageTriggerPluginConfig | undefined;
 
     // Wake words
-    const globalWakeWords = (pluginConfig?.wakeWords ?? [])
-      .map((w) => w.trim().toLowerCase())
-      .filter(Boolean);
+    const globalWakeWords = (pluginConfig?.wakeWords ?? []).map((w) => w.trim().toLowerCase()).filter(Boolean);
 
     this.wakeWordMatcher = new WakeWordMatcher(globalWakeWords, this.promptManager, proactiveConversationService);
     this.providerNameMatcher = new ProviderNameMatcher();
@@ -73,7 +72,9 @@ export class MessageTriggerPlugin extends PluginBase {
     if (subAgentRules.length > 0) {
       const aiService = container.resolve<AIService>(DITokens.AI_SERVICE);
       const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
-      const conversationConfigService = container.resolve<ConversationConfigService>(DITokens.CONVERSATION_CONFIG_SERVICE);
+      const conversationConfigService = container.resolve<ConversationConfigService>(
+        DITokens.CONVERSATION_CONFIG_SERVICE,
+      );
       const protocol = this.config.getEnabledProtocols()[0]?.name ?? 'milky';
       const botSelfId = this.config.getBotUserId();
       this.subAgentTriggerHandler = new SubAgentTriggerHandler(
@@ -92,16 +93,16 @@ export class MessageTriggerPlugin extends PluginBase {
       const msgOpConfig = this.config.getPluginConfig('messageOperation') as
         | { reactionOperations?: Record<string, string> }
         | undefined;
-      const recallEntry = Object.entries(msgOpConfig?.reactionOperations ?? {}).find(
-        ([, op]) => op === 'recall',
-      );
+      const recallEntry = Object.entries(msgOpConfig?.reactionOperations ?? {}).find(([, op]) => op === 'recall');
       if (recallEntry) {
         this.cancelReactionId = Number(recallEntry[0]);
         logger.info(
           `[MessageTriggerPlugin] Subagent cancellation enabled via reaction faceId=${this.cancelReactionId}`,
         );
       } else {
-        logger.debug('[MessageTriggerPlugin] No recall reaction configured; subagent cancellation via reaction disabled');
+        logger.debug(
+          '[MessageTriggerPlugin] No recall reaction configured; subagent cancellation via reaction disabled',
+        );
       }
     }
 
@@ -121,7 +122,14 @@ export class MessageTriggerPlugin extends PluginBase {
     const liteModel = aiConfig?.liteLlm?.model ?? '';
 
     try {
-      const prompt = this.promptManager.render('analysis.prefix_invitation', { messageText });
+      const aliasMap = ProviderRouter.getProviderAliasMap();
+      const providerAliasMap = Object.entries(aliasMap)
+        .map(([alias, provider]) => `${alias}→${provider}`)
+        .join('；');
+      const prompt = this.promptManager.render('analysis.prefix_invitation', {
+        messageText,
+        providerAliasMap,
+      });
       const response = await this.llmService.generateLite(prompt, { maxTokens: 100, model: liteModel }, liteProvider);
       const raw = parseLlmTrueFalse(response.text);
       if (raw === null) {
