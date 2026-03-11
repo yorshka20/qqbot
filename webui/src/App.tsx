@@ -1,6 +1,7 @@
-import { Loader2 } from 'lucide-react';
+import { Loader2, Moon, Sun, Trash2, FolderInput, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { deleteFile, listFiles, moveFile, renameFile } from './api';
+import { BatchMoveModal } from './components/BatchMoveModal';
 import { Breadcrumb } from './components/Breadcrumb';
 import { CardWall } from './components/CardWall';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -9,7 +10,7 @@ import { PreviewModal } from './components/PreviewModal';
 import { RenameModal } from './components/RenameModal';
 import { Sidebar } from './components/Sidebar';
 import type { FileItem } from './types';
-import { type FilterType, filterByType, type GroupBy, groupItems, type SortOrder, sortByDate } from './utils/fileType';
+import { type FilterType, filterByType, type GroupBy, groupItems, type SortOrder, sortItems } from './utils/fileType';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState('');
@@ -22,9 +23,22 @@ export default function App() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('dateDesc');
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
 
+  // Dark mode
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') === 'true');
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+    localStorage.setItem('darkMode', String(darkMode));
+  }, [darkMode]);
+
+  // Multi-select
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const selectMode = selectedPaths.size > 0;
+
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [moveTarget, setMoveTarget] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<{ path: string; name: string } | null>(null);
+  const [batchDeletePending, setBatchDeletePending] = useState(false);
+  const [batchMovePending, setBatchMovePending] = useState(false);
 
   const load = useCallback(async (path: string) => {
     setLoading(true);
@@ -44,8 +58,17 @@ export default function App() {
     load(currentPath);
   }, [currentPath, load]);
 
+  // Navigate (breadcrumb or folder open) — resets filter and selection
+  const handleNavigate = useCallback((path: string) => {
+    setCurrentPath(path);
+    setTypeFilter('all');
+    setSelectedPaths(new Set());
+    setPreviewFile(null);
+  }, []);
+
   const handleOpenDir = useCallback((path: string) => {
     setCurrentPath(path);
+    setSelectedPaths(new Set());
     setPreviewFile(null);
   }, []);
 
@@ -53,36 +76,32 @@ export default function App() {
     setPreviewFile({ path: item.path, name: item.name });
   }, []);
 
+  // Single delete
   const handleDeleteClick = useCallback((path: string) => {
     setDeleteTarget(path);
   }, []);
 
   const handleDeleteConfirm = useCallback(async () => {
-    if (deleteTarget === null) {
-      return;
-    }
+    if (deleteTarget === null) return;
     const path = deleteTarget;
     setDeleteTarget(null);
     try {
       await deleteFile(path);
-      if (previewFile?.path === path) {
-        setPreviewFile(null);
-      }
+      if (previewFile?.path === path) setPreviewFile(null);
       await load(currentPath);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Delete failed');
     }
   }, [deleteTarget, previewFile?.path, currentPath, load]);
 
+  // Single move
   const handleMoveClick = useCallback((path: string) => {
     setMoveTarget(path);
   }, []);
 
   const handleMoveConfirm = useCallback(
     async (toPath: string) => {
-      if (moveTarget === null) {
-        return;
-      }
+      if (moveTarget === null) return;
       const fromPath = moveTarget;
       setMoveTarget(null);
       try {
@@ -98,30 +117,25 @@ export default function App() {
     [moveTarget, previewFile?.path, currentPath, load],
   );
 
+  // Single rename
   const handleRenameClick = useCallback(
     (path: string) => {
       const item = items.find((i) => i.path === path);
-      if (item) {
-        setRenameTarget({ path: item.path, name: item.name });
-      }
+      if (item) setRenameTarget({ path: item.path, name: item.name });
     },
     [items],
   );
 
   const handleRenameConfirm = useCallback(
     async (newName: string) => {
-      if (renameTarget === null) {
-        return;
-      }
+      if (renameTarget === null) return;
       const { path } = renameTarget;
       setRenameTarget(null);
       try {
         await renameFile(path, newName);
         const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
         const newPath = dir ? `${dir}/${newName}` : newName;
-        if (previewFile?.path === path) {
-          setPreviewFile({ path: newPath, name: newName });
-        }
+        if (previewFile?.path === path) setPreviewFile({ path: newPath, name: newName });
         await load(currentPath);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Rename failed');
@@ -130,20 +144,79 @@ export default function App() {
     [renameTarget, previewFile?.path, currentPath, load],
   );
 
+  // Multi-select handlers
+  const handleToggleSelect = useCallback((path: string) => {
+    setSelectedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    const allPaths = items.filter((i) => !i.isDir).map((i) => i.path);
+    setSelectedPaths(new Set(allPaths));
+  }, [items]);
+
+  const handleClearSelection = useCallback(() => setSelectedPaths(new Set()), []);
+
+  // Batch delete
+  const handleBatchDeleteConfirm = useCallback(async () => {
+    const paths = [...selectedPaths];
+    setBatchDeletePending(false);
+    setSelectedPaths(new Set());
+    try {
+      await Promise.all(paths.map((p) => deleteFile(p)));
+      await load(currentPath);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed');
+    }
+  }, [selectedPaths, currentPath, load]);
+
+  // Batch move
+  const handleBatchMoveConfirm = useCallback(
+    async (destDir: string) => {
+      const paths = [...selectedPaths];
+      setSelectedPaths(new Set());
+      try {
+        await Promise.all(
+          paths.map((p) => {
+            const fileName = p.split('/').pop() ?? p;
+            const toPath = destDir ? `${destDir}/${fileName}` : fileName;
+            return moveFile(p, toPath);
+          }),
+        );
+        await load(currentPath);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Move failed');
+      }
+    },
+    [selectedPaths, currentPath, load],
+  );
+
   const groupedItems = useMemo(() => {
     const filtered = filterByType(items, typeFilter);
-    const sorted = sortByDate(filtered, sortOrder);
+    const sorted = sortItems(filtered, sortOrder);
     return groupItems(sorted, groupBy);
   }, [items, typeFilter, sortOrder, groupBy]);
 
   return (
-    <div className="h-screen overflow-hidden flex flex-col bg-zinc-100 text-zinc-900">
-      <header className="shrink-0 border-b border-zinc-200 bg-white">
+    <div className="h-screen overflow-hidden flex flex-col bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
+      <header className="shrink-0 border-b border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
         <div className="px-4 py-3 flex items-center gap-4 flex-wrap">
-          <h1 className="text-lg font-semibold text-zinc-900 shrink-0">Output 资源</h1>
+          <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 shrink-0">Output 资源</h1>
           <nav className="min-w-0 flex-1">
-            <Breadcrumb path={currentPath} onNavigate={setCurrentPath} />
+            <Breadcrumb path={currentPath} onNavigate={handleNavigate} />
           </nav>
+          <button
+            type="button"
+            onClick={() => setDarkMode((d) => !d)}
+            className="shrink-0 p-2 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+            title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
         </div>
       </header>
 
@@ -159,21 +232,24 @@ export default function App() {
         <main className="flex-1 min-w-0 min-h-0 overflow-auto p-4">
           {loading ? (
             <div className="flex items-center justify-center py-24">
-              <div className="flex flex-col items-center gap-3 text-zinc-500">
-                <Loader2 className="w-10 h-10 animate-spin text-zinc-400" aria-hidden />
+              <div className="flex flex-col items-center gap-3 text-zinc-500 dark:text-zinc-400">
+                <Loader2 className="w-10 h-10 animate-spin text-zinc-400 dark:text-zinc-500" aria-hidden />
                 <span className="text-sm font-medium">Loading…</span>
               </div>
             </div>
           ) : error ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-800 text-sm">{error}</div>
+            <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/40 dark:border-red-900 p-6 text-red-800 dark:text-red-300 text-sm">{error}</div>
           ) : groupedItems.length === 1 && !groupedItems[0].label ? (
             <CardWall
               items={groupedItems[0].items}
               loading={false}
               error={null}
               emptyMessage="No items match the current filter."
+              selectedPaths={selectedPaths}
+              selectMode={selectMode}
               onOpenDir={handleOpenDir}
               onSelectFile={handleSelectFile}
+              onToggleSelect={handleToggleSelect}
               onRename={handleRenameClick}
               onMove={handleMoveClick}
               onDelete={handleDeleteClick}
@@ -183,14 +259,17 @@ export default function App() {
               {groupedItems.map((group) => (
                 <section key={group.label || 'all'}>
                   {group.label ? (
-                    <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider mb-3">{group.label}</h2>
+                    <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3">{group.label}</h2>
                   ) : null}
                   <CardWall
                     items={group.items}
                     loading={false}
                     error={null}
+                    selectedPaths={selectedPaths}
+                    selectMode={selectMode}
                     onOpenDir={handleOpenDir}
                     onSelectFile={handleSelectFile}
+                    onToggleSelect={handleToggleSelect}
                     onRename={handleRenameClick}
                     onMove={handleMoveClick}
                     onDelete={handleDeleteClick}
@@ -202,10 +281,52 @@ export default function App() {
         </main>
       </div>
 
+      {/* Multi-select toolbar */}
+      {selectMode && (
+        <div className="shrink-0 border-t border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-3 flex items-center gap-3 shadow-lg z-30">
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            {selectedPaths.size} selected
+          </span>
+          <button
+            type="button"
+            onClick={handleSelectAll}
+            className="text-xs px-2 py-1 rounded border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-700"
+          >
+            Select all files
+          </button>
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={() => setBatchMovePending(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-600"
+          >
+            <FolderInput className="w-4 h-4" />
+            Move to…
+          </button>
+          <button
+            type="button"
+            onClick={() => setBatchDeletePending(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-50 dark:bg-red-950/50 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete
+          </button>
+          <button
+            type="button"
+            onClick={handleClearSelection}
+            className="p-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+            title="Clear selection"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {previewFile && (
         <PreviewModal path={previewFile.path} name={previewFile.name} onClose={() => setPreviewFile(null)} />
       )}
 
+      {/* Single delete */}
       <ConfirmDialog
         open={deleteTarget !== null}
         title="删除确认"
@@ -214,6 +335,17 @@ export default function App() {
         danger
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      {/* Batch delete */}
+      <ConfirmDialog
+        open={batchDeletePending}
+        title="批量删除确认"
+        message={`确定要删除选中的 ${selectedPaths.size} 个文件吗？此操作无法撤销。`}
+        confirmLabel="删除"
+        danger
+        onConfirm={handleBatchDeleteConfirm}
+        onCancel={() => setBatchDeletePending(false)}
       />
 
       <RenameModal
@@ -232,6 +364,13 @@ export default function App() {
         currentPath={currentPath}
         onMove={handleMoveConfirm}
         onCancel={() => setMoveTarget(null)}
+      />
+
+      <BatchMoveModal
+        open={batchMovePending}
+        count={selectedPaths.size}
+        onMove={handleBatchMoveConfirm}
+        onCancel={() => setBatchMovePending(false)}
       />
     </div>
   );

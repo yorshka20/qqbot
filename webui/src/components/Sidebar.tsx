@@ -3,7 +3,7 @@
  * Uses lucide-react for icons.
  */
 
-import { ArrowDownUp, Calendar, CalendarRange, FileText, Folder, Image, Layers, Music, Video } from 'lucide-react';
+import { ArrowDownUp, Calendar, CalendarRange, FileText, Folder, HardDrive, Image, Layers, Music, Video } from 'lucide-react';
 import type { FilterType, GroupBy, SortOrder } from '../utils/fileType';
 
 interface SidebarProps {
@@ -28,6 +28,8 @@ const FILTER_OPTIONS: { value: FilterType; label: string; icon: React.ReactNode 
 const SORT_OPTIONS: { value: SortOrder; label: string; icon: React.ReactNode }[] = [
   { value: 'dateDesc', label: 'Newest first', icon: <ArrowDownUp className="w-4 h-4 shrink-0" /> },
   { value: 'dateAsc', label: 'Oldest first', icon: <ArrowDownUp className="w-4 h-4 shrink-0" /> },
+  { value: 'sizeDesc', label: 'Largest first', icon: <HardDrive className="w-4 h-4 shrink-0" /> },
+  { value: 'sizeAsc', label: 'Smallest first', icon: <HardDrive className="w-4 h-4 shrink-0" /> },
 ];
 
 const GROUP_OPTIONS: { value: GroupBy; label: string; icon: React.ReactNode }[] = [
@@ -36,6 +38,32 @@ const GROUP_OPTIONS: { value: GroupBy; label: string; icon: React.ReactNode }[] 
   { value: 'week', label: 'By week', icon: <CalendarRange className="w-4 h-4 shrink-0" /> },
   { value: 'type', label: 'By type', icon: <Layers className="w-4 h-4 shrink-0" /> },
 ];
+
+function SidebarSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="p-3 border-b border-zinc-100 dark:border-zinc-700">
+      <h2 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">{title}</h2>
+      <div className="flex flex-col gap-0.5">{children}</div>
+    </div>
+  );
+}
+
+function SidebarButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-2 text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full ${
+        active
+          ? 'bg-zinc-200 dark:bg-zinc-600 text-zinc-900 dark:text-zinc-100'
+          : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
 
 export function Sidebar({
   typeFilter,
@@ -47,66 +75,44 @@ export function Sidebar({
 }: SidebarProps) {
   return (
     <aside
-      className="w-52 shrink-0 min-h-0 border-r border-zinc-200 bg-white flex flex-col overflow-y-auto"
+      className="w-52 shrink-0 min-h-0 border-r border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 flex flex-col overflow-y-auto"
       aria-label="Filters and view options"
     >
-      <div className="p-3 border-b border-zinc-100">
-        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Type</h2>
+      <SidebarSection title="Type">
         <nav className="flex flex-col gap-0.5">
           {FILTER_OPTIONS.map((opt) => (
-            <button
+            <SidebarButton
               key={opt.value}
-              type="button"
+              active={typeFilter === opt.value}
               onClick={() => onTypeFilterChange(opt.value)}
-              className={`flex items-center gap-2 text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full ${
-                typeFilter === opt.value
-                  ? 'bg-zinc-200 text-zinc-900'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              {opt.icon}
-              {opt.label}
-            </button>
+              icon={opt.icon}
+              label={opt.label}
+            />
           ))}
         </nav>
-      </div>
-      <div className="p-3 border-b border-zinc-100">
-        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Sort</h2>
-        <div className="flex flex-col gap-0.5">
-          {SORT_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => onSortOrderChange(opt.value)}
-              className={`flex items-center gap-2 text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full ${
-                sortOrder === opt.value
-                  ? 'bg-zinc-200 text-zinc-900'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              {opt.icon}
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      </SidebarSection>
+      <SidebarSection title="Sort">
+        {SORT_OPTIONS.map((opt) => (
+          <SidebarButton
+            key={opt.value}
+            active={sortOrder === opt.value}
+            onClick={() => onSortOrderChange(opt.value)}
+            icon={opt.icon}
+            label={opt.label}
+          />
+        ))}
+      </SidebarSection>
       <div className="p-3">
-        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Group by</h2>
+        <h2 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Group by</h2>
         <div className="flex flex-col gap-0.5">
           {GROUP_OPTIONS.map((opt) => (
-            <button
+            <SidebarButton
               key={opt.value}
-              type="button"
+              active={groupBy === opt.value}
               onClick={() => onGroupByChange(opt.value)}
-              className={`flex items-center gap-2 text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full ${
-                groupBy === opt.value
-                  ? 'bg-zinc-200 text-zinc-900'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              {opt.icon}
-              {opt.label}
-            </button>
+              icon={opt.icon}
+              label={opt.label}
+            />
           ))}
         </div>
       </div>

@@ -21,8 +21,8 @@ export type FileCategory = 'folder' | 'image' | 'sticker' | 'video' | 'audio' | 
 /** Category for filter sidebar: same as FileCategory but "folder" stays as folder. */
 export type FilterType = 'all' | 'folder' | 'image' | 'sticker' | 'video' | 'audio' | 'other';
 
-/** Sort order for date. */
-export type SortOrder = 'dateDesc' | 'dateAsc';
+/** Sort order. */
+export type SortOrder = 'dateDesc' | 'dateAsc' | 'sizeDesc' | 'sizeAsc';
 
 /** Group by option (Windows-style). */
 export type GroupBy = 'none' | 'date' | 'week' | 'type';
@@ -55,14 +55,21 @@ export function filterByType(items: FileItem[], filter: FilterType): FileItem[] 
   return items.filter((item) => getFileCategory(item) === filter);
 }
 
-export function sortByDate(items: FileItem[], order: SortOrder): FileItem[] {
-  const sorted = [...items].sort((a, b) => {
+export function sortItems(items: FileItem[], order: SortOrder): FileItem[] {
+  return [...items].sort((a, b) => {
+    if (order === 'sizeAsc' || order === 'sizeDesc') {
+      const sa = a.size ?? 0;
+      const sb = b.size ?? 0;
+      return order === 'sizeAsc' ? sa - sb : sb - sa;
+    }
     const ma = a.mtime ?? 0;
     const mb = b.mtime ?? 0;
     return order === 'dateAsc' ? ma - mb : mb - ma;
   });
-  return sorted;
 }
+
+/** @deprecated use sortItems */
+export const sortByDate = sortItems;
 
 export interface FileGroup {
   label: string;

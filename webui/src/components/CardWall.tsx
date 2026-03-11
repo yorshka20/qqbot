@@ -7,8 +7,11 @@ interface CardWallProps {
   items: FileItem[];
   loading: boolean;
   error: string | null;
+  selectedPaths: Set<string>;
+  selectMode: boolean;
   onOpenDir: (path: string) => void;
   onSelectFile: (item: FileItem) => void;
+  onToggleSelect: (path: string) => void;
   onRename: (path: string) => void;
   onMove: (path: string) => void;
   onDelete: (path: string) => void;
@@ -22,22 +25,25 @@ export function CardWall({
   items,
   loading,
   error,
+  selectedPaths,
+  selectMode,
   onOpenDir,
   onSelectFile,
+  onToggleSelect,
   onRename,
   onMove,
   onDelete,
   emptyMessage = DEFAULT_EMPTY_MESSAGE,
 }: CardWallProps) {
   if (error) {
-    return <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-800 text-sm">{error}</div>;
+    return <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-6 text-red-800 dark:text-red-300 text-sm">{error}</div>;
   }
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
-        <div className="flex flex-col items-center gap-3 text-zinc-500">
-          <Loader2 className="w-10 h-10 animate-spin text-zinc-400" aria-hidden />
+        <div className="flex flex-col items-center gap-3 text-zinc-500 dark:text-zinc-400">
+          <Loader2 className="w-10 h-10 animate-spin text-zinc-400 dark:text-zinc-500" aria-hidden />
           <span className="text-sm font-medium">Loading…</span>
         </div>
       </div>
@@ -46,9 +52,9 @@ export function CardWall({
 
   if (items.length === 0) {
     return (
-      <div className="rounded-xl border border-zinc-200 bg-zinc-50/80 p-12 text-center">
-        <p className="text-zinc-500 text-sm mb-1">{emptyMessage}</p>
-        <p className="text-zinc-400 text-xs">Upload or create files in the output directory.</p>
+      <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50/80 dark:bg-zinc-800/50 p-12 text-center">
+        <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-1">{emptyMessage}</p>
+        <p className="text-zinc-400 dark:text-zinc-500 text-xs">Upload or create files in the output directory.</p>
       </div>
     );
   }
@@ -60,8 +66,11 @@ export function CardWall({
           key={item.path}
           item={item}
           baseUrl={getOutputBase()}
+          selected={selectedPaths.has(item.path)}
+          selectMode={selectMode}
           onOpenDir={onOpenDir}
           onSelectFile={onSelectFile}
+          onToggleSelect={onToggleSelect}
           onRename={onRename}
           onMove={onMove}
           onDelete={onDelete}

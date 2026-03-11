@@ -31,13 +31,13 @@ export function PreviewModal({ path, name, onClose }: PreviewModalProps) {
     >
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] max-w-[90vw] -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-xl bg-white shadow-2xl flex flex-col focus:outline-none">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] max-w-[90vw] -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-xl bg-white dark:bg-zinc-800 shadow-2xl flex flex-col focus:outline-none">
           <Dialog.Title className="sr-only">Preview: {name}</Dialog.Title>
-          <div className="shrink-0 px-4 py-2 border-b border-zinc-200 flex items-center justify-between gap-4">
-            <span className="text-sm font-medium text-zinc-700 truncate min-w-0">{name}</span>
-            <span className="text-xs text-zinc-400 shrink-0">Click outside to close</span>
+          <div className="shrink-0 px-4 py-2 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between gap-4">
+            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300 truncate min-w-0">{name}</span>
+            <span className="text-xs text-zinc-400 dark:text-zinc-500 shrink-0">Click outside to close</span>
           </div>
-          <div className="flex-1 min-h-0 p-6 flex items-center justify-center bg-zinc-100">
+          <div className="flex-1 min-h-0 p-6 flex items-center justify-center bg-zinc-100 dark:bg-zinc-900">
             {IMAGE_EXT.has(e) && <img src={url} alt={name} className="max-w-full max-h-[75vh] object-contain" />}
             {VIDEO_EXT.has(e) && (
               <video src={url} controls className="max-w-full max-h-[75vh] rounded">
