@@ -3,7 +3,7 @@
 import { existsSync } from 'node:fs';
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
 import { logger } from '@/utils/logger';
-import { cardStyles } from './cardStyles';
+import { getCardStyles, getProviderTheme } from './cardStyles';
 import { renderCardDeck } from './cardTemplates';
 import type { CardData } from './cardTypes';
 
@@ -154,8 +154,9 @@ export class CardRenderer {
     try {
       page = await this.browser.newPage();
 
-      // Footer: "AI Assistant" + provider name (required on all paths)
-      const footerText = `🤖 AI Assistant · ${options.provider}`;
+      // Footer: use proper display name (e.g. "DeepSeek" not "deepseek")
+      const theme = getProviderTheme(options.provider);
+      const footerText = `🤖 AI Assistant · ${theme.displayName}`;
 
       // Build full HTML document
       const fullHTML = `
@@ -165,10 +166,10 @@ export class CardRenderer {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <script src="https://unpkg.com/twemoji@latest/dist/twemoji.min.js" crossorigin="anonymous"></script>
-            <style>${cardStyles}</style>
+            <style>${getCardStyles(theme)}</style>
           </head>
           <body>
-            <div class="container">
+            <div class="container" data-provider="${theme.displayName}">
               ${cardHTML}
               <div class="footer">${footerText}</div>
             </div>

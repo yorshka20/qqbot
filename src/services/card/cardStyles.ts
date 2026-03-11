@@ -1,8 +1,37 @@
 // Card styles - optimized version with proper clipping and better visuals
 
-export const cardStyles = `
+export interface CardTheme {
+  primary: string;
+  secondary: string;
+  primaryRgb: string;
+  secondaryRgb: string;
+  displayName: string;
+}
+
+export const PROVIDER_THEMES: Record<string, CardTheme> = {
+  claude:   { primary: '#D97757', secondary: '#C4514A', primaryRgb: '217, 119, 87',  secondaryRgb: '196, 81, 74',  displayName: 'Claude'   },
+  deepseek: { primary: '#4D6BFE', secondary: '#7C4DFF', primaryRgb: '77, 107, 254',  secondaryRgb: '124, 77, 255', displayName: 'DeepSeek' },
+  gemini:   { primary: '#886FBF', secondary: '#6C5CE7', primaryRgb: '136, 111, 191', secondaryRgb: '108, 92, 231', displayName: 'Gemini'   },
+  doubao:   { primary: '#36D6B6', secondary: '#2EA8D5', primaryRgb: '54, 214, 182',  secondaryRgb: '46, 168, 213', displayName: '豆包'      },
+  openai:   { primary: '#10A37F', secondary: '#0D8A6A', primaryRgb: '16, 163, 127',  secondaryRgb: '13, 138, 106', displayName: 'OpenAI'   },
+};
+
+export const DEFAULT_THEME: CardTheme = {
+  primary: '#667eea', secondary: '#764ba2', primaryRgb: '102, 126, 234', secondaryRgb: '118, 75, 162', displayName: 'AI',
+};
+
+export function getProviderTheme(provider: string): CardTheme {
+  const normalized = provider.toLowerCase();
+  return PROVIDER_THEMES[normalized] ?? DEFAULT_THEME;
+}
+
+export function getCardStyles({ primary, secondary, primaryRgb, secondaryRgb }: CardTheme): string {
+  // Note: displayName is not used here — it is injected as data-provider attribute on the
+  // container element in CardRenderer, then referenced via content: attr(data-provider)
+  // for the watermark pseudo-element.
+  return `
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  
+
   body {
     font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
     margin: 0;
@@ -10,21 +39,42 @@ export const cardStyles = `
     background: transparent;
     min-height: 100vh;
   }
-  
+
   .container {
-    background: #667eea;
+    background: ${primary};
     border-radius: 24px;
     padding: 24px;
     padding-bottom: 0;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     width: 800px;
     box-sizing: border-box;
+    position: relative;
+    overflow: hidden;
+  }
+  .container::before {
+    content: attr(data-provider);
+    position: absolute;
+    font-size: 72px;
+    font-weight: 900;
+    color: #fff;
+    opacity: 0.13;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    letter-spacing: 0.06em;
+    pointer-events: none;
+    z-index: 0;
+    user-select: none;
+    line-height: 1;
   }
   .card-inner {
     background: white;
     border-radius: 16px;
     padding: 35px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    position: relative;
+    z-index: 1;
   }
   .container > .card-inner + .card-inner {
     margin-top: 24px;
@@ -45,7 +95,7 @@ export const cardStyles = `
     color: #2c3e50;
   }
   .q-icon {
-    background: linear-gradient(135deg, #667eea, #764ba2);
+    background: linear-gradient(135deg, ${primary}, ${secondary});
     color: white;
     width: 36px;
     height: 36px;
@@ -57,14 +107,14 @@ export const cardStyles = `
     margin-right: 14px;
     flex-shrink: 0;
     font-size: 16px;
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 4px 12px rgba(${primaryRgb}, 0.3);
   }
   .answer {
     display: flex;
     align-items: flex-start;
   }
   .a-icon {
-    background: linear-gradient(135deg, #764ba2, #667eea);
+    background: linear-gradient(135deg, ${secondary}, ${primary});
     color: white;
     width: 36px;
     height: 36px;
@@ -76,7 +126,7 @@ export const cardStyles = `
     margin-right: 14px;
     flex-shrink: 0;
     font-size: 16px;
-    box-shadow: 0 4px 12px rgba(118, 75, 162, 0.3);
+    box-shadow: 0 4px 12px rgba(${secondaryRgb}, 0.3);
   }
   .answer-content {
     line-height: 1.9;
@@ -115,7 +165,7 @@ export const cardStyles = `
     font-size: 24px;
     padding-bottom: 12px;
     border-bottom: 3px solid;
-    border-image: linear-gradient(90deg, #667eea, #764ba2) 1;
+    border-image: linear-gradient(90deg, ${primary}, ${secondary}) 1;
   }
   .styled-list {
     list-style: none;
@@ -131,7 +181,7 @@ export const cardStyles = `
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   }
   .styled-list .number {
-    background: linear-gradient(135deg, #667eea, #764ba2);
+    background: linear-gradient(135deg, ${primary}, ${secondary});
     color: white;
     min-width: 32px;
     height: 32px;
@@ -143,7 +193,7 @@ export const cardStyles = `
     font-size: 15px;
     margin-right: 14px;
     flex-shrink: 0;
-    box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 3px 10px rgba(${primaryRgb}, 0.3);
   }
   .styled-list li span:last-child {
     line-height: 1.7;
@@ -515,9 +565,9 @@ export const cardStyles = `
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
   }
   .stat-item.highlight {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, ${primary} 0%, ${secondary} 100%);
     color: white;
-    box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 8px 24px rgba(${primaryRgb}, 0.4);
   }
   .stat-value {
     font-size: 36px;
@@ -631,13 +681,13 @@ export const cardStyles = `
     color: #2c3e50;
   }
   strong {
-    color: #667eea;
+    color: ${primary};
     font-weight: 700;
   }
   em {
-    color: #764ba2;
+    color: ${secondary};
     font-style: normal;
-    background: rgba(118, 75, 162, 0.1);
+    background: rgba(${secondaryRgb}, 0.1);
     padding: 3px 8px;
     border-radius: 4px;
     font-weight: 500;
@@ -771,17 +821,20 @@ export const cardStyles = `
   .answer-content thead th,
   .info-content thead th,
   .definition thead th {
-    background: linear-gradient(135deg, #667eea, #764ba2);
+    background: linear-gradient(135deg, ${primary}, ${secondary});
     color: white;
     font-weight: 600;
   }
   .footer {
     margin-top: 24px;
     padding: 16px 0;
-    border-top: 2px solid #fff;
+    border-top: 2px solid rgba(255, 255, 255, 0.4);
     text-align: center;
-    color: #fff;
+    color: rgba(255, 255, 255, 0.9);
     font-size: 13px;
+    position: relative;
+    z-index: 1;
+    letter-spacing: 0.04em;
   }
   .card-inner .footer {
     border-top-color: #e8e8e8;
@@ -805,3 +858,4 @@ export const cardStyles = `
     display: inline-block;
   }
 `;
+}
