@@ -1,10 +1,10 @@
-// Process-stage interceptor - allows plugins to handle messages before CommandSystem/TaskSystem
+// Process-stage interceptor - allows plugins to handle messages before CommandSystem/ReplySystem
 
 import type { HookContext } from '@/hooks/types';
 
 /**
  * Interceptor that can handle a message at the start of PROCESS stage.
- * When an interceptor handles a message, it sets context.reply and PROCESS-stage systems (CommandSystem, TaskSystem) are skipped.
+ * When an interceptor handles a message, it sets context.reply and PROCESS-stage systems (CommandSystem, ReplySystem) are skipped.
  */
 export interface ProcessStageInterceptor {
   /**

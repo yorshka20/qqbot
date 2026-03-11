@@ -56,7 +56,7 @@ export class ExplainImageTaskExecutor extends BaseTaskExecutor {
     const sessionId = hookContext.metadata.get('sessionId') as string | undefined;
     const userMessage = hookContext.message.message || '（无）';
 
-    // Extract images: prefer segments passed in task parameters (from TaskSystem when auto-injecting)
+    // Extract images: prefer segments passed in task parameters (from reply skill-loop auto-injecting)
     // to avoid context/message propagation issues. Fall back to extractImagesFromMessageAndReply.
     let images: VisionImage[] = [];
     try {

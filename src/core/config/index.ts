@@ -271,10 +271,10 @@ export class Config {
   }
 
   /**
-   * Whether to use native tool use for reply generation (default: true).
+   * Whether to use skills for reply generation (default: true).
    */
-  getUseToolUse(): boolean {
-    return this.config.ai?.useToolUse !== false;
+  getUseSkills(): boolean {
+    return this.config.ai?.useSkills !== false;
   }
 
   /**

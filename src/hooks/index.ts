@@ -17,7 +17,7 @@ export type { HookContext, HookHandler, HookRegistration, HookResult } from './t
 /**
  * Combined PluginHooks interface
  * Note: AIHooks are now part of TaskHooks since AI is used as a task executor.
- * AIHooks is kept for backward compatibility but hooks are registered via TaskSystem.
+ * AIHooks is kept for backward compatibility but hooks are registered via reply orchestration.
  */
 export interface PluginHooks extends MessageHooks, CommandHooks, TaskHooks, AIHooks {
   /**

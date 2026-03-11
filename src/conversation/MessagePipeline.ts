@@ -71,7 +71,7 @@ export class MessagePipeline {
   }
 
   /**
-   * Reply-only path: run only PROCESS (TaskSystem, AI reply) then handleReply (send).
+   * Reply-only path: run only PROCESS (ReplySystem, AI reply) then handleReply (send).
    * For replying to existing/historical message; does not cache message, RECEIVE, or Preprocess; no command routing.
    */
   async processReplyOnly(

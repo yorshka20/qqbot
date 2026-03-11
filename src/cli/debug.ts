@@ -370,7 +370,7 @@ class DebugCLI {
     if (atBot) {
       this.printInfo('  (@bot mentioned)');
     }
-    this.printTaskAnalyzerHint(message);
+    this.printSkillLoopHint(message);
 
     // Process message
     if (!this.conversationManager) {
@@ -403,43 +403,17 @@ class DebugCLI {
     }
   }
 
-  private printTaskAnalyzerHint(message: string): void {
-    if (!this.taskManager) {
-      return;
-    }
-
+  private printSkillLoopHint(message: string): void {
     const trimmed = message.trim();
     if (!trimmed) {
       return;
     }
 
     if (trimmed.startsWith('/') || trimmed.startsWith('!')) {
-      this.printInfo('[TaskSystem] Command-like input detected, TaskSystem will skip task analysis.');
+      this.printInfo('[ReplySystem] Command-like input detected, ReplySystem will skip AI reply generation.');
       return;
     }
-
-    const taskTypes = this.taskManager.getAllTaskTypes();
-    const messageLower = trimmed.toLowerCase();
-    const matchedKeywords: string[] = [];
-
-    for (const taskType of taskTypes) {
-      if (taskType.name.toLowerCase() === 'reply') {
-        continue;
-      }
-      const keywords = taskType.triggerKeywords ?? [];
-      for (const keyword of keywords) {
-        if (messageLower.includes(keyword.toLowerCase())) {
-          matchedKeywords.push(keyword);
-        }
-      }
-    }
-
-    if (matchedKeywords.length === 0) {
-      this.printInfo('[TaskSystem] No task trigger keyword matched, TaskAnalyzer will not run for this message.');
-      return;
-    }
-
-    this.printInfo(`[TaskSystem] Trigger keywords matched: ${[...new Set(matchedKeywords)].join(', ')}`);
+    this.printInfo('[ReplySystem] Message will enter unified skill-loop reply flow.');
   }
 
   private registerDebugCoreServices(retrievalService: RetrievalService, healthCheckManager: HealthCheckManager): void {

@@ -40,6 +40,16 @@ const getWeatherTaskType: TaskType = {
   examples: ['北京天气', '上海天气怎么样'],
 };
 
+/** Task type with no required params, used to test invalid JSON fallback (executor still runs with {}). */
+const optionalOnlyTaskType: TaskType = {
+  name: 'optional_only',
+  description: 'Optional params only.',
+  executor: 'optional_only',
+  parameters: {
+    foo: { type: 'string', required: false, description: 'Optional' },
+  },
+};
+
 function makeHookContext(messageText: string): HookContext {
   const metadata = new HookMetadataMap();
   return {
@@ -131,7 +141,7 @@ describe('replyTools', () => {
     it('returns fallback when tools is empty and nativeWebSearchEnabled is false', () => {
       const taskManager = { getAllTaskTypes: (): TaskType[] => [] } as unknown as TaskManager;
       const text = buildToolUsageInstructions(taskManager, [], { nativeWebSearchEnabled: false });
-      expect(text).toContain('当前没有可用工具');
+      expect(text).toContain('当前没有可用技能');
       expect(text).not.toContain('内建搜索');
     });
 
@@ -154,7 +164,7 @@ describe('replyTools', () => {
       expect(text).toContain('When user asks about weather.');
       expect(text).toContain('示例');
       expect(text).toContain('北京天气');
-      expect(text).toContain('可用工具列表');
+      expect(text).toContain('可用技能列表');
     });
   });
 
@@ -187,6 +197,7 @@ describe('replyTools', () => {
 
       expect(executed.length).toBe(1);
       expect(executed[0].task.type).toBe('get_weather');
+      expect(executed[0].task.executor).toBe('get_weather');
       expect(executed[0].task.parameters).toEqual({ city: '北京' });
       expect(result).toEqual({ temperature: 22, city: '北京' });
     });
@@ -223,7 +234,33 @@ describe('replyTools', () => {
 
       await expect(
         executeToolCall({ name: 'nonexistent', arguments: '{}' }, ctx, taskManager, hookManager),
-      ).rejects.toThrow('Task type not found for tool: nonexistent');
+      ).rejects.toThrow('Task type not found for skill: nonexistent');
+    });
+
+    it('uses empty object for parameters when arguments JSON is invalid', async () => {
+      const executed: { task: Task }[] = [];
+      const taskManager = new TaskManager();
+      taskManager.registerTaskType(optionalOnlyTaskType);
+      taskManager.registerExecutor({
+        name: 'optional_only',
+        execute: async (task: Task): Promise<TaskResult> => {
+          executed.push({ task });
+          return { success: true, reply: 'OK', data: {} };
+        },
+      });
+
+      const hookManager = { execute: async () => true } as never;
+      const ctx = makeHookContext('');
+
+      await executeToolCall(
+        { name: 'optional_only', arguments: 'not valid json' },
+        ctx,
+        taskManager,
+        hookManager,
+      );
+
+      expect(executed.length).toBe(1);
+      expect(executed[0].task.parameters).toEqual({});
     });
   });
 });

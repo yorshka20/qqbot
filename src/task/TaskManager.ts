@@ -193,7 +193,7 @@ export class TaskManager {
     }
 
     // Hook: onTaskBeforeExecute (if hook manager available)
-    // Note: onTaskAnalyzed hook should be called by TaskSystem before calling execute
+    // Note: onTaskAnalyzed hook should be called by orchestration layer before calling execute
     const shouldExecute = await hookManager.execute('onTaskBeforeExecute', hookContext);
     if (!shouldExecute) {
       return {

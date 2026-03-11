@@ -265,6 +265,8 @@
   // AI configuration (optional)
   // If not configured, AI capabilities will not be available
   "ai": {
+    // Enable unified reply skill-loop (single LLM call with multi-round tool execution)
+    "useSkills": true,
     // Default providers by capability (optional)
     "defaultProviders": {
       "llm": "ollama", // Default LLM provider

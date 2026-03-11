@@ -47,7 +47,7 @@ import {
 import { CommandSystem } from './systems/CommandSystem';
 import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
 import { RAGPersistenceSystem } from './systems/RAGPersistenceSystem';
-import { TaskSystem } from './systems/TaskSystem';
+import { ReplySystem } from './systems/ReplySystem';
 import { ThreadContextCompressionService, ThreadService } from './thread';
 
 export interface ConversationComponents {
@@ -181,10 +181,13 @@ export class ConversationInitializer {
     );
     serviceRegistry.registerAIServiceCapabilities(aiService);
 
-    // TaskSystem must exist before ProactiveConversationService is resolved from DI.
-    const useToolUse = config.getUseToolUse();
-    const taskSystem = new TaskSystem(services.taskManager, services.hookManager, aiService, useToolUse);
-    container.registerInstance(DITokens.TASK_SYSTEM, taskSystem);
+    // ReplySystem must exist before ProactiveConversationService is resolved from DI.
+    const useSkills = config.getUseSkills();
+    if (!useSkills) {
+      logger.warn('[ConversationInitializer] ai.useSkills=false is no longer supported; forcing skill-loop reply flow');
+    }
+    const replySystem = new ReplySystem(aiService);
+    container.registerInstance(DITokens.REPLY_SYSTEM, replySystem);
 
     // ProactiveConversationService and its dependencies are assembled via container resolution.
     ConversationInitializer.configureProactiveConversationService(container);
@@ -488,9 +491,9 @@ export class ConversationInitializer {
       return new CommandSystem(services.commandManager, services.hookManager);
     });
 
-    // TaskSystem was pre-created before proactive service resolution.
-    const taskSystem = container.resolve<TaskSystem>(DITokens.TASK_SYSTEM);
-    systemRegistry.registerSystemFactory('task', () => taskSystem);
+    // ReplySystem was pre-created before proactive service resolution.
+    const replySystem = container.resolve<ReplySystem>(DITokens.REPLY_SYSTEM);
+    systemRegistry.registerSystemFactory('reply', () => replySystem);
 
     systemRegistry.registerSystemFactory('database-persistence', () => {
       return new DatabasePersistenceSystem(services.databaseManager);

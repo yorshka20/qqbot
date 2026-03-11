@@ -179,7 +179,7 @@ export class Lifecycle {
   /**
    * Stage 3: PROCESS
    * Main processing: command execution, task analysis, AI generation
-   * Runs process-stage interceptors first; if any handles the message, skip CommandSystem/TaskSystem
+   * Runs process-stage interceptors first; if any handles the message, skip CommandSystem/ReplySystem
    */
   private async executeStageProcess(context: HookContext, messageId: string): Promise<boolean> {
     logger.debug(`[Lifecycle] 🟦[3] Stage: PROCESS`);
@@ -198,7 +198,7 @@ export class Lifecycle {
       }
     }
 
-    // Execute systems (CommandSystem, TaskSystem, etc.)
+    // Execute systems (CommandSystem, ReplySystem, etc.)
     return await this.executeSystems(SystemStage.PROCESS, context, messageId);
   }
 

@@ -29,12 +29,11 @@ import { QdrantClient } from '@/services/retrieval';
 import type { TaskManager } from '@/task/TaskManager';
 import type { TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
-import { type FetchProgressNotifier, MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import type { VisionImage } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
 import { PromptMessageAssembler } from '../prompt/PromptMessageAssembler';
 import type { ProviderRouter } from '../routing/ProviderRouter';
-import { buildToolUsageInstructions, executeToolCall, getReplyToolDefinitions } from '../tools/replyTools';
+import { buildSkillUsageInstructions, executeSkillCall, getReplySkillDefinitions } from '../tools/replyTools';
 import type { AIGenerateResponse, ChatMessage, ContentPart } from '../types';
 import { formatRAGConversationContext } from '../utils/formatRAGConversationContext';
 import {
@@ -50,23 +49,18 @@ import type { VisionService } from './VisionService';
  * Reply Generation Service
  * Provides AI reply generation capabilities including basic replies, vision support, and task-based replies.
  *
- * Reply paths (all non-NSFW use optional multi-round search via RetrievalService.performRecursiveSearchRefined):
- * - generateReplyFromTaskResults: main entry (TaskSystem / ReplyTaskExecutor); when message has images uses vision provider, else default LLM.
+ * Reply paths:
+ * - generateReplyFromTaskResults: main entry (ReplySystem / ReplyTaskExecutor); when message has images uses vision provider, else default LLM.
  * - generateNsfwReply: no search (fixed NSFW prompt only).
  */
 /** Normal mode: max history entries in prompt (stable size for cache hit). Excludes current user message; when exceeded, oldest are summarized. Initial context window (10 min) is defined in NormalEpisodeService.CONTEXT_WINDOW_MS. */
 const NORMAL_MAX_HISTORY_ENTRIES = 24;
 
 export class ReplyGenerationService {
-  private readonly MAX_SEARCH_ITERATIONS = 5;
-
   private static readonly RAG_LIMIT = 5;
   private static readonly RAG_MIN_SCORE = 0.5;
 
   private config: Config;
-
-  /** Single FetchProgressNotifier instance for reply flow; setMessageEvent() before each search. */
-  private fetchProgressNotifier: FetchProgressNotifier;
 
   private readonly episodeService = new NormalEpisodeService();
   private readonly messageAssembler = new PromptMessageAssembler();
@@ -88,7 +82,6 @@ export class ReplyGenerationService {
     private databaseManager: DatabaseManager,
     private taskManager: TaskManager,
   ) {
-    this.fetchProgressNotifier = new MessageSendFetchProgressNotifier(messageAPI);
     this.config = getContainer().resolve<Config>(DITokens.CONFIG);
   }
 
@@ -261,11 +254,11 @@ export class ReplyGenerationService {
   }
 
   /**
-   * Generate reply from task results (unified entry for TaskSystem / ReplyTaskExecutor).
+   * Generate reply from task results (unified entry for ReplySystem / ReplyTaskExecutor).
    * When message (or referenced message) has images, uses vision-capable provider; else default LLM.
    *
    * @param context - Hook context containing message and conversation history
-   * @param taskResults - Task execution results (empty Map if no tasks)
+   * @param taskResults - Skill/task execution results (empty Map if no pre-executed tasks)
    */
   async generateReplyFromTaskResults(context: HookContext, taskResults: Map<string, TaskResult>): Promise<void> {
     // Hook: onMessageBeforeAI
@@ -327,30 +320,12 @@ export class ReplyGenerationService {
       // 2. Build task results summary
       const taskResultsSummary = this.buildTaskResultsSummary(taskResults);
 
-      // 3. Optional recursive search (outsourced to RetrievalService: multi-round decision + filter-refine + optional page fetch).
-      // Use stripped user message (no provider prefix): e.g. "claude 北京天气" -> "北京天气" so the search-decision LLM sees the actual question and can decide to search (instead of "claude ..." which may be interpreted as non-searchable).
-      const { providerName: routedProviderName, userMessage: messageForSearch } = this.providerRouter.routeReplyInput(
-        context.message.message ?? '',
-      );
-
-      let accumulatedSearchResults = '';
-      const nativeWebSearchEnabled = await this.supportsNativeWebSearch(routedProviderName, sessionId);
-      if (this.retrievalService?.isSearchEnabled() && !nativeWebSearchEnabled) {
-        this.fetchProgressNotifier.setMessageEvent(context.message);
-        accumulatedSearchResults = await this.retrievalService.performRecursiveSearchRefined(
-          messageForSearch,
-          this.llmService,
-          sessionId,
-          this.MAX_SEARCH_ITERATIONS,
-          this.fetchProgressNotifier,
-        );
-      }
-
-      // 4. Generate final reply (vision provider when message has images, else default LLM)
+      // 3. Generate final reply (vision provider when message has images, else default LLM).
+      // Search/fetch/RAG/memory decisions are handled inside the same skill loop.
       await this.generateReplyWithTaskResults(
         context,
         taskResultsSummary,
-        accumulatedSearchResults,
+        '',
         sessionId,
         messageImages,
         taskResultImages,
@@ -665,7 +640,7 @@ export class ReplyGenerationService {
    *
    * @param context - Hook context
    * @param taskResultsSummary - Optional summary of task results (e.g. readFile). Injected as taskResults segment (may be empty).
-   * @param searchResultsText - Refined search text from RetrievalService.performRecursiveSearchRefined (may be empty)
+   * @param searchResultsText - Optional pre-injected search text (kept for compatibility; normally empty in skill-loop flow)
    * @param sessionId - Session ID
    * @param messageImages - Images from user message (and referenced message). When non-empty, reply is generated via vision provider.
    * @param taskResultImages - Base64 images from task results (data.imageBase64), appended to reply
@@ -705,10 +680,10 @@ export class ReplyGenerationService {
     const toolDefinitions =
       useVisionProvider && !canUseVisionToolUse
         ? []
-        : getReplyToolDefinitions(this.taskManager, { nativeWebSearchEnabled: effectiveNativeSearchEnabled });
+        : getReplySkillDefinitions(this.taskManager, { nativeWebSearchEnabled: effectiveNativeSearchEnabled });
 
-    // Step 5: Tool usage instructions for prompt
-    const toolUsageInstructions = buildToolUsageInstructions(this.taskManager, toolDefinitions, {
+    // Step 5: Skill usage instructions for prompt
+    const toolUsageInstructions = buildSkillUsageInstructions(this.taskManager, toolDefinitions, {
       nativeWebSearchEnabled: effectiveNativeSearchEnabled,
     });
     const built = await this.buildReplyMessages(
@@ -743,7 +718,7 @@ export class ReplyGenerationService {
 
     let response: AIGenerateResponse;
     const toolExecutor = (call: { name: string; arguments: string }) =>
-      executeToolCall(call, context, this.taskManager, this.hookManager);
+      executeSkillCall(call, context, this.taskManager, this.hookManager);
 
     if (useVisionProvider) {
       if (canUseVisionToolUse && toolDefinitions.length > 0) {

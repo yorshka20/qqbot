@@ -44,9 +44,9 @@ qqbot/
 ├── src/
 │   ├── core/           # Bot, config, connection management
 │   ├── protocol/       # Milky, OneBot11, Satori adapters
-│   ├── conversation/   # MessagePipeline, CommandRouter, TaskSystem, lifecycle
+│   ├── conversation/   # MessagePipeline, CommandRouter, ReplySystem, lifecycle
 │   ├── command/        # CommandManager, parsers, built-in handlers
-│   ├── task/           # TaskAnalyzer, TaskManager, executors
+│   ├── task/           # TaskManager, executors (runtime backend for skills)
 │   ├── ai/             # AIService, providers, prompt, card rendering
 │   ├── hooks/          # HookManager, AI/Command/Message/Task hooks
 │   ├── plugins/        # PluginManager, PluginBase, built-in plugins

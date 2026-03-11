@@ -2,7 +2,6 @@
 
 export * from './decorators';
 export * from './executors';
-export { TaskAnalyzer } from './TaskAnalyzer';
 export { TaskInitializer } from './TaskInitializer';
 export { TaskManager } from './TaskManager';
 export type {

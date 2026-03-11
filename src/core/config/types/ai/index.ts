@@ -45,10 +45,10 @@ export interface AIConfig {
   // Auto-switch configuration
   autoSwitch?: AutoSwitchConfig;
   /**
-   * Use native tool/function calling for reply generation (single LLM call with tools).
-   * When true (default), TaskSystem uses reply tool-use flow (ReplyGenerationService + replyTools); when false, uses legacy TaskAnalyzer + ReplyGenerationService.
+   * Use skills (native tool/function calling) for reply generation (single LLM call with tool loop).
+   * When true (default), ReplySystem uses ReplyGenerationService + skills to generate replies.
    */
-  useToolUse?: boolean;
+  useSkills?: boolean;
   /**
    * Provider and model for lightweight/fast LLM calls (e.g. prefix-invitation, analysis).
    * If omitted, lite callers fall back to default LLM and no model override.

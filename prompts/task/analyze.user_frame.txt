@@ -1,7 +1,0 @@
-## 当前用户消息
-{{userMessage}}
-
-## 输出要求
-只输出：
-ANSWER:
-{"tasks":[{"type":"...","parameters":{...}}],"suggestedProvider":"provider_name_or_empty"}

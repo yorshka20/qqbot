@@ -6,7 +6,7 @@ import type { HookContext, HookResult } from './types';
  * Task-related hooks
  * Note: AI-related hooks (onMessageBeforeAI, onAIGenerationStart, onAIGenerationComplete)
  * are also part of task execution, as AI is used as a task executor.
- * These hooks are registered by TaskSystem and triggered during task execution.
+ * These hooks are registered by reply/task orchestration and triggered during task execution.
  */
 export interface TaskHooks {
   /**
