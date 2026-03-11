@@ -385,16 +385,18 @@ export class MemoryDeepCommand implements CommandHandler {
   }
 }
 
-/** Delay before running restart script (ms), to allow reply to be sent first */
+/** Delay before triggering PM2 restart (ms), so the reply is sent first */
 const RESTART_DELAY_MS = 2000;
 
-/** Log file for restart script stdout/stderr when run via nohup */
-const RESTART_LOG = '/tmp/qqbot-restart.log';
+/** PM2 app names (must match ecosystem.config.cjs) */
+const PM2_APP_BOT = 'qq-bot';
+const PM2_APP_UI = 'qq-bot-ui';
 
 /**
- * Restart command: bot exits, then git pull + install + pm2 restart via start.sh.
- * Spawns the restart script in a new session (nohup) so it keeps running after
- * this process is killed by "pm2 delete" inside start.sh.
+ * Restart command: ask PM2 to restart qq-bot (and qq-bot-ui) via two-level spawn.
+ * Spawns scripts/pm2-restart-helper.cjs (detached), which runs "pm2 restart ... --no-treekill".
+ * So the process that runs pm2 is not the direct child of this process, and is not killed
+ * when PM2 restarts us. Ecosystem has treekill: false so the helper is not killed either.
  * Requires admin or owner permission.
  */
 @Command({
@@ -413,31 +415,22 @@ export class RestartCommand implements CommandHandler {
     const messageBuilder = new MessageBuilder();
     messageBuilder.text(`正在拉取代码并重启...`);
 
-    const scriptPath = path.join(process.cwd(), 'start.sh');
-    const delaySec = RESTART_DELAY_MS / 1000;
-    const env = {
-      ...process.env,
-      RESTART_SCRIPT: scriptPath,
-      RESTART_DELAY_S: String(delaySec),
-    };
-
     setTimeout(() => {
-      // Run restart in nohup so it survives when this process is killed by pm2 delete.
-      // Inner bash is reparented to init when our child (outer bash) is killed.
-      const child = spawn(
-        'bash',
-        ['-c', 'nohup bash -c "sleep $RESTART_DELAY_S; \\"$RESTART_SCRIPT\\"" </dev/null >>"$RESTART_LOG" 2>&1 &'],
-        {
-          env: { ...env, RESTART_LOG },
-          cwd: process.cwd(),
-          detached: true,
-          stdio: 'ignore',
-        },
-      );
+      const helperPath = path.join(process.cwd(), 'scripts', 'pm2-restart-helper.cjs');
+      const restartAppNames = `${PM2_APP_BOT},${PM2_APP_UI}`;
+      const child = spawn(process.execPath, [helperPath], {
+        env: { ...process.env, RESTART_APP_NAMES: restartAppNames },
+        cwd: process.cwd(),
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.on('error', (err) => {
+        logger.error('[RestartCommand] failed to spawn restart helper: %s', err.message);
+      });
       child.unref();
       logger.info(
-        '[RestartCommand] spawned nohup restart script (delay %ds then start.sh); bot will exit when pm2 delete runs',
-        delaySec,
+        '[RestartCommand] triggered pm2 restart via helper (apps: %s); this process will exit when PM2 restarts',
+        restartAppNames,
       );
     }, RESTART_DELAY_MS);
 

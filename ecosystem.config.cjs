@@ -10,9 +10,9 @@ module.exports = {
       cwd: path.resolve(__dirname),
       cron_restart: '0 */6 * * *',
       autorestart: true,
-      // On each start/restart: script runs git pull, bun install, then starts bot (remote fix → retry picks up)
       restart_delay: 60000,
       max_restarts: 999999,
+      treekill: false,
       env: {
         LOG_LEVEL: 'debug',
         NODE_ENV: 'development',
@@ -27,6 +27,7 @@ module.exports = {
       autorestart: true,
       restart_delay: 60000,
       max_restarts: 999999,
+      treekill: false,
       env: {
         NODE_ENV: 'development',
       },
