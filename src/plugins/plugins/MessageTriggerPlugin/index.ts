@@ -184,15 +184,13 @@ export class MessageTriggerPlugin extends PluginBase {
     const allowed = replyTrigger === 'reaction' || isAtBot || isWakeWord || isProviderNameTrigger;
 
     // --- SubAgent triggers ---
-    // Runs AFTER the reply gate decision so we know whether the bot will reply (botWillReply = allowed).
+    // Mutual exclusion with normal reply pipeline: proactive trigger (isAtBot/wakeWord/providerName)
+    // takes priority — when it fires, same-group subagent rules are skipped.
+    // When no proactive trigger fires, subagent rules are checked independently by keyword.
+    // Cross-group rules always fire regardless.
     //
     // Whitelist guard: whitelistDenied means this group is not bot-enabled.
     //   Never spawn subagents in non-whitelisted groups to prevent unexpected activity.
-    //   WhitelistPlugin sets this flag at onMessageReceived (before onMessagePreprocess), so it is
-    //   already available here.
-    //
-    // Mutual exclusion: when botWillReply=true, same-group rules are skipped inside the handler.
-    //   Cross-group rules (rule.targetGroupId → a different group) always fire regardless.
     const isWhitelistDenied = !!context.metadata.get('whitelistDenied');
     if (this.subAgentTriggerHandler && groupId && !isWhitelistDenied) {
       const spawned = this.subAgentTriggerHandler.handleMessage(message, allowed);

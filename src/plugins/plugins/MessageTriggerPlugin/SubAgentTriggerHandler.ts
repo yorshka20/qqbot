@@ -21,7 +21,7 @@ const TEMPLATE_NS = 'subagent';
  * Handles the full lifecycle of a keyword-triggered background subagent:
  *   1. Keyword matching via prompts/subagent/{presetKey}/keywords.txt
  *   2. Per-rule per-group cooldown enforcement
- *   3. Cross-group and reply-gate mutual exclusion via botWillReply flag
+ *   3. Keyword match independent of normal reply pipeline
  *   4. Notification message sent to target group before spawning
  *   5. Cancellation tracking: reaction on the notification → cancel before result delivery
  *   6. Task construction from prompts/subagent/{presetKey}/task.txt (renders {{message}})
@@ -67,15 +67,22 @@ export class SubAgentTriggerHandler {
    * Check all rules against the incoming message.
    * For each matching (and not-cooled-down) rule, spawn a subagent in the background.
    *
-   * @param event - The incoming message event.
-   * @param botWillReply - Whether the normal reply pipeline will also fire for this message.
-   *   When true, rules that target the same group are skipped to avoid doubling up.
-   *   Rules with an explicit targetGroupId pointing to a *different* group always fire
-   *   (they are cross-group monitor/relay rules, independent of the current group's reply).
+   * Mutual exclusion: proactive trigger words and subagent keywords are mutually exclusive
+   * per message per group. When the normal reply pipeline will fire (proactive trigger matched),
+   * same-group subagent rules are skipped — proactive takes priority.
+   * Cross-group rules always fire regardless of proactiveTrigger.
    *
+   * This means:
+   *   - Only proactive trigger matches  → proactive reply fires, subagent skipped
+   *   - Only subagent keyword matches   → subagent fires, no proactive reply
+   *   - Both match                      → proactive wins, subagent skipped
+   *
+   * @param event - The incoming message event.
+   * @param proactiveTrigger - Whether the normal reply pipeline will fire for this message
+   *   (i.e. @bot, wake word, providerName, or reaction matched).
    * @returns The number of subagents spawned.
    */
-  handleMessage(event: NormalizedMessageEvent, botWillReply: boolean): number {
+  handleMessage(event: NormalizedMessageEvent, proactiveTrigger: boolean): number {
     const lowerText = event.message.toLowerCase();
     const groupId = event.groupId?.toString() ?? '';
     let spawned = 0;
@@ -84,12 +91,11 @@ export class SubAgentTriggerHandler {
       const rule = this.rules[i];
       if (!groupId) continue; // subagent results must go somewhere
 
-      // Cross-group rules (targetGroupId → different group) fire regardless of botWillReply.
-      // Same-group rules are skipped when the bot will already reply to this message.
+      // Cross-group rules always fire; same-group rules are skipped when proactive trigger fires.
       const isCrossGroup = rule.targetGroupId !== undefined && rule.targetGroupId !== groupId;
-      if (botWillReply && !isCrossGroup) {
+      if (proactiveTrigger && !isCrossGroup) {
         logger.debug(
-          `[SubAgentTriggerHandler] Rule ${i} (${rule.presetKey}) skipped — bot will reply in group ${groupId}`,
+          `[SubAgentTriggerHandler] Rule ${i} (${rule.presetKey}) skipped — proactive trigger fired in group ${groupId}`,
         );
         continue;
       }

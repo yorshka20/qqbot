@@ -79,6 +79,96 @@ describe('MessageTriggerPlugin', () => {
     getContainer().clear();
   });
 
+  /** Helper to init plugin with subagent trigger support. Returns mocked sendFromContext calls. */
+  async function initPluginWithSubAgent(opts: {
+    wakeWords?: string[];
+    preferenceKeys?: string[];
+    preferenceWord?: string;
+    subAgentKeyword: string;
+  }) {
+    const container = getContainer();
+    const promptManager = new PromptManager();
+
+    // Register subagent keyword template
+    promptManager.registerTemplate({
+      name: 'subagent.test_agent.keywords',
+      namespace: 'subagent.test_agent',
+      content: opts.subAgentKeyword,
+    });
+    promptManager.registerTemplate({
+      name: 'subagent.test_agent.task',
+      namespace: 'subagent.test_agent',
+      content: 'Task: {{message}}',
+    });
+
+    // Register preference trigger template if provided
+    if (opts.preferenceWord) {
+      promptManager.registerTemplate({
+        name: 'pref.trigger',
+        namespace: 'preference',
+        content: opts.preferenceWord,
+      });
+    }
+
+    const sentMessages: string[] = [];
+    const mockMessageAPI = {
+      sendFromContext: async (segments: unknown) => {
+        const text = (segments as Array<{ data?: { text?: string } }>)[0]?.data?.text ?? '';
+        sentMessages.push(text);
+        return { message_seq: 999, message_id: 999 };
+      },
+      sendForwardFromContext: async () => ({ message_seq: 0, message_id: 0 }),
+    };
+
+    container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
+    container.registerInstance(
+      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+      {
+        getGroupPreferenceKeys: (gid: string) =>
+          gid === '1' && opts.preferenceKeys ? opts.preferenceKeys : [],
+      },
+      { allowOverride: true },
+    );
+    container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
+    container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
+    container.registerInstance(
+      DITokens.CONFIG,
+      {
+        getAIConfig: () => undefined,
+        getEnabledProtocols: () => [{ name: 'milky' }],
+        getBotUserId: () => 123,
+        getPluginConfig: () => undefined,
+      },
+      { allowOverride: true },
+    );
+    container.registerInstance(
+      DITokens.AI_SERVICE,
+      { runSubAgent: async () => 'result', processReplyMaybeCard: async () => null },
+      { allowOverride: true },
+    );
+    container.registerInstance(DITokens.MESSAGE_API, mockMessageAPI, { allowOverride: true });
+    container.registerInstance(
+      DITokens.CONVERSATION_CONFIG_SERVICE,
+      { getUseForwardMsg: async () => false },
+      { allowOverride: true },
+    );
+
+    const plugin = new MessageTriggerPlugin({ name: 'messageTrigger', version: 'test', description: 'test' });
+    plugin.loadConfig(
+      { api: {} as never, events: {} as never },
+      {
+        name: 'messageTrigger',
+        enabled: true,
+        config: {
+          wakeWords: opts.wakeWords,
+          subAgentTriggers: [{ presetKey: 'test_agent', cooldownMs: 0 }],
+        },
+      },
+    );
+    await plugin.onInit?.();
+    return { plugin, sentMessages };
+  }
+
   async function initPlugin(config: { wakeWords?: string[] } = {}) {
     const container = getContainer();
     const promptManager = new PromptManager();
@@ -346,6 +436,73 @@ describe('MessageTriggerPlugin', () => {
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
     expect(context.metadata.get('replyTriggerType')).toBe('wakeWordConfig');
     expect(context.metadata.get('inProactiveThread')).toBe(true);
+  });
+
+  // --- SubAgent trigger tests ---
+
+  it('subagent keyword fires subagent when no proactive trigger (postProcessOnly set, notification sent)', async () => {
+    const { plugin, sentMessages } = await initPluginWithSubAgent({ subAgentKeyword: 'help_keyword' });
+    const context = makeHookContext({ messageText: 'please help_keyword with this', groupId: 1 });
+    await plugin.onMessagePreprocess(context);
+
+    // Normal reply pipeline should NOT fire
+    expect(context.metadata.get('postProcessOnly')).toBe(true);
+    expect(context.metadata.get('replyTriggerType')).toBeUndefined();
+
+    // Give fire-and-forget a tick to send the notification
+    await new Promise((r) => setTimeout(r, 10));
+    expect(sentMessages.some((m) => m.includes('test_agent') || m.includes('⏳'))).toBe(true);
+  });
+
+  it('proactive trigger wins: subagent is skipped when wakeWord fires (mutual exclusion)', async () => {
+    const { plugin, sentMessages } = await initPluginWithSubAgent({
+      wakeWords: ['wakebot'],
+      subAgentKeyword: 'help_keyword',
+    });
+    // Message matches both wakeWord and subagent keyword
+    const context = makeHookContext({ messageText: 'wakebot help_keyword please', groupId: 1 });
+    await plugin.onMessagePreprocess(context);
+
+    // Normal reply pipeline fires
+    expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+    expect(context.metadata.get('replyTriggerType')).toBe('wakeWordConfig');
+
+    await new Promise((r) => setTimeout(r, 10));
+    // Subagent notification should NOT have been sent
+    expect(sentMessages.some((m) => m.includes('⏳'))).toBe(false);
+  });
+
+  it('proactive preference trigger wins over subagent keyword (mutual exclusion)', async () => {
+    const { plugin, sentMessages } = await initPluginWithSubAgent({
+      preferenceKeys: ['pref'],
+      preferenceWord: 'prefword',
+      subAgentKeyword: 'help_keyword',
+    });
+    const context = makeHookContext({ messageText: 'prefword help_keyword', groupId: 1 });
+    await plugin.onMessagePreprocess(context);
+
+    expect(context.metadata.get('replyTriggerType')).toBe('wakeWordPreference');
+    await new Promise((r) => setTimeout(r, 10));
+    expect(sentMessages.some((m) => m.includes('⏳'))).toBe(false);
+  });
+
+  it('subagent is skipped when whitelistDenied (non-whitelisted group)', async () => {
+    const { plugin, sentMessages } = await initPluginWithSubAgent({ subAgentKeyword: 'help_keyword' });
+    const context = makeHookContext({ messageText: 'help_keyword please', groupId: 1 });
+    context.metadata.set('whitelistDenied', true);
+    await plugin.onMessagePreprocess(context);
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(sentMessages.some((m) => m.includes('⏳'))).toBe(false);
+  });
+
+  it('subagent keyword does not fire when keyword not in message', async () => {
+    const { plugin, sentMessages } = await initPluginWithSubAgent({ subAgentKeyword: 'help_keyword' });
+    const context = makeHookContext({ messageText: 'unrelated message', groupId: 1 });
+    await plugin.onMessagePreprocess(context);
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(sentMessages.some((m) => m.includes('⏳'))).toBe(false);
   });
 
   it('sets postProcessOnly when prefix-invitation check says no reply (provider-name trigger)', async () => {
