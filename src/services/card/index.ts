@@ -8,7 +8,7 @@ export {
   getCardDeckNoteForPrompt,
   getCardTypeSpecForPrompt,
 } from './cardPromptSpec';
-export { cardStyles } from './cardStyles';
+export { getCardStyles } from './cardStyles';
 export {
   renderCard,
   renderCardDeck,
