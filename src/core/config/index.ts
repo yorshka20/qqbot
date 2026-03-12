@@ -6,7 +6,7 @@ import { extname, resolve } from 'path';
 import { ConfigError } from '@/utils/errors';
 // Import all config types
 import type { AIConfig, AIProviderCapability, ContextMemoryConfig, SessionProviderConfig } from './types/ai';
-import type { BotSelfConfig, FileReadServiceConfig, StaticServerConfig } from './types/bot';
+import type { BotSelfConfig, ClaudeCodeServiceConfig, FileReadServiceConfig, StaticServerConfig } from './types/bot';
 import type { DatabaseConfig } from './types/database';
 import type { MCPConfig } from './types/mcp';
 import type { MemoryConfig } from './types/memory';
@@ -38,7 +38,7 @@ export type {
   OpenRouterProviderConfig,
   SessionProviderConfig,
 } from './types/ai';
-export type { BotSelfConfig, StaticServerConfig } from './types/bot';
+export type { BotSelfConfig, ClaudeCodeServiceConfig, StaticServerConfig } from './types/bot';
 export type { LogLevel } from './types/const';
 export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './types/database';
 export type {
@@ -81,6 +81,7 @@ export interface BotConfig {
   rag?: RAGConfig;
   staticServer?: StaticServerConfig;
   fileReadService?: FileReadServiceConfig;
+  claudeCodeService?: ClaudeCodeServiceConfig;
 }
 
 export class Config {
@@ -340,5 +341,9 @@ export class Config {
 
   getFileReadServiceConfig(): FileReadServiceConfig | undefined {
     return this.config.fileReadService;
+  }
+
+  getClaudeCodeServiceConfig(): ClaudeCodeServiceConfig | undefined {
+    return this.config.claudeCodeService;
   }
 }

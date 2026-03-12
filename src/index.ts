@@ -14,6 +14,7 @@ import { EventInitializer } from './events/EventInitializer';
 import { PluginInitializer } from './plugins/PluginInitializer';
 import { ProtocolAdapterInitializer } from './protocol/ProtocolAdapterInitializer';
 import { MCPInitializer } from './services/mcp/MCPInitializer';
+import { ClaudeCodeInitializer } from './services/mcpServer';
 import { RetrievalService } from './services/retrieval';
 import { initStaticFileServer, stopStaticFileServer } from './services/staticServer';
 import { logger } from './utils/logger';
@@ -64,6 +65,9 @@ async function main() {
       await initStaticFileServer(staticServerConfig);
     }
 
+    // Initialize Claude Code service (if enabled)
+    const claudeCodeService = ClaudeCodeInitializer.initialize(config);
+
     // Initialize conversation components
     const conversationComponents = await ConversationInitializer.initialize(config, apiClient);
 
@@ -96,6 +100,14 @@ async function main() {
       MCPInitializer.updateRetrievalService(mcpSystem, retrievalService);
     }
 
+    // Start Claude Code service (after bot is started, before plugins)
+    if (claudeCodeService) {
+      await ClaudeCodeInitializer.start(claudeCodeService, apiClient);
+      // Update bot info
+      const protocols = config.getEnabledProtocols().map((p) => p.name);
+      ClaudeCodeInitializer.updateBotInfo(claudeCodeService, config.getConfig().bot.selfId, protocols);
+    }
+
     // Load plugins after bot is started
     await PluginInitializer.loadPlugins(config);
 
@@ -105,6 +117,7 @@ async function main() {
     process.on('SIGINT', async () => {
       logger.info('[Main] Received SIGINT, shutting down...');
       stopStaticFileServer();
+      await ClaudeCodeInitializer.stop(claudeCodeService);
       await bot.stop();
       eventRouter.destroy();
       await MCPInitializer.disconnectServers(mcpSystem);
@@ -115,6 +128,7 @@ async function main() {
     process.on('SIGTERM', async () => {
       logger.info('[Main] Received SIGTERM, shutting down...');
       stopStaticFileServer();
+      await ClaudeCodeInitializer.stop(claudeCodeService);
       await bot.stop();
       eventRouter.destroy();
       await MCPInitializer.disconnectServers(mcpSystem);

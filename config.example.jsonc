@@ -490,5 +490,24 @@
     "queryInstructionPrefix": "Instruct: Retrieve relevant conversation history\nQuery: ",
     "defaultVectorSize": 2560,
     "defaultDistance": "Cosine"
+  },
+  // Claude Code Service configuration (optional)
+  // Enables integration with Claude Code CLI for AI-powered task execution
+  // The service exposes an HTTP API that Claude Code can call to:
+  // - Notify the bot of task status
+  // - Send messages via the bot
+  // - Get bot status information
+  "claudeCodeService": {
+    "enabled": false,
+    "port": 9090,
+    "host": "127.0.0.1",
+    // Claude Code CLI path (default: 'claude')
+    "claudeCliPath": "claude",
+    // Working directory for Claude Code tasks
+    "workingDirectory": "./",
+    // Allowed user IDs that can trigger Claude Code tasks (empty = all admins allowed)
+    "allowedUsers": [],
+    // Max concurrent tasks (default: 1)
+    "maxConcurrentTasks": 1
   }
 }

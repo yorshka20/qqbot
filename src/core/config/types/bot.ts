@@ -20,3 +20,17 @@ export interface FileReadServiceConfig {
   filterPaths: string[];
   filterExtensions: string[];
 }
+
+export interface ClaudeCodeServiceConfig {
+  enabled: boolean;
+  port: number;
+  host?: string;
+  // Claude Code CLI path (default: 'claude')
+  claudeCliPath?: string;
+  // Working directory for Claude Code tasks
+  workingDirectory?: string;
+  // Allowed user IDs that can trigger Claude Code tasks (empty = all allowed)
+  allowedUsers?: string[];
+  // Max concurrent tasks (default: 1)
+  maxConcurrentTasks?: number;
+}

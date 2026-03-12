@@ -40,6 +40,7 @@ export const DITokens = {
   INTERNAL_EVENT_BUS: 'InternalEventBus',
   AGENDA_REPORTER: 'AgendaReporter',
   SCHEDULE_FILE_SERVICE: 'ScheduleFileService',
+  CLAUDE_CODE_SERVICE: 'ClaudeCodeService',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];
