@@ -81,5 +81,4 @@ export interface PromptTemplateVariables {
   mcpApiUrl: string;
   targetType: 'user' | 'group';
   targetId: string;
-  guidelines?: string;
 }

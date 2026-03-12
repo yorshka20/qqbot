@@ -60,11 +60,6 @@ curl -X POST {{mcpApiUrl}}/api/command \
 
 ## 任务要求
 
-{{#if guidelines}}
-### 特殊指导
-{{guidelines}}
-{{/if}}
-
 ### 你的任务
 
 {{userPrompt}}
