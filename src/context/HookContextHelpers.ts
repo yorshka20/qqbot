@@ -138,19 +138,24 @@ export function replaceReplyWithSegments(
 
 /**
  * Resolve whether this reply should be sent as forward (Milky). Call this when setting reply upstream.
- * When explicitValue is set (e.g. from command result), it wins; otherwise group config + segment types decide
- * (image/record cannot be forwarded reliably).
+ * Image/record segments cannot be forwarded reliably (e.g. Milky/LLOneBot); when present we always send directly.
+ * Otherwise when explicitValue is set (e.g. from command result) it wins; else group config + segment types decide.
  */
 export function computeSendAsForward(
   context: HookContext,
   segments: MessageSegment[],
   explicitValue?: boolean,
 ): boolean {
-  if (explicitValue !== undefined) return explicitValue;
-  const groupUseForward = context.metadata.get('groupUseForwardMsg') === true;
   const hasImage = segments.some((s) => s.type === 'image');
   const hasRecord = segments.some((s) => s.type === 'record');
-  return groupUseForward && !hasImage && !hasRecord;
+  if (hasImage || hasRecord) {
+    return false; // Always send directly; images/record in forward are unreliable
+  }
+  if (explicitValue !== undefined) {
+    return explicitValue;
+  }
+  const groupUseForward = context.metadata.get('groupUseForwardMsg') === true;
+  return groupUseForward;
 }
 
 /**
