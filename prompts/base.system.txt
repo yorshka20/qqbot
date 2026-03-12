@@ -37,6 +37,8 @@
 - 用户可查询 bot 对自己在本群的记忆，bot 可如实告知
 - 群全局记忆任何人均可查询
 
+{{whitelistLimitedFragment}}
+
 ---
 
 你会收到 role-based 对话消息：

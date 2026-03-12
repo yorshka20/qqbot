@@ -66,8 +66,7 @@ export class AgendaReporter {
       const failures = (content.match(/❌/g) ?? []).length;
       const total = successes + failures;
 
-      const summary =
-        `\n---\n*今日共执行 ${total} 次，成功 ${successes} 次，失败 ${failures} 次*\n`;
+      const summary = `\n---\n*今日共执行 ${total} 次，成功 ${successes} 次，失败 ${failures} 次*\n`;
 
       // Avoid duplicate summary lines
       if (content.includes('今日共执行')) return;
@@ -108,9 +107,7 @@ export class AgendaReporter {
 
     const intentSnippet = item.intent.length > 50 ? `${item.intent.slice(0, 50)}...` : item.intent;
 
-    const lines: string[] = [
-      `### ${time} ${icon} ${item.name}`,
-    ];
+    const lines: string[] = [`### ${time} ${icon} ${item.name}`];
 
     if (item.groupId) lines.push(`- **群**: ${item.groupId}`);
     if (item.userId) lines.push(`- **用户**: ${item.userId}`);

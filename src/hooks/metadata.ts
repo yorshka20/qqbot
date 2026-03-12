@@ -22,6 +22,8 @@ export interface HookContextMetadata {
   groupUseForwardMsg: boolean;
   whitelistUser: boolean;
   whitelistGroup: boolean;
+  /** When set, this group has limited permissions: only these capability keys are allowed. Unset or empty = full access. Set by WhitelistPlugin when group is in groups config with non-empty capabilities. */
+  whitelistGroupCapabilities?: string[];
 
   // Proactive conversation (thread): when in active thread, reply without @bot
   inProactiveThread: boolean;
@@ -69,6 +71,7 @@ const DEFAULT_METADATA: Required<
   groupId: 0,
   senderRole: 'user',
   replyOnly: false,
+  whitelistGroupCapabilities: [],
 };
 
 const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
@@ -76,6 +79,7 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'replyTriggerType',
   'contextMode',
   'suggestedProvider',
+  'whitelistGroupCapabilities',
 ];
 
 /**

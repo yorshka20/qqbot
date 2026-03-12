@@ -30,11 +30,7 @@ export class EventInitializer {
    * @param hookManager - Hook manager (optional; when provided, notice events trigger onNoticeReceived hook)
    * @returns Initialized event system
    */
-  static initialize(
-    config: Config,
-    conversationManager: ConversationManager,
-    hookManager?: HookManager,
-  ): EventSystem {
+  static initialize(config: Config, conversationManager: ConversationManager, hookManager?: HookManager): EventSystem {
     logger.info('[EventInitializer] Starting initialization...');
 
     // Initialize event router

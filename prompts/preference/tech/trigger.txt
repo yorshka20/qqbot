@@ -1,9 +1,7 @@
 # Message containing any of these words will trigger proactive analysis for this preference.
 # Empty lines and lines starting with # are ignored.
 
-bug
-代码
-code
-报错
-error
-高手
+编程
+写代码
+技术
+程序员

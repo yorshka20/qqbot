@@ -124,8 +124,7 @@ describe('MessageTriggerPlugin', () => {
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
       {
-        getGroupPreferenceKeys: (gid: string) =>
-          gid === '1' && opts.preferenceKeys ? opts.preferenceKeys : [],
+        getGroupPreferenceKeys: (gid: string) => (gid === '1' && opts.preferenceKeys ? opts.preferenceKeys : []),
       },
       { allowOverride: true },
     );

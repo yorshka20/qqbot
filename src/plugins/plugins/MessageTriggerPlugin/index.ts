@@ -7,6 +7,7 @@ import { ProviderRouter } from '@/ai/routing/ProviderRouter';
 import type { LLMService } from '@/ai/services/LLMService';
 import { parseLlmTrueFalse } from '@/ai/utils/llmJsonExtract';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { hasWhitelistCapability } from '@/context/HookContextHelpers';
 import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import type { ProactiveConversationService } from '@/conversation/proactive';
 import type { ThreadService } from '@/conversation/thread';
@@ -18,6 +19,7 @@ import { MessageUtils } from '@/message/MessageUtils';
 import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../../decorators';
 import { PluginBase } from '../../PluginBase';
+import { WHITELIST_CAPABILITY } from '../whitelistCapabilities';
 import { ProviderNameMatcher } from './ProviderNameMatcher';
 import { SubAgentTriggerHandler } from './SubAgentTriggerHandler';
 import type { MessageTriggerPluginConfig, SubAgentTriggerRule } from './types';
@@ -153,8 +155,12 @@ export class MessageTriggerPlugin extends PluginBase {
     order: -1,
   })
   async onMessagePreprocess(context: HookContext): Promise<boolean> {
-    // Commands are handled by CommandSystem in PROCESS; this plugin only decides reply-pipeline trigger.
+    // Commands are handled by CommandSystem in PROCESS; gate by capability so limited groups can disable command.
     if (context.command) {
+      if (!hasWhitelistCapability(context, WHITELIST_CAPABILITY.command)) {
+        context.metadata.set('postProcessOnly', true);
+        return true;
+      }
       return true;
     }
 
@@ -181,6 +187,12 @@ export class MessageTriggerPlugin extends PluginBase {
       return true;
     }
 
+    // Group: no reply capability => skip reply pipeline (no point matching trigger words).
+    if (!hasWhitelistCapability(context, WHITELIST_CAPABILITY.reply)) {
+      context.metadata.set('postProcessOnly', true);
+      return true;
+    }
+
     // --- Reply pipeline gate ---
     const replyTrigger = context.metadata.get('replyTrigger');
     const isAtBot = MessageUtils.isAtBot(message, botSelfId);
@@ -198,9 +210,10 @@ export class MessageTriggerPlugin extends PluginBase {
     // Cross-group rules always fire regardless.
     //
     // Whitelist guard: whitelistDenied means this group is not bot-enabled.
-    //   Never spawn subagents in non-whitelisted groups to prevent unexpected activity.
+    //   For limited-permission groups, also require subagent capability.
     const isWhitelistDenied = !!context.metadata.get('whitelistDenied');
-    if (this.subAgentTriggerHandler && groupId && !isWhitelistDenied) {
+    const canSubagent = !isWhitelistDenied && hasWhitelistCapability(context, WHITELIST_CAPABILITY.subagent);
+    if (this.subAgentTriggerHandler && groupId && canSubagent) {
       const spawned = this.subAgentTriggerHandler.handleMessage(message, allowed);
       if (spawned > 0) {
         logger.debug(`[MessageTriggerPlugin] Spawned ${spawned} background subagent(s) for group=${groupId}`);

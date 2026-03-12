@@ -212,9 +212,9 @@ export class PromptManager {
 
   /**
    * Render base system prompt with stable variables only (currentDate, adminUserId) to avoid cache miss.
-   * groupId and userInfo are not injected so the same prompt is reused across messages in the same day.
+   * Optional overrides (e.g. whitelistLimitedFragment) allow injecting per-request content when whitelist is not full permissions.
    */
-  renderBasePrompt(): string | undefined {
+  renderBasePrompt(overrides?: Record<string, string>): string | undefined {
     const baseTemplate = this.getTemplate(BASE_SYSTEM_TEMPLATE_NAME) ?? this.getTemplate(BASE_TEMPLATE_NAME);
     if (!baseTemplate) {
       return undefined;
@@ -227,6 +227,8 @@ export class PromptManager {
         weekday: 'long',
       }),
       adminUserId: this.adminUserId || '（无管理员）',
+      whitelistLimitedFragment: '',
+      ...overrides,
     };
     return this.renderTemplateContent(baseTemplate, BASE_TEMPLATE_NAME, baseVars);
   }

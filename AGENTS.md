@@ -10,9 +10,12 @@
 - Prefer one format for single/multi variants (e.g. card deck always as array; single card is [one card]).
 - Use English comments in code; do not delete comments when editing.
 - Always use curly braces for if/else; use ESM import only, no inline require.
+- Gate permission once at the service that invokes LLM (e.g. ReplyGenerationService, ProactiveConversationService.runAnalysis); avoid redundant checks at every caller.
 
 ## Learned Workspace Facts
 
 - QQ bot project with plugin pipeline (MessageTriggerPlugin, WhitelistPlugin, ProactiveConversation, etc.), AI providers (Gemini, Doubao, etc.), and HookContext/metadata flow.
 - Card rendering: convert_to_card output is a JSON array of cards; single card is [one card]; comparison card uses leftHeader/rightHeader from data, not fixed labels.
 - Reply trigger is centralized in MessageTriggerPlugin; trigger type is stored as replyTriggerType (at | reaction | wakeWordConfig | wakeWordPreference | providerName).
+- Whitelist: per-group limited permissions use config key "groups" (array of { id, capabilities }); "groupIds" must be a string array only—putting objects there breaks lookup.
+- For in-bot restart under PM2: use `pm2 restart qq-bot qq-bot-ui` (not nohup + start.sh) so the process exits first and ecosystem scripts (pm2-bot.sh) run git pull + bun install in a new process, avoiding bun EEXIST and log mixing.

@@ -3,6 +3,7 @@
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import {
   computeSendAsForward,
+  hasWhitelistCapability,
   replaceReply,
   replaceReplyWithSegments,
   setReplyWithSegments,
@@ -23,6 +24,7 @@ import type { HookContext } from '@/hooks/types';
 import type { MemoryService } from '@/memory/MemoryService';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
+import { WHITELIST_CAPABILITY } from '@/plugins/plugins/whitelistCapabilities';
 import { CardRenderingService, getCardDeckNoteForPrompt, getCardTypeSpecForPrompt } from '@/services/card';
 import type { RetrievalService } from '@/services/retrieval';
 import { QdrantClient } from '@/services/retrieval';
@@ -199,6 +201,14 @@ export class ReplyGenerationService {
    * Caller may pass options.char and options.instruct (e.g. from /nsfw --char=xxx --instruct=xxx) to fill the prompt template.
    */
   async generateNsfwReply(context: HookContext, options?: { char?: string; instruct?: string }): Promise<void> {
+    // Gate: do not run LLM when access denied or group lacks reply capability.
+    if (context.metadata.get('whitelistDenied')) {
+      return;
+    }
+    if (!hasWhitelistCapability(context, WHITELIST_CAPABILITY.reply)) {
+      return;
+    }
+
     const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
     if (!shouldContinue) {
       throw new Error('AI reply generation interrupted by hook');
@@ -261,6 +271,14 @@ export class ReplyGenerationService {
    * @param taskResults - Skill/task execution results (empty Map if no pre-executed tasks)
    */
   async generateReplyFromTaskResults(context: HookContext, taskResults: Map<string, TaskResult>): Promise<void> {
+    // Gate: do not run any LLM when access denied or group lacks reply capability (must check before any work).
+    if (context.metadata.get('whitelistDenied')) {
+      return;
+    }
+    if (!hasWhitelistCapability(context, WHITELIST_CAPABILITY.reply)) {
+      return;
+    }
+
     // Hook: onMessageBeforeAI
     const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
     if (!shouldContinue) {
@@ -538,7 +556,15 @@ export class ReplyGenerationService {
     ]);
     const taskResultText = this.getTaskResultsSummary(taskResultsSummary);
     const searchResultText = this.getSearchResultsSummary(searchResultsText);
-    const baseSystemPrompt = this.promptManager.renderBasePrompt();
+    // When whitelist is not full permissions, inject fragment into base system via variable.
+    const groupCaps = context.metadata.get('whitelistGroupCapabilities');
+    const whitelistFragment =
+      Array.isArray(groupCaps) && groupCaps.length > 0
+        ? (this.promptManager.render('llm.whitelist_limited.system') ?? '').trim()
+        : '';
+    const baseSystemPrompt = this.promptManager.renderBasePrompt({
+      whitelistLimitedFragment: whitelistFragment,
+    });
     const contextInstruct = this.promptManager.render('llm.context.instruct');
     const toolInstruct = this.promptManager.render('llm.tool.instruct', { toolUsageInstructions });
 

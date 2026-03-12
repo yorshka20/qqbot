@@ -99,15 +99,28 @@
       //   "enabled": true,
       //   "config": { "wakeWords": [] }
       // },
-      // Whitelist plugin: access control only (userIds for private, groupIds for group). Trigger logic is in messageTrigger.
-      // {
-      //   "name": "whitelist",
-      //   "enabled": true,
-      //   "config": {
-      //     "userIds": ["123456789"],
-      //     "groupIds": ["123456789"]
-      //   }
-      // },
+      // Whitelist plugin: access control. Use "groups" for per-group limited capabilities (reply, command, proactive, reaction, subagent, echo).
+      // Example: group 672372860 only proactive + @bot reply (no command, reaction, echo, subagent).
+      {
+        "name": "whitelist",
+        "enabled": true,
+        "config": {
+          "userIds": [
+            "123456789"
+          ],
+          "groups": [
+            {
+              "id": "1111",
+              "capabilities": [
+                "reply",
+                "proactive"
+              ]
+            }
+            // Full access: omit capabilities or use "capabilities": []
+            // { "id": "123456789" }
+          ]
+        }
+      },
       // Message Operation Plugin - handles reactions on messages
       {
         "name": "messageOperation",
@@ -159,6 +172,9 @@
                 "t2i"
               ]
             },
+            // Example: dynamic whitelist - add group at 19:00 (limited: reply+proactive), remove at 22:00
+            // { "groupId": "111", "schedule": "0 19 * * *", "action": "whitelist.add", "capabilities": ["reply", "proactive"] },
+            // { "groupId": "111", "schedule": "0 22 * * *", "action": "whitelist.remove" },
             // Example: enable multiple commands at once
             {
               "groupId": "123456789",
@@ -195,6 +211,10 @@
         "config": {
           "analysisProvider": "ollama", // optional: LLM for analysis/reply (default "ollama")
           "groups": [
+            {
+              "groupId": "672372860",
+              "preferenceKey": "preference.blender"
+            },
             {
               "groupId": "1",
               "preferenceKey": "preference.blender"

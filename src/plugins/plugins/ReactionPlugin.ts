@@ -1,12 +1,13 @@
 // Reaction Plugin - sends reaction when message contains configured keywords
 
-import { isNoReplyPath } from '@/context/HookContextHelpers';
+import { hasWhitelistCapability, isNoReplyPath } from '@/context/HookContextHelpers';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext, HookResult } from '@/hooks/types';
 import type { NormalizedMilkyMessageEvent } from '@/protocol/milky/types';
 import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
+import { WHITELIST_CAPABILITY } from './whitelistCapabilities';
 
 interface ReactionPluginConfig {
   /**
@@ -87,9 +88,8 @@ export class ReactionPlugin extends PluginBase {
       return true;
     }
 
-    // Only send reaction in whitelisted groups
-    const isWhitelistGroup = context.metadata.get('whitelistGroup');
-    if (!isWhitelistGroup) {
+    // Only send reaction when group has reaction capability (whitelisted and not limited, or limited with reaction)
+    if (!hasWhitelistCapability(context, WHITELIST_CAPABILITY.reaction)) {
       return true;
     }
 

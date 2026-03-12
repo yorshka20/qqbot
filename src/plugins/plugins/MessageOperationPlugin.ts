@@ -8,6 +8,8 @@ import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { NormalizedNoticeEvent } from '@/events/types';
 import type { HookContext } from '@/hooks/types';
+import type { PluginManager } from '@/plugins/PluginManager';
+import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
 import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
@@ -117,12 +119,18 @@ export class MessageOperationPlugin extends PluginBase {
     }
 
     // Whitelist is highest constraint: never respond in non-whitelist groups (notice has no pipeline context)
-    const config = getContainer().resolve<Config>(DITokens.CONFIG);
-    const whitelistConfig = config.getPluginConfig('whitelist') as { groupIds?: string[] } | undefined;
-    const groupIds = Array.isArray(whitelistConfig?.groupIds) ? whitelistConfig.groupIds : [];
-    if (groupIds.length > 0) {
-      const groupIdStr = String(groupId);
-      if (!groupIds.includes(groupIdStr)) {
+    const groupIdStr = String(groupId);
+    const pluginManager = getContainer().resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
+    const whitelistPlugin = pluginManager?.getPluginAs<WhitelistPlugin>('whitelist');
+    if (whitelistPlugin) {
+      if (whitelistPlugin.getGroupCapabilities(groupIdStr) === undefined) {
+        return;
+      }
+    } else {
+      const config = getContainer().resolve<Config>(DITokens.CONFIG);
+      const whitelistConfig = config.getPluginConfig('whitelist') as { groupIds?: string[] } | undefined;
+      const groupIds = Array.isArray(whitelistConfig?.groupIds) ? whitelistConfig.groupIds : [];
+      if (groupIds.length > 0 && !groupIds.includes(groupIdStr)) {
         return;
       }
     }

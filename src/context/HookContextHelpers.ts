@@ -210,3 +210,21 @@ export function clearReply(context: HookContext): void {
 export function isNoReplyPath(context: HookContext): boolean {
   return !!(context.metadata.get('postProcessOnly') || context.metadata.get('whitelistDenied'));
 }
+
+/**
+ * True when the context's group/user is allowed and has the given whitelist capability.
+ * Use when a group has limited permissions (whitelistGroupCapabilities set): only listed capabilities are allowed.
+ * - If whitelistDenied: always false.
+ * - If whitelistGroupCapabilities is unset or empty: full access, always true.
+ * - Otherwise: true only when capability is in whitelistGroupCapabilities.
+ */
+export function hasWhitelistCapability(context: HookContext, capability: string): boolean {
+  if (context.metadata.get('whitelistDenied')) {
+    return false;
+  }
+  const caps = context.metadata.get('whitelistGroupCapabilities');
+  if (!caps || caps.length === 0) {
+    return true;
+  }
+  return caps.includes(capability);
+}

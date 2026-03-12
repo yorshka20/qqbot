@@ -10,12 +10,16 @@ import type { MessageAPI, SendMessageResult } from '@/api/methods/MessageAPI';
 import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
 import type { Config } from '@/core/config';
 import type { ProtocolName } from '@/core/config/types/protocol';
+import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { Message } from '@/database/models/types';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { MemoryService } from '@/memory/MemoryService';
 import type { MessageSegment } from '@/message/types';
+import type { PluginManager } from '@/plugins/PluginManager';
+import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
+import { WHITELIST_CAPABILITY } from '@/plugins/plugins/whitelistCapabilities';
 import type { RetrievalService } from '@/services/retrieval';
 import { logger } from '@/utils/logger';
 import { type FetchProgressNotifier, MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
@@ -195,6 +199,31 @@ export class ProactiveConversationService {
   }
 
   /**
+   * True if the group is allowed to receive proactive messages (whitelist + proactive capability).
+   * Used to gate runAnalysis before any LLM calls so we do not waste tokens.
+   */
+  private groupHasProactiveCapability(groupId: string): boolean {
+    const pluginManager = getContainer().resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
+    const whitelistPlugin = pluginManager?.getPluginAs<WhitelistPlugin>('whitelist');
+    if (!whitelistPlugin) {
+      const whitelistConfig = this.config.getPluginConfig('whitelist') as { groupIds?: string[] } | undefined;
+      const groupIds = Array.isArray(whitelistConfig?.groupIds) ? whitelistConfig.groupIds : [];
+      if (groupIds.length === 0) {
+        return true;
+      }
+      return groupIds.includes(groupId);
+    }
+    const caps = whitelistPlugin.getGroupCapabilities(groupId);
+    if (caps === undefined) {
+      return false;
+    }
+    if (caps.length === 0) {
+      return true;
+    }
+    return caps.includes(WHITELIST_CAPABILITY.proactive);
+  }
+
+  /**
    * Run analysis: load context, call Ollama (single or multi-thread), maybe create/reply in thread and send.
    * Receives context from schedule (includes triggerUserId saved when the message triggered the schedule).
    */
@@ -204,6 +233,14 @@ export class ProactiveConversationService {
     // Step 1: Ensure group has proactive config.
     const preferenceKeys = this.groupConfig.get(groupId);
     if (!preferenceKeys?.length) {
+      return;
+    }
+
+    // Step 1b: Gate on whitelist + proactive capability before any LLM (do not waste tokens).
+    if (!this.groupHasProactiveCapability(groupId)) {
+      logger.debug(
+        `[ProactiveConversationService] Group not allowed for proactive (whitelist/capability), skipping analysis | groupId=${groupId}`,
+      );
       return;
     }
 
@@ -740,16 +777,11 @@ export class ProactiveConversationService {
     groupId: number,
     message: string | MessageSegment[],
   ): Promise<SendMessageResult | undefined> {
-    const whitelistConfig = this.config.getPluginConfig('whitelist') as { groupIds?: string[] } | undefined;
-    const groupIds = Array.isArray(whitelistConfig?.groupIds) ? whitelistConfig.groupIds : [];
-    if (groupIds.length > 0) {
-      const groupIdStr = String(groupId);
-      if (!groupIds.includes(groupIdStr)) {
-        logger.info(
-          `[ProactiveConversationService] Group not in whitelist, skipping proactive send | groupId=${groupId}`,
-        );
-        return undefined;
-      }
+    const groupIdStr = String(groupId);
+    // Final guard (primary gate is in runAnalysis before any LLM); skip if config changed mid-run.
+    if (!this.groupHasProactiveCapability(groupIdStr)) {
+      logger.info(`[ProactiveConversationService] Group not allowed for proactive, skipping send | groupId=${groupId}`);
+      return undefined;
     }
     const syntheticContext = this.buildSyntheticGroupContext(groupId);
     const result = await this.messageAPI.sendFromContext(message, syntheticContext, 10000);

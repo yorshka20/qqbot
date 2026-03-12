@@ -252,12 +252,7 @@ describe('replyTools', () => {
       const hookManager = { execute: async () => true } as never;
       const ctx = makeHookContext('');
 
-      await executeToolCall(
-        { name: 'optional_only', arguments: 'not valid json' },
-        ctx,
-        taskManager,
-        hookManager,
-      );
+      await executeToolCall({ name: 'optional_only', arguments: 'not valid json' }, ctx, taskManager, hookManager);
 
       expect(executed.length).toBe(1);
       expect(executed[0].task.parameters).toEqual({});

@@ -61,8 +61,7 @@ export function buildSkillUsageInstructions(
     const params = Object.entries(tool.parameters.properties ?? {})
       .map(([name, def]) => {
         const requiredLabel = required.has(name) ? '必填' : '可选';
-        const enumLabel =
-          Array.isArray(def.enum) && def.enum.length > 0 ? `，取值: ${def.enum.join(' / ')}` : '';
+        const enumLabel = Array.isArray(def.enum) && def.enum.length > 0 ? `，取值: ${def.enum.join(' / ')}` : '';
         return `${name} (${def.type}，${requiredLabel}${enumLabel})${def.description ? `: ${def.description}` : ''}`;
       })
       .join('; ');

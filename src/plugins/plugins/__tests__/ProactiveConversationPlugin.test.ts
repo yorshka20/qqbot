@@ -12,6 +12,8 @@ interface ProactiveContextOverrides {
   whitelistDenied?: boolean;
   postProcessOnly?: boolean;
   whitelistGroup?: boolean;
+  /** When set, group has limited permissions (only these capabilities). */
+  whitelistGroupCapabilities?: string[];
   /** Set to skip direct-reply path (proactive can still run). Omit or false = set default replyTriggerType. */
   noReplyTrigger?: boolean;
   replyTriggerType?: 'at' | 'reaction' | 'wakeWordConfig' | 'wakeWordPreference' | 'providerName';
@@ -44,6 +46,9 @@ function makeGroupHookContext(messageText: string, overrides?: ProactiveContextO
   }
   if (overrides?.whitelistGroup !== undefined) {
     metadata.set('whitelistGroup', overrides.whitelistGroup);
+  }
+  if (overrides?.whitelistGroupCapabilities !== undefined) {
+    metadata.set('whitelistGroupCapabilities', overrides.whitelistGroupCapabilities);
   }
   const command = overrides?.command ? CommandBuilder.build(overrides.command.name, overrides.command.args) : undefined;
   return {
@@ -185,6 +190,46 @@ describe('ProactiveConversationPlugin wake-word dedupe', () => {
 
     expect(result).toBe(true);
     expect(scheduleForGroup).toHaveBeenCalled();
+  });
+
+  it('does not schedule when group has limited capabilities without proactive', async () => {
+    const container = getContainer();
+    const scheduleForGroup = mock(() => {});
+    const promptManager = new PromptManager();
+    promptManager.registerTemplate({
+      name: 'acg.trigger',
+      namespace: 'preference',
+      content: 'hello',
+    });
+    container.registerInstance(
+      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, scheduleForGroup },
+      { allowOverride: true },
+    );
+    container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
+    container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
+
+    const plugin = new ProactiveConversationPlugin({
+      name: 'proactiveConversation',
+      version: 'test',
+      description: 'test',
+    });
+    plugin.loadConfig(
+      { api: {} as never, events: {} as never },
+      { name: 'proactiveConversation', enabled: true, config: { groups: [{ groupId: '1', preferenceKey: 'acg' }] } },
+    );
+    await plugin.onInit?.();
+
+    const context = makeGroupHookContext('hello', {
+      postProcessOnly: true,
+      whitelistGroup: true,
+      whitelistGroupCapabilities: ['command'],
+      noReplyTrigger: true,
+    });
+    const result = plugin.onMessageComplete(context);
+
+    expect(result).toBe(true);
+    expect(scheduleForGroup).not.toHaveBeenCalled();
   });
 });
 

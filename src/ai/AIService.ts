@@ -8,12 +8,16 @@ import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { ConversationHistoryService } from '@/conversation/history';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { MemoryService } from '@/memory/MemoryService';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
+import type { PluginManager } from '@/plugins/PluginManager';
+import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
 import { CardRenderingService } from '@/services/card';
 import type { RetrievalService } from '@/services/retrieval';
 import type { TaskManager } from '@/task/TaskManager';
@@ -201,7 +205,7 @@ export class AIService {
   }> {
     const sessionId = context.sessionId;
     const effectiveProviderName = useVision
-      ? (await this.visionService.getAvailableProviderName(providerName, sessionId)) ?? providerName
+      ? ((await this.visionService.getAvailableProviderName(providerName, sessionId)) ?? providerName)
       : providerName;
     const canUseToolUse = useVision
       ? Boolean(effectiveProviderName && (await this.llmService.supportsToolUse(effectiveProviderName, sessionId)))
@@ -230,7 +234,19 @@ export class AIService {
     context: ProactiveReplyInjectContext,
     toolUsageInstructions: string,
   ): { baseSystemPrompt: string; proactiveSystemPrompt: string; finalUserQuery: string } {
-    const baseSystemPrompt = this.promptManager.renderBasePrompt() ?? '';
+    let whitelistFragment = '';
+    if (context.sessionId) {
+      const pluginManager = getContainer().resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
+      const whitelistPlugin = pluginManager?.getPluginAs<WhitelistPlugin>('whitelist');
+      const caps = whitelistPlugin?.getGroupCapabilities?.(context.sessionId);
+      if (caps && caps.length > 0) {
+        const rendered = this.promptManager.render('llm.whitelist_limited.system');
+        if (rendered?.trim()) {
+          whitelistFragment = rendered.trim();
+        }
+      }
+    }
+    const baseSystemPrompt = this.promptManager.renderBasePrompt({ whitelistLimitedFragment: whitelistFragment }) ?? '';
     const contextInstruct = this.promptManager.render('llm.context.instruct');
     const toolInstruct = this.promptManager.render('llm.tool.instruct', { toolUsageInstructions });
     const proactiveSystemPrompt = this.promptManager.render('llm.proactive.system', {
@@ -272,7 +288,11 @@ export class AIService {
   private async executeProactiveLLM(
     messages: ChatMessage[],
     context: ProactiveReplyInjectContext,
-    capabilities: { effectiveProviderName: string | undefined; canUseToolUse: boolean; nativeWebSearchEnabled: boolean },
+    capabilities: {
+      effectiveProviderName: string | undefined;
+      canUseToolUse: boolean;
+      nativeWebSearchEnabled: boolean;
+    },
     tools: ReturnType<typeof getReplySkillDefinitions>,
     useVision: boolean,
   ): Promise<AIGenerateResponse> {
@@ -359,13 +379,7 @@ export class AIService {
       ? await this.attachVisionImagesToLastUserMessage(messages, context.messageImages ?? [])
       : messages;
 
-    const response = await this.executeProactiveLLM(
-      proactiveMessages,
-      context,
-      capabilities,
-      tools,
-      useVision,
-    );
+    const response = await this.executeProactiveLLM(proactiveMessages, context, capabilities, tools, useVision);
     return response.text;
   }
 
@@ -554,39 +568,35 @@ export class AIService {
     skipLLMProcess?: boolean,
     templateName?: string,
   ): Promise<ImageGenerationResponse> {
-    return this.runWithImageGenerationHooks(
-      context,
-      'Image generation interrupted by hook',
-      async (sessionId) => {
-        if (!options?.prompt) {
-          throw new Error('options.prompt must be provided by caller');
-        }
-        const userInput = options.prompt;
-        logger.debug(
-          `[AIService] Processing prompt | input=${userInput.substring(0, 50)}... | skipLLMProcess=${skipLLMProcess ?? false}`,
-        );
+    return this.runWithImageGenerationHooks(context, 'Image generation interrupted by hook', async (sessionId) => {
+      if (!options?.prompt) {
+        throw new Error('options.prompt must be provided by caller');
+      }
+      const userInput = options.prompt;
+      logger.debug(
+        `[AIService] Processing prompt | input=${userInput.substring(0, 50)}... | skipLLMProcess=${skipLLMProcess ?? false}`,
+      );
 
-        const prepared = await this.imagePromptService.prepareImageGenerationParams(
-          userInput,
-          options,
-          sessionId ?? '',
-          skipLLMProcess,
-          templateName,
-        );
-        logger.info(
-          `[AIService] Generating image | prompt="${prepared.prompt.substring(0, 100)}..." | providerName=${providerName ?? 'default'}`,
-        );
+      const prepared = await this.imagePromptService.prepareImageGenerationParams(
+        userInput,
+        options,
+        sessionId ?? '',
+        skipLLMProcess,
+        templateName,
+      );
+      logger.info(
+        `[AIService] Generating image | prompt="${prepared.prompt.substring(0, 100)}..." | providerName=${providerName ?? 'default'}`,
+      );
 
-        const response = await this.imageGenerationService.generateImage(
-          prepared.prompt,
-          prepared.options,
-          sessionId,
-          providerName,
-        );
-        response.prompt = prepared.prompt;
-        return response;
-      },
-    );
+      const response = await this.imageGenerationService.generateImage(
+        prepared.prompt,
+        prepared.options,
+        sessionId,
+        providerName,
+      );
+      response.prompt = prepared.prompt;
+      return response;
+    });
   }
 
   /**
@@ -627,31 +637,16 @@ export class AIService {
     useLLMPreprocess?: boolean,
     templateName?: string,
   ): Promise<ImageGenerationResponse> {
-    return this.runWithImageGenerationHooks(
-      context,
-      'Image transformation interrupted by hook',
-      async (sessionId) => {
-        if (!prompt?.trim()) {
-          throw new Error('prompt must be provided for image transformation');
-        }
-        const finalPrompt = await this.resolveImageToImagePrompt(
-          prompt,
-          sessionId,
-          useLLMPreprocess,
-          templateName,
-        );
-        logger.info(
-          `[AIService] Generating image from image | prompt="${finalPrompt}" | providerName=${providerName ?? 'default'}`,
-        );
-        return this.imageGenerationService.generateImageFromImage(
-          image,
-          finalPrompt,
-          options,
-          sessionId,
-          providerName,
-        );
-      },
-    );
+    return this.runWithImageGenerationHooks(context, 'Image transformation interrupted by hook', async (sessionId) => {
+      if (!prompt?.trim()) {
+        throw new Error('prompt must be provided for image transformation');
+      }
+      const finalPrompt = await this.resolveImageToImagePrompt(prompt, sessionId, useLLMPreprocess, templateName);
+      logger.info(
+        `[AIService] Generating image from image | prompt="${finalPrompt}" | providerName=${providerName ?? 'default'}`,
+      );
+      return this.imageGenerationService.generateImageFromImage(image, finalPrompt, options, sessionId, providerName);
+    });
   }
 
   /**

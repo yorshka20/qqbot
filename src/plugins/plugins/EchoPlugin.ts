@@ -4,6 +4,7 @@ import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { CommandBuilder } from '@/command/CommandBuilder';
 import type { CommandManager } from '@/command/CommandManager';
 import { CommandContextBuilder } from '@/context/CommandContextBuilder';
+import { hasWhitelistCapability } from '@/context/HookContextHelpers';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -13,6 +14,7 @@ import { MessageUtils } from '@/message/MessageUtils';
 import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
+import { WHITELIST_CAPABILITY } from './whitelistCapabilities';
 
 /**
  * Echo Plugin
@@ -67,8 +69,8 @@ export class EchoPlugin extends PluginBase {
   }
 
   private shouldTrigger(context: HookContext): boolean {
-    // Whitelist is highest constraint: never respond in non-whitelist groups (Echo sends directly, so we only check whitelistDenied)
-    if (context.metadata.get('whitelistDenied')) {
+    // Whitelist and capability: never respond when denied or when group does not have echo capability
+    if (!hasWhitelistCapability(context, WHITELIST_CAPABILITY.echo)) {
       return false;
     }
 

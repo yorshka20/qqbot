@@ -257,4 +257,194 @@ describe('WhitelistPlugin access control', () => {
     expect(context.metadata.get('whitelistDenied')).toBeUndefined();
     expect(context.metadata.get('whitelistGroup')).toBe(true);
   });
+
+  describe('groups config with limited capabilities', () => {
+    it('sets whitelistGroupCapabilities when group has capabilities in groups config', async () => {
+      const plugin = new WhitelistPlugin({
+        name: 'whitelist',
+        version: 'test',
+        description: 'test',
+      });
+      plugin.loadConfig(
+        {
+          api: {} as never,
+          events: {} as never,
+        },
+        {
+          name: 'whitelist',
+          enabled: true,
+          config: {
+            groups: [{ id: '1', capabilities: ['command', 'reply'] }, { id: '2' }],
+          },
+        },
+      );
+      await plugin.onInit?.();
+
+      const context1 = makeHookContext({ messageText: 'hello', groupId: 1 });
+      plugin.onMessageReceived(context1);
+      expect(context1.metadata.get('whitelistDenied')).toBeUndefined();
+      expect(context1.metadata.get('whitelistGroup')).toBe(true);
+      expect(context1.metadata.get('whitelistGroupCapabilities')).toEqual(['command', 'reply']);
+
+      const context2 = makeHookContext({ messageText: 'hello', groupId: 2 });
+      plugin.onMessageReceived(context2);
+      expect(context2.metadata.get('whitelistGroup')).toBe(true);
+      expect(context2.metadata.get('whitelistGroupCapabilities')).toBeUndefined();
+    });
+
+    it('getGroupCapabilities returns undefined for group not in whitelist', async () => {
+      const plugin = new WhitelistPlugin({
+        name: 'whitelist',
+        version: 'test',
+        description: 'test',
+      });
+      plugin.loadConfig(
+        { api: {} as never, events: {} as never },
+        { name: 'whitelist', enabled: true, config: { groups: [{ id: '1', capabilities: ['command'] }] } },
+      );
+      await plugin.onInit?.();
+
+      expect(plugin.getGroupCapabilities('999')).toBeUndefined();
+    });
+
+    it('getGroupCapabilities returns capability list for limited group', async () => {
+      const plugin = new WhitelistPlugin({
+        name: 'whitelist',
+        version: 'test',
+        description: 'test',
+      });
+      plugin.loadConfig(
+        { api: {} as never, events: {} as never },
+        { name: 'whitelist', enabled: true, config: { groups: [{ id: '1', capabilities: ['command'] }] } },
+      );
+      await plugin.onInit?.();
+
+      expect(plugin.getGroupCapabilities('1')).toEqual(['command']);
+    });
+
+    it('getGroupCapabilities returns empty array for full-access group in groups config', async () => {
+      const plugin = new WhitelistPlugin({
+        name: 'whitelist',
+        version: 'test',
+        description: 'test',
+      });
+      plugin.loadConfig(
+        { api: {} as never, events: {} as never },
+        { name: 'whitelist', enabled: true, config: { groups: [{ id: '1' }] } },
+      );
+      await plugin.onInit?.();
+
+      expect(plugin.getGroupCapabilities('1')).toEqual([]);
+    });
+  });
+
+  describe('dynamic whitelist (addGroupToWhitelist / removeGroupFromWhitelist)', () => {
+    it('addGroupToWhitelist with capabilities: group allowed and getGroupCapabilities returns those caps', async () => {
+      const plugin = new WhitelistPlugin({
+        name: 'whitelist',
+        version: 'test',
+        description: 'test',
+      });
+      // One other group in config so whitelist is restricted; 123456 only allowed when dynamically added
+      plugin.loadConfig(
+        { api: {} as never, events: {} as never },
+        { name: 'whitelist', enabled: true, config: { groups: [{ id: '1' }] } },
+      );
+      await plugin.onInit?.();
+
+      plugin.addGroupToWhitelist('123456', ['reply', 'proactive']);
+
+      expect(plugin.getGroupCapabilities('123456')).toEqual(['reply', 'proactive']);
+    });
+
+    it('addGroupToWhitelist with capabilities: onMessageReceived sets whitelistGroup and whitelistGroupCapabilities', async () => {
+      const plugin = new WhitelistPlugin({
+        name: 'whitelist',
+        version: 'test',
+        description: 'test',
+      });
+      plugin.loadConfig(
+        { api: {} as never, events: {} as never },
+        { name: 'whitelist', enabled: true, config: { groups: [{ id: '1' }] } },
+      );
+      await plugin.onInit?.();
+
+      plugin.addGroupToWhitelist('123456', ['reply', 'proactive']);
+
+      const context = makeHookContext({ messageText: 'hello', groupId: 123456 });
+      plugin.onMessageReceived(context);
+
+      expect(context.metadata.get('whitelistDenied')).toBeUndefined();
+      expect(context.metadata.get('whitelistGroup')).toBe(true);
+      expect(context.metadata.get('whitelistGroupCapabilities')).toEqual(['reply', 'proactive']);
+    });
+
+    it('addGroupToWhitelist without capabilities: group has full access (empty array)', async () => {
+      const plugin = new WhitelistPlugin({
+        name: 'whitelist',
+        version: 'test',
+        description: 'test',
+      });
+      plugin.loadConfig(
+        { api: {} as never, events: {} as never },
+        { name: 'whitelist', enabled: true, config: { groups: [{ id: '1' }] } },
+      );
+      await plugin.onInit?.();
+
+      plugin.addGroupToWhitelist('999');
+
+      expect(plugin.getGroupCapabilities('999')).toEqual([]);
+      const context = makeHookContext({ messageText: 'hi', groupId: 999 });
+      plugin.onMessageReceived(context);
+      expect(context.metadata.get('whitelistGroup')).toBe(true);
+      expect(context.metadata.get('whitelistGroupCapabilities')).toBeUndefined();
+    });
+
+    it('removeGroupFromWhitelist: group denied and getGroupCapabilities returns undefined', async () => {
+      const plugin = new WhitelistPlugin({
+        name: 'whitelist',
+        version: 'test',
+        description: 'test',
+      });
+      plugin.loadConfig(
+        { api: {} as never, events: {} as never },
+        { name: 'whitelist', enabled: true, config: { groups: [{ id: '1' }] } },
+      );
+      await plugin.onInit?.();
+
+      plugin.addGroupToWhitelist('123456', ['reply', 'proactive']);
+      expect(plugin.getGroupCapabilities('123456')).toEqual(['reply', 'proactive']);
+
+      plugin.removeGroupFromWhitelist('123456');
+
+      expect(plugin.getGroupCapabilities('123456')).toBeUndefined();
+      const context = makeHookContext({ messageText: 'hello', groupId: 123456 });
+      plugin.onMessageReceived(context);
+      expect(context.metadata.get('whitelistDenied')).toBe(true);
+      expect(context.metadata.get('whitelistGroup')).toBeUndefined();
+    });
+
+    it('add after remove: group allowed again with new capabilities', async () => {
+      const plugin = new WhitelistPlugin({
+        name: 'whitelist',
+        version: 'test',
+        description: 'test',
+      });
+      plugin.loadConfig(
+        { api: {} as never, events: {} as never },
+        { name: 'whitelist', enabled: true, config: { groups: [{ id: '1' }] } },
+      );
+      await plugin.onInit?.();
+
+      plugin.addGroupToWhitelist('1', ['reply']);
+      plugin.removeGroupFromWhitelist('1');
+      plugin.addGroupToWhitelist('1', ['reply', 'proactive', 'command']);
+
+      expect(plugin.getGroupCapabilities('1')).toEqual(['reply', 'proactive', 'command']);
+      const context = makeHookContext({ messageText: 'hi', groupId: 1 });
+      plugin.onMessageReceived(context);
+      expect(context.metadata.get('whitelistDenied')).toBeUndefined();
+      expect(context.metadata.get('whitelistGroupCapabilities')).toEqual(['reply', 'proactive', 'command']);
+    });
+  });
 });

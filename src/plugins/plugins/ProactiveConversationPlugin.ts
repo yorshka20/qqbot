@@ -1,6 +1,7 @@
 // Proactive Conversation Plugin - schedules group analysis and configures proactive participation (Phase 1)
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
+import { hasWhitelistCapability } from '@/context/HookContextHelpers';
 import type { ProactiveConversationService } from '@/conversation/proactive';
 import type { ThreadService } from '@/conversation/thread';
 import { getContainer } from '@/core/DIContainer';
@@ -9,6 +10,7 @@ import type { HookContext, HookResult } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
+import { WHITELIST_CAPABILITY } from './whitelistCapabilities';
 
 /** Template name pattern for trigger words: prompts/preference/{preferenceKey}/trigger.txt (one word per line). */
 const TRIGGER_TEMPLATE_SUFFIX = '.trigger';
@@ -156,6 +158,10 @@ export class ProactiveConversationPlugin extends PluginBase {
 
     // Do not schedule proactive when access denied. Proactive does not use postProcessOnly: "no direct reply" still allows proactive in whitelist groups.
     if (context.metadata.get('whitelistDenied')) {
+      return true;
+    }
+    // Limited-permission groups: require proactive capability to schedule.
+    if (!hasWhitelistCapability(context, WHITELIST_CAPABILITY.proactive)) {
       return true;
     }
 

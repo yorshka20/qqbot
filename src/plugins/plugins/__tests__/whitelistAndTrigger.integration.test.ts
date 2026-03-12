@@ -26,6 +26,10 @@ function makeHookContext(opts: {
   botSelfId?: string;
   command?: { name: string; args: string[] };
   segments?: Array<{ type: string; data?: Record<string, unknown> }>;
+  postProcessOnly?: boolean;
+  whitelistGroup?: boolean;
+  whitelistGroupCapabilities?: string[];
+  noReplyTrigger?: boolean;
 }): HookContext {
   const {
     messageText,
@@ -35,10 +39,22 @@ function makeHookContext(opts: {
     botSelfId = '123',
     command: commandOpt,
     segments = [],
+    postProcessOnly,
+    whitelistGroup,
+    whitelistGroupCapabilities,
   } = opts;
   const command = commandOpt ? CommandBuilder.build(commandOpt.name, commandOpt.args) : undefined;
   const metadata = new HookMetadataMap();
   metadata.set('botSelfId', botSelfId);
+  if (postProcessOnly !== undefined) {
+    metadata.set('postProcessOnly', postProcessOnly);
+  }
+  if (whitelistGroup !== undefined) {
+    metadata.set('whitelistGroup', whitelistGroup);
+  }
+  if (whitelistGroupCapabilities !== undefined) {
+    metadata.set('whitelistGroupCapabilities', whitelistGroupCapabilities);
+  }
   return {
     command,
     message: {
@@ -64,7 +80,9 @@ function makeHookContext(opts: {
   };
 }
 
-async function initWhitelist(config: { groupIds?: string[] | number[] } = {}) {
+async function initWhitelist(
+  config: { groupIds?: string[] | number[]; groups?: Array<{ id: string; capabilities?: string[] }> } = {},
+) {
   const plugin = new WhitelistPlugin({
     name: 'whitelist',
     version: 'test',
@@ -243,6 +261,128 @@ describe('Whitelist + MessageTrigger integration', () => {
       expect(context.metadata.get('postProcessOnly')).toBe(true);
       expect(context.metadata.get('replyTriggerType')).toBeUndefined();
 
+      proactive.onMessageComplete(context);
+      expect(scheduleForGroup).toHaveBeenCalled();
+    });
+  });
+
+  describe('limited-permission group (command only): command works, reply path blocked', () => {
+    it('command message is not blocked; non-command with trigger gets postProcessOnly (no reply capability)', async () => {
+      const whitelist = await initWhitelist({
+        groups: [{ id: '1', capabilities: ['command'] }],
+      });
+      const trigger = await initMessageTrigger({ wakeWords: ['wakebot'] });
+
+      const contextCmd = makeHookContext({
+        messageText: '/echo',
+        groupId: 1,
+        command: { name: 'echo', args: [] },
+      });
+      whitelist.onMessageReceived(contextCmd);
+      expect(contextCmd.metadata.get('whitelistGroup')).toBe(true);
+      expect(contextCmd.metadata.get('whitelistGroupCapabilities')).toEqual(['command']);
+
+      await trigger.onMessagePreprocess(contextCmd);
+      expect(contextCmd.metadata.get('postProcessOnly')).toBeUndefined();
+      expect(contextCmd.command?.name).toBe('echo');
+
+      const contextMsg = makeHookContext({
+        messageText: 'wakebot 你好',
+        groupId: 1,
+      });
+      whitelist.onMessageReceived(contextMsg);
+      await trigger.onMessagePreprocess(contextMsg);
+      expect(contextMsg.metadata.get('postProcessOnly')).toBe(true);
+      expect(contextMsg.metadata.get('replyTriggerType')).toBeUndefined();
+    });
+  });
+
+  describe('group 123456: reply + proactive only (no command, reaction, echo, subagent)', () => {
+    const GROUP_ID = 123456;
+
+    it('whitelist sets capabilities [reply, proactive] for group 123456', async () => {
+      const whitelist = await initWhitelist({
+        groups: [{ id: '123456', capabilities: ['reply', 'proactive'] }],
+      });
+      const context = makeHookContext({ messageText: 'hello', groupId: GROUP_ID });
+      whitelist.onMessageReceived(context);
+      expect(context.metadata.get('whitelistDenied')).toBeUndefined();
+      expect(context.metadata.get('whitelistGroup')).toBe(true);
+      expect(context.metadata.get('whitelistGroupCapabilities')).toEqual(['reply', 'proactive']);
+      expect(whitelist.getGroupCapabilities('123456')).toEqual(['reply', 'proactive']);
+    });
+
+    it('@bot message gets reply path (reply capability); replyTriggerType set', async () => {
+      const whitelist = await initWhitelist({
+        groups: [{ id: '123456', capabilities: ['reply', 'proactive'] }],
+      });
+      const trigger = await initMessageTrigger();
+      const context = makeHookContext({
+        messageText: 'hello',
+        groupId: GROUP_ID,
+        botSelfId: '123',
+        segments: [{ type: 'at', data: { qq: 123 } }],
+      });
+      whitelist.onMessageReceived(context);
+      await trigger.onMessagePreprocess(context);
+      expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+      expect(context.metadata.get('replyTriggerType')).toBe('at');
+    });
+
+    it('command message gets postProcessOnly (no command capability); PROCESS skipped', async () => {
+      const whitelist = await initWhitelist({
+        groups: [{ id: '123456', capabilities: ['reply', 'proactive'] }],
+      });
+      const trigger = await initMessageTrigger();
+      const context = makeHookContext({
+        messageText: '/echo',
+        groupId: GROUP_ID,
+        command: { name: 'echo', args: [] },
+      });
+      whitelist.onMessageReceived(context);
+      await trigger.onMessagePreprocess(context);
+      expect(context.metadata.get('postProcessOnly')).toBe(true);
+      expect(context.command?.name).toBe('echo');
+    });
+
+    it('proactive can schedule (proactive capability)', async () => {
+      const whitelist = await initWhitelist({
+        groups: [{ id: '123456', capabilities: ['reply', 'proactive'] }],
+      });
+      const scheduleForGroup = mock(() => {});
+      const container = getContainer();
+      const promptManager = new PromptManager();
+      promptManager.registerTemplate({ name: 'acg.trigger', namespace: 'preference', content: 'hello' });
+      container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
+      container.registerInstance(
+        DITokens.PROACTIVE_CONVERSATION_SERVICE,
+        { getGroupPreferenceKeys: () => [], setGroupConfig: () => {}, setAnalysisProvider: () => {}, scheduleForGroup },
+        { allowOverride: true },
+      );
+      container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
+      const proactive = new ProactiveConversationPlugin({
+        name: 'proactiveConversation',
+        version: 'test',
+        description: 'test',
+      });
+      proactive.loadConfig(
+        { api: {} as never, events: {} as never },
+        {
+          name: 'proactiveConversation',
+          enabled: true,
+          config: { groups: [{ groupId: '123456', preferenceKey: 'acg' }] },
+        },
+      );
+      await proactive.onInit?.();
+
+      const context = makeHookContext({
+        messageText: 'say hello',
+        groupId: GROUP_ID,
+        postProcessOnly: true,
+        whitelistGroup: true,
+        whitelistGroupCapabilities: ['reply', 'proactive'],
+        noReplyTrigger: true,
+      });
       proactive.onMessageComplete(context);
       expect(scheduleForGroup).toHaveBeenCalled();
     });

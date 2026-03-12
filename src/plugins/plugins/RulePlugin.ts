@@ -11,30 +11,47 @@ import type { Config, ProtocolName } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
+import type { PluginManager } from '@/plugins/PluginManager';
+import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
 import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
+/** Built-in action names (for config/documentation). New actions extend the handler registry, not this list. */
+export const RULE_ACTION_WHITELIST_ADD = 'whitelist.add';
+export const RULE_ACTION_WHITELIST_REMOVE = 'whitelist.remove';
+
+/** Handler for an action rule. Receives the rule; no command is executed. */
+export type RuleActionHandler = (rule: RuleConfig) => void | Promise<void>;
+
 /**
- * Rule configuration for a single scheduled command
+ * Rule configuration for a single scheduled command or action
  */
 interface RuleConfig {
   /**
-   * Group ID where the command will be executed
+   * Group ID: for command rules, the group where the command runs; for action rules, the target (e.g. group to add/remove).
    */
   groupId: string;
   /**
-   * Cron schedule expression (e.g., "0 20 * * *" for daily at 20:00)
+   * Cron schedule expression (e.g., "0 19 * * *" for daily at 19:00, "0 22 * * *" for 22:00)
    */
   schedule: string;
   /**
-   * Command name to execute
+   * Command name to execute (required when action is not set).
    */
-  command: string;
+  command?: string;
   /**
-   * Command arguments
+   * Command arguments (required when command is set).
    */
-  args: string[];
+  args?: string[];
+  /**
+   * When set, run the registered action handler instead of command. Mutually exclusive with command/args.
+   */
+  action?: string;
+  /**
+   * For action rules (e.g. whitelist.add): optional payload. For whitelist.add, capabilities = list of allowed capabilities (omit = full access).
+   */
+  capabilities?: string[];
 }
 
 /**
@@ -69,6 +86,8 @@ export class RulePlugin extends PluginBase {
   private botSelfId: number | null = null;
   private preferredProtocol: ProtocolName = 'milky';
   private timezone: string = 'Asia/Tokyo'; // Default timezone
+  /** action name -> handler. Built in onEnable so plugins (e.g. whitelist) are available. */
+  private actionHandlers = new Map<string, RuleActionHandler>();
 
   async onInit(): Promise<void> {
     // Get dependencies from DI container
@@ -110,7 +129,7 @@ export class RulePlugin extends PluginBase {
     // This ensures we don't have duplicate jobs after server restart
     if (this.cronJobs.size > 0) {
       logger.debug(`[RulePlugin] Clearing ${this.cronJobs.size} existing cron job(s) before re-registering`);
-      for (const [ruleId, job] of this.cronJobs.entries()) {
+      for (const [, job] of this.cronJobs.entries()) {
         job.stop();
       }
       this.cronJobs.clear();
@@ -134,6 +153,11 @@ export class RulePlugin extends PluginBase {
     const rules = pluginConfig.rules || [];
     if (rules.length === 0) {
       return;
+    }
+
+    // Merge built-in handlers into registry (preserves any handlers registered by other plugins)
+    for (const [name, handler] of this.buildActionHandlers()) {
+      this.actionHandlers.set(name, handler);
     }
 
     logger.info(`[RulePlugin] Loading ${rules.length} rule(s) from config.jsonc (persisted configuration)`);
@@ -168,6 +192,45 @@ export class RulePlugin extends PluginBase {
   }
 
   /**
+   * Build the action name -> handler registry. Extend here or via registerActionHandler to add new actions.
+   */
+  private buildActionHandlers(): Map<string, RuleActionHandler> {
+    const map = new Map<string, RuleActionHandler>();
+    const pluginManager = getContainer().resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
+    const whitelist = pluginManager?.getPluginAs<WhitelistPlugin>('whitelist');
+    if (whitelist) {
+      map.set(RULE_ACTION_WHITELIST_ADD, (rule) => {
+        const id = String(rule.groupId).trim();
+        if (id) {
+          whitelist.addGroupToWhitelist(id, rule.capabilities);
+          logger.info(
+            `[RulePlugin] Scheduled ${RULE_ACTION_WHITELIST_ADD} executed for group ${id}` +
+              (rule.capabilities?.length ? ` capabilities=${rule.capabilities.join(',')}` : ' (full)'),
+          );
+        }
+      });
+      map.set(RULE_ACTION_WHITELIST_REMOVE, (rule) => {
+        const id = String(rule.groupId).trim();
+        if (id) {
+          whitelist.removeGroupFromWhitelist(id);
+          logger.info(`[RulePlugin] Scheduled ${RULE_ACTION_WHITELIST_REMOVE} executed for group ${id}`);
+        }
+      });
+    }
+    return map;
+  }
+
+  /**
+   * Register an action handler (e.g. from another plugin). Call before rules are loaded (e.g. in onInit of that plugin).
+   */
+  registerActionHandler(actionName: string, handler: RuleActionHandler): void {
+    if (this.actionHandlers.has(actionName)) {
+      logger.warn(`[RulePlugin] Overwriting existing action handler: ${actionName}`);
+    }
+    this.actionHandlers.set(actionName, handler);
+  }
+
+  /**
    * Validate a rule configuration
    */
   private validateRule(rule: RuleConfig): void {
@@ -179,8 +242,17 @@ export class RulePlugin extends PluginBase {
       throw new Error('schedule is required and must be a string (cron expression)');
     }
 
+    const isActionRule =
+      typeof rule.action === 'string' && rule.action.length > 0 && this.actionHandlers.has(rule.action);
+    if (isActionRule) {
+      if (rule.command != null || rule.args != null) {
+        throw new Error('action rules must not set command or args');
+      }
+      return;
+    }
+
     if (!rule.command || typeof rule.command !== 'string') {
-      throw new Error('command is required and must be a string');
+      throw new Error('command is required and must be a string when action is not set');
     }
 
     if (!Array.isArray(rule.args)) {
@@ -201,7 +273,9 @@ export class RulePlugin extends PluginBase {
    * by calling onEnable() which reloads configuration from config.jsonc
    */
   private registerRule(rule: RuleConfig): void {
-    const ruleId = `${rule.groupId}-${rule.command}-${rule.schedule}`;
+    const ruleId = rule.action
+      ? `${rule.groupId}-${rule.action}-${rule.schedule}`
+      : `${rule.groupId}-${rule.command}-${rule.schedule}`;
 
     // Check if rule already exists (should not happen after clearing in onEnable, but safety check)
     if (this.cronJobs.has(ruleId)) {
@@ -228,15 +302,21 @@ export class RulePlugin extends PluginBase {
   }
 
   /**
-   * Execute a rule by running the configured command
+   * Execute a rule by running the registered action handler or the configured command
    */
   private async executeRule(rule: RuleConfig): Promise<void> {
     if (!this.enabled) {
       return;
     }
 
-    const groupId = parseInt(rule.groupId);
-    if (isNaN(groupId)) {
+    const actionHandler = rule.action ? this.actionHandlers.get(rule.action) : undefined;
+    if (actionHandler) {
+      await Promise.resolve(actionHandler(rule));
+      return;
+    }
+
+    const groupId = parseInt(rule.groupId, 10);
+    if (Number.isNaN(groupId)) {
       logger.error(`[RulePlugin] Invalid groupId: ${rule.groupId}`);
       return;
     }
@@ -245,13 +325,17 @@ export class RulePlugin extends PluginBase {
     const userId = this.botSelfId || 0;
 
     // Execute command (cmd command now supports multiple commands natively)
+    const cmd = rule.command;
+    const args = rule.args ?? [];
+    if (!cmd) {
+      logger.error('[RulePlugin] Command rule missing command');
+      return;
+    }
     try {
-      logger.info(
-        `[RulePlugin] Executing rule: group=${groupId}, command=${rule.command}, args=${rule.args.join(' ')}`,
-      );
+      logger.info(`[RulePlugin] Executing rule: group=${groupId}, command=${cmd}, args=${args.join(' ')}`);
 
       // Build command
-      const command = CommandBuilder.build(rule.command, rule.args);
+      const command = CommandBuilder.build(cmd, args);
 
       // Build conversation context
       const conversationContext = this.contextManager.buildContext(command.raw, {
