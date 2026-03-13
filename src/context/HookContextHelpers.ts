@@ -3,6 +3,7 @@
 
 import { extractTextFromSegments } from '@/ai/utils/imageUtils';
 import type { HookContext, ReplyContent, ReplyMetadata } from '@/hooks/types';
+import { MessageUtils } from '@/message/MessageUtils';
 import type { MessageSegment } from '@/message/types';
 
 /**
@@ -150,6 +151,12 @@ export function computeSendAsForward(
   const hasRecord = segments.some((s) => s.type === 'record');
   if (hasImage || hasRecord) {
     return false; // Always send directly; images/record in forward are unreliable
+  }
+  // Commands in forward/card messages cannot be parsed when echoed back (forward segments
+  // are not text segments). Force direct send so the bot's own command echoes are processable.
+  const textContent = extractTextFromSegments(segments);
+  if (textContent && MessageUtils.isCommand(textContent.trim())) {
+    return false;
   }
   if (explicitValue !== undefined) {
     return explicitValue;

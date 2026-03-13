@@ -164,14 +164,9 @@ export class WhitelistPlugin extends PluginBase {
     const messageType = message.messageType;
     const userId = message.userId?.toString();
     const groupId = message.groupId?.toString();
-    const botSelfId = context.metadata.get('botSelfId');
 
-    // Core access control 1: Ignore bot's own messages
-    if (botSelfId && userId === botSelfId) {
-      context.metadata.set('postProcessOnly', true);
-      context.metadata.set('whitelistDenied', true);
-      return true;
-    }
+    // Bot's own messages: do not set postProcessOnly here so PREPROCESS runs and routeCommand can run.
+    // MessageTriggerPlugin will set postProcessOnly for bot messages that are not commands (skip reply pipeline only).
 
     if (messageType === 'private') {
       if (this.hasUserWhitelist && !this.userWhitelist.has(userId)) {
