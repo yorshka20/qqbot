@@ -697,10 +697,8 @@ export class ReplyGenerationService {
     const canUseVisionToolUse = useVisionProvider
       ? Boolean(resolvedVisionProviderName && (await this.supportsToolUse(resolvedVisionProviderName, sessionId)))
       : false;
-    const nativeWebSearchEnabled = await this.supportsNativeWebSearch(selectedProviderName, sessionId);
-    const effectiveNativeSearchEnabled = useVisionProvider
-      ? canUseVisionToolUse && nativeWebSearchEnabled
-      : nativeWebSearchEnabled;
+    // Always disable native web search in reply generation; use our SearXNG-backed search tool instead.
+    const effectiveNativeSearchEnabled = false;
 
     // Step 4: Tools (none when vision provider is used but does not support tool use)
     const toolDefinitions =

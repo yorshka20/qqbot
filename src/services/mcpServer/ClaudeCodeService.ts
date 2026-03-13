@@ -180,9 +180,14 @@ export class ClaudeCodeService {
     try {
       const action = params.target.type === 'user' ? 'send_private_msg' : 'send_group_msg';
       const targetKey = params.target.type === 'user' ? 'user_id' : 'group_id';
+      // Milky API expects numeric ids; target.id is string from MCP/JSON
+      const targetId = Number(params.target.id);
+      if (Number.isNaN(targetId)) {
+        return { success: false, error: `Invalid target id: ${params.target.id}` };
+      }
 
       const apiParams: Record<string, unknown> = {
-        [targetKey]: params.target.id,
+        [targetKey]: targetId,
         message: params.content,
       };
 
