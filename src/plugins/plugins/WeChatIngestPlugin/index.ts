@@ -61,7 +61,7 @@ export class WeChatIngestPlugin extends PluginBase {
         apiBase: padpro.apiBase,
         authKey: padpro.authKey,
       });
-      const cmdHandler = new WechatCommandHandler(padProClient);
+      const cmdHandler = new WechatCommandHandler(padProClient, this.db);
       this.commandManager.register(cmdHandler, this.name);
       logger.info('[WeChatIngestPlugin] Registered /wechat command');
     } else {

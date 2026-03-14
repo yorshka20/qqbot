@@ -162,6 +162,10 @@ export class WeChatIngestService {
       hostname: '0.0.0.0',
       async fetch(req: Request): Promise<Response> {
         const url = new URL(req.url);
+        // Log every incoming request so we can verify delivery
+        logger.info(
+          `[WeChatIngestService] HTTP ${req.method} ${url.pathname} from ${req.headers.get('x-forwarded-for') ?? 'unknown'}`,
+        );
         if (req.method === 'POST' && url.pathname === listenPath) {
           return self.handleCallback(req);
         }
@@ -170,7 +174,7 @@ export class WeChatIngestService {
     });
 
     logger.info(
-      `[WeChatIngestService] Webhook server listening on 0.0.0.0:${listenPort}${listenPath} | RAG=${this.retrieval.isRAGEnabled()}`,
+      `[WeChatIngestService] Webhook server listening on 0.0.0.0:${listenPort}${listenPath} | RAG=${this.retrieval.isRAGEnabled()} | DB=${this.db != null}`,
     );
   }
 
@@ -207,7 +211,7 @@ export class WeChatIngestService {
     this.totalReceived++;
 
     if (category === 'system') {
-      logger.debug(
+      logger.info(
         `[WeChatIngestService] [#${this.totalReceived}] system/skip | MsgType=${msg.MsgType} from=${msg.FromUserName}`,
       );
       return new Response('OK', { status: 200 });
@@ -277,7 +281,7 @@ export class WeChatIngestService {
     // RAG buffer
     if (this.retrieval.isRAGEnabled()) {
       this.buffer.push(parsed);
-      logger.debug(`[WeChatIngestService] Buffered text for conv=${convId}`);
+      logger.info(`[WeChatIngestService] Buffered text for RAG | conv=${convId}`);
     } else {
       logger.debug('[WeChatIngestService] RAG disabled — text saved to DB only');
     }
@@ -402,7 +406,7 @@ export class WeChatIngestService {
       createTime: msg.CreateTime,
       receivedAt: new Date().toISOString(),
     });
-    logger.debug(`[WeChatIngestService] DB insert OK | newMsgId=${msg.NewMsgId} conv=${convId}`);
+    logger.info(`[WeChatIngestService] DB insert OK | newMsgId=${msg.NewMsgId} conv=${convId}`);
   }
 
   private persistRawToDb(msg: WeChatWebhookMessage, category: MessageCategory): void {

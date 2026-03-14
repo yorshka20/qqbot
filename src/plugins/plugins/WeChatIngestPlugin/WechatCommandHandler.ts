@@ -2,8 +2,9 @@
 // Gives QQ bot users access to WeChat data via read-only PadPro API
 
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { WeChatPadProClient } from '@/services/wechat';
 import type {
+  WeChatDatabase,
+  WeChatPadProClient,
   WXGroupInfo,
   WXGroupMember,
   WXMoment,
@@ -22,6 +23,7 @@ const USAGE = `
 /wechat moments [wxid]      — 朋友圈（不填wxid=自己）
 /wechat search <query>      — 搜索联系人（微信号/手机/QQ）
 /wechat official            — 关注的公众号
+/wechat articles [keyword]  — 已收录公众号文章（按标题/来源过滤）
 /wechat history [count]     — 同步最新消息（默认20条）
 /wechat fav                 — 收藏列表
 `.trim();
@@ -32,7 +34,10 @@ export class WechatCommandHandler implements CommandHandler {
   usage = '/wechat <subcommand>';
   permissions: PermissionLevel[] = ['owner', 'admin'];
 
-  constructor(private readonly client: WeChatPadProClient) {}
+  constructor(
+    private readonly client: WeChatPadProClient,
+    private readonly db: WeChatDatabase | null = null,
+  ) {}
 
   async execute(args: string[], _context: CommandContext): Promise<CommandResult> {
     const sub = args[0]?.toLowerCase() ?? '';
@@ -55,6 +60,8 @@ export class WechatCommandHandler implements CommandHandler {
           return this.handleSearch(args.slice(1).join(' ').trim());
         case 'official':
           return this.handleOfficial();
+        case 'articles':
+          return this.handleArticles(args.slice(1).join(' ').trim());
         case 'history':
           return this.handleHistory(Number(args[1] ?? 20));
         case 'fav':
@@ -244,6 +251,33 @@ export class WechatCommandHandler implements CommandHandler {
     const b = new MessageBuilder();
     b.text(`关注的公众号 (${list.length}个)\n\n`);
     b.text(lines.join('\n'));
+    return ok(b);
+  }
+
+  private handleArticles(keyword: string): CommandResult {
+    if (!this.db) return ok('未启用本地数据库，无法查询文章');
+
+    const rows = this.db.getRecentArticles(20, keyword || undefined);
+    if (rows.length === 0) {
+      return ok(
+        keyword ? `没有找到包含 "${keyword}" 的文章` : '暂无已收录的公众号文章（文章通过群聊/私聊分享后自动收录）',
+      );
+    }
+
+    const lines = rows.map((r) => {
+      const time = new Date(r.createTime * 1000).toLocaleDateString('zh-CN');
+      // Extract title from raw XML content: <title>...</title> or <title><![CDATA[...]]></title>
+      const titleMatch =
+        r.rawContent.match(/<title><!\[CDATA\[([^\]]+)\]\]><\/title>/i) ??
+        r.rawContent.match(/<title>([^<]+)<\/title>/i);
+      const title = titleMatch?.[1]?.trim() ?? r.content.slice(0, 40);
+      const source = r.sender || r.conversationId;
+      return `[${time}] ${title}\n  来源: ${source}`;
+    });
+
+    const b = new MessageBuilder();
+    b.text(`已收录文章 (${rows.length}条${keyword ? `，筛选: "${keyword}"` : ''})\n\n`);
+    b.text(lines.join('\n\n'));
     return ok(b);
   }
 

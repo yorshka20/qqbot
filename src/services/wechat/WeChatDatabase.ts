@@ -11,17 +11,17 @@ import { logger } from '@/utils/logger';
 // ────────────────────────────────────────────────────────────────────────────
 
 export interface WeChatMessageRow {
-  id?: number;            // auto-increment primary key
-  newMsgId: string;       // WeChatPadPro NewMsgId (unique)
+  id?: number; // auto-increment primary key
+  newMsgId: string; // WeChatPadPro NewMsgId (unique)
   conversationId: string; // group chatroom-ID or private wxid
-  isGroup: number;        // 1 = group, 0 = private
-  sender: string;         // sender nickname or wxid
-  content: string;        // parsed plain text
-  rawContent: string;     // original Content field (may be XML)
-  msgType: number;        // WeChatPadPro MsgType
-  category: string;       // text | image | article | file | system | other
-  createTime: number;     // unix seconds (from webhook CreateTime)
-  receivedAt: string;     // ISO timestamp when bot received the message
+  isGroup: number; // 1 = group, 0 = private
+  sender: string; // sender nickname or wxid
+  content: string; // parsed plain text
+  rawContent: string; // original Content field (may be XML)
+  msgType: number; // WeChatPadPro MsgType
+  category: string; // text | image | article | file | system | other
+  createTime: number; // unix seconds (from webhook CreateTime)
+  receivedAt: string; // ISO timestamp when bot received the message
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -64,7 +64,10 @@ export class WeChatDatabase {
 
   /** Insert a message. Silently ignores duplicates (ON CONFLICT IGNORE). */
   insert(row: Omit<WeChatMessageRow, 'id'>): void {
-    if (!this.db) { logger.warn('[WeChatDatabase] insert called before init'); return; }
+    if (!this.db) {
+      logger.warn('[WeChatDatabase] insert called before init');
+      return;
+    }
     try {
       this.db
         .query(`INSERT OR IGNORE INTO wechat_messages
@@ -106,13 +109,27 @@ export class WeChatDatabase {
     return row?.n ?? 0;
   }
 
+  /** Return recently captured articles, optionally filtered by sender (source account username) */
+  getRecentArticles(limit = 20, senderFilter?: string): WeChatMessageRow[] {
+    if (!this.db) return [];
+    if (senderFilter) {
+      return this.db
+        .query<WeChatMessageRow, [string, string, number]>(
+          `SELECT * FROM wechat_messages WHERE category = ? AND sender LIKE ? ORDER BY createTime DESC LIMIT ?`,
+        )
+        .all('article', `%${senderFilter}%`, limit);
+    }
+    return this.db
+      .query<WeChatMessageRow, [string, number]>(
+        `SELECT * FROM wechat_messages WHERE category = ? ORDER BY createTime DESC LIMIT ?`,
+      )
+      .all('article', limit);
+  }
+
   getConversationSummary(): Array<{ conversationId: string; isGroup: number; count: number; lastTime: number }> {
     if (!this.db) return [];
     return this.db
-      .query<
-        { conversationId: string; isGroup: number; count: number; lastTime: number },
-        []
-      >(
+      .query<{ conversationId: string; isGroup: number; count: number; lastTime: number }, []>(
         `SELECT conversationId, isGroup, COUNT(*) as count, MAX(createTime) as lastTime
          FROM wechat_messages
          GROUP BY conversationId
