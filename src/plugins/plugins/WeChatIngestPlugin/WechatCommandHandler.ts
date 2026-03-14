@@ -257,26 +257,24 @@ export class WechatCommandHandler implements CommandHandler {
   private handleArticles(keyword: string): CommandResult {
     if (!this.db) return ok('未启用本地数据库，无法查询文章');
 
-    const rows = this.db.getRecentArticles(20, keyword || undefined);
+    const rows = this.db.getRecentOAArticles(20, keyword || undefined);
     if (rows.length === 0) {
       return ok(
-        keyword ? `没有找到包含 "${keyword}" 的文章` : '暂无已收录的公众号文章（文章通过群聊/私聊分享后自动收录）',
+        keyword ? `没有找到包含 "${keyword}" 的文章` : '暂无已收录的公众号文章（公众号推送后自动收录）',
       );
     }
 
     const lines = rows.map((r) => {
-      const time = new Date(r.createTime * 1000).toLocaleDateString('zh-CN');
-      // Extract title from raw XML content: <title>...</title> or <title><![CDATA[...]]></title>
-      const titleMatch =
-        r.rawContent.match(/<title><!\[CDATA\[([^\]]+)\]\]><\/title>/i) ??
-        r.rawContent.match(/<title>([^<]+)<\/title>/i);
-      const title = titleMatch?.[1]?.trim() ?? r.content.slice(0, 40);
-      const source = r.sender || r.conversationId;
-      return `[${time}] ${title}\n  来源: ${source}`;
+      const time = r.pubTime
+        ? new Date(r.pubTime * 1000).toLocaleDateString('zh-CN')
+        : new Date(r.receivedAt).toLocaleDateString('zh-CN');
+      const account = r.accountNick || r.accountId;
+      const summary = r.summary ? `\n  摘要: ${r.summary.substring(0, 60)}…` : '';
+      return `[${time}] ${r.title}\n  公众号: ${account}${summary}`;
     });
 
     const b = new MessageBuilder();
-    b.text(`已收录文章 (${rows.length}条${keyword ? `，筛选: "${keyword}"` : ''})\n\n`);
+    b.text(`已收录公众号文章 (${rows.length}条${keyword ? `，筛选: "${keyword}"` : ''})\n\n`);
     b.text(lines.join('\n\n'));
     return ok(b);
   }

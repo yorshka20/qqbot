@@ -7,7 +7,7 @@ export type {
   WeChatWebhookMessage,
 } from './types';
 export { resolveConfig } from './types';
-export type { WeChatMessageRow } from './WeChatDatabase';
+export type { WeChatMessageRow, WeChatOAArticleRow } from './WeChatDatabase';
 export { WeChatDatabase } from './WeChatDatabase';
 export type { NotifyCallback } from './WeChatIngestService';
 export { WeChatIngestService } from './WeChatIngestService';
