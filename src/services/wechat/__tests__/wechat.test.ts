@@ -50,7 +50,10 @@ describe('WeChatPadProClient', () => {
   });
 
   test('getLoginStatus returns online status', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     const status = await client.getLoginStatus();
     console.log('[test] loginStatus:', JSON.stringify(status));
     expect(status).toBeDefined();
@@ -58,21 +61,30 @@ describe('WeChatPadProClient', () => {
   });
 
   test('getProfile returns profile object', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     const profile = await client.getProfile();
     console.log('[test] profile keys:', Object.keys(profile ?? {}));
     expect(profile).toBeDefined();
   });
 
   test('getFriendList returns an array', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     const list = await client.getFriendList();
     console.log(`[test] friend count: ${list.length}`);
     expect(Array.isArray(list)).toBe(true);
   });
 
   test('getAllGroupList returns an array', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     // This endpoint can be slow on the PadPro server
     const list = await client.getAllGroupList().catch((err: unknown) => {
       console.warn('[test] getAllGroupList timed out or errored:', err instanceof Error ? err.message : err);
@@ -83,35 +95,50 @@ describe('WeChatPadProClient', () => {
   }, 30_000);
 
   test('getOfficialAccountList returns an array', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     const list = await client.getOfficialAccountList();
     console.log(`[test] official account count: ${list.length}`);
     expect(Array.isArray(list)).toBe(true);
   });
 
   test('syncMessages returns an array', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     const msgs = await client.syncMessages(5);
     console.log(`[test] synced message count: ${msgs.length}`);
     expect(Array.isArray(msgs)).toBe(true);
   });
 
   test('getFavoriteList returns an array', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     const favs = await client.getFavoriteList();
     console.log(`[test] favorite count: ${favs.length}`);
     expect(Array.isArray(favs)).toBe(true);
   });
 
   test('getMomentsTimeline returns an array', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     const moments = await client.getMomentsTimeline();
     console.log(`[test] moments count: ${moments.length}`);
     expect(Array.isArray(moments)).toBe(true);
   });
 
   test('searchContact returns null or object for unknown query', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     const result = await client.searchContact('___no_such_user___').catch(() => null);
     expect(result === null || typeof result === 'object').toBe(true);
   });
@@ -289,22 +316,24 @@ describe('WechatCommandHandler', () => {
 
   /** Extract plain text from command result segments */
   function segText(result: Awaited<ReturnType<WechatCommandHandler['execute']>>): string {
-    return (
-      result.segments
-        ?.map((s) => (s.type === 'text' ? s.data.text : ''))
-        .join('') ?? ''
-    );
+    return result.segments?.map((s) => (s.type === 'text' ? s.data.text : '')).join('') ?? '';
   }
 
   test('/wechat (no args) returns usage text', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     const result = await handler.execute([], ctx);
     expect(result.success).toBe(true);
     expect(segText(result)).toContain('/wechat');
   });
 
   test('/wechat status shows online/offline', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     const result = await handler.execute(['status'], ctx);
     const text = segText(result);
     console.log('[cmd] status:', text);
@@ -313,7 +342,10 @@ describe('WechatCommandHandler', () => {
   });
 
   test('/wechat me shows profile with real nickname', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     const result = await handler.execute(['me'], ctx);
     const text = segText(result);
     console.log('[cmd] me:', text);
@@ -324,21 +356,30 @@ describe('WechatCommandHandler', () => {
   });
 
   test('/wechat contacts returns success', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     const result = await handler.execute(['contacts'], ctx);
     console.log('[cmd] contacts success:', result.success);
     expect(result.success).toBe(true);
   });
 
   test('/wechat official returns success', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     const result = await handler.execute(['official'], ctx);
     console.log('[cmd] official:', segText(result).slice(0, 60));
     expect(result.success).toBe(true);
   });
 
   test('/wechat fav returns favorites list', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     const result = await handler.execute(['fav'], ctx);
     const text = segText(result);
     console.log('[cmd] fav:', text.slice(0, 80));
@@ -347,14 +388,20 @@ describe('WechatCommandHandler', () => {
   });
 
   test('/wechat moments returns timeline', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     const result = await handler.execute(['moments'], ctx);
     console.log('[cmd] moments:', segText(result).slice(0, 80));
     expect(result.success).toBe(true);
   });
 
   test('/wechat groups returns success (slow endpoint)', async () => {
-    if (SKIP_LIVE) { console.log('skipped'); return; }
+    if (SKIP_LIVE) {
+      console.log('skipped');
+      return;
+    }
     const result = await handler.execute(['groups'], ctx).catch(() => ({ success: true, segments: [] }));
     expect(result.success).toBe(true);
   }, 30_000);

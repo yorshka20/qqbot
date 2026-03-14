@@ -9,8 +9,8 @@
  */
 
 import { spawn } from 'bun';
-import type { APIClient } from '@/api/APIClient';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
+import type { APIClient } from '@/api/APIClient';
 import type { ProtocolName } from '@/core/config';
 import { logger } from '@/utils/logger';
 import { ClaudeTaskManager } from './ClaudeTaskManager';

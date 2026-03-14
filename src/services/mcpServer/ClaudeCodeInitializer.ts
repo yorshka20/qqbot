@@ -4,8 +4,8 @@
  * Handles initialization and lifecycle management of the Claude Code service.
  */
 
-import type { APIClient } from '@/api/APIClient';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
+import type { APIClient } from '@/api/APIClient';
 import type { Config, ProtocolName } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';

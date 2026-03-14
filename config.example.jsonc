@@ -212,7 +212,7 @@
           "analysisProvider": "ollama", // optional: LLM for analysis/reply (default "ollama")
           "groups": [
             {
-              "groupId": "672372860",
+              "groupId": "9999",
               "preferenceKey": "preference.blender"
             },
             {
@@ -268,23 +268,20 @@
           // HTTP webhook server — WeChatPadPro should push to http://<this-host>:<listenPort><listenPath>
           "listenPort": 9920,
           "listenPath": "/wechat/callback",
-
           // WeChatPadPro connection — required for /wechat command and SNS polling
           "padpro": {
-            "apiBase": "http://192.168.50.97:8059",   // WeChatPadPro API base URL
-            "adminKey": "yourAdminKey",                // Admin key (管理接口)
-            "authKey": "your-auth-key-uuid",           // Auth key (设备/业务接口, 30天有效期)
-            "wxid": "wxid_xxxxxxxxxxxxxxx"             // 已登录微信账号的 wxid
+            "apiBase": "http://192.168.50.97:8059", // WeChatPadPro API base URL
+            "adminKey": "yourAdminKey", // Admin key (管理接口)
+            "authKey": "your-auth-key-uuid", // Auth key (设备/业务接口, 30天有效期)
+            "wxid": "wxid_xxxxxxxxxxxxxxx" // 已登录微信账号的 wxid
           },
-
           // RAG ingestion settings
           "rag": {
-            "articleCollection": "wechat_articles",   // 公众号文章存入的 Qdrant collection
-            "momentsCollection": "wechat_moments",    // 朋友圈存入的 Qdrant collection
-            "bufferIdleMinutes": 5,                   // 空闲多少分钟后批量 upsert
-            "bufferMaxMessages": 10                   // 最多缓冲多少条后触发 upsert
+            "articleCollection": "wechat_articles", // 公众号文章存入的 Qdrant collection
+            "momentsCollection": "wechat_moments", // 朋友圈存入的 Qdrant collection
+            "bufferIdleMinutes": 5, // 空闲多少分钟后批量 upsert
+            "bufferMaxMessages": 10 // 最多缓冲多少条后触发 upsert
           },
-
           // Real-time QQ notification when WeChat messages match a keyword/pattern
           // Disabled by default; enable and add rules as needed
           "realtime": {
@@ -298,15 +295,13 @@
               // }
             ]
           },
-
           // Daily digest — summarise WeChat RAG data and push to a QQ group via AgendaService
           // Disabled by default
           "digest": {
             "enabled": false,
-            "cron": "0 22 * * *",          // cron expression — default: every day at 22:00
-            "targetQQGroup": ""            // QQ group ID to send the digest to
+            "cron": "0 22 * * *", // cron expression — default: every day at 22:00
+            "targetQQGroup": "" // QQ group ID to send the digest to
           },
-
           // SNS (Moments) polling — periodically fetch 朋友圈 and store into RAG
           // Disabled by default; minimum interval 30 minutes to avoid account risk
           "sns": {
@@ -455,7 +450,7 @@
       // Google Cloud Run ComfyUI provider (T2I only) - sync POST workflow API
       // "google-cloud-run": {
       //   "type": "google-cloud-run",
-      //   "baseUrl": "https://comfyui-serverless-us-222237657682.us-east4.run.app",
+      //   "baseUrl": "url of your google cloud run service",
       //   "apiKey": "",
       //   "timeoutMs": 300000
       // }

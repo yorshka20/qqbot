@@ -22,7 +22,7 @@ interface StrWrapper {
 }
 
 interface RawLoginStatusData {
-  loginState: number;   // 1 = online
+  loginState: number; // 1 = online
   loginErrMsg: string;
   loginTime: string;
   onlineDays: number;

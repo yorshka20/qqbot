@@ -191,9 +191,7 @@ export class WeChatDatabase {
         .all(like, like, like, limit);
     }
     return this.db
-      .query<WeChatOAArticleRow, [number]>(
-        `SELECT * FROM wechat_oa_articles ORDER BY pubTime DESC LIMIT ?`,
-      )
+      .query<WeChatOAArticleRow, [number]>(`SELECT * FROM wechat_oa_articles ORDER BY pubTime DESC LIMIT ?`)
       .all(limit);
   }
 

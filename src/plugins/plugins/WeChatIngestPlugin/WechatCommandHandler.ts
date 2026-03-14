@@ -259,9 +259,7 @@ export class WechatCommandHandler implements CommandHandler {
 
     const rows = this.db.getRecentOAArticles(20, keyword || undefined);
     if (rows.length === 0) {
-      return ok(
-        keyword ? `没有找到包含 "${keyword}" 的文章` : '暂无已收录的公众号文章（公众号推送后自动收录）',
-      );
+      return ok(keyword ? `没有找到包含 "${keyword}" 的文章` : '暂无已收录的公众号文章（公众号推送后自动收录）');
     }
 
     const lines = rows.map((r) => {

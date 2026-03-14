@@ -22,7 +22,9 @@ import type {
 
 // Handler types
 type TaskNotificationHandler = (notification: TaskNotification) => void;
-type SendMessageHandler = (params: SendMessageParams) => Promise<{ success: boolean; messageId?: string; error?: string }>;
+type SendMessageHandler = (
+  params: SendMessageParams,
+) => Promise<{ success: boolean; messageId?: string; error?: string }>;
 type GetBotInfoHandler = () => BotInfo;
 type ExecuteCommandHandler = (params: ExecuteCommandParams) => Promise<ExecuteCommandResult>;
 
@@ -117,7 +119,7 @@ export class MCPServer {
     try {
       // POST /api/notify - Notify task status
       if (url.pathname === '/api/notify' && req.method === 'POST') {
-        const body = await req.json() as TaskNotification;
+        const body = (await req.json()) as TaskNotification;
 
         if (!body.taskId || !body.status) {
           return this.jsonResponse({ error: 'Missing required fields: taskId, status' }, 400, corsHeaders);
@@ -125,20 +127,28 @@ export class MCPServer {
 
         if (this.onTaskNotification) {
           this.onTaskNotification(body);
-          return this.jsonResponse({
-            success: true,
-            message: `Task ${body.taskId} status updated to: ${body.status}`
-          }, 200, corsHeaders);
+          return this.jsonResponse(
+            {
+              success: true,
+              message: `Task ${body.taskId} status updated to: ${body.status}`,
+            },
+            200,
+            corsHeaders,
+          );
         }
         return this.jsonResponse({ error: 'No task notification handler registered' }, 500, corsHeaders);
       }
 
       // POST /api/send - Send message
       if (url.pathname === '/api/send' && req.method === 'POST') {
-        const body = await req.json() as SendMessageParams;
+        const body = (await req.json()) as SendMessageParams;
 
         if (!body.target?.type || !body.target?.id || !body.content) {
-          return this.jsonResponse({ error: 'Missing required fields: target.type, target.id, content' }, 400, corsHeaders);
+          return this.jsonResponse(
+            { error: 'Missing required fields: target.type, target.id, content' },
+            400,
+            corsHeaders,
+          );
         }
 
         if (this.onSendMessage) {
@@ -183,49 +193,53 @@ export class MCPServer {
 
       // API documentation
       if (url.pathname === '/' || url.pathname === '/api') {
-        return this.jsonResponse({
-          name: 'QQBot MCP Server',
-          version: '1.0.0',
-          endpoints: {
-            'POST /api/notify': {
-              description: 'Notify the bot of Claude Code task status',
-              body: {
-                taskId: 'string (required)',
-                status: 'started | progress | completed | failed (required)',
-                message: 'string (optional)',
-                progress: 'number 0-100 (optional)',
-                result: 'string (optional, for completed)',
-                error: 'string (optional, for failed)',
-              },
-            },
-            'POST /api/send': {
-              description: 'Send a message via the bot',
-              body: {
-                target: {
-                  type: 'user | group',
-                  id: 'string (user ID or group ID)',
+        return this.jsonResponse(
+          {
+            name: 'QQBot MCP Server',
+            version: '1.0.0',
+            endpoints: {
+              'POST /api/notify': {
+                description: 'Notify the bot of Claude Code task status',
+                body: {
+                  taskId: 'string (required)',
+                  status: 'started | progress | completed | failed (required)',
+                  message: 'string (optional)',
+                  progress: 'number 0-100 (optional)',
+                  result: 'string (optional, for completed)',
+                  error: 'string (optional, for failed)',
                 },
-                content: 'string',
-                replyTo: 'string (optional, message ID to reply to)',
               },
-            },
-            'GET /api/info': {
-              description: 'Get current bot status and information',
-            },
-            'POST /api/command': {
-              description: 'Execute a bot command',
-              body: {
-                command: 'restart | reload-plugins | status (required)',
-                args: 'string[] (optional)',
+              'POST /api/send': {
+                description: 'Send a message via the bot',
+                body: {
+                  target: {
+                    type: 'user | group',
+                    id: 'string (user ID or group ID)',
+                  },
+                  content: 'string',
+                  replyTo: 'string (optional, message ID to reply to)',
+                },
               },
-              commands: {
-                restart: 'Pull code, update dependencies, and restart the bot',
-                'reload-plugins': 'Reload all plugins',
-                status: 'Get bot status',
+              'GET /api/info': {
+                description: 'Get current bot status and information',
+              },
+              'POST /api/command': {
+                description: 'Execute a bot command',
+                body: {
+                  command: 'restart | reload-plugins | status (required)',
+                  args: 'string[] (optional)',
+                },
+                commands: {
+                  restart: 'Pull code, update dependencies, and restart the bot',
+                  'reload-plugins': 'Reload all plugins',
+                  status: 'Get bot status',
+                },
               },
             },
           },
-        }, 200, corsHeaders);
+          200,
+          corsHeaders,
+        );
       }
 
       return this.jsonResponse({ error: 'Not Found' }, 404, corsHeaders);

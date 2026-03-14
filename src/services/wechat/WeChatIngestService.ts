@@ -314,7 +314,14 @@ export class WeChatIngestService {
           await this.handleOAPushMessage(msg);
         } else {
           // Article shared inside a group/private chat — store to wechat_messages
-          this.persistToDb(msg, 'article', msg.FromUserName, parseContentAsJson(msg.Content, 'article', msg.MsgType), false, conversationId(msg.FromUserName));
+          this.persistToDb(
+            msg,
+            'article',
+            msg.FromUserName,
+            parseContentAsJson(msg.Content, 'article', msg.MsgType),
+            false,
+            conversationId(msg.FromUserName),
+          );
         }
         break;
       case 'image':
@@ -383,9 +390,7 @@ export class WeChatIngestService {
     const accountNick = xmlTag(msg.Content, 'nickname') || xmlTag(msg.Content, 'appname') || accountId;
     const receivedAt = new Date().toISOString();
 
-    logger.info(
-      `[WeChatIngestService] OA push | account=${accountNick}(${accountId}) items=${items.length}`,
-    );
+    logger.info(`[WeChatIngestService] OA push | account=${accountNick}(${accountId}) items=${items.length}`);
 
     for (let idx = 0; idx < items.length; idx++) {
       const item = items[idx];
