@@ -1,4 +1,5 @@
-// WeChat Ingest Plugin — receives webhook from WeChatPadPro and stores messages into RAG
+// WeChat Ingest Plugin — thin wrapper that wires up the WeChat service layer
+// All core logic lives in src/services/wechat/
 
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { CommandManager } from '@/command/CommandManager';
@@ -7,13 +8,11 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { RetrievalService } from '@/services/retrieval';
+import type { WeChatIngestConfig, WeChatRealtimeRule } from '@/services/wechat';
+import { resolveConfig, WeChatDatabase, WeChatIngestService, WeChatPadProClient } from '@/services/wechat';
 import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../../decorators';
 import { PluginBase } from '../../PluginBase';
-import type { WeChatIngestConfig, WeChatRealtimeRule } from './types';
-import { resolveConfig } from './types';
-import { WeChatIngestService } from './WeChatIngestService';
-import { WeChatPadProClient } from './WeChatPadProClient';
 import { WechatCommandHandler } from './WechatCommandHandler';
 
 @RegisterPlugin({
@@ -23,6 +22,7 @@ import { WechatCommandHandler } from './WechatCommandHandler';
 })
 export class WeChatIngestPlugin extends PluginBase {
   private ingestService: WeChatIngestService | null = null;
+  private db: WeChatDatabase | null = null;
   private retrieval!: RetrievalService;
   private messageAPI!: MessageAPI;
   private commandManager!: CommandManager;
@@ -43,9 +43,14 @@ export class WeChatIngestPlugin extends PluginBase {
       logger.warn('[WeChatIngestPlugin] RAG is not enabled — messages will be received but NOT stored to RAG');
     }
 
+    // Init SQLite database
+    this.db = new WeChatDatabase();
+    await this.db.init();
+
     this.ingestService = new WeChatIngestService({
       config: resolved,
       retrieval: this.retrieval,
+      db: this.db,
       notify: resolved.realtime.enabled ? this.sendRealtimeNotification.bind(this) : undefined,
     });
 
@@ -75,6 +80,8 @@ export class WeChatIngestPlugin extends PluginBase {
   async onDisable(): Promise<void> {
     this.enabled = false;
     await this.ingestService?.stop();
+    this.db?.close();
+    this.db = null;
     logger.info('[WeChatIngestPlugin] Disabled — webhook server stopped');
   }
 

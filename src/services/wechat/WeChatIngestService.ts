@@ -9,6 +9,7 @@ import type {
   WeChatRealtimeRule,
   WeChatWebhookMessage,
 } from './types';
+import type { WeChatDatabase } from './WeChatDatabase';
 import { WeChatMessageBuffer } from './WeChatMessageBuffer';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -43,19 +44,16 @@ function parseGroupMessage(content: string, fromUser: string): { sender: string;
         isGroup: true,
       };
     }
+    // Fallback: no colon-newline format but still a group message
+    return { sender: fromUser, text: content, isGroup: true };
   }
   return { sender: fromUser, text: content, isGroup: false };
 }
 
-/** Extract the group ID (chatroom ID without @chatroom) or private wxid */
 function conversationId(fromUser: string): string {
-  if (fromUser.endsWith('@chatroom')) {
-    return fromUser.replace('@chatroom', '');
-  }
-  return fromUser;
+  return fromUser.endsWith('@chatroom') ? fromUser.replace('@chatroom', '') : fromUser;
 }
 
-/** RAG collection name per conversation */
 function ragCollection(convId: string, isGroup: boolean): string {
   return isGroup ? `wechat_group_${convId}_history` : `wechat_private_${convId}_history`;
 }
@@ -72,11 +70,11 @@ async function extractArticle(content: string): Promise<{ url: string; title: st
   if (!urlMatch) return null;
   const url = urlMatch[0];
 
-  // Extract title from XML <title> tag in Content
   const titleMatch =
     content.match(/<title><!\[CDATA\[([^\]]+)\]\]><\/title>/i) ?? content.match(/<title>([^<]+)<\/title>/i);
   const title = titleMatch?.[1]?.trim() ?? '';
 
+  logger.info(`[WeChatIngestService] Fetching article: "${title}" ${url}`);
   try {
     const resp = await fetch(url, {
       headers: {
@@ -85,12 +83,13 @@ async function extractArticle(content: string): Promise<{ url: string; title: st
       },
       signal: AbortSignal.timeout(15_000),
     });
-    if (!resp.ok) return { url, title, text: title };
-
+    if (!resp.ok) {
+      logger.warn(`[WeChatIngestService] Article fetch HTTP ${resp.status} for ${url}`);
+      return { url, title, text: title };
+    }
     const html = await resp.text();
     const bodyMatch = html.match(JS_CONTENT_RE);
     const rawText = bodyMatch?.[1] ?? '';
-    // Strip HTML tags and collapse whitespace
     const text = rawText
       .replace(/<[^>]+>/g, ' ')
       .replace(/&nbsp;/gi, ' ')
@@ -100,15 +99,16 @@ async function extractArticle(content: string): Promise<{ url: string; title: st
       .replace(/\s{2,}/g, ' ')
       .trim();
 
+    logger.info(`[WeChatIngestService] Article extracted: "${title}" — ${text.length} chars`);
     return { url, title, text: text || title };
   } catch (err) {
-    logger.warn(`[WeChatIngestService] Failed to fetch article ${url}:`, err);
+    logger.warn(`[WeChatIngestService] Article fetch error for ${url}:`, err);
     return { url, title, text: title };
   }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Notification callback type (injected from plugin to avoid circular deps)
+// Notification callback
 // ────────────────────────────────────────────────────────────────────────────
 
 export type NotifyCallback = (text: string, rules: WeChatRealtimeRule[]) => Promise<void>;
@@ -122,15 +122,19 @@ export class WeChatIngestService {
   private buffer: WeChatMessageBuffer;
   private readonly config: ResolvedWeChatIngestConfig;
   private readonly retrieval: RetrievalService;
+  private readonly db: WeChatDatabase | null;
   private readonly notify: NotifyCallback | null;
+  private totalReceived = 0;
 
   constructor(opts: {
     config: ResolvedWeChatIngestConfig;
     retrieval: RetrievalService;
+    db?: WeChatDatabase;
     notify?: NotifyCallback;
   }) {
     this.config = opts.config;
     this.retrieval = opts.retrieval;
+    this.db = opts.db ?? null;
     this.notify = opts.notify ?? null;
 
     this.buffer = new WeChatMessageBuffer({
@@ -138,6 +142,11 @@ export class WeChatIngestService {
       maxMessages: this.config.rag.bufferMaxMessages,
       onFlush: this.upsertBatch.bind(this),
     });
+
+    logger.info(
+      `[WeChatIngestService] Created | RAG=${this.retrieval.isRAGEnabled()} | DB=${this.db != null} ` +
+        `| bufferIdle=${this.config.rag.bufferIdleMinutes}min | bufferMax=${this.config.rag.bufferMaxMessages}msgs`,
+    );
   }
 
   // ──────────────────────────────────────────────────
@@ -160,10 +169,13 @@ export class WeChatIngestService {
       },
     });
 
-    logger.info(`[WeChatIngestService] Listening on 0.0.0.0:${listenPort}${listenPath}`);
+    logger.info(
+      `[WeChatIngestService] Webhook server listening on 0.0.0.0:${listenPort}${listenPath} | RAG=${this.retrieval.isRAGEnabled()}`,
+    );
   }
 
   async stop(): Promise<void> {
+    logger.info(`[WeChatIngestService] Stopping (total received: ${this.totalReceived})...`);
     await this.buffer.flushAll();
     this.buffer.destroy();
     this.server?.stop(true);
@@ -180,22 +192,32 @@ export class WeChatIngestService {
     try {
       body = await req.json();
     } catch {
+      logger.warn('[WeChatIngestService] Webhook: failed to parse JSON body');
       return new Response('Bad Request', { status: 400 });
     }
 
     const msg = body as WeChatWebhookMessage;
+
     if (!msg?.MsgType || !msg?.FromUserName) {
+      logger.warn('[WeChatIngestService] Webhook: missing MsgType or FromUserName', body);
       return new Response('OK', { status: 200 });
     }
 
     const category = classifyMessage(msg);
+    this.totalReceived++;
 
-    // Always skip system/sync messages early
     if (category === 'system') {
+      logger.debug(
+        `[WeChatIngestService] [#${this.totalReceived}] system/skip | MsgType=${msg.MsgType} from=${msg.FromUserName}`,
+      );
       return new Response('OK', { status: 200 });
     }
 
-    // Process asynchronously — never block the webhook response
+    logger.info(
+      `[WeChatIngestService] [#${this.totalReceived}] Received | MsgType=${msg.MsgType} category=${category} ` +
+        `from=${msg.FromUserName} NewMsgId=${msg.NewMsgId}`,
+    );
+
     this.processMessage(msg, category).catch((err) => logger.error('[WeChatIngestService] processMessage error:', err));
 
     return new Response('OK', { status: 200 });
@@ -216,8 +238,8 @@ export class WeChatIngestService {
       case 'image':
       case 'file':
       case 'other':
-        // Raw store: just log, no RAG for now
-        logger.debug(`[WeChatIngestService] Skipping MsgType=${msg.MsgType} (${category}) from ${msg.FromUserName}`);
+        this.persistRawToDb(msg, category);
+        logger.debug(`[WeChatIngestService] No RAG for MsgType=${msg.MsgType} (${category}) — saved to DB only`);
         break;
     }
   }
@@ -225,6 +247,14 @@ export class WeChatIngestService {
   private async handleTextMessage(msg: WeChatWebhookMessage): Promise<void> {
     const { sender, text, isGroup } = parseGroupMessage(msg.Content, msg.FromUserName);
     const convId = conversationId(msg.FromUserName);
+
+    logger.info(
+      `[WeChatIngestService] Text | conv=${convId} isGroup=${isGroup} sender=${sender} ` +
+        `text="${text.substring(0, 60).replace(/\n/g, '↵')}"`,
+    );
+
+    // Persist to SQLite immediately (regardless of RAG state)
+    this.persistToDb(msg, 'text', sender, text, isGroup, convId);
 
     const parsed: ParsedWeChatMessage = {
       id: String(msg.NewMsgId),
@@ -237,42 +267,69 @@ export class WeChatIngestService {
       category: 'text',
     };
 
-    // Real-time notification check (before buffering)
+    // Real-time notification check
     if (this.config.realtime.enabled && this.notify && this.config.realtime.rules.length > 0) {
       this.notify(text, this.config.realtime.rules).catch((err) =>
         logger.error('[WeChatIngestService] notify error:', err),
       );
     }
 
-    this.buffer.push(parsed);
+    // RAG buffer
+    if (this.retrieval.isRAGEnabled()) {
+      this.buffer.push(parsed);
+      logger.debug(`[WeChatIngestService] Buffered text for conv=${convId}`);
+    } else {
+      logger.debug('[WeChatIngestService] RAG disabled — text saved to DB only');
+    }
   }
 
   private async handleArticleMessage(msg: WeChatWebhookMessage): Promise<void> {
-    if (!this.retrieval.isRAGEnabled()) return;
+    // Always persist raw to DB
+    this.persistRawToDb(msg, 'article');
+
+    if (!this.retrieval.isRAGEnabled()) {
+      logger.info('[WeChatIngestService] Article received but RAG disabled — saved to DB only');
+      return;
+    }
 
     const article = await extractArticle(msg.Content);
-    if (!article) return;
+    if (!article) {
+      logger.warn(`[WeChatIngestService] Article: no URL found in Content from ${msg.FromUserName}`);
+      return;
+    }
 
     const docContent = article.title ? `标题: ${article.title}\n\n${article.text}` : article.text;
+    if (!docContent.trim()) {
+      logger.warn(`[WeChatIngestService] Article: empty content after extraction for ${article.url}`);
+      return;
+    }
 
-    if (!docContent.trim()) return;
+    logger.info(
+      `[WeChatIngestService] Upserting article to RAG | collection=${this.config.rag.articleCollection} ` +
+        `title="${article.title}" len=${docContent.length}`,
+    );
 
-    await this.retrieval.upsertDocuments(this.config.rag.articleCollection, [
-      {
-        id: String(msg.NewMsgId),
-        content: docContent,
-        payload: {
-          url: article.url,
-          title: article.title,
-          source: msg.FromUserName,
-          timestamp: msg.CreateTime,
-          platform: 'wechat',
-          type: 'article',
+    try {
+      await this.retrieval.upsertDocuments(this.config.rag.articleCollection, [
+        {
+          id: String(msg.NewMsgId),
+          content: docContent,
+          payload: {
+            url: article.url,
+            title: article.title,
+            source: msg.FromUserName,
+            timestamp: msg.CreateTime,
+            platform: 'wechat',
+            type: 'article',
+          },
         },
-      },
-    ]);
-
-    logger.info(`[WeChatIngestService] Article upserted: "${article.title}" → ${this.config.rag.articleCollection}`);
+      ]);
+      logger.info(
+        `[WeChatIngestService] Article upserted OK: "${article.title}" → ${this.config.rag.articleCollection}`,
+      );
+    } catch (err) {
+      logger.error('[WeChatIngestService] Article RAG upsert failed:', err);
+    }
   }
 
   // ──────────────────────────────────────────────────
@@ -280,34 +337,89 @@ export class WeChatIngestService {
   // ──────────────────────────────────────────────────
 
   private async upsertBatch(convId: string, messages: ParsedWeChatMessage[]): Promise<void> {
-    if (!this.retrieval.isRAGEnabled() || messages.length === 0) return;
+    if (messages.length === 0) return;
+
+    if (!this.retrieval.isRAGEnabled()) {
+      logger.warn(`[WeChatIngestService] upsertBatch called but RAG disabled — skipping ${messages.length} msgs`);
+      return;
+    }
 
     const isGroup = messages[0]!.isGroup;
     const collection = ragCollection(convId, isGroup);
-
-    // Merge window into a single document (same strategy as RAGPersistenceSystem)
     const combined = messages
       .map((m) => `[${new Date(m.timestamp * 1000).toISOString()}] ${m.sender}: ${m.text}`)
       .join('\n');
-
     const windowId = `${convId}_${messages[0]!.timestamp}_${messages[messages.length - 1]!.timestamp}`;
 
-    await this.retrieval.upsertDocuments(collection, [
-      {
-        id: windowId,
-        content: combined,
-        payload: {
-          conversationId: convId,
-          isGroup,
-          messageCount: messages.length,
-          startTime: messages[0]!.timestamp,
-          endTime: messages[messages.length - 1]!.timestamp,
-          platform: 'wechat',
-          type: 'chat_window',
-        },
-      },
-    ]);
+    logger.info(
+      `[WeChatIngestService] RAG upsert | conv=${convId} msgs=${messages.length} collection=${collection} windowId=${windowId}`,
+    );
 
-    logger.info(`[WeChatIngestService] Flushed ${messages.length} msgs → ${collection}`);
+    try {
+      await this.retrieval.upsertDocuments(collection, [
+        {
+          id: windowId,
+          content: combined,
+          payload: {
+            conversationId: convId,
+            isGroup,
+            messageCount: messages.length,
+            startTime: messages[0]!.timestamp,
+            endTime: messages[messages.length - 1]!.timestamp,
+            platform: 'wechat',
+            type: 'chat_window',
+          },
+        },
+      ]);
+      logger.info(`[WeChatIngestService] RAG upsert OK — ${messages.length} msgs → ${collection}`);
+    } catch (err) {
+      logger.error(`[WeChatIngestService] RAG upsert FAILED for conv=${convId}:`, err);
+    }
+  }
+
+  // ──────────────────────────────────────────────────
+  // SQLite persistence helpers
+  // ──────────────────────────────────────────────────
+
+  private persistToDb(
+    msg: WeChatWebhookMessage,
+    category: MessageCategory,
+    sender: string,
+    content: string,
+    isGroup: boolean,
+    convId: string,
+  ): void {
+    if (!this.db) return;
+    this.db.insert({
+      newMsgId: String(msg.NewMsgId),
+      conversationId: convId,
+      isGroup: isGroup ? 1 : 0,
+      sender,
+      content,
+      rawContent: msg.Content,
+      msgType: msg.MsgType,
+      category,
+      createTime: msg.CreateTime,
+      receivedAt: new Date().toISOString(),
+    });
+    logger.debug(`[WeChatIngestService] DB insert OK | newMsgId=${msg.NewMsgId} conv=${convId}`);
+  }
+
+  private persistRawToDb(msg: WeChatWebhookMessage, category: MessageCategory): void {
+    if (!this.db) return;
+    const convId = conversationId(msg.FromUserName);
+    const isGroup = msg.FromUserName.endsWith('@chatroom');
+    this.db.insert({
+      newMsgId: String(msg.NewMsgId),
+      conversationId: convId,
+      isGroup: isGroup ? 1 : 0,
+      sender: msg.FromUserName,
+      content: msg.Content.substring(0, 500), // truncate XML content
+      rawContent: msg.Content,
+      msgType: msg.MsgType,
+      category,
+      createTime: msg.CreateTime,
+      receivedAt: new Date().toISOString(),
+    });
   }
 }

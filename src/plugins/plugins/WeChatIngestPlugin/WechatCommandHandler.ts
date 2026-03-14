@@ -2,22 +2,19 @@
 // Gives QQ bot users access to WeChat data via read-only PadPro API
 
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { logger } from '@/utils/logger';
-import type { CommandContext, CommandHandler, CommandResult, PermissionLevel } from '../../../command/types';
 import type {
   WeChatPadProClient,
-  WXContact,
   WXFavorite,
-  WXGroup,
   WXGroupInfo,
   WXGroupMember,
-  WXHistoryMessage,
   WXLoginStatus,
   WXMoment,
   WXOfficialAccount,
   WXProfile,
   WXSearchResult,
-} from './WeChatPadProClient';
+} from '@/services/wechat';
+import { logger } from '@/utils/logger';
+import type { CommandContext, CommandHandler, CommandResult, PermissionLevel } from '../../../command/types';
 
 const USAGE = `
 /wechat status              — 微信登录状态
