@@ -1,5 +1,6 @@
 const path = require('path');
 
+// restart_delay: 60s between restarts; max_restarts: high so PM2 retries every minute on start failure until success.
 module.exports = {
   apps: [
     {
