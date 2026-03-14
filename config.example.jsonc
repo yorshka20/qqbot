@@ -258,6 +258,23 @@
       {
         "name": "gacha",
         "enabled": true
+      },
+      {
+        "name": "wechatIngest",
+        "enabled": true,
+        "config": {
+          "listenPort": 9920,
+          "listenPath": "/wechat/callback",
+          "rag": {
+            "articleCollection": "wechat_articles",
+            "bufferIdleMinutes": 5,
+            "bufferMaxMessages": 10
+          },
+          "realtime": {
+            "enabled": false,
+            "rules": []
+          }
+        }
       }
     ]
   },
