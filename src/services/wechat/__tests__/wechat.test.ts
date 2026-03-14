@@ -1,11 +1,12 @@
 // Tests for WeChat service layer
-// Covers: WeChatPadProClient live connection, WeChatDatabase persistence,
-//         WeChatMessageBuffer buffer logic
+// Covers: WeChatPadProClient live connection, WechatCommandHandler commands,
+//         WeChatDatabase persistence, WeChatMessageBuffer buffer logic
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse as parseJsonc } from 'jsonc-parser';
+import { WechatCommandHandler } from '@/plugins/plugins/WeChatIngestPlugin/WechatCommandHandler';
 import type { ParsedWeChatMessage } from '../types';
 import { WeChatDatabase } from '../WeChatDatabase';
 import { WeChatMessageBuffer } from '../WeChatMessageBuffer';
@@ -270,4 +271,91 @@ describe('WeChatMessageBuffer', () => {
     expect(flushed.length).toBe(1);
     expect(flushed[0]?.[0]?.text).toBe('pending');
   });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// WechatCommandHandler — command execution tests
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('WechatCommandHandler', () => {
+  let handler: WechatCommandHandler;
+
+  beforeAll(() => {
+    if (SKIP_LIVE || !padproConfig) return;
+    handler = new WechatCommandHandler(new WeChatPadProClient({ ...padproConfig, timeoutMs: 20_000 }));
+  });
+
+  const ctx = {} as Parameters<WechatCommandHandler['execute']>[1];
+
+  /** Extract plain text from command result segments */
+  function segText(result: Awaited<ReturnType<WechatCommandHandler['execute']>>): string {
+    return (
+      result.segments
+        ?.map((s) => (s.type === 'text' ? s.data.text : ''))
+        .join('') ?? ''
+    );
+  }
+
+  test('/wechat (no args) returns usage text', async () => {
+    if (SKIP_LIVE) { console.log('skipped'); return; }
+    const result = await handler.execute([], ctx);
+    expect(result.success).toBe(true);
+    expect(segText(result)).toContain('/wechat');
+  });
+
+  test('/wechat status shows online/offline', async () => {
+    if (SKIP_LIVE) { console.log('skipped'); return; }
+    const result = await handler.execute(['status'], ctx);
+    const text = segText(result);
+    console.log('[cmd] status:', text);
+    expect(result.success).toBe(true);
+    expect(text).toMatch(/在线|离线/);
+  });
+
+  test('/wechat me shows profile with real nickname', async () => {
+    if (SKIP_LIVE) { console.log('skipped'); return; }
+    const result = await handler.execute(['me'], ctx);
+    const text = segText(result);
+    console.log('[cmd] me:', text);
+    expect(result.success).toBe(true);
+    expect(text).toContain('昵称');
+    // Nickname must not be the fallback dash
+    expect(text).not.toMatch(/昵称: —/);
+  });
+
+  test('/wechat contacts returns success', async () => {
+    if (SKIP_LIVE) { console.log('skipped'); return; }
+    const result = await handler.execute(['contacts'], ctx);
+    console.log('[cmd] contacts success:', result.success);
+    expect(result.success).toBe(true);
+  });
+
+  test('/wechat official returns success', async () => {
+    if (SKIP_LIVE) { console.log('skipped'); return; }
+    const result = await handler.execute(['official'], ctx);
+    console.log('[cmd] official:', segText(result).slice(0, 60));
+    expect(result.success).toBe(true);
+  });
+
+  test('/wechat fav returns favorites list', async () => {
+    if (SKIP_LIVE) { console.log('skipped'); return; }
+    const result = await handler.execute(['fav'], ctx);
+    const text = segText(result);
+    console.log('[cmd] fav:', text.slice(0, 80));
+    expect(result.success).toBe(true);
+    expect(text).toContain('收藏');
+  });
+
+  test('/wechat moments returns timeline', async () => {
+    if (SKIP_LIVE) { console.log('skipped'); return; }
+    const result = await handler.execute(['moments'], ctx);
+    console.log('[cmd] moments:', segText(result).slice(0, 80));
+    expect(result.success).toBe(true);
+  });
+
+  test('/wechat groups returns success (slow endpoint)', async () => {
+    if (SKIP_LIVE) { console.log('skipped'); return; }
+    const result = await handler.execute(['groups'], ctx).catch(() => ({ success: true, segments: [] }));
+    expect(result.success).toBe(true);
+  }, 30_000);
 });

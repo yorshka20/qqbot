@@ -2,15 +2,12 @@
 // Gives QQ bot users access to WeChat data via read-only PadPro API
 
 import { MessageBuilder } from '@/message/MessageBuilder';
+import { WeChatPadProClient } from '@/services/wechat';
 import type {
-  WeChatPadProClient,
-  WXFavorite,
   WXGroupInfo,
   WXGroupMember,
-  WXLoginStatus,
   WXMoment,
   WXOfficialAccount,
-  WXProfile,
   WXSearchResult,
 } from '@/services/wechat';
 import { logger } from '@/utils/logger';
@@ -77,24 +74,24 @@ export class WechatCommandHandler implements CommandHandler {
   // ──────────────────────────────────────────────────
 
   private async handleStatus(): Promise<CommandResult> {
-    const s = (await this.client.getLoginStatus()) as WXLoginStatus & Record<string, unknown>;
-    const online = s.IsOnline ?? s.Status === 1;
-    const nick = s.WxNickName ?? s.NickName ?? s.nickName ?? '—';
-    const wxid = s.WxId ?? s.wxId ?? '—';
+    const s = await this.client.getLoginStatus();
+    const online = s.loginState === 1;
 
     const b = new MessageBuilder();
     b.text(`微信状态\n`);
-    b.text(`状态: ${online ? '在线' : '离线'}\n`);
-    b.text(`昵称: ${nick}\n`);
-    b.text(`wxid: ${wxid}`);
+    b.text(`状态: ${online ? '在线 ✓' : '离线'}\n`);
+    if (s.loginTime) b.text(`登录时间: ${s.loginTime}\n`);
+    if (s.onlineTime) b.text(`${s.onlineTime}\n`);
+    if (s.totalOnline) b.text(`${s.totalOnline}\n`);
+    if (s.expiryTime) b.text(`授权到期: ${s.expiryTime}`);
     return ok(b);
   }
 
   private async handleMe(): Promise<CommandResult> {
-    const p = (await this.client.getProfile()) as WXProfile & Record<string, unknown>;
-    const nick = p.NickName ?? p.nickName ?? '—';
-    const alias = p.Alias ?? p.alias ?? '—';
-    const sig = p.Signature ?? p.signature ?? '—';
+    const p = await this.client.getProfile();
+    const nick = p.NickName ?? '—';
+    const alias = p.Alias ?? '—';
+    const sig = p.Signature ?? '—';
     const loc = [p.Province ?? '', p.City ?? ''].filter(Boolean).join(' ') || '—';
     const sex = (p.Sex ?? 0) === 1 ? '男' : (p.Sex ?? 0) === 2 ? '女' : '—';
 
@@ -274,13 +271,9 @@ export class WechatCommandHandler implements CommandHandler {
     if (favs.length === 0) return ok('收藏列表为空');
 
     const lines = favs.slice(0, 15).map((f) => {
-      const title =
-        (f as WXFavorite & Record<string, unknown>).Title ?? (f as Record<string, unknown>).title ?? '无标题';
-      const time =
-        (f.UpdateTime ?? f.CreateTime)
-          ? new Date(((f.UpdateTime ?? f.CreateTime) as number) * 1000).toLocaleDateString('zh-CN')
-          : '';
-      return `${time} ${title}`;
+      const typeLabel = f.Type === 1 ? '文字' : f.Type === 2 ? '图片' : f.Type === 5 ? '链接' : `类型${f.Type ?? '?'}`;
+      const time = f.UpdateTime ? new Date(f.UpdateTime * 1000).toLocaleDateString('zh-CN') : '';
+      return `${time} [${typeLabel}] #${f.FavId ?? '?'}`;
     });
 
     const b = new MessageBuilder();
@@ -305,14 +298,9 @@ function matchStr(value: string | undefined, keyword: string): boolean {
 }
 
 function extractMomentText(m: WXMoment): string {
-  const rec = m as Record<string, unknown>;
-  const content = m.content ?? rec.Content;
-  if (typeof content === 'string' && content.trim()) return content.trim();
-  // Try to extract from XML
-  if (typeof content === 'string') {
-    const match = content.match(/<contentDesc[^>]*>([^<]+)<\/contentDesc>/i);
-    if (match?.[1]) return match[1];
-  }
-  const hasMedia = m.mediaList && (m.mediaList as unknown[]).length > 0;
-  return hasMedia ? '[图片/视频]' : '（无文字内容）';
+  // Moment content is base64-encoded XML in objectDesc.buffer — show metadata instead
+  const parts: string[] = [];
+  if (m.likeCount) parts.push(`❤️${m.likeCount}`);
+  if (m.commentCount) parts.push(`💬${m.commentCount}`);
+  return parts.length > 0 ? parts.join(' ') : '（朋友圈动态）';
 }

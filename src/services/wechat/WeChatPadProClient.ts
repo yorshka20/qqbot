@@ -3,29 +3,166 @@
 import { logger } from '@/utils/logger';
 
 // ────────────────────────────────────────────────────────────────────────────
-// Generic response wrapper
+// Generic response envelope
 // ────────────────────────────────────────────────────────────────────────────
 
-interface PadProResponse<T = unknown> {
+interface PadProEnvelope<T> {
   Code?: number;
-  code?: number;
   Data?: T;
-  data?: T;
-  Msg?: string;
-  msg?: string;
-  message?: string;
+  Text?: string;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Domain types (read-only endpoints)
+// Raw response shapes (internal — match what the API actually returns)
+// ────────────────────────────────────────────────────────────────────────────
+
+/** PadPro wraps most string fields as { str: "..." } */
+interface StrWrapper {
+  str?: string;
+}
+
+interface RawLoginStatusData {
+  loginState: number;   // 1 = online
+  loginErrMsg: string;
+  loginTime: string;
+  onlineDays: number;
+  onlineTime: string;
+  totalOnline: string;
+  expiryTime: string;
+  proxyUrl: string;
+  targetIp: string;
+  loginJournal: { count: number; logs: string[] };
+}
+
+interface RawUserInfo {
+  userName: StrWrapper;
+  nickName: StrWrapper;
+  bindEmail: StrWrapper;
+  bindMobile: StrWrapper;
+  sex: number;
+  province: string;
+  city: string;
+  signature: string;
+  bitFlag?: number;
+  status?: number;
+}
+
+interface RawUserInfoExt {
+  alias?: StrWrapper;
+  snsUserInfo?: Record<string, unknown>;
+}
+
+interface RawProfileData {
+  baseResponse: { ret: number };
+  userInfo: RawUserInfo;
+  userInfoExt: RawUserInfoExt;
+}
+
+interface RawContact {
+  userName: StrWrapper;
+  nickName: StrWrapper;
+  remark: StrWrapper | Record<string, never>;
+  sex: number;
+  province: string;
+  city: string;
+  signature: string;
+}
+
+interface RawFriendListData {
+  IsInitFinished: boolean;
+  count: number;
+  friendList: RawContact[];
+}
+
+interface RawGhListData {
+  GhList: RawContact[];
+}
+
+interface RawSearchResultData {
+  UserName?: StrWrapper | string;
+  NickName?: StrWrapper | string;
+  Province?: string;
+  City?: string;
+  Sex?: number;
+  HeadImgUrl?: string;
+  Signature?: string;
+  Alias?: StrWrapper | string;
+}
+
+interface RawGroupListData {
+  ChatRoomList?: RawGroupItem[];
+  chatRoomList?: RawGroupItem[];
+}
+
+interface RawGroupItem {
+  ChatRoomName?: StrWrapper | string;
+  NickName?: StrWrapper | string;
+  MemberCount?: number;
+  HeadImgUrl?: string;
+}
+
+interface RawGroupInfoData {
+  ChatRoomInfoList?: RawGroupInfoItem[];
+  chatRoomList?: RawGroupInfoItem[];
+}
+
+interface RawGroupInfoItem {
+  chatroomUsername?: StrWrapper | string;
+  nickName?: StrWrapper | string;
+  memberCount?: number;
+  announcement?: StrWrapper | string;
+  chatroomOwner?: StrWrapper | string;
+  memberList?: RawGroupMemberItem[];
+}
+
+interface RawGroupMemberItem {
+  userName?: StrWrapper | string;
+  nickName?: StrWrapper | string;
+  displayName?: StrWrapper | string;
+}
+
+interface RawMomentsData {
+  baseResponse: { ret: number };
+  objectCount: number;
+  objectList: RawMomentItem[];
+  firstPageMd5?: string;
+}
+
+interface RawMomentItem {
+  id: number | string;
+  username: string;
+  nickname: string;
+  createTime: number;
+  likeCount?: number;
+  commentCount?: number;
+  objectDesc?: { len: number; buffer?: string };
+}
+
+interface RawFavListData {
+  Ret: number;
+  List: RawFavItem[];
+}
+
+interface RawFavItem {
+  favId: number;
+  type: number;
+  flag: number;
+  updateTime: number;
+  updateSeq?: number;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Public exported types (clean, PascalCase)
 // ────────────────────────────────────────────────────────────────────────────
 
 export interface WXLoginStatus {
-  IsOnline?: boolean;
-  Status?: number;
-  WxId?: string;
-  WxNickName?: string;
-  HeadUrl?: string;
+  /** 1 = online */
+  loginState?: number;
+  loginErrMsg?: string;
+  loginTime?: string;
+  onlineTime?: string;
+  totalOnline?: string;
+  expiryTime?: string;
 }
 
 export interface WXProfile {
@@ -43,7 +180,6 @@ export interface WXContact {
   UserName?: string;
   NickName?: string;
   Remark?: string;
-  HeadImgUrl?: string;
   Sex?: number;
   Province?: string;
   City?: string;
@@ -53,14 +189,12 @@ export interface WXGroup {
   ChatRoomName?: string;
   NickName?: string;
   MemberCount?: number;
-  HeadImgUrl?: string;
 }
 
 export interface WXGroupMember {
   UserName?: string;
   NickName?: string;
   DisplayName?: string;
-  HeadImgUrl?: string;
 }
 
 export interface WXGroupInfo {
@@ -76,9 +210,7 @@ export interface WXMoment {
   id?: string;
   userName?: string;
   nickName?: string;
-  content?: string;
   createTime?: number;
-  mediaList?: Array<{ url?: string; type?: number }>;
   likeCount?: number;
   commentCount?: number;
 }
@@ -96,8 +228,6 @@ export interface WXHistoryMessage {
 export interface WXOfficialAccount {
   UserName?: string;
   NickName?: string;
-  HeadImgUrl?: string;
-  Signature?: string;
 }
 
 export interface WXSearchResult {
@@ -106,17 +236,13 @@ export interface WXSearchResult {
   Province?: string;
   City?: string;
   Sex?: number;
-  HeadImgUrl?: string;
   Signature?: string;
   Alias?: string;
 }
 
 export interface WXFavorite {
   FavId?: number;
-  Title?: string;
-  Desc?: string;
   Type?: number;
-  CreateTime?: number;
   UpdateTime?: number;
 }
 
@@ -140,8 +266,17 @@ export class WeChatPadProClient {
   // ──────────────────────────────────────────────────
 
   async getLoginStatus(): Promise<WXLoginStatus> {
-    const raw = await this.get<PadProResponse<WXLoginStatus>>('/login/GetLoginStatus');
-    return (raw?.Data ?? raw?.data ?? raw) as WXLoginStatus;
+    const env = await this.get<PadProEnvelope<RawLoginStatusData>>('/login/GetLoginStatus');
+    const d = env.Data;
+    if (!d) return {};
+    return {
+      loginState: d.loginState,
+      loginErrMsg: d.loginErrMsg,
+      loginTime: d.loginTime,
+      onlineTime: d.onlineTime,
+      totalOnline: d.totalOnline,
+      expiryTime: d.expiryTime,
+    };
   }
 
   // ──────────────────────────────────────────────────
@@ -149,8 +284,20 @@ export class WeChatPadProClient {
   // ──────────────────────────────────────────────────
 
   async getProfile(): Promise<WXProfile> {
-    const raw = await this.get<PadProResponse<WXProfile>>('/user/GetProfile');
-    return (raw?.Data ?? raw?.data ?? raw) as WXProfile;
+    const env = await this.get<PadProEnvelope<RawProfileData>>('/user/GetProfile');
+    const d = env.Data;
+    if (!d) return {};
+    const u = d.userInfo;
+    const ext = d.userInfoExt;
+    return {
+      UserName: strField(u.userName),
+      NickName: strField(u.nickName),
+      Sex: u.sex,
+      Province: u.province || undefined,
+      City: u.city || undefined,
+      Signature: u.signature || undefined,
+      Alias: strField(ext.alias),
+    };
   }
 
   // ──────────────────────────────────────────────────
@@ -158,55 +305,37 @@ export class WeChatPadProClient {
   // ──────────────────────────────────────────────────
 
   async getFriendList(): Promise<WXContact[]> {
-    const raw =
-      await this.get<PadProResponse<WXContact[] | { List?: WXContact[]; list?: WXContact[] }>>('/friend/GetFriendList');
-    const data = raw?.Data ?? raw?.data;
-    if (Array.isArray(data)) return data;
-    if (data && typeof data === 'object') {
-      const list = (data as any).List ?? (data as any).list;
-      if (Array.isArray(list)) return list;
-    }
-    return [];
+    const env = await this.get<PadProEnvelope<RawFriendListData>>('/friend/GetFriendList');
+    return (env.Data?.friendList ?? []).map(mapContact);
   }
 
   async getOfficialAccountList(): Promise<WXOfficialAccount[]> {
-    const raw =
-      await this.get<PadProResponse<WXOfficialAccount[] | { List?: WXOfficialAccount[] }>>('/friend/GetGHList');
-    const data = raw?.Data ?? raw?.data;
-    if (Array.isArray(data)) return data;
-    if (data && typeof data === 'object') {
-      const list = (data as any).List ?? (data as any).list;
-      if (Array.isArray(list)) return list;
-    }
-    return [];
+    const env = await this.get<PadProEnvelope<RawGhListData>>('/friend/GetGHList');
+    return (env.Data?.GhList ?? []).map((c) => ({
+      UserName: strField(c.userName),
+      NickName: strField(c.nickName),
+    }));
   }
 
   /** Search contact by wxid / phone / QQ number */
   async searchContact(query: string): Promise<WXSearchResult | null> {
-    const raw = await this.post<PadProResponse<WXSearchResult>>('/friend/SearchContact', {
+    const env = await this.post<PadProEnvelope<RawSearchResultData>>('/friend/SearchContact', {
       UserName: query,
       SearchScene: 3,
       OpCode: 1,
       FromScene: 3,
     });
-    return (raw?.Data ?? raw?.data ?? null) as WXSearchResult | null;
-  }
-
-  /** Get detailed info for one or more contacts/groups */
-  async getContactDetailsList(wxids: string[]): Promise<WXContact[]> {
-    const raw = await this.post<PadProResponse<WXContact[] | { ContactList?: WXContact[] }>>(
-      '/friend/GetContactDetailsList',
-      {
-        UserNames: wxids,
-      },
-    );
-    const data = raw?.Data ?? raw?.data;
-    if (Array.isArray(data)) return data;
-    if (data && typeof data === 'object') {
-      const list = (data as any).ContactList ?? (data as any).contactList;
-      if (Array.isArray(list)) return list;
-    }
-    return [];
+    const d = env.Data;
+    if (!d) return null;
+    return {
+      UserName: strFieldOrStr(d.UserName),
+      NickName: strFieldOrStr(d.NickName),
+      Province: d.Province,
+      City: d.City,
+      Sex: d.Sex,
+      Signature: d.Signature,
+      Alias: strFieldOrStr(d.Alias),
+    };
   }
 
   // ──────────────────────────────────────────────────
@@ -215,47 +344,51 @@ export class WeChatPadProClient {
 
   /** All groups including non-bookmarked ones */
   async getAllGroupList(): Promise<WXGroup[]> {
-    const raw = await this.get<PadProResponse<WXGroup[] | { ChatRoomList?: WXGroup[] }>>('/group/GetAllGroupList');
-    const data = raw?.Data ?? raw?.data;
-    if (Array.isArray(data)) return data;
-    if (data && typeof data === 'object') {
-      const list = (data as any).ChatRoomList ?? (data as any).chatRoomList ?? (data as any).List ?? (data as any).list;
-      if (Array.isArray(list)) return list;
-    }
-    return [];
+    const env = await this.get<PadProEnvelope<RawGroupListData>>('/group/GetAllGroupList');
+    const d = env.Data;
+    if (!d) return [];
+    const list = d.ChatRoomList ?? d.chatRoomList ?? [];
+    return list.map((g) => ({
+      ChatRoomName: strFieldOrStr(g.ChatRoomName),
+      NickName: strFieldOrStr(g.NickName),
+      MemberCount: g.MemberCount,
+    }));
   }
 
   /** Get details for specific groups */
   async getChatRoomInfo(groupIds: string[]): Promise<WXGroupInfo[]> {
-    const raw = await this.post<PadProResponse<WXGroupInfo[] | { ChatRoomList?: WXGroupInfo[] }>>(
-      '/group/GetChatRoomInfo',
-      {
-        ChatRoomWxIdList: groupIds,
-      },
-    );
-    const data = raw?.Data ?? raw?.data;
-    if (Array.isArray(data)) return data;
-    if (data && typeof data === 'object') {
-      const list = (data as any).ChatRoomList ?? (data as any).chatRoomList;
-      if (Array.isArray(list)) return list;
-    }
-    return [];
+    const env = await this.post<PadProEnvelope<RawGroupInfoData>>('/group/GetChatRoomInfo', {
+      ChatRoomWxIdList: groupIds,
+    });
+    const d = env.Data;
+    if (!d) return [];
+    const list = d.ChatRoomInfoList ?? d.chatRoomList ?? [];
+    return list.map((g) => ({
+      ChatRoomName: strFieldOrStr(g.chatroomUsername),
+      NickName: strFieldOrStr(g.nickName),
+      MemberCount: g.memberCount,
+      Announcement: strFieldOrStr(g.announcement),
+      Owner: strFieldOrStr(g.chatroomOwner),
+      MemberList: (g.memberList ?? []).map((m) => ({
+        UserName: strFieldOrStr(m.userName),
+        NickName: strFieldOrStr(m.nickName),
+        DisplayName: strFieldOrStr(m.displayName),
+      })),
+    }));
   }
 
   /** Get members of a group — groupId must include @chatroom suffix */
   async getChatroomMemberDetail(groupId: string): Promise<WXGroupMember[]> {
-    // Ensure @chatroom suffix
     const chatRoomName = groupId.endsWith('@chatroom') ? groupId : `${groupId}@chatroom`;
-    const raw = await this.post<
-      PadProResponse<{ MemberList?: WXGroupMember[]; memberList?: WXGroupMember[] } | WXGroupMember[]>
-    >('/group/GetChatroomMemberDetail', { ChatRoomName: chatRoomName });
-    const data = raw?.Data ?? raw?.data;
-    if (Array.isArray(data)) return data;
-    if (data && typeof data === 'object') {
-      const list = (data as any).MemberList ?? (data as any).memberList;
-      if (Array.isArray(list)) return list;
-    }
-    return [];
+    const env = await this.post<PadProEnvelope<{ MemberList?: RawGroupMemberItem[] }>>(
+      '/group/GetChatroomMemberDetail',
+      { ChatRoomName: chatRoomName },
+    );
+    return (env.Data?.MemberList ?? []).map((m) => ({
+      UserName: strFieldOrStr(m.userName),
+      NickName: strFieldOrStr(m.nickName),
+      DisplayName: strFieldOrStr(m.displayName),
+    }));
   }
 
   // ──────────────────────────────────────────────────
@@ -264,35 +397,22 @@ export class WeChatPadProClient {
 
   /** Get own moments timeline. Pass maxId from last result to paginate. */
   async getMomentsTimeline(maxId?: number): Promise<WXMoment[]> {
-    const raw = await this.post<PadProResponse<{ ObjectList?: WXMoment[]; objectList?: WXMoment[] }>>(
-      '/sns/SendSnsTimeLine',
-      {
-        UserName: '',
-        MaxID: maxId ?? 0,
-        FirstPageMD5: '',
-      },
-    );
-    const data = raw?.Data ?? raw?.data;
-    if (data && typeof data === 'object') {
-      const list = (data as any).ObjectList ?? (data as any).objectList ?? (data as any).List ?? (data as any).list;
-      if (Array.isArray(list)) return list;
-    }
-    return [];
+    const env = await this.post<PadProEnvelope<RawMomentsData>>('/sns/SendSnsTimeLine', {
+      UserName: '',
+      MaxID: maxId ?? 0,
+      FirstPageMD5: '',
+    });
+    return (env.Data?.objectList ?? []).map(mapMoment);
   }
 
   /** Get a specific person's moments */
   async getUserMoments(wxid: string, maxId?: number): Promise<WXMoment[]> {
-    const raw = await this.post<PadProResponse<{ ObjectList?: WXMoment[] }>>('/sns/SendSnsUserPage', {
+    const env = await this.post<PadProEnvelope<RawMomentsData>>('/sns/SendSnsUserPage', {
       UserName: wxid,
       MaxID: maxId ?? 0,
       FirstPageMD5: '',
     });
-    const data = raw?.Data ?? raw?.data;
-    if (data && typeof data === 'object') {
-      const list = (data as any).ObjectList ?? (data as any).objectList;
-      if (Array.isArray(list)) return list;
-    }
-    return [];
+    return (env.Data?.objectList ?? []).map(mapMoment);
   }
 
   // ──────────────────────────────────────────────────
@@ -301,18 +421,13 @@ export class WeChatPadProClient {
 
   /** Sync recent messages via HTTP polling (read-only). count=0 means all buffered. */
   async syncMessages(count = 20): Promise<WXHistoryMessage[]> {
-    const raw = await this.post<PadProResponse<WXHistoryMessage[] | { List?: WXHistoryMessage[] }>>(
+    const env = await this.post<PadProEnvelope<WXHistoryMessage[] | { List?: WXHistoryMessage[] }>>(
       '/message/HttpSyncMsg',
-      {
-        Count: count,
-      },
+      { Count: count },
     );
-    const data = raw?.Data ?? raw?.data;
+    const data = env.Data;
     if (Array.isArray(data)) return data;
-    if (data && typeof data === 'object') {
-      const list = (data as any).List ?? (data as any).list;
-      if (Array.isArray(list)) return list;
-    }
+    if (data && typeof data === 'object' && 'List' in data) return data.List ?? [];
     return [];
   }
 
@@ -321,17 +436,15 @@ export class WeChatPadProClient {
   // ──────────────────────────────────────────────────
 
   async getFavoriteList(favId = 0): Promise<WXFavorite[]> {
-    const raw = await this.post<PadProResponse<WXFavorite[] | { FavItemList?: WXFavorite[] }>>('/favor/GetFavList', {
+    const env = await this.post<PadProEnvelope<RawFavListData>>('/favor/GetFavList', {
       FavId: favId,
       KeyBuf: '',
     });
-    const data = raw?.Data ?? raw?.data;
-    if (Array.isArray(data)) return data;
-    if (data && typeof data === 'object') {
-      const list = (data as any).FavItemList ?? (data as any).favItemList ?? (data as any).List;
-      if (Array.isArray(list)) return list;
-    }
-    return [];
+    return (env.Data?.List ?? []).map((f) => ({
+      FavId: f.favId,
+      Type: f.type,
+      UpdateTime: f.updateTime,
+    }));
   }
 
   // ──────────────────────────────────────────────────
@@ -341,9 +454,7 @@ export class WeChatPadProClient {
   private async get<T>(path: string): Promise<T> {
     const url = `${this.base}${path}?key=${encodeURIComponent(this.authKey)}`;
     const resp = await fetch(url, { signal: AbortSignal.timeout(this.timeout) });
-    if (!resp.ok) {
-      throw new Error(`WeChatPadPro GET ${path} → HTTP ${resp.status}`);
-    }
+    if (!resp.ok) throw new Error(`WeChatPadPro GET ${path} → HTTP ${resp.status}`);
     const json = (await resp.json()) as T;
     logger.debug(`[WeChatPadProClient] GET ${path} → ${resp.status}`);
     return json;
@@ -357,11 +468,48 @@ export class WeChatPadProClient {
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(this.timeout),
     });
-    if (!resp.ok) {
-      throw new Error(`WeChatPadPro POST ${path} → HTTP ${resp.status}`);
-    }
+    if (!resp.ok) throw new Error(`WeChatPadPro POST ${path} → HTTP ${resp.status}`);
     const json = (await resp.json()) as T;
     logger.debug(`[WeChatPadProClient] POST ${path} → ${resp.status}`);
     return json;
   }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Extract string from PadPro's {str: "..."} wrapper. Returns undefined if empty. */
+function strField(v: StrWrapper | undefined): string | undefined {
+  const s = v?.str;
+  return s ? s : undefined;
+}
+
+/** Handle fields that can be either {str} wrapper or a plain string. */
+function strFieldOrStr(v: StrWrapper | string | undefined): string | undefined {
+  if (typeof v === 'string') return v || undefined;
+  return strField(v);
+}
+
+function mapContact(c: RawContact): WXContact {
+  const remark = 'str' in c.remark ? (c.remark as StrWrapper).str : undefined;
+  return {
+    UserName: strField(c.userName),
+    NickName: strField(c.nickName),
+    Remark: remark || undefined,
+    Sex: c.sex,
+    Province: c.province || undefined,
+    City: c.city || undefined,
+  };
+}
+
+function mapMoment(m: RawMomentItem): WXMoment {
+  return {
+    id: String(m.id),
+    userName: m.username,
+    nickName: m.nickname,
+    createTime: m.createTime,
+    likeCount: m.likeCount,
+    commentCount: m.commentCount,
+  };
 }
