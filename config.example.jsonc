@@ -259,20 +259,59 @@
         "name": "gacha",
         "enabled": true
       },
+      // wechatIngest plugin: receives WeChat messages via WeChatPadPro webhook and stores them into RAG.
+      // Also registers the /wechat command for reading WeChat data from QQ.
       {
         "name": "wechatIngest",
-        "enabled": true,
+        "enabled": false, // set to true after filling in padpro credentials
         "config": {
+          // HTTP webhook server — WeChatPadPro should push to http://<this-host>:<listenPort><listenPath>
           "listenPort": 9920,
           "listenPath": "/wechat/callback",
-          "rag": {
-            "articleCollection": "wechat_articles",
-            "bufferIdleMinutes": 5,
-            "bufferMaxMessages": 10
+
+          // WeChatPadPro connection — required for /wechat command and SNS polling
+          "padpro": {
+            "apiBase": "http://192.168.50.97:8059",   // WeChatPadPro API base URL
+            "adminKey": "yourAdminKey",                // Admin key (管理接口)
+            "authKey": "your-auth-key-uuid",           // Auth key (设备/业务接口, 30天有效期)
+            "wxid": "wxid_xxxxxxxxxxxxxxx"             // 已登录微信账号的 wxid
           },
+
+          // RAG ingestion settings
+          "rag": {
+            "articleCollection": "wechat_articles",   // 公众号文章存入的 Qdrant collection
+            "momentsCollection": "wechat_moments",    // 朋友圈存入的 Qdrant collection
+            "bufferIdleMinutes": 5,                   // 空闲多少分钟后批量 upsert
+            "bufferMaxMessages": 10                   // 最多缓冲多少条后触发 upsert
+          },
+
+          // Real-time QQ notification when WeChat messages match a keyword/pattern
+          // Disabled by default; enable and add rules as needed
           "realtime": {
             "enabled": false,
-            "rules": []
+            "rules": [
+              // Example: notify QQ group when WeChat message contains "紧急"
+              // {
+              //   "pattern": "紧急|urgent",           // regex pattern (case-insensitive)
+              //   "qqGroupId": "123456789",            // target QQ group ID
+              //   "template": "微信紧急消息: {text}"   // {text} is replaced with the matched message
+              // }
+            ]
+          },
+
+          // Daily digest — summarise WeChat RAG data and push to a QQ group via AgendaService
+          // Disabled by default
+          "digest": {
+            "enabled": false,
+            "cron": "0 22 * * *",          // cron expression — default: every day at 22:00
+            "targetQQGroup": ""            // QQ group ID to send the digest to
+          },
+
+          // SNS (Moments) polling — periodically fetch 朋友圈 and store into RAG
+          // Disabled by default; minimum interval 30 minutes to avoid account risk
+          "sns": {
+            "enabled": false,
+            "pollIntervalMinutes": 30
           }
         }
       }

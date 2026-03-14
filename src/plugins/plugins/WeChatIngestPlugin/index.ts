@@ -1,6 +1,7 @@
 // WeChat Ingest Plugin — receives webhook from WeChatPadPro and stores messages into RAG
 
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { CommandManager } from '@/command/CommandManager';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -12,6 +13,8 @@ import { PluginBase } from '../../PluginBase';
 import type { WeChatIngestConfig, WeChatRealtimeRule } from './types';
 import { resolveConfig } from './types';
 import { WeChatIngestService } from './WeChatIngestService';
+import { WeChatPadProClient } from './WeChatPadProClient';
+import { WechatCommandHandler } from './WechatCommandHandler';
 
 @RegisterPlugin({
   name: 'wechatIngest',
@@ -22,6 +25,7 @@ export class WeChatIngestPlugin extends PluginBase {
   private ingestService: WeChatIngestService | null = null;
   private retrieval!: RetrievalService;
   private messageAPI!: MessageAPI;
+  private commandManager!: CommandManager;
   private preferredProtocol: string = 'milky';
 
   async onInit(): Promise<void> {
@@ -30,6 +34,7 @@ export class WeChatIngestPlugin extends PluginBase {
 
     this.retrieval = container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE);
     this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+    this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
 
     const raw = config.getPluginConfig('wechatIngest') as WeChatIngestConfig | undefined;
     const resolved = resolveConfig(raw);
@@ -43,6 +48,20 @@ export class WeChatIngestPlugin extends PluginBase {
       retrieval: this.retrieval,
       notify: resolved.realtime.enabled ? this.sendRealtimeNotification.bind(this) : undefined,
     });
+
+    // Register /wechat command if padpro config is available
+    const padpro = raw?.padpro;
+    if (padpro?.apiBase && padpro?.authKey) {
+      const padProClient = new WeChatPadProClient({
+        apiBase: padpro.apiBase,
+        authKey: padpro.authKey,
+      });
+      const cmdHandler = new WechatCommandHandler(padProClient);
+      this.commandManager.register(cmdHandler, this.name);
+      logger.info('[WeChatIngestPlugin] Registered /wechat command');
+    } else {
+      logger.warn('[WeChatIngestPlugin] padpro.apiBase/authKey not configured — /wechat command disabled');
+    }
 
     logger.info('[WeChatIngestPlugin] Initialized');
   }
