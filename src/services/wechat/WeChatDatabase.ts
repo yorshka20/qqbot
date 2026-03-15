@@ -44,6 +44,16 @@ export interface WeChatOAArticleRow {
   fromSender: string; // wxid/nickname of who shared it in chat (empty for oa_push)
 }
 
+/** Group / contact info row cached from PadPro API */
+export interface WeChatGroupRow {
+  chatroomId: string; // e.g. "22443486739@chatroom"
+  conversationId: string; // e.g. "22443486739"
+  nickName: string; // human-readable group name
+  memberCount: number;
+  owner: string; // owner wxid
+  updatedAt: string; // ISO timestamp of last sync
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // WeChatDatabase
 // ────────────────────────────────────────────────────────────────────────────
@@ -186,6 +196,48 @@ export class WeChatDatabase {
   }
 
   // ──────────────────────────────────────────────────
+  // Write / Read — groups
+  // ──────────────────────────────────────────────────
+
+  /** Upsert a group info row. */
+  upsertGroup(row: WeChatGroupRow): void {
+    if (!this.db) return;
+    try {
+      this.db
+        .query(`INSERT OR REPLACE INTO wechat_groups
+          (chatroomId, conversationId, nickName, memberCount, owner, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?)`)
+        .run(row.chatroomId, row.conversationId, row.nickName, row.memberCount, row.owner, row.updatedAt);
+    } catch (err) {
+      logger.error('[WeChatDatabase] upsertGroup error:', err);
+    }
+  }
+
+  /** Bulk upsert groups. */
+  upsertGroups(rows: WeChatGroupRow[]): void {
+    for (const row of rows) this.upsertGroup(row);
+  }
+
+  /** Get group name by conversationId (e.g. "22443486739"). Returns null if not cached. */
+  getGroupName(conversationId: string): string | null {
+    if (!this.db) return null;
+    const row = this.db
+      .query<{ nickName: string }, [string]>(
+        `SELECT nickName FROM wechat_groups WHERE conversationId = ?`,
+      )
+      .get(conversationId);
+    return row?.nickName ?? null;
+  }
+
+  /** Get all cached groups. */
+  getAllGroups(): WeChatGroupRow[] {
+    if (!this.db) return [];
+    return this.db
+      .query<WeChatGroupRow, []>(`SELECT * FROM wechat_groups ORDER BY nickName`)
+      .all();
+  }
+
+  // ──────────────────────────────────────────────────
   // Read — official account articles
   // ──────────────────────────────────────────────────
 
@@ -268,6 +320,18 @@ export class WeChatDatabase {
       try { this.db.run(col); } catch { /* column already exists — ignore */ }
     }
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_oa_sourceType  ON wechat_oa_articles(sourceType)`);
+
+    // Group info cache (synced from PadPro API)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS wechat_groups (
+        chatroomId     TEXT PRIMARY KEY,
+        conversationId TEXT NOT NULL UNIQUE,
+        nickName       TEXT NOT NULL DEFAULT '',
+        memberCount    INTEGER NOT NULL DEFAULT 0,
+        owner          TEXT NOT NULL DEFAULT '',
+        updatedAt      TEXT NOT NULL DEFAULT ''
+      )
+    `);
 
     logger.debug('[WeChatDatabase] Schema ready');
   }

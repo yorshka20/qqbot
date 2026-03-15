@@ -47,20 +47,48 @@ export class WeChatIngestPlugin extends PluginBase {
     this.db = new WeChatDatabase();
     await this.db.init();
 
+    // Init PadPro client if configured
+    const padpro = raw?.padpro;
+    let padProClient: WeChatPadProClient | null = null;
+    if (padpro?.apiBase && padpro?.authKey) {
+      padProClient = new WeChatPadProClient({
+        apiBase: padpro.apiBase,
+        authKey: padpro.authKey,
+      });
+    }
+
+    // Sync group info from PadPro API → DB (one-time on startup)
+    if (padProClient && this.db) {
+      this.syncGroupsToDb(padProClient).catch((err) =>
+        logger.warn('[WeChatIngestPlugin] Group sync failed (non-fatal):', err),
+      );
+    }
+
+    // Group name resolver: reads from DB (no API calls)
+    const db = this.db;
+    const resolveGroupName = async (convId: string): Promise<string | null> => {
+      return db.getGroupName(convId);
+    };
+
+    // CDN image downloader via PadPro API
+    const client = padProClient;
+    const downloadCdnImage = client
+      ? async (aeskey: string, cdnUrl: string): Promise<Buffer | null> => {
+          return client.downloadCdnImage(aeskey, cdnUrl);
+        }
+      : undefined;
+
     this.ingestService = new WeChatIngestService({
       config: resolved,
       retrieval: this.retrieval,
       db: this.db,
       notify: resolved.realtime.enabled ? this.sendRealtimeNotification.bind(this) : undefined,
+      resolveGroupName,
+      downloadCdnImage,
     });
 
     // Register /wechat command if padpro config is available
-    const padpro = raw?.padpro;
-    if (padpro?.apiBase && padpro?.authKey) {
-      const padProClient = new WeChatPadProClient({
-        apiBase: padpro.apiBase,
-        authKey: padpro.authKey,
-      });
+    if (padProClient) {
       const cmdHandler = new WechatCommandHandler(padProClient, this.db);
       this.commandManager.register(cmdHandler, this.name);
       logger.info('[WeChatIngestPlugin] Registered /wechat command');
@@ -83,6 +111,38 @@ export class WeChatIngestPlugin extends PluginBase {
     this.db?.close();
     this.db = null;
     logger.info('[WeChatIngestPlugin] Disabled — webhook server stopped');
+  }
+
+  // ──────────────────────────────────────────────────
+  // Group sync: PadPro API → wechat_groups table
+  // ──────────────────────────────────────────────────
+
+  private async syncGroupsToDb(client: WeChatPadProClient): Promise<void> {
+    if (!this.db) return;
+
+    const groups = await client.getAllGroupList();
+    if (groups.length === 0) {
+      logger.warn('[WeChatIngestPlugin] No groups returned from PadPro API');
+      return;
+    }
+
+    const now = new Date().toISOString();
+    let synced = 0;
+    for (const g of groups) {
+      const chatroomId = g.ChatRoomName ?? '';
+      if (!chatroomId) continue;
+      const conversationId = chatroomId.replace('@chatroom', '');
+      this.db.upsertGroup({
+        chatroomId,
+        conversationId,
+        nickName: g.NickName ?? chatroomId,
+        memberCount: g.MemberCount ?? 0,
+        owner: '',
+        updatedAt: now,
+      });
+      synced++;
+    }
+    logger.info(`[WeChatIngestPlugin] Synced ${synced} groups to DB`);
   }
 
   // ──────────────────────────────────────────────────

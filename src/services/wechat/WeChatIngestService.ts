@@ -79,28 +79,37 @@ function xmlAttr(xml: string, attr: string): string {
 }
 
 export interface ImgInfo {
-  /** Best available download URL (HD > regular > thumb) */
+  /** Best available download URL (HD > regular > thumb), empty if none found */
   url: string;
   md5: string;
   width: number;
   height: number;
   /** Estimated file size in bytes */
   fileSize: number;
+  /** AES key for CDN encrypted resources */
+  aeskey: string;
 }
 
 /** Parse image metadata from a MsgType=3 rawContent XML. */
 export function extractImgInfo(rawContent: string): ImgInfo | null {
   // Match <img ...attributes... /> or <img ...attributes... >
   const m = rawContent.match(/<img\s([^>]+?)(?:\/?>)/is);
-  if (!m) return null;
+  if (!m) {
+    logger.debug('[extractImgInfo] No <img> tag found in content');
+    return null;
+  }
   const attrs = m[0];
 
   // Prefer HD > regular > thumbnail URL
+  // Try tp* (thumbnail preview HTTP URLs) first, then cdn* (CDN keys, may or may not be HTTP)
   const url =
     xmlAttr(attrs, 'tphdurl') ||
     xmlAttr(attrs, 'tpurl') ||
-    xmlAttr(attrs, 'tpthumburl');
-  if (!url) return null;
+    xmlAttr(attrs, 'tpthumburl') ||
+    xmlAttr(attrs, 'cdnbigimgurl') ||
+    xmlAttr(attrs, 'cdnmidimgurl') ||
+    xmlAttr(attrs, 'cdnhdimgurl') ||
+    xmlAttr(attrs, 'cdnthumburl');
 
   const width =
     Number(xmlAttr(attrs, 'tphdwidth')) ||
@@ -118,7 +127,14 @@ export function extractImgInfo(rawContent: string): ImgInfo | null {
     Number(xmlAttr(attrs, 'length')) ||
     0;
 
-  return { url, md5: xmlAttr(attrs, 'md5'), width, height, fileSize };
+  return {
+    url: url || '',
+    md5: xmlAttr(attrs, 'md5'),
+    width,
+    height,
+    fileSize,
+    aeskey: xmlAttr(attrs, 'aeskey'),
+  };
 }
 
 export interface OfficialAccountItem {
@@ -199,8 +215,18 @@ function parseContentAsJson(xml: string, category: MessageCategory, msgType: num
         fileSize: xmlTag(xml, 'totallen'),
       });
     }
-    case 'image':
-      return JSON.stringify({ type: 'image' });
+    case 'image': {
+      const info = extractImgInfo(xml);
+      return JSON.stringify({
+        type: 'image',
+        md5: info?.md5 ?? '',
+        width: info?.width ?? 0,
+        height: info?.height ?? 0,
+        fileSize: info?.fileSize ?? 0,
+        aeskey: info?.aeskey ?? '',
+        filePath: null,
+      });
+    }
     default:
       return JSON.stringify({
         msgType,
@@ -262,6 +288,12 @@ async function fetchArticleText(url: string, title: string): Promise<string> {
 
 export type NotifyCallback = (text: string, rules: WeChatRealtimeRule[]) => Promise<void>;
 
+/** Callback to resolve a conversationId (chatroom ID) to a human-readable name */
+export type GroupNameResolver = (conversationId: string) => Promise<string | null>;
+
+/** Callback to download an image from WeChat CDN via PadPro API */
+export type CdnImageDownloader = (aeskey: string, cdnUrl: string) => Promise<Buffer | null>;
+
 // ────────────────────────────────────────────────────────────────────────────
 // WeChatIngestService
 // ────────────────────────────────────────────────────────────────────────────
@@ -273,6 +305,10 @@ export class WeChatIngestService {
   private readonly retrieval: RetrievalService;
   private readonly db: WeChatDatabase | null;
   private readonly notify: NotifyCallback | null;
+  private readonly resolveGroupName: GroupNameResolver | null;
+  private readonly downloadCdnImage: CdnImageDownloader | null;
+  /** Cache: conversationId → sanitized folder name */
+  private groupNameCache = new Map<string, string>();
   private totalReceived = 0;
 
   constructor(opts: {
@@ -280,11 +316,15 @@ export class WeChatIngestService {
     retrieval: RetrievalService;
     db?: WeChatDatabase;
     notify?: NotifyCallback;
+    resolveGroupName?: GroupNameResolver;
+    downloadCdnImage?: CdnImageDownloader;
   }) {
     this.config = opts.config;
     this.retrieval = opts.retrieval;
     this.db = opts.db ?? null;
     this.notify = opts.notify ?? null;
+    this.resolveGroupName = opts.resolveGroupName ?? null;
+    this.downloadCdnImage = opts.downloadCdnImage ?? null;
 
     this.buffer = new WeChatMessageBuffer({
       idleMinutes: this.config.rag.bufferIdleMinutes,
@@ -333,6 +373,34 @@ export class WeChatIngestService {
     this.server?.stop(true);
     this.server = null;
     logger.info('[WeChatIngestService] Stopped');
+  }
+
+  // ──────────────────────────────────────────────────
+  // Group name → folder name resolution
+  // ──────────────────────────────────────────────────
+
+  /** Resolve a conversationId to a sanitised folder name (group name or wxid). */
+  private async getFolderName(convId: string, isGroup: boolean): Promise<string> {
+    // Check cache first
+    const cached = this.groupNameCache.get(convId);
+    if (cached) return cached;
+
+    let folderName = convId; // fallback
+
+    if (isGroup && this.resolveGroupName) {
+      try {
+        const name = await this.resolveGroupName(convId);
+        if (name) {
+          // Sanitise for filesystem: replace path-unsafe chars
+          folderName = name.replace(/[/\\:*?"<>|]/g, '_').trim() || convId;
+        }
+      } catch (err) {
+        logger.warn(`[WeChatIngestService] Failed to resolve group name for ${convId}:`, err);
+      }
+    }
+
+    this.groupNameCache.set(convId, folderName);
+    return folderName;
   }
 
   // ──────────────────────────────────────────────────
@@ -418,66 +486,98 @@ export class WeChatIngestService {
     const convId = conversationId(msg.FromUserName);
     const imgInfo = extractImgInfo(msg.Content);
 
-    // Persist to DB immediately with known metadata (filePath null until download completes)
-    const initialContent = JSON.stringify({
-      type: 'image',
-      md5: imgInfo?.md5 ?? '',
-      width: imgInfo?.width ?? 0,
-      height: imgInfo?.height ?? 0,
-      fileSize: imgInfo?.fileSize ?? 0,
-      filePath: null,
-    });
-    this.persistToDb(msg, 'image', sender, initialContent, isGroup, convId);
+    const buildContent = (filePath: string | null) =>
+      JSON.stringify({
+        type: 'image',
+        md5: imgInfo?.md5 ?? '',
+        width: imgInfo?.width ?? 0,
+        height: imgInfo?.height ?? 0,
+        fileSize: imgInfo?.fileSize ?? 0,
+        aeskey: imgInfo?.aeskey ?? '',
+        filePath,
+      });
 
-    if (!imgInfo?.url) {
-      logger.warn(`[WeChatIngestService] Image: no download URL found | newMsgId=${msg.NewMsgId}`);
+    // Persist to DB immediately with full metadata
+    this.persistToDb(msg, 'image', sender, buildContent(null), isGroup, convId);
+
+    if (!imgInfo) {
+      logger.warn(`[WeChatIngestService] Image: no <img> tag found | newMsgId=${msg.NewMsgId}`);
       return;
     }
 
     // Use md5 as filename for deduplication; fallback to newMsgId
     const filename = imgInfo.md5 ? `${imgInfo.md5}.jpg` : `${msg.NewMsgId}.jpg`;
-    const savePath = resolve(`output/wechat/${convId}`);
-    const filePath = `output/wechat/${convId}/${filename}`;
+    const folderName = await this.getFolderName(convId, isGroup);
+    const savePath = resolve(`output/wechat/${folderName}`);
+    const filePath = `output/wechat/${folderName}/${filename}`;
 
     // Skip download if already saved (same image forwarded multiple times)
     if (existsSync(resolve(filePath))) {
       logger.info(`[WeChatIngestService] Image already exists, skipping download: ${filePath}`);
       if (this.db) {
-        this.db.updateContentByMsgId(String(msg.NewMsgId), JSON.stringify({
-          type: 'image',
-          md5: imgInfo.md5,
-          width: imgInfo.width,
-          height: imgInfo.height,
-          fileSize: imgInfo.fileSize,
-          filePath,
-        }));
+        this.db.updateContentByMsgId(String(msg.NewMsgId), buildContent(filePath));
       }
       return;
     }
 
     logger.info(`[WeChatIngestService] Downloading image | newMsgId=${msg.NewMsgId} → ${filePath}`);
-    try {
-      await ResourceDownloader.downloadToBase64(imgInfo.url, {
-        savePath,
-        filename,
-        timeout: 30_000,
-        maxSize: 20 * 1024 * 1024,
-      });
+    const saved = await this.downloadAndSaveImage(imgInfo, savePath, filename);
 
+    if (saved) {
       logger.info(`[WeChatIngestService] Image saved: ${filePath}`);
       if (this.db) {
-        this.db.updateContentByMsgId(String(msg.NewMsgId), JSON.stringify({
-          type: 'image',
-          md5: imgInfo.md5,
-          width: imgInfo.width,
-          height: imgInfo.height,
-          fileSize: imgInfo.fileSize,
-          filePath,
-        }));
+        this.db.updateContentByMsgId(String(msg.NewMsgId), buildContent(filePath));
       }
-    } catch (err) {
-      logger.error(`[WeChatIngestService] Image download failed | newMsgId=${msg.NewMsgId}:`, err);
+    } else {
+      logger.warn(`[WeChatIngestService] Image download failed | newMsgId=${msg.NewMsgId}`);
     }
+  }
+
+  /**
+   * Download image: try PadPro CDN download first (using aeskey + cdnUrl),
+   * then fall back to direct HTTP download if a tp* URL is available.
+   */
+  private async downloadAndSaveImage(
+    imgInfo: ImgInfo,
+    savePath: string,
+    filename: string,
+  ): Promise<boolean> {
+    // Strategy 1: PadPro CDN download (works for all WeChat images with aeskey)
+    if (this.downloadCdnImage && imgInfo.aeskey && imgInfo.url) {
+      try {
+        const buf = await this.downloadCdnImage(imgInfo.aeskey, imgInfo.url);
+        if (buf && buf.length > 100) {
+          if (!existsSync(savePath)) {
+            const { mkdirSync } = await import('node:fs');
+            mkdirSync(savePath, { recursive: true });
+          }
+          const { writeFileSync } = await import('node:fs');
+          writeFileSync(resolve(savePath, filename), buf);
+          return true;
+        }
+      } catch (err) {
+        logger.warn(`[WeChatIngestService] CDN download failed, trying HTTP fallback:`, err);
+      }
+    }
+
+    // Strategy 2: Direct HTTP download (for tp* URLs)
+    const httpUrl =
+      imgInfo.url.startsWith('http://') || imgInfo.url.startsWith('https://') ? imgInfo.url : null;
+    if (httpUrl) {
+      try {
+        await ResourceDownloader.downloadToBase64(httpUrl, {
+          savePath,
+          filename,
+          timeout: 30_000,
+          maxSize: 20 * 1024 * 1024,
+        });
+        return true;
+      } catch (err) {
+        logger.error(`[WeChatIngestService] HTTP download failed:`, err);
+      }
+    }
+
+    return false;
   }
 
   // ──────────────────────────────────────────────────
@@ -643,6 +743,12 @@ export class WeChatIngestService {
     const accountId = msg.FromUserName;
     const accountNick = xmlTag(msg.Content, 'nickname') || xmlTag(msg.Content, 'appname') || accountId;
     const receivedAt = new Date().toISOString();
+
+    // Check ignore list
+    if (this.config.ignoredOAAccounts.has(accountNick)) {
+      logger.info(`[WeChatIngestService] OA push IGNORED (blacklisted) | account=${accountNick}(${accountId})`);
+      return;
+    }
 
     logger.info(`[WeChatIngestService] OA push | account=${accountNick}(${accountId}) items=${items.length}`);
 

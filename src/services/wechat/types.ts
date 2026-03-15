@@ -66,6 +66,8 @@ export interface WeChatIngestConfig {
     bufferIdleMinutes?: number;
     bufferMaxMessages?: number;
   };
+  /** OA account nicknames to ignore (skip article ingestion). Can also be a path to a .txt file (one name per line). */
+  ignoredOAAccounts?: string[] | string;
   realtime?: {
     enabled?: boolean;
     rules?: WeChatRealtimeRule[];
@@ -98,6 +100,8 @@ export interface ResolvedWeChatIngestConfig {
     enabled: boolean;
     rules: WeChatRealtimeRule[];
   };
+  /** Set of OA account nicknames to skip when ingesting articles */
+  ignoredOAAccounts: Set<string>;
 }
 
 export function resolveConfig(raw: WeChatIngestConfig | undefined): ResolvedWeChatIngestConfig {
@@ -114,5 +118,25 @@ export function resolveConfig(raw: WeChatIngestConfig | undefined): ResolvedWeCh
       enabled: raw?.realtime?.enabled ?? false,
       rules: raw?.realtime?.rules ?? [],
     },
+    ignoredOAAccounts: loadIgnoredOAAccounts(raw?.ignoredOAAccounts),
   };
+}
+
+/** Load ignored OA accounts from config: string[] inline, or a path to a .txt file (one name per line). */
+function loadIgnoredOAAccounts(value: string[] | string | undefined): Set<string> {
+  if (!value) return new Set();
+  if (Array.isArray(value)) return new Set(value.map((s) => s.trim()).filter(Boolean));
+  // Treat as file path
+  try {
+    const { readFileSync } = require('node:fs');
+    const { resolve } = require('node:path');
+    const content = readFileSync(resolve(value), 'utf-8') as string;
+    const names = content
+      .split('\n')
+      .map((line: string) => line.replace(/#.*$/, '').trim())
+      .filter(Boolean);
+    return new Set(names);
+  } catch {
+    return new Set();
+  }
 }

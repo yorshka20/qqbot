@@ -282,6 +282,11 @@
             "bufferIdleMinutes": 5, // 空闲多少分钟后批量 upsert
             "bufferMaxMessages": 10 // 最多缓冲多少条后触发 upsert
           },
+          // 公众号黑名单 — 在此列表中的公众号推送文章将被跳过不收录
+          // 支持两种格式:
+          //   1. 内联数组: ["公众号名称A", "公众号名称B"]
+          //   2. 文本文件路径: "./data/ignored-oa-accounts.txt" (每行一个名称, # 开头为注释)
+          "ignoredOAAccounts": "./data/ignored-oa-accounts.txt",
           // Real-time QQ notification when WeChat messages match a keyword/pattern
           // Disabled by default; enable and add rules as needed
           "realtime": {

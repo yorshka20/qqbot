@@ -448,6 +448,40 @@ export class WeChatPadProClient {
   }
 
   // ──────────────────────────────────────────────────
+  // Image download via CDN
+  // ──────────────────────────────────────────────────
+
+  /**
+   * Download an image from WeChat CDN using aeskey + CDN URL key.
+   * Returns the raw image buffer, or null if download fails.
+   */
+  async downloadCdnImage(aeskey: string, cdnUrl: string, fileType = 2): Promise<Buffer | null> {
+    try {
+      const env = await this.post<PadProEnvelope<{
+        FileData?: string;
+        TotalSize?: number;
+        RetCode?: number;
+      }>>('/message/SendCdnDownload', {
+        AesKey: aeskey,
+        FileURL: cdnUrl,
+        FileType: fileType,
+      });
+
+      if (!env.Data?.FileData) {
+        logger.warn('[WeChatPadProClient] SendCdnDownload: no FileData in response');
+        return null;
+      }
+
+      const buf = Buffer.from(env.Data.FileData, 'base64');
+      logger.debug(`[WeChatPadProClient] Downloaded CDN image: ${buf.length} bytes`);
+      return buf;
+    } catch (err) {
+      logger.error('[WeChatPadProClient] SendCdnDownload failed:', err);
+      return null;
+    }
+  }
+
+  // ──────────────────────────────────────────────────
   // HTTP helpers
   // ──────────────────────────────────────────────────
 
