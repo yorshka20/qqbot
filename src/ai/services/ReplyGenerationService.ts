@@ -353,7 +353,13 @@ export class ReplyGenerationService {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error('[ReplyGenerationService] Failed to generate reply from task results:', err);
       await this.hookManager.execute('onAIGenerationComplete', context);
-      throw err;
+
+      // Send error message to user so they know the bot failed
+      const errorMessage = `抱歉，AI 回复生成失败：${err.message || '未知错误'}。请稍后再试。`;
+      const textSegments = [{ type: 'text' as const, data: { text: errorMessage } }];
+      replaceReply(context, errorMessage, 'ai', {
+        sendAsForward: computeSendAsForward(context, textSegments),
+      });
     }
   }
 
@@ -661,8 +667,156 @@ export class ReplyGenerationService {
   }
 
   /**
+   * Execute a single LLM generation attempt with the given provider.
+   * Extracted from generateReplyWithTaskResults so retry logic can call it per-provider.
+   */
+  private async attemptLLMGeneration(
+    context: HookContext,
+    messages: ChatMessage[],
+    genOptions: { temperature: number; maxTokens: number; sessionId: string; reasoningEffort: 'medium' },
+    useVisionProvider: boolean,
+    canUseVisionToolUse: boolean,
+    toolDefinitions: ReturnType<typeof getReplySkillDefinitions>,
+    resolvedVisionProviderName: string | null,
+    selectedProviderName: string | undefined,
+    effectiveNativeSearchEnabled: boolean,
+  ): Promise<AIGenerateResponse> {
+    const toolExecutor = (call: { name: string; arguments: string }) =>
+      executeSkillCall(call, context, this.taskManager, this.hookManager);
+
+    if (useVisionProvider) {
+      if (canUseVisionToolUse && toolDefinitions.length > 0) {
+        const toolUseResponse = await this.llmService.generateWithTools(
+          messages,
+          toolDefinitions,
+          {
+            temperature: genOptions.temperature,
+            maxTokens: genOptions.maxTokens,
+            maxToolRounds: 4,
+            sessionId: genOptions.sessionId,
+            nativeWebSearch: effectiveNativeSearchEnabled,
+            toolExecutor,
+          },
+          resolvedVisionProviderName ?? undefined,
+        );
+        return { text: toolUseResponse.text };
+      }
+      // Current message images already inlined in buildReplyMessages; pass empty so VisionService uses messages as-is.
+      return await this.visionService.generateWithVisionMessages(
+        messages,
+        [],
+        genOptions,
+        resolvedVisionProviderName ?? undefined,
+      );
+    }
+
+    if (toolDefinitions.length > 0) {
+      const toolUseResponse = await this.llmService.generateWithTools(
+        messages,
+        toolDefinitions,
+        {
+          temperature: genOptions.temperature,
+          maxTokens: genOptions.maxTokens,
+          maxToolRounds: 4,
+          sessionId: genOptions.sessionId,
+          nativeWebSearch: effectiveNativeSearchEnabled,
+          toolExecutor,
+        },
+        selectedProviderName,
+      );
+      return { text: toolUseResponse.text };
+    }
+
+    return await this.llmService.generateMessages(
+      messages,
+      { ...genOptions, nativeWebSearch: effectiveNativeSearchEnabled },
+      selectedProviderName,
+    );
+  }
+
+  /**
+   * Generate with retry and provider fallback.
+   * Tries the primary provider first; on failure triggers a health check and retries with up to 2 alternative providers.
+   */
+  private async generateWithRetry(
+    context: HookContext,
+    messages: ChatMessage[],
+    genOptions: { temperature: number; maxTokens: number; sessionId: string; reasoningEffort: 'medium' },
+    useVisionProvider: boolean,
+    canUseVisionToolUse: boolean,
+    toolDefinitions: ReturnType<typeof getReplySkillDefinitions>,
+    resolvedVisionProviderName: string | null,
+    selectedProviderName: string | undefined,
+    effectiveNativeSearchEnabled: boolean,
+  ): Promise<{ response: AIGenerateResponse; actualProvider: string | undefined }> {
+    const MAX_RETRIES = 2;
+
+    try {
+      const response = await this.attemptLLMGeneration(
+        context,
+        messages,
+        genOptions,
+        useVisionProvider,
+        canUseVisionToolUse,
+        toolDefinitions,
+        resolvedVisionProviderName,
+        selectedProviderName,
+        effectiveNativeSearchEnabled,
+      );
+      return { response, actualProvider: selectedProviderName ?? resolvedVisionProviderName ?? undefined };
+    } catch (primaryError) {
+      const primaryProviderLabel = selectedProviderName ?? resolvedVisionProviderName ?? 'default';
+      logger.error(
+        `[ReplyGenerationService] Primary provider "${primaryProviderLabel}" failed, triggering health check and attempting fallback`,
+        primaryError instanceof Error ? primaryError : new Error(String(primaryError)),
+      );
+
+      // Trigger health check so provider availability is up-to-date
+      void this.llmService
+        .triggerHealthCheck()
+        .catch((e) =>
+          logger.warn('[ReplyGenerationService] Background health check failed:', e instanceof Error ? e.message : e),
+        );
+
+      // Get alternative providers (exclude the failed one)
+      const alternatives = this.llmService.getAlternativeProviderNames(primaryProviderLabel);
+      let lastError: Error = primaryError instanceof Error ? primaryError : new Error(String(primaryError));
+
+      for (let retry = 0; retry < Math.min(MAX_RETRIES, alternatives.length); retry++) {
+        const fallbackProvider = alternatives[retry];
+        logger.info(
+          `[ReplyGenerationService] Retry ${retry + 1}/${MAX_RETRIES} with fallback provider "${fallbackProvider}"`,
+        );
+        try {
+          const result = await this.attemptLLMGeneration(
+            context,
+            messages,
+            genOptions,
+            false, // disable vision for fallback to simplify
+            false,
+            toolDefinitions,
+            null,
+            fallbackProvider,
+            effectiveNativeSearchEnabled,
+          );
+          logger.info(`[ReplyGenerationService] Fallback provider "${fallbackProvider}" succeeded`);
+          return { response: result, actualProvider: fallbackProvider };
+        } catch (retryError) {
+          lastError = retryError instanceof Error ? retryError : new Error(String(retryError));
+          logger.error(`[ReplyGenerationService] Fallback provider "${fallbackProvider}" also failed`, lastError);
+        }
+      }
+
+      throw lastError;
+    }
+  }
+
+  /**
    * Build final reply messages and generate response.
    * Uses role-based messages. Vision fallback flattens messages into deterministic text prompt.
+   *
+   * Includes retry logic: if the primary provider fails, triggers a health check and retries
+   * with up to 2 alternative providers sequentially.
    *
    * @param context - Hook context
    * @param taskResultsSummary - Optional summary of task results (e.g. readFile). Injected as taskResults segment (may be empty).
@@ -740,64 +894,25 @@ export class ReplyGenerationService {
       `[ReplyGenerationService] Raw messages sent to provider (provider=${providerName ?? 'default'}):\n${rawMessagesForLog}`,
     );
 
-    let response: AIGenerateResponse;
-    const toolExecutor = (call: { name: string; arguments: string }) =>
-      executeSkillCall(call, context, this.taskManager, this.hookManager);
+    // Step 6: Generate with retry & provider fallback
+    const { response, actualProvider } = await this.generateWithRetry(
+      context,
+      messages,
+      genOptions,
+      useVisionProvider,
+      canUseVisionToolUse,
+      toolDefinitions,
+      resolvedVisionProviderName,
+      selectedProviderName,
+      effectiveNativeSearchEnabled,
+    );
 
-    if (useVisionProvider) {
-      if (canUseVisionToolUse && toolDefinitions.length > 0) {
-        const toolUseResponse = await this.llmService.generateWithTools(
-          messages,
-          toolDefinitions,
-          {
-            temperature: genOptions.temperature,
-            maxTokens: genOptions.maxTokens,
-            maxToolRounds: 4,
-            sessionId,
-            nativeWebSearch: effectiveNativeSearchEnabled,
-            toolExecutor,
-          },
-          resolvedVisionProviderName ?? undefined,
-        );
-        response = { text: toolUseResponse.text };
-      } else {
-        // Current message images already inlined in buildReplyMessages; pass empty so VisionService uses messages as-is.
-        response = await this.visionService.generateWithVisionMessages(
-          messages,
-          [],
-          genOptions,
-          resolvedVisionProviderName ?? undefined,
-        );
-      }
-    } else {
-      if (toolDefinitions.length > 0) {
-        const toolUseResponse = await this.llmService.generateWithTools(
-          messages,
-          toolDefinitions,
-          {
-            temperature: genOptions.temperature,
-            maxTokens: genOptions.maxTokens,
-            maxToolRounds: 4,
-            sessionId,
-            nativeWebSearch: effectiveNativeSearchEnabled,
-            toolExecutor,
-          },
-          selectedProviderName,
-        );
-        response = { text: toolUseResponse.text };
-      } else {
-        response = await this.llmService.generateMessages(
-          messages,
-          { ...genOptions, nativeWebSearch: effectiveNativeSearchEnabled },
-          selectedProviderName,
-        );
-      }
-    }
+    logger.debug(
+      `[ReplyGenerationService] LLM response received | responseLength=${response.text.length} | actualProvider=${actualProvider ?? 'default'}`,
+    );
 
-    logger.debug(`[ReplyGenerationService] LLM response received | responseLength=${response.text.length}`);
-
-    if (this.shouldUseCardReply(response.text, sessionId, providerName)) {
-      const success = await this.handleCardReply(response.text, sessionId, { context, providerName });
+    if (this.shouldUseCardReply(response.text, sessionId, actualProvider)) {
+      const success = await this.handleCardReply(response.text, sessionId, { context, providerName: actualProvider });
       if (success) {
         this.appendTaskResultImages(context, taskResultImages);
         void this.maintainEpisodeContext(built.episodeKey).catch(() => {});

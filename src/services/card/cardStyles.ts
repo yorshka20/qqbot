@@ -145,7 +145,11 @@ export function getCardStyles({ primary, secondary, primaryRgb, secondaryRgb }: 
   .paragraph-block {
     position: relative;
     z-index: 1;
-    padding: 18px 24px;
+    padding: 20px 24px;
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(8px);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
     color: rgba(255, 255, 255, 0.95);
     font-size: 15.5px;
     line-height: 1.85;

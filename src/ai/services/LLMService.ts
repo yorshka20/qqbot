@@ -9,7 +9,6 @@ import type {
   AIGenerateOptions,
   AIGenerateResponse,
   ChatMessage,
-  FunctionCall,
   StreamingHandler,
   ToolDefinition,
   ToolResult,
@@ -380,6 +379,23 @@ export class LLMService {
   private providerSupportsToolUse(providerName: string): boolean {
     // List of providers that support tool/function calling
     return this.supportedProviders.includes(providerName.toLowerCase());
+  }
+
+  /**
+   * Get alternative provider names for a capability, excluding the specified provider.
+   * Used for retry/fallback when the primary provider fails.
+   */
+  getAlternativeProviderNames(excludeProvider?: string): string[] {
+    const allProviders = this.aiManager.getProvidersForCapability('llm');
+    return allProviders.filter((p) => p.name !== excludeProvider && p.isAvailable()).map((p) => p.name);
+  }
+
+  /**
+   * Trigger an immediate health check on all AI providers.
+   * Should be called reactively when a provider call fails.
+   */
+  async triggerHealthCheck(): Promise<void> {
+    await this.aiManager.triggerHealthCheck();
   }
 
   private providerSupportsNativeWebSearch(providerName: string): boolean {

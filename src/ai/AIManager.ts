@@ -107,6 +107,13 @@ export class AIManager implements HealthCheckable {
   }
 
   /**
+   * Get all providers that support a specific capability (only available ones).
+   */
+  getProvidersForCapability(capability: CapabilityType): AIProvider[] {
+    return this.registry.getProvidersForCapability(capability);
+  }
+
+  /**
    * Get all registered providers
    */
   getAllProviders(): AIProvider[] {
@@ -141,6 +148,31 @@ export class AIManager implements HealthCheckable {
    */
   setCurrentProvider(capability: CapabilityType, name: string): void {
     this.setDefaultProvider(capability, name);
+  }
+
+  /**
+   * Trigger an immediate health check on all providers and return per-provider availability.
+   * Called reactively when a provider call fails, so subsequent calls can pick a healthy alternative.
+   */
+  async triggerHealthCheck(): Promise<Map<string, boolean>> {
+    const result = new Map<string, boolean>();
+    const providers = this.getAvailableProviders();
+    const checks = providers.map(async (provider) => {
+      try {
+        const healthy = await Promise.race([
+          provider.checkAvailability(),
+          new Promise<boolean>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+        ]);
+        result.set(provider.name, healthy);
+      } catch {
+        result.set(provider.name, false);
+      }
+    });
+    await Promise.all(checks);
+    logger.info(
+      `[AIManager] Health check completed: ${[...result.entries()].map(([k, v]) => `${k}=${v ? 'healthy' : 'unhealthy'}`).join(', ')}`,
+    );
+    return result;
   }
 
   /**
