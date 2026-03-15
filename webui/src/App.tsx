@@ -1,4 +1,4 @@
-import { Loader2, Moon, Sun, Trash2, FolderInput, X } from 'lucide-react';
+import { FolderInput, Loader2, Moon, Sun, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { deleteFile, listFiles, moveFile, renameFile } from './api';
 import { BatchMoveModal } from './components/BatchMoveModal';
@@ -238,7 +238,9 @@ export default function App() {
               </div>
             </div>
           ) : error ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/40 dark:border-red-900 p-6 text-red-800 dark:text-red-300 text-sm">{error}</div>
+            <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/40 dark:border-red-900 p-6 text-red-800 dark:text-red-300 text-sm">
+              {error}
+            </div>
           ) : groupedItems.length === 1 && !groupedItems[0].label ? (
             <CardWall
               items={groupedItems[0].items}
@@ -259,7 +261,9 @@ export default function App() {
               {groupedItems.map((group) => (
                 <section key={group.label || 'all'}>
                   {group.label ? (
-                    <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3">{group.label}</h2>
+                    <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3">
+                      {group.label}
+                    </h2>
                   ) : null}
                   <CardWall
                     items={group.items}
@@ -284,9 +288,7 @@ export default function App() {
       {/* Multi-select toolbar */}
       {selectMode && (
         <div className="shrink-0 border-t border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-3 flex items-center gap-3 shadow-lg z-30">
-          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            {selectedPaths.size} selected
-          </span>
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{selectedPaths.size} selected</span>
           <button
             type="button"
             onClick={handleSelectAll}

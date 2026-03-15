@@ -1,4 +1,6 @@
-import { Check, FileText, Folder, Music, Play } from 'lucide-react';
+import { Check, FileText, Folder, ImageIcon, Music, Play } from 'lucide-react';
+
+import { useLazyLoad } from '../hooks/useLazyLoad';
 import type { FileItem } from '../types';
 import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from '../utils/fileType';
 
@@ -27,12 +29,12 @@ function getCategory(item: FileItem): FileCategory {
 }
 
 const CATEGORY_BADGE: Record<FileCategory, { bg: string; label: string }> = {
-  image:   { bg: 'bg-sky-500',     label: 'IMAGE' },
-  video:   { bg: 'bg-violet-500',  label: 'VIDEO' },
-  audio:   { bg: 'bg-emerald-500', label: 'AUDIO' },
-  sticker: { bg: 'bg-pink-500',    label: 'STICKER' },
-  folder:  { bg: 'bg-amber-500',   label: 'FOLDER' },
-  other:   { bg: 'bg-zinc-500',    label: 'FILE' },
+  image: { bg: 'bg-sky-500', label: 'IMAGE' },
+  video: { bg: 'bg-violet-500', label: 'VIDEO' },
+  audio: { bg: 'bg-emerald-500', label: 'AUDIO' },
+  sticker: { bg: 'bg-pink-500', label: 'STICKER' },
+  folder: { bg: 'bg-amber-500', label: 'FOLDER' },
+  other: { bg: 'bg-zinc-500', label: 'FILE' },
 };
 
 interface ResourceCardProps {
@@ -67,6 +69,10 @@ export function ResourceCard({
   const isVideo = !item.isDir && VIDEO_EXT.has(e);
   const isAudio = !item.isDir && AUDIO_EXT.has(e);
   const canSelect = !item.isDir;
+
+  // Lazy load: only load media when card enters viewport (with 200px margin)
+  const [lazyRef, isVisible] = useLazyLoad<HTMLDivElement>();
+  const shouldLoadMedia = isVisible;
 
   const category = getCategory(item);
   const { bg: badgeBg, label: badgeLabel } = CATEGORY_BADGE[category];
@@ -130,30 +136,44 @@ export function ResourceCard({
       )}
 
       {/* Preview area */}
-      <div className={`aspect-square w-full flex items-center justify-center overflow-hidden shrink-0 relative z-10 pointer-events-none ${
-        selected ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-zinc-100 dark:bg-zinc-700'
-      }`}>
+      <div
+        ref={lazyRef}
+        className={`aspect-square w-full flex items-center justify-center overflow-hidden shrink-0 relative z-10 pointer-events-none ${
+          selected ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-zinc-100 dark:bg-zinc-700'
+        }`}
+      >
         {item.isDir ? (
           <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-zinc-400 dark:text-zinc-500">
             <Folder className="w-16 h-16" aria-hidden />
           </div>
         ) : isImage ? (
-          <img src={url} alt={item.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
+          shouldLoadMedia ? (
+            <img src={url} alt={item.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-zinc-300 dark:text-zinc-500">
+              <ImageIcon className="w-14 h-14" aria-hidden />
+            </div>
+          )
         ) : isVideo ? (
           <div className="relative w-full h-full flex items-center justify-center bg-zinc-200 dark:bg-zinc-600">
-            <video
-              src={url}
-              className="w-full h-full object-contain"
-              preload="metadata"
-              muted
-              playsInline
-              onLoadedData={(ev) => {
-                const v = ev.currentTarget;
-                if (v.duration > 0) v.currentTime = Math.min(1, v.duration * 0.1);
-              }}
-            />
+            {shouldLoadMedia && (
+              <video
+                src={url}
+                className="w-full h-full object-contain"
+                preload="metadata"
+                muted
+                playsInline
+                onLoadedData={(ev) => {
+                  const v = ev.currentTarget;
+                  if (v.duration > 0) v.currentTime = Math.min(1, v.duration * 0.1);
+                }}
+              />
+            )}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <span className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center text-white" aria-hidden>
+              <span
+                className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center text-white"
+                aria-hidden
+              >
                 <Play className="w-6 h-6 ml-0.5 fill-current" />
               </span>
             </div>
@@ -184,9 +204,11 @@ export function ResourceCard({
       </div>
 
       {/* Name + actions */}
-      <div className={`relative z-10 p-2.5 min-w-0 flex flex-col gap-1 ${
-        selected ? 'bg-blue-50 dark:bg-blue-950/40' : 'bg-white dark:bg-zinc-800'
-      }`}>
+      <div
+        className={`relative z-10 p-2.5 min-w-0 flex flex-col gap-1 ${
+          selected ? 'bg-blue-50 dark:bg-blue-950/40' : 'bg-white dark:bg-zinc-800'
+        }`}
+      >
         <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate" title={item.name}>
           {item.name}
         </p>
