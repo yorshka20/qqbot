@@ -79,6 +79,14 @@ export const CARD_TYPE_SPECS: CardTypeSpecEntry[] = [
       '{"type":"highlight","title":"结论标题","summary":"一句话核心结论","detail":"补充说明（可选，可含 HTML）"}',
     optionalNote: '`detail` 可选。适合单条醒目结论、要点总结。',
   },
+  {
+    type: 'paragraph',
+    name: '自然段落',
+    description: 'paragraph',
+    exampleJson: '{"type":"paragraph","content":"<p>这是一段自然语言表达，保留原文的连贯叙述。</p>"}',
+    optionalNote:
+      '用于承载原文中的自然语言段落、过渡句、总结语等非结构化内容。content 内使用 HTML（`<p>`、`<strong>`、`<em>`、`<code>` 等）。',
+  },
 ];
 
 /**

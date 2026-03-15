@@ -7,6 +7,7 @@ import type {
   InfoCardData,
   KnowledgeCardData,
   ListCardData,
+  ParagraphCardData,
   QACardData,
   QuoteCardData,
   StatsCardData,
@@ -303,6 +304,16 @@ export function highlightCard(data: HighlightCardData): string {
 }
 
 /**
+ * Paragraph block template (natural text, not a structured card)
+ */
+export function paragraphCard(data: ParagraphCardData): string {
+  const content = sanitizeContentHtml(data.content);
+  return `
+    <div class="paragraph-block">${content}</div>
+  `;
+}
+
+/**
  * Render card data to HTML
  */
 export function renderCard(data: CardData): string {
@@ -325,6 +336,8 @@ export function renderCard(data: CardData): string {
       return stepsCard(data);
     case 'highlight':
       return highlightCard(data);
+    case 'paragraph':
+      return paragraphCard(data);
     default:
       throw new Error(`Unknown card type: ${(data as { type: string }).type}`);
   }
@@ -337,5 +350,13 @@ export function renderCardDeck(cards: CardData[]): string {
   if (cards.length === 0) {
     throw new Error('Card deck must not be empty');
   }
-  return cards.map((card) => `<div class="card-inner">${renderCard(card)}</div>`).join('\n');
+  return cards
+    .map((card) => {
+      // Paragraph blocks render directly in the container without .card-inner wrapper
+      if (card.type === 'paragraph') {
+        return renderCard(card);
+      }
+      return `<div class="card-inner">${renderCard(card)}</div>`;
+    })
+    .join('\n');
 }

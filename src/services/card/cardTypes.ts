@@ -1,6 +1,6 @@
 // Card data types for LLM response rendering
 
-export type CardType = 'qa' | 'list' | 'info' | 'comparison' | 'knowledge' | 'stats' | 'quote' | 'steps' | 'highlight';
+export type CardType = 'qa' | 'list' | 'info' | 'comparison' | 'knowledge' | 'stats' | 'quote' | 'steps' | 'highlight' | 'paragraph';
 
 export type InfoBoxLevel = 'info' | 'warning' | 'success' | 'tip';
 
@@ -108,6 +108,14 @@ export interface HighlightCardData extends BaseCardData {
 }
 
 /**
+ * Paragraph block data (natural text, not a structured card)
+ */
+export interface ParagraphCardData extends BaseCardData {
+  type: 'paragraph';
+  content: string;
+}
+
+/**
  * Union type for all card data types
  */
 export type CardData =
@@ -119,7 +127,8 @@ export type CardData =
   | StatsCardData
   | QuoteCardData
   | StepsCardData
-  | HighlightCardData;
+  | HighlightCardData
+  | ParagraphCardData;
 
 /**
  * Type guard for Q&A card data
@@ -277,6 +286,17 @@ export function isHighlightCardData(data: unknown): data is HighlightCardData {
 }
 
 /**
+ * Type guard for paragraph block data
+ */
+export function isParagraphCardData(data: unknown): data is ParagraphCardData {
+  if (typeof data !== 'object' || data === null) {
+    return false;
+  }
+  const obj = data as Record<string, unknown>;
+  return obj.type === 'paragraph' && typeof obj.content === 'string';
+}
+
+/**
  * Type guard for card data
  */
 export function isCardData(data: unknown): data is CardData {
@@ -304,6 +324,8 @@ export function isCardData(data: unknown): data is CardData {
       return isStepsCardData(data);
     case 'highlight':
       return isHighlightCardData(data);
+    case 'paragraph':
+      return isParagraphCardData(data);
     default:
       return false;
   }

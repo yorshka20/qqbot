@@ -917,7 +917,7 @@ export class ReplyGenerationService {
       prompt,
       {
         temperature: 0.2,
-        maxTokens: 2000,
+        maxTokens: 4000,
         sessionId,
         model: convertLlmModel,
         jsonMode: true,

@@ -19,6 +19,7 @@ export type {
   InfoCardData,
   KnowledgeCardData,
   ListCardData,
+  ParagraphCardData,
   QACardData,
   QuoteCardData,
   StatsCardData,
