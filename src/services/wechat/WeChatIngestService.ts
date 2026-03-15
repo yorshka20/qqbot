@@ -1,5 +1,8 @@
 // WeChat Ingest Service — HTTP webhook server + message processing pipeline
 
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { ResourceDownloader } from '@/ai/utils/ResourceDownloader';
 import type { RetrievalService } from '@/services/retrieval';
 import { logger } from '@/utils/logger';
 import type {
@@ -68,6 +71,56 @@ function xmlTag(xml: string, tag: string): string {
   return (m?.[1] ?? m?.[2] ?? '').trim();
 }
 
+/** Extract an attribute value from an XML tag string; decodes &amp; entities. */
+function xmlAttr(xml: string, attr: string): string {
+  const re = new RegExp(`\\b${attr}="([^"]*)"`, 'i');
+  const m = xml.match(re);
+  return (m?.[1] ?? '').replace(/&amp;/g, '&');
+}
+
+export interface ImgInfo {
+  /** Best available download URL (HD > regular > thumb) */
+  url: string;
+  md5: string;
+  width: number;
+  height: number;
+  /** Estimated file size in bytes */
+  fileSize: number;
+}
+
+/** Parse image metadata from a MsgType=3 rawContent XML. */
+export function extractImgInfo(rawContent: string): ImgInfo | null {
+  // Match <img ...attributes... /> or <img ...attributes... >
+  const m = rawContent.match(/<img\s([^>]+?)(?:\/?>)/is);
+  if (!m) return null;
+  const attrs = m[0];
+
+  // Prefer HD > regular > thumbnail URL
+  const url =
+    xmlAttr(attrs, 'tphdurl') ||
+    xmlAttr(attrs, 'tpurl') ||
+    xmlAttr(attrs, 'tpthumburl');
+  if (!url) return null;
+
+  const width =
+    Number(xmlAttr(attrs, 'tphdwidth')) ||
+    Number(xmlAttr(attrs, 'tpwidth')) ||
+    Number(xmlAttr(attrs, 'cdnthumbwidth')) ||
+    0;
+  const height =
+    Number(xmlAttr(attrs, 'tphdheight')) ||
+    Number(xmlAttr(attrs, 'tpheight')) ||
+    Number(xmlAttr(attrs, 'cdnthumbheight')) ||
+    0;
+  const fileSize =
+    Number(xmlAttr(attrs, 'tphdlength')) ||
+    Number(xmlAttr(attrs, 'tplength')) ||
+    Number(xmlAttr(attrs, 'length')) ||
+    0;
+
+  return { url, md5: xmlAttr(attrs, 'md5'), width, height, fileSize };
+}
+
 export interface OfficialAccountItem {
   title: string;
   url: string;
@@ -114,13 +167,38 @@ function parseContentAsJson(xml: string, category: MessageCategory, msgType: num
         digest: xmlTag(xml, 'digest'),
         source: xmlTag(xml, 'sourcedisplayname') || xmlTag(xml, 'appname'),
       });
-    case 'file':
+    case 'file': {
+      // 视频号 (Finder/Channels): <finderFeed> section present
+      const finderStart = xml.indexOf('<finderFeed>');
+      if (finderStart >= 0) {
+        const finderEnd = xml.indexOf('</finderFeed>');
+        const finderXml = xml.substring(finderStart, finderEnd >= 0 ? finderEnd + 13 : xml.length);
+        // Extract first <media> for thumbnail/cover/duration
+        const mediaStart = finderXml.indexOf('<media>');
+        const mediaEnd = finderXml.indexOf('</media>');
+        const mediaXml = mediaStart >= 0 && mediaEnd > mediaStart
+          ? finderXml.substring(mediaStart, mediaEnd + 8)
+          : '';
+        return JSON.stringify({
+          type: 'finder_video',
+          nickname: xmlTag(finderXml, 'nickname'),
+          desc: xmlTag(finderXml, 'desc'),
+          username: xmlTag(finderXml, 'username'),
+          avatar: xmlTag(finderXml, 'avatar'),
+          // videoUrl is a short-lived WeChat CDN URL — useful for tracing, not for playback
+          videoUrl: xmlTag(mediaXml || finderXml, 'url'),
+          coverUrl: xmlTag(mediaXml || finderXml, 'coverUrl'),
+          duration: Number(xmlTag(mediaXml || finderXml, 'videoPlayDuration')) || 0,
+        });
+      }
+      // Standard file attachment
       return JSON.stringify({
         title: xmlTag(xml, 'title'),
         description: xmlTag(xml, 'des'),
         fileName: xmlTag(xml, 'filename') || xmlTag(xml, 'title'),
         fileSize: xmlTag(xml, 'totallen'),
       });
+    }
     case 'image':
       return JSON.stringify({ type: 'image' });
     default:
@@ -313,18 +391,14 @@ export class WeChatIngestService {
         if (isOAPush) {
           await this.handleOAPushMessage(msg);
         } else {
-          // Article shared inside a group/private chat — store to wechat_messages
-          this.persistToDb(
-            msg,
-            'article',
-            msg.FromUserName,
-            parseContentAsJson(msg.Content, 'article', msg.MsgType),
-            false,
-            conversationId(msg.FromUserName),
-          );
+          await this.handleChatArticleMessage(msg);
         }
         break;
       case 'image':
+        if (!isOAPush) {
+          await this.handleImageMessage(msg);
+        }
+        break;
       case 'file':
       case 'other':
         if (!isOAPush) {
@@ -332,6 +406,77 @@ export class WeChatIngestService {
           logger.debug(`[WeChatIngestService] No RAG for MsgType=${msg.MsgType} (${category}) — saved to DB only`);
         }
         break;
+    }
+  }
+
+  // ──────────────────────────────────────────────────
+  // Image download handler
+  // ──────────────────────────────────────────────────
+
+  private async handleImageMessage(msg: WeChatWebhookMessage): Promise<void> {
+    const { sender, isGroup } = parseGroupMessage(msg.Content, msg.FromUserName);
+    const convId = conversationId(msg.FromUserName);
+    const imgInfo = extractImgInfo(msg.Content);
+
+    // Persist to DB immediately with known metadata (filePath null until download completes)
+    const initialContent = JSON.stringify({
+      type: 'image',
+      md5: imgInfo?.md5 ?? '',
+      width: imgInfo?.width ?? 0,
+      height: imgInfo?.height ?? 0,
+      fileSize: imgInfo?.fileSize ?? 0,
+      filePath: null,
+    });
+    this.persistToDb(msg, 'image', sender, initialContent, isGroup, convId);
+
+    if (!imgInfo?.url) {
+      logger.warn(`[WeChatIngestService] Image: no download URL found | newMsgId=${msg.NewMsgId}`);
+      return;
+    }
+
+    // Use md5 as filename for deduplication; fallback to newMsgId
+    const filename = imgInfo.md5 ? `${imgInfo.md5}.jpg` : `${msg.NewMsgId}.jpg`;
+    const savePath = resolve(`output/wechat/${convId}`);
+    const filePath = `output/wechat/${convId}/${filename}`;
+
+    // Skip download if already saved (same image forwarded multiple times)
+    if (existsSync(resolve(filePath))) {
+      logger.info(`[WeChatIngestService] Image already exists, skipping download: ${filePath}`);
+      if (this.db) {
+        this.db.updateContentByMsgId(String(msg.NewMsgId), JSON.stringify({
+          type: 'image',
+          md5: imgInfo.md5,
+          width: imgInfo.width,
+          height: imgInfo.height,
+          fileSize: imgInfo.fileSize,
+          filePath,
+        }));
+      }
+      return;
+    }
+
+    logger.info(`[WeChatIngestService] Downloading image | newMsgId=${msg.NewMsgId} → ${filePath}`);
+    try {
+      await ResourceDownloader.downloadToBase64(imgInfo.url, {
+        savePath,
+        filename,
+        timeout: 30_000,
+        maxSize: 20 * 1024 * 1024,
+      });
+
+      logger.info(`[WeChatIngestService] Image saved: ${filePath}`);
+      if (this.db) {
+        this.db.updateContentByMsgId(String(msg.NewMsgId), JSON.stringify({
+          type: 'image',
+          md5: imgInfo.md5,
+          width: imgInfo.width,
+          height: imgInfo.height,
+          fileSize: imgInfo.fileSize,
+          filePath,
+        }));
+      }
+    } catch (err) {
+      logger.error(`[WeChatIngestService] Image download failed | newMsgId=${msg.NewMsgId}:`, err);
     }
   }
 
@@ -376,6 +521,115 @@ export class WeChatIngestService {
   }
 
   // ──────────────────────────────────────────────────
+  // Article shared in group/private chat
+  // ──────────────────────────────────────────────────
+
+  private async handleChatArticleMessage(msg: WeChatWebhookMessage): Promise<void> {
+    const { sender, isGroup } = parseGroupMessage(msg.Content, msg.FromUserName);
+    const convId = conversationId(msg.FromUserName);
+    const sourceType = isGroup ? 'group_chat' : 'private_chat';
+
+    // Always persist raw to wechat_messages
+    this.persistToDb(
+      msg,
+      'article',
+      sender,
+      parseContentAsJson(msg.Content, 'article', msg.MsgType),
+      isGroup,
+      convId,
+    );
+
+    // Extract article metadata from XML
+    const title = xmlTag(msg.Content, 'title');
+    const url = xmlTag(msg.Content, 'url');
+    const summary = xmlTag(msg.Content, 'des') || xmlTag(msg.Content, 'digest');
+    const cover = xmlTag(msg.Content, 'thumburl');
+    const accountId = xmlTag(msg.Content, 'appid') || '';
+    const accountNick = xmlTag(msg.Content, 'sourcedisplayname') || xmlTag(msg.Content, 'appname') || '';
+    const source = accountNick;
+    const receivedAt = new Date().toISOString();
+    const msgId = String(msg.NewMsgId);
+
+    logger.info(
+      `[WeChatIngestService] Chat article | ${sourceType} conv=${convId} sender=${sender} title="${title}"`,
+    );
+
+    // Store metadata to wechat_oa_articles
+    if (this.db && title) {
+      this.db.insertOAArticle({
+        msgId,
+        accountId,
+        accountNick,
+        title,
+        url,
+        summary,
+        cover,
+        source,
+        pubTime: msg.CreateTime,
+        receivedAt,
+        sourceType,
+        fromConversationId: convId,
+        fromSender: sender,
+      });
+    }
+
+    // Fetch full text and upsert to RAG
+    if (this.retrieval.isRAGEnabled() && title) {
+      this.upsertChatArticleToRAG(msgId, { title, url, summary, cover, source, accountNick, accountId }, convId, sender, sourceType, msg.CreateTime).catch((err) =>
+        logger.error(`[WeChatIngestService] Chat article RAG error for "${title}":`, err),
+      );
+    }
+  }
+
+  private async upsertChatArticleToRAG(
+    msgId: string,
+    article: { title: string; url: string; summary: string; cover: string; source: string; accountNick: string; accountId: string },
+    fromConversationId: string,
+    fromSender: string,
+    sourceType: string,
+    receivedTime: number,
+  ): Promise<void> {
+    const fullText = article.url ? await fetchArticleText(article.url, article.title) : article.title;
+    const usedSummary = fullText === article.title;
+
+    const docContent = [
+      `标题: ${article.title}`,
+      article.summary && !usedSummary ? `摘要: ${article.summary}` : '',
+      `正文: ${usedSummary ? article.summary || article.title : fullText}`,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    logger.info(
+      `[WeChatIngestService] RAG upsert chat article | collection=${this.config.rag.articleCollection} ` +
+        `title="${article.title}" len=${docContent.length} usedSummary=${usedSummary}`,
+    );
+
+    await this.retrieval.upsertDocuments(this.config.rag.articleCollection, [
+      {
+        id: msgId,
+        content: docContent,
+        payload: {
+          url: article.url,
+          title: article.title,
+          summary: article.summary,
+          cover: article.cover,
+          accountId: article.accountId,
+          accountNick: article.accountNick,
+          source: article.source,
+          sourceType,
+          fromConversationId,
+          fromSender,
+          receivedTime,
+          platform: 'wechat',
+          type: 'chat_article',
+        },
+      },
+    ]);
+    logger.info(`[WeChatIngestService] RAG upsert OK: "${article.title}" → ${this.config.rag.articleCollection}`);
+  }
+
+  // ──────────────────────────────────────────────────
   // Official account push handler
   // ──────────────────────────────────────────────────
 
@@ -410,6 +664,9 @@ export class WeChatIngestService {
           source: item.source || accountNick,
           pubTime: item.pubTime || msg.CreateTime,
           receivedAt,
+          sourceType: 'oa_push',
+          fromConversationId: '',
+          fromSender: '',
         });
         logger.info(`[WeChatIngestService] OA article saved to DB | msgId=${msgId} title="${item.title}"`);
       }

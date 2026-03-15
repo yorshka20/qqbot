@@ -28,16 +28,20 @@ export interface WeChatMessageRow {
 /** One article row in wechat_oa_articles (one row per article, not per push) */
 export interface WeChatOAArticleRow {
   id?: number; // auto-increment primary key
-  msgId: string; // `${NewMsgId}_${idx}` — unique per article item
+  msgId: string; // `${NewMsgId}_${idx}` for OA push, `${NewMsgId}` for chat share — unique per article
   accountId: string; // gh_xxx wxid of the official account
   accountNick: string; // display name of the official account
   title: string;
   url: string;
-  summary: string; // excerpt from <summary>
+  summary: string; // excerpt from <summary> or <des>
   cover: string; // cover image URL
-  source: string; // inner account name from <sources><source><name>
+  source: string; // inner account name from <sources><source><name> or <appname>
   pubTime: number; // article publish time (unix seconds)
-  receivedAt: string; // ISO timestamp when bot received the push
+  receivedAt: string; // ISO timestamp when bot received the message
+  // ── Source tracking (new fields) ──────────────────
+  sourceType: string; // 'oa_push' | 'group_chat' | 'private_chat'
+  fromConversationId: string; // group chatroom-ID or private wxid (empty for oa_push)
+  fromSender: string; // wxid/nickname of who shared it in chat (empty for oa_push)
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -110,6 +114,14 @@ export class WeChatDatabase {
   // Write — official account articles
   // ──────────────────────────────────────────────────
 
+  /** Update the content JSON for a row (e.g., add filePath after image download). */
+  updateContentByMsgId(newMsgId: string, content: string): void {
+    if (!this.db) return;
+    this.db
+      .query<void, [string, string]>(`UPDATE wechat_messages SET content = ? WHERE newMsgId = ?`)
+      .run(content, newMsgId);
+  }
+
   /** Insert an OA article. Silently ignores duplicates. */
   insertOAArticle(row: Omit<WeChatOAArticleRow, 'id'>): void {
     if (!this.db) {
@@ -119,8 +131,9 @@ export class WeChatDatabase {
     try {
       this.db
         .query(`INSERT OR IGNORE INTO wechat_oa_articles
-          (msgId, accountId, accountNick, title, url, summary, cover, source, pubTime, receivedAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          (msgId, accountId, accountNick, title, url, summary, cover, source, pubTime, receivedAt,
+           sourceType, fromConversationId, fromSender)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(
           row.msgId,
           row.accountId,
@@ -132,6 +145,9 @@ export class WeChatDatabase {
           row.source,
           row.pubTime,
           row.receivedAt,
+          row.sourceType,
+          row.fromConversationId,
+          row.fromSender,
         );
     } catch (err) {
       logger.error('[WeChatDatabase] insertOAArticle error:', err);
@@ -225,21 +241,33 @@ export class WeChatDatabase {
     // Official account articles (one row per article, not per push)
     this.db.run(`
       CREATE TABLE IF NOT EXISTS wechat_oa_articles (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        msgId       TEXT    NOT NULL UNIQUE,
-        accountId   TEXT    NOT NULL DEFAULT '',
-        accountNick TEXT    NOT NULL DEFAULT '',
-        title       TEXT    NOT NULL DEFAULT '',
-        url         TEXT    NOT NULL DEFAULT '',
-        summary     TEXT    NOT NULL DEFAULT '',
-        cover       TEXT    NOT NULL DEFAULT '',
-        source      TEXT    NOT NULL DEFAULT '',
-        pubTime     INTEGER NOT NULL DEFAULT 0,
-        receivedAt  TEXT    NOT NULL DEFAULT ''
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        msgId              TEXT    NOT NULL UNIQUE,
+        accountId          TEXT    NOT NULL DEFAULT '',
+        accountNick        TEXT    NOT NULL DEFAULT '',
+        title              TEXT    NOT NULL DEFAULT '',
+        url                TEXT    NOT NULL DEFAULT '',
+        summary            TEXT    NOT NULL DEFAULT '',
+        cover              TEXT    NOT NULL DEFAULT '',
+        source             TEXT    NOT NULL DEFAULT '',
+        pubTime            INTEGER NOT NULL DEFAULT 0,
+        receivedAt         TEXT    NOT NULL DEFAULT '',
+        sourceType         TEXT    NOT NULL DEFAULT 'oa_push',
+        fromConversationId TEXT    NOT NULL DEFAULT '',
+        fromSender         TEXT    NOT NULL DEFAULT ''
       )
     `);
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_oa_accountId ON wechat_oa_articles(accountId)`);
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_oa_pubTime   ON wechat_oa_articles(pubTime)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_oa_accountId   ON wechat_oa_articles(accountId)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_oa_pubTime     ON wechat_oa_articles(pubTime)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_oa_sourceType  ON wechat_oa_articles(sourceType)`);
+    // Migrate existing DBs: add columns if they don't exist yet
+    for (const col of [
+      `ALTER TABLE wechat_oa_articles ADD COLUMN sourceType         TEXT NOT NULL DEFAULT 'oa_push'`,
+      `ALTER TABLE wechat_oa_articles ADD COLUMN fromConversationId TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE wechat_oa_articles ADD COLUMN fromSender         TEXT NOT NULL DEFAULT ''`,
+    ]) {
+      try { this.db.run(col); } catch { /* column already exists — ignore */ }
+    }
 
     logger.debug('[WeChatDatabase] Schema ready');
   }
