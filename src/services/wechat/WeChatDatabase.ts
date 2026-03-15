@@ -259,8 +259,7 @@ export class WeChatDatabase {
     `);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_oa_accountId   ON wechat_oa_articles(accountId)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_oa_pubTime     ON wechat_oa_articles(pubTime)`);
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_oa_sourceType  ON wechat_oa_articles(sourceType)`);
-    // Migrate existing DBs: add columns if they don't exist yet
+    // Migrate existing DBs: add new columns before creating indexes that depend on them
     for (const col of [
       `ALTER TABLE wechat_oa_articles ADD COLUMN sourceType         TEXT NOT NULL DEFAULT 'oa_push'`,
       `ALTER TABLE wechat_oa_articles ADD COLUMN fromConversationId TEXT NOT NULL DEFAULT ''`,
@@ -268,6 +267,7 @@ export class WeChatDatabase {
     ]) {
       try { this.db.run(col); } catch { /* column already exists — ignore */ }
     }
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_oa_sourceType  ON wechat_oa_articles(sourceType)`);
 
     logger.debug('[WeChatDatabase] Schema ready');
   }
