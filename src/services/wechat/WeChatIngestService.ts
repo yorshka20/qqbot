@@ -12,8 +12,9 @@ import type {
   WeChatRealtimeRule,
   WeChatWebhookMessage,
 } from './types';
-import type { WeChatDatabase } from './WeChatDatabase';
+import type { WeChatDatabase, WeChatMessageRow, WeChatOAArticleRow } from './WeChatDatabase';
 import { WeChatMessageBuffer } from './WeChatMessageBuffer';
+import type { WechatEventBridge } from './WechatEventBridge';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Helpers: classification + parsing
@@ -122,10 +123,7 @@ export function extractImgInfo(rawContent: string): ImgInfo | null {
     Number(xmlAttr(attrs, 'cdnthumbheight')) ||
     0;
   const fileSize =
-    Number(xmlAttr(attrs, 'tphdlength')) ||
-    Number(xmlAttr(attrs, 'tplength')) ||
-    Number(xmlAttr(attrs, 'length')) ||
-    0;
+    Number(xmlAttr(attrs, 'tphdlength')) || Number(xmlAttr(attrs, 'tplength')) || Number(xmlAttr(attrs, 'length')) || 0;
 
   return {
     url: url || '',
@@ -192,9 +190,7 @@ function parseContentAsJson(xml: string, category: MessageCategory, msgType: num
         // Extract first <media> for thumbnail/cover/duration
         const mediaStart = finderXml.indexOf('<media>');
         const mediaEnd = finderXml.indexOf('</media>');
-        const mediaXml = mediaStart >= 0 && mediaEnd > mediaStart
-          ? finderXml.substring(mediaStart, mediaEnd + 8)
-          : '';
+        const mediaXml = mediaStart >= 0 && mediaEnd > mediaStart ? finderXml.substring(mediaStart, mediaEnd + 8) : '';
         return JSON.stringify({
           type: 'finder_video',
           nickname: xmlTag(finderXml, 'nickname'),
@@ -307,6 +303,7 @@ export class WeChatIngestService {
   private readonly notify: NotifyCallback | null;
   private readonly resolveGroupName: GroupNameResolver | null;
   private readonly downloadCdnImage: CdnImageDownloader | null;
+  private readonly eventBridge: WechatEventBridge | null;
   /** Cache: conversationId → sanitized folder name */
   private groupNameCache = new Map<string, string>();
   private totalReceived = 0;
@@ -318,6 +315,7 @@ export class WeChatIngestService {
     notify?: NotifyCallback;
     resolveGroupName?: GroupNameResolver;
     downloadCdnImage?: CdnImageDownloader;
+    eventBridge?: WechatEventBridge;
   }) {
     this.config = opts.config;
     this.retrieval = opts.retrieval;
@@ -325,6 +323,7 @@ export class WeChatIngestService {
     this.notify = opts.notify ?? null;
     this.resolveGroupName = opts.resolveGroupName ?? null;
     this.downloadCdnImage = opts.downloadCdnImage ?? null;
+    this.eventBridge = opts.eventBridge ?? null;
 
     this.buffer = new WeChatMessageBuffer({
       idleMinutes: this.config.rag.bufferIdleMinutes,
@@ -537,11 +536,7 @@ export class WeChatIngestService {
    * Download image: try PadPro CDN download first (using aeskey + cdnUrl),
    * then fall back to direct HTTP download if a tp* URL is available.
    */
-  private async downloadAndSaveImage(
-    imgInfo: ImgInfo,
-    savePath: string,
-    filename: string,
-  ): Promise<boolean> {
+  private async downloadAndSaveImage(imgInfo: ImgInfo, savePath: string, filename: string): Promise<boolean> {
     // Strategy 1: PadPro CDN download (works for all WeChat images with aeskey)
     if (this.downloadCdnImage && imgInfo.aeskey && imgInfo.url) {
       try {
@@ -561,8 +556,7 @@ export class WeChatIngestService {
     }
 
     // Strategy 2: Direct HTTP download (for tp* URLs)
-    const httpUrl =
-      imgInfo.url.startsWith('http://') || imgInfo.url.startsWith('https://') ? imgInfo.url : null;
+    const httpUrl = imgInfo.url.startsWith('http://') || imgInfo.url.startsWith('https://') ? imgInfo.url : null;
     if (httpUrl) {
       try {
         await ResourceDownloader.downloadToBase64(httpUrl, {
@@ -630,14 +624,7 @@ export class WeChatIngestService {
     const sourceType = isGroup ? 'group_chat' : 'private_chat';
 
     // Always persist raw to wechat_messages
-    this.persistToDb(
-      msg,
-      'article',
-      sender,
-      parseContentAsJson(msg.Content, 'article', msg.MsgType),
-      isGroup,
-      convId,
-    );
+    this.persistToDb(msg, 'article', sender, parseContentAsJson(msg.Content, 'article', msg.MsgType), isGroup, convId);
 
     // Extract article metadata from XML
     const title = xmlTag(msg.Content, 'title');
@@ -650,9 +637,7 @@ export class WeChatIngestService {
     const receivedAt = new Date().toISOString();
     const msgId = String(msg.NewMsgId);
 
-    logger.info(
-      `[WeChatIngestService] Chat article | ${sourceType} conv=${convId} sender=${sender} title="${title}"`,
-    );
+    logger.info(`[WeChatIngestService] Chat article | ${sourceType} conv=${convId} sender=${sender} title="${title}"`);
 
     // Store metadata to wechat_oa_articles
     if (this.db && title) {
@@ -675,15 +660,28 @@ export class WeChatIngestService {
 
     // Fetch full text and upsert to RAG
     if (this.retrieval.isRAGEnabled() && title) {
-      this.upsertChatArticleToRAG(msgId, { title, url, summary, cover, source, accountNick, accountId }, convId, sender, sourceType, msg.CreateTime).catch((err) =>
-        logger.error(`[WeChatIngestService] Chat article RAG error for "${title}":`, err),
-      );
+      this.upsertChatArticleToRAG(
+        msgId,
+        { title, url, summary, cover, source, accountNick, accountId },
+        convId,
+        sender,
+        sourceType,
+        msg.CreateTime,
+      ).catch((err) => logger.error(`[WeChatIngestService] Chat article RAG error for "${title}":`, err));
     }
   }
 
   private async upsertChatArticleToRAG(
     msgId: string,
-    article: { title: string; url: string; summary: string; cover: string; source: string; accountNick: string; accountId: string },
+    article: {
+      title: string;
+      url: string;
+      summary: string;
+      cover: string;
+      source: string;
+      accountNick: string;
+      accountId: string;
+    },
     fromConversationId: string,
     fromSender: string,
     sourceType: string,
@@ -758,23 +756,30 @@ export class WeChatIngestService {
       const msgId = `${msg.NewMsgId}_${idx}`;
 
       // Store metadata to DB
+      const articleRow: Omit<WeChatOAArticleRow, 'id'> = {
+        msgId,
+        accountId,
+        accountNick,
+        title: item.title,
+        url: item.url,
+        summary: item.summary,
+        cover: item.cover,
+        source: item.source || accountNick,
+        pubTime: item.pubTime || msg.CreateTime,
+        receivedAt,
+        sourceType: 'oa_push',
+        fromConversationId: '',
+        fromSender: '',
+      };
+
       if (this.db) {
-        this.db.insertOAArticle({
-          msgId,
-          accountId,
-          accountNick,
-          title: item.title,
-          url: item.url,
-          summary: item.summary,
-          cover: item.cover,
-          source: item.source || accountNick,
-          pubTime: item.pubTime || msg.CreateTime,
-          receivedAt,
-          sourceType: 'oa_push',
-          fromConversationId: '',
-          fromSender: '',
-        });
+        this.db.insertOAArticle(articleRow);
         logger.info(`[WeChatIngestService] OA article saved to DB | msgId=${msgId} title="${item.title}"`);
+      }
+
+      // Publish event to InternalEventBus
+      if (this.eventBridge) {
+        this.eventBridge.publishOAArticle(articleRow as WeChatOAArticleRow);
       }
 
       // Upsert to RAG (fetch full text + fall back to summary)
@@ -893,8 +898,7 @@ export class WeChatIngestService {
     isGroup: boolean,
     convId: string,
   ): void {
-    if (!this.db) return;
-    this.db.insert({
+    const row: Omit<WeChatMessageRow, 'id' | 'processed'> = {
       newMsgId: String(msg.NewMsgId),
       conversationId: convId,
       isGroup: isGroup ? 1 : 0,
@@ -905,8 +909,34 @@ export class WeChatIngestService {
       category,
       createTime: msg.CreateTime,
       receivedAt: new Date().toISOString(),
-    });
-    logger.info(`[WeChatIngestService] DB insert OK | newMsgId=${msg.NewMsgId} conv=${convId} category=${category}`);
+    };
+
+    if (this.db) {
+      this.db.insert(row);
+      logger.info(`[WeChatIngestService] DB insert OK | newMsgId=${msg.NewMsgId} conv=${convId} category=${category}`);
+    }
+
+    // Publish event to InternalEventBus
+    if (this.eventBridge) {
+      const fullRow: WeChatMessageRow = { ...row, processed: 0 };
+      switch (category) {
+        case 'text':
+          this.eventBridge.publishTextMessage(fullRow);
+          break;
+        case 'article':
+          this.eventBridge.publishArticleMessage(fullRow);
+          break;
+        case 'image':
+          this.eventBridge.publishImageMessage(fullRow);
+          break;
+        case 'file':
+          this.eventBridge.publishFileMessage(fullRow);
+          break;
+        default:
+          // For 'other' category, still publish a generic message event
+          this.eventBridge.publishTextMessage(fullRow);
+      }
+    }
   }
 
   private persistChatToDb(msg: WeChatWebhookMessage, category: MessageCategory): void {

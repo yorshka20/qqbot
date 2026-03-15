@@ -1,0 +1,84 @@
+/**
+ * Hash-based router for the webui.
+ *
+ * Routes:
+ * - #/           → files (Output 资源)
+ * - #/reports    → reports list (微信报告)
+ * - #/report/:id → report detail
+ */
+
+// ────────────────────────────────────────────────────────────────────────────
+// Types
+// ────────────────────────────────────────────────────────────────────────────
+
+export type Route =
+  | { page: 'files' }
+  | { page: 'reports' }
+  | { page: 'report'; id: string }
+
+export type PageName = Route['page']
+
+// ────────────────────────────────────────────────────────────────────────────
+// Parsing & Navigation
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Parse current location hash into a Route object.
+ */
+export function parseHash(): Route {
+  const hash = window.location.hash.slice(1) // Remove leading #
+
+  if (!hash || hash === '/') {
+    return { page: 'files' }
+  }
+
+  if (hash === '/reports') {
+    return { page: 'reports' }
+  }
+
+  const reportMatch = hash.match(/^\/report\/(.+)$/)
+  if (reportMatch?.[1]) {
+    return { page: 'report', id: reportMatch[1] }
+  }
+
+  return { page: 'files' }
+}
+
+/**
+ * Update location hash based on Route.
+ */
+export function setHash(route: Route): void {
+  switch (route.page) {
+    case 'files':
+      window.location.hash = '/'
+      break
+    case 'reports':
+      window.location.hash = '/reports'
+      break
+    case 'report':
+      window.location.hash = `/report/${route.id}`
+      break
+  }
+}
+
+/**
+ * Navigate to a new route (updates both state and hash).
+ */
+export function navigateTo(route: Route, setRoute: (r: Route) => void): void {
+  setRoute(route)
+  setHash(route)
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Route helpers
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Check if the current route matches a page (useful for nav highlighting).
+ */
+export function isActivePage(route: Route, page: PageName): boolean {
+  if (page === 'reports') {
+    return route.page === 'reports' || route.page === 'report'
+  }
+  return route.page === page
+}

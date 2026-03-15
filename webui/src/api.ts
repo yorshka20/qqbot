@@ -1,8 +1,12 @@
-import { getFileApiBase } from './config'
-import type { ListResponse } from './types'
+import { getFileApiBase, getReportApiBase } from './config'
+import type { ListResponse, ReportDetailResponse, ReportListResponse } from './types'
 
 function apiBase(): string {
   return getFileApiBase()
+}
+
+function reportApiBase(): string {
+  return getReportApiBase()
 }
 
 export async function listFiles(path: string): Promise<ListResponse> {
@@ -50,4 +54,26 @@ export async function renameFile(path: string, newName: string): Promise<void> {
     const err = (await res.json().catch(() => ({}))) as { error?: string }
     throw new Error(err.error ?? `Rename failed: ${res.status}`)
   }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Report API
+// ────────────────────────────────────────────────────────────────────────────
+
+export async function listReports(): Promise<ReportListResponse> {
+  const res = await fetch(`${reportApiBase()}/list`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `List reports failed: ${res.status}`)
+  }
+  return res.json() as Promise<ReportListResponse>
+}
+
+export async function getReport(id: string): Promise<ReportDetailResponse> {
+  const res = await fetch(`${reportApiBase()}/${encodeURIComponent(id)}`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get report failed: ${res.status}`)
+  }
+  return res.json() as Promise<ReportDetailResponse>
 }

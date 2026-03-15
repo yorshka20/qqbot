@@ -457,11 +457,13 @@ export class WeChatPadProClient {
    */
   async downloadCdnImage(aeskey: string, cdnUrl: string, fileType = 2): Promise<Buffer | null> {
     try {
-      const env = await this.post<PadProEnvelope<{
-        FileData?: string;
-        TotalSize?: number;
-        RetCode?: number;
-      }>>('/message/SendCdnDownload', {
+      const env = await this.post<
+        PadProEnvelope<{
+          FileData?: string;
+          TotalSize?: number;
+          RetCode?: number;
+        }>
+      >('/message/SendCdnDownload', {
         AesKey: aeskey,
         FileURL: cdnUrl,
         FileType: fileType,

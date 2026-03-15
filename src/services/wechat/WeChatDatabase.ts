@@ -23,6 +23,7 @@ export interface WeChatMessageRow {
   category: string; // text | image | file | other
   createTime: number; // unix seconds (from webhook CreateTime)
   receivedAt: string; // ISO timestamp when bot received the message
+  processed: number; // 0 = unprocessed, 1 = processed (for digest)
 }
 
 /** One article row in wechat_oa_articles (one row per article, not per push) */
@@ -93,7 +94,7 @@ export class WeChatDatabase {
   // ──────────────────────────────────────────────────
 
   /** Insert a chat message. Silently ignores duplicates (ON CONFLICT IGNORE). */
-  insert(row: Omit<WeChatMessageRow, 'id'>): void {
+  insert(row: Omit<WeChatMessageRow, 'id' | 'processed'>): void {
     if (!this.db) {
       logger.warn('[WeChatDatabase] insert called before init');
       return;
@@ -101,8 +102,8 @@ export class WeChatDatabase {
     try {
       this.db
         .query(`INSERT OR IGNORE INTO wechat_messages
-          (newMsgId, conversationId, isGroup, sender, content, rawContent, msgType, category, createTime, receivedAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          (newMsgId, conversationId, isGroup, sender, content, rawContent, msgType, category, createTime, receivedAt, processed)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`)
         .run(
           row.newMsgId,
           row.conversationId,
@@ -222,9 +223,7 @@ export class WeChatDatabase {
   getGroupName(conversationId: string): string | null {
     if (!this.db) return null;
     const row = this.db
-      .query<{ nickName: string }, [string]>(
-        `SELECT nickName FROM wechat_groups WHERE conversationId = ?`,
-      )
+      .query<{ nickName: string }, [string]>(`SELECT nickName FROM wechat_groups WHERE conversationId = ?`)
       .get(conversationId);
     return row?.nickName ?? null;
   }
@@ -232,9 +231,331 @@ export class WeChatDatabase {
   /** Get all cached groups. */
   getAllGroups(): WeChatGroupRow[] {
     if (!this.db) return [];
+    return this.db.query<WeChatGroupRow, []>(`SELECT * FROM wechat_groups ORDER BY nickName`).all();
+  }
+
+  // ──────────────────────────────────────────────────
+  // Digest — query unprocessed messages for daily summary
+  // ──────────────────────────────────────────────────
+
+  /**
+   * Get unprocessed messages since a given timestamp.
+   * @param sinceTs - Unix timestamp (seconds) to start from
+   * @param limit - Maximum number of messages to return (default 500)
+   */
+  getUnprocessedSince(sinceTs: number, limit = 500): WeChatMessageRow[] {
+    if (!this.db) return [];
     return this.db
-      .query<WeChatGroupRow, []>(`SELECT * FROM wechat_groups ORDER BY nickName`)
-      .all();
+      .query<WeChatMessageRow, [number, number]>(
+        `SELECT * FROM wechat_messages
+         WHERE processed = 0 AND createTime >= ?
+         ORDER BY createTime ASC
+         LIMIT ?`,
+      )
+      .all(sinceTs, limit);
+  }
+
+  /**
+   * Mark messages as processed (for digest).
+   * @param sinceTs - Unix timestamp (seconds); mark all unprocessed messages since this time
+   * @returns Number of rows updated
+   */
+  markProcessedSince(sinceTs: number): number {
+    if (!this.db) return 0;
+    const result = this.db
+      .query<{ changes: number }, [number]>(
+        `UPDATE wechat_messages SET processed = 1 WHERE processed = 0 AND createTime >= ?`,
+      )
+      .run(sinceTs);
+    return (result as any).changes ?? 0;
+  }
+
+  /**
+   * Get the start of today (local timezone) as Unix timestamp (seconds).
+   */
+  getTodayStartTs(): number {
+    const now = new Date();
+    return Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000);
+  }
+
+  // ──────────────────────────────────────────────────
+  // Advanced queries — messages
+  // ──────────────────────────────────────────────────
+
+  /**
+   * Get messages with flexible filters.
+   */
+  getMessages(options: {
+    sinceTs?: number;
+    untilTs?: number;
+    conversationId?: string;
+    isGroup?: boolean;
+    category?: string;
+    limit?: number;
+  }): WeChatMessageRow[] {
+    if (!this.db) return [];
+
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+
+    if (options.sinceTs !== undefined) {
+      conditions.push('createTime >= ?');
+      params.push(options.sinceTs);
+    }
+    if (options.untilTs !== undefined) {
+      conditions.push('createTime <= ?');
+      params.push(options.untilTs);
+    }
+    if (options.conversationId) {
+      conditions.push('conversationId = ?');
+      params.push(options.conversationId);
+    }
+    if (options.isGroup !== undefined) {
+      conditions.push('isGroup = ?');
+      params.push(options.isGroup ? 1 : 0);
+    }
+    if (options.category) {
+      conditions.push('category = ?');
+      params.push(options.category);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limit = options.limit ?? 500;
+
+    const sql = `SELECT * FROM wechat_messages ${whereClause} ORDER BY createTime DESC LIMIT ?`;
+    params.push(limit);
+
+    return this.db.query<WeChatMessageRow, (string | number)[]>(sql).all(...params);
+  }
+
+  /**
+   * Get group message statistics since a given time.
+   */
+  getGroupStats(sinceTs: number): Array<{
+    conversationId: string;
+    messageCount: number;
+    senderCount: number;
+    lastTime: number;
+    categories: string;
+  }> {
+    if (!this.db) return [];
+    return this.db
+      .query<
+        {
+          conversationId: string;
+          messageCount: number;
+          senderCount: number;
+          lastTime: number;
+          categories: string;
+        },
+        [number]
+      >(
+        `SELECT
+           conversationId,
+           COUNT(*) as messageCount,
+           COUNT(DISTINCT sender) as senderCount,
+           MAX(createTime) as lastTime,
+           GROUP_CONCAT(DISTINCT category) as categories
+         FROM wechat_messages
+         WHERE isGroup = 1 AND createTime >= ?
+         GROUP BY conversationId
+         ORDER BY messageCount DESC`,
+      )
+      .all(sinceTs);
+  }
+
+  /**
+   * Get overall statistics since a given time.
+   */
+  getOverallStats(sinceTs: number): {
+    totalMessages: number;
+    groupMessages: number;
+    privateMessages: number;
+    groupCount: number;
+    privateCount: number;
+    articleCount: number;
+    oaPushCount: number;
+    sharedArticleCount: number;
+  } {
+    if (!this.db) {
+      return {
+        totalMessages: 0,
+        groupMessages: 0,
+        privateMessages: 0,
+        groupCount: 0,
+        privateCount: 0,
+        articleCount: 0,
+        oaPushCount: 0,
+        sharedArticleCount: 0,
+      };
+    }
+
+    const msgStats = this.db
+      .query<
+        {
+          totalMessages: number;
+          groupMessages: number;
+          privateMessages: number;
+          groupCount: number;
+          privateCount: number;
+        },
+        [number]
+      >(`
+      SELECT
+        COUNT(*) as totalMessages,
+        SUM(CASE WHEN isGroup = 1 THEN 1 ELSE 0 END) as groupMessages,
+        SUM(CASE WHEN isGroup = 0 THEN 1 ELSE 0 END) as privateMessages,
+        COUNT(DISTINCT CASE WHEN isGroup = 1 THEN conversationId END) as groupCount,
+        COUNT(DISTINCT CASE WHEN isGroup = 0 THEN conversationId END) as privateCount
+      FROM wechat_messages
+      WHERE createTime >= ?
+    `)
+      .get(sinceTs);
+
+    const articleStats = this.db
+      .query<
+        {
+          articleCount: number;
+          oaPushCount: number;
+          sharedArticleCount: number;
+        },
+        [number]
+      >(`
+      SELECT
+        COUNT(*) as articleCount,
+        SUM(CASE WHEN sourceType = 'oa_push' THEN 1 ELSE 0 END) as oaPushCount,
+        SUM(CASE WHEN sourceType != 'oa_push' THEN 1 ELSE 0 END) as sharedArticleCount
+      FROM wechat_oa_articles
+      WHERE pubTime >= ?
+    `)
+      .get(sinceTs);
+
+    return {
+      totalMessages: msgStats?.totalMessages ?? 0,
+      groupMessages: msgStats?.groupMessages ?? 0,
+      privateMessages: msgStats?.privateMessages ?? 0,
+      groupCount: msgStats?.groupCount ?? 0,
+      privateCount: msgStats?.privateCount ?? 0,
+      articleCount: articleStats?.articleCount ?? 0,
+      oaPushCount: articleStats?.oaPushCount ?? 0,
+      sharedArticleCount: articleStats?.sharedArticleCount ?? 0,
+    };
+  }
+
+  /**
+   * Search messages by keyword (full-text search in content).
+   */
+  searchMessages(
+    keyword: string,
+    options?: {
+      sinceTs?: number;
+      isGroup?: boolean;
+      limit?: number;
+    },
+  ): WeChatMessageRow[] {
+    if (!this.db) return [];
+
+    const conditions: string[] = ['content LIKE ?'];
+    const params: (string | number)[] = [`%${keyword}%`];
+
+    if (options?.sinceTs !== undefined) {
+      conditions.push('createTime >= ?');
+      params.push(options.sinceTs);
+    }
+    if (options?.isGroup !== undefined) {
+      conditions.push('isGroup = ?');
+      params.push(options.isGroup ? 1 : 0);
+    }
+
+    const limit = options?.limit ?? 100;
+    const sql = `SELECT * FROM wechat_messages WHERE ${conditions.join(' AND ')} ORDER BY createTime DESC LIMIT ?`;
+    params.push(limit);
+
+    return this.db.query<WeChatMessageRow, (string | number)[]>(sql).all(...params);
+  }
+
+  // ──────────────────────────────────────────────────
+  // Advanced queries — articles
+  // ──────────────────────────────────────────────────
+
+  /**
+   * Get articles with flexible filters.
+   */
+  getArticles(options: {
+    sinceTs?: number;
+    untilTs?: number;
+    sourceType?: 'oa_push' | 'group_chat' | 'private_chat';
+    accountId?: string;
+    keyword?: string;
+    limit?: number;
+  }): WeChatOAArticleRow[] {
+    if (!this.db) return [];
+
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+
+    if (options.sinceTs !== undefined) {
+      conditions.push('pubTime >= ?');
+      params.push(options.sinceTs);
+    }
+    if (options.untilTs !== undefined) {
+      conditions.push('pubTime <= ?');
+      params.push(options.untilTs);
+    }
+    if (options.sourceType) {
+      conditions.push('sourceType = ?');
+      params.push(options.sourceType);
+    }
+    if (options.accountId) {
+      conditions.push('accountId = ?');
+      params.push(options.accountId);
+    }
+    if (options.keyword) {
+      conditions.push('(title LIKE ? OR summary LIKE ? OR accountNick LIKE ?)');
+      const like = `%${options.keyword}%`;
+      params.push(like, like, like);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limit = options.limit ?? 100;
+
+    const sql = `SELECT * FROM wechat_oa_articles ${whereClause} ORDER BY pubTime DESC LIMIT ?`;
+    params.push(limit);
+
+    return this.db.query<WeChatOAArticleRow, (string | number)[]>(sql).all(...params);
+  }
+
+  /**
+   * Get article statistics by source/account.
+   */
+  getArticleStats(sinceTs: number): Array<{
+    accountNick: string;
+    accountId: string;
+    articleCount: number;
+    lastPubTime: number;
+  }> {
+    if (!this.db) return [];
+    return this.db
+      .query<
+        {
+          accountNick: string;
+          accountId: string;
+          articleCount: number;
+          lastPubTime: number;
+        },
+        [number]
+      >(
+        `SELECT
+           accountNick,
+           accountId,
+           COUNT(*) as articleCount,
+           MAX(pubTime) as lastPubTime
+         FROM wechat_oa_articles
+         WHERE pubTime >= ?
+         GROUP BY accountId
+         ORDER BY articleCount DESC`,
+      )
+      .all(sinceTs);
   }
 
   // ──────────────────────────────────────────────────
@@ -283,12 +604,20 @@ export class WeChatDatabase {
         msgType        INTEGER NOT NULL DEFAULT 1,
         category       TEXT    NOT NULL DEFAULT 'other',
         createTime     INTEGER NOT NULL DEFAULT 0,
-        receivedAt     TEXT    NOT NULL DEFAULT ''
+        receivedAt     TEXT    NOT NULL DEFAULT '',
+        processed      INTEGER NOT NULL DEFAULT 0
       )
     `);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_wm_conversation ON wechat_messages(conversationId)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_wm_createTime   ON wechat_messages(createTime)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_wm_category     ON wechat_messages(category)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_wm_processed    ON wechat_messages(processed)`);
+    // Migrate existing DBs: add processed column
+    try {
+      this.db.run(`ALTER TABLE wechat_messages ADD COLUMN processed INTEGER NOT NULL DEFAULT 0`);
+    } catch {
+      /* column already exists */
+    }
 
     // Official account articles (one row per article, not per push)
     this.db.run(`
@@ -317,7 +646,11 @@ export class WeChatDatabase {
       `ALTER TABLE wechat_oa_articles ADD COLUMN fromConversationId TEXT NOT NULL DEFAULT ''`,
       `ALTER TABLE wechat_oa_articles ADD COLUMN fromSender         TEXT NOT NULL DEFAULT ''`,
     ]) {
-      try { this.db.run(col); } catch { /* column already exists — ignore */ }
+      try {
+        this.db.run(col);
+      } catch {
+        /* column already exists — ignore */
+      }
     }
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_oa_sourceType  ON wechat_oa_articles(sourceType)`);
 

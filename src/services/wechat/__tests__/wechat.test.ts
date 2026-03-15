@@ -225,4 +225,3 @@ describe('WeChatMessageBuffer', () => {
     expect(flushed[0]?.[0]?.text).toBe('pending');
   });
 });
-

@@ -30,3 +30,9 @@ export function getOutputBase(): string {
   const serverBase = getStaticServerBase();
   return serverBase ? `${serverBase}/output` : '/output';
 }
+
+/** Base URL for report API requests: same-origin '/api/reports' when no base set, else getStaticServerBase() + '/api/reports'. */
+export function getReportApiBase(): string {
+  const serverBase = getStaticServerBase();
+  return serverBase ? `${serverBase}/api/reports` : '/api/reports';
+}

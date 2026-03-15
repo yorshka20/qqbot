@@ -1,6 +1,16 @@
 // Card data types for LLM response rendering
 
-export type CardType = 'qa' | 'list' | 'info' | 'comparison' | 'knowledge' | 'stats' | 'quote' | 'steps' | 'highlight' | 'paragraph';
+export type CardType =
+  | 'qa'
+  | 'list'
+  | 'info'
+  | 'comparison'
+  | 'knowledge'
+  | 'stats'
+  | 'quote'
+  | 'steps'
+  | 'highlight'
+  | 'paragraph';
 
 export type InfoBoxLevel = 'info' | 'warning' | 'success' | 'tip';
 

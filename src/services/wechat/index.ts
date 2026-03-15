@@ -26,3 +26,21 @@ export type {
   WXSearchResult,
 } from './WeChatPadProClient';
 export { WeChatPadProClient } from './WeChatPadProClient';
+export type {
+  ArticleSummary,
+  GroupSummary,
+  WechatSearchResult,
+  WechatStats,
+} from './WechatDigestService';
+export { WechatDigestService } from './WechatDigestService';
+export type { WechatEventType, WechatMessageEventData } from './WechatEventBridge';
+export { WechatEventBridge } from './WechatEventBridge';
+export type {
+  GeneratedReport,
+  ReportFile,
+  ReportMetadata,
+  ReportOptions,
+  ReportType,
+  StructuredReport,
+} from './WechatReportService';
+export { WechatReportService } from './WechatReportService';

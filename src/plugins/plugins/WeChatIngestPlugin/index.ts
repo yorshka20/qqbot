@@ -1,6 +1,7 @@
 // WeChat Ingest Plugin — thin wrapper that wires up the WeChat service layer
 // All core logic lives in src/services/wechat/
 
+import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { CommandManager } from '@/command/CommandManager';
 import type { Config } from '@/core/config';
@@ -9,7 +10,15 @@ import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { RetrievalService } from '@/services/retrieval';
 import type { WeChatIngestConfig, WeChatRealtimeRule } from '@/services/wechat';
-import { resolveConfig, WeChatDatabase, WeChatIngestService, WeChatPadProClient } from '@/services/wechat';
+import {
+  resolveConfig,
+  WeChatDatabase,
+  WeChatIngestService,
+  WeChatPadProClient,
+  WechatEventBridge,
+} from '@/services/wechat';
+import { WechatDigestService } from '@/services/wechat/WechatDigestService';
+import { WechatReportService } from '@/services/wechat/WechatReportService';
 import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../../decorators';
 import { PluginBase } from '../../PluginBase';
@@ -23,6 +32,9 @@ import { WechatCommandHandler } from './WechatCommandHandler';
 export class WeChatIngestPlugin extends PluginBase {
   private ingestService: WeChatIngestService | null = null;
   private db: WeChatDatabase | null = null;
+  private eventBridge: WechatEventBridge | null = null;
+  private digestService: WechatDigestService | null = null;
+  private reportService: WechatReportService | null = null;
   private retrieval!: RetrievalService;
   private messageAPI!: MessageAPI;
   private commandManager!: CommandManager;
@@ -78,6 +90,28 @@ export class WeChatIngestPlugin extends PluginBase {
         }
       : undefined;
 
+    // Create event bridge for publishing WeChat events to InternalEventBus
+    // This allows Agenda onEvent rules to subscribe to WeChat messages
+    let internalEventBus: InternalEventBus | null = null;
+    try {
+      internalEventBus = container.resolve<InternalEventBus>(DITokens.INTERNAL_EVENT_BUS);
+      this.eventBridge = new WechatEventBridge(internalEventBus);
+      container.registerInstance(DITokens.WECHAT_EVENT_BRIDGE, this.eventBridge);
+      logger.info('[WeChatIngestPlugin] WechatEventBridge registered');
+    } catch (err) {
+      logger.warn('[WeChatIngestPlugin] InternalEventBus not available — event bridge disabled');
+    }
+
+    // Create digest service for daily summaries
+    this.digestService = new WechatDigestService(this.db);
+    container.registerInstance(DITokens.WECHAT_DIGEST_SERVICE, this.digestService);
+    logger.info('[WeChatIngestPlugin] WechatDigestService registered');
+
+    // Create report service for generating and saving reports
+    this.reportService = new WechatReportService(this.digestService);
+    container.registerInstance(DITokens.WECHAT_REPORT_SERVICE, this.reportService);
+    logger.info('[WeChatIngestPlugin] WechatReportService registered');
+
     this.ingestService = new WeChatIngestService({
       config: resolved,
       retrieval: this.retrieval,
@@ -85,6 +119,7 @@ export class WeChatIngestPlugin extends PluginBase {
       notify: resolved.realtime.enabled ? this.sendRealtimeNotification.bind(this) : undefined,
       resolveGroupName,
       downloadCdnImage,
+      eventBridge: this.eventBridge ?? undefined,
     });
 
     // Register /wechat command if padpro config is available

@@ -41,6 +41,10 @@ export const DITokens = {
   AGENDA_REPORTER: 'AgendaReporter',
   SCHEDULE_FILE_SERVICE: 'ScheduleFileService',
   CLAUDE_CODE_SERVICE: 'ClaudeCodeService',
+  // WeChat services
+  WECHAT_EVENT_BRIDGE: 'WechatEventBridge',
+  WECHAT_DIGEST_SERVICE: 'WechatDigestService',
+  WECHAT_REPORT_SERVICE: 'WechatReportService',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];

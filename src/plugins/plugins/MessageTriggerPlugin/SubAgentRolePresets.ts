@@ -86,6 +86,26 @@ const BUILT_IN_PRESETS: Record<string, RolePreset> = {
       inheritPreference: false,
     },
   },
+
+  wechat_report: {
+    displayName: '微信报告',
+    type: SubAgentType.ANALYSIS,
+    defaultAllowedTools: [
+      'wechat_stats',
+      'wechat_group_summary',
+      'wechat_article_summary',
+      'wechat_search',
+      'wechat_report',
+    ],
+    configOverrides: {
+      maxDepth: 1,
+      maxChildren: 0,
+      timeout: 180_000, // 3 minutes for comprehensive report generation
+      inheritSoul: false,
+      inheritMemory: false,
+      inheritPreference: false,
+    },
+  },
 };
 
 /** Fallback for custom preset keys not listed in BUILT_IN_PRESETS. */

@@ -8,6 +8,7 @@ import { StaticFileServer } from './StaticFileServer';
 export { FileManagerBackend } from './FileManagerBackend';
 export { OutputStaticHost } from './OutputStaticHost';
 export { resolveSafe } from './pathSafety';
+export { ReportBackend } from './ReportBackend';
 export type { StaticFileServerInstance } from './StaticFileServer';
 export { StaticFileServer } from './StaticFileServer';
 
