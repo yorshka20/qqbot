@@ -9,24 +9,6 @@ import { logger } from '@/utils/logger';
 import type { MemoryService } from './MemoryService';
 import { GROUP_MEMORY_USER_ID } from './MemoryService';
 
-/** Scope descriptions for user memory extraction */
-const USER_SCOPE_DESCRIPTIONS: Record<string, string> = {
-  identity: '用户主动陈述的基本属性（职业、所在地、设备等）',
-  preference: '用户明确且清晰表达的长期偏好或厌恶',
-  opinion: '用户说出口的观点，需有明确评价或论点',
-  relationship: '用户提到的重要人物或社会关系',
-  behavior: '用户的行为习惯、作息规律等',
-  instruction: '用户对 bot 提出的持续性、可复用的明确要求',
-};
-
-/** Scope descriptions for group memory extraction */
-const GROUP_SCOPE_DESCRIPTIONS: Record<string, string> = {
-  topic: '在对话中反复出现的持续性主题方向',
-  rule: 'bot 的群级行为设定、群公告、群规、管理员权限说明',
-  event: '群内发生的重要事件',
-  context: '群的背景信息、环境设定',
-};
-
 /** Default LLM provider for extract and analyze (e.g. ollama). */
 const DEFAULT_EXTRACT_PROVIDER = 'ollama';
 
@@ -69,14 +51,14 @@ export class MemoryExtractService {
     return GROUP_CORE_SCOPES.join(' / ');
   }
 
-  /** Get user scope descriptions as formatted string */
+  /** Get user scope descriptions as formatted string (loaded from template) */
   private getUserScopeDescriptionsStr(): string {
-    return USER_CORE_SCOPES.map((scope) => `- \`${scope}\`：${USER_SCOPE_DESCRIPTIONS[scope] ?? ''}`).join('\n');
+    return this.promptManager.render('memory.scopes_user');
   }
 
-  /** Get group scope descriptions as formatted string */
+  /** Get group scope descriptions as formatted string (loaded from template) */
   private getGroupScopeDescriptionsStr(): string {
-    return GROUP_CORE_SCOPES.map((scope) => `- \`${scope}\`：${GROUP_SCOPE_DESCRIPTIONS[scope] ?? ''}`).join('\n');
+    return this.promptManager.render('memory.scopes_group');
   }
 
   /** Format existing scopes for AI reference */
