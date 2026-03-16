@@ -7,6 +7,7 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+.cursor
 
 # Environment variables
 .env
@@ -65,6 +66,6 @@ temp/
 Thumbs.db
 data/
 output/
-
+docs/local
 
 .git.backup.*
