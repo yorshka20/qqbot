@@ -35,8 +35,15 @@ import type { VisionImage } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
 import { PromptMessageAssembler } from '../prompt/PromptMessageAssembler';
 import type { ProviderRouter } from '../routing/ProviderRouter';
-import { buildSkillUsageInstructions, executeSkillCall, getReplySkillDefinitions } from '../tools/replyTools';
-import type { AIGenerateResponse, ChatMessage, ContentPart } from '../types';
+import {
+  buildCardFormatToolResult,
+  buildSkillUsageInstructions,
+  CARD_FORMAT_TOOL_NAME,
+  executeSkillCall,
+  getCardFormatToolDefinition,
+  getReplySkillDefinitions,
+} from '../tools/replyTools';
+import type { AIGenerateResponse, ChatMessage, ContentPart, ToolDefinition } from '../types';
 import { formatRAGConversationContext } from '../utils/formatRAGConversationContext';
 import {
   extractImagesFromMessageAndReply,
@@ -46,6 +53,38 @@ import {
 } from '../utils/imageUtils';
 import type { LLMService } from './LLMService';
 import type { VisionService } from './VisionService';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+/**
+ * Grouped parameters for the LLM generation pipeline.
+ * Replaces the 9+ positional params previously threaded through
+ * attemptLLMGeneration → generateWithRetry → generateReplyWithTaskResults.
+ */
+interface ReplyGenerationPipelineParams {
+  messages: ChatMessage[];
+  genOptions: { temperature: number; maxTokens: number; sessionId: string; reasoningEffort: 'medium' };
+  useVisionProvider: boolean;
+  canUseVisionToolUse: boolean;
+  toolDefinitions: ToolDefinition[];
+  resolvedVisionProviderName: string | null;
+  selectedProviderName: string | undefined;
+  effectiveNativeSearchEnabled: boolean;
+}
+
+/** Result of the LLM generation pipeline (attempt / retry). */
+interface ReplyGenerationPipelineResult {
+  response: AIGenerateResponse;
+  actualProvider: string | undefined;
+  /** true when the LLM called format_as_card and produced card JSON directly. */
+  usedCardFormat: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
 /**
  * Reply Generation Service
@@ -704,72 +743,86 @@ export class ReplyGenerationService {
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // LLM generation pipeline (attempt + retry)
+  // ---------------------------------------------------------------------------
+
   /**
    * Execute a single LLM generation attempt with the given provider.
-   * Extracted from generateReplyWithTaskResults so retry logic can call it per-provider.
+   * Returns usedCardFormat=true when the LLM called format_as_card and produced card JSON directly.
    */
   private async attemptLLMGeneration(
     context: HookContext,
-    messages: ChatMessage[],
-    genOptions: { temperature: number; maxTokens: number; sessionId: string; reasoningEffort: 'medium' },
-    useVisionProvider: boolean,
-    canUseVisionToolUse: boolean,
-    toolDefinitions: ReturnType<typeof getReplySkillDefinitions>,
-    resolvedVisionProviderName: string | null,
-    selectedProviderName: string | undefined,
-    effectiveNativeSearchEnabled: boolean,
-  ): Promise<AIGenerateResponse> {
-    const toolExecutor = (call: { name: string; arguments: string }) =>
-      executeSkillCall(call, context, this.taskManager, this.hookManager);
+    params: ReplyGenerationPipelineParams,
+  ): Promise<ReplyGenerationPipelineResult> {
+    const {
+      messages,
+      genOptions,
+      useVisionProvider,
+      canUseVisionToolUse,
+      toolDefinitions,
+      resolvedVisionProviderName,
+      selectedProviderName,
+      effectiveNativeSearchEnabled,
+    } = params;
+
+    let usedCardFormat = false;
+
+    const toolExecutor = (call: { name: string; arguments: string }) => {
+      if (call.name === CARD_FORMAT_TOOL_NAME) {
+        usedCardFormat = true;
+        logger.info('[ReplyGenerationService] LLM requested card format template via tool call');
+        return Promise.resolve(buildCardFormatToolResult());
+      }
+      return executeSkillCall(call, context, this.taskManager, this.hookManager);
+    };
+
+    const toolUseOptions = {
+      temperature: genOptions.temperature,
+      maxTokens: genOptions.maxTokens,
+      maxToolRounds: 4,
+      sessionId: genOptions.sessionId,
+      nativeWebSearch: effectiveNativeSearchEnabled,
+      toolExecutor,
+    };
+
+    const actualProvider = selectedProviderName ?? resolvedVisionProviderName ?? undefined;
 
     if (useVisionProvider) {
       if (canUseVisionToolUse && toolDefinitions.length > 0) {
-        const toolUseResponse = await this.llmService.generateWithTools(
+        const r = await this.llmService.generateWithTools(
           messages,
           toolDefinitions,
-          {
-            temperature: genOptions.temperature,
-            maxTokens: genOptions.maxTokens,
-            maxToolRounds: 4,
-            sessionId: genOptions.sessionId,
-            nativeWebSearch: effectiveNativeSearchEnabled,
-            toolExecutor,
-          },
+          toolUseOptions,
           resolvedVisionProviderName ?? undefined,
         );
-        return { text: toolUseResponse.text };
+        return { response: { text: r.text }, actualProvider, usedCardFormat };
       }
-      // Current message images already inlined in buildReplyMessages; pass empty so VisionService uses messages as-is.
-      return await this.visionService.generateWithVisionMessages(
+      const r = await this.visionService.generateWithVisionMessages(
         messages,
         [],
         genOptions,
         resolvedVisionProviderName ?? undefined,
       );
+      return { response: r, actualProvider, usedCardFormat: false };
     }
 
     if (toolDefinitions.length > 0) {
-      const toolUseResponse = await this.llmService.generateWithTools(
+      const r = await this.llmService.generateWithTools(
         messages,
         toolDefinitions,
-        {
-          temperature: genOptions.temperature,
-          maxTokens: genOptions.maxTokens,
-          maxToolRounds: 4,
-          sessionId: genOptions.sessionId,
-          nativeWebSearch: effectiveNativeSearchEnabled,
-          toolExecutor,
-        },
+        toolUseOptions,
         selectedProviderName,
       );
-      return { text: toolUseResponse.text };
+      return { response: { text: r.text }, actualProvider, usedCardFormat };
     }
 
-    return await this.llmService.generateMessages(
+    const r = await this.llmService.generateMessages(
       messages,
       { ...genOptions, nativeWebSearch: effectiveNativeSearchEnabled },
       selectedProviderName,
     );
+    return { response: r, actualProvider, usedCardFormat: false };
   }
 
   /**
@@ -779,45 +832,25 @@ export class ReplyGenerationService {
    */
   private async generateWithRetry(
     context: HookContext,
-    messages: ChatMessage[],
-    genOptions: { temperature: number; maxTokens: number; sessionId: string; reasoningEffort: 'medium' },
-    useVisionProvider: boolean,
-    canUseVisionToolUse: boolean,
-    toolDefinitions: ReturnType<typeof getReplySkillDefinitions>,
-    resolvedVisionProviderName: string | null,
-    selectedProviderName: string | undefined,
-    effectiveNativeSearchEnabled: boolean,
-  ): Promise<{ response: AIGenerateResponse; actualProvider: string | undefined }> {
-    const MAX_RETRIES = 4; // enough to cover the full fallback chain
+    params: ReplyGenerationPipelineParams,
+  ): Promise<ReplyGenerationPipelineResult> {
+    const MAX_RETRIES = 4;
 
     try {
-      const response = await this.attemptLLMGeneration(
-        context,
-        messages,
-        genOptions,
-        useVisionProvider,
-        canUseVisionToolUse,
-        toolDefinitions,
-        resolvedVisionProviderName,
-        selectedProviderName,
-        effectiveNativeSearchEnabled,
-      );
-      return { response, actualProvider: selectedProviderName ?? resolvedVisionProviderName ?? undefined };
+      return await this.attemptLLMGeneration(context, params);
     } catch (primaryError) {
-      const primaryProviderLabel = selectedProviderName ?? resolvedVisionProviderName ?? 'default';
+      const primaryProviderLabel = params.selectedProviderName ?? params.resolvedVisionProviderName ?? 'default';
       logger.error(
         `[ReplyGenerationService] Primary provider "${primaryProviderLabel}" failed, triggering health check and attempting fallback`,
         primaryError instanceof Error ? primaryError : new Error(String(primaryError)),
       );
 
-      // Trigger health check so provider availability is up-to-date
       void this.llmService
         .triggerHealthCheck()
         .catch((e) =>
           logger.warn('[ReplyGenerationService] Background health check failed:', e instanceof Error ? e.message : e),
         );
 
-      // Get alternative providers (exclude the failed one)
       const alternatives = this.llmService.getAlternativeProviderNames(primaryProviderLabel);
       let lastError: Error = primaryError instanceof Error ? primaryError : new Error(String(primaryError));
 
@@ -827,19 +860,16 @@ export class ReplyGenerationService {
           `[ReplyGenerationService] Retry ${retry + 1}/${MAX_RETRIES} with fallback provider "${fallbackProvider}"`,
         );
         try {
-          const result = await this.attemptLLMGeneration(
-            context,
-            messages,
-            genOptions,
-            false, // disable vision for fallback to simplify
-            false,
-            toolDefinitions,
-            null,
-            fallbackProvider,
-            effectiveNativeSearchEnabled,
-          );
+          const fallbackParams: ReplyGenerationPipelineParams = {
+            ...params,
+            useVisionProvider: false,
+            canUseVisionToolUse: false,
+            resolvedVisionProviderName: null,
+            selectedProviderName: fallbackProvider,
+          };
+          const result = await this.attemptLLMGeneration(context, fallbackParams);
           logger.info(`[ReplyGenerationService] Fallback provider "${fallbackProvider}" succeeded`);
-          return { response: result, actualProvider: fallbackProvider };
+          return result;
         } catch (retryError) {
           lastError = retryError instanceof Error ? retryError : new Error(String(retryError));
           logger.error(`[ReplyGenerationService] Fallback provider "${fallbackProvider}" also failed`, lastError);
@@ -850,20 +880,13 @@ export class ReplyGenerationService {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Main reply generation: prepare → generate → dispatch
+  // ---------------------------------------------------------------------------
+
   /**
    * Build final reply messages and generate response.
-   * Uses role-based messages. Vision fallback flattens messages into deterministic text prompt.
-   *
-   * Includes retry logic: if the primary provider fails, triggers a health check and retries
-   * with up to 2 alternative providers sequentially.
-   *
-   * @param context - Hook context
-   * @param taskResultsSummary - Optional summary of task results (e.g. readFile). Injected as taskResults segment (may be empty).
-   * @param searchResultsText - Optional pre-injected search text (kept for compatibility; normally empty in skill-loop flow)
-   * @param sessionId - Session ID
-   * @param messageImages - Images from user message (and referenced message). When non-empty, reply is generated via vision provider.
-   * @param taskResultImages - Base64 images from task results (data.imageBase64), appended to reply
-   * @param userMessageOverride - When set (e.g. with referenced message text prepended), used as the user message for routing and prompt instead of context.message.message
+   * Pipeline: routing → capabilities → tools → prompt build → LLM generate → dispatch response.
    */
   private async generateReplyWithTaskResults(
     context: HookContext,
@@ -874,32 +897,73 @@ export class ReplyGenerationService {
     taskResultImages: string[] = [],
     userMessageOverride?: string,
   ): Promise<void> {
-    // Step 1: Routing
+    // --- Prepare: routing, capabilities, tools, prompt ---
+    const pipelineParams = await this.prepareGenerationPipeline(
+      context,
+      taskResultsSummary,
+      searchResultsText,
+      sessionId,
+      messageImages,
+      userMessageOverride,
+    );
+
+    // --- Generate ---
+    const result = await this.generateWithRetry(context, pipelineParams);
+
+    logger.debug(
+      `[ReplyGenerationService] LLM response received | responseLength=${result.response.text.length} | actualProvider=${result.actualProvider ?? 'default'} | usedCardFormat=${result.usedCardFormat}`,
+    );
+
+    // --- Dispatch: route response to card / text path ---
+    await this.dispatchReplyResponse(context, result, sessionId, taskResultImages);
+
+    // Maintain episode context (fire-and-forget)
+    void this.maintainEpisodeContext(pipelineParams.episodeKey).catch(() => {});
+  }
+
+  /**
+   * Prepare all parameters for the LLM generation pipeline:
+   * routing, vision, capabilities, tools, prompt messages.
+   */
+  private async prepareGenerationPipeline(
+    context: HookContext,
+    taskResultsSummary: string,
+    searchResultsText: string,
+    sessionId: string,
+    messageImages: VisionImage[],
+    userMessageOverride?: string,
+  ): Promise<ReplyGenerationPipelineParams & { episodeKey: string }> {
+    // Routing
     const rawInput = userMessageOverride ?? context.message.message ?? '';
     const { providerName, userMessage, reason, confidence, usedExplicitPrefix } =
       this.providerRouter.routeReplyInput(rawInput);
 
-    // Step 2: Vision and provider
+    // Vision and provider
     const useVisionProvider = messageImages.length > 0;
     const resolvedVisionProviderName = useVisionProvider
       ? await this.visionService.getAvailableProviderName(providerName, sessionId)
       : null;
     const selectedProviderName = useVisionProvider ? (resolvedVisionProviderName ?? providerName) : providerName;
 
-    // Step 3: Capabilities
+    // Capabilities
     const canUseVisionToolUse = useVisionProvider
       ? Boolean(resolvedVisionProviderName && (await this.supportsToolUse(resolvedVisionProviderName, sessionId)))
       : false;
-    // Always disable native web search in reply generation; use our SearXNG-backed search tool instead.
     const effectiveNativeSearchEnabled = false;
 
-    // Step 4: Tools (none when vision provider is used but does not support tool use)
+    // Tools (none when vision provider lacks tool support)
     const toolDefinitions =
       useVisionProvider && !canUseVisionToolUse
         ? []
         : getReplySkillDefinitions(this.taskManager, { nativeWebSearchEnabled: effectiveNativeSearchEnabled });
 
-    // Step 5: Skill usage instructions for prompt
+    // Inject inline card format tool when card rendering is available
+    const canUseCardFormat = this.cardRenderingService.shouldUseCardFormatPrompt(sessionId, selectedProviderName);
+    if (canUseCardFormat && toolDefinitions.length > 0) {
+      toolDefinitions.push(getCardFormatToolDefinition());
+    }
+
+    // Prompt messages
     const toolUsageInstructions = buildSkillUsageInstructions(this.taskManager, toolDefinitions, {
       nativeWebSearchEnabled: effectiveNativeSearchEnabled,
     });
@@ -912,32 +976,24 @@ export class ReplyGenerationService {
       useVisionProvider,
       messageImages,
     );
-    const messages = built.messages;
-    const genOptions = { temperature: 0.7, maxTokens: 2000, sessionId, reasoningEffort: 'medium' as const };
 
-    // Log reply flow and raw messages sent to provider (base64 in image_url replaced to avoid log explosion)
+    const maxTokens = canUseCardFormat ? 4000 : 2000;
+    const genOptions = { temperature: 0.7, maxTokens, sessionId, reasoningEffort: 'medium' as const };
+
+    // Log
     logger.info(
       `[ReplyGenerationService] Provider routing | reason=${reason} | confidence=${confidence} | explicitPrefix=${usedExplicitPrefix} | provider=${providerName ?? 'default'}`,
     );
-    const rawMessagesForLog = JSON.stringify(
-      messages,
-      (_, value) => {
-        if (typeof value === 'string' && value.startsWith('data:') && value.includes('base64,')) {
-          return '[base64 omitted]';
-        }
-        return value;
-      },
-      2,
-    );
-
     logger.debug(
-      `[ReplyGenerationService] Raw messages sent to provider (provider=${providerName ?? 'default'}):\n${rawMessagesForLog}`,
+      `[ReplyGenerationService] Raw messages sent to provider (provider=${providerName ?? 'default'}):\n${JSON.stringify(
+        built.messages,
+        (_, v) => (typeof v === 'string' && v.startsWith('data:') && v.includes('base64,') ? '[base64 omitted]' : v),
+        2,
+      )}`,
     );
 
-    // Step 6: Generate with retry & provider fallback
-    const { response, actualProvider } = await this.generateWithRetry(
-      context,
-      messages,
+    return {
+      messages: built.messages,
       genOptions,
       useVisionProvider,
       canUseVisionToolUse,
@@ -945,80 +1001,128 @@ export class ReplyGenerationService {
       resolvedVisionProviderName,
       selectedProviderName,
       effectiveNativeSearchEnabled,
-    );
+      episodeKey: built.episodeKey,
+    };
+  }
 
-    logger.debug(
-      `[ReplyGenerationService] LLM response received | responseLength=${response.text.length} | actualProvider=${actualProvider ?? 'default'}`,
-    );
+  // ---------------------------------------------------------------------------
+  // Response dispatch: card (direct / conversion) or text
+  // ---------------------------------------------------------------------------
 
-    if (this.shouldUseCardReply(response.text, sessionId, actualProvider)) {
-      const success = await this.handleCardReply(response.text, sessionId, { context, providerName: actualProvider });
+  /**
+   * Route LLM response to the appropriate output path:
+   * 1. Direct card (LLM produced card JSON via format_as_card) → render directly
+   * 2. Conversion card (long text) → convert via second LLM call → render
+   * 3. Plain text fallback
+   */
+  private async dispatchReplyResponse(
+    context: HookContext,
+    result: ReplyGenerationPipelineResult,
+    sessionId: string,
+    taskResultImages: string[],
+  ): Promise<void> {
+    const { response, actualProvider, usedCardFormat } = result;
+
+    // Path 1: LLM already produced card JSON via format_as_card tool
+    if (usedCardFormat) {
+      const success = await this.tryRenderCardReply(context, response.text, actualProvider);
       if (success) {
         this.appendTaskResultImages(context, taskResultImages);
-        void this.maintainEpisodeContext(built.episodeKey).catch(() => {});
+        return;
+      }
+      logger.warn('[ReplyGenerationService] Direct card JSON from LLM failed to parse, falling back');
+    }
+
+    // Path 2: Long text → convert to card via second LLM call
+    if (this.shouldUseCardReply(response.text, sessionId, actualProvider)) {
+      const cardResult = await this.convertAndRenderCard(response.text, sessionId, actualProvider);
+      if (cardResult) {
+        this.setCardReplyOnContext(context, cardResult.segments, cardResult.textForHistory);
+        await this.hookManager.execute('onAIGenerationComplete', context);
+        this.appendTaskResultImages(context, taskResultImages);
         return;
       }
     }
 
-    // Hook: onAIGenerationComplete
+    // Path 3: Plain text
     await this.hookManager.execute('onAIGenerationComplete', context);
-
-    // Fallback to text when card path skipped or shouldUseCardRendering returned false
     const textSegments = [{ type: 'text' as const, data: { text: response.text } }];
     replaceReply(context, response.text, 'ai', {
       sendAsForward: computeSendAsForward(context, textSegments),
     });
+  }
 
-    // Maintain episode context outside reply path (fire-and-forget): summarize when over limit so next reply sees stable prefix.
-    this.maintainEpisodeContext(built.episodeKey).catch(() => {});
+  // ---------------------------------------------------------------------------
+  // Card rendering (shared by all card paths)
+  // ---------------------------------------------------------------------------
+
+  /** Render card JSON string → image segments. Pure rendering, no context/hook side effects. */
+  private async renderCardJsonToSegments(
+    cardJson: string,
+    providerName?: string,
+  ): Promise<{ segments: MessageSegment[]; textForHistory: string }> {
+    const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
+    const base64Image = await this.cardRenderingService.renderCard(cardJson, provider);
+    const messageBuilder = new MessageBuilder();
+    messageBuilder.image({ data: base64Image });
+    return { segments: messageBuilder.build(), textForHistory: cardJson };
+  }
+
+  /** Set card image reply on context with standard options. */
+  private setCardReplyOnContext(context: HookContext, segments: MessageSegment[], cardTextForHistory: string): void {
+    replaceReplyWithSegments(context, segments, 'ai', {
+      isCardImage: true,
+      cardTextForHistory,
+      sendAsForward: computeSendAsForward(context, segments),
+    });
+  }
+
+  /**
+   * Try to render card JSON and set reply on context. Returns true on success.
+   * Used for direct card path (LLM already produced JSON) and as shared rendering helper.
+   */
+  private async tryRenderCardReply(context: HookContext, cardJson: string, providerName?: string): Promise<boolean> {
+    try {
+      const result = await this.renderCardJsonToSegments(cardJson, providerName);
+      this.setCardReplyOnContext(context, result.segments, result.textForHistory);
+      logger.info('[ReplyGenerationService] Card image rendered and stored in reply');
+      await this.hookManager.execute('onAIGenerationComplete', context);
+      return true;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.warn('[ReplyGenerationService] Card rendering failed:', err.message);
+      return false;
+    }
+  }
+
+  /** Convert text → card JSON via second LLM call, then render to segments. Returns null on failure. */
+  private async convertAndRenderCard(
+    responseText: string,
+    sessionId: string,
+    providerName?: string,
+  ): Promise<{ segments: MessageSegment[]; textForHistory: string } | null> {
+    try {
+      logger.info('[ReplyGenerationService] Converting response to card format via LLM');
+      const cardJson = await this.convertToCardFormat(responseText, sessionId);
+      logger.debug(`[ReplyGenerationService] Card format text: ${cardJson}`);
+      return await this.renderCardJsonToSegments(cardJson, providerName);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown card error');
+      logger.warn('[ReplyGenerationService] Card conversion/rendering failed, falling back to text:', err);
+      return null;
+    }
   }
 
   private shouldUseCardReply(responseText: string, sessionId: string, providerName?: string): boolean {
     const cardThreshold = CardRenderingService.getThreshold();
-    // Check if card rendering service is available (not local provider)
     const canUseCardFormat = this.cardRenderingService.shouldUseCardFormatPrompt(sessionId, providerName);
     return responseText.length >= cardThreshold && canUseCardFormat;
   }
 
   /**
-   * Internal: convert reply text to card and render to image segments.
-   * Shared by handleCardReply (with context) and handleCardReply (without context, e.g. proactive).
-   */
-  private async renderReplyAsCardInternal(
-    responseText: string,
-    sessionId: string,
-    providerName?: string,
-  ): Promise<{ segments: MessageSegment[]; textForHistory: string } | null> {
-    if (!this.shouldUseCardReply(responseText, sessionId, providerName)) {
-      return null;
-    }
-    try {
-      logger.info('[ReplyGenerationService] Converting response to card format');
-      const cardFormatText = await this.convertToCardFormat(responseText, sessionId);
-      logger.debug(`[ReplyGenerationService] Card format text: ${cardFormatText}`);
-      logger.info('[ReplyGenerationService] Rendering card image for response');
-      const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
-      const base64Image = await this.cardRenderingService.renderCard(cardFormatText, provider);
-      const messageBuilder = new MessageBuilder();
-      messageBuilder.image({ data: base64Image });
-      return {
-        segments: messageBuilder.build(),
-        textForHistory: cardFormatText,
-      };
-    } catch (cardError) {
-      const cardErr = cardError instanceof Error ? cardError : new Error('Unknown card error');
-      logger.warn('[ReplyGenerationService] Failed to convert to card format, falling back to text:', cardErr);
-      return null;
-    }
-  }
-
-  /**
-   * Handle card reply: with context (main reply flow) sets reply and runs hook; without context (e.g. proactive) returns segments + textForHistory.
-   * Same pipeline as other reply flows; caller without context sends segments and persists textForHistory.
-   * @param responseText - Original text response
-   * @param sessionId - Session ID for provider selection
-   * @param options - When context is set: set reply on context, run hook, return boolean. When context omitted: return { segments, textForHistory } or null.
-   * @returns With context: true if card was used, false otherwise. Without context: { segments, textForHistory } or null.
+   * Handle card reply (public API for external callers like AIService/proactive flow).
+   * With context: set reply on context, run hook, return boolean.
+   * Without context: return { segments, textForHistory } or null.
    */
   async handleCardReply(
     responseText: string,
@@ -1035,22 +1139,20 @@ export class ReplyGenerationService {
     sessionId: string,
     options?: { context?: HookContext; providerName?: string },
   ): Promise<boolean | { segments: MessageSegment[]; textForHistory: string } | null> {
-    const result = await this.renderReplyAsCardInternal(responseText, sessionId, options?.providerName);
-    if (!result) {
+    if (!this.shouldUseCardReply(responseText, sessionId, options?.providerName)) {
+      return options?.context != null ? false : null;
+    }
+    const cardResult = await this.convertAndRenderCard(responseText, sessionId, options?.providerName);
+    if (!cardResult) {
       return options?.context != null ? false : null;
     }
     if (options?.context != null) {
-      const context = options.context;
-      replaceReplyWithSegments(context, result.segments, 'ai', {
-        isCardImage: true,
-        cardTextForHistory: result.textForHistory,
-        sendAsForward: computeSendAsForward(context, result.segments),
-      });
+      this.setCardReplyOnContext(options.context, cardResult.segments, cardResult.textForHistory);
       logger.info('[ReplyGenerationService] Card image rendered and stored in reply');
-      await this.hookManager.execute('onAIGenerationComplete', context);
+      await this.hookManager.execute('onAIGenerationComplete', options.context);
       return true;
     }
-    return result;
+    return cardResult;
   }
 
   /**

@@ -436,9 +436,7 @@ export class MemoryRAGService {
       match: { value: scope },
     }));
 
-    const mustConditions: Array<Record<string, unknown>> = [
-      { should: scopeConditions },
-    ];
+    const mustConditions: Array<Record<string, unknown>> = [{ should: scopeConditions }];
 
     if (options?.userId) {
       if (includeGroupMemory) {

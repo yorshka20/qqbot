@@ -9,10 +9,66 @@ import { SkillRegistry, type SkillRegistryOptions } from '@/ai/skills/SkillRegis
 import { TaskExecutionContextBuilder } from '@/context/TaskExecutionContextBuilder';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
+import { getCardDeckNoteForPrompt, getCardTypeSpecForPrompt } from '@/services/card/cardPromptSpec';
 import type { TaskManager } from '@/task/TaskManager';
 import type { Task, TaskResult, TaskType } from '@/task/types';
 import { logger } from '@/utils/logger';
 import type { FunctionCall, ToolDefinition } from '../types';
+
+/** Tool name for the inline card format tool. */
+export const CARD_FORMAT_TOOL_NAME = 'format_as_card';
+
+/**
+ * Tool definition for inline card formatting.
+ * The LLM calls this when it decides the reply content is complex enough to warrant card layout.
+ */
+export function getCardFormatToolDefinition(): ToolDefinition {
+  return {
+    name: CARD_FORMAT_TOOL_NAME,
+    description:
+      '获取卡片排版模板。当你预判回复内容较复杂、包含结构化信息（列表、对比、步骤等）、或篇幅较长时，调用此工具获取卡片 JSON 格式模板，然后直接以卡片 JSON 数组格式输出最终回复。简短回复（几句话）不需要调用。',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  };
+}
+
+/**
+ * Build the tool result returned when the LLM calls format_as_card.
+ * Contains full card type spec, formatting rules, and HTML guidance.
+ */
+export function buildCardFormatToolResult(): string {
+  const cardTypeSpec = getCardTypeSpecForPrompt();
+  const cardDeckNote = getCardDeckNoteForPrompt();
+
+  return [
+    '你已获取卡片排版模板。请将你的回复内容直接组织为**混合排版** JSON 数组输出。',
+    '',
+    '## 核心原则',
+    '- 不丢失任何内容：原文中的叙述用 `paragraph` 保留，结构化内容用对应卡片类型。',
+    '- 最终输出**必须是纯 JSON 数组**，第一个字符为 `[`，最后一个字符为 `]`。',
+    '- **不得**包含任何说明文字、注释、markdown 代码块标记。',
+    '',
+    cardDeckNote,
+    '',
+    '## 混合排版规则',
+    '- 引入语、背景说明、过渡句、总结语 → `paragraph`',
+    '- 列表/枚举 → `list`；两方对比 → `comparison`；步骤/流程 → `steps`',
+    '- 术语定义 → `knowledge`；数据/统计 → `stats`；核心结论 → `highlight`',
+    '- 问答形式 → `qa`；引用/金句 → `quote`',
+    '- 段落与卡片交替出现，顺序与原文一致。',
+    '',
+    '## 可用卡片类型',
+    cardTypeSpec,
+    '',
+    '## HTML 规则',
+    '字符串字段内使用 HTML（不要用 Markdown）：',
+    '`<p>` `<strong>` `<em>` `<code>` `<pre><code>` `<h3>` `<ul><li>` `<ol><li>` `<table class="content-table">` `<br>`',
+    '禁止：`<script>` `<style>` `<iframe>` 及其他未列出标签。',
+  ].join('\n');
+}
 
 export interface ReplySkillDefinitionsOptions extends SkillRegistryOptions {}
 

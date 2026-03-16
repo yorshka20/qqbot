@@ -183,10 +183,9 @@ export class QdrantClient {
       with_payload: options.withPayload ?? true,
     };
 
-    const response = await this.httpClient.post<{ result?: { points?: Array<{ id: string | number; payload?: Record<string, unknown> }> } }>(
-      `/collections/${collection}/points/scroll`,
-      body,
-    );
+    const response = await this.httpClient.post<{
+      result?: { points?: Array<{ id: string | number; payload?: Record<string, unknown> }> };
+    }>(`/collections/${collection}/points/scroll`, body);
 
     return response.result?.points ?? [];
   }
