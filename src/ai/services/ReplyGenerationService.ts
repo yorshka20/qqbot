@@ -636,8 +636,6 @@ export class ReplyGenerationService {
       finalUserBlocks,
     });
 
-    logger.debug(`[ReplyGenerationService] Reply messages: ${JSON.stringify(messages, null, 2)}`);
-
     // When provider has vision, replace history entries that contain images with ContentPart[] (text + base64 image_url).
     if (hasVision && normalHistory.historyEntries.length > 0) {
       const getResourceUrl = (resourceId: string) => this.messageAPI.getResourceTempUrl(resourceId, context.message);
@@ -931,6 +929,7 @@ export class ReplyGenerationService {
       },
       2,
     );
+
     logger.debug(
       `[ReplyGenerationService] Raw messages sent to provider (provider=${providerName ?? 'default'}):\n${rawMessagesForLog}`,
     );
