@@ -611,13 +611,13 @@ export class WeChatDatabase {
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_wm_conversation ON wechat_messages(conversationId)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_wm_createTime   ON wechat_messages(createTime)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_wm_category     ON wechat_messages(category)`);
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_wm_processed    ON wechat_messages(processed)`);
-    // Migrate existing DBs: add processed column
+    // Migrate existing DBs: add processed column BEFORE creating index on it
     try {
       this.db.run(`ALTER TABLE wechat_messages ADD COLUMN processed INTEGER NOT NULL DEFAULT 0`);
     } catch {
       /* column already exists */
     }
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_wm_processed    ON wechat_messages(processed)`);
 
     // Official account articles (one row per article, not per push)
     this.db.run(`

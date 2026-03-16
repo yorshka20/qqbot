@@ -134,6 +134,7 @@ export class ServiceRegistry {
       cacheDuration: 120000, // Cache for 2 minutes (AI providers are usually stable)
       timeout: 10000, // 10 second timeout for checking all providers
       retries: 0, // No retries for health checks
+      checkInterval: 3600000, // Auto health check every 1 hour
     });
 
     const providerCount = aiManager.getAvailableProviders().length;

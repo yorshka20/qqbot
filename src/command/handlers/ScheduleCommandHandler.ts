@@ -80,17 +80,16 @@ export class ScheduleCommand implements CommandHandler {
 
     const groupId = context.groupId?.toString();
     const userId = context.userId.toString();
-    if (!groupId || !userId) {
+    if (!userId) {
       return {
         success: false,
-        error: '无法获取群组ID或用户ID',
+        error: '无法获取用户ID',
       };
     }
-
     // Parse natural language description with LLM
     let parsed: ScheduleParsed | null = null;
     try {
-      parsed = await this.parseWithLLM(input, groupId);
+      parsed = await this.parseWithLLM(input, groupId ?? `private:${userId}`);
     } catch (err) {
       logger.error('[ScheduleCommand] LLM parse failed:', err);
     }

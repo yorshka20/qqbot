@@ -7,6 +7,7 @@ import type { CommandManager } from '@/command/CommandManager';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import { WechatDITokens } from '@/services/wechat';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { RetrievalService } from '@/services/retrieval';
 import type { WeChatIngestConfig, WeChatRealtimeRule } from '@/services/wechat';
@@ -96,7 +97,7 @@ export class WeChatIngestPlugin extends PluginBase {
     try {
       internalEventBus = container.resolve<InternalEventBus>(DITokens.INTERNAL_EVENT_BUS);
       this.eventBridge = new WechatEventBridge(internalEventBus);
-      container.registerInstance(DITokens.WECHAT_EVENT_BRIDGE, this.eventBridge);
+      container.registerInstance(WechatDITokens.EVENT_BRIDGE, this.eventBridge);
       logger.info('[WeChatIngestPlugin] WechatEventBridge registered');
     } catch (err) {
       logger.warn('[WeChatIngestPlugin] InternalEventBus not available — event bridge disabled');
@@ -104,12 +105,12 @@ export class WeChatIngestPlugin extends PluginBase {
 
     // Create digest service for daily summaries
     this.digestService = new WechatDigestService(this.db);
-    container.registerInstance(DITokens.WECHAT_DIGEST_SERVICE, this.digestService);
+    container.registerInstance(WechatDITokens.DIGEST_SERVICE, this.digestService);
     logger.info('[WeChatIngestPlugin] WechatDigestService registered');
 
     // Create report service for generating and saving reports
     this.reportService = new WechatReportService(this.digestService);
-    container.registerInstance(DITokens.WECHAT_REPORT_SERVICE, this.reportService);
+    container.registerInstance(WechatDITokens.REPORT_SERVICE, this.reportService);
     logger.info('[WeChatIngestPlugin] WechatReportService registered');
 
     this.ingestService = new WeChatIngestService({

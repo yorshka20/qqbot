@@ -11,11 +11,12 @@ import type { AgendaEventContext, AgendaItem } from './types';
 
 export function buildAgendaHookContext(
   item: AgendaItem,
-  groupId: string,
+  contextId: string,
   eventContext: AgendaEventContext,
 ): HookContext {
-  const groupIdNum = Number(groupId);
-  const userId = Number(eventContext.userId);
+  const isPrivate = !item.groupId;
+  const groupIdNum = isPrivate ? 0 : Number(contextId);
+  const userId = Number(item.userId ?? eventContext.userId);
   const botSelfId = eventContext.botSelfId;
 
   const message: NormalizedMessageEvent = {
@@ -23,7 +24,7 @@ export function buildAgendaHookContext(
     type: 'message',
     timestamp: Date.now(),
     protocol: 'milky',
-    messageType: 'group',
+    messageType: isPrivate ? 'private' : 'group',
     userId,
     groupId: groupIdNum,
     message: `[日程任务] ${item.name}: ${item.intent}`,
@@ -36,14 +37,15 @@ export function buildAgendaHookContext(
     history: [],
     userId: message.userId,
     groupId: message.groupId,
-    messageType: 'group',
+    messageType: isPrivate ? 'private' : 'group',
     metadata: new Map(),
   };
 
+  const sessionId = isPrivate ? `private:${userId}` : contextId;
   const metadata = createDefaultHookMetadata({
-    sessionId: groupId,
-    sessionType: 'group',
-    conversationId: `agenda-${groupId}-${item.id}`,
+    sessionId,
+    sessionType: isPrivate ? 'user' : 'group',
+    conversationId: `agenda-${sessionId}-${item.id}`,
     botSelfId: String(botSelfId ?? 0),
     userId,
     groupId: groupIdNum,

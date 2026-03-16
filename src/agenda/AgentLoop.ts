@@ -47,22 +47,31 @@ export class AgentLoop {
    */
   async run(item: AgendaItem, eventContext: AgendaEventContext): Promise<void> {
     const groupId = item.groupId ?? eventContext?.groupId;
-    if (!groupId) {
-      logger.warn(`[AgentLoop] Item "${item.name}" has no groupId; skipping`);
+    const userId = item.userId ?? eventContext?.userId;
+    const isPrivate = !groupId && !!userId;
+
+    if (!groupId && !userId) {
+      logger.warn(`[AgentLoop] Item "${item.name}" has no groupId or userId; skipping`);
       return;
     }
 
-    logger.info(`[AgentLoop] Running item "${item.name}" → group ${groupId}`);
+    const target = isPrivate ? `user ${userId}` : `group ${groupId}`;
+    logger.info(`[AgentLoop] Running item "${item.name}" → ${target}`);
 
-    const reply = await this.generateReply(item, groupId, eventContext);
+    const contextId = groupId ?? `private:${userId}`;
+    const reply = await this.generateReply(item, contextId, eventContext);
     if (!reply) {
       logger.debug(`[AgentLoop] Item "${item.name}": no reply generated, skipping send`);
       return;
     }
 
     try {
-      await this.messageAPI.sendGroupMessage(Number(groupId), reply, this.preferredProtocol);
-      logger.info(`[AgentLoop] Item "${item.name}": sent ${reply.length} chars → group ${groupId}`);
+      if (isPrivate) {
+        await this.messageAPI.sendPrivateMessage(Number(userId), reply, this.preferredProtocol);
+      } else {
+        await this.messageAPI.sendGroupMessage(Number(groupId), reply, this.preferredProtocol);
+      }
+      logger.info(`[AgentLoop] Item "${item.name}": sent ${reply.length} chars → ${target}`);
     } catch (err) {
       logger.error(`[AgentLoop] Item "${item.name}": send failed`, err);
       throw err;

@@ -124,7 +124,8 @@ export class LLMService {
   }
 
   /**
-   * Generate text using LLM capability
+   * Generate text using LLM capability.
+   * Automatically falls back to alternative providers on runtime failure.
    */
   async generate(prompt: string, options?: AIGenerateOptions, providerName?: string): Promise<AIGenerateResponse> {
     const sessionId = options?.sessionId;
@@ -136,7 +137,19 @@ export class LLMService {
       return this.getFallbackResponse(prompt);
     }
 
-    return await provider.generate(prompt, options);
+    const resolvedName = this.resolveProviderName(provider, providerName);
+
+    try {
+      return await provider.generate(prompt, options);
+    } catch (err) {
+      logger.error(`[LLMService] Provider "${resolvedName}" generate failed:`, err);
+      return this.generateWithFallback(
+        resolvedName,
+        sessionId,
+        (p) => p.generate(prompt, options),
+        prompt,
+      );
+    }
   }
 
   /**
@@ -186,7 +199,8 @@ export class LLMService {
   }
 
   /**
-   * Generate text with streaming
+   * Generate text with streaming.
+   * Automatically falls back to alternative providers on runtime failure.
    */
   async generateStream(
     prompt: string,
@@ -201,12 +215,23 @@ export class LLMService {
     if (!provider) {
       logger.warn('[LLMService] No available LLM provider, returning fallback response');
       const fallbackResponse = this.getFallbackResponse(prompt);
-      // Call handler with fallback text for streaming compatibility
       handler(fallbackResponse.text);
       return fallbackResponse;
     }
 
-    return await provider.generateStream(prompt, handler, options);
+    const resolvedName = this.resolveProviderName(provider, providerName);
+
+    try {
+      return await provider.generateStream(prompt, handler, options);
+    } catch (err) {
+      logger.error(`[LLMService] Provider "${resolvedName}" generateStream failed:`, err);
+      return this.generateWithFallback(
+        resolvedName,
+        sessionId,
+        (p) => p.generateStream(prompt, handler, options),
+        prompt,
+      );
+    }
   }
 
   async generateStreamMessages(
@@ -404,6 +429,39 @@ export class LLMService {
    */
   async triggerHealthCheck(): Promise<void> {
     await this.aiManager.triggerHealthCheck();
+  }
+
+  /**
+   * Extract the provider name from a resolved provider instance.
+   */
+  private resolveProviderName(provider: LLMCapability, hint?: string): string {
+    if ('name' in provider) return (provider as { name: string }).name;
+    return hint ?? 'unknown';
+  }
+
+  /**
+   * Try alternative providers in fallback order after the primary provider failed.
+   * Returns a fallback text response if all alternatives also fail.
+   */
+  private async generateWithFallback(
+    failedProvider: string,
+    sessionId: string | undefined,
+    fn: (provider: LLMCapability) => Promise<AIGenerateResponse>,
+    prompt: string,
+  ): Promise<AIGenerateResponse> {
+    const alternatives = this.getAlternativeProviderNames(failedProvider);
+    for (const altName of alternatives) {
+      const altProvider = await this.getAvailableProvider(altName, sessionId);
+      if (!altProvider) continue;
+      try {
+        logger.info(`[LLMService] Falling back to provider "${altName}"`);
+        return await fn(altProvider);
+      } catch (altErr) {
+        logger.warn(`[LLMService] Fallback provider "${altName}" also failed:`, altErr);
+      }
+    }
+    logger.error('[LLMService] All providers failed, returning fallback response');
+    return this.getFallbackResponse(prompt);
   }
 
   private providerSupportsNativeWebSearch(providerName: string): boolean {

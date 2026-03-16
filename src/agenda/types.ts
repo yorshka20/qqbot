@@ -16,9 +16,9 @@ export type AgendaTriggerType = 'cron' | 'once' | 'onEvent';
 export interface AgendaItem extends BaseModel {
   /** Human-readable name (e.g. "daily hotspot broadcast") */
   name: string;
-  /** Target group ID (required for group actions) */
-  groupId: string;
-  /** Target user ID (for private message actions, future use) */
+  /** Target group ID (required for group actions, empty for private chat) */
+  groupId?: string;
+  /** Target user ID (for private message actions or schedule creator) */
   userId: string;
   /** Trigger type */
   triggerType: AgendaTriggerType;
@@ -53,8 +53,8 @@ export type CreateAgendaItemData = Omit<AgendaItem, 'id' | 'createdAt' | 'update
 export interface AgendaEventContext {
   /** The system event type that fired */
   eventType: string;
-  /** Group ID from the event */
-  groupId: string;
+  /** Group ID from the event (empty for private chat schedules) */
+  groupId?: string;
   /** User ID from the event */
   userId: string;
   /** Bot self ID from the event */

@@ -2,7 +2,7 @@
 // Used by Agenda cron jobs to generate daily reports
 
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
+import { WechatDITokens } from '@/services/wechat';
 import type { WechatDigestService } from '@/services/wechat/WechatDigestService';
 import { logger } from '@/utils/logger';
 import { TaskDefinition } from '../decorators';
@@ -49,7 +49,7 @@ import { BaseTaskExecutor } from './BaseTaskExecutor';
 export class WechatDigestTaskExecutor extends BaseTaskExecutor {
   name = 'wechat_digest';
 
-  constructor(@inject(DITokens.WECHAT_DIGEST_SERVICE) private digestService: WechatDigestService) {
+  constructor(@inject(WechatDITokens.DIGEST_SERVICE) private digestService: WechatDigestService) {
     super();
   }
 

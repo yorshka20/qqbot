@@ -2,7 +2,7 @@
 // Used by AgentLoop to create daily/weekly/monthly reports
 
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
+import { WechatDITokens } from '@/services/wechat';
 import { getStaticFileServer } from '@/services/staticServer';
 import type { ReportType, WechatReportService } from '@/services/wechat/WechatReportService';
 import { logger } from '@/utils/logger';
@@ -76,7 +76,7 @@ import { BaseTaskExecutor } from './BaseTaskExecutor';
 export class WechatReportTaskExecutor extends BaseTaskExecutor {
   name = 'wechat_report';
 
-  constructor(@inject(DITokens.WECHAT_REPORT_SERVICE) private reportService: WechatReportService) {
+  constructor(@inject(WechatDITokens.REPORT_SERVICE) private reportService: WechatReportService) {
     super();
   }
 

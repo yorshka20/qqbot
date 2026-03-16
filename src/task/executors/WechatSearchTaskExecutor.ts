@@ -2,7 +2,7 @@
 // Used by Agenda or user queries to find relevant content
 
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
+import { WechatDITokens } from '@/services/wechat';
 import type { WechatDigestService } from '@/services/wechat/WechatDigestService';
 import { logger } from '@/utils/logger';
 import { TaskDefinition } from '../decorators';
@@ -62,7 +62,7 @@ import { BaseTaskExecutor } from './BaseTaskExecutor';
 export class WechatSearchTaskExecutor extends BaseTaskExecutor {
   name = 'wechat_search';
 
-  constructor(@inject(DITokens.WECHAT_DIGEST_SERVICE) private digestService: WechatDigestService) {
+  constructor(@inject(WechatDITokens.DIGEST_SERVICE) private digestService: WechatDigestService) {
     super();
   }
 

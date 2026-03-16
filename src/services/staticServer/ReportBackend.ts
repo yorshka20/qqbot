@@ -9,8 +9,7 @@
 
 import { resolve } from 'node:path';
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
-import type { ReportFile, ReportMetadata, WechatReportService } from '@/services/wechat';
+import { type ReportFile, type ReportMetadata, WechatDITokens, type WechatReportService } from '@/services/wechat';
 import { logger } from '@/utils/logger';
 
 const API_PREFIX = '/api/reports';
@@ -84,7 +83,7 @@ export class ReportBackend {
 
     try {
       const container = getContainer();
-      this.reportService = container.resolve<WechatReportService>(DITokens.WECHAT_REPORT_SERVICE);
+      this.reportService = container.resolve<WechatReportService>(WechatDITokens.REPORT_SERVICE);
       return this.reportService;
     } catch {
       logger.debug('[ReportBackend] WechatReportService not available');
