@@ -228,6 +228,10 @@
         }
       },
       // Memory Plugin - debounced extract from recent messages, merge with existing, inject into replies
+      // Memory uses hierarchical scopes: [core_scope] or [core_scope:subtag]
+      // - User scopes: identity, preference, opinion, relationship, behavior, instruction
+      // - Group scopes: topic, rule, event, context
+      // Subtags allow finer categorization, e.g. preference:food, identity:work
       {
         "name": "memory",
         "enabled": false,
@@ -236,7 +240,18 @@
             "123456789"
           ],
           "debounceMs": 120000,
-          "extractProvider": "ollama"
+          "extractProvider": "ollama",
+          // Context-aware memory filtering - only inject relevant memory into AI prompts
+          "filter": {
+            "enabled": true, // Enable semantic filtering (default: true)
+            "maxLength": 2000, // Max total chars for filtered memory (default: 2000)
+            // Scopes always included regardless of relevance (supports core_scope or core_scope:subtag)
+            "alwaysIncludeScopes": [
+              "instruction",
+              "rule"
+            ],
+            "minRelevanceScore": 0.1 // Minimum relevance score 0-1 (default: 0.1)
+          }
         }
       },
       // Memory Trigger Plugin - on trigger phrase (e.g. bot name), merge user input into user memory (async)

@@ -2,8 +2,8 @@
 // Used by AgentLoop to create daily/weekly/monthly reports
 
 import { inject, injectable } from 'tsyringe';
-import { WechatDITokens } from '@/services/wechat';
 import { getStaticFileServer } from '@/services/staticServer';
+import { WechatDITokens } from '@/services/wechat';
 import type { ReportType, WechatReportService } from '@/services/wechat/WechatReportService';
 import { logger } from '@/utils/logger';
 import { TaskDefinition } from '../decorators';

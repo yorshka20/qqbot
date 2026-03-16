@@ -7,7 +7,6 @@ import type { CommandManager } from '@/command/CommandManager';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { WechatDITokens } from '@/services/wechat';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { RetrievalService } from '@/services/retrieval';
 import type { WeChatIngestConfig, WeChatRealtimeRule } from '@/services/wechat';
@@ -16,6 +15,7 @@ import {
   WeChatDatabase,
   WeChatIngestService,
   WeChatPadProClient,
+  WechatDITokens,
   WechatEventBridge,
 } from '@/services/wechat';
 import { WechatDigestService } from '@/services/wechat/WechatDigestService';

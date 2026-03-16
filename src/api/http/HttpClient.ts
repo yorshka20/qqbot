@@ -534,9 +534,7 @@ export class HttpClient {
 
     const ok = await this.checkTlsConnection(hostname, port);
     if (!ok) {
-      throw new HttpClientError(
-        `TLS connect to ${hostname}:${port} failed within ${this.connectTimeout}ms`,
-      );
+      throw new HttpClientError(`TLS connect to ${hostname}:${port} failed within ${this.connectTimeout}ms`);
     }
     logger.debug(`[HttpClient] TLS pre-check passed for ${hostname}:${port}`);
   }

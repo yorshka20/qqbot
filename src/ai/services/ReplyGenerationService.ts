@@ -133,8 +133,9 @@ export class ReplyGenerationService {
 
   /**
    * Get memory text vars for prompt (groupMemoryText, userMemoryText). Empty strings when not group or no memory service.
+   * Uses RAG semantic search when available, falls back to keyword-based filtering.
    */
-  private getMemoryVars(context: HookContext): { groupMemoryText: string; userMemoryText: string } {
+  private async getMemoryVarsAsync(context: HookContext): Promise<{ groupMemoryText: string; userMemoryText: string }> {
     if (!this.memoryService) {
       return { groupMemoryText: '', userMemoryText: '' };
     }
@@ -145,18 +146,55 @@ export class ReplyGenerationService {
     }
     const groupId = sessionId.replace(/^group:/, '');
     const userId = context.message?.userId?.toString() ?? '';
-    return this.memoryService.getMemoryTextForReply(groupId, userId);
+    const userMessage = context.message?.message ?? '';
+
+    // Get memory filter config
+    const memoryConfig = this.config.getMemoryConfig();
+    const filterConfig = memoryConfig.filter;
+
+    // If filtering is disabled, use full memory (legacy behavior)
+    if (filterConfig?.enabled === false) {
+      return this.memoryService.getMemoryTextForReply(groupId, userId);
+    }
+
+    // Use async RAG-based filtering (with keyword fallback)
+    const result = await this.memoryService.getFilteredMemoryForReplyAsync(groupId, userId, {
+      userMessage,
+      maxLength: filterConfig?.maxLength ?? 2000,
+      alwaysIncludeScopes: filterConfig?.alwaysIncludeScopes ?? ['instruction', 'rule'],
+      minRelevanceScore: filterConfig?.minRelevanceScore ?? 0.5, // Higher threshold for RAG
+    });
+
+    return {
+      groupMemoryText: result.groupMemoryText,
+      userMemoryText: result.userMemoryText,
+    };
   }
 
-  private getMemoryContextText(context: HookContext): string {
+  private async getMemoryContextTextAsync(context: HookContext): Promise<string> {
     if (!this.memoryService) {
       return '';
     }
-    const { groupMemoryText, userMemoryText } = this.getMemoryVars(context);
-    return this.promptManager.render('memory.render', {
-      groupMemoryText,
-      userMemoryText,
-    });
+    const { groupMemoryText, userMemoryText } = await this.getMemoryVarsAsync(context);
+
+    // Only include sections that have content
+    const hasGroupMemory = groupMemoryText.trim().length > 0;
+    const hasUserMemory = userMemoryText.trim().length > 0;
+
+    if (!hasGroupMemory && !hasUserMemory) {
+      return '';
+    }
+
+    // Build memory context with only non-empty sections
+    const sections: string[] = [];
+    if (hasGroupMemory) {
+      sections.push(`## 关于本群的记忆\n${groupMemoryText}`);
+    }
+    if (hasUserMemory) {
+      sections.push(`## 关于当前用户的记忆\n${userMemoryText}`);
+    }
+
+    return sections.join('\n\n');
   }
 
   /**
@@ -165,9 +203,11 @@ export class ReplyGenerationService {
   private async getMemoryVarsForReply(
     context: HookContext,
   ): Promise<{ groupMemoryText: string; userMemoryText: string; retrievedConversationSection: string }> {
-    const { groupMemoryText, userMemoryText } = this.getMemoryVars(context);
-    const retrievedConversationSection = await this.getRetrievedConversationSection(context);
-    return { groupMemoryText, userMemoryText, retrievedConversationSection };
+    const [memoryVars, retrievedConversationSection] = await Promise.all([
+      this.getMemoryVarsAsync(context),
+      this.getRetrievedConversationSection(context),
+    ]);
+    return { ...memoryVars, retrievedConversationSection };
   }
 
   /**
@@ -557,7 +597,7 @@ export class ReplyGenerationService {
   ): Promise<{ messages: ChatMessage[]; sessionId: string; episodeKey: string }> {
     const [retrievedConversationSection, memoryContextText, normalHistory] = await Promise.all([
       this.getRetrievedConversationSection(context),
-      Promise.resolve(this.getMemoryContextText(context)),
+      this.getMemoryContextTextAsync(context),
       this.buildNormalHistoryEntries(context),
     ]);
     const taskResultText = this.getTaskResultsSummary(taskResultsSummary);

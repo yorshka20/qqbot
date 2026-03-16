@@ -143,12 +143,7 @@ export class LLMService {
       return await provider.generate(prompt, options);
     } catch (err) {
       logger.error(`[LLMService] Provider "${resolvedName}" generate failed:`, err);
-      return this.generateWithFallback(
-        resolvedName,
-        sessionId,
-        (p) => p.generate(prompt, options),
-        prompt,
-      );
+      return this.generateWithFallback(resolvedName, sessionId, (p) => p.generate(prompt, options), prompt);
     }
   }
 

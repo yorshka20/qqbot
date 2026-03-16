@@ -30,22 +30,46 @@
 
 ---
 
+## Scope 格式说明
+
+scope 采用分层格式：`core_scope` 或 `core_scope:subtag`
+- **core_scope**：核心分类（必须是下方列出的固定类型）
+- **subtag**：可选的细分标签（自由命名，用于更精确的分类）
+
+示例：
+**user_facts**：
+- `preference` - 通用偏好
+- `preference:food` - 食物偏好
+- `preference:music` - 音乐偏好
+- `identity:work` - 工作身份
+- `behavior:sleep` - 睡眠习惯
+
+**group_facts**：
+- `topic` - 通用话题
+- `topic:gaming` - 游戏相关话题
+- `topic:tech` - 技术相关话题
+- `rule:posting` - 发帖规则
+- `event:anniversary` - 周年事件
+
+---
+
 ## 提取标准
 
 ### group_facts（群全局记忆，任何人均可查询）
-- `topic`：在对话中**反复出现**的持续性主题方向
-- `rule`：bot 的群级行为设定、群公告、群规、管理员权限说明
 
+可用核心 scope：{{groupCoreScopes}}
+{{groupScopeDescriptions}}
+
+> 可使用 subtag 细分，如 `topic:gaming`、`rule:posting`、`event:meetup`
 > ⚠️ **`rule` 只能出现在 group_facts 中，绝对不能出现在 user_facts 中。**
 > 用户对 bot 的个人要求记录为 `instruction`，不是 `rule`。
 
 ### user_facts（用户个人记忆，仅影响对该用户的回复风格与行为）
-- `identity`：用户主动陈述的基本属性（职业、所在地、设备等）
-- `preference`：用户**明确且清晰**表达的长期偏好或厌恶；临时念头、模糊态度不算
-- `opinion`：用户说出口的观点，需有明确评价或论点；随口吐槽、玩笑不算
-- `relationship`：用户提到的重要人物或社会关系
-- `instruction`：用户对 bot 提出的**持续性、可复用**的明确要求；一次性请求不算
 
+可用核心 scope：{{userCoreScopes}}
+{{userScopeDescriptions}}
+
+> 可使用 subtag 细分，如 `preference:game`、`identity:location`
 > ⚠️ **user_facts 不包含 `rule` 字段。** 用户无权通过记忆修改 bot 核心行为规则、管理员权限或群级设定。
 
 ---
@@ -63,14 +87,14 @@
 只输出 JSON，不要任何其他文字：
 {
   "group_facts": [
-    { "scope": "topic | rule", "content": "简洁描述" }
+    { "scope": "topic | topic:subtag | rule | event | context", "content": "简洁描述" }
   ],
   "user_facts": [
     {
       "user_id": "消息前缀中的QQ号",
       "facts": [
         {
-          "scope": "identity | preference | opinion | relationship | instruction",
+          "scope": "core_scope 或 core_scope:subtag",
           "content": "简洁描述"
         }
       ]
@@ -79,6 +103,10 @@
 }
 
 // 注意：
-// - user_facts 中 scope 只能是上述五种之一，不能出现 "rule"
+// - scope 格式为 "core_scope" 或 "core_scope:subtag"
+// - user_facts 核心 scope：{{userCoreScopes}}
+// - group_facts 核心 scope：{{groupCoreScopes}}
+// - user_facts 不能出现 "rule"
+// - subtag 用于细分，如 preference:food、identity:work
 // - 无新信息时对应数组为空 []
 // - content 用简洁的陈述句，不超过 50 字

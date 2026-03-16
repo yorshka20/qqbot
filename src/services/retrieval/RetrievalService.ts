@@ -116,6 +116,14 @@ export class RetrievalService {
     return this.ragService?.isEnabled() ?? false;
   }
 
+  /**
+   * Get the underlying RAG service instance.
+   * Returns null if RAG is not enabled.
+   */
+  getRAGService(): RAGService | null {
+    return this.ragService;
+  }
+
   async upsertDocuments(collection: string, documents: RAGDocument[]): Promise<void> {
     if (!this.ragService) throw new Error('RAG is not enabled');
     return this.ragService.upsertDocuments(collection, documents);

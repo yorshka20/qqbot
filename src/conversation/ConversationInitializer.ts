@@ -26,7 +26,7 @@ import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { type SystemContext, SystemRegistry } from '@/core/system';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import { HookManager } from '@/hooks/HookManager';
-import { MemoryExtractService, MemoryService } from '@/memory';
+import { MemoryExtractService, MemoryRAGService, MemoryService } from '@/memory';
 import { MessageUtils } from '@/message/MessageUtils';
 import { FileReadService } from '@/services/file';
 import type { RetrievalService } from '@/services/retrieval';
@@ -167,6 +167,15 @@ export class ConversationInitializer {
     const messageAPI = new MessageAPI(apiClient);
     const retrievalService = container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE);
     container.registerInstance(DITokens.MESSAGE_API, messageAPI);
+
+    // Configure Memory RAG if RAG is enabled - enables semantic search for memory filtering
+    const ragService = retrievalService.getRAGService();
+    if (ragService) {
+      const memoryRAGService = new MemoryRAGService(ragService);
+      memoryService.setRAGService(memoryRAGService);
+      logger.info('[ConversationInitializer] Memory RAG enabled for semantic memory filtering');
+    }
+
     const aiService = new AIService(
       services.aiManager,
       services.hookManager,

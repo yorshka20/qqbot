@@ -1,11 +1,31 @@
 // Memory Extract Service - extract from messages, merge with existing via analyze, then upsert
+// Supports hierarchical scopes: [core_scope:subtag] format
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import { type ExtractStrategy, extractJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
+import { GROUP_CORE_SCOPES, type ParsedScope, USER_CORE_SCOPES } from '@/core/config/types/memory';
 import { logger } from '@/utils/logger';
 import type { MemoryService } from './MemoryService';
 import { GROUP_MEMORY_USER_ID } from './MemoryService';
+
+/** Scope descriptions for user memory extraction */
+const USER_SCOPE_DESCRIPTIONS: Record<string, string> = {
+  identity: '用户主动陈述的基本属性（职业、所在地、设备等）',
+  preference: '用户明确且清晰表达的长期偏好或厌恶',
+  opinion: '用户说出口的观点，需有明确评价或论点',
+  relationship: '用户提到的重要人物或社会关系',
+  behavior: '用户的行为习惯、作息规律等',
+  instruction: '用户对 bot 提出的持续性、可复用的明确要求',
+};
+
+/** Scope descriptions for group memory extraction */
+const GROUP_SCOPE_DESCRIPTIONS: Record<string, string> = {
+  topic: '在对话中反复出现的持续性主题方向',
+  rule: 'bot 的群级行为设定、群公告、群规、管理员权限说明',
+  event: '群内发生的重要事件',
+  context: '群的背景信息、环境设定',
+};
 
 /** Default LLM provider for extract and analyze (e.g. ollama). */
 const DEFAULT_EXTRACT_PROVIDER = 'ollama';
@@ -34,6 +54,58 @@ export class MemoryExtractService {
     private llmService: LLMService,
     private memoryService: MemoryService,
   ) {}
+
+  // ============================================================================
+  // Scope template variable helpers
+  // ============================================================================
+
+  /** Get user core scopes as comma-separated string */
+  private getUserCoreScopesStr(): string {
+    return USER_CORE_SCOPES.join(' / ');
+  }
+
+  /** Get group core scopes as comma-separated string */
+  private getGroupCoreScopesStr(): string {
+    return GROUP_CORE_SCOPES.join(' / ');
+  }
+
+  /** Get user scope descriptions as formatted string */
+  private getUserScopeDescriptionsStr(): string {
+    return USER_CORE_SCOPES.map((scope) => `- \`${scope}\`：${USER_SCOPE_DESCRIPTIONS[scope] ?? ''}`).join('\n');
+  }
+
+  /** Get group scope descriptions as formatted string */
+  private getGroupScopeDescriptionsStr(): string {
+    return GROUP_CORE_SCOPES.map((scope) => `- \`${scope}\`：${GROUP_SCOPE_DESCRIPTIONS[scope] ?? ''}`).join('\n');
+  }
+
+  /** Format existing scopes for AI reference */
+  private formatExistingScopes(scopes: ParsedScope[]): string {
+    if (scopes.length === 0) {
+      return '(无已有 scope)';
+    }
+    return scopes.map((s) => s.full).join(', ');
+  }
+
+  /** Get common scope variables for template rendering */
+  private getScopeTemplateVars(): Record<string, string> {
+    return {
+      userCoreScopes: this.getUserCoreScopesStr(),
+      groupCoreScopes: this.getGroupCoreScopesStr(),
+      userScopeDescriptions: this.getUserScopeDescriptionsStr(),
+      groupScopeDescriptions: this.getGroupScopeDescriptionsStr(),
+    };
+  }
+
+  /** Get available scopes section for analyze template based on memory type */
+  private getAvailableScopesSection(memoryType: 'user' | 'global'): string {
+    if (memoryType === 'user') {
+      return `**user 记忆可用**：${this.getUserCoreScopesStr()}
+⚠️ user 记忆中不能包含 \`rule\`。若新信息涉及群规或 bot 行为规则，直接丢弃。`;
+    }
+    return `**global 记忆可用**：${this.getGroupCoreScopesStr()}
+\`rule\` 只能存在于 global 记忆中，记录 bot 的群级行为设定、群公告等。`;
+  }
 
   /**
    * Normalize merged memory so that each bullet line contains at most one fact.
@@ -82,11 +154,19 @@ export class MemoryExtractService {
     }
     const provider = options.provider ?? DEFAULT_EXTRACT_PROVIDER;
     const baseSystemPrompt = this.promptManager.renderBasePrompt();
+
+    // Get existing scopes for AI reference (to encourage scope reuse)
+    const existingScopes = this.memoryService.extractAllScopes(existingMemory);
+    const existingScopesStr = this.formatExistingScopes(existingScopes);
+
     const prompt = this.promptManager.render('memory.analyze', {
       existingMemory: existingMemory || '(无)',
       newFacts: newFacts.trim(),
       adminUserId: this.promptManager.adminUserId,
       memoryType,
+      existingScopes: existingScopesStr,
+      availableScopesSection: this.getAvailableScopesSection(memoryType),
+      ...this.getScopeTemplateVars(),
     });
 
     try {
@@ -140,6 +220,7 @@ export class MemoryExtractService {
       groupId,
       recentMessagesText: inputText,
       targetUserSection,
+      ...this.getScopeTemplateVars(),
     });
 
     // logger.info('[MemoryExtractService] Extract full prompt:\n' + prompt);
@@ -217,6 +298,7 @@ export class MemoryExtractService {
       groupId,
       recentMessagesText: recentMessagesText || '(no messages)',
       targetUserSection: '',
+      ...this.getScopeTemplateVars(),
     });
 
     let response: string;

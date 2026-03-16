@@ -313,6 +313,7 @@ export class Config {
   getMemoryConfig(): MemoryConfig {
     return {
       dir: this.config.memory?.dir ?? 'data/memory',
+      filter: this.config.memory?.filter,
     };
   }
 
