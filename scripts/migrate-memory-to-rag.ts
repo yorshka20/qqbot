@@ -72,8 +72,10 @@ interface MemoryFile {
   content: string;
 }
 
-interface OllamaConfig {
-  baseUrl: string;
+interface LLMConfig {
+  provider: 'doubao' | 'deepseek';
+  apiKey: string;
+  baseURL: string;
   model: string;
 }
 
@@ -110,7 +112,7 @@ interface MemorySection {
 // Config Loading
 // ============================================================================
 
-function loadOllamaConfig(): OllamaConfig {
+function loadLLMConfig(): LLMConfig {
   if (!existsSync(CONFIG_PATH)) {
     throw new Error(`Config file not found: ${CONFIG_PATH}`);
   }
@@ -120,16 +122,29 @@ function loadOllamaConfig(): OllamaConfig {
 
   const aiConfig = config.ai as Record<string, unknown> | undefined;
   const providers = aiConfig?.providers as Record<string, unknown> | undefined;
-  const ollamaConfig = providers?.ollama as Record<string, unknown> | undefined;
 
-  if (!ollamaConfig) {
-    throw new Error('Ollama config not found in config.jsonc');
+  // Try Doubao first, then DeepSeek
+  const doubaoConfig = providers?.doubao as Record<string, unknown> | undefined;
+  if (doubaoConfig?.apiKey) {
+    return {
+      provider: 'doubao',
+      apiKey: doubaoConfig.apiKey as string,
+      baseURL: (doubaoConfig.baseURL as string) || 'https://ark.cn-beijing.volces.com/api/v3',
+      model: (doubaoConfig.model as string) || 'doubao-seed-1-6-lite-251015',
+    };
   }
 
-  return {
-    baseUrl: (ollamaConfig.baseUrl as string) || 'http://localhost:11434',
-    model: (ollamaConfig.model as string) || 'llama2',
-  };
+  const deepseekConfig = providers?.deepseek as Record<string, unknown> | undefined;
+  if (deepseekConfig?.apiKey) {
+    return {
+      provider: 'deepseek',
+      apiKey: deepseekConfig.apiKey as string,
+      baseURL: (deepseekConfig.baseURL as string) || 'https://api.deepseek.com',
+      model: (deepseekConfig.model as string) || 'deepseek-chat',
+    };
+  }
+
+  throw new Error('Neither Doubao nor DeepSeek config found in config.jsonc');
 }
 
 function loadRAGConfig(): RAGConfig {
@@ -488,40 +503,41 @@ async function indexMemoryToRAG(
 }
 
 // ============================================================================
-// LLM Integration (Direct Ollama API call)
+// LLM Integration (Doubao / DeepSeek - OpenAI-compatible API)
 // ============================================================================
 
-async function callOllamaChat(
-  config: OllamaConfig,
+async function callLLM(
+  config: LLMConfig,
   systemPrompt: string,
   userPrompt: string,
 ): Promise<string> {
-  const url = `${config.baseUrl.replace(/\/$/, '')}/api/chat`;
+  const url = `${config.baseURL.replace(/\/$/, '')}/chat/completions`;
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.apiKey}`,
+    },
     body: JSON.stringify({
       model: config.model,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      options: {
-        temperature: 0.3,
-        num_predict: 10000,
-        num_ctx: 10000,
-      },
+      temperature: 0.3,
+      max_tokens: 10000,
       stream: false,
     }),
   });
 
   if (!response.ok) {
-    throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
+    const text = await response.text();
+    throw new Error(`${config.provider} API error: ${response.status} ${text}`);
   }
 
-  const data = (await response.json()) as { message?: { content?: string }; response?: string };
-  return data.message?.content || data.response || '';
+  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  return data.choices?.[0]?.message?.content || '';
 }
 
 // ============================================================================
@@ -622,7 +638,7 @@ ${scopeDescStr}
 async function reformatMemory(
   groupId: string,
   userId: string | null,
-  ollamaConfig: OllamaConfig,
+  llmConfig: LLMConfig,
 ): Promise<string | null> {
   const content = readMemoryFile(groupId, userId);
   if (!content || !content.trim()) {
@@ -638,7 +654,7 @@ async function reformatMemory(
   const userPrompt = buildReformatPrompt(memoryType, content);
 
   try {
-    const reformatted = await callOllamaChat(ollamaConfig, systemPrompt, userPrompt);
+    const reformatted = await callLLM(llmConfig, systemPrompt, userPrompt);
     console.log(`Reformatted content length: ${reformatted.length} chars`);
     return reformatted.trim();
   } catch (error) {
@@ -681,10 +697,10 @@ async function cmdScan(): Promise<void> {
 }
 
 async function cmdReformat(groupId: string, userId: string | null): Promise<void> {
-  const ollamaConfig = loadOllamaConfig();
-  console.log(`Using Ollama: ${ollamaConfig.baseUrl} model=${ollamaConfig.model}`);
+  const llmConfig = loadLLMConfig();
+  console.log(`Using ${llmConfig.provider}: model=${llmConfig.model}`);
 
-  const reformatted = await reformatMemory(groupId, userId, ollamaConfig);
+  const reformatted = await reformatMemory(groupId, userId, llmConfig);
 
   if (reformatted) {
     console.log('\n--- Reformatted Content ---\n');
@@ -772,12 +788,12 @@ async function cmdMigrateAll(groupId: string): Promise<void> {
     return;
   }
 
-  const ollamaConfig = loadOllamaConfig();
-  console.log(`Using Ollama: ${ollamaConfig.baseUrl} model=${ollamaConfig.model}`);
+  const llmConfig = loadLLMConfig();
+  console.log(`Using ${llmConfig.provider}: model=${llmConfig.model}`);
   console.log(`Found ${files.length} memory files for group ${groupId}\n`);
 
   for (const file of files) {
-    const reformatted = await reformatMemory(groupId, file.userId, ollamaConfig);
+    const reformatted = await reformatMemory(groupId, file.userId, llmConfig);
 
     if (reformatted) {
       const outputPath = await saveMigrationOutput(groupId, file.userId, reformatted);
