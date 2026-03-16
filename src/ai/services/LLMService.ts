@@ -25,6 +25,9 @@ export class LLMService {
   private readonly supportedProviders = ['openai', 'anthropic', 'doubao', 'gemini', 'deepseek'];
   private readonly providersWithNativeWebSearch = ['doubao', 'anthropic'];
 
+  /** Fallback order by cost (cheapest first). Used by getOrderedAlternativeProviderNames. */
+  private readonly providerFallbackOrder = ['doubao', 'deepseek', 'gemini', 'openai', 'anthropic'];
+
   constructor(
     private aiManager: AIManager,
     private providerSelector?: ProviderSelector,
@@ -383,11 +386,16 @@ export class LLMService {
 
   /**
    * Get alternative provider names for a capability, excluding the specified provider.
-   * Used for retry/fallback when the primary provider fails.
+   * Ordered by cost (cheapest first) using providerFallbackOrder.
+   * Providers not in the fallback order list are appended at the end.
    */
   getAlternativeProviderNames(excludeProvider?: string): string[] {
     const allProviders = this.aiManager.getProvidersForCapability('llm');
-    return allProviders.filter((p) => p.name !== excludeProvider && p.isAvailable()).map((p) => p.name);
+    const available = allProviders.filter((p) => p.name !== excludeProvider && p.isAvailable()).map((p) => p.name);
+
+    // Sort by fallback order (cheapest first); unknown providers go to end
+    const orderMap = new Map(this.providerFallbackOrder.map((name, i) => [name, i]));
+    return available.sort((a, b) => (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999));
   }
 
   /**

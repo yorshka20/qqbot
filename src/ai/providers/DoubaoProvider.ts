@@ -275,7 +275,9 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
         'Content-Type': 'application/json',
         Authorization: `Bearer ${config.apiKey}`,
       },
-      defaultTimeout: 120000, // 2 minutes, aligned with other AI providers
+      defaultTimeout: 60000, // 60s for actual request (reasoning models can be slow)
+      tlsPreCheck: true, // verify server reachable before sending request
+      connectTimeout: 10000, // abort if TLS handshake takes >10s
     });
 
     if (this.isAvailable()) {

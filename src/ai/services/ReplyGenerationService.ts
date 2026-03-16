@@ -736,7 +736,8 @@ export class ReplyGenerationService {
 
   /**
    * Generate with retry and provider fallback.
-   * Tries the primary provider first; on failure triggers a health check and retries with up to 2 alternative providers.
+   * Tries the primary provider first; on failure triggers a health check and retries with
+   * alternative providers in cost order (doubao → deepseek → gemini → openai → anthropic).
    */
   private async generateWithRetry(
     context: HookContext,
@@ -749,7 +750,7 @@ export class ReplyGenerationService {
     selectedProviderName: string | undefined,
     effectiveNativeSearchEnabled: boolean,
   ): Promise<{ response: AIGenerateResponse; actualProvider: string | undefined }> {
-    const MAX_RETRIES = 2;
+    const MAX_RETRIES = 4; // enough to cover the full fallback chain
 
     try {
       const response = await this.attemptLLMGeneration(

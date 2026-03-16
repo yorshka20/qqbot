@@ -129,7 +129,19 @@ export class GeminiProvider
     if (!this.isAvailable()) {
       return false;
     }
-    return true;
+    try {
+      const client = this.getClient();
+      const model = this.config.llm?.model ?? this.config.vision?.model ?? 'gemini-2.5-flash';
+      await client.models.get({ model });
+      return true;
+    } catch (error) {
+      logger.debug('[GeminiProvider] Availability check failed:', error);
+      if (error instanceof Error && error.message.includes('timeout')) {
+        return false;
+      }
+      // Non-timeout errors (401, 400) mean API is reachable
+      return true;
+    }
   }
 
   getConfig(): Record<string, unknown> {

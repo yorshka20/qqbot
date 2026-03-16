@@ -67,9 +67,9 @@ export class MessageAPI {
   }
 
   /**
-   * @deprecated This method is FORBIDDEN for production use. Only use in debug mode.
-   * Use sendFromContext() instead, which properly handles protocol extraction and message type detection.
-   * This method is kept only for debug CLI commands.
+   * Send a private message directly by userId and protocol.
+   * Use this when no message context is available (e.g. AgentLoop scheduled tasks).
+   * When a CommandContext or NormalizedMessageEvent is available, prefer sendFromContext().
    */
   async sendPrivateMessage(userId: number, message: string | unknown[], protocol: ProtocolName): Promise<number> {
     const result = await this.apiClient.call<SendMessageResult>(
@@ -89,9 +89,9 @@ export class MessageAPI {
   }
 
   /**
-   * @deprecated This method is FORBIDDEN for production use. Only use in debug mode.
-   * Use sendFromContext() instead, which properly handles protocol extraction and message type detection.
-   * This method is kept only for debug CLI commands.
+   * Send a group message directly by groupId and protocol.
+   * Use this when no message context is available (e.g. AgentLoop scheduled tasks).
+   * When a CommandContext or NormalizedMessageEvent is available, prefer sendFromContext().
    */
   async sendGroupMessage(groupId: number, message: string | unknown[], protocol: ProtocolName): Promise<number> {
     const result = await this.apiClient.call<SendMessageResult>(

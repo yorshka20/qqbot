@@ -1,5 +1,6 @@
 // HTTP Client utility - encapsulates fetch with better error handling and features
 
+import { connect as tlsConnect } from 'node:tls';
 import { logger } from '@/utils/logger';
 
 export interface HttpClientOptions {
@@ -8,6 +9,14 @@ export interface HttpClientOptions {
   defaultTimeout?: number;
   retries?: number;
   retryDelay?: number;
+  /**
+   * When enabled, performs a TLS socket pre-flight check before each request
+   * to verify the remote server is reachable. Aborts early if the TCP+TLS
+   * handshake cannot complete within `connectTimeout` ms.
+   */
+  tlsPreCheck?: boolean;
+  /** Timeout (ms) for the TLS pre-flight handshake. Default: 10000 (10s). */
+  connectTimeout?: number;
 }
 
 export interface RequestOptions {
@@ -45,6 +54,8 @@ export class HttpClient {
   private defaultTimeout: number;
   private retries: number;
   private retryDelay: number;
+  private tlsPreCheck: boolean;
+  private connectTimeout: number;
 
   constructor(options: HttpClientOptions = {}) {
     this.baseURL = options.baseURL || '';
@@ -55,6 +66,8 @@ export class HttpClient {
     this.defaultTimeout = options.defaultTimeout || 120000; // 120 seconds default
     this.retries = options.retries ?? 0;
     this.retryDelay = options.retryDelay || 1000;
+    this.tlsPreCheck = options.tlsPreCheck ?? false;
+    this.connectTimeout = options.connectTimeout ?? 10000;
   }
 
   /**
@@ -67,6 +80,11 @@ export class HttpClient {
 
     // Build full URL
     const fullUrl = this.buildUrl(url);
+
+    // TLS pre-flight check: verify server is reachable before sending request
+    if (this.tlsPreCheck) {
+      await this.runTlsPreCheck(fullUrl);
+    }
 
     // Merge headers
     const headers = this.mergeHeaders(options.headers);
@@ -182,6 +200,11 @@ export class HttpClient {
 
     // Build full URL
     const fullUrl = this.buildUrl(url);
+
+    // TLS pre-flight check
+    if (this.tlsPreCheck) {
+      await this.runTlsPreCheck(fullUrl);
+    }
 
     // Prepare body first to determine if we need to set Content-Type
     const body = this.prepareBody(options.body);
@@ -459,5 +482,62 @@ export class HttpClient {
    */
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Verify that a TLS connection to the given host:port can be established
+   * within `connectTimeout` ms. Returns true if the handshake succeeds.
+   */
+  private checkTlsConnection(hostname: string, port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const socket = tlsConnect({ host: hostname, port, rejectUnauthorized: true }, () => {
+        // TLS handshake succeeded
+        socket.destroy();
+        resolve(true);
+      });
+
+      const timer = setTimeout(() => {
+        socket.destroy();
+        resolve(false);
+      }, this.connectTimeout);
+
+      socket.on('error', () => {
+        clearTimeout(timer);
+        socket.destroy();
+        resolve(false);
+      });
+
+      socket.on('close', () => {
+        clearTimeout(timer);
+      });
+    });
+  }
+
+  /**
+   * Run TLS pre-flight check for a URL. Throws HttpClientError if unreachable.
+   */
+  private async runTlsPreCheck(url: string): Promise<void> {
+    let hostname: string;
+    let port: number;
+    try {
+      const parsed = new URL(url);
+      hostname = parsed.hostname;
+      port = parsed.port ? Number(parsed.port) : parsed.protocol === 'https:' ? 443 : 80;
+    } catch {
+      return; // can't parse URL, skip check
+    }
+
+    // Only check HTTPS endpoints
+    if (!url.startsWith('https://')) {
+      return;
+    }
+
+    const ok = await this.checkTlsConnection(hostname, port);
+    if (!ok) {
+      throw new HttpClientError(
+        `TLS connect to ${hostname}:${port} failed within ${this.connectTimeout}ms`,
+      );
+    }
+    logger.debug(`[HttpClient] TLS pre-check passed for ${hostname}:${port}`);
   }
 }
