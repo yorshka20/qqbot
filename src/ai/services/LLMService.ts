@@ -1,5 +1,6 @@
 // LLM Service - provides LLM text generation capability
 
+import type { HealthCheckManager } from '@/core/health';
 import { logger } from '@/utils/logger';
 import type { AIManager } from '../AIManager';
 import type { LLMCapability } from '../capabilities/LLMCapability';
@@ -19,20 +20,46 @@ import { contentToPlainString } from '../utils/contentUtils';
 import { containsDSML, parseDSMLFunctionCall, stripDSML } from '../utils/dsmlParser';
 
 /**
+ * LLM fallback configuration
+ */
+export interface LLMFallbackConfig {
+  /** Ordered list of provider names for fallback (by cost, cheapest first) */
+  fallbackOrder: string[];
+  /** Providers that support tool use, in priority order */
+  toolUseProviders: string[];
+}
+
+/** Default fallback configuration */
+const DEFAULT_FALLBACK_CONFIG: LLMFallbackConfig = {
+  fallbackOrder: ['deepseek', 'gemini', 'openai', 'anthropic'],
+  toolUseProviders: ['deepseek', 'openai', 'anthropic'],
+};
+
+/**
  * LLM Service
  * Provides LLM text generation capability
  */
 export class LLMService {
-  private readonly supportedProviders = ['openai', 'anthropic', 'doubao', 'gemini', 'deepseek'];
   private readonly providersWithNativeWebSearch = ['doubao', 'anthropic'];
 
-  /** Fallback order by cost (cheapest first). Used by getOrderedAlternativeProviderNames. */
-  private readonly providerFallbackOrder = ['doubao', 'deepseek', 'gemini', 'openai', 'anthropic'];
+  /** Fallback configuration (from config or default) */
+  private readonly fallbackConfig: LLMFallbackConfig;
+
+  /** Health check manager for tracking provider health */
+  private readonly healthCheckManager?: HealthCheckManager;
 
   constructor(
     private aiManager: AIManager,
     private providerSelector?: ProviderSelector,
-  ) {}
+    healthCheckManager?: HealthCheckManager,
+    fallbackConfig?: Partial<LLMFallbackConfig>,
+  ) {
+    this.healthCheckManager = healthCheckManager;
+    this.fallbackConfig = {
+      ...DEFAULT_FALLBACK_CONFIG,
+      ...fallbackConfig,
+    };
+  }
 
   /**
    * Get fallback response when no provider is available
@@ -63,16 +90,19 @@ export class LLMService {
   }
 
   /**
-   * Check if provider is available
+   * Check if provider is available and healthy.
+   * If the resolved provider is unhealthy, attempts to find a healthy fallback.
    */
   async getAvailableProvider(providerName?: string, sessionId?: string): Promise<LLMCapability | null> {
     let provider: LLMCapability | null = null;
+    let resolvedName: string | undefined;
 
     if (providerName) {
       // Use specified provider
       const p = this.aiManager.getProviderForCapability('llm', providerName);
       if (p && isLLMCapability(p) && p.isAvailable()) {
         provider = p;
+        resolvedName = providerName;
       } else if (p && !p.isAvailable()) {
         logger.warn(
           `[LLMService] Requested provider "${providerName}" is not available (e.g. API key missing or check failed); falling back to default`,
@@ -89,6 +119,7 @@ export class LLMService {
         const p = this.aiManager.getProviderForCapability('llm', sessionProviderName);
         if (p && isLLMCapability(p) && p.isAvailable()) {
           provider = p;
+          resolvedName = sessionProviderName;
         }
       }
     }
@@ -98,10 +129,55 @@ export class LLMService {
       const defaultProvider = this.aiManager.getDefaultProvider('llm');
       if (defaultProvider && isLLMCapability(defaultProvider) && defaultProvider.isAvailable()) {
         provider = defaultProvider;
+        resolvedName = 'name' in defaultProvider ? (defaultProvider as { name: string }).name : undefined;
+      }
+    }
+
+    // Check health status and try fallback if unhealthy
+    if (provider && resolvedName && this.healthCheckManager) {
+      if (!this.healthCheckManager.isServiceHealthySync(resolvedName)) {
+        logger.warn(`[LLMService] Provider "${resolvedName}" is unhealthy, trying healthy fallback`);
+        const healthyFallback = await this.getFirstHealthyProvider(sessionId, resolvedName);
+        if (healthyFallback) {
+          return healthyFallback;
+        }
+        // No healthy fallback available, still return the unhealthy provider (let it try)
+        logger.warn(`[LLMService] No healthy fallback available, proceeding with "${resolvedName}"`);
       }
     }
 
     return provider;
+  }
+
+  /**
+   * Get the first healthy provider from fallback order.
+   */
+  private async getFirstHealthyProvider(sessionId?: string, excludeProvider?: string): Promise<LLMCapability | null> {
+    const healthyProviders = this.getHealthyFallbackProviders(this.fallbackConfig.fallbackOrder, excludeProvider);
+
+    for (const name of healthyProviders) {
+      const p = this.aiManager.getProviderForCapability('llm', name);
+      if (p && isLLMCapability(p) && p.isAvailable()) {
+        logger.info(`[LLMService] Using healthy fallback provider "${name}"`);
+        return p;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Get ordered fallback providers filtered by health status.
+   */
+  private getHealthyFallbackProviders(fallbackOrder: string[], excludeProvider?: string): string[] {
+    return fallbackOrder.filter((name) => {
+      if (excludeProvider && name === excludeProvider) {
+        return false;
+      }
+      if (this.healthCheckManager) {
+        return this.healthCheckManager.isServiceHealthySync(name);
+      }
+      return true; // No health manager = assume healthy
+    });
   }
 
   async supportsNativeWebSearch(providerName?: string, sessionId?: string): Promise<boolean> {
@@ -127,6 +203,7 @@ export class LLMService {
   /**
    * Generate text using LLM capability.
    * Automatically falls back to alternative providers on runtime failure.
+   * Updates provider health status based on success/failure.
    */
   async generate(prompt: string, options?: AIGenerateOptions, providerName?: string): Promise<AIGenerateResponse> {
     const sessionId = options?.sessionId;
@@ -141,8 +218,14 @@ export class LLMService {
     const resolvedName = this.resolveProviderName(provider, providerName);
 
     try {
-      return await provider.generate(prompt, options);
+      const result = await provider.generate(prompt, options);
+      // Mark provider as healthy on success
+      this.healthCheckManager?.markServiceHealthy(resolvedName);
+      return result;
     } catch (err) {
+      // Mark provider as failed
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      this.healthCheckManager?.markServiceUnhealthy(resolvedName, errorMessage);
       logger.error(`[LLMService] Provider "${resolvedName}" generate failed:`, err);
       return this.generateWithFallback(resolvedName, sessionId, (p) => p.generate(prompt, options), prompt);
     }
@@ -197,6 +280,7 @@ export class LLMService {
   /**
    * Generate text with streaming.
    * Automatically falls back to alternative providers on runtime failure.
+   * Updates provider health status based on success/failure.
    */
   async generateStream(
     prompt: string,
@@ -218,8 +302,14 @@ export class LLMService {
     const resolvedName = this.resolveProviderName(provider, providerName);
 
     try {
-      return await provider.generateStream(prompt, handler, options);
+      const result = await provider.generateStream(prompt, handler, options);
+      // Mark provider as healthy on success
+      this.healthCheckManager?.markServiceHealthy(resolvedName);
+      return result;
     } catch (err) {
+      // Mark provider as failed
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      this.healthCheckManager?.markServiceUnhealthy(resolvedName, errorMessage);
       logger.error(`[LLMService] Provider "${resolvedName}" generateStream failed:`, err);
       return this.generateWithFallback(
         resolvedName,
@@ -262,15 +352,33 @@ export class LLMService {
       provider && 'name' in provider ? (provider as { name: string }).name : (providerName ?? '');
     const supportsToolUse = provider && this.providerSupportsToolUse(currentProviderName);
 
-    // If provider doesn't support tool use, try fallback to doubao
+    // If provider doesn't support tool use, try fallback to configured tool-use providers
     if (provider && !supportsToolUse) {
-      logger.warn(`[LLMService] Provider "${currentProviderName}" doesn't support tool use, falling back to doubao`);
-      const doubaoProvider = await this.getAvailableProvider('doubao', sessionId);
-      if (doubaoProvider && this.providerSupportsToolUse('doubao')) {
-        provider = doubaoProvider;
-        currentProviderName = 'doubao';
-      } else {
-        logger.warn('[LLMService] Doubao fallback not available, will proceed without tool use');
+      logger.warn(
+        `[LLMService] Provider "${currentProviderName}" doesn't support tool use, trying tool-use capable providers`,
+      );
+
+      // Try each tool-use provider in priority order
+      let foundToolUseProvider = false;
+      for (const toolProviderName of this.fallbackConfig.toolUseProviders) {
+        // Skip unhealthy providers
+        if (this.healthCheckManager && !this.healthCheckManager.isServiceHealthySync(toolProviderName)) {
+          logger.debug(`[LLMService] Skipping unhealthy tool-use provider "${toolProviderName}"`);
+          continue;
+        }
+
+        const toolProvider = await this.getAvailableProvider(toolProviderName, sessionId);
+        if (toolProvider && this.providerSupportsToolUse(toolProviderName)) {
+          provider = toolProvider;
+          currentProviderName = toolProviderName;
+          foundToolUseProvider = true;
+          logger.info(`[LLMService] Using tool-use capable provider "${toolProviderName}"`);
+          break;
+        }
+      }
+
+      if (!foundToolUseProvider) {
+        logger.warn('[LLMService] No tool-use capable provider available, will proceed without tool use');
         // Proceed without tool use - just generate normally
         return {
           ...(await this.generateMessages(messages, options, providerName)),
@@ -404,24 +512,36 @@ export class LLMService {
   }
 
   /**
-   * Check if provider supports tool use
+   * Check if provider supports tool use.
+   * Uses configured toolUseProviders list instead of hardcoded values.
    */
   private providerSupportsToolUse(providerName: string): boolean {
-    // List of providers that support tool/function calling
-    return this.supportedProviders.includes(providerName.toLowerCase());
+    return this.fallbackConfig.toolUseProviders.includes(providerName.toLowerCase());
   }
 
   /**
    * Get alternative provider names for a capability, excluding the specified provider.
-   * Ordered by cost (cheapest first) using providerFallbackOrder.
+   * Ordered by cost (cheapest first) using configured fallbackOrder.
+   * Filters out unhealthy providers when health service is available.
    * Providers not in the fallback order list are appended at the end.
    */
   getAlternativeProviderNames(excludeProvider?: string): string[] {
     const allProviders = this.aiManager.getProvidersForCapability('llm');
-    const available = allProviders.filter((p) => p.name !== excludeProvider && p.isAvailable()).map((p) => p.name);
+    const available = allProviders
+      .filter((p) => {
+        if (p.name === excludeProvider) return false;
+        if (!p.isAvailable()) return false;
+        // Filter out unhealthy providers
+        if (this.healthCheckManager && !this.healthCheckManager.isServiceHealthySync(p.name)) {
+          logger.debug(`[LLMService] Excluding unhealthy provider "${p.name}" from alternatives`);
+          return false;
+        }
+        return true;
+      })
+      .map((p) => p.name);
 
     // Sort by fallback order (cheapest first); unknown providers go to end
-    const orderMap = new Map(this.providerFallbackOrder.map((name, i) => [name, i]));
+    const orderMap = new Map(this.fallbackConfig.fallbackOrder.map((name, i) => [name, i]));
     return available.sort((a, b) => (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999));
   }
 

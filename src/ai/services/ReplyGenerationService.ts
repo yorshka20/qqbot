@@ -1167,8 +1167,8 @@ export class ReplyGenerationService {
     });
 
     const aiConfig = this.config.getAIConfig();
-    const convertLlmProvider = aiConfig?.convertLlm?.provider ?? 'deepseek';
-    const convertLlmModel = aiConfig?.convertLlm?.model ?? '';
+    const convertLlmProvider = aiConfig?.taskProviders?.convert ?? aiConfig?.defaultProviders?.llm ?? 'deepseek';
+    const convertLlmModel = aiConfig?.taskProviders?.convertModel ?? '';
 
     const cardResponse = await this.llmService.generateLite(
       prompt,

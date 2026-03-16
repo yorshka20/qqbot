@@ -16,11 +16,11 @@ import { PluginBase } from '../PluginBase';
 
 export interface MemoryPluginConfig {
   /** Group IDs that have memory extraction enabled. */
-  groups?: string[];
+  groups: string[];
   /** Debounce delay in ms before running extract after last message. Default 600000 (10 min). Use a larger value (e.g. 10 min) to avoid extract running too often and filling the queue; small values (e.g. 10s) cause frequent group extracts and can make memory extract appear to run non-stop. */
-  debounceMs?: number;
+  debounceMs: number;
   /** LLM provider for extract (e.g. "ollama"). Default "ollama". */
-  extractProvider?: string;
+  extractProvider: string;
   /** Full-history extract (via MemoryTrigger): max character length per extract chunk. Default 15000. */
   fullHistoryMaxLength?: number;
   /** Full-history progress file path (one line per "groupId:userId"). Default "data/memory_full_history_progress.txt". */
@@ -44,8 +44,8 @@ export class MemoryPlugin extends PluginBase {
   private groupIds = new Set<string>();
   /** Debounce delay in ms; extract runs after this idle time since last message. */
   private debounceMs = DEFAULT_DEBOUNCE_MS;
-  /** LLM provider name for extract + analyze (e.g. "ollama"). */
-  private extractProvider = 'doubao';
+  /** LLM provider name for extract + analyze (from config). */
+  private extractProvider = '';
   /** Full-history extract (MemoryTrigger): max character length per extract chunk. */
   private fullHistoryMaxLength = DEFAULT_FULL_HISTORY_MAX_LENGTH;
   /** Full-history progress file path (one line per "groupId:userId"). */
@@ -76,10 +76,12 @@ export class MemoryPlugin extends PluginBase {
     this.botSelfId = config.getConfig().bot.selfId;
 
     const pluginConfig = this.pluginConfig?.config as MemoryPluginConfig | undefined;
-    if (pluginConfig?.groups?.length) {
+
+    if (pluginConfig?.groups.length) {
       this.groupIds = new Set(pluginConfig.groups);
       this.debounceMs = pluginConfig.debounceMs ?? DEFAULT_DEBOUNCE_MS;
-      this.extractProvider = pluginConfig.extractProvider ?? 'ollama';
+      // Plugin config takes precedence over AI config
+      this.extractProvider = pluginConfig.extractProvider;
       this.fullHistoryMaxLength = pluginConfig.fullHistoryMaxLength ?? DEFAULT_FULL_HISTORY_MAX_LENGTH;
       this.fullHistoryProgressFile = pluginConfig.fullHistoryProgressFile ?? DEFAULT_FULL_HISTORY_PROGRESS_FILE;
       this.maxMessagesPerExtract = pluginConfig.maxMessagesPerExtract ?? DEFAULT_MAX_MESSAGES_PER_EXTRACT;

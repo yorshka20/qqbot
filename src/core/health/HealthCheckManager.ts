@@ -10,6 +10,7 @@ import { HealthStatus } from './types';
 interface CachedHealthCheck {
   result: HealthCheckResult;
   expiresAt: number;
+  consecutiveFailures: number;
 }
 
 /**
@@ -25,6 +26,7 @@ export class HealthCheckManager {
   private defaultCacheDuration = 60000; // 60 seconds
   private defaultTimeout = 5000; // 5 seconds
   private defaultRetries = 0; // No retries by default
+  private failureThreshold = 2; // Mark unhealthy after this many consecutive failures
 
   /**
    * Register a service for health check management
@@ -176,11 +178,91 @@ export class HealthCheckManager {
   private cacheResult(serviceName: string, result: HealthCheckResult): void {
     const config = this.configs.get(serviceName);
     const cacheDuration = config?.cacheDuration ?? this.defaultCacheDuration;
+    const existing = this.cache.get(serviceName);
+
+    // Track consecutive failures
+    let consecutiveFailures = 0;
+    if (result.status === HealthStatus.UNHEALTHY) {
+      consecutiveFailures = (existing?.consecutiveFailures ?? 0) + 1;
+    }
 
     this.cache.set(serviceName, {
       result,
       expiresAt: Date.now() + cacheDuration,
+      consecutiveFailures,
     });
+  }
+
+  /**
+   * Reactively mark a service as healthy (e.g., after a successful API call).
+   * Resets consecutive failures and caches a HEALTHY result.
+   */
+  markServiceHealthy(serviceName: string): void {
+    const config = this.configs.get(serviceName);
+    const cacheDuration = config?.cacheDuration ?? this.defaultCacheDuration;
+
+    const result: HealthCheckResult = {
+      status: HealthStatus.HEALTHY,
+      timestamp: Date.now(),
+      message: 'Marked healthy reactively',
+    };
+
+    this.cache.set(serviceName, {
+      result,
+      expiresAt: Date.now() + cacheDuration,
+      consecutiveFailures: 0,
+    });
+  }
+
+  /**
+   * Reactively mark a service as unhealthy (e.g., after a failed API call).
+   * Increments consecutive failures. If threshold reached, caches UNHEALTHY status.
+   */
+  markServiceUnhealthy(serviceName: string, message?: string): void {
+    const config = this.configs.get(serviceName);
+    const cacheDuration = config?.cacheDuration ?? this.defaultCacheDuration;
+    const existing = this.cache.get(serviceName);
+    const consecutiveFailures = (existing?.consecutiveFailures ?? 0) + 1;
+
+    // Only mark as UNHEALTHY if threshold reached
+    const status = consecutiveFailures >= this.failureThreshold ? HealthStatus.UNHEALTHY : HealthStatus.HEALTHY;
+
+    const result: HealthCheckResult = {
+      status,
+      timestamp: Date.now(),
+      message: message ?? `Failed ${consecutiveFailures} time(s)`,
+    };
+
+    this.cache.set(serviceName, {
+      result,
+      expiresAt: Date.now() + cacheDuration,
+      consecutiveFailures,
+    });
+
+    if (status === HealthStatus.UNHEALTHY) {
+      logger.warn(
+        `[HealthCheckManager] Service ${serviceName} marked UNHEALTHY after ${consecutiveFailures} consecutive failures`,
+      );
+    }
+  }
+
+  /**
+   * Synchronous check if a service is healthy based on cached status.
+   * Returns true if no cache entry exists (unknown = assume healthy for fallback).
+   */
+  isServiceHealthySync(serviceName: string): boolean {
+    const cached = this.cache.get(serviceName);
+    if (!cached) {
+      return true; // No status = assume healthy
+    }
+    return cached.result.status === HealthStatus.HEALTHY;
+  }
+
+  /**
+   * Get consecutive failure count for a service.
+   */
+  getConsecutiveFailures(serviceName: string): number {
+    return this.cache.get(serviceName)?.consecutiveFailures ?? 0;
   }
 
   /**

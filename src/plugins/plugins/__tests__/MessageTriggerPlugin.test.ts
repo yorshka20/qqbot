@@ -16,10 +16,10 @@ function createMockLLMServiceForPrefixCheck(shouldReply: boolean) {
   };
 }
 
-/** Mock Config with optional liteLlm for tests. */
-function createMockConfig(liteLlm?: { provider?: string; model?: string }) {
+/** Mock Config with optional taskProviders for tests. */
+function createMockConfig(taskProviders?: { lite?: string; liteModel?: string }) {
   return {
-    getAIConfig: () => (liteLlm !== undefined ? { liteLlm } : undefined),
+    getAIConfig: () => (taskProviders !== undefined ? { taskProviders } : undefined),
   };
 }
 

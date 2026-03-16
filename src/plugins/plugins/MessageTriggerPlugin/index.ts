@@ -115,13 +115,13 @@ export class MessageTriggerPlugin extends PluginBase {
 
   /**
    * One-shot LLM check: whether the user message (which started with a provider prefix) clearly invites a reply.
-   * Uses generateLite with config ai.liteLlm when set.
+   * Uses generateLite with config ai.taskProviders.lite when set.
    * @returns true to allow reply, false to skip (fail closed on error or unrecognized response).
    */
   private async checkPrefixInvitation(messageText: string): Promise<boolean> {
     const aiConfig = this.config.getAIConfig();
-    const liteProvider = aiConfig?.liteLlm?.provider ?? 'deepseek';
-    const liteModel = aiConfig?.liteLlm?.model ?? '';
+    const liteProvider = aiConfig?.taskProviders?.lite ?? aiConfig?.defaultProviders?.llm ?? 'deepseek';
+    const liteModel = aiConfig?.taskProviders?.liteModel ?? '';
 
     try {
       const aliasMap = ProviderRouter.getProviderAliasMap();

@@ -360,8 +360,33 @@
     "useSkills": true,
     // Default providers by capability (optional)
     "defaultProviders": {
-      "llm": "ollama", // Default LLM provider
+      "llm": "deepseek", // Default LLM provider
       "text2img": "local-text2img" // t2i command defaults to local-text2img
+    },
+    // LLM fallback configuration (optional)
+    // Controls provider fallback order and tool-use capable providers
+    "llmFallback": {
+      // Ordered list of providers for fallback (by cost, cheapest first)
+      // Used when primary provider fails or is unhealthy
+      "fallbackOrder": ["deepseek", "gemini", "openai", "anthropic"],
+      // Providers that support tool/function calling (in priority order)
+      // Used when generateWithTools is called but current provider doesn't support tools
+      "toolUseProviders": ["deepseek", "openai", "anthropic"]
+    },
+    // Task-specific provider overrides (optional)
+    // Override provider for specific internal LLM tasks
+    // Falls back to defaultProviders.llm if not specified
+    "taskProviders": {
+      // Provider for memory extraction (MemoryPlugin)
+      // "memoryExtract": "deepseek",
+      // Provider for thread summarization (context compression)
+      // "summarize": "deepseek",
+      // Provider for lightweight/fast LLM calls (prefix-invitation, analysis)
+      // "lite": "deepseek",
+      // "liteModel": "deepseek-chat",
+      // Provider for convert-to-card LLM calls
+      // "convert": "deepseek",
+      // "convertModel": "deepseek-chat"
     },
     // AI providers configuration
     "providers": {

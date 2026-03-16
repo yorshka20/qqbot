@@ -5,11 +5,13 @@ import {
   AIManager,
   AIService,
   type CapabilityType,
+  type LLMFallbackConfig,
   LLMService,
   type PromptManager,
   ProviderFactory,
   ProviderSelector,
 } from '@/ai';
+import { type HealthCheckManager, ProviderHealthAdapter } from '@/core/health';
 import { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
@@ -129,12 +131,51 @@ export class ConversationInitializer {
     // Phase 3: Service Configuration
     await ConversationInitializer.configureServices(services, config);
 
-    // Phase 3.5: Register AIManager with health check manager
+    // Phase 3.5: Register AIManager with health check manager (for aggregate health)
     serviceRegistry.registerAIManagerHealthCheck(services.aiManager);
+
+    // Phase 3.6: Register each AI provider individually with HealthCheckManager
+    const healthCheckManager = container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
+    for (const provider of services.aiManager.getAllProviders()) {
+      const adapter = new ProviderHealthAdapter(provider);
+      healthCheckManager.registerService(adapter, { cacheDuration: 60000, timeout: 8000 });
+    }
+
+    // Run startup health check for all providers (async, logs results)
+    healthCheckManager
+      .checkAllServices({ force: true })
+      .then((results) => {
+        let healthy = 0;
+        let unhealthy = 0;
+        for (const result of results.values()) {
+          if (result.status === 'healthy') healthy++;
+          else unhealthy++;
+        }
+        logger.info(
+          `[ConversationInitializer] Startup health check: ${healthy}/${results.size} providers healthy`,
+        );
+        if (unhealthy > 0) {
+          const unhealthyNames = [...results.entries()]
+            .filter(([_, r]) => r.status !== 'healthy')
+            .map(([n]) => n);
+          logger.warn(`[ConversationInitializer] Unhealthy providers: ${unhealthyNames.join(', ')}`);
+        }
+      })
+      .catch((err: Error) => {
+        logger.warn('[ConversationInitializer] Startup health check failed:', err);
+      });
 
     // Phase 4: Wire AI-facing services.
     const providerSelector = new ProviderSelector(services.aiManager, conversationConfigService);
-    const llmService = new LLMService(services.aiManager, providerSelector);
+
+    // Build LLM fallback config from AI config
+    const aiConfig = config.getAIConfig();
+    const llmFallbackConfig: LLMFallbackConfig = {
+      fallbackOrder: aiConfig?.llmFallback?.fallbackOrder ?? ['deepseek', 'gemini', 'openai', 'anthropic'],
+      toolUseProviders: aiConfig?.llmFallback?.toolUseProviders ?? ['deepseek', 'openai', 'anthropic'],
+    };
+
+    const llmService = new LLMService(services.aiManager, providerSelector, healthCheckManager, llmFallbackConfig);
     container.registerInstance(DITokens.LLM_SERVICE, llmService);
 
     const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
@@ -352,9 +393,13 @@ export class ConversationInitializer {
       DITokens.PROACTIVE_THREAD_PERSISTENCE_SERVICE,
       new DefaultProactiveThreadPersistenceService(databaseManager),
     );
+    // Get summarize provider from config
+    const config = container.resolve<Config>(DITokens.CONFIG);
+    const summarizeProvider =
+      config.getAIConfig()?.taskProviders?.summarize ?? config.getAIConfig()?.defaultProviders?.llm;
     container.registerInstance(
       DITokens.THREAD_CONTEXT_COMPRESSION_SERVICE,
-      new ThreadContextCompressionService(threadService, summarizeService, promptManager),
+      new ThreadContextCompressionService(threadService, summarizeService, promptManager, summarizeProvider),
     );
 
     container.registerClass(DITokens.PROACTIVE_CONVERSATION_SERVICE, ProactiveConversationService);

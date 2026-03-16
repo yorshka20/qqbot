@@ -169,8 +169,8 @@ export class ScheduleCommand implements CommandHandler {
   private async parseWithLLM(input: string, groupId: string): Promise<ScheduleParsed | null> {
     const today = new Date().toISOString();
     const aiConfig = this.config.getAIConfig();
-    const liteProvider = aiConfig?.liteLlm?.provider ?? 'deepseek';
-    const liteModel = aiConfig?.liteLlm?.model ?? '';
+    const liteProvider = aiConfig?.taskProviders?.lite ?? aiConfig?.defaultProviders?.llm ?? 'deepseek';
+    const liteModel = aiConfig?.taskProviders?.liteModel ?? '';
 
     const prompt = this.promptManager.render('agenda.schedule_parse', {
       today,

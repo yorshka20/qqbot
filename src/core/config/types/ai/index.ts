@@ -35,8 +35,28 @@ export interface AutoSwitchConfig {
   enableVisionFallback?: boolean;
 }
 
+/**
+ * Task-specific provider configuration.
+ * Overrides defaultProviders for specific internal tasks.
+ * Each task falls back to defaultProviders.llm if not specified.
+ */
+export interface TaskProvidersConfig {
+  /** Provider for memory extraction (MemoryPlugin) */
+  memoryExtract?: string;
+  /** Provider for thread/context summarization */
+  summarize?: string;
+  /** Provider for lightweight/fast LLM calls (prefix-invitation, analysis) */
+  lite?: string;
+  /** Model override for lite provider (optional) */
+  liteModel?: string;
+  /** Provider for convert-to-card LLM calls */
+  convert?: string;
+  /** Model override for convert provider (optional) */
+  convertModel?: string;
+}
+
 export interface AIConfig {
-  // Default providers by capability
+  // Default providers by capability (llm, vision, text2img, etc.)
   defaultProviders?: DefaultProvidersConfig;
   // Provider configurations
   providers: Record<string, AIProviderConfig>;
@@ -50,15 +70,21 @@ export interface AIConfig {
    */
   useSkills?: boolean;
   /**
-   * Provider and model for lightweight/fast LLM calls (e.g. prefix-invitation, analysis).
-   * If omitted, lite callers fall back to default LLM and no model override.
+   * Task-specific provider overrides.
+   * Used by plugins and internal services for specific LLM tasks.
+   * Falls back to defaultProviders.llm if not specified.
    */
-  liteLlm?: { provider?: string; model?: string };
+  taskProviders?: TaskProvidersConfig;
   /**
-   * Provider and model for convert-to-card LLM call (cheap).
-   * If omitted, convert-to-card uses default LLM and no model override.
+   * LLM fallback configuration.
+   * Defines fallback order and tool-use capable providers.
    */
-  convertLlm?: { provider?: string; model?: string };
+  llmFallback?: {
+    /** Ordered list of provider names for fallback (by cost, cheapest first) */
+    fallbackOrder?: string[];
+    /** Providers that support tool use, in priority order */
+    toolUseProviders?: string[];
+  };
 }
 
 export interface ContextMemoryConfig {
