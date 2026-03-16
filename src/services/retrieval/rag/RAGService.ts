@@ -91,6 +91,35 @@ export class RAGService {
    * Multi-query vector search: run one search per query, merge by id (keep best score), sort by score, return up to maxTotal.
    * Dedupe and merge are done inside RAG so callers do not need to repeat this logic.
    */
+  /**
+   * Scroll points by payload filter (no vector search needed).
+   * Used for fetching always-include scope facts from RAG.
+   */
+  async scrollByFilter(
+    collection: string,
+    filter: Record<string, unknown>,
+    options?: { limit?: number },
+  ): Promise<Array<{ id: string | number; payload: Record<string, unknown> }>> {
+    await this.ensureCollectionOnce(collection);
+    const points = await this.qdrantClient.scrollPoints(collection, filter, {
+      limit: options?.limit ?? 100,
+      withPayload: true,
+    });
+    return points.map((p) => ({
+      id: p.id,
+      payload: p.payload ?? {},
+    }));
+  }
+
+  /**
+   * Delete points by payload filter.
+   * Used for cleaning up old facts before re-indexing.
+   */
+  async deleteByFilter(collection: string, filter: Record<string, unknown>): Promise<void> {
+    await this.ensureCollectionOnce(collection);
+    await this.qdrantClient.deleteByFilter(collection, filter);
+  }
+
   async vectorSearchMulti(
     collection: string,
     queries: string[],

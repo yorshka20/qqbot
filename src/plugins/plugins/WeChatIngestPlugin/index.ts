@@ -70,17 +70,40 @@ export class WeChatIngestPlugin extends PluginBase {
       });
     }
 
-    // Sync group info from PadPro API → DB (one-time on startup)
-    if (padProClient && this.db) {
-      this.syncGroupsToDb(padProClient).catch((err) =>
-        logger.warn('[WeChatIngestPlugin] Group sync failed (non-fatal):', err),
-      );
-    }
-
-    // Group name resolver: reads from DB (no API calls)
+    // Group name resolver: DB first, lazy-fetch from PadPro on cache miss
     const db = this.db;
+    const padproClient = padProClient;
     const resolveGroupName = async (convId: string): Promise<string | null> => {
-      return db.getGroupName(convId);
+      // 1. Try DB cache
+      const cached = db.getGroupName(convId);
+      if (cached) return cached;
+
+      // 2. No PadPro client — nothing we can do
+      if (!padproClient) return null;
+
+      // 3. Fetch from PadPro API and persist to DB
+      const chatroomId = convId.endsWith('@chatroom') ? convId : `${convId}@chatroom`;
+      try {
+        const infos = await padproClient.getChatRoomInfo([chatroomId]);
+        const info = infos[0];
+        if (info?.NickName) {
+          const now = new Date().toISOString();
+          db.upsertGroup({
+            chatroomId,
+            conversationId: convId,
+            nickName: info.NickName,
+            memberCount: info.MemberCount ?? 0,
+            owner: info.Owner ?? '',
+            updatedAt: now,
+          });
+          logger.info(`[WeChatIngestPlugin] Lazy-fetched group info: ${convId} → "${info.NickName}"`);
+          return info.NickName;
+        }
+        logger.warn(`[WeChatIngestPlugin] getChatRoomInfo returned no NickName for ${chatroomId}`);
+      } catch (err) {
+        logger.warn(`[WeChatIngestPlugin] Failed to fetch group info for ${chatroomId}:`, err);
+      }
+      return null;
     };
 
     // CDN image downloader via PadPro API
@@ -147,38 +170,6 @@ export class WeChatIngestPlugin extends PluginBase {
     this.db?.close();
     this.db = null;
     logger.info('[WeChatIngestPlugin] Disabled — webhook server stopped');
-  }
-
-  // ──────────────────────────────────────────────────
-  // Group sync: PadPro API → wechat_groups table
-  // ──────────────────────────────────────────────────
-
-  private async syncGroupsToDb(client: WeChatPadProClient): Promise<void> {
-    if (!this.db) return;
-
-    const groups = await client.getAllGroupList();
-    if (groups.length === 0) {
-      logger.warn('[WeChatIngestPlugin] No groups returned from PadPro API');
-      return;
-    }
-
-    const now = new Date().toISOString();
-    let synced = 0;
-    for (const g of groups) {
-      const chatroomId = g.ChatRoomName ?? '';
-      if (!chatroomId) continue;
-      const conversationId = chatroomId.replace('@chatroom', '');
-      this.db.upsertGroup({
-        chatroomId,
-        conversationId,
-        nickName: g.NickName ?? chatroomId,
-        memberCount: g.MemberCount ?? 0,
-        owner: '',
-        updatedAt: now,
-      });
-      synced++;
-    }
-    logger.info(`[WeChatIngestPlugin] Synced ${synced} groups to DB`);
   }
 
   // ──────────────────────────────────────────────────

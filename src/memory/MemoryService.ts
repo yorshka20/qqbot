@@ -783,8 +783,8 @@ export class MemoryService {
 
   /**
    * RAG-based memory filtering using semantic search.
-   * Searches at fact level for fine-grained retrieval.
-   * Requires ragService to be set and enabled.
+   * ALL memory is fetched from RAG - markdown files are NOT read at runtime.
+   * Always-include scopes are fetched via payload filter (scroll), other scopes via vector search.
    */
   private async getFilteredMemoryWithRAG(
     groupId: string,
@@ -799,51 +799,47 @@ export class MemoryService {
     const alwaysIncludeScopes = options.alwaysIncludeScopes ?? ['instruction', 'rule'];
     const minScore = options.minRelevanceScore ?? 0.5;
 
-    // Get all sections for stats and always-include handling
-    const groupMemoryRaw = this.getGroupMemoryText(groupId);
-    const groupSections = this.parseMemorySections(groupMemoryRaw);
-    const userMemoryRaw = userId ? this.getUserMemoryText(groupId, userId) : '';
-    const userSections = userId ? this.parseMemorySections(userMemoryRaw) : [];
+    // Fetch always-include scopes from RAG via payload filter (no vector search)
+    const alwaysIncludeResults = await this.ragService.getFactsByCoreScopes(groupId, alwaysIncludeScopes, {
+      userId,
+      includeGroupMemory: true,
+    });
 
-    // Extract always-include sections (instruction, rule) - these are fully included
-    // Matches both full scope and core scope (e.g., 'instruction' matches 'instruction:special')
-    const alwaysIncludeGroup = groupSections.filter((s) => this.shouldAlwaysInclude(s, alwaysIncludeScopes));
-    const alwaysIncludeUser = userSections.filter((s) => this.shouldAlwaysInclude(s, alwaysIncludeScopes));
+    // Format always-include results
+    const { groupMemoryText: alwaysGroupText, userMemoryText: alwaysUserText } =
+      this.ragService.formatResultsAsMemoryText(alwaysIncludeResults);
 
-    // Search for semantically relevant facts (fine-grained search)
+    // Search for semantically relevant facts (fine-grained vector search)
     const searchResults = await this.ragService.searchRelevantFacts(groupId, options.userMessage, {
       userId,
       includeGroupMemory: true,
-      limit: 15, // More results since these are individual facts
+      limit: 15,
       minScore,
     });
 
-    // Filter out facts from always-include scopes and format results
-    // Check against both full scope and core scope
+    // Filter out facts from always-include scopes (already fetched above)
     const relevantResults = searchResults.filter((r) => {
       const parsedScope = this.parseScope(r.fact.scope);
       return !alwaysIncludeScopes.includes(r.fact.scope) && !alwaysIncludeScopes.includes(parsedScope.core);
     });
 
-    // Use RAG service to format results, respecting length limit
+    // Format vector search results
     const { groupMemoryText: ragGroupText, userMemoryText: ragUserText } =
       this.ragService.formatResultsAsMemoryText(relevantResults);
 
-    // Combine always-include with RAG results
+    // Combine always-include with RAG results, respecting length budget
     const groupParts: string[] = [];
     const userParts: string[] = [];
     let currentLength = 0;
 
     // Add always-include sections first
-    for (const section of alwaysIncludeGroup) {
-      const text = `[${section.scope}]\n${section.content}`;
-      groupParts.push(text);
-      currentLength += text.length;
+    if (alwaysGroupText) {
+      groupParts.push(alwaysGroupText);
+      currentLength += alwaysGroupText.length;
     }
-    for (const section of alwaysIncludeUser) {
-      const text = `[${section.scope}]\n${section.content}`;
-      userParts.push(text);
-      currentLength += text.length;
+    if (alwaysUserText) {
+      userParts.push(alwaysUserText);
+      currentLength += alwaysUserText.length;
     }
 
     // Add RAG results within budget
@@ -859,17 +855,19 @@ export class MemoryService {
     const userMemoryText = userParts.join('\n\n');
 
     // Count included facts for stats
-    const includedGroupFacts = relevantResults.filter((r) => r.isGroupMemory).length;
-    const includedUserFacts = relevantResults.filter((r) => !r.isGroupMemory).length;
+    const alwaysGroupCount = alwaysIncludeResults.filter((r) => r.isGroupMemory).length;
+    const alwaysUserCount = alwaysIncludeResults.filter((r) => !r.isGroupMemory).length;
+    const relevantGroupCount = relevantResults.filter((r) => r.isGroupMemory).length;
+    const relevantUserCount = relevantResults.filter((r) => !r.isGroupMemory).length;
 
     return {
       groupMemoryText,
       userMemoryText,
       stats: {
-        groupIncluded: alwaysIncludeGroup.length + includedGroupFacts,
-        groupTotal: groupSections.length,
-        userIncluded: alwaysIncludeUser.length + includedUserFacts,
-        userTotal: userSections.length,
+        groupIncluded: alwaysGroupCount + relevantGroupCount,
+        groupTotal: alwaysGroupCount + relevantGroupCount, // Total from RAG perspective
+        userIncluded: alwaysUserCount + relevantUserCount,
+        userTotal: alwaysUserCount + relevantUserCount,
       },
     };
   }

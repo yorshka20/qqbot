@@ -177,8 +177,32 @@ export class MemoryRAGService {
   }
 
   /**
+   * Delete all existing facts for a user (or group memory) from RAG.
+   * Must be called before re-indexing to prevent orphan facts when fact count changes.
+   */
+  async deleteUserFacts(groupId: string, userId: string): Promise<void> {
+    if (!this.ragService.isEnabled()) return;
+
+    const collection = this.getCollectionName(groupId);
+    const filter = {
+      must: [
+        { key: 'groupId', match: { value: groupId } },
+        { key: 'userId', match: { value: userId } },
+      ],
+    };
+
+    try {
+      await this.ragService.deleteByFilter(collection, filter);
+      logger.info(`[MemoryRAGService] Deleted existing facts for ${groupId}/${userId}`);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.warn('[MemoryRAGService] Failed to delete old facts (may not exist yet):', err.message);
+    }
+  }
+
+  /**
    * Index memory sections to RAG for a specific user or group.
-   * Splits each section into individual facts for fine-grained retrieval.
+   * Deletes old facts first to prevent orphans, then splits and indexes new facts.
    *
    * @param groupId - Group ID
    * @param userId - User ID (or GROUP_MEMORY_USER_ID for group memory)
@@ -197,6 +221,9 @@ export class MemoryRAGService {
 
     const collection = this.getCollectionName(groupId);
     const isGroupMemory = userId === GROUP_MEMORY_USER_ID;
+
+    // Delete old facts for this user first to prevent orphans
+    await this.deleteUserFacts(groupId, userId);
 
     // Split all sections into individual facts
     const allFacts: MemoryFact[] = [];
@@ -380,6 +407,81 @@ export class MemoryRAGService {
       groupMemoryText: formatMap(groupFacts),
       userMemoryText: formatMap(userFacts),
     };
+  }
+
+  /**
+   * Fetch all facts for specific core scopes from RAG (no vector search, payload filter only).
+   * Used for always-include scopes like 'instruction' and 'rule'.
+   *
+   * @param groupId - Group ID
+   * @param coreScopes - Core scopes to fetch (e.g., ['instruction', 'rule'])
+   * @param options - Optional userId filter
+   * @returns Facts grouped by scope
+   */
+  async getFactsByCoreScopes(
+    groupId: string,
+    coreScopes: string[],
+    options?: { userId?: string; includeGroupMemory?: boolean },
+  ): Promise<MemoryRAGSearchResult[]> {
+    if (!this.ragService.isEnabled() || coreScopes.length === 0) {
+      return [];
+    }
+
+    const collection = this.getCollectionName(groupId);
+    const includeGroupMemory = options?.includeGroupMemory !== false;
+
+    // Build filter: must match one of the core scopes AND match user/group criteria
+    const scopeConditions = coreScopes.map((scope) => ({
+      key: 'coreScope',
+      match: { value: scope },
+    }));
+
+    const mustConditions: Array<Record<string, unknown>> = [
+      { should: scopeConditions },
+    ];
+
+    if (options?.userId) {
+      if (includeGroupMemory) {
+        mustConditions.push({
+          should: [
+            { key: 'userId', match: { value: options.userId } },
+            { key: 'isGroupMemory', match: { value: true } },
+          ],
+        });
+      } else {
+        mustConditions.push({
+          key: 'userId',
+          match: { value: options.userId },
+        });
+      }
+    }
+
+    const filter = { must: mustConditions };
+
+    try {
+      const points = await this.ragService.scrollByFilter(collection, filter, { limit: 200 });
+
+      return points.map((p) => {
+        const scope = (p.payload?.scope as string) ?? 'unknown';
+        const coreScope = (p.payload?.coreScope as string) ?? scope;
+        return {
+          fact: {
+            scope,
+            coreScope,
+            subtag: p.payload?.subtag as string | undefined,
+            content: (p.payload?.factContent as string) ?? '',
+            index: (p.payload?.factIndex as number) ?? 0,
+          },
+          score: 1.0, // Always-include, so max score
+          userId: (p.payload?.userId as string) ?? '',
+          isGroupMemory: (p.payload?.isGroupMemory as boolean) ?? false,
+        };
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.warn('[MemoryRAGService] Failed to fetch facts by core scopes:', err.message);
+      return [];
+    }
   }
 
   /**

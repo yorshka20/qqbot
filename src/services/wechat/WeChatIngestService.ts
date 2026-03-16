@@ -473,6 +473,21 @@ export class WeChatIngestService {
     // Official account push: FromUserName is gh_xxx (not a chatroom, not a user wxid)
     const isOAPush = msg.FromUserName.startsWith('gh_');
 
+    // Pre-warm group name cache in background (non-blocking) for group messages
+    const isGroup = msg.FromUserName.endsWith('@chatroom');
+    if (isGroup && this.resolveGroupName) {
+      const convId = msg.FromUserName.replace('@chatroom', '');
+      if (!this.groupNameCache.has(convId)) {
+        this.resolveGroupName(convId)
+          .then((name) => {
+            if (name && !this.groupNameCache.has(convId)) {
+              this.groupNameCache.set(convId, name.replace(/[/\\:*?"<>|]/g, '_').trim() || convId);
+            }
+          })
+          .catch(() => {}); // errors logged inside resolveGroupName
+      }
+    }
+
     switch (category) {
       case 'text':
         await this.handleTextMessage(msg);

@@ -124,15 +124,15 @@ function loadLLMConfig(): LLMConfig {
   const providers = aiConfig?.providers as Record<string, unknown> | undefined;
 
   // Try Doubao first, then DeepSeek
-  const doubaoConfig = providers?.doubao as Record<string, unknown> | undefined;
-  if (doubaoConfig?.apiKey) {
-    return {
-      provider: 'doubao',
-      apiKey: doubaoConfig.apiKey as string,
-      baseURL: (doubaoConfig.baseURL as string) || 'https://ark.cn-beijing.volces.com/api/v3',
-      model: (doubaoConfig.model as string) || 'doubao-seed-1-6-lite-251015',
-    };
-  }
+  // const doubaoConfig = providers?.doubao as Record<string, unknown> | undefined;
+  // if (doubaoConfig?.apiKey) {
+  //   return {
+  //     provider: 'doubao',
+  //     apiKey: doubaoConfig.apiKey as string,
+  //     baseURL: (doubaoConfig.baseURL as string) || 'https://ark.cn-beijing.volces.com/api/v3',
+  //     model: (doubaoConfig.model as string) || 'doubao-seed-1-6-lite-251015',
+  //   };
+  // }
 
   const deepseekConfig = providers?.deepseek as Record<string, unknown> | undefined;
   if (deepseekConfig?.apiKey) {
@@ -506,11 +506,7 @@ async function indexMemoryToRAG(
 // LLM Integration (Doubao / DeepSeek - OpenAI-compatible API)
 // ============================================================================
 
-async function callLLM(
-  config: LLMConfig,
-  systemPrompt: string,
-  userPrompt: string,
-): Promise<string> {
+async function callLLM(config: LLMConfig, systemPrompt: string, userPrompt: string): Promise<string> {
   const url = `${config.baseURL.replace(/\/$/, '')}/chat/completions`;
 
   const response = await fetch(url, {
@@ -526,7 +522,7 @@ async function callLLM(
         { role: 'user', content: userPrompt },
       ],
       temperature: 0.3,
-      max_tokens: 10000,
+      max_tokens: 8192,
       stream: false,
     }),
   });
@@ -635,11 +631,7 @@ ${scopeDescStr}
 // Main Functions
 // ============================================================================
 
-async function reformatMemory(
-  groupId: string,
-  userId: string | null,
-  llmConfig: LLMConfig,
-): Promise<string | null> {
+async function reformatMemory(groupId: string, userId: string | null, llmConfig: LLMConfig): Promise<string | null> {
   const content = readMemoryFile(groupId, userId);
   if (!content || !content.trim()) {
     console.log(`No content found for group=${groupId} user=${userId ?? 'GROUP'}`);
@@ -780,6 +772,104 @@ async function cmdRagAll(groupId: string): Promise<void> {
   console.log(`\n=== Total: ${totalFacts} facts indexed ===`);
 }
 
+/**
+ * Delete all existing facts for a user from Qdrant before re-indexing.
+ */
+async function deleteUserFactsFromQdrant(
+  config: RAGConfig,
+  collection: string,
+  groupId: string,
+  userId: string,
+): Promise<void> {
+  const url = `${config.qdrant.url.replace(/\/$/, '')}/collections/${collection}/points/delete`;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (config.qdrant.apiKey) {
+    headers['api-key'] = config.qdrant.apiKey;
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      filter: {
+        must: [
+          { key: 'groupId', match: { value: groupId } },
+          { key: 'userId', match: { value: userId } },
+        ],
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    // Don't throw on "not found" - collection may not exist yet
+    if (!text.toLowerCase().includes('not found') && response.status !== 404) {
+      throw new Error(`Qdrant delete error: ${response.status} ${text}`);
+    }
+  }
+  console.log(`Deleted old facts for ${userId} from ${collection}`);
+}
+
+/**
+ * Index from migration directory: reads from data/memory_migration/<groupId>/
+ * Deletes old facts before inserting to prevent orphans.
+ */
+async function cmdRagMigration(groupId: string): Promise<void> {
+  const migrationDir = join(process.cwd(), MIGRATION_OUTPUT_DIR, groupId);
+
+  if (!existsSync(migrationDir)) {
+    console.error(`Migration directory not found: ${migrationDir}`);
+    return;
+  }
+
+  const files = readdirSync(migrationDir).filter((f) => f.endsWith('.txt'));
+  if (files.length === 0) {
+    console.log(`No .txt files found in ${migrationDir}`);
+    return;
+  }
+
+  const ragConfig = loadRAGConfig();
+  console.log(`Using RAG: Ollama=${ragConfig.ollama.url} model=${ragConfig.ollama.model}`);
+  console.log(`           Qdrant=${ragConfig.qdrant.url}`);
+  console.log(`Found ${files.length} memory files in migration dir\n`);
+
+  const collection = getCollectionName(groupId);
+  await ensureQdrantCollection(ragConfig, collection);
+
+  let totalFacts = 0;
+
+  for (const filename of files) {
+    const filePath = join(migrationDir, filename);
+    const content = readFileSync(filePath, 'utf-8');
+
+    if (!content.trim()) {
+      console.log(`Skipping empty file: ${filename}`);
+      continue;
+    }
+
+    const isGroup = filename === GROUP_MEMORY_FILENAME;
+    const userId = isGroup ? null : filename.replace('.txt', '');
+    const actualUserId = userId ?? '_global_memory_';
+    const label = isGroup ? 'GROUP' : `user ${userId}`;
+
+    console.log(`\nProcessing ${label}...`);
+
+    try {
+      // Delete old facts first
+      await deleteUserFactsFromQdrant(ragConfig, collection, groupId, actualUserId);
+
+      // Index new facts
+      const count = await indexMemoryToRAG(ragConfig, groupId, userId, content);
+      totalFacts += count;
+      console.log(`Indexed ${count} facts for ${label}`);
+    } catch (error) {
+      console.error(`Failed to index ${label}:`, error);
+    }
+  }
+
+  console.log(`\n=== Total: ${totalFacts} facts indexed from migration dir ===`);
+}
+
 async function cmdMigrateAll(groupId: string): Promise<void> {
   const files = scanMemoryFiles().filter((f) => f.groupId === groupId);
 
@@ -871,6 +961,16 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'rag-migration': {
+      const groupId = args[1];
+      if (!groupId) {
+        console.error('Usage: rag-migration <groupId>');
+        process.exit(1);
+      }
+      await cmdRagMigration(groupId);
+      break;
+    }
+
     default:
       console.log(`Memory Migration Script
 
@@ -881,23 +981,21 @@ Commands:
   scan                         Scan and list all memory files
   reformat <groupId> [userId]  Reformat memory with LLM (preview in data/memory_migration/)
   save <groupId> [userId]      Save reformatted memory to original location
-  rag <groupId> [userId]       Index a single memory file to RAG
-  rag-all <groupId>            Index all memory files for a group to RAG
+  rag <groupId> [userId]       Index a single memory file to RAG (from data/memory/)
+  rag-all <groupId>            Index all memory files for a group to RAG (from data/memory/)
+  rag-migration <groupId>      Index all files from data/memory_migration/ to RAG (delete old + insert)
   migrate-all <groupId>        Reformat all memory files for a group (preview only)
 
 Workflow:
   1. scan                       - See what memory files exist
   2. reformat <groupId>         - LLM reformats to hierarchical scopes (saved to data/memory_migration/)
   3. Review the output in data/memory_migration/
-  4. save <groupId>             - Apply the reformatted memory to original location
-  5. rag-all <groupId>          - Index all memory to RAG vector store
+  4. rag-migration <groupId>    - Index migration output directly to RAG (deletes old facts first)
 
 Examples:
   bun scripts/migrate-memory-to-rag.ts scan
   bun scripts/migrate-memory-to-rag.ts reformat 123456789
-  bun scripts/migrate-memory-to-rag.ts reformat 123456789 987654321
-  bun scripts/migrate-memory-to-rag.ts save 123456789
-  bun scripts/migrate-memory-to-rag.ts rag-all 123456789
+  bun scripts/migrate-memory-to-rag.ts rag-migration 123456789
 `);
       break;
   }

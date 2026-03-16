@@ -167,4 +167,36 @@ export class QdrantClient {
       payload: r.payload,
     }));
   }
+
+  /**
+   * Scroll points by filter (no vector search, just payload filtering).
+   * Returns all matching points up to the limit.
+   */
+  async scrollPoints(
+    collection: string,
+    filter: Record<string, unknown>,
+    options: { limit?: number; withPayload?: boolean } = {},
+  ): Promise<Array<{ id: string | number; payload?: Record<string, unknown> }>> {
+    const body = {
+      filter,
+      limit: options.limit ?? 100,
+      with_payload: options.withPayload ?? true,
+    };
+
+    const response = await this.httpClient.post<{ result?: { points?: Array<{ id: string | number; payload?: Record<string, unknown> }> } }>(
+      `/collections/${collection}/points/scroll`,
+      body,
+    );
+
+    return response.result?.points ?? [];
+  }
+
+  /**
+   * Delete points by filter.
+   * Uses POST /collections/{name}/points/delete with filter body.
+   */
+  async deleteByFilter(collection: string, filter: Record<string, unknown>): Promise<void> {
+    await this.httpClient.post(`/collections/${collection}/points/delete`, { filter });
+    logger.debug(`[QdrantClient] Deleted points by filter from ${collection}`);
+  }
 }

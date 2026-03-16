@@ -114,12 +114,36 @@ export class ProactiveReplyContextBuilder {
     }
   }
 
-  /** Group + optional user memory section (## 关于本群的记忆 / ## 关于当前发言用户的记忆). */
-  getMemoryContext(groupId: string, userId?: string): string {
+  /**
+   * Group + optional user memory section (## 关于本群的记忆 / ## 关于当前发言用户的记忆).
+   * Uses RAG semantic search when available for context-aware memory filtering.
+   * @param userMessage - Optional user message for RAG relevance matching
+   */
+  async getMemoryContext(groupId: string, userId?: string, userMessage?: string): Promise<string> {
     if (!this.deps.memoryService) {
       return '';
     }
-    const { groupMemoryText, userMemoryText } = this.deps.memoryService.getMemoryTextForReply(groupId, userId);
+
+    let groupMemoryText: string;
+    let userMemoryText: string;
+
+    // Use RAG-based async filtering when available and userMessage is provided
+    if (this.deps.memoryService.isRAGEnabled() && userMessage?.trim()) {
+      const result = await this.deps.memoryService.getFilteredMemoryForReplyAsync(groupId, userId, {
+        userMessage,
+        maxLength: 2000,
+        alwaysIncludeScopes: ['instruction', 'rule'],
+        minRelevanceScore: 0.5,
+      });
+      groupMemoryText = result.groupMemoryText;
+      userMemoryText = result.userMemoryText;
+    } else {
+      // Fallback to direct file read when RAG not available
+      const result = this.deps.memoryService.getMemoryTextForReply(groupId, userId);
+      groupMemoryText = result.groupMemoryText;
+      userMemoryText = result.userMemoryText;
+    }
+
     const parts: string[] = [];
     if (groupMemoryText) {
       parts.push(`## 关于本群的记忆\n\n${this.normalizeStaticBlock(groupMemoryText)}`);
@@ -171,16 +195,18 @@ export class ProactiveReplyContextBuilder {
       historyEntries = replaced;
     }
     const preferenceText = this.getPreferenceText(preferenceKey);
-    const memoryContext = this.getMemoryContext(thread.groupId, triggerUserId);
-    const retrievedContext = await this.getRetrievedContext(preferenceKey, topicOrQuery, {
-      searchQueries,
-      fetchProgressNotifier,
-    });
     // Use trigger user message for RAG (same as reply flow): last user message in thread, fallback to topic
     const lastUserMsg = [...thread.messages].reverse().find((m) => !m.isBotReply);
     const ragQuery = lastUserMsg?.content?.trim() || topicOrQuery;
-    const retrievedConversationSection = await this.getConversationRagSection(thread.groupId, ragQuery);
     const lastUserMessage = lastUserMsg?.content?.trim() ?? '';
+    const [memoryContext, retrievedContext, retrievedConversationSection] = await Promise.all([
+      this.getMemoryContext(thread.groupId, triggerUserId, ragQuery),
+      this.getRetrievedContext(preferenceKey, topicOrQuery, {
+        searchQueries,
+        fetchProgressNotifier,
+      }),
+      this.getConversationRagSection(thread.groupId, ragQuery),
+    ]);
     return {
       preferenceText,
       threadContext,
@@ -213,16 +239,18 @@ export class ProactiveReplyContextBuilder {
   ): Promise<ProactiveReplyInjectContext> {
     const threadContext = this.getThreadContextFromEntries(filteredEntries);
     const preferenceText = this.getPreferenceText(preferenceKey);
-    const memoryContext = this.getMemoryContext(groupId, triggerUserId);
-    const retrievedContext = await this.getRetrievedContext(preferenceKey, topicOrQuery, {
-      searchQueries,
-      fetchProgressNotifier,
-    });
     // Use trigger user message for RAG (same as reply flow): last user message in entries, fallback to topic
     const lastUserEntry = [...filteredEntries].reverse().find((e) => !e.isBotReply);
     const ragQuery = lastUserEntry?.content?.trim() || topicOrQuery;
-    const retrievedConversationSection = await this.getConversationRagSection(groupId, ragQuery);
     const lastUserMessage = lastUserEntry?.content?.trim() ?? topicOrQuery.trim();
+    const [memoryContext, retrievedContext, retrievedConversationSection] = await Promise.all([
+      this.getMemoryContext(groupId, triggerUserId, ragQuery),
+      this.getRetrievedContext(preferenceKey, topicOrQuery, {
+        searchQueries,
+        fetchProgressNotifier,
+      }),
+      this.getConversationRagSection(groupId, ragQuery),
+    ]);
     return {
       preferenceText,
       threadContext,
