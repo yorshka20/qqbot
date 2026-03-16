@@ -89,7 +89,7 @@ export class AgendaService {
     const item = await accessor.create({
       ...data,
       cooldownMs: data.cooldownMs ?? 60_000,
-      maxSteps: data.maxSteps ?? 3,
+      maxSteps: data.maxSteps ?? 15,
       enabled: data.enabled ?? true,
       lastRunAt: undefined,
       nextRunAt: undefined,

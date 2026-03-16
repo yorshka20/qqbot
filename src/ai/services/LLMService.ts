@@ -16,6 +16,7 @@ import type {
   ToolUseGenerateResponse,
 } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
+import { containsDSML, parseDSMLFunctionCall, stripDSML } from '../utils/dsmlParser';
 
 /**
  * LLM Service
@@ -389,6 +390,12 @@ export class LLMService {
     logger.warn(`[LLMService] Max tool rounds (${maxRounds}) reached, forcing final response`);
     const finalResponse = await this.generateMessages(currentMessages, options, currentProviderName);
 
+    // Strip DSML from final text — model may still attempt tool calls via text when tools are absent
+    if (finalResponse.text && containsDSML(finalResponse.text)) {
+      logger.warn('[LLMService] Stripping DSML text tool call from final response (max rounds exceeded)');
+      finalResponse.text = stripDSML(finalResponse.text);
+    }
+
     return {
       ...finalResponse,
       toolCalls: allToolCalls,
@@ -476,6 +483,20 @@ export class LLMService {
     const lastContent = messages[messages.length - 1]?.content;
     const prompt = lastContent !== undefined ? contentToPlainString(lastContent) : '';
     const response = await this.generate(prompt, { ...(options ?? {}), messages, tools }, providerName);
+
+    // Fallback: if no structured functionCall but text contains DSML, parse it
+    if (!response.functionCall && response.text && containsDSML(response.text)) {
+      const dsmlCall = parseDSMLFunctionCall(response.text);
+      if (dsmlCall) {
+        logger.debug(`[LLMService] Parsed DSML text function call: ${dsmlCall.name}`);
+        response.functionCall = {
+          name: dsmlCall.name,
+          arguments: JSON.stringify(dsmlCall.arguments),
+        };
+        response.text = stripDSML(response.text);
+      }
+    }
+
     return {
       ...response,
       functionCall: response.functionCall,

@@ -274,8 +274,8 @@ export class ScheduleFileService {
     const userId = meta.userId;
     const cooldownRaw = meta.cooldown ?? '60000';
     const cooldownMs = this.parseDuration(cooldownRaw);
-    const stepsRaw = meta.steps ?? '3';
-    const maxSteps = Math.max(1, Number.parseInt(stepsRaw, 10) || 3);
+    const stepsRaw = meta.steps ?? '15';
+    const maxSteps = Math.max(1, Number.parseInt(stepsRaw, 10) || 15);
     const enabledRaw = meta.enabled ?? 'true';
     const enabled = enabledRaw.toLowerCase() !== 'false' && enabledRaw !== '0';
     const eventFilter = meta.eventFilter;

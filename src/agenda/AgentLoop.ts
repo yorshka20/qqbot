@@ -101,7 +101,7 @@ export class AgentLoop {
         messages,
         tools,
         {
-          maxToolRounds: Math.max(1, item.maxSteps ?? 3),
+          maxToolRounds: Math.max(1, item.maxSteps ?? 15),
           toolExecutor,
         },
         DEFAULT_PROVIDER,
