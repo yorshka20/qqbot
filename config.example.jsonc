@@ -269,6 +269,20 @@
           "coldStartBatchSize": 40
         }
       },
+      // GroupNotice Plugin - notifies group member changes (join/leave)
+      // Only sends notifications in configured groups
+      {
+        "name": "groupNotice",
+        "enabled": false,
+        "config": {
+          // Group IDs to enable member change notifications
+          "groupIds": ["123456789"],
+          // Custom join message template (placeholders: {userId}, {groupId})
+          "joinMessage": "欢迎新成员 {userId} 加入群聊！",
+          // Custom leave message template (placeholders: {userId}, {groupId})
+          "leaveMessage": "成员 {userId} 已离开群聊。"
+        }
+      },
       // Gacha Plugin - one-click NAI prompt generation (DeepSeek) then proxy to /nai
       {
         "name": "gacha",
