@@ -306,6 +306,9 @@ export class WeChatIngestService {
   private readonly eventBridge: WechatEventBridge | null;
   /** Cache: conversationId → sanitized folder name */
   private groupNameCache = new Map<string, string>();
+  /** Dedup: recently seen NewMsgId values to prevent duplicate processing */
+  private seenMsgIds = new Set<string>();
+  private static readonly SEEN_MSG_MAX = 5000;
   private totalReceived = 0;
 
   constructor(opts: {
@@ -424,6 +427,26 @@ export class WeChatIngestService {
 
     const category = classifyMessage(msg);
     this.totalReceived++;
+
+    // Deduplicate by NewMsgId — WeChat webhooks may deliver the same message multiple times
+    const msgIdStr = String(msg.NewMsgId);
+    if (msgIdStr && this.seenMsgIds.has(msgIdStr)) {
+      logger.debug(`[WeChatIngestService] Duplicate message skipped | NewMsgId=${msgIdStr}`);
+      return new Response('OK', { status: 200 });
+    }
+    if (msgIdStr) {
+      this.seenMsgIds.add(msgIdStr);
+      // Prevent unbounded growth: prune oldest entries when limit reached
+      if (this.seenMsgIds.size > WeChatIngestService.SEEN_MSG_MAX) {
+        const iter = this.seenMsgIds.values();
+        // Delete the oldest ~20% to avoid pruning on every message
+        const pruneCount = Math.floor(WeChatIngestService.SEEN_MSG_MAX * 0.2);
+        for (let i = 0; i < pruneCount; i++) {
+          const oldest = iter.next().value;
+          if (oldest) this.seenMsgIds.delete(oldest);
+        }
+      }
+    }
 
     if (category === 'system') {
       logger.info(
