@@ -104,21 +104,29 @@ interface RawGroupItem {
 interface RawGroupInfoData {
   ChatRoomInfoList?: RawGroupInfoItem[];
   chatRoomList?: RawGroupInfoItem[];
+  contactList?: RawGroupInfoItem[];
 }
 
 interface RawGroupInfoItem {
   chatroomUsername?: StrWrapper | string;
+  userName?: StrWrapper | string;
   nickName?: StrWrapper | string;
   memberCount?: number;
   announcement?: StrWrapper | string;
   chatroomOwner?: StrWrapper | string;
+  chatRoomOwner?: string;
   memberList?: RawGroupMemberItem[];
+  newChatroomData?: { member_count?: number; chatroom_member_list?: RawGroupMemberItem[] };
 }
 
 interface RawGroupMemberItem {
   userName?: StrWrapper | string;
   nickName?: StrWrapper | string;
   displayName?: StrWrapper | string;
+  // snake_case variants from newChatroomData format
+  user_name?: string;
+  nick_name?: string;
+  display_name?: string;
 }
 
 interface RawMomentsData {
@@ -362,19 +370,24 @@ export class WeChatPadProClient {
     });
     const d = env.Data;
     if (!d) return [];
-    const list = d.ChatRoomInfoList ?? d.chatRoomList ?? [];
-    return list.map((g) => ({
-      ChatRoomName: strFieldOrStr(g.chatroomUsername),
-      NickName: strFieldOrStr(g.nickName),
-      MemberCount: g.memberCount,
-      Announcement: strFieldOrStr(g.announcement),
-      Owner: strFieldOrStr(g.chatroomOwner),
-      MemberList: (g.memberList ?? []).map((m) => ({
-        UserName: strFieldOrStr(m.userName),
-        NickName: strFieldOrStr(m.nickName),
-        DisplayName: strFieldOrStr(m.displayName),
-      })),
-    }));
+    const list = d.ChatRoomInfoList ?? d.chatRoomList ?? d.contactList ?? [];
+    return list.map((g) => {
+      // memberList may come from top-level or from newChatroomData
+      const rawMembers =
+        g.memberList ?? g.newChatroomData?.chatroom_member_list ?? [];
+      return {
+        ChatRoomName: strFieldOrStr(g.chatroomUsername) ?? strFieldOrStr(g.userName),
+        NickName: strFieldOrStr(g.nickName),
+        MemberCount: g.memberCount ?? g.newChatroomData?.member_count,
+        Announcement: strFieldOrStr(g.announcement),
+        Owner: strFieldOrStr(g.chatroomOwner) ?? g.chatRoomOwner,
+        MemberList: rawMembers.map((m) => ({
+          UserName: strFieldOrStr(m.userName) ?? m.user_name,
+          NickName: strFieldOrStr(m.nickName) ?? m.nick_name,
+          DisplayName: strFieldOrStr(m.displayName) ?? m.display_name,
+        })),
+      };
+    });
   }
 
   /** Get members of a group — groupId must include @chatroom suffix */

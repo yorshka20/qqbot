@@ -110,7 +110,9 @@ export class WechatReportTaskExecutor extends BaseTaskExecutor {
       let reportUrl: string | null = null;
       try {
         const staticServer = getStaticFileServer();
-        const baseUrl = staticServer.getBaseURL();
+        // Use webui base URL (same host, port 5173) instead of static server URL
+        const staticUrl = new URL(staticServer.getBaseURL());
+        const baseUrl = `${staticUrl.protocol}//${staticUrl.hostname}:5173`;
         reportUrl = this.reportService.getReportUrl(metadata.id, baseUrl);
       } catch {
         // Static file server may not be available

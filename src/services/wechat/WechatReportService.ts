@@ -300,7 +300,8 @@ export class WechatReportService {
         for (let i = 0; i < Math.min(stats.topGroups.length, 10); i++) {
           const g = stats.topGroups[i];
           if (!g) continue;
-          sections.push(`${i + 1}. **${g.conversationId}**: ${g.messageCount} 条消息, ${g.senderCount} 人参与`);
+          const groupName = this.digestService.resolveGroupName(g.conversationId);
+          sections.push(`${i + 1}. **${groupName}**: ${g.messageCount} 条消息, ${g.senderCount} 人参与`);
         }
         sections.push('');
       }
@@ -325,8 +326,9 @@ export class WechatReportService {
       const showGroups = groups.slice(0, maxGroups);
 
       for (const g of showGroups) {
+        const groupName = this.digestService.resolveGroupName(g.conversationId);
         sections.push(
-          `### ${g.conversationId}`,
+          `### ${groupName}`,
           `> ${g.messageCount} 条消息 | ${g.senderCount} 人发言 | 类型: ${g.categories.join(', ')}`,
           '',
           '```',

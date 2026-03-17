@@ -45,6 +45,14 @@ export interface WeChatOAArticleRow {
   fromSender: string; // wxid/nickname of who shared it in chat (empty for oa_push)
 }
 
+/** Contact info row cached from PadPro API or group member lists */
+export interface WeChatContactRow {
+  wxid: string; // e.g. "wxid_5vfmwys8g4w521" or "ma-gic"
+  nickName: string; // display name
+  remark: string; // remark name set by the bot account (friends only)
+  updatedAt: string; // ISO timestamp of last sync
+}
+
 /** Group / contact info row cached from PadPro API */
 export interface WeChatGroupRow {
   chatroomId: string; // e.g. "22443486739@chatroom"
@@ -232,6 +240,53 @@ export class WeChatDatabase {
   getAllGroups(): WeChatGroupRow[] {
     if (!this.db) return [];
     return this.db.query<WeChatGroupRow, []>(`SELECT * FROM wechat_groups ORDER BY nickName`).all();
+  }
+
+  // ──────────────────────────────────────────────────
+  // Write / Read — contacts
+  // ──────────────────────────────────────────────────
+
+  /** Upsert a single contact. */
+  upsertContact(row: WeChatContactRow): void {
+    if (!this.db) return;
+    try {
+      this.db
+        .query(`INSERT OR REPLACE INTO wechat_contacts
+          (wxid, nickName, remark, updatedAt)
+          VALUES (?, ?, ?, ?)`)
+        .run(row.wxid, row.nickName, row.remark, row.updatedAt);
+    } catch (err) {
+      logger.error('[WeChatDatabase] upsertContact error:', err);
+    }
+  }
+
+  /** Bulk upsert contacts. */
+  upsertContacts(rows: WeChatContactRow[]): void {
+    if (!this.db || rows.length === 0) return;
+    const stmt = this.db.query(
+      `INSERT OR REPLACE INTO wechat_contacts (wxid, nickName, remark, updatedAt) VALUES (?, ?, ?, ?)`,
+    );
+    for (const row of rows) {
+      stmt.run(row.wxid, row.nickName, row.remark, row.updatedAt);
+    }
+  }
+
+  /** Get display name for a wxid. Returns remark > nickName > null. */
+  getContactName(wxid: string): string | null {
+    if (!this.db) return null;
+    const row = this.db
+      .query<{ nickName: string; remark: string }, [string]>(
+        `SELECT nickName, remark FROM wechat_contacts WHERE wxid = ?`,
+      )
+      .get(wxid);
+    if (!row) return null;
+    return row.remark || row.nickName || null;
+  }
+
+  /** Get all cached contacts. */
+  getAllContacts(): WeChatContactRow[] {
+    if (!this.db) return [];
+    return this.db.query<WeChatContactRow, []>(`SELECT * FROM wechat_contacts ORDER BY nickName`).all();
   }
 
   // ──────────────────────────────────────────────────
@@ -663,6 +718,16 @@ export class WeChatDatabase {
         memberCount    INTEGER NOT NULL DEFAULT 0,
         owner          TEXT NOT NULL DEFAULT '',
         updatedAt      TEXT NOT NULL DEFAULT ''
+      )
+    `);
+
+    // Contact info cache (synced from PadPro API group member lists and friend list)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS wechat_contacts (
+        wxid       TEXT PRIMARY KEY,
+        nickName   TEXT NOT NULL DEFAULT '',
+        remark     TEXT NOT NULL DEFAULT '',
+        updatedAt  TEXT NOT NULL DEFAULT ''
       )
     `);
 

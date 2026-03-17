@@ -195,6 +195,52 @@ export class ScheduleFileService {
     logger.info(`[ScheduleFileService] Appended item "${data.name}" to ${this.scheduleFilePath}`);
   }
 
+  /**
+   * Remove a named section from schedule.md.
+   * Used when deleting a file-sourced agenda item via command.
+   */
+  async removeItemByName(name: string): Promise<boolean> {
+    const content = await this.readFile();
+    if (!content) return false;
+
+    // Split into sections by `## ` headings, rebuild without the matching one
+    const lines = content.split('\n');
+    const result: string[] = [];
+    let skipping = false;
+    let found = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.startsWith('## ')) {
+        const sectionName = line.replace(/^##\s+/, '').trim();
+        if (sectionName === name) {
+          skipping = true;
+          found = true;
+          // Also skip preceding `---` separator if present
+          while (result.length > 0 && result[result.length - 1].trim() === '---') {
+            result.pop();
+          }
+          // Remove trailing blank lines before separator
+          while (result.length > 0 && result[result.length - 1].trim() === '') {
+            result.pop();
+          }
+          continue;
+        }
+        skipping = false;
+      }
+
+      if (!skipping) {
+        result.push(line);
+      }
+    }
+
+    if (found) {
+      await writeFile(this.scheduleFilePath, result.join('\n'), 'utf-8');
+      logger.info(`[ScheduleFileService] Removed item "${name}" from ${this.scheduleFilePath}`);
+    }
+    return found;
+  }
+
   // ─── Parsing ─────────────────────────────────────────────────────────────────
 
   parseSchedule(content: string): ParsedScheduleItem[] {

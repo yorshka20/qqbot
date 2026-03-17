@@ -96,6 +96,19 @@ export class WeChatIngestPlugin extends PluginBase {
             owner: info.Owner ?? '',
             updatedAt: now,
           });
+          // Cache group members as contacts
+          if (info.MemberList?.length) {
+            const contacts: Array<{ wxid: string; nickName: string; remark: string; updatedAt: string }> = [];
+            for (const m of info.MemberList) {
+              if (m.UserName && m.NickName) {
+                contacts.push({ wxid: m.UserName, nickName: m.NickName, remark: '', updatedAt: now });
+              }
+            }
+            if (contacts.length > 0) {
+              db.upsertContacts(contacts);
+              logger.debug(`[WeChatIngestPlugin] Cached ${contacts.length} contacts from group ${convId}`);
+            }
+          }
           logger.info(`[WeChatIngestPlugin] Lazy-fetched group info: ${convId} → "${info.NickName}"`);
           return info.NickName;
         }

@@ -1,3 +1,4 @@
+export * from './AgendaCommandHandler';
 export * from './AIProviderSwitchCommandHandler';
 export * from './BananaCommandHandler';
 export * from './BilibiliHotCommandHandler';

@@ -123,7 +123,7 @@ export class WechatDigestService {
       const formattedLines: string[] = [];
       for (const m of limitedMsgs) {
         const time = this.formatTime(m.createTime);
-        const sender = m.sender || 'unknown';
+        const sender = this.resolveContactName(m.sender) || 'unknown';
         const content = this.formatMessageContent(m);
         formattedLines.push(`[${time}] ${sender}: ${content}`);
       }
@@ -158,8 +158,9 @@ export class WechatDigestService {
 
     const sections: string[] = [];
     for (const s of summaries) {
+      const groupName = this.resolveGroupName(s.conversationId);
       sections.push(
-        `### ${s.conversationId}\n` +
+        `### ${groupName}\n` +
           `消息数: ${s.messageCount} | 发言人: ${s.senderCount}\n` +
           `类型: ${s.categories.join(', ')}\n\n` +
           s.formattedMessages,
@@ -226,7 +227,7 @@ export class WechatDigestService {
       const sourceInfo =
         a.sourceType === 'oa_push'
           ? `[公众号] ${a.accountNick}`
-          : `[分享] ${a.sharedBy || 'unknown'} 在 ${a.sharedIn || 'unknown'}`;
+          : `[分享] ${a.sharedBy || 'unknown'} 在 ${a.sharedIn ? this.resolveGroupName(a.sharedIn) : 'unknown'}`;
 
       lines.push(
         `### ${a.title}\n` +
@@ -308,7 +309,8 @@ export class WechatDigestService {
     if (stats.topGroups.length > 0) {
       lines.push('', '### 活跃群聊 Top 10');
       for (const g of stats.topGroups) {
-        lines.push(`- ${g.conversationId}: ${g.messageCount} 条消息, ${g.senderCount} 人发言`);
+        const groupName = this.resolveGroupName(g.conversationId);
+        lines.push(`- ${groupName}: ${g.messageCount} 条消息, ${g.senderCount} 人发言`);
       }
     }
 
@@ -355,7 +357,7 @@ export class WechatDigestService {
         results.push({
           type: 'message',
           content: this.formatMessageContent(m),
-          source: m.isGroup === 1 ? `群:${m.conversationId}` : `私聊:${m.conversationId}`,
+          source: m.isGroup === 1 ? `群:${this.resolveGroupName(m.conversationId)}` : `私聊:${m.conversationId}`,
           time: m.createTime,
           metadata: {
             sender: m.sender,
@@ -484,7 +486,8 @@ export class WechatDigestService {
       breakdown.push({ conversationId: convId, isGroup, count: msgs.length, senders });
 
       const sortedMsgs = msgs.sort((a, b) => a.createTime - b.createTime).slice(-maxPerSource);
-      const lines: string[] = [`### ${convId} (${isGroup ? '群聊' : '私聊'}, ${msgs.length}条)`];
+      const displayName = isGroup ? this.resolveGroupName(convId) : convId;
+      const lines: string[] = [`### ${displayName} (${isGroup ? '群聊' : '私聊'}, ${msgs.length}条)`];
 
       if (msgs.length > maxPerSource) {
         lines.push(`> 显示最近 ${maxPerSource} 条`);
@@ -493,7 +496,7 @@ export class WechatDigestService {
       for (const m of sortedMsgs) {
         const time = this.formatTime(m.createTime);
         const content = this.formatMessageContent(m);
-        lines.push(`[${time}] ${m.sender}: ${content}`);
+        lines.push(`[${time}] ${this.resolveContactName(m.sender)}: ${content}`);
       }
 
       sections.push(lines.join('\n'));
@@ -519,6 +522,26 @@ export class WechatDigestService {
    */
   getTodayStartTs(): number {
     return this.db.getTodayStartTs();
+  }
+
+  // ──────────────────────────────────────────────────
+  // Group name resolution
+  // ──────────────────────────────────────────────────
+
+  /**
+   * Resolve a conversationId to a human-readable group name.
+   * Falls back to the raw conversationId if no name is cached.
+   */
+  resolveGroupName(conversationId: string): string {
+    return this.db.getGroupName(conversationId) ?? conversationId;
+  }
+
+  /**
+   * Resolve a wxid to a human-readable contact name.
+   * Falls back to the raw wxid if no name is cached.
+   */
+  resolveContactName(wxid: string): string {
+    return this.db.getContactName(wxid) ?? wxid;
   }
 
   // ──────────────────────────────────────────────────
