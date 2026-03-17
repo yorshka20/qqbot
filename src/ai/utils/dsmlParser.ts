@@ -42,9 +42,7 @@ export function parseDSMLFunctionCall(text: string): DSMLFunctionCall | null {
 
   const fcEnd = text.indexOf(DSML_FC_CLOSE, fcStart);
   const block =
-    fcEnd === -1
-      ? text.slice(fcStart + DSML_FC_OPEN.length)
-      : text.slice(fcStart + DSML_FC_OPEN.length, fcEnd);
+    fcEnd === -1 ? text.slice(fcStart + DSML_FC_OPEN.length) : text.slice(fcStart + DSML_FC_OPEN.length, fcEnd);
 
   // Extract invoke name
   const invokeRe = new RegExp(`${DSML_TAG_OPEN}invoke\\s+name="([^"]+)">`);

@@ -56,7 +56,10 @@ type MetadataValues<K extends MetadataKeys = MetadataKeys> = HookContextMetadata
 
 /** Default values for all required metadata fields (used when constructing new HookContext) */
 const DEFAULT_METADATA: Required<
-  Omit<HookContextMetadata, 'replyTrigger' | 'replyTriggerType' | 'contextMode' | 'suggestedProvider' | 'usedCardFormat'>
+  Omit<
+    HookContextMetadata,
+    'replyTrigger' | 'replyTriggerType' | 'contextMode' | 'suggestedProvider' | 'usedCardFormat'
+  >
 > = {
   sessionId: '',
   sessionType: 'group',

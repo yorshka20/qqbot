@@ -35,11 +35,7 @@ import type { VisionImage } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
 import { PromptMessageAssembler } from '../prompt/PromptMessageAssembler';
 import type { ProviderRouter } from '../routing/ProviderRouter';
-import {
-  buildSkillUsageInstructions,
-  executeSkillCall,
-  getReplySkillDefinitions,
-} from '../tools/replyTools';
+import { buildSkillUsageInstructions, executeSkillCall, getReplySkillDefinitions } from '../tools/replyTools';
 import type { AIGenerateResponse, ChatMessage, ContentPart, ToolDefinition } from '../types';
 import { formatRAGConversationContext } from '../utils/formatRAGConversationContext';
 import {

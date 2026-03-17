@@ -1,9 +1,9 @@
 import 'reflect-metadata';
 
 import { describe, expect, it } from 'bun:test';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
-import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { TaskManager } from '@/task/TaskManager';
 import type { Task, TaskExecutionContext, TaskResult, TaskType } from '@/task/types';
 import {

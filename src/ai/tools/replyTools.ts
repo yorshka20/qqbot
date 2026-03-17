@@ -5,11 +5,11 @@
  * v1 skill runtime is backed by TaskManager/TaskExecutor.
  */
 
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { SkillRegistry, type SkillRegistryOptions } from '@/ai/skills/SkillRegistry';
 import { TaskExecutionContextBuilder } from '@/context/TaskExecutionContextBuilder';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
-import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { TaskManager } from '@/task/TaskManager';
 import type { Task, TaskResult, TaskType } from '@/task/types';
 import { logger } from '@/utils/logger';

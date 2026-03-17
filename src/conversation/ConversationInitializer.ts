@@ -11,7 +11,6 @@ import {
   ProviderFactory,
   ProviderSelector,
 } from '@/ai';
-import { type HealthCheckManager, ProviderHealthAdapter } from '@/core/health';
 import { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
@@ -24,6 +23,7 @@ import type { AIConfig, Config } from '@/core/config';
 import { GlobalConfigManager } from '@/core/config/GlobalConfigManager';
 import { type DIContainer, getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import { type HealthCheckManager, ProviderHealthAdapter } from '@/core/health';
 import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { type SystemContext, SystemRegistry } from '@/core/system';
 import { DatabaseManager } from '@/database/DatabaseManager';
@@ -151,13 +151,9 @@ export class ConversationInitializer {
           if (result.status === 'healthy') healthy++;
           else unhealthy++;
         }
-        logger.info(
-          `[ConversationInitializer] Startup health check: ${healthy}/${results.size} providers healthy`,
-        );
+        logger.info(`[ConversationInitializer] Startup health check: ${healthy}/${results.size} providers healthy`);
         if (unhealthy > 0) {
-          const unhealthyNames = [...results.entries()]
-            .filter(([_, r]) => r.status !== 'healthy')
-            .map(([n]) => n);
+          const unhealthyNames = [...results.entries()].filter(([_, r]) => r.status !== 'healthy').map(([n]) => n);
           logger.warn(`[ConversationInitializer] Unhealthy providers: ${unhealthyNames.join(', ')}`);
         }
       })

@@ -4,10 +4,10 @@
 import { inject, injectable } from 'tsyringe';
 import { WechatDITokens } from '@/services/wechat';
 import type { WechatDigestService } from '@/services/wechat/WechatDigestService';
+import { TaskDefinition } from '@/task/decorators';
+import { BaseTaskExecutor } from '@/task/executors/BaseTaskExecutor';
+import type { Task, TaskExecutionContext, TaskResult } from '@/task/types';
 import { logger } from '@/utils/logger';
-import { TaskDefinition } from '../decorators';
-import type { Task, TaskExecutionContext, TaskResult } from '../types';
-import { BaseTaskExecutor } from './BaseTaskExecutor';
 
 /**
  * WechatGroupSummaryTaskExecutor

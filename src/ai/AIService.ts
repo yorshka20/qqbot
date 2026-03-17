@@ -225,7 +225,12 @@ export class AIService {
       return { tools: [], toolUsageInstructions: '当前没有可用工具，请直接回答。' };
     }
     const tools = getReplySkillDefinitions(this.taskManager, { nativeWebSearchEnabled });
-    const toolUsageInstructions = buildSkillUsageInstructions(this.taskManager, tools, { nativeWebSearchEnabled }, this.promptManager);
+    const toolUsageInstructions = buildSkillUsageInstructions(
+      this.taskManager,
+      tools,
+      { nativeWebSearchEnabled },
+      this.promptManager,
+    );
     return { tools, toolUsageInstructions };
   }
 
