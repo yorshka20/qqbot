@@ -5,7 +5,7 @@ import type { AIService } from '@/ai/AIService';
 import type { VisionImage } from '@/ai/capabilities/types';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { PreliminaryAnalysisResult, PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
-import { extractImagesFromSegmentsAsync } from '@/ai/utils/imageUtils';
+import { extractImagesFromMessageAndReply } from '@/ai/utils/imageUtils';
 import type { MessageAPI, SendMessageResult } from '@/api/methods/MessageAPI';
 import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
 import type { Config } from '@/core/config';
@@ -653,11 +653,16 @@ export class ProactiveConversationService {
       } catch {
         return [];
       }
-      if (!Array.isArray(segments) || !segments.some((s) => s?.type === 'image')) {
+      if (!Array.isArray(segments)) {
+        return [];
+      }
+      // Check for images in the message itself OR a reply segment referencing a message with images
+      const hasImageOrReply = segments.some((s) => s?.type === 'image' || s?.type === 'reply');
+      if (!hasImageOrReply) {
         return [];
       }
       const protocol = dbMessage.protocol as ProtocolName;
-      const minimalContext: NormalizedMessageEvent = {
+      const minimalMessage: NormalizedMessageEvent = {
         id: '',
         type: 'message',
         timestamp: 0,
@@ -666,10 +671,10 @@ export class ProactiveConversationService {
         groupId: dbMessage.groupId ?? 0,
         messageType: 'group',
         message: '',
-        segments: [],
+        segments: segments as MessageSegment[],
       };
-      const getResourceUrl = (resourceId: string) => this.messageAPI.getResourceTempUrl(resourceId, minimalContext);
-      return await extractImagesFromSegmentsAsync(segments as MessageSegment[], getResourceUrl);
+      // Reuse extractImagesFromMessageAndReply to handle both own images and referenced message images
+      return await extractImagesFromMessageAndReply(minimalMessage, this.messageAPI, this.databaseManager!);
     } catch (error) {
       logger.warn(
         '[ProactiveConversationService] getImagesFromLastUserMessage failed:',
