@@ -353,11 +353,18 @@ export class WeChatIngestService {
       hostname: '0.0.0.0',
       async fetch(req: Request): Promise<Response> {
         const url = new URL(req.url);
-        logger.info(
-          `[WeChatIngestService] HTTP ${req.method} ${url.pathname} from ${req.headers.get('x-forwarded-for') ?? 'unknown'}`,
-        );
-        if (req.method === 'POST' && url.pathname === listenPath) {
-          return self.handleCallback(req);
+        // Skip logging for HEAD/GET health-checks to avoid log pollution
+        if (req.method === 'POST') {
+          logger.info(
+            `[WeChatIngestService] HTTP ${req.method} ${url.pathname} from ${req.headers.get('x-forwarded-for') ?? 'unknown'}`,
+          );
+        }
+        if (url.pathname === listenPath) {
+          if (req.method === 'POST') {
+            return self.handleCallback(req);
+          }
+          // HEAD / GET health-check from wechatpadpro — acknowledge without processing
+          return new Response('OK', { status: 200 });
         }
         return new Response('Not Found', { status: 404 });
       },
