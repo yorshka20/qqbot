@@ -47,6 +47,8 @@ export interface HookContextMetadata {
 
   /** Reply-only path: when true, RAG persistence writes only the new reply (not the old user message). */
   replyOnly: boolean;
+  /** Set by CardFormatTaskExecutor when the LLM called format_as_card and produced card JSON. Reset per generation attempt. */
+  usedCardFormat?: boolean;
 }
 
 type MetadataKeys = keyof HookContextMetadata;
@@ -54,7 +56,7 @@ type MetadataValues<K extends MetadataKeys = MetadataKeys> = HookContextMetadata
 
 /** Default values for all required metadata fields (used when constructing new HookContext) */
 const DEFAULT_METADATA: Required<
-  Omit<HookContextMetadata, 'replyTrigger' | 'replyTriggerType' | 'contextMode' | 'suggestedProvider'>
+  Omit<HookContextMetadata, 'replyTrigger' | 'replyTriggerType' | 'contextMode' | 'suggestedProvider' | 'usedCardFormat'>
 > = {
   sessionId: '',
   sessionType: 'group',
@@ -80,6 +82,7 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'contextMode',
   'suggestedProvider',
   'whitelistGroupCapabilities',
+  'usedCardFormat',
 ];
 
 /**

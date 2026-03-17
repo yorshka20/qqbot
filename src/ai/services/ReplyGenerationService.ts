@@ -36,11 +36,8 @@ import type { PromptManager } from '../prompt/PromptManager';
 import { PromptMessageAssembler } from '../prompt/PromptMessageAssembler';
 import type { ProviderRouter } from '../routing/ProviderRouter';
 import {
-  buildCardFormatToolResult,
   buildSkillUsageInstructions,
-  CARD_FORMAT_TOOL_NAME,
   executeSkillCall,
-  getCardFormatToolDefinition,
   getReplySkillDefinitions,
 } from '../tools/replyTools';
 import type { AIGenerateResponse, ChatMessage, ContentPart, ToolDefinition } from '../types';
@@ -78,8 +75,6 @@ interface ReplyGenerationPipelineParams {
 interface ReplyGenerationPipelineResult {
   response: AIGenerateResponse;
   actualProvider: string | undefined;
-  /** true when the LLM called format_as_card and produced card JSON directly. */
-  usedCardFormat: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -749,7 +744,7 @@ export class ReplyGenerationService {
 
   /**
    * Execute a single LLM generation attempt with the given provider.
-   * Returns usedCardFormat=true when the LLM called format_as_card and produced card JSON directly.
+   * Sets context.metadata 'usedCardFormat' when the LLM called format_as_card.
    */
   private async attemptLLMGeneration(
     context: HookContext,
@@ -766,16 +761,11 @@ export class ReplyGenerationService {
       effectiveNativeSearchEnabled,
     } = params;
 
-    let usedCardFormat = false;
+    // Reset per-attempt so retries with fallback providers start clean.
+    context.metadata.delete('usedCardFormat');
 
-    const toolExecutor = (call: { name: string; arguments: string }) => {
-      if (call.name === CARD_FORMAT_TOOL_NAME) {
-        usedCardFormat = true;
-        logger.info('[ReplyGenerationService] LLM requested card format template via tool call');
-        return Promise.resolve(buildCardFormatToolResult());
-      }
-      return executeSkillCall(call, context, this.taskManager, this.hookManager);
-    };
+    const toolExecutor = (call: { name: string; arguments: string }) =>
+      executeSkillCall(call, context, this.taskManager, this.hookManager);
 
     const toolUseOptions = {
       temperature: genOptions.temperature,
@@ -796,7 +786,7 @@ export class ReplyGenerationService {
           toolUseOptions,
           resolvedVisionProviderName ?? undefined,
         );
-        return { response: { text: r.text }, actualProvider, usedCardFormat };
+        return { response: { text: r.text }, actualProvider };
       }
       const r = await this.visionService.generateWithVisionMessages(
         messages,
@@ -804,7 +794,7 @@ export class ReplyGenerationService {
         genOptions,
         resolvedVisionProviderName ?? undefined,
       );
-      return { response: r, actualProvider, usedCardFormat: false };
+      return { response: r, actualProvider };
     }
 
     if (toolDefinitions.length > 0) {
@@ -814,7 +804,7 @@ export class ReplyGenerationService {
         toolUseOptions,
         selectedProviderName,
       );
-      return { response: { text: r.text }, actualProvider, usedCardFormat };
+      return { response: { text: r.text }, actualProvider };
     }
 
     const r = await this.llmService.generateMessages(
@@ -822,7 +812,7 @@ export class ReplyGenerationService {
       { ...genOptions, nativeWebSearch: effectiveNativeSearchEnabled },
       selectedProviderName,
     );
-    return { response: r, actualProvider, usedCardFormat: false };
+    return { response: r, actualProvider };
   }
 
   /**
@@ -911,7 +901,7 @@ export class ReplyGenerationService {
     const result = await this.generateWithRetry(context, pipelineParams);
 
     logger.debug(
-      `[ReplyGenerationService] LLM response received | responseLength=${result.response.text.length} | actualProvider=${result.actualProvider ?? 'default'} | usedCardFormat=${result.usedCardFormat}`,
+      `[ReplyGenerationService] LLM response received | responseLength=${result.response.text.length} | actualProvider=${result.actualProvider ?? 'default'} | usedCardFormat=${context.metadata.get('usedCardFormat') ?? false}`,
     );
 
     // --- Dispatch: route response to card / text path ---
@@ -957,16 +947,13 @@ export class ReplyGenerationService {
         ? []
         : getReplySkillDefinitions(this.taskManager, { nativeWebSearchEnabled: effectiveNativeSearchEnabled });
 
-    // Inject inline card format tool when card rendering is available
-    const canUseCardFormat = this.cardRenderingService.shouldUseCardFormatPrompt(sessionId, selectedProviderName);
-    if (canUseCardFormat && toolDefinitions.length > 0) {
-      toolDefinitions.push(getCardFormatToolDefinition());
-    }
-
     // Prompt messages
-    const toolUsageInstructions = buildSkillUsageInstructions(this.taskManager, toolDefinitions, {
-      nativeWebSearchEnabled: effectiveNativeSearchEnabled,
-    });
+    const toolUsageInstructions = buildSkillUsageInstructions(
+      this.taskManager,
+      toolDefinitions,
+      { nativeWebSearchEnabled: effectiveNativeSearchEnabled },
+      this.promptManager,
+    );
     const built = await this.buildReplyMessages(
       context,
       taskResultsSummary,
@@ -977,7 +964,7 @@ export class ReplyGenerationService {
       messageImages,
     );
 
-    const maxTokens = canUseCardFormat ? 4000 : 2000;
+    const maxTokens = toolDefinitions.length > 0 ? 4000 : 2000;
     const genOptions = { temperature: 0.7, maxTokens, sessionId, reasoningEffort: 'medium' as const };
 
     // Log
@@ -1021,7 +1008,8 @@ export class ReplyGenerationService {
     sessionId: string,
     taskResultImages: string[],
   ): Promise<void> {
-    const { response, actualProvider, usedCardFormat } = result;
+    const { response, actualProvider } = result;
+    const usedCardFormat = context.metadata.get('usedCardFormat') === true;
 
     // Path 1: LLM already produced card JSON via format_as_card tool
     if (usedCardFormat) {
@@ -1034,7 +1022,7 @@ export class ReplyGenerationService {
     }
 
     // Path 2: Long text → convert to card via second LLM call
-    if (this.shouldUseCardReply(response.text, sessionId, actualProvider)) {
+    if (this.shouldUseCardReply(response.text)) {
       const cardResult = await this.convertAndRenderCard(response.text, sessionId, actualProvider);
       if (cardResult) {
         this.setCardReplyOnContext(context, cardResult.segments, cardResult.textForHistory);
@@ -1113,10 +1101,8 @@ export class ReplyGenerationService {
     }
   }
 
-  private shouldUseCardReply(responseText: string, sessionId: string, providerName?: string): boolean {
-    const cardThreshold = CardRenderingService.getThreshold();
-    const canUseCardFormat = this.cardRenderingService.shouldUseCardFormatPrompt(sessionId, providerName);
-    return responseText.length >= cardThreshold && canUseCardFormat;
+  private shouldUseCardReply(responseText: string): boolean {
+    return responseText.length >= CardRenderingService.getThreshold();
   }
 
   /**
@@ -1139,7 +1125,7 @@ export class ReplyGenerationService {
     sessionId: string,
     options?: { context?: HookContext; providerName?: string },
   ): Promise<boolean | { segments: MessageSegment[]; textForHistory: string } | null> {
-    if (!this.shouldUseCardReply(responseText, sessionId, options?.providerName)) {
+    if (!this.shouldUseCardReply(responseText)) {
       return options?.context != null ? false : null;
     }
     const cardResult = await this.convertAndRenderCard(responseText, sessionId, options?.providerName);

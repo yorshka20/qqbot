@@ -3,6 +3,7 @@ import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { TaskManager } from '@/task/TaskManager';
 import type { Task, TaskExecutionContext, TaskResult, TaskType } from '@/task/types';
 import {
@@ -11,6 +12,20 @@ import {
   getReplyToolDefinitions,
   taskTypesToToolDefinitions,
 } from '../replyTools';
+
+/** Minimal stub that renders templates using their actual content for test assertions. */
+const stubPromptManager = {
+  render(templateName: string, vars?: Record<string, string>): string {
+    if (templateName === 'llm.tool.no_tools.local') return '当前没有可用技能，请直接回答。';
+    if (templateName === 'llm.tool.no_tools.native_search')
+      return '当前没有本地可用技能；若需要查询公开互联网的最新信息，请直接使用 provider 内建搜索，再基于结果回答。';
+    if (templateName === 'llm.tool.note.local') return '先调用技能，再回答。';
+    if (templateName === 'llm.tool.note.native_search') return '优先使用 provider 内建搜索。';
+    if (templateName === 'llm.tool.usage')
+      return `${vars?.nativeSearchNote ?? ''}\n可用技能列表：\n${vars?.toolList ?? ''}`;
+    return '';
+  },
+} as unknown as PromptManager;
 
 const searchTaskType: TaskType = {
   name: 'search',
@@ -140,14 +155,14 @@ describe('replyTools', () => {
   describe('buildToolUsageInstructions', () => {
     it('returns fallback when tools is empty and nativeWebSearchEnabled is false', () => {
       const taskManager = { getAllTaskTypes: (): TaskType[] => [] } as unknown as TaskManager;
-      const text = buildToolUsageInstructions(taskManager, [], { nativeWebSearchEnabled: false });
+      const text = buildToolUsageInstructions(taskManager, [], { nativeWebSearchEnabled: false }, stubPromptManager);
       expect(text).toContain('当前没有可用技能');
       expect(text).not.toContain('内建搜索');
     });
 
     it('returns fallback when tools is empty and nativeWebSearchEnabled is true', () => {
       const taskManager = { getAllTaskTypes: (): TaskType[] => [] } as unknown as TaskManager;
-      const text = buildToolUsageInstructions(taskManager, [], { nativeWebSearchEnabled: true });
+      const text = buildToolUsageInstructions(taskManager, [], { nativeWebSearchEnabled: true }, stubPromptManager);
       expect(text).toContain('内建搜索');
     });
 
@@ -156,7 +171,7 @@ describe('replyTools', () => {
         getAllTaskTypes: (): TaskType[] => [getWeatherTaskType],
       } as unknown as TaskManager;
       const tools = getReplyToolDefinitions(taskManager);
-      const text = buildToolUsageInstructions(taskManager, tools, { nativeWebSearchEnabled: false });
+      const text = buildToolUsageInstructions(taskManager, tools, { nativeWebSearchEnabled: false }, stubPromptManager);
 
       expect(text).toContain('get_weather');
       expect(text).toContain('Get the current weather');

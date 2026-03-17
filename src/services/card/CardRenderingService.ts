@@ -1,7 +1,6 @@
 // Card Rendering Service - provides card rendering capability for LLM responses
 
 import type { AIManager } from '@/ai/AIManager';
-import type { AIProvider } from '@/ai/base/AIProvider';
 import { extractExpectedJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import { logger } from '@/utils/logger';
 import { CardRenderer } from './CardRenderer';
@@ -17,25 +16,6 @@ export class CardRenderingService {
 
   constructor(private aiManager: AIManager) {
     this.cardRenderer = CardRenderer.getInstance();
-  }
-
-  /**
-   * Check if provider is local (ollama)
-   */
-  private isLocalProvider(provider: AIProvider | null): boolean {
-    return provider !== null && provider.name === 'ollama';
-  }
-
-  /**
-   * Get current LLM provider
-   */
-  private getCurrentProvider(_sessionId?: string, providerName?: string): AIProvider | null {
-    if (providerName) {
-      return this.aiManager.getProviderForCapability('llm', providerName) || null;
-    }
-
-    // Get default provider
-    return this.aiManager.getDefaultProvider('llm');
   }
 
   /**
@@ -94,17 +74,6 @@ export class CardRenderingService {
       // Not valid JSON or not the expected shape; fall through and return as-is for parseCardDeck to throw
     }
     return jsonStr;
-  }
-
-  /**
-   * Check if provider should use card format prompt
-   * @param sessionId - Session ID for provider selection
-   * @param providerName - Optional provider name
-   * @returns true if card format prompt should be used
-   */
-  shouldUseCardFormatPrompt(sessionId?: string, providerName?: string): boolean {
-    const provider = this.getCurrentProvider(sessionId, providerName);
-    return !this.isLocalProvider(provider);
   }
 
   /**

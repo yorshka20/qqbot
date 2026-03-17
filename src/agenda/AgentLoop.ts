@@ -90,7 +90,7 @@ export class AgentLoop {
   ): Promise<string | null> {
     const conversationContext = await this.fetchRecentContext(groupId);
     const tools = getReplyToolDefinitions(this.taskManager);
-    const toolInstruct = buildToolUsageInstructions(this.taskManager, tools);
+    const toolInstruct = buildToolUsageInstructions(this.taskManager, tools, undefined, this.promptManager);
     const messages = this.buildPrompt(item, conversationContext, eventContext, toolInstruct);
 
     try {

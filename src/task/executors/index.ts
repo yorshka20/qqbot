@@ -1,6 +1,7 @@
 // Task executors - import all executors to ensure decorators are executed
 
 export { BaseTaskExecutor } from './BaseTaskExecutor';
+export { CardFormatTaskExecutor } from './CardFormatTaskExecutor';
 export { DeduplicateFilesTaskExecutor } from './DeduplicateFilesTaskExecutor';
 export { FetchPageTaskExecutor } from './FetchPageTaskExecutor';
 export { GetMemoryTaskExecutor } from './GetMemoryTaskExecutor';
