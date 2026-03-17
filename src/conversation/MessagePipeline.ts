@@ -249,11 +249,11 @@ export class MessagePipeline {
         sentMessageResponse = await this.messageAPI.sendForwardFromContext(
           [{ segments: replyContent.segments, senderName: 'Bot' }],
           event,
-          10000,
+          60000,
           { botUserId: botSelfId },
         );
       } else {
-        sentMessageResponse = await this.messageAPI.sendFromContext(replyContent.segments, event, 10000);
+        sentMessageResponse = await this.messageAPI.sendFromContext(replyContent.segments, event, 60000);
       }
       // Save full API response for plugins to access all fields (e.g., message_id, message_seq, etc.)
       hookContext.sentMessageResponse = sentMessageResponse;
