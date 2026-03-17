@@ -26,9 +26,25 @@
 
 | 服务 | 位置 | 职责 |
 |------|------|------|
-| ClaudeCode | `src/services/claudeCode/` | Claude CLI 任务执行 |
+| ClaudeCode | `src/services/claudeCode/` | Claude CLI 任务执行 + MCP Tools |
 | WeChat | `src/services/wechat/` | 微信消息同步和处理 |
 | MCP | `src/services/mcp/` | MCP 客户端管理 |
+
+### ClaudeCode MCP Tools 架构
+
+```
+ClaudeCodeService
+├── MCPServer              # HTTP API (port 9876)
+│   ├── POST /api/tools/execute  # 执行 tool
+│   └── GET  /api/tools/list     # 列出 tools
+└── ToolRegistry           # Tool 注册和执行
+    ├── ReadFileExecutor   # 读文件
+    ├── ProjectInfoExecutor # 项目信息/git状态
+    ├── GitCommitExecutor  # git commit
+    ├── QualityCheckExecutor # typecheck/lint/test/build
+    ├── GitBranchExecutor  # 分支管理
+    └── GitPRExecutor      # 创建 PR
+```
 
 ---
 
@@ -92,6 +108,14 @@ const aiConfig = config.ai;
 // 特定服务配置
 const claudeConfig = config.getClaudeCodeServiceConfig();
 ```
+
+### ToolExecutor vs BaseTaskExecutor
+
+**重要区别**：
+- `BaseTaskExecutor` (in `src/task/executors/`) - 用于 AI 消息流水线中的任务执行，接收 `(task: Task, context: TaskExecutionContext)`
+- `BaseToolExecutor` (in `src/services/claudeCode/types.ts`) - 用于 MCP Tools，接收 `(parameters: Record<string, unknown>)`，直接执行 shell 命令
+
+不要混用这两种 executor 类型。
 
 ---
 
@@ -243,4 +267,5 @@ bun run debug
 
 | 日期 | 更新内容 | 更新者 |
 |------|----------|--------|
+| 2026-03-18 | 添加 ClaudeCode MCP Tools 架构说明；添加 ToolExecutor vs BaseTaskExecutor 区别说明 | Claude |
 | 2024-XX-XX | 初始版本 | Claude |

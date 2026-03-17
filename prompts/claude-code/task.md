@@ -79,6 +79,108 @@ curl -X POST {{mcpApiUrl}}/api/send \
   -d '{"target":{"type":"{{targetType}}","id":"{{targetId}}"},"content":"消息内容"}'
 ```
 
+## 可用 Tools
+
+你可以通过 MCP API 调用以下 tools 来辅助完成工作流：
+
+### 调用方式
+
+```bash
+POST {{mcpApiUrl}}/api/tools/execute
+Content-Type: application/json
+
+{
+  "tool": "tool_name",
+  "parameters": { ... },
+  "taskId": "{{taskId}}"
+}
+```
+
+查看所有可用 tools：
+```bash
+GET {{mcpApiUrl}}/api/tools/list
+```
+
+### Git 操作
+
+**`git_commit`** - 按照项目规范创建 Git 提交
+```json
+{
+  "tool": "git_commit",
+  "parameters": {
+    "message": "feat: add user authentication",
+    "scope": "auth",
+    "body": "可选的详细描述",
+    "files": ["src/auth.ts"],
+    "skipHooks": false
+  }
+}
+```
+
+**`git_branch`** - 分支管理（create/switch/list/delete/merge）
+```json
+{
+  "tool": "git_branch",
+  "parameters": {
+    "action": "create",
+    "name": "feat/user-auth",
+    "from": "main"
+  }
+}
+```
+
+**`git_create_pr`** - 创建 GitHub Pull Request
+```json
+{
+  "tool": "git_create_pr",
+  "parameters": {
+    "title": "feat: add user authentication",
+    "body": "可选描述",
+    "base": "main",
+    "draft": false
+  }
+}
+```
+
+### 质量检查
+
+**`quality_check`** - 运行类型检查、lint、测试、构建
+```json
+{
+  "tool": "quality_check",
+  "parameters": {
+    "checks": ["typecheck", "lint"],
+    "fix": false
+  }
+}
+```
+
+### 项目信息
+
+**`project_info`** - 获取项目结构、依赖、git 状态
+```json
+{
+  "tool": "project_info",
+  "parameters": {
+    "query": "git-status"
+  }
+}
+```
+
+查询类型：`structure` / `dependencies` / `recent-changes` / `git-status` / `git-log`
+
+**`read_file`** - 读取文件内容
+```json
+{
+  "tool": "read_file",
+  "parameters": {
+    "path": "src/index.ts",
+    "startLine": 1,
+    "endLine": 50
+  }
+}
+```
+
 ## 开始执行
 
 现在，请：

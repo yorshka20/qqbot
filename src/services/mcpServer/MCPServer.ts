@@ -18,6 +18,9 @@ import type {
   MCPServerConfig,
   SendMessageParams,
   TaskNotification,
+  ToolDefinition,
+  ToolExecuteParams,
+  ToolExecuteResult,
 } from './types';
 
 // Handler types
@@ -27,6 +30,8 @@ type SendMessageHandler = (
 ) => Promise<{ success: boolean; messageId?: string; error?: string }>;
 type GetBotInfoHandler = () => BotInfo;
 type ExecuteCommandHandler = (params: ExecuteCommandParams) => Promise<ExecuteCommandResult>;
+type ExecuteToolHandler = (params: ToolExecuteParams) => Promise<ToolExecuteResult>;
+type ListToolsHandler = () => ToolDefinition[];
 
 export class MCPServer {
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
@@ -37,6 +42,8 @@ export class MCPServer {
   private onSendMessage: SendMessageHandler | null = null;
   private onGetBotInfo: GetBotInfoHandler | null = null;
   private onExecuteCommand: ExecuteCommandHandler | null = null;
+  private onExecuteTool: ExecuteToolHandler | null = null;
+  private onListTools: ListToolsHandler | null = null;
 
   constructor(config: MCPServerConfig) {
     this.config = config;
@@ -71,6 +78,20 @@ export class MCPServer {
   }
 
   /**
+   * Set handler for executing tools
+   */
+  setExecuteToolHandler(handler: ExecuteToolHandler): void {
+    this.onExecuteTool = handler;
+  }
+
+  /**
+   * Set handler for listing available tools
+   */
+  setListToolsHandler(handler: ListToolsHandler): void {
+    this.onListTools = handler;
+  }
+
+  /**
    * Start the MCP server
    */
   async start(): Promise<string> {
@@ -92,6 +113,8 @@ export class MCPServer {
     logger.info(`  POST ${baseUrl}/api/send    - Send message`);
     logger.info(`  POST ${baseUrl}/api/command - Execute bot command`);
     logger.info(`  GET  ${baseUrl}/api/info    - Get bot info`);
+    logger.info(`  POST ${baseUrl}/api/tools/execute - Execute a tool`);
+    logger.info(`  GET  ${baseUrl}/api/tools/list    - List available tools`);
     return baseUrl;
   }
 
@@ -189,6 +212,30 @@ export class MCPServer {
           return this.jsonResponse(result, result.success ? 200 : 500, corsHeaders);
         }
         return this.jsonResponse({ error: 'No command handler registered' }, 500, corsHeaders);
+      }
+
+      // POST /api/tools/execute - Execute a tool
+      if (url.pathname === '/api/tools/execute' && req.method === 'POST') {
+        const body = (await req.json()) as ToolExecuteParams;
+
+        if (!body.tool) {
+          return this.jsonResponse({ error: 'Missing required field: tool' }, 400, corsHeaders);
+        }
+
+        if (this.onExecuteTool) {
+          const result = await this.onExecuteTool(body);
+          return this.jsonResponse(result, result.success ? 200 : 400, corsHeaders);
+        }
+        return this.jsonResponse({ error: 'No tool executor registered' }, 500, corsHeaders);
+      }
+
+      // GET /api/tools/list - List available tools
+      if (url.pathname === '/api/tools/list' && req.method === 'GET') {
+        if (this.onListTools) {
+          const tools = this.onListTools();
+          return this.jsonResponse({ tools }, 200, corsHeaders);
+        }
+        return this.jsonResponse({ error: 'No tool registry registered' }, 500, corsHeaders);
       }
 
       // API documentation

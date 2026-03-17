@@ -20,8 +20,12 @@ import type {
   ExecuteCommandResult,
   MCPServerConfig,
   SendMessageParams,
+  ToolDefinition,
+  ToolExecuteParams,
+  ToolExecuteResult,
 } from '../mcpServer/types';
 import { ClaudeTaskManager } from './ClaudeTaskManager';
+import { ToolRegistry } from './ToolRegistry';
 
 interface SendMessageResult {
   message_id?: number;
@@ -32,6 +36,7 @@ export class ClaudeCodeService {
   private config: MCPServerConfig;
   private mcpServer: MCPServer;
   private taskManager: ClaudeTaskManager;
+  private toolRegistry: ToolRegistry;
   private apiClient: APIClient | null = null;
   private botStartTime: number;
   private connectedProtocols: ProtocolName[] = [];
@@ -41,6 +46,7 @@ export class ClaudeCodeService {
     this.config = config;
     this.mcpServer = new MCPServer(config);
     this.taskManager = new ClaudeTaskManager(config);
+    this.toolRegistry = new ToolRegistry(config.workingDirectory);
     this.botStartTime = Date.now();
 
     this.setupHandlers();
@@ -76,6 +82,16 @@ export class ClaudeCodeService {
     // Handle command execution requests from Claude Code
     this.mcpServer.setExecuteCommandHandler(async (params) => {
       return await this.executeCommand(params);
+    });
+
+    // Handle tool execution requests from Claude Code
+    this.mcpServer.setExecuteToolHandler(async (params) => {
+      return await this.toolRegistry.execute(params);
+    });
+
+    // Handle tool list requests from Claude Code
+    this.mcpServer.setListToolsHandler(() => {
+      return this.toolRegistry.list();
     });
   }
 
@@ -359,6 +375,20 @@ export class ClaudeCodeService {
         runningTasks: this.taskManager.getRunningTaskCount(),
       },
     };
+  }
+
+  /**
+   * Execute a tool via the tool registry
+   */
+  async executeTool(params: ToolExecuteParams): Promise<ToolExecuteResult> {
+    return this.toolRegistry.execute(params);
+  }
+
+  /**
+   * List available tools
+   */
+  listTools(): ToolDefinition[] {
+    return this.toolRegistry.list();
   }
 
   /**

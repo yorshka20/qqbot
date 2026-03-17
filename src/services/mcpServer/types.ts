@@ -73,6 +73,36 @@ export interface ExecuteCommandResult {
   data?: Record<string, unknown>;
 }
 
+// Tool execution types
+export interface ToolExecuteParams {
+  tool: string;
+  parameters: Record<string, unknown>;
+  taskId?: string;
+}
+
+export interface ToolExecuteResult {
+  success: boolean;
+  data?: unknown;
+  error?: string;
+  message?: string;
+}
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: Record<string, ToolParameter>;
+  examples?: string[];
+  whenToUse?: string;
+}
+
+export interface ToolParameter {
+  type: 'string' | 'number' | 'boolean' | 'object' | 'array';
+  required: boolean;
+  description: string;
+  enum?: string[];
+  default?: unknown;
+}
+
 // Prompt template types
 export interface PromptTemplateVariables {
   taskId: string;
