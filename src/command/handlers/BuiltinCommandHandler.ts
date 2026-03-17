@@ -441,5 +441,78 @@ export class RestartCommand implements CommandHandler {
   }
 }
 
+/** Max output length before truncation (QQ message limit) */
+const SHELL_MAX_OUTPUT = 3000;
+/** Shell command timeout in ms */
+const SHELL_TIMEOUT_MS = 30000;
+
+/**
+ * Shell command: execute arbitrary shell commands on the host machine.
+ * Owner only. Output (stdout + stderr) is returned as a reply.
+ * Useful for remote maintenance, installing software, checking logs, etc.
+ */
+@Command({
+  name: 'shell',
+  description: 'Execute a shell command on the host machine. Owner only.',
+  usage: '/shell <command>',
+  permissions: ['owner'],
+})
+@injectable()
+export class ShellCommand implements CommandHandler {
+  name = 'shell';
+  description = 'Execute a shell command on the host machine. Owner only.';
+  usage = '/shell <command>';
+
+  async execute(args: string[]): Promise<CommandResult> {
+    const messageBuilder = new MessageBuilder();
+
+    if (args.length === 0) {
+      messageBuilder.text('Usage: /shell <command>');
+      return { success: true, segments: messageBuilder.build() };
+    }
+
+    const cmd = args.join(' ');
+    logger.info('[ShellCommand] executing: %s', cmd);
+
+    try {
+      const output = await new Promise<string>((resolve, reject) => {
+        const child = spawn('sh', ['-c', cmd], {
+          cwd: process.cwd(),
+          env: process.env,
+        });
+
+        const timer = setTimeout(() => {
+          child.kill('SIGKILL');
+          reject(new Error(`Command timed out after ${SHELL_TIMEOUT_MS / 1000}s`));
+        }, SHELL_TIMEOUT_MS);
+
+        const chunks: Buffer[] = [];
+        child.stdout.on('data', (d: Buffer) => chunks.push(d));
+        child.stderr.on('data', (d: Buffer) => chunks.push(d));
+
+        child.on('close', (code) => {
+          clearTimeout(timer);
+          const raw = Buffer.concat(chunks).toString('utf8').trimEnd();
+          const text = raw.length > SHELL_MAX_OUTPUT ? raw.slice(0, SHELL_MAX_OUTPUT) + '\n…(truncated)' : raw;
+          resolve(`$ ${cmd}\n[exit ${code}]\n${text}`);
+        });
+
+        child.on('error', (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+      });
+
+      messageBuilder.text(output);
+      return { success: true, segments: messageBuilder.build() };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('[ShellCommand] error: %s', msg);
+      messageBuilder.text(`$ ${cmd}\n[error] ${msg}`);
+      return { success: true, segments: messageBuilder.build() };
+    }
+  }
+}
+
 // Command toggle command has been moved to ConversationConfigPlugin
 // This file is kept for reference but the command is no longer registered here
