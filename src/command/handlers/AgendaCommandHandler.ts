@@ -145,9 +145,11 @@ export class AgendaCommand implements CommandHandler {
     // Try name match (case-insensitive)
     const items = await this.agendaService.listItems({ groupId });
     const lowerQuery = query.toLowerCase();
-    return items.find((i) => i.name.toLowerCase() === lowerQuery)
-      ?? items.find((i) => i.name.toLowerCase().includes(lowerQuery))
-      ?? null;
+    return (
+      items.find((i) => i.name.toLowerCase() === lowerQuery) ??
+      items.find((i) => i.name.toLowerCase().includes(lowerQuery)) ??
+      null
+    );
   }
 
   private isFileSourced(item: AgendaItem): boolean {

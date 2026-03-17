@@ -11,6 +11,7 @@ import { normalizeGroupId } from '@/conversation/history/ConversationHistoryServ
 import type { ProtocolName } from '@/core/config/types/protocol';
 import type { HookManager } from '@/hooks/HookManager';
 import type { TaskManager } from '@/task/TaskManager';
+import { getCurrentDateTimeForPrompt } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
 import { buildAgendaHookContext } from './AgendaHookContext';
 import type { AgendaEventContext, AgendaItem } from './types';
@@ -146,7 +147,7 @@ export class AgentLoop {
     toolInstruct: string,
   ): ChatMessage[] {
     const systemPrompt = this.promptManager.render('agenda.agent_loop_system', { toolInstruct });
-    const lines: string[] = [`任务意图: ${item.intent}`];
+    const lines: string[] = [`当前时间: ${getCurrentDateTimeForPrompt()}`, `任务意图: ${item.intent}`];
 
     if (eventContext) {
       lines.push(`触发事件: ${eventContext.eventType}`);

@@ -2,6 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { ConversationMessageEntry } from '@/conversation/history';
+import { formatTimeOnly } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
 
 /**
@@ -219,7 +220,7 @@ export class ThreadService {
         }
         const who = m.isBotReply ? 'Assistant' : `User<${m.userId}>`;
         const atBotMark = !m.isBotReply && m.wasAtBot ? ' [用户@机器人，已针对性回复]' : '';
-        return `${m.createdAt.toLocaleTimeString()} ${who}: ${m.content}${atBotMark}`;
+        return `${formatTimeOnly(m.createdAt)} ${who}: ${m.content}${atBotMark}`;
       })
       .join('\n');
   }
@@ -238,7 +239,7 @@ export class ThreadService {
         }
         const who = m.isBotReply ? 'Assistant' : `User<${m.userId}>`;
         const atBotMark = !m.isBotReply && m.wasAtBot ? ' [用户@机器人，已针对性回复]' : '';
-        return `[id:${i}] ${m.createdAt.toLocaleTimeString()} ${who}: ${m.content}${atBotMark}`;
+        return `[id:${i}] ${formatTimeOnly(m.createdAt)} ${who}: ${m.content}${atBotMark}`;
       })
       .join('\n');
   }

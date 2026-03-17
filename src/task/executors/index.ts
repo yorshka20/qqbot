@@ -3,6 +3,7 @@
 export { BaseTaskExecutor } from './BaseTaskExecutor';
 export { CardFormatTaskExecutor } from './CardFormatTaskExecutor';
 export { DeduplicateFilesTaskExecutor } from './DeduplicateFilesTaskExecutor';
+export { FetchHistoryByTimeTaskExecutor } from './FetchHistoryByTimeTaskExecutor';
 export { FetchPageTaskExecutor } from './FetchPageTaskExecutor';
 export { GetMemoryTaskExecutor } from './GetMemoryTaskExecutor';
 export { RagSearchTaskExecutor } from './RagSearchTaskExecutor';

@@ -373,8 +373,7 @@ export class WeChatPadProClient {
     const list = d.ChatRoomInfoList ?? d.chatRoomList ?? d.contactList ?? [];
     return list.map((g) => {
       // memberList may come from top-level or from newChatroomData
-      const rawMembers =
-        g.memberList ?? g.newChatroomData?.chatroom_member_list ?? [];
+      const rawMembers = g.memberList ?? g.newChatroomData?.chatroom_member_list ?? [];
       return {
         ChatRoomName: strFieldOrStr(g.chatroomUsername) ?? strFieldOrStr(g.userName),
         NickName: strFieldOrStr(g.nickName),

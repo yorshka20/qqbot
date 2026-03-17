@@ -1,14 +1,10 @@
 // Shared formatter for conversation history entries (same format as ConversationHistoryService.formatAsText)
 
+import { formatTimeCompact } from '@/utils/dateTime';
 import type { ConversationMessageEntry } from './ConversationHistoryService';
 
-function formatSimpleTime(d: Date): string {
-  const M = d.getMonth() + 1;
-  const day = d.getDate();
-  const h = d.getHours().toString().padStart(2, '0');
-  const m = d.getMinutes().toString().padStart(2, '0');
-  return `${M}/${day} ${h}:${m}`;
-}
+/** Format time in compact form (M/DD HH:mm) using Asia/Tokyo timezone. */
+const formatSimpleTime = (d: Date): string => formatTimeCompact(d);
 
 /**
  * Format a single message entry for RAG storage: speaker label + content only (no date, no User<id> wrapper).

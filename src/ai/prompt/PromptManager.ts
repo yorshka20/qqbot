@@ -3,8 +3,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { basename, extname, join, resolve } from 'path';
-import { getCurrentMessageContext } from '@/context/MessageContextStorage';
-import type { NormalizedMessageEvent } from '@/events/types';
+import { getCurrentDateTimeForPrompt } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
 
 export interface PromptTemplate {
@@ -220,12 +219,7 @@ export class PromptManager {
       return undefined;
     }
     const baseVars: Record<string, string> = {
-      currentDate: new Date().toLocaleDateString('zh-CN', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        weekday: 'long',
-      }),
+      currentDate: getCurrentDateTimeForPrompt(),
       adminUserId: this.adminUserId || '（无管理员）',
       whitelistLimitedFragment: '',
       ...overrides,
