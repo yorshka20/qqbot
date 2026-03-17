@@ -1,82 +1,90 @@
-# Claude Code 任务模板
+# Claude Code Task
 
-你正在为 QQBot 项目执行一个开发任务。完成任务后，请通过 MCP API 通知 Bot。
+你正在为 QQBot 项目执行一个开发任务。
 
-## 项目信息
+## 工作流程
+
+**重要**: 在开始任务前，你必须先阅读工作流程指南：
+
+```
+请先阅读: template/WORKFLOW.md
+```
+
+这份文档定义了标准的工作流程：**RECEIVE → ANALYZE → PLAN → EXECUTE → VERIFY**
+
+你需要严格按照 WORKFLOW.md 中定义的流程执行任务，包括：
+- 每个阶段的具体动作
+- 输出格式要求
+- 检查点验证
+
+## 项目上下文
 
 - **项目路径**: {{workingDirectory}}
 - **任务ID**: {{taskId}}
-- **MCP API 地址**: {{mcpApiUrl}}
 
-## MCP API 使用说明
+### 必读文档
+1. `CLAUDE.md` - 项目开发规范
+2. `template/LEARNINGS.md` - 项目知识库（架构、代码模式、已知陷阱）
 
-任务完成后，你**必须**通过以下 API 通知 Bot：
+> **重要**: LEARNINGS.md 包含了之前任务中积累的项目知识，可以帮助你避免重复踩坑。
 
-### 1. 通知任务状态
+## 你的任务
 
+{{userPrompt}}
+
+## 任务执行要求
+
+### 1. 遵循 WORKFLOW 流程
+
+按照 `template/WORKFLOW.md` 定义的 5 个阶段执行：
+
+1. **RECEIVE** - 确认工作目录，阅读相关文档
+2. **ANALYZE** - 探索代码，理解现有实现
+3. **PLAN** - 拆分子任务，定义执行顺序
+4. **EXECUTE** - 逐个完成子任务，每完成一个进行验证
+5. **VERIFY** - 运行完整检查，输出完成报告
+
+### 2. 质量检查
+
+在提交代码前必须通过：
 ```bash
-# 任务开始时
-curl -X POST {{mcpApiUrl}}/api/notify \
-  -H "Content-Type: application/json" \
-  -d '{"taskId":"{{taskId}}","status":"started","message":"开始执行任务"}'
-
-# 任务进度更新（可选）
-curl -X POST {{mcpApiUrl}}/api/notify \
-  -H "Content-Type: application/json" \
-  -d '{"taskId":"{{taskId}}","status":"progress","progress":50,"message":"正在处理..."}'
-
-# 任务完成时
-curl -X POST {{mcpApiUrl}}/api/notify \
-  -H "Content-Type: application/json" \
-  -d '{"taskId":"{{taskId}}","status":"completed","result":"任务完成的简要描述"}'
-
-# 任务失败时
-curl -X POST {{mcpApiUrl}}/api/notify \
-  -H "Content-Type: application/json" \
-  -d '{"taskId":"{{taskId}}","status":"failed","error":"错误描述"}'
+bun run typecheck
+bun run lint
 ```
 
-### 2. 发送消息给用户
+### 3. Git 规范
+
+Commit message 格式：
+```
+<type>(<scope>): <description>
+
+[optional body]
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+### 4. 进度通知（可选）
+
+如需通知 Bot 进度，可使用 MCP API：
 
 ```bash
+# 任务进度
+curl -X POST {{mcpApiUrl}}/api/notify \
+  -H "Content-Type: application/json" \
+  -d '{"taskId":"{{taskId}}","status":"progress","progress":50,"message":"完成了 PLAN 阶段"}'
+
+# 发送消息
 curl -X POST {{mcpApiUrl}}/api/send \
   -H "Content-Type: application/json" \
   -d '{"target":{"type":"{{targetType}}","id":"{{targetId}}"},"content":"消息内容"}'
 ```
 
-### 3. 执行 Bot 命令
+## 开始执行
 
-```bash
-# 执行 restart 命令（拉取代码、更新依赖、重启 Bot）
-curl -X POST {{mcpApiUrl}}/api/command \
-  -H "Content-Type: application/json" \
-  -d '{"command":"restart","args":[]}'
+现在，请：
+1. 阅读 `template/WORKFLOW.md` - 了解标准工作流程
+2. 阅读 `CLAUDE.md` - 了解项目规范
+3. 阅读 `template/LEARNINGS.md` - 了解项目架构和已知陷阱
+4. 按照 WORKFLOW 流程开始执行任务
 
-# 其他可用命令
-# - restart: 拉取代码、更新依赖、重启 Bot
-# - reload-plugins: 重新加载插件
-# - status: 获取 Bot 状态
-```
-
-## 任务要求
-
-### 你的任务
-
-{{userPrompt}}
-
-## 工作流程
-
-1. **开始前**: 调用 `/api/notify` 通知任务开始
-2. **执行任务**: 完成用户要求的开发工作
-3. **测试验证**: 运行 `bun run typecheck` 和 `bun run lint` 确保代码质量
-4. **完成后**:
-   - 如果修改了代码，考虑是否需要执行 `restart` 命令
-   - 调用 `/api/notify` 通知任务完成，并在 `result` 中总结所做的更改
-
-## 注意事项
-
-- 遵循项目的代码风格（参考 CLAUDE.md）
-- 不要创建不必要的文件
-- 优先编辑现有文件而非创建新文件
-- 确保类型检查通过
-- 任务完成后**务必**通知 Bot
+> **完成后**: 记得将本次任务中学到的知识更新到 `template/LEARNINGS.md`

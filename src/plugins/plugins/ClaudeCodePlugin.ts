@@ -18,7 +18,7 @@ import { MessageBuilder } from '@/message/MessageBuilder';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
-import type { ClaudeCodeService } from '@/services/mcpServer/ClaudeCodeService';
+import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import { logger } from '@/utils/logger';
 
 const USAGE = `/claude <prompt> - 触发 Claude Code 任务

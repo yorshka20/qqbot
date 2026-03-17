@@ -13,15 +13,15 @@ import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { APIClient } from '@/api/APIClient';
 import type { ProtocolName } from '@/core/config';
 import { logger } from '@/utils/logger';
-import { ClaudeTaskManager } from './ClaudeTaskManager';
-import { MCPServer } from './MCPServer';
+import { MCPServer } from '../mcpServer/MCPServer';
 import type {
   ClaudeTask,
   ExecuteCommandParams,
   ExecuteCommandResult,
   MCPServerConfig,
   SendMessageParams,
-} from './types';
+} from '../mcpServer/types';
+import { ClaudeTaskManager } from './ClaudeTaskManager';
 
 interface SendMessageResult {
   message_id?: number;
