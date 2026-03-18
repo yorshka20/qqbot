@@ -127,6 +127,14 @@ export class MessageAPI {
     // Extract protocol from context
     const protocol = this.extractProtocol(context);
 
+    // Convert internal MessageSegment[] to protocol-specific format.
+    // Forward messages use sendForwardFromContext (which converts separately), so
+    // any array reaching here is always internal MessageSegment[].
+    const protocolMessage: string | unknown[] =
+      protocol === 'milky' && Array.isArray(message)
+        ? segmentsToMilkyOutgoing(message as MessageSegment[])
+        : message;
+
     // Extract user and group info
     const userId = context.userId;
     const groupId = context.groupId;
@@ -137,42 +145,36 @@ export class MessageAPI {
     // Handle temporary session messages (messageScene === 'temp')
     // Temporary sessions should use private message API with group_id context
     if (messageScene === 'temp' && groupId) {
-      const result = await this.apiClient.call<SendMessageResult>(
+      return this.apiClient.call<SendMessageResult>(
         'send_private_msg',
         {
           user_id: userId,
           group_id: groupId, // Include group_id for temporary session context
-          message,
+          message: protocolMessage,
         },
         protocol,
         timeout,
       );
-      // Return full response for plugins to access all fields
-      return result;
     } else if (messageType === 'private') {
-      const result = await this.apiClient.call<SendMessageResult>(
+      return this.apiClient.call<SendMessageResult>(
         'send_private_msg',
         {
           user_id: userId,
-          message,
+          message: protocolMessage,
         },
         protocol,
         timeout,
       );
-      // Return full response for plugins to access all fields
-      return result;
     } else if (groupId) {
-      const result = await this.apiClient.call<SendMessageResult>(
+      return this.apiClient.call<SendMessageResult>(
         'send_group_msg',
         {
           group_id: groupId,
-          message,
+          message: protocolMessage,
         },
         protocol,
         timeout,
       );
-      // Return full response for plugins to access all fields
-      return result;
     }
 
     // If no valid message type found, throw error
