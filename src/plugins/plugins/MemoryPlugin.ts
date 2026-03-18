@@ -207,7 +207,11 @@ export class MemoryPlugin extends PluginBase {
    * Skips if this groupId:userId was already processed (recorded in full-history progress file),
    * or if a full-history run for this user is already queued/running (in-memory guard to avoid duplicate work).
    */
-  runFullHistoryExtractForUser(groupId: string, userId: string): void {
+  runFullHistoryExtractForUser(
+    groupId: string,
+    userId: string,
+    onComplete?: (success: boolean) => void,
+  ): void {
     if (this.botSelfId && String(userId) === this.botSelfId) {
       return;
     }
@@ -221,11 +225,15 @@ export class MemoryPlugin extends PluginBase {
     this.fullHistoryPendingKeys.add(key);
     logger.info(`[MemoryPlugin] runFullHistoryExtractForUser started groupId=${groupId} userId=${userId}`);
     void this.runFullHistoryExtractForUserInternal(groupId, userId)
+      .then(() => {
+        onComplete?.(true);
+      })
       .catch((err) => {
         logger.error(
           `[MemoryPlugin] runFullHistoryExtractForUser unhandled error groupId=${groupId} userId=${userId}`,
           err,
         );
+        onComplete?.(false);
       })
       .finally(() => {
         this.fullHistoryPendingKeys.delete(key);
@@ -286,6 +294,168 @@ export class MemoryPlugin extends PluginBase {
       );
       await this.upsertMemoryExtractCursor(groupId, userId, new Date().toISOString());
     }
+  }
+
+  /**
+   * Run full-history extract for group memory (extractAndUpsert handles both group + user facts).
+   * Chunks the full conversation history and runs extract on each chunk.
+   * Fire-and-forget; onComplete callback is called when done.
+   */
+  runFullHistoryExtractForGroup(groupId: string, onComplete?: (success: boolean) => void): void {
+    const key = `group:${groupId}`;
+    if (this.fullHistoryPendingKeys.has(key)) {
+      logger.info(`[MemoryPlugin] runFullHistoryExtractForGroup: already running, skip groupId=${groupId}`);
+      return;
+    }
+    this.fullHistoryPendingKeys.add(key);
+    logger.info(`[MemoryPlugin] runFullHistoryExtractForGroup started groupId=${groupId}`);
+    void this.runFullHistoryExtractForGroupInternal(groupId)
+      .then(() => {
+        onComplete?.(true);
+      })
+      .catch((err) => {
+        logger.error(`[MemoryPlugin] runFullHistoryExtractForGroup error groupId=${groupId}`, err);
+        onComplete?.(false);
+      })
+      .finally(() => {
+        this.fullHistoryPendingKeys.delete(key);
+      });
+  }
+
+  private async runFullHistoryExtractForGroupInternal(groupId: string): Promise<void> {
+    const entries = await this.conversationHistoryService.getRecentMessages(groupId, 0);
+    const filtered = this.botSelfId ? entries.filter((e) => String(e.userId) !== this.botSelfId) : entries;
+    if (filtered.length === 0) {
+      logger.info(`[MemoryPlugin] runFullHistoryExtractForGroup: no messages for groupId=${groupId}, skip`);
+      return;
+    }
+    const text = this.conversationHistoryService.formatAsText(filtered);
+    const chunks = this.chunkTextByMaxLength(text, this.fullHistoryMaxLength);
+    logger.info(
+      `[MemoryPlugin] runFullHistoryExtractForGroup: processing groupId=${groupId} messages=${filtered.length} chunks=${chunks.length}`,
+    );
+    const opts = { provider: this.extractProvider };
+    for (let i = 0; i < chunks.length; i++) {
+      logger.info(
+        `[MemoryPlugin] runFullHistoryExtractForGroup chunk ${i + 1}/${chunks.length} groupId=${groupId}`,
+      );
+      await this.memoryExtractService.extractAndUpsert(groupId, chunks[i], opts);
+    }
+    logger.info(
+      `[MemoryPlugin] Full history group extract completed for groupId=${groupId} chunks=${chunks.length}`,
+    );
+  }
+
+  /**
+   * Run user memory extract for messages since a given date.
+   * Fire-and-forget; onComplete callback is called when done.
+   */
+  runExtractForUserSince(
+    groupId: string,
+    userId: string,
+    since: Date,
+    onComplete?: (success: boolean) => void,
+  ): void {
+    const key = `user-since:${groupId}:${userId}`;
+    if (this.fullHistoryPendingKeys.has(key)) {
+      logger.info(`[MemoryPlugin] runExtractForUserSince: already running, skip groupId=${groupId} userId=${userId}`);
+      return;
+    }
+    this.fullHistoryPendingKeys.add(key);
+    logger.info(
+      `[MemoryPlugin] runExtractForUserSince started groupId=${groupId} userId=${userId} since=${since.toISOString()}`,
+    );
+    void this.runExtractForUserSinceInternal(groupId, userId, since)
+      .then(() => onComplete?.(true))
+      .catch((err) => {
+        logger.error(`[MemoryPlugin] runExtractForUserSince error groupId=${groupId} userId=${userId}`, err);
+        onComplete?.(false);
+      })
+      .finally(() => {
+        this.fullHistoryPendingKeys.delete(key);
+      });
+  }
+
+  private async runExtractForUserSinceInternal(groupId: string, userId: string, since: Date): Promise<void> {
+    const entries = await this.conversationHistoryService.getMessagesSince(groupId, since);
+    // Filter to only this user's messages
+    const userEntries = entries.filter((e) => String(e.userId) === userId);
+    if (userEntries.length === 0) {
+      logger.info(
+        `[MemoryPlugin] runExtractForUserSince: no messages for groupId=${groupId} userId=${userId} since=${since.toISOString()}, skip`,
+      );
+      return;
+    }
+    const text = this.conversationHistoryService.formatAsText(userEntries);
+    const chunks = this.chunkTextByMaxLength(text, this.fullHistoryMaxLength);
+    logger.info(
+      `[MemoryPlugin] runExtractForUserSince: processing groupId=${groupId} userId=${userId} messages=${userEntries.length} chunks=${chunks.length}`,
+    );
+    const opts = { provider: this.extractProvider };
+    for (let i = 0; i < chunks.length; i++) {
+      logger.info(
+        `[MemoryPlugin] runExtractForUserSince chunk ${i + 1}/${chunks.length} groupId=${groupId} userId=${userId}`,
+      );
+      await this.memoryExtractService.extractAndUpsertUserOnly(groupId, userId, chunks[i], opts);
+    }
+    logger.info(
+      `[MemoryPlugin] runExtractForUserSince completed groupId=${groupId} userId=${userId} chunks=${chunks.length}`,
+    );
+  }
+
+  /**
+   * Run group memory extract (group + user facts) for messages since a given date.
+   * Fire-and-forget; onComplete callback is called when done.
+   */
+  runExtractForGroupSince(
+    groupId: string,
+    since: Date,
+    onComplete?: (success: boolean) => void,
+  ): void {
+    const key = `group-since:${groupId}`;
+    if (this.fullHistoryPendingKeys.has(key)) {
+      logger.info(`[MemoryPlugin] runExtractForGroupSince: already running, skip groupId=${groupId}`);
+      return;
+    }
+    this.fullHistoryPendingKeys.add(key);
+    logger.info(
+      `[MemoryPlugin] runExtractForGroupSince started groupId=${groupId} since=${since.toISOString()}`,
+    );
+    void this.runExtractForGroupSinceInternal(groupId, since)
+      .then(() => onComplete?.(true))
+      .catch((err) => {
+        logger.error(`[MemoryPlugin] runExtractForGroupSince error groupId=${groupId}`, err);
+        onComplete?.(false);
+      })
+      .finally(() => {
+        this.fullHistoryPendingKeys.delete(key);
+      });
+  }
+
+  private async runExtractForGroupSinceInternal(groupId: string, since: Date): Promise<void> {
+    const entries = await this.conversationHistoryService.getMessagesSince(groupId, since);
+    const filtered = this.botSelfId ? entries.filter((e) => String(e.userId) !== this.botSelfId) : entries;
+    if (filtered.length === 0) {
+      logger.info(
+        `[MemoryPlugin] runExtractForGroupSince: no messages for groupId=${groupId} since=${since.toISOString()}, skip`,
+      );
+      return;
+    }
+    const text = this.conversationHistoryService.formatAsText(filtered);
+    const chunks = this.chunkTextByMaxLength(text, this.fullHistoryMaxLength);
+    logger.info(
+      `[MemoryPlugin] runExtractForGroupSince: processing groupId=${groupId} messages=${filtered.length} chunks=${chunks.length}`,
+    );
+    const opts = { provider: this.extractProvider };
+    for (let i = 0; i < chunks.length; i++) {
+      logger.info(
+        `[MemoryPlugin] runExtractForGroupSince chunk ${i + 1}/${chunks.length} groupId=${groupId}`,
+      );
+      await this.memoryExtractService.extractAndUpsert(groupId, chunks[i], opts);
+    }
+    logger.info(
+      `[MemoryPlugin] runExtractForGroupSince completed groupId=${groupId} chunks=${chunks.length}`,
+    );
   }
 
   /** On message complete: schedule debounced extract for configured groups (lower frequency). */

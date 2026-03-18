@@ -20,8 +20,6 @@ import type { RAGDocument } from '@/services/retrieval/rag/types';
 import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
-import type { PluginManager } from '../PluginManager';
-import type { MemoryPlugin } from './MemoryPlugin';
 
 export interface MemoryTriggerPluginConfig {
   /** Group IDs where trigger-to-remember is enabled (should match memory-enabled groups). */
@@ -73,7 +71,7 @@ export class MemoryTriggerPlugin extends PluginBase {
 
   private memoryService!: MemoryService;
   private memoryExtractService!: MemoryExtractService;
-  private pluginManager!: PluginManager;
+
   private messageAPI!: MessageAPI;
   private retrievalService!: RetrievalService | null;
   private conversationHistoryService!: ConversationHistoryService;
@@ -83,7 +81,6 @@ export class MemoryTriggerPlugin extends PluginBase {
     const container = getContainer();
     this.memoryService = container.resolve<MemoryService>(DITokens.MEMORY_SERVICE);
     this.memoryExtractService = container.resolve<MemoryExtractService>(DITokens.MEMORY_EXTRACT_SERVICE);
-    this.pluginManager = container.resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
     this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
     this.conversationHistoryService = container.resolve<ConversationHistoryService>(
       DITokens.CONVERSATION_HISTORY_SERVICE,
@@ -359,6 +356,9 @@ export class MemoryTriggerPlugin extends PluginBase {
     }
     const message = context.message?.message ?? '';
     if (!this.isTriggerMessage(message)) {
+      logger.debug(
+        `[MemoryTriggerPlugin] Message not a trigger: group=${groupId} msg="${message.slice(0, 60)}" triggerName="${this.triggerName}" keywords=${JSON.stringify(this.triggerKeywords)}`,
+      );
       return true;
     }
     const content = this.extractContentToRemember(message);
@@ -369,8 +369,11 @@ export class MemoryTriggerPlugin extends PluginBase {
     if (!userId) {
       return true;
     }
-    // When update finishes, send standalone "记忆已更新" (current message may or may not get pipeline reply)
     const sendContext = context.message;
+    logger.info(
+      `[MemoryTriggerPlugin] Trigger matched for group=${groupId} user=${userId}, content="${content.slice(0, 50)}..."`,
+    );
+    // Quick merge trigger content into user memory and notify
     this.mergeAndUpsertUserMemory(groupId, userId, content)
       .then(() => {
         return this.messageAPI.sendFromContext(`用户 ${userId} 的记忆已更新。`, sendContext, 10000);
@@ -379,13 +382,8 @@ export class MemoryTriggerPlugin extends PluginBase {
         logger.debug(`[MemoryTriggerPlugin] Sent "记忆已更新" for group=${groupId} user=${userId}`);
       })
       .catch((err) => {
-        logger.warn('[MemoryTriggerPlugin] send "记忆已更新" failed:', err);
+        logger.warn('[MemoryTriggerPlugin] merge/send failed:', err);
       });
-    // Schedule full-history extract for this user; runs in same queue as normal extract (queued if extract already running)
-    const memoryPlugin = this.pluginManager.getPluginAs<MemoryPlugin>('memory');
-    if (memoryPlugin) {
-      memoryPlugin.runFullHistoryExtractForUser(groupId, userId);
-    }
     // RAG cold start: backfill existing history to Qdrant once per group (fire-and-forget)
     if (this.coldStartOnTrigger && this.retrievalService?.isRAGEnabled()) {
       void this.runRAGColdStartForGroup(groupId).catch((err) => {
