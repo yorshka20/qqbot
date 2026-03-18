@@ -427,16 +427,19 @@ export class LLMService {
           // can properly map functionCall/functionResponse in multi-turn conversations.
           // Generate synthetic toolCallId when provider doesn't return one.
           const callId = response.toolCallId || `call_${round}_${Date.now()}`;
+          const toolCall: { id: string; name: string; arguments: string; thought_signature?: string } = {
+            id: callId,
+            name: response.functionCall.name,
+            arguments: response.functionCall.arguments,
+          };
+          // Preserve thoughtSignature for Gemini thinking models.
+          if (response.thoughtSignature) {
+            toolCall.thought_signature = response.thoughtSignature;
+          }
           currentMessages.push({
             role: 'assistant',
             content: '',
-            tool_calls: [
-              {
-                id: callId,
-                name: response.functionCall.name,
-                arguments: response.functionCall.arguments,
-              },
-            ],
+            tool_calls: [toolCall],
           });
           currentMessages.push({
             role: 'tool',
@@ -454,16 +457,18 @@ export class LLMService {
 
           const errorContent = `Tool execution failed: ${errorMessage}`;
           const errorCallId = response.toolCallId || `call_${round}_${Date.now()}`;
+          const errorToolCall: { id: string; name: string; arguments: string; thought_signature?: string } = {
+            id: errorCallId,
+            name: response.functionCall.name,
+            arguments: response.functionCall.arguments,
+          };
+          if (response.thoughtSignature) {
+            errorToolCall.thought_signature = response.thoughtSignature;
+          }
           currentMessages.push({
             role: 'assistant',
             content: '',
-            tool_calls: [
-              {
-                id: errorCallId,
-                name: response.functionCall.name,
-                arguments: response.functionCall.arguments,
-              },
-            ],
+            tool_calls: [errorToolCall],
           });
           currentMessages.push({
             role: 'tool',
@@ -483,8 +488,13 @@ export class LLMService {
       round++;
     }
 
-    // Max rounds reached, force final generation
+    // Max rounds reached, force final generation with explicit instruction to produce text answer
     logger.warn(`[LLMService] Max tool rounds (${maxRounds}) reached, forcing final response`);
+    currentMessages.push({
+      role: 'user',
+      content:
+        'You have used all available tool rounds. Please provide your final answer now based on the information you have gathered so far. Do not attempt to call any more tools.',
+    });
     const finalResponse = await this.generateMessages(currentMessages, options, currentProviderName);
 
     // Strip DSML from final text — model may still attempt tool calls via text when tools are absent
@@ -610,6 +620,7 @@ export class LLMService {
       ...response,
       functionCall: response.functionCall,
       toolCallId: response.toolCallId,
+      thoughtSignature: response.thoughtSignature,
     };
   }
 }

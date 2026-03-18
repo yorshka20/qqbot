@@ -21,7 +21,7 @@
 
 | 日期                                    | 主要内容                                                          |
 | --------------------------------------- | ----------------------------------------------------------------- |
-| [2026-03-18](../workbook/2026-03-18.md) | Gemini tool use 多轮会话格式修复；toolCallId 缺失导致卡片渲染失败 |
+| [2026-03-18](../workbook/2026-03-18.md) | Gemini tool use 多轮会话格式修复；toolCallId 缺失导致卡片渲染失败；CardRenderer 外部 CDN 超时修复；Gemini thinking model thought_signature 修复；max rounds 空回复修复 |
 
 ---
 
@@ -192,7 +192,13 @@ import { logger } from "@/utils/logger"; // 正确
 import { logger } from "../../../utils/logger"; // 避免
 ```
 
-### 5. Gemini Provider 的 tool use 格式
+### 5. CardRenderer 不得引用外部资源
+
+**问题**: HTML 模板中引用外部 CDN（如 unpkg.com）会导致 `networkidle0` 在网络不可达时超时 30 秒，所有卡片渲染失败。
+
+**解决**: CardRenderer 的 HTML 模板必须完全自包含（内联 CSS/JS），使用 `waitUntil: 'domcontentloaded'`。详见 [2026-03-18 工作日志](../workbook/2026-03-18.md)。
+
+### 6. Gemini Provider 的 tool use 格式
 
 **问题**: Gemini 需要原生 Content[] 格式处理多轮 tool use 会话，且不返回 `toolCallId`。
 
@@ -200,6 +206,12 @@ import { logger } from "../../../utils/logger"; // 避免
 
 - Gemini 需要 `mapChatMessagesToGeminiContents()` 转换为原生格式
 - 缺少 `toolCallId` 时需生成合成 ID，确保所有 provider 使用统一的结构化 `tool_calls` 格式
+
+### 7. Gemini thinking model 的 `thoughtSignature`
+
+**问题**: Gemini thinking model（如 gemini-2.5-flash）返回 functionCall 时附带 `thoughtSignature`，如果下一轮不回传则 API 返回 400。
+
+**解决**: `thoughtSignature` 必须在整个 tool use 管线中透传：`generateContentText()` 捕获 → `AIGenerateResponse.thoughtSignature` → `ChatMessageToolCall.thought_signature` → `mapChatMessagesToGeminiContents()` 回填到 functionCall part。详见 [2026-03-18 工作日志](../workbook/2026-03-18.md)。
 
 ---
 

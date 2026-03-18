@@ -230,6 +230,7 @@ export class GeminiProvider
         functionCall?: { name: string; args: Record<string, unknown> };
         functionResponse?: { name: string; response: Record<string, unknown> };
         inlineData?: { mimeType: string; data: string };
+        thoughtSignature?: string;
       }>;
     }>;
   } {
@@ -257,6 +258,7 @@ export class GeminiProvider
         functionCall?: { name: string; args: Record<string, unknown> };
         functionResponse?: { name: string; response: Record<string, unknown> };
         inlineData?: { mimeType: string; data: string };
+        thoughtSignature?: string;
       }>;
     }> = [];
 
@@ -269,6 +271,7 @@ export class GeminiProvider
         const parts: Array<{
           text?: string;
           functionCall?: { name: string; args: Record<string, unknown> };
+          thoughtSignature?: string;
         }> = [];
 
         const textContent = contentToPlainString(msg.content).trim();
@@ -285,7 +288,15 @@ export class GeminiProvider
             } catch {
               args = {};
             }
-            parts.push({ functionCall: { name: tc.name, args } });
+            const part: {
+              functionCall: { name: string; args: Record<string, unknown> };
+              thoughtSignature?: string;
+            } = { functionCall: { name: tc.name, args } };
+            // Echo back thoughtSignature for Gemini thinking models.
+            if (tc.thought_signature) {
+              part.thoughtSignature = tc.thought_signature;
+            }
+            parts.push(part);
           }
         }
 
@@ -341,6 +352,7 @@ export class GeminiProvider
     usage?: AIGenerateResponse['usage'];
     functionCall?: AIGenerateResponse['functionCall'];
     toolCallId?: string;
+    thoughtSignature?: string;
   }>;
 
   private async generateContentText(
@@ -365,6 +377,7 @@ export class GeminiProvider
     usage?: AIGenerateResponse['usage'];
     functionCall?: AIGenerateResponse['functionCall'];
     toolCallId?: string;
+    thoughtSignature?: string;
   }>;
 
   private async generateContentText(
@@ -381,6 +394,7 @@ export class GeminiProvider
     usage?: AIGenerateResponse['usage'];
     functionCall?: AIGenerateResponse['functionCall'];
     toolCallId?: string;
+    thoughtSignature?: string;
   }> {
     const config: Record<string, unknown> = {
       temperature: options?.temperature ?? 0.7,
@@ -417,6 +431,7 @@ export class GeminiProvider
       usage?: AIGenerateResponse['usage'];
       functionCall?: AIGenerateResponse['functionCall'];
       toolCallId?: string;
+      thoughtSignature?: string;
     } = {
       text: text ?? '',
       usage: undefined,
@@ -430,7 +445,9 @@ export class GeminiProvider
     // Also check candidate parts for functionCall (fallback when SDK property is unavailable).
     const partFunctionCall = candidate.content.parts.find(
       (p) => (p as { functionCall?: unknown }).functionCall != null,
-    ) as { functionCall?: { id?: string; name?: string; args?: Record<string, unknown> } } | undefined;
+    ) as
+      | { functionCall?: { id?: string; name?: string; args?: Record<string, unknown> }; thoughtSignature?: string }
+      | undefined;
 
     const fc =
       (Array.isArray(sdkFunctionCalls) && sdkFunctionCalls.length > 0 ? sdkFunctionCalls[0] : null) ??
@@ -448,6 +465,10 @@ export class GeminiProvider
       }
       out.functionCall = { name: fc.name, arguments: argsStr };
       out.toolCallId = fc.id;
+      // Capture thoughtSignature from the part (required by Gemini thinking models).
+      if (partFunctionCall?.thoughtSignature) {
+        out.thoughtSignature = partFunctionCall.thoughtSignature;
+      }
       // When returning a functionCall, clear text so caller can detect tool-use cleanly.
       out.text = out.text || '';
     }
@@ -514,6 +535,7 @@ export class GeminiProvider
         usage: result.usage,
         functionCall: result.functionCall,
         toolCallId: result.toolCallId,
+        thoughtSignature: result.thoughtSignature,
       };
     }
 
@@ -539,6 +561,7 @@ export class GeminiProvider
       usage: result.usage,
       functionCall: result.functionCall,
       toolCallId: result.toolCallId,
+      thoughtSignature: result.thoughtSignature,
     };
   }
 

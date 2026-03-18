@@ -56,6 +56,8 @@ export interface ChatMessageToolCall {
   id: string;
   name: string;
   arguments: string;
+  /** Gemini thinking-model thought signature; must be echoed back in multi-turn tool use. */
+  thought_signature?: string;
 }
 
 /**
@@ -157,6 +159,8 @@ export interface AIGenerateResponse {
   functionCall?: FunctionCall;
   /** Provider's tool_call id (e.g. OpenAI); required to send tool result in next round. */
   toolCallId?: string;
+  /** Gemini thinking-model thought signature; must be echoed back in multi-turn tool use. */
+  thoughtSignature?: string;
 }
 
 /**
