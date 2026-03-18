@@ -1,5 +1,6 @@
 // import all executors to ensure decorators are executed
 
+export { WechatArticleRAGToolExecutor } from './WechatArticleRAGToolExecutor';
 export { WechatArticleSummaryToolExecutor } from './WechatArticleSummaryToolExecutor';
 export { WechatDigestToolExecutor } from './WechatDigestToolExecutor';
 export { WechatGroupSummaryToolExecutor } from './WechatGroupSummaryToolExecutor';
