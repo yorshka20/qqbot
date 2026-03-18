@@ -35,11 +35,9 @@ export interface ThreadContextForAnalysis {
   triggerUserId?: string;
 }
 
-const DEFAULT_ANALYSIS_PROVIDER = 'ollama';
-
 export interface PreliminaryAnalysisOptions {
-  /** LLM provider name (e.g. "ollama", "doubao"). Default "ollama". */
-  providerName?: string;
+  /** LLM provider name (required — must be resolved from config by caller). */
+  providerName: string;
   /** When true, analysis is idle-triggered (no keyword); inject stricter instruction so AI avoids replying when topic has shifted and no one is interested. */
   idleMode?: boolean;
 }
@@ -59,15 +57,15 @@ export class PreliminaryAnalysisService {
    * Run preliminary analysis: should the bot proactively join?
    * @param preferenceText - Rendered preference (persona) text
    * @param recentMessagesText - Formatted recent messages (or thread context)
-   * @param options - Optional provider name (default "ollama")
+   * @param options - Provider name and analysis options
    * @returns Parsed result; shouldJoin is false if provider unavailable or parse fails
    */
   async analyze(
     preferenceText: string,
     recentMessagesText: string,
-    options?: PreliminaryAnalysisOptions,
+    options: PreliminaryAnalysisOptions,
   ): Promise<PreliminaryAnalysisResult> {
-    const providerName = options?.providerName ?? DEFAULT_ANALYSIS_PROVIDER;
+    const providerName = options.providerName;
     const provider = this.aiManager.getProvider(providerName);
     if (!provider || !isLLMCapability(provider)) {
       return DEFAULT_ANALYSIS_RESULT;
@@ -123,9 +121,9 @@ export class PreliminaryAnalysisService {
     preferenceText: string,
     recentMessagesText: string,
     threads: ThreadContextForAnalysis[],
-    options?: PreliminaryAnalysisOptions,
+    options: PreliminaryAnalysisOptions,
   ): Promise<PreliminaryAnalysisResult> {
-    const providerName = options?.providerName ?? DEFAULT_ANALYSIS_PROVIDER;
+    const providerName = options.providerName;
     const provider = this.aiManager.getProvider(providerName);
     if (!provider || !isLLMCapability(provider)) {
       return DEFAULT_ANALYSIS_RESULT;

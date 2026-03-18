@@ -240,7 +240,10 @@
             "123456789"
           ],
           "debounceMs": 120000,
-          "extractProvider": "ollama",
+          "extractProvider": "deepseek",
+          // Periodic memory backup (copies data/memory/ → data/backup/memory/YYYY-MM-DD/)
+          "backupIntervalMs": 604800000, // 7 days (default). Set to 0 to disable.
+          // "backupDir": "data/backup/memory", // Override backup directory (default)
           // Context-aware memory filtering - only inject relevant memory into AI prompts
           "filter": {
             "enabled": true, // Enable semantic filtering (default: true)

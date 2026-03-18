@@ -4,6 +4,7 @@ import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { hasWhitelistCapability } from '@/context/HookContextHelpers';
 import type { ProactiveConversationService } from '@/conversation/proactive';
 import type { ThreadService } from '@/conversation/thread';
+import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext, HookResult } from '@/hooks/types';
@@ -18,7 +19,7 @@ const TRIGGER_TEMPLATE_SUFFIX = '.trigger';
 export interface ProactiveConversationPluginConfig {
   /** Groups that have proactive analysis enabled. Same groupId can appear multiple times with different preferenceKey (multiple preferences per group). */
   groups?: Array<{ groupId: string; preferenceKey: string }>;
-  /** LLM provider name for preliminary analysis (e.g. "ollama", "doubao"). Must be registered in ai.providers. Default "ollama". */
+  /** LLM provider name for preliminary analysis (e.g. "doubao", "deepseek"). Must be registered in ai.providers. Required if not set in taskProviders.lite or defaultProviders.llm. */
   analysisProvider?: string;
 }
 
@@ -35,7 +36,6 @@ export class ProactiveConversationPlugin extends PluginBase {
   private triggerWords: Record<string, string[]> = {};
   private triggerAccumulator: Record<string, number> = {};
   private accumulatorThreshold = 30;
-  private defaultAnalysisProvider = 'ollama';
 
   private proactiveConversationService!: ProactiveConversationService;
   private threadService!: ThreadService;
@@ -123,10 +123,19 @@ export class ProactiveConversationPlugin extends PluginBase {
       }
       logger.info(`[ProactiveConversationPlugin] Enabled for groups: ${Array.from(this.groupIds).join(', ')}`);
     }
-    // Always set provider so config is applied (analysis + final reply use this; default ollama).
-    const analysisProvider = pluginConfig?.analysisProvider ?? this.defaultAnalysisProvider;
-    this.proactiveConversationService.setAnalysisProvider(analysisProvider);
-    logger.info(`[ProactiveConversationPlugin] Analysis and reply provider: ${analysisProvider}`);
+    // Resolve analysis provider: plugin config > taskProviders.lite > defaultProviders.llm
+    const config = container.resolve<Config>(DITokens.CONFIG);
+    const aiConfig = config.getAIConfig();
+    const analysisProvider =
+      pluginConfig?.analysisProvider ?? aiConfig?.taskProviders?.lite ?? aiConfig?.defaultProviders?.llm;
+    if (!analysisProvider) {
+      logger.warn(
+        '[ProactiveConversationPlugin] No analysis provider configured (set plugin analysisProvider, taskProviders.lite, or defaultProviders.llm)',
+      );
+    } else {
+      this.proactiveConversationService.setAnalysisProvider(analysisProvider);
+      logger.info(`[ProactiveConversationPlugin] Analysis and reply provider: ${analysisProvider}`);
+    }
   }
 
   @Hook({

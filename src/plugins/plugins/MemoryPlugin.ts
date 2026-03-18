@@ -1,6 +1,7 @@
 // Memory Plugin - debounced memory extraction from recent messages for configured groups
 
-import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { appendFile, cp, mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { ConversationHistoryService } from '@/conversation/history';
 import type { Config } from '@/core/config';
@@ -19,7 +20,7 @@ export interface MemoryPluginConfig {
   groups: string[];
   /** Debounce delay in ms before running extract after last message. Default 600000 (10 min). Use a larger value (e.g. 10 min) to avoid extract running too often and filling the queue; small values (e.g. 10s) cause frequent group extracts and can make memory extract appear to run non-stop. */
   debounceMs: number;
-  /** LLM provider for extract (e.g. "ollama"). Default "ollama". */
+  /** LLM provider for extract (e.g. "deepseek", "doubao"). Required. */
   extractProvider: string;
   /** Full-history extract (via MemoryTrigger): max character length per extract chunk. Default 15000. */
   fullHistoryMaxLength?: number;
@@ -27,12 +28,19 @@ export interface MemoryPluginConfig {
   fullHistoryProgressFile?: string;
   /** Max messages per debounced extract run (per group). Progress is stored per user in DB (memory_extract_user_cursors) when triggered via MemoryTrigger. */
   maxMessagesPerExtract?: number;
+  /** Backup interval in ms. Default 604800000 (7 days). Set to 0 to disable. */
+  backupIntervalMs?: number;
+  /** Backup directory path (relative to cwd). Default "data/backups/memory". */
+  backupDir?: string;
 }
 
 const DEFAULT_DEBOUNCE_MS = 6000_000; // 100 min; short debounce (e.g. 10s) causes frequent group extracts and queue buildup
 const DEFAULT_FULL_HISTORY_MAX_LENGTH = 15_000;
 const DEFAULT_FULL_HISTORY_PROGRESS_FILE = 'data/memory_full_history_progress.txt';
 const DEFAULT_MAX_MESSAGES_PER_EXTRACT = 500;
+const DEFAULT_BACKUP_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const DEFAULT_BACKUP_DIR = 'data/backup/memory';
+const MEMORY_DIR = 'data/memory';
 
 @RegisterPlugin({
   name: 'memory',
@@ -52,6 +60,11 @@ export class MemoryPlugin extends PluginBase {
   private fullHistoryProgressFile = DEFAULT_FULL_HISTORY_PROGRESS_FILE;
   /** When using cursor (DB): cap messages per run; next debounce continues. */
   private maxMessagesPerExtract = DEFAULT_MAX_MESSAGES_PER_EXTRACT;
+
+  /** Backup interval timer. */
+  private backupTimer: ReturnType<typeof setInterval> | null = null;
+  private backupIntervalMs = DEFAULT_BACKUP_INTERVAL_MS;
+  private backupDir = DEFAULT_BACKUP_DIR;
 
   /** Per-group debounce timer: clear on new message, run extract when timer fires. */
   private timersByGroup = new Map<string, ReturnType<typeof setTimeout>>();
@@ -85,8 +98,22 @@ export class MemoryPlugin extends PluginBase {
       this.fullHistoryMaxLength = pluginConfig.fullHistoryMaxLength ?? DEFAULT_FULL_HISTORY_MAX_LENGTH;
       this.fullHistoryProgressFile = pluginConfig.fullHistoryProgressFile ?? DEFAULT_FULL_HISTORY_PROGRESS_FILE;
       this.maxMessagesPerExtract = pluginConfig.maxMessagesPerExtract ?? DEFAULT_MAX_MESSAGES_PER_EXTRACT;
+      this.backupIntervalMs = pluginConfig.backupIntervalMs ?? DEFAULT_BACKUP_INTERVAL_MS;
+      this.backupDir = pluginConfig.backupDir ?? DEFAULT_BACKUP_DIR;
       logger.info(
         `[MemoryPlugin] Enabled | groups=${Array.from(this.groupIds).join(', ')} debounceMs=${this.debounceMs} maxPerExtract=${this.maxMessagesPerExtract} extractProvider=${this.extractProvider}`,
+      );
+    }
+
+    // Start periodic memory backup
+    if (this.backupIntervalMs > 0) {
+      // Run an initial backup on startup, then schedule periodic backups
+      void this.backupMemoryFiles();
+      this.backupTimer = setInterval(() => {
+        void this.backupMemoryFiles();
+      }, this.backupIntervalMs);
+      logger.info(
+        `[MemoryPlugin] Memory backup scheduled every ${(this.backupIntervalMs / 3600000).toFixed(1)}h to ${this.backupDir}`,
       );
     }
   }
@@ -207,11 +234,7 @@ export class MemoryPlugin extends PluginBase {
    * Skips if this groupId:userId was already processed (recorded in full-history progress file),
    * or if a full-history run for this user is already queued/running (in-memory guard to avoid duplicate work).
    */
-  runFullHistoryExtractForUser(
-    groupId: string,
-    userId: string,
-    onComplete?: (success: boolean) => void,
-  ): void {
+  runFullHistoryExtractForUser(groupId: string, userId: string, onComplete?: (success: boolean) => void): void {
     if (this.botSelfId && String(userId) === this.botSelfId) {
       return;
     }
@@ -336,26 +359,17 @@ export class MemoryPlugin extends PluginBase {
     );
     const opts = { provider: this.extractProvider };
     for (let i = 0; i < chunks.length; i++) {
-      logger.info(
-        `[MemoryPlugin] runFullHistoryExtractForGroup chunk ${i + 1}/${chunks.length} groupId=${groupId}`,
-      );
+      logger.info(`[MemoryPlugin] runFullHistoryExtractForGroup chunk ${i + 1}/${chunks.length} groupId=${groupId}`);
       await this.memoryExtractService.extractAndUpsert(groupId, chunks[i], opts);
     }
-    logger.info(
-      `[MemoryPlugin] Full history group extract completed for groupId=${groupId} chunks=${chunks.length}`,
-    );
+    logger.info(`[MemoryPlugin] Full history group extract completed for groupId=${groupId} chunks=${chunks.length}`);
   }
 
   /**
    * Run user memory extract for messages since a given date.
    * Fire-and-forget; onComplete callback is called when done.
    */
-  runExtractForUserSince(
-    groupId: string,
-    userId: string,
-    since: Date,
-    onComplete?: (success: boolean) => void,
-  ): void {
+  runExtractForUserSince(groupId: string, userId: string, since: Date, onComplete?: (success: boolean) => void): void {
     const key = `user-since:${groupId}:${userId}`;
     if (this.fullHistoryPendingKeys.has(key)) {
       logger.info(`[MemoryPlugin] runExtractForUserSince: already running, skip groupId=${groupId} userId=${userId}`);
@@ -407,20 +421,14 @@ export class MemoryPlugin extends PluginBase {
    * Run group memory extract (group + user facts) for messages since a given date.
    * Fire-and-forget; onComplete callback is called when done.
    */
-  runExtractForGroupSince(
-    groupId: string,
-    since: Date,
-    onComplete?: (success: boolean) => void,
-  ): void {
+  runExtractForGroupSince(groupId: string, since: Date, onComplete?: (success: boolean) => void): void {
     const key = `group-since:${groupId}`;
     if (this.fullHistoryPendingKeys.has(key)) {
       logger.info(`[MemoryPlugin] runExtractForGroupSince: already running, skip groupId=${groupId}`);
       return;
     }
     this.fullHistoryPendingKeys.add(key);
-    logger.info(
-      `[MemoryPlugin] runExtractForGroupSince started groupId=${groupId} since=${since.toISOString()}`,
-    );
+    logger.info(`[MemoryPlugin] runExtractForGroupSince started groupId=${groupId} since=${since.toISOString()}`);
     void this.runExtractForGroupSinceInternal(groupId, since)
       .then(() => onComplete?.(true))
       .catch((err) => {
@@ -448,14 +456,31 @@ export class MemoryPlugin extends PluginBase {
     );
     const opts = { provider: this.extractProvider };
     for (let i = 0; i < chunks.length; i++) {
-      logger.info(
-        `[MemoryPlugin] runExtractForGroupSince chunk ${i + 1}/${chunks.length} groupId=${groupId}`,
-      );
+      logger.info(`[MemoryPlugin] runExtractForGroupSince chunk ${i + 1}/${chunks.length} groupId=${groupId}`);
       await this.memoryExtractService.extractAndUpsert(groupId, chunks[i], opts);
     }
-    logger.info(
-      `[MemoryPlugin] runExtractForGroupSince completed groupId=${groupId} chunks=${chunks.length}`,
-    );
+    logger.info(`[MemoryPlugin] runExtractForGroupSince completed groupId=${groupId} chunks=${chunks.length}`);
+  }
+
+  /**
+   * Backup all memory files to timestamped directory.
+   * Copies data/memory/ → data/backup/memory/YYYY-MM-DD/
+   */
+  private async backupMemoryFiles(): Promise<void> {
+    const srcDir = join(process.cwd(), MEMORY_DIR);
+    if (!existsSync(srcDir)) {
+      logger.debug('[MemoryPlugin] No memory directory to backup');
+      return;
+    }
+    const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const destDir = join(process.cwd(), this.backupDir, date);
+    try {
+      await mkdir(destDir, { recursive: true });
+      await cp(srcDir, destDir, { recursive: true });
+      logger.info(`[MemoryPlugin] Memory backup completed → ${destDir}`);
+    } catch (err) {
+      logger.error('[MemoryPlugin] Memory backup failed:', err);
+    }
   }
 
   /** On message complete: schedule debounced extract for configured groups (lower frequency). */

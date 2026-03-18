@@ -137,7 +137,18 @@ export class MemoryEditCommand implements CommandHandler {
     @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
     @inject(DITokens.MEMORY_SERVICE) private memoryService: MemoryService,
     @inject(DITokens.MEMORY_EXTRACT_SERVICE) private memoryExtractService: MemoryExtractService,
+    @inject(DITokens.CONFIG) private config: Config,
   ) {}
+
+  /** Resolve the LLM provider for memory operations from config (required). */
+  private getExtractProvider(): string {
+    const aiConfig = this.config.getAIConfig();
+    const provider = aiConfig?.taskProviders?.memoryExtract ?? aiConfig?.defaultProviders?.llm;
+    if (!provider) {
+      throw new Error('[MemoryEditCommand] No LLM provider configured for memory extract (set taskProviders.memoryExtract or defaultProviders.llm in ai config)');
+    }
+    return provider;
+  }
 
   execute(args: string[], context: CommandContext): CommandResult {
     if (context.messageType !== 'group' || context.groupId === undefined) {
@@ -180,8 +191,9 @@ export class MemoryEditCommand implements CommandHandler {
     // Fire-and-forget: merge and notify
     if (target === 'group') {
       const existing = this.memoryService.getGroupMemoryText(groupId);
+      const provider = this.getExtractProvider();
       this.memoryExtractService
-        .mergeWithExisting(existing, content, 'global')
+        .mergeWithExisting(existing, content, 'global', { provider })
         .then(async (merged: string) => {
           if (merged) {
             await this.memoryService.upsertMemory(groupId, '_global_', true, merged);
@@ -194,8 +206,9 @@ export class MemoryEditCommand implements CommandHandler {
         });
     } else {
       const existing = this.memoryService.getUserMemoryText(groupId, targetUserId);
+      const provider = this.getExtractProvider();
       this.memoryExtractService
-        .mergeWithExisting(existing, content, 'user')
+        .mergeWithExisting(existing, content, 'user', { provider })
         .then(async (merged: string) => {
           if (merged) {
             await this.memoryService.upsertMemory(groupId, targetUserId, false, merged);

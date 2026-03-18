@@ -9,9 +9,6 @@ import { logger } from '@/utils/logger';
 import type { MemoryService } from './MemoryService';
 import { GROUP_MEMORY_USER_ID } from './MemoryService';
 
-/** Default LLM provider for extract and analyze (e.g. ollama). */
-const DEFAULT_EXTRACT_PROVIDER = 'ollama';
-
 /**
  * Extract output shape from prompts/memory/extract.txt:
  * group_facts: Array<{ scope, content }> (or legacy string[]),
@@ -24,7 +21,8 @@ export interface ExtractResult {
 }
 
 export interface MemoryExtractServiceOptions {
-  provider?: string;
+  /** LLM provider name (required — must be resolved from config by caller). */
+  provider: string;
 }
 
 export class MemoryExtractService {
@@ -129,12 +127,12 @@ export class MemoryExtractService {
     existingMemory: string,
     newFacts: string,
     memoryType: 'user' | 'global',
-    options: MemoryExtractServiceOptions = {},
+    options: MemoryExtractServiceOptions,
   ): Promise<string> {
     if (!newFacts.trim()) {
       return existingMemory.trim();
     }
-    const provider = options.provider ?? DEFAULT_EXTRACT_PROVIDER;
+    const provider = options.provider;
     const baseSystemPrompt = this.promptManager.renderBasePrompt();
 
     // Get existing scopes for AI reference (to encourage scope reuse)
@@ -178,7 +176,7 @@ export class MemoryExtractService {
     groupId: string,
     userId: string,
     recentMessagesText: string,
-    options: MemoryExtractServiceOptions = {},
+    options: MemoryExtractServiceOptions,
   ): Promise<void> {
     const prev = this.extractQueue;
     this.extractQueue = prev.then(() => this.runExtractAndUpsertUserOnly(groupId, userId, recentMessagesText, options));
@@ -192,7 +190,7 @@ export class MemoryExtractService {
     recentMessagesText: string,
     options: MemoryExtractServiceOptions,
   ): Promise<void> {
-    const provider = options.provider ?? DEFAULT_EXTRACT_PROVIDER;
+    const provider = options.provider;
     const inputText = recentMessagesText || '(no messages)';
     const baseSystemPrompt = this.promptManager.renderBasePrompt();
     const targetUserSection = this.promptManager.render('memory.extract_single_user', {
@@ -262,7 +260,7 @@ export class MemoryExtractService {
   async extractAndUpsert(
     groupId: string,
     recentMessagesText: string,
-    options: MemoryExtractServiceOptions = {},
+    options: MemoryExtractServiceOptions,
   ): Promise<void> {
     const prev = this.extractQueue;
     this.extractQueue = prev.then(() => this.runExtractAndUpsert(groupId, recentMessagesText, options));
@@ -275,7 +273,7 @@ export class MemoryExtractService {
     recentMessagesText: string,
     options: MemoryExtractServiceOptions,
   ): Promise<void> {
-    const provider = options.provider ?? DEFAULT_EXTRACT_PROVIDER;
+    const provider = options.provider;
     const prompt = this.promptManager.render('memory.extract', {
       groupId,
       recentMessagesText: recentMessagesText || '(no messages)',

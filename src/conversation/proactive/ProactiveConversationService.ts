@@ -62,8 +62,8 @@ const RECENT_ACTIVITY_GRACE_MS = 2 * 60 * 1_000;
 export class ProactiveConversationService {
   /** groupId -> preferenceKeys[] (multiple preferences per group). */
   private groupConfig = new Map<string, string[]>();
-  /** LLM provider name for preliminary analysis (e.g. "ollama", "doubao"). */
-  private analysisProviderName = 'deepseek';
+  /** LLM provider name for preliminary analysis — must be set via setAnalysisProvider() from config. */
+  private analysisProviderName = '';
   private timersByGroup = new Map<string, ReturnType<typeof setTimeout>>();
   private preferredProtocol: ProtocolName = 'milky';
   private searchLimit = 8;

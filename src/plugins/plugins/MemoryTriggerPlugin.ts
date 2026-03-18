@@ -9,6 +9,7 @@ import {
   buildConversationWindowDocument,
   groupEntriesIntoWindows,
 } from '@/conversation/rag/buildConversationWindowDocument';
+import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
@@ -71,6 +72,7 @@ export class MemoryTriggerPlugin extends PluginBase {
 
   private memoryService!: MemoryService;
   private memoryExtractService!: MemoryExtractService;
+  private config!: Config;
 
   private messageAPI!: MessageAPI;
   private retrievalService!: RetrievalService | null;
@@ -81,6 +83,7 @@ export class MemoryTriggerPlugin extends PluginBase {
     const container = getContainer();
     this.memoryService = container.resolve<MemoryService>(DITokens.MEMORY_SERVICE);
     this.memoryExtractService = container.resolve<MemoryExtractService>(DITokens.MEMORY_EXTRACT_SERVICE);
+    this.config = container.resolve<Config>(DITokens.CONFIG);
     this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
     this.conversationHistoryService = container.resolve<ConversationHistoryService>(
       DITokens.CONVERSATION_HISTORY_SERVICE,
@@ -319,10 +322,21 @@ export class MemoryTriggerPlugin extends PluginBase {
    * Merge new content with existing user memory and upsert.
    * @returns Promise that resolves when update is done (for sending "记忆已更新" after)
    */
+  private getExtractProvider(): string {
+    const aiConfig = this.config.getAIConfig();
+    const provider = aiConfig?.taskProviders?.memoryExtract ?? aiConfig?.defaultProviders?.llm;
+    if (!provider) {
+      throw new Error(
+        '[MemoryTriggerPlugin] No LLM provider configured for memory extract (set taskProviders.memoryExtract or defaultProviders.llm in ai config)',
+      );
+    }
+    return provider;
+  }
+
   private mergeAndUpsertUserMemory(groupId: string, userId: string, content: string): Promise<void> {
     const existing = this.memoryService.getUserMemoryText(groupId, userId);
     return this.memoryExtractService
-      .mergeWithExisting(existing, content, 'user')
+      .mergeWithExisting(existing, content, 'user', { provider: this.getExtractProvider() })
       .then((merged) => {
         if (merged) {
           return this.memoryService.upsertMemory(groupId, userId, false, merged);
