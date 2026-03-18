@@ -725,9 +725,7 @@ export class WeChatDatabase {
     const conditions = sinceTs !== undefined ? 'WHERE analyzedAt >= ?' : '';
     const params = sinceTs !== undefined ? [new Date(sinceTs * 1000).toISOString()] : [];
     const rows = this.db
-      .query<{ articleMsgId: string }, string[]>(
-        `SELECT articleMsgId FROM wechat_article_insights ${conditions}`,
-      )
+      .query<{ articleMsgId: string }, string[]>(`SELECT articleMsgId FROM wechat_article_insights ${conditions}`)
       .all(...params);
     return new Set(rows.map((r) => r.articleMsgId));
   }

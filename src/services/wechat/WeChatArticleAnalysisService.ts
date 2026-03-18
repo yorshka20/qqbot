@@ -67,7 +67,10 @@ export class WeChatArticleAnalysisService {
    * Skips articles that already have insights in the DB.
    * Returns count of newly analyzed articles.
    */
-  async analyzeArticles(sinceTs: number, untilTs?: number): Promise<{
+  async analyzeArticles(
+    sinceTs: number,
+    untilTs?: number,
+  ): Promise<{
     total: number;
     analyzed: number;
     skipped: number;
@@ -102,9 +105,7 @@ export class WeChatArticleAnalysisService {
 
     for (let i = 0; i < pending.length; i += this.concurrency) {
       const batch = pending.slice(i, i + this.concurrency);
-      const results = await Promise.allSettled(
-        batch.map((article) => this.analyzeOne(article)),
-      );
+      const results = await Promise.allSettled(batch.map((article) => this.analyzeOne(article)));
 
       for (const result of results) {
         if (result.status === 'fulfilled') {

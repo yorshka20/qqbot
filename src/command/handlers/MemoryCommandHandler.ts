@@ -59,8 +59,7 @@ export class MemoryDeepCommand implements CommandHandler {
     }
 
     const { options } = CommandArgsParser.parse<{ target?: string; days?: number }>(args, this.argsConfig);
-    const target: 'user' | 'group' =
-      options.target === 'group' || options.target === '群组' ? 'group' : 'user';
+    const target: 'user' | 'group' = options.target === 'group' || options.target === '群组' ? 'group' : 'user';
     const days = Math.min(Math.max(Math.floor(options.days ?? 7), 1), 365);
 
     const groupId = context.groupId.toString();
@@ -102,9 +101,7 @@ export class MemoryDeepCommand implements CommandHandler {
 
     return {
       success: true,
-      segments: new MessageBuilder()
-        .text(`收到，正在整理${targetLabel}的记忆（最近${days}天）...`)
-        .build(),
+      segments: new MessageBuilder().text(`收到，正在整理${targetLabel}的记忆（最近${days}天）...`).build(),
     };
   }
 }
@@ -145,7 +142,9 @@ export class MemoryEditCommand implements CommandHandler {
     const aiConfig = this.config.getAIConfig();
     const provider = aiConfig?.taskProviders?.memoryExtract ?? aiConfig?.defaultProviders?.llm;
     if (!provider) {
-      throw new Error('[MemoryEditCommand] No LLM provider configured for memory extract (set taskProviders.memoryExtract or defaultProviders.llm in ai config)');
+      throw new Error(
+        '[MemoryEditCommand] No LLM provider configured for memory extract (set taskProviders.memoryExtract or defaultProviders.llm in ai config)',
+      );
     }
     return provider;
   }
@@ -171,8 +170,7 @@ export class MemoryEditCommand implements CommandHandler {
       args,
       this.argsConfig,
     );
-    const target: 'user' | 'group' =
-      options.target === 'group' || options.target === '群组' ? 'group' : 'user';
+    const target: 'user' | 'group' = options.target === 'group' || options.target === '群组' ? 'group' : 'user';
     let targetUserId = options.user ?? callerUserId;
 
     if (!content.trim()) {
@@ -223,11 +221,7 @@ export class MemoryEditCommand implements CommandHandler {
     }
 
     const targetLabel =
-      target === 'group'
-        ? '群组'
-        : targetUserId === callerUserId
-          ? '你的'
-          : `用户 ${targetUserId} 的`;
+      target === 'group' ? '群组' : targetUserId === callerUserId ? '你的' : `用户 ${targetUserId} 的`;
     return {
       success: true,
       segments: new MessageBuilder().text(`收到，正在订正${targetLabel}记忆...`).build(),

@@ -9,7 +9,8 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 
 @Tool({
   name: 'rag_search',
-  description: '语义搜索群聊历史消息原文。通过向量相似度匹配，找到与查询最相关的历史发言片段。适用于回忆"之前有人说过什么"。',
+  description:
+    '语义搜索群聊历史消息原文。通过向量相似度匹配，找到与查询最相关的历史发言片段。适用于回忆"之前有人说过什么"。',
   executor: 'rag_search',
   parameters: {
     query: {

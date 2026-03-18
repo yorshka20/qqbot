@@ -38,11 +38,7 @@ const MAX_CHUNK_DISPLAY_LEN = 500;
       description: `最低相似度阈值（0-1），默认 ${DEFAULT_MIN_SCORE}`,
     },
   },
-  examples: [
-    '最近有什么关于AI的新闻',
-    '查找公众号里关于经济形势的分析',
-    '搜索微信文章中提到的新政策',
-  ],
+  examples: ['最近有什么关于AI的新闻', '查找公众号里关于经济形势的分析', '搜索微信文章中提到的新政策'],
   whenToUse:
     '1) 用户询问近期热点、新闻、行业动态时，优先使用本工具查找已收录的高质量公众号文章；' +
     '2) 用户明确提到微信、公众号相关内容查找时使用；' +
@@ -103,9 +99,7 @@ export class WechatArticleRAGToolExecutor extends BaseToolExecutor {
           const url = (p.url as string) || '';
           const content = typeof hit.content === 'string' ? hit.content : '';
           const truncated =
-            content.length > MAX_CHUNK_DISPLAY_LEN
-              ? content.slice(0, MAX_CHUNK_DISPLAY_LEN) + '…'
-              : content;
+            content.length > MAX_CHUNK_DISPLAY_LEN ? content.slice(0, MAX_CHUNK_DISPLAY_LEN) + '…' : content;
 
           const header = [
             `${index + 1}. 「${title}」`,
