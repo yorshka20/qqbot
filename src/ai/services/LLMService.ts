@@ -423,31 +423,26 @@ export class LLMService {
           });
 
           const toolResultContent = JSON.stringify(toolResult);
-          if (response.toolCallId) {
-            // OpenAI/DeepSeek format: assistant with tool_calls + tool message
-            currentMessages.push({
-              role: 'assistant',
-              content: '',
-              tool_calls: [
-                {
-                  id: response.toolCallId,
-                  name: response.functionCall.name,
-                  arguments: response.functionCall.arguments,
-                },
-              ],
-            });
-            currentMessages.push({
-              role: 'tool',
-              tool_call_id: response.toolCallId,
-              content: toolResultContent,
-            });
-          } else {
-            currentMessages.push({ role: 'assistant', content: '' });
-            currentMessages.push({
-              role: 'user',
-              content: `Tool result for ${response.functionCall.name}: ${toolResultContent}`,
-            });
-          }
+          // Always use structured tool_calls format so all providers (including Gemini)
+          // can properly map functionCall/functionResponse in multi-turn conversations.
+          // Generate synthetic toolCallId when provider doesn't return one.
+          const callId = response.toolCallId || `call_${round}_${Date.now()}`;
+          currentMessages.push({
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+              {
+                id: callId,
+                name: response.functionCall.name,
+                arguments: response.functionCall.arguments,
+              },
+            ],
+          });
+          currentMessages.push({
+            role: 'tool',
+            tool_call_id: callId,
+            content: toolResultContent,
+          });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           logger.error(`[LLMService] Tool execution error:`, error);
@@ -458,29 +453,23 @@ export class LLMService {
           });
 
           const errorContent = `Tool execution failed: ${errorMessage}`;
-          if (response.toolCallId) {
-            currentMessages.push({
-              role: 'assistant',
-              content: '',
-              tool_calls: [
-                {
-                  id: response.toolCallId,
-                  name: response.functionCall.name,
-                  arguments: response.functionCall.arguments,
-                },
-              ],
-            });
-            currentMessages.push({
-              role: 'tool',
-              tool_call_id: response.toolCallId,
-              content: errorContent,
-            });
-          } else {
-            currentMessages.push({
-              role: 'user',
-              content: errorContent,
-            });
-          }
+          const errorCallId = response.toolCallId || `call_${round}_${Date.now()}`;
+          currentMessages.push({
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+              {
+                id: errorCallId,
+                name: response.functionCall.name,
+                arguments: response.functionCall.arguments,
+              },
+            ],
+          });
+          currentMessages.push({
+            role: 'tool',
+            tool_call_id: errorCallId,
+            content: errorContent,
+          });
         }
       } else {
         // No executor provided, return the function call for external handling

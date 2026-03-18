@@ -385,7 +385,7 @@
       "fallbackOrder": ["deepseek", "gemini", "openai", "anthropic"],
       // Providers that support tool/function calling (in priority order)
       // Used when generateWithTools is called but current provider doesn't support tools
-      "toolUseProviders": ["deepseek", "openai", "anthropic"]
+      "toolUseProviders": ["deepseek", "gemini", "openai", "anthropic"]
     },
     // Task-specific provider overrides (optional)
     // Override provider for specific internal LLM tasks

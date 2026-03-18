@@ -240,19 +240,56 @@ bun run debug
 
 ## 已解决的问题
 
-### [日期] 问题标题
+### [2026-03-18] Gemini tool use 多轮会话提前退出并回复空白内容
 
 **问题描述**:
-简述遇到的问题
+Gemini provider 在 tool use 多轮会话（generateWithTools loop）中提前退出并回复空白内容。
 
 **原因分析**:
-为什么会出现这个问题
+三个根本原因：
+1. `GeminiProvider.generate()` 在 `options.messages` 存在时，把所有消息展平为纯文本，导致最后一条消息被重复（循环一次 + prompt 再追加一次），且 tool 消息（functionCall/functionResponse）以原始文本传入，Gemini API 无法识别 → 第二轮可能返回空文本 + 无 functionCall → loop 提前退出。
+2. `candidate.content.parts` 中的 functionCall 被遗漏（只检查了 `response.functionCalls` SDK 属性，未检查 parts 作为 fallback）。
+3. `LLMService.toolUseProviders` 默认不包含 `gemini`，导致 gemini 被路由到其他 provider 处理 tool use，而不是自己处理。
 
 **解决方案**:
-如何解决的
+- 新增 `mapChatMessagesToGeminiContents()` 将 ChatMessage[] 转换为 Gemini 原生 Content[] 格式：
+  - system → `systemInstruction` config 字段
+  - assistant + tool_calls → `{role:'model', parts:[{functionCall:{name,args}}]}`
+  - tool role → `{role:'user', parts:[{functionResponse:{name,response}}]}`
+- `generate()` 在 `options.messages` 存在时走 multi-turn 路径（不再追加 prompt）
+- 添加从 `candidate.content.parts` 检测 functionCall 的 fallback
+- `toolUseProviders` 默认增加 `gemini`
 
 **相关文件**:
-- `path/to/file.ts`
+- `src/ai/providers/GeminiProvider.ts` - 主要修改
+- `src/ai/services/LLMService.ts` - toolUseProviders 默认值
+- `src/conversation/ConversationInitializer.ts` - toolUseProviders 默认值
+
+### [2026-03-18] Gemini tool use 多轮会话 toolCallId 缺失导致卡片渲染失败
+
+**问题描述**:
+Gemini 通过 providerName 触发回复时，即使调用了 `format_as_card` tool，最终仍以文本（sendasforward）模式发送，而非卡片图片。
+
+**原因分析**:
+Gemini API 不返回 `toolCallId`（这是 OpenAI 的概念），导致 `LLMService.generateWithTools()` 进入 `else` 分支：
+1. 推入 `{ role: 'assistant', content: '' }` — 无 `tool_calls` 属性
+2. 推入 `{ role: 'user', content: 'Tool result for ...' }` — 纯文本
+
+当 `mapChatMessagesToGeminiContents()` 处理这些消息时：
+- 空 assistant 消息被跳过（parts.length === 0）
+- tool 结果变成普通 user 消息
+- 产生两个连续的 user 消息，且无 functionCall/functionResponse 对
+- Gemini 不理解这是 tool 响应，生成的不是有效卡片 JSON → `tryRenderCardReply` 失败 → 回退到纯文本
+
+**解决方案**:
+- 移除 `toolCallId` 存在性判断分支，始终使用结构化的 `tool_calls` 格式
+- 当 provider 不返回 `toolCallId` 时，生成合成 ID（`call_{round}_{timestamp}`）
+- 这样 `mapChatMessagesToGeminiContents()` 可以正确转换为 `functionCall` / `functionResponse` 格式
+- 同时更新 `config.example.jsonc` 将 gemini 加入 `toolUseProviders`
+
+**相关文件**:
+- `src/ai/services/LLMService.ts` - generateWithTools 的 tool call 消息构建
+- `config.example.jsonc` - toolUseProviders 配置
 
 ---
 
@@ -268,4 +305,6 @@ bun run debug
 | 日期 | 更新内容 | 更新者 |
 |------|----------|--------|
 | 2026-03-18 | 添加 ClaudeCode MCP Tools 架构说明；添加 ToolExecutor vs BaseTaskExecutor 区别说明 | Claude |
+| 2026-03-18 | 添加 Gemini tool use toolCallId 缺失导致卡片渲染失败的修复记录 | Claude |
+| 2026-03-18 | 添加 Gemini tool use 多轮会话格式修复记录；Gemini 需要原生 Content[] 格式 | Claude |
 | 2024-XX-XX | 初始版本 | Claude |
