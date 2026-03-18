@@ -31,7 +31,7 @@ export interface SubAgentTriggerRule {
   /**
    * Override the default tool allowlist defined by the preset.
    * If empty, the preset's defaultAllowedTools applies.
-   * Use tool names as registered in TaskManager (e.g. "web_search", "rag_retrieval").
+   * Use tool names as registered in ToolManager (e.g. "web_search", "rag_retrieval").
    */
   allowedTools?: string[];
 

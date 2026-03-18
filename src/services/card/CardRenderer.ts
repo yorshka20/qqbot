@@ -1,7 +1,7 @@
 // Card renderer using puppeteer-core + system Chrome/Chromium (no bundled browser)
 
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
 import { logger } from '@/utils/logger';

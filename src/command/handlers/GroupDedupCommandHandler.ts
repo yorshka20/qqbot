@@ -42,7 +42,7 @@ export class GroupDedupCommandHandler implements CommandHandler {
     }
 
     logger.info(`[GroupDedupCommandHandler] Starting manual dedup | groupId=${groupId}`);
-    // Use same path resolution as DeduplicateFilesTaskExecutor and GroupDownloadPlugin (cwd + DOWNLOAD_ROOT)
+    // Use same path resolution as DeduplicateFilesToolExecutor and GroupDownloadPlugin (cwd + DOWNLOAD_ROOT)
     const targetDirAbsolute = join(process.cwd(), DOWNLOAD_ROOT, groupId);
     const targetDirRelative = `${DOWNLOAD_ROOT}/${groupId}`;
     // noCheck for resolvePath so message does not show "unavailable path" for the same path we scan (admin-only command)

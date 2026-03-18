@@ -13,7 +13,7 @@ import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { FileReadService } from '@/services/file';
 import type { RetrievalService } from '@/services/retrieval';
-import type { TaskManager } from '@/task/TaskManager';
+import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
 import type { Config } from './config';
 import { getContainer } from './DIContainer';
@@ -84,8 +84,8 @@ export class ServiceRegistry {
   /**
    * Register task service
    */
-  registerTaskService(taskManager: TaskManager): void {
-    this.container.registerInstance(DITokens.TASK_MANAGER, taskManager);
+  registerToolService(toolManager: ToolManager): void {
+    this.container.registerInstance(DITokens.TOOL_MANAGER, toolManager);
   }
 
   /**
@@ -150,7 +150,7 @@ export class ServiceRegistry {
     aiManager: AIManager;
     contextManager: ContextManager;
     commandManager: CommandManager;
-    taskManager: TaskManager;
+    toolManager: ToolManager;
     hookManager: HookManager;
   }): void {
     // DATABASE_MANAGER and AI_MANAGER may already be registered early for ProactiveConversationService DI
@@ -162,7 +162,7 @@ export class ServiceRegistry {
     }
     this.registerContextService(services.contextManager);
     this.registerCommandService(services.commandManager);
-    this.registerTaskService(services.taskManager);
+    this.registerToolService(services.toolManager);
     this.registerHookService(services.hookManager);
   }
 

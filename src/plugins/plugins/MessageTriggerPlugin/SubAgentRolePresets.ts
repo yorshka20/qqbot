@@ -18,7 +18,7 @@ export interface RolePreset {
   /**
    * Default tool allowlist for this preset (empty = no restriction).
    * Individual rules can override this via SubAgentTriggerRule.allowedTools.
-   * Tool names must match task types registered in TaskManager.
+   * Tool names must match task types registered in ToolManager.
    */
   defaultAllowedTools: string[];
   /** SubAgentConfig fields that differ from SubAgentManager defaults for this preset. */

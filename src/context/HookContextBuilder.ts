@@ -6,7 +6,7 @@ import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/typ
 import type { HookContextMetadata, HookMetadataMap } from '@/hooks/metadata';
 import { createDefaultHookMetadata } from '@/hooks/metadata';
 import type { HookContext, ReplyContent } from '@/hooks/types';
-import type { Task, TaskResult } from '@/task/types';
+import type { ToolCall, ToolResult } from '@/tools/types';
 import type { ConversationContext } from './types';
 
 /**
@@ -23,10 +23,10 @@ export class HookContextBuilder {
   private message?: NormalizedMessageEvent;
   private notice?: NormalizedNoticeEvent;
   private command?: ParsedCommand;
-  private task?: Task;
+  private task?: ToolCall;
   private aiResponse?: string;
   private conversationContext?: ConversationContext;
-  private result?: TaskResult | CommandResult;
+  private result?: ToolResult | CommandResult;
   private error?: Error;
   private metadata: HookMetadataMap;
   private reply?: ReplyContent;
@@ -167,7 +167,7 @@ export class HookContextBuilder {
   /**
    * Set the task
    */
-  withTask(task: Task): this {
+  withTask(task: ToolCall): this {
     this.task = task;
     return this;
   }
@@ -191,7 +191,7 @@ export class HookContextBuilder {
   /**
    * Set the execution result
    */
-  withResult(result: TaskResult | CommandResult): this {
+  withResult(result: ToolResult | CommandResult): this {
     this.result = result;
     return this;
   }

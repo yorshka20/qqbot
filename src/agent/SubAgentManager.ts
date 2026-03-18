@@ -39,7 +39,7 @@ export class SubAgentManager {
 
   /**
    * Spawn a new sub-agent.
-   * When called from main flow, pass parentContext so the sub-agent can run tools with correct TaskExecutionContext.
+   * When called from main flow, pass parentContext so the sub-agent can run tools with correct ToolExecutionContext.
    */
   async spawn(
     parentId: string | undefined,

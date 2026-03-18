@@ -13,7 +13,7 @@ import type { ClaudeTask, MCPServerConfig, TaskNotification } from '../mcpServer
 
 type TaskUpdateCallback = (task: ClaudeTask) => void;
 
-export class ClaudeTaskManager {
+export class ClaudeToolManager {
   private config: MCPServerConfig;
   private tasks = new Map<string, ClaudeTask>();
   private runningProcesses = new Map<string, Subprocess>();
@@ -29,7 +29,7 @@ export class ClaudeTaskManager {
    */
   setPromptManager(promptManager: PromptManager): void {
     this.promptManager = promptManager;
-    logger.info('[ClaudeTaskManager] PromptManager set');
+    logger.info('[ClaudeToolManager] PromptManager set');
   }
 
   /**
@@ -37,7 +37,7 @@ export class ClaudeTaskManager {
    */
   private processPromptTemplate(task: ClaudeTask): string {
     if (!this.promptManager) {
-      logger.warn('[ClaudeTaskManager] PromptManager not set, using raw prompt');
+      logger.warn('[ClaudeToolManager] PromptManager not set, using raw prompt');
       return task.prompt;
     }
 
@@ -53,7 +53,7 @@ export class ClaudeTaskManager {
         targetId: task.requestedBy.id,
       });
     } catch (error) {
-      logger.warn('[ClaudeTaskManager] Failed to render template, using raw prompt:', error);
+      logger.warn('[ClaudeToolManager] Failed to render template, using raw prompt:', error);
       return task.prompt;
     }
   }
@@ -79,7 +79,7 @@ export class ClaudeTaskManager {
     };
 
     this.tasks.set(task.id, task);
-    logger.info(`[ClaudeTaskManager] Task created: ${task.id}`);
+    logger.info(`[ClaudeToolManager] Task created: ${task.id}`);
     return task;
   }
 
@@ -139,7 +139,7 @@ export class ClaudeTaskManager {
       processedPrompt,
     ];
 
-    logger.info(`[ClaudeTaskManager] Executing task ${taskId}: ${cliPath} ${args.join(' ')}`);
+    logger.info(`[ClaudeToolManager] Executing task ${taskId}: ${cliPath} ${args.join(' ')}`);
 
     task.status = 'running';
     this.notifyTaskUpdate(task);
@@ -202,11 +202,11 @@ export class ClaudeTaskManager {
       if (exitCode === 0) {
         task.status = 'completed';
         task.result = stdout || 'Task completed successfully';
-        logger.info(`[ClaudeTaskManager] Task ${taskId} completed`);
+        logger.info(`[ClaudeToolManager] Task ${taskId} completed`);
       } else {
         task.status = 'failed';
         task.error = stderr || `Process exited with code ${exitCode}`;
-        logger.error(`[ClaudeTaskManager] Task ${taskId} failed: ${task.error}`);
+        logger.error(`[ClaudeToolManager] Task ${taskId} failed: ${task.error}`);
       }
 
       this.notifyTaskUpdate(task);
@@ -214,7 +214,7 @@ export class ClaudeTaskManager {
       this.runningProcesses.delete(taskId);
       task.status = 'failed';
       task.error = error instanceof Error ? error.message : String(error);
-      logger.error(`[ClaudeTaskManager] Task ${taskId} error:`, error);
+      logger.error(`[ClaudeToolManager] Task ${taskId} error:`, error);
       this.notifyTaskUpdate(task);
     }
   }
@@ -225,7 +225,7 @@ export class ClaudeTaskManager {
   handleTaskNotification(notification: TaskNotification): void {
     const task = this.tasks.get(notification.taskId);
     if (!task) {
-      logger.warn(`[ClaudeTaskManager] Received notification for unknown task: ${notification.taskId}`);
+      logger.warn(`[ClaudeToolManager] Received notification for unknown task: ${notification.taskId}`);
       return;
     }
 
@@ -238,7 +238,7 @@ export class ClaudeTaskManager {
       case 'progress':
         // Keep running status, just log progress
         logger.debug(
-          `[ClaudeTaskManager] Task ${task.id} progress: ${notification.progress}% - ${notification.message}`,
+          `[ClaudeToolManager] Task ${task.id} progress: ${notification.progress}% - ${notification.message}`,
         );
         this.notifyTaskUpdate(task);
         break;
@@ -293,7 +293,7 @@ export class ClaudeTaskManager {
         this.notifyTaskUpdate(task);
       }
 
-      logger.info(`[ClaudeTaskManager] Task ${taskId} cancelled`);
+      logger.info(`[ClaudeToolManager] Task ${taskId} cancelled`);
       return true;
     }
     return false;

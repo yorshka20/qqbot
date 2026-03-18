@@ -57,7 +57,7 @@ export interface ReadFileBinaryResult {
 /**
  * File Service
  * Provides safe file listing, reading, writing, and deletion within project root.
- * Used by ReadFileTaskExecutor, DeduplicateFilesTaskExecutor, and ls/cat commands.
+ * Used by ReadFileToolExecutor, DeduplicateFilesToolExecutor, and ls/cat commands.
  */
 export class FileReadService {
   private readonly projectRoot: string;

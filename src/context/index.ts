@@ -22,7 +22,7 @@ export {
   getCurrentMessageContext,
   type MessageContextValue,
 } from './MessageContextStorage';
-export { TaskExecutionContextBuilder } from './TaskExecutionContextBuilder';
+export { ToolExecutionContextBuilder } from './ToolExecutionContextBuilder';
 export type {
   BuildContextOptions,
   ContextBuilderOptions,

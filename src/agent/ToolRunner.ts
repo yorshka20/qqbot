@@ -1,20 +1,20 @@
-// ToolRunner - executes tool calls for SubAgent using TaskManager executors (no hooks)
+// ToolRunner - executes tool calls for SubAgent using ToolManager executors (no hooks)
 
 import type { FunctionCall } from '@/ai/types';
-import { TaskExecutionContextBuilder } from '@/context/TaskExecutionContextBuilder';
+import { ToolExecutionContextBuilder } from '@/context/ToolExecutionContextBuilder';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
 import { createDefaultHookMetadata } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
-import type { TaskManager } from '@/task/TaskManager';
-import type { Task, TaskExecutionContext, TaskResult } from '@/task/types';
+import type { ToolManager } from '@/tools/ToolManager';
+import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 import type { SubAgentManager } from './SubAgentManager';
 import type { SubAgentSession, SubAgentType } from './types';
 
 /**
  * Runs a single tool call in SubAgent context.
- * Uses TaskManager.getExecutor().execute() (no TaskManager.execute / no hooks).
+ * Uses ToolManager.getExecutor().execute() (no ToolManager.execute / no hooks).
  * Special-cases spawn_subagent via SubAgentManager.
  */
 export interface IToolRunner {
@@ -23,7 +23,7 @@ export interface IToolRunner {
 
 export class ToolRunner implements IToolRunner {
   constructor(
-    private taskManager: TaskManager,
+    private toolManager: ToolManager,
     private subAgentManager: SubAgentManager,
     private hookManager: HookManager,
   ) {}
@@ -33,27 +33,27 @@ export class ToolRunner implements IToolRunner {
       return this.runSpawnSubAgent(call, session);
     }
 
-    const task: Task = {
-      type: call.name,
-      parameters: this.parseArguments(call.arguments),
-      executor: call.name,
-    };
-
-    const taskType = this.taskManager.getTaskType(call.name);
-    if (!taskType) {
-      logger.warn(`[ToolRunner] No task type for tool: ${call.name}`);
-      throw new Error(`Task type not found for tool: ${call.name}`);
+    const toolSpec = this.toolManager.getTool(call.name);
+    if (!toolSpec) {
+      logger.warn(`[ToolRunner] No tool spec for: ${call.name}`);
+      throw new Error(`Tool not found: ${call.name}`);
     }
 
-    const executor = this.taskManager.getExecutor(taskType.executor);
+    const executor = this.toolManager.getExecutor(toolSpec.executor);
     if (!executor) {
       logger.warn(`[ToolRunner] No executor for tool: ${call.name}`);
       throw new Error(`Executor not found for tool: ${call.name}`);
     }
 
+    const toolCall: ToolCall = {
+      type: call.name,
+      parameters: this.parseArguments(call.arguments),
+      executor: toolSpec.executor,
+    };
+
     const hookContext = this.buildSyntheticHookContext(session);
-    const context = this.buildTaskContext(hookContext);
-    const result = await this.taskManager.execute(task, context, this.hookManager, hookContext);
+    const context = this.buildToolContext(hookContext);
+    const result = await this.toolManager.execute(toolCall, context, this.hookManager, hookContext);
     return this.normalizeResult(result);
   }
 
@@ -65,8 +65,8 @@ export class ToolRunner implements IToolRunner {
     }
   }
 
-  private buildTaskContext(hookContext: HookContext): TaskExecutionContext {
-    return TaskExecutionContextBuilder.fromHookContext(hookContext).withTaskResults(new Map()).build();
+  private buildToolContext(hookContext: HookContext): ToolExecutionContext {
+    return ToolExecutionContextBuilder.fromHookContext(hookContext).withToolResults(new Map()).build();
   }
 
   private buildSyntheticHookContext(session: SubAgentSession): HookContext {
@@ -125,7 +125,7 @@ export class ToolRunner implements IToolRunner {
     return Number.isFinite(parsed) ? parsed : undefined;
   }
 
-  private normalizeResult(result: TaskResult): unknown {
+  private normalizeResult(result: ToolResult): unknown {
     if (result.data !== undefined) {
       return result.data;
     }

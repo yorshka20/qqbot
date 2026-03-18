@@ -1,6 +1,6 @@
 // File deduplication utility
 // Content-based exact deduplication using buffered MD5 hashing.
-// Used by DeduplicateFilesTaskExecutor (AI-triggered) and GroupDownloadPlugin (scheduled).
+// Used by DeduplicateFilesToolExecutor (AI-triggered) and GroupDownloadPlugin (scheduled).
 
 import { createHash } from 'node:crypto';
 import { readdirSync, statSync } from 'node:fs';

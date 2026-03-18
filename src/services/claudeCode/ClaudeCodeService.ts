@@ -25,13 +25,13 @@ import type {
   ToolExecuteParams,
   ToolExecuteResult,
 } from '../mcpServer/types';
-import { ClaudeTaskManager } from './ClaudeTaskManager';
+import { ClaudeToolManager } from './ClaudeToolManager';
 import { ToolRegistry } from './ToolRegistry';
 
 export class ClaudeCodeService {
   private config: MCPServerConfig;
   private mcpServer: MCPServer;
-  private taskManager: ClaudeTaskManager;
+  private taskManager: ClaudeToolManager;
   private toolRegistry: ToolRegistry;
   private messageAPI: MessageAPI | null = null;
   private botStartTime: number;
@@ -41,7 +41,7 @@ export class ClaudeCodeService {
   constructor(config: MCPServerConfig) {
     this.config = config;
     this.mcpServer = new MCPServer(config);
-    this.taskManager = new ClaudeTaskManager(config);
+    this.taskManager = new ClaudeToolManager(config);
     this.toolRegistry = new ToolRegistry(config.workingDirectory);
     this.botStartTime = Date.now();
 

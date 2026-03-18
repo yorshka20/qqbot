@@ -1,16 +1,16 @@
-// WechatStatsTaskExecutor - retrieves overall WeChat statistics
+// WechatStatsToolExecutor - retrieves overall WeChat statistics
 // Used by Agenda to generate daily/weekly statistics reports
 
 import { inject, injectable } from 'tsyringe';
 import { WechatDITokens } from '@/services/wechat';
 import type { WechatDigestService } from '@/services/wechat/WechatDigestService';
-import { TaskDefinition } from '@/task/decorators';
-import { BaseTaskExecutor } from '@/task/executors/BaseTaskExecutor';
-import type { Task, TaskExecutionContext, TaskResult } from '@/task/types';
+import { Tool } from '@/tools/decorators';
+import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
+import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 
 /**
- * WechatStatsTaskExecutor
+ * WechatStatsToolExecutor
  *
  * Retrieves comprehensive WeChat statistics including message counts,
  * group activity, article counts, and top contributors.
@@ -25,10 +25,11 @@ import { logger } from '@/utils/logger';
  * 2. 生成一份简洁的周报，包含活跃群聊、热门文章等
  * ```
  */
-@TaskDefinition({
+@Tool({
   name: 'wechat_stats',
   description: '获取微信消息统计。包括消息总数、群聊/私聊分布、文章数量、活跃群聊排行、活跃公众号排行等。',
   executor: 'wechat_stats',
+  visibility: ['internal'],
   parameters: {
     sinceHours: {
       type: 'number',
@@ -40,15 +41,15 @@ import { logger } from '@/utils/logger';
   whenToUse: '当需要了解微信消息整体情况时使用。适用于日报、周报或数据分析。',
 })
 @injectable()
-export class WechatStatsTaskExecutor extends BaseTaskExecutor {
+export class WechatStatsToolExecutor extends BaseToolExecutor {
   name = 'wechat_stats';
 
   constructor(@inject(WechatDITokens.DIGEST_SERVICE) private digestService: WechatDigestService) {
     super();
   }
 
-  async execute(task: Task, _context: TaskExecutionContext): Promise<TaskResult> {
-    const sinceHours = task.parameters?.sinceHours as number | undefined;
+  async execute(call: ToolCall, _context: ToolExecutionContext): Promise<ToolResult> {
+    const sinceHours = call.parameters?.sinceHours as number | undefined;
 
     // Calculate since timestamp
     let sinceTs: number | undefined;
@@ -56,14 +57,14 @@ export class WechatStatsTaskExecutor extends BaseTaskExecutor {
       sinceTs = Math.floor(Date.now() / 1000) - sinceHours * 3600;
     }
 
-    logger.info(`[WechatStatsTaskExecutor] Getting stats | sinceHours=${sinceHours ?? 'today'}`);
+    logger.info(`[WechatStatsToolExecutor] Getting stats | sinceHours=${sinceHours ?? 'today'}`);
 
     try {
       const stats = this.digestService.getStats(sinceTs);
       const text = this.digestService.getStatsText(sinceTs);
 
       logger.info(
-        `[WechatStatsTaskExecutor] Stats complete | ` +
+        `[WechatStatsToolExecutor] Stats complete | ` +
           `messages=${stats.messages.total} articles=${stats.articles.total}`,
       );
 
@@ -76,7 +77,7 @@ export class WechatStatsTaskExecutor extends BaseTaskExecutor {
       });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      logger.error('[WechatStatsTaskExecutor] Error:', err);
+      logger.error('[WechatStatsToolExecutor] Error:', err);
       return this.error('获取统计数据失败', errorMsg);
     }
   }

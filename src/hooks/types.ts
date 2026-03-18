@@ -5,7 +5,7 @@ import type { CommandResult, ParsedCommand } from '@/command/types';
 import type { ConversationContext } from '@/context/types';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import type { MessageSegment } from '@/message/types';
-import type { Task, TaskResult } from '@/task/types';
+import type { ToolCall, ToolResult } from '@/tools/types';
 import type { HookMetadataMap } from './metadata';
 
 /**
@@ -42,9 +42,9 @@ export interface HookContext {
   /** Set when hook is run for a notice event (e.g. onNoticeReceived). */
   notice?: NormalizedNoticeEvent;
   command?: ParsedCommand;
-  task?: Task;
+  task?: ToolCall;
   aiResponse?: string;
-  result?: TaskResult | CommandResult;
+  result?: ToolResult | CommandResult;
   error?: Error;
   reply?: ReplyContent; // Unified reply content (preferred over metadata 'reply')
   sentMessageResponse?: SendMessageResult; // Full API response from sending message (available in onMessageSent hook after message is sent)

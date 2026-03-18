@@ -10,7 +10,7 @@ import type { ConversationHistoryService } from '@/conversation/history/Conversa
 import { normalizeGroupId } from '@/conversation/history/ConversationHistoryService';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import type { HookManager } from '@/hooks/HookManager';
-import type { TaskManager } from '@/task/TaskManager';
+import type { ToolManager } from '@/tools/ToolManager';
 import { getCurrentDateTimeForPrompt } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
 import { buildAgendaHookContext } from './AgendaHookContext';
@@ -22,7 +22,7 @@ const DEFAULT_PROVIDER: string | undefined = undefined; // Use system default LL
  * AgentLoop
  *
  * Same shape as the normal reply LLM loop (user question → LLM + tools → reply), but the "question" is the schedule's intent.
- * taskManager and hookManager are required: the loop always uses generateWithTools and runs over multiple rounds to complete the task.
+ * toolManager and hookManager are required: the loop always uses generateWithTools and runs over multiple rounds to complete the task.
  * System prompt from template agenda.agent_loop_system (PromptManager).
  */
 export class AgentLoop {
@@ -33,7 +33,7 @@ export class AgentLoop {
     private messageAPI: MessageAPI,
     private conversationHistoryService: ConversationHistoryService,
     private promptManager: PromptManager,
-    private taskManager: TaskManager,
+    private toolManager: ToolManager,
     private hookManager: HookManager,
   ) {}
 
@@ -90,14 +90,14 @@ export class AgentLoop {
     eventContext: AgendaEventContext,
   ): Promise<string | null> {
     const conversationContext = await this.fetchRecentContext(groupId);
-    const tools = getReplyToolDefinitions(this.taskManager);
-    const toolInstruct = buildToolUsageInstructions(this.taskManager, tools, undefined, this.promptManager);
+    const tools = getReplyToolDefinitions(this.toolManager);
+    const toolInstruct = buildToolUsageInstructions(this.toolManager, tools, undefined, this.promptManager);
     const messages = this.buildPrompt(item, conversationContext, eventContext, toolInstruct);
 
     try {
       const agendaContext = buildAgendaHookContext(item, groupId, eventContext);
       const toolExecutor = (call: { name: string; arguments: string }) =>
-        executeToolCall(call, agendaContext, this.taskManager, this.hookManager);
+        executeToolCall(call, agendaContext, this.toolManager, this.hookManager);
       const response = await this.llmService.generateWithTools(
         messages,
         tools,

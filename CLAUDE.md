@@ -42,7 +42,7 @@ This is a production-ready QQ bot framework built with TypeScript and Bun. It co
 3. **Message Pipeline**: 6-stage lifecycle:
    - `RECEIVE`: Message arrives
    - `PREPROCESS`: Metadata, permissions, filtering
-   - `PROCESS`: Commands and AI task analysis
+   - `PROCESS`: Commands and AI tool execution
    - `PREPARE`: Reply generation
    - `SEND`: Message delivery
    - `COMPLETE`: Post-processing
@@ -53,7 +53,7 @@ This is a production-ready QQ bot framework built with TypeScript and Bun. It co
 
 - **Dependency Injection**: Uses `tsyringe` for DI throughout the codebase
 - **Protocol Abstraction**: Unified API across different protocols with automatic routing
-- **Task System**: AI analyzes conversations and executes appropriate tasks (reply, search, image generation, etc.)
+- **Tool System**: LLM-callable tools (search, memory, fetch_page, etc.) with visibility scopes (`reply`/`subagent`/`internal`). Defined via `@Tool()` decorator in `src/tools/executors/`
 - **Command System**: Prefix-based commands with owner/admin/user permission levels
 - **Memory System**: Per-user and per-group long-term memory with LLM extraction
 - **Plugin System**: Extends functionality via `PluginBase` class and hook registration
@@ -64,7 +64,7 @@ This is a production-ready QQ bot framework built with TypeScript and Bun. It co
 
 - **Context-Based API Calls**: All API calls use `APIContext` objects for better tracking and extensibility
 - **Hook Context Metadata**: Rich metadata flows through the pipeline via `HookContext`
-- **System-Based Processing**: Modular systems (CommandSystem, TaskSystem, ReplySystem) handle different aspects
+- **System-Based Processing**: Modular systems (CommandSystem, ReplySystem) handle different pipeline stages
 - **Prompt Templates**: Split structure with base system + scene system + assembled user messages
 
 ## Configuration Requirements
@@ -128,6 +128,6 @@ The bot automatically handles database schema initialization. For SQLite, tables
 - **Core Bot**: `src/core/Bot.ts`
 - **Message Pipeline**: `src/conversation/MessagePipeline.ts`
 - **AI Service**: `src/ai/AIService.ts`
-- **Task System**: `src/task/TaskSystem.ts`
+- **Tool System**: `src/tools/ToolManager.ts`
 - **Plugin Manager**: `src/plugins/PluginManager.ts`
 - **Configuration**: `config.jsonc` (local, not committed)

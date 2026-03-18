@@ -9,7 +9,7 @@ import type { ConversationHistoryService } from '@/conversation/history/Conversa
 import type { ProtocolName } from '@/core/config/types/protocol';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
-import type { TaskManager } from '@/task/TaskManager';
+import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
 import { AgendaReporter } from './AgendaReporter';
 import { AgendaService } from './AgendaService';
@@ -42,7 +42,7 @@ export class AgendaInitializer {
     messageAPI: MessageAPI;
     conversationHistoryService: ConversationHistoryService;
     promptManager: PromptManager;
-    taskManager: TaskManager;
+    toolManager: ToolManager;
     hookManager: HookManager;
     preferredProtocol?: ProtocolName;
     /** Base directory for agenda data files. Defaults to `data/agenda` relative to cwd. */
@@ -61,7 +61,7 @@ export class AgendaInitializer {
       deps.messageAPI,
       deps.conversationHistoryService,
       deps.promptManager,
-      deps.taskManager,
+      deps.toolManager,
       deps.hookManager,
     );
     if (deps.preferredProtocol) {

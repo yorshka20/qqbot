@@ -1,16 +1,16 @@
-// WechatDigestTaskExecutor - retrieves daily WeChat message summaries
+// WechatDigestToolExecutor - retrieves daily WeChat message summaries
 // Used by Agenda cron jobs to generate daily reports
 
 import { inject, injectable } from 'tsyringe';
 import { WechatDITokens } from '@/services/wechat';
 import type { WechatDigestService } from '@/services/wechat/WechatDigestService';
-import { TaskDefinition } from '@/task/decorators';
-import { BaseTaskExecutor } from '@/task/executors/BaseTaskExecutor';
-import type { Task, TaskExecutionContext, TaskResult } from '@/task/types';
+import { Tool } from '@/tools/decorators';
+import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
+import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 
 /**
- * WechatDigestTaskExecutor
+ * WechatDigestToolExecutor
  *
  * Retrieves unprocessed WeChat messages from the database, formats them
  * as a grouped summary, and optionally marks them as processed.
@@ -26,10 +26,11 @@ import { logger } from '@/utils/logger';
  * 2. 按来源逐个总结要点
  * ```
  */
-@TaskDefinition({
+@Tool({
   name: 'wechat_digest',
   description: '获取今日微信消息摘要。返回按来源分组的消息列表，包含消息数量统计。可用于生成日报或定期汇总。',
   executor: 'wechat_digest',
+  visibility: ['internal'],
   parameters: {
     markProcessed: {
       type: 'boolean',
@@ -46,16 +47,16 @@ import { logger } from '@/utils/logger';
   whenToUse: '当需要查看、汇总、分析今日微信消息时使用。适用于每日定时汇报。',
 })
 @injectable()
-export class WechatDigestTaskExecutor extends BaseTaskExecutor {
+export class WechatDigestToolExecutor extends BaseToolExecutor {
   name = 'wechat_digest';
 
   constructor(@inject(WechatDITokens.DIGEST_SERVICE) private digestService: WechatDigestService) {
     super();
   }
 
-  async execute(task: Task, _context: TaskExecutionContext): Promise<TaskResult> {
-    const markProcessed = task.parameters?.markProcessed !== false;
-    const sinceHours = task.parameters?.sinceHours as number | undefined;
+  async execute(call: ToolCall, _context: ToolExecutionContext): Promise<ToolResult> {
+    const markProcessed = call.parameters?.markProcessed !== false;
+    const sinceHours = call.parameters?.sinceHours as number | undefined;
 
     // Calculate since timestamp
     let sinceTs: number | undefined;
@@ -64,7 +65,7 @@ export class WechatDigestTaskExecutor extends BaseTaskExecutor {
     }
 
     logger.info(
-      `[WechatDigestTaskExecutor] Getting digest | sinceHours=${sinceHours ?? 'today'} markProcessed=${markProcessed}`,
+      `[WechatDigestToolExecutor] Getting digest | sinceHours=${sinceHours ?? 'today'} markProcessed=${markProcessed}`,
     );
 
     try {
@@ -85,7 +86,7 @@ export class WechatDigestTaskExecutor extends BaseTaskExecutor {
       }
 
       logger.info(
-        `[WechatDigestTaskExecutor] Digest complete | total=${digest.totalCount} sources=${digest.sourceBreakdown.length} marked=${markedCount}`,
+        `[WechatDigestToolExecutor] Digest complete | total=${digest.totalCount} sources=${digest.sourceBreakdown.length} marked=${markedCount}`,
       );
 
       return this.success(digest.groupedText, {
@@ -96,7 +97,7 @@ export class WechatDigestTaskExecutor extends BaseTaskExecutor {
       });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      logger.error('[WechatDigestTaskExecutor] Error:', err);
+      logger.error('[WechatDigestToolExecutor] Error:', err);
       return this.error('获取微信摘要失败', errorMsg);
     }
   }

@@ -24,7 +24,7 @@ import { ProtocolAdapterInitializer } from '../protocol/ProtocolAdapterInitializ
 import { MCPInitializer } from '../services/mcp/MCPInitializer';
 import { RetrievalService } from '../services/retrieval';
 import { initStaticFileServer } from '../services/staticServer';
-import type { TaskManager } from '../task';
+import type { ToolManager } from '../tools';
 import { logger } from '../utils/logger';
 import { MockConnection } from './MockConnection';
 import { MockProtocolAdapter } from './MockProtocolAdapter';
@@ -48,7 +48,7 @@ class DebugCLI {
   private config: Config;
   private conversationManager: ConversationManager | null = null;
   private commandManager: CommandManager | null = null;
-  private taskManager: TaskManager | null = null;
+  private toolManager: ToolManager | null = null;
   private pluginManager: PluginManager | null = null;
 
   constructor(configPath: string | undefined, mockMode: boolean) {
@@ -622,7 +622,7 @@ class DebugCLI {
     const conversationComponents = await ConversationInitializer.initialize(this.config, this.apiClient);
     this.conversationManager = conversationComponents.conversationManager;
     this.commandManager = conversationComponents.commandManager;
-    this.taskManager = conversationComponents.taskManager;
+    this.toolManager = conversationComponents.toolManager;
 
     // Agenda framework is initialized inside ConversationInitializer; verify it's available for /schedule etc.
     getContainer().resolve(DITokens.SCHEDULE_FILE_SERVICE);
@@ -694,7 +694,7 @@ class DebugCLI {
     const conversationComponents = await ConversationInitializer.initialize(this.config, this.apiClient);
     this.conversationManager = conversationComponents.conversationManager;
     this.commandManager = conversationComponents.commandManager;
-    this.taskManager = conversationComponents.taskManager;
+    this.toolManager = conversationComponents.toolManager;
 
     // Agenda framework is initialized inside ConversationInitializer; verify it's available for /schedule etc.
     getContainer().resolve(DITokens.SCHEDULE_FILE_SERVICE);

@@ -312,7 +312,10 @@ export class GeminiProvider
         let response: Record<string, unknown>;
         try {
           const parsed = JSON.parse(rawContent);
-          response = typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : { result: rawContent };
+          response =
+            typeof parsed === 'object' && parsed !== null
+              ? (parsed as Record<string, unknown>)
+              : { result: rawContent };
         } catch {
           response = { result: rawContent };
         }

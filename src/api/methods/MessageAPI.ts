@@ -131,9 +131,7 @@ export class MessageAPI {
     // Forward messages use sendForwardFromContext (which converts separately), so
     // any array reaching here is always internal MessageSegment[].
     const protocolMessage: string | unknown[] =
-      protocol === 'milky' && Array.isArray(message)
-        ? segmentsToMilkyOutgoing(message as MessageSegment[])
-        : message;
+      protocol === 'milky' && Array.isArray(message) ? segmentsToMilkyOutgoing(message as MessageSegment[]) : message;
 
     // Extract user and group info
     const userId = context.userId;

@@ -47,7 +47,7 @@ export interface HookContextMetadata {
 
   /** Reply-only path: when true, RAG persistence writes only the new reply (not the old user message). */
   replyOnly: boolean;
-  /** Set by CardFormatTaskExecutor when the LLM called format_as_card and produced card JSON. Reset per generation attempt. */
+  /** Set by CardFormatToolExecutor when the LLM called format_as_card and produced card JSON. Reset per generation attempt. */
   usedCardFormat?: boolean;
 }
 

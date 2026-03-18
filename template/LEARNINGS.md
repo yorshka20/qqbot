@@ -36,7 +36,7 @@
 │  ConnectionManager  ──▶  EventRouter  ──▶  MessagePipeline  │
 │         │                     │                   │         │
 │         ▼                     ▼                   ▼         │
-│  Protocol Adapters      HookManager          TaskSystem     │
+│  Protocol Adapters      HookManager          ReplySystem    │
 │  (Milky/OneBot/Satori)                      CommandSystem   │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -95,37 +95,46 @@ const service = container.resolve<MyService>(DITokens.MY_SERVICE);
 
 ### Tool Executor 模式
 
-项目中存在两种 executor 体系，但实际上 **TaskSystem 是 legacy 实现**，目前绝大多数 executor 都作为 Tool Executor 使用：
+项目有两种 executor 体系：
 
-#### BaseToolExecutor（主流，用于 AI tool use）
+#### AI Tool Executor（`src/tools/executors/`，LLM tool use）
 
-位于各服务目录下的 `executors/`，通过 `@TaskDefinition` 注册为 AI 可调用的 tool。虽然类名仍继承 `BaseTaskExecutor`，但实际角色是 tool executor —— 由 LLM 的 tool_calls 触发执行。
+通过 `@Tool()` 装饰器注册，由 `ToolManager` 管理。LLM 的 function calling / tool_calls 触发执行。
 
 ```typescript
-@TaskDefinition({
+@Tool({
   name: 'tool_name',
   description: '工具描述',
   executor: 'tool_name',
+  visibility: ['reply', 'subagent'],  // 可选，默认 ['reply', 'subagent']
   parameters: {
     param1: { type: 'string', required: true, description: '...' },
   },
+  whenToUse: '何时使用此工具',
 })
 @injectable()
-export class MyToolExecutor extends BaseTaskExecutor {
+export class MyToolExecutor extends BaseToolExecutor {
   name = 'tool_name';
 
-  async execute(task: Task, context: TaskExecutionContext): Promise<TaskResult> {
+  async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     // 实现逻辑
     return this.success('结果', { data: ... });
   }
 }
 ```
 
+**visibility 控制工具暴露范围:**
+- `['reply', 'subagent']`（默认）— LLM 回复流和 SubAgent 都可调用
+- `['reply']` — 仅在回复流中可用（如 `format_as_card`）
+- `['internal']` — 不暴露给 LLM，仅内部调用（如 `reply`、`deduplicate_files`）
+
+**注册方式:** 装饰器 + 在 `src/tools/executors/index.ts` 中 export（确保装饰器在 import 时执行）。
+
 #### ClaudeCode MCP Tool Executor（独立体系）
 
-位于 `src/services/claudeCode/types.ts`，`BaseToolExecutor` 接收 `(parameters: Record<string, unknown>)`，用于 ClaudeCode MCP Server 暴露的 tools（如 git_commit、quality_check 等），直接执行 shell 命令。
+位于 `src/services/claudeCode/`，用于 ClaudeCode MCP Server 暴露的 tools（如 git_commit、quality_check 等），直接执行 shell 命令。
 
-**要点**: 不要把这两种 executor 混淆。`@TaskDefinition` 装饰的 executor 是给 AI 对话流使用的 tool，MCP Tool Executor 是给 Claude Code CLI 使用的。
+**要点**: 不要把两种 executor 混淆。`@Tool()` 装饰的 executor 是给 AI 对话流使用的 tool，MCP Tool Executor 是给 Claude Code CLI 使用的。
 
 ### 配置访问
 

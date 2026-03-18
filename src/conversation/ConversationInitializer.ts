@@ -32,7 +32,7 @@ import { MemoryExtractService, MemoryRAGService, MemoryService } from '@/memory'
 import { MessageUtils } from '@/message/MessageUtils';
 import { FileReadService } from '@/services/file';
 import type { RetrievalService } from '@/services/retrieval';
-import { TaskInitializer, TaskManager } from '@/task';
+import { ToolInitializer, ToolManager } from '@/tools';
 import { logger } from '@/utils/logger';
 import { SummarizeService } from '../ai/services/SummarizeService';
 import { CommandRouter } from './CommandRouter';
@@ -56,7 +56,7 @@ export interface ConversationComponents {
   conversationManager: ConversationManager;
   hookManager: HookManager;
   commandManager: CommandManager;
-  taskManager: TaskManager;
+  toolManager: ToolManager;
   contextManager: ContextManager;
   databaseManager: DatabaseManager;
   systemRegistry: SystemRegistry;
@@ -72,7 +72,7 @@ type CompleteServices = {
   aiService: AIService;
   contextManager: ContextManager;
   commandManager: CommandManager;
-  taskManager: TaskManager;
+  toolManager: ToolManager;
   hookManager: HookManager;
   conversationConfigService: ConversationConfigService;
   globalConfigManager: GlobalConfigManager;
@@ -217,7 +217,7 @@ export class ConversationInitializer {
       services.aiManager,
       services.hookManager,
       promptManager,
-      services.taskManager,
+      services.toolManager,
       conversationHistoryService,
       providerSelector,
       retrievalService,
@@ -239,14 +239,14 @@ export class ConversationInitializer {
     ConversationInitializer.configureProactiveConversationService(container);
 
     // Agenda framework: AgendaService + AgentLoop + InternalEventBus.
-    // With taskManager/hookManager, AgentLoop uses generateWithTools for plan→tool→message.
+    // With toolManager/hookManager, AgentLoop uses generateWithTools for plan→tool→message.
     const agendaComponents = await AgendaInitializer.initialize({
       databaseManager,
       llmService: container.resolve<LLMService>(DITokens.LLM_SERVICE),
       messageAPI,
       conversationHistoryService,
       promptManager: container.resolve<PromptManager>(DITokens.PROMPT_MANAGER),
-      taskManager: services.taskManager,
+      toolManager: services.toolManager,
       hookManager: services.hookManager,
     });
     serviceRegistry.registerAgendaServices(agendaComponents);
@@ -287,7 +287,7 @@ export class ConversationInitializer {
     databaseManager: DatabaseManager;
     aiManager: AIManager;
     commandManager: CommandManager;
-    taskManager: TaskManager;
+    toolManager: ToolManager;
     hookManager: HookManager;
   }> {
     const aiManager = new AIManager();
@@ -301,14 +301,14 @@ export class ConversationInitializer {
 
     const commandManager = new CommandManager(permissionChecker, conversationConfigService);
 
-    const taskManager = new TaskManager();
+    const toolManager = new ToolManager();
     const hookManager = new HookManager();
 
     return {
       databaseManager,
       aiManager,
       commandManager,
-      taskManager,
+      toolManager,
       hookManager,
     };
   }
@@ -319,12 +319,12 @@ export class ConversationInitializer {
   private static async configureServices(
     services: {
       aiManager: AIManager;
-      taskManager: TaskManager;
+      toolManager: ToolManager;
     },
     config: Config,
   ): Promise<void> {
     ConversationInitializer.configureAIManager(services.aiManager, config);
-    ConversationInitializer.configureTaskManager(services.taskManager);
+    ConversationInitializer.configureToolManager(services.toolManager);
   }
 
   /**
@@ -470,11 +470,11 @@ export class ConversationInitializer {
 
   /**
    * Configure Task Manager
-   * Task registration is handled by TaskInitializer using decorators
+   * Task registration is handled by ToolInitializer using decorators
    */
-  private static configureTaskManager(taskManager: TaskManager): void {
+  private static configureToolManager(toolManager: ToolManager): void {
     // Initialize task system - this will auto-register all decorated task executors
-    TaskInitializer.initialize(taskManager);
+    ToolInitializer.initialize(toolManager);
   }
 
   /**
@@ -509,7 +509,7 @@ export class ConversationInitializer {
       conversationManager,
       hookManager: services.hookManager,
       commandManager: services.commandManager,
-      taskManager: services.taskManager,
+      toolManager: services.toolManager,
       contextManager: services.contextManager,
       databaseManager: services.databaseManager,
       systemRegistry,

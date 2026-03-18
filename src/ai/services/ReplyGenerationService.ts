@@ -28,8 +28,8 @@ import { WHITELIST_CAPABILITY } from '@/plugins/plugins/whitelistCapabilities';
 import { CardRenderingService, getCardDeckNoteForPrompt, getCardTypeSpecForPrompt } from '@/services/card';
 import type { RetrievalService } from '@/services/retrieval';
 import { QdrantClient } from '@/services/retrieval';
-import type { TaskManager } from '@/task/TaskManager';
-import type { TaskResult } from '@/task/types';
+import type { ToolManager } from '@/tools/ToolManager';
+import type { ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
@@ -54,11 +54,17 @@ import type { VisionService } from './VisionService';
 /**
  * Grouped parameters for the LLM generation pipeline.
  * Replaces the 9+ positional params previously threaded through
- * attemptLLMGeneration → generateWithRetry → generateReplyWithTaskResults.
+ * attemptLLMGeneration → generateWithRetry → generateReplyWithToolResults.
  */
 interface ReplyGenerationPipelineParams {
   messages: ChatMessage[];
-  genOptions: { temperature: number; maxTokens: number; sessionId: string; reasoningEffort: 'medium'; episodeKey?: string };
+  genOptions: {
+    temperature: number;
+    maxTokens: number;
+    sessionId: string;
+    reasoningEffort: 'medium';
+    episodeKey?: string;
+  };
   useVisionProvider: boolean;
   canUseVisionToolUse: boolean;
   toolDefinitions: ToolDefinition[];
@@ -82,7 +88,7 @@ interface ReplyGenerationPipelineResult {
  * Provides AI reply generation capabilities including basic replies, vision support, and task-based replies.
  *
  * Reply paths:
- * - generateReplyFromTaskResults: main entry (ReplySystem / ReplyTaskExecutor); when message has images uses vision provider, else default LLM.
+ * - generateReplyFromToolResults: main entry (ReplySystem / ReplyToolExecutor); when message has images uses vision provider, else default LLM.
  * - generateNsfwReply: no search (fixed NSFW prompt only).
  */
 /** Normal mode: max history entries in prompt (stable size for cache hit). Excludes current user message; when exceeded, oldest are summarized. Initial context window (10 min) is defined in NormalEpisodeService.CONTEXT_WINDOW_MS. */
@@ -112,7 +118,7 @@ export class ReplyGenerationService {
     private memoryService: MemoryService,
     private messageAPI: MessageAPI,
     private databaseManager: DatabaseManager,
-    private taskManager: TaskManager,
+    private toolManager: ToolManager,
   ) {
     this.config = getContainer().resolve<Config>(DITokens.CONFIG);
   }
@@ -243,7 +249,7 @@ export class ReplyGenerationService {
   /**
    * Render task + search segment for reply prompt (like rag.conversation_context). Returns empty string when both are empty.
    */
-  private getTaskResultsSummary(taskResults: string): string {
+  private getToolResultsSummary(taskResults: string): string {
     if (!taskResults) {
       return '';
     }
@@ -334,13 +340,13 @@ export class ReplyGenerationService {
   }
 
   /**
-   * Generate reply from task results (unified entry for ReplySystem / ReplyTaskExecutor).
+   * Generate reply from task results (unified entry for ReplySystem / ReplyToolExecutor).
    * When message (or referenced message) has images, uses vision-capable provider; else default LLM.
    *
    * @param context - Hook context containing message and conversation history
    * @param taskResults - Skill/task execution results (empty Map if no pre-executed tasks)
    */
-  async generateReplyFromTaskResults(context: HookContext, taskResults: Map<string, TaskResult>): Promise<void> {
+  async generateReplyFromToolResults(context: HookContext, taskResults: Map<string, ToolResult>): Promise<void> {
     // Gate: do not run any LLM when access denied or group lacks reply capability (must check before any work).
     if (context.metadata.get('whitelistDenied')) {
       return;
@@ -359,11 +365,11 @@ export class ReplyGenerationService {
     await this.hookManager.execute('onAIGenerationStart', context);
 
     try {
-      const taskResultImages = this.extractTaskResultImages(taskResults);
+      const taskResultImages = this.extractToolResultImages(taskResults);
       const sessionId = context.metadata.get('sessionId');
 
       // 0. Resolve referenced (quoted) message once for text injection and image extraction.
-      // Injection point: when resolved, userMessageOverride is built and passed to generateReplyWithTaskResults ->
+      // Injection point: when resolved, userMessageOverride is built and passed to generateReplyWithToolResults ->
       // buildReplyMessages -> final user block (current_query); when resolution fails, prompt keeps raw message only.
       let referencedMessage: NormalizedMessageEvent | null = null;
       let userMessageOverride: string | undefined;
@@ -406,11 +412,11 @@ export class ReplyGenerationService {
       }
 
       // 2. Build task results summary
-      const taskResultsSummary = this.buildTaskResultsSummary(taskResults);
+      const taskResultsSummary = this.buildToolResultsSummary(taskResults);
 
       // 3. Generate final reply (vision provider when message has images, else default LLM).
       // Search/fetch/RAG/memory decisions are handled inside the same skill loop.
-      await this.generateReplyWithTaskResults(
+      await this.generateReplyWithToolResults(
         context,
         taskResultsSummary,
         '',
@@ -437,7 +443,7 @@ export class ReplyGenerationService {
    * Extract base64 images from task results (data.imageBase64)
    * Any task may contribute images; reply can include both text and images
    */
-  private extractTaskResultImages(taskResults: Map<string, TaskResult>): string[] {
+  private extractToolResultImages(taskResults: Map<string, ToolResult>): string[] {
     const images: string[] = [];
     for (const result of taskResults.values()) {
       if (result.success && result.data?.imageBase64 && typeof result.data.imageBase64 === 'string') {
@@ -450,7 +456,7 @@ export class ReplyGenerationService {
   /**
    * Append task result images to context.reply (text + images)
    */
-  private appendTaskResultImages(context: HookContext, taskResultImages: string[]): void {
+  private appendToolResultImages(context: HookContext, taskResultImages: string[]): void {
     if (taskResultImages.length === 0) return;
     const imageSegments = taskResultImages.map((base64) => ({
       type: 'image' as const,
@@ -465,7 +471,7 @@ export class ReplyGenerationService {
   /**
    * Build task results summary for final reply generation
    */
-  private buildTaskResultsSummary(taskResults: Map<string, TaskResult>): string {
+  private buildToolResultsSummary(taskResults: Map<string, ToolResult>): string {
     const summaries: string[] = [];
 
     for (const [taskType, result] of taskResults.entries()) {
@@ -630,7 +636,7 @@ export class ReplyGenerationService {
       this.getMemoryContextTextAsync(context),
       this.buildNormalHistoryEntries(context),
     ]);
-    const taskResultText = this.getTaskResultsSummary(taskResultsSummary);
+    const taskResultText = this.getToolResultsSummary(taskResultsSummary);
     const searchResultText = this.getSearchResultsSummary(searchResultsText);
     // When whitelist is not full permissions, inject fragment into base system via variable.
     const groupCaps = context.metadata.get('whitelistGroupCapabilities');
@@ -761,7 +767,7 @@ export class ReplyGenerationService {
     context.metadata.delete('usedCardFormat');
 
     const toolExecutor = (call: { name: string; arguments: string }) =>
-      executeSkillCall(call, context, this.taskManager, this.hookManager);
+      executeSkillCall(call, context, this.toolManager, this.hookManager);
 
     const toolUseOptions = {
       temperature: genOptions.temperature,
@@ -874,7 +880,7 @@ export class ReplyGenerationService {
    * Build final reply messages and generate response.
    * Pipeline: routing → capabilities → tools → prompt build → LLM generate → dispatch response.
    */
-  private async generateReplyWithTaskResults(
+  private async generateReplyWithToolResults(
     context: HookContext,
     taskResultsSummary: string,
     searchResultsText: string,
@@ -941,11 +947,11 @@ export class ReplyGenerationService {
     const toolDefinitions =
       useVisionProvider && !canUseVisionToolUse
         ? []
-        : getReplySkillDefinitions(this.taskManager, { nativeWebSearchEnabled: effectiveNativeSearchEnabled });
+        : getReplySkillDefinitions(this.toolManager, { nativeWebSearchEnabled: effectiveNativeSearchEnabled });
 
     // Prompt messages
     const toolUsageInstructions = buildSkillUsageInstructions(
-      this.taskManager,
+      this.toolManager,
       toolDefinitions,
       { nativeWebSearchEnabled: effectiveNativeSearchEnabled },
       this.promptManager,
@@ -1017,7 +1023,7 @@ export class ReplyGenerationService {
     if (usedCardFormat) {
       const success = await this.tryRenderCardReply(context, response.text, actualProvider);
       if (success) {
-        this.appendTaskResultImages(context, taskResultImages);
+        this.appendToolResultImages(context, taskResultImages);
         return;
       }
       logger.warn('[ReplyGenerationService] Direct card JSON from LLM failed to parse, falling back');
@@ -1029,7 +1035,7 @@ export class ReplyGenerationService {
       if (cardResult) {
         this.setCardReplyOnContext(context, cardResult.segments, cardResult.textForHistory);
         await this.hookManager.execute('onAIGenerationComplete', context);
-        this.appendTaskResultImages(context, taskResultImages);
+        this.appendToolResultImages(context, taskResultImages);
         return;
       }
     }

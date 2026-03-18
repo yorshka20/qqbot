@@ -1,17 +1,17 @@
-// WechatReportTaskExecutor - generates and saves comprehensive WeChat reports
+// WechatReportToolExecutor - generates and saves comprehensive WeChat reports
 // Used by AgentLoop to create daily/weekly/monthly reports
 
 import { inject, injectable } from 'tsyringe';
 import { getStaticFileServer } from '@/services/staticServer';
 import { WechatDITokens } from '@/services/wechat';
 import type { ReportType, WechatReportService } from '@/services/wechat/WechatReportService';
-import { TaskDefinition } from '@/task/decorators';
-import { BaseTaskExecutor } from '@/task/executors/BaseTaskExecutor';
-import type { Task, TaskExecutionContext, TaskResult } from '@/task/types';
+import { Tool } from '@/tools/decorators';
+import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
+import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 
 /**
- * WechatReportTaskExecutor
+ * WechatReportToolExecutor
  *
  * Generates comprehensive WeChat reports combining stats, group summaries,
  * and article recommendations. Reports are automatically saved to disk.
@@ -28,10 +28,11 @@ import { logger } from '@/utils/logger';
  * 2. 将报告要点整理成简洁的消息发送到群里
  * ```
  */
-@TaskDefinition({
+@Tool({
   name: 'wechat_report',
   description: '生成并保存微信报告。自动收集群聊摘要、文章推荐、统计数据，生成格式化报告并保存到文件。',
   executor: 'wechat_report',
+  visibility: ['internal'],
   parameters: {
     reportType: {
       type: 'string',
@@ -73,24 +74,24 @@ import { logger } from '@/utils/logger';
   whenToUse: '当需要生成综合性微信报告时使用。报告会自动保存到 data/reports/wechat/ 目录。',
 })
 @injectable()
-export class WechatReportTaskExecutor extends BaseTaskExecutor {
+export class WechatReportToolExecutor extends BaseToolExecutor {
   name = 'wechat_report';
 
   constructor(@inject(WechatDITokens.REPORT_SERVICE) private reportService: WechatReportService) {
     super();
   }
 
-  async execute(task: Task, _context: TaskExecutionContext): Promise<TaskResult> {
-    const reportType = (task.parameters?.reportType as ReportType) ?? 'daily';
-    const sinceHours = task.parameters?.sinceHours as number | undefined;
-    const includeStats = task.parameters?.includeStats as boolean | undefined;
-    const includeGroups = task.parameters?.includeGroups as boolean | undefined;
-    const includeArticles = task.parameters?.includeArticles as boolean | undefined;
-    const maxGroups = task.parameters?.maxGroups as number | undefined;
-    const maxArticles = task.parameters?.maxArticles as number | undefined;
+  async execute(call: ToolCall, _context: ToolExecutionContext): Promise<ToolResult> {
+    const reportType = (call.parameters?.reportType as ReportType) ?? 'daily';
+    const sinceHours = call.parameters?.sinceHours as number | undefined;
+    const includeStats = call.parameters?.includeStats as boolean | undefined;
+    const includeGroups = call.parameters?.includeGroups as boolean | undefined;
+    const includeArticles = call.parameters?.includeArticles as boolean | undefined;
+    const maxGroups = call.parameters?.maxGroups as number | undefined;
+    const maxArticles = call.parameters?.maxArticles as number | undefined;
 
     logger.info(
-      `[WechatReportTaskExecutor] Generating ${reportType} report | ` +
+      `[WechatReportToolExecutor] Generating ${reportType} report | ` +
         `sinceHours=${sinceHours ?? 'auto'} stats=${includeStats ?? true}`,
     );
 
@@ -116,11 +117,11 @@ export class WechatReportTaskExecutor extends BaseTaskExecutor {
         reportUrl = this.reportService.getReportUrl(metadata.id, baseUrl);
       } catch {
         // Static file server may not be available
-        logger.debug('[WechatReportTaskExecutor] Could not generate report URL (static server not available)');
+        logger.debug('[WechatReportToolExecutor] Could not generate report URL (static server not available)');
       }
 
       logger.info(
-        `[WechatReportTaskExecutor] Report generated | ` +
+        `[WechatReportToolExecutor] Report generated | ` +
           `id=${metadata.id} url=${reportUrl ?? 'N/A'} messages=${metadata.stats.totalMessages}`,
       );
 
@@ -137,7 +138,7 @@ export class WechatReportTaskExecutor extends BaseTaskExecutor {
       });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      logger.error('[WechatReportTaskExecutor] Error:', err);
+      logger.error('[WechatReportToolExecutor] Error:', err);
       return this.error('生成报告失败', errorMsg);
     }
   }

@@ -496,9 +496,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         ],
       };
       if (options?.systemPrompt?.trim()) {
-        requestBody.system = [
-          { type: 'text', text: options.systemPrompt, cache_control: { type: 'ephemeral' } },
-        ];
+        requestBody.system = [{ type: 'text', text: options.systemPrompt, cache_control: { type: 'ephemeral' } }];
       }
 
       const data = await this.httpClient.post<AnthropicMessagesResponse>('/messages', requestBody);

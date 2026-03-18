@@ -1,21 +1,21 @@
-// TaskExecutionContext Builder
-// Provides a unified way to create TaskExecutionContext instances
+// ToolExecutionContext Builder
+// Provides a unified way to create ToolExecutionContext instances
 
 import type { HookContext } from '@/hooks/types';
-import type { TaskExecutionContext, TaskResult } from '@/task/types';
+import type { ToolExecutionContext, ToolResult } from '@/tools/types';
 
 /**
- * TaskExecutionContext Builder
- * Provides a fluent API for creating TaskExecutionContext instances
+ * ToolExecutionContext Builder
+ * Provides a fluent API for creating ToolExecutionContext instances
  */
-export class TaskExecutionContextBuilder {
+export class ToolExecutionContextBuilder {
   private userId?: number;
   private groupId?: number;
   private messageType?: 'private' | 'group';
   private conversationId?: string;
   private messageId?: string;
   private hookContext?: HookContext;
-  private taskResults?: Map<string, TaskResult>;
+  private toolResults?: Map<string, ToolResult>;
   private metadata?: Record<string, unknown>;
 
   private constructor() {}
@@ -23,20 +23,20 @@ export class TaskExecutionContextBuilder {
   /**
    * Create a new builder instance
    */
-  static create(): TaskExecutionContextBuilder {
-    return new TaskExecutionContextBuilder();
+  static create(): ToolExecutionContextBuilder {
+    return new ToolExecutionContextBuilder();
   }
 
   /**
    * Create a builder from HookContext
-   * This is the most common way to create a TaskExecutionContext
+   * This is the most common way to create a ToolExecutionContext
    * Automatically sets hookContext for executors to access full context
    *
    * @param context - The HookContext to extract data from
    * @returns A new builder instance with hookContext already set
    */
-  static fromHookContext(context: HookContext): TaskExecutionContextBuilder {
-    const builder = new TaskExecutionContextBuilder();
+  static fromHookContext(context: HookContext): ToolExecutionContextBuilder {
+    const builder = new ToolExecutionContextBuilder();
     builder.userId = context.message.userId;
     builder.groupId = context.message.groupId;
     builder.messageType = context.message.messageType;
@@ -108,8 +108,8 @@ export class TaskExecutionContextBuilder {
    * Set task results from other tasks
    * Used when reply task needs to incorporate results from other tasks
    */
-  withTaskResults(taskResults: Map<string, TaskResult>): this {
-    this.taskResults = taskResults;
+  withToolResults(toolResults: Map<string, ToolResult>): this {
+    this.toolResults = toolResults;
     return this;
   }
 
@@ -126,18 +126,18 @@ export class TaskExecutionContextBuilder {
   }
 
   /**
-   * Build the TaskExecutionContext instance
+   * Build the ToolExecutionContext instance
    * Throws if required fields are missing
    */
-  build(): TaskExecutionContext {
+  build(): ToolExecutionContext {
     if (this.userId === undefined) {
-      throw new Error('TaskExecutionContextBuilder: userId is required');
+      throw new Error('ToolExecutionContextBuilder: userId is required');
     }
     if (this.messageType === undefined) {
-      throw new Error('TaskExecutionContextBuilder: messageType is required');
+      throw new Error('ToolExecutionContextBuilder: messageType is required');
     }
 
-    const context: TaskExecutionContext = {
+    const context: ToolExecutionContext = {
       userId: this.userId,
       messageType: this.messageType,
     };
@@ -154,8 +154,8 @@ export class TaskExecutionContextBuilder {
     if (this.hookContext !== undefined) {
       context.hookContext = this.hookContext;
     }
-    if (this.taskResults !== undefined) {
-      context.taskResults = this.taskResults;
+    if (this.toolResults !== undefined) {
+      context.toolResults = this.toolResults;
     }
     if (this.metadata !== undefined && Object.keys(this.metadata).length > 0) {
       context.metadata = this.metadata;

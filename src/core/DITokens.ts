@@ -4,7 +4,7 @@
 export const DITokens = {
   COMMAND_MANAGER: 'CommandManager',
   HOOK_MANAGER: 'HookManager',
-  TASK_MANAGER: 'TaskManager',
+  TOOL_MANAGER: 'ToolManager',
   REPLY_SYSTEM: 'ReplySystem',
   AI_MANAGER: 'AIManager',
   AI_SERVICE: 'AIService',

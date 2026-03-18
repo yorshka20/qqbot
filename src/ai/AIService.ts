@@ -20,8 +20,8 @@ import type { PluginManager } from '@/plugins/PluginManager';
 import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
 import { CardRenderingService } from '@/services/card';
 import type { RetrievalService } from '@/services/retrieval';
-import type { TaskManager } from '@/task/TaskManager';
-import type { TaskResult } from '@/task/types';
+import type { ToolManager } from '@/tools/ToolManager';
+import type { ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 import type { AIManager } from './AIManager';
 import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions, VisionImage } from './capabilities/types';
@@ -35,12 +35,7 @@ import { ImagePromptService } from './services/ImagePromptService';
 import { LLMService } from './services/LLMService';
 import { ReplyGenerationService } from './services/ReplyGenerationService';
 import { VisionService } from './services/VisionService';
-import {
-  buildSkillUsageInstructions,
-  executeSkillCall,
-  getReplySkillDefinitions,
-  taskTypesToToolDefinitions,
-} from './tools/replyTools';
+import { buildSkillUsageInstructions, executeSkillCall, getReplySkillDefinitions } from './tools/replyTools';
 import type { AIGenerateResponse, ChatMessage, ContentPart } from './types';
 import { normalizeVisionImages } from './utils/imageUtils';
 
@@ -56,7 +51,7 @@ import { normalizeVisionImages } from './utils/imageUtils';
  * - ConversationHistoryService: Handles conversation history building
  *
  * Capabilities:
- * 1. generateReplyFromTaskResults: Generate AI reply from task execution results (unified entry point)
+ * 1. generateReplyFromToolResults: Generate AI reply from task execution results (unified entry point)
  * 2. Image generation: Text-to-image and image-to-image
  *
  * Other systems (like ReplySystem) should inject this service to use AI capabilities.
@@ -84,7 +79,7 @@ export class AIService {
     aiManager: AIManager,
     private hookManager: HookManager,
     private promptManager: PromptManager,
-    private taskManager: TaskManager,
+    private toolManager: ToolManager,
     private conversationHistoryService: ConversationHistoryService,
     providerSelector: ProviderSelector,
     private retrievalService: RetrievalService,
@@ -103,12 +98,12 @@ export class AIService {
       aiManager.getDefaultProvider('llm')?.name || 'deepseek',
     );
 
-    // SubAgent: create manager, ToolRunner (executes tools via TaskManager executors), and executor
+    // SubAgent: create manager, ToolRunner (executes tools via ToolManager executors), and executor
     const subAgentManager = new SubAgentManager();
     this.subAgentManager = subAgentManager;
-    const subAgentTaskTypes = taskManager.getAllTaskTypes().filter((tt) => tt.name !== 'reply');
-    const subAgentToolDefs = taskTypesToToolDefinitions(subAgentTaskTypes);
-    const toolRunner = new ToolRunner(taskManager, subAgentManager, hookManager);
+    const subAgentToolSpecs = toolManager.getToolsByScope('subagent');
+    const subAgentToolDefs = toolManager.toToolDefinitions(subAgentToolSpecs);
+    const toolRunner = new ToolRunner(toolManager, subAgentManager, hookManager);
     const subAgentExecutor = new SubAgentExecutor(this.llmService, subAgentManager, subAgentToolDefs, toolRunner);
     subAgentManager.setExecutor(subAgentExecutor);
 
@@ -124,7 +119,7 @@ export class AIService {
       memoryService,
       messageAPI,
       databaseManager,
-      taskManager,
+      toolManager,
     );
     this.messageAssembler = new PromptMessageAssembler();
   }
@@ -224,9 +219,9 @@ export class AIService {
     if (!canUseToolUse) {
       return { tools: [], toolUsageInstructions: '当前没有可用工具，请直接回答。' };
     }
-    const tools = getReplySkillDefinitions(this.taskManager, { nativeWebSearchEnabled });
+    const tools = getReplySkillDefinitions(this.toolManager, { nativeWebSearchEnabled });
     const toolUsageInstructions = buildSkillUsageInstructions(
-      this.taskManager,
+      this.toolManager,
       tools,
       { nativeWebSearchEnabled },
       this.promptManager,
@@ -309,7 +304,7 @@ export class AIService {
     const lastUserMessage = context.lastUserMessage?.trim() ?? '（无）';
     const hookContext = this.buildProactiveToolHookContext(context, lastUserMessage);
     const toolExecutor = (call: { name: string; arguments: string }) =>
-      executeSkillCall(call, hookContext, this.taskManager, this.hookManager);
+      executeSkillCall(call, hookContext, this.toolManager, this.hookManager);
     const useTools = canUseToolUse && effectiveProviderName && tools.length > 0;
 
     if (useVision) {
@@ -689,8 +684,8 @@ export class AIService {
    * @param context - Hook context containing message and conversation history
    * @param taskResults - Task execution results (empty Map if no tasks)
    */
-  async generateReplyFromTaskResults(context: HookContext, taskResults: Map<string, TaskResult>): Promise<void> {
-    return await this.replyGenerationService.generateReplyFromTaskResults(context, taskResults);
+  async generateReplyFromToolResults(context: HookContext, taskResults: Map<string, ToolResult>): Promise<void> {
+    return await this.replyGenerationService.generateReplyFromToolResults(context, taskResults);
   }
 
   /**
@@ -699,7 +694,7 @@ export class AIService {
    * @returns Reply text (sets context.reply)
    */
   async generateReplyWithSkills(context: HookContext): Promise<void> {
-    await this.replyGenerationService.generateReplyFromTaskResults(context, new Map());
+    await this.replyGenerationService.generateReplyFromToolResults(context, new Map());
   }
 
   /**

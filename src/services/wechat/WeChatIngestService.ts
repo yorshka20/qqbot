@@ -1,5 +1,8 @@
 // WeChat Ingest Service — HTTP webhook server + message processing pipeline
 
+// import all executors to ensure decorators are executed
+import './executors';
+
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ResourceDownloader } from '@/ai/utils/ResourceDownloader';

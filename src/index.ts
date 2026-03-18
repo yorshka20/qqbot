@@ -4,6 +4,7 @@ import 'reflect-metadata';
 
 import { PromptInitializer } from './ai/prompt/PromptInitializer';
 import { APIClient } from './api/APIClient';
+import type { MessageAPI } from './api/methods/MessageAPI';
 import { ConversationInitializer } from './conversation/ConversationInitializer';
 import { Bot } from './core/Bot';
 import { getContainer } from './core/DIContainer';
@@ -18,7 +19,6 @@ import { MCPInitializer } from './services/mcp/MCPInitializer';
 import { RetrievalService } from './services/retrieval';
 import { initStaticFileServer, stopStaticFileServer } from './services/staticServer';
 import { logger } from './utils/logger';
-import { MessageAPI } from './api/methods/MessageAPI';
 
 async function main() {
   logger.info('Starting bot...');

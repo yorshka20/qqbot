@@ -4,9 +4,9 @@ import { inject, injectable } from 'tsyringe';
 import { type ConversationHistoryService, normalizeGroupId } from '@/conversation/history/ConversationHistoryService';
 import { DITokens } from '@/core/DITokens';
 import { DATE_TIMEZONE, formatDateTimeShort } from '@/utils/dateTime';
-import { TaskDefinition } from '../decorators';
-import type { Task, TaskExecutionContext, TaskResult } from '../types';
-import { BaseTaskExecutor } from './BaseTaskExecutor';
+import { Tool } from '../decorators';
+import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
+import { BaseToolExecutor } from './BaseToolExecutor';
 
 /** Maximum messages to fetch from DB before filtering by time */
 const MAX_FETCH_LIMIT = 500;
@@ -67,26 +67,26 @@ function parseTimeInput(input: string): Date | null {
   return null;
 }
 
-@TaskDefinition({
+@Tool({
   name: 'fetch_history_by_time',
-  description: 'Fetch conversation history within a specific time range for the current group',
+  description: '获取当前群指定时间段内的聊天记录。返回该时间窗口内的消息列表（发送者、内容、时间）。',
   executor: 'fetch_history_by_time',
   parameters: {
     startTime: {
       type: 'string',
       required: true,
       description:
-        'Start time. Formats: "HH:mm" (today), "YYYY-MM-DD HH:mm", or relative "-Xh"/"-Xm" (e.g., "-8h" for 8 hours ago)',
+        '起始时间。支持格式："HH:mm"（今天）、"YYYY-MM-DD HH:mm"、相对时间 "-Xh"/"-Xm"（如 "-8h" 表示8小时前）',
     },
     endTime: {
       type: 'string',
       required: false,
-      description: 'End time (same formats as startTime). Defaults to now if omitted.',
+      description: '结束时间（格式同 startTime）。省略则默认为当前时刻。',
     },
     includeBot: {
       type: 'boolean',
       required: false,
-      description: 'Whether to include bot messages in results. Default: false (user messages only).',
+      description: '是否包含 bot 自身的消息。默认 false（仅用户消息）。',
     },
   },
   examples: [
@@ -96,11 +96,10 @@ function parseTimeInput(input: string): Date | null {
     '获取 2024-01-15 08:00 到 2024-01-15 12:00 的消息',
   ],
   triggerKeywords: ['历史记录', '聊天记录', '发言记录', '消息记录', '时间范围', '时间段'],
-  whenToUse:
-    'Use when you need to retrieve conversation messages within a specific time window. Useful for statistics, summaries, or finding who spoke during a certain period.',
+  whenToUse: '当需要获取特定时间段内的群聊消息时调用。常见场景：总结某段时间的讨论、统计发言人、回顾错过的对话。',
 })
 @injectable()
-export class FetchHistoryByTimeTaskExecutor extends BaseTaskExecutor {
+export class FetchHistoryByTimeToolExecutor extends BaseToolExecutor {
   name = 'fetch_history_by_time';
 
   constructor(
@@ -109,13 +108,13 @@ export class FetchHistoryByTimeTaskExecutor extends BaseTaskExecutor {
     super();
   }
 
-  async execute(task: Task, context: TaskExecutionContext): Promise<TaskResult> {
+  async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     const groupId = context.groupId;
     if (!groupId) {
       return this.error('只有群聊场景下才能获取聊天记录', 'fetch_history_by_time requires group context');
     }
 
-    const startTimeStr = task.parameters?.startTime;
+    const startTimeStr = call.parameters?.startTime;
     if (typeof startTimeStr !== 'string' || !startTimeStr.trim()) {
       return this.error('请提供开始时间 (startTime)', 'Missing required parameter: startTime');
     }
@@ -129,7 +128,7 @@ export class FetchHistoryByTimeTaskExecutor extends BaseTaskExecutor {
     }
 
     let endTime: Date;
-    const endTimeStr = task.parameters?.endTime;
+    const endTimeStr = call.parameters?.endTime;
     if (typeof endTimeStr === 'string' && endTimeStr.trim()) {
       const parsed = parseTimeInput(endTimeStr);
       if (!parsed) {
@@ -147,7 +146,7 @@ export class FetchHistoryByTimeTaskExecutor extends BaseTaskExecutor {
       return this.error('开始时间必须早于结束时间', 'startTime must be before endTime');
     }
 
-    const includeBot = task.parameters?.includeBot === true;
+    const includeBot = call.parameters?.includeBot === true;
 
     // Fetch recent messages from DB
     const { sessionId } = normalizeGroupId(groupId);

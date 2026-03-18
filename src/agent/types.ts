@@ -54,7 +54,7 @@ export interface SubAgentSession {
     userId?: number;
     sessionId: string; // Independent session
     episodeId?: string; // Independent episode
-    /** From parent when spawned from main flow; used by ToolRunner for TaskExecutionContext. */
+    /** From parent when spawned from main flow; used by ToolRunner for ToolExecutionContext. */
     messageType?: 'private' | 'group';
     protocol?: string;
     conversationId?: string;

@@ -186,7 +186,7 @@ const SUBAGENT_SAMPLE_TOOLS: ToolDefinition[] = [
 
 const INTEGRATION_TIMEOUT_MS = 60_000;
 
-/** Mock ToolRunner for integration tests: returns fixed get_weather/search results without TaskManager. */
+/** Mock ToolRunner for integration tests: returns fixed get_weather/search results without ToolManager. */
 const mockToolRunner: IToolRunner = {
   async run(call: FunctionCall, _session: SubAgentSession): Promise<unknown> {
     if (call.name === 'get_weather') {

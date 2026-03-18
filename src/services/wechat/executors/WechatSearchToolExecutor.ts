@@ -1,16 +1,16 @@
-// WechatSearchTaskExecutor - searches WeChat messages and articles
+// WechatSearchToolExecutor - searches WeChat messages and articles
 // Used by Agenda or user queries to find relevant content
 
 import { inject, injectable } from 'tsyringe';
 import { WechatDITokens } from '@/services/wechat';
 import type { WechatDigestService } from '@/services/wechat/WechatDigestService';
-import { TaskDefinition } from '@/task/decorators';
-import { BaseTaskExecutor } from '@/task/executors/BaseTaskExecutor';
-import type { Task, TaskExecutionContext, TaskResult } from '@/task/types';
+import { Tool } from '@/tools/decorators';
+import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
+import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 
 /**
- * WechatSearchTaskExecutor
+ * WechatSearchToolExecutor
  *
  * Searches WeChat messages and articles by keyword. Supports filtering
  * by content type and time range.
@@ -24,10 +24,11 @@ import { logger } from '@/utils/logger';
  * 如果用户消息包含"查找微信"或"搜索微信"，调用 wechat_search 搜索相关内容。
  * ```
  */
-@TaskDefinition({
+@Tool({
   name: 'wechat_search',
   description: '搜索微信消息和文章。在聊天记录和收藏的文章中查找包含关键词的内容。',
   executor: 'wechat_search',
+  visibility: ['internal'],
   parameters: {
     keyword: {
       type: 'string',
@@ -59,24 +60,24 @@ import { logger } from '@/utils/logger';
   whenToUse: '当需要在微信历史消息或文章中查找特定内容时使用。',
 })
 @injectable()
-export class WechatSearchTaskExecutor extends BaseTaskExecutor {
+export class WechatSearchToolExecutor extends BaseToolExecutor {
   name = 'wechat_search';
 
   constructor(@inject(WechatDITokens.DIGEST_SERVICE) private digestService: WechatDigestService) {
     super();
   }
 
-  async execute(task: Task, _context: TaskExecutionContext): Promise<TaskResult> {
-    const keyword = task.parameters?.keyword as string | undefined;
+  async execute(call: ToolCall, _context: ToolExecutionContext): Promise<ToolResult> {
+    const keyword = call.parameters?.keyword as string | undefined;
 
     if (!keyword) {
       return this.error('请提供搜索关键词', 'Missing required parameter: keyword');
     }
 
-    const searchIn = task.parameters?.searchIn as 'messages' | 'articles' | 'all' | undefined;
-    const isGroup = task.parameters?.isGroup as boolean | undefined;
-    const sinceHours = task.parameters?.sinceHours as number | undefined;
-    const limit = task.parameters?.limit as number | undefined;
+    const searchIn = call.parameters?.searchIn as 'messages' | 'articles' | 'all' | undefined;
+    const isGroup = call.parameters?.isGroup as boolean | undefined;
+    const sinceHours = call.parameters?.sinceHours as number | undefined;
+    const limit = call.parameters?.limit as number | undefined;
 
     // Calculate since timestamp
     let sinceTs: number | undefined;
@@ -85,7 +86,7 @@ export class WechatSearchTaskExecutor extends BaseTaskExecutor {
     }
 
     logger.info(
-      `[WechatSearchTaskExecutor] Searching | keyword="${keyword}" ` +
+      `[WechatSearchToolExecutor] Searching | keyword="${keyword}" ` +
         `searchIn=${searchIn ?? 'all'} isGroup=${isGroup ?? 'any'} sinceHours=${sinceHours ?? 'all'}`,
     );
 
@@ -112,7 +113,7 @@ export class WechatSearchTaskExecutor extends BaseTaskExecutor {
         limit: limit ?? 50,
       });
 
-      logger.info(`[WechatSearchTaskExecutor] Found ${results.length} results for "${keyword}"`);
+      logger.info(`[WechatSearchToolExecutor] Found ${results.length} results for "${keyword}"`);
 
       return this.success(text, {
         keyword,
@@ -127,7 +128,7 @@ export class WechatSearchTaskExecutor extends BaseTaskExecutor {
       });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      logger.error('[WechatSearchTaskExecutor] Error:', err);
+      logger.error('[WechatSearchToolExecutor] Error:', err);
       return this.error('搜索失败', errorMsg);
     }
   }

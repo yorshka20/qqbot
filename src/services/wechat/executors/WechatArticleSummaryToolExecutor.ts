@@ -1,16 +1,16 @@
-// WechatArticleSummaryTaskExecutor - retrieves article/link summaries
+// WechatArticleSummaryToolExecutor - retrieves article/link summaries
 // Used by Agenda to generate article reports or analyze shared content
 
 import { inject, injectable } from 'tsyringe';
 import { WechatDITokens } from '@/services/wechat';
 import type { WechatDigestService } from '@/services/wechat/WechatDigestService';
-import { TaskDefinition } from '@/task/decorators';
-import { BaseTaskExecutor } from '@/task/executors/BaseTaskExecutor';
-import type { Task, TaskExecutionContext, TaskResult } from '@/task/types';
+import { Tool } from '@/tools/decorators';
+import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
+import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 
 /**
- * WechatArticleSummaryTaskExecutor
+ * WechatArticleSummaryToolExecutor
  *
  * Retrieves article summaries from WeChat. Supports filtering by source type
  * (official account push vs shared in chat) and keyword search.
@@ -25,10 +25,11 @@ import { logger } from '@/utils/logger';
  * 2. 挑选值得阅读的文章，生成推荐列表
  * ```
  */
-@TaskDefinition({
+@Tool({
   name: 'wechat_article_summary',
   description: '获取微信文章摘要。包括公众号推送和聊天中分享的链接。返回标题、来源、摘要等信息。',
   executor: 'wechat_article_summary',
+  visibility: ['internal'],
   parameters: {
     sourceType: {
       type: 'string',
@@ -55,18 +56,18 @@ import { logger } from '@/utils/logger';
   whenToUse: '当需要查看、分析微信收到的文章时使用。适用于文章日报或特定话题的文章筛选。',
 })
 @injectable()
-export class WechatArticleSummaryTaskExecutor extends BaseTaskExecutor {
+export class WechatArticleSummaryToolExecutor extends BaseToolExecutor {
   name = 'wechat_article_summary';
 
   constructor(@inject(WechatDITokens.DIGEST_SERVICE) private digestService: WechatDigestService) {
     super();
   }
 
-  async execute(task: Task, _context: TaskExecutionContext): Promise<TaskResult> {
-    const sourceType = task.parameters?.sourceType as 'oa_push' | 'group_chat' | 'private_chat' | 'all' | undefined;
-    const keyword = task.parameters?.keyword as string | undefined;
-    const sinceHours = task.parameters?.sinceHours as number | undefined;
-    const limit = task.parameters?.limit as number | undefined;
+  async execute(call: ToolCall, _context: ToolExecutionContext): Promise<ToolResult> {
+    const sourceType = call.parameters?.sourceType as 'oa_push' | 'group_chat' | 'private_chat' | 'all' | undefined;
+    const keyword = call.parameters?.keyword as string | undefined;
+    const sinceHours = call.parameters?.sinceHours as number | undefined;
+    const limit = call.parameters?.limit as number | undefined;
 
     // Calculate since timestamp
     let sinceTs: number | undefined;
@@ -75,7 +76,7 @@ export class WechatArticleSummaryTaskExecutor extends BaseTaskExecutor {
     }
 
     logger.info(
-      `[WechatArticleSummaryTaskExecutor] Getting articles | ` +
+      `[WechatArticleSummaryToolExecutor] Getting articles | ` +
         `sourceType=${sourceType ?? 'all'} keyword=${keyword ?? 'none'} sinceHours=${sinceHours ?? 'today'}`,
     );
 
@@ -102,7 +103,7 @@ export class WechatArticleSummaryTaskExecutor extends BaseTaskExecutor {
         limit: limit ?? 100,
       });
 
-      logger.info(`[WechatArticleSummaryTaskExecutor] Found ${articles.length} articles`);
+      logger.info(`[WechatArticleSummaryToolExecutor] Found ${articles.length} articles`);
 
       return this.success(text, {
         articleCount: articles.length,
@@ -116,7 +117,7 @@ export class WechatArticleSummaryTaskExecutor extends BaseTaskExecutor {
       });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      logger.error('[WechatArticleSummaryTaskExecutor] Error:', err);
+      logger.error('[WechatArticleSummaryToolExecutor] Error:', err);
       return this.error('获取文章摘要失败', errorMsg);
     }
   }

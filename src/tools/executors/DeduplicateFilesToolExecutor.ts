@@ -7,15 +7,16 @@ import { DITokens } from '@/core/DITokens';
 import type { FileReadService } from '@/services/file';
 import { formatBytes, resolveGroupDirs, runDeduplication } from '@/utils/fileDedup';
 import { logger } from '@/utils/logger';
-import { TaskDefinition } from '../decorators';
-import type { Task, TaskExecutionContext, TaskResult } from '../types';
-import { BaseTaskExecutor } from './BaseTaskExecutor';
+import { Tool } from '../decorators';
+import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
+import { BaseToolExecutor } from './BaseToolExecutor';
 
 /** Must match GroupDownloadPlugin.ts DOWNLOAD_ROOT */
 const DOWNLOAD_ROOT = 'output/downloads';
 
-@TaskDefinition({
+@Tool({
   name: 'deduplicate_files',
+  visibility: ['internal'],
   description:
     'Scan downloaded group media for content-identical duplicate files and remove them, keeping the oldest copy. Supports dry-run mode to preview results without deletion.',
   executor: 'deduplicate_files',
@@ -45,18 +46,18 @@ const DOWNLOAD_ROOT = 'output/downloads';
     'Supports dry-run mode to preview results without deletion.',
 })
 @injectable()
-export class DeduplicateFilesTaskExecutor extends BaseTaskExecutor {
+export class DeduplicateFilesToolExecutor extends BaseToolExecutor {
   name = 'deduplicate_files';
 
   constructor(@inject(DITokens.FILE_READ_SERVICE) private fileService: FileReadService) {
     super();
   }
 
-  async execute(task: Task, _context: TaskExecutionContext): Promise<TaskResult> {
-    const groupIdParam = task.parameters?.groupId as string | undefined;
-    const dryRun = task.parameters?.dryRun === true;
+  async execute(call: ToolCall, _context: ToolExecutionContext): Promise<ToolResult> {
+    const groupIdParam = call.parameters?.groupId as string | undefined;
+    const dryRun = call.parameters?.dryRun === true;
 
-    logger.info(`[DeduplicateFilesTaskExecutor] Starting dedup | groupId=${groupIdParam ?? 'all'} | dryRun=${dryRun}`);
+    logger.info(`[DeduplicateFilesToolExecutor] Starting dedup | groupId=${groupIdParam ?? 'all'} | dryRun=${dryRun}`);
 
     const dirs = resolveGroupDirs(join(process.cwd(), DOWNLOAD_ROOT), groupIdParam);
     if (dirs.length === 0) {

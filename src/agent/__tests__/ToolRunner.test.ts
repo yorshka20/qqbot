@@ -4,10 +4,10 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { HookManager } from '@/hooks/HookManager';
 import { FileReadService } from '@/services/file';
-import { TaskInitializer } from '@/task/TaskInitializer';
-import type { TaskManager } from '@/task/TaskManager';
-import { TaskManager as TaskManagerImpl } from '@/task/TaskManager';
-import type { Task, TaskExecutionContext, TaskResult } from '@/task/types';
+import { ToolInitializer } from '@/tools/ToolInitializer';
+import type { ToolManager } from '@/tools/ToolManager';
+import { ToolManager as ToolManagerImpl } from '@/tools/ToolManager';
+import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import type { SubAgentManager } from '../SubAgentManager';
 import { ToolRunner } from '../ToolRunner';
 import type { SubAgentSession } from '../types';
@@ -37,22 +37,22 @@ function createMockSession(overrides?: Partial<SubAgentSession>): SubAgentSessio
 }
 
 describe('ToolRunner', () => {
-  it('run executes tool via TaskManager.getExecutor and returns result.data or result.reply', async () => {
-    const mockResult: TaskResult = {
+  it('run executes tool via ToolManager.getExecutor and returns result.data or result.reply', async () => {
+    const mockResult: ToolResult = {
       success: true,
       reply: 'Search result text',
       data: { query: 'test', results: ['a', 'b'] },
     };
-    const taskManager = {
-      getTaskType: () => ({ name: 'search', executor: 'search' }),
+    const toolManager = {
+      getTool: () => ({ name: 'search', executor: 'search' }),
       getExecutor: () => ({
         name: 'search',
-        execute: async (_task: Task, _context: TaskExecutionContext) => mockResult,
+        execute: async (_call: ToolCall, _context: ToolExecutionContext) => mockResult,
       }),
       execute: async () => mockResult,
-    } as unknown as TaskManager;
+    } as unknown as ToolManager;
     const subAgentManager = {} as unknown as SubAgentManager;
-    const runner = new ToolRunner(taskManager, subAgentManager, new HookManager());
+    const runner = new ToolRunner(toolManager, subAgentManager, new HookManager());
     const session = createMockSession();
 
     const result = await runner.run({ name: 'search', arguments: '{"query":"test"}' }, session);
@@ -60,28 +60,28 @@ describe('ToolRunner', () => {
   });
 
   it('run returns result.reply when result.data is undefined (normalizeResult fallback)', async () => {
-    const taskManager = {
-      getTaskType: () => ({ name: 'reply_only_tool', executor: 'reply_only_tool' }),
+    const toolManager = {
+      getTool: () => ({ name: 'reply_only_tool', executor: 'reply_only_tool' }),
       getExecutor: () => ({
         name: 'reply_only_tool',
         execute: async () => ({ success: true, reply: 'text-only reply' }),
       }),
       execute: async () => ({ success: true, reply: 'text-only reply' }),
-    } as unknown as TaskManager;
-    const runner = new ToolRunner(taskManager, {} as SubAgentManager, new HookManager());
+    } as unknown as ToolManager;
+    const runner = new ToolRunner(toolManager, {} as SubAgentManager, new HookManager());
     const session = createMockSession();
 
     const result = await runner.run({ name: 'reply_only_tool', arguments: '{}' }, session);
     expect(result).toBe('text-only reply');
   });
 
-  it('run read_file list with real TaskManager returns real execution result', async () => {
+  it('run read_file list with real ToolManager returns real execution result', async () => {
     getContainer().registerInstance(DITokens.FILE_READ_SERVICE, new FileReadService(), {
       allowOverride: true,
     });
-    const taskManager = new TaskManagerImpl();
-    TaskInitializer.initialize(taskManager);
-    const runner = new ToolRunner(taskManager, {} as SubAgentManager, new HookManager());
+    const toolManager = new ToolManagerImpl();
+    ToolInitializer.initialize(toolManager);
+    const runner = new ToolRunner(toolManager, {} as SubAgentManager, new HookManager());
     const session = createMockSession();
 
     const result = (await runner.run(
@@ -96,13 +96,13 @@ describe('ToolRunner', () => {
     expect(result.content).toContain('ToolRunner');
   });
 
-  it('run read_file read with real TaskManager returns file content (text only, no card render)', async () => {
+  it('run read_file read with real ToolManager returns file content (text only, no card render)', async () => {
     getContainer().registerInstance(DITokens.FILE_READ_SERVICE, new FileReadService(), {
       allowOverride: true,
     });
-    const taskManager = new TaskManagerImpl();
-    TaskInitializer.initialize(taskManager);
-    const runner = new ToolRunner(taskManager, {} as SubAgentManager, new HookManager());
+    const toolManager = new ToolManagerImpl();
+    ToolInitializer.initialize(toolManager);
+    const runner = new ToolRunner(toolManager, {} as SubAgentManager, new HookManager());
     const session = createMockSession();
 
     const result = await runner.run({ name: 'read_file', arguments: '{"path":"README.md","action":"read"}' }, session);
@@ -130,9 +130,9 @@ describe('ToolRunner', () => {
     getContainer().registerInstance(DITokens.RETRIEVAL_SERVICE, mockRetrievalService, {
       allowOverride: true,
     });
-    const taskManager = new TaskManagerImpl();
-    TaskInitializer.initialize(taskManager);
-    const runner = new ToolRunner(taskManager, {} as SubAgentManager, new HookManager());
+    const toolManager = new ToolManagerImpl();
+    ToolInitializer.initialize(toolManager);
+    const runner = new ToolRunner(toolManager, {} as SubAgentManager, new HookManager());
     const session = createMockSession();
 
     const result = await runner.run({ name: 'fetch_page', arguments: '{"url":"https://example.com"}' }, session);
@@ -143,11 +143,11 @@ describe('ToolRunner', () => {
   });
 
   it('run throws when executor not found', async () => {
-    const taskManager = {
-      getTaskType: () => ({ name: 'unknown_tool', executor: 'unknown_tool' }),
+    const toolManager = {
+      getTool: () => ({ name: 'unknown_tool', executor: 'unknown_tool' }),
       getExecutor: () => null,
-    } as unknown as TaskManager;
-    const runner = new ToolRunner(taskManager, {} as SubAgentManager, new HookManager());
+    } as unknown as ToolManager;
+    const runner = new ToolRunner(toolManager, {} as SubAgentManager, new HookManager());
     const session = createMockSession();
 
     await expect(runner.run({ name: 'unknown_tool', arguments: '{}' }, session)).rejects.toThrow(
@@ -179,8 +179,8 @@ describe('ToolRunner', () => {
         return childOutput;
       },
     } as unknown as SubAgentManager;
-    const taskManager = { getTaskType: () => null, getExecutor: () => null } as unknown as TaskManager;
-    const runner = new ToolRunner(taskManager, subAgentManager, new HookManager());
+    const toolManager = { getTool: () => null, getExecutor: () => null } as unknown as ToolManager;
+    const runner = new ToolRunner(toolManager, subAgentManager, new HookManager());
     const session = createMockSession({ id: 'agent:parent-id' });
 
     const result = await runner.run(
@@ -216,8 +216,8 @@ describe('ToolRunner', () => {
       execute: async () => {},
       wait: async () => 'done',
     } as unknown as SubAgentManager;
-    const taskManager = { getTaskType: () => null, getExecutor: () => null } as unknown as TaskManager;
-    const runner = new ToolRunner(taskManager, subAgentManager, new HookManager());
+    const toolManager = { getTool: () => null, getExecutor: () => null } as unknown as ToolManager;
+    const runner = new ToolRunner(toolManager, subAgentManager, new HookManager());
     const session = createMockSession({
       context: { sessionId: 's', userId: 999, groupId: 888, messageType: 'group' },
     });
