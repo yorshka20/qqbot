@@ -33,12 +33,18 @@ interface AnthropicMessage {
   content: AnthropicContent;
 }
 
+interface AnthropicSystemBlock {
+  type: 'text';
+  text: string;
+  cache_control?: { type: 'ephemeral' };
+}
+
 interface AnthropicMessagesRequestBody {
   model: string;
   max_tokens: number;
   temperature: number;
   messages: AnthropicMessage[];
-  system?: string;
+  system?: AnthropicSystemBlock[];
   tools?: AnthropicTool[];
   tool_choice?: { type: 'auto' | 'any' | 'none' | 'tool'; name?: string };
 }
@@ -52,7 +58,7 @@ interface AnthropicVisionRequestBody {
   max_tokens: number;
   temperature: number;
   messages: Array<{ role: 'user'; content: AnthropicMessage['content'] }>;
-  system?: string;
+  system?: AnthropicSystemBlock[];
 }
 
 interface AnthropicMessagesResponse {
@@ -75,7 +81,7 @@ function isAnthropicStreamChunk(value: unknown): value is AnthropicStreamChunk {
   return typeof Reflect.get(value, 'type') === 'string';
 }
 
-type AnthropicTextBlock = { type: 'text'; text: string };
+type AnthropicTextBlock = { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } };
 type AnthropicImageBlock = { type: 'image'; source: { type: string; media_type: string; data: string } };
 type AnthropicToolUseBlock = { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> };
 type AnthropicToolResultBlock = {
@@ -184,6 +190,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         'Content-Type': 'application/json',
         'x-api-key': this.config.apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31',
       },
       defaultTimeout: 120000, // 2 minutes default timeout for AI processing
     });
@@ -251,6 +258,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       logger.debug(`[AnthropicProvider] Generating with model: ${model}`);
 
       let messages = await this.buildAnthropicMessages(prompt, options);
+      this.addHistoryCacheBreakpoint(messages);
       const tools = this.buildAnthropicTools(options);
       const explicitSystem = this.buildAnthropicSystemPrompt(options);
       let data: AnthropicMessagesResponse | null = null;
@@ -262,7 +270,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
           temperature,
           messages,
         };
-        if (explicitSystem?.trim()) {
+        if (explicitSystem?.length) {
           requestBody.system = explicitSystem;
         }
         if (tools.length > 0) {
@@ -329,6 +337,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       logger.debug(`[AnthropicProvider] Generating stream with model: ${model}`);
 
       const messages = await this.buildAnthropicMessages(prompt, options);
+      this.addHistoryCacheBreakpoint(messages);
       const tools = this.buildAnthropicTools(options);
 
       // Use HttpClient stream method for streaming requests
@@ -340,7 +349,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         stream: true,
       };
       const explicitSystemStream = this.buildAnthropicSystemPrompt(options);
-      if (explicitSystemStream?.trim()) {
+      if (explicitSystemStream?.length) {
         requestBody.system = explicitSystemStream;
       }
       if (tools.length > 0) {
@@ -478,8 +487,10 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
           },
         ],
       };
-      if (options?.systemPrompt) {
-        requestBody.system = options.systemPrompt;
+      if (options?.systemPrompt?.trim()) {
+        requestBody.system = [
+          { type: 'text', text: options.systemPrompt, cache_control: { type: 'ephemeral' } },
+        ];
       }
 
       const data = await this.httpClient.post<AnthropicMessagesResponse>('/messages', requestBody);
@@ -529,15 +540,32 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     return response;
   }
 
-  private buildAnthropicSystemPrompt(options?: AIGenerateOptions): string | undefined {
+  private buildAnthropicSystemPrompt(options?: AIGenerateOptions): AnthropicSystemBlock[] | undefined {
+    const systemParts: string[] = [];
+
     const explicitSystem = options?.messages
       ?.filter((m) => m.role === 'system')
       .map((m) => contentToPlainString(m.content))
       .join('\n\n');
     if (explicitSystem?.trim()) {
-      return explicitSystem;
+      systemParts.push(explicitSystem);
+    } else if (options?.systemPrompt?.trim()) {
+      systemParts.push(options.systemPrompt);
     }
-    return options?.systemPrompt;
+
+    if (systemParts.length === 0) {
+      return undefined;
+    }
+
+    // Return system blocks with cache_control on the last block.
+    // Anthropic caches everything up to and including the block with cache_control.
+    return systemParts.map((text, i) => {
+      const block: AnthropicSystemBlock = { type: 'text', text };
+      if (i === systemParts.length - 1) {
+        block.cache_control = { type: 'ephemeral' };
+      }
+      return block;
+    });
   }
 
   private async buildAnthropicMessages(prompt: string, options?: AIGenerateOptions): Promise<AnthropicMessage[]> {
@@ -609,6 +637,24 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     return mapped;
   }
 
+  /**
+   * Add cache_control breakpoint to the end of the conversation history prefix.
+   * The last message is always the new user query; everything before it is stable
+   * across turns and benefits from caching.
+   * Mutates the messages array in place.
+   */
+  private addHistoryCacheBreakpoint(messages: AnthropicMessage[]): void {
+    if (messages.length < 2) return;
+
+    const target = messages[messages.length - 2];
+    if (typeof target.content === 'string') {
+      // Convert to block form so we can attach cache_control
+      target.content = [{ type: 'text', text: target.content, cache_control: { type: 'ephemeral' } }];
+    } else if (Array.isArray(target.content) && target.content.length > 0) {
+      (target.content[target.content.length - 1] as AnthropicTextBlock).cache_control = { type: 'ephemeral' };
+    }
+  }
+
   private buildAnthropicTools(options?: AIGenerateOptions): AnthropicTool[] {
     const tools: AnthropicTool[] = [];
 
@@ -628,6 +674,11 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
           input_schema: tool.parameters,
         })),
       );
+    }
+
+    // Add cache_control to the last tool so Anthropic caches system + tools prefix
+    if (tools.length > 0) {
+      (tools[tools.length - 1] as Record<string, unknown>).cache_control = { type: 'ephemeral' };
     }
 
     return tools;
