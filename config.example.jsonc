@@ -309,7 +309,8 @@
           },
           // RAG ingestion settings
           "rag": {
-            "articleCollection": "wechat_articles", // 公众号文章存入的 Qdrant collection
+            "articleCollection": "wechat_articles", // 公众号文章全文存入的 Qdrant collection
+            "chunksCollection": "wechat_articles_chunks", // 文章分块存入的 Qdrant collection（用于 RAG 检索）
             "momentsCollection": "wechat_moments", // 朋友圈存入的 Qdrant collection
             "bufferIdleMinutes": 5, // 空闲多少分钟后批量 upsert
             "bufferMaxMessages": 10 // 最多缓冲多少条后触发 upsert
@@ -338,6 +339,15 @@
             "enabled": false,
             "cron": "0 22 * * *", // cron expression — default: every day at 22:00
             "targetQQGroup": "" // QQ group ID to send the digest to
+          },
+          // Article analysis — nightly LLM analysis of WeChat articles
+          // Uses the configured LLM provider to extract facts, news, opinions from articles
+          // Triggered by agenda cron item calling wechat_analyze_articles tool
+          "analysis": {
+            "provider": "ollama", // LLM provider name (must be configured in ai.providers)
+            "maxArticles": 100, // max articles per analysis run
+            "concurrency": 1 // parallel analysis tasks
+            // "promptPath": "prompts/analysis/wechat_article.txt" // custom prompt template
           },
           // SNS (Moments) polling — periodically fetch 朋友圈 and store into RAG
           // Disabled by default; minimum interval 30 minutes to avoid account risk

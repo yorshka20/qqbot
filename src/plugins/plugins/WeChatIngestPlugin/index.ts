@@ -2,6 +2,7 @@
 // All core logic lives in src/services/wechat/
 
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
+import type { LLMService } from '@/ai/services/LLMService';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { CommandManager } from '@/command/CommandManager';
 import type { Config } from '@/core/config';
@@ -153,22 +154,19 @@ export class WeChatIngestPlugin extends PluginBase {
     container.registerInstance(WechatDITokens.REPORT_SERVICE, this.reportService);
     logger.info('[WeChatIngestPlugin] WechatReportService registered');
 
-    // Create article analysis service (for nightly LLM analysis via Ollama)
-    const ragConfig = config.getRAGConfig();
-    const analysisOllamaUrl = raw?.analysis?.ollamaUrl ?? ragConfig?.ollama?.url;
-    if (analysisOllamaUrl) {
-      const analysisService = new WeChatArticleAnalysisService(this.db, {
-        ollamaUrl: analysisOllamaUrl,
-        model: raw?.analysis?.model ?? 'qwen3:8b',
-        timeout: raw?.analysis?.timeout,
+    // Create article analysis service (uses LLMService provider for analysis)
+    try {
+      const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
+      const analysisService = new WeChatArticleAnalysisService(this.db, llmService, {
+        provider: raw?.analysis?.provider ?? 'ollama',
         maxArticles: raw?.analysis?.maxArticles,
         concurrency: raw?.analysis?.concurrency,
         promptPath: raw?.analysis?.promptPath,
       });
       container.registerInstance(WechatDITokens.ARTICLE_ANALYSIS_SERVICE, analysisService);
       logger.info('[WeChatIngestPlugin] WeChatArticleAnalysisService registered');
-    } else {
-      logger.info('[WeChatIngestPlugin] Article analysis not configured (no Ollama URL)');
+    } catch {
+      logger.info('[WeChatIngestPlugin] LLMService not available — article analysis disabled');
     }
 
     this.ingestService = new WeChatIngestService({

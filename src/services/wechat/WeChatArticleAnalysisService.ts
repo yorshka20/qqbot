@@ -1,9 +1,9 @@
-// WeChatArticleAnalysisService — fetches today's articles, runs LLM analysis via Ollama,
+// WeChatArticleAnalysisService — fetches today's articles, runs LLM analysis via LLMService,
 // and stores extracted insights into wechat_article_insights table.
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { HttpClient } from '@/api/http/HttpClient';
+import type { LLMService } from '@/ai/services/LLMService';
 import { logger } from '@/utils/logger';
 import { fetchArticleText } from './fetchArticleText';
 import type { WeChatDatabase, WeChatOAArticleRow } from './WeChatDatabase';
@@ -13,12 +13,8 @@ import type { WeChatDatabase, WeChatOAArticleRow } from './WeChatDatabase';
 // ────────────────────────────────────────────────────────────────────────────
 
 export interface ArticleAnalysisConfig {
-  /** Ollama API base URL (e.g. "http://192.168.1.100:11434") */
-  ollamaUrl: string;
-  /** Model name to use (e.g. "qwen3:8b") */
-  model: string;
-  /** Request timeout in ms (default 120000 — articles can be long) */
-  timeout?: number;
+  /** Provider name to use for analysis (e.g. "ollama"). Default: "ollama" */
+  provider?: string;
   /** Path to prompt template file (default "prompts/analysis/wechat_article.txt") */
   promptPath?: string;
   /** Max articles to analyze per run (default 100) */
@@ -41,39 +37,29 @@ interface AnalysisResult {
   worthReporting: boolean;
 }
 
-interface OllamaChatResponse {
-  message?: { content?: string };
-}
-
 // ────────────────────────────────────────────────────────────────────────────
 // Service
 // ────────────────────────────────────────────────────────────────────────────
 
 export class WeChatArticleAnalysisService {
-  private httpClient: HttpClient;
-  private model: string;
+  private provider: string;
   private promptTemplate: string;
   private maxArticles: number;
   private concurrency: number;
 
   constructor(
     private db: WeChatDatabase,
+    private llmService: LLMService,
     private config: ArticleAnalysisConfig,
   ) {
-    this.model = config.model;
+    this.provider = config.provider ?? 'ollama';
     this.maxArticles = config.maxArticles ?? 100;
     this.concurrency = config.concurrency ?? 1;
-
-    this.httpClient = new HttpClient({
-      baseURL: config.ollamaUrl.replace(/\/$/, ''),
-      defaultHeaders: { 'Content-Type': 'application/json' },
-      defaultTimeout: config.timeout ?? 120_000,
-    });
 
     // Load prompt template
     const promptPath = resolve(config.promptPath ?? 'prompts/analysis/wechat_article.txt');
     this.promptTemplate = readFileSync(promptPath, 'utf-8');
-    logger.info(`[ArticleAnalysis] Loaded prompt from ${promptPath}`);
+    logger.info(`[ArticleAnalysis] Initialized | provider=${this.provider} prompt=${promptPath}`);
   }
 
   /**
@@ -141,7 +127,7 @@ export class WeChatArticleAnalysisService {
   }
 
   /**
-   * Analyze a single article: fetch full text → call Ollama → store insight.
+   * Analyze a single article: fetch full text → call LLM → store insight.
    * Returns true if article is worthReporting.
    */
   private async analyzeOne(article: WeChatOAArticleRow): Promise<boolean> {
@@ -164,7 +150,7 @@ export class WeChatArticleAnalysisService {
         items: '[]',
         worthReporting: 0,
         analyzedAt: new Date().toISOString(),
-        model: this.model,
+        model: this.provider,
       });
       return false;
     }
@@ -176,8 +162,8 @@ export class WeChatArticleAnalysisService {
       .replace('{{source}}', source || accountNick)
       .replace('{{content}}', content);
 
-    // Call Ollama
-    const analysisResult = await this.callOllama(prompt, title);
+    // Call LLM via provider
+    const analysisResult = await this.callLLM(prompt, title);
     if (!analysisResult) {
       throw new Error(`LLM returned no parseable result for "${title}"`);
     }
@@ -193,7 +179,7 @@ export class WeChatArticleAnalysisService {
       items: JSON.stringify(analysisResult.items ?? []),
       worthReporting: analysisResult.worthReporting ? 1 : 0,
       analyzedAt: new Date().toISOString(),
-      model: this.model,
+      model: this.provider,
     });
 
     logger.info(
@@ -204,21 +190,17 @@ export class WeChatArticleAnalysisService {
   }
 
   /**
-   * Call Ollama chat API and parse JSON response.
+   * Call LLM via LLMService and parse JSON response.
    */
-  private async callOllama(prompt: string, title: string): Promise<AnalysisResult | null> {
+  private async callLLM(prompt: string, title: string): Promise<AnalysisResult | null> {
     try {
-      const response = await this.httpClient.post<OllamaChatResponse>('/api/chat', {
-        model: this.model,
-        messages: [{ role: 'user', content: prompt }],
-        stream: false,
-        options: {
-          temperature: 0.3,
-          num_predict: 2048,
-        },
-      });
+      const response = await this.llmService.generate(
+        prompt,
+        { temperature: 0.3, maxTokens: 2048 },
+        this.provider,
+      );
 
-      const text = response.message?.content?.trim();
+      const text = response.text?.trim();
       if (!text) {
         logger.warn(`[ArticleAnalysis] Empty response for "${title}"`);
         return null;
@@ -226,7 +208,7 @@ export class WeChatArticleAnalysisService {
 
       return this.parseJSON(text, title);
     } catch (err) {
-      logger.error(`[ArticleAnalysis] Ollama error for "${title}":`, err);
+      logger.error(`[ArticleAnalysis] LLM error for "${title}":`, err);
       throw err;
     }
   }

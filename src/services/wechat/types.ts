@@ -80,12 +80,8 @@ export interface WeChatIngestConfig {
     targetQQGroup?: string;
   };
   analysis?: {
-    /** Ollama API base URL for article analysis (e.g. "http://192.168.1.100:11434") */
-    ollamaUrl?: string;
-    /** Model name (e.g. "qwen3:8b"). Default: "qwen3:8b" */
-    model?: string;
-    /** Request timeout ms (default 120000) */
-    timeout?: number;
+    /** LLM provider name to use for analysis (e.g. "ollama"). Default: "ollama" */
+    provider?: string;
     /** Max articles per run (default 100) */
     maxArticles?: number;
     /** Parallel analysis tasks (default 1) */
