@@ -158,14 +158,13 @@ export class CardRenderer {
       const theme = getProviderTheme(options.provider);
       const footerText = `🤖 AI Assistant · ${theme.displayName}`;
 
-      // Build full HTML document
+      // Build full HTML document (no external resources — everything is inlined to avoid network timeouts)
       const fullHTML = `
         <!DOCTYPE html>
         <html lang="zh-CN">
           <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <script src="https://unpkg.com/twemoji@latest/dist/twemoji.min.js" crossorigin="anonymous"></script>
             <style>${getCardStyles(theme)}</style>
           </head>
           <body>
@@ -184,39 +183,15 @@ export class CardRenderer {
         deviceScaleFactor: 2, // Higher DPI for better quality
       });
 
-      // Set content and wait for rendering
+      // Set content — use domcontentloaded since all resources are inlined (no external fetches)
       await page.setContent(fullHTML, {
-        waitUntil: 'networkidle0',
+        waitUntil: 'domcontentloaded',
       });
 
-      // Wait for twemoji library to be available
-      await Promise.all([
-        // Wait for twemoji library to load and then parse emojis
-        await Promise.race([
-          page.waitForFunction(
-            () => {
-              return typeof (window as any).twemoji !== 'undefined';
-            },
-            { timeout: 5000 },
-          ),
-          new Promise((resolve) => setTimeout(resolve, 5000)),
-        ]),
-
-        // Parse emojis using twemoji
-        page.evaluate(() => {
-          if (typeof (window as any).twemoji !== 'undefined') {
-            (window as any).twemoji.parse(document.body, {
-              folder: 'svg',
-              ext: '.svg',
-            });
-          }
-        }),
-
-        // Wait for fonts and images to load (evaluate waits for returned Promise)
-        page.evaluate(() => {
-          return document.fonts.ready;
-        }),
-      ]);
+      // Wait for fonts to be ready
+      await page.evaluate(() => {
+        return document.fonts.ready;
+      });
 
       // Wait a bit for layout to settle
       await new Promise((r) => setTimeout(r, 500));
