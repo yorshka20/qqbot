@@ -168,7 +168,7 @@ export class ConversationInitializer {
     const aiConfig = config.getAIConfig();
     const llmFallbackConfig: LLMFallbackConfig = {
       fallbackOrder: aiConfig?.llmFallback?.fallbackOrder ?? ['deepseek', 'gemini', 'openai', 'anthropic'],
-      toolUseProviders: aiConfig?.llmFallback?.toolUseProviders ?? ['deepseek', 'openai', 'anthropic'],
+      toolUseProviders: aiConfig?.llmFallback?.toolUseProviders ?? ['deepseek', 'gemini', 'openai', 'anthropic'],
     };
 
     const llmService = new LLMService(services.aiManager, providerSelector, healthCheckManager, llmFallbackConfig);

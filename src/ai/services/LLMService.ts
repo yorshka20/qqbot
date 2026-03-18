@@ -32,7 +32,7 @@ export interface LLMFallbackConfig {
 /** Default fallback configuration */
 const DEFAULT_FALLBACK_CONFIG: LLMFallbackConfig = {
   fallbackOrder: ['deepseek', 'gemini', 'openai', 'anthropic'],
-  toolUseProviders: ['deepseek', 'openai', 'anthropic'],
+  toolUseProviders: ['deepseek', 'gemini', 'openai', 'anthropic'],
 };
 
 /**

@@ -17,7 +17,7 @@ import type {
   VisionImage,
 } from '../capabilities/types';
 import type { VisionCapability } from '../capabilities/VisionCapability';
-import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler, ToolDefinition } from '../types';
+import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, StreamingHandler, ToolDefinition } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
 import {
   handleFinishReason,
@@ -214,8 +214,118 @@ export class GeminiProvider
   }
 
   /**
+   * Map ChatMessage[] to Gemini multi-turn Content[] format.
+   * - System messages → combined into systemInstruction
+   * - User messages → {role:'user', parts:[{text}]}
+   * - Assistant messages (no tool_calls) → {role:'model', parts:[{text}]}
+   * - Assistant messages (with tool_calls) → {role:'model', parts:[{functionCall:{name,args}}]}
+   * - Tool messages → {role:'user', parts:[{functionResponse:{name,response}}]}
+   */
+  private static mapChatMessagesToGeminiContents(messages: ChatMessage[]): {
+    systemInstruction?: string;
+    contents: Array<{
+      role: string;
+      parts: Array<{
+        text?: string;
+        functionCall?: { name: string; args: Record<string, unknown> };
+        functionResponse?: { name: string; response: Record<string, unknown> };
+        inlineData?: { mimeType: string; data: string };
+      }>;
+    }>;
+  } {
+    // Extract system messages → systemInstruction
+    const systemParts = messages
+      .filter((m) => m.role === 'system')
+      .map((m) => contentToPlainString(m.content))
+      .filter(Boolean);
+    const systemInstruction = systemParts.join('\n\n') || undefined;
+
+    // Build a lookup: tool_call_id → tool_name (from assistant messages with tool_calls)
+    const toolCallIdToName = new Map<string, string>();
+    for (const msg of messages) {
+      if (msg.role === 'assistant' && msg.tool_calls?.length) {
+        for (const tc of msg.tool_calls) {
+          toolCallIdToName.set(tc.id, tc.name);
+        }
+      }
+    }
+
+    const contents: Array<{
+      role: string;
+      parts: Array<{
+        text?: string;
+        functionCall?: { name: string; args: Record<string, unknown> };
+        functionResponse?: { name: string; response: Record<string, unknown> };
+        inlineData?: { mimeType: string; data: string };
+      }>;
+    }> = [];
+
+    for (const msg of messages) {
+      if (msg.role === 'system') {
+        continue; // handled as systemInstruction
+      }
+
+      if (msg.role === 'assistant') {
+        const parts: Array<{
+          text?: string;
+          functionCall?: { name: string; args: Record<string, unknown> };
+        }> = [];
+
+        const textContent = contentToPlainString(msg.content).trim();
+        if (textContent) {
+          parts.push({ text: textContent });
+        }
+
+        if (msg.tool_calls?.length) {
+          for (const tc of msg.tool_calls) {
+            let args: Record<string, unknown>;
+            try {
+              const parsed = JSON.parse(tc.arguments);
+              args = typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
+            } catch {
+              args = {};
+            }
+            parts.push({ functionCall: { name: tc.name, args } });
+          }
+        }
+
+        if (parts.length > 0) {
+          contents.push({ role: 'model', parts });
+        }
+        continue;
+      }
+
+      if (msg.role === 'tool') {
+        const toolName = msg.tool_call_id ? (toolCallIdToName.get(msg.tool_call_id) ?? 'unknown_tool') : 'unknown_tool';
+        const rawContent = contentToPlainString(msg.content);
+        let response: Record<string, unknown>;
+        try {
+          const parsed = JSON.parse(rawContent);
+          response = typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : { result: rawContent };
+        } catch {
+          response = { result: rawContent };
+        }
+        contents.push({
+          role: 'user',
+          parts: [{ functionResponse: { name: toolName, response } }],
+        });
+        continue;
+      }
+
+      // user role
+      const text = contentToPlainString(msg.content);
+      if (text) {
+        contents.push({ role: 'user', parts: [{ text }] });
+      }
+    }
+
+    return { systemInstruction, contents };
+  }
+
+  /**
    * Call generateContent for text response (LLM or vision). Optional tools for function calling.
    * Returns text, usage, and if the model chose to call a function: functionCall + toolCallId.
+   * Accepts either Part[] (for simple/vision requests) or Content[] (for multi-turn tool use).
    */
   private async generateContentText(
     model: string,
@@ -224,6 +334,47 @@ export class GeminiProvider
       temperature?: number;
       maxTokens?: number;
       tools?: ToolDefinition[];
+      systemInstruction?: string;
+    },
+  ): Promise<{
+    text: string;
+    usage?: AIGenerateResponse['usage'];
+    functionCall?: AIGenerateResponse['functionCall'];
+    toolCallId?: string;
+  }>;
+
+  private async generateContentText(
+    model: string,
+    contents: Array<{
+      role: string;
+      parts: Array<{
+        text?: string;
+        functionCall?: { name: string; args: Record<string, unknown> };
+        functionResponse?: { name: string; response: Record<string, unknown> };
+        inlineData?: { mimeType: string; data: string };
+      }>;
+    }>,
+    options?: {
+      temperature?: number;
+      maxTokens?: number;
+      tools?: ToolDefinition[];
+      systemInstruction?: string;
+    },
+  ): Promise<{
+    text: string;
+    usage?: AIGenerateResponse['usage'];
+    functionCall?: AIGenerateResponse['functionCall'];
+    toolCallId?: string;
+  }>;
+
+  private async generateContentText(
+    model: string,
+    contentsOrParts: unknown,
+    options?: {
+      temperature?: number;
+      maxTokens?: number;
+      tools?: ToolDefinition[];
+      systemInstruction?: string;
     },
   ): Promise<{
     text: string;
@@ -239,10 +390,14 @@ export class GeminiProvider
       config.tools = GeminiProvider.mapToolsToGemini(options.tools);
       config.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
     }
+    if (options?.systemInstruction) {
+      config.systemInstruction = options.systemInstruction;
+    }
 
     const response = await this.getClient().models.generateContent({
       model,
-      contents: parts,
+      // The SDK accepts both Part[] and Content[] for contents; cast through unknown to satisfy the union.
+      contents: contentsOrParts as Parameters<GoogleGenAI['models']['generateContent']>[0]['contents'],
       config,
     });
 
@@ -267,23 +422,34 @@ export class GeminiProvider
       usage: undefined,
     };
 
-    const functionCalls = (
+    // Check response.functionCalls first (SDK shortcut), then fall back to checking parts directly.
+    const sdkFunctionCalls = (
       response as { functionCalls?: Array<{ id?: string; name?: string; args?: Record<string, unknown> }> }
     ).functionCalls;
-    if (functionCalls?.length) {
-      const fc = functionCalls[0];
-      if (fc?.name) {
-        let argsStr: string;
-        if (typeof fc.args === 'object' && fc.args !== null) {
-          argsStr = JSON.stringify(fc.args);
-        } else if (typeof fc.args === 'string') {
-          argsStr = fc.args;
-        } else {
-          argsStr = '{}';
-        }
-        out.functionCall = { name: fc.name, arguments: argsStr };
-        out.toolCallId = fc.id;
+
+    // Also check candidate parts for functionCall (fallback when SDK property is unavailable).
+    const partFunctionCall = candidate.content.parts.find(
+      (p) => (p as { functionCall?: unknown }).functionCall != null,
+    ) as { functionCall?: { id?: string; name?: string; args?: Record<string, unknown> } } | undefined;
+
+    const fc =
+      (Array.isArray(sdkFunctionCalls) && sdkFunctionCalls.length > 0 ? sdkFunctionCalls[0] : null) ??
+      partFunctionCall?.functionCall ??
+      null;
+
+    if (fc?.name) {
+      let argsStr: string;
+      if (typeof fc.args === 'object' && fc.args !== null) {
+        argsStr = JSON.stringify(fc.args);
+      } else if (typeof fc.args === 'string') {
+        argsStr = fc.args as string;
+      } else {
+        argsStr = '{}';
       }
+      out.functionCall = { name: fc.name, arguments: argsStr };
+      out.toolCallId = fc.id;
+      // When returning a functionCall, clear text so caller can detect tool-use cleanly.
+      out.text = out.text || '';
     }
 
     return out;
@@ -327,19 +493,38 @@ export class GeminiProvider
     const temperature = options?.temperature ?? this.config.llm.temperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens ?? 2000;
 
-    const parts: Array<{ text: string }> = [];
     if (options?.messages?.length) {
-      for (const msg of options.messages) {
-        parts.push({ text: `${msg.role}: ${contentToPlainString(msg.content)}\n\n` });
+      // Multi-turn path: map ChatMessage[] to Gemini Content[] format.
+      // This correctly handles tool use messages (functionCall / functionResponse parts).
+      const { systemInstruction, contents } = GeminiProvider.mapChatMessagesToGeminiContents(options.messages);
+
+      // Gemini requires at least one non-empty content entry.
+      if (contents.length === 0) {
+        contents.push({ role: 'user', parts: [{ text: prompt }] });
       }
-    } else {
-      const history = await this.loadHistory(options);
-      if (options?.systemPrompt) {
-        parts.push({ text: `system: ${options.systemPrompt}\n\n` });
-      }
-      for (const msg of history) {
-        parts.push({ text: `${msg.role}: ${msg.content}\n\n` });
-      }
+
+      const result = await this.generateContentText(model, contents, {
+        temperature,
+        maxTokens,
+        tools: options.tools,
+        systemInstruction: systemInstruction ?? options.systemPrompt,
+      });
+      return {
+        text: result.text,
+        usage: result.usage,
+        functionCall: result.functionCall,
+        toolCallId: result.toolCallId,
+      };
+    }
+
+    // Legacy single-turn path: build flat text prompt from history.
+    const history = await this.loadHistory(options);
+    const parts: Array<{ text: string }> = [];
+    if (options?.systemPrompt) {
+      parts.push({ text: `system: ${options.systemPrompt}\n\n` });
+    }
+    for (const msg of history) {
+      parts.push({ text: `${msg.role}: ${msg.content}\n\n` });
     }
     parts.push({ text: prompt });
     const fullPrompt = parts.map((p) => p.text).join('');
