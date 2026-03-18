@@ -1,8 +1,27 @@
 # Project Learnings
 
-本文档记录 Claude Code 在执行任务过程中积累的项目知识。每次完成任务后，应更新相关内容。
+本文档记录项目的**架构知识和代码模式**。仅记录可复用的架构细节和经验教训，不记录具体任务的工作日志。
 
-> **使用方式**: 执行任务前阅读相关章节，任务完成后补充新发现的知识。
+> **使用方式**: 执行任务前阅读相关章节，任务完成后补充新发现的架构知识。
+>
+> **工作汇报**: Claude Code 的任务执行日志记录在 `workbook/YYYY-MM-DD.md`，按日期归档。
+
+---
+
+## 文档索引
+
+| 文档                 | 位置                              | 用途                                             |
+| -------------------- | --------------------------------- | ------------------------------------------------ |
+| 项目开发规范         | `CLAUDE.md`                       | 命令、架构概览、代码约定、测试                   |
+| 工作流程指南         | `template/WORKFLOW.md`            | 标准任务执行流程（RECEIVE→VERIFY）               |
+| 项目知识库           | `template/LEARNINGS.md`（本文档） | 架构细节、代码模式、常见陷阱                     |
+| Claude Code 工作日志 | `workbook/YYYY-MM-DD.md`          | Claude Code 每日任务记录、问题排查过程、解决方案 |
+
+### 工作汇报索引
+
+| 日期                                    | 主要内容                                                          |
+| --------------------------------------- | ----------------------------------------------------------------- |
+| [2026-03-18](../workbook/2026-03-18.md) | Gemini tool use 多轮会话格式修复；toolCallId 缺失导致卡片渲染失败 |
 
 ---
 
@@ -24,11 +43,11 @@
 
 ### 独立服务
 
-| 服务 | 位置 | 职责 |
-|------|------|------|
+| 服务       | 位置                       | 职责                            |
+| ---------- | -------------------------- | ------------------------------- |
 | ClaudeCode | `src/services/claudeCode/` | Claude CLI 任务执行 + MCP Tools |
-| WeChat | `src/services/wechat/` | 微信消息同步和处理 |
-| MCP | `src/services/mcp/` | MCP 客户端管理 |
+| WeChat     | `src/services/wechat/`     | 微信消息同步和处理              |
+| MCP        | `src/services/mcp/`        | MCP 客户端管理                  |
 
 ### ClaudeCode MCP Tools 架构
 
@@ -70,25 +89,30 @@ const service = container.resolve<MyService>(DITokens.MY_SERVICE);
 ```
 
 **注意**:
+
 - 使用 `@singleton()` 确保全局单例
 - DI token 定义在各模块的 `tokens.ts` 或 `DITokens.ts`
 
-### Task Executor 模式
+### Tool Executor 模式
 
-参考 `src/services/wechat/executors/` 的实现：
+项目中存在两种 executor 体系，但实际上 **TaskSystem 是 legacy 实现**，目前绝大多数 executor 都作为 Tool Executor 使用：
+
+#### BaseToolExecutor（主流，用于 AI tool use）
+
+位于各服务目录下的 `executors/`，通过 `@TaskDefinition` 注册为 AI 可调用的 tool。虽然类名仍继承 `BaseTaskExecutor`，但实际角色是 tool executor —— 由 LLM 的 tool_calls 触发执行。
 
 ```typescript
 @TaskDefinition({
-  name: 'task_name',
-  description: '任务描述',
-  executor: 'task_name',
+  name: 'tool_name',
+  description: '工具描述',
+  executor: 'tool_name',
   parameters: {
     param1: { type: 'string', required: true, description: '...' },
   },
 })
 @injectable()
-export class MyTaskExecutor extends BaseTaskExecutor {
-  name = 'task_name';
+export class MyToolExecutor extends BaseTaskExecutor {
+  name = 'tool_name';
 
   async execute(task: Task, context: TaskExecutionContext): Promise<TaskResult> {
     // 实现逻辑
@@ -96,6 +120,12 @@ export class MyTaskExecutor extends BaseTaskExecutor {
   }
 }
 ```
+
+#### ClaudeCode MCP Tool Executor（独立体系）
+
+位于 `src/services/claudeCode/types.ts`，`BaseToolExecutor` 接收 `(parameters: Record<string, unknown>)`，用于 ClaudeCode MCP Server 暴露的 tools（如 git_commit、quality_check 等），直接执行 shell 命令。
+
+**要点**: 不要把这两种 executor 混淆。`@TaskDefinition` 装饰的 executor 是给 AI 对话流使用的 tool，MCP Tool Executor 是给 Claude Code CLI 使用的。
 
 ### 配置访问
 
@@ -109,14 +139,6 @@ const aiConfig = config.ai;
 const claudeConfig = config.getClaudeCodeServiceConfig();
 ```
 
-### ToolExecutor vs BaseTaskExecutor
-
-**重要区别**：
-- `BaseTaskExecutor` (in `src/task/executors/`) - 用于 AI 消息流水线中的任务执行，接收 `(task: Task, context: TaskExecutionContext)`
-- `BaseToolExecutor` (in `src/services/claudeCode/types.ts`) - 用于 MCP Tools，接收 `(parameters: Record<string, unknown>)`，直接执行 shell 命令
-
-不要混用这两种 executor 类型。
-
 ---
 
 ## 常见陷阱
@@ -126,6 +148,7 @@ const claudeConfig = config.getClaudeCodeServiceConfig();
 **问题**: 服务之间有依赖关系，初始化顺序错误会导致空引用。
 
 **解决**:
+
 - 使用 `Initializer` 模式（如 `ClaudeCodeInitializer`）
 - 在 `Bot.start()` 中按顺序初始化
 - 对可选依赖使用 `@optional()` 装饰器
@@ -135,6 +158,7 @@ const claudeConfig = config.getClaudeCodeServiceConfig();
 **问题**: Milky/OneBot11/Satori 的 API 返回格式不完全一致。
 
 **解决**:
+
 - 使用 `APIClient` 统一调用
 - 检查返回值中 `message_id` 或 `message_seq` 的存在
 
@@ -148,12 +172,13 @@ const messageId = result?.message_id ?? result?.message_seq;
 **问题**: 循环依赖导致类型错误。
 
 **解决**:
+
 - 使用 `import type` 导入类型
 - 将共享类型提取到独立的 `types.ts`
 
 ```typescript
-import type { SomeType } from './types';  // 正确
-import { SomeType } from './types';        // 可能导致循环依赖
+import type { SomeType } from "./types"; // 正确
+import { SomeType } from "./types"; // 可能导致循环依赖
 ```
 
 ### 4. 路径别名
@@ -163,9 +188,18 @@ import { SomeType } from './types';        // 可能导致循环依赖
 **解决**: 始终使用 `@/` 路径别名
 
 ```typescript
-import { logger } from '@/utils/logger';        // 正确
-import { logger } from '../../../utils/logger'; // 避免
+import { logger } from "@/utils/logger"; // 正确
+import { logger } from "../../../utils/logger"; // 避免
 ```
+
+### 5. Gemini Provider 的 tool use 格式
+
+**问题**: Gemini 需要原生 Content[] 格式处理多轮 tool use 会话，且不返回 `toolCallId`。
+
+**解决**: 详见 [2026-03-18 工作日志](../workbook/2026-03-18.md)。核心要点：
+
+- Gemini 需要 `mapChatMessagesToGeminiContents()` 转换为原生格式
+- 缺少 `toolCallId` 时需生成合成 ID，确保所有 provider 使用统一的结构化 `tool_calls` 格式
 
 ---
 
@@ -175,25 +209,25 @@ import { logger } from '../../../utils/logger'; // 避免
 
 ```typescript
 // 使用项目定义的错误类型
-import { ConfigError, APIError, ConnectionError } from '@/core/errors';
+import { ConfigError, APIError, ConnectionError } from "@/core/errors";
 
 // 错误日志
-logger.error('[ModuleName] Error description:', error);
+logger.error("[ModuleName] Error description:", error);
 
 // 在 executor 中返回错误
-return this.error('用户可见的错误信息', '详细技术信息');
+return this.error("用户可见的错误信息", "详细技术信息");
 ```
 
 ### 日志规范
 
 ```typescript
 // 模块前缀
-logger.info('[ModuleName] Action description');
-logger.debug('[ModuleName] Debug info', { data });
-logger.error('[ModuleName] Error:', error);
+logger.info("[ModuleName] Action description");
+logger.debug("[ModuleName] Debug info", { data });
+logger.error("[ModuleName] Error:", error);
 
 // 避免
-console.log('...');  // 不要使用
+console.log("..."); // 不要使用
 ```
 
 ### 文件组织
@@ -203,7 +237,7 @@ src/services/myService/
 ├── MyService.ts           # 主服务类
 ├── MyServiceInitializer.ts # 初始化逻辑
 ├── types.ts               # 类型定义
-├── executors/             # Task executors
+├── executors/             # Tool executors
 │   ├── index.ts
 │   └── SomeExecutor.ts
 └── index.ts               # 导出
@@ -238,61 +272,6 @@ bun run debug
 
 ---
 
-## 已解决的问题
-
-### [2026-03-18] Gemini tool use 多轮会话提前退出并回复空白内容
-
-**问题描述**:
-Gemini provider 在 tool use 多轮会话（generateWithTools loop）中提前退出并回复空白内容。
-
-**原因分析**:
-三个根本原因：
-1. `GeminiProvider.generate()` 在 `options.messages` 存在时，把所有消息展平为纯文本，导致最后一条消息被重复（循环一次 + prompt 再追加一次），且 tool 消息（functionCall/functionResponse）以原始文本传入，Gemini API 无法识别 → 第二轮可能返回空文本 + 无 functionCall → loop 提前退出。
-2. `candidate.content.parts` 中的 functionCall 被遗漏（只检查了 `response.functionCalls` SDK 属性，未检查 parts 作为 fallback）。
-3. `LLMService.toolUseProviders` 默认不包含 `gemini`，导致 gemini 被路由到其他 provider 处理 tool use，而不是自己处理。
-
-**解决方案**:
-- 新增 `mapChatMessagesToGeminiContents()` 将 ChatMessage[] 转换为 Gemini 原生 Content[] 格式：
-  - system → `systemInstruction` config 字段
-  - assistant + tool_calls → `{role:'model', parts:[{functionCall:{name,args}}]}`
-  - tool role → `{role:'user', parts:[{functionResponse:{name,response}}]}`
-- `generate()` 在 `options.messages` 存在时走 multi-turn 路径（不再追加 prompt）
-- 添加从 `candidate.content.parts` 检测 functionCall 的 fallback
-- `toolUseProviders` 默认增加 `gemini`
-
-**相关文件**:
-- `src/ai/providers/GeminiProvider.ts` - 主要修改
-- `src/ai/services/LLMService.ts` - toolUseProviders 默认值
-- `src/conversation/ConversationInitializer.ts` - toolUseProviders 默认值
-
-### [2026-03-18] Gemini tool use 多轮会话 toolCallId 缺失导致卡片渲染失败
-
-**问题描述**:
-Gemini 通过 providerName 触发回复时，即使调用了 `format_as_card` tool，最终仍以文本（sendasforward）模式发送，而非卡片图片。
-
-**原因分析**:
-Gemini API 不返回 `toolCallId`（这是 OpenAI 的概念），导致 `LLMService.generateWithTools()` 进入 `else` 分支：
-1. 推入 `{ role: 'assistant', content: '' }` — 无 `tool_calls` 属性
-2. 推入 `{ role: 'user', content: 'Tool result for ...' }` — 纯文本
-
-当 `mapChatMessagesToGeminiContents()` 处理这些消息时：
-- 空 assistant 消息被跳过（parts.length === 0）
-- tool 结果变成普通 user 消息
-- 产生两个连续的 user 消息，且无 functionCall/functionResponse 对
-- Gemini 不理解这是 tool 响应，生成的不是有效卡片 JSON → `tryRenderCardReply` 失败 → 回退到纯文本
-
-**解决方案**:
-- 移除 `toolCallId` 存在性判断分支，始终使用结构化的 `tool_calls` 格式
-- 当 provider 不返回 `toolCallId` 时，生成合成 ID（`call_{round}_{timestamp}`）
-- 这样 `mapChatMessagesToGeminiContents()` 可以正确转换为 `functionCall` / `functionResponse` 格式
-- 同时更新 `config.example.jsonc` 将 gemini 加入 `toolUseProviders`
-
-**相关文件**:
-- `src/ai/services/LLMService.ts` - generateWithTools 的 tool call 消息构建
-- `config.example.jsonc` - toolUseProviders 配置
-
----
-
 ## 待改进项
 
 - [ ] 待改进项1
@@ -302,9 +281,8 @@ Gemini API 不返回 `toolCallId`（这是 OpenAI 的概念），导致 `LLMServ
 
 ## 更新记录
 
-| 日期 | 更新内容 | 更新者 |
-|------|----------|--------|
-| 2026-03-18 | 添加 ClaudeCode MCP Tools 架构说明；添加 ToolExecutor vs BaseTaskExecutor 区别说明 | Claude |
-| 2026-03-18 | 添加 Gemini tool use toolCallId 缺失导致卡片渲染失败的修复记录 | Claude |
-| 2026-03-18 | 添加 Gemini tool use 多轮会话格式修复记录；Gemini 需要原生 Content[] 格式 | Claude |
-| 2024-XX-XX | 初始版本 | Claude |
+| 日期       | 更新内容                                                                         | 更新者 |
+| ---------- | -------------------------------------------------------------------------------- | ------ |
+| 2026-03-18 | 重构文档结构：分离工作汇报到 reports/；修正 Tool Executor 模式说明；添加文档索引 | Claude |
+| 2026-03-18 | 添加 ClaudeCode MCP Tools 架构说明                                               | Claude |
+| 2024-XX-XX | 初始版本                                                                         | Claude |

@@ -180,6 +180,69 @@ export class MessageAPI {
   }
 
   /**
+   * Build the forward segment from ForwardMessageInput[].
+   * Shared by sendForwardFromContext and sendForwardMessage.
+   */
+  private buildForwardSegment(messages: ForwardMessageInput[], botUserId: number) {
+    const nodes = messages.map((m) => {
+      const milkySegments = segmentsToMilkyOutgoing(m.segments);
+      return {
+        user_id: m.senderId ?? botUserId,
+        sender_name: m.senderName ?? 'Bot',
+        segments: milkySegments,
+      };
+    });
+    return {
+      type: 'forward' as const,
+      data: { messages: nodes },
+    };
+  }
+
+  /**
+   * Send a forward message directly by target type and id (Milky protocol only, no context needed).
+   * Use this when no CommandContext or NormalizedMessageEvent is available.
+   *
+   * @param target - Target type ('user' or 'group') and numeric id
+   * @param messages - Array of messages to include in the forward
+   * @param protocol - Protocol name (must be 'milky')
+   * @param options - botUserId is required: the bot's own QQ user id (positive number)
+   * @param timeout - Optional timeout in milliseconds (default: 10000)
+   * @returns Full API response (e.g. message_seq for Milky)
+   */
+  async sendForwardMessage(
+    target: { type: 'user' | 'group'; id: number },
+    messages: ForwardMessageInput[],
+    protocol: ProtocolName,
+    options: { botUserId: number },
+    timeout: number = 10000,
+  ): Promise<SendMessageResult> {
+    if (protocol !== 'milky') {
+      throw new Error('Forward message is only supported for Milky protocol');
+    }
+    if (!messages || messages.length === 0) {
+      throw new Error('sendForwardMessage requires at least one message');
+    }
+    const botUserId = options.botUserId;
+    if (!botUserId || botUserId <= 0) {
+      throw new Error(
+        "Forward message requires options.botUserId to be the bot's own QQ user id (positive number). Set config.bot.selfId.",
+      );
+    }
+
+    const forwardSegment = this.buildForwardSegment(messages, botUserId);
+
+    const action = target.type === 'user' ? 'send_private_msg' : 'send_group_msg';
+    const targetKey = target.type === 'user' ? 'user_id' : 'group_id';
+
+    return this.apiClient.call<SendMessageResult>(
+      action,
+      { [targetKey]: target.id, message: [forwardSegment] },
+      protocol,
+      timeout,
+    );
+  }
+
+  /**
    * Send a single forward message containing multiple logical messages (Milky protocol only).
    * Each item in messages becomes one node in the forward; the user sees one forward card and can expand to see all.
    * Image segments are sent as http(s) URI so the protocol implementation can download to its temp file (LLOneBot fails with base64: ENOENT when opening temp file).
@@ -213,25 +276,10 @@ export class MessageAPI {
       );
     }
 
-    // Keep image segments as http(s) URI so protocol implementation (e.g. LLOneBot) can download
-    // to its temp file. Sending base64 causes ENOENT when it tries to open the temp file.
-    const nodes = messages.map((m) => {
-      const milkySegments = segmentsToMilkyOutgoing(m.segments);
-      return {
-        user_id: m.senderId ?? botUserId,
-        sender_name: m.senderName ?? 'Bot',
-        segments: milkySegments,
-      };
-    });
-
-    // Milky: https://milky.ntqqrev.org/struct/OutgoingSegment — forward segment has type "forward", data.messages = OutgoingForwardedMessage[]
-    const forwardSegment = {
-      type: 'forward' as const,
-      data: { messages: nodes },
-    };
+    const forwardSegment = this.buildForwardSegment(messages, botUserId);
 
     logger.debug(
-      `[MessageAPI] sendForwardFromContext | group_id=${groupId} | nodes=${nodes.length} | botUserId=${botUserId} | firstNodeSegments=${nodes[0]?.segments?.length ?? 0}`,
+      `[MessageAPI] sendForwardFromContext | group_id=${groupId} | nodes=${messages.length} | botUserId=${botUserId} | firstNodeSegments=${messages[0]?.segments?.length ?? 0}`,
     );
 
     if (messageScene === 'temp' && groupId) {

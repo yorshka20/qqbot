@@ -233,24 +233,27 @@ export class ClaudeTaskManager {
     switch (notification.status) {
       case 'started':
         task.status = 'running';
+        this.notifyTaskUpdate(task);
         break;
       case 'progress':
         // Keep running status, just log progress
         logger.debug(
           `[ClaudeTaskManager] Task ${task.id} progress: ${notification.progress}% - ${notification.message}`,
         );
+        this.notifyTaskUpdate(task);
         break;
       case 'completed':
+        // Only update state here; don't trigger notification callback.
+        // executeTask() will send the final notification with full stdout output.
         task.status = 'completed';
         task.result = notification.result || notification.message;
         break;
       case 'failed':
+        // Same as completed: let executeTask() handle the final notification.
         task.status = 'failed';
         task.error = notification.error || notification.message;
         break;
     }
-
-    this.notifyTaskUpdate(task);
   }
 
   /**

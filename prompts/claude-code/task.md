@@ -13,6 +13,7 @@
 这份文档定义了标准的工作流程：**RECEIVE → ANALYZE → PLAN → EXECUTE → VERIFY**
 
 你需要严格按照 WORKFLOW.md 中定义的流程执行任务，包括：
+
 - 每个阶段的具体动作
 - 输出格式要求
 - 检查点验证
@@ -23,10 +24,12 @@
 - **任务ID**: {{taskId}}
 
 ### 必读文档
-1. `CLAUDE.md` - 项目开发规范
-2. `template/LEARNINGS.md` - 项目知识库（架构、代码模式、已知陷阱）
 
-> **重要**: LEARNINGS.md 包含了之前任务中积累的项目知识，可以帮助你避免重复踩坑。
+1. `CLAUDE.md` - 项目开发规范
+2. `template/LEARNINGS.md` - 项目知识库（架构、代码模式、已知陷阱、文档索引）
+3. `workbook/` - Claude Code 往日工作日志（按需查阅，通过 LEARNINGS.md 中的索引定位相关记录）
+
+> **重要**: LEARNINGS.md 包含了项目架构知识和工作汇报索引。开始任务前，检查索引中是否有与当前任务相关的历史记录，快速了解上下文。
 
 ## 你的任务
 
@@ -47,6 +50,7 @@
 ### 2. 质量检查
 
 在提交代码前必须通过：
+
 ```bash
 bun run typecheck
 bun run lint
@@ -55,6 +59,7 @@ bun run lint
 ### 3. Git 规范
 
 Commit message 格式：
+
 ```
 <type>(<scope>): <description>
 
@@ -97,6 +102,7 @@ Content-Type: application/json
 ```
 
 查看所有可用 tools：
+
 ```bash
 GET {{mcpApiUrl}}/api/tools/list
 ```
@@ -104,6 +110,7 @@ GET {{mcpApiUrl}}/api/tools/list
 ### Git 操作
 
 **`git_commit`** - 按照项目规范创建 Git 提交
+
 ```json
 {
   "tool": "git_commit",
@@ -118,6 +125,7 @@ GET {{mcpApiUrl}}/api/tools/list
 ```
 
 **`git_branch`** - 分支管理（create/switch/list/delete/merge）
+
 ```json
 {
   "tool": "git_branch",
@@ -130,6 +138,7 @@ GET {{mcpApiUrl}}/api/tools/list
 ```
 
 **`git_create_pr`** - 创建 GitHub Pull Request
+
 ```json
 {
   "tool": "git_create_pr",
@@ -145,6 +154,7 @@ GET {{mcpApiUrl}}/api/tools/list
 ### 质量检查
 
 **`quality_check`** - 运行类型检查、lint、测试、构建
+
 ```json
 {
   "tool": "quality_check",
@@ -158,6 +168,7 @@ GET {{mcpApiUrl}}/api/tools/list
 ### 项目信息
 
 **`project_info`** - 获取项目结构、依赖、git 状态
+
 ```json
 {
   "tool": "project_info",
@@ -170,6 +181,7 @@ GET {{mcpApiUrl}}/api/tools/list
 查询类型：`structure` / `dependencies` / `recent-changes` / `git-status` / `git-log`
 
 **`read_file`** - 读取文件内容
+
 ```json
 {
   "tool": "read_file",
@@ -184,9 +196,11 @@ GET {{mcpApiUrl}}/api/tools/list
 ## 开始执行
 
 现在，请：
+
 1. 阅读 `template/WORKFLOW.md` - 了解标准工作流程
 2. 阅读 `CLAUDE.md` - 了解项目规范
-3. 阅读 `template/LEARNINGS.md` - 了解项目架构和已知陷阱
-4. 按照 WORKFLOW 流程开始执行任务
+3. 阅读 `template/LEARNINGS.md` - 了解项目架构、已知陷阱和工作汇报索引
+4. 检查工作汇报索引，查阅与当前任务相关的历史记录（如有）
+5. 按照 WORKFLOW 流程开始执行任务
 
-> **完成后**: 记得将本次任务中学到的知识更新到 `template/LEARNINGS.md`
+> **完成后**: 架构知识更新到 `template/LEARNINGS.md`，工作日志输出到 `workbook/YYYY-MM-DD.md`，并在 LEARNINGS.md 索引中添加条目。

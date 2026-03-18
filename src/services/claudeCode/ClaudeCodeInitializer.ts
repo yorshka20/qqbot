@@ -5,7 +5,7 @@
  */
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { APIClient } from '@/api/APIClient';
+import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config, ProtocolName } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -39,12 +39,12 @@ export class ClaudeCodeInitializer {
   /**
    * Start the Claude Code service
    */
-  static async start(service: ClaudeCodeService | null, apiClient: APIClient): Promise<void> {
+  static async start(service: ClaudeCodeService | null, messageAPI: MessageAPI): Promise<void> {
     if (!service) {
       return;
     }
 
-    service.setAPIClient(apiClient);
+    service.setMessageAPI(messageAPI);
 
     // Set PromptManager from DI container
     try {

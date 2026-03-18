@@ -18,6 +18,7 @@ import { MCPInitializer } from './services/mcp/MCPInitializer';
 import { RetrievalService } from './services/retrieval';
 import { initStaticFileServer, stopStaticFileServer } from './services/staticServer';
 import { logger } from './utils/logger';
+import { MessageAPI } from './api/methods/MessageAPI';
 
 async function main() {
   logger.info('Starting bot...');
@@ -102,7 +103,8 @@ async function main() {
 
     // Start Claude Code service (after bot is started, before plugins)
     if (claudeCodeService) {
-      await ClaudeCodeInitializer.start(claudeCodeService, apiClient);
+      const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+      await ClaudeCodeInitializer.start(claudeCodeService, messageAPI);
       // Update bot info
       const protocols = config.getEnabledProtocols().map((p) => p.name);
       ClaudeCodeInitializer.updateBotInfo(claudeCodeService, config.getConfig().bot.selfId, protocols);

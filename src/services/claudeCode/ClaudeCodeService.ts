@@ -10,8 +10,9 @@
 
 import { spawn } from 'bun';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { APIClient } from '@/api/APIClient';
+import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ProtocolName } from '@/core/config';
+import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
 import { MCPServer } from '../mcpServer/MCPServer';
 import type {
@@ -27,17 +28,12 @@ import type {
 import { ClaudeTaskManager } from './ClaudeTaskManager';
 import { ToolRegistry } from './ToolRegistry';
 
-interface SendMessageResult {
-  message_id?: number;
-  message_seq?: number;
-}
-
 export class ClaudeCodeService {
   private config: MCPServerConfig;
   private mcpServer: MCPServer;
   private taskManager: ClaudeTaskManager;
   private toolRegistry: ToolRegistry;
-  private apiClient: APIClient | null = null;
+  private messageAPI: MessageAPI | null = null;
   private botStartTime: number;
   private connectedProtocols: ProtocolName[] = [];
   private selfId: string | null = null;
@@ -96,10 +92,10 @@ export class ClaudeCodeService {
   }
 
   /**
-   * Set API client for sending messages
+   * Set MessageAPI for sending messages
    */
-  setAPIClient(apiClient: APIClient): void {
-    this.apiClient = apiClient;
+  setMessageAPI(messageAPI: MessageAPI): void {
+    this.messageAPI = messageAPI;
   }
 
   /**
@@ -178,13 +174,13 @@ export class ClaudeCodeService {
   }
 
   /**
-   * Send message via bot API
+   * Send message via MessageAPI
    */
   private async sendMessage(
-    params: SendMessageParams,
+    params: SendMessageParams & { sendAsForward?: boolean },
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    if (!this.apiClient) {
-      return { success: false, error: 'API client not initialized' };
+    if (!this.messageAPI) {
+      return { success: false, error: 'MessageAPI not initialized' };
     }
 
     // Get first available protocol
@@ -193,34 +189,35 @@ export class ClaudeCodeService {
       return { success: false, error: 'No protocol available' };
     }
 
+    const targetId = Number(params.target.id);
+    if (Number.isNaN(targetId)) {
+      return { success: false, error: `Invalid target id: ${params.target.id}` };
+    }
+
     try {
-      const action = params.target.type === 'user' ? 'send_private_msg' : 'send_group_msg';
-      const targetKey = params.target.type === 'user' ? 'user_id' : 'group_id';
-      // Milky API expects numeric ids; target.id is string from MCP/JSON
-      const targetId = Number(params.target.id);
-      if (Number.isNaN(targetId)) {
-        return { success: false, error: `Invalid target id: ${params.target.id}` };
+      const segments = new MessageBuilder().text(params.content).build();
+      const botUserId = this.selfId ? Number(this.selfId) : 0;
+
+      // Send as forward message to avoid flooding the chat with long text
+      if (params.sendAsForward && protocol === 'milky' && botUserId > 0) {
+        const result = await this.messageAPI.sendForwardMessage(
+          { type: params.target.type, id: targetId },
+          [{ segments, senderName: 'Claude Code' }],
+          protocol,
+          { botUserId },
+        );
+        const messageId = result?.message_id ?? result?.message_seq;
+        return { success: true, messageId: messageId?.toString() };
       }
 
-      const apiParams: Record<string, unknown> = {
-        [targetKey]: targetId,
-        message: params.content,
-      };
+      // Regular message send
+      const sendFn =
+        params.target.type === 'user'
+          ? this.messageAPI.sendPrivateMessage.bind(this.messageAPI, targetId)
+          : this.messageAPI.sendGroupMessage.bind(this.messageAPI, targetId);
 
-      if (params.replyTo) {
-        // Add reply segment if replying to a message
-        apiParams.message = [
-          { type: 'reply', data: { id: params.replyTo } },
-          { type: 'text', data: { text: params.content } },
-        ];
-      }
-
-      const result = await this.apiClient.call<SendMessageResult>(action, apiParams, protocol);
-      const messageId = result?.message_id ?? result?.message_seq;
-      return {
-        success: true,
-        messageId: messageId?.toString(),
-      };
+      const messageId = await sendFn(params.content, protocol);
+      return { success: true, messageId: messageId?.toString() };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('[ClaudeCodeService] Send message error:', error);
@@ -259,6 +256,7 @@ export class ClaudeCodeService {
       },
       content,
       replyTo: requestedBy.messageId,
+      sendAsForward: true,
     });
   }
 
