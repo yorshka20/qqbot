@@ -22,6 +22,7 @@
 | 日期                                    | 主要内容                                                          |
 | --------------------------------------- | ----------------------------------------------------------------- |
 | [2026-03-18](../workbook/2026-03-18.md) | Gemini tool use 多轮会话格式修复；toolCallId 缺失导致卡片渲染失败；CardRenderer 外部 CDN 超时修复；Gemini thinking model thought_signature 修复；max rounds 空回复修复 |
+| [2026-03-19](../workbook/2026-03-19.md) | 知乎 Feed 订阅服务实现（ZhihuClient / ZhihuContentParser / ZhihuFeedService / ZhihuDigestService + Plugin） |
 
 ---
 
@@ -47,6 +48,7 @@
 | ---------- | -------------------------- | ------------------------------- |
 | ClaudeCode | `src/services/claudeCode/` | Claude CLI 任务执行 + MCP Tools |
 | WeChat     | `src/services/wechat/`     | 微信消息同步和处理              |
+| Zhihu      | `src/services/zhihu/`      | 知乎关注动态拉取 + 摘要推送     |
 | MCP        | `src/services/mcp/`        | MCP 客户端管理                  |
 
 ### ClaudeCode MCP Tools 架构

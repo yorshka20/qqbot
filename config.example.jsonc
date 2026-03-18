@@ -356,6 +356,39 @@
             "pollIntervalMinutes": 30
           }
         }
+      },
+      // Zhihu Feed Plugin - polls Zhihu feed (关注动态), stores to SQLite, generates digests
+      {
+        "name": "zhihuFeed",
+        "enabled": false,
+        "config": {
+          // Cookie from browser (must contain z_c0). Login to zhihu.com → F12 → Network → copy Cookie header
+          "cookie": "",
+          // Feed polling schedule (cron expression)
+          "pollIntervalCron": "*/30 * * * *",
+          // Digest generation + push schedule
+          "digestCron": "0 9,21 * * *",
+          // QQ group IDs to push digest to
+          "digestGroupIds": [],
+          // Minimum interval between requests (ms)
+          "requestIntervalMs": 2000,
+          // Max pages per poll (20 items per page)
+          "maxPagesPerPoll": 5,
+          // Hours of feed to include in digest
+          "digestHoursBack": 12,
+          // LLM provider for digest generation
+          "digestProvider": "deepseek",
+          // Number of top items to fetch full content for
+          "topItemsToEnrich": 3,
+          // Feed verb types to track
+          "verbFilter": [
+            "ANSWER_CREATE",
+            "ARTICLE_CREATE",
+            "ANSWER_VOTE_UP",
+            "MEMBER_VOTEUP_ARTICLE",
+            "ZVIDEO_CREATE"
+          ]
+        }
       }
     ]
   },
