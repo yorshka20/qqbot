@@ -3,7 +3,7 @@
 
 import { inject, injectable } from 'tsyringe';
 import { getStaticFileServer } from '@/services/staticServer';
-import { WechatDITokens } from '@/services/wechat';
+import { WechatDITokens } from '@/services/wechat/tokens';
 import type { ReportType, WechatReportService } from '@/services/wechat/WechatReportService';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';

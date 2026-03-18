@@ -2,7 +2,7 @@
 // Used by Agenda to generate daily/weekly statistics reports
 
 import { inject, injectable } from 'tsyringe';
-import { WechatDITokens } from '@/services/wechat';
+import { WechatDITokens } from '@/services/wechat/tokens';
 import type { WechatDigestService } from '@/services/wechat/WechatDigestService';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';

@@ -24,6 +24,9 @@ bun run format        # Format code
 # Testing
 bun test
 
+# Smoke test (MANDATORY before committing — validates full initialization)
+bun run smoke-test
+
 # Debug mode with mock message sending
 bun run debug
 
@@ -89,10 +92,19 @@ The bot requires a `config.jsonc` file (JSONC with comments). Copy from `config.
 ## Testing Approach
 
 When testing changes:
-1. Use `bun run debug` for mock message testing
-2. Check WebSocket connections with `LOG_LEVEL=debug`
-3. Verify with `bun run typecheck` before committing
-4. Run `bun run lint` to ensure code quality
+1. Run `bun run typecheck` — static type checking
+2. Run `bun run lint` — code quality
+3. Run `bun run smoke-test` — **MANDATORY**. Boots the real application through the full initialization path (`src/core/bootstrap.ts`), verifying DI registration, module loading order, and plugin initialization. This catches circular imports, TDZ errors, and missing DI tokens that typecheck cannot detect. **A change is NOT considered fixed/complete until smoke-test passes.**
+4. Use `bun run debug` for interactive mock message testing when needed
+5. Check WebSocket connections with `LOG_LEVEL=debug` for protocol-level debugging
+
+### Why smoke-test is required
+
+`typecheck` and `build` only validate static types — they cannot catch runtime initialization order issues (circular imports causing TDZ errors, DI tokens referenced before registration, etc.). The `smoke-test` runs the exact same `bootstrapApp()` function as `src/index.ts`, ensuring every service, plugin, and tool executor initializes successfully without live network connections.
+
+### Bootstrap architecture
+
+All initialization logic lives in `src/core/bootstrap.ts` as a single `bootstrapApp()` function. Both `src/index.ts` (production) and `src/cli/smoke-test.ts` call this same function. When adding new services or changing initialization order, only modify `bootstrap.ts` — never duplicate initialization logic elsewhere.
 
 ## Plugin Development
 
@@ -125,6 +137,7 @@ The bot automatically handles database schema initialization. For SQLite, tables
 ## Important Files and Locations
 
 - **Entry Point**: `src/index.ts`
+- **Bootstrap (initialization single source of truth)**: `src/core/bootstrap.ts`
 - **Core Bot**: `src/core/Bot.ts`
 - **Message Pipeline**: `src/conversation/MessagePipeline.ts`
 - **AI Service**: `src/ai/AIService.ts`

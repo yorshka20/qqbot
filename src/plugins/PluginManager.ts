@@ -56,12 +56,15 @@ export class PluginManager {
     };
   }
 
-  async loadPlugins(pluginConfigs: Array<{ name: string; enabled: boolean; config?: unknown }> = []): Promise<void> {
+  async loadPlugins(
+    pluginConfigs: Array<{ name: string; enabled: boolean; config?: unknown }> = [],
+    options?: { skipEnable?: boolean },
+  ): Promise<void> {
     const pluginConfigMap = new Map(pluginConfigs.map((p) => [p.name, p]));
 
     // Load plugins from fixed src/plugins directory
     if (this.dirExists(this.pluginDirectory)) {
-      await this.loadPluginsFromDirectory(this.pluginDirectory, pluginConfigMap, true);
+      await this.loadPluginsFromDirectory(this.pluginDirectory, pluginConfigMap, true, options?.skipEnable);
     }
 
     logger.info(`📦 [PluginManager] Finished loading plugins. Total: ${this.plugins.size}`);
@@ -85,6 +88,7 @@ export class PluginManager {
     directory: string,
     pluginConfigMap: Map<string, { name: string; enabled: boolean; config?: unknown }>,
     isBuiltin: boolean = false,
+    skipEnable?: boolean,
   ): Promise<void> {
     const entries = readdirSync(directory);
 
@@ -98,7 +102,7 @@ export class PluginManager {
       }
 
       if (stat.isDirectory()) {
-        await this.loadPluginsFromDirectory(fullPath, pluginConfigMap, isBuiltin);
+        await this.loadPluginsFromDirectory(fullPath, pluginConfigMap, isBuiltin, skipEnable);
         continue;
       }
 
@@ -143,7 +147,7 @@ export class PluginManager {
 
         await plugin.onInit?.();
 
-        if (pluginConfig?.enabled) {
+        if (pluginConfig?.enabled && !skipEnable) {
           await this.enablePlugin(plugin.name);
         }
 

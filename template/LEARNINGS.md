@@ -92,6 +92,7 @@ const service = container.resolve<MyService>(DITokens.MY_SERVICE);
 
 - 使用 `@singleton()` 确保全局单例
 - DI token 定义在各模块的 `tokens.ts` 或 `DITokens.ts`
+- **token 文件必须零导入**（不 import 任何项目内模块），以避免 barrel re-export 导致的循环依赖 TDZ 错误。executor 应直接从 `tokens.ts` 导入 token，而非从 barrel `index.ts` 导入
 
 ### Tool Executor 模式
 
@@ -152,15 +153,17 @@ const claudeConfig = config.getClaudeCodeServiceConfig();
 
 ## 常见陷阱
 
-### 1. 异步初始化顺序
+### 1. 异步初始化顺序与 DI 循环依赖
 
-**问题**: 服务之间有依赖关系，初始化顺序错误会导致空引用。
+**问题**: 服务之间有依赖关系，初始化顺序错误会导致空引用。barrel 文件（`index.ts`）的 re-export 会引发循环导入链，使 `const` 在 decorator 求值时仍处于 TDZ（Temporal Dead Zone），表现为 `ReferenceError: Cannot access 'X' before initialization`。
 
 **解决**:
 
+- 所有初始化逻辑集中在 `src/core/bootstrap.ts` 的 `bootstrapApp()` 函数中，`src/index.ts` 和 `src/cli/smoke-test.ts` 都调用它，禁止在其他地方复制初始化逻辑
+- DI token 常量（如 `WechatDITokens`）必须放在独立的 `tokens.ts` 文件中（零导入），executor 直接从 `tokens.ts` 导入，而非从 barrel 导入，以切断循环链
 - 使用 `Initializer` 模式（如 `ClaudeCodeInitializer`）
-- 在 `Bot.start()` 中按顺序初始化
 - 对可选依赖使用 `@optional()` 装饰器
+- **使用 `bun run smoke-test` 验证**：typecheck 无法检测此类运行时错误
 
 ### 2. 协议差异
 
@@ -271,9 +274,12 @@ src/services/myService/
 ### 必须通过的检查
 
 ```bash
-bun run typecheck  # 类型检查
-bun run lint       # 代码规范
+bun run typecheck    # 静态类型检查
+bun run lint         # 代码规范
+bun run smoke-test   # 初始化完整性验证（必须！）
 ```
+
+> **smoke-test 是硬性要求。** 它调用与 `src/index.ts` 相同的 `bootstrapApp()`（定义在 `src/core/bootstrap.ts`），执行完整的应用初始化流程：Config → DI 注册 → 工具系统 → 插件加载 → 服务验证。typecheck 无法检测循环导入导致的 TDZ 错误、DI token 注册缺失等运行时问题。**变更未通过 smoke-test 不视为完成。**
 
 ### 常见 lint 错误
 

@@ -6,6 +6,7 @@ import type { Config, ProtocolName } from '@/core/config';
 import type { EventRouter } from '@/events/EventRouter';
 import type { NormalizedEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
+import type { BaseEvent, ProtocolAdapter } from './base/types';
 import { MilkyAdapter } from './milky';
 import { OneBot11Adapter } from './onebot11/OneBot11Adapter';
 import { SatoriAdapter } from './satori/SatoriAdapter';
@@ -38,7 +39,7 @@ export class ProtocolAdapterInitializer {
     const adapters = new Map<ProtocolName, { adapter: any; connection: any }>();
 
     connectionManager.on('connectionOpen', async (protocolName, connection) => {
-      let adapter;
+      let adapter: any;
       const protocolConfig = config.getProtocolConfig(protocolName as ProtocolName);
 
       if (!protocolConfig) {
@@ -63,7 +64,7 @@ export class ProtocolAdapterInitializer {
       }
 
       // Set up adapter event handling
-      adapter.onEvent((event) => {
+      adapter.onEvent((event: BaseEvent) => {
         // Event is BaseEvent from adapter, but routeEvent expects NormalizedEvent
         // Since adapters normalize events to match NormalizedEvent structure,
         // we can safely cast. The actual normalization happens in normalizeEvent()

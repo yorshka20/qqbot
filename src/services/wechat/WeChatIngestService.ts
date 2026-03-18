@@ -307,6 +307,9 @@ export class WeChatIngestService {
   private readonly resolveGroupName: GroupNameResolver | null;
   private readonly downloadCdnImage: CdnImageDownloader | null;
   private readonly eventBridge: WechatEventBridge | null;
+  /** Serial queue for RAG upsert tasks to avoid overwhelming Ollama */
+  private ragQueue: (() => Promise<void>)[] = [];
+  private ragQueueRunning = false;
   /** Cache: conversationId → sanitized folder name */
   private groupNameCache = new Map<string, string>();
   /** Dedup: recently seen NewMsgId values to prevent duplicate processing */
@@ -334,7 +337,9 @@ export class WeChatIngestService {
     this.buffer = new WeChatMessageBuffer({
       idleMinutes: this.config.rag.bufferIdleMinutes,
       maxMessages: this.config.rag.bufferMaxMessages,
-      onFlush: this.upsertBatch.bind(this),
+      onFlush: async (convId, msgs) => {
+        this.enqueueRAG(`batch:${convId}`, () => this.upsertBatch(convId, msgs));
+      },
     });
 
     logger.info(
@@ -708,14 +713,16 @@ export class WeChatIngestService {
 
     // Fetch full text and upsert to RAG
     if (this.retrieval.isRAGEnabled() && title) {
-      this.upsertChatArticleToRAG(
-        msgId,
-        { title, url, summary, cover, source, accountNick, accountId },
-        convId,
-        sender,
-        sourceType,
-        msg.CreateTime,
-      ).catch((err) => logger.error(`[WeChatIngestService] Chat article RAG error for "${title}":`, err));
+      this.enqueueRAG(title, () =>
+        this.upsertChatArticleToRAG(
+          msgId,
+          { title, url, summary, cover, source, accountNick, accountId },
+          convId,
+          sender,
+          sourceType,
+          msg.CreateTime,
+        ),
+      );
     }
   }
 
@@ -832,8 +839,8 @@ export class WeChatIngestService {
 
       // Upsert to RAG (fetch full text + fall back to summary)
       if (this.retrieval.isRAGEnabled()) {
-        this.upsertOAArticleToRAG(msgId, item, accountId, accountNick, msg.CreateTime).catch((err) =>
-          logger.error(`[WeChatIngestService] RAG upsert error for "${item.title}":`, err),
+        this.enqueueRAG(item.title, () =>
+          this.upsertOAArticleToRAG(msgId, item, accountId, accountNick, msg.CreateTime),
         );
       }
     }
@@ -883,6 +890,31 @@ export class WeChatIngestService {
       },
     ]);
     logger.info(`[WeChatIngestService] RAG upsert OK: "${item.title}" → ${this.config.rag.articleCollection}`);
+  }
+
+  // ──────────────────────────────────────────────────
+  // RAG serial queue — one upsert at a time
+  // ──────────────────────────────────────────────────
+
+  private enqueueRAG(label: string, task: () => Promise<void>): void {
+    this.ragQueue.push(async () => {
+      try {
+        await task();
+      } catch (err) {
+        logger.error(`[WeChatIngestService] RAG queue task error for "${label}":`, err);
+      }
+    });
+    this.drainRAGQueue();
+  }
+
+  private async drainRAGQueue(): Promise<void> {
+    if (this.ragQueueRunning) return;
+    this.ragQueueRunning = true;
+    while (this.ragQueue.length > 0) {
+      const task = this.ragQueue.shift();
+      if (task) await task();
+    }
+    this.ragQueueRunning = false;
   }
 
   // ──────────────────────────────────────────────────

@@ -180,6 +180,7 @@
 - [ ] 标准2
 - [ ] typecheck 通过
 - [ ] lint 通过
+- [ ] smoke-test 通过
 - [ ] 测试通过（如适用）
 ```
 
@@ -205,7 +206,7 @@
 ┌──────────────────────────────────────────────────────┐
 │  1. 声明当前任务                                      │
 │  2. 实现代码                                         │
-│  3. 本地验证（typecheck/lint）                        │
+│  3. 本地验证（typecheck/lint/smoke-test）              │
 │  4. 确认子任务完成                                    │
 │  5. 如有必要，提交（或积累后统一提交）                   │
 └──────────────────────────────────────────────────────┘
@@ -251,7 +252,7 @@
 3. **提交时机**
    - 完成一个独立的功能点
    - 代码处于可工作状态
-   - 已通过 typecheck 和 lint
+   - 已通过 typecheck、lint 和 smoke-test
 
 ### 输出
 
@@ -269,6 +270,7 @@
 
 - typecheck: ✓
 - lint: ✓
+- smoke-test: ✓
 
 **下一步**: Task N+1
 ```
@@ -278,6 +280,7 @@
 - [ ] 代码实现完成
 - [ ] typecheck 通过
 - [ ] lint 通过
+- [ ] smoke-test 通过（涉及 DI、初始化、插件相关改动时必须）
 - [ ] 符合项目代码风格
 
 ---
@@ -293,11 +296,14 @@
 1. **运行完整检查**
 
    ```bash
-   bun run typecheck
-   bun run lint
-   bun test  # 如有测试
-   bun run build  # 如需要
+   bun run typecheck       # 静态类型检查
+   bun run lint            # 代码规范
+   bun run smoke-test      # 必须！验证完整初始化流程（DI、模块加载、插件）
+   bun test                # 如有测试
+   bun run build           # 如需要
    ```
+
+   > **smoke-test 是必须通过的验收标准。** 它调用与 `src/index.ts` 相同的 `bootstrapApp()` 函数，验证所有服务初始化、DI 注册和插件加载。typecheck 无法检测循环导入导致的 TDZ 错误、DI token 注册缺失等运行时问题。变更未通过 smoke-test 不视为完成。
 
 2. **回顾实现**
    - 检查所有修改的文件
@@ -402,6 +408,7 @@
 
 - [x] typecheck 通过
 - [x] lint 通过
+- [x] smoke-test 通过
 - [x] build 通过
 - [ ] 测试通过（无测试/N个测试通过）
 
@@ -419,7 +426,9 @@
 
 ### 检查点
 
-- [ ] 所有检查通过
+- [ ] typecheck 通过
+- [ ] lint 通过
+- [ ] **smoke-test 通过**（必须）
 - [ ] **代码已提交**（必须）
 - [ ] 报告已输出
 
@@ -480,9 +489,10 @@
 
 ```bash
 # 代码质量检查
-bun run typecheck
-bun run lint
-bun run lint:fix
+bun run typecheck       # 静态类型检查
+bun run lint            # 代码规范
+bun run lint:fix        # 自动修复
+bun run smoke-test      # 初始化完整性验证（必须通过）
 
 # Git 操作
 git status
