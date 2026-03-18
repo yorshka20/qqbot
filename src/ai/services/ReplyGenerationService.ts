@@ -58,7 +58,7 @@ import type { VisionService } from './VisionService';
  */
 interface ReplyGenerationPipelineParams {
   messages: ChatMessage[];
-  genOptions: { temperature: number; maxTokens: number; sessionId: string; reasoningEffort: 'medium' };
+  genOptions: { temperature: number; maxTokens: number; sessionId: string; reasoningEffort: 'medium'; episodeKey?: string };
   useVisionProvider: boolean;
   canUseVisionToolUse: boolean;
   toolDefinitions: ToolDefinition[];
@@ -961,7 +961,13 @@ export class ReplyGenerationService {
     );
 
     const maxTokens = toolDefinitions.length > 0 ? 4000 : 2000;
-    const genOptions = { temperature: 0.7, maxTokens, sessionId, reasoningEffort: 'medium' as const };
+    const genOptions = {
+      temperature: 0.7,
+      maxTokens,
+      sessionId,
+      reasoningEffort: 'medium' as const,
+      episodeKey: built.episodeKey,
+    };
 
     // Log
     logger.info(

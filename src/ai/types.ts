@@ -133,6 +133,13 @@ export interface AIGenerateOptions {
    * This is separate from app-defined tools such as local file, memory, or RAG access.
    */
   nativeWebSearch?: boolean;
+  /**
+   * Conversation episode identifier for prompt caching.
+   * Used by providers (e.g. Anthropic) to anchor cache breakpoints at a stable position
+   * across turns within the same episode, so history prefix hits cache reads instead of writes.
+   * Changes when the episode rolls (e.g. after summary), resetting the cache anchor.
+   */
+  episodeKey?: string;
 }
 
 /**

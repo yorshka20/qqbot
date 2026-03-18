@@ -172,6 +172,14 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
   private _capabilities: CapabilityType[];
   private httpClient: HttpClient;
 
+  /**
+   * Track history cache breakpoint positions per session.
+   * Key: episodeKey, Value: message index where cache_control was first placed.
+   * On subsequent turns, the breakpoint stays at the same index so the prefix matches → cache read.
+   */
+  private historyCacheAnchors = new Map<string, number>();
+  private static readonly MAX_CACHE_ANCHORS = 100;
+
   constructor(config: AnthropicProviderConfig) {
     super();
     this.config = config;
@@ -258,7 +266,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       logger.debug(`[AnthropicProvider] Generating with model: ${model}`);
 
       let messages = await this.buildAnthropicMessages(prompt, options);
-      this.addHistoryCacheBreakpoint(messages);
+      this.addHistoryCacheBreakpoint(messages, options);
       const tools = this.buildAnthropicTools(options);
       const explicitSystem = this.buildAnthropicSystemPrompt(options);
       let data: AnthropicMessagesResponse | null = null;
@@ -337,7 +345,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       logger.debug(`[AnthropicProvider] Generating stream with model: ${model}`);
 
       const messages = await this.buildAnthropicMessages(prompt, options);
-      this.addHistoryCacheBreakpoint(messages);
+      this.addHistoryCacheBreakpoint(messages, options);
       const tools = this.buildAnthropicTools(options);
 
       // Use HttpClient stream method for streaming requests
@@ -638,17 +646,34 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
   }
 
   /**
-   * Add cache_control breakpoint to the end of the conversation history prefix.
-   * The last message is always the new user query; everything before it is stable
-   * across turns and benefits from caching.
-   * Mutates the messages array in place.
+   * Add cache_control breakpoint at a stable position in conversation history.
+   * First request for a session: set breakpoint at the end of history (2nd-to-last message) → cache write.
+   * Subsequent requests: reuse the same absolute index → prefix matches → cache read.
+   * New messages after the anchor are regular input (1x), avoiding the 1.25x write penalty.
    */
-  private addHistoryCacheBreakpoint(messages: AnthropicMessage[]): void {
-    if (messages.length < 2) return;
+  private addHistoryCacheBreakpoint(messages: AnthropicMessage[], options?: AIGenerateOptions): void {
+    const cacheKey = options?.episodeKey;
+    if (!cacheKey || messages.length < 3) return;
 
-    const target = messages[messages.length - 2];
+    // Determine the anchor: reuse previous position or set a new one
+    let anchorIndex = this.historyCacheAnchors.get(cacheKey);
+
+    if (anchorIndex === undefined) {
+      // First request: anchor at end of history (2nd-to-last message)
+      anchorIndex = messages.length - 2;
+      // Evict oldest entries if map is too large
+      if (this.historyCacheAnchors.size >= AnthropicProvider.MAX_CACHE_ANCHORS) {
+        const firstKey = this.historyCacheAnchors.keys().next().value;
+        if (firstKey !== undefined) this.historyCacheAnchors.delete(firstKey);
+      }
+      this.historyCacheAnchors.set(cacheKey, anchorIndex);
+    }
+
+    // Ensure anchor is within bounds (history may have been trimmed/summarized)
+    if (anchorIndex >= messages.length - 1 || anchorIndex < 0) return;
+
+    const target = messages[anchorIndex];
     if (typeof target.content === 'string') {
-      // Convert to block form so we can attach cache_control
       target.content = [{ type: 'text', text: target.content, cache_control: { type: 'ephemeral' } }];
     } else if (Array.isArray(target.content) && target.content.length > 0) {
       (target.content[target.content.length - 1] as AnthropicTextBlock).cache_control = { type: 'ephemeral' };
