@@ -18,6 +18,7 @@ import {
   WechatDITokens,
   WechatEventBridge,
 } from '@/services/wechat';
+import { WeChatArticleAnalysisService } from '@/services/wechat/WeChatArticleAnalysisService';
 import { WechatDigestService } from '@/services/wechat/WechatDigestService';
 import { WechatReportService } from '@/services/wechat/WechatReportService';
 import { logger } from '@/utils/logger';
@@ -139,6 +140,9 @@ export class WeChatIngestPlugin extends PluginBase {
       logger.warn('[WeChatIngestPlugin] InternalEventBus not available — event bridge disabled');
     }
 
+    // Register DB instance for tools that need direct access
+    container.registerInstance(WechatDITokens.WECHAT_DB, this.db);
+
     // Create digest service for daily summaries
     this.digestService = new WechatDigestService(this.db);
     container.registerInstance(WechatDITokens.DIGEST_SERVICE, this.digestService);
@@ -148,6 +152,24 @@ export class WeChatIngestPlugin extends PluginBase {
     this.reportService = new WechatReportService(this.digestService);
     container.registerInstance(WechatDITokens.REPORT_SERVICE, this.reportService);
     logger.info('[WeChatIngestPlugin] WechatReportService registered');
+
+    // Create article analysis service (for nightly LLM analysis via Ollama)
+    const ragConfig = config.getRAGConfig();
+    const analysisOllamaUrl = raw?.analysis?.ollamaUrl ?? ragConfig?.ollama?.url;
+    if (analysisOllamaUrl) {
+      const analysisService = new WeChatArticleAnalysisService(this.db, {
+        ollamaUrl: analysisOllamaUrl,
+        model: raw?.analysis?.model ?? 'qwen3:8b',
+        timeout: raw?.analysis?.timeout,
+        maxArticles: raw?.analysis?.maxArticles,
+        concurrency: raw?.analysis?.concurrency,
+        promptPath: raw?.analysis?.promptPath,
+      });
+      container.registerInstance(WechatDITokens.ARTICLE_ANALYSIS_SERVICE, analysisService);
+      logger.info('[WeChatIngestPlugin] WeChatArticleAnalysisService registered');
+    } else {
+      logger.info('[WeChatIngestPlugin] Article analysis not configured (no Ollama URL)');
+    }
 
     this.ingestService = new WeChatIngestService({
       config: resolved,

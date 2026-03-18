@@ -9,6 +9,7 @@ import { ResourceDownloader } from '@/ai/utils/ResourceDownloader';
 import type { RetrievalService } from '@/services/retrieval';
 import { chunkText } from '@/services/retrieval/rag/chunkText';
 import { logger } from '@/utils/logger';
+import { fetchArticleText } from './fetchArticleText';
 import type {
   MessageCategory,
   ParsedWeChatMessage,
@@ -236,54 +237,6 @@ function parseContentAsJson(xml: string, category: MessageCategory, msgType: num
           .trim()
           .substring(0, 200),
       });
-  }
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// Article full-text fetch (best-effort, WeChat mobile UA)
-// ────────────────────────────────────────────────────────────────────────────
-
-const JS_CONTENT_RE = /<div[^>]+id=["']js_content["'][^>]*>([\s\S]*?)<\/div>/i;
-
-async function fetchArticleText(url: string, title: string): Promise<string> {
-  try {
-    const resp = await fetch(url, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.0',
-      },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!resp.ok) {
-      logger.warn(`[WeChatIngestService] Article fetch HTTP ${resp.status} for ${url}`);
-      return title;
-    }
-    const html = await resp.text();
-    const bodyMatch = html.match(JS_CONTENT_RE);
-    const rawText = bodyMatch?.[1] ?? '';
-    const text = rawText
-      // Block-level tags → newline (preserve paragraph structure)
-      .replace(/<\s*\/?\s*(?:p|div|br|section|article|h[1-6]|ul|ol|li|blockquote|pre|hr|tr|table)[\s>/]/gi, '\n')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&')
-      // Collapse multiple blank lines into double-newline (preserve paragraph breaks)
-      .replace(/[ \t]+/g, ' ')
-      .replace(/\n[ \t]*/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-    if (text.length > 100) {
-      logger.info(`[WeChatIngestService] Article fetched: "${title}" — ${text.length} chars`);
-      return text;
-    }
-    // Likely a verification/login page — fall back to summary
-    logger.warn(`[WeChatIngestService] Article fetch returned thin content (${text.length} chars), using summary`);
-    return title;
-  } catch (err) {
-    logger.warn(`[WeChatIngestService] Article fetch error for ${url}:`, err);
-    return title;
   }
 }
 

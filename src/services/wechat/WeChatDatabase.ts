@@ -45,6 +45,21 @@ export interface WeChatOAArticleRow {
   fromSender: string; // wxid/nickname of who shared it in chat (empty for oa_push)
 }
 
+/** Article insight extracted by LLM analysis */
+export interface WeChatArticleInsightRow {
+  id?: number;
+  articleMsgId: string; // FK → wechat_oa_articles.msgId
+  title: string; // article title (denormalized for convenience)
+  url: string; // article URL (denormalized)
+  source: string; // account nick / source name
+  headline: string; // LLM-generated one-line headline
+  categoryTags: string; // JSON array of category tags, e.g. '["科技","AI"]'
+  items: string; // JSON array of extracted insight items
+  worthReporting: number; // 1 = yes, 0 = no (filtered ads/fluff)
+  analyzedAt: string; // ISO timestamp of analysis
+  model: string; // model used for analysis (e.g. "qwen3:8b")
+}
+
 /** Contact info row cached from PadPro API or group member lists */
 export interface WeChatContactRow {
   wxid: string; // e.g. "wxid_5vfmwys8g4w521" or "ma-gic"
@@ -640,6 +655,84 @@ export class WeChatDatabase {
   }
 
   // ──────────────────────────────────────────────────
+  // Write / Read — article insights (LLM analysis results)
+  // ──────────────────────────────────────────────────
+
+  /** Insert an article insight row. Silently ignores duplicates (same articleMsgId). */
+  insertArticleInsight(row: Omit<WeChatArticleInsightRow, 'id'>): void {
+    if (!this.db) return;
+    try {
+      this.db
+        .query(`INSERT OR REPLACE INTO wechat_article_insights
+          (articleMsgId, title, url, source, headline, categoryTags, items, worthReporting, analyzedAt, model)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(
+          row.articleMsgId,
+          row.title,
+          row.url,
+          row.source,
+          row.headline,
+          row.categoryTags,
+          row.items,
+          row.worthReporting,
+          row.analyzedAt,
+          row.model,
+        );
+    } catch (err) {
+      logger.error('[WeChatDatabase] insertArticleInsight error:', err);
+    }
+  }
+
+  /** Get article insights with filters. Only returns worthReporting=1 by default. */
+  getArticleInsights(options: {
+    sinceTs?: number;
+    untilTs?: number;
+    worthOnly?: boolean;
+    limit?: number;
+  }): WeChatArticleInsightRow[] {
+    if (!this.db) return [];
+
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+
+    if (options.worthOnly !== false) {
+      conditions.push('i.worthReporting = 1');
+    }
+    if (options.sinceTs !== undefined) {
+      conditions.push('a.pubTime >= ?');
+      params.push(options.sinceTs);
+    }
+    if (options.untilTs !== undefined) {
+      conditions.push('a.pubTime <= ?');
+      params.push(options.untilTs);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limit = options.limit ?? 200;
+
+    const sql = `SELECT i.* FROM wechat_article_insights i
+      JOIN wechat_oa_articles a ON a.msgId = i.articleMsgId
+      ${whereClause}
+      ORDER BY a.pubTime DESC LIMIT ?`;
+    params.push(limit);
+
+    return this.db.query<WeChatArticleInsightRow, (string | number)[]>(sql).all(...params);
+  }
+
+  /** Get article msgIds that already have insights (for skipping re-analysis). */
+  getAnalyzedArticleIds(sinceTs?: number): Set<string> {
+    if (!this.db) return new Set();
+    const conditions = sinceTs !== undefined ? 'WHERE analyzedAt >= ?' : '';
+    const params = sinceTs !== undefined ? [new Date(sinceTs * 1000).toISOString()] : [];
+    const rows = this.db
+      .query<{ articleMsgId: string }, string[]>(
+        `SELECT articleMsgId FROM wechat_article_insights ${conditions}`,
+      )
+      .all(...params);
+    return new Set(rows.map((r) => r.articleMsgId));
+  }
+
+  // ──────────────────────────────────────────────────
   // Schema
   // ──────────────────────────────────────────────────
 
@@ -730,6 +823,25 @@ export class WeChatDatabase {
         updatedAt  TEXT NOT NULL DEFAULT ''
       )
     `);
+
+    // Article insights (LLM analysis results)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS wechat_article_insights (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        articleMsgId    TEXT    NOT NULL UNIQUE,
+        title           TEXT    NOT NULL DEFAULT '',
+        url             TEXT    NOT NULL DEFAULT '',
+        source          TEXT    NOT NULL DEFAULT '',
+        headline        TEXT    NOT NULL DEFAULT '',
+        categoryTags    TEXT    NOT NULL DEFAULT '[]',
+        items           TEXT    NOT NULL DEFAULT '[]',
+        worthReporting  INTEGER NOT NULL DEFAULT 0,
+        analyzedAt      TEXT    NOT NULL DEFAULT '',
+        model           TEXT    NOT NULL DEFAULT ''
+      )
+    `);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_ai_analyzedAt      ON wechat_article_insights(analyzedAt)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_ai_worthReporting   ON wechat_article_insights(worthReporting)`);
 
     logger.debug('[WeChatDatabase] Schema ready');
   }
