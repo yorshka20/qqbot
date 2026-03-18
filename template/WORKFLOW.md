@@ -325,16 +325,21 @@
    - 在 `template/LEARNINGS.md` 的"工作汇报索引"表中添加当日条目
    - 如果在"常见陷阱"中引用了工作汇报，添加相对链接
 
-4. **提交代码并推送（必须）**
+4. **提交所有改动并推送（必须）**
 
-   **每次任务完成后必须提交代码并推送到远端。** 根据任务规模选择提交方式：
+   **每次任务完成后必须提交所有自己编辑过的内容并推送到远端，包括代码、文档、工作日志等。**
+
+   > **重要**: 提交前用 `git status` 检查是否有遗漏的改动。确保 `template/LEARNINGS.md`、`workbook/` 下的工作日志等文档也一并提交，不要只提交代码文件。
+
+   根据任务规模选择提交方式：
 
    #### 单次提交（简单任务）
 
    直接在 master 上提交并推送：
 
    ```bash
-   git add <files>
+   git status  # 检查所有改动，确保无遗漏
+   git add <code-files> <doc-files>  # 包括代码和文档
    git commit -m "type(scope): description"
    git push
    ```

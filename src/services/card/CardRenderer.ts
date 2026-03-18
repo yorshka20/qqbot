@@ -1,11 +1,17 @@
 // Card renderer using puppeteer-core + system Chrome/Chromium (no bundled browser)
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
 import { logger } from '@/utils/logger';
 import { getCardStyles, getProviderTheme } from './cardStyles';
 import { renderCardDeck } from './cardTemplates';
 import type { CardData } from './cardTypes';
+
+/** Pre-load twemoji JS from local libs/ so it never depends on a CDN at render time. */
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TWEMOJI_JS = readFileSync(resolve(__dirname, 'libs/twemoji.min.js'), 'utf-8');
 
 /** Default path to Google Chrome on macOS. */
 const MACOS_CHROME_PATH = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -158,13 +164,14 @@ export class CardRenderer {
       const theme = getProviderTheme(options.provider);
       const footerText = `🤖 AI Assistant · ${theme.displayName}`;
 
-      // Build full HTML document (no external resources — everything is inlined to avoid network timeouts)
+      // Build full HTML document (twemoji JS is inlined from local libs/ to avoid CDN timeouts)
       const fullHTML = `
         <!DOCTYPE html>
         <html lang="zh-CN">
           <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <script>${TWEMOJI_JS}</script>
             <style>${getCardStyles(theme)}</style>
           </head>
           <body>
@@ -183,9 +190,19 @@ export class CardRenderer {
         deviceScaleFactor: 2, // Higher DPI for better quality
       });
 
-      // Set content — use domcontentloaded since all resources are inlined (no external fetches)
+      // Set content — domcontentloaded is enough since the JS is inlined
       await page.setContent(fullHTML, {
         waitUntil: 'domcontentloaded',
+      });
+
+      // Parse emojis via twemoji (JS is local; SVG images are best-effort from CDN)
+      await page.evaluate(() => {
+        if (typeof (window as any).twemoji !== 'undefined') {
+          (window as any).twemoji.parse(document.body, {
+            folder: 'svg',
+            ext: '.svg',
+          });
+        }
       });
 
       // Wait for fonts to be ready
