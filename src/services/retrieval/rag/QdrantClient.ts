@@ -191,11 +191,59 @@ export class QdrantClient {
   }
 
   /**
+   * Scroll through ALL points in a collection, handling pagination automatically.
+   * Yields pages of points via async generator.
+   */
+  async *scrollAll(
+    collection: string,
+    options: { limit?: number; withPayload?: boolean; filter?: Record<string, unknown> } = {},
+  ): AsyncGenerator<Array<{ id: string | number; payload?: Record<string, unknown> }>> {
+    const pageSize = options.limit ?? 100;
+    let offset: string | number | null = null;
+
+    while (true) {
+      const body: Record<string, unknown> = {
+        limit: pageSize,
+        with_payload: options.withPayload ?? true,
+      };
+      if (options.filter) body.filter = options.filter;
+      if (offset !== null) body.offset = offset;
+
+      const response = await this.httpClient.post<{
+        result?: {
+          points?: Array<{ id: string | number; payload?: Record<string, unknown> }>;
+          next_page_offset?: string | number | null;
+        };
+      }>(`/collections/${collection}/points/scroll`, body);
+
+      const points = response.result?.points ?? [];
+      if (points.length === 0) break;
+
+      yield points;
+
+      const nextOffset = response.result?.next_page_offset;
+      if (nextOffset == null) break;
+      offset = nextOffset;
+    }
+  }
+
+  /**
    * Delete points by filter.
    * Uses POST /collections/{name}/points/delete with filter body.
    */
   async deleteByFilter(collection: string, filter: Record<string, unknown>): Promise<void> {
     await this.httpClient.post(`/collections/${collection}/points/delete`, { filter });
     logger.debug(`[QdrantClient] Deleted points by filter from ${collection}`);
+  }
+
+  /**
+   * Delete points by IDs.
+   */
+  async deleteByIds(collection: string, ids: Array<string | number>): Promise<void> {
+    if (ids.length === 0) return;
+    await this.httpClient.post(`/collections/${collection}/points/delete`, {
+      points: ids,
+    });
+    logger.debug(`[QdrantClient] Deleted ${ids.length} points by ID from ${collection}`);
   }
 }

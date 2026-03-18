@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ResourceDownloader } from '@/ai/utils/ResourceDownloader';
 import type { RetrievalService } from '@/services/retrieval';
+import { chunkText } from '@/services/retrieval/rag/chunkText';
 import { logger } from '@/utils/logger';
 import type {
   MessageCategory,
@@ -261,12 +262,17 @@ async function fetchArticleText(url: string, title: string): Promise<string> {
     const bodyMatch = html.match(JS_CONTENT_RE);
     const rawText = bodyMatch?.[1] ?? '';
     const text = rawText
-      .replace(/<[^>]+>/g, ' ')
+      // Block-level tags → newline (preserve paragraph structure)
+      .replace(/<\s*\/?\s*(?:p|div|br|section|article|h[1-6]|ul|ol|li|blockquote|pre|hr|tr|table)[\s>/]/gi, '\n')
+      .replace(/<[^>]+>/g, '')
       .replace(/&nbsp;/gi, ' ')
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&amp;/g, '&')
-      .replace(/\s{2,}/g, ' ')
+      // Collapse multiple blank lines into double-newline (preserve paragraph breaks)
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n[ \t]*/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
       .trim();
     if (text.length > 100) {
       logger.info(`[WeChatIngestService] Article fetched: "${title}" — ${text.length} chars`);
@@ -753,33 +759,31 @@ export class WeChatIngestService {
       .filter(Boolean)
       .join('\n\n');
 
+    const articlePayload = {
+      url: article.url,
+      title: article.title,
+      summary: article.summary,
+      cover: article.cover,
+      accountId: article.accountId,
+      accountNick: article.accountNick,
+      source: article.source,
+      sourceType,
+      fromConversationId,
+      fromSender,
+      receivedTime,
+      platform: 'wechat',
+      type: 'chat_article',
+    };
+
     logger.info(
-      `[WeChatIngestService] RAG upsert chat article | collection=${this.config.rag.articleCollection} ` +
+      `[WeChatIngestService] RAG upsert chat article | collection=${this.config.rag.chunksCollection} ` +
         `title="${article.title}" len=${docContent.length} usedSummary=${usedSummary}`,
     );
 
-    await this.retrieval.upsertDocuments(this.config.rag.articleCollection, [
-      {
-        id: msgId,
-        content: docContent,
-        payload: {
-          url: article.url,
-          title: article.title,
-          summary: article.summary,
-          cover: article.cover,
-          accountId: article.accountId,
-          accountNick: article.accountNick,
-          source: article.source,
-          sourceType,
-          fromConversationId,
-          fromSender,
-          receivedTime,
-          platform: 'wechat',
-          type: 'chat_article',
-        },
-      },
-    ]);
-    logger.info(`[WeChatIngestService] RAG upsert OK: "${article.title}" → ${this.config.rag.articleCollection}`);
+    // Upsert chunks to chunksCollection (full text already in SQLite via persistToDb)
+    await this.upsertArticleChunks(msgId, docContent, articlePayload);
+
+    logger.info(`[WeChatIngestService] RAG upsert OK: "${article.title}" → ${this.config.rag.chunksCollection}`);
   }
 
   // ──────────────────────────────────────────────────
@@ -865,31 +869,59 @@ export class WeChatIngestService {
       .filter(Boolean)
       .join('\n\n');
 
+    const articlePayload = {
+      url: item.url,
+      title: item.title,
+      summary: item.summary,
+      cover: item.cover,
+      accountId,
+      accountNick,
+      source: item.source || accountNick,
+      pubTime: item.pubTime,
+      receivedTime,
+      platform: 'wechat',
+      type: 'oa_article',
+    };
+
     logger.info(
-      `[WeChatIngestService] RAG upsert OA article | collection=${this.config.rag.articleCollection} ` +
+      `[WeChatIngestService] RAG upsert OA article | collection=${this.config.rag.chunksCollection} ` +
         `title="${item.title}" len=${docContent.length} usedSummary=${usedSummary}`,
     );
 
-    await this.retrieval.upsertDocuments(this.config.rag.articleCollection, [
-      {
-        id: msgId,
-        content: docContent,
-        payload: {
-          url: item.url,
-          title: item.title,
-          summary: item.summary,
-          cover: item.cover,
-          accountId,
-          accountNick,
-          source: item.source || accountNick,
-          pubTime: item.pubTime,
-          receivedTime,
-          platform: 'wechat',
-          type: 'oa_article',
-        },
+    // Upsert chunks to chunksCollection (full text already in SQLite via persistToDb)
+    await this.upsertArticleChunks(msgId, docContent, articlePayload);
+
+    logger.info(`[WeChatIngestService] RAG upsert OK: "${item.title}" → ${this.config.rag.chunksCollection}`);
+  }
+
+  // ──────────────────────────────────────────────────
+  // Shared: chunk an article and upsert to chunksCollection
+  // ──────────────────────────────────────────────────
+
+  private async upsertArticleChunks(
+    articleId: string,
+    docContent: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const chunks = chunkText(docContent);
+
+    // Even single-chunk (short) articles go into chunksCollection —
+    // this is now the only Qdrant collection for article search.
+    const chunkDocs = chunks.map((chunk) => ({
+      id: chunks.length === 1 ? articleId : `${articleId}_chunk_${chunk.index}`,
+      content: chunk.text,
+      payload: {
+        ...payload,
+        articleId,
+        chunkIndex: chunk.index,
+        totalChunks: chunks.length,
       },
-    ]);
-    logger.info(`[WeChatIngestService] RAG upsert OK: "${item.title}" → ${this.config.rag.articleCollection}`);
+    }));
+
+    await this.retrieval.upsertDocuments(this.config.rag.chunksCollection, chunkDocs);
+    logger.info(
+      `[WeChatIngestService] Article "${payload.title}" → ${chunks.length} chunk(s) → ${this.config.rag.chunksCollection}`,
+    );
   }
 
   // ──────────────────────────────────────────────────

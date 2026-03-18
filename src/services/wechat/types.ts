@@ -62,6 +62,8 @@ export interface WeChatIngestConfig {
   };
   rag?: {
     articleCollection?: string;
+    /** Collection for article chunks (split for RAG retrieval). Default: 'wechat_articles_chunks' */
+    chunksCollection?: string;
     momentsCollection?: string;
     bufferIdleMinutes?: number;
     bufferMaxMessages?: number;
@@ -92,6 +94,7 @@ export interface ResolvedWeChatIngestConfig {
   listenPath: string;
   rag: {
     articleCollection: string;
+    chunksCollection: string;
     momentsCollection: string;
     bufferIdleMinutes: number;
     bufferMaxMessages: number;
@@ -110,6 +113,7 @@ export function resolveConfig(raw: WeChatIngestConfig | undefined): ResolvedWeCh
     listenPath: raw?.listenPath ?? '/wechat/callback',
     rag: {
       articleCollection: raw?.rag?.articleCollection ?? 'wechat_articles',
+      chunksCollection: raw?.rag?.chunksCollection ?? 'wechat_articles_chunks',
       momentsCollection: raw?.rag?.momentsCollection ?? 'wechat_moments',
       bufferIdleMinutes: raw?.rag?.bufferIdleMinutes ?? 5,
       bufferMaxMessages: raw?.rag?.bufferMaxMessages ?? 10,
