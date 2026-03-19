@@ -120,6 +120,31 @@ export class RAGService {
     await this.qdrantClient.deleteByFilter(collection, filter);
   }
 
+  /**
+   * Scroll through all points in a collection via async generator.
+   */
+  async *scrollAll(
+    collection: string,
+    options?: { limit?: number; withPayload?: boolean | { include: string[] }; filter?: Record<string, unknown> },
+  ): AsyncGenerator<Array<{ id: string | number; payload: Record<string, unknown> }>> {
+    await this.ensureCollectionOnce(collection);
+    for await (const page of this.qdrantClient.scrollAll(collection, {
+      limit: options?.limit ?? 500,
+      withPayload: options?.withPayload as boolean | undefined ?? true,
+      filter: options?.filter,
+    })) {
+      yield page.map((p) => ({ id: p.id, payload: p.payload ?? {} }));
+    }
+  }
+
+  /**
+   * Count points in a collection, optionally with a filter.
+   */
+  async countPoints(collection: string, filter?: Record<string, unknown>): Promise<number> {
+    await this.ensureCollectionOnce(collection);
+    return this.qdrantClient.countPoints(collection, filter);
+  }
+
   async vectorSearchMulti(
     collection: string,
     queries: string[],

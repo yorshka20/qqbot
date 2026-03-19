@@ -167,22 +167,8 @@ interface TagResult {
   summary: string;
 }
 
-const SYSTEM_PROMPT = `你是一个内容分类助手。请为以下每条朋友圈内容打上主题标签并写一句话摘要。
-
-输出格式（严格 JSON 数组，不要有其他内容）：
-[
-  { "index": 0, "tags": ["AI", "技术评论"], "summary": "讨论了大模型部署成本过高的问题" },
-  { "index": 1, "tags": ["生活", "旅行"], "summary": "记录了去京都旅行的感受" }
-]
-
-要求：
-- 每条1-3个标签，标签名尽量统一复用
-- 摘要15-30字，概括核心内容
-- 如果内容过短或无意义（如单个表情、转发无评论等），标签设为 ["其他"]，摘要写"内容过短"
-
-可选的标签参考（不限于此）：AI、技术、创业、工作、生活、旅行、音乐、电影、读书、情感、社会观察、经济、哲学、吐槽、美食、健康、游戏、摄影、育儿、政治、历史、科学、运动
-
-/no_think`;
+// Tag definitions and normalization — shared module
+import { loadTaggingPrompt, normalizeTags } from '../src/services/wechat/moments-tags';
 
 async function callOllama(
   ollamaUrl: string,
@@ -193,7 +179,8 @@ async function callOllama(
     .map((c) => `[${c.index}] ${(c.content || '').slice(0, 500)}`)
     .join('\n\n');
 
-  const userMessage = `内容列表：\n\n${contentList}`;
+  // Load and render prompt from template file (prompts/analysis/wechat_moments_tag.txt)
+  const prompt = loadTaggingPrompt(contentList);
 
   const res = await fetch(`${ollamaUrl}/api/chat`, {
     method: 'POST',
@@ -201,8 +188,7 @@ async function callOllama(
     body: JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userMessage },
+        { role: 'user', content: `${prompt}\n\n/no_think` },
       ],
       stream: false,
       options: { num_predict: 4096, temperature: 0.3 },
@@ -302,7 +288,8 @@ async function main() {
         if (tr.index < 0 || tr.index >= points.length) continue;
 
         const point = points[tr.index];
-        const tags = Array.isArray(tr.tags) ? tr.tags : [];
+        const rawTags = Array.isArray(tr.tags) ? tr.tags : [];
+        const tags = normalizeTags(rawTags);
         const summary = typeof tr.summary === 'string' ? tr.summary : '';
 
         if (!dryRun) {

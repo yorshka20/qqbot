@@ -1,16 +1,19 @@
 /**
- * Moments backend: REST API (/api/moments) for WeChat moments data from Qdrant.
+ * Moments backend: REST API (/api/moments) for WeChat moments data.
+ *
+ * Uses RetrievalService for all Qdrant operations (scroll, count, vector search).
  *
  * API contract:
- * - GET  /api/moments/stats                         -> { stats: MomentsStats }
- * - GET  /api/moments/list?tag=&year=&type=&offset=&limit= -> { moments: MomentItem[], total: number, nextOffset: string|null }
- * - GET  /api/moments/tags                          -> { tags: TagCount[] }
- * - GET  /api/moments/timeline                      -> { timeline: TimelineEntry[] }
+ * - GET  /api/moments/stats                                  -> { stats: MomentsStats }
+ * - GET  /api/moments/list?tag=&year=&type=&offset=&limit=   -> { moments: MomentItem[], total: number, nextOffset: string|null }
+ * - GET  /api/moments/tags                                   -> { tags: TagCount[] }
+ * - GET  /api/moments/timeline                               -> { timeline: TimelineEntry[] }
+ * - GET  /api/moments/search?q=&limit=&minScore=             -> { moments: MomentItem[], query: string }
  */
 
-import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import type { RetrievalService } from '@/services/retrieval';
 import { logger } from '@/utils/logger';
 
 const API_PREFIX = '/api/moments';
@@ -28,6 +31,7 @@ export interface MomentItem {
   mediasCount: number;
   tags: string[];
   summary: string;
+  score?: number;
 }
 
 export interface TagCount {
@@ -64,6 +68,10 @@ export interface MomentsTagsResponse {
 export interface MomentsTimelineResponse {
   timeline: TimelineEntry[];
 }
+export interface MomentsSearchResponse {
+  moments: MomentItem[];
+  query: string;
+}
 
 interface ErrorResponse {
   error: string;
@@ -84,23 +92,20 @@ function errorResponse(message: string, status: number): Response {
 }
 
 // ---------------------------------------------------------------------------
-// Qdrant helpers
+// Payload → MomentItem
 // ---------------------------------------------------------------------------
 
-interface QdrantPoint {
-  id: string | number;
-  payload: Record<string, unknown>;
-}
-
-interface QdrantScrollResult {
-  result: {
-    points: QdrantPoint[];
-    next_page_offset: string | number | null;
+function payloadToMomentItem(id: string | number, payload: Record<string, unknown>, score?: number): MomentItem {
+  return {
+    id,
+    content: (payload.content as string) || '',
+    createTime: (payload.create_time as string) || '',
+    type: (payload.type as string) || '',
+    mediasCount: (payload.medias_count as number) || 0,
+    tags: Array.isArray(payload.tags) ? (payload.tags as string[]) : [],
+    summary: (payload.summary as string) || '',
+    ...(score != null && { score }),
   };
-}
-
-interface QdrantCountResult {
-  result: { count: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -108,37 +113,37 @@ interface QdrantCountResult {
 // ---------------------------------------------------------------------------
 
 export class MomentsBackend {
-  private qdrantUrl: string | null = null;
+  private retrieval: RetrievalService | null = null;
 
-  private getQdrantUrl(): string | null {
-    if (this.qdrantUrl) return this.qdrantUrl;
+  private getRetrieval(): RetrievalService | null {
+    if (this.retrieval) return this.retrieval;
     try {
       const container = getContainer();
-      const config = container.resolve<Config>(DITokens.CONFIG);
-      const rag = config.getRAGConfig();
-      if (rag?.enabled && rag.qdrant?.url) {
-        this.qdrantUrl = rag.qdrant.url;
-        return this.qdrantUrl;
+      this.retrieval = container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE);
+      if (!this.retrieval.isRAGEnabled()) {
+        this.retrieval = null;
       }
+      return this.retrieval;
     } catch {
-      logger.debug('[MomentsBackend] Config not available');
+      logger.debug('[MomentsBackend] RetrievalService not available');
+      return null;
     }
-    return null;
   }
 
   async handle(pathname: string, req: Request): Promise<Response | null> {
     if (!pathname.startsWith(API_PREFIX)) return null;
 
-    const qdrantUrl = this.getQdrantUrl();
-    if (!qdrantUrl) return errorResponse('RAG/Qdrant not configured', 503);
+    const retrieval = this.getRetrieval();
+    if (!retrieval) return errorResponse('RAG not enabled', 503);
 
     const subPath = pathname.slice(API_PREFIX.length);
     if (req.method !== 'GET') return errorResponse('Method not allowed', 405);
 
-    if (subPath === '/stats') return this.handleStats(qdrantUrl);
-    if (subPath === '/list') return this.handleList(qdrantUrl, new URL(req.url));
-    if (subPath === '/tags') return this.handleTags(qdrantUrl);
-    if (subPath === '/timeline') return this.handleTimeline(qdrantUrl);
+    if (subPath === '/stats') return this.handleStats(retrieval);
+    if (subPath === '/list') return this.handleList(retrieval, new URL(req.url));
+    if (subPath === '/tags') return this.handleTags(retrieval);
+    if (subPath === '/timeline') return this.handleTimeline(retrieval);
+    if (subPath === '/search') return this.handleSearch(retrieval, new URL(req.url));
 
     return errorResponse('Not found', 404);
   }
@@ -147,18 +152,15 @@ export class MomentsBackend {
   // Handlers
   // ──────────────────────────────────────────────────
 
-  private async handleStats(qdrantUrl: string): Promise<Response> {
+  private async handleStats(retrieval: RetrievalService): Promise<Response> {
     try {
-      // Get total count
-      const totalCount = await this.countPoints(qdrantUrl);
-
-      // Get tagged count
-      const taggedCount = await this.countPoints(qdrantUrl, {
+      const totalCount = await retrieval.countPoints(COLLECTION);
+      const taggedCount = await retrieval.countPoints(COLLECTION, {
         must_not: [{ is_empty: { key: 'tags' } }],
       });
 
-      // Scroll all to compute stats (tags + timeline)
-      const allPoints = await this.scrollAll(qdrantUrl, ['create_time', 'tags']);
+      // Scroll all to compute tag distribution + timeline
+      const allPoints = await this.collectAll(retrieval, ['create_time', 'tags']);
 
       // Time range
       const times = allPoints
@@ -187,7 +189,7 @@ export class MomentsBackend {
       for (const p of allPoints) {
         const ct = p.payload.create_time as string;
         if (ct) {
-          const month = ct.slice(0, 7); // "YYYY-MM"
+          const month = ct.slice(0, 7);
           monthCounts.set(month, (monthCounts.get(month) ?? 0) + 1);
         }
       }
@@ -196,14 +198,7 @@ export class MomentsBackend {
         .sort((a, b) => a.month.localeCompare(b.month));
 
       return jsonResponse<MomentsStatsResponse>({
-        stats: {
-          total: totalCount,
-          tagged: taggedCount,
-          untagged: totalCount - taggedCount,
-          timeRange,
-          topTags,
-          monthlyCount,
-        },
+        stats: { total: totalCount, tagged: taggedCount, untagged: totalCount - taggedCount, timeRange, topTags, monthlyCount },
       });
     } catch (err) {
       logger.error('[MomentsBackend] stats error:', err);
@@ -211,47 +206,29 @@ export class MomentsBackend {
     }
   }
 
-  private async handleList(qdrantUrl: string, url: URL): Promise<Response> {
+  private async handleList(retrieval: RetrievalService, url: URL): Promise<Response> {
     try {
       const tag = url.searchParams.get('tag') || '';
       const year = url.searchParams.get('year') || '';
       const type = url.searchParams.get('type') || '';
-      const offset = url.searchParams.get('offset') || undefined;
       const limit = Math.min(Number(url.searchParams.get('limit') ?? 50), 200);
 
       // Build filter
       const must: unknown[] = [];
-      if (tag) {
-        must.push({ key: 'tags', match: { value: tag } });
-      }
-      if (type) {
-        must.push({ key: 'type', match: { value: type } });
-      }
-
+      if (tag) must.push({ key: 'tags', match: { value: tag } });
+      if (type) must.push({ key: 'type', match: { value: type } });
       const filter = must.length > 0 ? { must } : undefined;
 
-      const body: Record<string, unknown> = {
-        limit,
-        with_payload: true,
-        with_vector: false,
-        filter,
-      };
-      if (offset) {
-        body.offset = offset;
+      // Use scrollAll with one page
+      const allPoints: Array<{ id: string | number; payload: Record<string, unknown> }> = [];
+      for await (const page of retrieval.scrollAll(COLLECTION, { limit, filter })) {
+        allPoints.push(...page);
+        break; // Only one page for list view
       }
 
-      const res = await fetch(`${qdrantUrl}/collections/${COLLECTION}/points/scroll`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      let points = allPoints;
 
-      if (!res.ok) throw new Error(`Qdrant scroll failed: ${res.status}`);
-
-      const data = (await res.json()) as QdrantScrollResult;
-      let points = data.result.points;
-
-      // Client-side year filter (create_time is a string "YYYY-MM-DD HH:mm:ss")
+      // Client-side year filter
       if (year) {
         points = points.filter((p) => {
           const ct = p.payload.create_time as string;
@@ -259,20 +236,12 @@ export class MomentsBackend {
         });
       }
 
-      const moments: MomentItem[] = points.map((p) => ({
-        id: p.id,
-        content: (p.payload.content as string) || '',
-        createTime: (p.payload.create_time as string) || '',
-        type: (p.payload.type as string) || '',
-        mediasCount: (p.payload.medias_count as number) || 0,
-        tags: Array.isArray(p.payload.tags) ? (p.payload.tags as string[]) : [],
-        summary: (p.payload.summary as string) || '',
-      }));
+      const moments = points.map((p) => payloadToMomentItem(p.id, p.payload));
 
       return jsonResponse<MomentsListResponse>({
         moments,
         total: moments.length,
-        nextOffset: data.result.next_page_offset,
+        nextOffset: allPoints.length >= limit ? allPoints[allPoints.length - 1]?.id ?? null : null,
       });
     } catch (err) {
       logger.error('[MomentsBackend] list error:', err);
@@ -280,9 +249,9 @@ export class MomentsBackend {
     }
   }
 
-  private async handleTags(qdrantUrl: string): Promise<Response> {
+  private async handleTags(retrieval: RetrievalService): Promise<Response> {
     try {
-      const allPoints = await this.scrollAll(qdrantUrl, ['tags']);
+      const allPoints = await this.collectAll(retrieval, ['tags']);
       const tagCounts = new Map<string, number>();
       for (const p of allPoints) {
         const tags = p.payload.tags as string[] | undefined;
@@ -301,9 +270,9 @@ export class MomentsBackend {
     }
   }
 
-  private async handleTimeline(qdrantUrl: string): Promise<Response> {
+  private async handleTimeline(retrieval: RetrievalService): Promise<Response> {
     try {
-      const allPoints = await this.scrollAll(qdrantUrl, ['create_time']);
+      const allPoints = await this.collectAll(retrieval, ['create_time']);
       const monthCounts = new Map<string, number>();
       for (const p of allPoints) {
         const ct = p.payload.create_time as string;
@@ -323,50 +292,47 @@ export class MomentsBackend {
     }
   }
 
-  // ──────────────────────────────────────────────────
-  // Qdrant utilities
-  // ──────────────────────────────────────────────────
+  private async handleSearch(retrieval: RetrievalService, url: URL): Promise<Response> {
+    try {
+      const query = url.searchParams.get('q')?.trim() || '';
+      if (!query) return errorResponse('Missing query parameter: q', 400);
 
-  private async countPoints(qdrantUrl: string, filter?: Record<string, unknown>): Promise<number> {
-    const body: Record<string, unknown> = { exact: true };
-    if (filter) body.filter = filter;
+      const limit = Math.min(Number(url.searchParams.get('limit') ?? 20), 100);
+      const minScore = Number(url.searchParams.get('minScore') ?? 0.35);
 
-    const res = await fetch(`${qdrantUrl}/collections/${COLLECTION}/points/count`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(`Qdrant count failed: ${res.status}`);
-    const data = (await res.json()) as QdrantCountResult;
-    return data.result.count;
+      const hits = await retrieval.vectorSearch(COLLECTION, query, { limit, minScore });
+
+      // Sort by create_time ascending
+      hits.sort((a, b) => {
+        const ta = (a.payload?.create_time as string) || '';
+        const tb = (b.payload?.create_time as string) || '';
+        return ta.localeCompare(tb);
+      });
+
+      const moments = hits.map((h) => payloadToMomentItem(h.id, h.payload, h.score));
+
+      return jsonResponse<MomentsSearchResponse>({ moments, query });
+    } catch (err) {
+      logger.error('[MomentsBackend] search error:', err);
+      return errorResponse('Failed to search moments', 500);
+    }
   }
 
-  private async scrollAll(qdrantUrl: string, includePayload: string[]): Promise<QdrantPoint[]> {
-    const allPoints: QdrantPoint[] = [];
-    let offset: string | number | null = null;
+  // ──────────────────────────────────────────────────
+  // Helpers
+  // ──────────────────────────────────────────────────
 
-    while (true) {
-      const body: Record<string, unknown> = {
-        limit: 500,
-        with_payload: { include: includePayload },
-        with_vector: false,
-      };
-      if (offset != null) body.offset = offset;
-
-      const res = await fetch(`${qdrantUrl}/collections/${COLLECTION}/points/scroll`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(`Qdrant scroll failed: ${res.status}`);
-
-      const data = (await res.json()) as QdrantScrollResult;
-      allPoints.push(...data.result.points);
-      offset = data.result.next_page_offset;
-
-      if (offset == null || data.result.points.length === 0) break;
+  private async collectAll(
+    retrieval: RetrievalService,
+    includePayload: string[],
+  ): Promise<Array<{ id: string | number; payload: Record<string, unknown> }>> {
+    const all: Array<{ id: string | number; payload: Record<string, unknown> }> = [];
+    for await (const page of retrieval.scrollAll(COLLECTION, {
+      limit: 500,
+      withPayload: { include: includePayload } as unknown as boolean,
+    })) {
+      all.push(...page);
     }
-
-    return allPoints;
+    return all;
   }
 }

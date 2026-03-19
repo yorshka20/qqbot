@@ -236,6 +236,7 @@ export interface MomentItem {
   mediasCount: number
   tags: string[]
   summary: string
+  score?: number
 }
 
 export interface TagCount {
@@ -265,4 +266,9 @@ export interface MomentsListResponse {
   moments: MomentItem[]
   total: number
   nextOffset: string | number | null
+}
+
+export interface MomentsSearchResponse {
+  moments: MomentItem[]
+  query: string
 }

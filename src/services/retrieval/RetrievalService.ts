@@ -135,6 +135,25 @@ export class RetrievalService {
   }
 
   /**
+   * Scroll through all points in a collection via async generator.
+   */
+  async *scrollAll(
+    collection: string,
+    options?: { limit?: number; withPayload?: boolean | { include: string[] }; filter?: Record<string, unknown> },
+  ): AsyncGenerator<Array<{ id: string | number; payload: Record<string, unknown> }>> {
+    if (!this.ragService) throw new Error('RAG is not enabled');
+    yield* this.ragService.scrollAll(collection, options);
+  }
+
+  /**
+   * Count points in a collection, optionally with a filter.
+   */
+  async countPoints(collection: string, filter?: Record<string, unknown>): Promise<number> {
+    if (!this.ragService) throw new Error('RAG is not enabled');
+    return this.ragService.countPoints(collection, filter);
+  }
+
+  /**
    * Multi-query vector search: pass multiple queries; RAG runs each search, merges by id (best score), returns up to maxTotal.
    */
   async vectorSearchMulti(

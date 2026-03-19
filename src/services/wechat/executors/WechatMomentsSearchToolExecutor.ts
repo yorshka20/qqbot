@@ -17,10 +17,8 @@ const MAX_CONTENT_DISPLAY_LEN = 800;
   name: 'wechat_moments_search',
   description:
     '从用户的微信朋友圈历史中语义搜索相关内容。' +
-    '朋友圈数据库包含约7800+条记录，时间跨度覆盖多年，涵盖用户对各种话题的思考和记录。' +
-    '适用于：1) 查找用户在某个话题上发过什么；2) 了解用户的兴趣和关注点；3) 追溯用户对某件事的看法变化。' +
     '返回按时间排序的匹配条目，含发布时间、正文内容和相似度评分。' +
-    '支持多关键词搜索：传入多个 query 可以从不同角度检索同一话题（如 topic 的不同表述），结果会自动去重合并。',
+    '支持多关键词搜索：传入多个 query 可以从不同角度检索同一话题，结果会自动去重合并。',
   executor: 'wechat_moments_search',
   parameters: {
     query: {
@@ -97,7 +95,7 @@ export class WechatMomentsSearchToolExecutor extends BaseToolExecutor {
     );
 
     try {
-      let hits;
+      let hits: Awaited<ReturnType<RetrievalService['vectorSearch']>>;
       if (additionalQueries.length > 0) {
         const allQueries = [query, ...additionalQueries];
         hits = await this.retrievalService.vectorSearchMulti(COLLECTION, allQueries, {

@@ -237,6 +237,23 @@ export class QdrantClient {
   }
 
   /**
+   * Count points in a collection, optionally with a filter.
+   */
+  async countPoints(
+    collection: string,
+    filter?: Record<string, unknown>,
+  ): Promise<number> {
+    const body: Record<string, unknown> = { exact: true };
+    if (filter) body.filter = filter;
+
+    const response = await this.httpClient.post<{ result?: { count?: number } }>(
+      `/collections/${collection}/points/count`,
+      body,
+    );
+    return response.result?.count ?? 0;
+  }
+
+  /**
    * Delete points by IDs.
    */
   async deleteByIds(collection: string, ids: Array<string | number>): Promise<void> {

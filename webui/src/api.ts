@@ -5,6 +5,7 @@ import type {
   InsightStatsResponse,
   ListResponse,
   MomentsListResponse,
+  MomentsSearchResponse,
   MomentsStatsResponse,
   ReportDetailResponse,
   ReportListResponse,
@@ -211,4 +212,21 @@ export async function listMoments(opts?: {
     throw new Error(err.error ?? `List moments failed: ${res.status}`)
   }
   return res.json() as Promise<MomentsListResponse>
+}
+
+export async function searchMoments(opts: {
+  q: string
+  limit?: number
+  minScore?: number
+}): Promise<MomentsSearchResponse> {
+  const params = new URLSearchParams()
+  params.set('q', opts.q)
+  if (opts.limit) params.set('limit', String(opts.limit))
+  if (opts.minScore) params.set('minScore', String(opts.minScore))
+  const res = await fetch(`${momentsApiBase()}/search?${params}`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Search moments failed: ${res.status}`)
+  }
+  return res.json() as Promise<MomentsSearchResponse>
 }

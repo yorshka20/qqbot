@@ -1,9 +1,10 @@
-// WeChat moments topic analysis — retrieves relevant moments then calls local Ollama for deep analysis
+// WeChat moments topic analysis — retrieves relevant moments then calls LLMService for deep analysis
 
 import { inject, injectable } from 'tsyringe';
-import type { Config } from '@/core/config';
+import type { LLMService } from '@/ai/services/LLMService';
 import { DITokens } from '@/core/DITokens';
 import type { RetrievalService } from '@/services/retrieval';
+import { loadAnalysisPrompt } from '@/services/wechat/moments-tags';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
@@ -12,17 +13,16 @@ import { logger } from '@/utils/logger';
 const COLLECTION = 'wechat_moments';
 const DEFAULT_LIMIT = 15;
 const DEFAULT_MIN_SCORE = 0.3;
-const GENERATION_MODEL = 'qwen3:14b';
-const OLLAMA_TIMEOUT = 120_000; // 2 minutes
+
+/** Allowed providers for moments analysis (cost-controlled). */
+const ALLOWED_PROVIDERS = ['ollama', 'deepseek', 'doubao'] as const;
 
 @Tool({
   name: 'wechat_moments_analyze',
   description:
     '对用户朋友圈中某个话题进行深度分析。' +
-    '先从7800+条朋友圈记录中检索相关内容，然后调用本地 LLM 进行纵向分析：' +
-    '识别用户在该话题上的核心立场、思想演变轨迹、关键转折点，并引用原文佐证。' +
-    '适用于：1) 分析用户对某个话题的看法如何随时间变化；2) 提炼用户在某方面的核心观点；3) 发现用户自己可能没意识到的思想模式。' +
-    '注意：本工具会调用本地 LLM 进行分析，响应时间较长（通常 10-30 秒），请在调用前告知用户正在分析中。',
+    '检索相关朋友圈内容，调用 LLM 进行纵向分析：识别核心立场、思想演变轨迹、关键转折点，并引用原文佐证。' +
+    '注意：本工具会调用 LLM 进行分析，响应时间较长，请在调用前告知用户正在分析中。',
   executor: 'wechat_moments_analyze',
   parameters: {
     topic: {
@@ -62,7 +62,7 @@ export class WechatMomentsAnalyzeToolExecutor extends BaseToolExecutor {
 
   constructor(
     @inject(DITokens.RETRIEVAL_SERVICE) private retrievalService: RetrievalService,
-    @inject(DITokens.CONFIG) private config: Config,
+    @inject(DITokens.LLM_SERVICE) private llmService: LLMService,
   ) {
     super();
   }
@@ -127,13 +127,7 @@ export class WechatMomentsAnalyzeToolExecutor extends BaseToolExecutor {
       const earliest = times[0] || '未知';
       const latest = times[times.length - 1] || '未知';
 
-      // Step 2: Call local Ollama for analysis
-      const ragConfig = this.config.getRAGConfig();
-      const ollamaUrl = ragConfig?.ollama?.url;
-      if (!ollamaUrl) {
-        return this.error('Ollama 未配置', 'Ollama URL not found in RAG config');
-      }
-
+      // Step 2: Build prompt from template
       const contextText = hits
         .map((hit) => {
           const ct = (hit.payload?.create_time as string) || '未知时间';
@@ -142,45 +136,10 @@ export class WechatMomentsAnalyzeToolExecutor extends BaseToolExecutor {
         })
         .join('\n\n---\n\n');
 
-      const systemPrompt = `你是一个擅长深度分析的助手。以下是一个人在微信朋友圈发布的内容片段，按时间排列。
-请基于这些内容，对用户关于「${topic}」这个话题进行深度分析。
+      const prompt = loadAnalysisPrompt({ topic, analysisAngle, contextText });
 
-要求：
-1. 按时间线梳理此人在该话题上的思考演变
-2. 识别核心立场——哪些观点是一以贯之的，哪些发生了转变
-3. 如果有转折点，指出是什么时候、可能的原因是什么
-4. 引用原文片段来支撑你的分析（不要泛泛而谈）
-5. 最后提出 1-2 个你觉得有意思的观察或规律
-
-${analysisAngle ? `额外关注角度：${analysisAngle}` : ''}
-
-朋友圈内容：
-${contextText}
-
-/no_think`;
-
-      const response = await fetch(`${ollamaUrl}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: GENERATION_MODEL,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `请分析我关于「${topic}」的思想脉络。` },
-          ],
-          stream: false,
-          options: { num_predict: 2048 },
-        }),
-        signal: AbortSignal.timeout(OLLAMA_TIMEOUT),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text().catch(() => '');
-        throw new Error(`Ollama API error: ${response.status} ${errText}`);
-      }
-
-      const result = (await response.json()) as { message?: { content?: string } };
-      const analysis = result.message?.content ?? '分析生成失败';
+      // Step 3: Call LLM via LLMService with provider fallback
+      const analysis = await this.callLLM(prompt, topic);
 
       return this.success(
         `## 朋友圈话题分析：${topic}\n\n` +
@@ -193,5 +152,31 @@ ${contextText}
       logger.error('[WechatMomentsAnalyze] Error:', err);
       return this.error('分析朋友圈话题失败', errorMsg);
     }
+  }
+
+  /**
+   * Call LLM via LLMService with provider fallback (ollama → deepseek → doubao).
+   */
+  private async callLLM(prompt: string, topic: string): Promise<string> {
+    for (const providerName of ALLOWED_PROVIDERS) {
+      try {
+        const provider = await this.llmService.getAvailableProvider(providerName);
+        if (!provider) continue;
+
+        const response = await provider.generate(prompt, {
+          temperature: 0.3,
+          maxTokens: 2048,
+        });
+
+        const text = response.text?.trim();
+        if (text) return text;
+
+        logger.warn(`[WechatMomentsAnalyze] Empty response from "${providerName}" for "${topic}"`);
+      } catch (err) {
+        logger.warn(`[WechatMomentsAnalyze] Provider "${providerName}" failed for "${topic}":`, err);
+      }
+    }
+
+    throw new Error(`All providers (${ALLOWED_PROVIDERS.join(', ')}) failed for topic "${topic}"`);
   }
 }
