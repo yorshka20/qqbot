@@ -165,8 +165,7 @@ export class MomentsBackend {
         .map((p) => p.payload.create_time as string)
         .filter(Boolean)
         .sort();
-      const timeRange =
-        times.length > 0 ? { earliest: times[0], latest: times[times.length - 1] } : null;
+      const timeRange = times.length > 0 ? { earliest: times[0], latest: times[times.length - 1] } : null;
 
       // Tag distribution
       const tagCounts = new Map<string, number>();
@@ -293,9 +292,7 @@ export class MomentsBackend {
           }
         }
       }
-      const tags = [...tagCounts.entries()]
-        .map(([tag, count]) => ({ tag, count }))
-        .sort((a, b) => b.count - a.count);
+      const tags = [...tagCounts.entries()].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count);
 
       return jsonResponse<MomentsTagsResponse>({ tags });
     } catch (err) {
@@ -330,10 +327,7 @@ export class MomentsBackend {
   // Qdrant utilities
   // ──────────────────────────────────────────────────
 
-  private async countPoints(
-    qdrantUrl: string,
-    filter?: Record<string, unknown>,
-  ): Promise<number> {
+  private async countPoints(qdrantUrl: string, filter?: Record<string, unknown>): Promise<number> {
     const body: Record<string, unknown> = { exact: true };
     if (filter) body.filter = filter;
 
@@ -347,10 +341,7 @@ export class MomentsBackend {
     return data.result.count;
   }
 
-  private async scrollAll(
-    qdrantUrl: string,
-    includePayload: string[],
-  ): Promise<QdrantPoint[]> {
+  private async scrollAll(qdrantUrl: string, includePayload: string[]): Promise<QdrantPoint[]> {
     const allPoints: QdrantPoint[] = [];
     let offset: string | number | null = null;
 

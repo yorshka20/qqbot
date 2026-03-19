@@ -60,9 +60,7 @@ export class ZhihuCommandHandler implements CommandHandler {
 
   private handleStatus(): CommandResult {
     const stats = this.feedService.getStats();
-    const lastFetch = stats.lastFetchTs
-      ? new Date(stats.lastFetchTs * 1000).toLocaleString('zh-CN')
-      : '从未';
+    const lastFetch = stats.lastFetchTs ? new Date(stats.lastFetchTs * 1000).toLocaleString('zh-CN') : '从未';
 
     const b = new MessageBuilder();
     b.text('知乎服务状态\n');
@@ -131,7 +129,10 @@ export class ZhihuCommandHandler implements CommandHandler {
 
   private handleContent(targetType: string, targetId: number): CommandResult {
     if (!targetType || !targetId) {
-      return { success: false, error: '用法: /zhihu content <article|answer> <id>\n例如: /zhihu content article 2017528295286133070' };
+      return {
+        success: false,
+        error: '用法: /zhihu content <article|answer> <id>\n例如: /zhihu content article 2017528295286133070',
+      };
     }
     if (targetType !== 'article' && targetType !== 'answer') {
       return { success: false, error: '类型必须是 article 或 answer' };

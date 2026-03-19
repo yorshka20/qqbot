@@ -1,8 +1,8 @@
 // WeChat moments topic analysis — retrieves relevant moments then calls local Ollama for deep analysis
 
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
 import type { Config } from '@/core/config';
+import { DITokens } from '@/core/DITokens';
 import type { RetrievalService } from '@/services/retrieval';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
@@ -33,14 +33,12 @@ const OLLAMA_TIMEOUT = 120_000; // 2 minutes
     searchQueries: {
       type: 'string',
       required: false,
-      description:
-        '自定义搜索词，用 | 分隔（如"创业|商业化|赚钱"），不填则自动用 topic 作为搜索词',
+      description: '自定义搜索词，用 | 分隔（如"创业|商业化|赚钱"），不填则自动用 topic 作为搜索词',
     },
     analysisAngle: {
       type: 'string',
       required: false,
-      description:
-        '分析角度提示（如"重点关注立场转变"、"对比早期和近期的态度差异"），会追加到 LLM prompt 中',
+      description: '分析角度提示（如"重点关注立场转变"、"对比早期和近期的态度差异"），会追加到 LLM prompt 中',
     },
     limit: {
       type: 'number',
@@ -85,23 +83,20 @@ export class WechatMomentsAnalyzeToolExecutor extends BaseToolExecutor {
         : DEFAULT_LIMIT;
 
     const analysisAngle =
-      typeof call.parameters?.analysisAngle === 'string'
-        ? call.parameters.analysisAngle.trim()
-        : '';
+      typeof call.parameters?.analysisAngle === 'string' ? call.parameters.analysisAngle.trim() : '';
 
     // Build search queries
     const searchQueriesRaw =
-      typeof call.parameters?.searchQueries === 'string'
-        ? call.parameters.searchQueries.trim()
-        : '';
+      typeof call.parameters?.searchQueries === 'string' ? call.parameters.searchQueries.trim() : '';
     const extraQueries = searchQueriesRaw
-      ? searchQueriesRaw.split('|').map((q) => q.trim()).filter(Boolean)
+      ? searchQueriesRaw
+          .split('|')
+          .map((q) => q.trim())
+          .filter(Boolean)
       : [];
     const allQueries = [topic, ...extraQueries];
 
-    logger.info(
-      `[WechatMomentsAnalyze] topic="${topic}" queries=[${allQueries.join(', ')}] limit=${limit}`,
-    );
+    logger.info(`[WechatMomentsAnalyze] topic="${topic}" queries=[${allQueries.join(', ')}] limit=${limit}`);
 
     try {
       // Step 1: Retrieve relevant moments
@@ -112,10 +107,10 @@ export class WechatMomentsAnalyzeToolExecutor extends BaseToolExecutor {
       });
 
       if (hits.length < 2) {
-        return this.success(
-          `在朋友圈中未找到足够的相关内容来进行「${topic}」的分析（仅找到 ${hits.length} 条）。`,
-          { topic, hitsCount: hits.length },
-        );
+        return this.success(`在朋友圈中未找到足够的相关内容来进行「${topic}」的分析（仅找到 ${hits.length} 条）。`, {
+          topic,
+          hitsCount: hits.length,
+        });
       }
 
       // Sort by create_time ascending

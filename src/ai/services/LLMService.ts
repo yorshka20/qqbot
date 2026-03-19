@@ -10,6 +10,7 @@ import type {
   AIGenerateOptions,
   AIGenerateResponse,
   ChatMessage,
+  ChatMessageToolCall,
   StreamingHandler,
   ToolDefinition,
   ToolResult,
@@ -403,9 +404,11 @@ export class LLMService {
       // Generate with tools
       const response = await this.generateMessagesWithToolSupport(currentMessages, tools, options, currentProviderName);
 
-      // Check if there's a function call
-      if (!response.functionCall) {
-        // No tool call, return final response
+      // Get all function calls from this response
+      const calls = response.functionCalls ?? [];
+
+      if (calls.length === 0) {
+        // No tool calls, return final response
         return {
           ...response,
           toolCalls: allToolCalls,
@@ -413,68 +416,69 @@ export class LLMService {
         };
       }
 
-      // Execute the tool if executor is provided
+      // Execute tools if executor is provided
       if (toolExecutor) {
-        try {
-          const toolResult = await toolExecutor(response.functionCall);
-          allToolCalls.push({
-            tool: response.functionCall.name,
-            result: toolResult,
-          });
+        // Build assistant message with all tool_calls for this round
+        const assistantToolCalls: ChatMessageToolCall[] = [];
+        const toolMessages: ChatMessage[] = [];
 
-          const toolResultContent = JSON.stringify(toolResult);
-          // Always use structured tool_calls format so all providers (including Gemini)
-          // can properly map functionCall/functionResponse in multi-turn conversations.
-          // Generate synthetic toolCallId when provider doesn't return one.
-          const callId = response.toolCallId || `call_${round}_${Date.now()}`;
-          const toolCall: { id: string; name: string; arguments: string; thought_signature?: string } = {
+        // Execute all tool calls in parallel
+        const executionResults = await Promise.allSettled(
+          calls.map(async (fc, idx) => {
+            const callId = fc.toolCallId || `call_${round}_${idx}_${Date.now()}`;
+            return { fc, callId, result: await toolExecutor(fc) };
+          }),
+        );
+
+        for (let idx = 0; idx < executionResults.length; idx++) {
+          const settlement = executionResults[idx];
+          const fc = calls[idx];
+          const callId = fc.toolCallId || `call_${round}_${idx}_${Date.now()}`;
+
+          const toolCall: ChatMessageToolCall = {
             id: callId,
-            name: response.functionCall.name,
-            arguments: response.functionCall.arguments,
+            name: fc.name,
+            arguments: fc.arguments,
           };
           // Preserve thoughtSignature for Gemini thinking models.
-          if (response.thoughtSignature) {
-            toolCall.thought_signature = response.thoughtSignature;
+          if (fc.thoughtSignature) {
+            toolCall.thought_signature = fc.thoughtSignature;
           }
-          currentMessages.push({
-            role: 'assistant',
-            content: '',
-            tool_calls: [toolCall],
-          });
-          currentMessages.push({
-            role: 'tool',
-            tool_call_id: callId,
-            content: toolResultContent,
-          });
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          logger.error(`[LLMService] Tool execution error:`, error);
-          allToolCalls.push({
-            tool: response.functionCall.name,
-            result: null,
-            error: errorMessage,
-          });
+          assistantToolCalls.push(toolCall);
 
-          const errorContent = `Tool execution failed: ${errorMessage}`;
-          const errorCallId = response.toolCallId || `call_${round}_${Date.now()}`;
-          const errorToolCall: { id: string; name: string; arguments: string; thought_signature?: string } = {
-            id: errorCallId,
-            name: response.functionCall.name,
-            arguments: response.functionCall.arguments,
-          };
-          if (response.thoughtSignature) {
-            errorToolCall.thought_signature = response.thoughtSignature;
+          if (settlement.status === 'fulfilled') {
+            const toolResult = settlement.value.result;
+            allToolCalls.push({ tool: fc.name, result: toolResult });
+            toolMessages.push({
+              role: 'tool',
+              tool_call_id: callId,
+              content: JSON.stringify(toolResult),
+            });
+          } else {
+            const errorMessage =
+              settlement.reason instanceof Error ? settlement.reason.message : String(settlement.reason);
+            logger.error(`[LLMService] Tool execution error (${fc.name}):`, settlement.reason);
+            allToolCalls.push({ tool: fc.name, result: null, error: errorMessage });
+            toolMessages.push({
+              role: 'tool',
+              tool_call_id: callId,
+              content: `Tool execution failed: ${errorMessage}`,
+            });
           }
-          currentMessages.push({
-            role: 'assistant',
-            content: '',
-            tool_calls: [errorToolCall],
-          });
-          currentMessages.push({
-            role: 'tool',
-            tool_call_id: errorCallId,
-            content: errorContent,
-          });
+        }
+
+        // Append single assistant message with all tool_calls, then all tool result messages
+        currentMessages.push({
+          role: 'assistant',
+          content: '',
+          tool_calls: assistantToolCalls,
+        });
+        for (const msg of toolMessages) {
+          currentMessages.push(msg);
+        }
+
+        if (calls.length > 1) {
+          logger.info(`[LLMService] Executed ${calls.length} parallel tool calls in round ${round + 1}`);
         }
       } else {
         // No executor provided, return the function call for external handling
@@ -591,7 +595,7 @@ export class LLMService {
 
   /**
    * Generate messages with tool support (provider-specific implementation)
-   * Passes tools in options; providers that support tool use return functionCall and tool_call_id.
+   * Passes tools in options; providers that support tool use return functionCalls array.
    */
   private async generateMessagesWithToolSupport(
     messages: ChatMessage[],
@@ -603,24 +607,19 @@ export class LLMService {
     const prompt = lastContent !== undefined ? contentToPlainString(lastContent) : '';
     const response = await this.generate(prompt, { ...(options ?? {}), messages, tools }, providerName);
 
-    // Fallback: if no structured functionCall but text contains DSML, parse it
-    if (!response.functionCall && response.text && containsDSML(response.text)) {
+    // Fallback: if no structured functionCalls but text contains DSML, parse it
+    if (!response.functionCalls?.length && response.text && containsDSML(response.text)) {
       const dsmlCall = parseDSMLFunctionCall(response.text);
       if (dsmlCall) {
         logger.debug(`[LLMService] Parsed DSML text function call: ${dsmlCall.name}`);
-        response.functionCall = {
-          name: dsmlCall.name,
-          arguments: JSON.stringify(dsmlCall.arguments),
-        };
+        response.functionCalls = [{ name: dsmlCall.name, arguments: JSON.stringify(dsmlCall.arguments) }];
         response.text = stripDSML(response.text);
       }
     }
 
     return {
       ...response,
-      functionCall: response.functionCall,
-      toolCallId: response.toolCallId,
-      thoughtSignature: response.thoughtSignature,
+      functionCalls: response.functionCalls,
     };
   }
 }

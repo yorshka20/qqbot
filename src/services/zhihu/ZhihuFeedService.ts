@@ -87,12 +87,8 @@ export class ZhihuFeedService {
     if (contentTargets.size === 0) return 0;
 
     // Check which ones we already have
-    const answerIds = [...contentTargets.values()]
-      .filter((i) => i.targetType === 'answer')
-      .map((i) => i.targetId);
-    const articleIds = [...contentTargets.values()]
-      .filter((i) => i.targetType === 'article')
-      .map((i) => i.targetId);
+    const answerIds = [...contentTargets.values()].filter((i) => i.targetType === 'answer').map((i) => i.targetId);
+    const articleIds = [...contentTargets.values()].filter((i) => i.targetType === 'article').map((i) => i.targetId);
 
     const existingAnswers = this.db.getExistingContentIds('answer', answerIds);
     const existingArticles = this.db.getExistingContentIds('article', articleIds);
@@ -191,7 +187,10 @@ export class ZhihuFeedService {
         };
       }
     } catch (err) {
-      logger.warn(`[ZhihuFeedService] API fetch failed for answer ${item.targetId}, trying feed content fallback:`, err instanceof Error ? err.message : err);
+      logger.warn(
+        `[ZhihuFeedService] API fetch failed for answer ${item.targetId}, trying feed content fallback:`,
+        err instanceof Error ? err.message : err,
+      );
     }
 
     // Fallback: use content from the feed response
@@ -219,7 +218,10 @@ export class ZhihuFeedService {
         };
       }
     } catch (err) {
-      logger.warn(`[ZhihuFeedService] API fetch failed for article ${item.targetId}, trying feed content fallback:`, err instanceof Error ? err.message : err);
+      logger.warn(
+        `[ZhihuFeedService] API fetch failed for article ${item.targetId}, trying feed content fallback:`,
+        err instanceof Error ? err.message : err,
+      );
     }
 
     // Fallback: use content from the feed response
@@ -233,7 +235,9 @@ export class ZhihuFeedService {
       return null;
     }
 
-    logger.info(`[ZhihuFeedService] Using feed content for ${item.targetType} ${item.targetId} (${item.rawContent.length} chars raw)`);
+    logger.info(
+      `[ZhihuFeedService] Using feed content for ${item.targetType} ${item.targetId} (${item.rawContent.length} chars raw)`,
+    );
     return {
       targetType: item.targetType,
       targetId: item.targetId,

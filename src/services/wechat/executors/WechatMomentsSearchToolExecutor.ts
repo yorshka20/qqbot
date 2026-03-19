@@ -31,8 +31,7 @@ const MAX_CONTENT_DISPLAY_LEN = 800;
     additionalQueries: {
       type: 'string',
       required: false,
-      description:
-        '补充查询，用 | 分隔多个角度的搜索词（如"深度学习|机器学习|神经网络"），与主 query 一起做多角度检索',
+      description: '补充查询，用 | 分隔多个角度的搜索词（如"深度学习|机器学习|神经网络"），与主 query 一起做多角度检索',
     },
     limit: {
       type: 'number',
@@ -85,11 +84,12 @@ export class WechatMomentsSearchToolExecutor extends BaseToolExecutor {
 
     // Parse additional queries
     const additionalQueriesRaw =
-      typeof call.parameters?.additionalQueries === 'string'
-        ? call.parameters.additionalQueries.trim()
-        : '';
+      typeof call.parameters?.additionalQueries === 'string' ? call.parameters.additionalQueries.trim() : '';
     const additionalQueries = additionalQueriesRaw
-      ? additionalQueriesRaw.split('|').map((q) => q.trim()).filter(Boolean)
+      ? additionalQueriesRaw
+          .split('|')
+          .map((q) => q.trim())
+          .filter(Boolean)
       : [];
 
     logger.info(
@@ -125,9 +125,7 @@ export class WechatMomentsSearchToolExecutor extends BaseToolExecutor {
           const createTime = (hit.payload?.create_time as string) || '未知时间';
           const content = typeof hit.content === 'string' ? hit.content : '';
           const truncated =
-            content.length > MAX_CONTENT_DISPLAY_LEN
-              ? content.slice(0, MAX_CONTENT_DISPLAY_LEN) + '…'
-              : content;
+            content.length > MAX_CONTENT_DISPLAY_LEN ? content.slice(0, MAX_CONTENT_DISPLAY_LEN) + '…' : content;
 
           return `[${index + 1}] 时间: ${createTime}  相似度: ${hit.score.toFixed(3)}\n${truncated}`;
         })

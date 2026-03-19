@@ -122,9 +122,7 @@ export class ZhihuFeedPlugin extends PluginBase {
           const result = await this.feedService?.pollFeed();
           if (!result) return;
           if (result.newCount > 0 || result.contentCount > 0) {
-            logger.info(
-              `[ZhihuFeedPlugin] Poll: ${result.newCount} new items, ${result.contentCount} content fetched`,
-            );
+            logger.info(`[ZhihuFeedPlugin] Poll: ${result.newCount} new items, ${result.contentCount} content fetched`);
           }
         } catch (err) {
           logger.error('[ZhihuFeedPlugin] Poll cron error:', err);

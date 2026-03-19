@@ -155,12 +155,12 @@ export interface AIGenerateResponse {
     totalTokens: number;
   };
   metadata?: Record<string, unknown>;
-  /** When request had tools and model chose to call a function (provider returned tool_calls). */
-  functionCall?: FunctionCall;
-  /** Provider's tool_call id (e.g. OpenAI); required to send tool result in next round. */
-  toolCallId?: string;
-  /** Gemini thinking-model thought signature; must be echoed back in multi-turn tool use. */
-  thoughtSignature?: string;
+  /**
+   * All function calls returned by the model in this response.
+   * Providers that support parallel tool calls (OpenAI, Gemini, Anthropic, etc.)
+   * populate this array with every tool call from a single response.
+   */
+  functionCalls?: FunctionCallInfo[];
 }
 
 /**
@@ -209,6 +209,14 @@ export interface FunctionCall {
   arguments: string; // JSON string
 }
 
+/** Function call with provider metadata (tool call id, thought signature, etc.) */
+export interface FunctionCallInfo extends FunctionCall {
+  /** Provider's tool_call id (e.g. OpenAI tc.id); required to send tool result in next round. */
+  toolCallId?: string;
+  /** Gemini thinking-model thought signature; must be echoed back in multi-turn tool use. */
+  thoughtSignature?: string;
+}
+
 /** Tool call result */
 export interface ToolResult {
   tool: string;
@@ -225,7 +233,6 @@ export interface ToolUseGenerateOptions extends AIGenerateOptions {
 
 /** Tool Use generation response */
 export interface ToolUseGenerateResponse extends AIGenerateResponse {
-  functionCall?: FunctionCall; // If LLM wants to call a function
   toolCalls?: ToolResult[]; // All tool calls made during generation
   stopReason?: 'end_turn' | 'tool_use' | 'max_rounds'; // Why generation stopped
 }

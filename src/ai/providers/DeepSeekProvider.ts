@@ -258,13 +258,17 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
 
       const toolCalls = msg?.tool_calls;
       if (toolCalls?.length) {
-        const tc = toolCalls[0];
-        const fn = tc.function;
-        result.functionCall = {
-          name: fn?.name ?? '',
-          arguments: typeof fn?.arguments === 'string' ? fn.arguments : JSON.stringify(fn?.arguments ?? {}),
-        };
-        result.toolCallId = tc.id ?? undefined;
+        result.functionCalls = [];
+        for (const tc of toolCalls) {
+          const fn = tc.function;
+          if (fn) {
+            result.functionCalls.push({
+              name: fn.name ?? '',
+              arguments: typeof fn.arguments === 'string' ? fn.arguments : JSON.stringify(fn.arguments ?? {}),
+              toolCallId: tc.id ?? undefined,
+            });
+          }
+        }
       }
 
       return result;

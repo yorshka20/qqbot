@@ -251,9 +251,7 @@ export class ZhihuDatabase {
     if (!this.db) return null;
     return (
       this.db
-        .query<ZhihuContentRow, [string, number]>(
-          'SELECT * FROM zhihu_contents WHERE targetType = ? AND targetId = ?',
-        )
+        .query<ZhihuContentRow, [string, number]>('SELECT * FROM zhihu_contents WHERE targetType = ? AND targetId = ?')
         .get(targetType, targetId) ?? null
     );
   }

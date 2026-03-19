@@ -744,9 +744,7 @@ export class WeChatDatabase {
     if (!this.db) return null;
     return (
       this.db
-        .query<WeChatArticleInsightRow, [string]>(
-          `SELECT * FROM wechat_article_insights WHERE articleMsgId = ?`,
-        )
+        .query<WeChatArticleInsightRow, [string]>(`SELECT * FROM wechat_article_insights WHERE articleMsgId = ?`)
         .get(articleMsgId) ?? null
     );
   }

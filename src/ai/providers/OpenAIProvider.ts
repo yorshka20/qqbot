@@ -205,14 +205,16 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
 
       const toolCalls = msg?.tool_calls;
       if (toolCalls?.length) {
-        const tc = toolCalls[0];
-        const fn = tc.type === 'function' ? tc.function : undefined;
-        if (fn) {
-          result.functionCall = {
-            name: fn.name ?? '',
-            arguments: typeof fn.arguments === 'string' ? fn.arguments : JSON.stringify(fn.arguments ?? {}),
-          };
-          result.toolCallId = tc.id ?? undefined;
+        result.functionCalls = [];
+        for (const tc of toolCalls) {
+          const fn = tc.type === 'function' ? tc.function : undefined;
+          if (fn) {
+            result.functionCalls.push({
+              name: fn.name ?? '',
+              arguments: typeof fn.arguments === 'string' ? fn.arguments : JSON.stringify(fn.arguments ?? {}),
+              toolCallId: tc.id ?? undefined,
+            });
+          }
         }
       }
 

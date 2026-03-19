@@ -315,13 +315,13 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         },
       };
 
-      const toolUseBlock = data.content.find((block): block is AnthropicToolUseBlock => block.type === 'tool_use');
-      if (toolUseBlock) {
-        result.functionCall = {
-          name: toolUseBlock.name,
-          arguments: JSON.stringify(toolUseBlock.input ?? {}),
-        };
-        result.toolCallId = toolUseBlock.id;
+      const toolUseBlocks = data.content.filter((block): block is AnthropicToolUseBlock => block.type === 'tool_use');
+      if (toolUseBlocks.length > 0) {
+        result.functionCalls = toolUseBlocks.map((block) => ({
+          name: block.name,
+          arguments: JSON.stringify(block.input ?? {}),
+          toolCallId: block.id,
+        }));
       }
 
       return result;

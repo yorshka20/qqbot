@@ -129,8 +129,7 @@ interface ArkParsedResult {
   text: string;
   reasoningContent: string;
   usage?: AIGenerateResponse['usage'];
-  functionCall?: AIGenerateResponse['functionCall'];
-  toolCallId?: string;
+  functionCalls?: AIGenerateResponse['functionCalls'];
 }
 
 /** SSE stream chunk for Responses API. */
@@ -218,21 +217,19 @@ function parseArkResponse(response: ArkResponsesResponse): ArkParsedResult {
       }
     : undefined;
 
-  let functionCall: ArkParsedResult['functionCall'];
-  let toolCallId: string | undefined;
-  const fnCallItem = response.output?.find(
+  let functionCalls: ArkParsedResult['functionCalls'];
+  const fnCallItems = response.output?.filter(
     (o): o is Extract<ArkOutputItem, { type: 'function_call' }> => o.type === 'function_call',
   );
-  if (fnCallItem) {
-    functionCall = {
-      name: fnCallItem.name,
-      arguments:
-        typeof fnCallItem.arguments === 'string' ? fnCallItem.arguments : JSON.stringify(fnCallItem.arguments ?? {}),
-    };
-    toolCallId = fnCallItem.call_id ?? fnCallItem.id;
+  if (fnCallItems?.length) {
+    functionCalls = fnCallItems.map((item) => ({
+      name: item.name,
+      arguments: typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments ?? {}),
+      toolCallId: item.call_id ?? item.id,
+    }));
   }
 
-  return { text, reasoningContent, usage, functionCall, toolCallId };
+  return { text, reasoningContent, usage, functionCalls };
 }
 
 export interface DoubaoProviderConfig {
@@ -425,8 +422,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
           model: response.model,
           reasoningContent: parsed.reasoningContent || undefined,
         },
-        functionCall: parsed.functionCall,
-        toolCallId: parsed.toolCallId,
+        functionCalls: parsed.functionCalls,
       };
       return result;
     } catch (error) {

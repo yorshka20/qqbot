@@ -99,22 +99,21 @@ describe.skipIf(!getIntegrationProvider('doubao'))('Doubao LLM integration (real
         toolNames: SAMPLE_TOOLS.map((t) => t.name),
       });
       const res = await llmService.generate('', { messages, tools: SAMPLE_TOOLS, maxTokens: 1024 }, providerName);
+      const firstCall = res.functionCalls?.[0];
       logFlow(`[${providerName}] 3) Response`, {
         textPreview: res.text?.slice(0, 80),
-        functionCall: res.functionCall
-          ? { name: res.functionCall.name, argsPreview: res.functionCall.arguments?.slice(0, 60) }
-          : undefined,
-        toolCallId: res.toolCallId,
+        functionCall: firstCall ? { name: firstCall.name, argsPreview: firstCall.arguments?.slice(0, 60) } : undefined,
+        toolCallId: firstCall?.toolCallId,
       });
       expect(res).toBeDefined();
       expect(typeof res.text).toBe('string');
-      if (res.functionCall) {
-        expect(res.functionCall.name).toBe('get_weather');
-        expect(typeof res.functionCall.arguments).toBe('string');
-        const args = JSON.parse(res.functionCall.arguments) as Record<string, unknown>;
+      if (firstCall) {
+        expect(firstCall.name).toBe('get_weather');
+        expect(typeof firstCall.arguments).toBe('string');
+        const args = JSON.parse(firstCall.arguments) as Record<string, unknown>;
         expect(args.city).toBeDefined();
-        expect(res.toolCallId).toBeDefined();
-        expect(typeof res.toolCallId).toBe('string');
+        expect(firstCall.toolCallId).toBeDefined();
+        expect(typeof firstCall.toolCallId).toBe('string');
       }
     },
     INTEGRATION_TEST_TIMEOUT_MS,
@@ -227,22 +226,21 @@ describe.skipIf(!getIntegrationProvider('deepseek'))('DeepSeek LLM integration (
         toolNames: SAMPLE_TOOLS.map((t) => t.name),
       });
       const res = await llmService.generate('', { messages, tools: SAMPLE_TOOLS, maxTokens: 1024 }, providerName);
+      const firstCall = res.functionCalls?.[0];
       logFlow(`[${providerName}] 3) Response`, {
         textPreview: res.text?.slice(0, 80),
-        functionCall: res.functionCall
-          ? { name: res.functionCall.name, argsPreview: res.functionCall.arguments?.slice(0, 60) }
-          : undefined,
-        toolCallId: res.toolCallId,
+        functionCall: firstCall ? { name: firstCall.name, argsPreview: firstCall.arguments?.slice(0, 60) } : undefined,
+        toolCallId: firstCall?.toolCallId,
       });
       expect(res).toBeDefined();
       expect(typeof res.text).toBe('string');
-      if (res.functionCall) {
-        expect(res.functionCall.name).toBe('get_weather');
-        expect(typeof res.functionCall.arguments).toBe('string');
-        const args = JSON.parse(res.functionCall.arguments) as Record<string, unknown>;
+      if (firstCall) {
+        expect(firstCall.name).toBe('get_weather');
+        expect(typeof firstCall.arguments).toBe('string');
+        const args = JSON.parse(firstCall.arguments) as Record<string, unknown>;
         expect(args.city).toBeDefined();
-        expect(res.toolCallId).toBeDefined();
-        expect(typeof res.toolCallId).toBe('string');
+        expect(firstCall.toolCallId).toBeDefined();
+        expect(typeof firstCall.toolCallId).toBe('string');
       }
     },
     INTEGRATION_TEST_TIMEOUT_MS,

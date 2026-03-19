@@ -353,9 +353,7 @@ export class GeminiProvider
   ): Promise<{
     text: string;
     usage?: AIGenerateResponse['usage'];
-    functionCall?: AIGenerateResponse['functionCall'];
-    toolCallId?: string;
-    thoughtSignature?: string;
+    functionCalls?: AIGenerateResponse['functionCalls'];
   }>;
 
   private async generateContentText(
@@ -378,9 +376,7 @@ export class GeminiProvider
   ): Promise<{
     text: string;
     usage?: AIGenerateResponse['usage'];
-    functionCall?: AIGenerateResponse['functionCall'];
-    toolCallId?: string;
-    thoughtSignature?: string;
+    functionCalls?: AIGenerateResponse['functionCalls'];
   }>;
 
   private async generateContentText(
@@ -395,9 +391,7 @@ export class GeminiProvider
   ): Promise<{
     text: string;
     usage?: AIGenerateResponse['usage'];
-    functionCall?: AIGenerateResponse['functionCall'];
-    toolCallId?: string;
-    thoughtSignature?: string;
+    functionCalls?: AIGenerateResponse['functionCalls'];
   }> {
     const config: Record<string, unknown> = {
       temperature: options?.temperature ?? 0.7,
@@ -432,47 +426,64 @@ export class GeminiProvider
     const out: {
       text: string;
       usage?: AIGenerateResponse['usage'];
-      functionCall?: AIGenerateResponse['functionCall'];
-      toolCallId?: string;
-      thoughtSignature?: string;
+      functionCalls?: AIGenerateResponse['functionCalls'];
     } = {
       text: text ?? '',
       usage: undefined,
     };
 
+    // Extract ALL function calls from the response.
     // Check response.functionCalls first (SDK shortcut), then fall back to checking parts directly.
     const sdkFunctionCalls = (
       response as { functionCalls?: Array<{ id?: string; name?: string; args?: Record<string, unknown> }> }
     ).functionCalls;
 
-    // Also check candidate parts for functionCall (fallback when SDK property is unavailable).
-    const partFunctionCall = candidate.content.parts.find(
+    // Also collect all functionCall parts from candidate (fallback + thoughtSignature source).
+    const partFunctionCalls = candidate.content.parts.filter(
       (p) => (p as { functionCall?: unknown }).functionCall != null,
-    ) as
-      | { functionCall?: { id?: string; name?: string; args?: Record<string, unknown> }; thoughtSignature?: string }
-      | undefined;
+    ) as Array<{
+      functionCall?: { id?: string; name?: string; args?: Record<string, unknown> };
+      thoughtSignature?: string;
+    }>;
 
-    const fc =
-      (Array.isArray(sdkFunctionCalls) && sdkFunctionCalls.length > 0 ? sdkFunctionCalls[0] : null) ??
-      partFunctionCall?.functionCall ??
-      null;
+    // Build a map of name→thoughtSignature from parts for lookup.
+    const thoughtSignatureByIndex = new Map<number, string>();
+    for (let i = 0; i < partFunctionCalls.length; i++) {
+      const sig = partFunctionCalls[i].thoughtSignature;
+      if (sig) {
+        thoughtSignatureByIndex.set(i, sig);
+      }
+    }
 
-    if (fc?.name) {
-      let argsStr: string;
-      if (typeof fc.args === 'object' && fc.args !== null) {
-        argsStr = JSON.stringify(fc.args);
-      } else if (typeof fc.args === 'string') {
-        argsStr = fc.args as string;
-      } else {
-        argsStr = '{}';
+    // Prefer SDK shortcut array; fall back to parts-based extraction.
+    const rawCalls =
+      Array.isArray(sdkFunctionCalls) && sdkFunctionCalls.length > 0
+        ? sdkFunctionCalls
+        : partFunctionCalls
+            .map((p) => p.functionCall)
+            .filter((fc): fc is { id?: string; name?: string; args?: Record<string, unknown> } => fc != null);
+
+    if (rawCalls.length > 0) {
+      out.functionCalls = [];
+      for (let i = 0; i < rawCalls.length; i++) {
+        const fc = rawCalls[i];
+        if (!fc?.name) continue;
+        let argsStr: string;
+        if (typeof fc.args === 'object' && fc.args !== null) {
+          argsStr = JSON.stringify(fc.args);
+        } else if (typeof fc.args === 'string') {
+          argsStr = fc.args as string;
+        } else {
+          argsStr = '{}';
+        }
+        out.functionCalls.push({
+          name: fc.name,
+          arguments: argsStr,
+          toolCallId: fc.id,
+          thoughtSignature: thoughtSignatureByIndex.get(i),
+        });
       }
-      out.functionCall = { name: fc.name, arguments: argsStr };
-      out.toolCallId = fc.id;
-      // Capture thoughtSignature from the part (required by Gemini thinking models).
-      if (partFunctionCall?.thoughtSignature) {
-        out.thoughtSignature = partFunctionCall.thoughtSignature;
-      }
-      // When returning a functionCall, clear text so caller can detect tool-use cleanly.
+      // When returning functionCalls, clear text so caller can detect tool-use cleanly.
       out.text = out.text || '';
     }
 
@@ -536,9 +547,7 @@ export class GeminiProvider
       return {
         text: result.text,
         usage: result.usage,
-        functionCall: result.functionCall,
-        toolCallId: result.toolCallId,
-        thoughtSignature: result.thoughtSignature,
+        functionCalls: result.functionCalls,
       };
     }
 
@@ -562,9 +571,7 @@ export class GeminiProvider
     return {
       text: result.text,
       usage: result.usage,
-      functionCall: result.functionCall,
-      toolCallId: result.toolCallId,
-      thoughtSignature: result.thoughtSignature,
+      functionCalls: result.functionCalls,
     };
   }
 

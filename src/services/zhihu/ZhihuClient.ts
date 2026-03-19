@@ -282,7 +282,10 @@ export class ZhihuClient {
         return (await response.json()) as T;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
-        logger.warn(`[ZhihuClient] Content request attempt ${attempt + 1}/${this.maxRetries} failed:`, lastError.message);
+        logger.warn(
+          `[ZhihuClient] Content request attempt ${attempt + 1}/${this.maxRetries} failed:`,
+          lastError.message,
+        );
 
         if (attempt < this.maxRetries - 1) {
           await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
