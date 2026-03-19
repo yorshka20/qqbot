@@ -3,6 +3,7 @@
 
 import { SubAgentType } from '@/agent/types';
 import type { AIService } from '@/ai/AIService';
+import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type {
   WeChatDatabase,
@@ -41,6 +42,7 @@ export class WechatCommandHandler implements CommandHandler {
     private readonly client: WeChatPadProClient,
     private readonly db: WeChatDatabase | null = null,
     private readonly aiService: AIService | null = null,
+    private readonly messageAPI: MessageAPI | null = null,
   ) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
@@ -299,8 +301,11 @@ export class WechatCommandHandler implements CommandHandler {
       protocol: context.metadata.protocol,
     };
 
-    try {
-      await this.aiService.spawnSubAgent(
+    // Fire-and-forget: runSubAgent spawns + executes + waits, then send result back
+    const messageAPI = this.messageAPI;
+    const cmdContext = context;
+    this.aiService
+      .runSubAgent(
         SubAgentType.TASK_EXECUTION,
         {
           description,
@@ -313,14 +318,25 @@ export class WechatCommandHandler implements CommandHandler {
           allowedTools: ['wechat_analyze_articles'],
           timeout: 600_000, // 10 min — analysis is slow
         },
-      );
+      )
+      .then(async () => {
+        logger.info(`[WechatCommandHandler] Article analysis subagent completed`);
+        if (messageAPI) {
+          await messageAPI.sendFromContext(
+            `文章分析完成，共分析 ${n} 篇文章。可在 WebUI 的「文章洞察」页面查看结果。`,
+            cmdContext,
+          );
+        }
+      })
+      .catch(async (err) => {
+        logger.error('[WechatCommandHandler] Article analysis subagent failed:', err);
+        if (messageAPI) {
+          const msg = err instanceof Error ? err.message : String(err);
+          await messageAPI.sendFromContext(`文章分析任务失败: ${msg}`, cmdContext);
+        }
+      });
 
-      return ok(`文章分析任务已启动，将分析最多 ${n} 篇未处理文章。\n分析过程在后台运行，请稍后查看结果。`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.error('[WechatCommandHandler] handleAnalyze error:', err);
-      return { success: false, error: `启动分析任务失败: ${msg}` };
-    }
+    return ok(`文章分析任务已启动，将分析最多 ${n} 篇未处理文章。\n分析过程在后台运行，请稍后查看结果。`);
   }
 
   private async handleHistory(count: number): Promise<CommandResult> {

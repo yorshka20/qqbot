@@ -188,7 +188,7 @@ export class WeChatIngestPlugin extends PluginBase {
       } catch {
         logger.warn('[WeChatIngestPlugin] AIService not available — /wechat analyze disabled');
       }
-      const cmdHandler = new WechatCommandHandler(padProClient, this.db, aiService);
+      const cmdHandler = new WechatCommandHandler(padProClient, this.db, aiService, this.messageAPI);
       this.commandManager.register(cmdHandler, this.name);
       logger.info('[WeChatIngestPlugin] Registered /wechat command');
     } else {
