@@ -69,7 +69,7 @@ function parseCharsetFromContentType(contentType: string): string | null {
  * Fetch HTML for crawler: Accept text/html, respect Content-Type, decode with charset.
  * Returns decoded HTML string or null on non-HTML, error, or timeout.
  */
-async function fetchHtmlForCrawler(
+export async function fetchHtmlForCrawler(
   url: string,
   options: { timeoutMs: number; headers: Record<string, string> },
 ): Promise<string | null> {
@@ -221,7 +221,7 @@ function extractVideoDescription(html: string, url: string, selectors: Record<st
 /**
  * Extract main article content: Readability on a clone (non-mutating), then fallback with stripped body.
  */
-function extractArticleContent(html: string, url: string): { title: string; textContent: string } {
+export function extractArticleContent(html: string, url: string): { title: string; textContent: string } {
   const dom = new JSDOM(html, { url });
   const doc = dom.window.document;
 

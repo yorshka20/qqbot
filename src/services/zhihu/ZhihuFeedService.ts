@@ -165,6 +165,30 @@ export class ZhihuFeedService {
   }
 
   private async fetchAnswerContent(item: ZhihuContentItem): Promise<ZhihuContentRecord | null> {
+    // Strategy 1: Fetch web page HTML and extract with Readability
+    const pageContent = await this.client.fetchContentViaPage(item.url);
+    if (pageContent) {
+      logger.info(`[ZhihuFeedService] Page fetch succeeded for answer ${item.targetId} (${pageContent.length} chars)`);
+      return {
+        targetType: 'answer',
+        targetId: item.targetId,
+        title: item.title,
+        url: item.url,
+        authorName: item.authorName,
+        authorUrlToken: item.authorUrlToken,
+        authorAvatarUrl: item.authorAvatarUrl,
+        content: pageContent,
+        excerpt: item.excerpt,
+        voteupCount: item.voteupCount,
+        commentCount: item.commentCount,
+        questionId: undefined, // not available from page fetch
+        questionTitle: undefined,
+        createdTime: item.createdTime,
+        fetchedAt: new Date().toISOString(),
+      };
+    }
+
+    // Strategy 2: Try API (may 403 but worth attempting)
     try {
       const answer = await this.client.fetchAnswerContent(item.targetId);
       if (answer?.content) {
@@ -187,17 +211,38 @@ export class ZhihuFeedService {
         };
       }
     } catch (err) {
-      logger.warn(`[ZhihuFeedService] API fetch failed for answer ${item.targetId}, trying feed content fallback:`, {
+      logger.warn(`[ZhihuFeedService] API fetch also failed for answer ${item.targetId}:`, {
         message: err instanceof Error ? err.message : err,
-        targetId: item.targetId,
       });
     }
 
-    // Fallback: use content from the feed response
+    // Strategy 3: use content from the feed response
     return this.buildRecordFromFeedContent(item);
   }
 
   private async fetchArticleContent(item: ZhihuContentItem): Promise<ZhihuContentRecord | null> {
+    // Strategy 1: Fetch web page HTML and extract with Readability
+    const pageContent = await this.client.fetchContentViaPage(item.url);
+    if (pageContent) {
+      logger.info(`[ZhihuFeedService] Page fetch succeeded for article ${item.targetId} (${pageContent.length} chars)`);
+      return {
+        targetType: 'article',
+        targetId: item.targetId,
+        title: item.title,
+        url: item.url,
+        authorName: item.authorName,
+        authorUrlToken: item.authorUrlToken,
+        authorAvatarUrl: item.authorAvatarUrl,
+        content: pageContent,
+        excerpt: item.excerpt,
+        voteupCount: item.voteupCount,
+        commentCount: item.commentCount,
+        createdTime: item.createdTime,
+        fetchedAt: new Date().toISOString(),
+      };
+    }
+
+    // Strategy 2: Try API (may 403 but worth attempting)
     try {
       const article = await this.client.fetchArticleContent(item.targetId);
       if (article?.content) {
@@ -218,13 +263,12 @@ export class ZhihuFeedService {
         };
       }
     } catch (err) {
-      logger.warn(`[ZhihuFeedService] API fetch failed for article ${item.targetId}, trying feed content fallback:`, {
+      logger.warn(`[ZhihuFeedService] API fetch also failed for article ${item.targetId}:`, {
         message: err instanceof Error ? err.message : err,
-        targetId: item.targetId,
       });
     }
 
-    // Fallback: use content from the feed response
+    // Strategy 3: use content from the feed response
     return this.buildRecordFromFeedContent(item);
   }
 
