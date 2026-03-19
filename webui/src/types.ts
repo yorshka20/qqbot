@@ -111,3 +111,57 @@ export interface ReportDetailResponse {
   report: StructuredReport
   metadata: ReportMetadata
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Insight Types (Article Analysis)
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface InsightListItem {
+  articleMsgId: string
+  title: string
+  url: string
+  source: string
+  headline: string
+  categoryTags: string[]
+  worthReporting: boolean
+  analyzedAt: string
+  model: string
+  itemCount: number
+}
+
+export interface InsightDetail {
+  articleMsgId: string
+  title: string
+  url: string
+  source: string
+  headline: string
+  categoryTags: string[]
+  items: Array<{
+    type: string
+    content: string
+    tags: string[]
+    importance: string
+  }>
+  worthReporting: boolean
+  analyzedAt: string
+  model: string
+}
+
+export interface InsightStats {
+  total: number
+  worthReporting: number
+  notWorth: number
+  byCategory: Array<{ tag: string; count: number }>
+}
+
+export interface InsightListResponse {
+  insights: InsightListItem[]
+}
+
+export interface InsightDetailResponse {
+  insight: InsightDetail
+}
+
+export interface InsightStatsResponse {
+  stats: InsightStats
+}

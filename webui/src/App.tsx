@@ -6,33 +6,33 @@
  * - ReportsPage: WeChat report viewing
  */
 
-import { FileText, Moon, Sun } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { FileText, Lightbulb, Moon, Sun } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 
-import { FilesPage, ReportsPage } from './pages'
-import { type Route, isActivePage, parseHash, setHash } from './router'
+import { FilesPage, InsightsPage, ReportsPage } from './pages';
+import { isActivePage, parseHash, type Route, setHash } from './router';
 
 export default function App() {
-  const [route, setRoute] = useState<Route>(parseHash)
+  const [route, setRoute] = useState<Route>(parseHash);
 
   // Listen for hash changes (back/forward navigation)
   useEffect(() => {
-    const handleHashChange = () => setRoute(parseHash())
-    window.addEventListener('hashchange', handleHashChange)
-    return () => window.removeEventListener('hashchange', handleHashChange)
-  }, [])
+    const handleHashChange = () => setRoute(parseHash());
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   const navigate = useCallback((newRoute: Route) => {
-    setRoute(newRoute)
-    setHash(newRoute)
-  }, [])
+    setRoute(newRoute);
+    setHash(newRoute);
+  }, []);
 
   // Dark mode persistence
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') === 'true')
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') === 'true');
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', darkMode)
-    localStorage.setItem('darkMode', String(darkMode))
-  }, [darkMode])
+    document.documentElement.classList.toggle('dark', darkMode);
+    localStorage.setItem('darkMode', String(darkMode));
+  }, [darkMode]);
 
   return (
     <div className="h-screen overflow-hidden flex flex-col bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
@@ -64,6 +64,18 @@ export default function App() {
               <FileText className="w-4 h-4" />
               微信报告
             </button>
+            <button
+              type="button"
+              onClick={() => navigate({ page: 'insights' })}
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+                isActivePage(route, 'insights')
+                  ? 'bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+              }`}
+            >
+              <Lightbulb className="w-4 h-4" />
+              文章洞察
+            </button>
           </nav>
 
           <div className="flex-1" />
@@ -89,6 +101,7 @@ export default function App() {
           onBack={() => navigate({ page: 'reports' })}
         />
       )}
+      {route.page === 'insights' && <InsightsPage />}
     </div>
-  )
+  );
 }

@@ -1,4 +1,4 @@
-// WeChatArticleAnalysisService — fetches today's articles, runs LLM analysis via LLMService,
+// WeChatArticleAnalysisService — fetches unanalyzed articles, runs LLM analysis via deepseek/doubao,
 // and stores extracted insights into wechat_article_insights table.
 
 import { readFileSync } from 'node:fs';
@@ -12,8 +12,11 @@ import type { WeChatDatabase, WeChatOAArticleRow } from './WeChatDatabase';
 // Types
 // ────────────────────────────────────────────────────────────────────────────
 
+/** Allowed providers for article analysis (cost-controlled). */
+const ALLOWED_PROVIDERS = ['deepseek', 'doubao'] as const;
+
 export interface ArticleAnalysisConfig {
-  /** Provider name to use for analysis (e.g. "ollama"). Default: "ollama" */
+  /** Provider name to use for analysis. Default: "deepseek". Only "deepseek" and "doubao" are allowed. */
   provider?: string;
   /** Path to prompt template file (default "prompts/analysis/wechat_article.txt") */
   promptPath?: string;
@@ -52,7 +55,10 @@ export class WeChatArticleAnalysisService {
     private llmService: LLMService,
     private config: ArticleAnalysisConfig,
   ) {
-    this.provider = config.provider ?? 'ollama';
+    const requestedProvider = config.provider ?? 'deepseek';
+    this.provider = ALLOWED_PROVIDERS.includes(requestedProvider as (typeof ALLOWED_PROVIDERS)[number])
+      ? requestedProvider
+      : 'deepseek';
     this.maxArticles = config.maxArticles ?? 100;
     this.concurrency = config.concurrency ?? 1;
 
@@ -89,20 +95,9 @@ export class WeChatArticleAnalysisService {
 
     logger.info(`[ArticleAnalysis] Found ${articles.length} unanalyzed articles to process`);
 
-    // 2. Log which provider will be used (LLMService handles fallback internally)
-    const provider = await this.llmService.getAvailableProvider(this.provider);
-    const resolvedName = provider && 'name' in provider ? (provider as { name: string }).name : 'default';
-    if (!provider) {
-      logger.warn(`[ArticleAnalysis] Provider "${this.provider}" not available, LLMService will use fallback`);
-    } else if (resolvedName !== this.provider) {
-      logger.warn(
-        `[ArticleAnalysis] Requested provider "${this.provider}" resolved to "${resolvedName}" (fallback)`,
-      );
-    } else {
-      logger.info(`[ArticleAnalysis] Using provider: ${resolvedName}`);
-    }
+    logger.info(`[ArticleAnalysis] Primary provider: ${this.provider}, fallback: ${this.provider === 'deepseek' ? 'doubao' : 'deepseek'}`);
 
-    // 3. Analyze in batches with concurrency control
+    // 2. Analyze in batches with concurrency control
     let analyzed = 0;
     let worthReporting = 0;
     let failed = 0;
@@ -198,22 +193,35 @@ export class WeChatArticleAnalysisService {
 
   /**
    * Call LLM via LLMService and parse JSON response.
+   * Fallback is restricted to ALLOWED_PROVIDERS only (deepseek / doubao).
    */
   private async callLLM(prompt: string, title: string): Promise<AnalysisResult | null> {
-    try {
-      const response = await this.llmService.generate(prompt, { temperature: 0.3, maxTokens: 2048 }, this.provider);
+    const fallbackProvider = this.provider === 'deepseek' ? 'doubao' : 'deepseek';
 
-      const text = response.text?.trim();
-      if (!text) {
-        logger.warn(`[ArticleAnalysis] Empty response for "${title}"`);
-        return null;
+    for (const providerName of [this.provider, fallbackProvider]) {
+      try {
+        const provider = await this.llmService.getAvailableProvider(providerName);
+        if (!provider) {
+          logger.warn(`[ArticleAnalysis] Provider "${providerName}" not available, skipping`);
+          continue;
+        }
+
+        const response = await provider.generate(prompt, { temperature: 0.3, maxTokens: 2048 });
+        const text = response.text?.trim();
+        if (!text) {
+          logger.warn(`[ArticleAnalysis] Empty response from "${providerName}" for "${title}"`);
+          continue;
+        }
+
+        return this.parseJSON(text, title);
+      } catch (err) {
+        logger.warn(`[ArticleAnalysis] Provider "${providerName}" failed for "${title}":`, err);
+        // try fallback
       }
-
-      return this.parseJSON(text, title);
-    } catch (err) {
-      logger.error(`[ArticleAnalysis] LLM error for "${title}":`, err);
-      throw err;
     }
+
+    logger.error(`[ArticleAnalysis] All allowed providers failed for "${title}"`);
+    throw new Error(`All allowed providers (${ALLOWED_PROVIDERS.join(', ')}) failed for "${title}"`);
   }
 
   /**

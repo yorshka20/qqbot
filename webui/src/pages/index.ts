@@ -3,4 +3,5 @@
  */
 
 export { FilesPage } from './FilesPage'
+export { InsightsPage } from './InsightsPage'
 export { ReportsPage } from './ReportsPage'

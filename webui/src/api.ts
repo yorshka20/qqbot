@@ -1,5 +1,12 @@
-import { getFileApiBase, getReportApiBase } from './config'
-import type { ListResponse, ReportDetailResponse, ReportListResponse } from './types'
+import { getFileApiBase, getInsightsApiBase, getReportApiBase } from './config'
+import type {
+  InsightDetailResponse,
+  InsightListResponse,
+  InsightStatsResponse,
+  ListResponse,
+  ReportDetailResponse,
+  ReportListResponse,
+} from './types'
 
 function apiBase(): string {
   return getFileApiBase()
@@ -76,4 +83,41 @@ export async function getReport(id: string): Promise<ReportDetailResponse> {
     throw new Error(err.error ?? `Get report failed: ${res.status}`)
   }
   return res.json() as Promise<ReportDetailResponse>
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Insights API
+// ────────────────────────────────────────────────────────────────────────────
+
+function insightsApiBase(): string {
+  return getInsightsApiBase()
+}
+
+export async function listInsights(worthOnly = false): Promise<InsightListResponse> {
+  const params = new URLSearchParams()
+  if (!worthOnly) params.set('worthOnly', 'false')
+  const res = await fetch(`${insightsApiBase()}/list?${params}`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `List insights failed: ${res.status}`)
+  }
+  return res.json() as Promise<InsightListResponse>
+}
+
+export async function getInsight(articleMsgId: string): Promise<InsightDetailResponse> {
+  const res = await fetch(`${insightsApiBase()}/${encodeURIComponent(articleMsgId)}`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get insight failed: ${res.status}`)
+  }
+  return res.json() as Promise<InsightDetailResponse>
+}
+
+export async function getInsightStats(): Promise<InsightStatsResponse> {
+  const res = await fetch(`${insightsApiBase()}/stats`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get insight stats failed: ${res.status}`)
+  }
+  return res.json() as Promise<InsightStatsResponse>
 }

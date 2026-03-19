@@ -12,6 +12,7 @@ import { serve } from 'bun';
 import type { StaticServerConfig } from '@/core/config/types/bot';
 import { logger } from '@/utils/logger';
 import { FileManagerBackend } from './FileManagerBackend';
+import { InsightsBackend } from './InsightsBackend';
 import { OutputStaticHost } from './OutputStaticHost';
 import { ReportBackend } from './ReportBackend';
 
@@ -71,6 +72,7 @@ export class StaticFileServer implements StaticFileServerInstance {
   // Backends
   private readonly fileManager: FileManagerBackend;
   private readonly reportBackend: ReportBackend;
+  private readonly insightsBackend: InsightsBackend;
   private readonly outputHost: OutputStaticHost;
 
   // Routes (evaluated in order)
@@ -84,6 +86,7 @@ export class StaticFileServer implements StaticFileServerInstance {
     // Initialize backends
     this.fileManager = new FileManagerBackend(this.baseDir);
     this.reportBackend = new ReportBackend();
+    this.insightsBackend = new InsightsBackend();
     this.outputHost = new OutputStaticHost(this.baseDir);
 
     // Define routes (order matters: more specific prefixes first)
@@ -96,6 +99,11 @@ export class StaticFileServer implements StaticFileServerInstance {
       {
         prefix: '/api/reports',
         handler: (req, url) => this.reportBackend.handle(url.pathname, req),
+        corsEnabled: true,
+      },
+      {
+        prefix: '/api/insights',
+        handler: (req, url) => this.insightsBackend.handle(url.pathname, req),
         corsEnabled: true,
       },
       {

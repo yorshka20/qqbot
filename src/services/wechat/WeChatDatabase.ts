@@ -726,6 +726,18 @@ export class WeChatDatabase {
     return this.db.query<WeChatArticleInsightRow, (string | number)[]>(sql).all(...params);
   }
 
+  /** Get a single article insight by articleMsgId. */
+  getArticleInsightById(articleMsgId: string): WeChatArticleInsightRow | null {
+    if (!this.db) return null;
+    return (
+      this.db
+        .query<WeChatArticleInsightRow, [string]>(
+          `SELECT * FROM wechat_article_insights WHERE articleMsgId = ?`,
+        )
+        .get(articleMsgId) ?? null
+    );
+  }
+
   /** Get article msgIds that already have insights (for skipping re-analysis). */
   getAnalyzedArticleIds(sinceTs?: number): Set<string> {
     if (!this.db) return new Set();

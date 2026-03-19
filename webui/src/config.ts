@@ -36,3 +36,9 @@ export function getReportApiBase(): string {
   const serverBase = getStaticServerBase();
   return serverBase ? `${serverBase}/api/reports` : '/api/reports';
 }
+
+/** Base URL for insights API requests. */
+export function getInsightsApiBase(): string {
+  const serverBase = getStaticServerBase();
+  return serverBase ? `${serverBase}/api/insights` : '/api/insights';
+}
