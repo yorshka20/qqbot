@@ -253,6 +253,16 @@ export class WeChatDatabase {
     return row?.nickName ?? null;
   }
 
+  /** Get group name + updatedAt for staleness check. Returns null if not cached. */
+  getGroupWithTimestamp(conversationId: string): { nickName: string; updatedAt: string } | null {
+    if (!this.db) return null;
+    return this.db
+      .query<{ nickName: string; updatedAt: string }, [string]>(
+        `SELECT nickName, updatedAt FROM wechat_groups WHERE conversationId = ?`,
+      )
+      .get(conversationId) ?? null;
+  }
+
   /** Get all cached groups. */
   getAllGroups(): WeChatGroupRow[] {
     if (!this.db) return [];

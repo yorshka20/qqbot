@@ -73,16 +73,22 @@ export class WeChatIngestPlugin extends PluginBase {
       });
     }
 
-    // Group name resolver: DB first, lazy-fetch from PadPro on cache miss
+    // Group name resolver: DB first, lazy-fetch from PadPro on cache miss (max once per week)
     const db = this.db;
     const padproClient = padProClient;
+    const GROUP_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
     const resolveGroupName = async (convId: string): Promise<string | null> => {
-      // 1. Try DB cache
-      const cached = db.getGroupName(convId);
-      if (cached) return cached;
+      // 1. Try DB cache with staleness check
+      const cached = db.getGroupWithTimestamp(convId);
+      if (cached) {
+        const age = Date.now() - new Date(cached.updatedAt).getTime();
+        if (age < GROUP_CACHE_TTL_MS) return cached.nickName;
+        // Stale — fall through to refresh
+        logger.debug(`[WeChatIngestPlugin] Group cache stale for ${convId} (age=${Math.round(age / 86400000)}d)`);
+      }
 
-      // 2. No PadPro client — nothing we can do
-      if (!padproClient) return null;
+      // 2. No PadPro client — return stale name if available, otherwise null
+      if (!padproClient) return cached?.nickName ?? null;
 
       // 3. Fetch from PadPro API and persist to DB
       const chatroomId = convId.endsWith('@chatroom') ? convId : `${convId}@chatroom`;
@@ -119,7 +125,7 @@ export class WeChatIngestPlugin extends PluginBase {
       } catch (err) {
         logger.warn(`[WeChatIngestPlugin] Failed to fetch group info for ${chatroomId}:`, err);
       }
-      return null;
+      return cached?.nickName ?? null;
     };
 
     // CDN image downloader via PadPro API
