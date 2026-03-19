@@ -330,6 +330,19 @@ export class ZhihuDatabase {
     return new Set(rows.map((r) => r.targetId));
   }
 
+  /** Get feed items that have content-bearing types (article/answer) but no corresponding content record. */
+  getFeedItemsMissingContent(limit = 50): ZhihuFeedItemRow[] {
+    if (!this.db) return [];
+    return this.db
+      .query<ZhihuFeedItemRow, [number]>(
+        `SELECT f.* FROM zhihu_feed_items f
+         LEFT JOIN zhihu_contents c ON f.targetType = c.targetType AND f.targetId = c.targetId
+         WHERE f.targetType IN ('article', 'answer') AND c.targetId IS NULL
+         ORDER BY f.createdTime DESC LIMIT ?`,
+      )
+      .all(limit);
+  }
+
   /** Get content stats grouped by targetType. */
   getContentStats(): Array<{ targetType: string; count: number }> {
     if (!this.db) return [];

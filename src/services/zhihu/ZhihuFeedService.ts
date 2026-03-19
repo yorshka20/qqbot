@@ -49,14 +49,18 @@ export class ZhihuFeedService {
       const newCount = this.db.insertItems(parsed);
       const duplicateCount = parsed.length - newCount;
 
-      // Collect unique targetIds that need content fetching
+      // Fetch content for newly parsed items
       const contentCount = await this.fetchContentForItems(parsed);
 
+      // Backfill content for existing feed items that are missing content
+      const backfillCount = await this.backfillMissingContent();
+
+      const totalContent = contentCount + backfillCount;
       logger.info(
-        `[ZhihuFeedService] Poll complete: ${feedItems.length} raw → ${parsed.length} parsed → ${newCount} new, ${duplicateCount} duplicates, ${contentCount} content fetched`,
+        `[ZhihuFeedService] Poll complete: ${feedItems.length} raw → ${parsed.length} parsed → ${newCount} new, ${duplicateCount} duplicates, ${totalContent} content fetched (${backfillCount} backfilled)`,
       );
 
-      return { newCount, duplicateCount, totalFetched: feedItems.length, contentCount };
+      return { newCount, duplicateCount, totalFetched: feedItems.length, contentCount: totalContent };
     } catch (err) {
       logger.error('[ZhihuFeedService] Poll failed:', err);
       return { newCount: 0, duplicateCount: 0, totalFetched: 0, contentCount: 0 };
@@ -105,6 +109,49 @@ export class ZhihuFeedService {
       }
     }
 
+    return fetched;
+  }
+
+  /** Backfill content for feed items that exist in DB but have no corresponding content record. */
+  private async backfillMissingContent(): Promise<number> {
+    const missing = this.db.getFeedItemsMissingContent();
+    if (missing.length === 0) return 0;
+
+    logger.info(`[ZhihuFeedService] Backfilling content for ${missing.length} feed items`);
+
+    let fetched = 0;
+    for (const row of missing) {
+      // Convert DB row to a minimal ZhihuContentItem for fetchAndFormatContent
+      const item: ZhihuContentItem = {
+        id: row.id,
+        feedId: row.feedId,
+        verb: row.verb,
+        targetType: row.targetType,
+        targetId: row.targetId,
+        title: row.title,
+        excerpt: row.excerpt,
+        url: row.url,
+        authorName: row.authorName,
+        authorUrlToken: row.authorUrlToken,
+        authorAvatarUrl: row.authorAvatarUrl ?? undefined,
+        voteupCount: row.voteupCount,
+        commentCount: row.commentCount,
+        actorNames: JSON.parse(row.actorNames || '[]'),
+        createdTime: row.createdTime,
+        fetchedAt: row.fetchedAt,
+        // No rawContent available for old items — API fetch only
+      };
+
+      const record = await this.fetchAndFormatContent(item);
+      if (record) {
+        this.db.upsertContent(record);
+        fetched++;
+      }
+    }
+
+    if (fetched > 0) {
+      logger.info(`[ZhihuFeedService] Backfilled ${fetched}/${missing.length} content records`);
+    }
     return fetched;
   }
 
