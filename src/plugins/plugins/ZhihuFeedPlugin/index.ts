@@ -5,6 +5,7 @@ import type { ScheduledTask } from 'node-cron';
 import { schedule } from 'node-cron';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { CommandManager } from '@/command/CommandManager';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -19,13 +20,15 @@ import { ZhihuFeedService } from '@/services/zhihu/ZhihuFeedService';
 import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../../decorators';
 import { PluginBase } from '../../PluginBase';
+import { ZhihuCommandHandler } from './ZhihuCommandHandler';
 
 @RegisterPlugin({
   name: 'zhihuFeed',
-  version: '1.0.0',
-  description: 'Polls Zhihu feed (关注动态), stores to SQLite, and pushes digests to QQ groups',
+  version: '2.0.0',
+  description: 'Polls Zhihu feed (关注动态), stores to SQLite with full content, and pushes digests to QQ groups',
 })
 export class ZhihuFeedPlugin extends PluginBase {
+  private commandManager!: CommandManager;
   private db: ZhihuDatabase | null = null;
   private feedService: ZhihuFeedService | null = null;
   private digestService: ZhihuDigestService | null = null;
@@ -40,13 +43,14 @@ export class ZhihuFeedPlugin extends PluginBase {
     maxPagesPerPoll: DEFAULT_ZHIHU_CONFIG.maxPagesPerPoll as number,
     digestHoursBack: DEFAULT_ZHIHU_CONFIG.digestHoursBack as number,
     digestProvider: DEFAULT_ZHIHU_CONFIG.digestProvider as string,
-    topItemsToEnrich: DEFAULT_ZHIHU_CONFIG.topItemsToEnrich as number,
     verbFilter: [...DEFAULT_ZHIHU_CONFIG.verbFilter] as string[],
   };
 
   async onInit(): Promise<void> {
     const container = getContainer();
     const config = container.resolve<Config>(DITokens.CONFIG);
+
+    this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
 
     const raw = config.getPluginConfig('zhihuFeed') as ZhihuConfig | undefined;
     if (!raw?.cookie) {
@@ -62,7 +66,6 @@ export class ZhihuFeedPlugin extends PluginBase {
       maxPagesPerPoll: raw?.maxPagesPerPoll ?? DEFAULT_ZHIHU_CONFIG.maxPagesPerPoll,
       digestHoursBack: raw?.digestHoursBack ?? DEFAULT_ZHIHU_CONFIG.digestHoursBack,
       digestProvider: raw?.digestProvider ?? DEFAULT_ZHIHU_CONFIG.digestProvider,
-      topItemsToEnrich: raw?.topItemsToEnrich ?? DEFAULT_ZHIHU_CONFIG.topItemsToEnrich,
       verbFilter: raw?.verbFilter ?? [...DEFAULT_ZHIHU_CONFIG.verbFilter],
     };
 
@@ -97,10 +100,14 @@ export class ZhihuFeedPlugin extends PluginBase {
     this.digestService = new ZhihuDigestService(this.feedService, llmService, messageAPI, {
       digestProvider: this.resolvedConfig.digestProvider,
       digestHoursBack: this.resolvedConfig.digestHoursBack,
-      topItemsToEnrich: this.resolvedConfig.topItemsToEnrich,
       preferredProtocol,
     });
     container.registerInstance(ZhihuDITokens.ZHIHU_DIGEST_SERVICE, this.digestService);
+
+    // Register /zhihu command
+    const cmdHandler = new ZhihuCommandHandler(this.feedService, this.db);
+    this.commandManager.register(cmdHandler, this.name);
+    logger.info('[ZhihuFeedPlugin] Registered /zhihu command');
 
     logger.info('[ZhihuFeedPlugin] Initialized');
   }
@@ -114,8 +121,10 @@ export class ZhihuFeedPlugin extends PluginBase {
         try {
           const result = await this.feedService?.pollFeed();
           if (!result) return;
-          if (result.newCount > 0) {
-            logger.info(`[ZhihuFeedPlugin] Poll: ${result.newCount} new items`);
+          if (result.newCount > 0 || result.contentCount > 0) {
+            logger.info(
+              `[ZhihuFeedPlugin] Poll: ${result.newCount} new items, ${result.contentCount} content fetched`,
+            );
           }
         } catch (err) {
           logger.error('[ZhihuFeedPlugin] Poll cron error:', err);

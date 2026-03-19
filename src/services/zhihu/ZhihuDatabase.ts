@@ -1,11 +1,15 @@
-// Standalone SQLite persistence for Zhihu feed items
+// Standalone SQLite persistence for Zhihu feed items and content
 // Writes to data/zhihu.db — completely independent of the core DatabaseManager
+//
+// Two tables:
+//   zhihu_feed_items  — one row per feed event (vote, create, follow, etc.)
+//   zhihu_contents    — one row per unique article/answer (stores full content)
 
 import { Database } from 'bun:sqlite';
 import { mkdir, stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { logger } from '@/utils/logger';
-import type { ZhihuContentItem, ZhihuFeedItemRow } from './types';
+import type { ZhihuContentItem, ZhihuContentRecord, ZhihuContentRow, ZhihuFeedItemRow } from './types';
 
 export class ZhihuDatabase {
   private db: Database | null = null;
@@ -49,10 +53,10 @@ export class ZhihuDatabase {
       const now = new Date().toISOString();
       const result = this.db
         .query(`INSERT OR IGNORE INTO zhihu_feed_items
-          (id, feedId, verb, targetType, targetId, title, excerpt, content, url,
+          (id, feedId, verb, targetType, targetId, title, excerpt, url,
            authorName, authorUrlToken, authorAvatarUrl, voteupCount, commentCount,
            actorNames, createdTime, fetchedAt, createdAt, updatedAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(
           item.id,
           item.feedId,
@@ -61,7 +65,6 @@ export class ZhihuDatabase {
           item.targetId,
           item.title,
           item.excerpt,
-          item.content ?? null,
           item.url,
           item.authorName,
           item.authorUrlToken,
@@ -88,6 +91,65 @@ export class ZhihuDatabase {
       if (this.insertItem(item)) count++;
     }
     return count;
+  }
+
+  // ──────────────────────────────────────────────────
+  // Write — contents
+  // ──────────────────────────────────────────────────
+
+  /** Upsert a content record (article/answer). Updates if already exists. */
+  upsertContent(record: ZhihuContentRecord): boolean {
+    if (!this.db) return false;
+    try {
+      const now = new Date().toISOString();
+      const result = this.db
+        .query(`INSERT INTO zhihu_contents
+          (targetType, targetId, title, url, authorName, authorUrlToken, authorAvatarUrl,
+           content, excerpt, voteupCount, commentCount, questionId, questionTitle,
+           createdTime, fetchedAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(targetType, targetId) DO UPDATE SET
+            title = excluded.title,
+            content = excluded.content,
+            excerpt = excluded.excerpt,
+            voteupCount = excluded.voteupCount,
+            commentCount = excluded.commentCount,
+            authorAvatarUrl = excluded.authorAvatarUrl,
+            updatedAt = excluded.updatedAt`)
+        .run(
+          record.targetType,
+          record.targetId,
+          record.title,
+          record.url,
+          record.authorName,
+          record.authorUrlToken,
+          record.authorAvatarUrl ?? null,
+          record.content,
+          record.excerpt,
+          record.voteupCount,
+          record.commentCount,
+          record.questionId ?? null,
+          record.questionTitle ?? null,
+          record.createdTime,
+          record.fetchedAt,
+          now,
+        );
+      return (result as unknown as { changes: number }).changes > 0;
+    } catch (err) {
+      logger.error('[ZhihuDatabase] upsertContent error:', err);
+      return false;
+    }
+  }
+
+  /** Check if content already exists for a given target. */
+  hasContent(targetType: string, targetId: number): boolean {
+    if (!this.db) return false;
+    const row = this.db
+      .query<{ n: number }, [string, number]>(
+        'SELECT COUNT(*) as n FROM zhihu_contents WHERE targetType = ? AND targetId = ?',
+      )
+      .get(targetType, targetId);
+    return (row?.n ?? 0) > 0;
   }
 
   // ──────────────────────────────────────────────────
@@ -180,13 +242,102 @@ export class ZhihuDatabase {
       .all();
   }
 
-  /** Update content for an item (for enrichment). */
-  updateContent(itemId: string, content: string): void {
-    if (!this.db) return;
-    const now = new Date().toISOString();
-    this.db
-      .query<void, [string, string, string]>('UPDATE zhihu_feed_items SET content = ?, updatedAt = ? WHERE id = ?')
-      .run(content, now, itemId);
+  // ──────────────────────────────────────────────────
+  // Read — contents
+  // ──────────────────────────────────────────────────
+
+  /** Get content by targetType + targetId. */
+  getContent(targetType: string, targetId: number): ZhihuContentRow | null {
+    if (!this.db) return null;
+    return (
+      this.db
+        .query<ZhihuContentRow, [string, number]>(
+          'SELECT * FROM zhihu_contents WHERE targetType = ? AND targetId = ?',
+        )
+        .get(targetType, targetId) ?? null
+    );
+  }
+
+  /** Get recent contents, optionally filtered by targetType. */
+  getRecentContents(limit = 20, targetType?: string): ZhihuContentRow[] {
+    if (!this.db) return [];
+    if (targetType) {
+      return this.db
+        .query<ZhihuContentRow, [string, number]>(
+          'SELECT * FROM zhihu_contents WHERE targetType = ? ORDER BY createdTime DESC LIMIT ?',
+        )
+        .all(targetType, limit);
+    }
+    return this.db
+      .query<ZhihuContentRow, [number]>('SELECT * FROM zhihu_contents ORDER BY createdTime DESC LIMIT ?')
+      .all(limit);
+  }
+
+  /** Search contents by title keyword. */
+  searchContents(keyword: string, limit = 50): ZhihuContentRow[] {
+    if (!this.db) return [];
+    const pattern = `%${keyword}%`;
+    return this.db
+      .query<ZhihuContentRow, [string, string, number]>(
+        `SELECT * FROM zhihu_contents
+         WHERE title LIKE ? OR excerpt LIKE ?
+         ORDER BY createdTime DESC LIMIT ?`,
+      )
+      .all(pattern, pattern, limit);
+  }
+
+  /** Get contents since a timestamp. */
+  getContentsSince(sinceTs: number, limit = 500, targetType?: string): ZhihuContentRow[] {
+    if (!this.db) return [];
+    if (targetType) {
+      return this.db
+        .query<ZhihuContentRow, [number, string, number]>(
+          'SELECT * FROM zhihu_contents WHERE createdTime >= ? AND targetType = ? ORDER BY createdTime DESC LIMIT ?',
+        )
+        .all(sinceTs, targetType, limit);
+    }
+    return this.db
+      .query<ZhihuContentRow, [number, number]>(
+        'SELECT * FROM zhihu_contents WHERE createdTime >= ? ORDER BY createdTime DESC LIMIT ?',
+      )
+      .all(sinceTs, limit);
+  }
+
+  /** Get total content count. */
+  getContentCount(targetType?: string): number {
+    if (!this.db) return 0;
+    if (targetType) {
+      const row = this.db
+        .query<{ n: number }, [string]>('SELECT COUNT(*) as n FROM zhihu_contents WHERE targetType = ?')
+        .get(targetType);
+      return row?.n ?? 0;
+    }
+    const row = this.db.query<{ n: number }, []>('SELECT COUNT(*) as n FROM zhihu_contents').get();
+    return row?.n ?? 0;
+  }
+
+  /** Get unique targetIds that already have content (for dedup during poll). */
+  getExistingContentIds(targetType: string, targetIds: number[]): Set<number> {
+    if (!this.db || targetIds.length === 0) return new Set();
+    // For small batches, use IN clause
+    const placeholders = targetIds.map(() => '?').join(',');
+    const params: (string | number)[] = [targetType, ...targetIds];
+    const rows = this.db
+      .query<{ targetId: number }, (string | number)[]>(
+        `SELECT targetId FROM zhihu_contents WHERE targetType = ? AND targetId IN (${placeholders})`,
+      )
+      .all(...params);
+    return new Set(rows.map((r) => r.targetId));
+  }
+
+  /** Get content stats grouped by targetType. */
+  getContentStats(): Array<{ targetType: string; count: number }> {
+    if (!this.db) return [];
+    return this.db
+      .query<{ targetType: string; count: number }, []>(
+        'SELECT targetType, COUNT(*) as count FROM zhihu_contents GROUP BY targetType ORDER BY count DESC',
+      )
+      .all();
   }
 
   // ──────────────────────────────────────────────────
@@ -196,6 +347,7 @@ export class ZhihuDatabase {
   private migrate(): void {
     if (!this.db) return;
 
+    // Feed events table (no content column — content is in zhihu_contents)
     this.db.run(`
       CREATE TABLE IF NOT EXISTS zhihu_feed_items (
         id              TEXT PRIMARY KEY,
@@ -205,7 +357,6 @@ export class ZhihuDatabase {
         targetId        INTEGER NOT NULL,
         title           TEXT    NOT NULL,
         excerpt         TEXT    NOT NULL DEFAULT '',
-        content         TEXT,
         url             TEXT    NOT NULL,
         authorName      TEXT    NOT NULL DEFAULT '',
         authorUrlToken  TEXT    NOT NULL DEFAULT '',
@@ -224,6 +375,35 @@ export class ZhihuDatabase {
     this.db.run('CREATE INDEX IF NOT EXISTS idx_zhihu_feed_verb ON zhihu_feed_items(verb)');
     this.db.run('CREATE INDEX IF NOT EXISTS idx_zhihu_feed_digestedAt ON zhihu_feed_items(digestedAt)');
     this.db.run('CREATE INDEX IF NOT EXISTS idx_zhihu_feed_targetId ON zhihu_feed_items(targetType, targetId)');
+
+    // Content table — one row per unique article/answer
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS zhihu_contents (
+        targetType      TEXT    NOT NULL,
+        targetId        INTEGER NOT NULL,
+        title           TEXT    NOT NULL,
+        url             TEXT    NOT NULL,
+        authorName      TEXT    NOT NULL DEFAULT '',
+        authorUrlToken  TEXT    NOT NULL DEFAULT '',
+        authorAvatarUrl TEXT,
+        content         TEXT    NOT NULL DEFAULT '',
+        excerpt         TEXT    NOT NULL DEFAULT '',
+        voteupCount     INTEGER NOT NULL DEFAULT 0,
+        commentCount    INTEGER NOT NULL DEFAULT 0,
+        questionId      INTEGER,
+        questionTitle   TEXT,
+        createdTime     INTEGER NOT NULL,
+        fetchedAt       TEXT    NOT NULL,
+        updatedAt       TEXT    NOT NULL,
+        PRIMARY KEY (targetType, targetId)
+      )
+    `);
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_zhihu_contents_createdTime ON zhihu_contents(createdTime)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_zhihu_contents_targetType ON zhihu_contents(targetType)');
+
+    // Migration: drop old 'content' column from feed_items if it exists
+    // SQLite doesn't support DROP COLUMN before 3.35.0, but we can just leave it
+    // The column won't be populated going forward — new data uses zhihu_contents
 
     logger.debug('[ZhihuDatabase] Schema ready');
   }

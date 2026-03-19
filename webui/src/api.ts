@@ -1,4 +1,4 @@
-import { getFileApiBase, getInsightsApiBase, getReportApiBase } from './config'
+import { getFileApiBase, getInsightsApiBase, getReportApiBase, getZhihuApiBase } from './config'
 import type {
   InsightDetailResponse,
   InsightListResponse,
@@ -6,6 +6,9 @@ import type {
   ListResponse,
   ReportDetailResponse,
   ReportListResponse,
+  ZhihuContentDetailResponse,
+  ZhihuContentsResponse,
+  ZhihuStatsResponse,
 } from './types'
 
 function apiBase(): string {
@@ -120,4 +123,52 @@ export async function getInsightStats(): Promise<InsightStatsResponse> {
     throw new Error(err.error ?? `Get insight stats failed: ${res.status}`)
   }
   return res.json() as Promise<InsightStatsResponse>
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Zhihu API
+// ────────────────────────────────────────────────────────────────────────────
+
+function zhihuApiBase(): string {
+  return getZhihuApiBase()
+}
+
+export async function listZhihuContents(opts?: {
+  type?: string
+  sinceTs?: number
+  keyword?: string
+  limit?: number
+}): Promise<ZhihuContentsResponse> {
+  const params = new URLSearchParams()
+  if (opts?.type) params.set('type', opts.type)
+  if (opts?.sinceTs) params.set('sinceTs', String(opts.sinceTs))
+  if (opts?.keyword) params.set('keyword', opts.keyword)
+  if (opts?.limit) params.set('limit', String(opts.limit))
+  const res = await fetch(`${zhihuApiBase()}/contents?${params}`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `List zhihu contents failed: ${res.status}`)
+  }
+  return res.json() as Promise<ZhihuContentsResponse>
+}
+
+export async function getZhihuContent(
+  targetType: string,
+  targetId: number,
+): Promise<ZhihuContentDetailResponse> {
+  const res = await fetch(`${zhihuApiBase()}/content/${targetType}/${targetId}`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get zhihu content failed: ${res.status}`)
+  }
+  return res.json() as Promise<ZhihuContentDetailResponse>
+}
+
+export async function getZhihuStats(): Promise<ZhihuStatsResponse> {
+  const res = await fetch(`${zhihuApiBase()}/stats`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get zhihu stats failed: ${res.status}`)
+  }
+  return res.json() as Promise<ZhihuStatsResponse>
 }

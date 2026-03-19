@@ -10,14 +10,12 @@ import type { ZhihuFeedService } from './ZhihuFeedService';
 export interface ZhihuDigestServiceConfig {
   digestProvider?: string;
   digestHoursBack?: number;
-  topItemsToEnrich?: number;
   preferredProtocol?: string;
 }
 
 export class ZhihuDigestService {
   private digestProvider: string;
   private digestHoursBack: number;
-  private topItemsToEnrich: number;
   private preferredProtocol: string;
 
   constructor(
@@ -28,7 +26,6 @@ export class ZhihuDigestService {
   ) {
     this.digestProvider = config?.digestProvider ?? 'deepseek';
     this.digestHoursBack = config?.digestHoursBack ?? 12;
-    this.topItemsToEnrich = config?.topItemsToEnrich ?? 3;
     this.preferredProtocol = config?.preferredProtocol ?? 'milky';
     logger.info('[ZhihuDigestService] Initialized');
   }
@@ -48,13 +45,10 @@ export class ZhihuDigestService {
       return;
     }
 
-    // Enrich top items with full content
-    await this.feedService.enrichTopItems(items, this.topItemsToEnrich);
-    // Re-fetch after enrichment
-    const enrichedItems = this.feedService.getUndigestedSince(sinceTs);
+    // Content is already fetched during poll — no need to enrich here
 
     // Generate digest text
-    const digestText = await this.generateDigestText(enrichedItems, hours);
+    const digestText = await this.generateDigestText(items, hours);
     if (!digestText) {
       logger.warn('[ZhihuDigestService] Failed to generate digest text');
       return;
@@ -64,7 +58,7 @@ export class ZhihuDigestService {
     await this.sendToGroup(groupId, digestText);
 
     // Mark items as digested
-    const itemIds = enrichedItems.map((i) => i.id);
+    const itemIds = items.map((i) => i.id);
     this.feedService.markDigested(itemIds);
     logger.info(`[ZhihuDigestService] Digest pushed to group ${groupId}, ${itemIds.length} items marked`);
   }
@@ -98,7 +92,13 @@ export class ZhihuDigestService {
 
     const itemLines = items.map((item) => {
       const verbLabel = this.getVerbLabel(item.verb);
-      const excerpt = item.excerpt ? item.excerpt.slice(0, 200) : '';
+      // Try to get richer content from content table
+      const contentRow = this.feedService.getContent(item.targetType, item.targetId);
+      const excerpt = contentRow?.content
+        ? contentRow.content.slice(0, 400)
+        : item.excerpt
+          ? item.excerpt.slice(0, 200)
+          : '';
       return `- [${verbLabel}] ${item.title} — ${item.authorName}\n  赞同: ${item.voteupCount} | 评论: ${item.commentCount}\n  摘要: ${excerpt}\n  链接: ${item.url}`;
     });
 

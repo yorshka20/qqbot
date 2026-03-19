@@ -42,3 +42,9 @@ export function getInsightsApiBase(): string {
   const serverBase = getStaticServerBase();
   return serverBase ? `${serverBase}/api/insights` : '/api/insights';
 }
+
+/** Base URL for Zhihu API requests. */
+export function getZhihuApiBase(): string {
+  const serverBase = getStaticServerBase();
+  return serverBase ? `${serverBase}/api/zhihu` : '/api/zhihu';
+}

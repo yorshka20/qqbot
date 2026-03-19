@@ -6,10 +6,10 @@
  * - ReportsPage: WeChat report viewing
  */
 
-import { FileText, Lightbulb, Moon, Sun } from 'lucide-react';
+import { BookOpen, FileText, Lightbulb, Moon, Sun } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
-import { FilesPage, InsightsPage, ReportsPage } from './pages';
+import { FilesPage, InsightsPage, ReportsPage, ZhihuPage } from './pages';
 import { isActivePage, parseHash, type Route, setHash } from './router';
 
 export default function App() {
@@ -76,6 +76,18 @@ export default function App() {
               <Lightbulb className="w-4 h-4" />
               文章洞察
             </button>
+            <button
+              type="button"
+              onClick={() => navigate({ page: 'zhihu' })}
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+                isActivePage(route, 'zhihu')
+                  ? 'bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+              }`}
+            >
+              <BookOpen className="w-4 h-4" />
+              知乎内容
+            </button>
           </nav>
 
           <div className="flex-1" />
@@ -102,6 +114,7 @@ export default function App() {
         />
       )}
       {route.page === 'insights' && <InsightsPage />}
+      {route.page === 'zhihu' && <ZhihuPage />}
     </div>
   );
 }

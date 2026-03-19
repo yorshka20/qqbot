@@ -165,3 +165,61 @@ export interface InsightDetailResponse {
 export interface InsightStatsResponse {
   stats: InsightStats
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Zhihu Types
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface ZhihuContentListItem {
+  targetType: string
+  targetId: number
+  title: string
+  url: string
+  authorName: string
+  authorUrlToken: string
+  authorAvatarUrl: string | null
+  excerpt: string
+  voteupCount: number
+  commentCount: number
+  questionTitle: string | null
+  createdTime: number
+  fetchedAt: string
+}
+
+export interface ZhihuContentDetail {
+  targetType: string
+  targetId: number
+  title: string
+  url: string
+  authorName: string
+  authorUrlToken: string
+  authorAvatarUrl: string | null
+  content: string
+  excerpt: string
+  voteupCount: number
+  commentCount: number
+  questionId: number | null
+  questionTitle: string | null
+  createdTime: number
+  fetchedAt: string
+}
+
+export interface ZhihuPageStats {
+  totalFeedItems: number
+  totalContents: number
+  contentsByType: Array<{ targetType: string; count: number }>
+  feedByVerb: Array<{ verb: string; verbLabel: string; count: number }>
+  lastFetchTs: number
+}
+
+export interface ZhihuContentsResponse {
+  contents: ZhihuContentListItem[]
+}
+
+export interface ZhihuContentDetailResponse {
+  content: ZhihuContentDetail
+}
+
+export interface ZhihuStatsResponse {
+  stats: ZhihuPageStats
+}

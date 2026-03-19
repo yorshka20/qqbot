@@ -4,6 +4,8 @@ export { ZhihuDITokens } from './tokens';
 export type {
   ZhihuConfig,
   ZhihuContentItem,
+  ZhihuContentRecord,
+  ZhihuContentRow,
   ZhihuFeedItem,
   ZhihuFeedItemRow,
   ZhihuMomentsResponse,
