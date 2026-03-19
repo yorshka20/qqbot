@@ -68,14 +68,14 @@ export class ZhihuClient {
     return allItems.filter((item) => item.created_time > sinceTimestamp);
   }
 
-  /** Fetch a single answer's full content. */
+  /** Fetch a single answer's full content. Does NOT invalidate cookie on 403. */
   async fetchAnswerContent(answerId: number): Promise<ZhihuAnswer> {
-    return this.request<ZhihuAnswer>(`https://www.zhihu.com/api/v4/answers/${answerId}?include=content`);
+    return this.requestContent<ZhihuAnswer>(`https://www.zhihu.com/api/v4/answers/${answerId}?include=content`);
   }
 
-  /** Fetch a single article's full content. */
+  /** Fetch a single article's full content. Does NOT invalidate cookie on 403. */
   async fetchArticleContent(articleId: number): Promise<ZhihuArticle> {
-    return this.request<ZhihuArticle>(`https://www.zhihu.com/api/v4/articles/${articleId}`);
+    return this.requestContent<ZhihuArticle>(`https://www.zhihu.com/api/v4/articles/${articleId}`);
   }
 
   /** Fetch current user info (used for cookie validity check). */
@@ -252,6 +252,46 @@ export class ZhihuClient {
   // ──────────────────────────────────────────────────
   // Internal
   // ──────────────────────────────────────────────────
+
+  /**
+   * Like request(), but does NOT mark cookie as invalid on 403.
+   * Used for content endpoints where 403 is typically anti-scraping, not auth failure.
+   */
+  private async requestContent<T>(url: string): Promise<T> {
+    await this.throttle();
+
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+      try {
+        const response = await fetch(url, {
+          headers: {
+            Cookie: this.cookie,
+            'User-Agent': this.userAgent,
+            Referer: 'https://www.zhihu.com/',
+            Accept: 'application/json',
+            'x-requested-with': 'fetch',
+          },
+        });
+
+        this.lastRequestTime = Date.now();
+
+        if (!response.ok) {
+          throw new Error(`Zhihu API returned ${response.status}: ${response.statusText}`);
+        }
+
+        return (await response.json()) as T;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        logger.warn(`[ZhihuClient] Content request attempt ${attempt + 1}/${this.maxRetries} failed:`, lastError.message);
+
+        if (attempt < this.maxRetries - 1) {
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        }
+      }
+    }
+
+    throw lastError ?? new Error('ZhihuClient content request failed');
+  }
 
   private async request<T>(url: string): Promise<T> {
     await this.throttle();

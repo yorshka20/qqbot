@@ -71,6 +71,7 @@ export class ZhihuContentParser {
       actorNames: item.actors?.map((a) => a.name) ?? [],
       createdTime: item.created_time,
       fetchedAt: new Date().toISOString(),
+      rawContent: typeof target.content === 'string' ? target.content : undefined,
     };
   }
 

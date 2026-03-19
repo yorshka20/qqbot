@@ -98,65 +98,110 @@ export class ZhihuFeedService {
       const existing = item.targetType === 'answer' ? existingAnswers : existingArticles;
       if (existing.has(item.targetId)) continue;
 
-      try {
-        const record = await this.fetchAndFormatContent(item);
-        if (record) {
-          this.db.upsertContent(record);
-          fetched++;
-        }
-      } catch (err) {
-        logger.warn(`[ZhihuFeedService] Failed to fetch content for ${item.targetType} ${item.targetId}:`, err);
+      const record = await this.fetchAndFormatContent(item);
+      if (record) {
+        this.db.upsertContent(record);
+        fetched++;
       }
     }
 
     return fetched;
   }
 
-  /** Fetch full content for a single article/answer and format it. */
+  /** Fetch full content for a single article/answer and format it. Falls back to feed content on API failure. */
   private async fetchAndFormatContent(item: ZhihuContentItem): Promise<ZhihuContentRecord | null> {
     if (item.targetType === 'answer') {
-      const answer = await this.client.fetchAnswerContent(item.targetId);
-      if (!answer?.content) return null;
-      return {
-        targetType: 'answer',
-        targetId: item.targetId,
-        title: answer.question?.title ?? item.title,
-        url: item.url,
-        authorName: answer.author?.name ?? item.authorName,
-        authorUrlToken: answer.author?.url_token ?? item.authorUrlToken,
-        authorAvatarUrl: answer.author?.avatar_url ?? item.authorAvatarUrl,
-        content: ZhihuClient.formatContent(answer.content),
-        excerpt: item.excerpt,
-        voteupCount: answer.voteup_count ?? item.voteupCount,
-        commentCount: answer.comment_count ?? item.commentCount,
-        questionId: answer.question?.id,
-        questionTitle: answer.question?.title,
-        createdTime: answer.created_time ?? item.createdTime,
-        fetchedAt: new Date().toISOString(),
-      };
+      return this.fetchAnswerContent(item);
     }
 
     if (item.targetType === 'article') {
-      const article = await this.client.fetchArticleContent(item.targetId);
-      if (!article?.content) return null;
-      return {
-        targetType: 'article',
-        targetId: item.targetId,
-        title: article.title ?? item.title,
-        url: item.url,
-        authorName: article.author?.name ?? item.authorName,
-        authorUrlToken: article.author?.url_token ?? item.authorUrlToken,
-        authorAvatarUrl: article.author?.avatar_url ?? item.authorAvatarUrl,
-        content: ZhihuClient.formatContent(article.content),
-        excerpt: item.excerpt,
-        voteupCount: article.voteup_count ?? item.voteupCount,
-        commentCount: article.comment_count ?? item.commentCount,
-        createdTime: article.created ?? item.createdTime,
-        fetchedAt: new Date().toISOString(),
-      };
+      return this.fetchArticleContent(item);
     }
 
     return null;
+  }
+
+  private async fetchAnswerContent(item: ZhihuContentItem): Promise<ZhihuContentRecord | null> {
+    try {
+      const answer = await this.client.fetchAnswerContent(item.targetId);
+      if (answer?.content) {
+        return {
+          targetType: 'answer',
+          targetId: item.targetId,
+          title: answer.question?.title ?? item.title,
+          url: item.url,
+          authorName: answer.author?.name ?? item.authorName,
+          authorUrlToken: answer.author?.url_token ?? item.authorUrlToken,
+          authorAvatarUrl: answer.author?.avatar_url ?? item.authorAvatarUrl,
+          content: ZhihuClient.formatContent(answer.content),
+          excerpt: item.excerpt,
+          voteupCount: answer.voteup_count ?? item.voteupCount,
+          commentCount: answer.comment_count ?? item.commentCount,
+          questionId: answer.question?.id,
+          questionTitle: answer.question?.title,
+          createdTime: answer.created_time ?? item.createdTime,
+          fetchedAt: new Date().toISOString(),
+        };
+      }
+    } catch (err) {
+      logger.warn(`[ZhihuFeedService] API fetch failed for answer ${item.targetId}, trying feed content fallback:`, err instanceof Error ? err.message : err);
+    }
+
+    // Fallback: use content from the feed response
+    return this.buildRecordFromFeedContent(item);
+  }
+
+  private async fetchArticleContent(item: ZhihuContentItem): Promise<ZhihuContentRecord | null> {
+    try {
+      const article = await this.client.fetchArticleContent(item.targetId);
+      if (article?.content) {
+        return {
+          targetType: 'article',
+          targetId: item.targetId,
+          title: article.title ?? item.title,
+          url: item.url,
+          authorName: article.author?.name ?? item.authorName,
+          authorUrlToken: article.author?.url_token ?? item.authorUrlToken,
+          authorAvatarUrl: article.author?.avatar_url ?? item.authorAvatarUrl,
+          content: ZhihuClient.formatContent(article.content),
+          excerpt: item.excerpt,
+          voteupCount: article.voteup_count ?? item.voteupCount,
+          commentCount: article.comment_count ?? item.commentCount,
+          createdTime: article.created ?? item.createdTime,
+          fetchedAt: new Date().toISOString(),
+        };
+      }
+    } catch (err) {
+      logger.warn(`[ZhihuFeedService] API fetch failed for article ${item.targetId}, trying feed content fallback:`, err instanceof Error ? err.message : err);
+    }
+
+    // Fallback: use content from the feed response
+    return this.buildRecordFromFeedContent(item);
+  }
+
+  /** Build a content record from the feed item's rawContent (fallback when API fetch fails). */
+  private buildRecordFromFeedContent(item: ZhihuContentItem): ZhihuContentRecord | null {
+    if (!item.rawContent) {
+      logger.warn(`[ZhihuFeedService] No feed content available for ${item.targetType} ${item.targetId}, skipping`);
+      return null;
+    }
+
+    logger.info(`[ZhihuFeedService] Using feed content for ${item.targetType} ${item.targetId} (${item.rawContent.length} chars raw)`);
+    return {
+      targetType: item.targetType,
+      targetId: item.targetId,
+      title: item.title,
+      url: item.url,
+      authorName: item.authorName,
+      authorUrlToken: item.authorUrlToken,
+      authorAvatarUrl: item.authorAvatarUrl,
+      content: ZhihuClient.formatContent(item.rawContent),
+      excerpt: item.excerpt,
+      voteupCount: item.voteupCount,
+      commentCount: item.commentCount,
+      createdTime: item.createdTime,
+      fetchedAt: new Date().toISOString(),
+    };
   }
 
   // ──────────────────────────────────────────────────

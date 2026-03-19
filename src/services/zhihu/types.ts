@@ -100,6 +100,8 @@ export interface ZhihuContentItem {
   actorNames: string[];
   createdTime: number; // unix timestamp (seconds)
   fetchedAt: string; // ISO datetime
+  /** Raw HTML content from feed response (may be truncated). Used as fallback when API fetch fails. */
+  rawContent?: string;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
