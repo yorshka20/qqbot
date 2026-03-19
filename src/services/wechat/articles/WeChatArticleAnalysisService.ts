@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { LLMService } from '@/ai/services/LLMService';
 import { logger } from '@/utils/logger';
+import type { WeChatDatabase, WeChatOAArticleRow } from '../WeChatDatabase';
 import { fetchArticleText } from './fetchArticleText';
-import type { WeChatDatabase, WeChatOAArticleRow } from './WeChatDatabase';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types

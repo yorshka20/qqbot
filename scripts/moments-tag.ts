@@ -115,11 +115,7 @@ interface ScrollResponse {
   };
 }
 
-async function qdrantScroll(
-  qdrantUrl: string,
-  offset: string | number | null,
-  limit: number,
-): Promise<ScrollResponse> {
+async function qdrantScroll(qdrantUrl: string, offset: string | number | null, limit: number): Promise<ScrollResponse> {
   const body: Record<string, unknown> = {
     limit,
     with_payload: true,
@@ -178,16 +174,14 @@ interface TagResult {
 }
 
 // Tag definitions and normalization — shared module
-import { loadTaggingPrompt, normalizeTags } from '../src/services/wechat/moments-tags';
+import { loadTaggingPrompt, normalizeTags } from '../src/services/wechat/moments/momentsTags';
 
 async function callOllama(
   ollamaUrl: string,
   model: string,
   contents: Array<{ index: number; content: string }>,
 ): Promise<TagResult[]> {
-  const contentList = contents
-    .map((c) => `[${c.index}] ${(c.content || '').slice(0, 500)}`)
-    .join('\n\n');
+  const contentList = contents.map((c) => `[${c.index}] ${(c.content || '').slice(0, 500)}`).join('\n\n');
 
   // Load and render prompt from template file (prompts/analysis/wechat_moments_tag.txt)
   const prompt = loadTaggingPrompt(contentList);
@@ -197,9 +191,7 @@ async function callOllama(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model,
-      messages: [
-        { role: 'user', content: `${prompt}\n\n/no_think` },
-      ],
+      messages: [{ role: 'user', content: `${prompt}\n\n/no_think` }],
       stream: false,
       options: { num_predict: 4096, temperature: 0.3 },
     }),

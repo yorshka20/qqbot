@@ -4,7 +4,7 @@
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import type { AgendaSystemEvent } from '@/agenda/types';
 import { logger } from '@/utils/logger';
-import type { WeChatMessageRow, WeChatOAArticleRow } from './WeChatDatabase';
+import type { WeChatMessageRow, WeChatOAArticleRow } from '../WeChatDatabase';
 
 /**
  * WeChat event types published to InternalEventBus

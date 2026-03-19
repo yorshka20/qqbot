@@ -1,5 +1,9 @@
+export type { NotifyCallback } from './ingest/WeChatIngestService';
+export { WeChatIngestService } from './ingest/WeChatIngestService';
+export { WeChatMessageBuffer } from './ingest/WeChatMessageBuffer';
+export type { WechatEventType, WechatMessageEventData } from './ingest/WechatEventBridge';
+export { WechatEventBridge } from './ingest/WechatEventBridge';
 export { WechatDITokens } from './tokens';
-
 export type {
   MessageCategory,
   ParsedWeChatMessage,
@@ -11,9 +15,6 @@ export type {
 export { resolveConfig } from './types';
 export type { WeChatGroupRow, WeChatMessageRow, WeChatOAArticleRow } from './WeChatDatabase';
 export { WeChatDatabase } from './WeChatDatabase';
-export type { NotifyCallback } from './WeChatIngestService';
-export { WeChatIngestService } from './WeChatIngestService';
-export { WeChatMessageBuffer } from './WeChatMessageBuffer';
 export type {
   WXContact,
   WXFavorite,
@@ -35,8 +36,6 @@ export type {
   WechatStats,
 } from './WechatDigestService';
 export { WechatDigestService } from './WechatDigestService';
-export type { WechatEventType, WechatMessageEventData } from './WechatEventBridge';
-export { WechatEventBridge } from './WechatEventBridge';
 export type {
   GeneratedReport,
   ReportFile,

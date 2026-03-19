@@ -6,6 +6,9 @@ export { WechatArticleSummaryToolExecutor } from './WechatArticleSummaryToolExec
 export { WechatDigestToolExecutor } from './WechatDigestToolExecutor';
 export { WechatGroupSummaryToolExecutor } from './WechatGroupSummaryToolExecutor';
 export { WechatInsightsToolExecutor } from './WechatInsightsToolExecutor';
+export { WechatMomentsAnalyzeToolExecutor } from './WechatMomentsAnalyzeToolExecutor';
+export { WechatMomentsIngestToolExecutor } from './WechatMomentsIngestToolExecutor';
+export { WechatMomentsSearchToolExecutor } from './WechatMomentsSearchToolExecutor';
 export { WechatReportToolExecutor } from './WechatReportToolExecutor';
 export { WechatSearchToolExecutor } from './WechatSearchToolExecutor';
 export { WechatStatsToolExecutor } from './WechatStatsToolExecutor';

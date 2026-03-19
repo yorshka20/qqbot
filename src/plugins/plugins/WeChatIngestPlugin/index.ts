@@ -20,7 +20,7 @@ import {
   WechatDITokens,
   WechatEventBridge,
 } from '@/services/wechat';
-import { WeChatArticleAnalysisService } from '@/services/wechat/WeChatArticleAnalysisService';
+import { WeChatArticleAnalysisService } from '@/services/wechat/articles/WeChatArticleAnalysisService';
 import { WechatDigestService } from '@/services/wechat/WechatDigestService';
 import { WechatReportService } from '@/services/wechat/WechatReportService';
 import { logger } from '@/utils/logger';
@@ -150,6 +150,11 @@ export class WeChatIngestPlugin extends PluginBase {
 
     // Register DB instance for tools that need direct access
     container.registerInstance(WechatDITokens.WECHAT_DB, this.db);
+
+    // Register PadPro client for tool executors (moments ingest, etc.)
+    if (padProClient) {
+      container.registerInstance(WechatDITokens.PADPRO_CLIENT, padProClient);
+    }
 
     // Create digest service for daily summaries
     this.digestService = new WechatDigestService(this.db);

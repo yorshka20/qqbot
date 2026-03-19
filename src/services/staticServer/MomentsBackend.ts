@@ -198,7 +198,14 @@ export class MomentsBackend {
         .sort((a, b) => a.month.localeCompare(b.month));
 
       return jsonResponse<MomentsStatsResponse>({
-        stats: { total: totalCount, tagged: taggedCount, untagged: totalCount - taggedCount, timeRange, topTags, monthlyCount },
+        stats: {
+          total: totalCount,
+          tagged: taggedCount,
+          untagged: totalCount - taggedCount,
+          timeRange,
+          topTags,
+          monthlyCount,
+        },
       });
     } catch (err) {
       logger.error('[MomentsBackend] stats error:', err);
@@ -241,7 +248,7 @@ export class MomentsBackend {
       return jsonResponse<MomentsListResponse>({
         moments,
         total: moments.length,
-        nextOffset: allPoints.length >= limit ? allPoints[allPoints.length - 1]?.id ?? null : null,
+        nextOffset: allPoints.length >= limit ? (allPoints[allPoints.length - 1]?.id ?? null) : null,
       });
     } catch (err) {
       logger.error('[MomentsBackend] list error:', err);

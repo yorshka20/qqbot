@@ -6,9 +6,9 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse as parseJsonc } from 'jsonc-parser';
+import { WeChatMessageBuffer } from '../ingest/WeChatMessageBuffer';
 import type { ParsedWeChatMessage } from '../types';
 import { WeChatDatabase } from '../WeChatDatabase';
-import { WeChatMessageBuffer } from '../WeChatMessageBuffer';
 import { WeChatPadProClient } from '../WeChatPadProClient';
 
 // ────────────────────────────────────────────────────────────────────────────

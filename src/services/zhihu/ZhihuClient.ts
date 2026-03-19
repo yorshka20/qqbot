@@ -1,10 +1,7 @@
 // ZhihuClient — HTTP client for Zhihu private API
 // Handles cookie management, rate limiting, and retry logic
 
-import {
-  extractArticleContent,
-  fetchHtmlForCrawler,
-} from '@/services/retrieval/fetch/PageContentFetchService';
+import { extractArticleContent, fetchHtmlForCrawler } from '@/services/retrieval/fetch/PageContentFetchService';
 import { logger } from '@/utils/logger';
 import type { ZhihuAnswer, ZhihuArticle, ZhihuFeedItem, ZhihuMomentsResponse, ZhihuUser } from './types';
 

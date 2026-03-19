@@ -1,7 +1,7 @@
 // WeChat Ingest Service — HTTP webhook server + message processing pipeline
 
 // import all executors to ensure decorators are executed
-import './executors';
+import '../executors';
 
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -9,15 +9,15 @@ import { ResourceDownloader } from '@/ai/utils/ResourceDownloader';
 import type { RetrievalService } from '@/services/retrieval';
 import { chunkText } from '@/services/retrieval/rag/chunkText';
 import { logger } from '@/utils/logger';
-import { fetchArticleText } from './fetchArticleText';
+import { fetchArticleText } from '../articles/fetchArticleText';
 import type {
   MessageCategory,
   ParsedWeChatMessage,
   ResolvedWeChatIngestConfig,
   WeChatRealtimeRule,
   WeChatWebhookMessage,
-} from './types';
-import type { WeChatDatabase, WeChatMessageRow, WeChatOAArticleRow } from './WeChatDatabase';
+} from '../types';
+import type { WeChatDatabase, WeChatMessageRow, WeChatOAArticleRow } from '../WeChatDatabase';
 import { WeChatMessageBuffer } from './WeChatMessageBuffer';
 import type { WechatEventBridge } from './WechatEventBridge';
 

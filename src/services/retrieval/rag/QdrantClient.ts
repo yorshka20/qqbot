@@ -239,10 +239,7 @@ export class QdrantClient {
   /**
    * Count points in a collection, optionally with a filter.
    */
-  async countPoints(
-    collection: string,
-    filter?: Record<string, unknown>,
-  ): Promise<number> {
+  async countPoints(collection: string, filter?: Record<string, unknown>): Promise<number> {
     const body: Record<string, unknown> = { exact: true };
     if (filter) body.filter = filter;
 

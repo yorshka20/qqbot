@@ -130,7 +130,7 @@ export class RAGService {
     await this.ensureCollectionOnce(collection);
     for await (const page of this.qdrantClient.scrollAll(collection, {
       limit: options?.limit ?? 500,
-      withPayload: options?.withPayload as boolean | undefined ?? true,
+      withPayload: (options?.withPayload as boolean | undefined) ?? true,
       filter: options?.filter,
     })) {
       yield page.map((p) => ({ id: p.id, payload: p.payload ?? {} }));

@@ -5,4 +5,5 @@ export const WechatDITokens = {
   REPORT_SERVICE: 'WechatReportService',
   WECHAT_DB: 'WeChatDatabase',
   ARTICLE_ANALYSIS_SERVICE: 'WeChatArticleAnalysisService',
+  PADPRO_CLIENT: 'WeChatPadProClient',
 } as const;

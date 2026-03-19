@@ -4,7 +4,7 @@ import { inject, injectable } from 'tsyringe';
 import type { LLMService } from '@/ai/services/LLMService';
 import { DITokens } from '@/core/DITokens';
 import type { RetrievalService } from '@/services/retrieval';
-import { loadAnalysisPrompt } from '@/services/wechat/moments-tags';
+import { loadAnalysisPrompt } from '@/services/wechat/moments/momentsTags';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';

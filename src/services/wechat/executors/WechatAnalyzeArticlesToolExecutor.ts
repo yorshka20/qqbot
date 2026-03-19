@@ -1,8 +1,8 @@
 // WeChat article analysis tool — triggers LLM analysis on recent articles via Ollama
 
 import { inject, injectable } from 'tsyringe';
+import type { WeChatArticleAnalysisService } from '@/services/wechat/articles/WeChatArticleAnalysisService';
 import { WechatDITokens } from '@/services/wechat/tokens';
-import type { WeChatArticleAnalysisService } from '@/services/wechat/WeChatArticleAnalysisService';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';

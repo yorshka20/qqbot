@@ -221,6 +221,8 @@ export interface WXMoment {
   createTime?: number;
   likeCount?: number;
   commentCount?: number;
+  /** Base64-encoded XML describing moment content (text + media). */
+  objectDescBuffer?: string;
 }
 
 export interface WXHistoryMessage {
@@ -559,5 +561,6 @@ function mapMoment(m: RawMomentItem): WXMoment {
     createTime: m.createTime,
     likeCount: m.likeCount,
     commentCount: m.commentCount,
+    objectDescBuffer: m.objectDesc?.buffer,
   };
 }
