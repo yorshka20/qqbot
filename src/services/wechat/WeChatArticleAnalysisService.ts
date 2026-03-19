@@ -93,17 +93,31 @@ export class WeChatArticleAnalysisService {
       return { total: 0, analyzed: 0, skipped: 0, worthReporting: 0, failed: 0 };
     }
 
-    logger.info(`[ArticleAnalysis] Found ${articles.length} unanalyzed articles to process`);
+    // 2. Skip articles that already have insights but weren't marked (legacy data)
+    const existingIds = this.db.getAnalyzedArticleIds();
+    const alreadyDone = articles.filter((a) => existingIds.has(a.msgId));
+    if (alreadyDone.length > 0) {
+      this.db.markArticlesAnalyzed(alreadyDone.map((a) => a.msgId));
+      logger.info(`[ArticleAnalysis] Marked ${alreadyDone.length} articles as analyzed (insights already exist)`);
+    }
+    const pending = articles.filter((a) => !existingIds.has(a.msgId));
 
-    logger.info(`[ArticleAnalysis] Primary provider: ${this.provider}, fallback: ${this.provider === 'deepseek' ? 'doubao' : 'deepseek'}`);
+    if (pending.length === 0) {
+      logger.info('[ArticleAnalysis] All fetched articles already have insights, nothing to analyze');
+      return { total: articles.length, analyzed: 0, skipped: alreadyDone.length, worthReporting: 0, failed: 0 };
+    }
 
-    // 2. Analyze in batches with concurrency control
+    logger.info(
+      `[ArticleAnalysis] ${pending.length} to analyze, ${alreadyDone.length} skipped (already had insights) | provider: ${this.provider}`,
+    );
+
+    // 3. Analyze in batches with concurrency control
     let analyzed = 0;
     let worthReporting = 0;
     let failed = 0;
 
-    for (let i = 0; i < articles.length; i += this.concurrency) {
-      const batch = articles.slice(i, i + this.concurrency);
+    for (let i = 0; i < pending.length; i += this.concurrency) {
+      const batch = pending.slice(i, i + this.concurrency);
       const results = await Promise.allSettled(batch.map((article) => this.analyzeOne(article)));
 
       for (const result of results) {
@@ -116,14 +130,14 @@ export class WeChatArticleAnalysisService {
       }
 
       // Progress log every 10 articles
-      if (analyzed % 10 === 0 || i + this.concurrency >= articles.length) {
+      if (analyzed % 10 === 0 || i + this.concurrency >= pending.length) {
         logger.info(
-          `[ArticleAnalysis] Progress: ${analyzed + failed}/${articles.length} (${analyzed} OK, ${failed} failed)`,
+          `[ArticleAnalysis] Progress: ${analyzed + failed}/${pending.length} (${analyzed} OK, ${failed} failed)`,
         );
       }
     }
 
-    return { total: articles.length, analyzed, skipped: 0, worthReporting, failed };
+    return { total: articles.length, analyzed, skipped: alreadyDone.length, worthReporting, failed };
   }
 
   /**
