@@ -8,10 +8,13 @@ import type { ZhihuDatabase } from './ZhihuDatabase';
 
 export interface ZhihuFeedServiceConfig {
   maxPagesPerPoll?: number;
+  /** Called when all content-fetch strategies fail for an item. */
+  onContentFetchFailed?: (item: ZhihuContentItem, reason: string) => void;
 }
 
 export class ZhihuFeedService {
   private maxPagesPerPoll: number;
+  private onContentFetchFailed?: (item: ZhihuContentItem, reason: string) => void;
 
   constructor(
     private client: ZhihuClient,
@@ -20,6 +23,7 @@ export class ZhihuFeedService {
     config?: ZhihuFeedServiceConfig,
   ) {
     this.maxPagesPerPoll = config?.maxPagesPerPoll ?? 5;
+    this.onContentFetchFailed = config?.onContentFetchFailed;
     logger.info('[ZhihuFeedService] Initialized');
   }
 
@@ -165,33 +169,11 @@ export class ZhihuFeedService {
   }
 
   private async fetchAnswerContent(item: ZhihuContentItem): Promise<ZhihuContentRecord | null> {
-    // Strategy 1: Fetch web page HTML and extract with Readability
-    const pageContent = await this.client.fetchContentViaPage(item.url);
-    if (pageContent) {
-      logger.info(`[ZhihuFeedService] Page fetch succeeded for answer ${item.targetId} (${pageContent.length} chars)`);
-      return {
-        targetType: 'answer',
-        targetId: item.targetId,
-        title: item.title,
-        url: item.url,
-        authorName: item.authorName,
-        authorUrlToken: item.authorUrlToken,
-        authorAvatarUrl: item.authorAvatarUrl,
-        content: pageContent,
-        excerpt: item.excerpt,
-        voteupCount: item.voteupCount,
-        commentCount: item.commentCount,
-        questionId: undefined, // not available from page fetch
-        questionTitle: undefined,
-        createdTime: item.createdTime,
-        fetchedAt: new Date().toISOString(),
-      };
-    }
-
-    // Strategy 2: Try API (may 403 but worth attempting)
+    // Strategy 1: Direct API fetch (works when cookie is valid and IP not flagged)
     try {
       const answer = await this.client.fetchAnswerContent(item.targetId);
       if (answer?.content) {
+        logger.info(`[ZhihuFeedService] API fetch succeeded for answer ${item.targetId}`);
         return {
           targetType: 'answer',
           targetId: item.targetId,
@@ -211,41 +193,25 @@ export class ZhihuFeedService {
         };
       }
     } catch (err) {
-      logger.warn(`[ZhihuFeedService] API fetch also failed for answer ${item.targetId}:`, {
+      logger.warn(`[ZhihuFeedService] API fetch failed for answer ${item.targetId}:`, {
         message: err instanceof Error ? err.message : err,
       });
     }
 
-    // Strategy 3: use content from the feed response
-    return this.buildRecordFromFeedContent(item);
+    // Strategy 2: use content from the feed response (excerpt only)
+    const fallback = this.buildRecordFromFeedContent(item);
+    if (!fallback) {
+      this.onContentFetchFailed?.(item, 'API failed and no feed content available');
+    }
+    return fallback;
   }
 
   private async fetchArticleContent(item: ZhihuContentItem): Promise<ZhihuContentRecord | null> {
-    // Strategy 1: Fetch web page HTML and extract with Readability
-    const pageContent = await this.client.fetchContentViaPage(item.url);
-    if (pageContent) {
-      logger.info(`[ZhihuFeedService] Page fetch succeeded for article ${item.targetId} (${pageContent.length} chars)`);
-      return {
-        targetType: 'article',
-        targetId: item.targetId,
-        title: item.title,
-        url: item.url,
-        authorName: item.authorName,
-        authorUrlToken: item.authorUrlToken,
-        authorAvatarUrl: item.authorAvatarUrl,
-        content: pageContent,
-        excerpt: item.excerpt,
-        voteupCount: item.voteupCount,
-        commentCount: item.commentCount,
-        createdTime: item.createdTime,
-        fetchedAt: new Date().toISOString(),
-      };
-    }
-
-    // Strategy 2: Try API (may 403 but worth attempting)
+    // Strategy 1: Direct API fetch
     try {
       const article = await this.client.fetchArticleContent(item.targetId);
       if (article?.content) {
+        logger.info(`[ZhihuFeedService] API fetch succeeded for article ${item.targetId}`);
         return {
           targetType: 'article',
           targetId: item.targetId,
@@ -263,13 +229,17 @@ export class ZhihuFeedService {
         };
       }
     } catch (err) {
-      logger.warn(`[ZhihuFeedService] API fetch also failed for article ${item.targetId}:`, {
+      logger.warn(`[ZhihuFeedService] API fetch failed for article ${item.targetId}:`, {
         message: err instanceof Error ? err.message : err,
       });
     }
 
-    // Strategy 3: use content from the feed response
-    return this.buildRecordFromFeedContent(item);
+    // Strategy 2: use content from the feed response (excerpt only)
+    const fallback = this.buildRecordFromFeedContent(item);
+    if (!fallback) {
+      this.onContentFetchFailed?.(item, 'API failed and no feed content available');
+    }
+    return fallback;
   }
 
   /** Build a content record from the feed item's rawContent (fallback when API fetch fails). */

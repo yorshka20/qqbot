@@ -1,7 +1,6 @@
 // ZhihuClient — HTTP client for Zhihu private API
 // Handles cookie management, rate limiting, and retry logic
 
-import { extractArticleContent, fetchHtmlForCrawler } from '@/services/retrieval/fetch/PageContentFetchService';
 import { logger } from '@/utils/logger';
 import type { ZhihuAnswer, ZhihuArticle, ZhihuFeedItem, ZhihuMomentsResponse, ZhihuUser } from './types';
 
@@ -114,6 +113,7 @@ export class ZhihuClient {
   isCookieValid(): boolean {
     return this.cookieValid;
   }
+
 
   /** Current consecutive failure count. */
   getFailCount(): number {
@@ -250,32 +250,6 @@ export class ZhihuClient {
     }
   }
 
-  /**
-   * Fetch content by loading the web page HTML and extracting with Readability.
-   * This bypasses the API (which often returns 403) and works like a normal browser visit.
-   * Reuses the shared fetchHtmlForCrawler + extractArticleContent from PageContentFetchService.
-   * Returns formatted text content, or null if extraction fails.
-   */
-  async fetchContentViaPage(url: string): Promise<string | null> {
-    await this.throttle();
-
-    const html = await fetchHtmlForCrawler(url, {
-      timeoutMs: 15000,
-      headers: {
-        Cookie: this.cookie,
-        'User-Agent': this.userAgent,
-        Referer: 'https://www.zhihu.com/',
-        Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-      },
-    });
-    this.lastRequestTime = Date.now();
-
-    if (!html) return null;
-
-    const { textContent } = extractArticleContent(html, url);
-    return textContent.trim() || null;
-  }
 
   /**
    * Like request(), but does NOT mark cookie as invalid on 403.

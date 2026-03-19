@@ -1,9 +1,11 @@
-// Card renderer using puppeteer-core + system Chrome/Chromium (no bundled browser)
+// Card renderer — converts card data to PNG images.
+// Delegates browser lifecycle to BrowserService.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import puppeteer, { type Browser, type Page } from 'puppeteer-core';
+import type { Page } from 'puppeteer-core';
+import { BrowserService } from '@/services/browser/BrowserService';
 import { logger } from '@/utils/logger';
 import { getCardStyles, getProviderTheme } from './cardStyles';
 import { renderCardDeck } from './cardTemplates';
@@ -13,130 +15,18 @@ import type { CardData } from './cardTypes';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TWEMOJI_JS = readFileSync(resolve(__dirname, 'libs/twemoji.min.js'), 'utf-8');
 
-/** Default path to Google Chrome on macOS. */
-const MACOS_CHROME_PATH = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-/** Common Chrome/Chromium paths on Linux (first existing wins). */
-const LINUX_BROWSER_PATHS = [
-  '/usr/bin/google-chrome',
-  '/usr/bin/google-chrome-stable',
-  '/usr/bin/chromium',
-  '/usr/bin/chromium-browser',
-];
-
 /**
- * Card renderer that converts card data to PNG images
+ * Card renderer that converts card data to PNG images.
+ * Uses BrowserService for browser access.
  */
 export class CardRenderer {
   private static instance: CardRenderer | null = null;
-  private browser: Browser | null = null;
-  private isInitializing = false;
-  private initPromise: Promise<void> | null = null;
 
-  /**
-   * Get singleton instance
-   */
   static getInstance(): CardRenderer {
     if (!CardRenderer.instance) {
       CardRenderer.instance = new CardRenderer();
     }
     return CardRenderer.instance;
-  }
-
-  /**
-   * Resolve Chrome/Chromium executable path (required for puppeteer-core; no bundled browser).
-   * Uses PUPPETEER_EXECUTABLE_PATH, or platform default paths.
-   */
-  private getExecutablePath(): string {
-    const fromEnv = process.env.PUPPETEER_EXECUTABLE_PATH;
-    if (fromEnv && fromEnv.length > 0) {
-      return fromEnv;
-    }
-    if (process.platform === 'darwin' && existsSync(MACOS_CHROME_PATH)) {
-      return MACOS_CHROME_PATH;
-    }
-    if (process.platform === 'linux') {
-      const found = LINUX_BROWSER_PATHS.find((p) => existsSync(p));
-      if (found) return found;
-    }
-    throw new Error(
-      'Card rendering requires a browser. Set PUPPETEER_EXECUTABLE_PATH to Chrome/Chromium path, or install Google Chrome (macOS: /Applications/Google Chrome.app).',
-    );
-  }
-
-  /**
-   * Get Puppeteer launch arguments based on platform
-   * macOS doesn't support --single-process and --no-zygote flags
-   */
-  private getLaunchArgs(): string[] {
-    const platform = process.platform;
-    const baseArgs = [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--disable-web-security',
-    ];
-
-    // --single-process and --no-zygote are Linux-specific and cause issues on macOS
-    if (platform === 'linux') {
-      baseArgs.push('--no-zygote', '--single-process');
-    }
-
-    // macOS: reduce GPU/sandbox issues that cause "UniversalExceptionRaise" / crash info version 7
-    if (platform === 'darwin') {
-      baseArgs.push('--disable-gpu-sandbox', '--disable-gpu');
-    }
-
-    return baseArgs;
-  }
-
-  /**
-   * Initialize browser instance
-   */
-  private async init(): Promise<void> {
-    if (this.browser) {
-      return;
-    }
-
-    if (this.isInitializing && this.initPromise) {
-      return this.initPromise;
-    }
-
-    this.isInitializing = true;
-    this.initPromise = (async () => {
-      try {
-        const platform = process.platform;
-        logger.info(`[CardRenderer] Initializing Puppeteer browser on ${platform}...`);
-
-        const launchArgs = this.getLaunchArgs();
-        const executablePath = this.getExecutablePath();
-        logger.info(`[CardRenderer] Using browser: ${executablePath}`);
-        logger.debug(`[CardRenderer] Launch args: ${launchArgs.join(' ')}`);
-
-        this.browser = await puppeteer.launch({
-          headless: 'new',
-          args: launchArgs,
-          executablePath,
-        });
-
-        logger.info('[CardRenderer] Browser initialized successfully');
-      } catch (error) {
-        this.isInitializing = false;
-        this.initPromise = null;
-        const err = error instanceof Error ? error : new Error('Unknown error');
-        logger.error('[CardRenderer] Failed to initialize browser:', {
-          error: err.message,
-          stack: err.stack,
-          platform: process.platform,
-          arch: process.arch,
-        });
-        throw err;
-      }
-      this.isInitializing = false;
-    })();
-
-    return this.initPromise;
   }
 
   /**
@@ -146,19 +36,13 @@ export class CardRenderer {
    * @param options - Provider name (e.g. doubao, claude, deepseek) shown after "AI Assistant" in footer; required on all paths
    */
   async render(cardData: CardData | CardData[], options: { provider: string }): Promise<Buffer> {
-    await this.init();
-
-    if (!this.browser) {
-      throw new Error('Browser not initialized');
-    }
-
     const cards = Array.isArray(cardData) ? cardData : [cardData];
     const cardHTML = renderCardDeck(cards);
 
     let page: Page | null = null;
 
     try {
-      page = await this.browser.newPage();
+      page = await BrowserService.getInstance().createPage();
 
       // Footer: use proper display name (e.g. "DeepSeek" not "deepseek")
       const theme = getProviderTheme(options.provider);
@@ -263,31 +147,9 @@ export class CardRenderer {
     }
   }
 
-  /**
-   * Close browser instance
-   */
-  async close(): Promise<void> {
-    if (this.browser) {
-      try {
-        await this.browser.close();
-        logger.info('[CardRenderer] Browser closed');
-      } catch (error) {
-        logger.warn('[CardRenderer] Error closing browser:', error);
-      } finally {
-        this.browser = null;
-        this.isInitializing = false;
-        this.initPromise = null;
-      }
-    }
-  }
-
-  /**
-   * Cleanup singleton instance (for testing)
-   */
+  /** Cleanup singleton instance (for testing). */
   static async cleanup(): Promise<void> {
-    if (CardRenderer.instance) {
-      await CardRenderer.instance.close();
-      CardRenderer.instance = null;
-    }
+    CardRenderer.instance = null;
+    await BrowserService.cleanup();
   }
 }
