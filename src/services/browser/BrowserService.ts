@@ -60,20 +60,19 @@ export class BrowserService {
       });
 
       // Remove automation-related properties from window
-      // @ts-ignore
+      // @ts-expect-error
       delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
-      // @ts-ignore
+      // @ts-expect-error
       delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
-      // @ts-ignore
+      // @ts-expect-error
       delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
 
       // Override chrome.runtime to appear as a normal Chrome extension env
-      // @ts-ignore
+      // @ts-expect-error
       window.chrome = { runtime: {}, loadTimes: () => ({}), csi: () => ({}) };
 
       // Override permissions query to report 'prompt' for notifications
       const originalQuery = window.navigator.permissions.query.bind(window.navigator.permissions);
-      // @ts-ignore
       window.navigator.permissions.query = (parameters: any) =>
         parameters.name === 'notifications'
           ? Promise.resolve({ state: Notification.permission } as PermissionStatus)

@@ -105,29 +105,6 @@ export interface ZhihuContentItem {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Content record (stored in zhihu_contents — one per article/answer)
-// ────────────────────────────────────────────────────────────────────────────
-
-export interface ZhihuContentRecord {
-  targetType: string; // 'article' | 'answer'
-  targetId: number;
-  title: string;
-  url: string;
-  authorName: string;
-  authorUrlToken: string;
-  authorAvatarUrl?: string;
-  /** Full content — HTML with images preserved, or plain text fallback */
-  content: string;
-  excerpt: string;
-  voteupCount: number;
-  commentCount: number;
-  questionId?: number; // for answers
-  questionTitle?: string; // for answers
-  createdTime: number; // unix timestamp (seconds)
-  fetchedAt: string; // ISO datetime
-}
-
-// ────────────────────────────────────────────────────────────────────────────
 // Database row types
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -150,25 +127,6 @@ export interface ZhihuFeedItemRow {
   fetchedAt: string;
   digestedAt: string | null;
   createdAt: string;
-  updatedAt: string;
-}
-
-export interface ZhihuContentRow {
-  targetType: string;
-  targetId: number;
-  title: string;
-  url: string;
-  authorName: string;
-  authorUrlToken: string;
-  authorAvatarUrl: string | null;
-  content: string;
-  excerpt: string;
-  voteupCount: number;
-  commentCount: number;
-  questionId: number | null;
-  questionTitle: string | null;
-  createdTime: number;
-  fetchedAt: string;
   updatedAt: string;
 }
 

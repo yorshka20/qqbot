@@ -30,12 +30,6 @@ export interface LLMFallbackConfig {
   toolUseProviders: string[];
 }
 
-/** Default fallback configuration */
-const DEFAULT_FALLBACK_CONFIG: LLMFallbackConfig = {
-  fallbackOrder: ['deepseek', 'gemini', 'openai', 'anthropic'],
-  toolUseProviders: ['deepseek', 'gemini', 'openai', 'anthropic'],
-};
-
 /**
  * LLM Service
  * Provides LLM text generation capability
@@ -43,7 +37,7 @@ const DEFAULT_FALLBACK_CONFIG: LLMFallbackConfig = {
 export class LLMService {
   private readonly providersWithNativeWebSearch = ['doubao', 'anthropic'];
 
-  /** Fallback configuration (from config or default) */
+  /** Fallback configuration (from config) */
   private readonly fallbackConfig: LLMFallbackConfig;
 
   /** Health check manager for tracking provider health */
@@ -53,13 +47,10 @@ export class LLMService {
     private aiManager: AIManager,
     private providerSelector?: ProviderSelector,
     healthCheckManager?: HealthCheckManager,
-    fallbackConfig?: Partial<LLMFallbackConfig>,
+    fallbackConfig?: LLMFallbackConfig,
   ) {
     this.healthCheckManager = healthCheckManager;
-    this.fallbackConfig = {
-      ...DEFAULT_FALLBACK_CONFIG,
-      ...fallbackConfig,
-    };
+    this.fallbackConfig = fallbackConfig ?? { fallbackOrder: [], toolUseProviders: [] };
   }
 
   /**

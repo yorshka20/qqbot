@@ -79,11 +79,11 @@ export interface AIConfig {
    * LLM fallback configuration.
    * Defines fallback order and tool-use capable providers.
    */
-  llmFallback?: {
+  llmFallback: {
     /** Ordered list of provider names for fallback (by cost, cheapest first) */
-    fallbackOrder?: string[];
+    fallbackOrder: string[];
     /** Providers that support tool use, in priority order */
-    toolUseProviders?: string[];
+    toolUseProviders: string[];
   };
 }
 

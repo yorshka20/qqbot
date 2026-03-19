@@ -1,14 +1,13 @@
 /**
- * Zhihu Page - Browse Zhihu articles and answers with full content.
- * Supports filtering by type (article/answer), keyword search, date range,
- * and expanding rows to view full content.
+ * Zhihu Page - Browse Zhihu feed items with excerpts and links to originals.
+ * Supports filtering by type (article/answer), keyword search, and date range.
  */
 
-import { Calendar, ChevronDown, ChevronRight, ExternalLink, FileText, MessageSquare, Search, ThumbsUp } from 'lucide-react';
+import { Calendar, ExternalLink, FileText, MessageSquare, Search, ThumbsUp } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { getZhihuContent, getZhihuStats, listZhihuContents } from '../api';
-import type { ZhihuContentDetail, ZhihuContentListItem, ZhihuPageStats } from '../types';
+import { getZhihuStats, listZhihuContents } from '../api';
+import type { ZhihuContentListItem, ZhihuPageStats } from '../types';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -77,11 +76,6 @@ export function ZhihuPage() {
   const [keyword, setKeyword] = useState('');
   const [searchInput, setSearchInput] = useState('');
 
-  // Detail expansion
-  const [expandedKey, setExpandedKey] = useState<string | null>(null);
-  const [detail, setDetail] = useState<ZhihuContentDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -107,29 +101,6 @@ export function ZhihuPage() {
   // Group by date
   const groups = useMemo(() => groupByDate(allContents), [allContents]);
 
-  const toggleExpand = useCallback(
-    async (targetType: string, targetId: number) => {
-      const key = `${targetType}:${targetId}`;
-      if (expandedKey === key) {
-        setExpandedKey(null);
-        setDetail(null);
-        return;
-      }
-      setExpandedKey(key);
-      setDetail(null);
-      setDetailLoading(true);
-      try {
-        const res = await getZhihuContent(targetType, targetId);
-        setDetail(res.content);
-      } catch {
-        // silently fail
-      } finally {
-        setDetailLoading(false);
-      }
-    },
-    [expandedKey],
-  );
-
   const handleSearch = useCallback(() => {
     setKeyword(searchInput.trim());
   }, [searchInput]);
@@ -139,10 +110,10 @@ export function ZhihuPage() {
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header + Stats */}
         <div className="flex items-center justify-between flex-wrap gap-4">
-          <h1 className="text-xl font-semibold">知乎内容</h1>
+          <h1 className="text-xl font-semibold">知乎动态</h1>
           {stats && (
             <div className="flex items-center gap-4 text-sm text-zinc-500 dark:text-zinc-400">
-              <span>共 {stats.totalContents} 篇内容</span>
+              <span>共 {stats.totalContents} 条</span>
               <span>{stats.totalFeedItems} 条动态</span>
               {stats.lastFetchTs > 0 && (
                 <span>最后抓取: {new Date(stats.lastFetchTs * 1000).toLocaleString('zh-CN')}</span>
@@ -268,19 +239,9 @@ export function ZhihuPage() {
                 <div className="flex-1 border-t border-zinc-200 dark:border-zinc-700" />
               </div>
 
-              {group.items.map((item) => {
-                const key = `${item.targetType}:${item.targetId}`;
-                return (
-                  <ContentRow
-                    key={key}
-                    item={item}
-                    expanded={expandedKey === key}
-                    detail={expandedKey === key ? detail : null}
-                    detailLoading={expandedKey === key && detailLoading}
-                    onToggle={() => toggleExpand(item.targetType, item.targetId)}
-                  />
-                );
-              })}
+              {group.items.map((item) => (
+                <ContentRow key={`${item.targetType}:${item.targetId}`} item={item} />
+              ))}
             </div>
           ))}
       </div>
@@ -289,41 +250,19 @@ export function ZhihuPage() {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// ContentRow
+// ContentRow — shows excerpt inline with link to original
 // ────────────────────────────────────────────────────────────────────────────
 
-function ContentRow({
-  item,
-  expanded,
-  detail,
-  detailLoading,
-  onToggle,
-}: {
-  item: ZhihuContentListItem;
-  expanded: boolean;
-  detail: ZhihuContentDetail | null;
-  detailLoading: boolean;
-  onToggle: () => void;
-}) {
+function ContentRow({ item }: { item: ZhihuContentListItem }) {
   const time = new Date(item.createdTime * 1000).toLocaleTimeString('zh-CN', {
     hour: '2-digit',
     minute: '2-digit',
   });
 
   return (
-    <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
-      {/* Summary row */}
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
-      >
-        {expanded ? (
-          <ChevronDown className="w-4 h-4 shrink-0 text-zinc-400" />
-        ) : (
-          <ChevronRight className="w-4 h-4 shrink-0 text-zinc-400" />
-        )}
-
+    <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden px-4 py-3 space-y-2">
+      {/* Title row */}
+      <div className="flex items-center gap-3">
         {/* Type badge */}
         <span
           className={`shrink-0 px-1.5 py-0.5 text-xs rounded font-medium ${
@@ -336,16 +275,11 @@ function ContentRow({
         </span>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium truncate">{item.title}</span>
-          </div>
+          <span className="font-medium truncate block">{item.title}</span>
           {item.questionTitle && (
             <p className="text-sm text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
               问题: {item.questionTitle}
             </p>
-          )}
-          {item.excerpt && !item.questionTitle && (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400 truncate mt-0.5">{item.excerpt}</p>
           )}
         </div>
 
@@ -361,59 +295,25 @@ function ContentRow({
           </span>
           <span>{time}</span>
         </div>
-      </button>
-
-      {/* Expanded detail */}
-      {expanded && (
-        <div className="border-t border-zinc-200 dark:border-zinc-700 px-4 py-4 bg-zinc-50/50 dark:bg-zinc-800/30">
-          {detailLoading && <div className="text-sm text-zinc-400">加载正文...</div>}
-          {detail && <ContentDetailView detail={detail} />}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// ContentDetailView
-// ────────────────────────────────────────────────────────────────────────────
-
-function ContentDetailView({ detail }: { detail: ZhihuContentDetail }) {
-  return (
-    <div className="space-y-4">
-      {/* Meta */}
-      <div className="flex items-center gap-3 text-sm flex-wrap">
-        <span className="text-zinc-500 dark:text-zinc-400">作者: {detail.authorName}</span>
-        <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
-          <ThumbsUp className="w-3.5 h-3.5" /> {detail.voteupCount}
-        </span>
-        <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
-          <MessageSquare className="w-3.5 h-3.5" /> {detail.commentCount}
-        </span>
-        {detail.questionTitle && (
-          <span className="text-zinc-500 dark:text-zinc-400">问题: {detail.questionTitle}</span>
-        )}
-        {detail.url && (
-          <a
-            href={detail.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline"
-          >
-            原文 <ExternalLink className="w-3 h-3" />
-          </a>
-        )}
       </div>
 
-      {/* Content */}
-      {detail.content ? (
-        <div className="prose prose-sm dark:prose-invert max-w-none prose-img:max-w-full prose-img:rounded-lg">
-          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-zinc-800 dark:text-zinc-200 bg-transparent p-0 border-0">
-            {detail.content}
-          </pre>
-        </div>
-      ) : (
-        <p className="text-sm text-zinc-400">（无正文内容）</p>
+      {/* Excerpt */}
+      {item.excerpt && (
+        <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed line-clamp-3">
+          {item.excerpt}
+        </p>
+      )}
+
+      {/* Link to original */}
+      {item.url && (
+        <a
+          href={item.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+        >
+          查看原文 <ExternalLink className="w-3 h-3" />
+        </a>
       )}
     </div>
   );

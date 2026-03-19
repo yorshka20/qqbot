@@ -92,13 +92,7 @@ export class ZhihuDigestService {
 
     const itemLines = items.map((item) => {
       const verbLabel = this.getVerbLabel(item.verb);
-      // Try to get richer content from content table
-      const contentRow = this.feedService.getContent(item.targetType, item.targetId);
-      const excerpt = contentRow?.content
-        ? contentRow.content.slice(0, 400)
-        : item.excerpt
-          ? item.excerpt.slice(0, 200)
-          : '';
+      const excerpt = item.excerpt ? item.excerpt.slice(0, 200) : '';
       return `- [${verbLabel}] ${item.title} — ${item.authorName}\n  赞同: ${item.voteupCount} | 评论: ${item.commentCount}\n  摘要: ${excerpt}\n  链接: ${item.url}`;
     });
 

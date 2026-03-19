@@ -3,14 +3,13 @@
  *
  * API contract:
  * - GET  /api/zhihu/contents?type=&limit=&sinceTs=&keyword=  -> { contents: ZhihuContentListItem[] }
- * - GET  /api/zhihu/content/:targetType/:targetId             -> { content: ZhihuContentDetail }
  * - GET  /api/zhihu/feed?limit=&verb=                         -> { items: ZhihuFeedListItem[] }
  * - GET  /api/zhihu/stats                                     -> { stats: ZhihuPageStats }
  */
 
 import { getContainer } from '@/core/DIContainer';
 import { ZhihuDITokens } from '@/services/zhihu/tokens';
-import type { ZhihuContentRow, ZhihuFeedItemRow } from '@/services/zhihu/types';
+import type { ZhihuFeedItemRow } from '@/services/zhihu/types';
 import type { ZhihuDatabase } from '@/services/zhihu/ZhihuDatabase';
 import { logger } from '@/utils/logger';
 
@@ -36,24 +35,6 @@ export interface ZhihuContentListItem {
   fetchedAt: string;
 }
 
-export interface ZhihuContentDetail {
-  targetType: string;
-  targetId: number;
-  title: string;
-  url: string;
-  authorName: string;
-  authorUrlToken: string;
-  authorAvatarUrl: string | null;
-  content: string;
-  excerpt: string;
-  voteupCount: number;
-  commentCount: number;
-  questionId: number | null;
-  questionTitle: string | null;
-  createdTime: number;
-  fetchedAt: string;
-}
-
 export interface ZhihuFeedListItem {
   id: string;
   verb: string;
@@ -68,13 +49,11 @@ export interface ZhihuFeedListItem {
   commentCount: number;
   actorNames: string[];
   createdTime: number;
-  hasContent: boolean;
 }
 
 export interface ZhihuPageStats {
   totalFeedItems: number;
-  totalContents: number;
-  contentsByType: Array<{ targetType: string; count: number }>;
+  feedByType: Array<{ targetType: string; count: number }>;
   feedByVerb: Array<{ verb: string; verbLabel: string; count: number }>;
   lastFetchTs: number;
 }
@@ -120,7 +99,7 @@ function getVerbLabel(verb: string): string {
   }
 }
 
-function rowToListItem(row: ZhihuContentRow): ZhihuContentListItem {
+function feedRowToContentListItem(row: ZhihuFeedItemRow): ZhihuContentListItem {
   return {
     targetType: row.targetType,
     targetId: row.targetId,
@@ -129,36 +108,16 @@ function rowToListItem(row: ZhihuContentRow): ZhihuContentListItem {
     authorName: row.authorName,
     authorUrlToken: row.authorUrlToken,
     authorAvatarUrl: row.authorAvatarUrl,
-    excerpt: row.excerpt.slice(0, 200),
-    voteupCount: row.voteupCount,
-    commentCount: row.commentCount,
-    questionTitle: row.questionTitle,
-    createdTime: row.createdTime,
-    fetchedAt: row.fetchedAt,
-  };
-}
-
-function rowToDetail(row: ZhihuContentRow): ZhihuContentDetail {
-  return {
-    targetType: row.targetType,
-    targetId: row.targetId,
-    title: row.title,
-    url: row.url,
-    authorName: row.authorName,
-    authorUrlToken: row.authorUrlToken,
-    authorAvatarUrl: row.authorAvatarUrl,
-    content: row.content,
     excerpt: row.excerpt,
     voteupCount: row.voteupCount,
     commentCount: row.commentCount,
-    questionId: row.questionId,
-    questionTitle: row.questionTitle,
+    questionTitle: null,
     createdTime: row.createdTime,
     fetchedAt: row.fetchedAt,
   };
 }
 
-function feedRowToListItem(row: ZhihuFeedItemRow, db: ZhihuDatabase): ZhihuFeedListItem {
+function feedRowToListItem(row: ZhihuFeedItemRow): ZhihuFeedListItem {
   let actorNames: string[] = [];
   try {
     actorNames = JSON.parse(row.actorNames || '[]');
@@ -179,7 +138,6 @@ function feedRowToListItem(row: ZhihuFeedItemRow, db: ZhihuDatabase): ZhihuFeedL
     commentCount: row.commentCount,
     actorNames,
     createdTime: row.createdTime,
-    hasContent: db.hasContent(row.targetType, row.targetId),
   };
 }
 
@@ -227,12 +185,6 @@ export class ZhihuBackend {
       return this.handleStats(db);
     }
 
-    // GET /api/zhihu/content/:targetType/:targetId
-    const contentMatch = subPath.match(/^\/content\/(article|answer)\/(\d+)$/);
-    if (contentMatch?.[1] && contentMatch[2]) {
-      return this.handleGetContent(db, contentMatch[1], Number(contentMatch[2]));
-    }
-
     return errorResponse('Not found', 404);
   }
 
@@ -243,33 +195,29 @@ export class ZhihuBackend {
       const sinceTs = url.searchParams.has('sinceTs') ? Number(url.searchParams.get('sinceTs')) : undefined;
       const keyword = url.searchParams.get('keyword') || undefined;
 
-      let rows: ZhihuContentRow[];
+      // Read from feed_items table (no longer fetching full content)
+      let rows: ZhihuFeedItemRow[];
       if (keyword) {
-        rows = db.searchContents(keyword, limit);
+        rows = db.searchFeedItems(keyword, limit);
         if (targetType) {
           rows = rows.filter((r) => r.targetType === targetType);
         }
       } else if (sinceTs) {
-        rows = db.getContentsSince(sinceTs, limit, targetType);
+        rows = db.getItemsSince(sinceTs, limit);
+        if (targetType) {
+          rows = rows.filter((r) => r.targetType === targetType);
+        }
       } else {
-        rows = db.getRecentContents(limit, targetType);
+        rows = db.getRecentItems(limit);
+        if (targetType) {
+          rows = rows.filter((r) => r.targetType === targetType);
+        }
       }
 
-      return jsonResponse({ contents: rows.map(rowToListItem) });
+      return jsonResponse({ contents: rows.map(feedRowToContentListItem) });
     } catch (err) {
       logger.error('[ZhihuBackend] contents error:', err);
       return errorResponse('Failed to list contents', 500);
-    }
-  }
-
-  private handleGetContent(db: ZhihuDatabase, targetType: string, targetId: number): Response {
-    try {
-      const row = db.getContent(targetType, targetId);
-      if (!row) return errorResponse('Content not found', 404);
-      return jsonResponse({ content: rowToDetail(row) });
-    } catch (err) {
-      logger.error('[ZhihuBackend] get content error:', err);
-      return errorResponse('Failed to get content', 500);
     }
   }
 
@@ -278,7 +226,7 @@ export class ZhihuBackend {
       const limit = Math.min(Number(url.searchParams.get('limit') ?? 50), 200);
       const verb = url.searchParams.get('verb') || undefined;
       const rows = db.getRecentItems(limit, verb);
-      return jsonResponse({ items: rows.map((r) => feedRowToListItem(r, db)) });
+      return jsonResponse({ items: rows.map((r) => feedRowToListItem(r)) });
     } catch (err) {
       logger.error('[ZhihuBackend] feed error:', err);
       return errorResponse('Failed to list feed', 500);
@@ -288,8 +236,7 @@ export class ZhihuBackend {
   private handleStats(db: ZhihuDatabase): Response {
     try {
       const totalFeedItems = db.getTotalCount();
-      const contentsByType = db.getContentStats();
-      const totalContents = contentsByType.reduce((sum, s) => sum + s.count, 0);
+      const feedByType = db.getFeedStatsByType();
       const feedByVerb = db.getCountByVerb().map((v) => ({
         verb: v.verb,
         verbLabel: getVerbLabel(v.verb),
@@ -300,8 +247,7 @@ export class ZhihuBackend {
       return jsonResponse({
         stats: {
           totalFeedItems,
-          totalContents,
-          contentsByType,
+          feedByType,
           feedByVerb,
           lastFetchTs,
         } satisfies ZhihuPageStats,

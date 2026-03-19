@@ -12,8 +12,7 @@ const USAGE = `
 /zhihu feed [count]        — 最近的关注动态（默认20条）
 /zhihu articles [keyword]  — 已抓取的文章（可按标题过滤）
 /zhihu answers [keyword]   — 已抓取的回答（可按标题过滤）
-/zhihu content <type> <id> — 查看文章/回答正文（type=article|answer）
-/zhihu search <keyword>    — 搜索文章/回答内容
+/zhihu search <keyword>    — 搜索动态内容
 `.trim();
 
 export class ZhihuCommandHandler implements CommandHandler {
@@ -37,11 +36,9 @@ export class ZhihuCommandHandler implements CommandHandler {
         case 'feed':
           return this.handleFeed(Number(args[1]) || 20);
         case 'articles':
-          return this.handleContents('article', args.slice(1).join(' ').trim());
+          return this.handleFeedByType('article', args.slice(1).join(' ').trim());
         case 'answers':
-          return this.handleContents('answer', args.slice(1).join(' ').trim());
-        case 'content':
-          return this.handleContent(args[1] ?? '', Number(args[2]) || 0);
+          return this.handleFeedByType('answer', args.slice(1).join(' ').trim());
         case 'search':
           return this.handleSearch(args.slice(1).join(' ').trim());
         default:
@@ -68,9 +65,9 @@ export class ZhihuCommandHandler implements CommandHandler {
     b.text(`动态总数: ${stats.totalItems}\n`);
     b.text(`最后抓取: ${lastFetch}\n`);
 
-    if (stats.contentStats.length > 0) {
-      b.text('\n已抓取内容:\n');
-      for (const s of stats.contentStats) {
+    if (stats.feedStatsByType.length > 0) {
+      b.text('\n按内容类型:\n');
+      for (const s of stats.feedStatsByType) {
         b.text(`  ${s.targetType}: ${s.count} 篇\n`);
       }
     }
@@ -104,10 +101,10 @@ export class ZhihuCommandHandler implements CommandHandler {
     return ok(b);
   }
 
-  private handleContents(targetType: string, keyword: string): CommandResult {
+  private handleFeedByType(targetType: string, keyword: string): CommandResult {
     const rows = keyword
-      ? this.db.searchContents(keyword, 20).filter((r) => r.targetType === targetType)
-      : this.db.getRecentContents(20, targetType);
+      ? this.db.searchFeedItems(keyword, 20).filter((r) => r.targetType === targetType)
+      : this.db.getRecentItems(20).filter((r) => r.targetType === targetType);
 
     const label = targetType === 'article' ? '文章' : '回答';
 
@@ -127,36 +124,10 @@ export class ZhihuCommandHandler implements CommandHandler {
     return ok(b);
   }
 
-  private handleContent(targetType: string, targetId: number): CommandResult {
-    if (!targetType || !targetId) {
-      return {
-        success: false,
-        error: '用法: /zhihu content <article|answer> <id>\n例如: /zhihu content article 2017528295286133070',
-      };
-    }
-    if (targetType !== 'article' && targetType !== 'answer') {
-      return { success: false, error: '类型必须是 article 或 answer' };
-    }
-
-    const row = this.db.getContent(targetType, targetId);
-    if (!row) return ok(`未找到 ${targetType} ${targetId} 的内容`);
-
-    const b = new MessageBuilder();
-    b.text(`${row.title}\n`);
-    b.text(`作者: ${row.authorName} | 👍${row.voteupCount} 💬${row.commentCount}\n`);
-    if (row.questionTitle) b.text(`问题: ${row.questionTitle}\n`);
-    b.text(`链接: ${row.url}\n\n`);
-
-    // Truncate content for QQ message (max ~2000 chars)
-    const content = row.content || row.excerpt || '（无正文）';
-    b.text(content.length > 2000 ? `${content.substring(0, 2000)}…\n\n（正文已截断，完整内容请访问链接）` : content);
-    return ok(b);
-  }
-
   private handleSearch(keyword: string): CommandResult {
     if (!keyword) return { success: false, error: '请输入搜索关键词，例如: /zhihu search AI' };
 
-    const rows = this.db.searchContents(keyword, 20);
+    const rows = this.db.searchFeedItems(keyword, 20);
     if (rows.length === 0) return ok(`没有找到包含 "${keyword}" 的内容`);
 
     const lines = rows.map((r) => {

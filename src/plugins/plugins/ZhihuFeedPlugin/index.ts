@@ -34,9 +34,6 @@ export class ZhihuFeedPlugin extends PluginBase {
   private digestService: ZhihuDigestService | null = null;
   private pollTask: ScheduledTask | null = null;
   private digestTask: ScheduledTask | null = null;
-  /** Timestamp of last owner notification (to avoid spam). */
-  private lastOwnerNotifyTime = 0;
-  private static readonly NOTIFY_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
   private resolvedConfig = {
     cookie: '',
     pollIntervalCron: DEFAULT_ZHIHU_CONFIG.pollIntervalCron as string,
@@ -89,33 +86,16 @@ export class ZhihuFeedPlugin extends PluginBase {
       verbFilter: this.resolvedConfig.verbFilter ? [...this.resolvedConfig.verbFilter] : undefined,
     });
 
-    // Init feed service — notify owner when all content strategies fail
-    const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
-    const preferredProtocol = config.getEnabledProtocols()[0]?.name ?? 'milky';
-    const ownerId = Number(config.getConfig().bot.owner);
-
+    // Init feed service
     this.feedService = new ZhihuFeedService(client, parser, this.db, {
       maxPagesPerPoll: this.resolvedConfig.maxPagesPerPoll,
-      onContentFetchFailed: (_item, reason) => {
-        if (!ownerId) return;
-        const now = Date.now();
-        if (now - this.lastOwnerNotifyTime < ZhihuFeedPlugin.NOTIFY_COOLDOWN_MS) return;
-        this.lastOwnerNotifyTime = now;
-
-        logger.warn(`[ZhihuFeedPlugin] Content fetch failed, notifying owner: ${reason}`);
-        messageAPI
-          .sendPrivateMessage(
-            ownerId,
-            `[知乎插件] 内容获取全部失败，可能需要更新 Cookie 或解除验证码。\n原因: ${reason}`,
-            preferredProtocol,
-          )
-          .catch((err) => logger.error('[ZhihuFeedPlugin] Failed to notify owner:', err));
-      },
     });
     container.registerInstance(ZhihuDITokens.ZHIHU_FEED_SERVICE, this.feedService);
 
     // Init digest service
     const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
+    const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+    const preferredProtocol = config.getEnabledProtocols()[0]?.name ?? 'milky';
 
     this.digestService = new ZhihuDigestService(this.feedService, llmService, messageAPI, {
       digestProvider: this.resolvedConfig.digestProvider,

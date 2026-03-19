@@ -166,10 +166,10 @@ export class ConversationInitializer {
 
     // Build LLM fallback config from AI config
     const aiConfig = config.getAIConfig();
-    const llmFallbackConfig: LLMFallbackConfig = {
-      fallbackOrder: aiConfig?.llmFallback?.fallbackOrder ?? ['deepseek', 'gemini', 'openai', 'anthropic'],
-      toolUseProviders: aiConfig?.llmFallback?.toolUseProviders ?? ['deepseek', 'gemini', 'openai', 'anthropic'],
-    };
+    if (!aiConfig?.llmFallback) {
+      throw new Error('[ConversationInitializer] ai.llmFallback is required in config');
+    }
+    const llmFallbackConfig: LLMFallbackConfig = aiConfig.llmFallback;
 
     const llmService = new LLMService(services.aiManager, providerSelector, healthCheckManager, llmFallbackConfig);
     container.registerInstance(DITokens.LLM_SERVICE, llmService);

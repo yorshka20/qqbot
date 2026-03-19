@@ -9,7 +9,8 @@ const config = parse(readFileSync('config.jsonc', 'utf-8'));
 // biome-ignore lint/suspicious/noExplicitAny: test script
 const cookie: string = config.plugins?.list?.find((p: any) => p.name === 'zhihuFeed')?.config?.cookie ?? '';
 
-const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 async function testFetch(label: string, url: string) {
   console.log(`\n--- ${label} ---`);
@@ -56,10 +57,7 @@ async function main() {
   await testFetch('Feed (/moments)', 'https://www.zhihu.com/api/v3/moments?desktop=true&limit=3');
 
   // Test 3: Answer content API (the one that 403s)
-  await testFetch(
-    'Answer content',
-    'https://www.zhihu.com/api/v4/answers/2017885791959942952?include=content',
-  );
+  await testFetch('Answer content', 'https://www.zhihu.com/api/v4/answers/2017885791959942952?include=content');
 
   // Test 4: Article content API
   await testFetch('Article content', 'https://www.zhihu.com/api/v4/articles/2017687791295808300');
