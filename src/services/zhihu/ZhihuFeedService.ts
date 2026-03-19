@@ -62,7 +62,7 @@ export class ZhihuFeedService {
 
       return { newCount, duplicateCount, totalFetched: feedItems.length, contentCount: totalContent };
     } catch (err) {
-      logger.error('[ZhihuFeedService] Poll failed:', err);
+      logger.error('[ZhihuFeedService] Poll failed:', { message: err instanceof Error ? err.message : err });
       return { newCount: 0, duplicateCount: 0, totalFetched: 0, contentCount: 0 };
     }
   }
@@ -187,10 +187,10 @@ export class ZhihuFeedService {
         };
       }
     } catch (err) {
-      logger.warn(
-        `[ZhihuFeedService] API fetch failed for answer ${item.targetId}, trying feed content fallback:`,
-        err instanceof Error ? err.message : err,
-      );
+      logger.warn(`[ZhihuFeedService] API fetch failed for answer ${item.targetId}, trying feed content fallback:`, {
+        message: err instanceof Error ? err.message : err,
+        targetId: item.targetId,
+      });
     }
 
     // Fallback: use content from the feed response
@@ -218,10 +218,10 @@ export class ZhihuFeedService {
         };
       }
     } catch (err) {
-      logger.warn(
-        `[ZhihuFeedService] API fetch failed for article ${item.targetId}, trying feed content fallback:`,
-        err instanceof Error ? err.message : err,
-      );
+      logger.warn(`[ZhihuFeedService] API fetch failed for article ${item.targetId}, trying feed content fallback:`, {
+        message: err instanceof Error ? err.message : err,
+        targetId: item.targetId,
+      });
     }
 
     // Fallback: use content from the feed response
