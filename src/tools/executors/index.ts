@@ -3,6 +3,7 @@
 export { BaseToolExecutor } from './BaseToolExecutor';
 export { CardFormatToolExecutor } from './CardFormatToolExecutor';
 export { DeduplicateFilesToolExecutor } from './DeduplicateFilesToolExecutor';
+export { ExecuteCodeToolExecutor } from './executeCode';
 export { FetchHistoryByTimeToolExecutor } from './FetchHistoryByTimeToolExecutor';
 export { FetchPageToolExecutor } from './FetchPageToolExecutor';
 export { GetMemoryToolExecutor } from './GetMemoryToolExecutor';

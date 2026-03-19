@@ -195,11 +195,7 @@ export class WeChatArticleAnalysisService {
    */
   private async callLLM(prompt: string, title: string): Promise<AnalysisResult | null> {
     try {
-      const response = await this.llmService.generate(
-        prompt,
-        { temperature: 0.3, maxTokens: 2048 },
-        this.provider,
-      );
+      const response = await this.llmService.generate(prompt, { temperature: 0.3, maxTokens: 2048 }, this.provider);
 
       const text = response.text?.trim();
       if (!text) {
