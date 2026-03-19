@@ -322,8 +322,12 @@ export class WechatCommandHandler implements CommandHandler {
       .then(async () => {
         logger.info(`[WechatCommandHandler] Article analysis subagent completed`);
         if (messageAPI) {
+          const progress = this.db?.getArticleAnalysisProgress() ?? { total: 0, analyzed: 0, remaining: 0 };
+          const { total: totalArticles, analyzed: analyzedCount, remaining } = progress;
           await messageAPI.sendFromContext(
-            `文章分析完成，共分析 ${n} 篇文章。可在 WebUI 的「文章洞察」页面查看结果。`,
+            `文章分析完成。\n` +
+              `文章总数: ${totalArticles} | 已分析: ${analyzedCount} | 待分析: ${remaining}\n` +
+              `可在 WebUI 的「文章洞察」页面查看结果。`,
             cmdContext,
           );
         }

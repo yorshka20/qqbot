@@ -602,6 +602,19 @@ export class WeChatDatabase {
     return this.db.query<WeChatOAArticleRow, (string | number)[]>(sql).all(...params);
   }
 
+  /** Get article analysis progress: total, analyzed, remaining. */
+  getArticleAnalysisProgress(): { total: number; analyzed: number; remaining: number } {
+    if (!this.db) return { total: 0, analyzed: 0, remaining: 0 };
+    const row = this.db
+      .query<{ total: number; analyzed: number }, []>(
+        `SELECT COUNT(*) as total, SUM(CASE WHEN analyzed = 1 THEN 1 ELSE 0 END) as analyzed FROM wechat_oa_articles`,
+      )
+      .get();
+    const total = row?.total ?? 0;
+    const analyzed = row?.analyzed ?? 0;
+    return { total, analyzed, remaining: total - analyzed };
+  }
+
   /**
    * Get article statistics by source/account.
    */
