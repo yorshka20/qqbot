@@ -3,8 +3,8 @@
 
 import type { PromptManager } from '@/ai';
 import type { LLMService } from '@/ai/services/LLMService';
-import { buildToolUsageInstructions, executeToolCall, getReplyToolDefinitions } from '@/ai/tools/replyTools';
-import type { ChatMessage } from '@/ai/types';
+import { executeToolCall } from '@/ai/tools/replyTools';
+import type { ChatMessage, ToolDefinition } from '@/ai/types';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { normalizeGroupId } from '@/conversation/history/ConversationHistoryService';
@@ -90,8 +90,10 @@ export class AgentLoop {
     eventContext: AgendaEventContext,
   ): Promise<string | null> {
     const conversationContext = await this.fetchRecentContext(groupId);
-    const tools = getReplyToolDefinitions(this.toolManager);
-    const toolInstruct = buildToolUsageInstructions(this.toolManager, tools, undefined, this.promptManager);
+    // Agenda tasks are system-level: include both reply and subagent scoped tools
+    // so the LLM can access specialized tools (e.g. wechat_stats, wechat_report)
+    const tools = this.getAgendaToolDefinitions();
+    const toolInstruct = this.buildAgendaToolInstructions(tools);
     const messages = this.buildPrompt(item, conversationContext, eventContext, toolInstruct);
 
     try {
@@ -134,6 +136,58 @@ export class AgentLoop {
     } catch {
       return '';
     }
+  }
+
+  /**
+   * Get tool definitions for agenda tasks (reply + subagent scopes merged).
+   * Agenda tasks are system-level and need access to specialized tools like wechat_*.
+   */
+  private getAgendaToolDefinitions(): ToolDefinition[] {
+    const replySpecs = this.toolManager.getToolsByScope('reply');
+    const subagentSpecs = this.toolManager.getToolsByScope('subagent');
+    const seen = new Set<string>();
+    const merged = [...replySpecs, ...subagentSpecs].filter((s) => {
+      if (seen.has(s.name)) return false;
+      seen.add(s.name);
+      return true;
+    });
+    return this.toolManager.toToolDefinitions(merged);
+  }
+
+  /**
+   * Build tool usage instructions for agenda tasks.
+   */
+  private buildAgendaToolInstructions(tools: ToolDefinition[]): string {
+    if (tools.length === 0) {
+      return this.promptManager.render('llm.tool.no_tools.local');
+    }
+
+    const replySpecs = this.toolManager.getToolsByScope('reply');
+    const subagentSpecs = this.toolManager.getToolsByScope('subagent');
+    const seen = new Set<string>();
+    const allSpecs = [...replySpecs, ...subagentSpecs].filter((s) => {
+      if (seen.has(s.name)) return false;
+      seen.add(s.name);
+      return true;
+    });
+    const specsByName = new Map(allSpecs.map((s) => [s.name, s]));
+
+    const toolList = tools
+      .map((tool) => {
+        const spec = specsByName.get(tool.name);
+        const required = new Set(tool.parameters.required ?? []);
+        const params = Object.entries(tool.parameters.properties ?? {})
+          .map(([name, def]) => {
+            const requiredLabel = required.has(name) ? '必填' : '可选';
+            return `${name} (${def.type}，${requiredLabel})${def.description ? `: ${def.description}` : ''}`;
+          })
+          .join('; ');
+        const usage = spec?.whenToUse?.trim();
+        return `- ${tool.name}: ${tool.description}${usage ? `\n  适用时机: ${usage}` : ''}${params ? `\n  参数: ${params}` : ''}`;
+      })
+      .join('\n');
+
+    return this.promptManager.render('llm.tool.usage', { nativeSearchNote: '', toolList });
   }
 
   /**

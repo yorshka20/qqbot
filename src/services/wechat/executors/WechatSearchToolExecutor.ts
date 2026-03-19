@@ -28,7 +28,7 @@ import { logger } from '@/utils/logger';
   name: 'wechat_search',
   description: '搜索微信消息和文章。在聊天记录和收藏的文章中查找包含关键词的内容。',
   executor: 'wechat_search',
-  visibility: ['internal'],
+  visibility: ['subagent'],
   parameters: {
     keyword: {
       type: 'string',

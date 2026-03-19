@@ -22,7 +22,7 @@
 | 日期                                    | 主要内容                                                          |
 | --------------------------------------- | ----------------------------------------------------------------- |
 | [2026-03-18](../workbook/2026-03-18.md) | Gemini tool use 多轮会话格式修复；toolCallId 缺失导致卡片渲染失败；CardRenderer 外部 CDN 超时修复；Gemini thinking model thought_signature 修复；max rounds 空回复修复 |
-| [2026-03-19](../workbook/2026-03-19.md) | 知乎 Feed 订阅服务实现（ZhihuClient / ZhihuContentParser / ZhihuFeedService / ZhihuDigestService + Plugin）；execute_code Tool 实现（LLM 代码执行沙箱 + 工具注入） |
+| [2026-03-19](../workbook/2026-03-19.md) | 知乎 Feed 订阅服务实现（ZhihuClient / ZhihuContentParser / ZhihuFeedService / ZhihuDigestService + Plugin）；execute_code Tool 实现（LLM 代码执行沙箱 + 工具注入）；微信日报功能修复（工具可见性 + AgentLoop 工具作用域 + 报告 URL 路径） |
 
 ---
 

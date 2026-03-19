@@ -30,7 +30,7 @@ import { logger } from '@/utils/logger';
   name: 'wechat_digest',
   description: '获取今日微信消息摘要。返回按来源分组的消息列表，包含消息数量统计。可用于生成日报或定期汇总。',
   executor: 'wechat_digest',
-  visibility: ['internal'],
+  visibility: ['subagent'],
   parameters: {
     markProcessed: {
       type: 'boolean',

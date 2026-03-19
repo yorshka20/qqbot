@@ -29,7 +29,7 @@ import { logger } from '@/utils/logger';
   name: 'wechat_article_summary',
   description: '获取微信文章摘要。包括公众号推送和聊天中分享的链接。返回标题、来源、摘要等信息。',
   executor: 'wechat_article_summary',
-  visibility: ['internal'],
+  visibility: ['subagent'],
   parameters: {
     sourceType: {
       type: 'string',

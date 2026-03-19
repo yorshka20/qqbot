@@ -248,9 +248,9 @@ export class WechatReportService {
    * @param baseUrl Base URL of the static server (e.g., "http://localhost:8888")
    */
   getReportUrl(id: string, baseUrl: string): string {
-    // URL format: {baseUrl}/files/#/report/{id}
-    // The webui will handle this route and fetch the report via API
-    return `${baseUrl}/files/#/report/${id}`;
+    // URL format: {baseUrl}/#/report/{id}
+    // The webui handles this hash route and fetches the report via API
+    return `${baseUrl}/#/report/${id}`;
   }
 
   // ──────────────────────────────────────────────────

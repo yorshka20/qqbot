@@ -29,7 +29,7 @@ import { logger } from '@/utils/logger';
   name: 'wechat_stats',
   description: '获取微信消息统计。包括消息总数、群聊/私聊分布、文章数量、活跃群聊排行、活跃公众号排行等。',
   executor: 'wechat_stats',
-  visibility: ['internal'],
+  visibility: ['subagent'],
   parameters: {
     sinceHours: {
       type: 'number',

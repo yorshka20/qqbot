@@ -32,7 +32,7 @@ import { logger } from '@/utils/logger';
   name: 'wechat_report',
   description: '生成并保存微信报告。自动收集群聊摘要、文章推荐、统计数据，生成格式化报告并保存到文件。',
   executor: 'wechat_report',
-  visibility: ['internal'],
+  visibility: ['subagent'],
   parameters: {
     reportType: {
       type: 'string',
