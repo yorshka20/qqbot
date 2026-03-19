@@ -13,6 +13,7 @@ import type { StaticServerConfig } from '@/core/config/types/bot';
 import { logger } from '@/utils/logger';
 import { FileManagerBackend } from './FileManagerBackend';
 import { InsightsBackend } from './InsightsBackend';
+import { MomentsBackend } from './MomentsBackend';
 import { OutputStaticHost } from './OutputStaticHost';
 import { ReportBackend } from './ReportBackend';
 import { ZhihuBackend } from './ZhihuBackend';
@@ -74,6 +75,7 @@ export class StaticFileServer implements StaticFileServerInstance {
   private readonly fileManager: FileManagerBackend;
   private readonly reportBackend: ReportBackend;
   private readonly insightsBackend: InsightsBackend;
+  private readonly momentsBackend: MomentsBackend;
   private readonly zhihuBackend: ZhihuBackend;
   private readonly outputHost: OutputStaticHost;
 
@@ -89,6 +91,7 @@ export class StaticFileServer implements StaticFileServerInstance {
     this.fileManager = new FileManagerBackend(this.baseDir);
     this.reportBackend = new ReportBackend();
     this.insightsBackend = new InsightsBackend();
+    this.momentsBackend = new MomentsBackend();
     this.zhihuBackend = new ZhihuBackend();
     this.outputHost = new OutputStaticHost(this.baseDir);
 
@@ -107,6 +110,11 @@ export class StaticFileServer implements StaticFileServerInstance {
       {
         prefix: '/api/insights',
         handler: (req, url) => this.insightsBackend.handle(url.pathname, req),
+        corsEnabled: true,
+      },
+      {
+        prefix: '/api/moments',
+        handler: (req, url) => this.momentsBackend.handle(url.pathname, req),
         corsEnabled: true,
       },
       {

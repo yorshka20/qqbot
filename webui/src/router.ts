@@ -17,6 +17,7 @@ export type Route =
   | { page: 'report'; id: string }
   | { page: 'insights' }
   | { page: 'zhihu' }
+  | { page: 'moments' }
 
 export type PageName = Route['page']
 
@@ -46,6 +47,10 @@ export function parseHash(): Route {
     return { page: 'zhihu' }
   }
 
+  if (hash === '/moments') {
+    return { page: 'moments' }
+  }
+
   const reportMatch = hash.match(/^\/report\/(.+)$/)
   if (reportMatch?.[1]) {
     return { page: 'report', id: reportMatch[1] }
@@ -73,6 +78,9 @@ export function setHash(route: Route): void {
       break
     case 'zhihu':
       window.location.hash = '/zhihu'
+      break
+    case 'moments':
+      window.location.hash = '/moments'
       break
   }
 }

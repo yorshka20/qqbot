@@ -48,3 +48,9 @@ export function getZhihuApiBase(): string {
   const serverBase = getStaticServerBase();
   return serverBase ? `${serverBase}/api/zhihu` : '/api/zhihu';
 }
+
+/** Base URL for Moments API requests. */
+export function getMomentsApiBase(): string {
+  const serverBase = getStaticServerBase();
+  return serverBase ? `${serverBase}/api/moments` : '/api/moments';
+}

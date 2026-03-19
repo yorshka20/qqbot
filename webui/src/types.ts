@@ -223,3 +223,46 @@ export interface ZhihuContentDetailResponse {
 export interface ZhihuStatsResponse {
   stats: ZhihuPageStats
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Moments Types (WeChat 朋友圈)
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface MomentItem {
+  id: string | number
+  content: string
+  createTime: string
+  type: string
+  mediasCount: number
+  tags: string[]
+  summary: string
+}
+
+export interface TagCount {
+  tag: string
+  count: number
+}
+
+export interface TimelineEntry {
+  month: string
+  count: number
+}
+
+export interface MomentsStats {
+  total: number
+  tagged: number
+  untagged: number
+  timeRange: { earliest: string; latest: string } | null
+  topTags: TagCount[]
+  monthlyCount: TimelineEntry[]
+}
+
+export interface MomentsStatsResponse {
+  stats: MomentsStats
+}
+
+export interface MomentsListResponse {
+  moments: MomentItem[]
+  total: number
+  nextOffset: string | number | null
+}

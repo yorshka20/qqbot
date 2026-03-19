@@ -1,9 +1,11 @@
-import { getFileApiBase, getInsightsApiBase, getReportApiBase, getZhihuApiBase } from './config'
+import { getFileApiBase, getInsightsApiBase, getMomentsApiBase, getReportApiBase, getZhihuApiBase } from './config'
 import type {
   InsightDetailResponse,
   InsightListResponse,
   InsightStatsResponse,
   ListResponse,
+  MomentsListResponse,
+  MomentsStatsResponse,
   ReportDetailResponse,
   ReportListResponse,
   ZhihuContentDetailResponse,
@@ -171,4 +173,42 @@ export async function getZhihuStats(): Promise<ZhihuStatsResponse> {
     throw new Error(err.error ?? `Get zhihu stats failed: ${res.status}`)
   }
   return res.json() as Promise<ZhihuStatsResponse>
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Moments API
+// ────────────────────────────────────────────────────────────────────────────
+
+function momentsApiBase(): string {
+  return getMomentsApiBase()
+}
+
+export async function getMomentsStats(): Promise<MomentsStatsResponse> {
+  const res = await fetch(`${momentsApiBase()}/stats`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get moments stats failed: ${res.status}`)
+  }
+  return res.json() as Promise<MomentsStatsResponse>
+}
+
+export async function listMoments(opts?: {
+  tag?: string
+  year?: string
+  type?: string
+  offset?: string
+  limit?: number
+}): Promise<MomentsListResponse> {
+  const params = new URLSearchParams()
+  if (opts?.tag) params.set('tag', opts.tag)
+  if (opts?.year) params.set('year', opts.year)
+  if (opts?.type) params.set('type', opts.type)
+  if (opts?.offset) params.set('offset', opts.offset)
+  if (opts?.limit) params.set('limit', String(opts.limit))
+  const res = await fetch(`${momentsApiBase()}/list?${params}`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `List moments failed: ${res.status}`)
+  }
+  return res.json() as Promise<MomentsListResponse>
 }
