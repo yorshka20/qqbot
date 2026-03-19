@@ -2,6 +2,7 @@
 // All core logic lives in src/services/wechat/
 
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
+import type { AIService } from '@/ai/AIService';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { CommandManager } from '@/command/CommandManager';
@@ -181,7 +182,13 @@ export class WeChatIngestPlugin extends PluginBase {
 
     // Register /wechat command if padpro config is available
     if (padProClient) {
-      const cmdHandler = new WechatCommandHandler(padProClient, this.db);
+      let aiService: AIService | null = null;
+      try {
+        aiService = container.resolve<AIService>(DITokens.AI_SERVICE);
+      } catch {
+        logger.warn('[WeChatIngestPlugin] AIService not available — /wechat analyze disabled');
+      }
+      const cmdHandler = new WechatCommandHandler(padProClient, this.db, aiService);
       this.commandManager.register(cmdHandler, this.name);
       logger.info('[WeChatIngestPlugin] Registered /wechat command');
     } else {

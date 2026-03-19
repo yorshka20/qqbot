@@ -1,6 +1,8 @@
 // WeChat command handler — /wechat <subcommand> [args]
 // Gives QQ bot users access to WeChat data via read-only PadPro API
 
+import { SubAgentType } from '@/agent/types';
+import type { AIService } from '@/ai/AIService';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type {
   WeChatDatabase,
@@ -24,6 +26,7 @@ const USAGE = `
 /wechat search <query>      — 搜索联系人（微信号/手机/QQ）
 /wechat official            — 关注的公众号
 /wechat articles [keyword]  — 已收录公众号文章（按标题/来源过滤）
+/wechat analyze [count]     — 分析未处理的公众号文章（默认100篇）
 /wechat history [count]     — 同步最新消息（默认20条）
 /wechat fav                 — 收藏列表
 `.trim();
@@ -37,9 +40,10 @@ export class WechatCommandHandler implements CommandHandler {
   constructor(
     private readonly client: WeChatPadProClient,
     private readonly db: WeChatDatabase | null = null,
+    private readonly aiService: AIService | null = null,
   ) {}
 
-  async execute(args: string[], _context: CommandContext): Promise<CommandResult> {
+  async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     const sub = args[0]?.toLowerCase() ?? '';
 
     try {
@@ -62,6 +66,8 @@ export class WechatCommandHandler implements CommandHandler {
           return this.handleOfficial();
         case 'articles':
           return this.handleArticles(args.slice(1).join(' ').trim());
+        case 'analyze':
+          return this.handleAnalyze(Number(args[1] ?? 100), context);
         case 'history':
           return this.handleHistory(Number(args[1] ?? 20));
         case 'fav':
@@ -275,6 +281,46 @@ export class WechatCommandHandler implements CommandHandler {
     b.text(`已收录公众号文章 (${rows.length}条${keyword ? `，筛选: "${keyword}"` : ''})\n\n`);
     b.text(lines.join('\n\n'));
     return ok(b);
+  }
+
+  private async handleAnalyze(count: number, context: CommandContext): Promise<CommandResult> {
+    if (!this.aiService) {
+      return { success: false, error: 'AIService 不可用，无法启动分析任务' };
+    }
+
+    const n = Number.isFinite(count) && count > 0 ? count : 100;
+
+    // Fire-and-forget: spawn subagent to call wechat_analyze_articles tool
+    const description = `分析最近 ${n} 篇未处理的微信公众号文章`;
+    const parentContext = {
+      userId: context.userId,
+      groupId: context.groupId,
+      messageType: context.messageType,
+      protocol: context.metadata.protocol,
+    };
+
+    try {
+      await this.aiService.spawnSubAgent(
+        SubAgentType.TASK_EXECUTION,
+        {
+          description,
+          input: {
+            instruction: `请调用 wechat_analyze_articles 工具，设置 count=${n}，对未分析的微信公众号文章执行深度分析。完成后汇报分析结果。`,
+          },
+          parentContext,
+        },
+        {
+          allowedTools: ['wechat_analyze_articles'],
+          timeout: 600_000, // 10 min — analysis is slow
+        },
+      );
+
+      return ok(`文章分析任务已启动，将分析最多 ${n} 篇未处理文章。\n分析过程在后台运行，请稍后查看结果。`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('[WechatCommandHandler] handleAnalyze error:', err);
+      return { success: false, error: `启动分析任务失败: ${msg}` };
+    }
   }
 
   private async handleHistory(count: number): Promise<CommandResult> {

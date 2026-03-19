@@ -63,48 +63,52 @@ export class WeChatArticleAnalysisService {
   }
 
   /**
-   * Run analysis on articles received since `sinceTs`.
-   * Skips articles that already have insights in the DB.
-   * Returns count of newly analyzed articles.
+   * Run analysis on unanalyzed articles, scanning backwards from now.
+   * Uses the `analyzed` column on wechat_oa_articles to skip already-processed articles.
+   * @param count  Maximum number of articles to analyze this run (default: this.maxArticles)
    */
-  async analyzeArticles(
-    sinceTs: number,
-    untilTs?: number,
-  ): Promise<{
+  async analyzeArticles(count?: number): Promise<{
     total: number;
     analyzed: number;
     skipped: number;
     worthReporting: number;
     failed: number;
   }> {
-    // 1. Get articles from DB
+    const limit = count ?? this.maxArticles;
+
+    // 1. Get unanalyzed articles ordered by pubTime DESC (most recent first)
     const articles = this.db.getArticles({
-      sinceTs,
-      untilTs,
-      limit: this.maxArticles,
+      analyzed: false,
+      limit,
     });
 
     if (articles.length === 0) {
-      logger.info('[ArticleAnalysis] No articles found in the given time range');
+      logger.info('[ArticleAnalysis] No unanalyzed articles found');
       return { total: 0, analyzed: 0, skipped: 0, worthReporting: 0, failed: 0 };
     }
 
-    // 2. Filter out already-analyzed
-    const analyzedIds = this.db.getAnalyzedArticleIds();
-    const pending = articles.filter((a) => !analyzedIds.has(a.msgId));
-    const skipped = articles.length - pending.length;
+    logger.info(`[ArticleAnalysis] Found ${articles.length} unanalyzed articles to process`);
 
-    logger.info(
-      `[ArticleAnalysis] Found ${articles.length} articles, ${skipped} already analyzed, ${pending.length} to process`,
-    );
+    // 2. Log which provider will be used (LLMService handles fallback internally)
+    const provider = await this.llmService.getAvailableProvider(this.provider);
+    const resolvedName = provider && 'name' in provider ? (provider as { name: string }).name : 'default';
+    if (!provider) {
+      logger.warn(`[ArticleAnalysis] Provider "${this.provider}" not available, LLMService will use fallback`);
+    } else if (resolvedName !== this.provider) {
+      logger.warn(
+        `[ArticleAnalysis] Requested provider "${this.provider}" resolved to "${resolvedName}" (fallback)`,
+      );
+    } else {
+      logger.info(`[ArticleAnalysis] Using provider: ${resolvedName}`);
+    }
 
     // 3. Analyze in batches with concurrency control
     let analyzed = 0;
     let worthReporting = 0;
     let failed = 0;
 
-    for (let i = 0; i < pending.length; i += this.concurrency) {
-      const batch = pending.slice(i, i + this.concurrency);
+    for (let i = 0; i < articles.length; i += this.concurrency) {
+      const batch = articles.slice(i, i + this.concurrency);
       const results = await Promise.allSettled(batch.map((article) => this.analyzeOne(article)));
 
       for (const result of results) {
@@ -117,14 +121,14 @@ export class WeChatArticleAnalysisService {
       }
 
       // Progress log every 10 articles
-      if (analyzed % 10 === 0 || i + this.concurrency >= pending.length) {
+      if (analyzed % 10 === 0 || i + this.concurrency >= articles.length) {
         logger.info(
-          `[ArticleAnalysis] Progress: ${analyzed + failed}/${pending.length} (${analyzed} OK, ${failed} failed)`,
+          `[ArticleAnalysis] Progress: ${analyzed + failed}/${articles.length} (${analyzed} OK, ${failed} failed)`,
         );
       }
     }
 
-    return { total: articles.length, analyzed, skipped, worthReporting, failed };
+    return { total: articles.length, analyzed, skipped: 0, worthReporting, failed };
   }
 
   /**
@@ -140,7 +144,7 @@ export class WeChatArticleAnalysisService {
 
     if (isFetchFailed && (!summary || summary.length < 50)) {
       logger.warn(`[ArticleAnalysis] Skipping "${title}" — no content available`);
-      // Store as not worth reporting so we don't retry
+      // Store as not worth reporting so we don't retry, and mark as analyzed
       this.db.insertArticleInsight({
         articleMsgId: msgId,
         title,
@@ -153,6 +157,7 @@ export class WeChatArticleAnalysisService {
         analyzedAt: new Date().toISOString(),
         model: this.provider,
       });
+      this.db.markArticleAnalyzed(msgId);
       return false;
     }
 
@@ -169,7 +174,7 @@ export class WeChatArticleAnalysisService {
       throw new Error(`LLM returned no parseable result for "${title}"`);
     }
 
-    // Store in DB
+    // Store insight in DB and mark article as analyzed
     this.db.insertArticleInsight({
       articleMsgId: msgId,
       title,
@@ -182,6 +187,7 @@ export class WeChatArticleAnalysisService {
       analyzedAt: new Date().toISOString(),
       model: this.provider,
     });
+    this.db.markArticleAnalyzed(msgId);
 
     logger.info(
       `[ArticleAnalysis] ✓ "${title}" → ${analysisResult.items?.length ?? 0} items, worth=${analysisResult.worthReporting}`,

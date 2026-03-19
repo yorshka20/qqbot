@@ -43,6 +43,8 @@ export interface WeChatOAArticleRow {
   sourceType: string; // 'oa_push' | 'group_chat' | 'private_chat'
   fromConversationId: string; // group chatroom-ID or private wxid (empty for oa_push)
   fromSender: string; // wxid/nickname of who shared it in chat (empty for oa_push)
+  // ── Analysis tracking ──────────────────
+  analyzed?: number; // 0 = not analyzed, 1 = analyzed (default 0)
 }
 
 /** Article insight extracted by LLM analysis */
@@ -557,6 +559,7 @@ export class WeChatDatabase {
     sourceType?: 'oa_push' | 'group_chat' | 'private_chat';
     accountId?: string;
     keyword?: string;
+    analyzed?: boolean;
     limit?: number;
   }): WeChatOAArticleRow[] {
     if (!this.db) return [];
@@ -584,6 +587,10 @@ export class WeChatDatabase {
       conditions.push('(title LIKE ? OR summary LIKE ? OR accountNick LIKE ?)');
       const like = `%${options.keyword}%`;
       params.push(like, like, like);
+    }
+    if (options.analyzed !== undefined) {
+      conditions.push('analyzed = ?');
+      params.push(options.analyzed ? 1 : 0);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -730,6 +737,21 @@ export class WeChatDatabase {
     return new Set(rows.map((r) => r.articleMsgId));
   }
 
+  /** Mark an article as analyzed in the articles table. */
+  markArticleAnalyzed(msgId: string): void {
+    if (!this.db) return;
+    this.db.query<void, [string]>(`UPDATE wechat_oa_articles SET analyzed = 1 WHERE msgId = ?`).run(msgId);
+  }
+
+  /** Batch mark articles as analyzed. */
+  markArticlesAnalyzed(msgIds: string[]): void {
+    if (!this.db || msgIds.length === 0) return;
+    const stmt = this.db.query<void, [string]>(`UPDATE wechat_oa_articles SET analyzed = 1 WHERE msgId = ?`);
+    for (const msgId of msgIds) {
+      stmt.run(msgId);
+    }
+  }
+
   // ──────────────────────────────────────────────────
   // Schema
   // ──────────────────────────────────────────────────
@@ -799,6 +821,13 @@ export class WeChatDatabase {
       }
     }
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_oa_sourceType  ON wechat_oa_articles(sourceType)`);
+    // Migrate: add analyzed column for tracking analysis status
+    try {
+      this.db.run(`ALTER TABLE wechat_oa_articles ADD COLUMN analyzed INTEGER NOT NULL DEFAULT 0`);
+    } catch {
+      /* column already exists */
+    }
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_oa_analyzed    ON wechat_oa_articles(analyzed)`);
 
     // Group info cache (synced from PadPro API)
     this.db.run(`
