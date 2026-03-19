@@ -79,14 +79,24 @@ function parseArgs() {
 interface AppConfig {
   rag: {
     enabled: boolean;
-    ollama: { url: string; model: string };
     qdrant: { url: string; apiKey?: string };
+  };
+  ai: {
+    providers: Record<string, { type: string; baseUrl?: string; baseURL?: string; model?: string }>;
   };
 }
 
 function loadConfig(): AppConfig {
   const raw = readFileSync(CONFIG_PATH, 'utf-8');
   return JSONC.parse(raw) as AppConfig;
+}
+
+function getOllamaBaseUrl(config: AppConfig): string {
+  const ollamaProvider = Object.values(config.ai?.providers ?? {}).find((p) => p.type === 'ollama');
+  if (!ollamaProvider?.baseUrl) {
+    throw new Error('No ollama provider configured in ai.providers');
+  }
+  return ollamaProvider.baseUrl;
 }
 
 // ============================================================================
@@ -225,7 +235,7 @@ async function main() {
   }
 
   const qdrantUrl = config.rag.qdrant.url;
-  const ollamaUrl = config.rag.ollama.url;
+  const ollamaUrl = getOllamaBaseUrl(config);
 
   // Ensure output directory exists and initialize file
   const outDir = dirname(output);
