@@ -195,7 +195,7 @@ function StatsSection({ stats }: { stats: WechatStats }) {
                 <div key={g.conversationId} className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-2">
                     <span className="text-zinc-400 dark:text-zinc-500 w-4 text-right">{i + 1}.</span>
-                    <span className="text-zinc-700 dark:text-zinc-300 truncate max-w-[180px]">{g.conversationId}</span>
+                    <span className="text-zinc-700 dark:text-zinc-300 truncate max-w-[180px]">{g.groupName || g.conversationId}</span>
                   </span>
                   <span className="text-zinc-500 dark:text-zinc-400 text-xs">
                     {g.messageCount}条 · {g.senderCount}人
@@ -276,7 +276,7 @@ function GroupCard({ group }: { group: GroupSummary }) {
       <div className="p-4 border-b border-zinc-100 dark:border-zinc-700/50">
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="font-medium text-zinc-900 dark:text-zinc-100">{group.conversationId}</h3>
+            <h3 className="font-medium text-zinc-900 dark:text-zinc-100">{group.groupName || group.conversationId}</h3>
             <div className="flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400 mt-1">
               <span className="flex items-center gap-1">
                 <MessageSquare className="w-3 h-3" />
