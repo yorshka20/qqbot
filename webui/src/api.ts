@@ -198,14 +198,18 @@ export async function getMomentsStats(): Promise<MomentsStatsResponse> {
 
 export async function listMoments(opts?: {
   tag?: string
-  year?: string
+  date?: string   // "YYYY-MM-DD"
+  month?: string  // "YYYY-MM"
+  year?: string   // "YYYY"
   type?: string
   offset?: string
   limit?: number
 }): Promise<MomentsListResponse> {
   const params = new URLSearchParams()
   if (opts?.tag) params.set('tag', opts.tag)
-  if (opts?.year) params.set('year', opts.year)
+  if (opts?.date) params.set('date', opts.date)
+  else if (opts?.month) params.set('month', opts.month)
+  else if (opts?.year) params.set('year', opts.year)
   if (opts?.type) params.set('type', opts.type)
   if (opts?.offset) params.set('offset', opts.offset)
   if (opts?.limit) params.set('limit', String(opts.limit))

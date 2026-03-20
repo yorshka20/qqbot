@@ -18,6 +18,17 @@ import { parseMomentObjectDesc } from './momentsParser';
 const COLLECTION = 'wechat_moments';
 const IMAGE_DIR = 'output/wechat-moments';
 
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Check if a buffer starts with a known image magic signature. */
+function isImageBuffer(buf: Buffer): boolean {
+  if (buf[0] === 0xff && buf[1] === 0xd8) return true; // JPEG
+  if (buf[0] === 0x89 && buf[1] === 0x50) return true; // PNG
+  if (buf[0] === 0x47 && buf[1] === 0x49) return true; // GIF
+  if (buf[0] === 0x52 && buf[1] === 0x49) return true; // WEBP (RIFF)
+  return false;
+}
+
 export interface MomentsIngestOptions {
   /** The wxid to fetch moments for (own wxid). Required to fetch only your own moments. */
   wxid?: string;
@@ -120,7 +131,7 @@ export class WechatMomentsIngestService {
         if (parsed?.contentUrl) textParts.push(parsed.contentUrl);
         const content = textParts.join('\n');
 
-        // Download images
+        // Download images with random delay between each to avoid rate limiting
         const imagePaths: string[] = [];
         if (shouldDownloadImages && parsed?.mediaList?.length) {
           for (const media of parsed.mediaList) {
@@ -131,6 +142,8 @@ export class WechatMomentsIngestService {
             } else {
               result.imagesFailed++;
             }
+            // Random delay 1~3s between image downloads
+            await sleep(1000 + Math.random() * 2000);
           }
         }
 
@@ -148,6 +161,9 @@ export class WechatMomentsIngestService {
 
         const payload: Record<string, unknown> = {
           create_time: createTime,
+          create_date: createTime.slice(0, 10),   // "2026-03-18"
+          create_month: createTime.slice(0, 7),    // "2026-03"
+          create_year: createTime.slice(0, 4),     // "2026"
           type,
           medias_count: parsed?.mediaList?.length ?? 0,
           source: 'padpro_ingest',
@@ -187,6 +203,11 @@ export class WechatMomentsIngestService {
       if (sinceTs > 0 && lastTs <= sinceTs) {
         reachedEnd = true;
       }
+
+      // Random delay 3~6s between page fetches to mimic normal browsing
+      if (!reachedEnd && result.fetched < maxTotal) {
+        await sleep(3000 + Math.random() * 3000);
+      }
     }
 
     // Normalize edge values
@@ -208,6 +229,12 @@ export class WechatMomentsIngestService {
   private async downloadMomentImage(moment: WXMoment, media: ParsedMomentMedia): Promise<string | null> {
     const url = media.url || media.thumbUrl;
     if (!url) return null;
+
+    // Skip video URLs — they require WeChat client auth and cannot be fetched directly
+    if (url.includes('snsvideo') || url.includes('videodownload') || media.type === '6') {
+      logger.debug(`[MomentsIngest] Skipping video media: ${url.slice(0, 60)}`);
+      return null;
+    }
 
     try {
       const dir = resolve(IMAGE_DIR);
@@ -232,6 +259,13 @@ export class WechatMomentsIngestService {
       }
 
       const buf = Buffer.from(await resp.arrayBuffer());
+
+      // Validate magic bytes — reject HTML error pages masquerading as images
+      if (buf.length < 4 || !isImageBuffer(buf)) {
+        logger.warn(`[MomentsIngest] Downloaded content is not a valid image (magic=${buf.slice(0, 4).toString('hex')}) | url=${url.slice(0, 80)}`);
+        return null;
+      }
+
       writeFileSync(absPath, buf);
       logger.debug(`[MomentsIngest] Downloaded image: ${filePath} (${buf.length} bytes)`);
       return filePath;

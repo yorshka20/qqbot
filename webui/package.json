@@ -16,6 +16,7 @@
     "lucide-react": "^0.577.0",
     "marked": "^17.0.4",
     "react": "^19.2.0",
+    "react-day-picker": "^9.14.0",
     "react-dom": "^19.2.0",
     "recharts": "^3.8.0"
   },

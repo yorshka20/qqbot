@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { getMomentsStats, listMoments, searchMoments } from '../api'
+import { MomentsDateFilter, type DateFilterValue } from '../components/MomentsDateFilter'
 import { getOutputBase } from '../config'
 import type { MomentItem, MomentsStats } from '../types'
 
@@ -63,7 +64,7 @@ export function MomentsPage() {
 
   // Filters
   const [tagFilter, setTagFilter] = useState('')
-  const [yearFilter, setYearFilter] = useState('')
+  const [dateFilter, setDateFilter] = useState<DateFilterValue>({ mode: 'day', value: '' })
 
   // Search
   const [searchQuery, setSearchQuery] = useState('')
@@ -93,9 +94,15 @@ export function MomentsPage() {
       }
 
       try {
+        const dateOpts: Record<string, string> = {}
+        if (dateFilter.value) {
+          if (dateFilter.mode === 'day') dateOpts.date = dateFilter.value
+          else if (dateFilter.mode === 'month') dateOpts.month = dateFilter.value
+          else if (dateFilter.mode === 'year') dateOpts.year = dateFilter.value
+        }
         const res = await listMoments({
           tag: tagFilter || undefined,
-          year: yearFilter || undefined,
+          ...dateOpts,
           offset: append ? (nextOffset as string | undefined) : undefined,
           limit: 50,
         })
@@ -112,22 +119,13 @@ export function MomentsPage() {
         setLoadingMore(false)
       }
     },
-    [tagFilter, yearFilter, nextOffset],
+    [tagFilter, dateFilter.mode, dateFilter.value, nextOffset],
   )
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional - reload on filter change
   useEffect(() => {
     loadMoments(false)
-  }, [tagFilter, yearFilter]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Extract available years from stats
-  const years = useMemo(() => {
-    if (!stats?.monthlyCount) return []
-    const yearSet = new Set<string>()
-    for (const e of stats.monthlyCount) {
-      yearSet.add(e.month.slice(0, 4))
-    }
-    return [...yearSet].sort().reverse()
-  }, [stats])
+  }, [tagFilter, dateFilter.mode, dateFilter.value])
 
   // Search handler
   const doSearch = useCallback(async () => {
@@ -311,36 +309,7 @@ export function MomentsPage() {
         {/* Filters row */}
         {!isSearchMode && (
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Year filter */}
-          {years.length > 0 && (
-            <div className="inline-flex items-center gap-0.5 border border-zinc-300 dark:border-zinc-600 rounded-lg overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setYearFilter('')}
-                className={`px-2.5 py-1.5 text-xs transition-colors ${
-                  !yearFilter
-                    ? 'bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                }`}
-              >
-                全部
-              </button>
-              {years.map((y) => (
-                <button
-                  key={y}
-                  type="button"
-                  onClick={() => setYearFilter(yearFilter === y ? '' : y)}
-                  className={`px-2.5 py-1.5 text-xs transition-colors ${
-                    yearFilter === y
-                      ? 'bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900'
-                      : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                  }`}
-                >
-                  {y}
-                </button>
-              ))}
-            </div>
-          )}
+          <MomentsDateFilter value={dateFilter} onChange={setDateFilter} />
 
           {/* Result count */}
           {!loading && (

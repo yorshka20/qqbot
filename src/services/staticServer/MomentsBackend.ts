@@ -218,34 +218,28 @@ export class MomentsBackend {
   private async handleList(retrieval: RetrievalService, url: URL): Promise<Response> {
     try {
       const tag = url.searchParams.get('tag') || '';
-      const year = url.searchParams.get('year') || '';
+      const date = url.searchParams.get('date') || '';   // "YYYY-MM-DD"
+      const month = url.searchParams.get('month') || ''; // "YYYY-MM"
+      const year = url.searchParams.get('year') || '';    // "YYYY"
       const type = url.searchParams.get('type') || '';
       const limit = Math.min(Number(url.searchParams.get('limit') ?? 50), 200);
 
-      // Build filter
+      // Build Qdrant filter using keyword match on indexed fields
       const must: unknown[] = [];
       if (tag) must.push({ key: 'tags', match: { value: tag } });
       if (type) must.push({ key: 'type', match: { value: type } });
+      if (date) must.push({ key: 'create_date', match: { value: date } });
+      else if (month) must.push({ key: 'create_month', match: { value: month } });
+      else if (year) must.push({ key: 'create_year', match: { value: year } });
       const filter = must.length > 0 ? { must } : undefined;
 
-      // Use scrollAll with one page
       const allPoints: Array<{ id: string | number; payload: Record<string, unknown> }> = [];
       for await (const page of retrieval.scrollAll(COLLECTION, { limit, filter })) {
         allPoints.push(...page);
-        break; // Only one page for list view
+        break; // One page for list view
       }
 
-      let points = allPoints;
-
-      // Client-side year filter
-      if (year) {
-        points = points.filter((p) => {
-          const ct = p.payload.create_time as string;
-          return ct?.startsWith(year);
-        });
-      }
-
-      const moments = points.map((p) => payloadToMomentItem(p.id, p.payload));
+      const moments = allPoints.map((p) => payloadToMomentItem(p.id, p.payload));
 
       return jsonResponse<MomentsListResponse>({
         moments,

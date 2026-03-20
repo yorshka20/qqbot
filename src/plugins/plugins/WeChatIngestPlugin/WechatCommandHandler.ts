@@ -33,6 +33,7 @@ const USAGE = `
 /wechat history [count]     — 同步最新消息（默认20条）
 /wechat fav                 — 收藏列表
 /wechat ingest              — 增量同步朋友圈到知识库
+/wechat ingest repair [days]— 重新同步最近N天（默认7），修复失败的图片等
 `.trim();
 
 export class WechatCommandHandler implements CommandHandler {
@@ -79,7 +80,7 @@ export class WechatCommandHandler implements CommandHandler {
         case 'fav':
           return this.handleFav();
         case 'ingest':
-          return this.handleIngest(context);
+          return this.handleIngest(context, args.slice(1));
         default:
           return ok(USAGE);
       }
@@ -368,17 +369,28 @@ export class WechatCommandHandler implements CommandHandler {
     return ok(b);
   }
 
-  private async handleIngest(context: CommandContext): Promise<CommandResult> {
+  private async handleIngest(context: CommandContext, subArgs: string[] = []): Promise<CommandResult> {
     if (!this.retrieval?.isRAGEnabled()) {
       return { success: false, error: 'RAG 未启用，无法同步朋友圈到知识库' };
     }
 
-    // Incremental: read last sync timestamp from SQLite, fallback to Qdrant (first run only)
-    let sinceTimestamp = this.db?.getMomentsLastSyncTimestamp() ?? 0;
-    if (sinceTimestamp === 0 && this.retrieval) {
-      sinceTimestamp = await this.findLatestTimestampFromQdrant();
+    const isRepair = subArgs[0] === 'repair';
+    const repairDays = isRepair ? Math.max(1, Number(subArgs[1]) || 7) : 0;
+
+    let sinceTimestamp: number;
+    let mode: string;
+    if (isRepair) {
+      // Repair mode: ignore sync record, go back N days
+      sinceTimestamp = Math.floor(Date.now() / 1000) - repairDays * 86400;
+      mode = `修复（回溯 ${repairDays} 天）`;
+    } else {
+      // Incremental: read last sync timestamp from SQLite, fallback to Qdrant (first run only)
+      sinceTimestamp = this.db?.getMomentsLastSyncTimestamp() ?? 0;
+      if (sinceTimestamp === 0 && this.retrieval) {
+        sinceTimestamp = await this.findLatestTimestampFromQdrant();
+      }
+      mode = sinceTimestamp > 0 ? `增量（从 ${new Date(sinceTimestamp * 1000).toISOString().slice(0, 16)}）` : '全量';
     }
-    const mode = sinceTimestamp > 0 ? `增量（从 ${new Date(sinceTimestamp * 1000).toISOString().slice(0, 16)}）` : '全量';
 
     // Fire-and-forget so the command returns immediately
     const messageAPI = this.messageAPI;

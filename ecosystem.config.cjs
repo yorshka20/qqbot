@@ -9,7 +9,6 @@ module.exports = {
       args: [],
       interpreter: 'none',
       cwd: path.resolve(__dirname),
-      cron_restart: '0 */6 * * *',
       autorestart: true,
       restart_delay: 60000,
       max_restarts: 999999,
