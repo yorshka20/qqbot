@@ -9,7 +9,7 @@ import { ResourceDownloader } from '@/ai/utils/ResourceDownloader';
 import type { RetrievalService } from '@/services/retrieval';
 import { chunkText } from '@/services/retrieval/rag/chunkText';
 import { logger } from '@/utils/logger';
-import { fetchArticleText } from '../articles/fetchArticleText';
+import { fetchArticleText, stripHtml } from '../articles/fetchArticleText';
 import type {
   MessageCategory,
   ParsedWeChatMessage,
@@ -856,7 +856,7 @@ export class WeChatIngestService {
     docContent: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    const chunks = chunkText(docContent);
+    const chunks = chunkText(stripHtml(docContent));
 
     // Even single-chunk (short) articles go into chunksCollection —
     // this is now the only Qdrant collection for article search.

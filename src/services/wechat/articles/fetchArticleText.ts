@@ -5,6 +5,28 @@ import { logger } from '@/utils/logger';
 const JS_CONTENT_RE = /<div[^>]+id=["']js_content["'][^>]*>([\s\S]*?)<\/div>/i;
 
 /**
+ * Strip HTML tags and entities from a string, returning clean plain text.
+ * Safe to call on text that is already plain — it will pass through unchanged.
+ */
+export function stripHtml(html: string): string {
+  return html
+    // Block-level tags → newline (preserve paragraph structure)
+    .replace(/<\s*\/?\s*(?:p|div|br|section|article|h[1-6]|ul|ol|li|blockquote|pre|hr|tr|table)[\s>/]/gi, '\n')
+    // Strip all remaining HTML tags
+    .replace(/<[^>]+>/g, '')
+    // Decode common HTML entities
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    // Collapse whitespace
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n[ \t]*/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
  * Fetch and clean the full text of a WeChat article.
  * Returns the cleaned text on success, or `fallback` if fetching fails or content is too thin.
  */
@@ -24,19 +46,7 @@ export async function fetchArticleText(url: string, fallback: string): Promise<s
     const html = await resp.text();
     const bodyMatch = html.match(JS_CONTENT_RE);
     const rawText = bodyMatch?.[1] ?? '';
-    const text = rawText
-      // Block-level tags → newline (preserve paragraph structure)
-      .replace(/<\s*\/?\s*(?:p|div|br|section|article|h[1-6]|ul|ol|li|blockquote|pre|hr|tr|table)[\s>/]/gi, '\n')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&')
-      // Collapse multiple blank lines into double-newline (preserve paragraph breaks)
-      .replace(/[ \t]+/g, ' ')
-      .replace(/\n[ \t]*/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
+    const text = stripHtml(rawText);
     if (text.length > 100) {
       logger.info(`[fetchArticleText] Fetched: "${fallback}" — ${text.length} chars`);
       return text;
