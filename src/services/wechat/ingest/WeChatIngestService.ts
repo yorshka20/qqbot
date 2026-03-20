@@ -84,6 +84,28 @@ function xmlAttr(xml: string, attr: string): string {
   return (m?.[1] ?? '').replace(/&amp;/g, '&');
 }
 
+/**
+ * Clean a WeChat article URL by keeping only the essential query params
+ * (__biz, mid, idx, sn) and stripping tracking params (chksm, scene, xtrack, etc.) and fragments (#rd).
+ * Non-WeChat URLs are returned unchanged.
+ */
+export function cleanWeChatArticleUrl(url: string): string {
+  if (!url) return url;
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.includes('weixin.qq.com')) return url;
+    const essential = ['__biz', 'mid', 'idx', 'sn'];
+    const clean = new URL(`${parsed.origin}${parsed.pathname}`);
+    for (const key of essential) {
+      const val = parsed.searchParams.get(key);
+      if (val) clean.searchParams.set(key, val);
+    }
+    return clean.toString();
+  } catch {
+    return url;
+  }
+}
+
 export interface ImgInfo {
   /** Best available download URL (HD > regular > thumb), empty if none found */
   url: string;
@@ -640,7 +662,7 @@ export class WeChatIngestService {
 
     // Extract article metadata from XML
     const title = xmlTag(msg.Content, 'title');
-    const url = xmlTag(msg.Content, 'url');
+    const url = cleanWeChatArticleUrl(xmlTag(msg.Content, 'url'));
     const summary = xmlTag(msg.Content, 'des') || xmlTag(msg.Content, 'digest');
     const cover = xmlTag(msg.Content, 'thumburl');
     const accountId = xmlTag(msg.Content, 'appid') || '';
@@ -766,6 +788,7 @@ export class WeChatIngestService {
       const item = items[idx];
       if (!item) continue;
       const msgId = `${msg.NewMsgId}_${idx}`;
+      item.url = cleanWeChatArticleUrl(item.url);
 
       // Store metadata to DB
       const articleRow: Omit<WeChatOAArticleRow, 'id'> = {

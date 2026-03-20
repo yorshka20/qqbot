@@ -14,6 +14,22 @@ import type { InsightDetail, InsightListItem, InsightStats } from '../types';
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
 
+/** Clean WeChat article URL: keep only essential params (__biz, mid, idx, sn) */
+function cleanWxUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.includes('weixin.qq.com')) return url;
+    const clean = new URL(`${parsed.origin}${parsed.pathname}`);
+    for (const key of ['__biz', 'mid', 'idx', 'sn']) {
+      const val = parsed.searchParams.get(key);
+      if (val) clean.searchParams.set(key, val);
+    }
+    return clean.toString();
+  } catch {
+    return url;
+  }
+}
+
 /** Format ISO date string to YYYY-MM-DD */
 function toDateKey(iso: string): string {
   return new Date(iso).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -449,7 +465,7 @@ function InsightDetailView({ detail }: { detail: InsightDetail }) {
         <span className="text-zinc-500 dark:text-zinc-400">模型: {detail.model}</span>
         {detail.url && (
           <a
-            href={detail.url}
+            href={cleanWxUrl(detail.url)}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline"
