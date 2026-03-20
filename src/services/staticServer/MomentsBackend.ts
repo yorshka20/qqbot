@@ -31,6 +31,7 @@ export interface MomentItem {
   mediasCount: number;
   tags: string[];
   summary: string;
+  imagePaths: string[];
   score?: number;
 }
 
@@ -104,6 +105,7 @@ function payloadToMomentItem(id: string | number, payload: Record<string, unknow
     mediasCount: (payload.medias_count as number) || 0,
     tags: Array.isArray(payload.tags) ? (payload.tags as string[]) : [],
     summary: (payload.summary as string) || '',
+    imagePaths: Array.isArray(payload.image_paths) ? (payload.image_paths as string[]) : [],
     ...(score != null && { score }),
   };
 }

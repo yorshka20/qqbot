@@ -66,7 +66,9 @@ export class WeChatArticleCleanupService {
       return { deleted: 0 };
     }
 
-    logger.info(`${TAG} Found ${expiredIds.length} expired articles (before ${new Date(cutoffTs * 1000).toISOString()})`);
+    logger.info(
+      `${TAG} Found ${expiredIds.length} expired articles (before ${new Date(cutoffTs * 1000).toISOString()})`,
+    );
 
     // 2. Delete from Qdrant — both legacy articleCollection and chunksCollection
     //    Use articleId payload filter to match all chunks belonging to each article.
@@ -102,9 +104,7 @@ export class WeChatArticleCleanupService {
     // 3. Delete from SQLite (articles + insights)
     const sqliteDeleted = this.db.deleteArticlesByMsgIds(expiredIds);
 
-    logger.info(
-      `${TAG} Cleanup complete | qdrant=${qdrantDeleted} sqlite=${sqliteDeleted} articles removed`,
-    );
+    logger.info(`${TAG} Cleanup complete | qdrant=${qdrantDeleted} sqlite=${sqliteDeleted} articles removed`);
 
     return { deleted: expiredIds.length };
   }

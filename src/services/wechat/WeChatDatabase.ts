@@ -955,6 +955,63 @@ export class WeChatDatabase {
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_ai_analyzedAt      ON wechat_article_insights(analyzedAt)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_ai_worthReporting   ON wechat_article_insights(worthReporting)`);
 
+    // Moments ingest sync state
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS wechat_moments_sync (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        syncedAt        TEXT    NOT NULL DEFAULT '',
+        newestTimestamp INTEGER NOT NULL DEFAULT 0,
+        oldestTimestamp INTEGER NOT NULL DEFAULT 0,
+        fetched         INTEGER NOT NULL DEFAULT 0,
+        ingested        INTEGER NOT NULL DEFAULT 0,
+        skippedEmpty    INTEGER NOT NULL DEFAULT 0,
+        imagesDownloaded INTEGER NOT NULL DEFAULT 0,
+        imagesFailed    INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+
     logger.debug('[WeChatDatabase] Schema ready');
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Moments sync state
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /** Get the newest moment timestamp (unix seconds) from the last successful sync. Returns 0 if never synced. */
+  getMomentsLastSyncTimestamp(): number {
+    if (!this.db) return 0;
+    const row = this.db
+      .query<{ newestTimestamp: number }, []>(
+        `SELECT newestTimestamp FROM wechat_moments_sync ORDER BY id DESC LIMIT 1`,
+      )
+      .get();
+    return row?.newestTimestamp ?? 0;
+  }
+
+  /** Record a completed moments sync. */
+  recordMomentsSync(result: {
+    newestTimestamp: number;
+    oldestTimestamp: number;
+    fetched: number;
+    ingested: number;
+    skippedEmpty: number;
+    imagesDownloaded: number;
+    imagesFailed: number;
+  }): void {
+    if (!this.db) return;
+    this.db.run(
+      `INSERT INTO wechat_moments_sync (syncedAt, newestTimestamp, oldestTimestamp, fetched, ingested, skippedEmpty, imagesDownloaded, imagesFailed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        new Date().toISOString(),
+        result.newestTimestamp,
+        result.oldestTimestamp,
+        result.fetched,
+        result.ingested,
+        result.skippedEmpty,
+        result.imagesDownloaded,
+        result.imagesFailed,
+      ],
+    );
   }
 }

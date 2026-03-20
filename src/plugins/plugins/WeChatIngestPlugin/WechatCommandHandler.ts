@@ -5,6 +5,7 @@ import { SubAgentType } from '@/agent/types';
 import type { AIService } from '@/ai/AIService';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { MessageBuilder } from '@/message/MessageBuilder';
+import type { RetrievalService } from '@/services/retrieval';
 import type {
   WeChatDatabase,
   WeChatPadProClient,
@@ -14,6 +15,7 @@ import type {
   WXOfficialAccount,
   WXSearchResult,
 } from '@/services/wechat';
+import { WechatMomentsIngestService } from '@/services/wechat/moments/WechatMomentsIngestService';
 import { logger } from '@/utils/logger';
 import type { CommandContext, CommandHandler, CommandResult, PermissionLevel } from '../../../command/types';
 
@@ -30,6 +32,7 @@ const USAGE = `
 /wechat analyze [count]     — 分析未处理的公众号文章（默认100篇）
 /wechat history [count]     — 同步最新消息（默认20条）
 /wechat fav                 — 收藏列表
+/wechat ingest              — 增量同步朋友圈到知识库
 `.trim();
 
 export class WechatCommandHandler implements CommandHandler {
@@ -43,6 +46,7 @@ export class WechatCommandHandler implements CommandHandler {
     private readonly db: WeChatDatabase | null = null,
     private readonly aiService: AIService | null = null,
     private readonly messageAPI: MessageAPI | null = null,
+    private readonly retrieval: RetrievalService | null = null,
   ) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
@@ -74,6 +78,8 @@ export class WechatCommandHandler implements CommandHandler {
           return this.handleHistory(Number(args[1] ?? 20));
         case 'fav':
           return this.handleFav();
+        case 'ingest':
+          return this.handleIngest(context);
         default:
           return ok(USAGE);
       }
@@ -360,6 +366,84 @@ export class WechatCommandHandler implements CommandHandler {
     b.text(`最近消息 (${msgs.length}条，显示前20)\n\n`);
     b.text(lines.join('\n'));
     return ok(b);
+  }
+
+  private async handleIngest(context: CommandContext): Promise<CommandResult> {
+    if (!this.retrieval?.isRAGEnabled()) {
+      return { success: false, error: 'RAG 未启用，无法同步朋友圈到知识库' };
+    }
+
+    // Incremental: read last sync timestamp from SQLite, fallback to Qdrant (first run only)
+    let sinceTimestamp = this.db?.getMomentsLastSyncTimestamp() ?? 0;
+    if (sinceTimestamp === 0 && this.retrieval) {
+      sinceTimestamp = await this.findLatestTimestampFromQdrant();
+    }
+    const mode = sinceTimestamp > 0 ? `增量（从 ${new Date(sinceTimestamp * 1000).toISOString().slice(0, 16)}）` : '全量';
+
+    // Fire-and-forget so the command returns immediately
+    const messageAPI = this.messageAPI;
+    const cmdContext = context;
+    const service = new WechatMomentsIngestService(this.client, this.retrieval);
+
+    service
+      .ingest({ wxid: this.client.wxid, sinceTimestamp, maxTotal: 200, downloadImages: true })
+      .then(async (result) => {
+        const oldestTime = result.oldestTimestamp
+          ? new Date(result.oldestTimestamp * 1000).toISOString().slice(0, 16)
+          : '—';
+        const newestTime = result.newestTimestamp
+          ? new Date(result.newestTimestamp * 1000).toISOString().slice(0, 16)
+          : '—';
+
+        const summary =
+          `朋友圈同步完成：\n` +
+          `- 获取: ${result.fetched} 条\n` +
+          `- 入库: ${result.ingested} 条\n` +
+          `- 跳过(无内容): ${result.skippedEmpty} 条\n` +
+          `- 跳过(已存在): ${result.skippedDuplicate} 条\n` +
+          `- 图片: ${result.imagesDownloaded} 成功, ${result.imagesFailed} 失败\n` +
+          `- 时间范围: ${oldestTime} ~ ${newestTime}`;
+
+        // Record sync state in SQLite for next incremental run
+        if (result.ingested > 0) {
+          this.db?.recordMomentsSync(result);
+        }
+
+        logger.info(`[WechatCommandHandler] Moments ingest completed: ${result.ingested} ingested`);
+        if (messageAPI) {
+          await messageAPI.sendFromContext(summary, cmdContext);
+        }
+      })
+      .catch(async (err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error('[WechatCommandHandler] Moments ingest failed:', err);
+        if (messageAPI) {
+          await messageAPI.sendFromContext(`朋友圈同步失败: ${msg}`, cmdContext);
+        }
+      });
+
+    return ok(`朋友圈同步任务已启动（${mode}）\n完成后会自动汇报结果。`);
+  }
+
+  /** One-time fallback: scan Qdrant for the latest create_time when no SQLite sync record exists. */
+  private async findLatestTimestampFromQdrant(): Promise<number> {
+    if (!this.retrieval) return 0;
+    try {
+      let latest = '';
+      for await (const page of this.retrieval.scrollAll('wechat_moments', {
+        limit: 500,
+        withPayload: { include: ['create_time'] } as unknown as boolean,
+      })) {
+        for (const point of page) {
+          const ct = point.payload.create_time as string;
+          if (ct && ct > latest) latest = ct;
+        }
+      }
+      if (!latest) return 0;
+      return Math.floor(new Date(latest.replace(' ', 'T')).getTime() / 1000);
+    } catch {
+      return 0;
+    }
   }
 
   private async handleFav(): Promise<CommandResult> {

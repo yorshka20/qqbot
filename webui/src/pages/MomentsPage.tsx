@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { getMomentsStats, listMoments, searchMoments } from '../api'
+import { getOutputBase } from '../config'
 import type { MomentItem, MomentsStats } from '../types'
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -460,6 +461,31 @@ function MomentRow({
           {contentPreview}
           {needsTruncation && <span className="text-zinc-400">...</span>}
         </p>
+
+        {/* Images — imagePaths are stored as "output/wechat-moments/xxx.jpg", OutputStaticHost serves /output/ → output/ */}
+        {item.imagePaths.length > 0 && (
+          <div className={`mt-2 grid gap-1.5 ${item.imagePaths.length === 1 ? 'grid-cols-1 max-w-xs' : item.imagePaths.length <= 4 ? 'grid-cols-2 max-w-md' : 'grid-cols-3 max-w-lg'}`}>
+            {item.imagePaths.map((p) => {
+              const url = `${getOutputBase()}/${p.replace(/^output\//, '')}`
+              return (
+                <a
+                  key={p}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <img
+                    src={url}
+                    alt=""
+                    loading="lazy"
+                    className="w-full aspect-square object-cover rounded border border-zinc-200 dark:border-zinc-700 hover:opacity-90 transition-opacity"
+                  />
+                </a>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Tags */}

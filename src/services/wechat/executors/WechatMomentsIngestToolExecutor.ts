@@ -6,13 +6,12 @@ import { DITokens } from '@/core/DITokens';
 import type { RetrievalService } from '@/services/retrieval';
 import { WechatMomentsIngestService } from '@/services/wechat/moments/WechatMomentsIngestService';
 import { WechatDITokens } from '@/services/wechat/tokens';
+import type { WeChatDatabase } from '@/services/wechat/WeChatDatabase';
 import type { WeChatPadProClient } from '@/services/wechat/WeChatPadProClient';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
-
-const COLLECTION = 'wechat_moments';
 
 /**
  * WechatMomentsIngestToolExecutor
@@ -66,6 +65,7 @@ export class WechatMomentsIngestToolExecutor extends BaseToolExecutor {
   constructor(
     @inject(DITokens.RETRIEVAL_SERVICE) private retrieval: RetrievalService,
     @inject(WechatDITokens.PADPRO_CLIENT) private padProClient: WeChatPadProClient,
+    @inject(WechatDITokens.WECHAT_DB) private db: WeChatDatabase,
   ) {
     super();
   }
@@ -84,18 +84,21 @@ export class WechatMomentsIngestToolExecutor extends BaseToolExecutor {
       sinceTimestamp = Math.floor(Date.now() / 1000) - call.parameters.sinceDaysAgo * 86400;
       logger.info(`[MomentsIngestTool] Backfill mode: sinceDaysAgo=${call.parameters.sinceDaysAgo}`);
     } else {
-      // Incremental: find latest create_time in Qdrant
-      sinceTimestamp = await this.findLatestTimestamp();
+      // Incremental: read last sync timestamp from SQLite, fallback to Qdrant scan (first run only)
+      sinceTimestamp = this.db?.getMomentsLastSyncTimestamp() ?? 0;
+      if (sinceTimestamp === 0) {
+        sinceTimestamp = await this.findLatestTimestampFromQdrant();
+      }
       if (sinceTimestamp > 0) {
         logger.info(`[MomentsIngestTool] Incremental mode: since=${new Date(sinceTimestamp * 1000).toISOString()}`);
       } else {
-        logger.info('[MomentsIngestTool] No existing moments found — full fetch');
+        logger.info('[MomentsIngestTool] No prior data found — full fetch');
       }
     }
 
     try {
       const service = new WechatMomentsIngestService(this.padProClient, this.retrieval);
-      const result = await service.ingest({ sinceTimestamp, maxTotal, downloadImages });
+      const result = await service.ingest({ wxid: this.padProClient.wxid, sinceTimestamp, maxTotal, downloadImages });
 
       const oldestTime = result.oldestTimestamp
         ? new Date(result.oldestTimestamp * 1000).toISOString().slice(0, 16)
@@ -109,8 +112,14 @@ export class WechatMomentsIngestToolExecutor extends BaseToolExecutor {
         `- 获取: ${result.fetched} 条\n` +
         `- 入库: ${result.ingested} 条\n` +
         `- 跳过(无内容): ${result.skippedEmpty} 条\n` +
+        `- 跳过(已存在): ${result.skippedDuplicate} 条\n` +
         `- 图片下载: ${result.imagesDownloaded} 成功, ${result.imagesFailed} 失败\n` +
         `- 时间范围: ${oldestTime} ~ ${newestTime}`;
+
+      // Record sync state in SQLite for next incremental run
+      if (result.ingested > 0) {
+        this.db?.recordMomentsSync(result);
+      }
 
       return this.success(summary, {
         ...result,
@@ -124,14 +133,11 @@ export class WechatMomentsIngestToolExecutor extends BaseToolExecutor {
     }
   }
 
-  /**
-   * Find the latest create_time in the wechat_moments collection.
-   * Returns unix timestamp (seconds) or 0 if collection is empty.
-   */
-  private async findLatestTimestamp(): Promise<number> {
+  /** One-time fallback: scan Qdrant for the latest create_time when no SQLite sync record exists. */
+  private async findLatestTimestampFromQdrant(): Promise<number> {
     try {
       let latest = '';
-      for await (const page of this.retrieval.scrollAll(COLLECTION, {
+      for await (const page of this.retrieval.scrollAll('wechat_moments', {
         limit: 500,
         withPayload: { include: ['create_time'] } as unknown as boolean,
       })) {
@@ -140,14 +146,12 @@ export class WechatMomentsIngestToolExecutor extends BaseToolExecutor {
           if (ct && ct > latest) latest = ct;
         }
       }
-
       if (!latest) return 0;
-
-      // Parse "2025-06-05 17:21:41" or ISO format
-      const date = new Date(latest.replace(' ', 'T'));
-      return Math.floor(date.getTime() / 1000);
+      const ts = Math.floor(new Date(latest.replace(' ', 'T')).getTime() / 1000);
+      logger.info(`[MomentsIngestTool] Qdrant fallback: latest=${latest} (ts=${ts})`);
+      return ts;
     } catch (err) {
-      logger.warn('[MomentsIngestTool] Failed to query latest timestamp:', err);
+      logger.warn('[MomentsIngestTool] Qdrant fallback failed:', err);
       return 0;
     }
   }

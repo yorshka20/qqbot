@@ -101,6 +101,11 @@ export class GroupNoticePlugin extends PluginBase {
     const isJoin = noticeType === 'group_member_increase';
 
     const template = isJoin ? this.joinMessageTemplate : this.leaveMessageTemplate;
+    if (!template) {
+      // do not send if template is not set
+      return;
+    }
+
     const text = template.replace(/\{userId\}/g, userIdStr).replace(/\{groupId\}/g, groupIdStr);
 
     logger.info(`[GroupNoticePlugin] Member ${isJoin ? 'joined' : 'left'} | groupId=${groupId} | userId=${userId}`);

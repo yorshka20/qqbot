@@ -136,9 +136,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
       }
       logger.info(`[Bootstrap] Startup health check: ${healthy}/${results.size} providers healthy`);
       if (unhealthy > 0) {
-        const unhealthyNames = [...results.entries()]
-          .filter(([_, r]) => r.status !== 'healthy')
-          .map(([n]) => n);
+        const unhealthyNames = [...results.entries()].filter(([_, r]) => r.status !== 'healthy').map(([n]) => n);
         logger.warn(`[Bootstrap] Unhealthy providers: ${unhealthyNames.join(', ')}`);
       }
     })

@@ -72,6 +72,7 @@ export class WeChatIngestPlugin extends PluginBase {
       padProClient = new WeChatPadProClient({
         apiBase: padpro.apiBase,
         authKey: padpro.authKey,
+        wxid: padpro.wxid,
       });
     }
 
@@ -208,7 +209,7 @@ export class WeChatIngestPlugin extends PluginBase {
       } catch {
         logger.warn('[WeChatIngestPlugin] AIService not available — /wechat analyze disabled');
       }
-      const cmdHandler = new WechatCommandHandler(padProClient, this.db, aiService, this.messageAPI);
+      const cmdHandler = new WechatCommandHandler(padProClient, this.db, aiService, this.messageAPI, this.retrieval);
       this.commandManager.register(cmdHandler, this.name);
       logger.info('[WeChatIngestPlugin] Registered /wechat command');
     } else {

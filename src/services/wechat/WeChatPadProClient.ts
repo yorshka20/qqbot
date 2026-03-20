@@ -264,10 +264,13 @@ export class WeChatPadProClient {
   private readonly base: string;
   private readonly authKey: string;
   private readonly timeout: number;
+  /** Own wxid, if provided at construction time. */
+  readonly wxid: string | undefined;
 
-  constructor(opts: { apiBase: string; authKey: string; timeoutMs?: number }) {
+  constructor(opts: { apiBase: string; authKey: string; wxid?: string; timeoutMs?: number }) {
     this.base = opts.apiBase.replace(/\/$/, '');
     this.authKey = opts.authKey;
+    this.wxid = opts.wxid;
     this.timeout = opts.timeoutMs ?? 15_000;
   }
 

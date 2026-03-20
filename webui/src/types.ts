@@ -237,6 +237,7 @@ export interface MomentItem {
   mediasCount: number
   tags: string[]
   summary: string
+  imagePaths: string[]
   score?: number
 }
 

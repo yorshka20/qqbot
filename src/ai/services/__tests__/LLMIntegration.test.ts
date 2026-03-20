@@ -181,12 +181,16 @@ describe.skipIf(!getIntegrationProvider('doubao'))('Doubao jsonMode integration 
   test(
     'Responses API: jsonMode returns valid JSON (text.format.type=json_object)',
     async () => {
-      const res = await llmService.generate('Give me a fictional person', {
-        systemPrompt: 'Return JSON with fields: name (string), age (number). No other text.',
-        jsonMode: true,
-        maxTokens: 500,
-        temperature: 0.3,
-      }, 'doubao');
+      const res = await llmService.generate(
+        'Give me a fictional person',
+        {
+          systemPrompt: 'Return JSON with fields: name (string), age (number). No other text.',
+          jsonMode: true,
+          maxTokens: 500,
+          temperature: 0.3,
+        },
+        'doubao',
+      );
       logFlow('[doubao] jsonMode response', { text: res.text?.slice(0, 200) });
 
       expect(res.text).toBeDefined();
@@ -208,10 +212,14 @@ describe.skipIf(!getIntegrationProvider('doubao'))('Doubao jsonMode integration 
   test(
     'Responses API: without jsonMode, response may contain non-JSON text',
     async () => {
-      const res = await llmService.generate('Give me a fictional person with name and age', {
-        maxTokens: 500,
-        temperature: 0.3,
-      }, 'doubao');
+      const res = await llmService.generate(
+        'Give me a fictional person with name and age',
+        {
+          maxTokens: 500,
+          temperature: 0.3,
+        },
+        'doubao',
+      );
       logFlow('[doubao] no-jsonMode response', { textPreview: res.text?.slice(0, 200) });
 
       expect(res.text).toBeDefined();
@@ -223,13 +231,17 @@ describe.skipIf(!getIntegrationProvider('doubao'))('Doubao jsonMode integration 
   test(
     'Chat Completions API: jsonMode returns valid JSON (response_format, lite model)',
     async () => {
-      const res = await llmService.generate('Give me a fictional person', {
-        systemPrompt: 'Return JSON with fields: name (string), age (number). No other text.',
-        jsonMode: true,
-        model: 'doubao-1-5-lite-32k-250115',
-        maxTokens: 500,
-        temperature: 0.3,
-      }, 'doubao');
+      const res = await llmService.generate(
+        'Give me a fictional person',
+        {
+          systemPrompt: 'Return JSON with fields: name (string), age (number). No other text.',
+          jsonMode: true,
+          model: 'doubao-1-5-lite-32k-250115',
+          maxTokens: 500,
+          temperature: 0.3,
+        },
+        'doubao',
+      );
       logFlow('[doubao-lite] jsonMode response', { text: res.text?.slice(0, 200) });
 
       expect(res.text).toBeDefined();

@@ -16,9 +16,11 @@ import type { ParsedMomentMedia } from './momentsParser';
 import { parseMomentObjectDesc } from './momentsParser';
 
 const COLLECTION = 'wechat_moments';
-const IMAGE_DIR = 'output/wechat/moments';
+const IMAGE_DIR = 'output/wechat-moments';
 
 export interface MomentsIngestOptions {
+  /** The wxid to fetch moments for (own wxid). Required to fetch only your own moments. */
+  wxid?: string;
   /** Stop fetching when we reach a moment with createTime <= this (unix seconds). 0 = no limit. */
   sinceTimestamp?: number;
   /** Max total moments to fetch across all pages. Default 200. */
@@ -31,6 +33,7 @@ export interface MomentsIngestResult {
   fetched: number;
   ingested: number;
   skippedEmpty: number;
+  skippedDuplicate: number;
   imagesDownloaded: number;
   imagesFailed: number;
   oldestTimestamp: number;
@@ -48,6 +51,7 @@ export class WechatMomentsIngestService {
    * Paginates via maxId until sinceTimestamp is reached or maxTotal is hit.
    */
   async ingest(options: MomentsIngestOptions = {}): Promise<MomentsIngestResult> {
+    const wxid = options.wxid;
     const sinceTs = options.sinceTimestamp ?? 0;
     const maxTotal = options.maxTotal ?? 200;
     const shouldDownloadImages = options.downloadImages ?? true;
@@ -60,6 +64,7 @@ export class WechatMomentsIngestService {
       fetched: 0,
       ingested: 0,
       skippedEmpty: 0,
+      skippedDuplicate: 0,
       imagesDownloaded: 0,
       imagesFailed: 0,
       oldestTimestamp: Number.MAX_SAFE_INTEGER,
@@ -72,7 +77,9 @@ export class WechatMomentsIngestService {
     while (result.fetched < maxTotal && !reachedEnd) {
       logger.info(`[MomentsIngest] Fetching page | maxId=${maxId ?? 'none'} fetched=${result.fetched}/${maxTotal}`);
 
-      const moments = await this.padProClient.getMomentsTimeline(maxId);
+      const moments = wxid
+        ? await this.padProClient.getUserMoments(wxid, maxId)
+        : await this.padProClient.getMomentsTimeline(maxId);
       if (moments.length === 0) {
         logger.info('[MomentsIngest] No more moments returned');
         break;
@@ -81,6 +88,11 @@ export class WechatMomentsIngestService {
       const documents: RAGDocument[] = [];
 
       for (const moment of moments) {
+        if (result.fetched >= maxTotal) {
+          reachedEnd = true;
+          break;
+        }
+
         const ts = moment.createTime ?? 0;
         if (sinceTs > 0 && ts <= sinceTs) {
           reachedEnd = true;
@@ -88,6 +100,7 @@ export class WechatMomentsIngestService {
         }
 
         result.fetched++;
+
         if (ts < result.oldestTimestamp) result.oldestTimestamp = ts;
         if (ts > result.newestTimestamp) result.newestTimestamp = ts;
 
@@ -181,7 +194,8 @@ export class WechatMomentsIngestService {
 
     logger.info(
       `[MomentsIngest] Done | fetched=${result.fetched} ingested=${result.ingested} ` +
-        `skippedEmpty=${result.skippedEmpty} images=${result.imagesDownloaded}/${result.imagesDownloaded + result.imagesFailed}`,
+        `skippedEmpty=${result.skippedEmpty} skippedDup=${result.skippedDuplicate} ` +
+        `images=${result.imagesDownloaded}/${result.imagesDownloaded + result.imagesFailed}`,
     );
 
     return result;
