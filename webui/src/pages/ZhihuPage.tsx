@@ -113,8 +113,7 @@ export function ZhihuPage() {
           <h1 className="text-xl font-semibold">知乎动态</h1>
           {stats && (
             <div className="flex items-center gap-4 text-sm text-zinc-500 dark:text-zinc-400">
-              <span>共 {stats.totalContents} 条</span>
-              <span>{stats.totalFeedItems} 条动态</span>
+              <span>共 {stats.totalFeedItems} 条动态</span>
               {stats.lastFetchTs > 0 && (
                 <span>最后抓取: {new Date(stats.lastFetchTs * 1000).toLocaleString('zh-CN')}</span>
               )}
@@ -123,7 +122,7 @@ export function ZhihuPage() {
         </div>
 
         {/* Content type stats */}
-        {stats && stats.contentsByType.length > 0 && (
+        {stats && stats.feedByType.length > 0 && (
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -136,10 +135,10 @@ export function ZhihuPage() {
             >
               全部
               <span className={!typeFilter ? 'text-blue-200' : 'text-zinc-400 dark:text-zinc-500'}>
-                ({stats.totalContents})
+                ({stats.totalFeedItems})
               </span>
             </button>
-            {stats.contentsByType.map((c) => (
+            {stats.feedByType.map((c) => (
               <button
                 key={c.targetType}
                 type="button"

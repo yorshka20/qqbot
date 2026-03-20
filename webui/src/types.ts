@@ -206,8 +206,7 @@ export interface ZhihuContentDetail {
 
 export interface ZhihuPageStats {
   totalFeedItems: number
-  totalContents: number
-  contentsByType: Array<{ targetType: string; count: number }>
+  feedByType: Array<{ targetType: string; count: number }>
   feedByVerb: Array<{ verb: string; verbLabel: string; count: number }>
   lastFetchTs: number
 }
