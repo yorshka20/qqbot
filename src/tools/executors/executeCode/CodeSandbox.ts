@@ -75,9 +75,7 @@ export class CodeSandbox {
     const paramNames = Object.keys(globals);
     const paramValues = Object.values(globals);
 
-    // Wrap code to capture the last expression as return value.
-    // If user code already has explicit `return`, use it as-is.
-    const wrappedCode = code.includes('return ') ? code : `return (async () => {\n${code}\n})()`;
+    const wrappedCode = this.addImplicitReturn(code);
 
     // Create AsyncFunction with globals as named parameters
     const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
@@ -85,6 +83,45 @@ export class CodeSandbox {
 
     // Return a thunk that calls the function with the actual global values
     return () => fn(...paramValues);
+  }
+
+  /**
+   * Try to add an implicit `return` before the last expression so the
+   * code's final value is captured.
+   *
+   * Strategy: attempt to prepend `return` to the last non-empty line,
+   * then compile-check the result with `new Function()`. If that produces
+   * a syntax error (e.g. multi-line expression, block closer), fall back
+   * to the original code unchanged. This avoids fragile regex heuristics.
+   */
+  private addImplicitReturn(code: string): string {
+    const lines = code.trimEnd().split('\n');
+
+    // Find the last non-empty line
+    let lastIdx = lines.length - 1;
+    while (lastIdx >= 0 && !lines[lastIdx].trim()) lastIdx--;
+    if (lastIdx < 0) return code;
+
+    const lastLine = lines[lastIdx].trim();
+
+    // Already has return — use as-is
+    if (/^return\b/.test(lastLine)) return code;
+
+    // Try adding return to the last line
+    const modified = [...lines];
+    const indent = modified[lastIdx].match(/^(\s*)/)?.[1] ?? '';
+    modified[lastIdx] = `${indent}return ${lastLine}`;
+    const candidate = modified.join('\n');
+
+    // Compile-check with AsyncFunction (supports await) — if adding return
+    // breaks syntax, fall back to original code unchanged.
+    try {
+      const AsyncFn = Object.getPrototypeOf(async () => {}).constructor;
+      new AsyncFn(candidate);
+      return candidate;
+    } catch {
+      return code;
+    }
   }
 
   /**

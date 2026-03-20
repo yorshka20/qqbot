@@ -151,8 +151,8 @@ export function getCardStyles({ primary, secondary, primaryRgb, secondaryRgb }: 
     border-radius: 16px;
     border: 1px solid rgba(255, 255, 255, 0.15);
     color: rgba(255, 255, 255, 0.95);
-    font-size: 15.5px;
-    line-height: 1.85;
+    font-size: 16px;
+    line-height: 1.6;
   }
   .paragraph-block p {
     color: rgba(255, 255, 255, 0.95);

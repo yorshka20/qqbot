@@ -85,7 +85,7 @@ export const CARD_TYPE_SPECS: CardTypeSpecEntry[] = [
     description: 'paragraph',
     exampleJson: '{"type":"paragraph","content":"<p>这是一段自然语言表达，保留原文的连贯叙述。</p>"}',
     optionalNote:
-      '用于承载原文中的自然语言段落、过渡句、总结语等非结构化内容。content 内使用 HTML（`<p>`、`<strong>`、`<em>`、`<code>` 等）。',
+      '用于承载原文中的自然语言段落、过渡句、总结语等非结构化内容，最好将连续的paragraph类型合并为一段。content 内使用 HTML（`<p>`、`<strong>`、`<em>`、`<code>` 等）。',
   },
 ];
 
