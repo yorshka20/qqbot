@@ -124,6 +124,28 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   // ── Load plugins (triggers onInit for all enabled plugins, e.g. WeChatIngestPlugin DI registration) ──
   await PluginInitializer.loadPlugins(config, { skipEnable: options?.skipPluginEnable });
 
+  // ── Startup health check (AFTER plugins, so plugins like CloudflareWorkerProxy can replace httpClient first) ──
+  healthCheckManager
+    .checkAllServices({ force: true })
+    .then((results) => {
+      let healthy = 0;
+      let unhealthy = 0;
+      for (const result of results.values()) {
+        if (result.status === 'healthy') healthy++;
+        else unhealthy++;
+      }
+      logger.info(`[Bootstrap] Startup health check: ${healthy}/${results.size} providers healthy`);
+      if (unhealthy > 0) {
+        const unhealthyNames = [...results.entries()]
+          .filter(([_, r]) => r.status !== 'healthy')
+          .map(([n]) => n);
+        logger.warn(`[Bootstrap] Unhealthy providers: ${unhealthyNames.join(', ')}`);
+      }
+    })
+    .catch((err: Error) => {
+      logger.warn('[Bootstrap] Startup health check failed:', err);
+    });
+
   logger.info('[Bootstrap] All initialization stages completed');
 
   return {

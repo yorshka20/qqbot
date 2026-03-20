@@ -141,25 +141,8 @@ export class ConversationInitializer {
       healthCheckManager.registerService(adapter, { cacheDuration: 60000, timeout: 8000 });
     }
 
-    // Run startup health check for all providers (async, logs results)
-    healthCheckManager
-      .checkAllServices({ force: true })
-      .then((results) => {
-        let healthy = 0;
-        let unhealthy = 0;
-        for (const result of results.values()) {
-          if (result.status === 'healthy') healthy++;
-          else unhealthy++;
-        }
-        logger.info(`[ConversationInitializer] Startup health check: ${healthy}/${results.size} providers healthy`);
-        if (unhealthy > 0) {
-          const unhealthyNames = [...results.entries()].filter(([_, r]) => r.status !== 'healthy').map(([n]) => n);
-          logger.warn(`[ConversationInitializer] Unhealthy providers: ${unhealthyNames.join(', ')}`);
-        }
-      })
-      .catch((err: Error) => {
-        logger.warn('[ConversationInitializer] Startup health check failed:', err);
-      });
+    // NOTE: Startup health check is deferred to bootstrap.ts AFTER plugins are loaded,
+    // so that plugins (e.g. CloudflareWorkerProxy) can replace httpClient before checks run.
 
     // Phase 4: Wire AI-facing services.
     const providerSelector = new ProviderSelector(services.aiManager, conversationConfigService);
