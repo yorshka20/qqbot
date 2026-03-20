@@ -220,7 +220,7 @@ export class WeChatArticleAnalysisService {
           continue;
         }
 
-        const response = await provider.generate(prompt, { temperature: 0.3, maxTokens: 2048 });
+        const response = await provider.generate(prompt, { temperature: 0.3, maxTokens: 2048, jsonMode: true });
         const text = response.text?.trim();
         if (!text) {
           logger.warn(`[ArticleAnalysis] Empty response from "${providerName}" for "${title}"`);
