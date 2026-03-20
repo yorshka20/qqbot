@@ -174,6 +174,79 @@ describe.skipIf(!getIntegrationProvider('doubao'))('Doubao LLM integration (real
   );
 });
 
+describe.skipIf(!getIntegrationProvider('doubao'))('Doubao jsonMode integration (real API)', () => {
+  const aiManager = createAIManagerWithProvider('doubao');
+  const llmService = LLMService.create(aiManager);
+
+  test(
+    'Responses API: jsonMode returns valid JSON (text.format.type=json_object)',
+    async () => {
+      const res = await llmService.generate('Give me a fictional person', {
+        systemPrompt: 'Return JSON with fields: name (string), age (number). No other text.',
+        jsonMode: true,
+        maxTokens: 500,
+        temperature: 0.3,
+      }, 'doubao');
+      logFlow('[doubao] jsonMode response', { text: res.text?.slice(0, 200) });
+
+      expect(res.text).toBeDefined();
+      expect(res.text.length).toBeGreaterThan(0);
+
+      // Must be parseable JSON — the whole point of jsonMode
+      const parsed = JSON.parse(res.text) as Record<string, unknown>;
+      expect(parsed.name).toBeDefined();
+      expect(typeof parsed.name).toBe('string');
+      expect(parsed.age).toBeDefined();
+      expect(typeof parsed.age).toBe('number');
+
+      // Should NOT be wrapped in markdown code blocks
+      expect(res.text.trim().startsWith('{')).toBe(true);
+    },
+    INTEGRATION_TEST_TIMEOUT_MS,
+  );
+
+  test(
+    'Responses API: without jsonMode, response may contain non-JSON text',
+    async () => {
+      const res = await llmService.generate('Give me a fictional person with name and age', {
+        maxTokens: 500,
+        temperature: 0.3,
+      }, 'doubao');
+      logFlow('[doubao] no-jsonMode response', { textPreview: res.text?.slice(0, 200) });
+
+      expect(res.text).toBeDefined();
+      expect(res.text.length).toBeGreaterThan(0);
+    },
+    INTEGRATION_TEST_TIMEOUT_MS,
+  );
+
+  test(
+    'Chat Completions API: jsonMode returns valid JSON (response_format, lite model)',
+    async () => {
+      const res = await llmService.generate('Give me a fictional person', {
+        systemPrompt: 'Return JSON with fields: name (string), age (number). No other text.',
+        jsonMode: true,
+        model: 'doubao-1-5-lite-32k-250115',
+        maxTokens: 500,
+        temperature: 0.3,
+      }, 'doubao');
+      logFlow('[doubao-lite] jsonMode response', { text: res.text?.slice(0, 200) });
+
+      expect(res.text).toBeDefined();
+      expect(res.text.length).toBeGreaterThan(0);
+
+      const parsed = JSON.parse(res.text) as Record<string, unknown>;
+      expect(parsed.name).toBeDefined();
+      expect(typeof parsed.name).toBe('string');
+      expect(parsed.age).toBeDefined();
+      expect(typeof parsed.age).toBe('number');
+
+      expect(res.text.trim().startsWith('{')).toBe(true);
+    },
+    INTEGRATION_TEST_TIMEOUT_MS,
+  );
+});
+
 describe.skipIf(!getIntegrationProvider('deepseek'))('DeepSeek LLM integration (real API)', () => {
   const aiManager = createAIManagerWithProvider('deepseek');
   const llmService = LLMService.create(aiManager);

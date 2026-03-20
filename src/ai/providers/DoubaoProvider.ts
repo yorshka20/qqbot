@@ -59,8 +59,8 @@ interface ArkResponsesRequest {
   stream?: boolean;
   tools?: ArkToolItem[];
   tool_choice?: string;
-  /** When set (e.g. jsonMode), ask for JSON output; OpenAI-compatible shape. */
-  response_format?: { type: 'json_object' };
+  /** Structured output for Responses API: text.format.type = 'json_object' | 'json_schema'. */
+  text?: { format: { type: 'json_object' | 'json_schema' } };
 }
 
 // ---------------------------------------------------------------------------
@@ -450,7 +450,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       stop: options?.stop,
     };
     if (options?.jsonMode) {
-      body.response_format = { type: 'json_object' };
+      body.text = { format: { type: 'json_object' } };
     }
     if (hasTools) {
       const tools: ArkToolItem[] = [];
