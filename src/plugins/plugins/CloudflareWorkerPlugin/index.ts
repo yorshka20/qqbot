@@ -6,6 +6,7 @@ import type { AIManager } from '@/ai/AIManager';
 import { HttpClient } from '@/api/http/HttpClient';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import type { HealthCheckManager } from '@/core/health';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { logger } from '@/utils/logger';
@@ -83,6 +84,24 @@ export class CloudflareWorkerPlugin extends PluginBase {
     });
 
     logger.info(`[CloudflareWorkerProxy] Proxying "${this.targetProviderName}" through ${workerBase}`);
+
+    // Re-run health check for this provider so the cached result reflects the proxied endpoint.
+    // The startup health check runs before plugins are loaded, so it uses the original httpClient.
+    try {
+      const healthCheckManager = getContainer().resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
+      healthCheckManager
+        .checkHealth(this.targetProviderName, { force: true })
+        .then((result) => {
+          logger.info(
+            `[CloudflareWorkerProxy] Re-checked health for "${this.targetProviderName}" via worker: ${result.status}`,
+          );
+        })
+        .catch((err) => {
+          logger.warn(`[CloudflareWorkerProxy] Health re-check failed:`, err);
+        });
+    } catch {
+      // HealthCheckManager may not be registered yet in some edge cases
+    }
   }
 
   async onDisable(): Promise<void> {
