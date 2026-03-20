@@ -18,7 +18,13 @@ import type {
   ToolUseGenerateResponse,
 } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
-import { containsDSML, parseDSMLFunctionCall, stripDSML } from '../utils/dsmlParser';
+import {
+  containsDSML,
+  containsTextToolCalls,
+  parseDSMLFunctionCall,
+  stripDSML,
+  stripTextToolCalls,
+} from '../utils/dsmlParser';
 
 /**
  * LLM fallback configuration
@@ -26,8 +32,13 @@ import { containsDSML, parseDSMLFunctionCall, stripDSML } from '../utils/dsmlPar
 export interface LLMFallbackConfig {
   /** Ordered list of provider names for fallback (by cost, cheapest first) */
   fallbackOrder: string[];
-  /** Providers that support tool use, in priority order */
+}
+
+export interface LLMServiceConfig {
+  /** Providers that support tool/function calling */
   toolUseProviders: string[];
+  /** LLM fallback configuration */
+  fallback: LLMFallbackConfig;
 }
 
 /**
@@ -37,20 +48,33 @@ export interface LLMFallbackConfig {
 export class LLMService {
   private readonly providersWithNativeWebSearch = ['doubao', 'anthropic'];
 
-  /** Fallback configuration (from config) */
-  private readonly fallbackConfig: LLMFallbackConfig;
+  /** Service configuration (tool-use providers + fallback) */
+  private readonly config: LLMServiceConfig;
 
   /** Health check manager for tracking provider health */
   private readonly healthCheckManager?: HealthCheckManager;
 
-  constructor(
+  private constructor(
     private aiManager: AIManager,
     private providerSelector?: ProviderSelector,
     healthCheckManager?: HealthCheckManager,
-    fallbackConfig?: LLMFallbackConfig,
+    config?: LLMServiceConfig,
   ) {
     this.healthCheckManager = healthCheckManager;
-    this.fallbackConfig = fallbackConfig ?? { fallbackOrder: [], toolUseProviders: [] };
+    this.config = config ?? { toolUseProviders: [], fallback: { fallbackOrder: [] } };
+  }
+
+  /**
+   * Create a new LLMService instance.
+   * Should only be called once during bootstrap; all other code should use the DI container instance.
+   */
+  static create(
+    aiManager: AIManager,
+    providerSelector?: ProviderSelector,
+    healthCheckManager?: HealthCheckManager,
+    config?: LLMServiceConfig,
+  ): LLMService {
+    return new LLMService(aiManager, providerSelector, healthCheckManager, config);
   }
 
   /**
@@ -145,7 +169,7 @@ export class LLMService {
    * Get the first healthy provider from fallback order.
    */
   private async getFirstHealthyProvider(sessionId?: string, excludeProvider?: string): Promise<LLMCapability | null> {
-    const healthyProviders = this.getHealthyFallbackProviders(this.fallbackConfig.fallbackOrder, excludeProvider);
+    const healthyProviders = this.getHealthyFallbackProviders(this.config.fallback.fallbackOrder, excludeProvider);
 
     for (const name of healthyProviders) {
       const p = this.aiManager.getProviderForCapability('llm', name);
@@ -352,7 +376,7 @@ export class LLMService {
 
       // Try each tool-use provider in priority order
       let foundToolUseProvider = false;
-      for (const toolProviderName of this.fallbackConfig.toolUseProviders) {
+      for (const toolProviderName of this.config.toolUseProviders) {
         // Skip unhealthy providers
         if (this.healthCheckManager && !this.healthCheckManager.isServiceHealthySync(toolProviderName)) {
           logger.debug(`[LLMService] Skipping unhealthy tool-use provider "${toolProviderName}"`);
@@ -372,8 +396,14 @@ export class LLMService {
       if (!foundToolUseProvider) {
         logger.warn('[LLMService] No tool-use capable provider available, will proceed without tool use');
         // Proceed without tool use - just generate normally
+        const response = await this.generateMessages(messages, options, providerName);
+        // Strip text-based tool calls the model may emit when it sees tool instructions in the prompt
+        if (response.text && containsTextToolCalls(response.text)) {
+          logger.warn('[LLMService] Stripping text-based tool call blocks from no-tool-use fallback response');
+          response.text = stripTextToolCalls(response.text);
+        }
         return {
-          ...(await this.generateMessages(messages, options, providerName)),
+          ...response,
           stopReason: 'end_turn',
         };
       }
@@ -492,10 +522,14 @@ export class LLMService {
     });
     const finalResponse = await this.generateMessages(currentMessages, options, currentProviderName);
 
-    // Strip DSML from final text — model may still attempt tool calls via text when tools are absent
+    // Strip text-based tool calls from final text — model may still attempt tool calls via text when tools are absent
     if (finalResponse.text && containsDSML(finalResponse.text)) {
       logger.warn('[LLMService] Stripping DSML text tool call from final response (max rounds exceeded)');
       finalResponse.text = stripDSML(finalResponse.text);
+    }
+    if (finalResponse.text && containsTextToolCalls(finalResponse.text)) {
+      logger.warn('[LLMService] Stripping text-based tool call blocks from final response (max rounds exceeded)');
+      finalResponse.text = stripTextToolCalls(finalResponse.text);
     }
 
     return {
@@ -506,11 +540,11 @@ export class LLMService {
   }
 
   /**
-   * Check if provider supports tool use.
-   * Uses configured toolUseProviders list instead of hardcoded values.
+   * Check if a named provider supports tool use.
+   * Uses configured toolUseProviders list.
    */
-  private providerSupportsToolUse(providerName: string): boolean {
-    return this.fallbackConfig.toolUseProviders.includes(providerName.toLowerCase());
+  providerSupportsToolUse(providerName: string): boolean {
+    return this.config.toolUseProviders.includes(providerName.toLowerCase());
   }
 
   /**
@@ -535,7 +569,7 @@ export class LLMService {
       .map((p) => p.name);
 
     // Sort by fallback order (cheapest first); unknown providers go to end
-    const orderMap = new Map(this.fallbackConfig.fallbackOrder.map((name, i) => [name, i]));
+    const orderMap = new Map(this.config.fallback.fallbackOrder.map((name, i) => [name, i]));
     return available.sort((a, b) => (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999));
   }
 

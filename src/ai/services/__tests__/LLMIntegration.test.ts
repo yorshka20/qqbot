@@ -53,7 +53,7 @@ function logFlow(msg: string, data?: Record<string, unknown>): void {
 
 describe.skipIf(!getIntegrationProvider('doubao'))('Doubao LLM integration (real API)', () => {
   const aiManager = createAIManagerWithProvider('doubao');
-  const llmService = new LLMService(aiManager);
+  const llmService = LLMService.create(aiManager);
   const providerName = 'doubao';
 
   test(
@@ -176,7 +176,7 @@ describe.skipIf(!getIntegrationProvider('doubao'))('Doubao LLM integration (real
 
 describe.skipIf(!getIntegrationProvider('deepseek'))('DeepSeek LLM integration (real API)', () => {
   const aiManager = createAIManagerWithProvider('deepseek');
-  const llmService = new LLMService(aiManager);
+  const llmService = LLMService.create(aiManager);
   const providerName = 'deepseek';
 
   test(

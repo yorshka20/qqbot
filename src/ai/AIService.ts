@@ -32,7 +32,7 @@ import { ProviderRouter } from './routing/ProviderRouter';
 import type { I2VPromptResult } from './schemas';
 import { ImageGenerationService } from './services/ImageGenerationService';
 import { ImagePromptService } from './services/ImagePromptService';
-import { LLMService } from './services/LLMService';
+import type { LLMService } from './services/LLMService';
 import { ReplyGenerationService } from './services/ReplyGenerationService';
 import { VisionService } from './services/VisionService';
 import { buildSkillUsageInstructions, executeSkillCall, getReplySkillDefinitions } from './tools/replyTools';
@@ -75,7 +75,7 @@ export class AIService {
     maxToolRounds: 4,
   } as const;
 
-  constructor(
+  private constructor(
     aiManager: AIManager,
     private hookManager: HookManager,
     private promptManager: PromptManager,
@@ -86,9 +86,10 @@ export class AIService {
     memoryService: MemoryService,
     messageAPI: MessageAPI,
     databaseManager: DatabaseManager,
+    llmService: LLMService,
   ) {
-    // Initialize business services
-    this.llmService = new LLMService(aiManager, providerSelector);
+    // Use shared LLMService from DI container (must not create a new instance here)
+    this.llmService = llmService;
     this.visionService = new VisionService(aiManager, providerSelector);
     this.imageGenerationService = new ImageGenerationService(aiManager, providerSelector);
     this.cardRenderingService = new CardRenderingService(aiManager);
@@ -122,6 +123,38 @@ export class AIService {
       toolManager,
     );
     this.messageAssembler = new PromptMessageAssembler();
+  }
+
+  /**
+   * Create a new AIService instance.
+   * Should only be called once during bootstrap; all other code should use the DI-registered instance.
+   */
+  static create(
+    aiManager: AIManager,
+    hookManager: HookManager,
+    promptManager: PromptManager,
+    toolManager: ToolManager,
+    conversationHistoryService: ConversationHistoryService,
+    providerSelector: ProviderSelector,
+    retrievalService: RetrievalService,
+    memoryService: MemoryService,
+    messageAPI: MessageAPI,
+    databaseManager: DatabaseManager,
+    llmService: LLMService,
+  ): AIService {
+    return new AIService(
+      aiManager,
+      hookManager,
+      promptManager,
+      toolManager,
+      conversationHistoryService,
+      providerSelector,
+      retrievalService,
+      memoryService,
+      messageAPI,
+      databaseManager,
+      llmService,
+    );
   }
 
   async spawnSubAgent(

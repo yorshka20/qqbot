@@ -17,26 +17,33 @@ function createMockAIManager(): AIManager {
 
 describe('LLMService', () => {
   describe('providerSupportsToolUse', () => {
-    const service = new LLMService(createMockAIManager());
-    const svc = service as unknown as { providerSupportsToolUse(name: string): boolean };
-
-    it('returns true for openai, anthropic, doubao, gemini, deepseek', () => {
-      expect(svc.providerSupportsToolUse('openai')).toBe(true);
-      expect(svc.providerSupportsToolUse('anthropic')).toBe(true);
-      expect(svc.providerSupportsToolUse('doubao')).toBe(true);
-      expect(svc.providerSupportsToolUse('gemini')).toBe(true);
-      expect(svc.providerSupportsToolUse('deepseek')).toBe(true);
+    const service = LLMService.create(createMockAIManager(), undefined, undefined, {
+      toolUseProviders: ['openai', 'anthropic', 'doubao', 'gemini', 'deepseek'],
+      fallback: { fallbackOrder: [] },
     });
 
-    it('returns true for provider names in lowercase', () => {
-      expect(svc.providerSupportsToolUse('OPENAI')).toBe(true);
-      expect(svc.providerSupportsToolUse('DeepSeek')).toBe(true);
+    it('returns true for configured providers', () => {
+      expect(service.providerSupportsToolUse('openai')).toBe(true);
+      expect(service.providerSupportsToolUse('anthropic')).toBe(true);
+      expect(service.providerSupportsToolUse('doubao')).toBe(true);
+      expect(service.providerSupportsToolUse('gemini')).toBe(true);
+      expect(service.providerSupportsToolUse('deepseek')).toBe(true);
     });
 
-    it('returns false for unknown provider', () => {
-      expect(svc.providerSupportsToolUse('ollama')).toBe(false);
-      expect(svc.providerSupportsToolUse('unknown')).toBe(false);
-      expect(svc.providerSupportsToolUse('')).toBe(false);
+    it('returns true for provider names in any case', () => {
+      expect(service.providerSupportsToolUse('OPENAI')).toBe(true);
+      expect(service.providerSupportsToolUse('DeepSeek')).toBe(true);
+    });
+
+    it('returns false for unconfigured provider', () => {
+      expect(service.providerSupportsToolUse('ollama')).toBe(false);
+      expect(service.providerSupportsToolUse('unknown')).toBe(false);
+      expect(service.providerSupportsToolUse('')).toBe(false);
+    });
+
+    it('returns false for all providers when no config provided', () => {
+      const noConfigService = LLMService.create(createMockAIManager());
+      expect(noConfigService.providerSupportsToolUse('openai')).toBe(false);
     });
   });
 
@@ -56,7 +63,7 @@ describe('LLMService', () => {
         getProviderForCapability: (_cap: string, name?: string) => (name ? mockProvider : null),
         getDefaultProvider: () => mockProvider,
       } as unknown as AIManager;
-      const llmService = new LLMService(aiManager);
+      const llmService = LLMService.create(aiManager);
 
       await llmService.generateLite('test prompt');
       expect(lastOptions).toBeDefined();
@@ -70,7 +77,7 @@ describe('LLMService', () => {
 
     it('returns fallback when no provider available', async () => {
       const aiManager = createMockAIManager();
-      const llmService = new LLMService(aiManager);
+      const llmService = LLMService.create(aiManager);
       const res = await llmService.generateLite('hello', undefined, 'nonexistent');
       expect(res.text).toContain('unavailable');
     });
@@ -79,7 +86,7 @@ describe('LLMService', () => {
   // Integration: real LLM API calls when provider is configured (CONFIG_PATH / config.jsonc).
   describe.skipIf(!getIntegrationProvider('doubao'))('integration (real API)', () => {
     const aiManager = createAIManagerWithProvider('doubao');
-    const llmService = new LLMService(aiManager);
+    const llmService = LLMService.create(aiManager);
 
     test(
       'generate returns text and optional usage',

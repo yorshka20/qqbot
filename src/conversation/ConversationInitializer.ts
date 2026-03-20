@@ -5,8 +5,8 @@ import {
   AIManager,
   AIService,
   type CapabilityType,
-  type LLMFallbackConfig,
   LLMService,
+  type LLMServiceConfig,
   type PromptManager,
   ProviderFactory,
   ProviderSelector,
@@ -164,14 +164,17 @@ export class ConversationInitializer {
     // Phase 4: Wire AI-facing services.
     const providerSelector = new ProviderSelector(services.aiManager, conversationConfigService);
 
-    // Build LLM fallback config from AI config
+    // Build LLM service config from AI config
     const aiConfig = config.getAIConfig();
     if (!aiConfig?.llmFallback) {
       throw new Error('[ConversationInitializer] ai.llmFallback is required in config');
     }
-    const llmFallbackConfig: LLMFallbackConfig = aiConfig.llmFallback;
+    const llmServiceConfig: LLMServiceConfig = {
+      toolUseProviders: aiConfig.toolUseProviders ?? [],
+      fallback: aiConfig.llmFallback,
+    };
 
-    const llmService = new LLMService(services.aiManager, providerSelector, healthCheckManager, llmFallbackConfig);
+    const llmService = LLMService.create(services.aiManager, providerSelector, healthCheckManager, llmServiceConfig);
     container.registerInstance(DITokens.LLM_SERVICE, llmService);
 
     const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
@@ -213,7 +216,7 @@ export class ConversationInitializer {
       logger.info('[ConversationInitializer] Memory RAG enabled for semantic memory filtering');
     }
 
-    const aiService = new AIService(
+    const aiService = AIService.create(
       services.aiManager,
       services.hookManager,
       promptManager,
@@ -224,6 +227,7 @@ export class ConversationInitializer {
       memoryService,
       messageAPI,
       databaseManager,
+      llmService,
     );
     serviceRegistry.registerAIServiceCapabilities(aiService);
 

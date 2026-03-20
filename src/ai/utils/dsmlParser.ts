@@ -87,3 +87,40 @@ export function stripDSML(text: string): string {
   const endPos = fcEnd === -1 ? text.length : fcEnd + DSML_FC_CLOSE.length;
   return (text.slice(0, fcStart) + text.slice(endPos)).trim();
 }
+
+// ---------------------------------------------------------------------------
+// Text-based tool call stripping (e.g. <tool_call> / <tool_result> XML blocks)
+//
+// When a model doesn't use structured tool-use API but sees tool instructions
+// in the system prompt, it may emit text-based tool calls and hallucinated
+// tool results. These must be stripped before sending to the user.
+// ---------------------------------------------------------------------------
+
+const TEXT_TOOL_CALL_RE = /<tool_call>[\s\S]*?<\/tool_call>/g;
+const TEXT_TOOL_RESULT_RE = /<tool_result>[\s\S]*?<\/tool_result>/g;
+/** Unclosed trailing blocks (model stopped mid-generation) */
+const TEXT_TOOL_CALL_UNCLOSED_RE = /<tool_call>[\s\S]*$/;
+const TEXT_TOOL_RESULT_UNCLOSED_RE = /<tool_result>[\s\S]*$/;
+
+/**
+ * Check whether text contains text-based tool call or tool result blocks.
+ */
+export function containsTextToolCalls(text: string): boolean {
+  return text.includes('<tool_call>') || text.includes('<tool_result>');
+}
+
+/**
+ * Strip all `<tool_call>...</tool_call>` and `<tool_result>...</tool_result>` blocks
+ * from text, including unclosed trailing blocks. Returns cleaned text.
+ */
+export function stripTextToolCalls(text: string): string {
+  let result = text
+    .replace(TEXT_TOOL_CALL_RE, '')
+    .replace(TEXT_TOOL_RESULT_RE, '')
+    .replace(TEXT_TOOL_CALL_UNCLOSED_RE, '')
+    .replace(TEXT_TOOL_RESULT_UNCLOSED_RE, '');
+
+  // Collapse multiple blank lines left by removal
+  result = result.replace(/\n{3,}/g, '\n\n').trim();
+  return result;
+}

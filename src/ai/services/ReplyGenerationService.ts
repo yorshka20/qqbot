@@ -37,6 +37,7 @@ import { PromptMessageAssembler } from '../prompt/PromptMessageAssembler';
 import type { ProviderRouter } from '../routing/ProviderRouter';
 import { buildSkillUsageInstructions, executeSkillCall, getReplySkillDefinitions } from '../tools/replyTools';
 import type { AIGenerateResponse, ChatMessage, ContentPart, ToolDefinition } from '../types';
+import { containsTextToolCalls, stripTextToolCalls } from '../utils/dsmlParser';
 import { formatRAGConversationContext } from '../utils/formatRAGConversationContext';
 import {
   extractImagesFromMessageAndReply,
@@ -937,15 +938,17 @@ export class ReplyGenerationService {
       : null;
     const selectedProviderName = useVisionProvider ? (resolvedVisionProviderName ?? providerName) : providerName;
 
-    // Capabilities
+    // Capabilities: check if the effective provider supports tool use
+    const effectiveProvider = selectedProviderName ?? 'default';
+    const providerCanUseTools = await this.checkProviderToolUseSupport(effectiveProvider, sessionId);
     const canUseVisionToolUse = useVisionProvider
-      ? Boolean(resolvedVisionProviderName && (await this.supportsToolUse(resolvedVisionProviderName, sessionId)))
+      ? Boolean(resolvedVisionProviderName && providerCanUseTools)
       : false;
     const effectiveNativeSearchEnabled = false;
 
-    // Tools (none when vision provider lacks tool support)
+    // Tools: only inject when the provider actually supports tool use
     const toolDefinitions =
-      useVisionProvider && !canUseVisionToolUse
+      !providerCanUseTools || (useVisionProvider && !canUseVisionToolUse)
         ? []
         : getReplySkillDefinitions(this.toolManager, { nativeWebSearchEnabled: effectiveNativeSearchEnabled });
 
@@ -1042,8 +1045,14 @@ export class ReplyGenerationService {
 
     // Path 3: Plain text
     await this.hookManager.execute('onAIGenerationComplete', context);
-    const textSegments = [{ type: 'text' as const, data: { text: response.text } }];
-    replaceReply(context, response.text, 'ai', {
+    // Safety net: strip any text-based tool call blocks that leaked through
+    let finalText = response.text;
+    if (containsTextToolCalls(finalText)) {
+      logger.warn('[ReplyGenerationService] Stripping leaked text-based tool call blocks from final reply');
+      finalText = stripTextToolCalls(finalText);
+    }
+    const textSegments = [{ type: 'text' as const, data: { text: finalText } }];
+    replaceReply(context, finalText, 'ai', {
       sendAsForward: computeSendAsForward(context, textSegments),
     });
   }
@@ -1193,13 +1202,18 @@ export class ReplyGenerationService {
     return candidate.supportsNativeWebSearch(providerName, sessionId);
   }
 
-  private async supportsToolUse(providerName?: string, sessionId?: string): Promise<boolean> {
-    const candidate = this.llmService as LLMService & {
-      supportsToolUse?: (providerName?: string, sessionId?: string) => Promise<boolean>;
-    };
-    if (typeof candidate.supportsToolUse !== 'function') {
-      return false;
-    }
-    return candidate.supportsToolUse(providerName, sessionId);
+  /**
+   * Check if the resolved provider supports tool use.
+   * Resolves the actual provider name (handling 'default') and checks against configured toolUseProviders.
+   */
+  private async checkProviderToolUseSupport(providerNameOrDefault: string, sessionId?: string): Promise<boolean> {
+    // Resolve the actual provider name (the provider that will handle this request)
+    const provider = await this.llmService.getAvailableProvider(
+      providerNameOrDefault === 'default' ? undefined : providerNameOrDefault,
+      sessionId,
+    );
+    if (!provider) return false;
+    const resolvedName = 'name' in provider ? (provider as { name: string }).name : providerNameOrDefault;
+    return this.llmService.providerSupportsToolUse(resolvedName);
   }
 }

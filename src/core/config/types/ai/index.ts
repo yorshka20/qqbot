@@ -76,14 +76,17 @@ export interface AIConfig {
    */
   taskProviders?: TaskProvidersConfig;
   /**
+   * Providers that support tool/function calling.
+   * Used to determine whether to inject tool instructions and pass tools to the provider.
+   */
+  toolUseProviders: string[];
+  /**
    * LLM fallback configuration.
-   * Defines fallback order and tool-use capable providers.
+   * Defines fallback order when the primary provider fails.
    */
   llmFallback: {
     /** Ordered list of provider names for fallback (by cost, cheapest first) */
     fallbackOrder: string[];
-    /** Providers that support tool use, in priority order */
-    toolUseProviders: string[];
   };
 }
 
