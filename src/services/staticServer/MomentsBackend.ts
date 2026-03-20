@@ -218,9 +218,9 @@ export class MomentsBackend {
   private async handleList(retrieval: RetrievalService, url: URL): Promise<Response> {
     try {
       const tag = url.searchParams.get('tag') || '';
-      const date = url.searchParams.get('date') || '';   // "YYYY-MM-DD"
+      const date = url.searchParams.get('date') || ''; // "YYYY-MM-DD"
       const month = url.searchParams.get('month') || ''; // "YYYY-MM"
-      const year = url.searchParams.get('year') || '';    // "YYYY"
+      const year = url.searchParams.get('year') || ''; // "YYYY"
       const type = url.searchParams.get('type') || '';
       const limit = Math.min(Number(url.searchParams.get('limit') ?? 50), 200);
 

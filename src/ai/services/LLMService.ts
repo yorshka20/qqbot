@@ -237,13 +237,16 @@ export class LLMService {
       const result = await provider.generate(prompt, options);
       // Mark provider as healthy on success
       this.healthCheckManager?.markServiceHealthy(resolvedName);
+      result.resolvedProviderName = resolvedName;
       return result;
     } catch (err) {
       // Mark provider as failed
       const errorMessage = err instanceof Error ? err.message : String(err);
       this.healthCheckManager?.markServiceUnhealthy(resolvedName, errorMessage);
       logger.error(`[LLMService] Provider "${resolvedName}" generate failed:`, err);
-      return this.generateWithFallback(resolvedName, sessionId, (p) => p.generate(prompt, options), prompt);
+      // Strip provider-specific model from options so fallback providers use their own defaults
+      const fallbackOptions = options ? { ...options, model: undefined } : options;
+      return this.generateWithFallback(resolvedName, sessionId, (p) => p.generate(prompt, fallbackOptions), prompt);
     }
   }
 
@@ -252,7 +255,8 @@ export class LLMService {
    * Supports explicit provider and model override (e.g. doubao, doubao-1-5-lite-32k-250115).
    */
   async generateLite(prompt: string, options?: AIGenerateOptions, providerName?: string): Promise<AIGenerateResponse> {
-    const provider = await this.getAvailableProvider(providerName, options?.sessionId);
+    const sessionId = options?.sessionId;
+    const provider = await this.getAvailableProvider(providerName, sessionId);
 
     if (!provider) {
       logger.warn('[LLMService] No available LLM provider for generateLite, returning fallback response');
@@ -269,15 +273,40 @@ export class LLMService {
       ...options,
     };
 
+    const resolvedName = this.resolveProviderName(provider, providerName);
     logger.debug(`[LLMService] generateLite: ${prompt} | ${JSON.stringify(mergedOptions)}`);
 
+    try {
+      const result = await this.invokeLiteGeneration(provider, prompt, mergedOptions);
+      this.healthCheckManager?.markServiceHealthy(resolvedName);
+      result.resolvedProviderName = resolvedName;
+      return result;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      this.healthCheckManager?.markServiceUnhealthy(resolvedName, errorMessage);
+      logger.error(`[LLMService] Provider "${resolvedName}" generateLite failed:`, err);
+      // Strip provider-specific model from options so fallback providers use their own defaults
+      const fallbackOptions: AIGenerateOptions = { ...mergedOptions, model: undefined };
+      return this.generateWithFallback(
+        resolvedName,
+        sessionId,
+        (p) => this.invokeLiteGeneration(p, prompt, fallbackOptions),
+        prompt,
+      );
+    }
+  }
+
+  /** Invoke generateLite on provider if supported, otherwise fall back to generate with lite defaults. */
+  private async invokeLiteGeneration(
+    provider: LLMCapability,
+    prompt: string,
+    options: AIGenerateOptions,
+  ): Promise<AIGenerateResponse> {
     const cap = provider as { generateLite?: (p: string, o?: AIGenerateOptions) => Promise<AIGenerateResponse> };
     if (typeof cap.generateLite === 'function') {
-      return await cap.generateLite(prompt, mergedOptions);
+      return await cap.generateLite(prompt, options);
     }
-
-    // if provider does not support generateLite, use generate with lite defaults
-    return await provider.generate(prompt, mergedOptions);
+    return await provider.generate(prompt, options);
   }
 
   /**
@@ -321,16 +350,19 @@ export class LLMService {
       const result = await provider.generateStream(prompt, handler, options);
       // Mark provider as healthy on success
       this.healthCheckManager?.markServiceHealthy(resolvedName);
+      result.resolvedProviderName = resolvedName;
       return result;
     } catch (err) {
       // Mark provider as failed
       const errorMessage = err instanceof Error ? err.message : String(err);
       this.healthCheckManager?.markServiceUnhealthy(resolvedName, errorMessage);
       logger.error(`[LLMService] Provider "${resolvedName}" generateStream failed:`, err);
+      // Strip provider-specific model from options so fallback providers use their own defaults
+      const fallbackOptions = options ? { ...options, model: undefined } : options;
       return this.generateWithFallback(
         resolvedName,
         sessionId,
-        (p) => p.generateStream(prompt, handler, options),
+        (p) => p.generateStream(prompt, handler, fallbackOptions),
         prompt,
       );
     }
@@ -432,6 +464,7 @@ export class LLMService {
         // No tool calls, return final response
         return {
           ...response,
+          resolvedProviderName: currentProviderName,
           toolCalls: allToolCalls,
           stopReason: 'end_turn',
         };
@@ -534,6 +567,7 @@ export class LLMService {
 
     return {
       ...finalResponse,
+      resolvedProviderName: currentProviderName,
       toolCalls: allToolCalls,
       stopReason: 'max_rounds',
     };
@@ -596,7 +630,7 @@ export class LLMService {
   private async generateWithFallback(
     failedProvider: string,
     sessionId: string | undefined,
-    fn: (provider: LLMCapability) => Promise<AIGenerateResponse>,
+    fn: (provider: LLMCapability, altName: string) => Promise<AIGenerateResponse>,
     prompt: string,
   ): Promise<AIGenerateResponse> {
     const alternatives = this.getAlternativeProviderNames(failedProvider);
@@ -605,7 +639,9 @@ export class LLMService {
       if (!altProvider) continue;
       try {
         logger.info(`[LLMService] Falling back to provider "${altName}"`);
-        return await fn(altProvider);
+        const result = await fn(altProvider, altName);
+        result.resolvedProviderName = altName;
+        return result;
       } catch (altErr) {
         logger.warn(`[LLMService] Fallback provider "${altName}" also failed:`, altErr);
       }

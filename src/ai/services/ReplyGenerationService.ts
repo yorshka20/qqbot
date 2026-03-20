@@ -45,6 +45,7 @@ import {
   getReplyMessageIdFromMessage,
   normalizeVisionImages,
 } from '../utils/imageUtils';
+import { extractExpectedJsonFromLlmText } from '../utils/llmJsonExtract';
 import type { LLMService } from './LLMService';
 import type { VisionService } from './VisionService';
 
@@ -779,7 +780,7 @@ export class ReplyGenerationService {
       toolExecutor,
     };
 
-    const actualProvider = selectedProviderName ?? resolvedVisionProviderName ?? undefined;
+    const requestedProvider = selectedProviderName ?? resolvedVisionProviderName ?? undefined;
 
     if (useVisionProvider) {
       if (canUseVisionToolUse && toolDefinitions.length > 0) {
@@ -789,7 +790,10 @@ export class ReplyGenerationService {
           toolUseOptions,
           resolvedVisionProviderName ?? undefined,
         );
-        return { response: { text: r.text }, actualProvider };
+        return {
+          response: { text: r.text, resolvedProviderName: r.resolvedProviderName },
+          actualProvider: r.resolvedProviderName ?? requestedProvider,
+        };
       }
       const r = await this.visionService.generateWithVisionMessages(
         messages,
@@ -797,7 +801,7 @@ export class ReplyGenerationService {
         genOptions,
         resolvedVisionProviderName ?? undefined,
       );
-      return { response: r, actualProvider };
+      return { response: r, actualProvider: r.resolvedProviderName ?? requestedProvider };
     }
 
     if (toolDefinitions.length > 0) {
@@ -807,7 +811,10 @@ export class ReplyGenerationService {
         toolUseOptions,
         selectedProviderName,
       );
-      return { response: { text: r.text }, actualProvider };
+      return {
+        response: { text: r.text, resolvedProviderName: r.resolvedProviderName },
+        actualProvider: r.resolvedProviderName ?? requestedProvider,
+      };
     }
 
     const r = await this.llmService.generateMessages(
@@ -815,7 +822,7 @@ export class ReplyGenerationService {
       { ...genOptions, nativeWebSearch: effectiveNativeSearchEnabled },
       selectedProviderName,
     );
-    return { response: r, actualProvider };
+    return { response: r, actualProvider: r.resolvedProviderName ?? requestedProvider };
   }
 
   /**
@@ -1027,7 +1034,25 @@ export class ReplyGenerationService {
         this.appendToolResultImages(context, taskResultImages);
         return;
       }
-      logger.warn('[ReplyGenerationService] Direct card JSON from LLM failed to parse, falling back');
+      logger.warn('[ReplyGenerationService] Direct card JSON from LLM failed to render, attempting JSON extraction');
+      // Try extracting clean JSON from the response (LLM may have mixed extra text with card JSON)
+      const cleanJson = extractExpectedJsonFromLlmText(response.text);
+      if (cleanJson) {
+        const retrySuccess = await this.tryRenderCardReply(context, cleanJson, actualProvider);
+        if (retrySuccess) {
+          this.appendToolResultImages(context, taskResultImages);
+          return;
+        }
+      }
+      // Card rendering truly failed (e.g. Puppeteer unavailable) — extract readable text as last resort
+      logger.warn('[ReplyGenerationService] Card rendering failed completely, extracting readable text');
+      const readableText = this.extractReadableTextFromCardJson(response.text);
+      await this.hookManager.execute('onAIGenerationComplete', context);
+      const textSegments = [{ type: 'text' as const, data: { text: readableText } }];
+      replaceReply(context, readableText, 'ai', {
+        sendAsForward: computeSendAsForward(context, textSegments),
+      });
+      return;
     }
 
     // Path 2: Long text → convert to card via second LLM call
@@ -1043,11 +1068,16 @@ export class ReplyGenerationService {
 
     // Path 3: Plain text
     await this.hookManager.execute('onAIGenerationComplete', context);
-    // Safety net: strip any text-based tool call blocks that leaked through
     let finalText = response.text;
+    // Safety net: strip any text-based tool call blocks that leaked through
     if (containsTextToolCalls(finalText)) {
       logger.warn('[ReplyGenerationService] Stripping leaked text-based tool call blocks from final reply');
       finalText = stripTextToolCalls(finalText);
+    }
+    // Safety net: if text looks like card JSON (shouldn't reach here, but guard against it)
+    if (this.looksLikeCardJson(finalText)) {
+      logger.warn('[ReplyGenerationService] Plain text path received card JSON, extracting readable text');
+      finalText = this.extractReadableTextFromCardJson(finalText);
     }
     const textSegments = [{ type: 'text' as const, data: { text: finalText } }];
     replaceReply(context, finalText, 'ai', {
@@ -1118,6 +1148,58 @@ export class ReplyGenerationService {
 
   private shouldUseCardReply(responseText: string): boolean {
     return responseText.length >= CardRenderingService.getThreshold();
+  }
+
+  /** Heuristic: does the text look like card JSON (array of card objects with "type" field)? */
+  private looksLikeCardJson(text: string): boolean {
+    const jsonStr = extractExpectedJsonFromLlmText(text);
+    if (!jsonStr) return false;
+    try {
+      const parsed = JSON.parse(jsonStr);
+      return (
+        Array.isArray(parsed) &&
+        parsed.length > 0 &&
+        typeof parsed[0] === 'object' &&
+        parsed[0] !== null &&
+        'type' in parsed[0]
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /** Extract human-readable text from card JSON by pulling out text/content fields per card type. */
+  private extractReadableTextFromCardJson(text: string): string {
+    try {
+      const jsonStr = extractExpectedJsonFromLlmText(text);
+      if (!jsonStr) return text;
+      const parsed = JSON.parse(jsonStr);
+      if (!Array.isArray(parsed)) return text;
+
+      const parts: string[] = [];
+      for (const card of parsed) {
+        if (typeof card !== 'object' || card === null) continue;
+        // Extract readable text based on known card type fields
+        if (card.title) parts.push(`## ${card.title}`);
+        if (card.question) parts.push(`**${card.question}**`);
+        if (card.answer) parts.push(card.answer);
+        if (card.content) parts.push(card.content);
+        if (card.summary) parts.push(card.summary);
+        if (card.detail) parts.push(card.detail);
+        if (card.text) parts.push(card.text);
+        if (Array.isArray(card.items)) parts.push(card.items.map((item: unknown) => `• ${item}`).join('\n'));
+        if (Array.isArray(card.steps))
+          parts.push(card.steps.map((s: unknown, i: number) => `${i + 1}. ${s}`).join('\n'));
+        if (Array.isArray(card.left) && Array.isArray(card.right)) {
+          if (card.leftHeader) parts.push(`**${card.leftHeader}**: ${card.left.join(', ')}`);
+          if (card.rightHeader) parts.push(`**${card.rightHeader}**: ${card.right.join(', ')}`);
+        }
+      }
+      const result = parts.join('\n\n').trim();
+      return result || text;
+    } catch {
+      return text;
+    }
   }
 
   /**

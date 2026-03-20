@@ -161,6 +161,12 @@ export interface AIGenerateResponse {
    * populate this array with every tool call from a single response.
    */
   functionCalls?: FunctionCallInfo[];
+  /**
+   * The provider name that actually generated this response.
+   * Set by LLMService when internal fallback occurs, so callers know
+   * which provider was used even after transparent fallback.
+   */
+  resolvedProviderName?: string;
 }
 
 /**

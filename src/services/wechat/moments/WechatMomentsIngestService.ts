@@ -161,9 +161,9 @@ export class WechatMomentsIngestService {
 
         const payload: Record<string, unknown> = {
           create_time: createTime,
-          create_date: createTime.slice(0, 10),   // "2026-03-18"
-          create_month: createTime.slice(0, 7),    // "2026-03"
-          create_year: createTime.slice(0, 4),     // "2026"
+          create_date: createTime.slice(0, 10), // "2026-03-18"
+          create_month: createTime.slice(0, 7), // "2026-03"
+          create_year: createTime.slice(0, 4), // "2026"
           type,
           medias_count: parsed?.mediaList?.length ?? 0,
           source: 'padpro_ingest',
@@ -262,7 +262,9 @@ export class WechatMomentsIngestService {
 
       // Validate magic bytes — reject HTML error pages masquerading as images
       if (buf.length < 4 || !isImageBuffer(buf)) {
-        logger.warn(`[MomentsIngest] Downloaded content is not a valid image (magic=${buf.slice(0, 4).toString('hex')}) | url=${url.slice(0, 80)}`);
+        logger.warn(
+          `[MomentsIngest] Downloaded content is not a valid image (magic=${buf.slice(0, 4).toString('hex')}) | url=${url.slice(0, 80)}`,
+        );
         return null;
       }
 
