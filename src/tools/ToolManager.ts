@@ -8,7 +8,7 @@ import { logger } from '@/utils/logger';
 import { getAllToolMetadata, metadataToToolSpec } from './decorators';
 import type { ToolCall, ToolExecutionContext, ToolExecutor, ToolResult, ToolScope, ToolSpec } from './types';
 
-const DEFAULT_VISIBILITY: ToolScope[] = ['reply', 'subagent'];
+const DEFAULT_VISIBILITY: ToolScope[] = [];
 
 export class ToolManager {
   private tools = new Map<string, ToolSpec>();
@@ -117,7 +117,7 @@ export class ToolManager {
 
   /**
    * Get tools visible in the given scope.
-   * Tools without explicit visibility default to ['reply', 'subagent'].
+   * Tools without explicit visibility default to [] (not available in any scope).
    */
   getToolsByScope(scope: ToolScope): ToolSpec[] {
     return this.getAllTools().filter((t) => {

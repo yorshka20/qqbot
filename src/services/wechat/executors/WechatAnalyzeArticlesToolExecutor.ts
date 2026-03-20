@@ -26,6 +26,7 @@ const DEFAULT_COUNT = 100;
       description: `本次最多分析多少篇文章，默认 ${DEFAULT_COUNT}`,
     },
   },
+  visibility: ['subagent'],
   examples: ['分析未处理的微信文章', '分析最近50篇未分析的公众号文章'],
   whenToUse:
     '当需要对微信文章进行批量深度分析时使用。通常由定时任务在夜间自动调用。' +

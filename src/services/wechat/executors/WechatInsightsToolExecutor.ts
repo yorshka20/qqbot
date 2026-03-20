@@ -36,6 +36,7 @@ const DEFAULT_LIMIT = 50;
       description: '是否只返回值得报道的文章（过滤广告/软文），默认 true',
     },
   },
+  visibility: ['subagent'],
   examples: ['获取今日微信文章的分析精华', '查看过去 48 小时的文章洞察', '生成日报时获取文章素材'],
   whenToUse:
     '当需要生成微信日报/周报、了解今日资讯概览、或获取文章分析结果时使用。' +

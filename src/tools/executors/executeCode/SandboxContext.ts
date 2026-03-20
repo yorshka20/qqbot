@@ -86,8 +86,8 @@ export class SandboxContext {
 
     for (const spec of toolSpecs) {
       // Skip internal tools and self (prevent recursion)
-      const visibility = spec.visibility ?? ['reply', 'subagent'];
-      if (visibility.includes('internal') || spec.name === 'execute_code') {
+      const visibility = spec.visibility ?? [];
+      if (visibility.length === 0 || visibility.includes('internal') || spec.name === 'execute_code') {
         continue;
       }
 

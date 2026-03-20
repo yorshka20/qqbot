@@ -26,6 +26,7 @@ const searchToolSpec: ToolSpec = {
   name: 'search',
   description: 'Search the web',
   executor: 'search',
+  visibility: ['reply', 'subagent'],
   triggerKeywords: ['搜索', 'search'],
   parameters: {
     query: { type: 'string', required: true, description: 'Query' },
@@ -44,6 +45,7 @@ const getWeatherToolSpec: ToolSpec = {
   name: 'get_weather',
   description: 'Get the current weather for a given city.',
   executor: 'get_weather',
+  visibility: ['reply', 'subagent'],
   parameters: {
     city: { type: 'string', required: true, description: 'City name' },
   },
@@ -56,6 +58,7 @@ const optionalOnlyToolSpec: ToolSpec = {
   name: 'optional_only',
   description: 'Optional params only.',
   executor: 'optional_only',
+  visibility: ['reply', 'subagent'],
   parameters: {
     foo: { type: 'string', required: false, description: 'Optional' },
   },

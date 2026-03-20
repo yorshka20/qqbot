@@ -46,6 +46,7 @@ const ALLOWED_PROVIDERS = ['ollama', 'deepseek', 'doubao'] as const;
       description: `检索条数，默认 ${DEFAULT_LIMIT}`,
     },
   },
+  visibility: ['subagent'],
   examples: [
     '分析我朋友圈里对AI行业的看法变化',
     '帮我梳理一下我对工作这件事的思考脉络',

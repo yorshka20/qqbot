@@ -17,6 +17,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
   description:
     '联网搜索实时信息。返回多条搜索结果摘要（标题、URL、正文片段）。适用于需要最新数据、事实核查或你不确定的知识。',
   executor: 'search',
+  visibility: ['reply', 'subagent'],
   parameters: {
     query: {
       type: 'string',

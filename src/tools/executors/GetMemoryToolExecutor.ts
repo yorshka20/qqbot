@@ -12,6 +12,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
   description:
     '读取当前群或指定用户的本地长期记忆。返回 bot 过去提取并保存的关于该群/用户的关键信息（偏好、设定、历史事实等）。',
   executor: 'get_memory',
+  visibility: ['reply', 'subagent'],
   parameters: {
     userId: {
       type: 'string',

@@ -42,6 +42,7 @@ const MAX_CONTENT_DISPLAY_LEN = 800;
       description: `最低相似度阈值（0-1），默认 ${DEFAULT_MIN_SCORE}`,
     },
   },
+  visibility: ['subagent'],
   examples: [
     '搜索我的朋友圈里关于AI的内容',
     '我以前发过什么关于旅行的朋友圈',

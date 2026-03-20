@@ -94,7 +94,7 @@ export function metadataToToolSpec(metadata: ToolMetadata): ToolSpec {
     name: metadata.name,
     description: metadata.description,
     executor: metadata.executor,
-    visibility: metadata.visibility,
+    visibility: metadata.visibility ?? [],
     parameters: metadata.parameters,
     examples: metadata.examples,
     triggerKeywords: metadata.triggerKeywords,

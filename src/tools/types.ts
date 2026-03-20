@@ -26,10 +26,10 @@ export interface ToolSpec {
   executor: string;
 
   /**
-   * Where this tool is visible. Defaults to ['reply', 'subagent'] when omitted.
+   * Where this tool is visible. Required — tools without visibility are not available in any scope.
    * Set to ['internal'] for executors that should never be exposed to LLM.
    */
-  visibility?: ToolScope[];
+  visibility: ToolScope[];
 
   /** Tool parameters definition */
   parameters?: {

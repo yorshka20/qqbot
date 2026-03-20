@@ -17,6 +17,7 @@ import { DEFAULT_SANDBOX_CONFIG } from './types';
   description:
     '执行一段 JavaScript 代码并返回结果。代码在沙箱环境中运行，可以通过 `tools` 对象调用其他工具（如 `await tools.search({ query: "..." })`）。支持 async/await、fetch、JSON 处理等。适用于需要数据处理、计算、多步骤编排或灵活组合多个工具的场景。',
   executor: 'execute_code',
+  visibility: ['reply', 'subagent'],
   parameters: {
     code: {
       type: 'string',
