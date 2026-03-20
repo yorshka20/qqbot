@@ -154,6 +154,24 @@ export class RetrievalService {
   }
 
   /**
+   * List all collections in the Qdrant instance.
+   */
+  async listCollections(): Promise<Array<{ name: string }>> {
+    if (!this.ragService) throw new Error('RAG is not enabled');
+    return this.ragService.listCollections();
+  }
+
+  /**
+   * Get collection info (point count, vector config).
+   */
+  async getCollectionInfo(
+    collection: string,
+  ): Promise<{ pointsCount: number; vectorSize: number; distance: string }> {
+    if (!this.ragService) throw new Error('RAG is not enabled');
+    return this.ragService.getCollectionInfo(collection);
+  }
+
+  /**
    * Multi-query vector search: pass multiple queries; RAG runs each search, merges by id (best score), returns up to maxTotal.
    */
   async vectorSearchMulti(

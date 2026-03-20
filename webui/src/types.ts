@@ -271,3 +271,35 @@ export interface MomentsSearchResponse {
   moments: MomentItem[]
   query: string
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Qdrant Explorer Types
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface QdrantCollectionInfo {
+  name: string
+  pointsCount: number
+  vectorSize: number
+  distance: string
+}
+
+export interface QdrantCollectionsResponse {
+  collections: QdrantCollectionInfo[]
+}
+
+export interface QdrantSearchHit {
+  id: string | number
+  score: number
+  payload: Record<string, unknown>
+}
+
+export interface QdrantSearchResponse {
+  results: QdrantSearchHit[]
+  query: string
+  collection: string
+}
+
+export interface QdrantScrollResponse {
+  points: Array<{ id: string | number; payload: Record<string, unknown> }>
+  total: number
+}

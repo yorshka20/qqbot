@@ -15,6 +15,7 @@ import { FileManagerBackend } from './FileManagerBackend';
 import { InsightsBackend } from './InsightsBackend';
 import { MomentsBackend } from './MomentsBackend';
 import { OutputStaticHost } from './OutputStaticHost';
+import { QdrantExplorerBackend } from './QdrantExplorerBackend';
 import { ReportBackend } from './ReportBackend';
 import { ZhihuBackend } from './ZhihuBackend';
 
@@ -77,6 +78,7 @@ export class StaticFileServer implements StaticFileServerInstance {
   private readonly insightsBackend: InsightsBackend;
   private readonly momentsBackend: MomentsBackend;
   private readonly zhihuBackend: ZhihuBackend;
+  private readonly qdrantExplorerBackend: QdrantExplorerBackend;
   private readonly outputHost: OutputStaticHost;
 
   // Routes (evaluated in order)
@@ -93,6 +95,7 @@ export class StaticFileServer implements StaticFileServerInstance {
     this.insightsBackend = new InsightsBackend();
     this.momentsBackend = new MomentsBackend();
     this.zhihuBackend = new ZhihuBackend();
+    this.qdrantExplorerBackend = new QdrantExplorerBackend();
     this.outputHost = new OutputStaticHost(this.baseDir);
 
     // Define routes (order matters: more specific prefixes first)
@@ -120,6 +123,11 @@ export class StaticFileServer implements StaticFileServerInstance {
       {
         prefix: '/api/zhihu',
         handler: (req, url) => this.zhihuBackend.handle(url.pathname, req),
+        corsEnabled: true,
+      },
+      {
+        prefix: '/api/qdrant',
+        handler: (req, url) => this.qdrantExplorerBackend.handle(url.pathname, req),
         corsEnabled: true,
       },
       {

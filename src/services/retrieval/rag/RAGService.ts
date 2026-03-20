@@ -145,6 +145,22 @@ export class RAGService {
     return this.qdrantClient.countPoints(collection, filter);
   }
 
+  /**
+   * List all collections in the Qdrant instance.
+   */
+  async listCollections(): Promise<Array<{ name: string }>> {
+    return this.qdrantClient.listCollections();
+  }
+
+  /**
+   * Get collection info (point count, vector config).
+   */
+  async getCollectionInfo(
+    collection: string,
+  ): Promise<{ pointsCount: number; vectorSize: number; distance: string }> {
+    return this.qdrantClient.getCollectionInfo(collection);
+  }
+
   async vectorSearchMulti(
     collection: string,
     queries: string[],

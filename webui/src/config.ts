@@ -54,3 +54,9 @@ export function getMomentsApiBase(): string {
   const serverBase = getStaticServerBase();
   return serverBase ? `${serverBase}/api/moments` : '/api/moments';
 }
+
+/** Base URL for Qdrant Explorer API requests. */
+export function getQdrantApiBase(): string {
+  const serverBase = getStaticServerBase();
+  return serverBase ? `${serverBase}/api/qdrant` : '/api/qdrant';
+}

@@ -15,7 +15,6 @@ import type { SubAgentTriggerRule } from './types';
  *   subagent.{presetKey}.keywords  → prompts/subagent/{presetKey}/keywords.txt
  *   subagent.{presetKey}.task      → prompts/subagent/{presetKey}/task.txt
  */
-const TEMPLATE_NS = 'subagent';
 
 /**
  * Handles the full lifecycle of a keyword-triggered background subagent:
@@ -154,7 +153,7 @@ export class SubAgentTriggerHandler {
     const cached = this.keywordCache.get(presetKey);
     if (cached !== undefined) return cached;
 
-    const templateName = `${TEMPLATE_NS}.${presetKey}.keywords`;
+    const templateName = `subagent.${presetKey}.keywords`;
     const tpl = this.promptManager.getTemplate(templateName);
     if (!tpl) {
       logger.warn(
@@ -176,7 +175,7 @@ export class SubAgentTriggerHandler {
    * Falls back to a generic description if the template is not found.
    */
   private renderTaskDescription(presetKey: string, message: string): string {
-    const templateName = `${TEMPLATE_NS}.${presetKey}.task`;
+    const templateName = `subagent.${presetKey}.task`;
     const tpl = this.promptManager.getTemplate(templateName);
     if (!tpl) {
       logger.warn(

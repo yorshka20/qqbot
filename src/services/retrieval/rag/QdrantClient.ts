@@ -251,6 +251,41 @@ export class QdrantClient {
   }
 
   /**
+   * List all collections in the Qdrant instance.
+   */
+  async listCollections(): Promise<Array<{ name: string }>> {
+    const response = await this.httpClient.get<{
+      result?: { collections?: Array<{ name: string }> };
+    }>('/collections');
+    return response.result?.collections ?? [];
+  }
+
+  /**
+   * Get collection info (point count, vector config, etc.).
+   */
+  async getCollectionInfo(
+    collection: string,
+  ): Promise<{ pointsCount: number; vectorSize: number; distance: string }> {
+    const response = await this.httpClient.get<{
+      result?: {
+        points_count?: number;
+        vectors_count?: number;
+        config?: {
+          params?: {
+            vectors?: { size?: number; distance?: string };
+          };
+        };
+      };
+    }>(`/collections/${collection}`);
+    const r = response.result;
+    return {
+      pointsCount: r?.points_count ?? 0,
+      vectorSize: r?.config?.params?.vectors?.size ?? 0,
+      distance: r?.config?.params?.vectors?.distance ?? 'Unknown',
+    };
+  }
+
+  /**
    * Delete points by IDs.
    */
   async deleteByIds(collection: string, ids: Array<string | number>): Promise<void> {

@@ -1,4 +1,4 @@
-import { getFileApiBase, getInsightsApiBase, getMomentsApiBase, getReportApiBase, getZhihuApiBase } from './config'
+import { getFileApiBase, getInsightsApiBase, getMomentsApiBase, getQdrantApiBase, getReportApiBase, getZhihuApiBase } from './config'
 import type {
   InsightDetailResponse,
   InsightListResponse,
@@ -7,6 +7,9 @@ import type {
   MomentsListResponse,
   MomentsSearchResponse,
   MomentsStatsResponse,
+  QdrantCollectionsResponse,
+  QdrantScrollResponse,
+  QdrantSearchResponse,
   ReportDetailResponse,
   ReportListResponse,
   ZhihuContentDetailResponse,
@@ -229,4 +232,55 @@ export async function searchMoments(opts: {
     throw new Error(err.error ?? `Search moments failed: ${res.status}`)
   }
   return res.json() as Promise<MomentsSearchResponse>
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Qdrant Explorer API
+// ────────────────────────────────────────────────────────────────────────────
+
+function qdrantApiBase(): string {
+  return getQdrantApiBase()
+}
+
+export async function listQdrantCollections(): Promise<QdrantCollectionsResponse> {
+  const res = await fetch(`${qdrantApiBase()}/collections`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `List collections failed: ${res.status}`)
+  }
+  return res.json() as Promise<QdrantCollectionsResponse>
+}
+
+export async function searchQdrant(opts: {
+  collection: string
+  q: string
+  limit?: number
+  minScore?: number
+}): Promise<QdrantSearchResponse> {
+  const params = new URLSearchParams()
+  params.set('collection', opts.collection)
+  params.set('q', opts.q)
+  if (opts.limit) params.set('limit', String(opts.limit))
+  if (opts.minScore) params.set('minScore', String(opts.minScore))
+  const res = await fetch(`${qdrantApiBase()}/search?${params}`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Qdrant search failed: ${res.status}`)
+  }
+  return res.json() as Promise<QdrantSearchResponse>
+}
+
+export async function scrollQdrant(opts: {
+  collection: string
+  limit?: number
+}): Promise<QdrantScrollResponse> {
+  const params = new URLSearchParams()
+  params.set('collection', opts.collection)
+  if (opts.limit) params.set('limit', String(opts.limit))
+  const res = await fetch(`${qdrantApiBase()}/scroll?${params}`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Qdrant scroll failed: ${res.status}`)
+  }
+  return res.json() as Promise<QdrantScrollResponse>
 }
