@@ -33,6 +33,7 @@ export interface ReportListResponse {
 
 export interface GroupSummary {
   conversationId: string
+  groupName?: string
   messageCount: number
   senderCount: number
   senders: string[]
@@ -69,6 +70,7 @@ export interface WechatStats {
   }
   topGroups: Array<{
     conversationId: string
+    groupName?: string
     messageCount: number
     senderCount: number
   }>

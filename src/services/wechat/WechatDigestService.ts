@@ -11,6 +11,7 @@ import type { WeChatDatabase, WeChatMessageRow } from './WeChatDatabase';
 /** Formatted group message summary */
 export interface GroupSummary {
   conversationId: string;
+  groupName: string;
   messageCount: number;
   senderCount: number;
   senders: string[];
@@ -49,6 +50,7 @@ export interface WechatStats {
   };
   topGroups: Array<{
     conversationId: string;
+    groupName: string;
     messageCount: number;
     senderCount: number;
   }>;
@@ -134,6 +136,7 @@ export class WechatDigestService {
 
       summaries.push({
         conversationId: convId,
+        groupName: this.resolveGroupName(convId),
         messageCount: msgs.length,
         senderCount: senders.length,
         senders,
@@ -276,6 +279,7 @@ export class WechatDigestService {
       },
       topGroups: groupStats.map((g) => ({
         conversationId: g.conversationId,
+        groupName: this.resolveGroupName(g.conversationId),
         messageCount: g.messageCount,
         senderCount: g.senderCount,
       })),
