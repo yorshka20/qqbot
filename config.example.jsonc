@@ -139,6 +139,17 @@
         "name": "nudge",
         "enabled": true
       },
+      // Cloudflare Worker Proxy Plugin - proxy Doubao/Volcengine API requests through Cloudflare Worker
+      // Deploy worker.js in src/plugins/plugins/CloudflareWorkerPlugin/ to Cloudflare Workers first
+      // {
+      //   "name": "cloudflare-worker-proxy",
+      //   "enabled": true,
+      //   "config": {
+      //     "workerUrl": "https://volcengine-proxy.your-name.workers.dev",
+      //     "proxySecret": "your-secret-here",
+      //     "targetProvider": "doubao"
+      //   }
+      // },
       // Rule Plugin - executes commands on schedule based on configured rules
       {
         "name": "rule",

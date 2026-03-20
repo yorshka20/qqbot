@@ -164,9 +164,7 @@ export class RetrievalService {
   /**
    * Get collection info (point count, vector config).
    */
-  async getCollectionInfo(
-    collection: string,
-  ): Promise<{ pointsCount: number; vectorSize: number; distance: string }> {
+  async getCollectionInfo(collection: string): Promise<{ pointsCount: number; vectorSize: number; distance: string }> {
     if (!this.ragService) throw new Error('RAG is not enabled');
     return this.ragService.getCollectionInfo(collection);
   }

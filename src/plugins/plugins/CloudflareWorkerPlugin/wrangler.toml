@@ -1,0 +1,9 @@
+name = "volcengine-proxy"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# 可选：设置一个密钥防止被别人滥用你的 Worker
+# 在 Cloudflare Dashboard > Workers > Settings > Variables 里设置
+# 或者用 wrangler secret put PROXY_SECRET
+# [vars]
+# PROXY_SECRET = "your-secret-here"

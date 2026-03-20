@@ -6,19 +6,12 @@ import type { SandboxGlobals } from '../types';
  * Builds minimal sandbox globals for testing.
  * Console capture is done via the logs array passed in.
  */
-function buildTestGlobals(
-  overrides: {
-    tools?: SandboxGlobals['tools'];
-    logs?: string[];
-  } = {},
-): SandboxGlobals {
+function buildTestGlobals(overrides: { tools?: SandboxGlobals['tools']; logs?: string[] } = {}): SandboxGlobals {
   const logs = overrides.logs ?? [];
 
   const capture = (level: string) => {
     return (...args: unknown[]) => {
-      const msg = args
-        .map((a) => (typeof a === 'string' ? a : JSON.stringify(a)))
-        .join(' ');
+      const msg = args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
       logs.push(`[${level}] ${msg}`);
     };
   };
@@ -126,10 +119,7 @@ console.log("world");
 const result = await tools.search({ query: "test query" });
 result.reply
 `;
-    const result = await sandbox.execute(
-      code,
-      buildTestGlobals({ tools: { search: mockSearch } }),
-    );
+    const result = await sandbox.execute(code, buildTestGlobals({ tools: { search: mockSearch } }));
 
     expect(result.success).toBe(true);
     expect(result.returnValue).toBe('Found results for: test query');
@@ -149,10 +139,7 @@ const results = await Promise.all([
 ]);
 results.map(r => r.reply)
 `;
-    const result = await sandbox.execute(
-      code,
-      buildTestGlobals({ tools: { myTool: mockTool } }),
-    );
+    const result = await sandbox.execute(code, buildTestGlobals({ tools: { myTool: mockTool } }));
 
     expect(result.success).toBe(true);
     expect(result.returnValue).toEqual(['result:1', 'result:2', 'result:3']);
@@ -170,10 +157,7 @@ try {
   return "caught: " + e.message;
 }
 `;
-    const result = await sandbox.execute(
-      code,
-      buildTestGlobals({ tools: { broken: failingTool } }),
-    );
+    const result = await sandbox.execute(code, buildTestGlobals({ tools: { broken: failingTool } }));
 
     expect(result.success).toBe(true);
     expect(result.returnValue).toBe('caught: tool exploded');
@@ -194,10 +178,7 @@ try {
     const sandbox = new CodeSandbox({ timeoutMs: 200, maxOutputLength: 8000, maxConsoleLogs: 100 });
     const hangingTool = async (_params: Record<string, unknown>) => new Promise<never>(() => {}); // never resolves
     const code = `await tools.hanging({})`;
-    const result = await sandbox.execute(
-      code,
-      buildTestGlobals({ tools: { hanging: hangingTool } }),
-    );
+    const result = await sandbox.execute(code, buildTestGlobals({ tools: { hanging: hangingTool } }));
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('timed out');
@@ -271,7 +252,11 @@ return Array.from(map.entries());
     const result = await sandbox.execute(code, buildTestGlobals());
 
     expect(result.success).toBe(true);
-    expect(result.returnValue).toEqual([[1, 1], [2, 4], [3, 9]]);
+    expect(result.returnValue).toEqual([
+      [1, 1],
+      [2, 4],
+      [3, 9],
+    ]);
   });
 
   it('handles string encoding utilities', async () => {

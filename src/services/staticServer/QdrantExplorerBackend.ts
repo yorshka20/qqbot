@@ -85,7 +85,12 @@ export class QdrantExplorerBackend {
         collections.map(async (c) => {
           try {
             const info = await retrieval.getCollectionInfo(c.name);
-            return { name: c.name, pointsCount: info.pointsCount, vectorSize: info.vectorSize, distance: info.distance };
+            return {
+              name: c.name,
+              pointsCount: info.pointsCount,
+              vectorSize: info.vectorSize,
+              distance: info.distance,
+            };
           } catch {
             return { name: c.name, pointsCount: 0, vectorSize: 0, distance: 'Unknown' };
           }

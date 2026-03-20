@@ -155,9 +155,7 @@ export class RAGService {
   /**
    * Get collection info (point count, vector config).
    */
-  async getCollectionInfo(
-    collection: string,
-  ): Promise<{ pointsCount: number; vectorSize: number; distance: string }> {
+  async getCollectionInfo(collection: string): Promise<{ pointsCount: number; vectorSize: number; distance: string }> {
     return this.qdrantClient.getCollectionInfo(collection);
   }
 

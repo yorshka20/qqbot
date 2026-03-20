@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 import {
-  MockFailingExecutor,
-  MockMemoryExecutor,
-  MockSearchExecutor,
-  MockSlowExecutor,
   createMockToolManager,
   createToolCall,
   createToolExecutionContext,
   createToolSpec,
+  MockFailingExecutor,
+  MockMemoryExecutor,
+  MockSearchExecutor,
+  MockSlowExecutor,
 } from '@/__tests__/helpers';
 import type { ToolExecutor } from '../../../types';
 import { ExecuteCodeToolExecutor } from '../ExecuteCodeToolExecutor';
@@ -25,7 +25,12 @@ const toolSpecs = [
   createToolSpec({ name: 'slow_tool', executor: 'slow_tool', description: 'A slow tool' }),
   createToolSpec({ name: 'failing_tool', executor: 'failing_tool', description: 'Always fails' }),
   // Internal tool — should NOT be exposed to sandbox
-  createToolSpec({ name: 'internal_admin', executor: 'internal_admin', description: 'Admin only', visibility: ['internal'] }),
+  createToolSpec({
+    name: 'internal_admin',
+    executor: 'internal_admin',
+    description: 'Admin only',
+    visibility: ['internal'],
+  }),
   // execute_code itself — should NOT be exposed (prevent recursion)
   createToolSpec({ name: 'execute_code', executor: 'execute_code', description: 'Execute code' }),
 ];

@@ -263,9 +263,7 @@ export class QdrantClient {
   /**
    * Get collection info (point count, vector config, etc.).
    */
-  async getCollectionInfo(
-    collection: string,
-  ): Promise<{ pointsCount: number; vectorSize: number; distance: string }> {
+  async getCollectionInfo(collection: string): Promise<{ pointsCount: number; vectorSize: number; distance: string }> {
     const response = await this.httpClient.get<{
       result?: {
         points_count?: number;

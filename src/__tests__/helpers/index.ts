@@ -14,8 +14,8 @@ import 'reflect-metadata';
 
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
-import type { ToolCall, ToolExecutionContext, ToolExecutor, ToolResult, ToolSpec } from '@/tools/types';
 import type { ToolManager } from '@/tools/ToolManager';
+import type { ToolCall, ToolExecutionContext, ToolExecutor, ToolResult, ToolSpec } from '@/tools/types';
 
 // ── HookContext Factory ──
 
@@ -123,10 +123,7 @@ export function createToolExecutionContext(opts: ToolExecutionContextOptions = {
  * );
  * ```
  */
-export function createMockToolManager(
-  specs: ToolSpec[],
-  executors: Record<string, ToolExecutor>,
-): ToolManager {
+export function createMockToolManager(specs: ToolSpec[], executors: Record<string, ToolExecutor>): ToolManager {
   return {
     getAllTools: () => specs,
     getExecutor: (name: string) => executors[name] ?? null,
@@ -235,7 +232,9 @@ export function createPluginContextStub() {
  * const plugin = await initPlugin(WhitelistPlugin, { groupIds: ['1'] });
  * ```
  */
-export async function initPlugin<T extends { loadConfig: (ctx: unknown, cfg: unknown) => void; onInit?: () => Promise<void> }>(
+export async function initPlugin<
+  T extends { loadConfig: (ctx: unknown, cfg: unknown) => void; onInit?: () => Promise<void> },
+>(
   PluginClass: new (meta: { name: string; version: string; description: string }) => T,
   config: Record<string, unknown> = {},
   pluginName?: string,

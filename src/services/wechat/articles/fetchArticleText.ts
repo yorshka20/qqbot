@@ -9,21 +9,23 @@ const JS_CONTENT_RE = /<div[^>]+id=["']js_content["'][^>]*>([\s\S]*?)<\/div>/i;
  * Safe to call on text that is already plain — it will pass through unchanged.
  */
 export function stripHtml(html: string): string {
-  return html
-    // Block-level tags → newline (preserve paragraph structure)
-    .replace(/<\s*\/?\s*(?:p|div|br|section|article|h[1-6]|ul|ol|li|blockquote|pre|hr|tr|table)[\s>/]/gi, '\n')
-    // Strip all remaining HTML tags
-    .replace(/<[^>]+>/g, '')
-    // Decode common HTML entities
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    // Collapse whitespace
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n[ \t]*/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return (
+    html
+      // Block-level tags → newline (preserve paragraph structure)
+      .replace(/<\s*\/?\s*(?:p|div|br|section|article|h[1-6]|ul|ol|li|blockquote|pre|hr|tr|table)[\s>/]/gi, '\n')
+      // Strip all remaining HTML tags
+      .replace(/<[^>]+>/g, '')
+      // Decode common HTML entities
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      // Collapse whitespace
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n[ \t]*/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  );
 }
 
 /**

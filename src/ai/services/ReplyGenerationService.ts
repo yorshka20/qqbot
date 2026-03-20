@@ -941,9 +941,7 @@ export class ReplyGenerationService {
     // Capabilities: check if the effective provider supports tool use
     const effectiveProvider = selectedProviderName ?? 'default';
     const providerCanUseTools = await this.checkProviderToolUseSupport(effectiveProvider, sessionId);
-    const canUseVisionToolUse = useVisionProvider
-      ? Boolean(resolvedVisionProviderName && providerCanUseTools)
-      : false;
+    const canUseVisionToolUse = useVisionProvider ? Boolean(resolvedVisionProviderName && providerCanUseTools) : false;
     const effectiveNativeSearchEnabled = false;
 
     // Tools: only inject when the provider actually supports tool use
