@@ -170,6 +170,14 @@ export class RetrievalService {
   }
 
   /**
+   * Delete points by payload filter from a RAG collection.
+   */
+  async deleteByFilter(collection: string, filter: Record<string, unknown>): Promise<void> {
+    if (!this.ragService) throw new Error('RAG is not enabled');
+    return this.ragService.deleteByFilter(collection, filter);
+  }
+
+  /**
    * Multi-query vector search: pass multiple queries; RAG runs each search, merges by id (best score), returns up to maxTotal.
    */
   async vectorSearchMulti(

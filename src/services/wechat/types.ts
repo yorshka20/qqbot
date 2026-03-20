@@ -67,6 +67,8 @@ export interface WeChatIngestConfig {
     momentsCollection?: string;
     bufferIdleMinutes?: number;
     bufferMaxMessages?: number;
+    /** Days to retain non-evergreen article chunks in RAG before cleanup. Default: 90 (3 months). 0 = disabled. */
+    articleRetentionDays?: number;
   };
   /** OA account nicknames to ignore (skip article ingestion). Can also be a path to a .txt file (one name per line). */
   ignoredOAAccounts?: string[] | string;
@@ -108,6 +110,7 @@ export interface ResolvedWeChatIngestConfig {
     momentsCollection: string;
     bufferIdleMinutes: number;
     bufferMaxMessages: number;
+    articleRetentionDays: number;
   };
   realtime: {
     enabled: boolean;
@@ -127,6 +130,7 @@ export function resolveConfig(raw: WeChatIngestConfig | undefined): ResolvedWeCh
       momentsCollection: raw?.rag?.momentsCollection ?? 'wechat_moments',
       bufferIdleMinutes: raw?.rag?.bufferIdleMinutes ?? 5,
       bufferMaxMessages: raw?.rag?.bufferMaxMessages ?? 10,
+      articleRetentionDays: raw?.rag?.articleRetentionDays ?? 90,
     },
     realtime: {
       enabled: raw?.realtime?.enabled ?? false,

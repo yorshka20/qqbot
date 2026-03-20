@@ -58,6 +58,7 @@ export interface WeChatArticleInsightRow {
   categoryTags: string; // JSON array of category tags, e.g. '["科技","AI"]'
   items: string; // JSON array of extracted insight items
   worthReporting: number; // 1 = yes, 0 = no (filtered ads/fluff)
+  evergreen: number; // 1 = long-term value (tutorial/knowledge), 0 = time-sensitive (news)
   analyzedAt: string; // ISO timestamp of analysis
   model: string; // model used for analysis (e.g. "qwen3:8b")
 }
@@ -696,8 +697,8 @@ export class WeChatDatabase {
     try {
       this.db
         .query(`INSERT OR REPLACE INTO wechat_article_insights
-          (articleMsgId, title, url, source, headline, categoryTags, items, worthReporting, analyzedAt, model)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          (articleMsgId, title, url, source, headline, categoryTags, items, worthReporting, evergreen, analyzedAt, model)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(
           row.articleMsgId,
           row.title,
@@ -707,6 +708,7 @@ export class WeChatDatabase {
           row.categoryTags,
           row.items,
           row.worthReporting,
+          row.evergreen ?? 0,
           row.analyzedAt,
           row.model,
         );
@@ -785,6 +787,47 @@ export class WeChatDatabase {
     for (const msgId of msgIds) {
       stmt.run(msgId);
     }
+  }
+
+  // ──────────────────────────────────────────────────
+  // Cleanup — expired article data
+  // ──────────────────────────────────────────────────
+
+  /**
+   * Get article msgIds that are expired and eligible for RAG cleanup.
+   * An article is expired if:
+   *   - It was received before `beforeTs` (unix seconds), AND
+   *   - It is NOT marked as evergreen in article_insights (evergreen=0 or no insight row)
+   * @returns Array of msgIds to clean up from RAG
+   */
+  getExpiredArticleMsgIds(beforeTs: number): string[] {
+    if (!this.db) return [];
+    return this.db
+      .query<{ msgId: string }, [number]>(
+        `SELECT a.msgId FROM wechat_oa_articles a
+         LEFT JOIN wechat_article_insights i ON a.msgId = i.articleMsgId
+         WHERE a.pubTime > 0 AND a.pubTime < ?
+           AND (i.evergreen IS NULL OR i.evergreen = 0)`,
+      )
+      .all(beforeTs)
+      .map((r) => r.msgId);
+  }
+
+  /**
+   * Delete article rows by msgIds. Used after RAG cleanup to remove expired articles.
+   * @returns Number of rows deleted
+   */
+  deleteArticlesByMsgIds(msgIds: string[]): number {
+    if (!this.db || msgIds.length === 0) return 0;
+    let deleted = 0;
+    const stmtArticles = this.db.query<void, [string]>(`DELETE FROM wechat_oa_articles WHERE msgId = ?`);
+    const stmtInsights = this.db.query<void, [string]>(`DELETE FROM wechat_article_insights WHERE articleMsgId = ?`);
+    for (const msgId of msgIds) {
+      stmtArticles.run(msgId);
+      stmtInsights.run(msgId);
+      deleted++;
+    }
+    return deleted;
   }
 
   // ──────────────────────────────────────────────────
@@ -898,10 +941,17 @@ export class WeChatDatabase {
         categoryTags    TEXT    NOT NULL DEFAULT '[]',
         items           TEXT    NOT NULL DEFAULT '[]',
         worthReporting  INTEGER NOT NULL DEFAULT 0,
+        evergreen       INTEGER NOT NULL DEFAULT 0,
         analyzedAt      TEXT    NOT NULL DEFAULT '',
         model           TEXT    NOT NULL DEFAULT ''
       )
     `);
+    // Migrate: add evergreen column for existing DBs
+    try {
+      this.db.run(`ALTER TABLE wechat_article_insights ADD COLUMN evergreen INTEGER NOT NULL DEFAULT 0`);
+    } catch {
+      /* column already exists */
+    }
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_ai_analyzedAt      ON wechat_article_insights(analyzedAt)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_ai_worthReporting   ON wechat_article_insights(worthReporting)`);
 

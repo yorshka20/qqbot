@@ -1,6 +1,8 @@
 /**
  * Qdrant Explorer page: browse collections and perform vector search.
  */
+/** biome-ignore-all lint/suspicious/noArrayIndexKey: <explanation> */
+/** biome-ignore-all lint/a11y/noLabelWithoutControl: <explanation> */
 
 import { Database, Loader2, Search } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -45,7 +47,7 @@ export function QdrantExplorerPage() {
       })
       .catch((err) => setCollectionsError(err.message))
       .finally(() => setLoadingCollections(false));
-  }, []);
+  }, [selectedCollection]);
 
   // Perform search
   const doSearch = useCallback(async () => {

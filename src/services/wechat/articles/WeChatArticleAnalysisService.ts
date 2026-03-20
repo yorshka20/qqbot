@@ -38,6 +38,8 @@ interface AnalysisResult {
   items: AnalysisItem[];
   headline: string;
   worthReporting: boolean;
+  /** Whether this article has long-term value (e.g. tutorials, knowledge) vs time-sensitive news. Default: false */
+  evergreen: boolean;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -163,6 +165,7 @@ export class WeChatArticleAnalysisService {
         categoryTags: '[]',
         items: '[]',
         worthReporting: 0,
+        evergreen: 0,
         analyzedAt: new Date().toISOString(),
         model: this.provider,
       });
@@ -193,6 +196,7 @@ export class WeChatArticleAnalysisService {
       categoryTags: JSON.stringify(analysisResult.category_tags ?? []),
       items: JSON.stringify(analysisResult.items ?? []),
       worthReporting: analysisResult.worthReporting ? 1 : 0,
+      evergreen: analysisResult.evergreen ? 1 : 0,
       analyzedAt: new Date().toISOString(),
       model: this.provider,
     });
@@ -251,6 +255,9 @@ export class WeChatArticleAnalysisService {
       // Basic validation
       if (typeof parsed.worthReporting !== 'boolean') {
         parsed.worthReporting = false;
+      }
+      if (typeof parsed.evergreen !== 'boolean') {
+        parsed.evergreen = false;
       }
       if (!Array.isArray(parsed.items)) {
         parsed.items = [];

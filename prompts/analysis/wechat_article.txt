@@ -40,7 +40,8 @@
     }
   ],
   "headline": "一句话概括本文核心内容（用于日报标题）",
-  "worthReporting": true
+  "worthReporting": true,
+  "evergreen": false
 }
 ```
 
@@ -53,6 +54,7 @@
   - `importance`：high（重大新闻/核心观点）、medium（有参考价值）、low（补充信息）
 - `headline`：一句话概括全文核心，可直接用作日报标题
 - `worthReporting`：此文章是否值得出现在日报中。广告、软文、营销推广、无实质内容的文章设为 false
+- `evergreen`：此文章是否具有长期价值。技术教程、知识科普、方法论、原理解析等不受时间影响的内容设为 true；时效性新闻、政策变动、产品发布、市场动态等设为 false
 
 如果文章是广告或无实质信息，设置 worthReporting 为 false，items 可以为空数组。
 

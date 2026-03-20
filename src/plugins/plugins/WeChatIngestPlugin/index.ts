@@ -21,6 +21,7 @@ import {
   WechatEventBridge,
 } from '@/services/wechat';
 import { WeChatArticleAnalysisService } from '@/services/wechat/articles/WeChatArticleAnalysisService';
+import { WeChatArticleCleanupService } from '@/services/wechat/articles/WeChatArticleCleanupService';
 import { WechatDigestService } from '@/services/wechat/WechatDigestService';
 import { WechatReportService } from '@/services/wechat/WechatReportService';
 import { logger } from '@/utils/logger';
@@ -39,6 +40,7 @@ export class WeChatIngestPlugin extends PluginBase {
   private eventBridge: WechatEventBridge | null = null;
   private digestService: WechatDigestService | null = null;
   private reportService: WechatReportService | null = null;
+  private cleanupService: WeChatArticleCleanupService | null = null;
   private retrieval!: RetrievalService;
   private messageAPI!: MessageAPI;
   private commandManager!: CommandManager;
@@ -181,6 +183,13 @@ export class WeChatIngestPlugin extends PluginBase {
       logger.info('[WeChatIngestPlugin] LLMService not available — article analysis disabled');
     }
 
+    // Create article cleanup service (periodic RAG garbage collection for expired articles)
+    this.cleanupService = new WeChatArticleCleanupService(this.db, this.retrieval, {
+      retentionDays: resolved.rag.articleRetentionDays,
+      articleCollection: resolved.rag.articleCollection,
+      chunksCollection: resolved.rag.chunksCollection,
+    });
+
     this.ingestService = new WeChatIngestService({
       config: resolved,
       retrieval: this.retrieval,
@@ -212,11 +221,13 @@ export class WeChatIngestPlugin extends PluginBase {
   async onEnable(): Promise<void> {
     this.enabled = true;
     this.ingestService?.start();
+    this.cleanupService?.start();
     logger.info('[WeChatIngestPlugin] Enabled — webhook server started');
   }
 
   async onDisable(): Promise<void> {
     this.enabled = false;
+    this.cleanupService?.stop();
     await this.ingestService?.stop();
     this.db?.close();
     this.db = null;
