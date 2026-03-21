@@ -11,6 +11,7 @@ import { GoogleCloudRunProvider } from './providers/GoogleCloudRunProvider';
 import { LaozhangProvider } from './providers/LaozhangProvider';
 import { LocalText2ImageProvider } from './providers/LocalText2ImageProvider';
 import { NovelAIProvider } from './providers/NovelAIProvider';
+import { GroqProvider } from './providers/GroqProvider';
 import { OllamaProvider } from './providers/OllamaProvider';
 import { OpenAIProvider } from './providers/OpenAIProvider';
 import { OpenRouterProvider } from './providers/OpenRouterProvider';
@@ -168,6 +169,17 @@ export class ProviderFactory {
             baseUrl: c.baseUrl,
             apiKey: c.apiKey,
             timeoutMs: c.timeoutMs,
+          });
+        }
+        case 'groq': {
+          return new GroqProvider({
+            apiKey: config.apiKey,
+            model: config.model,
+            baseURL: config.baseURL,
+            defaultTemperature: config.temperature,
+            defaultMaxTokens: config.maxTokens,
+            enableContext: config.enableContext,
+            contextMessageCount: config.contextMessageCount,
           });
         }
         default: {

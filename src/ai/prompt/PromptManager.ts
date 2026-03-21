@@ -72,7 +72,7 @@ export class PromptManager {
       }
       namespaceMap.set(name, template);
 
-      logger.info(`[PromptManager] Loaded template: ${name} from ${resolvedPath} (namespace: ${namespace})`);
+      // logger.info(`[PromptManager] Loaded template: ${name} from ${resolvedPath} (namespace: ${namespace})`);
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error(`[PromptManager] Failed to load template ${name}:`, err);

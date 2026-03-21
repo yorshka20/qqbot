@@ -71,8 +71,8 @@ function parseXml(xml: string): ParsedMoment {
   // Parse media list
   const mediaList: ParsedMomentMedia[] = [];
   const mediaRegex = /<media>([\s\S]*?)<\/media>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = mediaRegex.exec(xml)) !== null) {
+  let match = mediaRegex.exec(xml);
+  while (match !== null) {
     const block = match[1];
     const id = xmlTag(block, 'id') ?? '';
     const type = xmlTag(block, 'type') ?? '';
@@ -82,6 +82,7 @@ function parseXml(xml: string): ParsedMoment {
     if (id || url) {
       mediaList.push({ id, type, url, thumbUrl });
     }
+    match = mediaRegex.exec(xml);
   }
 
   return { contentDesc, contentStyle, mediaList, contentUrl, title };
@@ -100,6 +101,18 @@ function extractFromRawString(raw: string): ParsedMoment | null {
   };
 }
 
+/** Decode XML character entities (&#xHH; &#DDD; and named entities). */
+function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&'); // &amp; must be last to avoid double-decoding
+}
+
 /** Extract text content of a simple XML tag. */
 function xmlTag(xml: string, tag: string): string | null {
   // Handle CDATA: <tag><![CDATA[content]]></tag>
@@ -110,7 +123,7 @@ function xmlTag(xml: string, tag: string): string | null {
   // Simple text content: <tag>content</tag>
   const re = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'i');
   const m = re.exec(xml);
-  return m ? m[1].trim() : null;
+  return m ? decodeXmlEntities(m[1]).trim() : null;
 }
 
 /** Extract URL value from <tagName type="1">url</tagName> pattern. */

@@ -12,7 +12,8 @@ export type AIProviderType =
   | 'novelai'
   | 'gemini'
   | 'doubao'
-  | 'laozhang';
+  | 'laozhang'
+  | 'groq';
 
 export interface OpenAIProviderConfig {
   type: 'openai';
@@ -200,6 +201,17 @@ export interface GoogleCloudRunProviderConfig {
   timeoutMs?: number;
 }
 
+export interface GroqProviderConfig {
+  type: 'groq';
+  apiKey: string;
+  model?: string; // Default: 'qwen-qwq-32b'
+  baseURL?: string; // Default: 'https://api.groq.com/openai/v1'
+  temperature?: number;
+  maxTokens?: number;
+  enableContext?: boolean;
+  contextMessageCount?: number;
+}
+
 export type AIProviderConfig =
   | OpenAIProviderConfig
   | AnthropicProviderConfig
@@ -212,4 +224,5 @@ export type AIProviderConfig =
   | DoubaoProviderConfig
   | LaozhangProviderConfig
   | RunPodProviderConfig
-  | GoogleCloudRunProviderConfig;
+  | GoogleCloudRunProviderConfig
+  | GroqProviderConfig;

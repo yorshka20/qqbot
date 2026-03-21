@@ -58,8 +58,10 @@ describe('WhitelistPlugin access control', () => {
     const context = makeHookContext({ messageText: 'hello', userId: 123, botSelfId: '123' });
     plugin.onMessageReceived(context);
 
-    expect(context.metadata.get('postProcessOnly')).toBe(true);
-    expect(context.metadata.get('whitelistDenied')).toBe(true);
+    // Bot own messages: WhitelistPlugin no longer sets postProcessOnly (MessageTriggerPlugin handles that).
+    // With no whitelist configured, group is allowed by default.
+    expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+    expect(context.metadata.get('whitelistGroup')).toBe(true);
   });
 
   it('sets postProcessOnly and whitelistDenied when user not in whitelist (private)', async () => {

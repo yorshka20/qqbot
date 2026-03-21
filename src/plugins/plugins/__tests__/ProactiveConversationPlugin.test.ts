@@ -8,6 +8,8 @@ import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import { ProactiveConversationPlugin } from '../ProactiveConversationPlugin';
 
+const mockConfig = { getAIConfig: () => ({}) };
+
 interface ProactiveContextOverrides {
   whitelistDenied?: boolean;
   postProcessOnly?: boolean;
@@ -98,6 +100,7 @@ describe('ProactiveConversationPlugin wake-word dedupe', () => {
       { allowOverride: true },
     );
     container.registerInstance(DITokens.PROMPT_MANAGER, new PromptManager(), { allowOverride: true });
+    container.registerInstance(DITokens.CONFIG, mockConfig, { allowOverride: true });
 
     const plugin = new ProactiveConversationPlugin({
       name: 'proactiveConversation',
@@ -134,6 +137,7 @@ describe('ProactiveConversationPlugin wake-word dedupe', () => {
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
     container.registerInstance(DITokens.PROMPT_MANAGER, new PromptManager(), { allowOverride: true });
+    container.registerInstance(DITokens.CONFIG, mockConfig, { allowOverride: true });
 
     const plugin = new ProactiveConversationPlugin({
       name: 'proactiveConversation',
@@ -169,6 +173,7 @@ describe('ProactiveConversationPlugin wake-word dedupe', () => {
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
+    container.registerInstance(DITokens.CONFIG, mockConfig, { allowOverride: true });
 
     const plugin = new ProactiveConversationPlugin({
       name: 'proactiveConversation',
@@ -208,6 +213,7 @@ describe('ProactiveConversationPlugin wake-word dedupe', () => {
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
+    container.registerInstance(DITokens.CONFIG, mockConfig, { allowOverride: true });
 
     const plugin = new ProactiveConversationPlugin({
       name: 'proactiveConversation',
@@ -258,6 +264,7 @@ describe('ProactiveConversationPlugin skip and schedule coverage', () => {
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
+    container.registerInstance(DITokens.CONFIG, mockConfig, { allowOverride: true });
 
     const plugin = new ProactiveConversationPlugin({
       name: 'proactiveConversation',
@@ -286,6 +293,7 @@ describe('ProactiveConversationPlugin skip and schedule coverage', () => {
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
     container.registerInstance(DITokens.PROMPT_MANAGER, new PromptManager(), { allowOverride: true });
+    container.registerInstance(DITokens.CONFIG, mockConfig, { allowOverride: true });
 
     const plugin = new ProactiveConversationPlugin({
       name: 'proactiveConversation',
@@ -313,6 +321,7 @@ describe('ProactiveConversationPlugin skip and schedule coverage', () => {
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
     container.registerInstance(DITokens.PROMPT_MANAGER, new PromptManager(), { allowOverride: true });
+    container.registerInstance(DITokens.CONFIG, mockConfig, { allowOverride: true });
 
     const plugin = new ProactiveConversationPlugin({
       name: 'proactiveConversation',
@@ -388,6 +397,7 @@ describe('ProactiveConversationPlugin skip and schedule coverage', () => {
       { allowOverride: true },
     );
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
+    container.registerInstance(DITokens.CONFIG, mockConfig, { allowOverride: true });
 
     const plugin = new ProactiveConversationPlugin({
       name: 'proactiveConversation',
@@ -431,6 +441,7 @@ describe('ProactiveConversationPlugin skip and schedule coverage', () => {
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
+    container.registerInstance(DITokens.CONFIG, mockConfig, { allowOverride: true });
 
     const plugin = new ProactiveConversationPlugin({
       name: 'proactiveConversation',

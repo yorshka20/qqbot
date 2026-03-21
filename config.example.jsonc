@@ -583,6 +583,14 @@
       //   "baseUrl": "url of your google cloud run service",
       //   "apiKey": "",
       //   "timeoutMs": 300000
+      // },
+      // Groq provider (ultra-fast inference via LPU, OpenAI-compatible API)
+      // "groq": {
+      //   "type": "groq",
+      //   "apiKey": "your_groq_api_key_here",
+      //   "model": "qwen/qwen3-32b",
+      //   "temperature": 0.7,
+      //   "maxTokens": 2000
       // }
     }
   },

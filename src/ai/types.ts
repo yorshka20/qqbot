@@ -114,7 +114,7 @@ export interface AIGenerateOptions {
    * Set to true if you need the reasoning content (e.g., for task analysis or debugging)
    */
   includeReasoning?: boolean;
-  reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
+  reasoningEffort?: 'none' | 'minimal' | 'low' | 'medium' | 'high';
   /**
    * Optional system message. When set, providers send it as high-priority system instructions.
    */
