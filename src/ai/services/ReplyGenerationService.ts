@@ -1057,6 +1057,16 @@ export class ReplyGenerationService {
 
     // Path 2: Long text → convert to card via second LLM call
     if (this.shouldUseCardReply(response.text)) {
+      // If text is already card JSON (LLM produced it without calling format_as_card tool), render directly
+      if (this.looksLikeCardJson(response.text)) {
+        logger.info('[ReplyGenerationService] Text already looks like card JSON, rendering directly (skipping conversion)');
+        const cleanJson = extractExpectedJsonFromLlmText(response.text) ?? response.text;
+        const success = await this.tryRenderCardReply(context, cleanJson, actualProvider);
+        if (success) {
+          this.appendToolResultImages(context, taskResultImages);
+          return;
+        }
+      }
       const cardResult = await this.convertAndRenderCard(response.text, sessionId, actualProvider);
       if (cardResult) {
         this.setCardReplyOnContext(context, cardResult.segments, cardResult.textForHistory);
@@ -1224,6 +1234,22 @@ export class ReplyGenerationService {
   ): Promise<boolean | { segments: MessageSegment[]; textForHistory: string } | null> {
     if (!this.shouldUseCardReply(responseText)) {
       return options?.context != null ? false : null;
+    }
+    // If text is already card JSON (e.g. proactive LLM output card JSON without format_as_card tool), render directly
+    if (this.looksLikeCardJson(responseText)) {
+      logger.info('[ReplyGenerationService] Text already looks like card JSON, rendering directly (skipping conversion)');
+      const cleanJson = extractExpectedJsonFromLlmText(responseText) ?? responseText;
+      const directResult = await this.renderCardJsonToSegments(cleanJson, options?.providerName).catch(() => null);
+      if (directResult) {
+        if (options?.context != null) {
+          this.setCardReplyOnContext(options.context, directResult.segments, directResult.textForHistory);
+          logger.info('[ReplyGenerationService] Card image rendered and stored in reply');
+          await this.hookManager.execute('onAIGenerationComplete', options.context);
+          return true;
+        }
+        return directResult;
+      }
+      // Direct render failed, fall through to conversion
     }
     const cardResult = await this.convertAndRenderCard(responseText, sessionId, options?.providerName);
     if (!cardResult) {
