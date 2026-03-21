@@ -231,7 +231,12 @@ export async function callLLM<T>(
     ? await callOllamaAPI(conn, prompt)
     : await callOpenAICompatibleAPI(conn, prompt);
 
-  return extractJsonArray<T>(text);
+  try {
+    return extractJsonArray<T>(text);
+  } catch (err) {
+    console.error(`  [callLLM] Input prompt sent to model:\n${prompt}`);
+    throw err;
+  }
 }
 
 /** Ollama native API: POST /api/chat */
@@ -306,11 +311,20 @@ export async function callOllama<T>(
 
 /** Extract a JSON array from LLM response text (handles markdown code blocks). */
 export function extractJsonArray<T>(text: string): T[] {
-  const jsonMatch = text.match(/\[[\s\S]*\]/);
+  // Strip <think>...</think> blocks (e.g. qwen3 reasoning output) before parsing
+  const cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
   if (!jsonMatch) {
+    console.error(`  [extractJsonArray] No JSON array found in LLM response:\n${text}`);
     throw new Error(`Failed to parse response as JSON array: ${text.slice(0, 200)}`);
   }
-  return JSON.parse(jsonMatch[0]) as T[];
+  try {
+    return JSON.parse(jsonMatch[0]) as T[];
+  } catch (err) {
+    console.error(`  [extractJsonArray] JSON.parse failed. Raw LLM response:\n${text}`);
+    console.error(`  [extractJsonArray] Extracted JSON candidate:\n${jsonMatch[0]}`);
+    throw err;
+  }
 }
 
 // ============================================================================
