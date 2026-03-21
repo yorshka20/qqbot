@@ -64,8 +64,8 @@ async function main() {
   const db = new WeChatDatabase();
   await db.init();
 
-  const analyzedCount = db.getMomentsSentimentCount();
-  console.log(`Already analyzed: ${analyzedCount} moments in SQLite`);
+  const skipIds = db.getAnalyzedSentimentIds();
+  console.log(`Already analyzed: ${skipIds.size} moments in SQLite`);
 
   const sentimentStats = new Map<string, number>();
 
@@ -86,6 +86,7 @@ async function main() {
     limit: args.limit,
     output: args.output,
     dryRun: args.dryRun,
+    skipIds,
     payloadInclude: ['content', 'create_time'],
     promptBuilder: loadSentimentPrompt,
     processResult: (sr: SentimentResult, point: QdrantPoint) => {

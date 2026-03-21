@@ -61,8 +61,8 @@ async function main() {
   const db = new WeChatDatabase();
   await db.init();
 
-  const analyzedCount = db.getMomentsEntityMomentCount();
-  console.log(`Already extracted: ${analyzedCount} moments in SQLite`);
+  const skipIds = db.getAnalyzedEntityIds();
+  console.log(`Already extracted: ${skipIds.size} moments in SQLite`);
 
   const entityTypeStats = new Map<string, number>();
   const topEntities = new Map<string, number>();
@@ -85,6 +85,7 @@ async function main() {
     limit: args.limit,
     output: args.output,
     dryRun: args.dryRun,
+    skipIds,
     payloadInclude: ['content', 'create_time'],
     promptBuilder: loadNERPrompt,
     processResult: (nr: NERResult, point: QdrantPoint) => {

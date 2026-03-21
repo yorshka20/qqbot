@@ -72,7 +72,12 @@ async function main() {
   const db = new WeChatDatabase();
   await db.init();
 
-  console.log(`Already analyzed: sentiment=${db.getMomentsSentimentCount()}, entities=${db.getMomentsEntityMomentCount()}`);
+  // Load already-processed IDs to skip duplicates
+  const analyzedSentimentIds = db.getAnalyzedSentimentIds();
+  const analyzedEntityIds = db.getAnalyzedEntityIds();
+  // A point is fully analyzed if it has BOTH sentiment and entities
+  const fullyAnalyzedIds = new Set([...analyzedSentimentIds].filter((id) => analyzedEntityIds.has(id)));
+  console.log(`Already analyzed: sentiment=${analyzedSentimentIds.size}, entities=${analyzedEntityIds.size}, both=${fullyAnalyzedIds.size}`);
 
   ensureOutputDir(args.output);
 
@@ -92,6 +97,7 @@ async function main() {
 
   let offset: string | number | null = null;
   let totalProcessed = 0;
+  let totalSkipped = 0;
   let totalSuccess = 0;
   let totalFailed = 0;
   let totalEntities = 0;
@@ -100,22 +106,46 @@ async function main() {
   while (true) {
     if (args.limit > 0 && totalProcessed >= args.limit) break;
 
-    const fetchCount = args.limit > 0 ? Math.min(args.batchSize, args.limit - totalProcessed) : args.batchSize;
+    // Fetch a larger batch from Qdrant, then filter out already-processed
+    const fetchCount = args.limit > 0 ? Math.min(args.batchSize * 2, args.limit - totalProcessed) : args.batchSize * 2;
 
     const scrollRes = await qdrantScroll(qdrantUrl, offset, fetchCount, {
       payloadInclude: ['content', 'create_time'],
     });
-    const points = scrollRes.result.points;
+    const rawPoints = scrollRes.result.points;
 
-    if (points.length === 0) {
+    if (rawPoints.length === 0) {
       console.log('\nNo more records to process.');
       break;
     }
 
-    batchNum++;
-    console.log(`\n--- Batch ${batchNum}: ${points.length} records ---`);
+    // Filter out already fully analyzed points
+    const points = rawPoints.filter((p) => !fullyAnalyzedIds.has(String(p.id)));
+    const skipped = rawPoints.length - points.length;
+    totalSkipped += skipped;
 
-    const contents = points.map((p, i) => ({
+    if (points.length === 0) {
+      // All points in this page were already processed, continue to next page
+      offset = scrollRes.result.next_page_offset;
+      if (offset == null) {
+        console.log('\nReached end of collection.');
+        break;
+      }
+      if (skipped > 0) console.log(`  Skipped ${skipped} already-analyzed, fetching next page...`);
+      continue;
+    }
+
+    // Trim to batch size
+    const batch = points.slice(0, args.batchSize);
+
+    batchNum++;
+    if (skipped > 0) {
+      console.log(`\n--- Batch ${batchNum}: ${batch.length} records (skipped ${skipped} already-analyzed) ---`);
+    } else {
+      console.log(`\n--- Batch ${batchNum}: ${batch.length} records ---`);
+    }
+
+    const contents = batch.map((p, i) => ({
       index: i,
       content: (p.payload.content as string) || '',
     }));
@@ -124,9 +154,9 @@ async function main() {
       const results = await callLLM<CombinedResult>(llm, contents, loadCombinedAnalysisPrompt);
 
       for (const r of results) {
-        if (r.index < 0 || r.index >= points.length) continue;
+        if (r.index < 0 || r.index >= batch.length) continue;
 
-        const point = points[r.index];
+        const point = batch[r.index];
         const createTime = (point.payload.create_time as string) || '';
 
         // Sentiment
@@ -172,7 +202,7 @@ async function main() {
       }
 
       const returnedIndices = new Set(results.map((r) => r.index));
-      for (let i = 0; i < points.length; i++) {
+      for (let i = 0; i < batch.length; i++) {
         if (!returnedIndices.has(i)) {
           console.log(`  [${i}] MISSED by LLM — skipping`);
           totalFailed++;
@@ -180,10 +210,10 @@ async function main() {
       }
     } catch (err) {
       console.error(`  Batch ${batchNum} FAILED:`, err instanceof Error ? err.message : err);
-      totalFailed += points.length;
+      totalFailed += batch.length;
     }
 
-    totalProcessed += points.length;
+    totalProcessed += batch.length;
     offset = scrollRes.result.next_page_offset;
     console.log(`  Progress: ${totalProcessed} processed, ${totalSuccess} OK, ${totalFailed} failed`);
 
@@ -195,6 +225,7 @@ async function main() {
 
   console.log('\n=== Summary ===');
   console.log(`Total processed:    ${totalProcessed}`);
+  console.log(`Total skipped:      ${totalSkipped} (already analyzed)`);
   console.log(`Total success:      ${totalSuccess}`);
   console.log(`Total failed:       ${totalFailed}`);
   console.log(`Total entities:     ${totalEntities}`);
@@ -206,6 +237,7 @@ async function main() {
     provider: llm.provider,
     model: llm.model,
     totalProcessed,
+    totalSkipped,
     totalSuccess,
     totalFailed,
     totalEntities,

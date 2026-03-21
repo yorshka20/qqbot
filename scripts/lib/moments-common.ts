@@ -373,10 +373,13 @@ export interface BatchProcessOptions<R extends { index: number }> {
   promptBuilder: (contentList: string) => string;
   /** Process one LLM result item, returning an output record to append to JSONL. */
   processResult: (result: R, point: QdrantPoint) => unknown;
+  /** Set of point IDs to skip (already processed). */
+  skipIds?: Set<string>;
 }
 
 export interface BatchProcessResult {
   totalProcessed: number;
+  totalSkipped: number;
   totalSuccess: number;
   totalFailed: number;
 }
@@ -386,8 +389,10 @@ export async function runBatchLoop<R extends { index: number }>(
 ): Promise<BatchProcessResult> {
   ensureOutputDir(opts.output);
 
+  const skipIds = opts.skipIds;
   let offset: string | number | null = null;
   let totalProcessed = 0;
+  let totalSkipped = 0;
   let totalSuccess = 0;
   let totalFailed = 0;
   let batchNum = 0;
@@ -395,23 +400,43 @@ export async function runBatchLoop<R extends { index: number }>(
   while (true) {
     if (opts.limit > 0 && totalProcessed >= opts.limit) break;
 
-    const fetchCount = opts.limit > 0 ? Math.min(opts.batchSize, opts.limit - totalProcessed) : opts.batchSize;
+    const fetchCount = skipIds
+      ? (opts.limit > 0 ? Math.min(opts.batchSize * 2, opts.limit - totalProcessed) : opts.batchSize * 2)
+      : (opts.limit > 0 ? Math.min(opts.batchSize, opts.limit - totalProcessed) : opts.batchSize);
 
     const scrollRes = await qdrantScroll(opts.qdrantUrl, offset, fetchCount, {
       filter: opts.scrollFilter,
       payloadInclude: opts.payloadInclude,
     });
-    const points = scrollRes.result.points;
+    const rawPoints = scrollRes.result.points;
 
-    if (points.length === 0) {
+    if (rawPoints.length === 0) {
       console.log('\nNo more records to process.');
       break;
     }
 
-    batchNum++;
-    console.log(`\n--- Batch ${batchNum}: ${points.length} records ---`);
+    // Filter out already-processed points
+    const points = skipIds ? rawPoints.filter((p) => !skipIds.has(String(p.id))) : rawPoints;
+    const skipped = rawPoints.length - points.length;
+    totalSkipped += skipped;
 
-    const contents = points.map((p, i) => ({
+    if (points.length === 0) {
+      offset = scrollRes.result.next_page_offset;
+      if (offset == null) { console.log('\nReached end of collection.'); break; }
+      if (skipped > 0) console.log(`  Skipped ${skipped} already-processed, fetching next page...`);
+      continue;
+    }
+
+    const batch = points.slice(0, opts.batchSize);
+
+    batchNum++;
+    if (skipped > 0) {
+      console.log(`\n--- Batch ${batchNum}: ${batch.length} records (skipped ${skipped} already-processed) ---`);
+    } else {
+      console.log(`\n--- Batch ${batchNum}: ${batch.length} records ---`);
+    }
+
+    const contents = batch.map((p, i) => ({
       index: i,
       content: (p.payload.content as string) || '',
     }));
@@ -420,9 +445,9 @@ export async function runBatchLoop<R extends { index: number }>(
       const results = await callLLM<R>(opts.llm, contents, opts.promptBuilder);
 
       for (const r of results) {
-        if (r.index < 0 || r.index >= points.length) continue;
+        if (r.index < 0 || r.index >= batch.length) continue;
 
-        const record = opts.processResult(r, points[r.index]);
+        const record = opts.processResult(r, batch[r.index]);
         if (record != null) {
           appendJsonl(opts.output, record);
         }
@@ -430,7 +455,7 @@ export async function runBatchLoop<R extends { index: number }>(
       }
 
       const returnedIndices = new Set(results.map((r) => r.index));
-      for (let i = 0; i < points.length; i++) {
+      for (let i = 0; i < batch.length; i++) {
         if (!returnedIndices.has(i)) {
           console.log(`  [${i}] MISSED by LLM — skipping`);
           totalFailed++;
@@ -438,13 +463,13 @@ export async function runBatchLoop<R extends { index: number }>(
       }
     } catch (err) {
       console.error(`  Batch ${batchNum} FAILED:`, err instanceof Error ? err.message : err);
-      totalFailed += points.length;
+      totalFailed += batch.length;
     }
 
-    totalProcessed += points.length;
+    totalProcessed += batch.length;
     offset = scrollRes.result.next_page_offset;
 
-    console.log(`  Progress: ${totalProcessed} processed, ${totalSuccess} success, ${totalFailed} failed`);
+    console.log(`  Progress: ${totalProcessed} processed, ${totalSkipped} skipped, ${totalSuccess} success, ${totalFailed} failed`);
 
     if (offset == null) {
       console.log('\nReached end of collection.');
@@ -452,5 +477,5 @@ export async function runBatchLoop<R extends { index: number }>(
     }
   }
 
-  return { totalProcessed, totalSuccess, totalFailed };
+  return { totalProcessed, totalSkipped, totalSuccess, totalFailed };
 }

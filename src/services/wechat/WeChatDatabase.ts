@@ -1151,6 +1151,24 @@ export class WeChatDatabase {
     return row ?? { avgScore: 0, positive: 0, negative: 0, neutral: 0, mixed: 0, total: 0 };
   }
 
+  /** Get all moment IDs that have been sentiment-analyzed. */
+  getAnalyzedSentimentIds(): Set<string> {
+    if (!this.db) return new Set();
+    const rows = this.db
+      .query<{ id: string }, []>(`SELECT moment_id AS id FROM wechat_moments_sentiment`)
+      .all();
+    return new Set(rows.map((r) => r.id));
+  }
+
+  /** Get all moment IDs that have been entity-extracted. */
+  getAnalyzedEntityIds(): Set<string> {
+    if (!this.db) return new Set();
+    const rows = this.db
+      .query<{ id: string }, []>(`SELECT DISTINCT moment_id AS id FROM wechat_moments_entities`)
+      .all();
+    return new Set(rows.map((r) => r.id));
+  }
+
   /** Count moments that have been sentiment-analyzed. */
   getMomentsSentimentCount(): number {
     if (!this.db) return 0;
