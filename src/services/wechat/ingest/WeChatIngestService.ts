@@ -673,6 +673,12 @@ export class WeChatIngestService {
 
     logger.info(`[WeChatIngestService] Chat article | ${sourceType} conv=${convId} sender=${sender} title="${title}"`);
 
+    // Skip blacklisted or empty-name accounts
+    if (!accountNick || this.config.ignoredOAAccounts.has(accountNick)) {
+      logger.info(`[WeChatIngestService] Chat article IGNORED (${!accountNick ? 'empty name' : 'blacklisted'}) | account=${accountNick} title="${title}"`);
+      return;
+    }
+
     // Store metadata to wechat_oa_articles
     if (this.db && title) {
       this.db.insertOAArticle({
@@ -776,9 +782,9 @@ export class WeChatIngestService {
     const accountNick = xmlTag(msg.Content, 'nickname') || xmlTag(msg.Content, 'appname') || accountId;
     const receivedAt = new Date().toISOString();
 
-    // Check ignore list
-    if (this.config.ignoredOAAccounts.has(accountNick)) {
-      logger.info(`[WeChatIngestService] OA push IGNORED (blacklisted) | account=${accountNick}(${accountId})`);
+    // Check ignore list and empty account name
+    if (!accountNick || this.config.ignoredOAAccounts.has(accountNick)) {
+      logger.info(`[WeChatIngestService] OA push IGNORED (${!accountNick ? 'empty name' : 'blacklisted'}) | account=${accountNick}(${accountId})`);
       return;
     }
 
