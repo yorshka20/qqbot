@@ -1154,9 +1154,7 @@ export class WeChatDatabase {
   /** Get all moment IDs that have been sentiment-analyzed. */
   getAnalyzedSentimentIds(): Set<string> {
     if (!this.db) return new Set();
-    const rows = this.db
-      .query<{ id: string }, []>(`SELECT moment_id AS id FROM wechat_moments_sentiment`)
-      .all();
+    const rows = this.db.query<{ id: string }, []>(`SELECT moment_id AS id FROM wechat_moments_sentiment`).all();
     return new Set(rows.map((r) => r.id));
   }
 
@@ -1290,9 +1288,7 @@ export class WeChatDatabase {
   /** Count moments that have been clustered. */
   getMomentsClusteredCount(): number {
     if (!this.db) return 0;
-    const row = this.db
-      .query<{ count: number }, []>(`SELECT COUNT(*) as count FROM wechat_moments_clusters`)
-      .get();
+    const row = this.db.query<{ count: number }, []>(`SELECT COUNT(*) as count FROM wechat_moments_clusters`).get();
     return row?.count ?? 0;
   }
 }

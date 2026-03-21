@@ -1,6 +1,30 @@
 // Types for execute_code tool
 
-import type { ToolResult } from '../../types';
+/**
+ * Unified tool result exposed to LLM code in the sandbox.
+ *
+ * Normalizes the inconsistent ToolResult formats from different executors into
+ * a predictable shape so LLM-generated code can access results without guessing
+ * whether `reply` is JSON, plain text, or a status message.
+ *
+ * Example LLM code:
+ * ```js
+ * const result = await tools.search({ query: "TypeScript" });
+ * // result.data.results → structured search results
+ * // result.text → formatted text summary
+ * // result.success → boolean
+ * ```
+ */
+export interface SandboxToolResult {
+  success: boolean;
+  /** Structured data — the most useful content from the tool.
+   *  Priority: executor's `data` field > JSON-parsed `reply` > raw `reply` string. */
+  data: unknown;
+  /** Original reply text from the tool (formatted text, suitable for display). */
+  text: string;
+  /** Error message when success is false. */
+  error?: string;
+}
 
 /**
  * Configuration for the code sandbox execution environment.
@@ -24,7 +48,7 @@ export interface SandboxToolFunction {
   /** Description for the LLM to understand what this function does */
   description: string;
   /** The callable async function */
-  fn: (params: Record<string, unknown>) => Promise<ToolResult>;
+  fn: (params: Record<string, unknown>) => Promise<SandboxToolResult>;
 }
 
 /**
@@ -33,7 +57,7 @@ export interface SandboxToolFunction {
  */
 export interface SandboxGlobals {
   /** Wrapped tool functions keyed by tool name */
-  tools: Record<string, (params: Record<string, unknown>) => Promise<ToolResult>>;
+  tools: Record<string, (params: Record<string, unknown>) => Promise<SandboxToolResult>>;
   /** Console capture object */
   console: SandboxConsole;
   /** Standard JS utilities */

@@ -112,12 +112,13 @@ console.log("world");
   it('can call tools via the tools object', async () => {
     const sandbox = new CodeSandbox();
     const mockSearch = async (params: Record<string, unknown>) => ({
-      success: true,
-      reply: `Found results for: ${params.query}`,
+      success: true as const,
+      data: `Found results for: ${params.query}`,
+      text: `Found results for: ${params.query}`,
     });
     const code = `
 const result = await tools.search({ query: "test query" });
-result.reply
+result.text
 `;
     const result = await sandbox.execute(code, buildTestGlobals({ tools: { search: mockSearch } }));
 
@@ -127,17 +128,18 @@ result.reply
 
   it('can call multiple tools in parallel', async () => {
     const sandbox = new CodeSandbox({ timeoutMs: 5000, maxOutputLength: 8000, maxConsoleLogs: 100 });
-    const mockTool = async (params: Record<string, unknown>) => {
-      await new Promise((r) => setTimeout(r, 50));
-      return { success: true, reply: `result:${params.id}` };
-    };
+    const mockTool = async (params: Record<string, unknown>) => ({
+      success: true as const,
+      data: `result:${params.id}`,
+      text: `result:${params.id}`,
+    });
     const code = `
 const results = await Promise.all([
   tools.myTool({ id: 1 }),
   tools.myTool({ id: 2 }),
   tools.myTool({ id: 3 }),
 ]);
-results.map(r => r.reply)
+results.map(r => r.text)
 `;
     const result = await sandbox.execute(code, buildTestGlobals({ tools: { myTool: mockTool } }));
 

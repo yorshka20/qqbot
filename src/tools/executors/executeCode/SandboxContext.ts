@@ -3,7 +3,7 @@
 import { logger } from '@/utils/logger';
 import type { ToolManager } from '../../ToolManager';
 import type { ToolExecutionContext, ToolExecutor, ToolResult } from '../../types';
-import type { SandboxConfig, SandboxConsole, SandboxGlobals, SandboxToolFunction } from './types';
+import type { SandboxConfig, SandboxConsole, SandboxGlobals, SandboxToolFunction, SandboxToolResult } from './types';
 
 /**
  * Builds the sandboxed execution context with tool wrappers and captured console.
@@ -66,8 +66,8 @@ export class SandboxContext {
    * Build tool wrapper functions from all registered non-internal tools.
    * Each tool becomes an async function: `tools.search({ query: "..." })`
    */
-  private buildToolFunctions(): Record<string, (params: Record<string, unknown>) => Promise<ToolResult>> {
-    const toolFunctions: Record<string, (params: Record<string, unknown>) => Promise<ToolResult>> = {};
+  private buildToolFunctions(): Record<string, (params: Record<string, unknown>) => Promise<SandboxToolResult>> {
+    const toolFunctions: Record<string, (params: Record<string, unknown>) => Promise<SandboxToolResult>> = {};
     const availableTools = this.getAvailableToolFunctions();
 
     for (const tool of availableTools) {
@@ -108,16 +108,16 @@ export class SandboxContext {
   }
 
   /**
-   * Wrap a tool executor into a simple async function.
+   * Wrap a tool executor into a simple async function that returns a unified SandboxToolResult.
    */
   private wrapToolExecutor(
     toolName: string,
     executorName: string,
     executor: ToolExecutor,
-  ): (params: Record<string, unknown>) => Promise<ToolResult> {
+  ): (params: Record<string, unknown>) => Promise<SandboxToolResult> {
     const context = this.executionContext;
 
-    return async (params: Record<string, unknown>): Promise<ToolResult> => {
+    return async (params: Record<string, unknown>): Promise<SandboxToolResult> => {
       logger.debug(`[SandboxContext] Code calling tool: ${toolName}`, { params });
 
       const toolCall = {
@@ -128,17 +128,57 @@ export class SandboxContext {
 
       try {
         const result = (await executor.execute(toolCall, context)) as ToolResult;
-        return result;
+        return SandboxContext.normalizeToolResult(result);
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         logger.error(`[SandboxContext] Tool ${toolName} failed in sandbox:`, err);
         return {
           success: false,
-          reply: `Tool ${toolName} failed: ${err.message}`,
+          data: null,
+          text: `Tool ${toolName} failed: ${err.message}`,
           error: err.message,
         };
       }
     };
+  }
+
+  /**
+   * Normalize a raw ToolResult into a unified SandboxToolResult.
+   *
+   * Different executors return data in different places:
+   * - Some put structured data in `data` (search, rag_search, read_file)
+   * - Some put JSON strings in `reply` (mock search)
+   * - Some put formatted text in `reply` with metadata in `data`
+   *
+   * This method picks the most useful content for `data`:
+   * 1. If executor returned `data` with content → use it
+   * 2. If `reply` is a valid JSON string → parse it
+   * 3. Otherwise → use `reply` as-is
+   */
+  static normalizeToolResult(result: ToolResult): SandboxToolResult {
+    const text = result.reply ?? '';
+
+    if (!result.success) {
+      return { success: false, data: null, text, error: result.error };
+    }
+
+    // Prefer executor's structured data when it has meaningful content
+    if (result.data && Object.keys(result.data).length > 0) {
+      return { success: true, data: result.data, text };
+    }
+
+    // Try to parse reply as JSON (some executors return JSON strings in reply)
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return { success: true, data: parsed, text };
+      }
+    } catch {
+      // Not JSON — that's fine
+    }
+
+    // Fallback: reply is plain text, use it as data too
+    return { success: true, data: text, text };
   }
 
   /**

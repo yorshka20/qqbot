@@ -54,16 +54,21 @@ function codeCall(code: string, timeout?: number) {
 }
 
 // ── Tests ──
+//
+// NOTE: Sandbox tools now return unified SandboxToolResult { success, data, text, error? }.
+// - `result.data` = structured data (auto-parsed from executor's `data` or JSON `reply`)
+// - `result.text` = original reply text
+// MockSearchExecutor returns reply as JSON string → normalizeToolResult parses it →
+// result.data = { results: [...] }, so code can do `result.data.results` directly.
 
 describe('ExecuteCodeToolExecutor Integration', () => {
   // ── LLM uses execute_code to call search ──
 
-  it('LLM calls search tool and extracts results', async () => {
+  it('LLM calls search tool and extracts results via data field', async () => {
     const executor = createExecutor();
     const code = `
 const result = await tools.search({ query: "TypeScript best practices" });
-const parsed = JSON.parse(result.reply);
-return parsed.results.map(r => r.title);
+return result.data.results.map(r => r.title);
 `;
     const result = await executor.execute(codeCall(code), context);
 
@@ -79,7 +84,7 @@ const queries = ["AI", "ML", "LLM"];
 const results = await Promise.all(
   queries.map(q => tools.search({ query: q }))
 );
-const allResults = results.flatMap(r => JSON.parse(r.reply).results);
+const allResults = results.flatMap(r => r.data.results);
 return { totalResults: allResults.length, queries: queries.length };
 `;
     const result = await executor.execute(codeCall(code), context);
@@ -95,15 +100,14 @@ return { totalResults: allResults.length, queries: queries.length };
     const code = `
 // Step 1: Search
 const searchResult = await tools.search({ query: "bun runtime" });
-const parsed = JSON.parse(searchResult.reply);
-const firstTitle = parsed.results[0].title;
+const firstTitle = searchResult.data.results[0].title;
 
 // Step 2: Store the result
 await tools.memory({ action: "store", key: "last_search", value: firstTitle });
 
 // Step 3: Retrieve it back
 const retrieved = await tools.memory({ action: "retrieve", key: "last_search" });
-return { stored: firstTitle, retrieved: retrieved.reply, match: firstTitle === retrieved.reply };
+return { stored: firstTitle, retrieved: retrieved.text, match: firstTitle === retrieved.text };
 `;
     const result = await executor.execute(codeCall(code), context);
 
@@ -120,7 +124,7 @@ let result;
 try {
   result = await tools.failing_tool({});
 } catch (e) {
-  result = { success: false, reply: "fallback: " + e.message };
+  result = { success: false, text: "fallback: " + e.message };
 }
 return result;
 `;
@@ -128,7 +132,7 @@ return result;
 
     expect(result.success).toBe(true);
     // SandboxContext wraps executor errors — the error is caught by wrapToolExecutor
-    // and returned as a ToolResult, not thrown. So the catch block may or may not fire
+    // and returned as a SandboxToolResult, not thrown. So the catch block may or may not fire
     // depending on whether wrapToolExecutor catches it first.
     expect(result.reply).toBeDefined();
   });
@@ -139,9 +143,8 @@ return result;
 console.log("Starting search...");
 const result = await tools.search({ query: "test" });
 console.log("Search returned:", result.success);
-const parsed = JSON.parse(result.reply);
-console.log("Found", parsed.results.length, "results");
-return parsed.results.length;
+console.log("Found", result.data.results.length, "results");
+return result.data.results.length;
 `;
     const result = await executor.execute(codeCall(code), context);
 
@@ -209,8 +212,7 @@ const allResults = [];
 
 for (const topic of topics) {
   const res = await tools.search({ query: topic });
-  const parsed = JSON.parse(res.reply);
-  allResults.push(...parsed.results.map(r => ({ topic, ...r })));
+  allResults.push(...res.data.results.map(r => ({ topic, ...r })));
 }
 
 // Format as a simple report

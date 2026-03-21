@@ -1,9 +1,9 @@
 /**
  * Shared helpers for AI service integration tests (real LLM API + real tool execution).
- * Tests that use these helpers require config.jsonc (or CONFIG_PATH) with a configured provider (e.g. doubao, deepseek).
+ * Tests that use these helpers require config.jsonc (or CONFIG_PATH) with a configured provider.
  *
  * Usage:
- *   - getIntegrationProvider('doubao') / getIntegrationProvider('deepseek') to check if provider is available
+ *   - getIntegrationProvider('doubao') to check if provider is available
  *   - createAIManagerWithProvider('doubao') to build AIManager with that provider as default LLM
  *   - Use describe.skipIf(!getIntegrationProvider('doubao')) to skip the suite when not configured
  */
@@ -13,6 +13,18 @@ import type { AIProvider } from '@/ai/base/AIProvider';
 import { ProviderFactory } from '@/ai/ProviderFactory';
 import type { ToolDefinition } from '@/ai/types';
 import { Config } from '@/core/config';
+
+/** All provider names supported by integration tests. */
+export type IntegrationProviderName = 'doubao' | 'deepseek' | 'gemini' | 'openai' | 'anthropic';
+
+/** All providers that support tool/function calling. */
+export const ALL_TOOL_USE_PROVIDERS: IntegrationProviderName[] = [
+  'doubao',
+  'deepseek',
+  'gemini',
+  'openai',
+  'anthropic',
+];
 
 let cachedConfig: Config | null | undefined;
 
@@ -32,7 +44,7 @@ export function loadConfigOnce(): Config | null {
 
 const cachedProviders: Record<string, AIProvider | null> = {};
 
-export function getIntegrationProvider(name: 'doubao' | 'deepseek'): AIProvider | null {
+export function getIntegrationProvider(name: IntegrationProviderName): AIProvider | null {
   if (cachedProviders[name] !== undefined) {
     return cachedProviders[name];
   }
@@ -56,7 +68,7 @@ export function getIntegrationProvider(name: 'doubao' | 'deepseek'): AIProvider 
   return provider;
 }
 
-export function createAIManagerWithProvider(providerName: 'doubao' | 'deepseek'): AIManager {
+export function createAIManagerWithProvider(providerName: IntegrationProviderName): AIManager {
   const manager = new AIManager();
   const provider = getIntegrationProvider(providerName);
   if (provider) {
