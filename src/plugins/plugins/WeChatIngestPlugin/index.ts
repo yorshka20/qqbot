@@ -66,6 +66,11 @@ export class WeChatIngestPlugin extends PluginBase {
     this.db = new WeChatDatabase();
     await this.db.init();
 
+    // Purge historical articles from blacklisted / empty-name accounts
+    if (resolved.ignoredOAAccounts.size > 0) {
+      this.db.purgeBlacklistedArticles(resolved.ignoredOAAccounts);
+    }
+
     // Init PadPro client if configured
     const padpro = raw?.padpro;
     let padProClient: WeChatPadProClient | null = null;

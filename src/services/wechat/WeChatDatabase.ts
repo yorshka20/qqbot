@@ -45,6 +45,8 @@ export interface WeChatOAArticleRow {
   fromSender: string; // wxid/nickname of who shared it in chat (empty for oa_push)
   // ── Analysis tracking ──────────────────
   analyzed?: number; // 0 = not analyzed, 1 = analyzed (default 0)
+  // ── Account category (populated by LLM or manual assignment) ──
+  accountCategory?: string; // e.g. '新闻', '财经', '哲学', '' = unclassified
 }
 
 /** Article insight extracted by LLM analysis */
@@ -169,8 +171,8 @@ export class WeChatDatabase {
       this.db
         .query(`INSERT OR IGNORE INTO wechat_oa_articles
           (msgId, accountId, accountNick, title, url, summary, cover, source, pubTime, receivedAt,
-           sourceType, fromConversationId, fromSender)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+           sourceType, fromConversationId, fromSender, accountCategory)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(
           row.msgId,
           row.accountId,
@@ -185,6 +187,7 @@ export class WeChatDatabase {
           row.sourceType,
           row.fromConversationId,
           row.fromSender,
+          row.accountCategory ?? '',
         );
     } catch (err) {
       logger.error('[WeChatDatabase] insertOAArticle error:', err);
@@ -688,6 +691,64 @@ export class WeChatDatabase {
   }
 
   // ──────────────────────────────────────────────────
+  // Startup cleanup — purge blacklisted / empty-name articles
+  // ──────────────────────────────────────────────────
+
+  /**
+   * Delete articles and their insights for accounts that are blacklisted or have empty names.
+   * Called once at startup so that manual blacklist updates retroactively clean up historical data.
+   * Returns the number of articles deleted.
+   */
+  purgeBlacklistedArticles(blacklist: Set<string>): number {
+    if (!this.db || blacklist.size === 0) return 0;
+
+    // Find articles matching blacklisted accounts OR empty accountNick
+    const placeholders = Array.from(blacklist).map(() => '?').join(', ');
+    const matchedArticles = this.db
+      .query<{ msgId: string; accountNick: string }, string[]>(
+        `SELECT msgId, accountNick FROM wechat_oa_articles
+         WHERE accountNick IN (${placeholders}) OR accountNick = ''`,
+      )
+      .all(...Array.from(blacklist));
+
+    if (matchedArticles.length === 0) return 0;
+
+    const msgIds = matchedArticles.map((a) => a.msgId);
+    const idPlaceholders = msgIds.map(() => '?').join(', ');
+
+    // Delete insights first (FK-like relationship on articleMsgId)
+    const insightsResult = this.db
+      .query(`DELETE FROM wechat_article_insights WHERE articleMsgId IN (${idPlaceholders})`)
+      .run(...msgIds);
+
+    // Delete the articles themselves
+    const articlesResult = this.db
+      .query(`DELETE FROM wechat_oa_articles WHERE msgId IN (${idPlaceholders})`)
+      .run(...msgIds);
+
+    const deletedArticles = articlesResult.changes;
+    const deletedInsights = insightsResult.changes;
+
+    if (deletedArticles > 0 || deletedInsights > 0) {
+      // Group by account for logging
+      const byAccount = new Map<string, number>();
+      for (const a of matchedArticles) {
+        const key = a.accountNick || '(empty name)';
+        byAccount.set(key, (byAccount.get(key) ?? 0) + 1);
+      }
+      const breakdown = Array.from(byAccount.entries())
+        .map(([nick, count]) => `${nick}(${count})`)
+        .join(', ');
+      logger.info(
+        `[WeChatDatabase] Purged ${deletedArticles} blacklisted/empty-name articles, ` +
+          `${deletedInsights} insights | ${breakdown}`,
+      );
+    }
+
+    return deletedArticles;
+  }
+
+  // ──────────────────────────────────────────────────
   // Write / Read — article insights (LLM analysis results)
   // ──────────────────────────────────────────────────
 
@@ -906,6 +967,13 @@ export class WeChatDatabase {
       /* column already exists */
     }
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_oa_analyzed    ON wechat_oa_articles(analyzed)`);
+    // Migrate: add accountCategory column for account-level classification
+    try {
+      this.db.run(`ALTER TABLE wechat_oa_articles ADD COLUMN accountCategory TEXT NOT NULL DEFAULT ''`);
+    } catch {
+      /* column already exists */
+    }
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_oa_accountCategory ON wechat_oa_articles(accountCategory)`);
 
     // Group info cache (synced from PadPro API)
     this.db.run(`
