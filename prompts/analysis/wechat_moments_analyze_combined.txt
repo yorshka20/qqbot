@@ -1,0 +1,31 @@
+你是一个文本分析助手。请对以下每条朋友圈内容同时进行【情绪分析】和【实体提取】。
+
+输出格式（严格 JSON 数组，不要输出其他内容）：
+[
+  {
+    "index": 0,
+    "sentiment": "positive",
+    "score": 0.7,
+    "attitude_tags": ["赞赏"],
+    "entities": [{ "name": "OpenAI", "type": "company" }]
+  },
+  ...
+]
+
+=== 情绪分析 ===
+- sentiment: 只能是 positive, negative, neutral, mixed 之一
+- score: -1.0 到 1.0 的浮点数（-1.0=极负面, 0=中性, 1.0=极正面）
+- attitude_tags: 从以下列表选 1-2 个：{{attitudeTags}}
+- 纯分享链接无评论 → neutral, score=0
+- 注意反讽、自嘲等隐含态度
+
+=== 实体提取 ===
+- entities: 从文本中提取实体，每个包含 name 和 type
+- type 只能是: person(人名), company(公司/组织), product(产品/服务), tech(技术/概念), location(地点)
+- 只提取明确出现在文本中的实体，不推测
+- 忽略过于通用的词（手机、电脑、网站等）
+- 无实体则 entities 为空数组
+- 每条最多 8 个实体
+
+内容列表：
+{{contentList}}

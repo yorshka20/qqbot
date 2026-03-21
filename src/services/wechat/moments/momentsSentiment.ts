@@ -57,10 +57,19 @@ export function normalizeAttitudeTags(tags: string[]): string[] {
 // ── Prompt template loading ──
 
 const PROMPT_PATH = 'prompts/analysis/wechat_moments_sentiment.txt';
+const COMBINED_PROMPT_PATH = 'prompts/analysis/wechat_moments_analyze_combined.txt';
 
 /** Load and render the sentiment analysis prompt template */
 export function loadSentimentPrompt(contentList: string): string {
   const template = readFileSync(resolve(PROMPT_PATH), 'utf-8');
+  return template
+    .replace('{{attitudeTags}}', (ATTITUDE_TAGS as unknown as string[]).join('、'))
+    .replace('{{contentList}}', contentList);
+}
+
+/** Load and render the combined sentiment + NER prompt template */
+export function loadCombinedAnalysisPrompt(contentList: string): string {
+  const template = readFileSync(resolve(COMBINED_PROMPT_PATH), 'utf-8');
   return template
     .replace('{{attitudeTags}}', (ATTITUDE_TAGS as unknown as string[]).join('、'))
     .replace('{{contentList}}', contentList);
