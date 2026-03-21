@@ -396,45 +396,48 @@ export async function runBatchLoop<R extends { index: number }>(
   let totalSuccess = 0;
   let totalFailed = 0;
   let batchNum = 0;
+  let reachedEnd = false;
 
-  while (true) {
+  // Accumulator: collect unprocessed points across multiple scroll pages until we have a full batch
+  const pending: QdrantPoint[] = [];
+
+  while (!reachedEnd) {
     if (opts.limit > 0 && totalProcessed >= opts.limit) break;
 
-    const fetchCount = skipIds
-      ? (opts.limit > 0 ? Math.min(opts.batchSize * 2, opts.limit - totalProcessed) : opts.batchSize * 2)
-      : (opts.limit > 0 ? Math.min(opts.batchSize, opts.limit - totalProcessed) : opts.batchSize);
+    // Fill pending buffer until we have enough for a batch (or reach end of collection)
+    while (pending.length < opts.batchSize && !reachedEnd) {
+      const scrollRes = await qdrantScroll(opts.qdrantUrl, offset, 100, {
+        filter: opts.scrollFilter,
+        payloadInclude: opts.payloadInclude,
+      });
+      const rawPoints = scrollRes.result.points;
 
-    const scrollRes = await qdrantScroll(opts.qdrantUrl, offset, fetchCount, {
-      filter: opts.scrollFilter,
-      payloadInclude: opts.payloadInclude,
-    });
-    const rawPoints = scrollRes.result.points;
+      if (rawPoints.length === 0) {
+        reachedEnd = true;
+        break;
+      }
 
-    if (rawPoints.length === 0) {
-      console.log('\nNo more records to process.');
-      break;
-    }
+      // Filter out already-processed points
+      for (const p of rawPoints) {
+        if (skipIds?.has(String(p.id))) {
+          totalSkipped++;
+        } else {
+          pending.push(p);
+        }
+      }
 
-    // Filter out already-processed points
-    const points = skipIds ? rawPoints.filter((p) => !skipIds.has(String(p.id))) : rawPoints;
-    const skipped = rawPoints.length - points.length;
-    totalSkipped += skipped;
-
-    if (points.length === 0) {
       offset = scrollRes.result.next_page_offset;
-      if (offset == null) { console.log('\nReached end of collection.'); break; }
-      if (skipped > 0) console.log(`  Skipped ${skipped} already-processed, fetching next page...`);
-      continue;
+      if (offset == null) reachedEnd = true;
     }
 
-    const batch = points.slice(0, opts.batchSize);
+    if (pending.length === 0) break;
+
+    // Take up to batchSize from pending
+    const remaining = opts.limit > 0 ? opts.limit - totalProcessed : Number.MAX_SAFE_INTEGER;
+    const batch = pending.splice(0, Math.min(opts.batchSize, remaining));
 
     batchNum++;
-    if (skipped > 0) {
-      console.log(`\n--- Batch ${batchNum}: ${batch.length} records (skipped ${skipped} already-processed) ---`);
-    } else {
-      console.log(`\n--- Batch ${batchNum}: ${batch.length} records ---`);
-    }
+    console.log(`\n--- Batch ${batchNum}: ${batch.length} records (skipped ${totalSkipped} total) ---`);
 
     const contents = batch.map((p, i) => ({
       index: i,
@@ -467,15 +470,11 @@ export async function runBatchLoop<R extends { index: number }>(
     }
 
     totalProcessed += batch.length;
-    offset = scrollRes.result.next_page_offset;
-
     console.log(`  Progress: ${totalProcessed} processed, ${totalSkipped} skipped, ${totalSuccess} success, ${totalFailed} failed`);
-
-    if (offset == null) {
-      console.log('\nReached end of collection.');
-      break;
-    }
   }
+
+  if (totalSkipped > 0) console.log(`\nSkipped ${totalSkipped} already-processed records total.`);
+  if (reachedEnd) console.log('Reached end of collection.');
 
   return { totalProcessed, totalSkipped, totalSuccess, totalFailed };
 }

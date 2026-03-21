@@ -72,12 +72,24 @@ async function main() {
   const db = new WeChatDatabase();
   await db.init();
 
-  // Load already-processed IDs to skip duplicates
+  // Load already-processed IDs to skip duplicates.
+  // Auto-fix: if sentiment exists but entities doesn't, backfill _none_ placeholder
+  // (handles data from older separate runs or partial failures).
   const analyzedSentimentIds = db.getAnalyzedSentimentIds();
   const analyzedEntityIds = db.getAnalyzedEntityIds();
+  let backfilled = 0;
+  for (const id of analyzedSentimentIds) {
+    if (!analyzedEntityIds.has(id)) {
+      db.upsertMomentEntities(id, '', []);
+      analyzedEntityIds.add(id);
+      backfilled++;
+    }
+  }
+  if (backfilled > 0) console.log(`Backfilled ${backfilled} missing entity placeholders`);
+
   // A point is fully analyzed if it has BOTH sentiment and entities
   const fullyAnalyzedIds = new Set([...analyzedSentimentIds].filter((id) => analyzedEntityIds.has(id)));
-  console.log(`Already analyzed: sentiment=${analyzedSentimentIds.size}, entities=${analyzedEntityIds.size}, both=${fullyAnalyzedIds.size}`);
+  console.log(`Already analyzed: ${fullyAnalyzedIds.size} (sentiment=${analyzedSentimentIds.size}, entities=${analyzedEntityIds.size})`);
 
   ensureOutputDir(args.output);
 
@@ -102,48 +114,42 @@ async function main() {
   let totalFailed = 0;
   let totalEntities = 0;
   let batchNum = 0;
+  let reachedEnd = false;
 
-  while (true) {
+  // Accumulate unprocessed points across scroll pages until we have a full batch
+  const pending: Array<{ id: string | number; payload: Record<string, unknown> }> = [];
+
+  while (!reachedEnd) {
     if (args.limit > 0 && totalProcessed >= args.limit) break;
 
-    // Fetch a larger batch from Qdrant, then filter out already-processed
-    const fetchCount = args.limit > 0 ? Math.min(args.batchSize * 2, args.limit - totalProcessed) : args.batchSize * 2;
+    // Fill pending buffer
+    while (pending.length < args.batchSize && !reachedEnd) {
+      const scrollRes = await qdrantScroll(qdrantUrl, offset, 100, {
+        payloadInclude: ['content', 'create_time'],
+      });
+      const rawPoints = scrollRes.result.points;
 
-    const scrollRes = await qdrantScroll(qdrantUrl, offset, fetchCount, {
-      payloadInclude: ['content', 'create_time'],
-    });
-    const rawPoints = scrollRes.result.points;
+      if (rawPoints.length === 0) { reachedEnd = true; break; }
 
-    if (rawPoints.length === 0) {
-      console.log('\nNo more records to process.');
-      break;
-    }
-
-    // Filter out already fully analyzed points
-    const points = rawPoints.filter((p) => !fullyAnalyzedIds.has(String(p.id)));
-    const skipped = rawPoints.length - points.length;
-    totalSkipped += skipped;
-
-    if (points.length === 0) {
-      // All points in this page were already processed, continue to next page
-      offset = scrollRes.result.next_page_offset;
-      if (offset == null) {
-        console.log('\nReached end of collection.');
-        break;
+      for (const p of rawPoints) {
+        if (fullyAnalyzedIds.has(String(p.id))) {
+          totalSkipped++;
+        } else {
+          pending.push(p);
+        }
       }
-      if (skipped > 0) console.log(`  Skipped ${skipped} already-analyzed, fetching next page...`);
-      continue;
+
+      offset = scrollRes.result.next_page_offset;
+      if (offset == null) reachedEnd = true;
     }
 
-    // Trim to batch size
-    const batch = points.slice(0, args.batchSize);
+    if (pending.length === 0) break;
+
+    const remaining = args.limit > 0 ? args.limit - totalProcessed : Number.MAX_SAFE_INTEGER;
+    const batch = pending.splice(0, Math.min(args.batchSize, remaining));
 
     batchNum++;
-    if (skipped > 0) {
-      console.log(`\n--- Batch ${batchNum}: ${batch.length} records (skipped ${skipped} already-analyzed) ---`);
-    } else {
-      console.log(`\n--- Batch ${batchNum}: ${batch.length} records ---`);
-    }
+    console.log(`\n--- Batch ${batchNum}: ${batch.length} records (skipped ${totalSkipped} total) ---`);
 
     const contents = batch.map((p, i) => ({
       index: i,
@@ -214,13 +220,7 @@ async function main() {
     }
 
     totalProcessed += batch.length;
-    offset = scrollRes.result.next_page_offset;
-    console.log(`  Progress: ${totalProcessed} processed, ${totalSuccess} OK, ${totalFailed} failed`);
-
-    if (offset == null) {
-      console.log('\nReached end of collection.');
-      break;
-    }
+    console.log(`  Progress: ${totalProcessed} processed, ${totalSkipped} skipped, ${totalSuccess} OK, ${totalFailed} failed`);
   }
 
   console.log('\n=== Summary ===');

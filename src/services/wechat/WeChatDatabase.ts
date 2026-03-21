@@ -1180,15 +1180,23 @@ export class WeChatDatabase {
   // Moments entity extraction
   // ──────────────────────────────────────────────────────────────────────────
 
-  /** Upsert extracted entities for a moment. Deletes old entities first. */
+  /**
+   * Upsert extracted entities for a moment. Deletes old entities first.
+   * If entities is empty, inserts a placeholder (_none_) so the moment
+   * is still marked as analyzed and won't be re-processed.
+   */
   upsertMomentEntities(momentId: string, createTime: string, entities: Array<{ name: string; type: string }>): void {
     if (!this.db) return;
     this.db.run(`DELETE FROM wechat_moments_entities WHERE moment_id = ?`, [momentId]);
     const stmt = this.db.prepare(
       `INSERT OR IGNORE INTO wechat_moments_entities (moment_id, entity_name, entity_type, create_time) VALUES (?, ?, ?, ?)`,
     );
-    for (const e of entities) {
-      stmt.run(momentId, e.name, e.type, createTime);
+    if (entities.length === 0) {
+      stmt.run(momentId, '_none_', '_none_', createTime);
+    } else {
+      for (const e of entities) {
+        stmt.run(momentId, e.name, e.type, createTime);
+      }
     }
   }
 
@@ -1204,7 +1212,7 @@ export class WeChatDatabase {
         .query<{ name: string; type: string; count: number }, [string, number]>(
           `SELECT entity_name AS name, entity_type AS type, COUNT(*) AS count
            FROM wechat_moments_entities
-           WHERE entity_type = ?
+           WHERE entity_type = ? AND entity_name != '_none_'
            GROUP BY entity_name, entity_type
            ORDER BY count DESC
            LIMIT ?`,
@@ -1215,6 +1223,7 @@ export class WeChatDatabase {
       .query<{ name: string; type: string; count: number }, [number]>(
         `SELECT entity_name AS name, entity_type AS type, COUNT(*) AS count
          FROM wechat_moments_entities
+         WHERE entity_name != '_none_'
          GROUP BY entity_name, entity_type
          ORDER BY count DESC
          LIMIT ?`,
@@ -1229,6 +1238,7 @@ export class WeChatDatabase {
       .query<{ name: string; type: string; count: number }, []>(
         `SELECT entity_name AS name, entity_type AS type, COUNT(*) AS count
          FROM wechat_moments_entities
+         WHERE entity_name != '_none_'
          GROUP BY entity_name, entity_type
          ORDER BY count DESC`,
       )
