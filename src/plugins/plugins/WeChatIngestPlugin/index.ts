@@ -22,6 +22,7 @@ import {
 } from '@/services/wechat';
 import { WeChatArticleAnalysisService } from '@/services/wechat/articles/WeChatArticleAnalysisService';
 import { WeChatArticleCleanupService } from '@/services/wechat/articles/WeChatArticleCleanupService';
+import { WechatMomentsAnalysisService } from '@/services/wechat/moments/WechatMomentsAnalysisService';
 import { WechatDigestService } from '@/services/wechat/WechatDigestService';
 import { WechatReportService } from '@/services/wechat/WechatReportService';
 import { logger } from '@/utils/logger';
@@ -209,7 +210,15 @@ export class WeChatIngestPlugin extends PluginBase {
       } catch {
         logger.warn('[WeChatIngestPlugin] AIService not available — /wechat analyze disabled');
       }
-      const cmdHandler = new WechatCommandHandler(padProClient, this.db, aiService, this.messageAPI, this.retrieval);
+
+      // Create moments analysis service (reuses LLMService already resolved above)
+      const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
+      const momentsAnalysis = new WechatMomentsAnalysisService(llmService, this.retrieval, this.db as WeChatDatabase, {
+        provider: raw?.analysis?.provider ?? 'ollama',
+      });
+      logger.info('[WeChatIngestPlugin] WechatMomentsAnalysisService created');
+
+      const cmdHandler = new WechatCommandHandler(padProClient, this.db, aiService, this.messageAPI, this.retrieval, momentsAnalysis);
       this.commandManager.register(cmdHandler, this.name);
       logger.info('[WeChatIngestPlugin] Registered /wechat command');
     } else {

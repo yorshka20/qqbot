@@ -94,9 +94,7 @@ export function resolveLLMConnection(config: AppConfig, providerKey: string, mod
   }
 
   if (!entry) {
-    throw new Error(
-      `Provider "${providerKey}" not found in config. Available: ${Object.keys(providers).join(', ')}`,
-    );
+    throw new Error(`Provider "${providerKey}" not found in config. Available: ${Object.keys(providers).join(', ')}`);
   }
 
   const [key, cfg] = entry;
@@ -227,9 +225,7 @@ export async function callLLM<T>(
   const contentList = contents.map((c) => `[${c.index}] ${(c.content || '').slice(0, 500)}`).join('\n\n');
   const prompt = promptBuilder(contentList);
 
-  const text = conn.type === 'ollama'
-    ? await callOllamaAPI(conn, prompt)
-    : await callOpenAICompatibleAPI(conn, prompt);
+  const text = conn.type === 'ollama' ? await callOllamaAPI(conn, prompt) : await callOpenAICompatibleAPI(conn, prompt);
 
   try {
     return extractJsonArray<T>(text);
@@ -302,11 +298,7 @@ export async function callOllama<T>(
   contents: Array<{ index: number; content: string }>,
   promptBuilder: (contentList: string) => string,
 ): Promise<T[]> {
-  return callLLM<T>(
-    { provider: 'ollama', type: 'ollama', baseUrl: ollamaUrl, model },
-    contents,
-    promptBuilder,
-  );
+  return callLLM<T>({ provider: 'ollama', type: 'ollama', baseUrl: ollamaUrl, model }, contents, promptBuilder);
 }
 
 /** Extract a JSON array from LLM response text (handles markdown code blocks). */
@@ -340,10 +332,7 @@ export function appendJsonl(outputPath: string, record: unknown): void {
   appendFileSync(outputPath, `${JSON.stringify(record)}\n`);
 }
 
-export function writeSummaryJson(
-  outputPath: string,
-  data: Record<string, unknown>,
-): void {
+export function writeSummaryJson(outputPath: string, data: Record<string, unknown>): void {
   const summaryPath = outputPath.replace(/\.jsonl$/, '-summary.json');
   writeFileSync(summaryPath, `${JSON.stringify(data, null, 2)}\n`);
   console.log(`Summary file:    ${summaryPath}`);
@@ -484,7 +473,9 @@ export async function runBatchLoop<R extends { index: number }>(
     }
 
     totalProcessed += batch.length;
-    console.log(`  Progress: ${totalProcessed} processed, ${totalSkipped} skipped, ${totalSuccess} success, ${totalFailed} failed`);
+    console.log(
+      `  Progress: ${totalProcessed} processed, ${totalSkipped} skipped, ${totalSuccess} success, ${totalFailed} failed`,
+    );
   }
 
   if (totalSkipped > 0) console.log(`\nSkipped ${totalSkipped} already-processed records total.`);

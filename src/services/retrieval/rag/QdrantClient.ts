@@ -284,6 +284,22 @@ export class QdrantClient {
   }
 
   /**
+   * Set (merge) payload fields on existing points without re-embedding.
+   */
+  async setPayload(
+    collection: string,
+    pointIds: Array<string | number>,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    if (pointIds.length === 0) return;
+    await this.httpClient.post(`/collections/${collection}/points/payload`, {
+      payload,
+      points: pointIds.map(toQdrantPointId),
+    });
+    logger.debug(`[QdrantClient] Set payload on ${pointIds.length} points in ${collection}`);
+  }
+
+  /**
    * Delete points by IDs.
    */
   async deleteByIds(collection: string, ids: Array<string | number>): Promise<void> {

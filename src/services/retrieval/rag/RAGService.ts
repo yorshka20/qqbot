@@ -138,6 +138,18 @@ export class RAGService {
   }
 
   /**
+   * Set (merge) payload fields on existing points without re-embedding.
+   */
+  async setPayload(
+    collection: string,
+    pointIds: Array<string | number>,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    await this.ensureCollectionOnce(collection);
+    await this.qdrantClient.setPayload(collection, pointIds, payload);
+  }
+
+  /**
    * Count points in a collection, optionally with a filter.
    */
   async countPoints(collection: string, filter?: Record<string, unknown>): Promise<number> {

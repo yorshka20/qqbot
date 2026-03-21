@@ -170,6 +170,18 @@ export class RetrievalService {
   }
 
   /**
+   * Set (merge) payload fields on existing points without re-embedding.
+   */
+  async setPayload(
+    collection: string,
+    pointIds: Array<string | number>,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.ragService) throw new Error('RAG is not enabled');
+    return this.ragService.setPayload(collection, pointIds, payload);
+  }
+
+  /**
    * Delete points by payload filter from a RAG collection.
    */
   async deleteByFilter(collection: string, filter: Record<string, unknown>): Promise<void> {

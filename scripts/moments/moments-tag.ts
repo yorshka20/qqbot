@@ -22,11 +22,11 @@
 
 import { loadTaggingPrompt, normalizeTags } from '../../src/services/wechat/moments/momentsTags';
 import {
-  type QdrantPoint,
   loadConfig,
   parseArgs,
   printDistribution,
   printHeader,
+  type QdrantPoint,
   qdrantSetPayload,
   resolveLLMConnection,
   runBatchLoop,

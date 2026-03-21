@@ -2,8 +2,10 @@
 // Designed for schedule (cron every 3 days) and subagent invocation.
 
 import { inject, injectable } from 'tsyringe';
+import type { LLMService } from '@/ai/services/LLMService';
 import { DITokens } from '@/core/DITokens';
 import type { RetrievalService } from '@/services/retrieval';
+import { WechatMomentsAnalysisService } from '@/services/wechat/moments/WechatMomentsAnalysisService';
 import { WechatMomentsIngestService } from '@/services/wechat/moments/WechatMomentsIngestService';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { WeChatDatabase } from '@/services/wechat/WeChatDatabase';
@@ -62,12 +64,16 @@ import { logger } from '@/utils/logger';
 export class WechatMomentsIngestToolExecutor extends BaseToolExecutor {
   name = 'wechat_moments_ingest';
 
+  private readonly momentsAnalysis: WechatMomentsAnalysisService;
+
   constructor(
     @inject(DITokens.RETRIEVAL_SERVICE) private retrieval: RetrievalService,
     @inject(WechatDITokens.PADPRO_CLIENT) private padProClient: WeChatPadProClient,
     @inject(WechatDITokens.WECHAT_DB) private db: WeChatDatabase,
+    @inject(DITokens.LLM_SERVICE) llmService: LLMService,
   ) {
     super();
+    this.momentsAnalysis = new WechatMomentsAnalysisService(llmService, this.retrieval, this.db);
   }
 
   async execute(call: ToolCall, _context: ToolExecutionContext): Promise<ToolResult> {
@@ -121,7 +127,24 @@ export class WechatMomentsIngestToolExecutor extends BaseToolExecutor {
         this.db?.recordMomentsSync(result);
       }
 
-      return this.success(summary, {
+      // Run post-ingest analysis (tagging, sentiment, NER)
+      let analysisSummary = '';
+      if (result.ingestedIds.length > 0) {
+        try {
+          const ar = await this.momentsAnalysis.analyze(result.ingestedIds);
+          analysisSummary =
+            `\n\n分析结果：\n` +
+            `- 打标签: ${ar.tagged} 条\n` +
+            `- 情感/实体分析: ${ar.analyzed} 条\n` +
+            `- 失败: ${ar.failed} 条`;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          analysisSummary = `\n\n分析失败: ${msg}`;
+          logger.error('[MomentsIngestTool] Post-ingest analysis failed:', err);
+        }
+      }
+
+      return this.success(summary + analysisSummary, {
         ...result,
         oldestTime,
         newestTime,

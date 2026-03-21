@@ -15,6 +15,7 @@ import type {
   WXOfficialAccount,
   WXSearchResult,
 } from '@/services/wechat';
+import type { WechatMomentsAnalysisService } from '@/services/wechat/moments/WechatMomentsAnalysisService';
 import { WechatMomentsIngestService } from '@/services/wechat/moments/WechatMomentsIngestService';
 import { logger } from '@/utils/logger';
 import type { CommandContext, CommandHandler, CommandResult, PermissionLevel } from '../../../command/types';
@@ -48,6 +49,7 @@ export class WechatCommandHandler implements CommandHandler {
     private readonly aiService: AIService | null = null,
     private readonly messageAPI: MessageAPI | null = null,
     private readonly retrieval: RetrievalService | null = null,
+    private readonly momentsAnalysis: WechatMomentsAnalysisService | null = null,
   ) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
@@ -424,6 +426,29 @@ export class WechatCommandHandler implements CommandHandler {
         logger.info(`[WechatCommandHandler] Moments ingest completed: ${result.ingested} ingested`);
         if (messageAPI) {
           await messageAPI.sendFromContext(summary, cmdContext);
+        }
+
+        // Run post-ingest analysis (tagging, sentiment, NER) on newly ingested moments
+        if (result.ingestedIds.length > 0 && this.momentsAnalysis) {
+          try {
+            logger.info(`[WechatCommandHandler] Starting post-ingest analysis for ${result.ingestedIds.length} moments`);
+            const analysisResult = await this.momentsAnalysis.analyze(result.ingestedIds);
+            const analysisSummary =
+              `朋友圈分析完成：\n` +
+              `- 打标签: ${analysisResult.tagged} 条\n` +
+              `- 情感/实体分析: ${analysisResult.analyzed} 条\n` +
+              `- 失败: ${analysisResult.failed} 条`;
+            logger.info(`[WechatCommandHandler] Post-ingest analysis done: tagged=${analysisResult.tagged} analyzed=${analysisResult.analyzed}`);
+            if (messageAPI) {
+              await messageAPI.sendFromContext(analysisSummary, cmdContext);
+            }
+          } catch (err) {
+            logger.error('[WechatCommandHandler] Post-ingest analysis failed:', err);
+            if (messageAPI) {
+              const msg = err instanceof Error ? err.message : String(err);
+              await messageAPI.sendFromContext(`朋友圈分析失败: ${msg}`, cmdContext);
+            }
+          }
         }
       })
       .catch(async (err) => {

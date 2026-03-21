@@ -49,6 +49,8 @@ export interface MomentsIngestResult {
   imagesFailed: number;
   oldestTimestamp: number;
   newestTimestamp: number;
+  /** Document IDs of newly ingested moments (for post-ingest analysis). */
+  ingestedIds: string[];
 }
 
 export class WechatMomentsIngestService {
@@ -80,6 +82,7 @@ export class WechatMomentsIngestService {
       imagesFailed: 0,
       oldestTimestamp: Number.MAX_SAFE_INTEGER,
       newestTimestamp: 0,
+      ingestedIds: [],
     };
 
     let maxId: number | undefined;
@@ -186,6 +189,7 @@ export class WechatMomentsIngestService {
       if (documents.length > 0) {
         await this.retrieval.upsertDocuments(COLLECTION, documents);
         result.ingested += documents.length;
+        result.ingestedIds.push(...documents.map((d) => String(d.id)));
         logger.info(`[MomentsIngest] Upserted ${documents.length} moments to Qdrant`);
       }
 

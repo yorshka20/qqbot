@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * Moments Batch Analysis Script — Sentiment + NER in a single LLM call per batch
  *
@@ -21,21 +22,18 @@
  *   bun scripts/moments/moments-analyze.ts --model qwen3:8b --batch 10
  */
 
+import { normalizeEntityName, normalizeEntityType } from '../../src/services/wechat/moments/momentsEntities';
 import {
   clampScore,
   loadCombinedAnalysisPrompt,
   normalizeAttitudeTags,
   normalizeSentiment,
 } from '../../src/services/wechat/moments/momentsSentiment';
-import {
-  normalizeEntityName,
-  normalizeEntityType,
-} from '../../src/services/wechat/moments/momentsEntities';
 import { WeChatDatabase } from '../../src/services/wechat/WeChatDatabase';
 import {
+  appendJsonl,
   callLLM,
   ensureOutputDir,
-  appendJsonl,
   loadConfig,
   parseArgs,
   printDistribution,
@@ -89,7 +87,9 @@ async function main() {
 
   // A point is fully analyzed if it has BOTH sentiment and entities
   const fullyAnalyzedIds = new Set([...analyzedSentimentIds].filter((id) => analyzedEntityIds.has(id)));
-  console.log(`Already analyzed: ${fullyAnalyzedIds.size} (sentiment=${analyzedSentimentIds.size}, entities=${analyzedEntityIds.size})`);
+  console.log(
+    `Already analyzed: ${fullyAnalyzedIds.size} (sentiment=${analyzedSentimentIds.size}, entities=${analyzedEntityIds.size})`,
+  );
 
   ensureOutputDir(args.output);
 
@@ -129,7 +129,10 @@ async function main() {
       });
       const rawPoints = scrollRes.result.points;
 
-      if (rawPoints.length === 0) { reachedEnd = true; break; }
+      if (rawPoints.length === 0) {
+        reachedEnd = true;
+        break;
+      }
 
       for (const p of rawPoints) {
         if (fullyAnalyzedIds.has(String(p.id))) {
@@ -203,7 +206,10 @@ async function main() {
         });
 
         totalSuccess++;
-        const entityPreview = validEntities.slice(0, 3).map((e) => e.name).join(', ');
+        const entityPreview = validEntities
+          .slice(0, 3)
+          .map((e) => e.name)
+          .join(', ');
         console.log(`  [${r.index}] ${sentiment}(${score.toFixed(1)}) | ${entityPreview || '-'}`);
       }
 
@@ -220,7 +226,9 @@ async function main() {
     }
 
     totalProcessed += batch.length;
-    console.log(`  Progress: ${totalProcessed} processed, ${totalSkipped} skipped, ${totalSuccess} OK, ${totalFailed} failed`);
+    console.log(
+      `  Progress: ${totalProcessed} processed, ${totalSkipped} skipped, ${totalSuccess} OK, ${totalFailed} failed`,
+    );
   }
 
   console.log('\n=== Summary ===');

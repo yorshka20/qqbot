@@ -28,11 +28,11 @@ import {
 } from '../../src/services/wechat/moments/momentsSentiment';
 import { WeChatDatabase } from '../../src/services/wechat/WeChatDatabase';
 import {
-  type QdrantPoint,
   loadConfig,
   parseArgs,
   printDistribution,
   printHeader,
+  type QdrantPoint,
   resolveLLMConnection,
   runBatchLoop,
   writeSummaryJson,
