@@ -4,10 +4,10 @@
  * Similar to Vite's build process, but using Bun's native bundler
  *
  * Usage:
- *   bun run scripts/build.ts [production|development|bundleAll]
+ *   bun run scripts/build/build.ts [production|development|bundleAll]
  */
 
-import { buildConfigs } from '../build.config';
+import { buildConfigs } from '../../build.config';
 
 const buildType = process.argv[2] || 'production';
 const config = buildConfigs[buildType];

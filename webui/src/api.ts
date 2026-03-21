@@ -1,8 +1,11 @@
 import { getFileApiBase, getInsightsApiBase, getMomentsApiBase, getQdrantApiBase, getReportApiBase, getZhihuApiBase } from './config'
 import type {
+  BehaviorResponse,
+  EntitiesResponse,
   InsightDetailResponse,
   InsightListResponse,
   InsightStatsResponse,
+  InterestEvolutionResponse,
   ListResponse,
   MomentsListResponse,
   MomentsSearchResponse,
@@ -12,6 +15,7 @@ import type {
   QdrantSearchResponse,
   ReportDetailResponse,
   ReportListResponse,
+  SentimentTrendResponse,
   ZhihuContentDetailResponse,
   ZhihuContentsResponse,
   ZhihuStatsResponse,
@@ -236,6 +240,45 @@ export async function searchMoments(opts: {
     throw new Error(err.error ?? `Search moments failed: ${res.status}`)
   }
   return res.json() as Promise<MomentsSearchResponse>
+}
+
+export async function getMomentsInterestEvolution(): Promise<InterestEvolutionResponse> {
+  const res = await fetch(`${momentsApiBase()}/interest-evolution`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get interest evolution failed: ${res.status}`)
+  }
+  return res.json() as Promise<InterestEvolutionResponse>
+}
+
+export async function getMomentsBehavior(): Promise<BehaviorResponse> {
+  const res = await fetch(`${momentsApiBase()}/behavior`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get behavior failed: ${res.status}`)
+  }
+  return res.json() as Promise<BehaviorResponse>
+}
+
+export async function getMomentsSentimentTrend(): Promise<SentimentTrendResponse> {
+  const res = await fetch(`${momentsApiBase()}/sentiment-trend`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get sentiment trend failed: ${res.status}`)
+  }
+  return res.json() as Promise<SentimentTrendResponse>
+}
+
+export async function getMomentsEntities(opts?: { type?: string; limit?: number }): Promise<EntitiesResponse> {
+  const params = new URLSearchParams()
+  if (opts?.type) params.set('type', opts.type)
+  if (opts?.limit) params.set('limit', String(opts.limit))
+  const res = await fetch(`${momentsApiBase()}/entities?${params}`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get entities failed: ${res.status}`)
+  }
+  return res.json() as Promise<EntitiesResponse>
 }
 
 // ────────────────────────────────────────────────────────────────────────────

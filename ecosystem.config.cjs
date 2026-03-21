@@ -5,7 +5,7 @@ module.exports = {
   apps: [
     {
       name: 'qq-bot',
-      script: path.join(__dirname, 'scripts/pm2-bot.sh'),
+      script: path.join(__dirname, 'scripts/pm2/pm2-bot.sh'),
       args: [],
       interpreter: 'none',
       cwd: path.resolve(__dirname),
@@ -20,7 +20,7 @@ module.exports = {
     },
     {
       name: 'qq-bot-ui',
-      script: path.join(__dirname, 'scripts/pm2-ui.sh'),
+      script: path.join(__dirname, 'scripts/pm2/pm2-ui.sh'),
       args: [],
       interpreter: 'none',
       cwd: path.resolve(__dirname),

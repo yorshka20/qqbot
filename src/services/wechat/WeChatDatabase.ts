@@ -970,6 +970,46 @@ export class WeChatDatabase {
       )
     `);
 
+    // Moments sentiment analysis results
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS wechat_moments_sentiment (
+        moment_id     TEXT PRIMARY KEY,
+        sentiment     TEXT    NOT NULL,
+        score         REAL    NOT NULL,
+        attitude_tags TEXT    NOT NULL DEFAULT '[]',
+        create_time   TEXT    NOT NULL DEFAULT '',
+        analyzed_at   TEXT    NOT NULL DEFAULT ''
+      )
+    `);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_ms_sentiment   ON wechat_moments_sentiment(sentiment)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_ms_create_time ON wechat_moments_sentiment(create_time)`);
+
+    // Moments entity extraction results
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS wechat_moments_entities (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        moment_id   TEXT    NOT NULL,
+        entity_name TEXT    NOT NULL,
+        entity_type TEXT    NOT NULL,
+        create_time TEXT    NOT NULL DEFAULT '',
+        UNIQUE(moment_id, entity_name, entity_type)
+      )
+    `);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_me_entity_name ON wechat_moments_entities(entity_name)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_me_entity_type ON wechat_moments_entities(entity_type)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_me_moment_id   ON wechat_moments_entities(moment_id)`);
+
+    // Moments cluster assignment results
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS wechat_moments_clusters (
+        moment_id     TEXT PRIMARY KEY,
+        cluster_id    INTEGER NOT NULL,
+        cluster_label TEXT    NOT NULL DEFAULT '',
+        clustered_at  TEXT    NOT NULL DEFAULT ''
+      )
+    `);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_mc_cluster_id ON wechat_moments_clusters(cluster_id)`);
+
     logger.debug('[WeChatDatabase] Schema ready');
   }
 
@@ -1013,5 +1053,182 @@ export class WeChatDatabase {
         result.imagesFailed,
       ],
     );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Moments sentiment analysis
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /** Upsert sentiment analysis result for a moment. */
+  upsertMomentSentiment(row: {
+    momentId: string;
+    sentiment: string;
+    score: number;
+    attitudeTags: string[];
+    createTime: string;
+  }): void {
+    if (!this.db) return;
+    this.db.run(
+      `INSERT INTO wechat_moments_sentiment (moment_id, sentiment, score, attitude_tags, create_time, analyzed_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(moment_id) DO UPDATE SET sentiment=excluded.sentiment, score=excluded.score, attitude_tags=excluded.attitude_tags, analyzed_at=excluded.analyzed_at`,
+      [
+        row.momentId,
+        row.sentiment,
+        row.score,
+        JSON.stringify(row.attitudeTags),
+        row.createTime,
+        new Date().toISOString(),
+      ],
+    );
+  }
+
+  /** Get sentiment trend grouped by month. */
+  getMomentsSentimentTrend(): Array<{
+    month: string;
+    avgScore: number;
+    positive: number;
+    negative: number;
+    neutral: number;
+    mixed: number;
+    count: number;
+  }> {
+    if (!this.db) return [];
+    return this.db
+      .query<
+        {
+          month: string;
+          avgScore: number;
+          positive: number;
+          negative: number;
+          neutral: number;
+          mixed: number;
+          count: number;
+        },
+        []
+      >(
+        `SELECT
+          substr(create_time, 1, 7) AS month,
+          AVG(score) AS avgScore,
+          SUM(CASE WHEN sentiment='positive' THEN 1 ELSE 0 END) AS positive,
+          SUM(CASE WHEN sentiment='negative' THEN 1 ELSE 0 END) AS negative,
+          SUM(CASE WHEN sentiment='neutral' THEN 1 ELSE 0 END) AS neutral,
+          SUM(CASE WHEN sentiment='mixed' THEN 1 ELSE 0 END) AS mixed,
+          COUNT(*) AS count
+        FROM wechat_moments_sentiment
+        WHERE create_time != ''
+        GROUP BY month
+        ORDER BY month`,
+      )
+      .all();
+  }
+
+  /** Get overall sentiment distribution. */
+  getMomentsSentimentOverall(): {
+    avgScore: number;
+    positive: number;
+    negative: number;
+    neutral: number;
+    mixed: number;
+    total: number;
+  } {
+    if (!this.db) return { avgScore: 0, positive: 0, negative: 0, neutral: 0, mixed: 0, total: 0 };
+    const row = this.db
+      .query<
+        { avgScore: number; positive: number; negative: number; neutral: number; mixed: number; total: number },
+        []
+      >(
+        `SELECT
+          COALESCE(AVG(score), 0) AS avgScore,
+          SUM(CASE WHEN sentiment='positive' THEN 1 ELSE 0 END) AS positive,
+          SUM(CASE WHEN sentiment='negative' THEN 1 ELSE 0 END) AS negative,
+          SUM(CASE WHEN sentiment='neutral' THEN 1 ELSE 0 END) AS neutral,
+          SUM(CASE WHEN sentiment='mixed' THEN 1 ELSE 0 END) AS mixed,
+          COUNT(*) AS total
+        FROM wechat_moments_sentiment`,
+      )
+      .get();
+    return row ?? { avgScore: 0, positive: 0, negative: 0, neutral: 0, mixed: 0, total: 0 };
+  }
+
+  /** Count moments that have been sentiment-analyzed. */
+  getMomentsSentimentCount(): number {
+    if (!this.db) return 0;
+    const row = this.db.query<{ count: number }, []>(`SELECT COUNT(*) as count FROM wechat_moments_sentiment`).get();
+    return row?.count ?? 0;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Moments entity extraction
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /** Upsert extracted entities for a moment. Deletes old entities first. */
+  upsertMomentEntities(momentId: string, createTime: string, entities: Array<{ name: string; type: string }>): void {
+    if (!this.db) return;
+    this.db.run(`DELETE FROM wechat_moments_entities WHERE moment_id = ?`, [momentId]);
+    const stmt = this.db.prepare(
+      `INSERT OR IGNORE INTO wechat_moments_entities (moment_id, entity_name, entity_type, create_time) VALUES (?, ?, ?, ?)`,
+    );
+    for (const e of entities) {
+      stmt.run(momentId, e.name, e.type, createTime);
+    }
+  }
+
+  /** Get top entities by frequency, optionally filtered by type. */
+  getMomentsTopEntities(opts?: {
+    type?: string;
+    limit?: number;
+  }): Array<{ name: string; type: string; count: number }> {
+    if (!this.db) return [];
+    const limit = opts?.limit ?? 50;
+    if (opts?.type) {
+      return this.db
+        .query<{ name: string; type: string; count: number }, [string, number]>(
+          `SELECT entity_name AS name, entity_type AS type, COUNT(*) AS count
+           FROM wechat_moments_entities
+           WHERE entity_type = ?
+           GROUP BY entity_name, entity_type
+           ORDER BY count DESC
+           LIMIT ?`,
+        )
+        .all(opts.type, limit);
+    }
+    return this.db
+      .query<{ name: string; type: string; count: number }, [number]>(
+        `SELECT entity_name AS name, entity_type AS type, COUNT(*) AS count
+         FROM wechat_moments_entities
+         GROUP BY entity_name, entity_type
+         ORDER BY count DESC
+         LIMIT ?`,
+      )
+      .all(limit);
+  }
+
+  /** Get entities grouped by type with counts. */
+  getMomentsEntitiesByType(): Record<string, Array<{ name: string; count: number }>> {
+    if (!this.db) return {};
+    const rows = this.db
+      .query<{ name: string; type: string; count: number }, []>(
+        `SELECT entity_name AS name, entity_type AS type, COUNT(*) AS count
+         FROM wechat_moments_entities
+         GROUP BY entity_name, entity_type
+         ORDER BY count DESC`,
+      )
+      .all();
+    const result: Record<string, Array<{ name: string; count: number }>> = {};
+    for (const r of rows) {
+      if (!result[r.type]) result[r.type] = [];
+      result[r.type].push({ name: r.name, count: r.count });
+    }
+    return result;
+  }
+
+  /** Count moments that have been entity-extracted. */
+  getMomentsEntityMomentCount(): number {
+    if (!this.db) return 0;
+    const row = this.db
+      .query<{ count: number }, []>(`SELECT COUNT(DISTINCT moment_id) as count FROM wechat_moments_entities`)
+      .get();
+    return row?.count ?? 0;
   }
 }

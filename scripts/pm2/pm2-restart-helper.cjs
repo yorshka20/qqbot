@@ -3,8 +3,8 @@
  * Standalone helper: run "pm2 stop <apps>", wait 5s for file handles to be released,
  * then "pm2 start <apps>". The gap between kill and start avoids restart failures
  * (e.g. node_modules still locked / EEXIST).
- * Usage: RESTART_APP_NAMES=app1,app2 node scripts/pm2-restart-helper.cjs
- *    or: node scripts/pm2-restart-helper.cjs app1 app2
+ * Usage: RESTART_APP_NAMES=app1,app2 node scripts/pm2/pm2-restart-helper.cjs
+ *    or: node scripts/pm2/pm2-restart-helper.cjs app1 app2
  */
 
 const { spawn } = require('child_process');

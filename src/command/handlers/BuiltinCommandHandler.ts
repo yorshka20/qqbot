@@ -339,7 +339,7 @@ const PM2_APP_UI = 'qq-bot-ui';
 
 /**
  * Restart command: ask PM2 to restart qq-bot (and qq-bot-ui) via two-level spawn.
- * Spawns scripts/pm2-restart-helper.cjs (detached), which runs "pm2 restart ... --no-treekill".
+ * Spawns scripts/pm2/pm2-restart-helper.cjs (detached), which runs "pm2 restart ... --no-treekill".
  * So the process that runs pm2 is not the direct child of this process, and is not killed
  * when PM2 restarts us. Ecosystem has treekill: false so the helper is not killed either.
  * Requires admin or owner permission.
@@ -361,7 +361,7 @@ export class RestartCommand implements CommandHandler {
     messageBuilder.text(`正在拉取代码并重启...`);
 
     setTimeout(() => {
-      const helperPath = path.join(process.cwd(), 'scripts', 'pm2-restart-helper.cjs');
+      const helperPath = path.join(process.cwd(), 'scripts', 'pm2', 'pm2-restart-helper.cjs');
       const restartAppNames = `${PM2_APP_BOT},${PM2_APP_UI}`;
       const child = spawn(process.execPath, [helperPath], {
         env: { ...process.env, RESTART_APP_NAMES: restartAppNames },

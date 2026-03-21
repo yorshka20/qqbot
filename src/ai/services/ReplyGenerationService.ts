@@ -1059,7 +1059,9 @@ export class ReplyGenerationService {
     if (this.shouldUseCardReply(response.text)) {
       // If text is already card JSON (LLM produced it without calling format_as_card tool), render directly
       if (this.looksLikeCardJson(response.text)) {
-        logger.info('[ReplyGenerationService] Text already looks like card JSON, rendering directly (skipping conversion)');
+        logger.info(
+          '[ReplyGenerationService] Text already looks like card JSON, rendering directly (skipping conversion)',
+        );
         const cleanJson = extractExpectedJsonFromLlmText(response.text) ?? response.text;
         const success = await this.tryRenderCardReply(context, cleanJson, actualProvider);
         if (success) {
@@ -1237,7 +1239,9 @@ export class ReplyGenerationService {
     }
     // If text is already card JSON (e.g. proactive LLM output card JSON without format_as_card tool), render directly
     if (this.looksLikeCardJson(responseText)) {
-      logger.info('[ReplyGenerationService] Text already looks like card JSON, rendering directly (skipping conversion)');
+      logger.info(
+        '[ReplyGenerationService] Text already looks like card JSON, rendering directly (skipping conversion)',
+      );
       const cleanJson = extractExpectedJsonFromLlmText(responseText) ?? responseText;
       const directResult = await this.renderCardJsonToSegments(cleanJson, options?.providerName).catch(() => null);
       if (directResult) {

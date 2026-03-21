@@ -275,6 +275,41 @@ export interface MomentsSearchResponse {
   query: string
 }
 
+// ── Moments Analysis Types ──
+
+export interface InterestEvolutionResponse {
+  heatmap: Array<{ tag: string; month: string; count: number }>
+  tags: string[]
+  months: string[]
+}
+
+export interface BehaviorResponse {
+  hourDistribution: Array<{ hour: number; count: number }>
+  dayOfWeekDistribution: Array<{ day: number; label: string; count: number }>
+  monthlyFrequency: Array<{ month: string; count: number; avgGapDays: number }>
+  gapStats: { avgDays: number; medianDays: number; maxDays: number; minDays: number }
+}
+
+export interface SentimentTrendResponse {
+  trend: Array<{
+    month: string
+    avgScore: number
+    positive: number
+    negative: number
+    neutral: number
+    mixed: number
+    count: number
+  }>
+  overall: { avgScore: number; positive: number; negative: number; neutral: number; mixed: number; total: number }
+  analyzedCount: number
+}
+
+export interface EntitiesResponse {
+  entities: Array<{ name: string; type: string; count: number }>
+  byType: Record<string, Array<{ name: string; count: number }>>
+  analyzedCount: number
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Qdrant Explorer Types
 // ────────────────────────────────────────────────────────────────────────────

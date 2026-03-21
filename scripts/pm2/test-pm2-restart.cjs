@@ -29,7 +29,7 @@ const server = http.createServer((req, res) => {
     const helperPath = path.join(scriptDir, 'pm2-restart-helper.cjs');
     const child = spawn(process.execPath, [helperPath], {
       env: { ...process.env, RESTART_APP_NAMES: 'test-restart' },
-      cwd: path.resolve(scriptDir, '..'),
+      cwd: path.resolve(scriptDir, '../..'),
       detached: true,
       stdio: 'ignore',
     });
