@@ -310,6 +310,11 @@ export interface EntitiesResponse {
   analyzedCount: number
 }
 
+export interface ClustersResponse {
+  clusters: Array<{ clusterId: number; label: string; count: number }>
+  clusteredCount: number
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Qdrant Explorer Types
 // ────────────────────────────────────────────────────────────────────────────

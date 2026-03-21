@@ -53,6 +53,11 @@ coverage/
 # Bun
 .bun/
 
+# Python
+.venv/
+__pycache__/
+*.pyc
+
 # Config files (if containing sensitive data)
 config.jsonc
 config.json

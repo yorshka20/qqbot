@@ -2,12 +2,13 @@
  * Moments Page - View and explore WeChat moments data with multiple analysis modes.
  */
 
-import { Activity, Clock, Smile, TrendingUp, Users } from 'lucide-react'
+import { Activity, Clock, Layers, Smile, TrendingUp, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { getMomentsStats } from '../api'
 import { BehaviorView } from '../components/MomentsBehaviorView'
 import { BrowseView } from '../components/MomentsBrowseView'
+import { ClusterView } from '../components/MomentsClusterView'
 import { EntitiesView } from '../components/MomentsEntitiesView'
 import { InterestEvolutionView } from '../components/MomentsInterestView'
 import { SentimentView } from '../components/MomentsSentimentView'
@@ -18,11 +19,12 @@ import type { MomentsStats } from '../types'
 // View modes
 // ────────────────────────────────────────────────────────────────────────────
 
-type ViewMode = 'browse' | 'interest' | 'sentiment' | 'entities' | 'behavior'
+type ViewMode = 'browse' | 'interest' | 'clusters' | 'sentiment' | 'entities' | 'behavior'
 
 const VIEW_MODES: Array<{ key: ViewMode; label: string; icon: typeof Clock }> = [
   { key: 'browse', label: '浏览', icon: Clock },
   { key: 'interest', label: '兴趣演化', icon: TrendingUp },
+  { key: 'clusters', label: '内容聚类', icon: Layers },
   { key: 'sentiment', label: '情绪分析', icon: Smile },
   { key: 'entities', label: '实体图谱', icon: Users },
   { key: 'behavior', label: '行为模式', icon: Activity },
@@ -88,6 +90,7 @@ export function MomentsPage() {
         {/* View content */}
         {viewMode === 'browse' && <BrowseView stats={stats} isDark={isDark} />}
         {viewMode === 'interest' && <InterestEvolutionView isDark={isDark} />}
+        {viewMode === 'clusters' && <ClusterView isDark={isDark} />}
         {viewMode === 'sentiment' && <SentimentView isDark={isDark} />}
         {viewMode === 'entities' && <EntitiesView />}
         {viewMode === 'behavior' && <BehaviorView isDark={isDark} />}

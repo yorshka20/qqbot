@@ -14,6 +14,7 @@
  * - GET  /api/moments/behavior                               -> { hourDistribution, dayOfWeekDistribution, monthlyFrequency, gapStats }
  * - GET  /api/moments/sentiment-trend                        -> { trend, overall, analyzedCount }
  * - GET  /api/moments/entities?type=&limit=                  -> { entities, byType, analyzedCount }
+ * - GET  /api/moments/clusters                               -> { clusters, clusteredCount }
  */
 
 import { getContainer } from '@/core/DIContainer';
@@ -116,6 +117,11 @@ export interface EntitiesResponse {
   analyzedCount: number;
 }
 
+export interface ClustersResponse {
+  clusters: Array<{ clusterId: number; label: string; count: number }>;
+  clusteredCount: number;
+}
+
 interface ErrorResponse {
   error: string;
 }
@@ -205,6 +211,7 @@ export class MomentsBackend {
     if (subPath === '/behavior') return this.handleBehavior(retrieval);
     if (subPath === '/sentiment-trend') return this.handleSentimentTrend();
     if (subPath === '/entities') return this.handleEntities(new URL(req.url));
+    if (subPath === '/clusters') return this.handleClusters();
 
     return errorResponse('Not found', 404);
   }
@@ -544,6 +551,22 @@ export class MomentsBackend {
     } catch (err) {
       logger.error('[MomentsBackend] entities error:', err);
       return errorResponse('Failed to get entities', 500);
+    }
+  }
+
+  /** Feature 3: Content clustering results (from SQLite) */
+  private handleClusters(): Response {
+    try {
+      const db = this.getDB();
+      if (!db) return errorResponse('WeChatDatabase not available', 503);
+
+      const clusters = db.getMomentsClusters();
+      const clusteredCount = db.getMomentsClusteredCount();
+
+      return jsonResponse<ClustersResponse>({ clusters, clusteredCount });
+    } catch (err) {
+      logger.error('[MomentsBackend] clusters error:', err);
+      return errorResponse('Failed to get clusters', 500);
     }
   }
 

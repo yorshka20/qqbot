@@ -1,6 +1,7 @@
 import { getFileApiBase, getInsightsApiBase, getMomentsApiBase, getQdrantApiBase, getReportApiBase, getZhihuApiBase } from './config'
 import type {
   BehaviorResponse,
+  ClustersResponse,
   EntitiesResponse,
   InsightDetailResponse,
   InsightListResponse,
@@ -279,6 +280,15 @@ export async function getMomentsEntities(opts?: { type?: string; limit?: number 
     throw new Error(err.error ?? `Get entities failed: ${res.status}`)
   }
   return res.json() as Promise<EntitiesResponse>
+}
+
+export async function getMomentsClusters(): Promise<ClustersResponse> {
+  const res = await fetch(`${momentsApiBase()}/clusters`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get clusters failed: ${res.status}`)
+  }
+  return res.json() as Promise<ClustersResponse>
 }
 
 // ────────────────────────────────────────────────────────────────────────────

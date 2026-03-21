@@ -1231,4 +1231,40 @@ export class WeChatDatabase {
       .get();
     return row?.count ?? 0;
   }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Moments clustering
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /** Get all clusters with their labels and counts. */
+  getMomentsClusters(): Array<{ clusterId: number; label: string; count: number }> {
+    if (!this.db) return [];
+    return this.db
+      .query<{ clusterId: number; label: string; count: number }, []>(
+        `SELECT cluster_id AS clusterId, cluster_label AS label, COUNT(*) AS count
+         FROM wechat_moments_clusters
+         GROUP BY cluster_id, cluster_label
+         ORDER BY count DESC`,
+      )
+      .all();
+  }
+
+  /** Get moment IDs belonging to a specific cluster. */
+  getMomentsClusterMembers(clusterId: number, limit = 20): Array<{ momentId: string }> {
+    if (!this.db) return [];
+    return this.db
+      .query<{ momentId: string }, [number, number]>(
+        `SELECT moment_id AS momentId FROM wechat_moments_clusters WHERE cluster_id = ? LIMIT ?`,
+      )
+      .all(clusterId, limit);
+  }
+
+  /** Count moments that have been clustered. */
+  getMomentsClusteredCount(): number {
+    if (!this.db) return 0;
+    const row = this.db
+      .query<{ count: number }, []>(`SELECT COUNT(*) as count FROM wechat_moments_clusters`)
+      .get();
+    return row?.count ?? 0;
+  }
 }
