@@ -64,8 +64,11 @@ temp/
 
 # OS files
 Thumbs.db
+
+# others
 data/
 output/
 docs/local
+scripts/local
 
 .git.backup.*
