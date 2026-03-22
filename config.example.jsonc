@@ -283,6 +283,19 @@
           "coldStartBatchSize": 40
         }
       },
+      // AutoAccept Plugin - automatically accepts friend requests and group invitations
+      {
+        "name": "autoAccept",
+        "enabled": false,
+        "config": {
+          // Auto-accept incoming friend requests
+          "acceptFriendRequests": true,
+          // Auto-accept group join requests (others applying to join groups where bot is admin)
+          "acceptGroupJoinRequests": false,
+          // Auto-accept group invitations (bot being invited to join a group)
+          "acceptGroupInvitations": true
+        }
+      },
       // GroupNotice Plugin - notifies group member changes (join/leave)
       // Only sends notifications in configured groups
       {

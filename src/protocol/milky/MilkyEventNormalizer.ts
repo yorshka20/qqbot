@@ -63,7 +63,7 @@ export class MilkyEventNormalizer {
       case 'group_invited_join_request':
         return MilkyEventNormalizer.normalizeRequestEvent(event, baseEvent, 'group_invited_join_request');
       case 'group_invitation':
-        return MilkyEventNormalizer.normalizeNoticeEvent(event, baseEvent, 'group_invitation');
+        return MilkyEventNormalizer.normalizeRequestEvent(event, baseEvent, 'group_invitation');
       case 'friend_nudge':
         return MilkyEventNormalizer.normalizeNoticeEvent(event, baseEvent, 'friend_nudge');
       case 'friend_file_upload':
