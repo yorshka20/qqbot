@@ -189,9 +189,12 @@ export class GroqProvider extends AIProvider implements LLMCapability {
         stop: options?.stop,
       };
 
-      // Map reasoningEffort to Groq's reasoning_format for thinking models (e.g. Qwen3)
-      if (options?.reasoningEffort === 'none') {
-        body.reasoning_format = 'hidden';
+      // Map reasoningEffort to Groq's reasoning_effort for thinking models (e.g. Qwen3)
+      // 'none' fully disables thinking; reasoning_format only hides output but model still thinks
+      if (options?.reasoningEffort && options.reasoningEffort !== 'none') {
+        body.reasoning_effort = options.reasoningEffort; // 'low' | 'medium' | 'high'
+      } else if (options?.reasoningEffort === 'none') {
+        body.reasoning_effort = 'none';
       }
 
       if (options?.jsonMode) {
@@ -222,7 +225,9 @@ export class GroqProvider extends AIProvider implements LLMCapability {
       }>('/chat/completions', body);
 
       const msg = data.choices[0]?.message;
-      const text = msg?.content ?? '';
+      // Strip <think> blocks (closed or unclosed) that thinking models (e.g. Qwen3) may leak
+      const rawText = msg?.content ?? '';
+      const text = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<think>[\s\S]*/gi, '').trim();
       const usage = data.usage
         ? {
             promptTokens: data.usage.prompt_tokens,
