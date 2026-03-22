@@ -19,6 +19,16 @@ export interface SendMessageParams {
   replyTo?: string; // Message ID to reply to
 }
 
+export interface ProjectContext {
+  alias: string;
+  type: 'bun' | 'node' | 'python' | 'rust' | 'generic';
+  description?: string;
+  hasClaudeMd: boolean;
+  promptTemplateKey?: string;
+}
+
+export type ClaudeTaskType = 'dev' | 'new-project';
+
 export interface ClaudeTask {
   id: string;
   prompt: string;
@@ -32,6 +42,10 @@ export interface ClaudeTask {
   };
   result?: string;
   error?: string;
+  /** Task type */
+  taskType?: ClaudeTaskType;
+  /** Project context resolved from ProjectRegistry */
+  projectContext?: ProjectContext;
 }
 
 export interface MCPServerConfig {
@@ -46,6 +60,18 @@ export interface MCPServerConfig {
   allowedUsers?: string[];
   // Max concurrent tasks
   maxConcurrentTasks?: number;
+  // Project registry for multi-project support
+  projectRegistry?: {
+    allowedBasePaths: string[];
+    defaultProject: string;
+    projects: Array<{
+      alias: string;
+      path: string;
+      type?: 'bun' | 'node' | 'python' | 'rust' | 'generic';
+      description?: string;
+      promptTemplateKey?: string;
+    }>;
+  };
 }
 
 export interface BotInfo {

@@ -9,9 +9,20 @@ import { type Subprocess, spawn } from 'bun';
 import { randomUUID } from 'crypto';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { logger } from '@/utils/logger';
-import type { ClaudeTask, MCPServerConfig, TaskNotification } from '../mcpServer/types';
+import type {
+  ClaudeTask,
+  ClaudeTaskType,
+  MCPServerConfig,
+  ProjectContext,
+  TaskNotification,
+} from '../mcpServer/types';
 
 type TaskUpdateCallback = (task: ClaudeTask) => void;
+
+export interface CreateTaskOptions {
+  taskType?: ClaudeTaskType;
+  projectContext?: ProjectContext;
+}
 
 export class ClaudeToolManager {
   private config: MCPServerConfig;
@@ -33,7 +44,8 @@ export class ClaudeToolManager {
   }
 
   /**
-   * Process prompt template with variables using PromptManager
+   * Process prompt template with variables using PromptManager.
+   * Dynamically selects template based on task type and project context.
    */
   private processPromptTemplate(task: ClaudeTask): string {
     if (!this.promptManager) {
@@ -42,16 +54,46 @@ export class ClaudeToolManager {
     }
 
     const mcpApiUrl = `http://${this.config.host || '127.0.0.1'}:${this.config.port}`;
+    const ctx = task.projectContext;
+
+    // Determine template key
+    let templateKey: string;
+    if (ctx?.promptTemplateKey) {
+      templateKey = ctx.promptTemplateKey;
+    } else if (task.taskType === 'new-project') {
+      templateKey = 'claude-code.task.new-project';
+    } else if (ctx) {
+      // Has project context → try project-specific template, then generic
+      const projectSpecificKey = `claude-code.task.${ctx.alias}`;
+      templateKey = this.promptManager.getTemplate(projectSpecificKey)
+        ? projectSpecificKey
+        : 'claude-code.task.generic';
+    } else {
+      // No project context → use default qqbot template
+      templateKey = 'claude-code.task';
+    }
+
+    // Final fallback to existing claude-code.task if chosen template doesn't exist
+    if (!this.promptManager.getTemplate(templateKey)) {
+      templateKey = 'claude-code.task';
+    }
+
+    const projectType = ctx?.type || 'generic';
+    const variables: Record<string, string> = {
+      taskId: task.id,
+      userPrompt: task.prompt,
+      workingDirectory: task.workingDirectory || process.cwd(),
+      mcpApiUrl,
+      targetType: task.requestedBy.type,
+      targetId: task.requestedBy.id,
+      projectDescription: ctx?.description || '未知项目',
+      projectType,
+      hasClaudeMd: ctx?.hasClaudeMd ? 'true' : '',
+      qualityCheckCommands: this.getQualityCheckCommands(projectType),
+    };
 
     try {
-      return this.promptManager.render('claude-code.task', {
-        taskId: task.id,
-        userPrompt: task.prompt,
-        workingDirectory: task.workingDirectory || process.cwd(),
-        mcpApiUrl,
-        targetType: task.requestedBy.type,
-        targetId: task.requestedBy.id,
-      });
+      return this.promptManager.render(templateKey, variables);
     } catch (error) {
       logger.warn('[ClaudeToolManager] Failed to render template, using raw prompt:', error);
       return task.prompt;
@@ -68,7 +110,12 @@ export class ClaudeToolManager {
   /**
    * Create a new Claude Code task
    */
-  createTask(prompt: string, requestedBy: ClaudeTask['requestedBy'], workingDirectory?: string): ClaudeTask {
+  createTask(
+    prompt: string,
+    requestedBy: ClaudeTask['requestedBy'],
+    workingDirectory?: string,
+    options?: CreateTaskOptions,
+  ): ClaudeTask {
     const task: ClaudeTask = {
       id: randomUUID(),
       prompt,
@@ -76,10 +123,12 @@ export class ClaudeToolManager {
       createdAt: new Date(),
       status: 'pending',
       requestedBy,
+      taskType: options?.taskType || 'dev',
+      projectContext: options?.projectContext,
     };
 
     this.tasks.set(task.id, task);
-    logger.info(`[ClaudeToolManager] Task created: ${task.id}`);
+    logger.info(`[ClaudeToolManager] Task created: ${task.id} (type: ${task.taskType})`);
     return task;
   }
 
@@ -314,6 +363,24 @@ export class ClaudeToolManager {
   private notifyTaskUpdate(task: ClaudeTask): void {
     if (this.taskUpdateCallback) {
       this.taskUpdateCallback(task);
+    }
+  }
+
+  /**
+   * Get quality check commands based on project type
+   */
+  private getQualityCheckCommands(projectType: string): string {
+    switch (projectType) {
+      case 'bun':
+        return 'bun run typecheck\nbun run lint\nbun test';
+      case 'node':
+        return 'npm run typecheck\nnpm run lint\nnpm test';
+      case 'python':
+        return 'ruff check .\nmypy .\npytest';
+      case 'rust':
+        return 'cargo check\ncargo clippy\ncargo test';
+      default:
+        return '# 根据项目配置运行合适的检查命令';
     }
   }
 }

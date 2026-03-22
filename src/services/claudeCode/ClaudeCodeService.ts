@@ -17,16 +17,24 @@ import { logger } from '@/utils/logger';
 import { MCPServer } from '../mcpServer/MCPServer';
 import type {
   ClaudeTask,
+  ClaudeTaskType,
   ExecuteCommandParams,
   ExecuteCommandResult,
   MCPServerConfig,
+  ProjectContext,
   SendMessageParams,
   ToolDefinition,
   ToolExecuteParams,
   ToolExecuteResult,
 } from '../mcpServer/types';
 import { ClaudeToolManager } from './ClaudeToolManager';
+import type { ProjectRegistry } from './ProjectRegistry';
 import { ToolRegistry } from './ToolRegistry';
+
+export interface TriggerTaskOptions {
+  taskType?: ClaudeTaskType;
+  projectContext?: ProjectContext;
+}
 
 export class ClaudeCodeService {
   private config: MCPServerConfig;
@@ -37,6 +45,7 @@ export class ClaudeCodeService {
   private botStartTime: number;
   private connectedProtocols: ProtocolName[] = [];
   private selfId: string | null = null;
+  private projectRegistry: ProjectRegistry | null = null;
 
   constructor(config: MCPServerConfig) {
     this.config = config;
@@ -81,8 +90,16 @@ export class ClaudeCodeService {
     });
 
     // Handle tool execution requests from Claude Code
+    // Inject per-task workingDirectory so tools operate in the correct project
     this.mcpServer.setExecuteToolHandler(async (params) => {
-      return await this.toolRegistry.execute(params);
+      let workingDirectory: string | undefined;
+      if (params.taskId) {
+        const task = this.taskManager.getTask(params.taskId);
+        if (task?.workingDirectory) {
+          workingDirectory = task.workingDirectory;
+        }
+      }
+      return await this.toolRegistry.execute({ ...params, workingDirectory });
     });
 
     // Handle tool list requests from Claude Code
@@ -103,6 +120,20 @@ export class ClaudeCodeService {
    */
   setPromptManager(promptManager: PromptManager): void {
     this.taskManager.setPromptManager(promptManager);
+  }
+
+  /**
+   * Set ProjectRegistry for multi-project support
+   */
+  setProjectRegistry(registry: ProjectRegistry): void {
+    this.projectRegistry = registry;
+  }
+
+  /**
+   * Get ProjectRegistry
+   */
+  getProjectRegistry(): ProjectRegistry | null {
+    return this.projectRegistry;
   }
 
   /**
@@ -144,12 +175,13 @@ export class ClaudeCodeService {
     prompt: string,
     requestedBy: ClaudeTask['requestedBy'],
     workingDirectory?: string,
+    options?: TriggerTaskOptions,
   ): Promise<ClaudeTask> {
     if (!this.taskManager.canStartTask()) {
       throw new Error('Too many concurrent tasks. Please wait for current tasks to complete.');
     }
 
-    const task = this.taskManager.createTask(prompt, requestedBy, workingDirectory);
+    const task = this.taskManager.createTask(prompt, requestedBy, workingDirectory, options);
 
     // Execute task in background
     this.taskManager.executeTask(task.id).catch((error) => {

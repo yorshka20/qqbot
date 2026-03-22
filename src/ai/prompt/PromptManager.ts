@@ -192,6 +192,11 @@ export class PromptManager {
   ): string {
     let rendered = template.content;
 
+    // Process {{#if var}}...{{else}}...{{/if}} blocks (supports nesting)
+    if (variables) {
+      rendered = this.processConditionalBlocks(rendered, variables);
+    }
+
     if (variables) {
       // Simple variable replacement: {{variableName}}
       for (const [key, value] of Object.entries(variables)) {
@@ -200,13 +205,46 @@ export class PromptManager {
       }
     }
 
-    // Check for unresolved variables
-    const unresolved = rendered.match(/\{\{(\w+)\}\}/g);
+    // Check for unresolved variables (exclude block syntax remnants)
+    const unresolved = rendered.match(/\{\{(?!#|\/|else)(\w+)\}\}/g);
     if (unresolved) {
       logger.warn(`[PromptManager] Unresolved variables in template ${templateName}: ${unresolved.join(', ')}`);
     }
 
     return rendered.trim();
+  }
+
+  /**
+   * Process {{#if var}}...{{else}}...{{/if}} conditional blocks.
+   * A variable is truthy if it exists, is non-empty, and is not "false" or "0".
+   * Supports nested blocks.
+   */
+  private processConditionalBlocks(content: string, variables: Record<string, string>): string {
+    // Process from innermost blocks outward by repeating until no more blocks
+    let result = content;
+    let maxIterations = 20;
+
+    while (maxIterations-- > 0) {
+      // Match the innermost {{#if var}}...{{/if}} (no nested #if inside)
+      const ifRegex = /\{\{#if\s+(\w+)\}\}((?:(?!\{\{#if)[\s\S])*?)\{\{\/if\}\}/;
+      const match = ifRegex.exec(result);
+      if (!match) break;
+
+      const varName = match[1];
+      const blockContent = match[2];
+      const value = variables[varName];
+      const isTruthy = value !== undefined && value !== '' && value !== 'false' && value !== '0';
+
+      // Split on {{else}} if present
+      const elseParts = blockContent.split(/\{\{else\}\}/);
+      const ifBranch = elseParts[0];
+      const elseBranch = elseParts.length > 1 ? elseParts.slice(1).join('{{else}}') : '';
+
+      const replacement = isTruthy ? ifBranch : elseBranch;
+      result = result.slice(0, match.index) + replacement + result.slice(match.index + match[0].length);
+    }
+
+    return result;
   }
 
   /**

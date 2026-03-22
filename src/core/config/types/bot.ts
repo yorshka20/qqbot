@@ -21,6 +21,21 @@ export interface FileReadServiceConfig {
   filterExtensions: string[];
 }
 
+export interface ProjectRegistryConfig {
+  // Security whitelist: only allow projects under these directories
+  allowedBasePaths: string[];
+  // Default project alias (used when no @alias specified)
+  defaultProject: string;
+  // Pre-registered projects
+  projects: Array<{
+    alias: string;
+    path: string;
+    type?: 'bun' | 'node' | 'python' | 'rust' | 'generic';
+    description?: string;
+    promptTemplateKey?: string;
+  }>;
+}
+
 export interface ClaudeCodeServiceConfig {
   enabled: boolean;
   port: number;
@@ -33,4 +48,6 @@ export interface ClaudeCodeServiceConfig {
   allowedUsers?: string[];
   // Max concurrent tasks (default: 1)
   maxConcurrentTasks?: number;
+  // Project registry for multi-project support
+  projectRegistry?: ProjectRegistryConfig;
 }

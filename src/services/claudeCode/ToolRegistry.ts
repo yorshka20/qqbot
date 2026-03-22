@@ -38,7 +38,7 @@ export class ToolRegistry {
     logger.debug(`[ToolRegistry] Registered tool: ${executor.name}`);
   }
 
-  async execute(params: ToolExecuteParams): Promise<ToolExecuteResult> {
+  async execute(params: ToolExecuteParams & { workingDirectory?: string }): Promise<ToolExecuteResult> {
     const executor = this.tools.get(params.tool);
     if (!executor) {
       return { success: false, error: `Unknown tool: ${params.tool}` };
@@ -46,12 +46,28 @@ export class ToolRegistry {
 
     logger.info(`[ToolRegistry] Executing tool: ${params.tool}`, { taskId: params.taskId });
 
+    // Support per-request workingDirectory override for multi-project tasks
+    const overrideWorkDir = params.workingDirectory;
+    const hasWorkDirOverride = overrideWorkDir && 'workingDirectory' in executor;
+    const originalWorkDir = hasWorkDirOverride
+      ? (executor as unknown as { workingDirectory: string }).workingDirectory
+      : undefined;
+
+    if (hasWorkDirOverride) {
+      (executor as unknown as { workingDirectory: string }).workingDirectory = overrideWorkDir;
+    }
+
     try {
       return await executor.execute(params.parameters);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       logger.error(`[ToolRegistry] Tool execution error: ${params.tool}`, err);
       return { success: false, error: errorMsg };
+    } finally {
+      // Restore original workDir
+      if (hasWorkDirOverride && originalWorkDir !== undefined) {
+        (executor as unknown as { workingDirectory: string }).workingDirectory = originalWorkDir;
+      }
     }
   }
 

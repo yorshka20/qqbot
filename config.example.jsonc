@@ -710,6 +710,31 @@
     // Allowed user IDs that can trigger Claude Code tasks (empty = all admins allowed)
     "allowedUsers": [],
     // Max concurrent tasks (default: 1)
-    "maxConcurrentTasks": 1
+    "maxConcurrentTasks": 1,
+    // Project registry for multi-project support (optional)
+    // When configured, enables cross-directory project operations via @alias syntax
+    "projectRegistry": {
+      // Security whitelist: only allow projects under these directories
+      "allowedBasePaths": [
+        "/home/user/projects"
+      ],
+      // Default project alias (used when no @alias specified)
+      "defaultProject": "qqbot",
+      // Pre-registered projects
+      "projects": [
+        {
+          "alias": "qqbot",
+          "path": "./",
+          "type": "bun",
+          "description": "QQBot - QQ群聊机器人"
+        }
+        // {
+        //   "alias": "myapi",
+        //   "path": "/home/user/projects/my-api",
+        //   "type": "bun",
+        //   "description": "My REST API"
+        // }
+      ]
+    }
   }
 }

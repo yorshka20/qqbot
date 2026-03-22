@@ -11,6 +11,7 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import { ClaudeCodeService } from './ClaudeCodeService';
+import { ProjectRegistry } from './ProjectRegistry';
 
 let serviceInstance: ClaudeCodeService | null = null;
 
@@ -27,6 +28,17 @@ export class ClaudeCodeInitializer {
     }
 
     serviceInstance = new ClaudeCodeService(claudeConfig);
+
+    // Initialize ProjectRegistry if configured
+    if (claudeConfig.projectRegistry) {
+      const registry = new ProjectRegistry({
+        allowedBasePaths: claudeConfig.projectRegistry.allowedBasePaths,
+        defaultProject: claudeConfig.projectRegistry.defaultProject,
+        projects: claudeConfig.projectRegistry.projects,
+      });
+      serviceInstance.setProjectRegistry(registry);
+      logger.info('[ClaudeCodeInitializer] ProjectRegistry initialized');
+    }
 
     // Register in DI container
     const container = getContainer();

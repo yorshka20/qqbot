@@ -39,7 +39,7 @@ export type {
   OpenRouterProviderConfig,
   SessionProviderConfig,
 } from './types/ai';
-export type { BotSelfConfig, ClaudeCodeServiceConfig, StaticServerConfig } from './types/bot';
+export type { BotSelfConfig, ClaudeCodeServiceConfig, ProjectRegistryConfig, StaticServerConfig } from './types/bot';
 export type { LogLevel } from './types/const';
 export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './types/database';
 export type {
