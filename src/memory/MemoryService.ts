@@ -522,11 +522,18 @@ export class MemoryService {
   // ============================================================================
 
   /**
-   * Re-sync all local markdown memory files for a group to Qdrant.
+   * Re-sync local markdown memory files for a group to Qdrant.
    * Deletes old RAG data per-user/group slot before re-indexing.
-   * Returns sync stats.
+   *
+   * @param groupId - Group ID
+   * @param target - 'all' syncs everything, 'group' syncs only group memory, 'user' syncs a specific user
+   * @param userId - Required when target is 'user'
    */
-  async syncMemoryToRAG(groupId: string): Promise<{ groupSynced: boolean; usersSynced: string[]; totalFacts: number }> {
+  async syncMemoryToRAG(
+    groupId: string,
+    target: 'all' | 'group' | 'user' = 'all',
+    userId?: string,
+  ): Promise<{ groupSynced: boolean; usersSynced: string[]; totalFacts: number }> {
     if (!this.ragService?.isEnabled()) {
       throw new Error('RAG service is not available');
     }
@@ -534,35 +541,43 @@ export class MemoryService {
     const safeGroupId = this.sanitizePathSegment(groupId);
     const groupDir = join(this.basePath, safeGroupId);
     let totalFacts = 0;
+    let groupSynced = false;
+    const usersSynced: string[] = [];
 
     // Sync group memory
-    const groupText = this.getGroupMemoryText(groupId);
-    const groupSections = this.parseMemorySections(groupText);
-    await this.ragService.indexMemorySections(groupId, GROUP_MEMORY_USER_ID, groupSections);
-    const groupSynced = groupSections.length > 0;
-    totalFacts += groupSections.length;
+    if (target === 'all' || target === 'group') {
+      const groupText = this.getGroupMemoryText(groupId);
+      const groupSections = this.parseMemorySections(groupText);
+      await this.ragService.indexMemorySections(groupId, GROUP_MEMORY_USER_ID, groupSections);
+      groupSynced = groupSections.length > 0;
+      totalFacts += groupSections.length;
+    }
 
-    // Sync all user memories
-    const usersSynced: string[] = [];
-    if (existsSync(groupDir)) {
-      const userIds = readdirSync(groupDir)
-        .filter((f) => f.endsWith('.txt') && f !== '_global_.txt')
-        .map((f) => f.replace(/\.txt$/, ''));
+    // Sync user memories
+    if (target === 'all' || target === 'user') {
+      const targetUserIds =
+        target === 'user' && userId
+          ? [userId]
+          : existsSync(groupDir)
+            ? readdirSync(groupDir)
+                .filter((f) => f.endsWith('.txt') && f !== '_global_.txt')
+                .map((f) => f.replace(/\.txt$/, ''))
+            : [];
 
-      for (const userId of userIds) {
-        const userText = this.getUserMemoryText(groupId, userId);
+      for (const uid of targetUserIds) {
+        const userText = this.getUserMemoryText(groupId, uid);
         const userSections = this.parseMemorySections(userText);
+        await this.ragService.indexMemorySections(groupId, uid, userSections);
         if (userSections.length > 0) {
-          await this.ragService.indexMemorySections(groupId, userId, userSections);
-          usersSynced.push(userId);
+          usersSynced.push(uid);
           totalFacts += userSections.length;
         }
       }
     }
 
     logger.info(
-      `[MemoryService] RAG sync completed for group ${groupId}: ` +
-        `group=${groupSynced ? groupSections.length + ' sections' : 'empty'}, ` +
+      `[MemoryService] RAG sync completed for group ${groupId} (target=${target}): ` +
+        `group=${groupSynced ? 'synced' : 'skipped/empty'}, ` +
         `users=${usersSynced.length}, totalFacts=${totalFacts}`,
     );
 
