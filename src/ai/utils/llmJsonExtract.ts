@@ -20,7 +20,9 @@ import { logger } from '@/utils/logger';
  * @returns true, false, or null if unrecognized (caller may treat null as fail-closed).
  */
 export function parseLlmTrueFalse(text: string): boolean | null {
-  const line = text.split(/\r?\n/)[0]?.trim() ?? text.trim();
+  // Strip <think>...</think> blocks from thinking models (e.g. Qwen3)
+  const stripped = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const line = stripped.split(/\r?\n/)[0]?.trim() ?? stripped;
   const lower = line.toLowerCase();
   if (lower === 'true') {
     return true;

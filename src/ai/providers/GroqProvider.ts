@@ -189,6 +189,11 @@ export class GroqProvider extends AIProvider implements LLMCapability {
         stop: options?.stop,
       };
 
+      // Map reasoningEffort to Groq's reasoning_format for thinking models (e.g. Qwen3)
+      if (options?.reasoningEffort === 'none') {
+        body.reasoning_format = 'hidden';
+      }
+
       if (options?.jsonMode) {
         body.response_format = { type: 'json_object' };
       }
