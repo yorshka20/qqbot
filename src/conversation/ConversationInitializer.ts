@@ -382,7 +382,7 @@ export class ConversationInitializer {
       new ThreadContextCompressionService(threadService, summarizeService, promptManager, summarizeProvider),
     );
 
-    container.registerClass(DITokens.PROACTIVE_CONVERSATION_SERVICE, ProactiveConversationService);
+    container.registerSingleton(DITokens.PROACTIVE_CONVERSATION_SERVICE, ProactiveConversationService);
     const proactiveConversationService = container.resolve<ProactiveConversationService>(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
     );

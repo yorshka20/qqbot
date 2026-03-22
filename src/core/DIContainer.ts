@@ -60,13 +60,6 @@ export class DIContainer {
   }
 
   /**
-   * Register a service class (transient)
-   */
-  registerClass<T>(token: string, ctor: new (...args: any[]) => T): void {
-    this._container.register(token, { useClass: ctor });
-  }
-
-  /**
    * Register a service class as singleton
    */
   registerSingleton<T>(token: string, ctor: new (...args: any[]) => T): void {

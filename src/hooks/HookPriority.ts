@@ -107,18 +107,23 @@ export function getHookPriority(hookName: string, variant: HookPriorityVariant, 
   switch (hookName) {
     case 'onMessageReceived': {
       priority = HookPriority.CORE.MESSAGE_RECEIVED[variant] ?? HookPriority.CORE.MESSAGE_RECEIVED.NORMAL;
+      break;
     }
     case 'onMessagePreprocess': {
       priority = HookPriority.CORE.MESSAGE_PREPROCESS[variant] ?? HookPriority.CORE.MESSAGE_PREPROCESS.NORMAL;
+      break;
     }
     case 'onMessageBeforeSend': {
       priority = HookPriority.CORE.MESSAGE_BEFORE_SEND[variant] ?? HookPriority.CORE.MESSAGE_BEFORE_SEND.NORMAL;
+      break;
     }
     case 'onMessageSent': {
       priority = HookPriority.CORE.MESSAGE_SENT[variant] ?? HookPriority.CORE.MESSAGE_SENT.NORMAL;
+      break;
     }
     case 'onError': {
       priority = HookPriority.CORE.ERROR[variant] ?? HookPriority.CORE.ERROR.NORMAL;
+      break;
     }
   }
 
