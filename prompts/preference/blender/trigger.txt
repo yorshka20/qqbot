@@ -2,7 +2,6 @@
 # Empty lines and lines starting with # are ignored.
 
 blender
-goo
 goobl
 渲染
 pbr
