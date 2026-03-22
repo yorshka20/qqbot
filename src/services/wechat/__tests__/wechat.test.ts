@@ -17,7 +17,11 @@ function loadPadProConfig(): { apiBase: string; authKey: string } | null {
   const { loadConfigDir } = require('@/core/config/loadConfigDir') as typeof import('@/core/config/loadConfigDir');
   const configDir = resolve(process.cwd(), 'config.d');
   let raw: Record<string, unknown>;
-  try { raw = loadConfigDir(configDir); } catch { return null; }
+  try {
+    raw = loadConfigDir(configDir);
+  } catch {
+    return null;
+  }
   const plugins = (raw?.plugins as { list?: Array<{ name: string; config?: Record<string, unknown> }> })?.list ?? [];
   const wechat = plugins.find((p) => p.name === 'wechatIngest');
   const padpro = wechat?.config?.padpro as { apiBase?: string; authKey?: string } | undefined;

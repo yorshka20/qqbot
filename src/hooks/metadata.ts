@@ -60,7 +60,12 @@ type MetadataValues<K extends MetadataKeys = MetadataKeys> = HookContextMetadata
 const DEFAULT_METADATA: Required<
   Omit<
     HookContextMetadata,
-    'replyTrigger' | 'replyTriggerType' | 'contextMode' | 'suggestedProvider' | 'usedCardFormat' | 'explicitSendAsForward'
+    | 'replyTrigger'
+    | 'replyTriggerType'
+    | 'contextMode'
+    | 'suggestedProvider'
+    | 'usedCardFormat'
+    | 'explicitSendAsForward'
   >
 > = {
   sessionId: '',

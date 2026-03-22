@@ -168,9 +168,7 @@ export class MessagePipeline {
     }
 
     const postProcessOnly = hookContext.metadata.get('postProcessOnly');
-    logger.info(
-      `[MessagePipeline] No reply generated | postProcessOnly=${postProcessOnly}`,
-    );
+    logger.info(`[MessagePipeline] No reply generated | postProcessOnly=${postProcessOnly}`);
     return { success: true };
   }
 

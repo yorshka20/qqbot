@@ -703,7 +703,9 @@ export class WeChatDatabase {
     if (!this.db || blacklist.size === 0) return 0;
 
     // Find articles matching blacklisted accounts OR empty accountNick
-    const placeholders = Array.from(blacklist).map(() => '?').join(', ');
+    const placeholders = Array.from(blacklist)
+      .map(() => '?')
+      .join(', ');
     const matchedArticles = this.db
       .query<{ msgId: string; accountNick: string }, string[]>(
         `SELECT msgId, accountNick FROM wechat_oa_articles

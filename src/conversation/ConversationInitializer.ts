@@ -49,8 +49,8 @@ import {
 import { CommandSystem } from './systems/CommandSystem';
 import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
 import { RAGPersistenceSystem } from './systems/RAGPersistenceSystem';
-import { ReplySystem } from './systems/ReplySystem';
 import { ReplyPrepareSystem } from './systems/ReplyPrepareSystem';
+import { ReplySystem } from './systems/ReplySystem';
 import { SendSystem } from './systems/SendSystem';
 import { ThreadContextCompressionService, ThreadService } from './thread';
 
@@ -250,11 +250,7 @@ export class ConversationInitializer {
     serviceRegistry.registerConversationServices(completeServices);
 
     // Phase 6: Component assembly.
-    const components = ConversationInitializer.assembleComponents(
-      completeServices,
-      commandPrefixes,
-      container,
-    );
+    const components = ConversationInitializer.assembleComponents(completeServices, commandPrefixes, container);
 
     // Phase 7: Register and initialize business systems.
     await ConversationInitializer.registerAndInitializeSystems(components, completeServices, config, container);

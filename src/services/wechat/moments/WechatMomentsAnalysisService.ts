@@ -14,12 +14,7 @@ import type { RetrievalService } from '@/services/retrieval';
 import { logger } from '@/utils/logger';
 import type { WeChatDatabase } from '../WeChatDatabase';
 import { normalizeEntityName, normalizeEntityType } from './momentsEntities';
-import {
-  clampScore,
-  loadCombinedAnalysisPrompt,
-  normalizeAttitudeTags,
-  normalizeSentiment,
-} from './momentsSentiment';
+import { clampScore, loadCombinedAnalysisPrompt, normalizeAttitudeTags, normalizeSentiment } from './momentsSentiment';
 import { loadTaggingPrompt, normalizeTags } from './momentsTags';
 
 const COLLECTION = 'wechat_moments';
@@ -78,9 +73,7 @@ export class WechatMomentsAnalysisService {
       return { tagged: 0, analyzed: 0, failed: 0 };
     }
 
-    logger.info(
-      `[MomentsAnalysis] Starting analysis for ${momentIds.length} moments | provider=${this.provider}`,
-    );
+    logger.info(`[MomentsAnalysis] Starting analysis for ${momentIds.length} moments | provider=${this.provider}`);
 
     // Fetch moment content from Qdrant
     const moments = await this.fetchMoments(momentIds);
@@ -99,9 +92,7 @@ export class WechatMomentsAnalysisService {
       failed: tagResult.failed + analysisResult.failed,
     };
 
-    logger.info(
-      `[MomentsAnalysis] Done | tagged=${result.tagged} analyzed=${result.analyzed} failed=${result.failed}`,
-    );
+    logger.info(`[MomentsAnalysis] Done | tagged=${result.tagged} analyzed=${result.analyzed} failed=${result.failed}`);
 
     return result;
   }
@@ -135,9 +126,7 @@ export class WechatMomentsAnalysisService {
   /**
    * Run tagging + summary on moments, update Qdrant payload.
    */
-  private async runTagging(
-    moments: MomentItem[],
-  ): Promise<{ success: number; failed: number }> {
+  private async runTagging(moments: MomentItem[]): Promise<{ success: number; failed: number }> {
     let success = 0;
     let failed = 0;
 
@@ -174,9 +163,7 @@ export class WechatMomentsAnalysisService {
   /**
    * Run combined sentiment + NER analysis, save to SQLite.
    */
-  private async runCombinedAnalysis(
-    moments: MomentItem[],
-  ): Promise<{ success: number; failed: number }> {
+  private async runCombinedAnalysis(moments: MomentItem[]): Promise<{ success: number; failed: number }> {
     let success = 0;
     let failed = 0;
 
@@ -194,9 +181,7 @@ export class WechatMomentsAnalysisService {
           // Sentiment
           const sentiment = normalizeSentiment(r.sentiment);
           const score = clampScore(r.score);
-          const attitudeTags = normalizeAttitudeTags(
-            Array.isArray(r.attitude_tags) ? r.attitude_tags : [],
-          );
+          const attitudeTags = normalizeAttitudeTags(Array.isArray(r.attitude_tags) ? r.attitude_tags : []);
 
           this.db.upsertMomentSentiment({
             momentId: moment.id,
@@ -240,9 +225,7 @@ export class WechatMomentsAnalysisService {
     contents: Array<{ index: number; content: string }>,
     promptBuilder: (contentList: string) => string,
   ): Promise<T[]> {
-    const contentList = contents
-      .map((c) => `[${c.index}] ${(c.content || '').slice(0, 500)}`)
-      .join('\n\n');
+    const contentList = contents.map((c) => `[${c.index}] ${(c.content || '').slice(0, 500)}`).join('\n\n');
     const prompt = promptBuilder(contentList);
 
     const provider = await this.llmService.getAvailableProvider(this.provider);

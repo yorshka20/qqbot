@@ -223,7 +223,14 @@ export class WeChatIngestPlugin extends PluginBase {
       });
       logger.info('[WeChatIngestPlugin] WechatMomentsAnalysisService created');
 
-      const cmdHandler = new WechatCommandHandler(padProClient, this.db, aiService, this.messageAPI, this.retrieval, momentsAnalysis);
+      const cmdHandler = new WechatCommandHandler(
+        padProClient,
+        this.db,
+        aiService,
+        this.messageAPI,
+        this.retrieval,
+        momentsAnalysis,
+      );
       this.commandManager.register(cmdHandler, this.name);
       logger.info('[WeChatIngestPlugin] Registered /wechat command');
     } else {

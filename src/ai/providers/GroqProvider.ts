@@ -227,7 +227,10 @@ export class GroqProvider extends AIProvider implements LLMCapability {
       const msg = data.choices[0]?.message;
       // Strip <think> blocks (closed or unclosed) that thinking models (e.g. Qwen3) may leak
       const rawText = msg?.content ?? '';
-      const text = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<think>[\s\S]*/gi, '').trim();
+      const text = rawText
+        .replace(/<think>[\s\S]*?<\/think>/gi, '')
+        .replace(/<think>[\s\S]*/gi, '')
+        .trim();
       const usage = data.usage
         ? {
             promptTokens: data.usage.prompt_tokens,

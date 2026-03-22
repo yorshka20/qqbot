@@ -431,14 +431,18 @@ export class WechatCommandHandler implements CommandHandler {
         // Run post-ingest analysis (tagging, sentiment, NER) on newly ingested moments
         if (result.ingestedIds.length > 0 && this.momentsAnalysis) {
           try {
-            logger.info(`[WechatCommandHandler] Starting post-ingest analysis for ${result.ingestedIds.length} moments`);
+            logger.info(
+              `[WechatCommandHandler] Starting post-ingest analysis for ${result.ingestedIds.length} moments`,
+            );
             const analysisResult = await this.momentsAnalysis.analyze(result.ingestedIds);
             const analysisSummary =
               `朋友圈分析完成：\n` +
               `- 打标签: ${analysisResult.tagged} 条\n` +
               `- 情感/实体分析: ${analysisResult.analyzed} 条\n` +
               `- 失败: ${analysisResult.failed} 条`;
-            logger.info(`[WechatCommandHandler] Post-ingest analysis done: tagged=${analysisResult.tagged} analyzed=${analysisResult.analyzed}`);
+            logger.info(
+              `[WechatCommandHandler] Post-ingest analysis done: tagged=${analysisResult.tagged} analyzed=${analysisResult.analyzed}`,
+            );
             if (messageAPI) {
               await messageAPI.sendFromContext(analysisSummary, cmdContext);
             }

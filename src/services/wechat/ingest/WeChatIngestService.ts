@@ -675,7 +675,9 @@ export class WeChatIngestService {
 
     // Skip blacklisted or empty-name accounts
     if (!accountNick || this.config.ignoredOAAccounts.has(accountNick)) {
-      logger.info(`[WeChatIngestService] Chat article IGNORED (${!accountNick ? 'empty name' : 'blacklisted'}) | account=${accountNick} title="${title}"`);
+      logger.info(
+        `[WeChatIngestService] Chat article IGNORED (${!accountNick ? 'empty name' : 'blacklisted'}) | account=${accountNick} title="${title}"`,
+      );
       return;
     }
 
@@ -784,7 +786,9 @@ export class WeChatIngestService {
 
     // Check ignore list and empty account name
     if (!accountNick || this.config.ignoredOAAccounts.has(accountNick)) {
-      logger.info(`[WeChatIngestService] OA push IGNORED (${!accountNick ? 'empty name' : 'blacklisted'}) | account=${accountNick}(${accountId})`);
+      logger.info(
+        `[WeChatIngestService] OA push IGNORED (${!accountNick ? 'empty name' : 'blacklisted'}) | account=${accountNick}(${accountId})`,
+      );
       return;
     }
 
