@@ -1,3 +1,5 @@
+import 'reflect-metadata';
+
 import { describe, expect, it, test } from 'bun:test';
 import type { AIManager } from '@/ai/AIManager';
 import type { AIGenerateOptions } from '@/ai/types';

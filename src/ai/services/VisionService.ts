@@ -5,7 +5,7 @@ import type { VisionImage } from '../capabilities/types';
 import type { VisionCapability } from '../capabilities/VisionCapability';
 import { isVisionCapability } from '../capabilities/VisionCapability';
 import type { ProviderSelector } from '../ProviderSelector';
-import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, ContentPart, StreamingHandler } from '../types';
+import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, StreamingHandler } from '../types';
 import { normalizeVisionImages } from '../utils/imageUtils';
 
 /**
@@ -208,7 +208,6 @@ export class VisionService {
    */
   async generateWithVisionMessages(
     messages: ChatMessage[],
-    currentMessageImages: VisionImage[],
     options?: AIGenerateOptions,
     providerName?: string,
   ): Promise<AIGenerateResponse> {
@@ -216,24 +215,7 @@ export class VisionService {
       throw new Error('At least one message is required');
     }
 
-    // Caller must have inlined images into messages or pass already-processed images; no repeated normalization here.
-    let finalMessages = messages;
-    if (currentMessageImages.length > 0) {
-      const imageParts: ContentPart[] = currentMessageImages
-        .filter((img) => img.base64 || img.url)
-        .map((img) => ({
-          type: 'image_url' as const,
-          image_url: {
-            url: img.base64 ? `data:${img.mimeType || 'image/jpeg'};base64,${img.base64}` : (img.url ?? ''),
-          },
-        }));
-      const last = messages[messages.length - 1];
-      const lastContent: ContentPart[] =
-        typeof last.content === 'string'
-          ? [{ type: 'text', text: last.content }, ...imageParts]
-          : [...(last.content ?? []), ...imageParts];
-      finalMessages = [...messages.slice(0, -1), { ...last, content: lastContent }];
-    }
+    const finalMessages = messages;
 
     let provider: VisionCapability | null = null;
     const sessionId = options?.sessionId;
