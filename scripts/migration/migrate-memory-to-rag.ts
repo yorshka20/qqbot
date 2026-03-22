@@ -27,7 +27,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, extname, join } from 'node:path';
 import * as JSONC from 'jsonc-parser';
 import { v5 as uuidv5 } from 'uuid';
 
@@ -38,7 +38,7 @@ import { v5 as uuidv5 } from 'uuid';
 const MEMORY_DIR = 'data/memory';
 const MIGRATION_OUTPUT_DIR = 'data/memory_migration';
 const GROUP_MEMORY_FILENAME = '_global_.txt';
-const CONFIG_PATH = process.env.CONFIG_PATH || 'config.jsonc';
+const CONFIG_PATH = process.env.CONFIG_PATH || 'config.d';
 
 // Core scopes (must match src/core/config/types/memory.ts)
 const USER_CORE_SCOPES = ['identity', 'preference', 'opinion', 'relationship', 'behavior', 'instruction'] as const;
@@ -113,12 +113,8 @@ interface MemorySection {
 // ============================================================================
 
 function loadLLMConfig(): LLMConfig {
-  if (!existsSync(CONFIG_PATH)) {
-    throw new Error(`Config file not found: ${CONFIG_PATH}`);
-  }
-
-  const configContent = readFileSync(CONFIG_PATH, 'utf-8');
-  const config = JSONC.parse(configContent) as Record<string, unknown>;
+  const { loadConfigDir } = require('../../src/core/config/loadConfigDir') as typeof import('../../src/core/config/loadConfigDir');
+  const config = loadConfigDir(CONFIG_PATH);
 
   const aiConfig = config.ai as Record<string, unknown> | undefined;
   const providers = aiConfig?.providers as Record<string, unknown> | undefined;
@@ -148,12 +144,8 @@ function loadLLMConfig(): LLMConfig {
 }
 
 function loadRAGConfig(): RAGConfig {
-  if (!existsSync(CONFIG_PATH)) {
-    throw new Error(`Config file not found: ${CONFIG_PATH}`);
-  }
-
-  const configContent = readFileSync(CONFIG_PATH, 'utf-8');
-  const config = JSONC.parse(configContent) as Record<string, unknown>;
+  const { loadConfigDir } = require('../../src/core/config/loadConfigDir') as typeof import('../../src/core/config/loadConfigDir');
+  const config = loadConfigDir(CONFIG_PATH);
 
   const ragConfig = config.rag as Record<string, unknown> | undefined;
 

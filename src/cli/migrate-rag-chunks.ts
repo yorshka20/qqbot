@@ -8,9 +8,7 @@
 
 import 'reflect-metadata';
 
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { parse as parseJsonc } from 'jsonc-parser';
+import { loadConfigDir } from '@/core/config/loadConfigDir';
 import { chunkText } from '@/services/retrieval/rag/chunkText';
 import { OllamaEmbedClient } from '@/services/retrieval/rag/OllamaEmbedClient';
 import { QdrantClient } from '@/services/retrieval/rag/QdrantClient';
@@ -29,14 +27,8 @@ const overlap = Number(getArg('overlap', '100'));
 // ── Load config ──
 
 function loadConfig() {
-  const configPath = process.env.CONFIG_PATH ?? './config.jsonc';
-  const resolved = resolve(configPath);
-  if (!existsSync(resolved)) {
-    console.error(`Config not found: ${resolved}`);
-    process.exit(1);
-  }
-  const content = readFileSync(resolved, 'utf-8');
-  return parseJsonc(content) as Record<string, unknown>;
+  const configDir = process.env.CONFIG_PATH ?? './config.d';
+  return loadConfigDir(configDir);
 }
 
 const config = loadConfig();

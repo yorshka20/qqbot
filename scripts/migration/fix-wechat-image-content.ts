@@ -14,7 +14,7 @@ import { parse as parseJsonc } from 'jsonc-parser';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 const DB_PATH = resolve('data/wechat.db');
-const CONFIG_PATH = resolve(process.env.CONFIG_PATH ?? 'config.jsonc');
+const CONFIG_PATH = resolve(process.env.CONFIG_PATH ?? 'config.d');
 
 // ────────────────────────────────────────────────────────────────────────────
 // XML helpers (duplicated for script isolation)
@@ -208,8 +208,8 @@ function sanitizeFolderName(name: string): string {
 
 function loadPadProConfig(): PadProConfig | null {
   try {
-    const raw = readFileSync(CONFIG_PATH, 'utf-8');
-    const config = parseJsonc(raw) as {
+    const { loadConfigDir } = require('../../src/core/config/loadConfigDir') as typeof import('../../src/core/config/loadConfigDir');
+    const config = loadConfigDir(CONFIG_PATH) as {
       plugins?: { list?: Array<{ name: string; config?: { padpro?: PadProConfig } }> };
     };
     const plugin = config.plugins?.list?.find((p) => p.name === 'wechatIngest');

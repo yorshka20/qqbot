@@ -1,9 +1,10 @@
 // Configuration management - main entry point
 
-import { existsSync, readFileSync } from 'fs';
-import { parse as parseJsonc } from 'jsonc-parser';
-import { extname, resolve } from 'path';
+import { existsSync, readdirSync, statSync } from 'fs';
+import { resolve } from 'path';
 import { ConfigError } from '@/utils/errors';
+import { logger } from '@/utils/logger';
+import { loadConfigDir } from './loadConfigDir';
 // Import all config types
 import type { AIConfig, AIProviderCapability, ContextMemoryConfig, SessionProviderConfig } from './types/ai';
 import type { BotSelfConfig, ClaudeCodeServiceConfig, FileReadServiceConfig, StaticServerConfig } from './types/bot';
@@ -89,8 +90,8 @@ export class Config {
 
   constructor(configPath?: string) {
     try {
-      const resolvedPath = this.resolveConfigPath(configPath);
-      this.config = this.loadConfig(resolvedPath);
+      const resolvedDir = this.resolveConfigDir(configPath);
+      this.config = this.loadFromDir(resolvedDir);
       this.validateConfig();
     } catch (error) {
       if (error instanceof ConfigError) {
@@ -103,88 +104,37 @@ export class Config {
     }
   }
 
-  private resolveConfigPath(configPath?: string): string {
+  private resolveConfigDir(configPath?: string): string {
     // Priority: 1. constructor argument, 2. CONFIG_PATH env var, 3. default location
-    if (configPath) {
-      const resolved = resolve(configPath);
-      if (!existsSync(resolved)) {
-        throw new ConfigError(`Config file not found at specified path: ${configPath} (resolved: ${resolved})`);
+    const candidates = [configPath, process.env.CONFIG_PATH, resolve(process.cwd(), 'config.d')];
+
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const resolved = resolve(candidate);
+      if (existsSync(resolved) && statSync(resolved).isDirectory()) {
+        return resolved;
       }
-      // Validate file extension
-      const ext = extname(resolved).toLowerCase();
-      if (ext !== '.jsonc') {
-        throw new ConfigError(`Config file must have .jsonc extension. Found: ${ext} at ${resolved}`);
-      }
-      return resolved;
     }
 
-    // Check CONFIG_PATH environment variable
-    const envConfigPath = process.env.CONFIG_PATH;
-    if (envConfigPath) {
-      const resolved = resolve(envConfigPath);
-      if (!existsSync(resolved)) {
-        throw new ConfigError(`Config file not found at CONFIG_PATH: ${envConfigPath} (resolved: ${resolved})`);
-      }
-      // Validate file extension
-      const ext = extname(resolved).toLowerCase();
-      if (ext !== '.jsonc') {
-        throw new ConfigError(`Config file must have .jsonc extension. Found: ${ext} at ${resolved}`);
-      }
-      return resolved;
-    }
-
-    // Try default location (project root) - only .jsonc
-    const defaultPath = resolve(process.cwd(), 'config.jsonc');
-
-    if (existsSync(defaultPath)) {
-      return defaultPath;
-    }
-
-    // No config file found
     throw new ConfigError(
-      `Config file not found. Please provide a config.jsonc file via:\n` +
-        `  1. Config constructor argument: new Config('/path/to/config.jsonc')\n` +
-        `  2. CONFIG_PATH environment variable: CONFIG_PATH=/path/to/config.jsonc\n` +
-        `  3. Place config.jsonc in project root: ${defaultPath}\n` +
-        `  You can copy config.example.json to config.jsonc as a starting point.`,
+      `Config directory not found. Please provide a config directory via:\n` +
+        `  1. Config constructor argument: new Config('/path/to/config.d')\n` +
+        `  2. CONFIG_PATH environment variable: CONFIG_PATH=/path/to/config.d\n` +
+        `  3. Place config.d/ directory in project root: ${resolve(process.cwd(), 'config.d')}\n` +
+        `  The directory should contain .jsonc files, each contributing top-level config keys.`,
     );
   }
 
-  private loadConfig(configPath: string): BotConfig {
-    try {
-      const configContent = readFileSync(configPath, 'utf-8');
+  private loadFromDir(dirPath: string): BotConfig {
+    const merged = loadConfigDir(dirPath);
 
-      // Parse JSONC (JSON with Comments)
-      const parseErrors: Array<{
-        error: number;
-        offset: number;
-        length: number;
-      }> = [];
-      const config = parseJsonc(configContent, parseErrors) as BotConfig;
+    // Log loaded files
+    const files = readdirSync(dirPath)
+      .filter((f) => f.endsWith('.jsonc'))
+      .sort();
+    logger.info(`[Config] Loaded ${files.length} config files from ${dirPath}: ${files.join(', ')}`);
 
-      if (parseErrors.length > 0) {
-        const errorMessages = parseErrors.map((err) => `Error ${err.error} at offset ${err.offset}`);
-        throw new ConfigError(`JSONC parse errors in ${configPath}: ${errorMessages.join(', ')}`);
-      }
-
-      // Validate that config has required structure
-      if (!config || typeof config !== 'object') {
-        throw new ConfigError('Config file must contain a valid JSON object');
-      }
-
-      return config;
-    } catch (error) {
-      if (error instanceof ConfigError) {
-        throw error;
-      }
-      if (error instanceof SyntaxError) {
-        throw new ConfigError(`Invalid JSONC in config file ${configPath}: ${error.message}`);
-      }
-      if (error instanceof Error) {
-        throw new ConfigError(`Failed to read config file ${configPath}: ${error.message}`);
-      }
-      throw new ConfigError(`Failed to load config file ${configPath}`);
-    }
+    return merged as unknown as BotConfig;
   }
 
   private validateConfig(): void {

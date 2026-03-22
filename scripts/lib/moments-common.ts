@@ -66,9 +66,10 @@ export interface ParsedArgs {
 // Config loading
 // ============================================================================
 
-export function loadConfig(configPath = 'config.jsonc'): AppConfig {
-  const raw = readFileSync(process.env.CONFIG_PATH || configPath, 'utf-8');
-  return JSONC.parse(raw) as AppConfig;
+export function loadConfig(configPath = 'config.d'): AppConfig {
+  const { loadConfigDir } = require('../../src/core/config/loadConfigDir') as typeof import('../../src/core/config/loadConfigDir');
+  const resolved = process.env.CONFIG_PATH || configPath;
+  return loadConfigDir(resolved) as unknown as AppConfig;
 }
 
 /** @deprecated Use resolveLLMConnection instead. Kept for backward compatibility. */

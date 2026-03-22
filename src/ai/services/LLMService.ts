@@ -457,6 +457,11 @@ export class LLMService {
       // Generate with tools
       const response = await this.generateMessagesWithToolSupport(currentMessages, tools, options, currentProviderName);
 
+      // Always use the resolved provider for subsequent rounds (handles internal fallback)
+      if (response.resolvedProviderName) {
+        currentProviderName = response.resolvedProviderName;
+      }
+
       // Get all function calls from this response
       const calls = response.functionCalls ?? [];
 

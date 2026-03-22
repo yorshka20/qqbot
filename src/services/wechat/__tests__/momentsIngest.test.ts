@@ -8,9 +8,7 @@
 // 6. RAG disabled throws error
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parse as parseJsonc } from 'jsonc-parser';
 import type { RAGDocument } from '@/services/retrieval';
 import { parseMomentObjectDesc } from '../moments/momentsParser';
 import { WechatMomentsIngestService } from '../moments/WechatMomentsIngestService';
@@ -319,9 +317,10 @@ interface PadProConfig {
 }
 
 function loadPadProConfig(): PadProConfig | null {
-  const configPath = resolve(process.cwd(), 'config.jsonc');
-  if (!existsSync(configPath)) return null;
-  const raw = parseJsonc(readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
+  const { loadConfigDir } = require('@/core/config/loadConfigDir') as typeof import('@/core/config/loadConfigDir');
+  const configDir = resolve(process.cwd(), 'config.d');
+  let raw: Record<string, unknown>;
+  try { raw = loadConfigDir(configDir); } catch { return null; }
   const plugins = (raw?.plugins as { list?: Array<{ name: string; config?: Record<string, unknown> }> })?.list ?? [];
   const wechat = plugins.find((p) => p.name === 'wechatIngest');
   const padpro = wechat?.config?.padpro as PadProConfig | undefined;

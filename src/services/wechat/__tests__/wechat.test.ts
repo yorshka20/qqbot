@@ -3,9 +3,7 @@
 // Also: WeChatDatabase persistence, WeChatMessageBuffer buffer logic.
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parse as parseJsonc } from 'jsonc-parser';
 import { WeChatMessageBuffer } from '../ingest/WeChatMessageBuffer';
 import type { ParsedWeChatMessage } from '../types';
 import { WeChatDatabase } from '../WeChatDatabase';
@@ -16,9 +14,10 @@ import { WeChatPadProClient } from '../WeChatPadProClient';
 // ────────────────────────────────────────────────────────────────────────────
 
 function loadPadProConfig(): { apiBase: string; authKey: string } | null {
-  const configPath = resolve(process.cwd(), 'config.jsonc');
-  if (!existsSync(configPath)) return null;
-  const raw = parseJsonc(readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
+  const { loadConfigDir } = require('@/core/config/loadConfigDir') as typeof import('@/core/config/loadConfigDir');
+  const configDir = resolve(process.cwd(), 'config.d');
+  let raw: Record<string, unknown>;
+  try { raw = loadConfigDir(configDir); } catch { return null; }
   const plugins = (raw?.plugins as { list?: Array<{ name: string; config?: Record<string, unknown> }> })?.list ?? [];
   const wechat = plugins.find((p) => p.name === 'wechatIngest');
   const padpro = wechat?.config?.padpro as { apiBase?: string; authKey?: string } | undefined;

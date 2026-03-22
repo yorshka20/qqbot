@@ -2,10 +2,10 @@
  * Test: verify fetch-based API access with new cookie.
  * Run: bun run src/services/zhihu/zhihu-puppeteer.test.ts
  */
-import { readFileSync } from 'node:fs';
-import { parse } from 'jsonc-parser';
+import { loadConfigDir } from '@/core/config/loadConfigDir';
 
-const config = parse(readFileSync('config.jsonc', 'utf-8'));
+// biome-ignore lint/suspicious/noExplicitAny: test script
+const config = loadConfigDir('config.d') as any;
 // biome-ignore lint/suspicious/noExplicitAny: test script
 const cookie: string = config.plugins?.list?.find((p: any) => p.name === 'zhihuFeed')?.config?.cookie ?? '';
 
