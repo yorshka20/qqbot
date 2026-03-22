@@ -49,8 +49,6 @@ export interface MemorySection {
 export interface MemoryFilterOptions {
   /** User message or query for relevance matching */
   userMessage: string;
-  /** Maximum total character length for filtered memory (default: 2000) */
-  maxLength?: number;
   /** Scopes that are always included regardless of relevance (default: ['instruction', 'rule']) */
   alwaysIncludeScopes?: string[];
   /** Minimum keyword match score (0-1) to include a section (default: 0.1) */
@@ -400,338 +398,6 @@ export class MemoryService {
   }
 
   /**
-   * Extract keywords from user message for relevance matching.
-   * Removes common stop words and short tokens.
-   */
-  private extractKeywords(text: string): string[] {
-    // Chinese and English stop words
-    const stopWords = new Set([
-      // Chinese common words
-      '的',
-      '了',
-      '是',
-      '在',
-      '我',
-      '有',
-      '和',
-      '就',
-      '不',
-      '人',
-      '都',
-      '一',
-      '一个',
-      '上',
-      '也',
-      '很',
-      '到',
-      '说',
-      '要',
-      '去',
-      '你',
-      '会',
-      '着',
-      '没有',
-      '看',
-      '好',
-      '自己',
-      '这',
-      '那',
-      '什么',
-      '吗',
-      '吧',
-      '呢',
-      '啊',
-      '嗯',
-      '哦',
-      '呀',
-      '啦',
-      '哈',
-      '嘿',
-      '喂',
-      '哎',
-      '唉',
-      '诶',
-      '可以',
-      '怎么',
-      '这个',
-      '那个',
-      '还是',
-      '但是',
-      '因为',
-      '所以',
-      '如果',
-      '虽然',
-      '或者',
-      '而且',
-      '然后',
-      '现在',
-      '已经',
-      '可能',
-      '应该',
-      '需要',
-      '想要',
-      '知道',
-      '觉得',
-      '感觉',
-      '希望',
-      '帮',
-      '帮我',
-      '请',
-      '请问',
-      '谢谢',
-      '好的',
-      '没问题',
-      // English common words
-      'the',
-      'a',
-      'an',
-      'is',
-      'are',
-      'was',
-      'were',
-      'be',
-      'been',
-      'being',
-      'have',
-      'has',
-      'had',
-      'do',
-      'does',
-      'did',
-      'will',
-      'would',
-      'could',
-      'should',
-      'may',
-      'might',
-      'must',
-      'can',
-      'to',
-      'of',
-      'in',
-      'for',
-      'on',
-      'with',
-      'at',
-      'by',
-      'from',
-      'as',
-      'into',
-      'through',
-      'during',
-      'before',
-      'after',
-      'above',
-      'below',
-      'between',
-      'under',
-      'again',
-      'further',
-      'then',
-      'once',
-      'here',
-      'there',
-      'when',
-      'where',
-      'why',
-      'how',
-      'all',
-      'each',
-      'few',
-      'more',
-      'most',
-      'other',
-      'some',
-      'such',
-      'no',
-      'nor',
-      'not',
-      'only',
-      'own',
-      'same',
-      'so',
-      'than',
-      'too',
-      'very',
-      'just',
-      'and',
-      'but',
-      'if',
-      'or',
-      'because',
-      'until',
-      'while',
-      'it',
-      'its',
-      'i',
-      'me',
-      'my',
-      'myself',
-      'we',
-      'our',
-      'ours',
-      'you',
-      'your',
-      'yours',
-      'he',
-      'him',
-      'his',
-      'she',
-      'her',
-      'hers',
-      'they',
-      'them',
-      'their',
-      'what',
-      'which',
-      'who',
-      'whom',
-      'this',
-      'that',
-      'these',
-      'those',
-      'am',
-      'about',
-      'get',
-      'got',
-      'want',
-      'please',
-      'thanks',
-      'thank',
-      'help',
-      'ok',
-      'okay',
-      'yes',
-      'no',
-      'yeah',
-      'yep',
-      'nope',
-    ]);
-
-    // Tokenize: split by whitespace and punctuation, keep Chinese characters together
-    const tokens: string[] = [];
-
-    // Extract Chinese character sequences
-    const chineseMatches = text.match(/[\u4e00-\u9fa5]+/g) || [];
-    for (const match of chineseMatches) {
-      // Split long Chinese sequences into 2-4 character segments for better matching
-      if (match.length <= 4) {
-        tokens.push(match);
-      } else {
-        // Sliding window for longer sequences
-        for (let i = 0; i < match.length - 1; i++) {
-          tokens.push(match.slice(i, i + 2));
-          if (i < match.length - 2) {
-            tokens.push(match.slice(i, i + 3));
-          }
-        }
-      }
-    }
-
-    // Extract English words
-    const englishMatches = text.match(/[a-zA-Z]+/g) || [];
-    tokens.push(...englishMatches.map((w) => w.toLowerCase()));
-
-    // Filter stop words and short tokens
-    return tokens.filter((token) => token.length >= 2 && !stopWords.has(token.toLowerCase()));
-  }
-
-  /**
-   * Calculate relevance score between keywords and a text section.
-   * Returns a score from 0 to 1.
-   */
-  private calculateRelevanceScore(keywords: string[], sectionContent: string): number {
-    if (keywords.length === 0) {
-      return 0;
-    }
-
-    const contentLower = sectionContent.toLowerCase();
-    let matchCount = 0;
-
-    for (const keyword of keywords) {
-      if (contentLower.includes(keyword.toLowerCase())) {
-        matchCount++;
-      }
-    }
-
-    return matchCount / keywords.length;
-  }
-
-  /**
-   * Check if a section should be always included based on its scope.
-   * Matches against both full scope and core scope (e.g., 'instruction' matches 'instruction:special').
-   */
-  private shouldAlwaysInclude(section: MemorySection, alwaysIncludeScopes: string[]): boolean {
-    // Check full scope match (e.g., 'instruction:special')
-    if (alwaysIncludeScopes.includes(section.scope)) {
-      return true;
-    }
-    // Check core scope match (e.g., 'instruction' matches 'instruction:special')
-    if (alwaysIncludeScopes.includes(section.parsedScope.core)) {
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Filter memory sections based on relevance to user message.
-   * Always includes scopes like 'instruction' and 'rule' (matches core scope too).
-   */
-  private filterSectionsByRelevance(
-    sections: MemorySection[],
-    keywords: string[],
-    options: {
-      alwaysIncludeScopes: string[];
-      minRelevanceScore: number;
-      maxLength: number;
-    },
-  ): MemorySection[] {
-    const result: MemorySection[] = [];
-    let currentLength = 0;
-
-    // First pass: always-include scopes (matches both full and core scope)
-    for (const section of sections) {
-      if (this.shouldAlwaysInclude(section, options.alwaysIncludeScopes)) {
-        const sectionText = `[${section.scope}]\n${section.content}`;
-        if (currentLength + sectionText.length <= options.maxLength) {
-          result.push(section);
-          currentLength += sectionText.length + 2; // +2 for newlines
-        }
-      }
-    }
-
-    // Second pass: relevance-based filtering
-    const scoredSections = sections
-      .filter((section) => !this.shouldAlwaysInclude(section, options.alwaysIncludeScopes))
-      .map((section) => ({
-        section,
-        score: this.calculateRelevanceScore(keywords, section.content),
-      }))
-      .filter((item) => item.score >= options.minRelevanceScore)
-      .sort((a, b) => b.score - a.score);
-
-    for (const { section } of scoredSections) {
-      const sectionText = `[${section.scope}]\n${section.content}`;
-      if (currentLength + sectionText.length <= options.maxLength) {
-        result.push(section);
-        currentLength += sectionText.length + 2;
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Format filtered sections back to memory text format.
-   */
-  private formatSectionsToText(sections: MemorySection[]): string {
-    if (sections.length === 0) {
-      return '';
-    }
-    return sections.map((s) => `[${s.scope}]\n${s.content}`).join('\n\n');
-  }
-
-  /**
    * Get context-aware filtered memory for reply injection.
    * Uses RAG semantic search when available, falls back to keyword matching.
    *
@@ -740,45 +406,32 @@ export class MemoryService {
    * @param options - Filter options including user message for relevance matching
    * @returns Filtered memory text for both group and user
    */
-  getFilteredMemoryForReply(
-    groupId: string,
-    userId: string | undefined,
-    options: MemoryFilterOptions,
-  ): FilteredMemoryResult {
-    // Use RAG if available (async method, but we provide sync fallback)
-    // The async version is preferred and should be used when possible
-    return this.getFilteredMemoryForReplyKeyword(groupId, userId, options);
-  }
-
   /**
-   * Async version that uses RAG semantic search when available.
-   * This is the preferred method for context-aware memory filtering.
+   * Get context-aware filtered memory for reply injection.
+   * Uses RAG semantic search when available, falls back to returning all memory.
    */
   async getFilteredMemoryForReplyAsync(
     groupId: string,
     userId: string | undefined,
     options: MemoryFilterOptions,
   ): Promise<FilteredMemoryResult> {
-    // Try RAG-based semantic search first
-    if (this.ragService?.isEnabled() && options.userMessage.trim()) {
-      try {
-        const ragResult = await this.getFilteredMemoryWithRAG(groupId, userId, options);
-        if (ragResult.stats.groupIncluded > 0 || ragResult.stats.userIncluded > 0) {
-          logger.debug(
-            `[MemoryService] RAG filtered memory: group ${ragResult.stats.groupIncluded}/${ragResult.stats.groupTotal}, ` +
-              `user ${ragResult.stats.userIncluded}/${ragResult.stats.userTotal}`,
-          );
-          return ragResult;
-        }
-        // RAG returned nothing, fall back to always-include scopes
-        logger.debug('[MemoryService] RAG returned no results, using always-include scopes only');
-      } catch (err) {
-        logger.warn('[MemoryService] RAG search failed, falling back to keyword matching:', err);
-      }
+    // RAG is required for memory injection — without it, skip to save tokens
+    if (!this.ragService?.isEnabled() || !options.userMessage.trim()) {
+      logger.debug('[MemoryService] RAG not available or empty query, skipping memory injection');
+      return { groupMemoryText: '', userMemoryText: '', stats: { groupIncluded: 0, groupTotal: 0, userIncluded: 0, userTotal: 0 } };
     }
 
-    // Fall back to keyword-based filtering
-    return this.getFilteredMemoryForReplyKeyword(groupId, userId, options);
+    try {
+      const ragResult = await this.getFilteredMemoryWithRAG(groupId, userId, options);
+      logger.debug(
+        `[MemoryService] RAG filtered memory: group ${ragResult.stats.groupIncluded}/${ragResult.stats.groupTotal}, ` +
+          `user ${ragResult.stats.userIncluded}/${ragResult.stats.userTotal}`,
+      );
+      return ragResult;
+    } catch (err) {
+      logger.warn('[MemoryService] RAG search failed, skipping memory injection:', err);
+      return { groupMemoryText: '', userMemoryText: '', stats: { groupIncluded: 0, groupTotal: 0, userIncluded: 0, userTotal: 0 } };
+    }
   }
 
   /**
@@ -795,7 +448,6 @@ export class MemoryService {
       throw new Error('RAG service not configured');
     }
 
-    const maxLength = options.maxLength ?? 2000;
     const alwaysIncludeScopes = options.alwaysIncludeScopes ?? ['instruction', 'rule'];
     const minScore = options.minRelevanceScore ?? 0.5;
 
@@ -827,27 +479,20 @@ export class MemoryService {
     const { groupMemoryText: ragGroupText, userMemoryText: ragUserText } =
       this.ragService.formatResultsAsMemoryText(relevantResults);
 
-    // Combine always-include with RAG results, respecting length budget
+    // Combine always-include with RAG results
     const groupParts: string[] = [];
     const userParts: string[] = [];
-    let currentLength = 0;
 
-    // Add always-include sections first
     if (alwaysGroupText) {
       groupParts.push(alwaysGroupText);
-      currentLength += alwaysGroupText.length;
     }
     if (alwaysUserText) {
       userParts.push(alwaysUserText);
-      currentLength += alwaysUserText.length;
     }
-
-    // Add RAG results within budget
-    if (ragGroupText && currentLength + ragGroupText.length <= maxLength) {
+    if (ragGroupText) {
       groupParts.push(ragGroupText);
-      currentLength += ragGroupText.length;
     }
-    if (ragUserText && currentLength + ragUserText.length <= maxLength) {
+    if (ragUserText) {
       userParts.push(ragUserText);
     }
 
@@ -872,64 +517,55 @@ export class MemoryService {
     };
   }
 
+  // ============================================================================
+  // RAG sync
+  // ============================================================================
+
   /**
-   * Keyword-based memory filtering (fallback when RAG is not available).
+   * Re-sync all local markdown memory files for a group to Qdrant.
+   * Deletes old RAG data per-user/group slot before re-indexing.
+   * Returns sync stats.
    */
-  private getFilteredMemoryForReplyKeyword(
-    groupId: string,
-    userId: string | undefined,
-    options: MemoryFilterOptions,
-  ): FilteredMemoryResult {
-    const maxLength = options.maxLength ?? 2000;
-    const alwaysIncludeScopes = options.alwaysIncludeScopes ?? ['instruction', 'rule'];
-    const minRelevanceScore = options.minRelevanceScore ?? 0.1;
-
-    // Extract keywords from user message
-    const keywords = this.extractKeywords(options.userMessage);
-
-    // Parse and filter group memory
-    const groupMemoryRaw = this.getGroupMemoryText(groupId);
-    const groupSections = this.parseMemorySections(groupMemoryRaw);
-    const filteredGroupSections = this.filterSectionsByRelevance(groupSections, keywords, {
-      alwaysIncludeScopes,
-      minRelevanceScore,
-      maxLength: Math.floor(maxLength * 0.6),
-    });
-
-    // Parse and filter user memory
-    let userSections: MemorySection[] = [];
-    let filteredUserSections: MemorySection[] = [];
-    if (userId) {
-      const userMemoryRaw = this.getUserMemoryText(groupId, userId);
-      userSections = this.parseMemorySections(userMemoryRaw);
-      filteredUserSections = this.filterSectionsByRelevance(userSections, keywords, {
-        alwaysIncludeScopes,
-        minRelevanceScore,
-        maxLength: Math.floor(maxLength * 0.4),
-      });
+  async syncMemoryToRAG(groupId: string): Promise<{ groupSynced: boolean; usersSynced: string[]; totalFacts: number }> {
+    if (!this.ragService?.isEnabled()) {
+      throw new Error('RAG service is not available');
     }
 
-    const groupMemoryText = this.formatSectionsToText(filteredGroupSections);
-    const userMemoryText = this.formatSectionsToText(filteredUserSections);
+    const safeGroupId = this.sanitizePathSegment(groupId);
+    const groupDir = join(this.basePath, safeGroupId);
+    let totalFacts = 0;
 
-    // Log filtering stats
-    if (groupSections.length > 0 || userSections.length > 0) {
-      logger.debug(
-        `[MemoryService] Keyword filtered memory: group ${filteredGroupSections.length}/${groupSections.length}, ` +
-          `user ${filteredUserSections.length}/${userSections.length}, ` +
-          `keywords: [${keywords.slice(0, 5).join(', ')}${keywords.length > 5 ? '...' : ''}]`,
-      );
+    // Sync group memory
+    const groupText = this.getGroupMemoryText(groupId);
+    const groupSections = this.parseMemorySections(groupText);
+    await this.ragService.indexMemorySections(groupId, GROUP_MEMORY_USER_ID, groupSections);
+    const groupSynced = groupSections.length > 0;
+    totalFacts += groupSections.length;
+
+    // Sync all user memories
+    const usersSynced: string[] = [];
+    if (existsSync(groupDir)) {
+      const userIds = readdirSync(groupDir)
+        .filter((f) => f.endsWith('.txt') && f !== '_global_.txt')
+        .map((f) => f.replace(/\.txt$/, ''));
+
+      for (const userId of userIds) {
+        const userText = this.getUserMemoryText(groupId, userId);
+        const userSections = this.parseMemorySections(userText);
+        if (userSections.length > 0) {
+          await this.ragService.indexMemorySections(groupId, userId, userSections);
+          usersSynced.push(userId);
+          totalFacts += userSections.length;
+        }
+      }
     }
 
-    return {
-      groupMemoryText,
-      userMemoryText,
-      stats: {
-        groupIncluded: filteredGroupSections.length,
-        groupTotal: groupSections.length,
-        userIncluded: filteredUserSections.length,
-        userTotal: userSections.length,
-      },
-    };
+    logger.info(
+      `[MemoryService] RAG sync completed for group ${groupId}: ` +
+        `group=${groupSynced ? groupSections.length + ' sections' : 'empty'}, ` +
+        `users=${usersSynced.length}, totalFacts=${totalFacts}`,
+    );
+
+    return { groupSynced, usersSynced, totalFacts };
   }
 }

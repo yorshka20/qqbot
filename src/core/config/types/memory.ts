@@ -41,8 +41,6 @@ export interface ParsedScope {
 export interface MemoryFilterConfig {
   /** Enable context-aware memory filtering (default: true) */
   enabled?: boolean;
-  /** Maximum total character length for filtered memory (default: 2000) */
-  maxLength?: number;
   /** Scopes that are always included regardless of relevance (default: ['instruction', 'rule']) */
   alwaysIncludeScopes?: string[];
   /** Minimum keyword match score (0-1) to include a section (default: 0.1) */

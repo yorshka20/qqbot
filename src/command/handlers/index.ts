@@ -8,6 +8,7 @@ export * from './GeminiKeyModeCommandHandler';
 export * from './GroupDedupCommandHandler';
 export * from './I2vCommandHandler';
 export * from './MemoryCommandHandler';
+export * from './MemorySyncCommandHandler';
 export * from './NaiPlusCommandHandler';
 export * from './NovelAICommandHandler';
 export * from './ScheduleCommandHandler';

@@ -120,7 +120,6 @@ export class ContextEnrichmentStage implements ReplyStage {
 
     const result = await this.memoryService.getFilteredMemoryForReplyAsync(groupId, userId, {
       userMessage,
-      maxLength: filterConfig?.maxLength ?? 2000,
       alwaysIncludeScopes: filterConfig?.alwaysIncludeScopes ?? ['instruction', 'rule'],
       minRelevanceScore: filterConfig?.minRelevanceScore ?? 0.5,
     });

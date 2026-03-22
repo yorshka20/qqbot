@@ -33,10 +33,6 @@ export class PromptAssemblyStage implements ReplyStage {
   async execute(ctx: ReplyPipelineContext): Promise<void> {
     const { hookContext } = ctx;
 
-    // Render prompt summary helpers
-    const taskResultText = this.getToolResultsSummary(ctx.taskResultsSummary);
-    const searchResultText = ''; // Search results are now handled via tool execution
-
     // When whitelist is not full permissions, inject fragment into base system via variable.
     const groupCaps = hookContext.metadata.get('whitelistGroupCapabilities');
     const whitelistFragment =
@@ -55,14 +51,20 @@ export class PromptAssemblyStage implements ReplyStage {
       contextInstruct,
       toolInstruct,
     });
+    const sender = hookContext.message?.sender;
+    const senderNickname = sender?.nickname ?? sender?.card ?? '';
+    const senderUserId = hookContext.message?.userId ?? '';
+    const senderIdentity = senderNickname
+      ? `[speaker:${senderUserId}:${senderNickname}]`
+      : `[speaker:${senderUserId}]`;
+
     const frameCurrentQuery = this.promptManager.render('llm.reply.user_frame', {
       userMessage: ctx.userMessage,
+      senderIdentity,
     });
     const finalUserBlocks = {
       memoryContext: ctx.memoryContextText,
       ragContext: ctx.retrievedConversationSection,
-      searchResults: searchResultText,
-      taskResults: taskResultText,
       currentQuery: frameCurrentQuery,
     };
 
@@ -170,13 +172,6 @@ export class PromptAssemblyStage implements ReplyStage {
       }
     }
     return parts;
-  }
-
-  private getToolResultsSummary(taskResults: string): string {
-    if (!taskResults) {
-      return '';
-    }
-    return this.promptManager.render('task.result.render', { taskResults });
   }
 
   private messageHashCheck(messages: ChatMessage[]) {

@@ -1,4 +1,6 @@
 请结合历史轮次与上述结构化上下文作答。
 
+当前说话人：{{senderIdentity}}
+
 当前问题：
 {{userMessage}}

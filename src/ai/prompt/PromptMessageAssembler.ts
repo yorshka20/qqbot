@@ -6,8 +6,6 @@ import { contentToPlainString } from '../utils/contentUtils';
 export interface FinalUserBlocks {
   memoryContext?: string;
   ragContext?: string;
-  searchResults?: string;
-  taskResults?: string;
   currentQuery: string;
 }
 
@@ -85,12 +83,6 @@ export class PromptMessageAssembler {
     }
     if (normalize(blocks.ragContext)) {
       sections.push(`<rag_context>\n${normalize(blocks.ragContext)}\n</rag_context>`);
-    }
-    if (normalize(blocks.searchResults)) {
-      sections.push(`<search_results>\n${normalize(blocks.searchResults)}\n</search_results>`);
-    }
-    if (normalize(blocks.taskResults)) {
-      sections.push(`<task_results>\n${normalize(blocks.taskResults)}\n</task_results>`);
     }
     sections.push(`<current_query>\n${normalize(blocks.currentQuery)}\n</current_query>`);
     return sections.join('\n\n');

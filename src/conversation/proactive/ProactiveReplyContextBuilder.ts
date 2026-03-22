@@ -127,22 +127,13 @@ export class ProactiveReplyContextBuilder {
     let groupMemoryText: string;
     let userMemoryText: string;
 
-    // Use RAG-based async filtering when available and userMessage is provided
-    if (this.deps.memoryService.isRAGEnabled() && userMessage?.trim()) {
-      const result = await this.deps.memoryService.getFilteredMemoryForReplyAsync(groupId, userId, {
-        userMessage,
-        maxLength: 2000,
-        alwaysIncludeScopes: ['instruction', 'rule'],
-        minRelevanceScore: 0.5,
-      });
-      groupMemoryText = result.groupMemoryText;
-      userMemoryText = result.userMemoryText;
-    } else {
-      // Fallback to direct file read when RAG not available
-      const result = this.deps.memoryService.getMemoryTextForReply(groupId, userId);
-      groupMemoryText = result.groupMemoryText;
-      userMemoryText = result.userMemoryText;
-    }
+    const result = await this.deps.memoryService.getFilteredMemoryForReplyAsync(groupId, userId, {
+      userMessage: userMessage ?? '',
+      alwaysIncludeScopes: ['instruction', 'rule'],
+      minRelevanceScore: 0.5,
+    });
+    groupMemoryText = result.groupMemoryText;
+    userMemoryText = result.userMemoryText;
 
     const parts: string[] = [];
     if (groupMemoryText) {
