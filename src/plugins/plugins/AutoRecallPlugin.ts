@@ -10,6 +10,8 @@ import { PluginBase } from '../PluginBase';
 
 interface AutoRecallPluginConfig {
   recallDelay?: number; // Delay in milliseconds before recalling (default: 60000 = 1 minute)
+  /** User IDs that should NOT be auto-recalled (whitelist) */
+  whitelistUserIds?: string[];
 }
 
 @RegisterPlugin({
@@ -21,7 +23,8 @@ export class AutoRecallPlugin extends PluginBase {
   // Store active recall timers to allow cleanup if plugin is disabled
   private recallTimers = new Map<string, NodeJS.Timeout>();
   private messageAPI!: MessageAPI;
-  private recallDelay: number = 60000; // Default: 1 minute
+  private recallDelay: number = 60000;
+  private whitelistUserIds = new Set<string>();
 
   async onInit(): Promise<void> {
     // Cleanup any existing timers when plugin is initialized
@@ -30,7 +33,15 @@ export class AutoRecallPlugin extends PluginBase {
     this.messageAPI = new MessageAPI(this.api);
     // Load configuration
     const config = (this.pluginConfig?.config || {}) as AutoRecallPluginConfig;
-    this.recallDelay = config.recallDelay ?? 60000; // Default: 1 minute
+    this.recallDelay = config.recallDelay ?? 60000;
+    if (config.whitelistUserIds && Array.isArray(config.whitelistUserIds)) {
+      for (const id of config.whitelistUserIds) {
+        this.whitelistUserIds.add(String(id));
+      }
+    }
+    if (this.whitelistUserIds.size > 0) {
+      logger.info(`[AutoRecallPlugin] Whitelist: ${this.whitelistUserIds.size} user(s) excluded from auto-recall`);
+    }
   }
 
   async onDisable(): Promise<void> {
@@ -71,6 +82,11 @@ export class AutoRecallPlugin extends PluginBase {
 
     // Only trigger for private chats or temporary sessions
     if (messageType !== 'private' && messageScene !== 'temp') {
+      return false;
+    }
+
+    // Skip whitelisted users
+    if (this.whitelistUserIds.has(String(context.message.userId))) {
       return false;
     }
 
