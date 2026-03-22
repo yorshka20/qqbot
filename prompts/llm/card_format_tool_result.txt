@@ -13,6 +13,7 @@
 - 术语定义 → `knowledge`；数据/统计 → `stats`；核心结论 → `highlight`
 - 问答形式 → `qa`；引用/金句 → `quote`
 - 段落与卡片交替出现，顺序与原文一致。
+- **⚠️ 禁止连续使用多个 `paragraph` 卡片。** 若相邻内容均为自然语言段落，必须合并为一个 `paragraph`，在 `content` 内用多个 `<p>` 标签分段（如 `"<p>第一段</p><p>第二段</p>"`），或用 `<span>`、`<br>` 等 HTML 元素组合。两个 `paragraph` 之间必须至少隔一个其他类型的卡片。
 
 ## 可用卡片类型
 {{cardTypeSpec}}
