@@ -23,7 +23,7 @@
 | --------------------------------------- | ----------------------------------------------------------------- |
 | [2026-03-18](../workbook/2026-03-18.md) | Gemini tool use 多轮会话格式修复；toolCallId 缺失导致卡片渲染失败；CardRenderer 外部 CDN 超时修复；Gemini thinking model thought_signature 修复；max rounds 空回复修复 |
 | [2026-03-19](../workbook/2026-03-19.md) | 知乎 Feed 订阅服务实现（ZhihuClient / ZhihuContentParser / ZhihuFeedService / ZhihuDigestService + Plugin）；execute_code Tool 实现（LLM 代码执行沙箱 + 工具注入）；微信日报功能修复（工具可见性 + AgentLoop 工具作用域 + 报告 URL 路径） |
-| [2026-03-22](../workbook/2026-03-22.md) | WeChat 公众号黑名单与空名称过滤增强；SQLite 历史数据清理 |
+| [2026-03-22](../workbook/2026-03-22.md) | WeChat 公众号黑名单与空名称过滤增强；SQLite 历史数据清理；Provider Trigger thinking model 修复 |
 
 ---
 
@@ -222,7 +222,13 @@ import { logger } from "../../../utils/logger"; // 避免
 - Gemini 需要 `mapChatMessagesToGeminiContents()` 转换为原生格式
 - 缺少 `toolCallId` 时需生成合成 ID，确保所有 provider 使用统一的结构化 `tool_calls` 格式
 
-### 7. Gemini thinking model 的 `thoughtSignature`
+### 7. Thinking model `<think>` 标签污染 LLM 布尔判断
+
+**问题**: Thinking model（如 Qwen3）在响应中包含 `<think>...</think>` 块，导致 `parseLlmTrueFalse` 等简单解析函数无法正确提取结果。
+
+**解决**: `parseLlmTrueFalse` 在解析前先 strip `<think>` 标签。对于 Groq provider，当 `reasoningEffort === 'none'` 时传递 `reasoning_format: 'hidden'` 从 API 层面禁用 thinking 输出。详见 [2026-03-22 工作日志](../workbook/2026-03-22.md)。
+
+### 8. Gemini thinking model 的 `thoughtSignature`
 
 **问题**: Gemini thinking model（如 gemini-2.5-flash）返回 functionCall 时附带 `thoughtSignature`，如果下一轮不回传则 API 返回 400。
 
