@@ -49,6 +49,8 @@ export interface HookContextMetadata {
   replyOnly: boolean;
   /** Set by CardFormatToolExecutor when the LLM called format_as_card and produced card JSON. Reset per generation attempt. */
   usedCardFormat?: boolean;
+  /** Explicit sendAsForward hint from command handler; consumed by ReplyPrepareSystem. */
+  explicitSendAsForward?: boolean;
 }
 
 type MetadataKeys = keyof HookContextMetadata;
@@ -58,7 +60,7 @@ type MetadataValues<K extends MetadataKeys = MetadataKeys> = HookContextMetadata
 const DEFAULT_METADATA: Required<
   Omit<
     HookContextMetadata,
-    'replyTrigger' | 'replyTriggerType' | 'contextMode' | 'suggestedProvider' | 'usedCardFormat'
+    'replyTrigger' | 'replyTriggerType' | 'contextMode' | 'suggestedProvider' | 'usedCardFormat' | 'explicitSendAsForward'
   >
 > = {
   sessionId: '',
@@ -86,6 +88,7 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'suggestedProvider',
   'whitelistGroupCapabilities',
   'usedCardFormat',
+  'explicitSendAsForward',
 ];
 
 /**

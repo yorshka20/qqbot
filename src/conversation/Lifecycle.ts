@@ -81,10 +81,10 @@ export class Lifecycle {
       ];
 
       for (const stageFn of stages) {
-        const result = await stageFn(context, messageId);
+        const success = await stageFn(context, messageId);
         // if stage fails, run COMPLETE first so RAG/DB persistence always runs, then return
         // Skip to COMPLETE when access denied or no direct reply path (whitelistDenied or postProcessOnly)
-        if (!result || isNoReplyPath(context)) {
+        if (!success || isNoReplyPath(context)) {
           logger.debug(`[Lifecycle] ⚪ COMPLETE (no-reply path) | messageId=${messageId}`);
           await this.executeStageComplete(context, messageId);
           return false;
@@ -115,22 +115,32 @@ export class Lifecycle {
   }
 
   /**
-   * Execute only PROCESS stage (for reply to existing message).
-   * Does not run RECEIVE, PREPROCESS, PREPARE, SEND, COMPLETE; pipeline handles send via handleReply.
+   * Execute PROCESS → PREPARE → SEND stages (for reply to existing message).
+   * Skips RECEIVE and PREPROCESS (no command routing needed); COMPLETE is run separately by pipeline.
    */
-  async executeProcessOnly(context: HookContext): Promise<boolean> {
+  async executeProcessAndSend(context: HookContext): Promise<boolean> {
     const messageId = this.getMessageId(context);
-    logger.debug(`[Lifecycle] Starting PROCESS only | messageId=${messageId}`);
+    logger.debug(`[Lifecycle] Starting PROCESS+SEND | messageId=${messageId}`);
     try {
-      const result = await this.executeStageProcess(context, messageId);
-      if (!result) {
-        return false;
+      const stages = [
+        this.executeStageProcess.bind(this),
+        this.executeStagePrepare.bind(this),
+        this.executeStageSend.bind(this),
+      ];
+
+      for (const stageFn of stages) {
+        const success = await stageFn(context, messageId);
+        if (!success) {
+          logger.debug(`[Lifecycle] PROCESS+SEND interrupted | messageId=${messageId}`);
+          return false;
+        }
       }
-      logger.info(`[Lifecycle] PROCESS only completed | messageId=${messageId}`);
+
+      logger.info(`[Lifecycle] PROCESS+SEND completed | messageId=${messageId}`);
       return true;
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.error(`[Lifecycle] PROCESS only failed | messageId=${messageId}`, err);
+      logger.error(`[Lifecycle] PROCESS+SEND failed | messageId=${messageId}`, err);
       await this.handleError(context, err, messageId);
       return false;
     }
@@ -138,7 +148,7 @@ export class Lifecycle {
 
   /**
    * Stage 1: ON_MESSAGE_RECEIVED
-   * Initial message reception and validation
+   * Initial message reception and validation. whitelist plugin and permission check is here.
    */
   private async executeStageReceive(context: HookContext, messageId: string): Promise<boolean> {
     logger.debug(`[Lifecycle] 🟦[1] Stage: ON_MESSAGE_RECEIVED`);
@@ -209,14 +219,7 @@ export class Lifecycle {
   private async executeStagePrepare(context: HookContext, messageId: string): Promise<boolean> {
     logger.debug(`[Lifecycle] 🟦[4] Stage: PREPARE`);
 
-    // Execute hook and check return value
-    const shouldContinue = await this.hookManager.execute('onMessageBeforeSend', context);
-    if (!shouldContinue) {
-      logger.debug(`[Lifecycle] Interrupted at PREPARE hook | messageId=${messageId}`);
-      return false;
-    }
-
-    // Execute systems
+    // Execute systems (reply transformation, formatting, etc.)
     return await this.executeSystems(SystemStage.PREPARE, context, messageId);
   }
 

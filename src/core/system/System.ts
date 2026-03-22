@@ -22,6 +22,8 @@ export enum SystemStage {
  */
 export enum SystemPriority {
   Command = 100,
+  Prepare = 60,
+  Send = 50,
   Task = 20,
   DatabasePersistence = 10,
   RAGPersistence = 5,

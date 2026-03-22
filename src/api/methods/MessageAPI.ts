@@ -257,7 +257,7 @@ export class MessageAPI {
     messages: ForwardMessageInput[],
     context: CommandContext | NormalizedMessageEvent,
     timeout: number = 10000,
-    options?: { botUserId?: number },
+    options: { botUserId: number },
   ): Promise<SendMessageResult> {
     const { protocol, userId, groupId, messageType, messageScene } = this.extractContextFields(context);
     if (protocol !== 'milky') {
@@ -268,14 +268,7 @@ export class MessageAPI {
     }
 
     // botUserId is required for forward; must be the bot's own QQ user id (not 0)
-    const rawBot = options?.botUserId;
-    const botUserId = typeof rawBot === 'number' && !Number.isNaN(rawBot) && rawBot > 0 ? rawBot : undefined;
-    if (botUserId === undefined) {
-      throw new Error(
-        "Forward message requires options.botUserId to be the bot's own QQ user id (positive number). Set config.bot.selfId.",
-      );
-    }
-
+    const botUserId = options.botUserId;
     const forwardSegment = this.buildForwardSegment(messages, botUserId);
 
     logger.debug(

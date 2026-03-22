@@ -50,6 +50,8 @@ import { CommandSystem } from './systems/CommandSystem';
 import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
 import { RAGPersistenceSystem } from './systems/RAGPersistenceSystem';
 import { ReplySystem } from './systems/ReplySystem';
+import { ReplyPrepareSystem } from './systems/ReplyPrepareSystem';
+import { SendSystem } from './systems/SendSystem';
 import { ThreadContextCompressionService, ThreadService } from './thread';
 
 export interface ConversationComponents {
@@ -250,7 +252,6 @@ export class ConversationInitializer {
     // Phase 6: Component assembly.
     const components = ConversationInitializer.assembleComponents(
       completeServices,
-      apiClient,
       commandPrefixes,
       container,
     );
@@ -469,7 +470,6 @@ export class ConversationInitializer {
    */
   private static assembleComponents(
     services: CompleteServices,
-    apiClient: APIClient,
     commandPrefixes: string[],
     container: DIContainer,
   ): ConversationComponents {
@@ -485,7 +485,6 @@ export class ConversationInitializer {
     const pipeline = new MessagePipeline(
       lifecycle,
       services.hookManager,
-      apiClient,
       services.contextManager,
       services.conversationConfigService,
     );
@@ -531,6 +530,15 @@ export class ConversationInitializer {
     // ReplySystem was pre-created before proactive service resolution.
     const replySystem = container.resolve<ReplySystem>(DITokens.REPLY_SYSTEM);
     systemRegistry.registerSystemFactory('reply', () => replySystem);
+
+    systemRegistry.registerSystemFactory('reply-prepare', () => {
+      return new ReplyPrepareSystem();
+    });
+
+    const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+    systemRegistry.registerSystemFactory('send', () => {
+      return new SendSystem(messageAPI, services.hookManager);
+    });
 
     systemRegistry.registerSystemFactory('database-persistence', () => {
       return new DatabasePersistenceSystem(services.databaseManager);

@@ -2,7 +2,6 @@
 
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import {
-  computeSendAsForward,
   hasWhitelistCapability,
   replaceReply,
   replaceReplyWithSegments,
@@ -330,10 +329,7 @@ export class ReplyGenerationService {
 
       // NSFW mode: no card reply, output plain text only
       await this.hookManager.execute('onAIGenerationComplete', context);
-      const textSegments = [{ type: 'text' as const, data: { text: response.text } }];
-      replaceReply(context, response.text, 'ai', {
-        sendAsForward: computeSendAsForward(context, textSegments),
-      });
+      replaceReply(context, response.text, 'ai');
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error('[ReplyGenerationService] Failed to generate NSFW reply:', err);
@@ -434,10 +430,7 @@ export class ReplyGenerationService {
 
       // Send error message to user so they know the bot failed
       const errorMessage = `抱歉，AI 回复生成失败：${err.message || '未知错误'}。请稍后再试。`;
-      const textSegments = [{ type: 'text' as const, data: { text: errorMessage } }];
-      replaceReply(context, errorMessage, 'ai', {
-        sendAsForward: computeSendAsForward(context, textSegments),
-      });
+      replaceReply(context, errorMessage, 'ai');
     }
   }
 
@@ -466,7 +459,6 @@ export class ReplyGenerationService {
     }));
     setReplyWithSegments(context, imageSegments, 'ai', {
       isCardImage: true,
-      sendAsForward: computeSendAsForward(context, imageSegments),
     });
   }
 
@@ -1048,10 +1040,7 @@ export class ReplyGenerationService {
       logger.warn('[ReplyGenerationService] Card rendering failed completely, extracting readable text');
       const readableText = this.extractReadableTextFromCardJson(response.text);
       await this.hookManager.execute('onAIGenerationComplete', context);
-      const textSegments = [{ type: 'text' as const, data: { text: readableText } }];
-      replaceReply(context, readableText, 'ai', {
-        sendAsForward: computeSendAsForward(context, textSegments),
-      });
+      replaceReply(context, readableText, 'ai');
       return;
     }
 
@@ -1081,7 +1070,8 @@ export class ReplyGenerationService {
     // Path 3: Plain text
     await this.hookManager.execute('onAIGenerationComplete', context);
     let finalText = response.text;
-    // Safety net: strip any text-based tool call blocks that leaked through
+    // Strip tool call artifacts before card JSON check — residual blocks would break JSON detection.
+    // ReplyPrepareSystem also strips in PREPARE as a safety net for all reply sources.
     if (containsTextToolCalls(finalText)) {
       logger.warn('[ReplyGenerationService] Stripping leaked text-based tool call blocks from final reply');
       finalText = stripTextToolCalls(finalText);
@@ -1091,10 +1081,7 @@ export class ReplyGenerationService {
       logger.warn('[ReplyGenerationService] Plain text path received card JSON, extracting readable text');
       finalText = this.extractReadableTextFromCardJson(finalText);
     }
-    const textSegments = [{ type: 'text' as const, data: { text: finalText } }];
-    replaceReply(context, finalText, 'ai', {
-      sendAsForward: computeSendAsForward(context, textSegments),
-    });
+    replaceReply(context, finalText, 'ai');
   }
 
   // ---------------------------------------------------------------------------
@@ -1118,7 +1105,6 @@ export class ReplyGenerationService {
     replaceReplyWithSegments(context, segments, 'ai', {
       isCardImage: true,
       cardTextForHistory,
-      sendAsForward: computeSendAsForward(context, segments),
     });
   }
 
