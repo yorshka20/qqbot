@@ -122,8 +122,11 @@ export class CardRenderer {
       );
 
       // Take screenshot with clipping to content area
+      // Use JPEG with quality 85 to reduce file size (PNG can be several MB for tall cards,
+      // causing LLBot→QQ upload timeouts)
       const screenshot = await page.screenshot({
-        type: 'png',
+        type: 'jpeg',
+        quality: 85,
         clip: {
           x: bounds.x,
           y: bounds.y,
