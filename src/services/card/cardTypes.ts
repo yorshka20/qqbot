@@ -348,9 +348,14 @@ export function isCardData(data: unknown): data is CardData {
  */
 export function parseCardDeck(jsonString: string): CardData[] {
   try {
-    const parsed = JSON.parse(jsonString);
+    let parsed = JSON.parse(jsonString);
+    // LLMs often return a single card object instead of an array — auto-wrap it
     if (!Array.isArray(parsed)) {
-      throw new Error('Card deck must be a JSON array (e.g. [{"type":"qa",...}] for single card)');
+      if (typeof parsed === 'object' && parsed !== null && 'type' in parsed) {
+        parsed = [parsed];
+      } else {
+        throw new Error('Card deck must be a JSON array (e.g. [{"type":"qa",...}] for single card)');
+      }
     }
     if (parsed.length === 0) {
       throw new Error('Card deck array must not be empty');

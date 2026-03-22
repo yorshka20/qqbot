@@ -1121,7 +1121,7 @@ export class ReplyGenerationService {
       return true;
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.warn('[ReplyGenerationService] Card rendering failed:', err.message);
+      logger.warn(`[ReplyGenerationService] Card rendering failed: ${err.message}`);
       return false;
     }
   }
