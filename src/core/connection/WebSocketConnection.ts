@@ -1,9 +1,9 @@
-// Single protocol WebSocket connection management
+// WebSocket-based connection implementation
+// Extracted from the original Connection class — handles WS lifecycle, reconnection, ping.
 
-import { EventEmitter } from 'events';
 import { ConnectionError } from '@/utils/errors';
 import { logger } from '@/utils/logger';
-import type { ProtocolConfig } from './config';
+import { Connection } from './base';
 
 /** Bun WebSocket constructor options (headers not in standard DOM type) */
 interface BunWebSocketOptions {
@@ -13,35 +13,10 @@ interface BunWebSocketOptions {
 /** WebSocket with optional Bun-specific ping (not in standard DOM type) */
 type WebSocketWithPing = WebSocket & { ping?(data?: string | ArrayBuffer): void };
 
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
-
-export interface ConnectionEvents {
-  open: () => void;
-  close: () => void;
-  error: (error: Error) => void;
-  message: (data: unknown) => void;
-  state: (state: ConnectionState) => void;
-}
-
-export class Connection extends EventEmitter {
+export class WebSocketConnection extends Connection {
   private ws: WebSocket | null = null;
-  protected state: ConnectionState = 'disconnected';
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
-  protected config: ProtocolConfig;
-
-  constructor(config: ProtocolConfig) {
-    super();
-    this.config = config;
-  }
-
-  getState(): ConnectionState {
-    return this.state;
-  }
-
-  getProtocolName(): string {
-    return this.config.name;
-  }
 
   async connect(): Promise<void> {
     if (this.state === 'connected' || this.state === 'connecting') {
@@ -98,7 +73,7 @@ export class Connection extends EventEmitter {
    * Send WebSocket ping frame to keep connection alive
    * Uses native WebSocket ping if available
    */
-  ping(data?: string | ArrayBuffer): void {
+  override ping(data?: string | ArrayBuffer): void {
     if (this.state !== 'connected' || !this.ws) {
       throw new ConnectionError('WebSocket is not connected', this.config.name);
     }
@@ -164,14 +139,6 @@ export class Connection extends EventEmitter {
       logger.error(`[Connection] ${this.config.name} error:`, err);
       this.emit('error', err);
     };
-  }
-
-  protected setState(state: ConnectionState): void {
-    if (this.state !== state) {
-      this.state = state;
-      this.emit('state', state);
-      logger.debug(`[Connection] ${this.config.name} state changed to: ${state}`);
-    }
   }
 
   private handleReconnect(): void {

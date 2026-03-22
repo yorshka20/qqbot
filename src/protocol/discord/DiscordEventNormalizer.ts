@@ -1,9 +1,9 @@
 // Discord event normalizer - converts discord.js events to normalized BaseEvent format
 
-import type { GuildMember, Message as DiscordMessage, MessageReaction, PartialMessage, User } from 'discord.js';
+import type { Message as DiscordMessage, GuildMember, MessageReaction, PartialMessage, User } from 'discord.js';
 import type { BaseEvent } from '../base/types';
-import type { NormalizedDiscordMessageEvent, NormalizedDiscordMetaEvent, NormalizedDiscordNoticeEvent } from './types';
 import { discordMessageToSegments } from './DiscordSegmentConverter';
+import type { NormalizedDiscordMessageEvent, NormalizedDiscordMetaEvent, NormalizedDiscordNoticeEvent } from './types';
 
 export class DiscordEventNormalizer {
   /**

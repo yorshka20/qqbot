@@ -1,9 +1,8 @@
 // OneBot11 protocol adapter implementation
 
-import type { Connection } from '@/core/Connection';
-import type { ProtocolConfig, ProtocolName } from '@/core/config';
-import { ProtocolAdapter } from '../base/ProtocolAdapter';
+import type { ProtocolName } from '@/core/config';
 import type { BaseEvent } from '../base/types';
+import { WebSocketProtocolAdapter } from '../base/WebSocketProtocolAdapter';
 import type {
   OneBot11Event,
   OneBot11MessageEvent,
@@ -52,11 +51,7 @@ export type NormalizedOneBot11Event =
   | NormalizedRequestEvent
   | NormalizedMetaEvent;
 
-export class OneBot11Adapter extends ProtocolAdapter {
-  constructor(config: ProtocolConfig, connection: Connection) {
-    super(config, connection);
-  }
-
+export class OneBot11Adapter extends WebSocketProtocolAdapter {
   getProtocolName(): ProtocolName {
     return 'onebot11';
   }

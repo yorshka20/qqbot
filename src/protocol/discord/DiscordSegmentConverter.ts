@@ -1,7 +1,7 @@
 // Discord segment converter - bidirectional conversion between internal MessageSegment[] and Discord message format
 
+import type { AttachmentBuilder, Message as DiscordMessage } from 'discord.js';
 import type { MessageSegment } from '@/message/types';
-import type { Message as DiscordMessage, AttachmentBuilder } from 'discord.js';
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
 

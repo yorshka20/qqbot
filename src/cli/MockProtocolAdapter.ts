@@ -2,8 +2,8 @@
 // Returns mock responses for all API calls without actually sending them
 
 import type { APIContext } from '@/api/types';
-import type { Connection } from '@/core/Connection';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
+import type { Connection } from '@/core/connection';
 import { ProtocolAdapter } from '@/protocol/base/ProtocolAdapter';
 import type { BaseEvent } from '@/protocol/base/types';
 
@@ -31,6 +31,16 @@ export class MockProtocolAdapter extends ProtocolAdapter {
   override normalizeEvent(_rawEvent: unknown): BaseEvent | null {
     // Mock adapter doesn't receive real events
     return null;
+  }
+
+  override onEvent(_callback: (event: BaseEvent) => void): void {
+    // Mock adapter doesn't receive real events — listen on connection for simulation
+    this.connection.on('message', (rawMessage: unknown) => {
+      const normalized = this.normalizeEvent(rawMessage);
+      if (normalized) {
+        _callback(normalized);
+      }
+    });
   }
 
   override async sendAPI<TResponse = unknown>(context: APIContext): Promise<TResponse> {

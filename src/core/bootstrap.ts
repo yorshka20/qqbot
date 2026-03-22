@@ -12,6 +12,9 @@ import { APIClient } from '@/api/APIClient';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
 import { ConversationInitializer } from '@/conversation/ConversationInitializer';
 import { Bot } from '@/core/Bot';
+import type { ProtocolConfig } from '@/core/config';
+import type { Connection } from '@/core/connection';
+import { WebSocketConnection } from '@/core/connection';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { HealthCheckManager } from '@/core/health';
@@ -21,7 +24,6 @@ import type { EventRouter } from '@/events/EventRouter';
 import { PluginInitializer } from '@/plugins/PluginInitializer';
 import { DiscordConnection } from '@/protocol/discord/DiscordConnection';
 import { ProtocolAdapterInitializer } from '@/protocol/ProtocolAdapterInitializer';
-import { registerConnectionClass } from './ConnectionManager';
 import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import type { MCPSystem } from '@/services/mcp/MCPInitializer';
@@ -29,6 +31,7 @@ import { MCPInitializer } from '@/services/mcp/MCPInitializer';
 import { RetrievalService } from '@/services/retrieval';
 import { initStaticFileServer } from '@/services/staticServer';
 import { logger } from '@/utils/logger';
+import { registerConnectionClass } from './connection/ConnectionManager';
 
 export interface BootstrapResult {
   bot: Bot;
@@ -121,7 +124,19 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
 
   // ── Protocol adapter registration (registers event listeners, no connections) ──
   const connectionManager = bot.getConnectionManager();
-  registerConnectionClass('discord', DiscordConnection);
+  const connectionTypeMap: Record<string, new (cfg: ProtocolConfig) => Connection> = {
+    websocket: WebSocketConnection,
+    discord: DiscordConnection,
+  };
+  for (const protocol of config.getEnabledProtocols()) {
+    const type = protocol.connectionType;
+    const ctor = connectionTypeMap[type];
+    if (ctor) {
+      registerConnectionClass(protocol.name, ctor);
+    } else {
+      logger.warn(`[Bootstrap] Unknown connectionType "${type}" for protocol "${protocol.name}"`);
+    }
+  }
   ProtocolAdapterInitializer.initialize(config, connectionManager, eventRouter, apiClient);
 
   // ── Load plugins (triggers onInit for all enabled plugins, e.g. WeChatIngestPlugin DI registration) ──

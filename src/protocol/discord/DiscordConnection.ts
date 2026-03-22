@@ -3,8 +3,8 @@
 // ConnectionManager treats this identically to any other Connection — no special cases needed.
 
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
-import { Connection } from '@/core/Connection';
 import type { ProtocolConfig } from '@/core/config';
+import { Connection } from '@/core/connection';
 import { logger } from '@/utils/logger';
 
 /** Map string intent names from config to discord.js GatewayIntentBits flags. */
@@ -23,12 +23,7 @@ export class DiscordConnection extends Connection {
   constructor(config: ProtocolConfig) {
     super(config);
 
-    const intentNames = config.discord?.intents ?? [
-      'Guilds',
-      'GuildMessages',
-      'MessageContent',
-      'DirectMessages',
-    ];
+    const intentNames = config.discord?.intents ?? ['Guilds', 'GuildMessages', 'MessageContent', 'DirectMessages'];
     const intents = intentNames.map((name) => INTENT_MAP[name]).filter((v): v is number => v != null);
 
     this.client = new Client({
@@ -78,15 +73,5 @@ export class DiscordConnection extends Connection {
     this.client.destroy();
     this.setState('disconnected');
     this.emit('close');
-  }
-
-  /** No-op: discord.js handles its own message sending via REST API. */
-  send(_data: string): void {
-    // Intentionally empty
-  }
-
-  /** No-op: discord.js manages its own heartbeat internally. */
-  ping(): void {
-    // Intentionally empty
   }
 }

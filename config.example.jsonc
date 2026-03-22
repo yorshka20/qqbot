@@ -6,6 +6,7 @@
       "name": "milky",
       "enabled": true,
       "priority": 1,
+      "connectionType": "websocket",
       "mockSendMessage": false,
       "connection": {
         "url": "ws://192.168.50.97:3010/event",
@@ -25,6 +26,7 @@
       "name": "onebot11",
       "enabled": true,
       "priority": 2,
+      "connectionType": "websocket",
       "connection": {
         "url": "ws://192.168.50.97:3001/event",
         "apiUrl": "http://192.168.50.97:3001/api",
@@ -45,6 +47,7 @@
       "name": "discord",
       "enabled": false,
       "priority": 3,
+      "connectionType": "discord",
       "mockSendMessage": false,
       "connection": {
         "url": "",

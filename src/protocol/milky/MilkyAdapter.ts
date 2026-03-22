@@ -2,11 +2,11 @@
 
 import { HttpClient } from '@/api/http/HttpClient';
 import type { APIContext } from '@/api/types';
-import type { Connection } from '@/core/Connection';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
+import type { WebSocketConnection } from '@/core/connection';
 import { logger } from '@/utils/logger';
-import { ProtocolAdapter } from '../base/ProtocolAdapter';
 import type { BaseEvent } from '../base/types';
+import { WebSocketProtocolAdapter } from '../base/WebSocketProtocolAdapter';
 import { MilkyAPIConverter } from './MilkyAPIConverter';
 import { MilkyAPIResponseHandler } from './MilkyAPIResponseHandler';
 import { MilkyEventNormalizer } from './MilkyEventNormalizer';
@@ -15,10 +15,10 @@ import { MilkyEventNormalizer } from './MilkyEventNormalizer';
  * Milky protocol adapter
  * Converts Milky protocol events and API calls to unified format
  */
-export class MilkyAdapter extends ProtocolAdapter {
+export class MilkyAdapter extends WebSocketProtocolAdapter {
   private httpClient: HttpClient;
 
-  constructor(config: ProtocolConfig, connection: Connection) {
+  constructor(config: ProtocolConfig, connection: WebSocketConnection) {
     super(config, connection);
 
     const apiUrl = this.config.connection.apiUrl;

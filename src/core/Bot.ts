@@ -2,8 +2,8 @@
 
 import { EventEmitter } from 'events';
 import { logger } from '@/utils/logger';
-import { ConnectionManager } from './ConnectionManager';
 import { Config } from './config';
+import { ConnectionManager } from './connection/ConnectionManager';
 
 export interface BotEvents {
   ready: () => void;

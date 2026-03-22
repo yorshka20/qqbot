@@ -4,6 +4,8 @@ import type { APIStrategy, BackoffStrategy, DeduplicationStrategy } from './cons
 
 export type ProtocolName = 'milky' | 'onebot11' | 'satori' | 'discord';
 
+export type ConnectionType = 'websocket' | 'discord';
+
 export interface ProtocolConnectionConfig {
   url: string;
   apiUrl: string;
@@ -27,6 +29,8 @@ export interface ProtocolConfig {
   name: ProtocolName;
   enabled: boolean;
   priority: number;
+  /** Transport type: 'websocket' or 'discord' (discord.js managed). */
+  connectionType: ConnectionType;
   // if true, will not send real message, just log.
   mockSendMessage: boolean;
   connection: ProtocolConnectionConfig;

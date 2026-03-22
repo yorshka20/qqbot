@@ -2,8 +2,8 @@
 
 import { EventEmitter } from 'events';
 import { logger } from '@/utils/logger';
-import { Connection } from './Connection';
-import type { Config, ProtocolConfig } from './config';
+import type { Config, ProtocolConfig } from '../config';
+import type { Connection } from './base';
 
 export interface ConnectionManagerEvents {
   connectionOpen: (protocol: string, connection: Connection) => void;
@@ -51,8 +51,13 @@ export class ConnectionManager extends EventEmitter implements ConnectionManager
   }
 
   async connectProtocol(protocolConfig: ProtocolConfig): Promise<void> {
-    // Use registered Connection subclass if available, otherwise default Connection.
-    const ConnectionCtor = connectionRegistry.get(protocolConfig.name) ?? Connection;
+    // Use registered Connection subclass — all protocols must be explicitly registered.
+    const ConnectionCtor = connectionRegistry.get(protocolConfig.name);
+    if (!ConnectionCtor) {
+      throw new Error(
+        `No Connection class registered for protocol "${protocolConfig.name}". Call registerConnectionClass() before connectAll().`,
+      );
+    }
     const connection = new ConnectionCtor(protocolConfig);
 
     // Set up connection event handlers

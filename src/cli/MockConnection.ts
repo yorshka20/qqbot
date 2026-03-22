@@ -1,8 +1,8 @@
 // Mock Connection for simulation mode
 // Always reports as connected, but doesn't actually connect anywhere
 
-import { Connection, type ConnectionState } from '@/core/Connection';
 import type { ProtocolConfig } from '@/core/config';
+import { Connection, type ConnectionState } from '@/core/connection';
 
 /**
  * Mock Connection for simulation mode
@@ -32,9 +32,5 @@ export class MockConnection extends Connection {
   override disconnect(): void {
     this.mockState = 'disconnected';
     this.emit('close');
-  }
-
-  override send(_data: string): void {
-    // Do nothing - this is a mock connection
   }
 }

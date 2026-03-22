@@ -1,12 +1,12 @@
 // Protocol Adapter Initializer - sets up protocol adapters and connects them to event router
 
 import type { APIClient } from '@/api/APIClient';
-import type { ConnectionManager } from '@/core/ConnectionManager';
 import type { Config, ProtocolName } from '@/core/config';
+import type { ConnectionManager, WebSocketConnection } from '@/core/connection';
 import type { EventRouter } from '@/events/EventRouter';
 import type { NormalizedEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
-import type { BaseEvent, ProtocolAdapter } from './base/types';
+import type { BaseEvent } from './base/types';
 import { DiscordAdapter } from './discord/DiscordAdapter';
 import type { DiscordConnection } from './discord/DiscordConnection';
 import { MilkyAdapter } from './milky';
@@ -44,13 +44,13 @@ export class ProtocolAdapterInitializer {
       // Create appropriate adapter based on protocol name
       switch (protocolName) {
         case 'onebot11':
-          adapter = new OneBot11Adapter(protocolConfig, connection);
+          adapter = new OneBot11Adapter(protocolConfig, connection as WebSocketConnection);
           break;
         case 'milky':
-          adapter = new MilkyAdapter(protocolConfig, connection);
+          adapter = new MilkyAdapter(protocolConfig, connection as WebSocketConnection);
           break;
         case 'satori':
-          adapter = new SatoriAdapter(protocolConfig, connection);
+          adapter = new SatoriAdapter(protocolConfig, connection as WebSocketConnection);
           break;
         case 'discord':
           adapter = new DiscordAdapter(protocolConfig, connection as unknown as DiscordConnection);

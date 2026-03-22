@@ -1,16 +1,11 @@
 // Satori protocol adapter implementation
 
-import type { Connection } from '@/core/Connection';
-import type { ProtocolConfig, ProtocolName } from '@/core/config';
-import { ProtocolAdapter } from '../base/ProtocolAdapter';
+import type { ProtocolName } from '@/core/config';
 import type { BaseEvent } from '../base/types';
+import { WebSocketProtocolAdapter } from '../base/WebSocketProtocolAdapter';
 import type { SatoriEvent } from './types';
 
-export class SatoriAdapter extends ProtocolAdapter {
-  constructor(config: ProtocolConfig, connection: Connection) {
-    super(config, connection);
-  }
-
+export class SatoriAdapter extends WebSocketProtocolAdapter {
   getProtocolName(): ProtocolName {
     return 'satori';
   }
