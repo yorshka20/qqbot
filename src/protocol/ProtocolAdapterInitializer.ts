@@ -7,6 +7,8 @@ import type { EventRouter } from '@/events/EventRouter';
 import type { NormalizedEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
 import type { BaseEvent, ProtocolAdapter } from './base/types';
+import { DiscordAdapter } from './discord/DiscordAdapter';
+import type { DiscordConnection } from './discord/DiscordConnection';
 import { MilkyAdapter } from './milky';
 import { OneBot11Adapter } from './onebot11/OneBot11Adapter';
 import { SatoriAdapter } from './satori/SatoriAdapter';
@@ -20,14 +22,6 @@ export interface ProtocolAdapterSystem {
  * Sets up protocol adapters and connects them to event router and API client
  */
 export class ProtocolAdapterInitializer {
-  /**
-   * Initialize protocol adapter system
-   * @param config - Bot configuration
-   * @param connectionManager - Connection manager
-   * @param eventRouter - Event router to route adapter events
-   * @param apiClient - API client to register adapters
-   * @returns Initialized protocol adapter system
-   */
   static initialize(
     config: Config,
     connectionManager: ConnectionManager,
@@ -58,6 +52,9 @@ export class ProtocolAdapterInitializer {
         case 'satori':
           adapter = new SatoriAdapter(protocolConfig, connection);
           break;
+        case 'discord':
+          adapter = new DiscordAdapter(protocolConfig, connection as unknown as DiscordConnection);
+          break;
         default:
           logger.error(`[ProtocolAdapterInitializer] Unknown protocol: ${protocolName}`);
           return;
@@ -65,9 +62,6 @@ export class ProtocolAdapterInitializer {
 
       // Set up adapter event handling
       adapter.onEvent((event: BaseEvent) => {
-        // Event is BaseEvent from adapter, but routeEvent expects NormalizedEvent
-        // Since adapters normalize events to match NormalizedEvent structure,
-        // we can safely cast. The actual normalization happens in normalizeEvent()
         if (event && typeof event === 'object' && 'type' in event) {
           eventRouter.routeEvent(event as NormalizedEvent);
         }

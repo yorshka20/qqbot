@@ -5,17 +5,17 @@ import type { BaseEvent } from '@/protocol/base/types';
 export interface NormalizedMessageEvent extends BaseEvent {
   type: 'message';
   messageType: 'private' | 'group';
-  userId: number;
-  groupId?: number;
+  userId: number | string;
+  groupId?: number | string;
   message: string;
   rawMessage?: string;
-  messageId?: number;
+  messageId?: number | string;
   segments?: Array<{ type: string; data?: Record<string, unknown> }>;
   groupName?: string;
   // Message scene from protocol (e.g., 'private', 'group', 'temp' for temporary session)
   messageScene?: string;
   sender?: {
-    userId: number;
+    userId: number | string;
     nickname?: string;
     card?: string;
     role?: string;
@@ -26,11 +26,11 @@ export interface NormalizedNoticeEvent extends BaseEvent {
   type: 'notice';
   noticeType: string;
   /** Set by normalizer for group-related notices (e.g. group_message_reaction) so the event can be used as MessageAPI context. */
-  groupId?: number;
+  groupId?: number | string;
   /** Set by normalizer for group-related notices so the event can be used as MessageAPI context. */
   messageType?: 'private' | 'group';
   /** Optional; e.g. user_id from reaction data when used as context. */
-  userId?: number;
+  userId?: number | string;
   messageScene?: string;
   // Group message reaction (group_message_reaction), normalized camelCase
   faceId?: number;

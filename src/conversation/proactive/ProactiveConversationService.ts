@@ -779,7 +779,7 @@ export class ProactiveConversationService {
   }
 
   private async sendGroupMessage(
-    groupId: number,
+    groupId: number | string,
     message: string | MessageSegment[],
   ): Promise<SendMessageResult | undefined> {
     const groupIdStr = String(groupId);
@@ -794,7 +794,7 @@ export class ProactiveConversationService {
     return result;
   }
 
-  private buildSyntheticGroupContext(groupId: number): NormalizedMessageEvent {
+  private buildSyntheticGroupContext(groupId: number | string): NormalizedMessageEvent {
     return {
       id: '',
       type: 'message',

@@ -173,8 +173,8 @@ export class AIService {
       description: string;
       input: unknown;
       parentContext?: {
-        userId: number;
-        groupId?: number;
+        userId: number | string;
+        groupId?: number | string;
         messageType: 'private' | 'group';
         protocol?: string;
         conversationId?: string;
@@ -193,8 +193,8 @@ export class AIService {
       description: string;
       input: unknown;
       parentContext?: {
-        userId: number;
-        groupId?: number;
+        userId: number | string;
+        groupId?: number | string;
         messageType: 'private' | 'group';
         protocol?: string;
         conversationId?: string;

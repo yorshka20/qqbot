@@ -19,6 +19,17 @@ export interface ConnectionManagerEventOverloads {
   emit<U extends keyof ConnectionManagerEvents>(event: U, ...args: Parameters<ConnectionManagerEvents[U]>): boolean;
 }
 
+/** Registry of Connection subclass constructors keyed by protocol name. */
+const connectionRegistry = new Map<string, new (config: ProtocolConfig) => Connection>();
+
+/**
+ * Register a custom Connection subclass for a protocol.
+ * Must be called before ConnectionManager.connectAll().
+ */
+export function registerConnectionClass(protocolName: string, ctor: new (config: ProtocolConfig) => Connection): void {
+  connectionRegistry.set(protocolName, ctor);
+}
+
 export class ConnectionManager extends EventEmitter implements ConnectionManagerEventOverloads {
   private connections = new Map<string, Connection>();
   private config: Config;
@@ -40,7 +51,9 @@ export class ConnectionManager extends EventEmitter implements ConnectionManager
   }
 
   async connectProtocol(protocolConfig: ProtocolConfig): Promise<void> {
-    const connection = new Connection(protocolConfig);
+    // Use registered Connection subclass if available, otherwise default Connection.
+    const ConnectionCtor = connectionRegistry.get(protocolConfig.name) ?? Connection;
+    const connection = new ConnectionCtor(protocolConfig);
 
     // Set up connection event handlers
     connection.on('open', () => {

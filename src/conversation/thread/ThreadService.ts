@@ -21,7 +21,7 @@ export function isReadableTextForThread(content: string): boolean {
 }
 
 export interface ThreadMessage {
-  userId: number;
+  userId: number | string;
   nickname?: string;
   content: string;
   isBotReply: boolean;
@@ -155,7 +155,7 @@ export class ThreadService {
   /**
    * Append a message to the thread and update lastActivityAt.
    */
-  appendMessage(threadId: string, entry: { userId: number; content: string; isBotReply: boolean }): void {
+  appendMessage(threadId: string, entry: { userId: number | string; content: string; isBotReply: boolean }): void {
     const thread = this.threadById.get(threadId);
     if (!thread) {
       logger.warn(`[ThreadService] Append failed: thread not found | threadId=${threadId}`);

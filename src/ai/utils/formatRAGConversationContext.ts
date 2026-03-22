@@ -5,7 +5,7 @@ import { formatDateTimeShort } from '@/utils/dateTime';
 
 /** Single message in conversation window RAG payload (userId, optional nickname, text, timestamp). */
 export interface RawMessageItem {
-  userId: number;
+  userId: number | string;
   nickname?: string;
   text: string;
   timestamp: string;
@@ -20,9 +20,9 @@ export interface ConversationWindowPayload {
   sessionType: string;
   startTime: string;
   endTime: string;
-  participants: number[];
+  participants: (number | string)[];
   rawMessages: RawMessageItem[];
-  groupId?: number;
+  groupId?: number | string;
   content: string;
 }
 
@@ -54,7 +54,7 @@ function formatParticipantsFromRawMessages(rawMessages: RawMessageItem[]): strin
   if (rawMessages.length === 0) {
     return '';
   }
-  const seen = new Set<number>();
+  const seen = new Set<number | string>();
   const parts: string[] = [];
   for (const msg of rawMessages) {
     const uid = msg.userId;

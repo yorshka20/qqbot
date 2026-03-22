@@ -15,13 +15,13 @@ import type {
 export interface NormalizedMessageEvent extends BaseEvent {
   type: 'message';
   messageType: 'private' | 'group';
-  userId: number;
-  groupId?: number;
+  userId: number | string;
+  groupId?: number | string;
   message: string;
   rawMessage: string;
-  messageId: number;
+  messageId: number | string;
   sender?: {
-    userId: number;
+    userId: number | string;
     nickname?: string;
     card?: string;
     role?: string;

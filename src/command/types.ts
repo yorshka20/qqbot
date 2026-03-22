@@ -74,8 +74,8 @@ export interface CommandContextMetadata {
  * Command execution context
  */
 export interface CommandContext {
-  userId: number;
-  groupId?: number;
+  userId: number | string;
+  groupId?: number | string;
   messageType: 'private' | 'group';
   rawMessage: string;
   // Message scene from protocol (e.g., 'private', 'group', 'temp' for temporary session)

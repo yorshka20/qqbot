@@ -36,8 +36,8 @@ export interface HookContextMetadata {
   contextMode?: 'normal' | 'proactive';
 
   // Context Manager metadata (internal use)
-  userId: number;
-  groupId: number;
+  userId: number | string;
+  groupId: number | string;
 
   // Command metadata
   senderRole: string;

@@ -20,7 +20,12 @@ class MessageCache {
    * Store message in cache
    * Key format: `${protocol}:${messageId}` or `${protocol}:${groupId}:${messageSeq}` for Milky protocol
    */
-  set(protocol: ProtocolName, messageId: number, message: NormalizedMessageEvent, groupId?: number): void {
+  set(
+    protocol: ProtocolName,
+    messageId: number | string,
+    message: NormalizedMessageEvent,
+    groupId?: number | string,
+  ): void {
     const key = `${protocol}:${messageId}`;
 
     // If cache is full, remove oldest entry (FIFO)
@@ -41,7 +46,7 @@ class MessageCache {
    */
   setBySeq(
     protocol: ProtocolName,
-    groupIdOrUserId: number,
+    groupIdOrUserId: number | string,
     messageSeq: number,
     message: NormalizedMessageEvent,
     isGroup: boolean,
@@ -75,7 +80,7 @@ class MessageCache {
    */
   getBySeq(
     protocol: ProtocolName,
-    groupIdOrUserId: number,
+    groupIdOrUserId: number | string,
     messageSeq: number,
     isGroup: boolean,
   ): NormalizedMessageEvent | undefined {
@@ -159,7 +164,7 @@ export function getCachedMessage(protocol: ProtocolName, messageId: number): Nor
  */
 export function getCachedMessageBySeq(
   protocol: ProtocolName,
-  groupIdOrUserId: number,
+  groupIdOrUserId: number | string,
   messageSeq: number,
   isGroup: boolean,
 ): NormalizedMessageEvent | undefined {

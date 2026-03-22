@@ -76,7 +76,9 @@ export class ProjectRegistry {
     // 2. Load and merge persisted dynamic projects
     this.loadPersistedProjects();
 
-    logger.info(`[ProjectRegistry] Initialized with ${this.projects.size} projects (${this.configAliases.size} from config)`);
+    logger.info(
+      `[ProjectRegistry] Initialized with ${this.projects.size} projects (${this.configAliases.size} from config)`,
+    );
   }
 
   /**
@@ -296,9 +298,7 @@ export class ProjectRegistry {
     // Check for package.json (Node or Bun)
     if (existsSync(resolve(projectPath, 'package.json'))) {
       try {
-        const pkg = JSON.parse(
-          require('node:fs').readFileSync(resolve(projectPath, 'package.json'), 'utf-8'),
-        );
+        const pkg = JSON.parse(require('node:fs').readFileSync(resolve(projectPath, 'package.json'), 'utf-8'));
         // If scripts reference bun, it's a bun project
         const scripts = JSON.stringify(pkg.scripts || {});
         if (scripts.includes('bun ')) {
@@ -355,8 +355,6 @@ export class ProjectRegistry {
     }
 
     // Check against allowed base paths
-    return this.allowedBasePaths.some(
-      (base) => realPath === base || realPath.startsWith(`${base}/`),
-    );
+    return this.allowedBasePaths.some((base) => realPath === base || realPath.startsWith(`${base}/`));
   }
 }

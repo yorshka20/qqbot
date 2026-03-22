@@ -41,7 +41,7 @@ export class FileAPI {
    * @returns File ID
    */
   async uploadGroupFile(
-    groupId: number,
+    groupId: number | string,
     fileUri: string,
     fileName: string,
     protocol: ProtocolName = 'milky',
@@ -77,7 +77,7 @@ export class FileAPI {
    * @returns File ID
    */
   async uploadPrivateFile(
-    userId: number,
+    userId: number | string,
     fileUri: string,
     fileName: string,
     protocol: ProtocolName = 'milky',

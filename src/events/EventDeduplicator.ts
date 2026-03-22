@@ -4,9 +4,9 @@ import { logger } from '@/utils/logger';
 import type { NormalizedEvent } from './types';
 
 interface EventFingerprint {
-  messageId?: number;
-  userId?: number;
-  groupId?: number;
+  messageId?: number | string;
+  userId?: number | string;
+  groupId?: number | string;
   content: string;
   timestamp: number;
   protocol: string;
@@ -57,9 +57,9 @@ export class EventDeduplicator {
 
   private createFingerprint(event: NormalizedEvent): EventFingerprint {
     let content = '';
-    let messageId: number | undefined;
-    let userId: number | undefined;
-    let groupId: number | undefined;
+    let messageId: number | string | undefined;
+    let userId: number | string | undefined;
+    let groupId: number | string | undefined;
 
     if (event.type === 'message') {
       messageId = event.messageId;

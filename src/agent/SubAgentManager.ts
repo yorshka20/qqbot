@@ -49,8 +49,8 @@ export class SubAgentManager {
       input: unknown;
       /** From parent (e.g. HookContext when spawned from main flow); written to session.context for ToolRunner. */
       parentContext?: {
-        userId: number;
-        groupId?: number;
+        userId: number | string;
+        groupId?: number | string;
         messageType: 'private' | 'group';
         protocol?: string;
         conversationId?: string;

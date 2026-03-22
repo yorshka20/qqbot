@@ -318,9 +318,7 @@ export class ClaudeCodePlugin extends PluginBase {
       const removed = registry.unregister(alias);
       return {
         success: removed,
-        segments: new MessageBuilder()
-          .text(removed ? `项目 "${alias}" 已移除` : `未找到项目: ${alias}`)
-          .build(),
+        segments: new MessageBuilder().text(removed ? `项目 "${alias}" 已移除` : `未找到项目: ${alias}`).build(),
       };
     }
 
@@ -346,9 +344,7 @@ export class ClaudeCodePlugin extends PluginBase {
     if (!parsed.projectPath || !parsed.prompt) {
       return {
         success: false,
-        segments: new MessageBuilder()
-          .text('用法: /claude new <path> [--type bun|node|python|rust] <prompt>')
-          .build(),
+        segments: new MessageBuilder().text('用法: /claude new <path> [--type bun|node|python|rust] <prompt>').build(),
         error: 'Missing arguments',
       };
     }

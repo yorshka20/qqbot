@@ -35,12 +35,12 @@ export interface MilkyAPIResponse<T = unknown> {
 export interface NormalizedMilkyMessageEvent extends BaseEvent {
   type: 'message';
   messageType: 'private' | 'group';
-  userId: number;
+  userId: number | string;
   message: string;
   segments: IncomingSegment[];
 
   /** Only set when message_scene is 'group' or 'temp'. */
-  groupId?: number;
+  groupId?: number | string;
   /** From data.message_seq; API may omit. */
   messageSeq?: number;
   /** Only set when event includes group info. */
@@ -49,7 +49,7 @@ export interface NormalizedMilkyMessageEvent extends BaseEvent {
   messageScene?: string;
   /** Set when data.group_member (group) or data.friend (private) is present. */
   sender?: {
-    userId: number;
+    userId: number | string;
     nickname?: string;
     card?: string;
     role?: string;

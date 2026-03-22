@@ -11,8 +11,8 @@ import type { HookContext } from '@/hooks/types';
  * Provides a fluent API for creating CommandContext instances
  */
 export class CommandContextBuilder {
-  private userId?: number;
-  private groupId?: number;
+  private userId?: number | string;
+  private groupId?: number | string;
   private messageType?: 'private' | 'group';
   private rawMessage?: string;
   private messageScene?: string;
@@ -66,7 +66,7 @@ export class CommandContextBuilder {
   /**
    * Set user ID
    */
-  withUserId(userId: number): this {
+  withUserId(userId: number | string): this {
     this.userId = userId;
     return this;
   }
@@ -74,7 +74,7 @@ export class CommandContextBuilder {
   /**
    * Set group ID
    */
-  withGroupId(groupId?: number): this {
+  withGroupId(groupId?: number | string): this {
     this.groupId = groupId;
     return this;
   }

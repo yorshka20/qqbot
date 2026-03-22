@@ -96,9 +96,7 @@ export class AutoAcceptPlugin extends PluginBase {
           },
           protocol,
         );
-        logger.info(
-          `[AutoAcceptPlugin] Group join request accepted | groupId=${groupId} initiatorId=${initiatorId}`,
-        );
+        logger.info(`[AutoAcceptPlugin] Group join request accepted | groupId=${groupId} initiatorId=${initiatorId}`);
       } catch (error) {
         logger.error(
           `[AutoAcceptPlugin] Failed to accept group join request | groupId=${groupId} error=${(error as Error).message}`,
@@ -126,9 +124,7 @@ export class AutoAcceptPlugin extends PluginBase {
           },
           protocol,
         );
-        logger.info(
-          `[AutoAcceptPlugin] Invited join request accepted | groupId=${groupId} initiatorId=${initiatorId}`,
-        );
+        logger.info(`[AutoAcceptPlugin] Invited join request accepted | groupId=${groupId} initiatorId=${initiatorId}`);
       } catch (error) {
         logger.error(
           `[AutoAcceptPlugin] Failed to accept invited join request | groupId=${groupId} error=${(error as Error).message}`,
@@ -144,9 +140,7 @@ export class AutoAcceptPlugin extends PluginBase {
 
       if (!groupId || !invitationSeq) return;
 
-      logger.info(
-        `[AutoAcceptPlugin] Auto-accepting group invitation | groupId=${groupId} initiatorId=${initiatorId}`,
-      );
+      logger.info(`[AutoAcceptPlugin] Auto-accepting group invitation | groupId=${groupId} initiatorId=${initiatorId}`);
 
       try {
         await this.api.call(

@@ -50,8 +50,8 @@ export interface SubAgentSession {
 
   // Context isolation
   context: {
-    groupId?: number;
-    userId?: number;
+    groupId?: number | string;
+    userId?: number | string;
     sessionId: string; // Independent session
     episodeId?: string; // Independent episode
     /** From parent when spawned from main flow; used by ToolRunner for ToolExecutionContext. */

@@ -209,7 +209,7 @@ export class MessagePipeline {
     sessionId: string,
     userMessage: string,
     assistantReply: string,
-    options?: { userId?: number; nickname?: string },
+    options?: { userId?: number | string; nickname?: string },
   ): Promise<void> {
     try {
       await this.contextManager.addMessage(sessionId, 'user', userMessage, options);

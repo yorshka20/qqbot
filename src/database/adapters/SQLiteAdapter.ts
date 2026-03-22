@@ -323,9 +323,9 @@ export class SQLiteAdapter implements DatabaseAdapter {
       `CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
         conversationId TEXT NOT NULL,
-        userId INTEGER NOT NULL,
+        userId TEXT NOT NULL,
         messageType TEXT NOT NULL CHECK(messageType IN ('private', 'group')),
-        groupId INTEGER,
+        groupId TEXT,
         content TEXT NOT NULL,
         rawContent TEXT,
         protocol TEXT NOT NULL,

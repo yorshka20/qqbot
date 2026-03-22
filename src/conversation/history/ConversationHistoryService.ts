@@ -14,7 +14,7 @@ import { formatConversationEntriesToText } from './format';
 export interface ConversationMessageEntry {
   /** Stable message ID from database (Message.id). Used for dedup boundary tracking. */
   messageId: string;
-  userId: number;
+  userId: number | string;
   nickname?: string;
   content: string;
   segments?: MessageSegment[];
@@ -31,8 +31,8 @@ export interface ConversationMessageEntry {
 export function normalizeSessionId(
   sessionId: unknown,
   sessionType: 'group' | 'user',
-  fallbackGroupId?: number,
-  fallbackUserId?: number,
+  fallbackGroupId?: number | string,
+  fallbackUserId?: number | string,
 ): string {
   const s = sessionId != null ? String(sessionId).trim() : '';
   if (sessionType === 'group') {

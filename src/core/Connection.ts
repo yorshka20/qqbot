@@ -25,10 +25,10 @@ export interface ConnectionEvents {
 
 export class Connection extends EventEmitter {
   private ws: WebSocket | null = null;
-  private state: ConnectionState = 'disconnected';
+  protected state: ConnectionState = 'disconnected';
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
-  private config: ProtocolConfig;
+  protected config: ProtocolConfig;
 
   constructor(config: ProtocolConfig) {
     super();
@@ -166,7 +166,7 @@ export class Connection extends EventEmitter {
     };
   }
 
-  private setState(state: ConnectionState): void {
+  protected setState(state: ConnectionState): void {
     if (this.state !== state) {
       this.state = state;
       this.emit('state', state);

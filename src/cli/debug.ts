@@ -424,9 +424,9 @@ class DebugCLI {
 
   private createMockMessageEvent(
     type: 'private' | 'group',
-    userId: number,
+    userId: number | string,
     message: string,
-    groupId?: number,
+    groupId?: number | string,
     atBot: boolean = false,
   ): NormalizedMessageEvent {
     const segments: Array<{ type: string; data?: Record<string, unknown> }> = [];

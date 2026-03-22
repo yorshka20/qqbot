@@ -89,8 +89,8 @@ export interface ToolExecutor {
  * Tool execution context
  */
 export interface ToolExecutionContext {
-  userId: number;
-  groupId?: number;
+  userId: number | string;
+  groupId?: number | string;
   messageType: 'private' | 'group';
   conversationId?: string;
   messageId?: string;

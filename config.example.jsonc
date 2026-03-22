@@ -37,6 +37,31 @@
         "initialDelay": 1000,
         "maxDelay": 30000
       }
+    },
+    {
+      // Discord protocol
+      // Requires a Discord Bot application: https://discord.com/developers/applications
+      // Enable Privileged Intents: Message Content Intent, Server Members Intent
+      "name": "discord",
+      "enabled": false,
+      "priority": 3,
+      "mockSendMessage": false,
+      "connection": {
+        "url": "",
+        "apiUrl": "",
+        "accessToken": "YOUR_DISCORD_BOT_TOKEN"
+      },
+      "discord": {
+        "intents": ["Guilds", "GuildMessages", "MessageContent", "DirectMessages", "GuildMembers"],
+        "guildId": ""
+      },
+      "reconnect": {
+        "enabled": true,
+        "maxRetries": 10,
+        "backoff": "exponential",
+        "initialDelay": 1000,
+        "maxDelay": 30000
+      }
     }
   ],
   // API configuration

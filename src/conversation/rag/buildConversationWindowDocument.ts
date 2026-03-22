@@ -44,12 +44,12 @@ const CONVERSATION_WINDOW_CONTENT_MAX_CHARS = 1000;
 export interface ConversationWindowPayload {
   sessionId: string;
   sessionType: string;
-  groupId?: number;
+  groupId?: number | string;
   startTime: string;
   endTime: string;
-  participants: number[];
+  participants: (number | string)[];
   /** Each message includes userId and nickname so payload can be matched to content (content uses nickname as speaker label). */
-  rawMessages: Array<{ userId: number; nickname?: string; text: string; timestamp: string }>;
+  rawMessages: Array<{ userId: number | string; nickname?: string; text: string; timestamp: string }>;
 }
 
 /**

@@ -154,6 +154,13 @@ export class Config {
 
     // Validate each protocol config
     for (const protocol of this.config.protocols) {
+      // Discord manages its own connection via discord.js; url/apiUrl are not needed.
+      if (protocol.name === 'discord') {
+        if (!protocol.connection.accessToken) {
+          throw new ConfigError('Discord protocol must have connection.accessToken (bot token)');
+        }
+        continue;
+      }
       if (!protocol.connection.url || !protocol.connection.apiUrl) {
         throw new ConfigError(`Protocol ${protocol.name} must have connection.url and connection.apiUrl`);
       }

@@ -29,7 +29,7 @@ export class DefaultPermissionChecker implements IPermissionChecker {
    * Check if user has required permissions
    */
   checkPermission(
-    userId: number,
+    userId: number | string,
     messageType: 'private' | 'group',
     requiredPermissions: PermissionLevel[],
     userRole?: string,
@@ -60,7 +60,7 @@ export class DefaultPermissionChecker implements IPermissionChecker {
    * - 'owner': Bot owner only (configured user ID)
    */
   private hasPermission(
-    userId: number,
+    userId: number | string,
     messageType: 'private' | 'group',
     userRole: string | undefined,
     permission: PermissionLevel,

@@ -21,7 +21,7 @@ import type {
 
 export interface PermissionChecker {
   checkPermission(
-    userId: number,
+    userId: number | string,
     messageType: 'private' | 'group',
     requiredPermissions: PermissionLevel[],
     userRole?: string,
@@ -34,7 +34,7 @@ export class CommandManager {
 
   // Store command enabled/disabled state per group (deprecated, kept for backward compatibility)
   // Map<groupId, Map<commandName, enabled>>
-  private groupCommandStates = new Map<number, Map<string, boolean>>();
+  private groupCommandStates = new Map<number | string, Map<string, boolean>>();
 
   constructor(
     private permissionChecker: PermissionChecker,

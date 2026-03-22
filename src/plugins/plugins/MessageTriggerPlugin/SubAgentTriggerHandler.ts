@@ -215,7 +215,7 @@ export class SubAgentTriggerHandler {
    * Build a synthetic NormalizedMessageEvent for proactive sends to a group.
    * Mimics the pattern used in ProactiveConversationService.
    */
-  private buildSyntheticContext(groupId: number): NormalizedMessageEvent {
+  private buildSyntheticContext(groupId: number | string): NormalizedMessageEvent {
     return {
       id: '',
       type: 'message',
@@ -234,7 +234,7 @@ export class SubAgentTriggerHandler {
    * Returns the send result so callers can extract messageSeq for cancellation tracking.
    */
   private async sendNotification(
-    groupId: number,
+    groupId: number | string,
     displayName: string,
     syntheticContext: NormalizedMessageEvent,
   ): Promise<SendMessageResult | null> {
@@ -361,7 +361,7 @@ export class SubAgentTriggerHandler {
    *        This prevents long bot outputs from flooding the chat.
    */
   private async sendResult(
-    groupId: number,
+    groupId: number | string,
     resultText: string,
     syntheticContext: NormalizedMessageEvent,
   ): Promise<void> {

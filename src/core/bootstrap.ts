@@ -19,7 +19,9 @@ import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { EventInitializer } from '@/events/EventInitializer';
 import type { EventRouter } from '@/events/EventRouter';
 import { PluginInitializer } from '@/plugins/PluginInitializer';
+import { DiscordConnection } from '@/protocol/discord/DiscordConnection';
 import { ProtocolAdapterInitializer } from '@/protocol/ProtocolAdapterInitializer';
+import { registerConnectionClass } from './ConnectionManager';
 import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import type { MCPSystem } from '@/services/mcp/MCPInitializer';
@@ -119,6 +121,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
 
   // ── Protocol adapter registration (registers event listeners, no connections) ──
   const connectionManager = bot.getConnectionManager();
+  registerConnectionClass('discord', DiscordConnection);
   ProtocolAdapterInitializer.initialize(config, connectionManager, eventRouter, apiClient);
 
   // ── Load plugins (triggers onInit for all enabled plugins, e.g. WeChatIngestPlugin DI registration) ──

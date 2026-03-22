@@ -29,8 +29,8 @@ export type MessageAPIContext = CommandContext | NormalizedMessageEvent | Normal
 /** Extracted fields from MessageAPIContext for API calls (notice may have optional groupId/messageType). */
 interface ExtractedContextFields {
   protocol: ProtocolName;
-  userId?: number;
-  groupId?: number;
+  userId?: number | string;
+  groupId?: number | string;
   messageType?: 'private' | 'group';
   messageScene?: string;
 }
@@ -71,7 +71,11 @@ export class MessageAPI {
    * Use this when no message context is available (e.g. AgentLoop scheduled tasks).
    * When a CommandContext or NormalizedMessageEvent is available, prefer sendFromContext().
    */
-  async sendPrivateMessage(userId: number, message: string | unknown[], protocol: ProtocolName): Promise<number> {
+  async sendPrivateMessage(
+    userId: number | string,
+    message: string | unknown[],
+    protocol: ProtocolName,
+  ): Promise<number> {
     const result = await this.apiClient.call<SendMessageResult>(
       'send_private_msg',
       {
@@ -93,7 +97,11 @@ export class MessageAPI {
    * Use this when no message context is available (e.g. AgentLoop scheduled tasks).
    * When a CommandContext or NormalizedMessageEvent is available, prefer sendFromContext().
    */
-  async sendGroupMessage(groupId: number, message: string | unknown[], protocol: ProtocolName): Promise<number> {
+  async sendGroupMessage(
+    groupId: number | string,
+    message: string | unknown[],
+    protocol: ProtocolName,
+  ): Promise<number> {
     const result = await this.apiClient.call<SendMessageResult>(
       'send_group_msg',
       {
@@ -183,7 +191,7 @@ export class MessageAPI {
    * Build the forward segment from ForwardMessageInput[].
    * Shared by sendForwardFromContext and sendForwardMessage.
    */
-  private buildForwardSegment(messages: ForwardMessageInput[], botUserId: number) {
+  private buildForwardSegment(messages: ForwardMessageInput[], botUserId: number | string) {
     const nodes = messages.map((m) => {
       const milkySegments = segmentsToMilkyOutgoing(m.segments);
       return {
@@ -210,10 +218,10 @@ export class MessageAPI {
    * @returns Full API response (e.g. message_seq for Milky)
    */
   async sendForwardMessage(
-    target: { type: 'user' | 'group'; id: number },
+    target: { type: 'user' | 'group'; id: number | string },
     messages: ForwardMessageInput[],
     protocol: ProtocolName,
-    options: { botUserId: number },
+    options: { botUserId: number | string },
     timeout: number = 10000,
   ): Promise<SendMessageResult> {
     if (protocol !== 'milky') {
@@ -223,7 +231,7 @@ export class MessageAPI {
       throw new Error('sendForwardMessage requires at least one message');
     }
     const botUserId = options.botUserId;
-    if (!botUserId || botUserId <= 0) {
+    if (!botUserId || (typeof botUserId === 'number' && botUserId <= 0)) {
       throw new Error(
         "Forward message requires options.botUserId to be the bot's own QQ user id (positive number). Set config.bot.selfId.",
       );
@@ -257,7 +265,7 @@ export class MessageAPI {
     messages: ForwardMessageInput[],
     context: CommandContext | NormalizedMessageEvent,
     timeout: number = 10000,
-    options: { botUserId: number },
+    options: { botUserId: number | string },
   ): Promise<SendMessageResult> {
     const { protocol, userId, groupId, messageType, messageScene } = this.extractContextFields(context);
     if (protocol !== 'milky') {

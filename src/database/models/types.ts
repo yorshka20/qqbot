@@ -25,9 +25,9 @@ export interface Conversation extends BaseModel {
  */
 export interface Message extends BaseModel {
   conversationId: string;
-  userId: number;
+  userId: number | string;
   messageType: 'private' | 'group';
-  groupId?: number;
+  groupId?: number | string;
   content: string;
   rawContent?: string; // Original message segments
   protocol: string;

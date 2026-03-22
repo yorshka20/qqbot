@@ -157,8 +157,8 @@ export class MessageOperationPlugin extends PluginBase {
     context: {
       reactionId: string;
       messageSeq: number;
-      groupId: number;
-      userId: number;
+      groupId: number | string;
+      userId: number | string;
       noticeEvent: NormalizedNoticeEvent;
     },
   ): Promise<void> {
@@ -183,8 +183,8 @@ export class MessageOperationPlugin extends PluginBase {
   private async recallMessage(context: {
     reactionId: string;
     messageSeq: number;
-    groupId: number;
-    userId: number;
+    groupId: number | string;
+    userId: number | string;
     noticeEvent: NormalizedNoticeEvent;
   }): Promise<void> {
     if (!this.context || !this.messageAPI) {
@@ -212,8 +212,8 @@ export class MessageOperationPlugin extends PluginBase {
   private async replyMessage(context: {
     reactionId: string;
     messageSeq: number;
-    groupId: number;
-    userId: number;
+    groupId: number | string;
+    userId: number | string;
     noticeEvent: NormalizedNoticeEvent;
   }): Promise<void> {
     if (!this.context || !this.messageAPI || !this.conversationManager) {

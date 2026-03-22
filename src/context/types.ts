@@ -14,8 +14,8 @@ export interface ConversationContext {
     content: string;
     timestamp: Date;
   }>;
-  userId: number;
-  groupId?: number;
+  userId: number | string;
+  groupId?: number | string;
   messageType: 'private' | 'group';
   systemPrompt?: string;
   metadata: Map<string, unknown>;
@@ -55,8 +55,8 @@ export interface ContextBuilderOptions {
 export interface BuildContextOptions extends ContextBuilderOptions {
   sessionId: string;
   sessionType: 'user' | 'group';
-  userId: number;
-  groupId?: number;
+  userId: number | string;
+  groupId?: number | string;
   systemPrompt?: string;
 }
 

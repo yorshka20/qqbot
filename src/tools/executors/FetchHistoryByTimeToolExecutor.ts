@@ -183,7 +183,7 @@ export class FetchHistoryByTimeToolExecutor extends BaseToolExecutor {
     }
 
     // Collect unique users
-    const userMap = new Map<number, { userId: number; nickname?: string; messageCount: number }>();
+    const userMap = new Map<number | string, { userId: number | string; nickname?: string; messageCount: number }>();
     for (const msg of filtered) {
       if (msg.isBotReply) continue;
       const existing = userMap.get(msg.userId);

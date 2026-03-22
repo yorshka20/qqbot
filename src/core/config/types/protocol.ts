@@ -2,7 +2,7 @@
 
 import type { APIStrategy, BackoffStrategy, DeduplicationStrategy } from './const';
 
-export type ProtocolName = 'milky' | 'onebot11' | 'satori';
+export type ProtocolName = 'milky' | 'onebot11' | 'satori' | 'discord';
 
 export interface ProtocolConnectionConfig {
   url: string;
@@ -18,6 +18,11 @@ export interface ReconnectConfig {
   maxDelay: number;
 }
 
+export interface DiscordConfig {
+  intents?: string[];
+  guildId?: string;
+}
+
 export interface ProtocolConfig {
   name: ProtocolName;
   enabled: boolean;
@@ -26,6 +31,7 @@ export interface ProtocolConfig {
   mockSendMessage: boolean;
   connection: ProtocolConnectionConfig;
   reconnect: ReconnectConfig;
+  discord?: DiscordConfig;
 }
 
 export interface APIConfig {

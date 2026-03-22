@@ -5,7 +5,7 @@ import type { ConversationMessageEntry, SessionHistoryStore } from '@/conversati
 import type { ContextBuilderOptions, ConversationContext, GlobalContext, SessionContext } from './types';
 
 export interface AddMessageOptions {
-  userId?: number;
+  userId?: number | string;
   nickname?: string;
   messageId?: string;
   wasAtBot?: boolean;
@@ -14,8 +14,8 @@ export interface AddMessageOptions {
 export interface BuildContextOptions extends ContextBuilderOptions {
   sessionId: string;
   sessionType: 'user' | 'group';
-  userId: number;
-  groupId?: number;
+  userId: number | string;
+  groupId?: number | string;
   systemPrompt?: string;
 }
 

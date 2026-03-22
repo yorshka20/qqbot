@@ -418,7 +418,11 @@ export class MemoryService {
     // RAG is required for memory injection — without it, skip to save tokens
     if (!this.ragService?.isEnabled() || !options.userMessage.trim()) {
       logger.debug('[MemoryService] RAG not available or empty query, skipping memory injection');
-      return { groupMemoryText: '', userMemoryText: '', stats: { groupIncluded: 0, groupTotal: 0, userIncluded: 0, userTotal: 0 } };
+      return {
+        groupMemoryText: '',
+        userMemoryText: '',
+        stats: { groupIncluded: 0, groupTotal: 0, userIncluded: 0, userTotal: 0 },
+      };
     }
 
     try {
@@ -430,7 +434,11 @@ export class MemoryService {
       return ragResult;
     } catch (err) {
       logger.warn('[MemoryService] RAG search failed, skipping memory injection:', err);
-      return { groupMemoryText: '', userMemoryText: '', stats: { groupIncluded: 0, groupTotal: 0, userIncluded: 0, userTotal: 0 } };
+      return {
+        groupMemoryText: '',
+        userMemoryText: '',
+        stats: { groupIncluded: 0, groupTotal: 0, userIncluded: 0, userTotal: 0 },
+      };
     }
   }
 

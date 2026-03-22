@@ -9,8 +9,8 @@ import type { ToolExecutionContext, ToolResult } from '@/tools/types';
  * Provides a fluent API for creating ToolExecutionContext instances
  */
 export class ToolExecutionContextBuilder {
-  private userId?: number;
-  private groupId?: number;
+  private userId?: number | string;
+  private groupId?: number | string;
   private messageType?: 'private' | 'group';
   private conversationId?: string;
   private messageId?: string;
@@ -50,7 +50,7 @@ export class ToolExecutionContextBuilder {
   /**
    * Set user ID
    */
-  withUserId(userId: number): this {
+  withUserId(userId: number | string): this {
     this.userId = userId;
     return this;
   }
@@ -58,7 +58,7 @@ export class ToolExecutionContextBuilder {
   /**
    * Set group ID
    */
-  withGroupId(groupId?: number): this {
+  withGroupId(groupId?: number | string): this {
     this.groupId = groupId;
     return this;
   }

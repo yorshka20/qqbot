@@ -9,7 +9,7 @@ import { PluginBase } from '../PluginBase';
 interface Text2ImgSFWFilterPluginConfig {
   // Group-based user IDs that should be forced to use SFW template for text2img commands
   // Key is groupId (as string), value is array of user IDs (as numbers)
-  groupSfwUsers?: Record<string, number[]>;
+  groupSfwUsers?: Record<string, (number | string)[]>;
 }
 
 @RegisterPlugin({
@@ -19,7 +19,7 @@ interface Text2ImgSFWFilterPluginConfig {
 })
 export class Text2ImgSFWFilterPlugin extends PluginBase {
   // Map of groupId -> Set of user IDs that should be forced to use SFW template
-  private groupSfwUsers: Map<string, Set<number>> = new Map();
+  private groupSfwUsers: Map<string, Set<number | string>> = new Map();
 
   async onInit(): Promise<void> {
     // Load plugin-specific configuration

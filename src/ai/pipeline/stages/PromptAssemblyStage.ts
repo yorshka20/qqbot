@@ -54,9 +54,7 @@ export class PromptAssemblyStage implements ReplyStage {
     const sender = hookContext.message?.sender;
     const senderNickname = sender?.nickname ?? sender?.card ?? '';
     const senderUserId = hookContext.message?.userId ?? '';
-    const senderIdentity = senderNickname
-      ? `[speaker:${senderUserId}:${senderNickname}]`
-      : `[speaker:${senderUserId}]`;
+    const senderIdentity = senderNickname ? `[speaker:${senderUserId}:${senderNickname}]` : `[speaker:${senderUserId}]`;
 
     const frameCurrentQuery = this.promptManager.render('llm.reply.user_frame', {
       userMessage: ctx.userMessage,

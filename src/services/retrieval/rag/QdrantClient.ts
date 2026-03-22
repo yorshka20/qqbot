@@ -63,8 +63,8 @@ export class QdrantClient {
   static getConversationHistoryCollectionName(
     sessionId: string,
     sessionType: string,
-    groupId?: number,
-    userId?: number,
+    groupId?: number | string,
+    userId?: number | string,
   ): string {
     if (sessionType === 'group' && groupId != null) {
       return `${groupId}_conversation_history`;

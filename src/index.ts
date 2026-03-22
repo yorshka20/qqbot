@@ -33,13 +33,17 @@ async function main() {
       MCPInitializer.updateRetrievalService(mcpSystem, retrievalService);
     }
 
-    // Start Claude Code service
+    // Start Claude Code service (non-fatal if port is in use)
     if (claudeCodeService) {
-      const container = getContainer();
-      const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
-      await ClaudeCodeInitializer.start(claudeCodeService, messageAPI);
-      const protocols = config.getEnabledProtocols().map((p) => p.name);
-      ClaudeCodeInitializer.updateBotInfo(claudeCodeService, config.getConfig().bot.selfId, protocols);
+      try {
+        const container = getContainer();
+        const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+        await ClaudeCodeInitializer.start(claudeCodeService, messageAPI);
+        const protocols = config.getEnabledProtocols().map((p) => p.name);
+        ClaudeCodeInitializer.updateBotInfo(claudeCodeService, config.getConfig().bot.selfId, protocols);
+      } catch (error) {
+        logger.warn('[Main] Claude Code service failed to start (non-fatal):', error);
+      }
     }
 
     logger.info('[Main] Bot initialized and ready');
