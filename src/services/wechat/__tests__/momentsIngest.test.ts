@@ -317,11 +317,11 @@ interface PadProConfig {
 }
 
 function loadPadProConfig(): PadProConfig | null {
-  const { loadConfigDir } = require('@/core/config/loadConfigDir') as typeof import('@/core/config/loadConfigDir');
+  const { loadConfigAuto } = require('@/core/config/loadConfigDir') as typeof import('@/core/config/loadConfigDir');
   const configDir = resolve(process.cwd(), 'config.d');
   let raw: Record<string, unknown>;
   try {
-    raw = loadConfigDir(configDir);
+    raw = loadConfigAuto(configDir);
   } catch {
     return null;
   }

@@ -1,10 +1,10 @@
 // Configuration management - main entry point
 
-import { existsSync, readdirSync, statSync } from 'fs';
+import { existsSync, statSync } from 'fs';
 import { resolve } from 'path';
 import { ConfigError } from '@/utils/errors';
 import { logger } from '@/utils/logger';
-import { loadConfigDir } from './loadConfigDir';
+import { loadConfigAuto } from './loadConfigDir';
 // Import all config types
 import type { AIConfig, AIProviderCapability, ContextMemoryConfig, SessionProviderConfig } from './types/ai';
 import type { BotSelfConfig, ClaudeCodeServiceConfig, FileReadServiceConfig, StaticServerConfig } from './types/bot';
@@ -90,8 +90,8 @@ export class Config {
 
   constructor(configPath?: string) {
     try {
-      const resolvedDir = this.resolveConfigDir(configPath);
-      this.config = this.loadFromDir(resolvedDir);
+      const resolvedPath = this.resolveConfigPath(configPath);
+      this.config = this.loadConfig(resolvedPath);
       this.validateConfig();
     } catch (error) {
       if (error instanceof ConfigError) {
@@ -104,36 +104,41 @@ export class Config {
     }
   }
 
-  private resolveConfigDir(configPath?: string): string {
-    // Priority: 1. constructor argument, 2. CONFIG_PATH env var, 3. default location
-    const candidates = [configPath, process.env.CONFIG_PATH, resolve(process.cwd(), 'config.d')];
+  /**
+   * Resolve config source. Supports both single file (config.jsonc) and
+   * directory (config.d/) layouts.
+   *
+   * Priority: constructor arg → CONFIG_PATH env → config.d/ → config.jsonc
+   */
+  private resolveConfigPath(configPath?: string): string {
+    const candidates = [
+      configPath,
+      process.env.CONFIG_PATH,
+      resolve(process.cwd(), 'config.d'),
+      resolve(process.cwd(), 'config.jsonc'),
+    ];
 
     for (const candidate of candidates) {
       if (!candidate) continue;
       const resolved = resolve(candidate);
-      if (existsSync(resolved) && statSync(resolved).isDirectory()) {
+      if (existsSync(resolved)) {
         return resolved;
       }
     }
 
     throw new ConfigError(
-      `Config directory not found. Please provide a config directory via:\n` +
-        `  1. Config constructor argument: new Config('/path/to/config.d')\n` +
-        `  2. CONFIG_PATH environment variable: CONFIG_PATH=/path/to/config.d\n` +
-        `  3. Place config.d/ directory in project root: ${resolve(process.cwd(), 'config.d')}\n` +
-        `  The directory should contain .jsonc files, each contributing top-level config keys.`,
+      `Config not found. Provide one of:\n` +
+        `  1. Constructor argument: new Config('/path/to/config.d' or '/path/to/config.jsonc')\n` +
+        `  2. CONFIG_PATH env var (file or directory)\n` +
+        `  3. config.d/ directory in project root\n` +
+        `  4. config.jsonc file in project root`,
     );
   }
 
-  private loadFromDir(dirPath: string): BotConfig {
-    const merged = loadConfigDir(dirPath);
-
-    // Log loaded files
-    const files = readdirSync(dirPath)
-      .filter((f) => f.endsWith('.jsonc'))
-      .sort();
-    logger.info(`[Config] Loaded ${files.length} config files from ${dirPath}: ${files.join(', ')}`);
-
+  private loadConfig(configPath: string): BotConfig {
+    const isDir = statSync(configPath).isDirectory();
+    const merged = loadConfigAuto(configPath);
+    logger.info(`[Config] Loaded config from ${isDir ? 'directory' : 'file'}: ${configPath}`);
     return merged as unknown as BotConfig;
   }
 

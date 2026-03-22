@@ -25,9 +25,11 @@ git clone <repository-url>
 cd qqbot
 bun install
 cp config.example.jsonc config.jsonc
+# or use the split layout:
+# mkdir config.d && cp config.example.jsonc config.d/all.jsonc
 ```
 
-Edit `config.jsonc` (JSONC with inline comments). Required: `protocols`, `database`, `prompts`; others optional.
+Edit config (JSONC with inline comments). Required keys: `protocols`, `database`, `prompts`; others optional.
 
 ## Quick Start
 
@@ -56,8 +58,9 @@ qqbot/
 ├── plugins/            # User-defined plugins
 ├── prompts/            # Prompt templates
 ├── docs/               # Architecture and design docs
-├── config.example.jsonc
-└── config.jsonc        # Local config (not committed)
+├── config.example.jsonc  # Example config (single file)
+├── config.jsonc          # Local config, single file (not committed)
+└── config.d/             # Or: local config, split into multiple .jsonc files (not committed)
 ```
 
 ## Architecture (Summary)
@@ -66,7 +69,38 @@ Messages flow: **LLBot → ConnectionManager → Protocol adapters → EventDedu
 
 ## Configuration
 
-Copy `config.example.jsonc` to `config.jsonc`. The example file is annotated; configure at least:
+Two config layouts are supported — choose whichever suits your workflow:
+
+### Option A: Single file (simple)
+
+```bash
+cp config.example.jsonc config.jsonc
+```
+
+All config in one `config.jsonc` file.
+
+### Option B: Split directory (recommended for large configs)
+
+```bash
+mkdir config.d
+# Split into separate files, each contributing top-level keys:
+# config.d/protocols.jsonc  — protocols, api, events
+# config.d/bot.jsonc        — bot, memory, staticServer, fileReadService, claudeCodeService
+# config.d/database.jsonc   — database
+# config.d/ai.jsonc         — ai, contextMemory
+# config.d/plugins.jsonc    — plugins
+# config.d/services.jsonc   — prompts, tts, mcp, rag (or split further)
+```
+
+Files are loaded alphabetically and shallow-merged by top-level key. File names are free-form (no numeric prefix required). Duplicate top-level keys across files will log a warning; the last file wins.
+
+### Resolution order
+
+1. Constructor argument / `CONFIG_PATH` env var (file or directory)
+2. `config.d/` directory in project root
+3. `config.jsonc` file in project root
+
+Configure at least:
 
 - **protocols** — connection URLs and `accessToken` for each protocol
 - **database** — `type` (sqlite | mongodb) and path/connection string
@@ -100,7 +134,7 @@ bun test
 bun run build        # production bundle
 ```
 
-**Env**: `LOG_LEVEL` (default `info`), `CONFIG_PATH` (default `./config.jsonc`). Path alias `@/` → `src/`.
+**Env**: `LOG_LEVEL` (default `info`), `CONFIG_PATH` (file or directory, default auto-detect `config.d/` then `config.jsonc`). Path alias `@/` → `src/`.
 
 ## Troubleshooting
 

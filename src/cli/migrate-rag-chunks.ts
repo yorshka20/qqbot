@@ -8,7 +8,7 @@
 
 import 'reflect-metadata';
 
-import { loadConfigDir } from '@/core/config/loadConfigDir';
+import { loadConfigAuto } from '@/core/config/loadConfigDir';
 import { chunkText } from '@/services/retrieval/rag/chunkText';
 import { OllamaEmbedClient } from '@/services/retrieval/rag/OllamaEmbedClient';
 import { QdrantClient } from '@/services/retrieval/rag/QdrantClient';
@@ -27,8 +27,9 @@ const overlap = Number(getArg('overlap', '100'));
 // ── Load config ──
 
 function loadConfig() {
-  const configDir = process.env.CONFIG_PATH ?? './config.d';
-  return loadConfigDir(configDir);
+  const { existsSync } = require('node:fs') as typeof import('node:fs');
+  const configPath = process.env.CONFIG_PATH ?? (existsSync('./config.d') ? './config.d' : './config.jsonc');
+  return loadConfigAuto(configPath);
 }
 
 const config = loadConfig();
