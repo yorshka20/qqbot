@@ -50,10 +50,11 @@ async function sendChannelMessage(client: Client, params: Record<string, unknown
   }
 
   const textChannel = channel as TextChannel;
-  const { content, replyTo } = buildMessageContent(params);
+  const { content, files, replyTo } = buildMessageContent(params);
 
   const sentMessage = await textChannel.send({
-    content,
+    content: content || undefined,
+    files,
     ...(replyTo ? { reply: { messageReference: replyTo } } : {}),
   });
 
@@ -67,10 +68,11 @@ async function sendPrivateMessage(client: Client, params: Record<string, unknown
     throw new Error(`User ${userId} not found`);
   }
 
-  const { content, replyTo } = buildMessageContent(params);
+  const { content, files, replyTo } = buildMessageContent(params);
 
   const sentMessage = await user.send({
-    content,
+    content: content || undefined,
+    files,
     ...(replyTo ? { reply: { messageReference: replyTo } } : {}),
   });
 
@@ -137,7 +139,7 @@ async function getUserInfo(client: Client, params: Record<string, unknown>): Pro
   };
 }
 
-function buildMessageContent(params: Record<string, unknown>): { content: string; replyTo?: string } {
+function buildMessageContent(params: Record<string, unknown>): ReturnType<typeof segmentsToDiscordMessage> {
   // If message is a segment array, convert to Discord format
   if (Array.isArray(params.message)) {
     return segmentsToDiscordMessage(params.message as import('@/message/types').MessageSegment[]);
@@ -145,8 +147,8 @@ function buildMessageContent(params: Record<string, unknown>): { content: string
 
   // If message is a plain string
   if (typeof params.message === 'string') {
-    return { content: params.message };
+    return { content: params.message, files: [] };
   }
 
-  return { content: '' };
+  return { content: '', files: [] };
 }

@@ -1,6 +1,6 @@
 // Discord segment converter - bidirectional conversion between internal MessageSegment[] and Discord message format
 
-import type { AttachmentBuilder, Message as DiscordMessage } from 'discord.js';
+import { AttachmentBuilder, type Message as DiscordMessage } from 'discord.js';
 import type { MessageSegment } from '@/message/types';
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
@@ -57,10 +57,12 @@ export interface DiscordOutgoingMessage {
  */
 export function segmentsToDiscordMessage(segments: MessageSegment[]): {
   content: string;
+  files: AttachmentBuilder[];
   replyTo?: string;
 } {
   let content = '';
   let replyTo: string | undefined;
+  const files: AttachmentBuilder[] = [];
 
   for (const segment of segments) {
     switch (segment.type) {
@@ -74,12 +76,21 @@ export function segmentsToDiscordMessage(segments: MessageSegment[]): {
         // Best-effort: Discord doesn't have QQ faces, use emoji text
         content += `[face:${segment.data.id}]`;
         break;
-      case 'image':
-        // Images are handled separately as attachments; include URL as fallback
-        if (segment.data.uri) {
-          content += segment.data.uri;
+      case 'image': {
+        const uri = segment.data.uri;
+        if (uri?.startsWith('base64://')) {
+          const base64Data = uri.slice('base64://'.length);
+          const buffer = Buffer.from(base64Data, 'base64');
+          files.push(new AttachmentBuilder(buffer, { name: `image_${files.length}.png` }));
+        } else if (uri?.startsWith('http://') || uri?.startsWith('https://')) {
+          // External URLs can be embedded directly in content
+          content += uri;
+        } else if (uri) {
+          // Other URI schemes: try as file attachment
+          files.push(new AttachmentBuilder(uri, { name: `image_${files.length}.png` }));
         }
         break;
+      }
       case 'reply':
         replyTo = String(segment.data.id);
         break;
@@ -96,5 +107,5 @@ export function segmentsToDiscordMessage(segments: MessageSegment[]): {
     }
   }
 
-  return { content, replyTo };
+  return { content, files, replyTo };
 }

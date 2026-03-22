@@ -111,18 +111,26 @@ export class Bot extends EventEmitter {
   private async waitForConnections(): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('Timeout waiting for connections'));
-      }, 30000); // 30 second timeout
+        // Even on timeout, allow startup if at least one protocol is connected
+        const connected = this.connectionManager.getConnectedProtocols();
+        if (connected.length > 0) {
+          logger.warn(`[Bot] Connection timeout, but continuing with ${connected.length} connected protocol(s): ${connected.join(', ')}`);
+          resolve();
+        } else {
+          reject(new Error('Timeout waiting for connections: no protocol connected'));
+        }
+      }, 30000);
 
-      if (this.connectionManager.isAllConnected()) {
+      this.connectionManager.once('connectSettled', (connected, failed) => {
         clearTimeout(timeout);
-        resolve();
-        return;
-      }
-
-      this.connectionManager.once('allConnected', () => {
-        clearTimeout(timeout);
-        resolve();
+        if (connected.length > 0) {
+          if (failed.length > 0) {
+            logger.warn(`[Bot] Starting with ${connected.length} protocol(s), failed: ${failed.join(', ')}`);
+          }
+          resolve();
+        } else {
+          reject(new Error(`All protocol connections failed: ${failed.join(', ')}`));
+        }
       });
     });
   }

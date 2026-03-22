@@ -11,6 +11,7 @@ export interface ConnectionManagerEvents {
   connectionError: (protocol: string, error: Error) => void;
   allConnected: () => void;
   allDisconnected: () => void;
+  connectSettled: (connected: string[], failed: string[]) => void;
 }
 
 /** Typed event overloads for ConnectionManager (avoids unsafe class/interface merge). */
@@ -43,11 +44,28 @@ export class ConnectionManager extends EventEmitter implements ConnectionManager
     const enabledProtocols = this.config.getEnabledProtocols();
     logger.info(`[ConnectionManager] Connecting to ${enabledProtocols.length} protocol(s)`);
 
-    const connectPromises = enabledProtocols.map((protocolConfig) => {
-      return this.connectProtocol(protocolConfig);
-    });
+    const results = await Promise.allSettled(
+      enabledProtocols.map((protocolConfig) => this.connectProtocol(protocolConfig).then(() => protocolConfig.name)),
+    );
 
-    await Promise.allSettled(connectPromises);
+    const connected: string[] = [];
+    const failed: string[] = [];
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        connected.push(result.value);
+      }
+    }
+    for (const protocol of enabledProtocols) {
+      if (!connected.includes(protocol.name)) {
+        failed.push(protocol.name);
+      }
+    }
+
+    if (failed.length > 0) {
+      logger.warn(`[ConnectionManager] Failed to connect protocols: ${failed.join(', ')}`);
+    }
+
+    this.emit('connectSettled', connected, failed);
   }
 
   async connectProtocol(protocolConfig: ProtocolConfig): Promise<void> {
