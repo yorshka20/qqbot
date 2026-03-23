@@ -18,6 +18,12 @@ export abstract class AIProvider {
   abstract readonly name: string;
 
   /**
+   * Whether this provider supports tool/function calling.
+   * Override to `true` in providers that implement tool use in their generate() method.
+   */
+  readonly supportsToolUse: boolean = false;
+
+  /**
    * Whether context is enabled for this provider
    */
   protected enableContext: boolean = false;

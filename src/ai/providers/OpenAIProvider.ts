@@ -33,6 +33,7 @@ export interface OpenAIProviderConfig {
  */
 export class OpenAIProvider extends AIProvider implements LLMCapability, VisionCapability {
   readonly name = 'openai';
+  override readonly supportsToolUse = true;
   private client: OpenAI | null = null;
   private config: OpenAIProviderConfig;
   private _capabilities: CapabilityType[];

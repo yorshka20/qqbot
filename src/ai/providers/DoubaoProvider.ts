@@ -250,6 +250,7 @@ export interface DoubaoProviderConfig {
  */
 export class DoubaoProvider extends AIProvider implements LLMCapability, VisionCapability {
   readonly name = 'doubao';
+  override readonly supportsToolUse = true;
   private httpClient: HttpClient;
   private config: DoubaoProviderConfig;
   private _capabilities: CapabilityType[];

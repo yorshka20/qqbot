@@ -42,6 +42,7 @@ export interface DeepSeekProviderConfig {
  */
 export class DeepSeekProvider extends AIProvider implements LLMCapability {
   readonly name = 'deepseek';
+  override readonly supportsToolUse = true;
   private config: DeepSeekProviderConfig;
   private baseUrl: string;
   private _capabilities: CapabilityType[];

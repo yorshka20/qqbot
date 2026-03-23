@@ -596,9 +596,15 @@ export class LLMService {
 
   /**
    * Check if a named provider supports tool use.
-   * Uses configured toolUseProviders list.
+   * Queries the provider instance first (AIProvider.supportsToolUse property),
+   * then falls back to the configured toolUseProviders list for backward compatibility.
    */
   providerSupportsToolUse(providerName: string): boolean {
+    const provider = this.aiManager.getProviderForCapability('llm', providerName);
+    if (provider) {
+      return provider.supportsToolUse;
+    }
+    // Provider not registered — fallback to config list
     return this.config.toolUseProviders.includes(providerName.toLowerCase());
   }
 

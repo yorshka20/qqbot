@@ -42,6 +42,7 @@ export class GeminiProvider
   implements Text2ImageCapability, Image2ImageCapability, LLMCapability, VisionCapability
 {
   readonly name = 'gemini';
+  override readonly supportsToolUse = true;
   private config: GeminiProviderConfig;
   private _capabilities: CapabilityType[];
   /** Cached clients per key so we use the key for current mode; model unchanged. */

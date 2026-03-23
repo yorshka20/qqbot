@@ -65,7 +65,9 @@ export class ResearchToolExecutor extends BaseToolExecutor {
       return this.error('请提供调研任务描述', 'Missing required parameter: task');
     }
 
-    logger.info(`[ResearchToolExecutor] Starting research subagent: ${task.slice(0, 80)}`);
+    logger.info(
+      `[ResearchToolExecutor] Starting research subagent | task=${JSON.stringify(task)} | params=${JSON.stringify(call.parameters)} | userId=${context.userId} | groupId=${context.groupId}`,
+    );
 
     try {
       const parentContext = {

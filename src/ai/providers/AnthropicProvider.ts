@@ -167,6 +167,7 @@ function toAnthropicContent(content: ChatMessage['content']): AnthropicContent {
  */
 export class AnthropicProvider extends AIProvider implements LLMCapability, VisionCapability {
   readonly name = 'anthropic';
+  override readonly supportsToolUse = true;
   private config: AnthropicProviderConfig;
   private baseUrl = 'https://api.anthropic.com/v1';
   private _capabilities: CapabilityType[];
