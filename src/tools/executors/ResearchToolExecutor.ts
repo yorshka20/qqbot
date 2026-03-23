@@ -34,8 +34,7 @@ const RESEARCH_TIMEOUT = 90000;
     task: {
       type: 'string',
       required: true,
-      description:
-        '调研任务描述，说明你需要查找什么信息、回答什么问题。描述越具体，结果越精准。',
+      description: '调研任务描述，说明你需要查找什么信息、回答什么问题。描述越具体，结果越精准。',
     },
   },
   examples: [
@@ -103,9 +102,7 @@ export class ResearchToolExecutor extends BaseToolExecutor {
 
       const resultText = typeof output === 'string' ? output : JSON.stringify(output);
 
-      logger.info(
-        `[ResearchToolExecutor] Research completed (${resultText.length} chars): ${task.slice(0, 50)}`,
-      );
+      logger.info(`[ResearchToolExecutor] Research completed (${resultText.length} chars): ${task}`);
 
       return this.success(resultText, {
         task,

@@ -60,10 +60,12 @@ export class EpisodeCacheManager {
     let entries: ConversationMessageEntry[];
     const cached = this.episodeHistoryCache.get(episodeKey);
 
-    if (cached != null && cached.length > 0) {
+    if (cached != null) {
       // Existing episode: stable start (cached) + new messages since last cached up to (excluding) current trigger.
-      const lastCached = cached[cached.length - 1];
-      const sinceAfterLast = new Date(lastCached.createdAt.getTime() + 1);
+      // When cache is empty (first turn had no prior context), use contextWindowStart so the bot's own reply
+      // from the previous turn is not filtered out by the createdAt <= startedAt gate in the new-episode path.
+      const sinceAfterLast =
+        cached.length > 0 ? new Date(cached[cached.length - 1].createdAt.getTime() + 1) : episode.contextWindowStart;
       const newMessages = await this.conversationHistoryService.getMessagesSinceForSession(
         canonicalSessionId,
         sessionType,
