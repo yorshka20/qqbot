@@ -1,4 +1,5 @@
 import { Check, FileText, Folder, ImageIcon, Music, Play } from 'lucide-react';
+import { memo } from 'react';
 
 import { useLazyLoad } from '../hooks/useLazyLoad';
 import type { FileItem } from '../types';
@@ -50,7 +51,7 @@ interface ResourceCardProps {
   onDelete: (path: string) => void;
 }
 
-export function ResourceCard({
+export const ResourceCard = memo(function ResourceCard({
   item,
   baseUrl,
   selected,
@@ -240,4 +241,4 @@ export function ResourceCard({
       </div>
     </div>
   );
-}
+});

@@ -1,4 +1,5 @@
 import { Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { getOutputBase } from '../config';
 import type { FileItem } from '../types';
 import { ResourceCard } from './ResourceCard';
@@ -21,6 +22,9 @@ interface CardWallProps {
 
 const DEFAULT_EMPTY_MESSAGE = 'This folder is empty.';
 
+/** Number of items to render per batch */
+const BATCH_SIZE = 60;
+
 export function CardWall({
   items,
   loading,
@@ -35,8 +39,35 @@ export function CardWall({
   onDelete,
   emptyMessage = DEFAULT_EMPTY_MESSAGE,
 }: CardWallProps) {
+  // Progressive rendering: start with first batch, load more as user scrolls.
+  // Parent must pass a `key` to reset visibleCount when items change (e.g. navigation, filter).
+  const [visibleCount, setVisibleCount] = useState(BATCH_SIZE);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // IntersectionObserver on sentinel to load more items
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + BATCH_SIZE, items.length));
+        }
+      },
+      { rootMargin: '400px' },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [items.length]);
+
   if (error) {
-    return <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-6 text-red-800 dark:text-red-300 text-sm">{error}</div>;
+    return (
+      <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-6 text-red-800 dark:text-red-300 text-sm">
+        {error}
+      </div>
+    );
   }
 
   if (loading) {
@@ -59,23 +90,37 @@ export function CardWall({
     );
   }
 
+  const baseUrl = getOutputBase();
+  const visibleItems = items.length <= BATCH_SIZE ? items : items.slice(0, visibleCount);
+  const hasMore = visibleCount < items.length;
+
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-      {items.map((item) => (
-        <ResourceCard
-          key={item.path}
-          item={item}
-          baseUrl={getOutputBase()}
-          selected={selectedPaths.has(item.path)}
-          selectMode={selectMode}
-          onOpenDir={onOpenDir}
-          onSelectFile={onSelectFile}
-          onToggleSelect={onToggleSelect}
-          onRename={onRename}
-          onMove={onMove}
-          onDelete={onDelete}
-        />
-      ))}
-    </div>
+    <>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        {visibleItems.map((item) => (
+          <ResourceCard
+            key={item.path}
+            item={item}
+            baseUrl={baseUrl}
+            selected={selectedPaths.has(item.path)}
+            selectMode={selectMode}
+            onOpenDir={onOpenDir}
+            onSelectFile={onSelectFile}
+            onToggleSelect={onToggleSelect}
+            onRename={onRename}
+            onMove={onMove}
+            onDelete={onDelete}
+          />
+        ))}
+      </div>
+      {/* Sentinel element triggers loading more items when scrolled into view */}
+      {hasMore && (
+        <div ref={sentinelRef} className="flex items-center justify-center py-6">
+          <span className="text-xs text-zinc-400 dark:text-zinc-500">
+            Showing {visibleCount} / {items.length}…
+          </span>
+        </div>
+      )}
+    </>
   );
 }

@@ -3,153 +3,153 @@
  * Browse, preview, rename, move, and delete files in the output directory.
  */
 
-import { FolderInput, Loader2, Trash2, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { deleteFile, listFiles, moveFile, renameFile } from '../api'
-import { BatchMoveModal } from '../components/BatchMoveModal'
-import { Breadcrumb } from '../components/Breadcrumb'
-import { CardWall } from '../components/CardWall'
-import { ConfirmDialog } from '../components/ConfirmDialog'
-import { MoveModal } from '../components/MoveModal'
-import { PreviewModal } from '../components/PreviewModal'
-import { RenameModal } from '../components/RenameModal'
-import { Sidebar } from '../components/Sidebar'
-import type { FileItem } from '../types'
-import { type FilterType, filterByType, type GroupBy, groupItems, type SortOrder, sortItems } from '../utils/fileType'
+import { FolderInput, Loader2, Trash2, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { deleteFile, listFiles, moveFile, renameFile } from '../api';
+import { BatchMoveModal } from '../components/BatchMoveModal';
+import { Breadcrumb } from '../components/Breadcrumb';
+import { CardWall } from '../components/CardWall';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { MoveModal } from '../components/MoveModal';
+import { PreviewModal } from '../components/PreviewModal';
+import { RenameModal } from '../components/RenameModal';
+import { Sidebar } from '../components/Sidebar';
+import type { FileItem } from '../types';
+import { type FilterType, filterByType, type GroupBy, groupItems, type SortOrder, sortItems } from '../utils/fileType';
 
 export function FilesPage() {
-  const [currentPath, setCurrentPath] = useState('')
-  const [previewFile, setPreviewFile] = useState<{ path: string; name: string } | null>(null)
-  const [items, setItems] = useState<FileItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [currentPath, setCurrentPath] = useState('');
+  const [previewFile, setPreviewFile] = useState<{ path: string; name: string } | null>(null);
+  const [items, setItems] = useState<FileItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [typeFilter, setTypeFilter] = useState<FilterType>('all')
-  const [sortOrder, setSortOrder] = useState<SortOrder>('dateDesc')
-  const [groupBy, setGroupBy] = useState<GroupBy>('none')
+  const [typeFilter, setTypeFilter] = useState<FilterType>('all');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('dateDesc');
+  const [groupBy, setGroupBy] = useState<GroupBy>('none');
 
   // Multi-select
-  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
-  const selectMode = selectedPaths.size > 0
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const selectMode = selectedPaths.size > 0;
 
   // Modal states
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
-  const [moveTarget, setMoveTarget] = useState<string | null>(null)
-  const [renameTarget, setRenameTarget] = useState<{ path: string; name: string } | null>(null)
-  const [batchDeletePending, setBatchDeletePending] = useState(false)
-  const [batchMovePending, setBatchMovePending] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [moveTarget, setMoveTarget] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{ path: string; name: string } | null>(null);
+  const [batchDeletePending, setBatchDeletePending] = useState(false);
+  const [batchMovePending, setBatchMovePending] = useState(false);
 
   // ──────────────────────────────────────────────────
   // Data loading
   // ──────────────────────────────────────────────────
 
   const load = useCallback(async (path: string) => {
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
     try {
-      const data = await listFiles(path)
-      setItems(data.items)
+      const data = await listFiles(path);
+      setItems(data.items);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load')
-      setItems([])
+      setError(e instanceof Error ? e.message : 'Failed to load');
+      setItems([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    load(currentPath)
-  }, [currentPath, load])
+    load(currentPath);
+  }, [currentPath, load]);
 
   // ──────────────────────────────────────────────────
   // Navigation handlers
   // ──────────────────────────────────────────────────
 
   const handleNavigate = useCallback((path: string) => {
-    setCurrentPath(path)
-    setTypeFilter('all')
-    setSelectedPaths(new Set())
-    setPreviewFile(null)
-  }, [])
+    setCurrentPath(path);
+    setTypeFilter('all');
+    setSelectedPaths(new Set());
+    setPreviewFile(null);
+  }, []);
 
   const handleOpenDir = useCallback((path: string) => {
-    setCurrentPath(path)
-    setSelectedPaths(new Set())
-    setPreviewFile(null)
-  }, [])
+    setCurrentPath(path);
+    setSelectedPaths(new Set());
+    setPreviewFile(null);
+  }, []);
 
   const handleSelectFile = useCallback((item: FileItem) => {
-    setPreviewFile({ path: item.path, name: item.name })
-  }, [])
+    setPreviewFile({ path: item.path, name: item.name });
+  }, []);
 
   // ──────────────────────────────────────────────────
   // Single item operations
   // ──────────────────────────────────────────────────
 
   const handleDeleteClick = useCallback((path: string) => {
-    setDeleteTarget(path)
-  }, [])
+    setDeleteTarget(path);
+  }, []);
 
   const handleDeleteConfirm = useCallback(async () => {
-    if (deleteTarget === null) return
-    const path = deleteTarget
-    setDeleteTarget(null)
+    if (deleteTarget === null) return;
+    const path = deleteTarget;
+    setDeleteTarget(null);
     try {
-      await deleteFile(path)
-      if (previewFile?.path === path) setPreviewFile(null)
-      await load(currentPath)
+      await deleteFile(path);
+      if (previewFile?.path === path) setPreviewFile(null);
+      await load(currentPath);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Delete failed')
+      setError(e instanceof Error ? e.message : 'Delete failed');
     }
-  }, [deleteTarget, previewFile?.path, currentPath, load])
+  }, [deleteTarget, previewFile?.path, currentPath, load]);
 
   const handleMoveClick = useCallback((path: string) => {
-    setMoveTarget(path)
-  }, [])
+    setMoveTarget(path);
+  }, []);
 
   const handleMoveConfirm = useCallback(
     async (toPath: string) => {
-      if (moveTarget === null) return
-      const fromPath = moveTarget
-      setMoveTarget(null)
+      if (moveTarget === null) return;
+      const fromPath = moveTarget;
+      setMoveTarget(null);
       try {
-        await moveFile(fromPath, toPath)
+        await moveFile(fromPath, toPath);
         if (previewFile?.path === fromPath) {
-          setPreviewFile({ path: toPath, name: toPath.split('/').pop() ?? '' })
+          setPreviewFile({ path: toPath, name: toPath.split('/').pop() ?? '' });
         }
-        await load(currentPath)
+        await load(currentPath);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Move failed')
+        setError(e instanceof Error ? e.message : 'Move failed');
       }
     },
     [moveTarget, previewFile?.path, currentPath, load],
-  )
+  );
 
   const handleRenameClick = useCallback(
     (path: string) => {
-      const item = items.find((i) => i.path === path)
-      if (item) setRenameTarget({ path: item.path, name: item.name })
+      const item = items.find((i) => i.path === path);
+      if (item) setRenameTarget({ path: item.path, name: item.name });
     },
     [items],
-  )
+  );
 
   const handleRenameConfirm = useCallback(
     async (newName: string) => {
-      if (renameTarget === null) return
-      const { path } = renameTarget
-      setRenameTarget(null)
+      if (renameTarget === null) return;
+      const { path } = renameTarget;
+      setRenameTarget(null);
       try {
-        await renameFile(path, newName)
-        const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
-        const newPath = dir ? `${dir}/${newName}` : newName
-        if (previewFile?.path === path) setPreviewFile({ path: newPath, name: newName })
-        await load(currentPath)
+        await renameFile(path, newName);
+        const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+        const newPath = dir ? `${dir}/${newName}` : newName;
+        if (previewFile?.path === path) setPreviewFile({ path: newPath, name: newName });
+        await load(currentPath);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Rename failed')
+        setError(e instanceof Error ? e.message : 'Rename failed');
       }
     },
     [renameTarget, previewFile?.path, currentPath, load],
-  )
+  );
 
   // ──────────────────────────────────────────────────
   // Multi-select operations
@@ -157,61 +157,64 @@ export function FilesPage() {
 
   const handleToggleSelect = useCallback((path: string) => {
     setSelectedPaths((prev) => {
-      const next = new Set(prev)
-      if (next.has(path)) next.delete(path)
-      else next.add(path)
-      return next
-    })
-  }, [])
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
 
   const handleSelectAll = useCallback(() => {
-    const allPaths = items.filter((i) => !i.isDir).map((i) => i.path)
-    setSelectedPaths(new Set(allPaths))
-  }, [items])
+    const allPaths = items.filter((i) => !i.isDir).map((i) => i.path);
+    setSelectedPaths(new Set(allPaths));
+  }, [items]);
 
-  const handleClearSelection = useCallback(() => setSelectedPaths(new Set()), [])
+  const handleClearSelection = useCallback(() => setSelectedPaths(new Set()), []);
 
   const handleBatchDeleteConfirm = useCallback(async () => {
-    const paths = [...selectedPaths]
-    setBatchDeletePending(false)
-    setSelectedPaths(new Set())
+    const paths = [...selectedPaths];
+    setBatchDeletePending(false);
+    setSelectedPaths(new Set());
     try {
-      await Promise.all(paths.map((p) => deleteFile(p)))
-      await load(currentPath)
+      await Promise.all(paths.map((p) => deleteFile(p)));
+      await load(currentPath);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Delete failed')
+      setError(e instanceof Error ? e.message : 'Delete failed');
     }
-  }, [selectedPaths, currentPath, load])
+  }, [selectedPaths, currentPath, load]);
 
   const handleBatchMoveConfirm = useCallback(
     async (destDir: string) => {
-      const paths = [...selectedPaths]
-      setSelectedPaths(new Set())
+      const paths = [...selectedPaths];
+      setSelectedPaths(new Set());
       try {
         await Promise.all(
           paths.map((p) => {
-            const fileName = p.split('/').pop() ?? p
-            const toPath = destDir ? `${destDir}/${fileName}` : fileName
-            return moveFile(p, toPath)
+            const fileName = p.split('/').pop() ?? p;
+            const toPath = destDir ? `${destDir}/${fileName}` : fileName;
+            return moveFile(p, toPath);
           }),
-        )
-        await load(currentPath)
+        );
+        await load(currentPath);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Move failed')
+        setError(e instanceof Error ? e.message : 'Move failed');
       }
     },
     [selectedPaths, currentPath, load],
-  )
+  );
 
   // ──────────────────────────────────────────────────
   // Computed values
   // ──────────────────────────────────────────────────
 
   const groupedItems = useMemo(() => {
-    const filtered = filterByType(items, typeFilter)
-    const sorted = sortItems(filtered, sortOrder)
-    return groupItems(sorted, groupBy)
-  }, [items, typeFilter, sortOrder, groupBy])
+    const filtered = filterByType(items, typeFilter);
+    const sorted = sortItems(filtered, sortOrder);
+    return groupItems(sorted, groupBy);
+  }, [items, typeFilter, sortOrder, groupBy]);
+
+  // Key to reset CardWall progressive rendering when path/filter/sort/group changes
+  const cardWallKey = `${currentPath}|${typeFilter}|${sortOrder}|${groupBy}`;
 
   // ──────────────────────────────────────────────────
   // Render
@@ -247,6 +250,7 @@ export function FilesPage() {
             </div>
           ) : groupedItems.length === 1 && !groupedItems[0].label ? (
             <CardWall
+              key={cardWallKey}
               items={groupedItems[0].items}
               loading={false}
               error={null}
@@ -270,6 +274,7 @@ export function FilesPage() {
                     </h2>
                   ) : null}
                   <CardWall
+                    key={`${cardWallKey}|${group.label}`}
                     items={group.items}
                     loading={false}
                     error={null}
@@ -378,5 +383,5 @@ export function FilesPage() {
         onCancel={() => setBatchMovePending(false)}
       />
     </>
-  )
+  );
 }

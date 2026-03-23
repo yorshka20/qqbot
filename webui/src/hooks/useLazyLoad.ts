@@ -1,7 +1,32 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * Hook for lazy loading media elements using IntersectionObserver.
+ * Shared IntersectionObserver pool — one observer per unique (rootMargin, threshold) pair.
+ * Instead of creating N observers for N cards, all cards share a single observer.
+ */
+const observerMap = new Map<string, IntersectionObserver>();
+const callbackMap = new Map<Element, (isIntersecting: boolean) => void>();
+
+function getSharedObserver(rootMargin: string, threshold: number): IntersectionObserver {
+  const key = `${rootMargin}|${threshold}`;
+  let observer = observerMap.get(key);
+  if (!observer) {
+    observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const cb = callbackMap.get(entry.target);
+          if (cb) cb(entry.isIntersecting);
+        }
+      },
+      { rootMargin, threshold },
+    );
+    observerMap.set(key, observer);
+  }
+  return observer;
+}
+
+/**
+ * Hook for lazy loading media elements using a shared IntersectionObserver.
  * Returns a ref to attach to the container and a boolean indicating if it's visible.
  *
  * @param rootMargin - Margin around the root viewport (default: '200px' to preload slightly before entering viewport)
@@ -16,32 +41,23 @@ export function useLazyLoad<T extends HTMLElement = HTMLDivElement>(
 
   useEffect(() => {
     const element = ref.current;
-    if (!element) return;
+    if (!element || isVisible) return;
 
-    // If already visible, no need to observe
-    if (isVisible) return;
+    const observer = getSharedObserver(rootMargin, threshold);
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setIsVisible(true);
-            // Once visible, stop observing
-            observer.disconnect();
-            break;
-          }
-        }
-      },
-      {
-        rootMargin,
-        threshold,
-      },
-    );
+    callbackMap.set(element, (intersecting) => {
+      if (intersecting) {
+        setIsVisible(true);
+        observer.unobserve(element);
+        callbackMap.delete(element);
+      }
+    });
 
     observer.observe(element);
 
     return () => {
-      observer.disconnect();
+      observer.unobserve(element);
+      callbackMap.delete(element);
     };
   }, [isVisible, rootMargin, threshold]);
 
