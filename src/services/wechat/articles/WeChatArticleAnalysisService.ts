@@ -55,7 +55,7 @@ export class WeChatArticleAnalysisService {
   constructor(
     private db: WeChatDatabase,
     private llmService: LLMService,
-    private config: ArticleAnalysisConfig,
+    config: ArticleAnalysisConfig,
   ) {
     const requestedProvider = config.provider ?? 'deepseek';
     this.provider = ALLOWED_PROVIDERS.includes(requestedProvider as (typeof ALLOWED_PROVIDERS)[number])
