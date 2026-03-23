@@ -1,12 +1,14 @@
 // Send System - handles message delivery (normal or forward) and error notification
 
-import type { MessageAPI, SendMessageResult } from '@/api/methods/MessageAPI';
+import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { SendMessageResult } from '@/api/types';
 import { getReplyContent } from '@/context/HookContextHelpers';
 import type { System, SystemContext } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
 import type { HookManager } from '@/hooks/HookManager';
 import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookContext } from '@/hooks/types';
+import { getProtocolAdapter } from '@/protocol/ProtocolRegistry';
 import { logger } from '@/utils/logger';
 
 /**
@@ -53,7 +55,8 @@ export class SendSystem implements System {
     }
 
     const event = context.message;
-    const useForward = event.protocol === 'milky' && replyContent.metadata?.sendAsForward === true;
+    const adapter = getProtocolAdapter(event.protocol);
+    const useForward = adapter.supportsForwardMessage() && replyContent.metadata?.sendAsForward === true;
     logger.debug(`[SendSystem] Sending | useForward=${useForward} | protocol=${event.protocol}`);
 
     let sentMessageResponse: SendMessageResult;

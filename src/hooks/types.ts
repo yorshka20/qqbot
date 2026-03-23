@@ -1,6 +1,6 @@
 // Hook type definitions
 
-import type { SendMessageResult } from '@/api/methods/MessageAPI';
+import type { SendMessageResult } from '@/api/types';
 import type { CommandResult, ParsedCommand } from '@/command/types';
 import type { ConversationContext } from '@/context/types';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';

@@ -8,6 +8,7 @@ import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
 import type { HookContext } from '@/hooks/types';
 import { MessageUtils } from '@/message/MessageUtils';
+import { getProtocolAdapter } from '@/protocol/ProtocolRegistry';
 import { logger } from '@/utils/logger';
 
 /**
@@ -83,6 +84,13 @@ export class ReplyPrepareSystem implements System {
   private resolveSendAsForward(context: HookContext): void {
     const reply = context.reply!;
     const segments = reply.segments;
+
+    // Only protocols that support forward messages can use sendAsForward
+    const adapter = getProtocolAdapter(context.message.protocol);
+    if (!adapter.supportsForwardMessage()) {
+      reply.metadata = { ...reply.metadata, sendAsForward: false };
+      return;
+    }
 
     // Image/record segments can't be forwarded reliably — always send directly
     const hasMedia = segments.some((s) => s.type === 'image' || s.type === 'record');

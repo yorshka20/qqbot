@@ -7,26 +7,15 @@ import type { Message } from '@/database/models/types';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import { cacheMessage, getCachedMessageBySeq } from '@/message/MessageCache';
 import type { MessageSegment } from '@/message/types';
-import { segmentsToMilkyOutgoing } from '@/protocol/milky/MilkySegmentConverter';
+import { getProtocolAdapter } from '@/protocol/ProtocolRegistry';
 import { logger } from '@/utils/logger';
 import type { APIClient } from '../APIClient';
-
-export interface SendMessageResult {
-  message_id?: number; // Some protocols use message_id
-  message_seq?: number; // Milky protocol uses message_seq
-}
-
-/** One logical message in a forward: segments plus optional sender display. */
-export interface ForwardMessageInput {
-  segments: MessageSegment[];
-  senderName?: string;
-  senderId?: number;
-}
+import type { ForwardMessageInput, SendMessageResult, SendTarget } from '../types';
 
 /** Context types supported by extractProtocol, recallFromContext, getMessageFromContext. */
 export type MessageAPIContext = CommandContext | NormalizedMessageEvent | NormalizedNoticeEvent;
 
-/** Extracted fields from MessageAPIContext for API calls (notice may have optional groupId/messageType). */
+/** Extracted fields from MessageAPIContext for API calls. */
 interface ExtractedContextFields {
   protocol: ProtocolName;
   userId?: number | string;
@@ -119,103 +108,37 @@ export class MessageAPI {
   }
 
   /**
-   * Send message from context (CommandContext or NormalizedMessageEvent)
-   * Automatically extracts protocol, userId, groupId, messageType from context
-   * Unified handling of temp session, private, and group messages
-   * @param message - Message content to send (string or message segments)
-   * @param context - CommandContext or NormalizedMessageEvent
-   * @param timeout - Optional timeout in milliseconds (default: 10000)
-   * @returns Full API response containing message ID and other protocol-specific fields
+   * Extract SendTarget from a CommandContext or NormalizedMessageEvent.
+   */
+  private extractSendTarget(context: CommandContext | NormalizedMessageEvent): SendTarget {
+    return {
+      messageType: context.messageType,
+      userId: context.userId,
+      groupId: context.groupId,
+      messageScene:
+        'messageScene' in context && typeof context.messageScene === 'string' ? context.messageScene : undefined,
+    };
+  }
+
+  /**
+   * Send message from context (CommandContext or NormalizedMessageEvent).
+   * Delegates to the protocol's registered sendMessage capability, which handles
+   * segment conversion and delivery internally.
    */
   async sendFromContext(
     message: string | unknown[],
     context: CommandContext | NormalizedMessageEvent,
     timeout: number = 10000,
   ): Promise<SendMessageResult> {
-    // Extract protocol from context
     const protocol = this.extractProtocol(context);
-
-    // Convert internal MessageSegment[] to protocol-specific format.
-    // Forward messages use sendForwardFromContext (which converts separately), so
-    // any array reaching here is always internal MessageSegment[].
-    const protocolMessage: string | unknown[] =
-      protocol === 'milky' && Array.isArray(message) ? segmentsToMilkyOutgoing(message as MessageSegment[]) : message;
-
-    // Extract user and group info
-    const userId = context.userId;
-    const groupId = context.groupId;
-    const messageType = context.messageType;
-    const messageScene = 'messageScene' in context ? context.messageScene : undefined;
-
-    // Determine API action and params based on message type and scene
-    // Handle temporary session messages (messageScene === 'temp')
-    // Temporary sessions should use private message API with group_id context
-    if (messageScene === 'temp' && groupId) {
-      return this.apiClient.call<SendMessageResult>(
-        'send_private_msg',
-        {
-          user_id: userId,
-          group_id: groupId, // Include group_id for temporary session context
-          message: protocolMessage,
-        },
-        protocol,
-        timeout,
-      );
-    } else if (messageType === 'private') {
-      return this.apiClient.call<SendMessageResult>(
-        'send_private_msg',
-        {
-          user_id: userId,
-          message: protocolMessage,
-        },
-        protocol,
-        timeout,
-      );
-    } else if (groupId) {
-      return this.apiClient.call<SendMessageResult>(
-        'send_group_msg',
-        {
-          group_id: groupId,
-          message: protocolMessage,
-        },
-        protocol,
-        timeout,
-      );
-    }
-
-    // If no valid message type found, throw error
-    throw new Error('Unable to determine message type from context');
+    const adapter = getProtocolAdapter(protocol);
+    const target = this.extractSendTarget(context);
+    return adapter.sendMessage(message as string | MessageSegment[], target, timeout);
   }
 
   /**
-   * Build the forward segment from ForwardMessageInput[].
-   * Shared by sendForwardFromContext and sendForwardMessage.
-   */
-  private buildForwardSegment(messages: ForwardMessageInput[], botUserId: number | string) {
-    const nodes = messages.map((m) => {
-      const milkySegments = segmentsToMilkyOutgoing(m.segments);
-      return {
-        user_id: m.senderId ?? botUserId,
-        sender_name: m.senderName ?? 'Bot',
-        segments: milkySegments,
-      };
-    });
-    return {
-      type: 'forward' as const,
-      data: { messages: nodes },
-    };
-  }
-
-  /**
-   * Send a forward message directly by target type and id (Milky protocol only, no context needed).
+   * Send a forward message directly by target type and id.
    * Use this when no CommandContext or NormalizedMessageEvent is available.
-   *
-   * @param target - Target type ('user' or 'group') and numeric id
-   * @param messages - Array of messages to include in the forward
-   * @param protocol - Protocol name (must be 'milky')
-   * @param options - botUserId is required: the bot's own QQ user id (positive number)
-   * @param timeout - Optional timeout in milliseconds (default: 10000)
-   * @returns Full API response (e.g. message_seq for Milky)
    */
   async sendForwardMessage(
     target: { type: 'user' | 'group'; id: number | string },
@@ -224,42 +147,20 @@ export class MessageAPI {
     options: { botUserId: number | string },
     timeout: number = 10000,
   ): Promise<SendMessageResult> {
-    if (protocol !== 'milky') {
-      throw new Error('Forward message is only supported for Milky protocol');
+    const adapter = getProtocolAdapter(protocol);
+    if (!adapter.supportsForwardMessage()) {
+      throw new Error(`Forward message is not supported for protocol: ${protocol}`);
     }
-    if (!messages || messages.length === 0) {
-      throw new Error('sendForwardMessage requires at least one message');
-    }
-    const botUserId = options.botUserId;
-    if (!botUserId || (typeof botUserId === 'number' && botUserId <= 0)) {
-      throw new Error(
-        "Forward message requires options.botUserId to be the bot's own QQ user id (positive number). Set config.bot.selfId.",
-      );
-    }
-
-    const forwardSegment = this.buildForwardSegment(messages, botUserId);
-
-    const action = target.type === 'user' ? 'send_private_msg' : 'send_group_msg';
-    const targetKey = target.type === 'user' ? 'user_id' : 'group_id';
-
-    return this.apiClient.call<SendMessageResult>(
-      action,
-      { [targetKey]: target.id, message: [forwardSegment] },
-      protocol,
-      timeout,
-    );
+    const sendTarget: SendTarget = {
+      messageType: target.type === 'user' ? 'private' : 'group',
+      ...(target.type === 'user' ? { userId: target.id } : { groupId: target.id }),
+    };
+    return adapter.sendForwardMessage(messages, sendTarget, options.botUserId, timeout);
   }
 
   /**
-   * Send a single forward message containing multiple logical messages (Milky protocol only).
-   * Each item in messages becomes one node in the forward; the user sees one forward card and can expand to see all.
-   * Image segments are sent as http(s) URI so the protocol implementation can download to its temp file (LLOneBot fails with base64: ENOENT when opening temp file).
-   *
-   * @param messages - Array of messages to include in the forward (each: segments + optional senderName/senderId)
-   * @param context - CommandContext (use originalMessage for target; bot from conversationContext) or NormalizedMessageEvent
-   * @param timeout - Optional timeout in milliseconds (default: 10000)
-   * @param options - botUserId is required: the bot's own QQ user id (must not be 0)
-   * @returns Full API response (e.g. message_seq for Milky)
+   * Send a forward message from context.
+   * Delegates to the protocol adapter's sendForwardMessage method.
    */
   async sendForwardFromContext(
     messages: ForwardMessageInput[],
@@ -267,47 +168,18 @@ export class MessageAPI {
     timeout: number = 10000,
     options: { botUserId: number | string },
   ): Promise<SendMessageResult> {
-    const { protocol, userId, groupId, messageType, messageScene } = this.extractContextFields(context);
-    if (protocol !== 'milky') {
-      throw new Error('Forward message is only supported for Milky protocol');
+    const protocol = this.extractProtocol(context);
+    const adapter = getProtocolAdapter(protocol);
+    if (!adapter.supportsForwardMessage()) {
+      throw new Error(`Forward message is not supported for protocol: ${protocol}`);
     }
-    if (!messages || messages.length === 0) {
-      throw new Error('sendForwardFromContext requires at least one message');
-    }
-
-    // botUserId is required for forward; must be the bot's own QQ user id (not 0)
-    const botUserId = options.botUserId;
-    const forwardSegment = this.buildForwardSegment(messages, botUserId);
+    const target = this.extractSendTarget(context);
 
     logger.debug(
-      `[MessageAPI] sendForwardFromContext | group_id=${groupId} | nodes=${messages.length} | botUserId=${botUserId} | firstNodeSegments=${messages[0]?.segments?.length ?? 0}`,
+      `[MessageAPI] sendForwardFromContext | group_id=${target.groupId} | nodes=${messages.length} | botUserId=${options.botUserId}`,
     );
 
-    if (messageScene === 'temp' && groupId) {
-      return this.apiClient.call<SendMessageResult>(
-        'send_private_msg',
-        { user_id: userId, group_id: groupId, message: [forwardSegment] },
-        protocol,
-        timeout,
-      );
-    }
-    if (messageType === 'private') {
-      return this.apiClient.call<SendMessageResult>(
-        'send_private_msg',
-        { user_id: userId, message: [forwardSegment] },
-        protocol,
-        timeout,
-      );
-    }
-    if (groupId) {
-      return this.apiClient.call<SendMessageResult>(
-        'send_group_msg',
-        { group_id: groupId, message: [forwardSegment] },
-        protocol,
-        timeout,
-      );
-    }
-    throw new Error('Unable to determine message type from context for forward');
+    return adapter.sendForwardMessage(messages, target, options.botUserId, timeout);
   }
 
   /**

@@ -1,6 +1,10 @@
 // OneBot11 protocol adapter implementation
 
+import type { SendMessageResult, SendTarget } from '@/api/types';
+import { APIContext } from '@/api/types';
 import type { ProtocolName } from '@/core/config';
+import type { MessageSegment } from '@/message/types';
+import { resolveAction } from '../base/ProtocolAdapter';
 import type { BaseEvent } from '../base/types';
 import { WebSocketProtocolAdapter } from '../base/WebSocketProtocolAdapter';
 import type {
@@ -54,6 +58,17 @@ export type NormalizedOneBot11Event =
 export class OneBot11Adapter extends WebSocketProtocolAdapter {
   getProtocolName(): ProtocolName {
     return 'onebot11';
+  }
+
+  /** OneBot11 segments are the internal format — no conversion needed. */
+  async sendMessage(
+    message: string | MessageSegment[],
+    target: SendTarget,
+    timeout = 10000,
+  ): Promise<SendMessageResult> {
+    const { action, params } = resolveAction(target);
+    const ctx = new APIContext(action, { ...params, message }, 'onebot11', timeout);
+    return this.sendAPI<SendMessageResult>(ctx);
   }
 
   normalizeEvent(rawEvent: unknown): BaseEvent | null {

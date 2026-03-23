@@ -4,6 +4,7 @@ import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
+import { getProtocolSelfId } from '@/protocol/ProtocolRegistry';
 import { logger } from '@/utils/logger';
 import type { MessagePipeline } from './MessagePipeline';
 import type { MessageProcessingContext, MessageProcessingResult, ProcessMessageOptions } from './types';
@@ -22,9 +23,13 @@ export class ConversationManager {
   }
 
   /**
-   * Get bot self ID from config
+   * Get bot self ID, preferring per-protocol ID (e.g. Discord bot user ID) over config.bot.selfId.
    */
-  private getBotSelfId(): string {
+  private getBotSelfId(protocol?: string): string {
+    if (protocol) {
+      const protocolId = getProtocolSelfId(protocol);
+      if (protocolId) return protocolId;
+    }
     return this.botSelfId || this.getBotSelfIdFromConfig();
   }
 
@@ -56,7 +61,7 @@ export class ConversationManager {
         sessionId: this.getSessionId(event),
         sessionType: event.messageType === 'private' ? 'user' : 'group',
         conversationId: undefined, // Can be loaded from database
-        botSelfId: this.getBotSelfId(),
+        botSelfId: this.getBotSelfId(event.protocol),
         replyTrigger: options?.replyTrigger,
       };
 
@@ -86,7 +91,7 @@ export class ConversationManager {
         sessionId: this.getSessionId(event),
         sessionType: event.messageType === 'private' ? 'user' : 'group',
         conversationId: undefined,
-        botSelfId: this.getBotSelfId(),
+        botSelfId: this.getBotSelfId(event.protocol),
         replyTrigger: 'reaction',
       };
       return await this.pipeline.processReplyOnly(event, context);

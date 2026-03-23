@@ -114,7 +114,9 @@ export class Bot extends EventEmitter {
         // Even on timeout, allow startup if at least one protocol is connected
         const connected = this.connectionManager.getConnectedProtocols();
         if (connected.length > 0) {
-          logger.warn(`[Bot] Connection timeout, but continuing with ${connected.length} connected protocol(s): ${connected.join(', ')}`);
+          logger.warn(
+            `[Bot] Connection timeout, but continuing with ${connected.length} connected protocol(s): ${connected.join(', ')}`,
+          );
           resolve();
         } else {
           reject(new Error('Timeout waiting for connections: no protocol connected'));

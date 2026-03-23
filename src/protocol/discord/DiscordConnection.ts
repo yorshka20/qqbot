@@ -19,6 +19,7 @@ const INTENT_MAP: Record<string, number> = {
 
 export class DiscordConnection extends Connection {
   private client: Client;
+  private botUserId = '';
 
   constructor(config: ProtocolConfig) {
     super(config);
@@ -35,6 +36,11 @@ export class DiscordConnection extends Connection {
   /** Returns the discord.js Client for use by DiscordAdapter. */
   getClient(): Client {
     return this.client;
+  }
+
+  /** Returns the Discord bot's own user ID (available after connection). */
+  getBotUserId(): string {
+    return this.botUserId;
   }
 
   /**
@@ -55,7 +61,8 @@ export class DiscordConnection extends Connection {
     }
 
     this.client.once('clientReady', () => {
-      logger.info(`[DiscordConnection] Connected as ${this.client.user?.tag}`);
+      this.botUserId = this.client.user?.id ?? '';
+      logger.info(`[DiscordConnection] Connected as ${this.client.user?.tag} (id=${this.botUserId})`);
       this.setState('connected');
       this.emit('open');
     });

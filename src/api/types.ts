@@ -19,6 +19,28 @@ export interface APIResponse<T = unknown> {
 
 export type APIStrategy = 'priority' | 'round-robin' | 'capability-based';
 
+// ── Send types (shared by MessageAPI and ProtocolRegistry) ──
+
+export interface SendMessageResult {
+  message_id?: number;
+  message_seq?: number;
+}
+
+/** One logical message in a forward: segments plus optional sender display. */
+export interface ForwardMessageInput {
+  segments: import('@/message/types').MessageSegment[];
+  senderName?: string;
+  senderId?: number;
+}
+
+/** Target for sending a message — extracted from context by MessageAPI. */
+export interface SendTarget {
+  messageType: 'private' | 'group';
+  userId?: number | string;
+  groupId?: number | string;
+  messageScene?: string;
+}
+
 /**
  * API Context - contains all information about an API call
  * Similar to request context in backend frameworks (Express, Koa, Fastify, etc.)

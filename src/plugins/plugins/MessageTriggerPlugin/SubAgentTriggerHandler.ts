@@ -2,7 +2,8 @@
 
 import type { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { MessageAPI, SendMessageResult } from '@/api/methods/MessageAPI';
+import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { SendMessageResult } from '@/api/types';
 import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { MessageBuilder } from '@/message/MessageBuilder';

@@ -1,9 +1,10 @@
 // Mock Protocol Adapter for simulation mode
 // Returns mock responses for all API calls without actually sending them
 
-import type { APIContext } from '@/api/types';
+import type { APIContext, SendMessageResult, SendTarget } from '@/api/types';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import type { Connection } from '@/core/connection';
+import type { MessageSegment } from '@/message/types';
 import { ProtocolAdapter } from '@/protocol/base/ProtocolAdapter';
 import type { BaseEvent } from '@/protocol/base/types';
 
@@ -26,6 +27,19 @@ export class MockProtocolAdapter extends ProtocolAdapter {
 
   override getProtocolName(): ProtocolName {
     return 'milky';
+  }
+
+  async sendMessage(
+    message: string | MessageSegment[],
+    target: SendTarget,
+    _timeout = 10000,
+  ): Promise<SendMessageResult> {
+    this.logger.printMockReply(target.messageType === 'private' ? 'send_private_msg' : 'send_group_msg', {
+      message,
+      userId: target.userId,
+      groupId: target.groupId,
+    });
+    return { message_seq: Date.now() };
   }
 
   override normalizeEvent(_rawEvent: unknown): BaseEvent | null {

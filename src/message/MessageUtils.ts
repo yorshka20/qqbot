@@ -34,8 +34,10 @@ export class MessageUtils {
 
   /**
    * Check if message is @bot itself
-   * Supports multiple protocols: Milky (mention) and OneBot11 (at)
+   * Supports multiple protocols: Milky (mention), OneBot11 (at), and Discord (at with string IDs)
    * Note: In Milky protocol, @0 (user_id=0) typically means @bot itself
+   *
+   * Uses string comparison to support Discord snowflake IDs that exceed Number.MAX_SAFE_INTEGER.
    *
    * @param message - Message with segments
    * @param botSelfId - Bot's self ID
@@ -51,10 +53,7 @@ export class MessageUtils {
       return false;
     }
 
-    const botSelfIdNum = Number(botSelfId);
-    if (Number.isNaN(botSelfIdNum)) {
-      return false;
-    }
+    const botSelfIdStr = String(botSelfId);
 
     // Check if message has segments
     if (!message.segments || message.segments.length === 0) {
@@ -67,31 +66,30 @@ export class MessageUtils {
         continue;
       }
 
-      let atUserId: number | string | undefined;
+      let atUserId: string | undefined;
 
       // Handle Milky protocol (mention type)
       if (segment.type === 'mention') {
         const userId = segment.data.user_id;
-        if (typeof userId === 'number' || typeof userId === 'string') {
-          atUserId = userId;
+        if (userId !== undefined && userId !== null) {
+          atUserId = String(userId);
         }
       } else if (segment.type === 'at') {
-        // Handle OneBot11 protocol (at type)
+        // Handle OneBot11 / Discord protocol (at type)
         const qq = segment.data.qq;
-        if (typeof qq === 'number' || typeof qq === 'string') {
-          atUserId = qq;
+        if (qq !== undefined && qq !== null) {
+          atUserId = String(qq);
         }
       }
 
-      // atUserId could be 0
       if (atUserId !== undefined) {
-        const atUserIdNum = typeof atUserId === 'string' ? Number(atUserId) : atUserId;
-        if (!Number.isNaN(atUserIdNum)) {
-          // In Milky protocol, @0 (user_id=0) typically means @bot itself
-          // Also check if the atUserId matches botSelfId
-          if (atUserIdNum === 0 || atUserIdNum === botSelfIdNum) {
-            return true;
-          }
+        // In Milky protocol, @0 (user_id=0) typically means @bot itself
+        if (atUserId === '0') {
+          return true;
+        }
+        // String comparison: works for all protocols including Discord snowflakes
+        if (atUserId === botSelfIdStr) {
+          return true;
         }
       }
     }
