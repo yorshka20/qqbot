@@ -80,3 +80,4 @@ scripts/local
 .git.backup.*
 
 workbook/*
+.claude-workbook/*
