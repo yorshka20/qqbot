@@ -90,7 +90,7 @@ const BUILT_IN_PRESETS: Record<string, RolePreset> = {
   group_report: {
     displayName: '群聊日报',
     type: SubAgentType.ANALYSIS,
-    defaultAllowedTools: ['fetch_history_by_time', 'render_group_report'],
+    defaultAllowedTools: ['fetch_history_by_time', 'get_group_member_list', 'render_group_report'],
     configOverrides: {
       maxDepth: 1,
       maxChildren: 0,
