@@ -305,17 +305,21 @@ function getTagStyle(tag: string) {
   return TAG_STYLES[tag] ?? TAG_STYLES.other;
 }
 
+/** Encode a file path for use in a URL — encode each segment but preserve `/` separators. */
+function encodeFilePath(filePath: string): string {
+  return filePath
+    .split('/')
+    .map((seg) => encodeURIComponent(seg))
+    .join('/');
+}
+
 /** Convert an image file path from formattedMessages to a serveable URL.
  *  Paths come as "output/wechat/..." — strip the leading "output/" and prepend getOutputBase(). */
 function toImageUrl(body: string): string | null {
   const p = body.trim();
   if (!p) return null;
-  // path starts with "output/" — strip it since getOutputBase() already points to /output
-  if (p.startsWith('output/')) {
-    return `${getOutputBase()}/${p.slice('output/'.length)}`;
-  }
-  // fallback: treat as relative path under output
-  return `${getOutputBase()}/${p}`;
+  const relative = p.startsWith('output/') ? p.slice('output/'.length) : p;
+  return `${getOutputBase()}/${encodeFilePath(relative)}`;
 }
 
 function MessageBody({ parsed: p }: { parsed: ParsedMessage }) {
