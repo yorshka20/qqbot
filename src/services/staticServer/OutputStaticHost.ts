@@ -48,7 +48,12 @@ export class OutputStaticHost {
       return null;
     }
 
-    const relativePath = pathname.slice(OUTPUT_PREFIX.length);
+    let relativePath: string;
+    try {
+      relativePath = decodeURIComponent(pathname.slice(OUTPUT_PREFIX.length));
+    } catch {
+      return new Response('Bad request', { status: 400 });
+    }
     const filePath = resolveSafe(this.baseDir, relativePath);
     if (filePath === null) {
       return new Response('Forbidden', { status: 403 });
