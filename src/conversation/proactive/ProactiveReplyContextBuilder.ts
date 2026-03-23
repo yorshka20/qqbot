@@ -91,7 +91,7 @@ export class ProactiveReplyContextBuilder {
       undefined,
     );
     const limit = 5;
-    const minScore = 0.5;
+    const minScore = 0.7;
 
     try {
       const hits = await this.deps.retrievalService.vectorSearch(collectionName, q, {
@@ -130,7 +130,7 @@ export class ProactiveReplyContextBuilder {
     const result = await this.deps.memoryService.getFilteredMemoryForReplyAsync(groupId, userId, {
       userMessage: userMessage ?? '',
       alwaysIncludeScopes: ['instruction', 'rule'],
-      minRelevanceScore: 0.5,
+      minRelevanceScore: 0.7,
     });
     groupMemoryText = result.groupMemoryText;
     userMemoryText = result.userMemoryText;

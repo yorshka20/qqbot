@@ -53,6 +53,8 @@ export interface MemoryFilterOptions {
   alwaysIncludeScopes?: string[];
   /** Minimum keyword match score (0-1) to include a section (default: 0.1) */
   minRelevanceScore?: number;
+  /** memory item counts */
+  count?: number;
 }
 
 /** Result of context-aware memory filtering */
@@ -457,7 +459,7 @@ export class MemoryService {
     }
 
     const alwaysIncludeScopes = options.alwaysIncludeScopes ?? ['instruction', 'rule'];
-    const minScore = options.minRelevanceScore ?? 0.5;
+    const minScore = options.minRelevanceScore ?? 0.7;
 
     // Fetch always-include scopes from RAG via payload filter (no vector search)
     const alwaysIncludeResults = await this.ragService.getFactsByCoreScopes(groupId, alwaysIncludeScopes, {
@@ -473,7 +475,7 @@ export class MemoryService {
     const searchResults = await this.ragService.searchRelevantFacts(groupId, options.userMessage, {
       userId,
       includeGroupMemory: true,
-      limit: 15,
+      limit: options.count,
       minScore,
     });
 

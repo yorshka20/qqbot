@@ -73,7 +73,7 @@ export interface MemoryRAGSearchOptions {
   includeGroupMemory?: boolean;
   /** Maximum results to return (default: 10) */
   limit?: number;
-  /** Minimum similarity score (default: 0.5) */
+  /** Minimum similarity score (default: 0.7) */
   minScore?: number;
 }
 
@@ -291,7 +291,7 @@ export class MemoryRAGService {
 
     const collection = this.getCollectionName(groupId);
     const limit = options.limit ?? 10;
-    const minScore = options.minScore ?? 0.5;
+    const minScore = options.minScore ?? 0.7;
     const includeGroupMemory = options.includeGroupMemory !== false;
 
     // Build filter based on options

@@ -14,7 +14,8 @@ import type { ReplyPipelineContext } from '../ReplyPipelineContext';
 import type { ReplyStage } from '../types';
 
 const RAG_LIMIT = 5;
-const RAG_MIN_SCORE = 0.5;
+const RAG_MIN_SCORE = 0.7;
+const ALWAYS_SCOPE = ['instruction', 'rule'];
 
 /**
  * Pipeline stage 4: context enrichment.
@@ -120,8 +121,9 @@ export class ContextEnrichmentStage implements ReplyStage {
 
     const result = await this.memoryService.getFilteredMemoryForReplyAsync(groupId, userId, {
       userMessage,
-      alwaysIncludeScopes: filterConfig?.alwaysIncludeScopes ?? ['instruction', 'rule'],
-      minRelevanceScore: filterConfig?.minRelevanceScore ?? 0.5,
+      alwaysIncludeScopes: filterConfig?.alwaysIncludeScopes ?? ALWAYS_SCOPE,
+      minRelevanceScore: filterConfig?.minRelevanceScore ?? RAG_MIN_SCORE,
+      count: RAG_LIMIT,
     });
 
     return {
