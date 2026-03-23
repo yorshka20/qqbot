@@ -6,6 +6,7 @@ export * from './BuiltinCommandHandler';
 export * from './FileCommandHandler';
 export * from './GeminiKeyModeCommandHandler';
 export * from './GroupDedupCommandHandler';
+export * from './GroupReportCommandHandler';
 export * from './I2vCommandHandler';
 export * from './MemoryCommandHandler';
 export * from './MemorySyncCommandHandler';

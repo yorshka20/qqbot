@@ -9,6 +9,7 @@ export { ExecuteCodeToolExecutor } from './executeCode';
 export { FetchHistoryByTimeToolExecutor } from './FetchHistoryByTimeToolExecutor';
 export { FetchPageToolExecutor } from './FetchPageToolExecutor';
 export { GetMemoryToolExecutor } from './GetMemoryToolExecutor';
+export { GroupReportToolExecutor } from './GroupReportToolExecutor';
 export { ListBotFeaturesToolExecutor } from './ListBotFeaturesToolExecutor';
 export { RagSearchToolExecutor } from './RagSearchToolExecutor';
 export { ReadFileToolExecutor } from './ReadFileToolExecutor';

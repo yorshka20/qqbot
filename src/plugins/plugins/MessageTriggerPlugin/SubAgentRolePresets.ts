@@ -87,6 +87,20 @@ const BUILT_IN_PRESETS: Record<string, RolePreset> = {
     },
   },
 
+  group_report: {
+    displayName: '群聊日报',
+    type: SubAgentType.ANALYSIS,
+    defaultAllowedTools: ['fetch_history_by_time', 'render_group_report'],
+    configOverrides: {
+      maxDepth: 1,
+      maxChildren: 0,
+      timeout: 180_000,
+      inheritSoul: false,
+      inheritMemory: false,
+      inheritPreference: false,
+    },
+  },
+
   wechat_report: {
     displayName: '微信报告',
     type: SubAgentType.ANALYSIS,
