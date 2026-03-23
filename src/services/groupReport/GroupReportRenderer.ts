@@ -650,7 +650,7 @@ export class GroupReportRenderer {
         deviceScaleFactor: 2,
       });
 
-      await page.setContent(html, { waitUntil: 'networkidle0' });
+      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 15000 });
 
       // Wait for avatar images to load
       await page.evaluate(() => {
