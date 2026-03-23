@@ -97,6 +97,7 @@ export class AIService {
       subAgentManager,
       subAgentToolDefs,
       toolRunner,
+      promptManager,
       subagentConfig?.providerName,
       subagentConfig?.model,
     );

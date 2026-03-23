@@ -1,11 +1,23 @@
 // SubAgent Executor - executes sub-agents with isolated context
 
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { ChatMessage, FunctionCall, ToolDefinition, ToolUseGenerateResponse } from '@/ai/types';
 import { logger } from '@/utils/logger';
 import type { SubAgentManager } from './SubAgentManager';
 import type { IToolRunner } from './ToolRunner';
-import type { SubAgentConfig, SubAgentContext, SubAgentSession } from './types';
+import type { SubAgentConfig, SubAgentContext, SubAgentSession, SubAgentType } from './types';
+
+/** Template name mapping: SubAgentType → prompt template key */
+const SUBAGENT_SYSTEM_TEMPLATES: Partial<Record<SubAgentType, string>> = {
+  research: 'subagent.research.system',
+  analysis: 'subagent.research.system', // reuse research system prompt
+};
+
+const SUBAGENT_TASK_TEMPLATES: Partial<Record<SubAgentType, string>> = {
+  research: 'subagent.research.task',
+  generic: 'subagent.generic.task',
+};
 
 /**
  * SubAgent Executor
@@ -28,6 +40,7 @@ export class SubAgentExecutor {
     private subAgentManager: SubAgentManager,
     private availableTools: ToolDefinition[],
     private toolRunner: IToolRunner,
+    private promptManager: PromptManager,
     private defaultProviderName?: string,
     private defaultModel?: string,
   ) {}
@@ -56,7 +69,7 @@ export class SubAgentExecutor {
         tools,
         {
           temperature: 0.7,
-          maxTokens: 4000,
+          maxTokens: 1500,
           maxToolRounds: 5,
           model: session.config.providerName ? undefined : this.defaultModel,
           toolExecutor: (call: FunctionCall) => this.toolRunner.run(call, session),
@@ -128,32 +141,52 @@ export class SubAgentExecutor {
   }
 
   /**
-   * Build messages for LLM
+   * Build messages for LLM using prompt templates.
    */
   private buildMessages(session: SubAgentSession, context: SubAgentContext): ChatMessage[] {
     const messages: ChatMessage[] = [];
 
-    // System message
-    messages.push({
-      role: 'system',
-      content: `You are a sub-agent executing a specific task. Your task: ${session.task.description}`,
-    });
+    // System message from template (type-specific → fallback to research → hardcoded minimal)
+    const systemTemplateName = SUBAGENT_SYSTEM_TEMPLATES[session.type];
+    const systemContent = this.renderTemplateOrFallback(
+      systemTemplateName,
+      { message: session.task.description },
+      `你是一个子任务执行助手。完成以下任务并给出简洁总结。`,
+    );
+    messages.push({ role: 'system', content: systemContent });
 
     // Add memory if available
     if (context.memory) {
-      messages.push({
-        role: 'system',
-        content: `Memory: ${context.memory}`,
-      });
+      messages.push({ role: 'system', content: `记忆: ${context.memory}` });
     }
 
-    // Add task input
-    messages.push({
-      role: 'user',
-      content: `Task input: ${JSON.stringify(session.task.input)}`,
-    });
+    // Task input from template (type-specific → fallback to generic)
+    const taskTemplateName = SUBAGENT_TASK_TEMPLATES[session.type];
+    const taskContent = this.renderTemplateOrFallback(
+      taskTemplateName,
+      { message: session.task.description },
+      `任务: ${session.task.description}\n\n输入: ${JSON.stringify(session.task.input)}`,
+    );
+    messages.push({ role: 'user', content: taskContent });
 
     return messages;
+  }
+
+  /**
+   * Try to render a prompt template; return fallback string if template is not found.
+   */
+  private renderTemplateOrFallback(
+    templateName: string | undefined,
+    variables: Record<string, string>,
+    fallback: string,
+  ): string {
+    if (!templateName) return fallback;
+    try {
+      return this.promptManager.render(templateName, variables);
+    } catch {
+      logger.debug(`[SubAgentExecutor] Template "${templateName}" not found, using fallback`);
+      return fallback;
+    }
   }
 
   /**

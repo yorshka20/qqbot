@@ -209,11 +209,13 @@ describe.skipIf(!getIntegrationProvider('doubao'))('SubAgentManager integration 
   const aiManager = createAIManagerWithProvider('doubao');
   const llmService = LLMService.create(aiManager);
   const manager = new SubAgentManager();
+  const mockPromptManager = { render: (_name: string, vars?: Record<string, string>) => vars?.message ?? '' } as unknown as import('@/ai/prompt/PromptManager').PromptManager;
   const executor: SubAgentExecutor = new SubAgentExecutorImpl(
     llmService,
     manager,
     SUBAGENT_SAMPLE_TOOLS,
     mockToolRunner,
+    mockPromptManager,
   );
   manager.setExecutor(executor);
 
