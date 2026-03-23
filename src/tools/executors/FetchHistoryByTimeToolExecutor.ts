@@ -71,7 +71,7 @@ function parseTimeInput(input: string): Date | null {
   name: 'fetch_history_by_time',
   description: '获取当前群指定时间段内的聊天记录。返回该时间窗口内的消息列表（发送者、内容、时间）。',
   executor: 'fetch_history_by_time',
-  visibility: ['reply', 'subagent'],
+  visibility: ['subagent'],
   parameters: {
     startTime: {
       type: 'string',

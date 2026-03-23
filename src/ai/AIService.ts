@@ -75,6 +75,7 @@ export class AIService {
     messageAPI: MessageAPI,
     databaseManager: DatabaseManager,
     llmService: LLMService,
+    subagentConfig?: { providerName?: string; model?: string },
   ) {
     this.visionService = new VisionService(aiManager, providerSelector);
     this.cardRenderingService = new CardRenderingService(aiManager);
@@ -91,7 +92,14 @@ export class AIService {
     const subAgentToolSpecs = toolManager.getToolsByScope('subagent');
     const subAgentToolDefs = toolManager.toToolDefinitions(subAgentToolSpecs);
     const toolRunner = new ToolRunner(toolManager, subAgentManager, hookManager);
-    const subAgentExecutor = new SubAgentExecutor(llmService, subAgentManager, subAgentToolDefs, toolRunner);
+    const subAgentExecutor = new SubAgentExecutor(
+      llmService,
+      subAgentManager,
+      subAgentToolDefs,
+      toolRunner,
+      subagentConfig?.providerName,
+      subagentConfig?.model,
+    );
     subAgentManager.setExecutor(subAgentExecutor);
 
     // Reply generation pipeline
@@ -149,6 +157,7 @@ export class AIService {
     messageAPI: MessageAPI,
     databaseManager: DatabaseManager,
     llmService: LLMService,
+    subagentConfig?: { providerName?: string; model?: string },
   ): AIService {
     return new AIService(
       aiManager,
@@ -162,10 +171,15 @@ export class AIService {
       messageAPI,
       databaseManager,
       llmService,
+      subagentConfig,
     );
   }
 
   // --- Sub-agent ---
+
+  getSubAgentManager(): SubAgentManager {
+    return this.subAgentManager;
+  }
 
   async spawnSubAgent(
     type: SubAgentType,

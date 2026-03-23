@@ -6,6 +6,7 @@ import type { AIManager } from '../AIManager';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import { isLLMCapability } from '../capabilities/LLMCapability';
 import type { ProviderSelector } from '../ProviderSelector';
+import { TokenRateLimiter, type TokenRateLimiterConfig } from '../rateLimit';
 import type {
   AIGenerateOptions,
   AIGenerateResponse,
@@ -39,6 +40,8 @@ export interface LLMServiceConfig {
   toolUseProviders: string[];
   /** LLM fallback configuration */
   fallback: LLMFallbackConfig;
+  /** Optional per-provider token rate limiting */
+  rateLimit?: TokenRateLimiterConfig;
 }
 
 /**
@@ -54,6 +57,9 @@ export class LLMService {
   /** Health check manager for tracking provider health */
   private readonly healthCheckManager?: HealthCheckManager;
 
+  /** Token rate limiter for per-provider TPM enforcement */
+  private readonly rateLimiter: TokenRateLimiter;
+
   private constructor(
     private aiManager: AIManager,
     private providerSelector?: ProviderSelector,
@@ -62,6 +68,7 @@ export class LLMService {
   ) {
     this.healthCheckManager = healthCheckManager;
     this.config = config ?? { toolUseProviders: [], fallback: { fallbackOrder: [] } };
+    this.rateLimiter = new TokenRateLimiter(this.config.rateLimit);
   }
 
   /**
@@ -233,8 +240,17 @@ export class LLMService {
 
     const resolvedName = this.resolveProviderName(provider, providerName);
 
+    // Rate limit: wait for token capacity before calling the provider.
+    // Estimate prompt tokens from content length (rough: 1 token ≈ 3 chars for CJK, 4 for latin).
+    const estimatedTokens = this.estimatePromptTokens(prompt, options);
+    await this.rateLimiter.waitForCapacity(estimatedTokens, resolvedName);
+
     try {
       const result = await provider.generate(prompt, options);
+      // Record actual token usage for rate limiting
+      if (result.usage) {
+        this.rateLimiter.recordUsage(result.usage.totalTokens, resolvedName);
+      }
       // Mark provider as healthy on success
       this.healthCheckManager?.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
@@ -657,6 +673,28 @@ export class LLMService {
 
   private providerSupportsNativeWebSearch(providerName: string): boolean {
     return this.providersWithNativeWebSearch.includes(providerName.toLowerCase());
+  }
+
+  /**
+   * Rough token estimate for rate-limit budgeting.
+   * Not intended to be accurate — just good enough to predict whether
+   * we're approaching the TPM window so we can throttle proactively.
+   */
+  private estimatePromptTokens(prompt: string, options?: AIGenerateOptions): number {
+    let charCount = prompt.length;
+    if (options?.messages) {
+      for (const msg of options.messages) {
+        if (typeof msg.content === 'string') {
+          charCount += msg.content.length;
+        } else if (Array.isArray(msg.content)) {
+          for (const part of msg.content) {
+            if (part.type === 'text') charCount += part.text.length;
+          }
+        }
+      }
+    }
+    // Conservative estimate: ~2.5 chars per token (CJK-heavy content).
+    return Math.ceil(charCount / 2.5);
   }
 
   /**

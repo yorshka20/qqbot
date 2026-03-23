@@ -13,6 +13,7 @@ export { ListBotFeaturesToolExecutor } from './ListBotFeaturesToolExecutor';
 export { RagSearchToolExecutor } from './RagSearchToolExecutor';
 export { ReadFileToolExecutor } from './ReadFileToolExecutor';
 export { ReplyToolExecutor } from './ReplyToolExecutor';
+export { ResearchToolExecutor } from './ResearchToolExecutor';
 export { SearchCodeToolExecutor } from './SearchCodeToolExecutor';
 export { SearchMemoryToolExecutor } from './SearchMemoryToolExecutor';
 export { SearchToolExecutor } from './SearchToolExecutor';

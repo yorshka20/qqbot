@@ -36,6 +36,9 @@ export interface SubAgentConfig {
   // Tool permissions
   allowedTools: string[]; // Allowed tools (empty = allow all)
   restrictedTools: string[]; // Restricted tools (empty = no restrictions)
+
+  // Provider selection
+  providerName?: string; // LLM provider for this sub-agent (default: use taskProviders.subagent or default LLM provider)
 }
 
 /**

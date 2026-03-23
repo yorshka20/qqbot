@@ -53,6 +53,14 @@ export interface TaskProvidersConfig {
   convert?: string;
   /** Model override for convert provider (optional) */
   convertModel?: string;
+  /**
+   * Provider for sub-agent execution (research, analysis, etc.).
+   * Should be a cost-effective provider with tool-use support (e.g. deepseek, gemini, openai).
+   * Falls back to defaultProviders.llm if not specified.
+   */
+  subagent?: string;
+  /** Model override for sub-agent provider (optional) */
+  subagentModel?: string;
 }
 
 export interface AIConfig {
@@ -87,6 +95,27 @@ export interface AIConfig {
   llmFallback: {
     /** Ordered list of provider names for fallback (by cost, cheapest first) */
     fallbackOrder: string[];
+  };
+  /**
+   * Per-provider token rate limiting (TPM — tokens per minute).
+   * Prevents exceeding provider rate limits by throttling requests.
+   *
+   * Example:
+   * ```jsonc
+   * "rateLimit": {
+   *   "defaultTokensPerMinute": 0,       // 0 = unlimited (default)
+   *   "providers": {
+   *     "anthropic": { "tokensPerMinute": 30000 },
+   *     "openai":    { "tokensPerMinute": 60000 }
+   *   }
+   * }
+   * ```
+   */
+  rateLimit?: {
+    /** Default TPM for providers without explicit config. 0 = unlimited. */
+    defaultTokensPerMinute?: number;
+    /** Per-provider TPM overrides. */
+    providers?: Record<string, { tokensPerMinute: number }>;
   };
 }
 

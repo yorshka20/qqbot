@@ -41,6 +41,7 @@ export const DITokens = {
   AGENDA_REPORTER: 'AgendaReporter',
   SCHEDULE_FILE_SERVICE: 'ScheduleFileService',
   CLAUDE_CODE_SERVICE: 'ClaudeCodeService',
+  SUB_AGENT_MANAGER: 'SubAgentManager',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];

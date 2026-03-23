@@ -28,6 +28,8 @@ export class SubAgentExecutor {
     private subAgentManager: SubAgentManager,
     private availableTools: ToolDefinition[],
     private toolRunner: IToolRunner,
+    private defaultProviderName?: string,
+    private defaultModel?: string,
   ) {}
 
   /**
@@ -47,12 +49,20 @@ export class SubAgentExecutor {
       const messages = this.buildMessages(session, context);
 
       // 4. Execute LLM with tools (ToolRunner executes tool calls)
-      const result = await this.llmService.generateWithTools(messages, tools, {
-        temperature: 0.7,
-        maxTokens: 4000,
-        maxToolRounds: 3,
-        toolExecutor: (call: FunctionCall) => this.toolRunner.run(call, session),
-      });
+      // Use provider from session config, or fall back to the default provider configured for SubAgentExecutor.
+      const providerName = session.config.providerName ?? this.defaultProviderName;
+      const result = await this.llmService.generateWithTools(
+        messages,
+        tools,
+        {
+          temperature: 0.7,
+          maxTokens: 4000,
+          maxToolRounds: 5,
+          model: session.config.providerName ? undefined : this.defaultModel,
+          toolExecutor: (call: FunctionCall) => this.toolRunner.run(call, session),
+        },
+        providerName,
+      );
 
       // 5. Parse and return result
       const output = this.parseResult(result);

@@ -157,6 +157,12 @@ export class ConversationInitializer {
     const llmServiceConfig: LLMServiceConfig = {
       toolUseProviders: aiConfig.toolUseProviders ?? [],
       fallback: aiConfig.llmFallback,
+      rateLimit: aiConfig.rateLimit
+        ? {
+            defaultTokensPerMinute: aiConfig.rateLimit.defaultTokensPerMinute ?? 0,
+            providers: aiConfig.rateLimit.providers,
+          }
+        : undefined,
     };
 
     const llmService = LLMService.create(services.aiManager, providerSelector, healthCheckManager, llmServiceConfig);
@@ -213,8 +219,14 @@ export class ConversationInitializer {
       messageAPI,
       databaseManager,
       llmService,
+      {
+        providerName: aiConfig.taskProviders?.subagent,
+        model: aiConfig.taskProviders?.subagentModel,
+      },
     );
     serviceRegistry.registerAIServiceCapabilities(aiService);
+    // Expose SubAgentManager to DI so tool executors (e.g. ResearchToolExecutor) can inject it.
+    container.registerInstance(DITokens.SUB_AGENT_MANAGER, aiService.getSubAgentManager());
 
     // ReplySystem must exist before ProactiveConversationService is resolved from DI.
     const useSkills = config.getUseSkills();
