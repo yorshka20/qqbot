@@ -98,6 +98,10 @@ const BUILT_IN_PRESETS: Record<string, RolePreset> = {
       inheritSoul: false,
       inheritMemory: false,
       inheritPreference: false,
+      providerName: 'deepseek',
+      maxTokens: 8000,
+      maxToolRounds: 8,
+      systemTemplate: 'subagent.group_report.system',
     },
   },
 

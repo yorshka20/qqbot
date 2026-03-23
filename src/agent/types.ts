@@ -39,6 +39,13 @@ export interface SubAgentConfig {
 
   // Provider selection
   providerName?: string; // LLM provider for this sub-agent (default: use taskProviders.subagent or default LLM provider)
+
+  // LLM generation parameters
+  maxTokens?: number; // Max tokens for LLM generation (default: 1500)
+  maxToolRounds?: number; // Max tool call rounds (default: 5)
+
+  // Prompt overrides
+  systemTemplate?: string; // Override system prompt template key (e.g. 'subagent.group_report.system')
 }
 
 /**

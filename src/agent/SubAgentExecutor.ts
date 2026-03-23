@@ -69,8 +69,8 @@ export class SubAgentExecutor {
         tools,
         {
           temperature: 0.7,
-          maxTokens: 1500,
-          maxToolRounds: 5,
+          maxTokens: session.config.maxTokens ?? 1500,
+          maxToolRounds: session.config.maxToolRounds ?? 5,
           model: session.config.providerName ? undefined : this.defaultModel,
           toolExecutor: (call: FunctionCall) => this.toolRunner.run(call, session),
         },
@@ -146,8 +146,8 @@ export class SubAgentExecutor {
   private buildMessages(session: SubAgentSession, context: SubAgentContext): ChatMessage[] {
     const messages: ChatMessage[] = [];
 
-    // System message from template (type-specific → fallback to research → hardcoded minimal)
-    const systemTemplateName = SUBAGENT_SYSTEM_TEMPLATES[session.type];
+    // System message from template (config override → type-specific → hardcoded minimal)
+    const systemTemplateName = session.config.systemTemplate ?? SUBAGENT_SYSTEM_TEMPLATES[session.type];
     const systemContent = this.renderTemplateOrFallback(
       systemTemplateName,
       { message: session.task.description },

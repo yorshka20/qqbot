@@ -45,14 +45,22 @@ export class GetGroupMemberListToolExecutor extends BaseToolExecutor {
     try {
       logger.info(`[GetGroupMemberListTool] Fetching member list for group ${groupId}`);
 
-      const result = await this.apiClient.call<GroupMemberInfo[]>(
+      const rawResult = await this.apiClient.call<GroupMemberInfo[] | { members: GroupMemberInfo[] }>(
         'get_group_member_list',
         { group_id: Number(groupId) },
         'milky',
         15000,
       );
 
-      if (!Array.isArray(result)) {
+      // Milky API returns { members: [...] }, not a direct array
+      const result = Array.isArray(rawResult)
+        ? rawResult
+        : rawResult && typeof rawResult === 'object' && 'members' in rawResult && Array.isArray(rawResult.members)
+          ? rawResult.members
+          : null;
+
+      if (!result) {
+        logger.warn(`[GetGroupMemberListTool] Unexpected response format:`, typeof rawResult, rawResult);
         return this.error('获取群成员列表失败：返回格式异常', 'Unexpected API response format');
       }
 
