@@ -1,5 +1,5 @@
-import { format } from 'date-fns'
-import { zhCN } from 'date-fns/locale'
+import { format } from 'date-fns';
+import { zhCN } from 'date-fns/locale';
 import {
   ArrowLeft,
   ChevronDown,
@@ -9,51 +9,52 @@ import {
   MessageSquare,
   Newspaper,
   Users,
-} from 'lucide-react'
-import { marked } from 'marked'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { getReport } from '../api'
-import type { ArticleSummary, GroupSummary, ReportDetailResponse, WechatStats } from '../types'
+} from 'lucide-react';
+import { marked } from 'marked';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { getReport } from '../api';
+import { getOutputBase } from '../config';
+import type { ArticleSummary, GroupSummary, ReportDetailResponse, WechatStats } from '../types';
 
 interface ReportDetailProps {
-  reportId: string
-  onBack: () => void
+  reportId: string;
+  onBack: () => void;
 }
 
 // Configure marked for safe rendering
 marked.setOptions({
   breaks: true,
   gfm: true,
-})
+});
 
 export function ReportDetail({ reportId, onBack }: ReportDetailProps) {
-  const [data, setData] = useState<ReportDetailResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'rich' | 'markdown'>('rich')
+  const [data, setData] = useState<ReportDetailResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'rich' | 'markdown'>('rich');
 
   const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
     try {
-      const result = await getReport(reportId)
-      setData(result)
+      const result = await getReport(reportId);
+      setData(result);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load report')
-      setData(null)
+      setError(e instanceof Error ? e.message : 'Failed to load report');
+      setData(null);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [reportId])
+  }, [reportId]);
 
   useEffect(() => {
-    load()
-  }, [load])
+    load();
+  }, [load]);
 
   const markdownHtml = useMemo(() => {
-    if (!data?.report.markdownContent) return ''
-    return marked(data.report.markdownContent) as string
-  }, [data?.report.markdownContent])
+    if (!data?.report.markdownContent) return '';
+    return marked(data.report.markdownContent) as string;
+  }, [data?.report.markdownContent]);
 
   if (loading) {
     return (
@@ -63,7 +64,7 @@ export function ReportDetail({ reportId, onBack }: ReportDetailProps) {
           <span className="text-sm font-medium">加载报告...</span>
         </div>
       </div>
-    )
+    );
   }
 
   if (error || !data) {
@@ -81,10 +82,10 @@ export function ReportDetail({ reportId, onBack }: ReportDetailProps) {
           {error ?? '报告不存在'}
         </div>
       </div>
-    )
+    );
   }
 
-  const { report } = data
+  const { report } = data;
 
   return (
     <div className="space-y-6">
@@ -144,7 +145,7 @@ export function ReportDetail({ reportId, onBack }: ReportDetailProps) {
         />
       )}
     </div>
-  )
+  );
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -163,7 +164,7 @@ function RichContent({ report }: { report: ReportDetailResponse['report'] }) {
       {/* Articles */}
       {report.articles.length > 0 && <ArticlesSection articles={report.articles} />}
     </div>
-  )
+  );
 }
 
 function StatsSection({ stats }: { stats: WechatStats }) {
@@ -195,7 +196,9 @@ function StatsSection({ stats }: { stats: WechatStats }) {
                 <div key={g.conversationId} className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-2">
                     <span className="text-zinc-400 dark:text-zinc-500 w-4 text-right">{i + 1}.</span>
-                    <span className="text-zinc-700 dark:text-zinc-300 truncate max-w-[180px]">{g.groupName || g.conversationId}</span>
+                    <span className="text-zinc-700 dark:text-zinc-300 truncate max-w-[180px]">
+                      {g.groupName || g.conversationId}
+                    </span>
                   </span>
                   <span className="text-zinc-500 dark:text-zinc-400 text-xs">
                     {g.messageCount}条 · {g.senderCount}人
@@ -224,7 +227,7 @@ function StatsSection({ stats }: { stats: WechatStats }) {
         )}
       </div>
     </section>
-  )
+  );
 }
 
 function StatCard({
@@ -233,10 +236,10 @@ function StatCard({
   subtitle,
   icon,
 }: {
-  label: string
-  value: number
-  subtitle?: string
-  icon?: React.ReactNode
+  label: string;
+  value: number;
+  subtitle?: string;
+  icon?: React.ReactNode;
 }) {
   return (
     <div className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl p-4">
@@ -247,7 +250,7 @@ function StatCard({
       <div className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">{value.toLocaleString()}</div>
       {subtitle && <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{subtitle}</div>}
     </div>
-  )
+  );
 }
 
 function GroupsSection({ groups }: { groups: GroupSummary[] }) {
@@ -262,37 +265,119 @@ function GroupsSection({ groups }: { groups: GroupSummary[] }) {
         ))}
       </div>
     </section>
-  )
+  );
 }
 
+/** Parse "[HH:MM] sender: content" into structured parts */
+interface ParsedMessage {
+  time: string;
+  sender: string;
+  content: string;
+  /** Detected tag like 链接/图片/文件/视频号/other, or null for plain text */
+  tag: string | null;
+  /** Content after the tag prefix (stripped of [tag] wrapper) */
+  body: string;
+}
+
+const MSG_RE = /^\[(\d{2}:\d{2})\]\s+(.+?):\s(.+)$/;
+const TAG_RE = /^\[([^\]]+)\]\s*(.*)$/;
+
+function parseMessage(line: string): ParsedMessage | null {
+  const m = MSG_RE.exec(line);
+  if (!m) return null;
+  const [, time, sender, content] = m;
+  const tagMatch = TAG_RE.exec(content);
+  if (tagMatch) {
+    return { time, sender, content, tag: tagMatch[1], body: tagMatch[2] };
+  }
+  return { time, sender, content, tag: null, body: content };
+}
+
+const TAG_STYLES: Record<string, { bg: string; text: string }> = {
+  链接: { bg: 'bg-blue-100 dark:bg-blue-900/40', text: 'text-blue-700 dark:text-blue-300' },
+  图片: { bg: 'bg-emerald-100 dark:bg-emerald-900/40', text: 'text-emerald-700 dark:text-emerald-300' },
+  文件: { bg: 'bg-amber-100 dark:bg-amber-900/40', text: 'text-amber-700 dark:text-amber-300' },
+  视频号: { bg: 'bg-violet-100 dark:bg-violet-900/40', text: 'text-violet-700 dark:text-violet-300' },
+  other: { bg: 'bg-zinc-100 dark:bg-zinc-700', text: 'text-zinc-600 dark:text-zinc-300' },
+};
+
+function getTagStyle(tag: string) {
+  return TAG_STYLES[tag] ?? TAG_STYLES.other;
+}
+
+/** Convert an image file path from formattedMessages to a serveable URL.
+ *  Paths come as "output/wechat/..." — strip the leading "output/" and prepend getOutputBase(). */
+function toImageUrl(body: string): string | null {
+  const p = body.trim();
+  if (!p) return null;
+  // path starts with "output/" — strip it since getOutputBase() already points to /output
+  if (p.startsWith('output/')) {
+    return `${getOutputBase()}/${p.slice('output/'.length)}`;
+  }
+  // fallback: treat as relative path under output
+  return `${getOutputBase()}/${p}`;
+}
+
+function MessageBody({ parsed: p }: { parsed: ParsedMessage }) {
+  if (p.tag === '图片') {
+    const url = toImageUrl(p.body);
+    if (url) {
+      return (
+        <a href={url} target="_blank" rel="noopener noreferrer" className="block mt-1.5">
+          <img
+            src={url}
+            alt={p.body || '图片'}
+            loading="lazy"
+            decoding="async"
+            className="max-w-xs max-h-48 rounded-lg border border-zinc-200 dark:border-zinc-600 object-cover hover:shadow-md transition-shadow"
+          />
+        </a>
+      );
+    }
+  }
+  return <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-0.5 break-words leading-relaxed">{p.body}</p>;
+}
+
+const PREVIEW_COUNT = 15;
+
 function GroupCard({ group }: { group: GroupSummary }) {
-  const [expanded, setExpanded] = useState(false)
-  const messageLines = group.formattedMessages.split('\n')
-  const previewLines = messageLines.slice(0, 5)
-  const hasMore = messageLines.length > 5
+  const [expanded, setExpanded] = useState(false);
+
+  const allMessages = useMemo(() => {
+    return group.formattedMessages
+      .split('\n')
+      .filter((l) => l.trim())
+      .map((line, i) => ({ id: `${i}-${line.slice(0, 32)}`, raw: line, parsed: parseMessage(line) }));
+  }, [group.formattedMessages]);
+
+  const visibleMessages = expanded ? allMessages : allMessages.slice(0, PREVIEW_COUNT);
+  const hasMore = allMessages.length > PREVIEW_COUNT;
 
   return (
     <div className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl overflow-hidden">
-      <div className="p-4 border-b border-zinc-100 dark:border-zinc-700/50">
-        <div className="flex items-start justify-between">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-zinc-100 dark:border-zinc-700/50">
+        <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="font-medium text-zinc-900 dark:text-zinc-100">{group.groupName || group.conversationId}</h3>
-            <div className="flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+            <h3 className="font-semibold text-base text-zinc-900 dark:text-zinc-100">
+              {group.groupName || group.conversationId}
+            </h3>
+            <div className="flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400 mt-1.5">
               <span className="flex items-center gap-1">
-                <MessageSquare className="w-3 h-3" />
+                <MessageSquare className="w-3.5 h-3.5" />
                 {group.messageCount} 条消息
               </span>
               <span className="flex items-center gap-1">
-                <Users className="w-3 h-3" />
+                <Users className="w-3.5 h-3.5" />
                 {group.senderCount} 人发言
               </span>
             </div>
           </div>
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1.5 shrink-0">
             {group.categories.map((cat) => (
               <span
                 key={cat}
-                className="px-1.5 py-0.5 text-xs rounded bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300"
+                className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 font-medium"
               >
                 {cat}
               </span>
@@ -300,30 +385,71 @@ function GroupCard({ group }: { group: GroupSummary }) {
           </div>
         </div>
       </div>
-      <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50">
-        <pre className="text-xs text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap font-mono leading-relaxed">
-          {(expanded ? messageLines : previewLines).join('\n')}
-        </pre>
-        {hasMore && (
+
+      {/* Message list */}
+      <div className="divide-y divide-zinc-100 dark:divide-zinc-700/30">
+        {visibleMessages.map((msg) => {
+          const p = msg.parsed;
+          if (!p) {
+            // Unparseable line — render as-is
+            return (
+              <div key={msg.id} className="px-5 py-2.5 text-sm text-zinc-500 dark:text-zinc-400">
+                {msg.raw}
+              </div>
+            );
+          }
+
+          return (
+            <div
+              key={msg.id}
+              className="px-5 py-2.5 flex items-start gap-3 hover:bg-zinc-50 dark:hover:bg-zinc-700/20 transition-colors"
+            >
+              {/* Time */}
+              <span className="text-xs text-zinc-400 dark:text-zinc-500 font-mono pt-0.5 shrink-0 w-11 text-right tabular-nums">
+                {p.time}
+              </span>
+
+              {/* Sender + content */}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200 shrink-0">{p.sender}</span>
+                  {p.tag && (
+                    <span
+                      className={`inline-flex px-1.5 py-px text-[10px] font-semibold rounded ${getTagStyle(p.tag).bg} ${getTagStyle(p.tag).text}`}
+                    >
+                      {p.tag}
+                    </span>
+                  )}
+                </div>
+                <MessageBody parsed={p} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Expand / Collapse */}
+      {hasMore && (
+        <div className="border-t border-zinc-100 dark:border-zinc-700/50">
           <button
             type="button"
             onClick={() => setExpanded(!expanded)}
-            className="mt-2 flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+            className="w-full py-2.5 flex items-center justify-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-zinc-50 dark:hover:bg-zinc-700/20 transition-colors"
           >
             {expanded ? (
               <>
-                <ChevronUp className="w-3 h-3" /> 收起
+                <ChevronUp className="w-3.5 h-3.5" /> 收起
               </>
             ) : (
               <>
-                <ChevronDown className="w-3 h-3" /> 展开全部 ({messageLines.length} 条)
+                <ChevronDown className="w-3.5 h-3.5" /> 显示全部 {allMessages.length} 条消息
               </>
             )}
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
-  )
+  );
 }
 
 function ArticlesSection({ articles }: { articles: ArticleSummary[] }) {
@@ -338,12 +464,12 @@ function ArticlesSection({ articles }: { articles: ArticleSummary[] }) {
         ))}
       </div>
     </section>
-  )
+  );
 }
 
 function ArticleCard({ article }: { article: ArticleSummary }) {
   const sourceLabel =
-    article.sourceType === 'oa_push' ? `公众号: ${article.accountNick}` : `分享自: ${article.sharedBy || '未知'}`
+    article.sourceType === 'oa_push' ? `公众号: ${article.accountNick}` : `分享自: ${article.sharedBy || '未知'}`;
 
   return (
     <a
@@ -368,5 +494,5 @@ function ArticleCard({ article }: { article: ArticleSummary }) {
         <span>{format(new Date(article.pubTime * 1000), 'MM/dd HH:mm', { locale: zhCN })}</span>
       </div>
     </a>
-  )
+  );
 }

@@ -14,11 +14,24 @@ import type { InsightDetail, InsightListItem, InsightStats } from '../types';
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
 
-/** Clean WeChat article URL: keep only essential params (__biz, mid, idx, sn) */
+/**
+ * Clean WeChat article URL for regular browsers.
+ * - Short URLs (/s/XXXXX): pass through (already browser-safe)
+ * - Long URLs: keep only identity params (__biz, mid, idx, sn)
+ * - Strips session params (key, pass_ticket, uin, wx_header, etc.) that cause "环境异常"
+ */
 function cleanWxUrl(url: string): string {
   try {
     const parsed = new URL(url);
     if (!parsed.hostname.includes('weixin.qq.com')) return url;
+
+    // Short-form: /s/Ab3CdEfGh — no query params needed
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    if (parts.length >= 2 && parts[0] === 's' && parts[1].length > 1 && !parsed.searchParams.has('__biz')) {
+      return `${parsed.origin}${parsed.pathname}`;
+    }
+
+    // Long-form: keep only identity params
     const clean = new URL(`${parsed.origin}${parsed.pathname}`);
     for (const key of ['__biz', 'mid', 'idx', 'sn']) {
       const val = parsed.searchParams.get(key);

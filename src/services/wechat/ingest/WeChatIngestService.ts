@@ -85,24 +85,39 @@ function xmlAttr(xml: string, attr: string): string {
 }
 
 /**
- * Clean a WeChat article URL by keeping only the essential query params
- * (__biz, mid, idx, sn) and stripping tracking params (chksm, scene, xtrack, etc.) and fragments (#rd).
- * Non-WeChat URLs are returned unchanged.
+ * Clean a WeChat article URL for use in regular browsers.
+ *
+ * Session-bound params (key, pass_ticket, uin, wx_header, tempkey, exportkey)
+ * cause "环境异常" errors when opened outside WeChat's built-in browser.
+ * Tracking params (scene, xtrack, devicetype, etc.) are noise.
+ *
+ * Strategy:
+ *  - Short-form URLs (/s/XXXXX) → pass through unchanged (already browser-safe)
+ *  - Long-form URLs → keep only the 4 identity params (__biz, mid, idx, sn)
+ *  - Non-WeChat URLs → pass through unchanged
  */
-export function cleanWeChatArticleUrl(url: string): string {
-  if (!url) return url;
+export function cleanWeChatArticleUrl(rawUrl: string): string {
+  if (!rawUrl) return rawUrl;
   try {
-    const parsed = new URL(url);
-    if (!parsed.hostname.includes('weixin.qq.com')) return url;
-    const essential = ['__biz', 'mid', 'idx', 'sn'];
+    const parsed = new URL(rawUrl);
+    if (!parsed.hostname.includes('weixin.qq.com')) return rawUrl;
+
+    // Short-form URL: /s/Ab3CdEfGh — the ID is in the path, no query params needed
+    const pathParts = parsed.pathname.split('/').filter(Boolean);
+    if (pathParts.length >= 2 && pathParts[0] === 's' && pathParts[1].length > 1 && !parsed.searchParams.has('__biz')) {
+      // Strip any trailing session params that might have been appended
+      return `${parsed.origin}${parsed.pathname}`;
+    }
+
+    // Long-form URL: keep only identity params
     const clean = new URL(`${parsed.origin}${parsed.pathname}`);
-    for (const key of essential) {
+    for (const key of ['__biz', 'mid', 'idx', 'sn']) {
       const val = parsed.searchParams.get(key);
       if (val) clean.searchParams.set(key, val);
     }
     return clean.toString();
   } catch {
-    return url;
+    return rawUrl;
   }
 }
 
