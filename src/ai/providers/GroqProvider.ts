@@ -32,6 +32,7 @@ export interface GroqProviderConfig {
  */
 export class GroqProvider extends AIProvider implements LLMCapability {
   readonly name = 'groq';
+  override readonly isRelay = true;
   override readonly supportsToolUse = true;
   private config: GroqProviderConfig;
   private baseUrl: string;

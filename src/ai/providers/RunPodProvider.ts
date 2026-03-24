@@ -29,6 +29,7 @@ export interface RunPodProviderOptions {
  */
 export class RunPodProvider extends AIProvider implements Text2ImageCapability, Image2VideoCapability {
   readonly name = 'runpod';
+  override readonly skipHealthCheck = true;
   private options: RunPodProviderOptions;
   private _capabilities: CapabilityType[] = ['text2img', 'i2v'];
 

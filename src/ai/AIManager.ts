@@ -156,7 +156,7 @@ export class AIManager implements HealthCheckable {
    */
   async triggerHealthCheck(): Promise<Map<string, boolean>> {
     const result = new Map<string, boolean>();
-    const providers = this.getAvailableProviders();
+    const providers = this.getAvailableProviders().filter((p) => !p.skipHealthCheck);
     const checks = providers.map(async (provider) => {
       try {
         const healthy = await Promise.race([
@@ -194,8 +194,11 @@ export class AIManager implements HealthCheckable {
     try {
       const availableProviders = this.getAvailableProviders();
 
-      // Check health of all available providers in parallel
-      const healthCheckPromises = availableProviders.map(async (provider) => {
+      // Filter out providers that opt out of health checks (e.g. serverless)
+      const checkableProviders = availableProviders.filter((p) => !p.skipHealthCheck);
+
+      // Check health of all checkable providers in parallel
+      const healthCheckPromises = checkableProviders.map(async (provider) => {
         try {
           const checkPromise = provider.checkAvailability();
           const timeoutPromise = new Promise<never>((_, reject) => {
@@ -218,7 +221,9 @@ export class AIManager implements HealthCheckable {
 
       const providerStatus = Object.fromEntries(results.map((r) => [r.provider, r.healthy]));
 
-      if (healthyProviders.length === 0) {
+      const skippedCount = availableProviders.length - checkableProviders.length;
+
+      if (healthyProviders.length === 0 && checkableProviders.length > 0) {
         return {
           status: HealthStatus.UNHEALTHY,
           timestamp: Date.now(),
@@ -227,6 +232,7 @@ export class AIManager implements HealthCheckable {
           details: {
             totalProviders: availableProviders.length,
             healthyProviders: 0,
+            skippedProviders: skippedCount,
             providers: providerStatus,
           },
         };
@@ -236,10 +242,11 @@ export class AIManager implements HealthCheckable {
         status: HealthStatus.HEALTHY,
         timestamp: Date.now(),
         responseTime,
-        message: `${healthyProviders.length}/${availableProviders.length} AI providers are healthy`,
+        message: `${healthyProviders.length}/${checkableProviders.length} AI providers are healthy${skippedCount > 0 ? ` (${skippedCount} skipped)` : ''}`,
         details: {
           totalProviders: availableProviders.length,
           healthyProviders: healthyProviders.length,
+          skippedProviders: skippedCount,
           providers: providerStatus,
         },
       };

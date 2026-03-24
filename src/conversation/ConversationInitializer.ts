@@ -138,8 +138,13 @@ export class ConversationInitializer {
     serviceRegistry.registerAIManagerHealthCheck(services.aiManager);
 
     // Phase 3.6: Register each AI provider individually with HealthCheckManager
+    // Skip providers that opt out (e.g. serverless providers to avoid cold-start costs)
     const healthCheckManager = container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
     for (const provider of services.aiManager.getAllProviders()) {
+      if (provider.skipHealthCheck) {
+        logger.info(`[ConversationInitializer] Skipping health check registration for ${provider.name} (skipHealthCheck=true)`);
+        continue;
+      }
       const adapter = new ProviderHealthAdapter(provider);
       healthCheckManager.registerService(adapter, { cacheDuration: 60000, timeout: 8000 });
     }

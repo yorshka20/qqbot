@@ -119,10 +119,6 @@ export class LLMService {
   async getAvailableProvider(providerName?: string, sessionId?: string): Promise<LLMCapability | null> {
     let provider: LLMCapability | null = null;
     let resolvedName: string | undefined;
-    // Track whether the provider was explicitly requested by the caller.
-    // When true, skip health-based fallback so the requested provider gets a
-    // real attempt; runtime errors are handled by GenerationStage retry logic.
-    let explicitlyRequested = false;
 
     if (providerName) {
       // Use specified provider
@@ -130,7 +126,6 @@ export class LLMService {
       if (p && isLLMCapability(p) && p.isAvailable()) {
         provider = p;
         resolvedName = providerName;
-        explicitlyRequested = true;
       } else if (p && !p.isAvailable()) {
         logger.warn(
           `[LLMService] Requested provider "${providerName}" is not available (e.g. API key missing or check failed); falling back to default`,
@@ -162,10 +157,7 @@ export class LLMService {
     }
 
     // Check health status and try fallback if unhealthy.
-    // Skip health-based fallback when the provider was explicitly requested —
-    // the caller intends to use that specific provider, and runtime errors
-    // will be caught by the retry/fallback logic in GenerationStage.
-    if (provider && resolvedName && this.healthCheckManager && !explicitlyRequested) {
+    if (provider && resolvedName && this.healthCheckManager ) {
       if (!this.healthCheckManager.isServiceHealthySync(resolvedName)) {
         logger.warn(`[LLMService] Provider "${resolvedName}" is unhealthy, trying healthy fallback`);
         const healthyFallback = await this.getFirstHealthyProvider(sessionId, resolvedName);

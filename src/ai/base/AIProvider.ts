@@ -24,6 +24,19 @@ export abstract class AIProvider {
   readonly supportsToolUse: boolean = false;
 
   /**
+   * Whether this provider is a relay/proxy (can switch models and actual upstream providers).
+   * Examples: openrouter, laozhang, ollama, groq.
+   */
+  readonly isRelay: boolean = false;
+
+  /**
+   * Whether to skip health checks for this provider.
+   * Serverless providers (e.g. runpod, google-cloud-run) should set this to true
+   * to avoid cold-start invocations from health check pings.
+   */
+  readonly skipHealthCheck: boolean = false;
+
+  /**
    * Whether context is enabled for this provider
    */
   protected enableContext: boolean = false;

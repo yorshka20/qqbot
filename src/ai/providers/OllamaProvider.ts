@@ -40,6 +40,7 @@ interface OllamaGenerateResponse {
  */
 export class OllamaProvider extends AIProvider implements LLMCapability {
   readonly name = 'ollama';
+  override readonly isRelay = true;
   private config: OllamaProviderConfig;
   private baseUrl: string;
   private _capabilities: CapabilityType[];

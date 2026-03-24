@@ -16,6 +16,7 @@ import { contentToPlainString } from '../utils/contentUtils';
  */
 export class OpenRouterProvider extends AIProvider implements LLMCapability {
   readonly name = 'openrouter';
+  override readonly isRelay = true;
   private httpClient: HttpClient;
   private config: OpenRouterProviderConfig;
   private _capabilities: CapabilityType[];

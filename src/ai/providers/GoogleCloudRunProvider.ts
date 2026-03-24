@@ -21,6 +21,7 @@ export interface GoogleCloudRunProviderOptions {
  */
 export class GoogleCloudRunProvider extends AIProvider implements Text2ImageCapability {
   readonly name = 'google-cloud-run';
+  override readonly skipHealthCheck = true;
   private options: GoogleCloudRunProviderOptions;
   private _capabilities: CapabilityType[] = ['text2img'];
 

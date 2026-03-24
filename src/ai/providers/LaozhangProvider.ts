@@ -62,6 +62,7 @@ export class LaozhangProvider
   implements Text2ImageCapability, Image2ImageCapability, LLMCapability, VisionCapability
 {
   readonly name = 'laozhang';
+  override readonly isRelay = true;
   private config: LaozhangProviderConfig;
   private _capabilities: CapabilityType[];
   private httpClient: HttpClient;
