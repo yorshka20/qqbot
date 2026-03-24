@@ -19,7 +19,7 @@ function createMockAIManager(): AIManager {
 
 describe('LLMService', () => {
   describe('providerSupportsToolUse', () => {
-    const service = LLMService.create(createMockAIManager(), undefined, undefined, {
+    const service = new LLMService(createMockAIManager(), undefined, undefined, {
       toolUseProviders: ['openai', 'anthropic', 'doubao', 'gemini', 'deepseek'],
       fallback: { fallbackOrder: [] },
     });
@@ -44,7 +44,7 @@ describe('LLMService', () => {
     });
 
     it('returns false for all providers when no config provided', () => {
-      const noConfigService = LLMService.create(createMockAIManager());
+      const noConfigService = new LLMService(createMockAIManager());
       expect(noConfigService.providerSupportsToolUse('openai')).toBe(false);
     });
   });
@@ -65,7 +65,7 @@ describe('LLMService', () => {
         getProviderForCapability: (_cap: string, name?: string) => (name ? mockProvider : null),
         getDefaultProvider: () => mockProvider,
       } as unknown as AIManager;
-      const llmService = LLMService.create(aiManager);
+      const llmService = new LLMService(aiManager);
 
       await llmService.generateLite('test prompt');
       expect(lastOptions).toBeDefined();
@@ -79,7 +79,7 @@ describe('LLMService', () => {
 
     it('returns fallback when no provider available', async () => {
       const aiManager = createMockAIManager();
-      const llmService = LLMService.create(aiManager);
+      const llmService = new LLMService(aiManager);
       const res = await llmService.generateLite('hello', undefined, 'nonexistent');
       expect(res.text).toContain('unavailable');
     });
@@ -88,7 +88,7 @@ describe('LLMService', () => {
   // Integration: real LLM API calls when provider is configured (CONFIG_PATH / config.jsonc).
   describe.skipIf(!getIntegrationProvider('doubao'))('integration (real API)', () => {
     const aiManager = createAIManagerWithProvider('doubao');
-    const llmService = LLMService.create(aiManager);
+    const llmService = new LLMService(aiManager);
 
     test(
       'generate returns text and optional usage',

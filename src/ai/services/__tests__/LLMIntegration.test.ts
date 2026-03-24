@@ -53,7 +53,7 @@ function logFlow(msg: string, data?: Record<string, unknown>): void {
 
 describe.skipIf(!getIntegrationProvider('doubao'))('Doubao LLM integration (real API)', () => {
   const aiManager = createAIManagerWithProvider('doubao');
-  const llmService = LLMService.create(aiManager);
+  const llmService = new LLMService(aiManager);
   const providerName = 'doubao';
 
   test(
@@ -176,7 +176,7 @@ describe.skipIf(!getIntegrationProvider('doubao'))('Doubao LLM integration (real
 
 describe.skipIf(!getIntegrationProvider('doubao'))('Doubao jsonMode integration (real API)', () => {
   const aiManager = createAIManagerWithProvider('doubao');
-  const llmService = LLMService.create(aiManager);
+  const llmService = new LLMService(aiManager);
 
   test(
     'Responses API: jsonMode returns valid JSON (text.format.type=json_object)',
@@ -261,7 +261,7 @@ describe.skipIf(!getIntegrationProvider('doubao'))('Doubao jsonMode integration 
 
 describe.skipIf(!getIntegrationProvider('deepseek'))('DeepSeek LLM integration (real API)', () => {
   const aiManager = createAIManagerWithProvider('deepseek');
-  const llmService = LLMService.create(aiManager);
+  const llmService = new LLMService(aiManager);
   const providerName = 'deepseek';
 
   test(

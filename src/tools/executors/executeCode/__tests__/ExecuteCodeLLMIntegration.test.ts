@@ -329,7 +329,7 @@ function scenarios(): TestScenario[] {
 function defineProviderSuite(providerName: IntegrationProviderName): void {
   describe.skipIf(!getIntegrationProvider(providerName))(`ExecuteCode LLM — ${providerName}`, () => {
     const aiManager = createAIManagerWithProvider(providerName);
-    const llmService = LLMService.create(aiManager, undefined, undefined, LLM_CONFIG);
+    const llmService = new LLMService(aiManager, undefined, undefined, LLM_CONFIG);
 
     for (const scenario of scenarios()) {
       test(scenario.name, async () => {

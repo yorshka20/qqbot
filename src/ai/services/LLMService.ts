@@ -54,34 +54,17 @@ export class LLMService {
   /** Service configuration (tool-use providers + fallback) */
   private readonly config: LLMServiceConfig;
 
-  /** Health check manager for tracking provider health */
-  private readonly healthCheckManager?: HealthCheckManager;
-
   /** Token rate limiter for per-provider TPM enforcement */
   private readonly rateLimiter: TokenRateLimiter;
 
-  private constructor(
+  constructor(
     private aiManager: AIManager,
     private providerSelector?: ProviderSelector,
-    healthCheckManager?: HealthCheckManager,
+    private healthCheckManager?: HealthCheckManager,
     config?: LLMServiceConfig,
   ) {
-    this.healthCheckManager = healthCheckManager;
     this.config = config ?? { toolUseProviders: [], fallback: { fallbackOrder: [] } };
     this.rateLimiter = new TokenRateLimiter(this.config.rateLimit);
-  }
-
-  /**
-   * Create a new LLMService instance.
-   * Should only be called once during bootstrap; all other code should use the DI container instance.
-   */
-  static create(
-    aiManager: AIManager,
-    providerSelector?: ProviderSelector,
-    healthCheckManager?: HealthCheckManager,
-    config?: LLMServiceConfig,
-  ): LLMService {
-    return new LLMService(aiManager, providerSelector, healthCheckManager, config);
   }
 
   /**

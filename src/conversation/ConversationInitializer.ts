@@ -172,7 +172,7 @@ export class ConversationInitializer {
         : undefined,
     };
 
-    const llmService = LLMService.create(services.aiManager, providerSelector, healthCheckManager, llmServiceConfig);
+    const llmService = new LLMService(services.aiManager, providerSelector, healthCheckManager, llmServiceConfig);
     container.registerInstance(DITokens.LLM_SERVICE, llmService);
 
     const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);

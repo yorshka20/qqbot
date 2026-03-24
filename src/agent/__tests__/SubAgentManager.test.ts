@@ -207,7 +207,7 @@ const mockToolRunner: IToolRunner = {
 
 describe.skipIf(!getIntegrationProvider('doubao'))('SubAgentManager integration (real LLM - Doubao)', () => {
   const aiManager = createAIManagerWithProvider('doubao');
-  const llmService = LLMService.create(aiManager);
+  const llmService = new LLMService(aiManager);
   const manager = new SubAgentManager();
   const mockPromptManager = {
     render: (_name: string, vars?: Record<string, string>) => vars?.message ?? '',

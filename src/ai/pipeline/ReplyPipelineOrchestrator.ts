@@ -19,15 +19,12 @@ import type { ReplyStage } from './types';
  * Also exposes the card-reply public API for proactive/external callers.
  */
 export class ReplyPipelineOrchestrator {
-  private readonly stages: ReplyStage[];
-
   constructor(
-    stages: ReplyStage[],
+    private readonly stages: ReplyStage[],
     private episodeCacheManager: EpisodeCacheManager,
     private cardHelper: CardRenderingHelper,
     private hookManager: HookManager,
   ) {
-    this.stages = stages;
   }
 
   // ---------------------------------------------------------------------------
