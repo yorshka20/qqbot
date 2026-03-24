@@ -154,6 +154,7 @@ export class ConversationInitializer {
 
     // Phase 4: Wire AI-facing services.
     const providerSelector = new ProviderSelector(services.aiManager, conversationConfigService);
+    container.registerInstance(DITokens.PROVIDER_SELECTOR, providerSelector);
 
     // Build LLM service config from AI config
     const aiConfig = config.getAIConfig();

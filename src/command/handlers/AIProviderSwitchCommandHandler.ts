@@ -1,10 +1,10 @@
 import { inject, injectable } from 'tsyringe';
 import type { AIManager, CapabilityType } from '@/ai';
-import type { Config } from '@/core/config';
+import type { ProviderSelector } from '@/ai/ProviderSelector';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { Command } from '../decorators';
-import type { CommandHandler, CommandResult } from '../types';
+import type { CommandContext, CommandHandler, CommandResult } from '../types';
 
 @Command({
   name: 'provider',
@@ -20,10 +20,10 @@ export class AIProviderSwitchCommandHandler implements CommandHandler {
 
   constructor(
     @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
-    @inject(DITokens.CONFIG) private config: Config,
+    @inject(DITokens.PROVIDER_SELECTOR) private providerSelector: ProviderSelector,
   ) {}
 
-  async execute(args: string[]): Promise<CommandResult> {
+  async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     const [action, capability, providerName] = args;
     const messageBuilder = new MessageBuilder();
     if (action === 'list') {
@@ -42,8 +42,18 @@ export class AIProviderSwitchCommandHandler implements CommandHandler {
           error: 'Provider not found',
         };
       }
-      this.aiManager.setCurrentProvider(capability as CapabilityType, provider.name);
-      messageBuilder.text(`Switched to provider: ${provider.name}`);
+
+      // If in a group context, persist per-group provider selection
+      if (context.messageType === 'group' && context.groupId) {
+        const sessionId = `group:${context.groupId}`;
+        await this.providerSelector.setProviderForSession(sessionId, capability as CapabilityType, provider.name);
+        messageBuilder.text(`Switched group provider for ${capability} to: ${provider.name} (persisted)`);
+      } else {
+        // For private messages, set global default
+        this.aiManager.setCurrentProvider(capability as CapabilityType, provider.name);
+        messageBuilder.text(`Switched global provider for ${capability} to: ${provider.name}`);
+      }
+
       return {
         success: true,
         segments: messageBuilder.build(),
