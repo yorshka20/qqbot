@@ -1,6 +1,7 @@
 // Prompt Initializer - initializes PromptManager and registers it to DI container
 
 import { resolve } from 'path';
+import { initRolePresets } from '@/agent/SubAgentRolePresets';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -31,6 +32,9 @@ export class PromptInitializer {
     const promptManager = new PromptManager(promptDirectory, adminUserId);
 
     logger.info(`[PromptInitializer] PromptManager initialized and templates loaded from: ${promptDirectory}`);
+
+    // Initialize subagent role presets from the same prompts directory
+    initRolePresets(promptDirectory);
 
     // Register PromptManager to DI container early (before conversation initialization)
     const container = getContainer();

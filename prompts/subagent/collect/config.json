@@ -1,0 +1,11 @@
+{
+  "displayName": "资料整理",
+  "type": "task",
+  "allowedTools": ["rag_retrieval", "http_request"],
+  "maxDepth": 1,
+  "maxChildren": 0,
+  "timeout": 90000,
+  "inheritSoul": false,
+  "inheritMemory": false,
+  "inheritPreference": false
+}

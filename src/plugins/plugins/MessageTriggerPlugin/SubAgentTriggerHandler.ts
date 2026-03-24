@@ -1,5 +1,6 @@
 // SubAgentTriggerHandler - keyword match → spawn subagent → deliver result to group
 
+import { getRolePreset } from '@/agent/SubAgentRolePresets';
 import type { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
@@ -8,7 +9,6 @@ import type { ConversationConfigService } from '@/conversation/ConversationConfi
 import type { NormalizedMessageEvent } from '@/events/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
-import { getRolePreset } from './SubAgentRolePresets';
 import type { SubAgentTriggerRule } from './types';
 
 /**

@@ -4,27 +4,27 @@
 //   /report           生成今日群聊每日汇报
 
 import { inject, injectable } from 'tsyringe';
+import { getRolePreset } from '@/agent/SubAgentRolePresets';
 import type { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { getRolePreset } from '@/plugins/plugins/MessageTriggerPlugin/SubAgentRolePresets';
 import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 
 @Command({
-  name: 'report',
+  name: 'group_report',
   description: '生成群聊每日汇报',
-  usage: '/report',
+  usage: '/group_report',
   permissions: ['admin', 'owner'],
   aliases: ['群报告', '每日汇报'],
 })
 @injectable()
 export class GroupReportCommand implements CommandHandler {
-  name = 'report';
+  name = 'group_report';
   description = '生成群聊每日汇报';
-  usage = '/report';
+  usage = '/group_report';
 
   constructor(
     @inject(DITokens.AI_SERVICE) private aiService: AIService,

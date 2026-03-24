@@ -1,0 +1,11 @@
+{
+  "displayName": "信息调研",
+  "type": "research",
+  "allowedTools": ["web_search", "http_request", "rag_retrieval"],
+  "maxDepth": 1,
+  "maxChildren": 0,
+  "timeout": 120000,
+  "inheritSoul": false,
+  "inheritMemory": false,
+  "inheritPreference": false
+}

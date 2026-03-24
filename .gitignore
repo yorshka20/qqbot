@@ -60,7 +60,6 @@ __pycache__/
 
 # Config files (if containing sensitive data)
 config.jsonc
-config.json
 config.d/*
 
 # Temporary files

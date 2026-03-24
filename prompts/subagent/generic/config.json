@@ -1,0 +1,11 @@
+{
+  "displayName": "后台任务",
+  "type": "generic",
+  "allowedTools": [],
+  "maxDepth": 1,
+  "maxChildren": 3,
+  "timeout": 120000,
+  "inheritSoul": false,
+  "inheritMemory": false,
+  "inheritPreference": false
+}

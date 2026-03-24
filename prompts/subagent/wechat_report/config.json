@@ -1,0 +1,20 @@
+{
+  "displayName": "微信报告",
+  "type": "analysis",
+  "allowedTools": [
+    "wechat_stats",
+    "wechat_group_summary",
+    "wechat_article_summary",
+    "wechat_article_insights",
+    "wechat_article_rag",
+    "wechat_digest",
+    "wechat_search",
+    "wechat_report"
+  ],
+  "maxDepth": 1,
+  "maxChildren": 0,
+  "timeout": 180000,
+  "inheritSoul": false,
+  "inheritMemory": false,
+  "inheritPreference": false
+}
