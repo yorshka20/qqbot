@@ -1,12 +1,7 @@
-// GroupReportRenderer - renders group daily report data to JPEG image via Puppeteer
-// Design inspired by QQ group daily report card style
+// Renders GroupReportData to a full HTML string for Puppeteer screenshot
 
-import type { Page } from 'puppeteer-core';
-import { BrowserService } from '@/services/browser/BrowserService';
-import { logger } from '@/utils/logger';
 import type { GroupReportData } from './types';
 
-/** Escapes HTML special characters */
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -16,7 +11,6 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#039;');
 }
 
-/** QQ avatar URL */
 function avatarUrl(userId: string): string {
   return `https://q1.qlogo.cn/g?b=qq&nk=${userId}&s=140`;
 }
@@ -26,7 +20,6 @@ const RANK_LABELS = ['🥇', '🥈', '🥉', '④', '⑤'];
 
 const TOPIC_COLORS = ['#FF7043', '#42A5F5', '#66BB6A', '#AB47BC', '#FFA726'];
 
-/** Build the activity chart HTML (CSS bar chart) */
 function buildActivityChart(hourlyActivity: { hour: number; count: number }[]): string {
   if (!hourlyActivity.length) return '';
   const maxCount = Math.max(...hourlyActivity.map((h) => h.count), 1);
@@ -52,7 +45,6 @@ function buildActivityChart(hourlyActivity: { hour: number; count: number }[]): 
     </div>`;
 }
 
-/** Build topics section HTML */
 function buildTopicsSection(topics: GroupReportData['topics']): string {
   if (!topics.length) return '';
   const items = topics
@@ -76,7 +68,6 @@ function buildTopicsSection(topics: GroupReportData['topics']): string {
     </div>`;
 }
 
-/** Build member highlights section HTML */
 function buildMemberHighlights(members: GroupReportData['memberHighlights']): string {
   if (!members.length) return '';
   const items = members
@@ -106,7 +97,6 @@ function buildMemberHighlights(members: GroupReportData['memberHighlights']): st
     </div>`;
 }
 
-/** Build featured messages section HTML */
 function buildFeaturedMessages(messages: GroupReportData['featuredMessages']): string {
   if (!messages.length) return '';
   const items = messages
@@ -136,14 +126,13 @@ function buildFeaturedMessages(messages: GroupReportData['featuredMessages']): s
     </div>`;
 }
 
-/** Build the full report HTML */
-function buildReportHTML(data: GroupReportData): string {
+export function renderReportHTML(data: GroupReportData): string {
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>${getReportStyles()}</style>
+<style>${REPORT_STYLES}</style>
 </head>
 <body>
 <div class="report-container">
@@ -221,9 +210,7 @@ function buildReportHTML(data: GroupReportData): string {
 </html>`;
 }
 
-/** CSS styles for the report */
-function getReportStyles(): string {
-  return `
+const REPORT_STYLES = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
@@ -244,7 +231,7 @@ function getReportStyles(): string {
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.05);
   }
 
-  /* ── Header ── */
+  /* -- Header -- */
   .report-header {
     background: linear-gradient(135deg, #FF9A56 0%, #FF6B6B 50%, #E84393 100%);
     padding: 44px 40px 36px;
@@ -291,7 +278,7 @@ function getReportStyles(): string {
     font-weight: 500;
   }
 
-  /* ── Stats Row ── */
+  /* -- Stats Row -- */
   .stats-row {
     display: flex;
     gap: 14px;
@@ -345,7 +332,7 @@ function getReportStyles(): string {
     font-weight: 500;
   }
 
-  /* ── Sections ── */
+  /* -- Sections -- */
   .section {
     padding: 0 28px;
     margin: 28px 0;
@@ -368,7 +355,7 @@ function getReportStyles(): string {
     letter-spacing: 0.02em;
   }
 
-  /* ── Activity Chart ── */
+  /* -- Activity Chart -- */
   .activity-chart {
     background: linear-gradient(180deg, #FAFAFA 0%, #F5F5F5 100%);
     border-radius: 16px;
@@ -410,7 +397,7 @@ function getReportStyles(): string {
     font-weight: 500;
   }
 
-  /* ── Topics ── */
+  /* -- Topics -- */
   .topic-item {
     background: #FAFAFA;
     border-radius: 14px;
@@ -440,7 +427,7 @@ function getReportStyles(): string {
     line-height: 1.65;
   }
 
-  /* ── Member Highlights ── */
+  /* -- Member Highlights -- */
   .member-list {
     background: #FAFAFA;
     border-radius: 16px;
@@ -508,7 +495,7 @@ function getReportStyles(): string {
     line-height: 1.6;
   }
 
-  /* ── Featured Messages ── */
+  /* -- Featured Messages -- */
   .featured-grid {
     display: flex;
     flex-direction: column;
@@ -570,7 +557,7 @@ function getReportStyles(): string {
     font-weight: 500;
   }
 
-  /* ── Summary ── */
+  /* -- Summary -- */
   .summary-section {
     padding: 0 28px;
     margin: 28px 0;
@@ -599,7 +586,7 @@ function getReportStyles(): string {
     z-index: 1;
   }
 
-  /* ── Footer ── */
+  /* -- Footer -- */
   .report-footer {
     padding: 0 28px 24px;
     margin-top: 12px;
@@ -622,92 +609,3 @@ function getReportStyles(): string {
     font-size: 8px;
   }
 `;
-}
-
-export class GroupReportRenderer {
-  private static instance: GroupReportRenderer | null = null;
-
-  static getInstance(): GroupReportRenderer {
-    if (!GroupReportRenderer.instance) {
-      GroupReportRenderer.instance = new GroupReportRenderer();
-    }
-    return GroupReportRenderer.instance;
-  }
-
-  /**
-   * Render group report data to JPEG image buffer.
-   */
-  async render(data: GroupReportData): Promise<Buffer> {
-    const html = buildReportHTML(data);
-    let page: Page | null = null;
-
-    try {
-      page = await BrowserService.getInstance().createPage();
-
-      await page.setViewport({
-        width: 1000,
-        height: 3000,
-        deviceScaleFactor: 2,
-      });
-
-      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 15000 });
-
-      // Wait for avatar images to load
-      await page.evaluate(() => {
-        const images = Array.from(document.querySelectorAll('img'));
-        return Promise.allSettled(
-          images.map(
-            (img) =>
-              new Promise<void>((resolve) => {
-                if (img.complete) return resolve();
-                img.onload = () => resolve();
-                img.onerror = () => resolve();
-                // Timeout for slow images
-                setTimeout(resolve, 5000);
-              }),
-          ),
-        );
-      });
-
-      await page.evaluate(() => document.fonts.ready);
-      await new Promise((r) => setTimeout(r, 500));
-
-      const bounds = await page.evaluate(() => {
-        const container = document.querySelector('.report-container');
-        if (!container) return null;
-        const rect = container.getBoundingClientRect();
-        return {
-          x: Math.max(0, Math.round(rect.x)),
-          y: Math.max(0, Math.round(rect.y)),
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-        };
-      });
-
-      if (!bounds) {
-        throw new Error('Failed to calculate report content bounds');
-      }
-
-      logger.debug(`[GroupReportRenderer] Content bounds: ${bounds.width}x${bounds.height}`);
-
-      const screenshot = await page.screenshot({
-        type: 'jpeg',
-        quality: 85,
-        clip: bounds,
-        omitBackground: false,
-      });
-
-      return screenshot as Buffer;
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.error('[GroupReportRenderer] Failed to render report:', err);
-      throw err;
-    } finally {
-      if (page) {
-        await page.close().catch((e) => {
-          logger.warn('[GroupReportRenderer] Failed to close page:', e);
-        });
-      }
-    }
-  }
-}
