@@ -1,6 +1,7 @@
 // Tool executors - import all executors to ensure decorators are executed
 
 // Service-specific tool executors
+export { BilibiliToolExecutor } from '@/services/bilibili/executors';
 export { ZhihuDigestToolExecutor } from '@/services/zhihu/executors';
 export { BaseToolExecutor } from './BaseToolExecutor';
 export { CardFormatToolExecutor } from './CardFormatToolExecutor';

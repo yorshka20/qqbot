@@ -30,6 +30,7 @@ import { DatabaseManager } from '@/database/DatabaseManager';
 import { HookManager } from '@/hooks/HookManager';
 import { MemoryExtractService, MemoryRAGService, MemoryService } from '@/memory';
 import { MessageUtils } from '@/message/MessageUtils';
+import { BilibiliService } from '@/services/bilibili';
 import { FileReadService } from '@/services/file';
 import type { RetrievalService } from '@/services/retrieval';
 import { ToolInitializer, ToolManager } from '@/tools';
@@ -296,6 +297,10 @@ export class ConversationInitializer {
     });
 
     const commandManager = new CommandManager(permissionChecker, conversationConfigService);
+
+    // Register BilibiliService (used by bilibili command and tool executor)
+    const bilibiliService = new BilibiliService();
+    container.registerInstance('BilibiliService', bilibiliService);
 
     const toolManager = new ToolManager();
     const hookManager = new HookManager();
