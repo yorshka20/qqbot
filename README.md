@@ -5,7 +5,7 @@ A production-ready, AI-powered QQ bot framework built with TypeScript and Bun. C
 ## Features
 
 - **Multi-Protocol**: Milky, OneBot11, Satori via LLBot with automatic reconnection
-- **AI Pipeline**: 6-stage message lifecycle, task analysis, reply generation, card rendering for long replies
+- **AI Pipeline**: 6-stage message lifecycle with 8-stage inner AI pipeline, multi-turn tool calling, card rendering for long replies
 - **AI Providers**: OpenAI, Anthropic, DeepSeek, Doubao, Gemini, Ollama, OpenRouter, NovelAI, RunPod, Google Cloud Run, and more
 - **Plugins**: Whitelist, memory, proactive conversation, image generation, gacha, nudge, reaction, auto-recall, rule scheduler, etc.
 - **Commands**: Prefix-based routing with owner/admin/user permissions
@@ -44,16 +44,19 @@ bun run debug    # mock message sending
 ```
 qqbot/
 ├── src/
-│   ├── core/           # Bot, config, connection management
+│   ├── core/           # Bot, config, DI, connection management
 │   ├── protocol/       # Milky, OneBot11, Satori adapters
-│   ├── conversation/   # MessagePipeline, CommandRouter, ReplySystem, lifecycle
+│   ├── conversation/   # MessagePipeline, Lifecycle, ReplySystem, proactive conversation
 │   ├── command/        # CommandManager, parsers, built-in handlers
-│   ├── task/           # TaskManager, executors (runtime backend for skills)
-│   ├── ai/             # AIService, providers, prompt, card rendering
-│   ├── hooks/          # HookManager, AI/Command/Message/Task hooks
+│   ├── ai/             # AIService, LLMService, providers, pipeline stages, prompt assembly
+│   ├── tools/          # ToolManager, tool executors (LLM-callable tools)
+│   ├── hooks/          # HookManager, hook types and priorities
 │   ├── plugins/        # PluginManager, PluginBase, built-in plugins
 │   ├── memory/         # MemoryService, MemoryExtractService
+│   ├── agenda/         # AgendaService, AgentLoop, schedule-driven proactive tasks
 │   ├── database/       # SQLite & MongoDB adapters
+│   ├── events/         # EventRouter, EventDeduplicator
+│   ├── api/            # APIClient, APIRouter, MessageAPI
 │   └── ...
 ├── plugins/            # User-defined plugins
 ├── prompts/            # Prompt templates
@@ -65,7 +68,7 @@ qqbot/
 
 ## Architecture (Summary)
 
-Messages flow: **LLBot → ConnectionManager → Protocol adapters → EventDeduplicator → EventRouter → ConversationManager → MessagePipeline** (6 stages: receive → preprocess → process → prepare → send → complete). Commands and AI tasks run in the process stage; hooks allow plugins to intercept each stage. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/TASK_SYSTEM_ARCHITECTURE.md](docs/TASK_SYSTEM_ARCHITECTURE.md) for details.
+Messages flow: **LLBot → ConnectionManager → Protocol adapters → EventDeduplicator → EventRouter → ConversationManager → MessagePipeline** (6 stages: receive → preprocess → process → prepare → send → complete). Commands and AI reply generation run in the process stage; hooks allow plugins to intercept each stage. See [docs/FLOW_DIAGRAMS_EN.md](docs/FLOW_DIAGRAMS_EN.md) for detailed visual walkthroughs and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for component design.
 
 ## Configuration
 
@@ -115,7 +118,7 @@ Built-in plugins are enabled under `plugins.list` in config. Examples: `whitelis
 
 ## Hooks, Commands, Memory
 
-- **Hooks**: Register on `onMessageReceived`, `onMessagePreprocess`, `onMessageBeforeAI`, `onAIGenerationComplete`, `onTaskAnalyzed`, `onMessageBeforeSend`, `onMessageSent`, etc. via `hookManager`. Context and metadata: [docs/CONTEXT_METADATA.md](docs/CONTEXT_METADATA.md).
+- **Hooks**: Register on `onMessageReceived`, `onMessagePreprocess`, `onMessageBeforeAI`, `onAIGenerationStart`, `onAIGenerationComplete`, `onCommandDetected`, `onCommandExecuted`, `onMessageBeforeSend`, `onMessageSent`, `onMessageComplete`, etc. via `hookManager`. Context and metadata: [docs/CONTEXT_METADATA.md](docs/CONTEXT_METADATA.md).
 - **Commands**: Prefix (default `/`), permission levels owner/admin/user. Plugins register via `hookManager.registerCommand()`.
 - **Memory**: `MemoryService` + `MemoryExtractService`; `MemoryPlugin` does debounced extraction; `MemoryTriggerPlugin` triggers on mention.
 
@@ -145,8 +148,9 @@ bun run build        # production bundle
 
 ## Documentation
 
+- [docs/FLOW_DIAGRAMS_EN.md](docs/FLOW_DIAGRAMS_EN.md) — **Architecture flow diagrams** (English) — visual walkthroughs of every major pipeline: protocol layer, command system, reply system (8-stage AI pipeline), multi-turn tool calling loop, proactive reply (message-driven), and agenda (schedule-driven). Start here to understand how the pieces fit together.
+- [docs/FLOW_DIAGRAMS_CN.md](docs/FLOW_DIAGRAMS_CN.md) — Same flow diagrams in Chinese
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Layer and component design
-- [docs/TASK_SYSTEM_ARCHITECTURE.md](docs/TASK_SYSTEM_ARCHITECTURE.md) — Task system and executors
 - [docs/CONTEXT_METADATA.md](docs/CONTEXT_METADATA.md) — HookContext metadata
 - [docs/REPLY_METADATA_IMPROVEMENT.md](docs/REPLY_METADATA_IMPROVEMENT.md) — Reply content design
 - [prompts/README.md](prompts/README.md) — Prompt template authoring
