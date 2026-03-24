@@ -7,7 +7,8 @@
 3. [Command 命令系统](#3-command-命令系统)
 4. [Reply 回复系统（AI Pipeline）](#4-reply-回复系统ai-pipeline)
 5. [AIService 核心循环（多轮工具调用）](#5-aiservice-核心循环多轮工具调用)
-6. [Proactive 主动会话（Agenda）](#6-proactive-主动会话agenda)
+6. [Proactive Reply 主动回复](#6-proactive-reply-主动回复)
+7. [Agenda 定时任务](#7-agenda-定时任务)
 
 ---
 
@@ -58,17 +59,37 @@
               │  └───────────────────┘  │
               └─────────────────────────┘
 
-              ┌─────────────────────────┐
-              │   AgendaService         │  (独立触发，不经过 EventRouter)
-              │   cron / once / onEvent │
-              │         │               │
-              │         ▼               │
-              │     AgentLoop           │
-              │     LLM + Tools         │
-              │         │               │
-              │         ▼               │
-              │     MessageAPI ─────────┼──► Protocol → QQ
-              └─────────────────────────┘
+              ┌──────────────────────────────────────────────────┐
+              │   Proactive Reply (消息驱动)                      │
+              │   onMessageComplete hook                         │
+              │         │                                         │
+              │         ▼                                         │
+              │   ProactiveConversationPlugin                    │
+              │   触发词匹配 / 累积计数 / Thread用户继续发言       │
+              │         │                                         │
+              │         ▼                                         │
+              │   ProactiveConversationService                   │
+              │   debounce → PreliminaryAnalysis → Thread管理    │
+              │         │                                         │
+              │         ▼                                         │
+              │   ProactiveReplyGenerationService                │
+              │   LLM + Tools (maxToolRounds=10)                 │
+              │         │                                         │
+              │         ▼                                         │
+              │   MessageAPI ──────────────────────┼──► QQ       │
+              └──────────────────────────────────────────────────┘
+
+              ┌──────────────────────────────────────────────────┐
+              │   Agenda (定时驱动，独立于 EventRouter)            │
+              │   cron / once / onEvent                          │
+              │         │                                         │
+              │         ▼                                         │
+              │     AgentLoop                                    │
+              │     LLM + Tools                                  │
+              │         │                                         │
+              │         ▼                                         │
+              │     MessageAPI ────────────────────┼──► QQ       │
+              └──────────────────────────────────────────────────┘
 ```
 
 ---
@@ -596,7 +617,179 @@ EpisodeCacheManager
 
 ---
 
-## 6. Proactive 主动会话（Agenda）
+## 6. Proactive Reply 主动回复
+
+Proactive Reply 是 Reply 系统的一种模式（与普通 episode 模式并列），在 **消息 pipeline 完成后** 触发。
+它通过 ProactiveConversationPlugin 在 `onMessageComplete` 阶段调度，由 ProactiveConversationService 编排整个流程。
+
+> **与 Agenda 的区别**: Proactive Reply 由群聊消息驱动（plugin hook → debounced analysis），
+> 依赖 Thread 系统管理多轮上下文；Agenda 由 cron/once/event 独立触发，不经过 MessagePipeline。
+
+### 触发条件
+
+```
+Lifecycle COMPLETE 阶段
+    │
+    ▼
+ProactiveConversationPlugin.onMessageComplete(ctx)
+    │
+    ├─ 前置检查:
+    │     whitelistDenied? → 跳过
+    │     无 proactive capability? → 跳过
+    │     非群消息? → 跳过
+    │     群不在配置中? → 跳过
+    │     Bot 自身消息? → 跳过
+    │     已触发 direct reply (replyTriggerType)? → 跳过
+    │     命令消息? → 跳过
+    │
+    ├─ 活跃 Thread 中的 triggerUser 继续发言?
+    │     → 直接调度 (无需触发词/累积)
+    │
+    ├─ 触发词匹配? (preference/{key}/trigger.txt)
+    │     → 直接调度
+    │
+    └─ 触发词未匹配:
+          累加计数器 → 达到阈值(30) → 以 idleMode 调度
+```
+
+### 分析与回复流程
+
+```
+ProactiveConversationService.scheduleForGroup(groupId)
+    │
+    ├─ Debounce 1s (每个群独立)
+    │
+    ▼
+enqueueAnalysis()   ← 串行队列: 同一群前一次分析完成后才执行下一次
+    │
+    ▼
+runAnalysis(context)
+    │
+    ├─ 1. 检查群是否有 proactive 配置和权限
+    │
+    ├─ 2. 结束超时的 Thread (空闲 > 10min)
+    │
+    ├─ 3. 加载最近 30 条消息 → 过滤为可读文本
+    │
+    ├─ 4. 用户发 "话题结束"? → 结束当前 Thread → return
+    │
+    ├─ 5. PreliminaryAnalysisService.analyze()
+    │     ┌──────────────────────────────────────────────┐
+    │     │  LLM (轻量 provider, e.g. doubao/deepseek)   │
+    │     │                                                │
+    │     │  输入: preference 人设摘要 + 最近消息          │
+    │     │        + 活跃 Thread 上下文 (如有)             │
+    │     │                                                │
+    │     │  输出 JSON:                                    │
+    │     │    shouldJoin: boolean                          │
+    │     │    topic: string                                │
+    │     │    preferenceKey: string                        │
+    │     │    replyInThreadId?: string  (回复已有Thread)   │
+    │     │    createNew?: boolean       (创建新Thread)     │
+    │     │    threadShouldEndId?: string (结束某Thread)    │
+    │     │    searchQueries?: string[]  (RAG搜索词)        │
+    │     └──────────────────────────────────────────────┘
+    │
+    ├─ 6. 处理 threadShouldEndId → 结束指定 Thread
+    │
+    ├─ 7. shouldJoin=false? → 调度压缩 → return
+    │
+    ├─ 8. 解析 preferenceKey + 回复目标
+    │
+    ▼
+    ├─ [路径 A] replyInThreadId 有效 → 回复已有 Thread
+    │     │
+    │     ├─ 等待前次回复完成 (串行化)
+    │     ├─ 追加新消息到 Thread
+    │     └─ replyInThread()
+    │
+    └─ [路径 B] createNew 或无活跃 Thread → 创建新 Thread
+          │
+          ├─ 边界检查: 上次新建 Thread 后有无新用户消息?
+          │     → 无 → 阻止 (防重复)
+          └─ joinWithNewThread()
+```
+
+### 回复生成流程
+
+```
+replyInThread() / joinWithNewThread()
+    │
+    ▼
+ProactiveReplyContextBuilder.buildForExistingThread / buildForNewThread
+    │
+    ├─ [并行]
+    │     ├─ getMemoryContext()         → 群记忆 + 用户记忆 (语义过滤)
+    │     ├─ getRetrievedContext()      → PreferenceKnowledge RAG 搜索
+    │     └─ getConversationRagSection() → 对话历史向量搜索
+    │
+    ├─ Thread 上下文 → historyEntries (最多24条, 超出压缩)
+    ├─ preference 人设文本
+    └─ 构建 ProactiveReplyInjectContext
+    │
+    ▼
+ProactiveReplyGenerationService.generateProactiveReply(context)
+    │
+    ├─ 1. 解析 Provider + 能力 (vision, tool use)
+    │
+    ├─ 2. 构建工具定义 + 使用说明
+    │
+    ├─ 3. 构建 Prompt:
+    │     ┌─ system: baseSystem prompt                    │
+    │     ├─ system: llm.proactive.system                 │
+    │     │    含 preference, contextInstruct, toolInstruct │
+    │     ├─ history: Thread 消息 (user/assistant 交替)   │
+    │     └─ user: memory + RAG + currentQuery            │
+    │
+    ├─ 4. LLM 调用 (同 AIService 核心循环):
+    │     vision+tools / vision / tools / plain
+    │     → generateWithTools (maxToolRounds=10)
+    │
+    └─ 5. 返回 response.text
+    │
+    ▼
+processReplyMaybeCard()  → 长文本可能转卡片图片
+    │
+    ▼
+sendGroupMessage() → MessageAPI → QQ
+    │
+    ▼
+threadService.appendMessage()  → 更新 Thread 上下文
+conversationHistoryService.appendBotReplyToGroup()  → 持久化
+```
+
+### Thread 生命周期
+
+```
+┌─ Thread 生命周期 ───────────────────────────────────────────┐
+│                                                              │
+│  创建: threadService.create(groupId, preferenceKey,          │
+│         filteredEntries, triggerUserId, topic)                │
+│                                                              │
+│  消息追加: appendGroupMessages() / appendMessage()           │
+│    → Thread 内维护完整消息列表                                │
+│    → 超过 24 条 → replaceEarliestWithSummary()              │
+│                                                              │
+│  当前 Thread: setCurrentThread(groupId, threadId)            │
+│    → 标记为当前活跃 Thread                                    │
+│    → triggerUser 发言时自动触发回复                            │
+│                                                              │
+│  结束:                                                       │
+│    1. 超时: 空闲 > 10min → endTimedOutThreads()             │
+│    2. AI 判断: threadShouldEndId → applyThreadShouldEnd()   │
+│    3. 用户请求: "话题结束" → tryEndThreadByTriggerUser()    │
+│    → 结束前持久化到 DB (ProactiveThreadPersistenceService)   │
+│                                                              │
+│  压缩: ThreadContextCompressionService                       │
+│    → 每 10 条新消息触发一次                                   │
+│    → 压缩 Thread 上下文，维持 LLM 窗口可管理                  │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 7. Agenda 定时任务
 
 ### 初始化流程
 
@@ -771,7 +964,7 @@ eventBus.publish({                          │
 
 ---
 
-## 附：Hook 全景图
+## 附录：Hook 全景图
 
 ```
 Pipeline Stage        Hook Name                  典型用途

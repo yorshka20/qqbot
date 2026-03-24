@@ -7,7 +7,8 @@
 3. [Command System](#3-command-system)
 4. [Reply System (AI Pipeline)](#4-reply-system-ai-pipeline)
 5. [AIService Core Loop (Multi-turn Tool Calling)](#5-aiservice-core-loop-multi-turn-tool-calling)
-6. [Proactive Conversation (Agenda)](#6-proactive-conversation-agenda)
+6. [Proactive Reply (Message-driven)](#6-proactive-reply-message-driven)
+7. [Agenda (Schedule-driven)](#7-agenda-schedule-driven)
 
 ---
 
@@ -58,17 +59,37 @@
               │  └───────────────────┘  │
               └─────────────────────────┘
 
-              ┌─────────────────────────┐
-              │   AgendaService         │  (independent trigger, bypasses EventRouter)
-              │   cron / once / onEvent │
-              │         │               │
-              │         ▼               │
-              │     AgentLoop           │
-              │     LLM + Tools         │
-              │         │               │
-              │         ▼               │
-              │     MessageAPI ─────────┼──► Protocol → QQ
-              └─────────────────────────┘
+              ┌──────────────────────────────────────────────────┐
+              │   Proactive Reply (message-driven)               │
+              │   onMessageComplete hook                         │
+              │         │                                         │
+              │         ▼                                         │
+              │   ProactiveConversationPlugin                    │
+              │   trigger word / accumulator / Thread user cont. │
+              │         │                                         │
+              │         ▼                                         │
+              │   ProactiveConversationService                   │
+              │   debounce → PreliminaryAnalysis → Thread mgmt  │
+              │         │                                         │
+              │         ▼                                         │
+              │   ProactiveReplyGenerationService                │
+              │   LLM + Tools (maxToolRounds=10)                 │
+              │         │                                         │
+              │         ▼                                         │
+              │   MessageAPI ──────────────────────┼──► QQ       │
+              └──────────────────────────────────────────────────┘
+
+              ┌──────────────────────────────────────────────────┐
+              │   Agenda (schedule-driven, bypasses EventRouter)  │
+              │   cron / once / onEvent                          │
+              │         │                                         │
+              │         ▼                                         │
+              │     AgentLoop                                    │
+              │     LLM + Tools                                  │
+              │         │                                         │
+              │         ▼                                         │
+              │     MessageAPI ────────────────────┼──► QQ       │
+              └──────────────────────────────────────────────────┘
 ```
 
 ---
@@ -596,7 +617,181 @@ EpisodeCacheManager
 
 ---
 
-## 6. Proactive Conversation (Agenda)
+## 6. Proactive Reply (Message-driven)
+
+Proactive Reply is a reply mode (parallel to the normal episode mode) triggered **after the message pipeline completes**.
+It is scheduled by ProactiveConversationPlugin at the `onMessageComplete` stage and orchestrated by ProactiveConversationService.
+
+> **Difference from Agenda**: Proactive Reply is driven by group chat messages (plugin hook → debounced analysis)
+> and relies on the Thread system for multi-turn context management.
+> Agenda is independently triggered by cron/once/event and bypasses the MessagePipeline entirely.
+
+### Trigger Conditions
+
+```
+Lifecycle COMPLETE stage
+    │
+    ▼
+ProactiveConversationPlugin.onMessageComplete(ctx)
+    │
+    ├─ Pre-checks:
+    │     whitelistDenied? → skip
+    │     No proactive capability? → skip
+    │     Not a group message? → skip
+    │     Group not in config? → skip
+    │     Bot's own message? → skip
+    │     Already triggered direct reply (replyTriggerType)? → skip
+    │     Command message? → skip
+    │
+    ├─ Active Thread's triggerUser continues speaking?
+    │     → Schedule directly (no trigger word / accumulator needed)
+    │
+    ├─ Trigger word match? (preference/{key}/trigger.txt)
+    │     → Schedule directly
+    │
+    └─ Trigger word not matched:
+          Increment accumulator → threshold(30) reached → schedule in idleMode
+```
+
+### Analysis & Reply Flow
+
+```
+ProactiveConversationService.scheduleForGroup(groupId)
+    │
+    ├─ Debounce 1s (per group)
+    │
+    ▼
+enqueueAnalysis()   ← Serial queue: next analysis waits for previous to finish
+    │
+    ▼
+runAnalysis(context)
+    │
+    ├─ 1. Verify group has proactive config and capability
+    │
+    ├─ 2. End timed-out Threads (idle > 10min)
+    │
+    ├─ 3. Load recent 30 messages → filter to readable text
+    │
+    ├─ 4. User says "end topic"? → end current Thread → return
+    │
+    ├─ 5. PreliminaryAnalysisService.analyze()
+    │     ┌──────────────────────────────────────────────┐
+    │     │  LLM (lightweight provider, e.g. doubao)     │
+    │     │                                                │
+    │     │  Input: preference persona summary             │
+    │     │         + recent messages                      │
+    │     │         + active Thread contexts (if any)      │
+    │     │                                                │
+    │     │  Output JSON:                                  │
+    │     │    shouldJoin: boolean                          │
+    │     │    topic: string                                │
+    │     │    preferenceKey: string                        │
+    │     │    replyInThreadId?: string  (reply in Thread)  │
+    │     │    createNew?: boolean       (create new Thread)│
+    │     │    threadShouldEndId?: string (end a Thread)    │
+    │     │    searchQueries?: string[]  (RAG search terms) │
+    │     └──────────────────────────────────────────────┘
+    │
+    ├─ 6. Handle threadShouldEndId → end specified Thread
+    │
+    ├─ 7. shouldJoin=false? → schedule compression → return
+    │
+    ├─ 8. Resolve preferenceKey + reply target
+    │
+    ▼
+    ├─ [Path A] replyInThreadId valid → reply in existing Thread
+    │     │
+    │     ├─ Wait for prior reply to finish (serialized)
+    │     ├─ Append new messages to Thread
+    │     └─ replyInThread()
+    │
+    └─ [Path B] createNew or no active Threads → create new Thread
+          │
+          ├─ Boundary check: new user messages since last new Thread?
+          │     → None → block (prevent duplicate)
+          └─ joinWithNewThread()
+```
+
+### Reply Generation Flow
+
+```
+replyInThread() / joinWithNewThread()
+    │
+    ▼
+ProactiveReplyContextBuilder.buildForExistingThread / buildForNewThread
+    │
+    ├─ [parallel]
+    │     ├─ getMemoryContext()         → group + user memory (semantic filter)
+    │     ├─ getRetrievedContext()      → PreferenceKnowledge RAG search
+    │     └─ getConversationRagSection() → conversation history vector search
+    │
+    ├─ Thread context → historyEntries (max 24, overflow compressed)
+    ├─ Preference persona text
+    └─ Build ProactiveReplyInjectContext
+    │
+    ▼
+ProactiveReplyGenerationService.generateProactiveReply(context)
+    │
+    ├─ 1. Resolve Provider + capabilities (vision, tool use)
+    │
+    ├─ 2. Build tool definitions + usage instructions
+    │
+    ├─ 3. Build Prompt:
+    │     ┌─ system: baseSystem prompt                     │
+    │     ├─ system: llm.proactive.system                  │
+    │     │    with preference, contextInstruct, toolInstruct│
+    │     ├─ history: Thread messages (user/assistant)      │
+    │     └─ user: memory + RAG + currentQuery             │
+    │
+    ├─ 4. LLM call (same core loop as AIService):
+    │     vision+tools / vision / tools / plain
+    │     → generateWithTools (maxToolRounds=10)
+    │
+    └─ 5. Return response.text
+    │
+    ▼
+processReplyMaybeCard()  → long text may become card image
+    │
+    ▼
+sendGroupMessage() → MessageAPI → QQ
+    │
+    ▼
+threadService.appendMessage()  → update Thread context
+conversationHistoryService.appendBotReplyToGroup()  → persist
+```
+
+### Thread Lifecycle
+
+```
+┌─ Thread Lifecycle ──────────────────────────────────────────┐
+│                                                              │
+│  Create: threadService.create(groupId, preferenceKey,        │
+│           filteredEntries, triggerUserId, topic)              │
+│                                                              │
+│  Append: appendGroupMessages() / appendMessage()             │
+│    → Thread maintains full message list internally           │
+│    → Over 24 entries → replaceEarliestWithSummary()          │
+│                                                              │
+│  Current Thread: setCurrentThread(groupId, threadId)         │
+│    → Marks as active Thread for group                        │
+│    → triggerUser's messages auto-trigger reply                │
+│                                                              │
+│  End:                                                        │
+│    1. Timeout: idle > 10min → endTimedOutThreads()           │
+│    2. AI decision: threadShouldEndId → applyThreadShouldEnd()│
+│    3. User request: "end topic" → tryEndThreadByTriggerUser()│
+│    → Persisted to DB before removal (ThreadPersistence)      │
+│                                                              │
+│  Compression: ThreadContextCompressionService                │
+│    → Triggered every 10 new messages                         │
+│    → Compresses Thread context for manageable LLM window     │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 7. Agenda (Schedule-driven)
 
 ### Initialization Flow
 
@@ -772,6 +967,9 @@ Known event sources:                        │
 ---
 
 ## Appendix: Hook Overview
+
+> Proactive Reply also fires hooks within its flow:
+> `onMessageComplete` (trigger) and tool execution hooks via synthetic HookContext.
 
 ```
 Pipeline Stage        Hook Name                  Typical Usage
