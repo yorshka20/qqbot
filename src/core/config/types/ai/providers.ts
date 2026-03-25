@@ -103,6 +103,8 @@ export interface NovelAIProviderConfig {
 /** Gemini config per capability: LLM (reply generation) */
 export interface GeminiLLmConfig {
   model: string;
+  /** Model to use when falling back to paid key. If omitted, uses the same `model`. */
+  paidModel?: string;
   temperature?: number;
   maxTokens?: number;
   enableContext?: boolean;
@@ -112,6 +114,8 @@ export interface GeminiLLmConfig {
 /** Gemini config for vision (image understanding) */
 export interface GeminiVisionConfig {
   model: string;
+  /** Model to use when falling back to paid key. If omitted, uses the same `model`. */
+  paidModel?: string;
 }
 
 /** Gemini config for text2img and img2img (t2i / i2i). When set, enables both capabilities. */

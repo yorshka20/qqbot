@@ -107,6 +107,32 @@ export class GeminiProvider
     return this.clientPaid;
   }
 
+  /**
+   * Execute an async operation with automatic paid-key fallback.
+   * If the current mode is 'free' and the call fails, retry once with the paid key,
+   * then restore the original key mode regardless of the retry outcome.
+   */
+  private async withPaidFallback<T>(fn: (isPaidFallback: boolean) => Promise<T>): Promise<T> {
+    try {
+      return await fn(false);
+    } catch (error) {
+      const originalMode = GeminiProvider.getKeyMode();
+      if (originalMode !== 'free' || !this.config.apiKeyPaid) {
+        throw error;
+      }
+      logger.warn(
+        `[GeminiProvider] Free key request failed (${error instanceof Error ? error.message : String(error)}), retrying with paid key...`,
+      );
+      GeminiProvider.setKeyMode('paid');
+      try {
+        return await fn(true);
+      } finally {
+        GeminiProvider.setKeyMode(originalMode);
+        logger.debug(`[GeminiProvider] Restored key mode to '${originalMode}'`);
+      }
+    }
+  }
+
   /** Text2img/img2img model from config.text2img */
   private getText2ImgModel(): string {
     return this.config.text2img?.model ?? GeminiProvider.DEFAULT_T2I_MODEL;
@@ -350,6 +376,7 @@ export class GeminiProvider
       maxTokens?: number;
       tools?: ToolDefinition[];
       systemInstruction?: string;
+      paidModel?: string;
     },
   ): Promise<{
     text: string;
@@ -373,6 +400,7 @@ export class GeminiProvider
       maxTokens?: number;
       tools?: ToolDefinition[];
       systemInstruction?: string;
+      paidModel?: string;
     },
   ): Promise<{
     text: string;
@@ -388,6 +416,7 @@ export class GeminiProvider
       maxTokens?: number;
       tools?: ToolDefinition[];
       systemInstruction?: string;
+      paidModel?: string;
     },
   ): Promise<{
     text: string;
@@ -406,12 +435,14 @@ export class GeminiProvider
       config.systemInstruction = options.systemInstruction;
     }
 
-    const response = await this.getClient().models.generateContent({
-      model,
-      // The SDK accepts both Part[] and Content[] for contents; cast through unknown to satisfy the union.
-      contents: contentsOrParts as Parameters<GoogleGenAI['models']['generateContent']>[0]['contents'],
-      config,
-    });
+    const response = await this.withPaidFallback((isPaidFallback) =>
+      this.getClient().models.generateContent({
+        model: isPaidFallback && options?.paidModel ? options.paidModel : model,
+        // The SDK accepts both Part[] and Content[] for contents; cast through unknown to satisfy the union.
+        contents: contentsOrParts as Parameters<GoogleGenAI['models']['generateContent']>[0]['contents'],
+        config,
+      }),
+    );
 
     const noCandidatesError = handleNoCandidates(response, '');
     if (noCandidatesError) {
@@ -526,6 +557,7 @@ export class GeminiProvider
       throw new Error('GeminiProvider: llm not configured');
     }
     const model = options?.model ?? this.config.llm.model;
+    const paidModel = this.config.llm.paidModel;
     const temperature = options?.temperature ?? this.config.llm.temperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens ?? 2000;
 
@@ -544,6 +576,7 @@ export class GeminiProvider
         maxTokens,
         tools: options.tools,
         systemInstruction: systemInstruction ?? options.systemPrompt,
+        paidModel,
       });
       return {
         text: result.text,
@@ -568,6 +601,7 @@ export class GeminiProvider
       temperature,
       maxTokens,
       tools: options?.tools,
+      paidModel,
     });
     return {
       text: result.text,
@@ -597,6 +631,7 @@ export class GeminiProvider
       throw new Error('GeminiProvider: vision not configured');
     }
     const model = this.config.vision.model;
+    const paidModel = this.config.vision.paidModel;
     const imageParts = await this.visionImagesToInlineParts(images);
     const contentsParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
     if (options?.systemPrompt) {
@@ -608,6 +643,7 @@ export class GeminiProvider
     return this.generateContentText(model, contentsParts, {
       temperature: options?.temperature ?? 0.7,
       maxTokens: options?.maxTokens ?? 2000,
+      paidModel,
     });
   }
 
@@ -645,10 +681,12 @@ export class GeminiProvider
 
       logger.info(`[GeminiProvider] Parameters: model=${model}, size=${width}x${height}`);
 
-      const response = await this.getClient().models.generateContent({
-        model,
-        contents: prompt,
-      });
+      const response = await this.withPaidFallback((_isPaidFallback) =>
+        this.getClient().models.generateContent({
+          model,
+          contents: prompt,
+        }),
+      );
 
       logger.debug(`[GeminiProvider] Response received`, response);
 
@@ -759,10 +797,12 @@ export class GeminiProvider
         },
       );
 
-      const response = await this.getClient().models.generateContent({
-        model,
-        contents: [{ text: prompt }, { inlineData: { mimeType: imageMimeType, data: imageBase64 } }],
-      });
+      const response = await this.withPaidFallback((_isPaidFallback) =>
+        this.getClient().models.generateContent({
+          model,
+          contents: [{ text: prompt }, { inlineData: { mimeType: imageMimeType, data: imageBase64 } }],
+        }),
+      );
 
       const noCandidatesError = handleNoCandidates(response, prompt);
       if (noCandidatesError) {

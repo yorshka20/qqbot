@@ -569,13 +569,17 @@
       //   "apiKeyFree": "your_gemini_free_tier_key",
       //   "apiKeyPaid": "your_gemini_paid_tier_key",
       //   "llm": {
-      //     "model": "gemini-2.0-flash",
+      //     "model": "gemini-2.5-flash",
+      //     "paidModel": "gemini-3.1-pro-preview", // Optional: upgraded model for paid-key fallback
       //     "temperature": 0.7,
       //     "maxTokens": 2000,
       //     "enableContext": true,
       //     "contextMessageCount": 10
       //   },
-      //   "vision": { "model": "gemini-2.0-flash" },
+      //   "vision": {
+      //     "model": "gemini-2.5-flash",
+      //     "paidModel": "gemini-3.1-pro-preview" // Optional: upgraded model for paid-key fallback
+      //   },
       //   "text2img": {
       //     "model": "gemini-2.5-flash-image",
       //     "defaultWidth": 1024,
