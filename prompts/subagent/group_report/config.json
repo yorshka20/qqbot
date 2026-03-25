@@ -1,15 +1,15 @@
 {
   "displayName": "群聊日报",
   "type": "analysis",
-  "allowedTools": ["fetch_history_by_time", "get_group_member_list", "render_group_report"],
+  "allowedTools": ["render_group_report"],
   "maxDepth": 1,
   "maxChildren": 0,
-  "timeout": 180000,
+  "timeout": 120000,
   "inheritSoul": false,
   "inheritMemory": false,
   "inheritPreference": false,
   "providerName": "deepseek",
   "maxTokens": 8000,
-  "maxToolRounds": 8,
+  "maxToolRounds": 3,
   "systemTemplate": "subagent.group_report.system"
 }
