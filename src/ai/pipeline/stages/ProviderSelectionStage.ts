@@ -43,7 +43,14 @@ export class ProviderSelectionStage implements ReplyStage {
 
     if (resolvedPrefix) {
       providerName = resolvedPrefix.providerName;
-      userMessage = resolvedPrefix.strippedMessage;
+      // When userMessageOverride exists (e.g. referenced message context from ContextResolutionStage),
+      // preserve it but strip the provider prefix from the current query portion.
+      if (ctx.userMessageOverride) {
+        const originalMsg = hookContext.message.message ?? '';
+        userMessage = ctx.userMessageOverride.replace(originalMsg, resolvedPrefix.strippedMessage);
+      } else {
+        userMessage = resolvedPrefix.strippedMessage;
+      }
       reason = 'explicit_prefix';
       confidence = 'high';
       usedExplicitPrefix = true;
