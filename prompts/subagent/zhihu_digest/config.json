@@ -1,0 +1,13 @@
+{
+  "displayName": "知乎摘要",
+  "type": "analysis",
+  "allowedTools": [
+    "zhihu_digest"
+  ],
+  "maxDepth": 1,
+  "maxChildren": 0,
+  "timeout": 120000,
+  "inheritSoul": false,
+  "inheritMemory": false,
+  "inheritPreference": false
+}

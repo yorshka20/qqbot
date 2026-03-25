@@ -3,6 +3,7 @@
 
 import { join } from 'node:path';
 import type { PromptManager } from '@/ai';
+import type { AIService } from '@/ai/AIService';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
@@ -44,6 +45,7 @@ export class AgendaInitializer {
     promptManager: PromptManager;
     toolManager: ToolManager;
     hookManager: HookManager;
+    aiService?: AIService;
     preferredProtocol?: ProtocolName;
     /** Base directory for agenda data files. Defaults to `data/agenda` relative to cwd. */
     dataDir?: string;
@@ -63,6 +65,7 @@ export class AgendaInitializer {
       deps.promptManager,
       deps.toolManager,
       deps.hookManager,
+      deps.aiService,
     );
     if (deps.preferredProtocol) {
       agentLoop.setPreferredProtocol(deps.preferredProtocol);

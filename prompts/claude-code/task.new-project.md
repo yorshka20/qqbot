@@ -16,9 +16,10 @@
 3. 安装必要依赖
 4. 实现需求描述中的功能
 5. 添加 `README.md`
-6. 创建 `.claude-learnings.md` — 记录项目架构概览和关键设计决策
-7. 创建 `.claude-workbook/` 目录和首日工作日志
-8. 初始化 git 仓库并做首次提交
+6. 创建 `.claude-learnings.md` — 记录项目架构概览和关键设计决策（**本地文件，加入 .gitignore，不提交到 git**）
+7. 创建 `.claude-workbook/` 目录和首日工作日志（**本地文件，加入 .gitignore，不提交到 git**）
+8. 在 `.gitignore` 中添加 `.claude-learnings.md` 和 `.claude-workbook/*`
+9. 初始化 git 仓库并做首次提交
 
 ### `.claude-learnings.md` 模板
 

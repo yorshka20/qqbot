@@ -34,8 +34,8 @@
 {{else}}
    - 该项目没有 CLAUDE.md，请根据 README 和现有代码风格理解约定
 {{/if}}
-   - `.claude-learnings.md` — 项目知识库（如果存在，必读。包含架构概览、代码模式、已知陷阱）
-   - `.claude-workbook/` — Claude Code 工作日志目录（按需查阅，通过 learnings 中的工作汇报索引定位相关记录）
+   - `.claude-learnings.md` — 项目知识库（如果存在，必读。包含架构概览、代码模式、已知陷阱）。**本地文件，已 gitignore，不要提交到 git**
+   - `.claude-workbook/` — Claude Code 工作日志目录（按需查阅，通过 learnings 中的工作汇报索引定位相关记录）。**本地文件，已 gitignore，不要提交到 git**
    - `README.md` — 项目说明
 
    > **重要**: `.claude-learnings.md` 中包含工作汇报索引。开始任务前，检查索引中是否有与当前任务相关的历史记录，快速了解上下文。
@@ -117,7 +117,7 @@
 
    ```bash
    git status  # 检查所有改动（包括文档）
-   git add <files>
+   git add <files>  # 注意：不要 add .claude-learnings.md 和 .claude-workbook/，它们是本地文件
    git commit -m "type(scope): description"
    git push
    ```

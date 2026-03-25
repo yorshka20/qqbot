@@ -80,3 +80,4 @@ scripts/local
 
 workbook/*
 .claude-workbook/*
+.claude-learnings.md

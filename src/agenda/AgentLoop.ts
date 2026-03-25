@@ -2,6 +2,7 @@
 // Bot uses the schedule's intent as the "question" to the LLM; the loop runs multi-round (plan → tool calls → message) until the task is done, then sends the final reply.
 
 import type { PromptManager } from '@/ai';
+import type { AIService } from '@/ai/AIService';
 import type { LLMService } from '@/ai/services/LLMService';
 import { executeToolCall } from '@/ai/tools/replyTools';
 import type { ChatMessage, ToolDefinition } from '@/ai/types';
@@ -10,6 +11,7 @@ import type { ConversationHistoryService } from '@/conversation/history/Conversa
 import { normalizeGroupId } from '@/conversation/history/ConversationHistoryService';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import type { HookManager } from '@/hooks/HookManager';
+import type { MessageSegment } from '@/message/types';
 import type { ToolManager } from '@/tools/ToolManager';
 import { getCurrentDateTimeForPrompt } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
@@ -35,6 +37,7 @@ export class AgentLoop {
     private promptManager: PromptManager,
     private toolManager: ToolManager,
     private hookManager: HookManager,
+    private aiService?: AIService,
   ) {}
 
   setPreferredProtocol(protocol: ProtocolName): void {
@@ -66,17 +69,41 @@ export class AgentLoop {
       return;
     }
 
+    // Try card rendering for long/structured replies
+    const cardResult = await this.tryRenderCard(reply, contextId);
+    const message: string | MessageSegment[] = cardResult ?? reply;
+
     try {
       if (isPrivate) {
-        await this.messageAPI.sendPrivateMessage(Number(userId), reply, this.preferredProtocol);
+        await this.messageAPI.sendPrivateMessage(Number(userId), message, this.preferredProtocol);
       } else {
-        await this.messageAPI.sendGroupMessage(Number(groupId), reply, this.preferredProtocol);
+        await this.messageAPI.sendGroupMessage(Number(groupId), message, this.preferredProtocol);
       }
-      logger.info(`[AgentLoop] Item "${item.name}": sent ${reply.length} chars → ${target}`);
+      logger.info(`[AgentLoop] Item "${item.name}": sent ${cardResult ? 'card image' : `${reply.length} chars`} → ${target}`);
     } catch (err) {
       logger.error(`[AgentLoop] Item "${item.name}": send failed`, err);
       throw err;
     }
+  }
+
+  // ─── Card Rendering ────────────────────────────────────────────────────────
+
+  /**
+   * Try to render reply text as a card image.
+   * Returns segments on success, null on failure or if not suitable for card rendering.
+   */
+  private async tryRenderCard(reply: string, sessionId: string): Promise<MessageSegment[] | null> {
+    if (!this.aiService) return null;
+    try {
+      const result = await this.aiService.processReplyMaybeCard(reply, sessionId);
+      if (result) {
+        logger.info('[AgentLoop] Reply rendered as card image');
+        return result.segments;
+      }
+    } catch (err) {
+      logger.warn('[AgentLoop] Card rendering failed, falling back to text:', err);
+    }
+    return null;
   }
 
   // ─── Private Helpers ────────────────────────────────────────────────────────

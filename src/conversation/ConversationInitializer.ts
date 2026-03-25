@@ -256,6 +256,7 @@ export class ConversationInitializer {
       promptManager: container.resolve<PromptManager>(DITokens.PROMPT_MANAGER),
       toolManager: services.toolManager,
       hookManager: services.hookManager,
+      aiService,
     });
     serviceRegistry.registerAgendaServices(agendaComponents);
 

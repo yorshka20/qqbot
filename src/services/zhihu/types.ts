@@ -137,8 +137,8 @@ export interface ZhihuFeedItemRow {
 export interface ZhihuConfig {
   enabled?: boolean;
   cookie: string;
-  pollIntervalCron?: string; // default "*/30 * * * *"
-  digestCron?: string; // default "0 9,21 * * *"
+  pollIntervalCron: string; // default "*/30 * * * *"
+  digestCron: string; // default "0 9,21 * * *"
   digestGroupIds?: string[];
   requestIntervalMs?: number; // default 2000
   maxPagesPerPoll?: number; // default 5
@@ -168,4 +168,4 @@ export const DEFAULT_ZHIHU_CONFIG = {
     'MEMBER_FOLLOW_QUESTION',
     'QUESTION_FOLLOW',
   ],
-} as const;
+} as ZhihuConfig;
