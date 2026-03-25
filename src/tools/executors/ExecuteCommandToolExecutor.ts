@@ -3,11 +3,13 @@
 // sender's userId so only users who already have the required permission can trigger a command.
 
 import { inject, injectable } from 'tsyringe';
+import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { CommandManager } from '@/command/CommandManager';
 import type { PermissionLevel } from '@/command/types';
 import { CommandContextBuilder } from '@/context/CommandContextBuilder';
 import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
+import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -51,6 +53,7 @@ export class ExecuteCommandToolExecutor extends BaseToolExecutor {
   constructor(
     @inject(DITokens.COMMAND_MANAGER) private commandManager: CommandManager,
     @inject(DITokens.HOOK_MANAGER) private hookManager: HookManager,
+    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
   ) {
     super();
   }
@@ -81,8 +84,12 @@ export class ExecuteCommandToolExecutor extends BaseToolExecutor {
       return this.error('缺少上下文信息，无法执行命令', 'Missing hookContext');
     }
 
-    // Parse args string into array
-    const argsStr = (call.parameters?.args as string | undefined)?.trim() ?? '';
+    // Parse args string into array, stripping any accidental command prefix the LLM may include
+    let argsStr = (call.parameters?.args as string | undefined)?.trim() ?? '';
+    // LLM sometimes passes args like "/nai-plus 美女" instead of just "美女" — strip the leading command reference
+    const escapedCmd = commandName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const leadingCmdPattern = new RegExp(`^/?${escapedCmd}\\s*`, 'i');
+    argsStr = argsStr.replace(leadingCmdPattern, '').trim();
     const args = argsStr ? argsStr.split(/\s+/) : [];
 
     // Build CommandContext from the hook context — preserves the original sender's userId,
@@ -107,15 +114,29 @@ export class ExecuteCommandToolExecutor extends BaseToolExecutor {
       return this.error(result.error ?? `命令 /${commandName} 执行失败`, result.error ?? 'Command execution failed');
     }
 
-    // Extract text content from command result segments
+    // Separate media segments (image/record) that need direct sending from text segments
     const textParts: string[] = [];
+    const mediaSegments: MessageSegment[] = [];
     if (result.segments) {
       for (const seg of result.segments) {
         if (seg.type === 'text') {
           textParts.push(seg.data.text);
-        } else if (seg.type === 'image') {
-          textParts.push('[图片]');
+        } else if (seg.type === 'image' || seg.type === 'record') {
+          mediaSegments.push(seg);
         }
+      }
+    }
+
+    // If the command produced media segments, send them directly to the chat
+    // since the normal pipeline SEND stage won't handle segments from tool results.
+    if (mediaSegments.length > 0) {
+      try {
+        await this.messageAPI.sendFromContext(mediaSegments, commandContext, 60000);
+        logger.info(`[ExecuteCommandToolExecutor] Sent ${mediaSegments.length} media segment(s) for /${commandName}`);
+        textParts.push(`[已发送${mediaSegments.length}个媒体文件]`);
+      } catch (err) {
+        logger.error(`[ExecuteCommandToolExecutor] Failed to send media for /${commandName}:`, err);
+        textParts.push(`[媒体文件发送失败]`);
       }
     }
 
