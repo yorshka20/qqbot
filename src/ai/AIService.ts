@@ -89,13 +89,11 @@ export class AIService {
     // Sub-agent
     const subAgentManager = new SubAgentManager();
     this.subAgentManager = subAgentManager;
-    const subAgentToolSpecs = toolManager.getToolsByScope('subagent');
-    const subAgentToolDefs = toolManager.toToolDefinitions(subAgentToolSpecs);
     const toolRunner = new ToolRunner(toolManager, subAgentManager, hookManager);
     const subAgentExecutor = new SubAgentExecutor(
       llmService,
       subAgentManager,
-      subAgentToolDefs,
+      toolManager,
       toolRunner,
       promptManager,
       subagentConfig?.providerName,

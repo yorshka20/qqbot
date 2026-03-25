@@ -212,10 +212,14 @@ describe.skipIf(!getIntegrationProvider('doubao'))('SubAgentManager integration 
   const mockPromptManager = {
     render: (_name: string, vars?: Record<string, string>) => vars?.message ?? '',
   } as unknown as import('@/ai/prompt/PromptManager').PromptManager;
+  const mockToolManager = {
+    getToolsByScope: () => [],
+    toToolDefinitions: () => SUBAGENT_SAMPLE_TOOLS,
+  } as unknown as import('@/tools/ToolManager').ToolManager;
   const executor: SubAgentExecutor = new SubAgentExecutorImpl(
     llmService,
     manager,
-    SUBAGENT_SAMPLE_TOOLS,
+    mockToolManager,
     mockToolRunner,
     mockPromptManager,
   );

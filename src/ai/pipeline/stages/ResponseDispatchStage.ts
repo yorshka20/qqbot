@@ -2,6 +2,7 @@
 
 import { replaceReply, setReplyWithSegments } from '@/context/HookContextHelpers';
 import type { HookManager } from '@/hooks/HookManager';
+import { MessageUtils } from '@/message/MessageUtils';
 import { logger } from '@/utils/logger';
 import { containsTextToolCalls, stripTextToolCalls } from '../../utils/dsmlParser';
 import { extractExpectedJsonFromLlmText } from '../../utils/llmJsonExtract';
@@ -53,8 +54,12 @@ export class ResponseDispatchStage implements ReplyStage {
       return;
     }
 
+    // Skip card rendering when the response contains a command (e.g. /nai-plus ...)
+    // so the command text is sent as-is and can be processed by the command system.
+    const containsCommand = MessageUtils.isCommand(ctx.responseText);
+
     // Path 2: Long text → convert to card via second LLM call
-    if (this.cardHelper.shouldUseCardReply(ctx.responseText)) {
+    if (!containsCommand && this.cardHelper.shouldUseCardReply(ctx.responseText)) {
       // If text is already card JSON, render directly
       if (this.cardHelper.looksLikeCardJson(ctx.responseText)) {
         logger.info(

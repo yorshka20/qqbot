@@ -3,6 +3,7 @@
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { ChatMessage, FunctionCall, ToolDefinition, ToolUseGenerateResponse } from '@/ai/types';
+import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
 import type { SubAgentManager } from './SubAgentManager';
 import type { IToolRunner } from './ToolRunner';
@@ -38,7 +39,7 @@ export class SubAgentExecutor {
   constructor(
     private llmService: LLMService,
     private subAgentManager: SubAgentManager,
-    private availableTools: ToolDefinition[],
+    private toolManager: ToolManager,
     private toolRunner: IToolRunner,
     private promptManager: PromptManager,
     private defaultProviderName?: string,
@@ -119,7 +120,8 @@ export class SubAgentExecutor {
    * Filter tools based on config and depth
    */
   private filterTools(config: SubAgentConfig, depth: number): ToolDefinition[] {
-    let tools = [...this.availableTools];
+    const subAgentSpecs = this.toolManager.getToolsByScope('subagent');
+    let tools = this.toolManager.toToolDefinitions(subAgentSpecs);
 
     // Apply depth restrictions
     const depthRestrictions = this.TOOL_RESTRICTIONS_BY_DEPTH[depth] || [];

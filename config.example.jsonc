@@ -443,6 +443,11 @@
             "ZVIDEO_CREATE"
           ]
         }
+      },
+      // GroupReport Plugin - generates group chat reports
+      {
+        "name": "groupReport",
+        "enabled": true
       }
     ]
   },
