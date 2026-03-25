@@ -105,26 +105,22 @@ export class GroupReportPlugin extends PluginBase {
       try {
         logger.info(`[GroupReportPlugin] Starting report generation for group ${groupId}`);
 
-        // 1. Fetch today's messages from DB
-        const todayStart = this.getTodayStart();
-        const allMessages = await this.conversationHistoryService.getRecentMessages(groupId, MAX_FETCH_LIMIT);
-        const todayMessages = allMessages.filter((msg) => {
+        // 1. Compute yesterday's fixed time range (00:00:00 ~ 23:59:59) in configured timezone
+        const { start, end, dateStr } = this.getYesterdayRange();
+
+        // 2. Fetch messages since yesterday start, then filter by end boundary
+        const allSince = await this.conversationHistoryService.getMessagesSince(groupId, start, MAX_FETCH_LIMIT);
+        const endTime = end.getTime();
+        const yesterdayMessages = allSince.filter((msg) => {
           const msgTime = msg.createdAt instanceof Date ? msg.createdAt.getTime() : new Date(msg.createdAt).getTime();
-          return msgTime >= todayStart.getTime();
+          return msgTime <= endTime;
         });
 
-        // 2. Compute statistics
-        const stats = computeGroupReportStats(todayMessages);
-        const chatHistory = formatMessagesForContext(todayMessages);
+        // 3. Compute statistics
+        const stats = computeGroupReportStats(yesterdayMessages);
+        const chatHistory = formatMessagesForContext(yesterdayMessages);
 
-        // 3. Format today's date
-        const dateFormatter = new Intl.DateTimeFormat('en-CA', {
-          timeZone: DATE_TIMEZONE,
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        });
-        const todayDate = dateFormatter.format(new Date());
+        const todayDate = dateStr;
 
         // 4. Format per-user stats for template
         const memberStatsText = stats.userStats
@@ -139,7 +135,7 @@ export class GroupReportPlugin extends PluginBase {
         const taskTemplate = this.promptManager.getTemplate('subagent.group_report.task');
         const description = taskTemplate
           ? this.promptManager.render('subagent.group_report.task', {
-              message: '生成今日群聊每日汇报',
+              message: '生成昨日群聊每日汇报',
               groupName,
               date: todayDate,
               totalMessages: String(stats.totalMessages),
@@ -149,7 +145,7 @@ export class GroupReportPlugin extends PluginBase {
               memberStats: memberStatsText,
               chatHistory,
             })
-          : '生成今日群聊每日汇报';
+          : '生成昨日群聊每日汇报';
 
         const parentContext = {
           userId: context.userId,
@@ -171,21 +167,28 @@ export class GroupReportPlugin extends PluginBase {
     })();
 
     const mb = new MessageBuilder();
-    mb.text('⏳ 正在生成今日群聊汇报，请稍候...');
+    mb.text('⏳ 正在生成昨日群聊汇报，请稍候...');
     return { success: true, segments: mb.build() };
   }
 
   /**
-   * Get the start of today (00:00) in the configured timezone.
+   * Get yesterday's fixed time range in the configured timezone.
+   * Returns start (00:00:00), end (23:59:59), and formatted date string (YYYY-MM-DD).
+   * Decoupled from execution time so the report always covers the full previous day.
    */
-  private getTodayStart(): Date {
+  private getYesterdayRange(): { start: Date; end: Date; dateStr: string } {
     const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: DATE_TIMEZONE,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
     });
-    const todayStr = formatter.format(new Date()); // YYYY-MM-DD
-    return new Date(`${todayStr}T00:00:00`);
+    // Get today's date in timezone, then subtract one day
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const dateStr = formatter.format(yesterday); // YYYY-MM-DD
+    const start = new Date(`${dateStr}T00:00:00`);
+    const end = new Date(`${dateStr}T23:59:59`);
+    return { start, end, dateStr };
   }
 }

@@ -104,7 +104,7 @@ export function computeGroupReportStats(messages: ConversationMessageEntry[]): G
 export function formatMessagesForContext(messages: ConversationMessageEntry[]): string {
   const userMessages = messages.filter((m) => !m.isBotReply);
 
-  if (userMessages.length === 0) return '（今日暂无聊天记录）';
+  if (userMessages.length === 0) return '（昨日暂无聊天记录）';
 
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: DATE_TIMEZONE,
