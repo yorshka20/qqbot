@@ -13,7 +13,7 @@
  *    Purpose: Check that a simple one-shot completion works and we get text + optional token usage.
  *
  * 2) "generate with messages returns text"
- *    Flow: LLMService.generateMessages(messages) → same as above but request body is ChatMessage[] (e.g. [user]).
+ *    Flow: LLMService.generate(prompt, { messages }) → same as above but request body is ChatMessage[] (e.g. [user]).
  *    Purpose: Check that message-based API path works (used by tool-use and multi-turn).
  *
  * 3) "generate with tools: response has text or functionCall and parsed tool_call"
@@ -80,8 +80,8 @@ describe.skipIf(!getIntegrationProvider('doubao'))('Doubao LLM integration (real
 
   test('generate with messages returns text', async () => {
     const messages: ChatMessage[] = [{ role: 'user', content: 'Reply with only the number 42.' }];
-    logFlow(`[${providerName}] 2) Calling LLMService.generateMessages`, { messageCount: messages.length });
-    const res = await llmService.generateMessages(messages, {}, providerName);
+    logFlow(`[${providerName}] 2) Calling LLMService.generate with messages`, { messageCount: messages.length });
+    const res = await llmService.generate('Reply with only the number 42.', { messages }, providerName);
     logFlow(`[${providerName}] 2) Response`, { textPreview: res.text?.slice(0, 80), textLength: res.text?.length });
     expect(res).toBeDefined();
     expect(typeof res.text).toBe('string');
@@ -290,8 +290,8 @@ describe.skipIf(!getIntegrationProvider('deepseek'))('DeepSeek LLM integration (
     'generate with messages returns text',
     async () => {
       const messages: ChatMessage[] = [{ role: 'user', content: 'Reply with only the number 42.' }];
-      logFlow(`[${providerName}] 2) Calling LLMService.generateMessages`, { messageCount: messages.length });
-      const res = await llmService.generateMessages(messages, {}, providerName);
+      logFlow(`[${providerName}] 2) Calling LLMService.generate with messages`, { messageCount: messages.length });
+      const res = await llmService.generate('Reply with only the number 42.', { messages }, providerName);
       logFlow(`[${providerName}] 2) Response`, { textPreview: res.text?.slice(0, 80), textLength: res.text?.length });
       expect(res).toBeDefined();
       expect(typeof res.text).toBe('string');

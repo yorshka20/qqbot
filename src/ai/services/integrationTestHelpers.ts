@@ -78,7 +78,7 @@ export function createAIManagerWithProvider(providerName: IntegrationProviderNam
   return manager;
 }
 
-/** Timeout for a single real API call (e.g. generate, generateMessages). */
+/** Timeout for a single real API call (e.g. generate, generateWithTools). */
 export const INTEGRATION_TEST_TIMEOUT_MS = 30_000;
 
 /** Timeout for multi-round tool-use tests. */

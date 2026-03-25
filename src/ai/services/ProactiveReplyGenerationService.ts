@@ -13,6 +13,7 @@ import type { PromptManager } from '../prompt/PromptManager';
 import { PromptMessageAssembler } from '../prompt/PromptMessageAssembler';
 import { buildSkillUsageInstructions, executeSkillCall, getReplySkillDefinitions } from '../tools/replyTools';
 import type { AIGenerateResponse, ChatMessage, ContentPart } from '../types';
+import { contentToPlainString } from '../utils/contentUtils';
 import { normalizeVisionImages } from '../utils/imageUtils';
 import type { LLMService } from './LLMService';
 import type { VisionService } from './VisionService';
@@ -244,7 +245,9 @@ export class ProactiveReplyGenerationService {
       );
       return { text: toolUseResponse.text };
     }
-    return this.llmService.generateMessages(messages, genOptions, effectiveProviderName);
+    const lastContent = messages[messages.length - 1]?.content;
+    const prompt = lastContent !== undefined ? contentToPlainString(lastContent) : '';
+    return this.llmService.generate(prompt, { ...genOptions, messages }, effectiveProviderName);
   }
 
   // ---------------------------------------------------------------------------

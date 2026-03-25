@@ -122,6 +122,7 @@ export class ConversationConfigService {
       permissions,
       nsfw,
       useForwardMsg,
+      providers: conversationConfig.providers,
     };
   }
 

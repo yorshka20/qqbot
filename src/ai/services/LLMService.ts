@@ -311,7 +311,7 @@ export class LLMService {
   /**
    * Generate using prebuilt role-based messages (OpenAI-standard ChatMessage[]). Each provider converts to its own format.
    */
-  async generateMessages(
+  private async generateFromMessages(
     messages: ChatMessage[],
     options?: Omit<AIGenerateOptions, 'messages'>,
     providerName?: string,
@@ -367,17 +367,6 @@ export class LLMService {
     }
   }
 
-  async generateStreamMessages(
-    messages: ChatMessage[],
-    handler: StreamingHandler,
-    options?: Omit<AIGenerateOptions, 'messages'>,
-    providerName?: string,
-  ): Promise<AIGenerateResponse> {
-    const lastContent = messages[messages.length - 1]?.content;
-    const prompt = lastContent !== undefined ? contentToPlainString(lastContent) : '';
-    return this.generateStream(prompt, handler, { ...(options ?? {}), messages }, providerName);
-  }
-
   /**
    * Generate with tool/function calling support
    * Implements multi-round tool calling loop
@@ -388,6 +377,12 @@ export class LLMService {
     options?: ToolUseGenerateOptions,
     providerName?: string,
   ): Promise<ToolUseGenerateResponse> {
+    // No tools — short-circuit to plain generate.
+    if (tools.length === 0) {
+      const response = await this.generateFromMessages(messages, options, providerName);
+      return { ...response, stopReason: 'end_turn' };
+    }
+
     const sessionId = options?.sessionId;
     const maxRounds = options?.maxToolRounds ?? 3;
     const toolExecutor = options?.toolExecutor;
@@ -427,7 +422,7 @@ export class LLMService {
       if (!foundToolUseProvider) {
         logger.warn('[LLMService] No tool-use capable provider available, will proceed without tool use');
         // Proceed without tool use - just generate normally
-        const response = await this.generateMessages(messages, options, providerName);
+        const response = await this.generateFromMessages(messages, options, providerName);
         // Strip text-based tool calls the model may emit when it sees tool instructions in the prompt
         if (response.text && containsTextToolCalls(response.text)) {
           logger.warn('[LLMService] Stripping text-based tool call blocks from no-tool-use fallback response');
@@ -557,7 +552,7 @@ export class LLMService {
       content:
         'You have used all available tool rounds. Please provide your final answer now based on the information you have gathered so far. Do not attempt to call any more tools.',
     });
-    const finalResponse = await this.generateMessages(currentMessages, options, currentProviderName);
+    const finalResponse = await this.generateFromMessages(currentMessages, options, currentProviderName);
 
     // Strip text-based tool calls from final text — model may still attempt tool calls via text when tools are absent
     if (finalResponse.text && containsDSML(finalResponse.text)) {

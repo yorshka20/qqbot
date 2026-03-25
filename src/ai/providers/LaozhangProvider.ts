@@ -18,7 +18,6 @@ import type {
 } from '../capabilities/types';
 import type { VisionCapability } from '../capabilities/VisionCapability';
 import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
-import { contentToPlainString } from '../utils/contentUtils';
 import {
   handleFinishReason,
   handleGeneralError,
@@ -368,23 +367,37 @@ export class LaozhangProvider
     const model = options?.model ?? this.config.llm.model;
     const temperature = options?.temperature ?? this.config.llm.temperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens ?? 2000;
-    const parts: Array<{ text: string }> = [];
+    const contentsParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
     if (options?.messages?.length) {
       for (const msg of options.messages) {
-        parts.push({ text: `${msg.role}: ${contentToPlainString(msg.content)}\n\n` });
+        if (typeof msg.content === 'string') {
+          contentsParts.push({ text: `${msg.role}: ${msg.content}\n\n` });
+        } else if (Array.isArray(msg.content)) {
+          contentsParts.push({ text: `${msg.role}: ` });
+          for (const part of msg.content) {
+            if (part.type === 'text') {
+              if (part.text) contentsParts.push({ text: part.text });
+            } else if (part.type === 'image_url') {
+              const dataUrlMatch = /^data:([^;]+);base64,(.+)$/.exec(part.image_url.url);
+              if (dataUrlMatch) {
+                contentsParts.push({ inlineData: { mimeType: dataUrlMatch[1], data: dataUrlMatch[2] } });
+              }
+            }
+          }
+          contentsParts.push({ text: '\n\n' });
+        }
       }
     } else {
       const history = await this.loadHistory(options);
       if (options?.systemPrompt) {
-        parts.push({ text: `system: ${options.systemPrompt}\n\n` });
+        contentsParts.push({ text: `system: ${options.systemPrompt}\n\n` });
       }
       for (const msg of history) {
-        parts.push({ text: `${msg.role}: ${msg.content}\n\n` });
+        contentsParts.push({ text: `${msg.role}: ${msg.content}\n\n` });
       }
-      parts.push({ text: prompt });
+      contentsParts.push({ text: prompt });
     }
-    const fullPrompt = parts.map((p) => p.text).join('');
-    const { text, usage } = await this.generateContentText(model, [{ text: fullPrompt }], {
+    const { text, usage } = await this.generateContentText(model, contentsParts, {
       temperature,
       maxTokens,
     });

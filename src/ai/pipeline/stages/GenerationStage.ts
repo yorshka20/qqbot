@@ -5,7 +5,6 @@ import type { HookContext } from '@/hooks/types';
 import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
 import type { LLMService } from '../../services/LLMService';
-import type { VisionService } from '../../services/VisionService';
 import { executeSkillCall } from '../../tools/replyTools';
 import type { AIGenerateResponse, ChatMessage, ToolDefinition } from '../../types';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';
@@ -21,10 +20,7 @@ interface GenerationPipelineParams {
     reasoningEffort: 'medium';
     episodeKey?: string;
   };
-  useVisionProvider: boolean;
-  canUseVisionToolUse: boolean;
   toolDefinitions: ToolDefinition[];
-  resolvedVisionProviderName: string | null;
   selectedProviderName: string | undefined;
   effectiveNativeSearchEnabled: boolean;
 }
@@ -37,16 +33,16 @@ interface GenerationPipelineResult {
 
 /**
  * Pipeline stage 7: LLM generation.
- * Dispatches the assembled messages to the appropriate LLM path (vision+tools,
- * vision-only, tools-only, or plain text) and implements retry with provider
- * fallback (doubao → deepseek → gemini → openai → anthropic) on failure.
+ * Dispatches the assembled messages to the LLM (with or without tools) and
+ * implements retry with provider fallback on failure. Images are already
+ * embedded as ContentPart[] in messages — each provider converts them to its
+ * native format in its own generate path.
  */
 export class GenerationStage implements ReplyStage {
   readonly name = 'generation';
 
   constructor(
     private llmService: LLMService,
-    private visionService: VisionService,
     private toolManager: ToolManager,
     private hookManager: HookManager,
   ) {}
@@ -59,10 +55,7 @@ export class GenerationStage implements ReplyStage {
     const params: GenerationPipelineParams = {
       messages: ctx.messages,
       genOptions: ctx.genOptions,
-      useVisionProvider: ctx.useVisionProvider,
-      canUseVisionToolUse: ctx.canUseVisionToolUse,
       toolDefinitions: ctx.toolDefinitions,
-      resolvedVisionProviderName: ctx.resolvedVisionProviderName,
       selectedProviderName: ctx.selectedProviderName,
       effectiveNativeSearchEnabled: ctx.effectiveNativeSearchEnabled,
     };
@@ -85,16 +78,7 @@ export class GenerationStage implements ReplyStage {
     context: HookContext,
     params: GenerationPipelineParams,
   ): Promise<GenerationPipelineResult> {
-    const {
-      messages,
-      genOptions,
-      useVisionProvider,
-      canUseVisionToolUse,
-      toolDefinitions,
-      resolvedVisionProviderName,
-      selectedProviderName,
-      effectiveNativeSearchEnabled,
-    } = params;
+    const { messages, genOptions, toolDefinitions, selectedProviderName, effectiveNativeSearchEnabled } = params;
 
     // Reset per-attempt so retries with fallback providers start clean.
     context.metadata.delete('usedCardFormat');
@@ -102,57 +86,23 @@ export class GenerationStage implements ReplyStage {
     const toolExecutor = (call: { name: string; arguments: string }) =>
       executeSkillCall(call, context, this.toolManager, this.hookManager);
 
-    const toolUseOptions = {
-      temperature: genOptions.temperature,
-      maxTokens: genOptions.maxTokens,
-      maxToolRounds: 4,
-      sessionId: genOptions.sessionId,
-      nativeWebSearch: effectiveNativeSearchEnabled,
-      toolExecutor,
-    };
-
-    const requestedProvider = selectedProviderName ?? resolvedVisionProviderName ?? undefined;
-
-    if (useVisionProvider) {
-      if (canUseVisionToolUse && toolDefinitions.length > 0) {
-        const r = await this.llmService.generateWithTools(
-          messages,
-          toolDefinitions,
-          toolUseOptions,
-          resolvedVisionProviderName ?? undefined,
-        );
-        return {
-          response: { text: r.text, resolvedProviderName: r.resolvedProviderName },
-          actualProvider: r.resolvedProviderName ?? requestedProvider,
-        };
-      }
-      const r = await this.visionService.generateWithVisionMessages(
-        messages,
-        genOptions,
-        resolvedVisionProviderName ?? undefined,
-      );
-      return { response: r, actualProvider: r.resolvedProviderName ?? requestedProvider };
-    }
-
-    if (toolDefinitions.length > 0) {
-      const r = await this.llmService.generateWithTools(
-        messages,
-        toolDefinitions,
-        toolUseOptions,
-        selectedProviderName,
-      );
-      return {
-        response: { text: r.text, resolvedProviderName: r.resolvedProviderName },
-        actualProvider: r.resolvedProviderName ?? requestedProvider,
-      };
-    }
-
-    const r = await this.llmService.generateMessages(
+    const r = await this.llmService.generateWithTools(
       messages,
-      { ...genOptions, nativeWebSearch: effectiveNativeSearchEnabled },
+      toolDefinitions,
+      {
+        temperature: genOptions.temperature,
+        maxTokens: genOptions.maxTokens,
+        maxToolRounds: 4,
+        sessionId: genOptions.sessionId,
+        nativeWebSearch: effectiveNativeSearchEnabled,
+        toolExecutor,
+      },
       selectedProviderName,
     );
-    return { response: r, actualProvider: r.resolvedProviderName ?? requestedProvider };
+    return {
+      response: { text: r.text, resolvedProviderName: r.resolvedProviderName },
+      actualProvider: r.resolvedProviderName ?? selectedProviderName,
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -168,7 +118,7 @@ export class GenerationStage implements ReplyStage {
     try {
       return await this.attemptLLMGeneration(context, params);
     } catch (primaryError) {
-      const primaryProviderLabel = params.selectedProviderName ?? params.resolvedVisionProviderName ?? 'default';
+      const primaryProviderLabel = params.selectedProviderName ?? 'default';
       logger.error(
         `[GenerationStage] Primary provider "${primaryProviderLabel}" failed, triggering health check and attempting fallback`,
         primaryError instanceof Error ? primaryError : new Error(String(primaryError)),
@@ -189,9 +139,6 @@ export class GenerationStage implements ReplyStage {
         try {
           const fallbackParams: GenerationPipelineParams = {
             ...params,
-            useVisionProvider: false,
-            canUseVisionToolUse: false,
-            resolvedVisionProviderName: null,
             selectedProviderName: fallbackProvider,
           };
           const result = await this.attemptLLMGeneration(context, fallbackParams);

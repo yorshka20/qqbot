@@ -60,26 +60,26 @@ export class ProviderSelectionStage implements ReplyStage {
     ctx.providerName = providerName;
     ctx.userMessage = userMessage;
 
-    // Vision and provider
-    ctx.useVisionProvider = ctx.messageImages.length > 0;
-    ctx.resolvedVisionProviderName = ctx.useVisionProvider
-      ? await this.visionService.getAvailableProviderName(providerName, sessionId)
-      : null;
-    ctx.selectedProviderName = ctx.useVisionProvider ? (ctx.resolvedVisionProviderName ?? providerName) : providerName;
+    // When images are present, prefer a vision-capable provider; otherwise use the routed provider.
+    const hasImages = ctx.messageImages.length > 0;
+    if (hasImages) {
+      const visionProvider = await this.visionService.getAvailableProviderName(providerName, sessionId);
+      ctx.selectedProviderName = visionProvider ?? providerName;
+      ctx.providerHasVision = !!visionProvider;
+    } else {
+      ctx.selectedProviderName = providerName;
+      ctx.providerHasVision = false;
+    }
 
     // Capabilities: check if the effective provider supports tool use
     const effectiveProvider = ctx.selectedProviderName ?? 'default';
     const providerCanUseTools = await this.checkProviderToolUseSupport(effectiveProvider, sessionId);
-    ctx.canUseVisionToolUse = ctx.useVisionProvider
-      ? Boolean(ctx.resolvedVisionProviderName && providerCanUseTools)
-      : false;
     ctx.effectiveNativeSearchEnabled = false;
 
     // Tools: only inject when the provider actually supports tool use
-    ctx.toolDefinitions =
-      !providerCanUseTools || (ctx.useVisionProvider && !ctx.canUseVisionToolUse)
-        ? []
-        : getReplySkillDefinitions(this.toolManager, { nativeWebSearchEnabled: ctx.effectiveNativeSearchEnabled });
+    ctx.toolDefinitions = !providerCanUseTools
+      ? []
+      : getReplySkillDefinitions(this.toolManager, { nativeWebSearchEnabled: ctx.effectiveNativeSearchEnabled });
 
     // Tool usage instructions
     ctx.toolUsageInstructions = buildSkillUsageInstructions(

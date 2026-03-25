@@ -106,10 +106,10 @@ describe('LLMService', () => {
     );
 
     test(
-      'generateMessages returns text',
+      'generate with messages returns text',
       async () => {
         const messages = [{ role: 'user' as const, content: 'Reply with only the number 42.' }];
-        const res = await llmService.generateMessages(messages, {}, 'doubao');
+        const res = await llmService.generate('Reply with only the number 42.', { messages }, 'doubao');
         expect(res).toBeDefined();
         expect(typeof res.text).toBe('string');
         expect(res.text.length).toBeGreaterThan(0);

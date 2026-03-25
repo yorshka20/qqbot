@@ -113,7 +113,7 @@ export class AIService {
       contextEnrichmentStage,
       new ProviderSelectionStage(providerRouter, this.visionService, llmService, toolManager, promptManager),
       new PromptAssemblyStage(promptManager, messageAPI),
-      new GenerationStage(llmService, this.visionService, toolManager, hookManager),
+      new GenerationStage(llmService, toolManager, hookManager),
       new ResponseDispatchStage(cardHelper, hookManager),
     ];
     this.replyPipeline = new ReplyPipelineOrchestrator(stages, episodeCacheManager, cardHelper, hookManager);

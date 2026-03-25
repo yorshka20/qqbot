@@ -73,8 +73,8 @@ export class PromptAssemblyStage implements ReplyStage {
       finalUserBlocks,
     });
 
-    // When provider has vision, replace history entries that contain images with ContentPart[] (text + base64 image_url).
-    if (ctx.useVisionProvider && ctx.historyEntries.length > 0) {
+    // When selected provider has vision, replace history entries that contain images with ContentPart[] (text + base64 image_url).
+    if (ctx.providerHasVision && ctx.historyEntries.length > 0) {
       const getResourceUrl = (resourceId: string) =>
         this.messageAPI.getResourceTempUrl(resourceId, hookContext.message);
       const systemCount = 2; // baseSystem + sceneSystem
@@ -107,8 +107,8 @@ export class PromptAssemblyStage implements ReplyStage {
       }
     }
 
-    // When vision and current message has images, normalize once and attach to last user message.
-    if (ctx.useVisionProvider && ctx.messageImages.length > 0) {
+    // When selected provider has vision and current message has images, attach to last user message.
+    if (ctx.providerHasVision && ctx.messageImages.length > 0) {
       const normalized = await normalizeVisionImages(ctx.messageImages, {
         timeout: 30000,
         maxSize: 10 * 1024 * 1024,

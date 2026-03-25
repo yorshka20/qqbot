@@ -37,10 +37,8 @@ export class ReplyPipelineContext {
   // --- ProviderSelectionStage ---
   providerName: string | undefined;
   userMessage = '';
-  useVisionProvider = false;
-  resolvedVisionProviderName: string | null = null;
   selectedProviderName: string | undefined;
-  canUseVisionToolUse = false;
+  providerHasVision = false;
   effectiveNativeSearchEnabled = false;
   toolDefinitions: ToolDefinition[] = [];
   toolUsageInstructions = '';

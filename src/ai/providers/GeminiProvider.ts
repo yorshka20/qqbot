@@ -353,10 +353,27 @@ export class GeminiProvider
         continue;
       }
 
-      // user role
-      const text = contentToPlainString(msg.content);
-      if (text) {
-        contents.push({ role: 'user', parts: [{ text }] });
+      // user role — handle both plain string and ContentPart[] (with image_url)
+      if (typeof msg.content === 'string') {
+        if (msg.content) {
+          contents.push({ role: 'user', parts: [{ text: msg.content }] });
+        }
+      } else if (Array.isArray(msg.content)) {
+        const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
+        for (const part of msg.content) {
+          if (part.type === 'text') {
+            if (part.text) parts.push({ text: part.text });
+          } else if (part.type === 'image_url') {
+            const url = part.image_url.url;
+            const dataUrlMatch = /^data:([^;]+);base64,(.+)$/.exec(url);
+            if (dataUrlMatch) {
+              parts.push({ inlineData: { mimeType: dataUrlMatch[1], data: dataUrlMatch[2] } });
+            }
+          }
+        }
+        if (parts.length > 0) {
+          contents.push({ role: 'user', parts });
+        }
       }
     }
 
