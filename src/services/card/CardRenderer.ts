@@ -1,4 +1,4 @@
-// Card renderer — converts card data to PNG images.
+// Card renderer — converts card data to WebP images.
 // Delegates browser lifecycle to BrowserService.
 
 import { readFileSync } from 'node:fs';
@@ -16,7 +16,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const TWEMOJI_JS = readFileSync(resolve(__dirname, 'libs/twemoji.min.js'), 'utf-8');
 
 /**
- * Card renderer that converts card data to PNG images.
+ * Card renderer that converts card data to WebP images.
  * Uses BrowserService for browser access.
  */
 export class CardRenderer {
@@ -30,7 +30,7 @@ export class CardRenderer {
   }
 
   /**
-   * Render card(s) to PNG image buffer.
+   * Render card(s) to WebP image buffer.
    * Accepts single card or array of cards (deck); multiple cards are laid out in order.
    * @param cardData - Single card or array of cards to render
    * @param options - Provider name (e.g. doubao, claude, deepseek) shown after "AI Assistant" in footer; required on all paths
@@ -122,10 +122,10 @@ export class CardRenderer {
       );
 
       // Take screenshot with clipping to content area
-      // Use JPEG with quality 85 to reduce file size (PNG can be several MB for tall cards,
-      // causing LLBot→QQ upload timeouts)
+      // Use WebP with quality 85 for better compression than JPEG at similar visual quality
+      // (PNG can be several MB for tall cards, causing LLBot→QQ upload timeouts)
       const screenshot = await page.screenshot({
-        type: 'jpeg',
+        type: 'webp',
         quality: 85,
         clip: {
           x: bounds.x,
