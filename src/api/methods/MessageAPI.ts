@@ -444,6 +444,18 @@ export class MessageAPI {
       return normalizedMessage;
     }
 
+    // Cache + DB miss: try fetching from protocol server via adapter
+    const peerId = isGroup ? groupId : undefined;
+    if (peerId !== undefined) {
+      const scene = isGroup ? (messageScene ?? 'group') : 'friend';
+      const adapter = getProtocolAdapter(protocol);
+      const apiMessage = await adapter.fetchMessage(messageSeq, peerId, scene);
+      if (apiMessage) {
+        cacheMessage(apiMessage);
+        return apiMessage;
+      }
+    }
+
     throw new Error(`Message not found | messageSeq=${messageSeq} | protocol=${protocol} | groupId=${groupId}`);
   }
 }

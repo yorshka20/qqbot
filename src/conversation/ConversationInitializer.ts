@@ -11,6 +11,7 @@ import {
   ProviderFactory,
   ProviderSelector,
 } from '@/ai';
+import { ProviderRouter } from '@/ai/routing/ProviderRouter';
 import { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
@@ -156,6 +157,9 @@ export class ConversationInitializer {
     const providerSelector = new ProviderSelector(services.aiManager, conversationConfigService);
     container.registerInstance(DITokens.PROVIDER_SELECTOR, providerSelector);
 
+    const providerRouter = new ProviderRouter(services.aiManager);
+    container.registerInstance(DITokens.PROVIDER_ROUTER, providerRouter);
+
     // Build LLM service config from AI config
     const aiConfig = config.getAIConfig();
     if (!aiConfig?.llmFallback) {
@@ -214,7 +218,7 @@ export class ConversationInitializer {
       logger.info('[ConversationInitializer] Memory RAG enabled for semantic memory filtering');
     }
 
-    const aiService = AIService.create(
+    const aiService = new AIService(
       services.aiManager,
       services.hookManager,
       promptManager,
@@ -226,6 +230,7 @@ export class ConversationInitializer {
       messageAPI,
       databaseManager,
       llmService,
+      providerRouter,
       {
         providerName: aiConfig.taskProviders?.subagent,
         model: aiConfig.taskProviders?.subagentModel,

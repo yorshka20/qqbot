@@ -32,7 +32,7 @@ import { PromptAssemblyStage } from './pipeline/stages/PromptAssemblyStage';
 import { ProviderSelectionStage } from './pipeline/stages/ProviderSelectionStage';
 import { ResponseDispatchStage } from './pipeline/stages/ResponseDispatchStage';
 import type { PromptManager } from './prompt/PromptManager';
-import { ProviderRouter } from './routing/ProviderRouter';
+import type { ProviderRouter } from './routing/ProviderRouter';
 import type { I2VPromptResult } from './schemas';
 import { ImageFacadeService } from './services/ImageFacadeService';
 import { ImageGenerationService } from './services/ImageGenerationService';
@@ -63,7 +63,7 @@ export class AIService {
   private subAgentManager: SubAgentManager;
   private visionService: VisionService;
 
-  private constructor(
+  constructor(
     aiManager: AIManager,
     hookManager: HookManager,
     promptManager: PromptManager,
@@ -75,6 +75,7 @@ export class AIService {
     messageAPI: MessageAPI,
     databaseManager: DatabaseManager,
     llmService: LLMService,
+    providerRouter: ProviderRouter,
     subagentConfig?: { providerName?: string; model?: string },
   ) {
     this.visionService = new VisionService(aiManager, providerSelector);
@@ -102,7 +103,6 @@ export class AIService {
     subAgentManager.setExecutor(subAgentExecutor);
 
     // Reply generation pipeline
-    const providerRouter = new ProviderRouter(aiManager);
     const episodeCacheManager = new EpisodeCacheManager(conversationHistoryService);
     const cardHelper = new CardRenderingHelper(this.cardRenderingService, llmService, promptManager, hookManager);
     const contextEnrichmentStage = new ContextEnrichmentStage(memoryService, retrievalService, promptManager);
@@ -140,39 +140,6 @@ export class AIService {
     this.imageFacadeService = new ImageFacadeService(hookManager, imageGenerationService, imagePromptService);
   }
 
-  /**
-   * Create a new AIService instance.
-   * Should only be called once during bootstrap; all other code should use the DI-registered instance.
-   */
-  static create(
-    aiManager: AIManager,
-    hookManager: HookManager,
-    promptManager: PromptManager,
-    toolManager: ToolManager,
-    conversationHistoryService: ConversationHistoryService,
-    providerSelector: ProviderSelector,
-    retrievalService: RetrievalService,
-    memoryService: MemoryService,
-    messageAPI: MessageAPI,
-    databaseManager: DatabaseManager,
-    llmService: LLMService,
-    subagentConfig?: { providerName?: string; model?: string },
-  ): AIService {
-    return new AIService(
-      aiManager,
-      hookManager,
-      promptManager,
-      toolManager,
-      conversationHistoryService,
-      providerSelector,
-      retrievalService,
-      memoryService,
-      messageAPI,
-      databaseManager,
-      llmService,
-      subagentConfig,
-    );
-  }
 
   // --- Sub-agent ---
 

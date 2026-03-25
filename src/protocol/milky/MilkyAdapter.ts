@@ -5,6 +5,7 @@ import type { ForwardMessageInput, SendMessageResult, SendTarget } from '@/api/t
 import { APIContext } from '@/api/types';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import type { WebSocketConnection } from '@/core/connection';
+import type { NormalizedMessageEvent } from '@/events/types';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { resolveAction } from '../base/ProtocolAdapter';
@@ -88,6 +89,47 @@ export class MilkyAdapter extends WebSocketProtocolAdapter {
 
   normalizeEvent(rawEvent: unknown): BaseEvent | null {
     return MilkyEventNormalizer.normalizeEvent(rawEvent);
+  }
+
+  /**
+   * Fetch a message from the Milky protocol server via get_message API.
+   * Wraps the response as a synthetic message_receive event and normalizes it
+   * through MilkyEventNormalizer so all protocol-specific logic stays here.
+   */
+  override async fetchMessage(
+    messageSeq: number,
+    peerId: number | string,
+    scene: string,
+  ): Promise<NormalizedMessageEvent | null> {
+    try {
+      const ctx = new APIContext(
+        'get_message',
+        { message_scene: scene, peer_id: peerId, message_seq: messageSeq },
+        'milky',
+        15000,
+      );
+      const response = await this.sendAPI<{ message?: Record<string, unknown> }>(ctx);
+      const msg = response?.message;
+      if (!msg) return null;
+
+      // Wrap as a synthetic message_receive event so the existing normalizer handles all details
+      const syntheticEvent = {
+        event_type: 'message_receive' as const,
+        data: msg,
+      };
+      const normalized = MilkyEventNormalizer.normalizeEvent(syntheticEvent);
+      if (!normalized || normalized.type !== 'message') return null;
+
+      logger.info(
+        `[MilkyAdapter] Fetched message from server | messageSeq=${messageSeq} | peerId=${peerId}`,
+      );
+      return normalized as NormalizedMessageEvent;
+    } catch (error) {
+      logger.warn(
+        `[MilkyAdapter] fetchMessage failed | messageSeq=${messageSeq} | error=${error instanceof Error ? error.message : 'Unknown'}`,
+      );
+      return null;
+    }
   }
 
   /**

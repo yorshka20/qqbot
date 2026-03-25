@@ -20,7 +20,6 @@ import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../../decorators';
 import { PluginBase } from '../../PluginBase';
 import { WHITELIST_CAPABILITY } from '../whitelistCapabilities';
-import { ProviderNameMatcher } from './ProviderNameMatcher';
 import { SubAgentTriggerHandler } from './SubAgentTriggerHandler';
 import type { MessageTriggerPluginConfig, SubAgentTriggerRule } from './types';
 import { WakeWordMatcher } from './WakeWordMatcher';
@@ -35,7 +34,7 @@ export type { MessageTriggerPluginConfig, SubAgentTriggerRule } from './types';
 })
 export class MessageTriggerPlugin extends PluginBase {
   private wakeWordMatcher!: WakeWordMatcher;
-  private providerNameMatcher!: ProviderNameMatcher;
+  private providerRouter!: ProviderRouter;
   private subAgentTriggerHandler: SubAgentTriggerHandler | null = null;
 
   private llmService!: LLMService;
@@ -67,7 +66,7 @@ export class MessageTriggerPlugin extends PluginBase {
     const globalWakeWords = (pluginConfig?.wakeWords ?? []).map((w) => w.trim().toLowerCase()).filter(Boolean);
 
     this.wakeWordMatcher = new WakeWordMatcher(globalWakeWords, this.promptManager, proactiveConversationService);
-    this.providerNameMatcher = new ProviderNameMatcher();
+    this.providerRouter = container.resolve<ProviderRouter>(DITokens.PROVIDER_ROUTER);
 
     // SubAgent triggers (optional — only instantiated when rules are configured)
     const subAgentRules: SubAgentTriggerRule[] = pluginConfig?.subAgentTriggers ?? [];
@@ -199,7 +198,8 @@ export class MessageTriggerPlugin extends PluginBase {
     const strippedText = this.wakeWordMatcher.getTextForMatch(messageText);
     const wakeWordSource = this.wakeWordMatcher.match(groupId, messageText);
     const isWakeWord = wakeWordSource !== null;
-    const isProviderNameTrigger = this.providerNameMatcher.matches(strippedText);
+    const providerRouteResult = this.providerRouter.route(strippedText);
+    const isProviderNameTrigger = providerRouteResult.isExplicitPrefix;
 
     const allowed = replyTrigger === 'reaction' || isAtBot || isWakeWord || isProviderNameTrigger;
 
@@ -250,6 +250,12 @@ export class MessageTriggerPlugin extends PluginBase {
     }
 
     context.metadata.set('replyTriggerType', replyTriggerType);
+    if (replyTriggerType === 'providerName' && providerRouteResult.providerName) {
+      context.metadata.set('resolvedProviderPrefix', {
+        providerName: providerRouteResult.providerName,
+        strippedMessage: providerRouteResult.strippedMessage,
+      });
+    }
     context.metadata.set('contextMode', 'normal');
     if (groupId && this.threadService.hasActiveThread(groupId)) {
       context.metadata.set('inProactiveThread', true);

@@ -5,6 +5,7 @@ import { EventEmitter } from 'events';
 import type { APIContext, ForwardMessageInput, SendMessageResult, SendTarget } from '@/api/types';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import type { Connection } from '@/core/connection';
+import type { NormalizedMessageEvent } from '@/events/types';
 import type { MessageSegment } from '@/message/types';
 import type { BaseEvent } from './types';
 
@@ -78,6 +79,19 @@ export abstract class ProtocolAdapter extends EventEmitter {
   /** Whether this adapter supports forward messages. Override to return true. */
   supportsForwardMessage(): boolean {
     return false;
+  }
+
+  /**
+   * Fetch a single message from the protocol server by sequence number.
+   * Used as a last-resort fallback when cache and DB both miss.
+   * Override in adapters that support get_message API.
+   */
+  async fetchMessage(
+    _messageSeq: number,
+    _peerId: number | string,
+    _scene: string,
+  ): Promise<NormalizedMessageEvent | null> {
+    return null;
   }
 
   private setupConnectionEvents(): void {

@@ -3,15 +3,6 @@
 import { logger } from '@/utils/logger';
 import type { NormalizedEvent } from './types';
 
-interface EventFingerprint {
-  messageId?: number | string;
-  userId?: number | string;
-  groupId?: number | string;
-  content: string;
-  timestamp: number;
-  protocol: string;
-}
-
 export type DeduplicationStrategy = 'first-received' | 'priority-protocol' | 'merge';
 
 export interface DeduplicationConfig {
@@ -21,7 +12,7 @@ export interface DeduplicationConfig {
 }
 
 export class EventDeduplicator {
-  private seenEvents = new Map<string, EventFingerprint>();
+  private seenTimestamps = new Map<string, number>();
   private config: DeduplicationConfig;
   private cleanupInterval: NodeJS.Timeout | null = null;
 
@@ -37,78 +28,72 @@ export class EventDeduplicator {
       return true;
     }
 
-    const fingerprint = this.createFingerprint(event);
-    const key = this.getFingerprintKey(fingerprint);
+    const key = this.getDeduplicationKey(event);
+    if (!key) {
+      // No stable identifier — cannot deduplicate, let it through
+      return true;
+    }
 
-    const existing = this.seenEvents.get(key);
-    if (existing) {
-      // Check if within time window
-      const timeDiff = event.timestamp - existing.timestamp;
+    const existing = this.seenTimestamps.get(key);
+    if (existing !== undefined) {
+      const timeDiff = event.timestamp - existing;
       if (timeDiff <= this.config.window) {
         logger.debug(`[EventDeduplicator] Duplicate event detected: ${key} (${timeDiff}ms ago)`);
         return false;
       }
     }
 
-    // Store fingerprint
-    this.seenEvents.set(key, fingerprint);
+    this.seenTimestamps.set(key, event.timestamp);
     return true;
   }
 
-  private createFingerprint(event: NormalizedEvent): EventFingerprint {
-    let content = '';
-    let messageId: number | string | undefined;
-    let userId: number | string | undefined;
-    let groupId: number | string | undefined;
-
-    if (event.type === 'message') {
-      messageId = event.messageId;
-      userId = event.userId;
-      groupId = event.groupId;
-      content = event.message || '';
-    } else {
-      content = JSON.stringify(event);
+  /**
+   * Build a dedup key from stable message identifiers.
+   * Cross-protocol dedup: same message delivered via Milky + OneBot11 has the same messageSeq in the same group.
+   * Never uses content — two identical-text messages from the same user are distinct events.
+   */
+  private getDeduplicationKey(event: NormalizedEvent): string | null {
+    if (event.type !== 'message') {
+      // Non-message events: use the event id (unique per protocol, no cross-protocol dedup needed)
+      return null;
     }
 
-    return {
-      messageId,
-      userId,
-      groupId,
-      content,
-      timestamp: event.timestamp,
-      protocol: event.protocol,
-    };
-  }
+    const msg = event as unknown as Record<string, unknown>;
 
-  private getFingerprintKey(fingerprint: EventFingerprint): string {
-    // Create a unique key based on event characteristics
-    if (fingerprint.messageId) {
-      return `msg_${fingerprint.messageId}`;
+    // Prefer messageSeq (available on Milky, cross-protocol compatible)
+    const messageSeq = msg.messageSeq as number | undefined;
+    if (typeof messageSeq === 'number') {
+      const groupId = msg.groupId;
+      if (groupId !== undefined) {
+        return `seq_g_${groupId}_${messageSeq}`;
+      }
+      const userId = msg.userId;
+      return `seq_p_${userId}_${messageSeq}`;
     }
-    if (fingerprint.userId && fingerprint.groupId) {
-      return `group_${fingerprint.groupId}_user_${fingerprint.userId}_${fingerprint.content.substring(0, 50)}`;
+
+    // Fallback: messageId (OneBot11 / Satori)
+    const messageId = msg.messageId;
+    if (messageId !== undefined && messageId !== null) {
+      return `mid_${messageId}`;
     }
-    if (fingerprint.userId) {
-      return `user_${fingerprint.userId}_${fingerprint.content.substring(0, 50)}`;
-    }
-    return `event_${fingerprint.protocol}_${fingerprint.content.substring(0, 50)}`;
+
+    return null;
   }
 
   private startCleanup(): void {
-    // Clean up old fingerprints periodically
     this.cleanupInterval = setInterval(() => {
-      const now = Date.now();
+      const cutoff = Date.now() - this.config.window * 2;
       const toDelete: string[] = [];
 
-      for (const [key, fingerprint] of this.seenEvents.entries()) {
-        if (now - fingerprint.timestamp > this.config.window * 2) {
+      for (const [key, timestamp] of this.seenTimestamps.entries()) {
+        if (timestamp < cutoff) {
           toDelete.push(key);
         }
       }
 
-      toDelete.forEach((key) => {
-        this.seenEvents.delete(key);
-      });
+      for (const key of toDelete) {
+        this.seenTimestamps.delete(key);
+      }
     }, this.config.window);
   }
 
@@ -117,6 +102,6 @@ export class EventDeduplicator {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
     }
-    this.seenEvents.clear();
+    this.seenTimestamps.clear();
   }
 }

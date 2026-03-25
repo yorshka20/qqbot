@@ -43,6 +43,7 @@ export const DITokens = {
   CLAUDE_CODE_SERVICE: 'ClaudeCodeService',
   SUB_AGENT_MANAGER: 'SubAgentManager',
   PROVIDER_SELECTOR: 'ProviderSelector',
+  PROVIDER_ROUTER: 'ProviderRouter',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];

@@ -32,6 +32,8 @@ export interface HookContextMetadata {
   replyTrigger?: 'at' | 'reaction';
   /** Resolved trigger type for this reply; set by MessageTriggerPlugin when message is allowed for reply. Undefined = not triggered. */
   replyTriggerType?: 'at' | 'reaction' | 'wakeWordConfig' | 'wakeWordPreference' | 'providerName';
+  /** When replyTriggerType='providerName', the resolved provider name (e.g. 'anthropic') and user message with prefix stripped. Set by MessageTriggerPlugin. */
+  resolvedProviderPrefix?: { providerName: string; strippedMessage: string };
   /** Conversation mode selected for this processing run. */
   contextMode?: 'normal' | 'proactive';
 
@@ -62,6 +64,7 @@ const DEFAULT_METADATA: Required<
     HookContextMetadata,
     | 'replyTrigger'
     | 'replyTriggerType'
+    | 'resolvedProviderPrefix'
     | 'contextMode'
     | 'suggestedProvider'
     | 'usedCardFormat'

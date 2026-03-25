@@ -12,9 +12,11 @@ import type { ReplyStage } from '../types';
 
 /**
  * Pipeline stage 5: provider selection and tool assembly.
- * Routes the user input to determine the LLM provider (explicit prefix detection),
- * resolves a vision-capable provider when images are present, checks tool-use support,
- * and assembles OpenAI-compatible tool definitions with usage instructions.
+ * Provider prefix routing is primarily done in MessageTriggerPlugin (PREPROCESS)
+ * and passed via resolvedProviderPrefix metadata. ProviderRouter is kept as a
+ * fallback for messages that reach the pipeline without going through the plugin.
+ * This stage resolves vision-capable provider when images are present, checks
+ * tool-use support, and assembles OpenAI-compatible tool definitions.
  */
 export class ProviderSelectionStage implements ReplyStage {
   readonly name = 'provider-selection';
@@ -31,10 +33,29 @@ export class ProviderSelectionStage implements ReplyStage {
     const { hookContext } = ctx;
     const sessionId = hookContext.metadata.get('sessionId');
 
-    // Routing
-    const rawInput = ctx.userMessageOverride ?? hookContext.message.message ?? '';
-    const { providerName, userMessage, reason, confidence, usedExplicitPrefix } =
-      this.providerRouter.routeReplyInput(rawInput);
+    // Routing: prefer pre-resolved prefix from MessageTriggerPlugin, fallback to ProviderRouter
+    const resolvedPrefix = hookContext.metadata.get('resolvedProviderPrefix');
+    let providerName: string | undefined;
+    let userMessage: string;
+    let reason: string;
+    let confidence: string;
+    let usedExplicitPrefix: boolean;
+
+    if (resolvedPrefix) {
+      providerName = resolvedPrefix.providerName;
+      userMessage = resolvedPrefix.strippedMessage;
+      reason = 'explicit_prefix';
+      confidence = 'high';
+      usedExplicitPrefix = true;
+    } else {
+      const rawInput = ctx.userMessageOverride ?? hookContext.message.message ?? '';
+      const result = this.providerRouter.routeReplyInput(rawInput);
+      providerName = result.providerName;
+      userMessage = result.userMessage;
+      reason = result.reason;
+      confidence = result.confidence;
+      usedExplicitPrefix = result.usedExplicitPrefix;
+    }
 
     ctx.providerName = providerName;
     ctx.userMessage = userMessage;
