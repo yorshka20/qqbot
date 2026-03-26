@@ -6,7 +6,7 @@ import { MessageBuilder } from '@/message/MessageBuilder';
 import { BrowserService } from '@/services/browser/BrowserService';
 import type { ToolCall, ToolExecutionContext, ToolExecutor, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
-import { renderReportHTML } from './renderReportHTML';
+import { avatarUrl, renderReportHTML } from './renderReportHTML';
 import type { GroupReportData } from './types';
 
 export class GroupReportToolExecutor implements ToolExecutor {
@@ -86,8 +86,46 @@ export class GroupReportToolExecutor implements ToolExecutor {
     logger.info(`[GroupReportTool] Report image sent to group ${groupId}`);
   }
 
+  /**
+   * Pre-fetch avatar images and convert to base64 data URIs.
+   * This avoids relying on Puppeteer's setContent to load external images from about:blank.
+   */
+  private async prefetchAvatars(data: GroupReportData): Promise<Map<string, string>> {
+    const userIds = new Set<string>();
+    for (const m of data.memberHighlights) userIds.add(m.userId);
+    for (const m of data.featuredMessages) userIds.add(m.userId);
+
+    const avatarMap = new Map<string, string>();
+    const TIMEOUT = 5000;
+
+    await Promise.allSettled(
+      [...userIds].map(async (userId) => {
+        try {
+          const url = avatarUrl(userId);
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), TIMEOUT);
+          const response = await fetch(url, { signal: controller.signal });
+          clearTimeout(timer);
+
+          if (!response.ok) return;
+
+          const buffer = await response.arrayBuffer();
+          const contentType = response.headers.get('content-type') || 'image/jpeg';
+          const base64 = Buffer.from(buffer).toString('base64');
+          avatarMap.set(userId, `data:${contentType};base64,${base64}`);
+        } catch {
+          // Skip failed avatars — the HTML will fall back to the external URL
+        }
+      }),
+    );
+
+    logger.debug(`[GroupReportTool] Pre-fetched ${avatarMap.size}/${userIds.size} avatars`);
+    return avatarMap;
+  }
+
   private async renderToImage(data: GroupReportData): Promise<Buffer> {
-    const html = renderReportHTML(data);
+    const avatarMap = await this.prefetchAvatars(data);
+    const html = renderReportHTML(data, avatarMap);
     let page: Page | null = null;
 
     try {

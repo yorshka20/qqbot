@@ -11,8 +11,16 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#039;');
 }
 
-function avatarUrl(userId: string): string {
+/** QQ avatar URL for a given userId */
+export function avatarUrl(userId: string): string {
   return `https://q1.qlogo.cn/g?b=qq&nk=${userId}&s=140`;
+}
+
+/**
+ * Resolve avatar src: use pre-fetched base64 data URI if available, fallback to external URL.
+ */
+function resolveAvatar(userId: string, avatarMap?: Map<string, string>): string {
+  return avatarMap?.get(userId) ?? avatarUrl(userId);
 }
 
 const RANK_COLORS = ['#FF6B6B', '#FF9A56', '#FFD93D', '#74B9FF', '#A29BFE'];
@@ -68,14 +76,14 @@ function buildTopicsSection(topics: GroupReportData['topics']): string {
     </div>`;
 }
 
-function buildMemberHighlights(members: GroupReportData['memberHighlights']): string {
+function buildMemberHighlights(members: GroupReportData['memberHighlights'], avatarMap?: Map<string, string>): string {
   if (!members.length) return '';
   const items = members
     .map(
       (m, i) => `
       <div class="member-item">
         <div class="member-rank" style="background: ${RANK_COLORS[i % RANK_COLORS.length]}">${RANK_LABELS[i] ?? i + 1}</div>
-        <img class="member-avatar" src="${avatarUrl(m.userId)}" alt="${escapeHtml(m.nickname)}" />
+        <img class="member-avatar" src="${resolveAvatar(m.userId, avatarMap)}" alt="${escapeHtml(m.nickname)}" />
         <div class="member-info">
           <div class="member-name-row">
             <span class="member-name">${escapeHtml(m.nickname)}</span>
@@ -97,14 +105,14 @@ function buildMemberHighlights(members: GroupReportData['memberHighlights']): st
     </div>`;
 }
 
-function buildFeaturedMessages(messages: GroupReportData['featuredMessages']): string {
+function buildFeaturedMessages(messages: GroupReportData['featuredMessages'], avatarMap?: Map<string, string>): string {
   if (!messages.length) return '';
   const items = messages
     .map(
       (m) => `
       <div class="featured-msg">
         <div class="featured-msg-header">
-          <img class="featured-avatar" src="${avatarUrl(m.userId)}" alt="${escapeHtml(m.nickname)}" />
+          <img class="featured-avatar" src="${resolveAvatar(m.userId, avatarMap)}" alt="${escapeHtml(m.nickname)}" />
           <span class="featured-name">${escapeHtml(m.nickname)}</span>
         </div>
         <div class="featured-content">
@@ -126,7 +134,7 @@ function buildFeaturedMessages(messages: GroupReportData['featuredMessages']): s
     </div>`;
 }
 
-export function renderReportHTML(data: GroupReportData): string {
+export function renderReportHTML(data: GroupReportData, avatarMap?: Map<string, string>): string {
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -179,10 +187,10 @@ export function renderReportHTML(data: GroupReportData): string {
   ${buildTopicsSection(data.topics)}
 
   <!-- Member Highlights -->
-  ${buildMemberHighlights(data.memberHighlights)}
+  ${buildMemberHighlights(data.memberHighlights, avatarMap)}
 
   <!-- Featured Messages -->
-  ${buildFeaturedMessages(data.featuredMessages)}
+  ${buildFeaturedMessages(data.featuredMessages, avatarMap)}
 
   <!-- Summary -->
   <div class="summary-section">
