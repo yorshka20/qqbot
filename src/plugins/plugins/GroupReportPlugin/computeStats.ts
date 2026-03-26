@@ -99,7 +99,7 @@ export function computeGroupReportStats(messages: ConversationMessageEntry[]): G
 
 /**
  * Format message history as text for LLM context.
- * Includes all messages with timestamps and speaker names.
+ * Filters out bot replies and formats each message as: [HH:MM] nickname(userId): content
  */
 export function formatMessagesForContext(messages: ConversationMessageEntry[]): string {
   const userMessages = messages.filter((m) => !m.isBotReply);
@@ -126,4 +126,16 @@ export function formatMessagesForContext(messages: ConversationMessageEntry[]): 
       return `[${time}] ${speaker}(${userId}): ${content}`;
     })
     .join('\n');
+}
+
+/**
+ * Split messages into batches of the given size.
+ * Messages should already be filtered (e.g. bot replies removed).
+ */
+export function splitIntoBatches<T>(items: T[], batchSize: number): T[][] {
+  const batches: T[][] = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    batches.push(items.slice(i, i + batchSize));
+  }
+  return batches;
 }

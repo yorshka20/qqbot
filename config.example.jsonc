@@ -229,6 +229,17 @@
           ]
         }
       },
+      // Log Archive Plugin - periodically compresses old log directories into tar.gz archives
+      // {
+      //   "name": "logArchive",
+      //   "enabled": true,
+      //   "config": {
+      //     "intervalDays": 3,
+      //     "cron": "0 3 * * *",
+      //     "timezone": "Asia/Tokyo",
+      //     "deleteAfterArchive": true
+      //   }
+      // },
       // Text2Img SFW Filter Plugin - forces specific users to use SFW template for text2img commands
       {
         "name": "text2imgSfwFilter",

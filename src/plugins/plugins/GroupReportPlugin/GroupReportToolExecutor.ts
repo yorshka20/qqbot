@@ -69,6 +69,23 @@ export class GroupReportToolExecutor implements ToolExecutor {
     }
   }
 
+  /**
+   * Render report data as image and send to group.
+   * Called directly by the plugin for batched analysis flow (bypasses tool call).
+   */
+  async renderAndSend(data: GroupReportData, groupId: string): Promise<void> {
+    logger.info(`[GroupReportTool] Rendering report for group ${groupId} (direct call)`);
+    const imageBuffer = await this.renderToImage(data);
+    const base64 = imageBuffer.toString('base64');
+
+    const mb = new MessageBuilder();
+    mb.image({ data: base64 });
+    const segments = mb.build();
+
+    await this.messageAPI.sendGroupMessage(Number(groupId), segments, 'milky');
+    logger.info(`[GroupReportTool] Report image sent to group ${groupId}`);
+  }
+
   private async renderToImage(data: GroupReportData): Promise<Buffer> {
     const html = renderReportHTML(data);
     let page: Page | null = null;

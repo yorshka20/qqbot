@@ -1,0 +1,31 @@
+请分析以下群聊记录片段，提取语义信息。
+
+**群名称**: {{groupName}}
+**日期**: {{date}}
+**批次**: 第 {{batchIndex}} 批，共 {{totalBatches}} 批（本批覆盖时段约 {{timeRange}}）
+
+## 本批聊天记录
+
+{{chatHistory}}
+
+## 分析要求
+
+请仔细阅读以上聊天记录，完成以下语义分析：
+
+### 1. topics（1-5 个）
+- 提炼本批次中的主要讨论话题
+- 每个话题包含 title 和 summary
+
+### 2. memberHighlights（1-5 位）
+- 挑选本批次中最活跃或最有趣的成员
+- 点评要个性化、幽默但不冒犯
+- 每人包含 userId、nickname、comment
+
+### 3. featuredMessages（1-5 条）
+- 挑选最有趣、最有代表性或引发最多讨论的发言
+- content 截取原文精华部分（不超过 100 字）
+- comment 详细评价为什么选这条（2-3 句话）
+- 每条包含 userId、nickname、content、comment
+
+### 4. batchSummary
+- 用 1-2 句话概括本批次的整体氛围和亮点
