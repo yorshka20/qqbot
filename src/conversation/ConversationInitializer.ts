@@ -506,6 +506,7 @@ export class ConversationInitializer {
     MessageUtils.initialize(commandPrefixes);
 
     const lifecycle = new Lifecycle(services.hookManager, commandRouter, processStageInterceptorRegistry);
+    container.registerInstance(DITokens.LIFECYCLE, lifecycle);
 
     const pipeline = new MessagePipeline(
       lifecycle,

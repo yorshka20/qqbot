@@ -44,6 +44,7 @@ export const DITokens = {
   SUB_AGENT_MANAGER: 'SubAgentManager',
   PROVIDER_SELECTOR: 'ProviderSelector',
   PROVIDER_ROUTER: 'ProviderRouter',
+  LIFECYCLE: 'Lifecycle',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];

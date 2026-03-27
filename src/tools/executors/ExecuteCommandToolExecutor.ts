@@ -1,15 +1,18 @@
 // ExecuteCommandToolExecutor — allows LLM to proxy-execute bot commands on behalf of the user.
 // Permission checking is delegated to CommandManager.execute(), which uses the original
 // sender's userId so only users who already have the required permission can trigger a command.
+//
+// Implementation: clones the current hookContext with the parsed command set,
+// then runs it through Lifecycle.executeProcessAndSend() so the command goes
+// through the exact same CommandSystem → PREPARE → SEND pipeline as a normal
+// user-typed command.
 
 import { inject, injectable } from 'tsyringe';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { CommandManager } from '@/command/CommandManager';
-import type { PermissionLevel } from '@/command/types';
-import { CommandContextBuilder } from '@/context/CommandContextBuilder';
+import type { CommandResult } from '@/command/types';
+import { HookContextBuilder } from '@/context/HookContextBuilder';
+import type { Lifecycle } from '@/conversation/Lifecycle';
 import { DITokens } from '@/core/DITokens';
-import type { HookManager } from '@/hooks/HookManager';
-import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -21,7 +24,7 @@ const BLOCKED_COMMANDS = new Set(['shell', 'restart']);
 @Tool({
   name: 'execute_command',
   description:
-    '代理执行一条 bot 命令（如 /provider、/schedule、/echo 等）。仅当发送者拥有该命令所需权限时才会执行成功。',
+    '代理执行一条 bot 命令（如 /provider、/schedule、/echo 等）。仅当发送者拥有该命令所需权限时才会执行成功。不确定有哪些命令时，先调用 list_bot_features 查看。',
   executor: 'execute_command',
   visibility: ['reply'],
   parameters: {
@@ -44,7 +47,7 @@ const BLOCKED_COMMANDS = new Set(['shell', 'restart']);
   ],
   triggerKeywords: ['切换', '设置', '配置', '添加日程', '定时', 'provider', 'schedule', 'echo'],
   whenToUse:
-    '当管理员（admin/owner）要求 bot 执行某个需要权限的命令时调用。如果用户没有对应权限，命令会被拒绝。不可用于 shell 和 restart 命令。调用前请先确认用户意图，不要在用户未明确要求时主动执行命令。',
+    '当管理员（admin/owner）要求 bot 执行某个需要权限的命令时调用。如果用户没有对应权限，命令会被拒绝。不可用于 shell 和 restart 命令。调用前请先确认用户意图，不要在用户未明确要求时主动执行命令。不确定有哪些命令可用时，先调用 list_bot_features 查看可用命令列表。',
 })
 @injectable()
 export class ExecuteCommandToolExecutor extends BaseToolExecutor {
@@ -52,8 +55,7 @@ export class ExecuteCommandToolExecutor extends BaseToolExecutor {
 
   constructor(
     @inject(DITokens.COMMAND_MANAGER) private commandManager: CommandManager,
-    @inject(DITokens.HOOK_MANAGER) private hookManager: HookManager,
-    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
+    @inject(DITokens.LIFECYCLE) private lifecycle: Lifecycle,
   ) {
     super();
   }
@@ -64,7 +66,6 @@ export class ExecuteCommandToolExecutor extends BaseToolExecutor {
       return this.error('缺少命令名称', 'Missing required parameter: command');
     }
 
-    // Block dangerous commands
     if (BLOCKED_COMMANDS.has(commandName)) {
       return this.error(
         `命令 "${commandName}" 不允许通过 AI 代理执行`,
@@ -72,31 +73,22 @@ export class ExecuteCommandToolExecutor extends BaseToolExecutor {
       );
     }
 
-    // Verify the command exists
     const registration = this.commandManager.getRegistration(commandName);
     if (!registration) {
       return this.error(`命令 "${commandName}" 不存在`, `Command "${commandName}" not found`);
     }
 
-    // We need hookContext to build a proper CommandContext with the original sender's identity
     const hookContext = context.hookContext;
     if (!hookContext) {
       return this.error('缺少上下文信息，无法执行命令', 'Missing hookContext');
     }
 
-    // Parse args string into array, stripping any accidental command prefix the LLM may include
+    // Parse args
     let argsStr = (call.parameters?.args as string | undefined)?.trim() ?? '';
-    // LLM sometimes passes args like "/nai-plus 美女" instead of just "美女" — strip the leading command reference
     const escapedCmd = commandName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const leadingCmdPattern = new RegExp(`^/?${escapedCmd}\\s*`, 'i');
-    argsStr = argsStr.replace(leadingCmdPattern, '').trim();
+    argsStr = argsStr.replace(new RegExp(`^/?${escapedCmd}\\s*`, 'i'), '').trim();
     const args = argsStr ? argsStr.split(/\s+/) : [];
 
-    // Build CommandContext from the hook context — preserves the original sender's userId,
-    // so CommandManager.execute() will apply normal permission checks.
-    const commandContext = CommandContextBuilder.fromHookContext(hookContext).build();
-
-    // Build a ParsedCommand
     const parsedCommand = {
       name: commandName,
       args,
@@ -104,82 +96,32 @@ export class ExecuteCommandToolExecutor extends BaseToolExecutor {
       prefix: '/',
     };
 
-    logger.info(
-      `[ExecuteCommandToolExecutor] AI proxy-executing command: /${commandName} ${argsStr} (sender: ${context.userId})`,
-    );
+    const cmdDisplay = `/${commandName}${argsStr ? ' ' + argsStr : ''}`;
+    logger.info(`[ExecuteCommandToolExecutor] AI proxy-executing command: ${cmdDisplay} (sender: ${context.userId})`);
 
-    const result = await this.commandManager.execute(parsedCommand, commandContext, this.hookManager, hookContext);
+    // Clone hookContext with the command set, then run through normal pipeline.
+    // CommandSystem → ReplyPrepareSystem → SendSystem — exact same path as a user-typed command.
+    const cmdContext = HookContextBuilder.fromContext(hookContext).withCommand(parsedCommand).build();
 
-    if (!result.success) {
-      return this.error(result.error ?? `命令 /${commandName} 执行失败`, result.error ?? 'Command execution failed');
+    await this.lifecycle.executeProcessAndSend(cmdContext);
+
+    // Read result from the pipeline-executed context
+    const result = cmdContext.result as CommandResult | undefined;
+    const success = result?.success ?? false;
+    const resultText = success
+      ? (result?.segments
+          ?.filter((s) => s.type === 'text')
+          .map((s) => s.data.text)
+          .join('\n') ?? '执行成功')
+      : (result?.error ?? '执行失败');
+
+    if (!success) {
+      return this.error(`执行 ${cmdDisplay} 失败: ${resultText}`, resultText);
     }
 
-    // Separate media segments (image/record) that need direct sending from text segments
-    const textParts: string[] = [];
-    const mediaSegments: MessageSegment[] = [];
-    if (result.segments) {
-      for (const seg of result.segments) {
-        if (seg.type === 'text') {
-          textParts.push(seg.data.text);
-        } else if (seg.type === 'image' || seg.type === 'record') {
-          mediaSegments.push(seg);
-        }
-      }
-    }
-
-    // If the command produced media segments, send them directly to the chat
-    // since the normal pipeline SEND stage won't handle segments from tool results.
-    if (mediaSegments.length > 0) {
-      try {
-        await this.messageAPI.sendFromContext(mediaSegments, commandContext, 60000);
-        logger.info(`[ExecuteCommandToolExecutor] Sent ${mediaSegments.length} media segment(s) for /${commandName}`);
-        textParts.push(`[已发送${mediaSegments.length}个媒体文件]`);
-      } catch (err) {
-        logger.error(`[ExecuteCommandToolExecutor] Failed to send media for /${commandName}:`, err);
-        textParts.push(`[媒体文件发送失败]`);
-      }
-    }
-
-    const replyText = textParts.length > 0 ? textParts.join('\n') : `命令 /${commandName} 执行成功`;
-
-    return this.success(replyText, {
+    return this.success(`[已执行命令: ${cmdDisplay}]\n${resultText}`, {
       command: commandName,
       args,
     });
-  }
-
-  /**
-   * Get a summary of admin-level commands available for proxy execution.
-   * Used by system prompt generation to inform the LLM of available commands.
-   */
-  getAvailableAdminCommands(): {
-    name: string;
-    description?: string;
-    usage?: string;
-    permissions?: PermissionLevel[];
-  }[] {
-    const allCommands = this.commandManager.getAllCommands({
-      userId: '0',
-      groupId: '',
-      userType: 'owner',
-    });
-
-    return allCommands
-      .filter((reg) => {
-        const perms = reg.permissions ?? reg.handler.permissions;
-        if (!perms || perms.length === 0) return false;
-        // Only include commands that require admin or owner permission
-        const requiresElevated = perms.some((p) => p === 'admin' || p === 'owner');
-        if (!requiresElevated) return false;
-        // Exclude blocked commands
-        if (BLOCKED_COMMANDS.has(reg.handler.name.toLowerCase())) return false;
-        return true;
-      })
-      .map((reg) => ({
-        name: reg.handler.name,
-        description: reg.handler.description,
-        usage: reg.handler.usage,
-        permissions: reg.permissions ?? reg.handler.permissions,
-      }));
   }
 }
