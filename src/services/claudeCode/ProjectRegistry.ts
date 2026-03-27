@@ -74,7 +74,7 @@ export class ProjectRegistry {
     }
 
     // 2. Load and merge persisted dynamic projects
-    this.loadPersistedProjects();
+    this.reloadProjects();
 
     logger.info(
       `[ProjectRegistry] Initialized with ${this.projects.size} projects (${this.configAliases.size} from config)`,
@@ -97,7 +97,14 @@ export class ProjectRegistry {
     }
 
     // Try alias lookup first
-    const byAlias = this.projects.get(identifier);
+    let byAlias = this.projects.get(identifier);
+    if (byAlias) {
+      return byAlias;
+    }
+
+    // Alias miss — reload from file in case new projects were added at runtime
+    this.reloadProjects();
+    byAlias = this.projects.get(identifier);
     if (byAlias) {
       return byAlias;
     }
@@ -216,10 +223,18 @@ export class ProjectRegistry {
   }
 
   /**
-   * Load dynamically added projects from the persist file.
-   * Config projects take priority — persisted entries with conflicting aliases are skipped.
+   * Reload dynamic projects from the persist file.
+   * Clears all non-config projects first, then re-reads the file.
+   * Called automatically on startup and when resolve() misses a lookup.
    */
-  private loadPersistedProjects(): void {
+  reloadProjects(): void {
+    // Remove all dynamic (non-config) projects before reloading
+    for (const alias of this.projects.keys()) {
+      if (!this.configAliases.has(alias)) {
+        this.projects.delete(alias);
+      }
+    }
+
     if (!existsSync(this.persistPath)) {
       return;
     }
