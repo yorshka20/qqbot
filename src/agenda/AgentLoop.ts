@@ -13,6 +13,7 @@ import type { ProtocolName } from '@/core/config/types/protocol';
 import type { HookManager } from '@/hooks/HookManager';
 import type { MessageSegment } from '@/message/types';
 import type { ToolManager } from '@/tools/ToolManager';
+import { stripSkipCardMarker } from '@/utils/contentMarkers';
 import { getCurrentDateTimeForPrompt } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
 import { buildAgendaHookContext } from './AgendaHookContext';
@@ -69,9 +70,10 @@ export class AgentLoop {
       return;
     }
 
-    // Try card rendering for long/structured replies
+    // Try card rendering for long/structured replies (skip if /skip_card marker present)
     const cardResult = await this.tryRenderCard(reply, contextId);
-    const message: string | MessageSegment[] = cardResult ?? reply;
+    const cleanReply = stripSkipCardMarker(reply);
+    const message: string | MessageSegment[] = cardResult ?? cleanReply;
 
     try {
       if (isPrivate) {

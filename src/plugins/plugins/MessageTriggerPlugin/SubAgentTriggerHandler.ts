@@ -8,6 +8,7 @@ import type { SendMessageResult } from '@/api/types';
 import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
+import { hasSkipCardMarker, stripSkipCardMarker } from '@/utils/contentMarkers';
 import { logger } from '@/utils/logger';
 import type { SubAgentTriggerRule } from './types';
 
@@ -369,12 +370,16 @@ export class SubAgentTriggerHandler {
     const groupIdStr = groupId.toString();
 
     try {
-      const cardResult = await this.aiService.processReplyMaybeCard(resultText, groupIdStr);
+      const skipCard = hasSkipCardMarker(resultText);
+      const cleanText = skipCard ? stripSkipCardMarker(resultText) : resultText;
+
+      const cardResult = skipCard ? null : await this.aiService.processReplyMaybeCard(cleanText, groupIdStr);
       const isCard = cardResult !== null;
-      const segments = cardResult ? cardResult.segments : new MessageBuilder().text(resultText).build();
+      const segments = cardResult ? cardResult.segments : new MessageBuilder().text(cleanText).build();
 
       const useForward =
         !isCard &&
+        !skipCard &&
         this.protocol === 'milky' &&
         this.botSelfId > 0 &&
         (await this.conversationConfigService.getUseForwardMsg(groupIdStr, 'group'));

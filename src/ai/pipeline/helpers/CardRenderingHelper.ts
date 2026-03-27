@@ -9,6 +9,7 @@ import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
 import { CardRenderingService, getCardDeckNoteForPrompt, getCardTypeSpecForPrompt } from '@/services/card';
+import { hasSkipCardMarker } from '@/utils/contentMarkers';
 import { logger } from '@/utils/logger';
 import type { PromptManager } from '../../prompt/PromptManager';
 import type { LLMService } from '../../services/LLMService';
@@ -137,6 +138,7 @@ export class CardRenderingHelper {
   // ---------------------------------------------------------------------------
 
   shouldUseCardReply(responseText: string): boolean {
+    if (hasSkipCardMarker(responseText)) return false;
     return responseText.length >= CardRenderingService.getThreshold();
   }
 
