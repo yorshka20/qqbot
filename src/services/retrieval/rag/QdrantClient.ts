@@ -15,7 +15,7 @@ const RAG_POINT_ID_NAMESPACE = uuidv5.DNS;
  * Qdrant accepts only: uint64 number, or string in UUID format.
  * Other strings are converted to deterministic UUID v5.
  */
-function toQdrantPointId(id: string | number): string | number {
+export function toQdrantPointId(id: string | number): string | number {
   if (typeof id === 'number' && Number.isInteger(id) && id >= 0) {
     return id;
   }

@@ -11,6 +11,7 @@
 
 import type { LLMService } from '@/ai/services/LLMService';
 import type { RetrievalService } from '@/services/retrieval';
+import { toQdrantPointId } from '@/services/retrieval/rag/QdrantClient';
 import { logger } from '@/utils/logger';
 import type { WeChatDatabase } from '../WeChatDatabase';
 import { normalizeEntityName, normalizeEntityType } from './momentsEntities';
@@ -100,8 +101,8 @@ export class WechatMomentsAnalysisService {
   private async fetchMoments(momentIds: string[]): Promise<MomentItem[]> {
     const moments: MomentItem[] = [];
 
-    // Scroll through the collection and filter by our IDs
-    const idSet = new Set(momentIds);
+    // Convert raw document IDs to Qdrant point IDs (UUID v5) for matching
+    const idSet = new Set(momentIds.map((id) => String(toQdrantPointId(id))));
     for await (const page of this.retrieval.scrollAll(COLLECTION, {
       limit: 100,
       withPayload: { include: ['content', 'create_time'] } as unknown as boolean,
