@@ -91,9 +91,7 @@ export class WechatMomentsIngestService {
     while (result.fetched < maxTotal && !reachedEnd) {
       logger.info(`[MomentsIngest] Fetching page | maxId=${maxId ?? 'none'} fetched=${result.fetched}/${maxTotal}`);
 
-      const moments = wxid
-        ? await this.padProClient.getUserMoments(wxid, maxId)
-        : await this.padProClient.getMomentsTimeline(maxId);
+      const moments = await this.fetchMomentsWithRetry(wxid, maxId);
       if (moments.length === 0) {
         logger.info('[MomentsIngest] No more moments returned');
         break;
@@ -224,6 +222,34 @@ export class WechatMomentsIngestService {
     );
 
     return result;
+  }
+
+  /**
+   * Fetch moments with retry on transient failures (timeout, network errors).
+   * Retries up to 2 times with exponential backoff (5s, 15s).
+   */
+  private async fetchMomentsWithRetry(wxid: string | undefined, maxId: number | undefined): Promise<WXMoment[]> {
+    const maxRetries = 2;
+    const backoffMs = [5_000, 15_000];
+
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return wxid
+          ? await this.padProClient.getUserMoments(wxid, maxId)
+          : await this.padProClient.getMomentsTimeline(maxId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const isTransient = msg.includes('timed out') || msg.includes('Unable to connect') || msg.includes('fetch failed');
+
+        if (!isTransient || attempt >= maxRetries) {
+          throw err;
+        }
+
+        const delay = backoffMs[attempt];
+        logger.warn(`[MomentsIngest] Fetch failed (attempt ${attempt + 1}/${maxRetries + 1}): ${msg} — retrying in ${delay / 1000}s`);
+        await sleep(delay);
+      }
+    }
   }
 
   /**

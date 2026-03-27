@@ -414,21 +414,21 @@ export class WeChatPadProClient {
 
   /** Get own moments timeline. Pass maxId from last result to paginate. */
   async getMomentsTimeline(maxId?: number): Promise<WXMoment[]> {
-    const env = await this.post<PadProEnvelope<RawMomentsData>>('/sns/SendSnsTimeLine', {
-      UserName: '',
-      MaxID: maxId ?? 0,
-      FirstPageMD5: '',
-    });
+    const env = await this.post<PadProEnvelope<RawMomentsData>>(
+      '/sns/SendSnsTimeLine',
+      { UserName: '', MaxID: maxId ?? 0, FirstPageMD5: '' },
+      60_000,
+    );
     return (env.Data?.objectList ?? []).map(mapMoment);
   }
 
   /** Get a specific person's moments */
   async getUserMoments(wxid: string, maxId?: number): Promise<WXMoment[]> {
-    const env = await this.post<PadProEnvelope<RawMomentsData>>('/sns/SendSnsUserPage', {
-      UserName: wxid,
-      MaxID: maxId ?? 0,
-      FirstPageMD5: '',
-    });
+    const env = await this.post<PadProEnvelope<RawMomentsData>>(
+      '/sns/SendSnsUserPage',
+      { UserName: wxid, MaxID: maxId ?? 0, FirstPageMD5: '' },
+      60_000,
+    );
     return (env.Data?.objectList ?? []).map(mapMoment);
   }
 
@@ -513,13 +513,13 @@ export class WeChatPadProClient {
     return json;
   }
 
-  private async post<T>(path: string, body: unknown): Promise<T> {
+  private async post<T>(path: string, body: unknown, timeoutMs?: number): Promise<T> {
     const url = `${this.base}${path}?key=${encodeURIComponent(this.authKey)}`;
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(this.timeout),
+      signal: AbortSignal.timeout(timeoutMs ?? this.timeout),
     });
     if (!resp.ok) throw new Error(`WeChatPadPro POST ${path} → HTTP ${resp.status}`);
     const json = (await resp.json()) as T;
