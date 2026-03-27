@@ -28,11 +28,12 @@
      {{else}}
    - 该项目没有 CLAUDE.md，根据 README 和现有代码风格理解约定
      {{/if}}
-   - `.claude-learnings/` — 架构知识库（如存在，必读。**本地文件，已 gitignore**）
-   - `.claude-workbook/` — 工作日志目录（按需查阅。**本地文件，已 gitignore**）
    - `README.md` — 项目说明
 
-3. 检查 `.claude-learnings/`和 `.claude-workbook/`中是否有与当前任务相关的历史记录
+3. 阅读知识库与工作日志（**本地文件，已 gitignore**）：
+   - `.claude-learnings/index.md` — 架构知识索引（必读），按需阅读相关 scope 文件
+   - `.claude-workbook/index.md` — 工作日志索引（必读），按需阅读相关日期报告
+   - 如果目录不存在，在 Step 5 完成后创建（参见"知识库与工作日志维护"）
 
 ### Step 2: ANALYZE — 分析理解
 
@@ -67,7 +68,7 @@
 4. **提交并推送**：
 
    ```bash
-   git add <files>  # 不要 add .claude-learnings.md 和 .claude-workbook/
+   git add <files>  # 不要 add .claude-learnings/ 和 .claude-workbook/
    git commit -m "type(scope): description
 
    Co-Authored-By: Claude <noreply@anthropic.com>"
@@ -80,42 +81,70 @@
 
 ## 知识库与工作日志维护
 
-两者独立，均须维护。
+两者独立，均须维护。两个目录均为本地文件（已 gitignore），不提交 git。
 
-### 架构知识 → `.claude-learnings.md`
+### 架构知识 → `.claude-learnings/`
 
-仅记录**可复用的架构细节和经验教训**，不记录具体任务日志：
+按 scope 分文件记录**可复用的架构细节和经验教训**，不记录具体任务日志。
 
-- 新的架构知识 → 更新"架构概览"
-- 可复用的代码模式 → 更新"代码模式"
-- 踩坑经验 → 提炼通用教训添加到"常见陷阱"（详细排查过程放工作日志）
-- 待改进项 → 添加到"待改进项"
-- 维护"工作汇报索引"表，添加当日条目
+**目录结构**：
 
-如果文件不存在，按以下结构创建：
-
-```markdown
-# Project Learnings
-
-本文档记录项目的架构知识和代码模式，供后续 Claude Code 任务参考。
-
-## 工作汇报索引
-
-| 日期 | 主要内容 |
-| ---- | -------- |
-
-## 架构概览
-
-## 代码模式
-
-## 常见陷阱
-
-## 待改进项
+```
+.claude-learnings/
+├── index.md          # 所有 scope 的内容索引（必须维护）
+├── rendering.md      # 示例 scope: 渲染相关
+├── core.md           # 示例 scope: 核心工具函数
+└── ...               # 按需新增 scope 文件
 ```
 
-### 工作日志 → `.claude-workbook/YYYY-MM-DD.md`
+**更新规则**：
+- 新的架构知识、可复用的代码模式、踩坑经验 → 写入对应 scope 文件（判断应写入已有 scope 还是新建 scope）
+- 每次更新 scope 文件后，必须同步更新 `index.md` 索引
+- 详细排查过程放工作日志，learnings 只保留提炼后的通用教训
 
-记录本次任务的**具体问题排查和解决过程**：任务描述、实现方案、涉及文件、遇到的问题和解决方式。当日文件已存在则在末尾追加（用 `---` 分隔），不存在则创建，标题为 `# Claude Code 工作日志 - YYYY-MM-DD`。
+**如果目录不存在**，创建 `index.md`：
+
+```markdown
+# Project Learnings Index
+
+本目录按 scope 记录项目的关键细节和设计要点。阅读时先看此索引，按需阅读具体 scope 文件。
+
+## Scope 索引
+
+| Scope | 文件 | 主要内容 |
+|-------|------|----------|
+```
+
+### 工作日志 → `.claude-workbook/`
+
+按日期记录本次任务的**具体问题排查和解决过程**。
+
+**目录结构**：
+
+```
+.claude-workbook/
+├── index.md          # 所有日报的摘要索引（必须维护）
+├── 2026-03-27.md     # 按日期记录
+└── ...
+```
+
+**更新规则**：
+- 当日文件（`YYYY-MM-DD.md`）已存在则在末尾追加（用 `---` 分隔），不存在则创建，标题为 `# Claude Code 工作日志 - YYYY-MM-DD`
+- 记录：任务描述、实现方案、涉及文件、遇到的问题和解决方式
+- 每次更新日报后，必须同步更新 `index.md` 索引
+
+**如果目录不存在**，创建 `index.md`：
+
+```markdown
+# Workbook Index
+
+本目录按日期记录每天的工作汇报。阅读时先看此索引，按需阅读具体日期的详细报告。
+
+## 日报索引
+
+| 日期 | 文件 | 主要工作内容 |
+|------|------|-------------|
+```
 
 ---
 

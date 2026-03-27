@@ -14,7 +14,7 @@
 
 1. 创建项目目录（如果不存在）
 2. 初始化项目骨架（package.json / Cargo.toml / pyproject.toml 等）
-3. 设置 `.gitignore`，确保包含 `.claude-learnings.md` 和 `.claude-workbook/*`
+3. 设置 `.gitignore`，确保包含 `.claude-learnings/` 和 `.claude-workbook/`
 4. 安装必要依赖
 
 ## Step 2: 实现功能
@@ -25,28 +25,41 @@
 
 1. **`README.md`** — 项目说明、使用方式、开发指南
 
-2. **`.claude-learnings.md`** — 架构知识库（**本地文件，不提交 git**）：
+2. **`.claude-learnings/`** — 架构知识目录（**本地文件，不提交 git**）：
+
+   创建 `index.md`：
 
    ```markdown
-   # Project Learnings
+   # Project Learnings Index
 
-   本文档记录项目的架构知识和代码模式，供后续 Claude Code 任务参考。
+   本目录按 scope 记录项目的关键细节和设计要点。阅读时先看此索引，按需阅读具体 scope 文件。
 
-   ## 工作汇报索引
+   ## Scope 索引
 
-   | 日期 | 主要内容 |
-   | ---- | -------- |
-
-   ## 架构概览
-
-   ## 代码模式
-
-   ## 常见陷阱
-
-   ## 待改进项
+   | Scope | 文件 | 主要内容 |
+   |-------|------|----------|
+   | Core | [core.md](core.md) | 项目架构概览、技术选型、核心模式 |
    ```
 
-3. **`.claude-workbook/YYYY-MM-DD.md`** — 首日工作日志（**本地文件，不提交 git**）：
+   创建首个 scope 文件（如 `core.md`），记录项目架构和技术选型决策。
+
+3. **`.claude-workbook/`** — 工作日志目录（**本地文件，不提交 git**）：
+
+   创建 `index.md`：
+
+   ```markdown
+   # Workbook Index
+
+   本目录按日期记录每天的工作汇报。阅读时先看此索引，按需阅读具体日期的详细报告。
+
+   ## 日报索引
+
+   | 日期 | 文件 | 主要工作内容 |
+   |------|------|-------------|
+   | YYYY-MM-DD | [YYYY-MM-DD.md](YYYY-MM-DD.md) | 项目初始化 |
+   ```
+
+   创建首日工作日志 `YYYY-MM-DD.md`：
 
    ```markdown
    # Claude Code 工作日志 - YYYY-MM-DD

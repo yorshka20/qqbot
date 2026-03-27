@@ -12,13 +12,13 @@
 
 在做任何事之前，用 2-3 句话复述你对上述 Task 的理解：目标是什么、交付物是什么、有哪些约束。如果任务描述有歧义，列出你的假设。确认理解准确后再继续。
 
-## Step 1: Read — 阅读项目规范
+## Step 1: Read — 阅读项目规范与知识库
 
 按顺序阅读：
 
 1. `CLAUDE.md` — 开发规范与约定
-2. `template/LEARNINGS.md` — 架构知识库 & 工作日志索引
-3. 检查索引中是否有与当前任务相关的历史记录，如有则查阅 `workbook/` 中对应日志
+2. `.claude-learnings/index.md` — 架构知识索引，按需阅读相关 scope 文件
+3. `.claude-workbook/index.md` — 工作日志索引，按需阅读与当前任务相关的日期报告
 
 ## Step 2: Analyze & Plan — 分析与计划
 
@@ -52,9 +52,8 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ## Step 5: Wrap Up — 收尾
 
-- 架构知识更新到 `template/LEARNINGS.md`
-- 工作日志输出到 `workbook/YYYY-MM-DD.md`
-- 在 LEARNINGS.md 索引中添加条目
+- 将新发现的架构知识、代码模式、踩坑经验写入 `.claude-learnings/` 对应 scope 文件（或新建 scope），然后更新 `index.md` 索引
+- 工作日志输出到 `.claude-workbook/YYYY-MM-DD.md`，然后更新 `index.md` 索引
 
 ---
 
