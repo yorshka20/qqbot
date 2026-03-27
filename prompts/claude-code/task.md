@@ -1,62 +1,44 @@
-# Claude Code Task
-
-你正在为 QQBot 项目执行一个开发任务。
-
-## 工作流程
-
-**重要**: 在开始任务前，你必须先阅读工作流程指南：
-
-```
-请先阅读: template/WORKFLOW.md
-```
-
-这份文档定义了标准的工作流程：**RECEIVE → ANALYZE → PLAN → EXECUTE → VERIFY**
-
-你需要严格按照 WORKFLOW.md 中定义的流程执行任务，包括：
-
-- 每个阶段的具体动作
-- 输出格式要求
-- 检查点验证
-
-## 项目上下文
-
-- **项目路径**: {{workingDirectory}}
-- **任务ID**: {{taskId}}
-
-### 必读文档
-
-1. `CLAUDE.md` - 项目开发规范
-2. `template/LEARNINGS.md` - 项目知识库（架构、代码模式、已知陷阱、文档索引）
-3. `workbook/` - Claude Code 往日工作日志（按需查阅，通过 LEARNINGS.md 中的索引定位相关记录）
-
-> **重要**: LEARNINGS.md 包含了项目架构知识和工作汇报索引。开始任务前，检查索引中是否有与当前任务相关的历史记录，快速了解上下文。
-
-## 你的任务
+# Task
 
 {{userPrompt}}
 
-## 任务执行要求
+---
 
-### 1. 遵循 WORKFLOW 流程
+# Execution Protocol
 
-按照 `template/WORKFLOW.md` 定义的 5 个阶段执行：
+**项目路径**: `{{workingDirectory}}` | **任务ID**: `{{taskId}}`
 
-1. **RECEIVE** - 确认工作目录，阅读相关文档
-2. **ANALYZE** - 探索代码，理解现有实现
-3. **PLAN** - 拆分子任务，定义执行顺序
-4. **EXECUTE** - 逐个完成子任务，每完成一个进行验证
-5. **VERIFY** - 运行完整检查，输出完成报告
+## Step 0: Restate — 复述任务
 
-### 2. 质量检查
+在做任何事之前，用 2-3 句话复述你对上述 Task 的理解：目标是什么、交付物是什么、有哪些约束。如果任务描述有歧义，列出你的假设。确认理解准确后再继续。
 
-在提交代码前必须通过：
+## Step 1: Read — 阅读项目规范
+
+按顺序阅读：
+
+1. `CLAUDE.md` — 开发规范与约定
+2. `template/LEARNINGS.md` — 架构知识库 & 工作日志索引
+3. 检查索引中是否有与当前任务相关的历史记录，如有则查阅 `workbook/` 中对应日志
+
+## Step 2: Analyze & Plan — 分析与计划
+
+- 探索相关代码，理解现有实现
+- 拆分子任务，定义执行顺序
+- 识别风险点和依赖关系
+
+## Step 3: Execute — 执行
+
+- 逐个完成子任务，每完成一个进行局部验证
+- 遇到与计划不符的情况，先停下来重新评估再继续
+
+## Step 4: Verify & Commit — 验证与提交
+
+提交前必须通过质量检查：
 
 ```bash
 bun run typecheck
 bun run lint
 ```
-
-### 3. Git 规范
 
 Commit message 格式：
 
@@ -68,15 +50,24 @@ Commit message 格式：
 Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
-### 4. 进度通知（可选）
+## Step 5: Wrap Up — 收尾
 
-如需通知 Bot 进度，可使用 MCP API：
+- 架构知识更新到 `template/LEARNINGS.md`
+- 工作日志输出到 `workbook/YYYY-MM-DD.md`
+- 在 LEARNINGS.md 索引中添加条目
+
+---
+
+# Reference（按需查阅，不需预读）
+
+<details>
+<summary>进度通知 API</summary>
 
 ```bash
 # 任务进度
 curl -X POST {{mcpApiUrl}}/api/notify \
   -H "Content-Type: application/json" \
-  -d '{"taskId":"{{taskId}}","status":"progress","progress":50,"message":"完成了 PLAN 阶段"}'
+  -d '{"taskId":"{{taskId}}","status":"progress","progress":50,"message":"完成了计划阶段"}'
 
 # 发送消息
 curl -X POST {{mcpApiUrl}}/api/send \
@@ -84,16 +75,18 @@ curl -X POST {{mcpApiUrl}}/api/send \
   -d '{"target":{"type":"{{targetType}}","id":"{{targetId}}"},"content":"消息内容"}'
 ```
 
-## 可用 Tools
+</details>
 
-你可以通过 MCP API 调用以下 tools 来辅助完成工作流：
-
-### 调用方式
+<details>
+<summary>MCP Tools 调用方式</summary>
 
 ```bash
+# 查看所有可用 tools
+GET {{mcpApiUrl}}/api/tools/list
+
+# 调用 tool
 POST {{mcpApiUrl}}/api/tools/execute
 Content-Type: application/json
-
 {
   "tool": "tool_name",
   "parameters": { ... },
@@ -101,49 +94,37 @@ Content-Type: application/json
 }
 ```
 
-查看所有可用 tools：
-
-```bash
-GET {{mcpApiUrl}}/api/tools/list
-```
-
-### Git 操作
-
-**`git_commit`** - 按照项目规范创建 Git 提交
+**`git_commit`** — 创建 Git 提交
 
 ```json
 {
   "tool": "git_commit",
   "parameters": {
-    "message": "feat: add user authentication",
-    "scope": "auth",
-    "body": "可选的详细描述",
-    "files": ["src/auth.ts"],
+    "message": "feat: add feature",
+    "scope": "module",
+    "body": "可选描述",
+    "files": ["src/file.ts"],
     "skipHooks": false
   }
 }
 ```
 
-**`git_branch`** - 分支管理（create/switch/list/delete/merge）
+**`git_branch`** — 分支管理（create/switch/list/delete/merge）
 
 ```json
 {
   "tool": "git_branch",
-  "parameters": {
-    "action": "create",
-    "name": "feat/user-auth",
-    "from": "main"
-  }
+  "parameters": { "action": "create", "name": "feat/xxx", "from": "main" }
 }
 ```
 
-**`git_create_pr`** - 创建 GitHub Pull Request
+**`git_create_pr`** — 创建 GitHub PR
 
 ```json
 {
   "tool": "git_create_pr",
   "parameters": {
-    "title": "feat: add user authentication",
+    "title": "feat: xxx",
     "body": "可选描述",
     "base": "main",
     "draft": false
@@ -151,56 +132,28 @@ GET {{mcpApiUrl}}/api/tools/list
 }
 ```
 
-### 质量检查
-
-**`quality_check`** - 运行类型检查、lint、测试、构建
+**`quality_check`** — 运行 typecheck / lint / test / build
 
 ```json
 {
   "tool": "quality_check",
-  "parameters": {
-    "checks": ["typecheck", "lint"],
-    "fix": false
-  }
+  "parameters": { "checks": ["typecheck", "lint"], "fix": false }
 }
 ```
 
-### 项目信息
-
-**`project_info`** - 获取项目结构、依赖、git 状态
+**`project_info`** — 查询：`structure` / `dependencies` / `recent-changes` / `git-status` / `git-log`
 
 ```json
-{
-  "tool": "project_info",
-  "parameters": {
-    "query": "git-status"
-  }
-}
+{ "tool": "project_info", "parameters": { "query": "git-status" } }
 ```
 
-查询类型：`structure` / `dependencies` / `recent-changes` / `git-status` / `git-log`
-
-**`read_file`** - 读取文件内容
+**`read_file`** — 读取文件
 
 ```json
 {
   "tool": "read_file",
-  "parameters": {
-    "path": "src/index.ts",
-    "startLine": 1,
-    "endLine": 50
-  }
+  "parameters": { "path": "src/index.ts", "startLine": 1, "endLine": 50 }
 }
 ```
 
-## 开始执行
-
-现在，请：
-
-1. 阅读 `template/WORKFLOW.md` - 了解标准工作流程
-2. 阅读 `CLAUDE.md` - 了解项目规范
-3. 阅读 `template/LEARNINGS.md` - 了解项目架构、已知陷阱和工作汇报索引
-4. 检查工作汇报索引，查阅与当前任务相关的历史记录（如有）
-5. 按照 WORKFLOW 流程开始执行任务
-
-> **完成后**: 架构知识更新到 `template/LEARNINGS.md`，工作日志输出到 `workbook/YYYY-MM-DD.md`，并在 LEARNINGS.md 索引中添加条目。
+</details>
