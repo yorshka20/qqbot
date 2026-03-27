@@ -78,6 +78,5 @@ scripts/local
 
 .git.backup.*
 
-workbook/*
 .claude-workbook/*
-.claude-learnings.md
+.claude-learnings/*

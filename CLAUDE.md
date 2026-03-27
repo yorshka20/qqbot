@@ -144,3 +144,45 @@ The bot automatically handles database schema initialization. For SQLite, tables
 - **Tool System**: `src/tools/ToolManager.ts`
 - **Plugin Manager**: `src/plugins/PluginManager.ts`
 - **Configuration**: `config.jsonc` (local, not committed)
+
+## Workflow: Workbook & Learnings
+
+项目维护两个知识目录，**每次工作都必须阅读和更新**：
+
+### 开始工作时
+
+1. 阅读本文件 (`CLAUDE.md`)
+2. 阅读 `.claude-workbook/index.md` — 了解历史工作情况（先看索引，按需阅读具体日期报告）
+3. 阅读 `.claude-learnings/index.md` — 了解项目关键细节和设计要点（先看索引，按需阅读相关 scope 文件）
+4. 开始执行任务
+
+### 完成工作后
+
+1. **更新 `.claude-workbook/`**：在当天日期文件（`YYYY-MM-DD.md`）中记录工作内容（问题描述、根因分析、解决方案、涉及文件、验证结果），然后更新 `index.md` 索引
+2. **更新 `.claude-learnings/`**：将新发现的关键细节和要点写入对应 scope 文件，或新建 scope 文件。然后更新 `index.md` 索引
+3. 提交代码（如 prompt 要求）
+
+### 目录结构
+
+```
+.claude-workbook/
+├── index.md              # 所有日报的摘要索引
+├── 2026-03-27.md         # 按日期记录的工作汇报
+├── 2026-03-26.md
+└── ...
+
+.claude-learnings/
+├── index.md              # 所有 scope 的内容索引
+├── rendering.md          # Scope: Puppeteer/渲染相关
+├── wechat.md             # Scope: 微信 API 相关
+├── core.md               # Scope: 核心工具函数/通用模式
+├── ai-providers.md       # Scope: LLM provider 集成要点
+├── plugins.md            # Scope: 插件开发要点
+└── ...                   # 按需新增 scope 文件
+```
+
+### 规则
+
+- **Workbook**: 按日期（`YYYY-MM-DD.md`）记录，`index.md` 是所有日报的摘要
+- **Learnings**: 按 scope 分文件记录，scope 可按需新增。判断内容应写入已有 scope 还是新建 scope
+- **两个目录的 `index.md`** 都必须在内容变更后同步更新，简要记录新增/修改的内容
