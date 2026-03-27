@@ -7,12 +7,31 @@ import { BrowserService } from '@/services/browser/BrowserService';
 import type { ToolCall, ToolExecutionContext, ToolExecutor, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 import { avatarUrl, renderReportHTML } from './renderReportHTML';
-import type { GroupReportData } from './types';
+import type { GroupReportData, HourlyActivity } from './types';
+
+/** Pre-computed statistics that should override LLM-provided values */
+export interface PrecomputedReportStats {
+  totalMessages: number;
+  activeMembers: number;
+  highlightTimeRange: string;
+  hourlyActivity: HourlyActivity[];
+}
 
 export class GroupReportToolExecutor implements ToolExecutor {
   name = 'render_group_report';
 
+  /** Pre-computed stats keyed by groupId, set before subagent runs */
+  private precomputedStats = new Map<string, PrecomputedReportStats>();
+
   constructor(private messageAPI: MessageAPI) {}
+
+  /**
+   * Store pre-computed stats for a group. The execute() method will use these
+   * to override any stats in the LLM's tool call, ensuring data integrity.
+   */
+  setPrecomputedStats(groupId: string, stats: PrecomputedReportStats): void {
+    this.precomputedStats.set(groupId, stats);
+  }
 
   async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     const groupId = context.groupId;
@@ -41,13 +60,25 @@ export class GroupReportToolExecutor implements ToolExecutor {
 
     // Fill defaults
     reportData.groupId = String(groupId);
-    reportData.hourlyActivity = reportData.hourlyActivity ?? [];
     reportData.topics = reportData.topics ?? [];
     reportData.memberHighlights = reportData.memberHighlights ?? [];
     reportData.featuredMessages = reportData.featuredMessages ?? [];
     reportData.totalSummary = reportData.totalSummary ?? '';
-    reportData.highlightTimeRange = reportData.highlightTimeRange ?? '';
-    reportData.activeMembers = reportData.activeMembers ?? 0;
+
+    // Override statistics with pre-computed values (LLM may modify these during pass-through)
+    const precomputed = this.precomputedStats.get(String(groupId));
+    if (precomputed) {
+      reportData.totalMessages = precomputed.totalMessages;
+      reportData.activeMembers = precomputed.activeMembers;
+      reportData.highlightTimeRange = precomputed.highlightTimeRange;
+      reportData.hourlyActivity = precomputed.hourlyActivity;
+      this.precomputedStats.delete(String(groupId));
+      logger.debug(`[GroupReportTool] Applied pre-computed stats for group ${groupId}`);
+    } else {
+      reportData.hourlyActivity = reportData.hourlyActivity ?? [];
+      reportData.highlightTimeRange = reportData.highlightTimeRange ?? '';
+      reportData.activeMembers = reportData.activeMembers ?? 0;
+    }
 
     try {
       logger.info(`[GroupReportTool] Rendering report for group ${groupId}`);

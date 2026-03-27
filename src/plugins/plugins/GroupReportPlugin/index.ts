@@ -24,7 +24,7 @@ import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { ToolSpec } from '@/tools/types';
-import { DATE_TIMEZONE } from '@/utils/dateTime';
+import { DATE_TIMEZONE, dateInTimezone } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../../decorators';
 import { PluginBase } from '../../PluginBase';
@@ -204,6 +204,14 @@ export class GroupReportPlugin extends PluginBase {
           chatHistory,
         })
       : '生成昨日群聊每日汇报';
+
+    // Store pre-computed stats so the tool executor uses them (bypasses LLM data corruption)
+    this.reportToolExecutor.setPrecomputedStats(String(groupId), {
+      totalMessages: stats.totalMessages,
+      activeMembers: stats.activeMembers,
+      highlightTimeRange: stats.highlightTimeRange,
+      hourlyActivity: stats.hourlyActivity,
+    });
 
     const parentContext = {
       userId: context.userId,
@@ -447,8 +455,9 @@ export class GroupReportPlugin extends PluginBase {
     const now = new Date();
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const dateStr = formatter.format(yesterday); // YYYY-MM-DD
-    const start = new Date(`${dateStr}T00:00:00`);
-    const end = new Date(`${dateStr}T23:59:59`);
+    // Construct start/end with correct timezone offset (not machine-local time)
+    const start = dateInTimezone(dateStr, '00:00:00');
+    const end = dateInTimezone(dateStr, '23:59:59.999');
     return { start, end, dateStr };
   }
 }

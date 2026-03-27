@@ -144,3 +144,30 @@ export function formatTimeOnly(date: Date | string | number): string {
 
 /** The timezone used for all date formatting. */
 export const DATE_TIMEZONE = TIMEZONE;
+
+/**
+ * Get the UTC offset string (e.g. "+09:00") for the configured timezone on a given date.
+ * Handles DST-aware timezones correctly by checking the offset on the specific date.
+ */
+export function getTimezoneOffsetString(referenceDate: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: TIMEZONE,
+    timeZoneName: 'longOffset',
+  }).formatToParts(referenceDate);
+  const tz = parts.find((p) => p.type === 'timeZoneName')?.value;
+  const match = tz?.match(/GMT([+-]\d{2}:\d{2})/);
+  if (match) return match[1];
+  // "GMT" without offset means UTC
+  return '+00:00';
+}
+
+/**
+ * Create a Date object representing a specific local time in the configured timezone.
+ * For example, dateInTimezone("2026-03-26", "00:00:00") returns a Date representing
+ * 2026-03-26 00:00:00 in DATE_TIMEZONE, regardless of the machine's local timezone.
+ */
+export function dateInTimezone(dateStr: string, timeStr: string): Date {
+  const refDate = new Date(`${dateStr}T12:00:00Z`);
+  const offset = getTimezoneOffsetString(refDate);
+  return new Date(`${dateStr}T${timeStr}${offset}`);
+}
