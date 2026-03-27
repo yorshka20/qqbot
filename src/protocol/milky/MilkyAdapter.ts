@@ -120,9 +120,7 @@ export class MilkyAdapter extends WebSocketProtocolAdapter {
       const normalized = MilkyEventNormalizer.normalizeEvent(syntheticEvent);
       if (!normalized || normalized.type !== 'message') return null;
 
-      logger.info(
-        `[MilkyAdapter] Fetched message from server | messageSeq=${messageSeq} | peerId=${peerId}`,
-      );
+      logger.info(`[MilkyAdapter] Fetched message from server | messageSeq=${messageSeq} | peerId=${peerId}`);
       return normalized as NormalizedMessageEvent;
     } catch (error) {
       logger.warn(

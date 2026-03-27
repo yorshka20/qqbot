@@ -36,6 +36,10 @@ export interface ProtocolConfig {
   connection: ProtocolConnectionConfig;
   reconnect: ReconnectConfig;
   discord?: DiscordConfig;
+  // Per-protocol owner override (user ID on this protocol that maps to the bot owner)
+  owner?: string;
+  // Per-protocol admin overrides (user IDs on this protocol that have admin permission)
+  admins?: string[];
 }
 
 export interface APIConfig {

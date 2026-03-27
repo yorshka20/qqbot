@@ -140,7 +140,7 @@ export class LLMService {
     }
 
     // Check health status and try fallback if unhealthy.
-    if (provider && resolvedName && this.healthCheckManager ) {
+    if (provider && resolvedName && this.healthCheckManager) {
       if (!this.healthCheckManager.isServiceHealthySync(resolvedName)) {
         logger.warn(`[LLMService] Provider "${resolvedName}" is unhealthy, trying healthy fallback`);
         const healthyFallback = await this.getFirstHealthyProvider(sessionId, resolvedName);

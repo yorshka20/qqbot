@@ -140,7 +140,6 @@ export class AIService {
     this.imageFacadeService = new ImageFacadeService(hookManager, imageGenerationService, imagePromptService);
   }
 
-
   // --- Sub-agent ---
 
   getSubAgentManager(): SubAgentManager {

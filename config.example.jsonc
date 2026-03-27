@@ -58,6 +58,9 @@
         "intents": ["Guilds", "GuildMessages", "MessageContent", "DirectMessages", "GuildMembers"],
         "guildId": ""
       },
+      // Per-protocol owner/admin overrides (Discord user IDs differ from QQ IDs)
+      "owner": "YOUR_DISCORD_USER_ID",
+      "admins": [],
       "reconnect": {
         "enabled": true,
         "maxRetries": 10,
@@ -83,7 +86,7 @@
   // Bot configuration
   "bot": {
     "selfId": null,
-    // Bot owner: highest permission level, can use all commands
+    // Bot owner: highest permission level, can use all commands (global default, typically QQ ID)
     "owner": "123123",
     // Bot admins: user IDs that have admin permission level
     // These users can adjust bot behavior and trigger special commands

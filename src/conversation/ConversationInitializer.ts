@@ -143,7 +143,9 @@ export class ConversationInitializer {
     const healthCheckManager = container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
     for (const provider of services.aiManager.getAllProviders()) {
       if (provider.skipHealthCheck) {
-        logger.info(`[ConversationInitializer] Skipping health check registration for ${provider.name} (skipHealthCheck=true)`);
+        logger.info(
+          `[ConversationInitializer] Skipping health check registration for ${provider.name} (skipHealthCheck=true)`,
+        );
         continue;
       }
       const adapter = new ProviderHealthAdapter(provider);
@@ -303,9 +305,22 @@ export class ConversationInitializer {
     container.registerInstance(DITokens.AI_MANAGER, aiManager);
 
     const botConfig = config.getConfig();
+
+    // Build per-protocol permission overrides from protocol configs
+    const protocolOverrides: Record<string, { owner?: string; admins?: string[] }> = {};
+    for (const proto of botConfig.protocols ?? []) {
+      if (proto.owner || (proto.admins && proto.admins.length > 0)) {
+        protocolOverrides[proto.name] = {
+          owner: proto.owner,
+          admins: proto.admins,
+        };
+      }
+    }
+
     const permissionChecker = new DefaultPermissionChecker({
       owner: botConfig.bot.owner,
       admins: botConfig.bot.admins,
+      ...(Object.keys(protocolOverrides).length > 0 && { protocolOverrides }),
     });
 
     const commandManager = new CommandManager(permissionChecker, conversationConfigService);

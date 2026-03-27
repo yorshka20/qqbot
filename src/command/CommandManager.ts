@@ -25,6 +25,7 @@ export interface PermissionChecker {
     messageType: 'private' | 'group',
     requiredPermissions: PermissionLevel[],
     userRole?: string,
+    protocol?: string,
   ): boolean;
 }
 
@@ -220,7 +221,14 @@ export class CommandManager {
 
     // Fallback to default permission checker
     const userRole = (context.metadata?.senderRole as string) || undefined;
-    return this.permissionChecker.checkPermission(context.userId, context.messageType, requiredPermissions, userRole);
+    const protocol = context.metadata?.protocol;
+    return this.permissionChecker.checkPermission(
+      context.userId,
+      context.messageType,
+      requiredPermissions,
+      userRole,
+      protocol,
+    );
   }
 
   /**
@@ -322,7 +330,13 @@ export class CommandManager {
     const userRole = context.metadata.senderRole;
 
     // Check if user is admin - admins can always execute commands regardless of enabled state
-    const isAdmin = this.permissionChecker.checkPermission(context.userId, context.messageType, ['admin'], userRole);
+    const isAdmin = this.permissionChecker.checkPermission(
+      context.userId,
+      context.messageType,
+      ['admin'],
+      userRole,
+      context.metadata.protocol,
+    );
 
     // Check if command is enabled (skip for admins)
     if (!isAdmin) {

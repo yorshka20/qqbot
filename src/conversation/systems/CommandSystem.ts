@@ -54,6 +54,9 @@ export class CommandSystem implements System {
         context.metadata.set('explicitSendAsForward', commandResult.sentAsForward);
       }
       replaceReplyWithSegments(context, commandResult.segments, 'command');
+    } else if (!commandResult.success && commandResult.error) {
+      // Send permission denied or other command errors as reply so the user gets feedback
+      replaceReplyWithSegments(context, [{ type: 'text', data: { text: commandResult.error } }], 'command');
     }
 
     return true;

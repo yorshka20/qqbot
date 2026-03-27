@@ -250,7 +250,9 @@ export class WechatMomentsIngestService {
         }
 
         const delay = backoffMs[attempt];
-        logger.warn(`[MomentsIngest] Fetch failed (attempt ${attempt + 1}/${maxRetries + 1}): ${msg} — retrying in ${delay / 1000}s`);
+        logger.warn(
+          `[MomentsIngest] Fetch failed (attempt ${attempt + 1}/${maxRetries + 1}): ${msg} — retrying in ${delay / 1000}s`,
+        );
         await sleep(delay);
       }
     }

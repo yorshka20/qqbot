@@ -12,7 +12,8 @@ import { logger } from '@/utils/logger';
 
 @Tool({
   name: 'zhihu_digest',
-  description: '获取知乎关注动态数据。返回最近N小时的知乎feed，包含标题、作者、赞同数、评论数、摘要、链接等。调用后会自动将这些动态标记为已处理。',
+  description:
+    '获取知乎关注动态数据。返回最近N小时的知乎feed，包含标题、作者、赞同数、评论数、摘要、链接等。调用后会自动将这些动态标记为已处理。',
   executor: 'zhihu_digest',
   visibility: ['subagent'],
   parameters: {

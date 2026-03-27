@@ -24,8 +24,7 @@ export class ReplyPipelineOrchestrator {
     private episodeCacheManager: EpisodeCacheManager,
     private cardHelper: CardRenderingHelper,
     private hookManager: HookManager,
-  ) {
-  }
+  ) {}
 
   // ---------------------------------------------------------------------------
   // Main entry: normal reply pipeline

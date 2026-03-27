@@ -79,7 +79,9 @@ export class AgentLoop {
       } else {
         await this.messageAPI.sendGroupMessage(Number(groupId), message, this.preferredProtocol);
       }
-      logger.info(`[AgentLoop] Item "${item.name}": sent ${cardResult ? 'card image' : `${reply.length} chars`} → ${target}`);
+      logger.info(
+        `[AgentLoop] Item "${item.name}": sent ${cardResult ? 'card image' : `${reply.length} chars`} → ${target}`,
+      );
     } catch (err) {
       logger.error(`[AgentLoop] Item "${item.name}": send failed`, err);
       throw err;
