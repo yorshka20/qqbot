@@ -417,9 +417,9 @@ export class WeChatPadProClient {
     const env = await this.post<PadProEnvelope<RawMomentsData>>(
       '/sns/SendSnsTimeLine',
       { UserName: '', MaxID: maxId ?? 0, FirstPageMD5: '' },
-      60_000,
+      90_000,
     );
-    return (env.Data?.objectList ?? []).map(mapMoment);
+    return this.extractMoments(env, '/sns/SendSnsTimeLine');
   }
 
   /** Get a specific person's moments */
@@ -427,9 +427,32 @@ export class WeChatPadProClient {
     const env = await this.post<PadProEnvelope<RawMomentsData>>(
       '/sns/SendSnsUserPage',
       { UserName: wxid, MaxID: maxId ?? 0, FirstPageMD5: '' },
-      60_000,
+      90_000,
     );
-    return (env.Data?.objectList ?? []).map(mapMoment);
+    return this.extractMoments(env, '/sns/SendSnsUserPage');
+  }
+
+  /** Validate moments API response and extract objectList. Throws on API-level errors. */
+  private extractMoments(env: PadProEnvelope<RawMomentsData>, endpoint: string): WXMoment[] {
+    const data = env.Data;
+    const ret = data?.baseResponse?.ret;
+
+    // Check for API-level error (ret != 0 means the PadPro/WeChat backend rejected the request)
+    if (ret !== undefined && ret !== 0) {
+      logger.warn(`[WeChatPadProClient] ${endpoint} returned error: ret=${ret} objectCount=${data?.objectCount ?? 0}`);
+      throw new Error(`Moments API error: ret=${ret} (endpoint: ${endpoint})`);
+    }
+
+    const moments = (data?.objectList ?? []).map(mapMoment);
+
+    // Log diagnostic info when the response is empty (helps distinguish "no new data" vs server issue)
+    if (moments.length === 0) {
+      logger.info(
+        `[WeChatPadProClient] ${endpoint} returned empty | Code=${env.Code} ret=${ret} objectCount=${data?.objectCount ?? 'N/A'} Text=${env.Text ?? ''}`,
+      );
+    }
+
+    return moments;
   }
 
   // ──────────────────────────────────────────────────

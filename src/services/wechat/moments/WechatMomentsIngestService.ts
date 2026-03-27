@@ -225,12 +225,12 @@ export class WechatMomentsIngestService {
   }
 
   /**
-   * Fetch moments with retry on transient failures (timeout, network errors).
-   * Retries up to 2 times with exponential backoff (5s, 15s).
+   * Fetch moments with retry on transient failures (timeout, network errors, API errors).
+   * Retries up to 3 times with exponential backoff (10s, 20s, 30s).
    */
   private async fetchMomentsWithRetry(wxid: string | undefined, maxId: number | undefined): Promise<WXMoment[]> {
-    const maxRetries = 2;
-    const backoffMs = [5_000, 15_000];
+    const maxRetries = 3;
+    const backoffMs = [10_000, 20_000, 30_000];
 
     for (let attempt = 0; ; attempt++) {
       try {
@@ -239,7 +239,11 @@ export class WechatMomentsIngestService {
           : await this.padProClient.getMomentsTimeline(maxId);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        const isTransient = msg.includes('timed out') || msg.includes('Unable to connect') || msg.includes('fetch failed');
+        const isTransient =
+          msg.includes('timed out') ||
+          msg.includes('Unable to connect') ||
+          msg.includes('fetch failed') ||
+          msg.includes('Moments API error');
 
         if (!isTransient || attempt >= maxRetries) {
           throw err;
