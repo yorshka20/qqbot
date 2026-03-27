@@ -204,13 +204,15 @@ export class ClaudeCodePlugin extends PluginBase {
       );
 
       const projectInfo = projectContext ? ` (项目: ${projectContext.alias})` : '';
+      const queueMsg =
+        task.queuePosition > 0 ? `\n队列位置: 第${task.queuePosition}位（前方有任务在执行，将自动排队等待）` : '';
       return {
         success: true,
         segments: new MessageBuilder()
           .text(
             `Claude Code 任务已创建${projectInfo}\n` +
               `任务ID: ${task.id.slice(0, 8)}\n` +
-              `状态: ${task.status}\n` +
+              `状态: ${task.queuePosition > 0 ? '排队中' : task.status}${queueMsg}\n` +
               `提示: ${prompt.slice(0, 100)}${prompt.length > 100 ? '...' : ''}\n\n` +
               `任务完成后会自动通知您结果。`,
           )
@@ -469,17 +471,25 @@ export class ClaudeCodePlugin extends PluginBase {
 
     // Get service status
     const status = this.claudeCodeService.getStatus();
+    let statusText =
+      `Claude Code 服务状态\n` +
+      `启用: ${status.enabled ? '是' : '否'}\n` +
+      `服务地址: ${status.serverUrl}\n` +
+      `运行中任务: ${status.runningTasks}\n` +
+      `排队中任务: ${status.pendingTasks}`;
+
+    if (status.queueInfo && status.queueInfo.length > 0) {
+      statusText += '\n\n项目队列:';
+      for (const info of status.queueInfo) {
+        const projectName = info.project.split('/').pop() || info.project;
+        const runningId = info.running ? info.running.slice(0, 8) : '无';
+        statusText += `\n  ${projectName}: 运行中=${runningId}, 排队=${info.queued}`;
+      }
+    }
+
     return {
       success: true,
-      segments: new MessageBuilder()
-        .text(
-          `Claude Code 服务状态\n` +
-            `启用: ${status.enabled ? '是' : '否'}\n` +
-            `服务地址: ${status.serverUrl}\n` +
-            `待处理任务: ${status.pendingTasks}\n` +
-            `运行中任务: ${status.runningTasks}`,
-        )
-        .build(),
+      segments: new MessageBuilder().text(statusText).build(),
       sentAsForward: true,
     };
   }

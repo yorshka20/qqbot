@@ -25,6 +25,11 @@ export class ClaudeToolManager {
   private taskUpdateCallback: TaskUpdateCallback | null = null;
   private promptManager: PromptManager | null = null;
 
+  // Per-project queue: projectKey → ordered list of pending task IDs
+  private projectQueues = new Map<string, string[]>();
+  // Per-project running task: projectKey → currently running task ID
+  private projectRunningTask = new Map<string, string>();
+
   constructor(config: MCPServerConfig) {
     this.config = config;
   }
@@ -137,31 +142,117 @@ export class ClaudeToolManager {
   }
 
   /**
+   * Get project key from a task's working directory.
+   * Tasks with the same project key are serialized.
+   */
+  private getProjectKey(task: ClaudeTask): string {
+    return task.workingDirectory || this.config.workingDirectory || process.cwd();
+  }
+
+  /**
    * Get current running task count
    */
   getRunningTaskCount(): number {
-    return this.runningProcesses.size;
+    return this.projectRunningTask.size;
   }
 
   /**
-   * Check if can start new task
+   * Get total pending (queued) task count across all projects
    */
-  canStartTask(): boolean {
-    const maxConcurrent = this.config.maxConcurrentTasks || 1;
-    return this.getRunningTaskCount() < maxConcurrent;
+  getPendingTaskCount(): number {
+    let count = 0;
+    for (const queue of this.projectQueues.values()) {
+      count += queue.length;
+    }
+    return count;
   }
 
   /**
-   * Execute a Claude Code task
+   * Get queue info per project
    */
-  async executeTask(taskId: string): Promise<void> {
+  getQueueInfo(): Array<{ project: string; running: string | null; queued: number }> {
+    const projects = new Set<string>();
+    for (const key of this.projectRunningTask.keys()) projects.add(key);
+    for (const key of this.projectQueues.keys()) projects.add(key);
+
+    return Array.from(projects).map((project) => ({
+      project,
+      running: this.projectRunningTask.get(project) || null,
+      queued: this.projectQueues.get(project)?.length || 0,
+    }));
+  }
+
+  /**
+   * Enqueue a task for execution. If no task is running for its project,
+   * start it immediately. Otherwise, add it to the project's queue.
+   */
+  enqueueTask(taskId: string): { started: boolean; queuePosition: number } {
     const task = this.tasks.get(taskId);
     if (!task) {
       throw new Error(`Task ${taskId} not found`);
     }
 
-    if (!this.canStartTask()) {
-      throw new Error('Max concurrent tasks reached');
+    const projectKey = this.getProjectKey(task);
+
+    // If no task is running for this project, start immediately
+    if (!this.projectRunningTask.has(projectKey)) {
+      this.projectRunningTask.set(projectKey, taskId);
+      this.executeTask(taskId).catch((error) => {
+        logger.error(`[ClaudeToolManager] Task execution error:`, error);
+      });
+      return { started: true, queuePosition: 0 };
+    }
+
+    // Otherwise, add to the project's queue
+    let queue = this.projectQueues.get(projectKey);
+    if (!queue) {
+      queue = [];
+      this.projectQueues.set(projectKey, queue);
+    }
+    queue.push(taskId);
+    const position = queue.length;
+    logger.info(`[ClaudeToolManager] Task ${taskId} queued for project ${projectKey} (position: ${position})`);
+    return { started: false, queuePosition: position };
+  }
+
+  /**
+   * Process the next queued task for a project after the current one finishes.
+   */
+  private processNextInQueue(projectKey: string): void {
+    const queue = this.projectQueues.get(projectKey);
+    if (!queue || queue.length === 0) {
+      this.projectRunningTask.delete(projectKey);
+      this.projectQueues.delete(projectKey);
+      return;
+    }
+
+    const nextTaskId = queue.shift() as string;
+    if (queue.length === 0) {
+      this.projectQueues.delete(projectKey);
+    }
+
+    const nextTask = this.tasks.get(nextTaskId);
+    if (!nextTask || nextTask.status === 'failed') {
+      // Task was cancelled or invalid, skip to next
+      this.processNextInQueue(projectKey);
+      return;
+    }
+
+    logger.info(`[ClaudeToolManager] Starting next queued task ${nextTaskId} for project ${projectKey}`);
+    this.projectRunningTask.set(projectKey, nextTaskId);
+    this.executeTask(nextTaskId).catch((error) => {
+      logger.error(`[ClaudeToolManager] Queued task execution error:`, error);
+    });
+  }
+
+  /**
+   * Execute a Claude Code task.
+   * Called internally by enqueueTask — do not call directly.
+   */
+  async executeTask(taskId: string): Promise<void> {
+    const task = this.tasks.get(taskId);
+    if (!task) {
+      throw new Error(`Task ${taskId} not found`);
     }
 
     const cliPath = this.config.claudeCliPath || 'claude';
@@ -253,12 +344,20 @@ export class ClaudeToolManager {
       }
 
       this.notifyTaskUpdate(task);
+
+      // Process next queued task for this project
+      const projectKey = this.getProjectKey(task);
+      this.processNextInQueue(projectKey);
     } catch (error) {
       this.runningProcesses.delete(taskId);
       task.status = 'failed';
       task.error = error instanceof Error ? error.message : String(error);
       logger.error(`[ClaudeToolManager] Task ${taskId} error:`, error);
       this.notifyTaskUpdate(task);
+
+      // Process next queued task for this project even on error
+      const projectKey = this.getProjectKey(task);
+      this.processNextInQueue(projectKey);
     }
   }
 
@@ -314,31 +413,50 @@ export class ClaudeToolManager {
   }
 
   /**
-   * Get pending tasks count
-   */
-  getPendingTaskCount(): number {
-    return Array.from(this.tasks.values()).filter((t) => t.status === 'pending').length;
-  }
-
-  /**
-   * Cancel a running task
+   * Cancel a running or queued task
    */
   cancelTask(taskId: string): boolean {
+    const task = this.tasks.get(taskId);
+    if (!task) return false;
+
+    const projectKey = this.getProjectKey(task);
+
+    // Check if it's a running task
     const proc = this.runningProcesses.get(taskId);
     if (proc) {
       proc.kill();
       this.runningProcesses.delete(taskId);
 
-      const task = this.tasks.get(taskId);
-      if (task) {
+      task.status = 'failed';
+      task.error = 'Task cancelled';
+      this.notifyTaskUpdate(task);
+
+      // Process next queued task for this project
+      this.processNextInQueue(projectKey);
+
+      logger.info(`[ClaudeToolManager] Running task ${taskId} cancelled`);
+      return true;
+    }
+
+    // Check if it's in a queue
+    const queue = this.projectQueues.get(projectKey);
+    if (queue) {
+      const idx = queue.indexOf(taskId);
+      if (idx !== -1) {
+        queue.splice(idx, 1);
+        if (queue.length === 0) {
+          this.projectQueues.delete(projectKey);
+        }
+
         task.status = 'failed';
         task.error = 'Task cancelled';
         this.notifyTaskUpdate(task);
-      }
 
-      logger.info(`[ClaudeToolManager] Task ${taskId} cancelled`);
-      return true;
+        logger.info(`[ClaudeToolManager] Queued task ${taskId} cancelled`);
+        return true;
+      }
     }
+
     return false;
   }
 

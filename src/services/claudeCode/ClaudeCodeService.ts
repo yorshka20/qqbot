@@ -169,26 +169,23 @@ export class ClaudeCodeService {
   }
 
   /**
-   * Trigger a Claude Code task
+   * Trigger a Claude Code task.
+   * Tasks for the same project are queued and executed serially.
+   * Tasks for different projects can run concurrently.
    */
   async triggerTask(
     prompt: string,
     requestedBy: ClaudeTask['requestedBy'],
     workingDirectory?: string,
     options?: TriggerTaskOptions,
-  ): Promise<ClaudeTask> {
-    if (!this.taskManager.canStartTask()) {
-      throw new Error('Too many concurrent tasks. Please wait for current tasks to complete.');
-    }
-
+  ): Promise<ClaudeTask & { queuePosition: number }> {
     const task = this.taskManager.createTask(prompt, requestedBy, workingDirectory, options);
 
-    // Execute task in background
-    this.taskManager.executeTask(task.id).catch((error) => {
-      logger.error(`[ClaudeCodeService] Task execution error:`, error);
-    });
+    // Enqueue task — starts immediately if no task is running for this project,
+    // otherwise queues it for serial execution
+    const { queuePosition } = this.taskManager.enqueueTask(task.id);
 
-    return task;
+    return { ...task, queuePosition };
   }
 
   /**
@@ -437,6 +434,7 @@ export class ClaudeCodeService {
       serverUrl: this.getServerUrl(),
       pendingTasks: this.taskManager.getPendingTaskCount(),
       runningTasks: this.taskManager.getRunningTaskCount(),
+      queueInfo: this.taskManager.getQueueInfo(),
     };
   }
 }
