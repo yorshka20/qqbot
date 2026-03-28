@@ -16,6 +16,8 @@ type TaskUpdateCallback = (task: ClaudeTask) => void;
 export interface CreateTaskOptions {
   taskType?: ClaudeTaskType;
   projectContext?: ProjectContext;
+  /** When true, the global handleTaskUpdate callback will skip sending result messages */
+  suppressDefaultNotification?: boolean;
 }
 
 export class ClaudeToolManager {
@@ -29,6 +31,8 @@ export class ClaudeToolManager {
   private projectQueues = new Map<string, string[]>();
   // Per-project running task: projectKey → currently running task ID
   private projectRunningTask = new Map<string, string>();
+  // Per-task completion resolvers for awaitTaskCompletion()
+  private taskCompletionResolvers = new Map<string, (task: ClaudeTask) => void>();
 
   constructor(config: MCPServerConfig) {
     this.config = config;
@@ -124,6 +128,7 @@ export class ClaudeToolManager {
       requestedBy,
       taskType: options?.taskType || 'dev',
       projectContext: options?.projectContext,
+      suppressDefaultNotification: options?.suppressDefaultNotification,
     };
 
     this.tasks.set(task.id, task);
@@ -472,9 +477,31 @@ export class ClaudeToolManager {
     }
   }
 
+  /**
+   * Await a task's completion. Returns a promise that resolves when the task
+   * transitions to 'completed' or 'failed' status.
+   */
+  awaitTaskCompletion(taskId: string): Promise<ClaudeTask> {
+    const task = this.tasks.get(taskId);
+    if (task && (task.status === 'completed' || task.status === 'failed')) {
+      return Promise.resolve(task);
+    }
+    return new Promise<ClaudeTask>((resolve) => {
+      this.taskCompletionResolvers.set(taskId, resolve);
+    });
+  }
+
   private notifyTaskUpdate(task: ClaudeTask): void {
     if (this.taskUpdateCallback) {
       this.taskUpdateCallback(task);
+    }
+    // Resolve per-task completion waiters
+    if (task.status === 'completed' || task.status === 'failed') {
+      const resolver = this.taskCompletionResolvers.get(task.id);
+      if (resolver) {
+        this.taskCompletionResolvers.delete(task.id);
+        resolver(task);
+      }
     }
   }
 

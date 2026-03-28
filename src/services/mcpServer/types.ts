@@ -46,6 +46,8 @@ export interface ClaudeTask {
   taskType?: ClaudeTaskType;
   /** Project context resolved from ProjectRegistry */
   projectContext?: ProjectContext;
+  /** When true, the global handleTaskUpdate callback skips sending result messages */
+  suppressDefaultNotification?: boolean;
 }
 
 export interface MCPServerConfig {

@@ -60,9 +60,7 @@ export class TodoWorkerHandler implements ActionHandler {
       );
 
       const queueMsg = task.queuePosition > 0 ? `（排队: 第${task.queuePosition}位）` : '';
-      logger.info(
-        `[TodoWorkerHandler] Task created: ${task.id} for project "${project.alias}"${queueMsg}`,
-      );
+      logger.info(`[TodoWorkerHandler] Task created: ${task.id} for project "${project.alias}"${queueMsg}`);
 
       // No reply — result will be delivered async via handleTaskUpdate
     } catch (error) {

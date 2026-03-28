@@ -34,6 +34,8 @@ import { ToolRegistry } from './ToolRegistry';
 export interface TriggerTaskOptions {
   taskType?: ClaudeTaskType;
   projectContext?: ProjectContext;
+  /** When true, the global handleTaskUpdate callback skips sending result messages */
+  suppressDefaultNotification?: boolean;
 }
 
 export class ClaudeCodeService {
@@ -189,6 +191,14 @@ export class ClaudeCodeService {
   }
 
   /**
+   * Await a task's completion. Returns a promise that resolves when the task
+   * transitions to 'completed' or 'failed' status.
+   */
+  awaitTaskCompletion(taskId: string): Promise<ClaudeTask> {
+    return this.taskManager.awaitTaskCompletion(taskId);
+  }
+
+  /**
    * Get task status
    */
   getTask(taskId: string): ClaudeTask | undefined {
@@ -260,6 +270,11 @@ export class ClaudeCodeService {
   private async handleTaskUpdate(task: ClaudeTask): Promise<void> {
     // Only send updates for completed or failed tasks
     if (task.status !== 'completed' && task.status !== 'failed') {
+      return;
+    }
+
+    // Skip default notification if the task was triggered with custom handling
+    if (task.suppressDefaultNotification) {
       return;
     }
 

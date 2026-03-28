@@ -16,6 +16,7 @@ import { ActionHandlerRegistry } from './ActionHandlerRegistry';
 import { AgendaReporter } from './AgendaReporter';
 import { AgendaService } from './AgendaService';
 import { AgentLoop } from './AgentLoop';
+import { RepeatingTodoWorkerHandler } from './handlers/RepeatingTodoWorkerHandler';
 import { TodoWorkerHandler } from './handlers/TodoWorkerHandler';
 import { InternalEventBus } from './InternalEventBus';
 import { ScheduleFileService } from './ScheduleFileService';
@@ -77,8 +78,15 @@ export class AgendaInitializer {
 
     const actionHandlerRegistry = new ActionHandlerRegistry();
     actionHandlerRegistry.register(new TodoWorkerHandler());
+    actionHandlerRegistry.register(new RepeatingTodoWorkerHandler());
 
-    const agendaService = new AgendaService(deps.databaseManager, agentLoop, internalEventBus, actionHandlerRegistry, reporter);
+    const agendaService = new AgendaService(
+      deps.databaseManager,
+      agentLoop,
+      internalEventBus,
+      actionHandlerRegistry,
+      reporter,
+    );
 
     const scheduleFileService = new ScheduleFileService(scheduleFilePath, agendaService, deps.promptManager);
 
