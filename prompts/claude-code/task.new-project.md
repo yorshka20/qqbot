@@ -81,19 +81,45 @@ git commit -m "feat: init project
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
+## Step 5: 汇报结果
+
+1. 将修复内容总结一下，返回给用户
+
 ---
 
 <details>
 <summary>进度通知 API（可选）</summary>
 
 ```bash
+# 汇报进度
 curl -X POST {{mcpApiUrl}}/api/notify \
   -H "Content-Type: application/json" \
   -d '{"taskId":"{{taskId}}","status":"progress","progress":50,"message":"进度描述"}'
 
+# 发送消息
 curl -X POST {{mcpApiUrl}}/api/send \
   -H "Content-Type: application/json" \
   -d '{"target":{"type":"{{targetType}}","id":"{{targetId}}"},"content":"消息内容"}'
 ```
+</details>
+
+<details>
+<summary>MCP Tools 调用方式</summary>
+
+```bash
+# 查看所有可用 tools
+GET {{mcpApiUrl}}/api/tools/list
+
+# 调用 tool
+POST {{mcpApiUrl}}/api/tools/execute
+Content-Type: application/json
+
+{
+  "tool": "tool_name",
+  "parameters": { ... },
+  "taskId": "{{taskId}}"
+}
+```
 
 </details>
+
