@@ -11,5 +11,15 @@
   - 触发: `onEvent group_member_join` (有人加群时)
 一次性任务请通过指令或 DB 创建，不写入本文件。
 
+执行方式（可选，默认为 intent 由 LLM 解读意图）:
+  - 执行: `subagent research`        (直接触发 research 子代理)
+  - 执行: `subagent group_report`    (直接触发 group_report 子代理)
+  子代理预设名称对应 prompts/subagent/{presetKey}/ 目录
+
+参数（可选，JSON 格式，传递给子代理的任务输入）:
+  - 参数: `{"topic": "AI新闻"}`
+  参数会合并到子代理的 task input 中，
+  同时也作为模板变量注入到 task.txt 模板的 {{key}} 占位符
+
 冷却时间: `30s` / `5min` / `2h` / `86400000`（毫秒）
 ─────────────────────────────────────────────── -->

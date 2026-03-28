@@ -422,6 +422,28 @@ export class SQLiteAdapter implements DatabaseAdapter {
       // Don't throw - allow migration to continue
     }
 
+    // Add actionType/actionTarget/actionParams columns to agenda_items if they don't exist (migration)
+    try {
+      const agendaInfo = this.db.query(`PRAGMA table_info(agenda_items)`).all() as Array<{ name: string }>;
+      if (Array.isArray(agendaInfo)) {
+        const cols = new Set(agendaInfo.map((c) => c.name));
+        if (!cols.has('actionType')) {
+          this.db.run(`ALTER TABLE agenda_items ADD COLUMN actionType TEXT`);
+          logger.info('[SQLiteAdapter] Added actionType column to agenda_items');
+        }
+        if (!cols.has('actionTarget')) {
+          this.db.run(`ALTER TABLE agenda_items ADD COLUMN actionTarget TEXT`);
+          logger.info('[SQLiteAdapter] Added actionTarget column to agenda_items');
+        }
+        if (!cols.has('actionParams')) {
+          this.db.run(`ALTER TABLE agenda_items ADD COLUMN actionParams TEXT`);
+          logger.info('[SQLiteAdapter] Added actionParams column to agenda_items');
+        }
+      }
+    } catch (error) {
+      logger.warn(`[SQLiteAdapter] Failed to add agenda action columns: ${error}`);
+    }
+
     // Create indexes AFTER ensuring messageSeq column exists
     // CREATE INDEX IF NOT EXISTS is safe - won't fail if index already exists
     const indexStatements = [

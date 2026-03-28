@@ -1,6 +1,8 @@
 // AgentLoop - LLM Q&A loop driven by scheduled intent (not by user message).
 // Bot uses the schedule's intent as the "question" to the LLM; the loop runs multi-round (plan → tool calls → message) until the task is done, then sends the final reply.
+// Also supports direct subagent execution (actionType === 'subagent') which bypasses the LLM interpretation loop.
 
+import { getRolePreset } from '@/agent/SubAgentRolePresets';
 import type { PromptManager } from '@/ai';
 import type { AIService } from '@/ai/AIService';
 import type { LLMService } from '@/ai/services/LLMService';
@@ -27,6 +29,8 @@ const DEFAULT_PROVIDER: string | undefined = undefined; // Use system default LL
  * Same shape as the normal reply LLM loop (user question → LLM + tools → reply), but the "question" is the schedule's intent.
  * toolManager and hookManager are required: the loop always uses generateWithTools and runs over multiple rounds to complete the task.
  * System prompt from template agenda.agent_loop_system (PromptManager).
+ *
+ * Also supports direct subagent spawning via `runSubAgent()` for agenda items with actionType === 'subagent'.
  */
 export class AgentLoop {
   private preferredProtocol: ProtocolName = 'milky';
@@ -46,31 +50,128 @@ export class AgentLoop {
   }
 
   /**
-   * Execute an agenda item.
+   * Execute an agenda item via LLM loop (actionType === 'intent' or default).
    * @param item - The agenda item to run
    * @param eventContext - Optional event context (for onEvent items)
    */
   async run(item: AgendaItem, eventContext: AgendaEventContext): Promise<void> {
-    const groupId = item.groupId ?? eventContext?.groupId;
-    const userId = item.userId ?? eventContext?.userId;
-    const isPrivate = !groupId && !!userId;
-
+    const { groupId, userId, isPrivate, target, contextId } = this.resolveTarget(item, eventContext);
     if (!groupId && !userId) {
       logger.warn(`[AgentLoop] Item "${item.name}" has no groupId or userId; skipping`);
       return;
     }
 
-    const target = isPrivate ? `user ${userId}` : `group ${groupId}`;
     logger.info(`[AgentLoop] Running item "${item.name}" → ${target}`);
 
-    const contextId = groupId ?? `private:${userId}`;
     const reply = await this.generateReply(item, contextId, eventContext);
     if (!reply) {
       logger.debug(`[AgentLoop] Item "${item.name}": no reply generated, skipping send`);
       return;
     }
 
-    // Try card rendering for long/structured replies (skip if /skip_card marker present)
+    await this.deliverReply(reply, item.name, groupId, userId, isPrivate, contextId);
+  }
+
+  /**
+   * Execute an agenda item by directly spawning a subagent (actionType === 'subagent').
+   * Bypasses the LLM interpretation loop — the subagent preset determines execution.
+   * @param item - The agenda item with actionType='subagent' and actionTarget set
+   * @param eventContext - Optional event context (for onEvent items)
+   */
+  async runSubAgent(item: AgendaItem, eventContext: AgendaEventContext): Promise<void> {
+    if (!this.aiService) {
+      logger.error(`[AgentLoop] Cannot run subagent for item "${item.name}": AIService not available`);
+      return;
+    }
+
+    const presetKey = item.actionTarget;
+    if (!presetKey) {
+      logger.error(`[AgentLoop] Item "${item.name}" has actionType=subagent but no actionTarget`);
+      return;
+    }
+
+    const { groupId, userId, isPrivate, target, contextId } = this.resolveTarget(item, eventContext);
+    if (!groupId && !userId) {
+      logger.warn(`[AgentLoop] Item "${item.name}" has no groupId or userId; skipping`);
+      return;
+    }
+
+    logger.info(`[AgentLoop] Running subagent "${presetKey}" for item "${item.name}" → ${target}`);
+
+    const preset = getRolePreset(presetKey);
+
+    // Build task description: render preset's task.txt with intent as {{message}}, or use intent directly
+    const description = this.buildSubAgentDescription(presetKey, item);
+
+    // Parse actionParams JSON → task input
+    const taskInput = this.buildSubAgentInput(item, eventContext);
+
+    // Build parent context for the subagent
+    const parentContext = {
+      userId: userId ? Number(userId) : 0,
+      groupId: groupId ? Number(groupId) : undefined,
+      messageType: (isPrivate ? 'private' : 'group') as 'private' | 'group',
+      protocol: this.preferredProtocol as string,
+    };
+
+    const configOverrides = {
+      ...preset.configOverrides,
+      ...(preset.defaultAllowedTools.length > 0 ? { allowedTools: preset.defaultAllowedTools } : {}),
+    };
+
+    try {
+      const result = await this.aiService.runSubAgent(
+        preset.type,
+        { description, input: taskInput, parentContext },
+        configOverrides,
+      );
+
+      const resultText = typeof result === 'string' ? result : result ? JSON.stringify(result) : '';
+      if (!resultText.trim()) {
+        logger.warn(`[AgentLoop] Item "${item.name}": subagent returned empty result`);
+        return;
+      }
+
+      await this.deliverReply(resultText, item.name, groupId, userId, isPrivate, contextId);
+    } catch (err) {
+      logger.error(`[AgentLoop] Subagent execution failed for item "${item.name}":`, err);
+      throw err;
+    }
+  }
+
+  // ─── Target Resolution ──────────────────────────────────────────────────────
+
+  private resolveTarget(
+    item: AgendaItem,
+    eventContext: AgendaEventContext,
+  ): {
+    groupId: string | undefined;
+    userId: string | undefined;
+    isPrivate: boolean;
+    target: string;
+    contextId: string;
+  } {
+    const groupId = item.groupId ?? eventContext?.groupId;
+    const userId = item.userId ?? eventContext?.userId;
+    const isPrivate = !groupId && !!userId;
+    const target = isPrivate ? `user ${userId}` : `group ${groupId}`;
+    const contextId = groupId ?? `private:${userId}`;
+    return { groupId, userId, isPrivate, target, contextId };
+  }
+
+  // ─── Reply Delivery ─────────────────────────────────────────────────────────
+
+  /**
+   * Deliver a reply text: try card rendering, then send via messageAPI.
+   */
+  private async deliverReply(
+    reply: string,
+    itemName: string,
+    groupId: string | undefined,
+    userId: string | undefined,
+    isPrivate: boolean,
+    contextId: string,
+  ): Promise<void> {
     const cardResult = await this.tryRenderCard(reply, contextId);
     const cleanReply = stripSkipCardMarker(reply);
     const message: string | MessageSegment[] = cardResult ?? cleanReply;
@@ -82,10 +183,10 @@ export class AgentLoop {
         await this.messageAPI.sendGroupMessage(Number(groupId), message, this.preferredProtocol);
       }
       logger.info(
-        `[AgentLoop] Item "${item.name}": sent ${cardResult ? 'card image' : `${reply.length} chars`} → ${target}`,
+        `[AgentLoop] Item "${itemName}": sent ${cardResult ? 'card image' : `${reply.length} chars`} → ${isPrivate ? `user ${userId}` : `group ${groupId}`}`,
       );
     } catch (err) {
-      logger.error(`[AgentLoop] Item "${item.name}": send failed`, err);
+      logger.error(`[AgentLoop] Item "${itemName}": send failed`, err);
       throw err;
     }
   }
@@ -110,7 +211,61 @@ export class AgentLoop {
     return null;
   }
 
-  // ─── Private Helpers ────────────────────────────────────────────────────────
+  // ─── SubAgent Helpers ────────────────────────────────────────────────────────
+
+  /**
+   * Build task description for a subagent: try preset's task.txt template, fall back to intent text.
+   */
+  private buildSubAgentDescription(presetKey: string, item: AgendaItem): string {
+    const templateName = `subagent.${presetKey}.task`;
+    const tpl = this.promptManager.getTemplate(templateName);
+
+    if (!tpl) {
+      // No task.txt template — use intent directly or generic fallback
+      return item.intent || `Execute scheduled task: ${item.name}`;
+    }
+
+    // Build template variables: intent as {{message}}, plus any actionParams keys
+    const vars: Record<string, string> = { message: item.intent || '' };
+
+    if (item.actionParams) {
+      try {
+        const params = JSON.parse(item.actionParams) as Record<string, unknown>;
+        for (const [key, value] of Object.entries(params)) {
+          vars[key] = typeof value === 'string' ? value : JSON.stringify(value);
+        }
+      } catch {
+        logger.warn(`[AgentLoop] Item "${item.name}": failed to parse actionParams as template variables`);
+      }
+    }
+
+    return this.promptManager.render(templateName, vars);
+  }
+
+  /**
+   * Build task input for a subagent from actionParams + context fields.
+   */
+  private buildSubAgentInput(item: AgendaItem, eventContext: AgendaEventContext): Record<string, unknown> {
+    const input: Record<string, unknown> = {
+      groupId: item.groupId ?? eventContext?.groupId,
+      userId: item.userId ?? eventContext?.userId,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Merge actionParams into input
+    if (item.actionParams) {
+      try {
+        const params = JSON.parse(item.actionParams) as Record<string, unknown>;
+        Object.assign(input, params);
+      } catch {
+        logger.warn(`[AgentLoop] Item "${item.name}": failed to parse actionParams JSON`);
+      }
+    }
+
+    return input;
+  }
+
+  // ─── LLM Loop Helpers ────────────────────────────────────────────────────────
 
   /**
    * Run the LLM loop for this intent: build messages (intent as "user question"), then generateWithTools (multi-round) until done.

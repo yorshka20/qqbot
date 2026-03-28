@@ -49,6 +49,9 @@ interface ParsedScheduleItem {
   cooldownMs: number;
   maxSteps: number;
   enabled: boolean;
+  actionType?: 'intent' | 'subagent';
+  actionTarget?: string;
+  actionParams?: string;
 }
 
 /** Data for appending a new section to schedule.md (e.g. from /schedule command) */
@@ -61,6 +64,9 @@ export interface AppendItemData {
   groupId?: string;
   cooldownMs?: number;
   intent: string;
+  actionType?: 'intent' | 'subagent';
+  actionTarget?: string;
+  actionParams?: string;
 }
 
 /** JSON metadata tag that marks a DB item as originating from the schedule file */
@@ -75,6 +81,8 @@ interface ScheduleSectionMeta {
   steps?: string;
   enabled?: string;
   eventFilter?: string;
+  action?: string;
+  params?: string;
 }
 
 export class ScheduleFileService {
@@ -121,6 +129,9 @@ export class ScheduleFileService {
           maxSteps: p.maxSteps,
           enabled: p.enabled,
           metadata: FILE_SOURCE_META,
+          actionType: p.actionType,
+          actionTarget: p.actionTarget,
+          actionParams: p.actionParams,
         });
         updated++;
       } else {
@@ -186,6 +197,14 @@ export class ScheduleFileService {
     }
 
     lines.push(`- 冷却: \`${cooldownStr}\``);
+
+    if (data.actionType && data.actionTarget) {
+      lines.push(`- 执行: \`${data.actionType} ${data.actionTarget}\``);
+    }
+    if (data.actionParams) {
+      lines.push(`- 参数: \`${data.actionParams}\``);
+    }
+
     lines.push('');
     lines.push(data.intent);
     lines.push('');
@@ -307,14 +326,17 @@ export class ScheduleFileService {
     }
 
     const intent = intentLines.join(' ').trim();
-    if (!intent) {
-      logger.warn(`[ScheduleFileService] Section "## ${name}": no intent text found, skipping`);
-      return null;
-    }
 
     const triggerRaw = meta.trigger ?? '';
     const trigger = this.parseTrigger(triggerRaw, name);
     if (!trigger) return null;
+
+    // For subagent actions, intent is optional (task.txt provides the description)
+    const hasAction = meta.action?.trim().startsWith('subagent ');
+    if (!intent && !hasAction) {
+      logger.warn(`[ScheduleFileService] Section "## ${name}": no intent text found, skipping`);
+      return null;
+    }
 
     const groupId = meta.groupId;
     const userId = meta.userId;
@@ -326,6 +348,10 @@ export class ScheduleFileService {
     const enabled = enabledRaw.toLowerCase() !== 'false' && enabledRaw !== '0';
     const eventFilter = meta.eventFilter;
 
+    // Parse action field: `subagent <presetKey>` → actionType + actionTarget
+    const actionParsed = this.parseAction(meta.action, name);
+    const actionParams = meta.params;
+
     return {
       name,
       ...trigger,
@@ -336,6 +362,8 @@ export class ScheduleFileService {
       maxSteps,
       enabled,
       eventFilter,
+      ...actionParsed,
+      actionParams,
     };
   }
 
@@ -366,6 +394,27 @@ export class ScheduleFileService {
 
     logger.warn(`[ScheduleFileService] Section "## ${name}": cannot parse trigger "${raw}", skipping`);
     return null;
+  }
+
+  /**
+   * Parse action string: `subagent <presetKey>`
+   * Returns actionType + actionTarget, or empty object if no action specified.
+   */
+  parseAction(raw: string | undefined, name: string): Pick<ParsedScheduleItem, 'actionType' | 'actionTarget'> {
+    if (!raw) return {};
+    const s = raw.trim();
+
+    if (s.startsWith('subagent ')) {
+      const actionTarget = s.slice(9).trim();
+      if (!actionTarget) {
+        logger.warn(`[ScheduleFileService] Section "## ${name}": subagent action has no preset key`);
+        return {};
+      }
+      return { actionType: 'subagent', actionTarget };
+    }
+
+    logger.warn(`[ScheduleFileService] Section "## ${name}": unknown action type "${s}"`);
+    return {};
   }
 
   /**
@@ -417,6 +466,10 @@ export class ScheduleFileService {
       enabled: 'enabled',
       事件过滤: 'eventFilter',
       eventFilter: 'eventFilter',
+      执行: 'action',
+      action: 'action',
+      参数: 'params',
+      params: 'params',
     };
     return map[rawKey] ?? map[lower] ?? null;
   }

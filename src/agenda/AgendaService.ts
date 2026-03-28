@@ -314,7 +314,11 @@ export class AgendaService {
     const startedAtIso = startedAt.toISOString();
 
     try {
-      await this.agentLoop.run(fresh, eventContext);
+      if (fresh.actionType === 'subagent') {
+        await this.agentLoop.runSubAgent(fresh, eventContext);
+      } else {
+        await this.agentLoop.run(fresh, eventContext);
+      }
       await this.reporter?.recordRun({
         item: fresh,
         startedAt,
