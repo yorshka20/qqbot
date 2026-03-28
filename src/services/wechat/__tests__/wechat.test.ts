@@ -32,10 +32,10 @@ function loadPadProConfig(): { apiBase: string; authKey: string } | null {
 }
 
 const padproConfig = loadPadProConfig();
-const SKIP_LIVE = !padproConfig;
+const SKIP_LIVE = process.env.NETWORK_TESTS !== '1' || !padproConfig;
 
 if (SKIP_LIVE) {
-  console.warn('[wechat.test] config.jsonc missing or padpro not configured — live API tests will be skipped');
+  console.warn('[wechat.test] NETWORK_TESTS not set or padpro not configured — live API tests will be skipped');
 }
 
 // ────────────────────────────────────────────────────────────────────────────

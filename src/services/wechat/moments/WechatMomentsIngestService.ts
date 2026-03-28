@@ -38,6 +38,10 @@ export interface MomentsIngestOptions {
   maxTotal?: number;
   /** Whether to download images. Default true. */
   downloadImages?: boolean;
+  /** Delay (ms) between page fetches. Default random 3000-6000. Set to 0 in tests. */
+  pageDelayMs?: number;
+  /** Delay (ms) between image downloads. Default random 1000-3000. Set to 0 in tests. */
+  imageDelayMs?: number;
 }
 
 export interface MomentsIngestResult {
@@ -68,6 +72,8 @@ export class WechatMomentsIngestService {
     const sinceTs = options.sinceTimestamp ?? 0;
     const maxTotal = options.maxTotal ?? 200;
     const shouldDownloadImages = options.downloadImages ?? true;
+    const pageDelayMs = options.pageDelayMs;
+    const imageDelayMs = options.imageDelayMs;
 
     if (!this.retrieval.isRAGEnabled()) {
       throw new Error('RAG is not enabled — cannot ingest moments');
@@ -144,7 +150,8 @@ export class WechatMomentsIngestService {
               result.imagesFailed++;
             }
             // Random delay 1~3s between image downloads
-            await sleep(1000 + Math.random() * 2000);
+            const imgDelay = imageDelayMs ?? 1000 + Math.random() * 2000;
+            if (imgDelay > 0) await sleep(imgDelay);
           }
         }
 
@@ -208,7 +215,8 @@ export class WechatMomentsIngestService {
 
       // Random delay 3~6s between page fetches to mimic normal browsing
       if (!reachedEnd && result.fetched < maxTotal) {
-        await sleep(3000 + Math.random() * 3000);
+        const delay = pageDelayMs ?? 3000 + Math.random() * 3000;
+        if (delay > 0) await sleep(delay);
       }
     }
 

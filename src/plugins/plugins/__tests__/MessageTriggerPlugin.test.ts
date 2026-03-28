@@ -2,12 +2,21 @@ import 'reflect-metadata';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { PromptTemplate } from '@/ai/prompt/PromptManager';
 import { PromptManager } from '@/ai/prompt/PromptManager';
+import { ProviderRouter } from '@/ai/routing/ProviderRouter';
 import { CommandBuilder } from '@/command/CommandBuilder';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import { MessageTriggerPlugin } from '../MessageTriggerPlugin';
+
+/** Creates a ProviderRouter backed by a mock AIManager where all known providers are available. */
+function createMockProviderRouter(): ProviderRouter {
+  const mockAIManager = {
+    getProviderForCapability: () => ({ isAvailable: () => true }),
+  } as unknown as import('@/ai/AIManager').AIManager;
+  return new ProviderRouter(mockAIManager);
+}
 
 /** Creates a mock LLMService whose generateLite() returns plain "true" or "false" for prefix-invitation check. */
 function createMockLLMServiceForPrefixCheck(shouldReply: boolean) {
@@ -140,6 +149,7 @@ describe('MessageTriggerPlugin', () => {
       },
       { allowOverride: true },
     );
+    container.registerInstance(DITokens.PROVIDER_ROUTER, createMockProviderRouter(), { allowOverride: true });
     container.registerInstance(
       DITokens.AI_SERVICE,
       { runSubAgent: async () => 'result', processReplyMaybeCard: async () => null },
@@ -181,6 +191,7 @@ describe('MessageTriggerPlugin', () => {
     container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
     container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
     container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
+    container.registerInstance(DITokens.PROVIDER_ROUTER, createMockProviderRouter(), { allowOverride: true });
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',
@@ -310,6 +321,7 @@ describe('MessageTriggerPlugin', () => {
     container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
     container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
     container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
+    container.registerInstance(DITokens.PROVIDER_ROUTER, createMockProviderRouter(), { allowOverride: true });
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',
@@ -348,6 +360,7 @@ describe('MessageTriggerPlugin', () => {
     container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
     container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
     container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
+    container.registerInstance(DITokens.PROVIDER_ROUTER, createMockProviderRouter(), { allowOverride: true });
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',
@@ -418,6 +431,7 @@ describe('MessageTriggerPlugin', () => {
     );
     container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
     container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
+    container.registerInstance(DITokens.PROVIDER_ROUTER, createMockProviderRouter(), { allowOverride: true });
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',
@@ -524,6 +538,7 @@ describe('MessageTriggerPlugin', () => {
       allowOverride: true,
     });
     container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
+    container.registerInstance(DITokens.PROVIDER_ROUTER, createMockProviderRouter(), { allowOverride: true });
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',

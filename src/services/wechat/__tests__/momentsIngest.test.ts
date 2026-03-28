@@ -108,7 +108,7 @@ describe('WechatMomentsIngestService', () => {
     const { service: retrieval, upsertedDocs } = createMockRetrieval();
 
     const svc = new WechatMomentsIngestService(client, retrieval);
-    const result = await svc.ingest({ downloadImages: false });
+    const result = await svc.ingest({ downloadImages: false, pageDelayMs: 0, imageDelayMs: 0 });
 
     console.log('[test] ingest result:', JSON.stringify(result, null, 2));
 
@@ -142,7 +142,7 @@ describe('WechatMomentsIngestService', () => {
     const { service: retrieval, upsertedDocs } = createMockRetrieval();
 
     const svc = new WechatMomentsIngestService(client, retrieval);
-    const result = await svc.ingest({ downloadImages: false });
+    const result = await svc.ingest({ downloadImages: false, pageDelayMs: 0, imageDelayMs: 0 });
 
     console.log('[test] pagination result:', JSON.stringify(result, null, 2));
 
@@ -168,7 +168,7 @@ describe('WechatMomentsIngestService', () => {
     const { service: retrieval, upsertedDocs } = createMockRetrieval();
 
     const svc = new WechatMomentsIngestService(client, retrieval);
-    const result = await svc.ingest({ sinceTimestamp: cutoff, downloadImages: false });
+    const result = await svc.ingest({ sinceTimestamp: cutoff, downloadImages: false, pageDelayMs: 0, imageDelayMs: 0 });
 
     console.log('[test] sinceTimestamp result:', JSON.stringify(result, null, 2));
 
@@ -190,7 +190,7 @@ describe('WechatMomentsIngestService', () => {
     const { service: retrieval } = createMockRetrieval();
 
     const svc = new WechatMomentsIngestService(client, retrieval);
-    const result = await svc.ingest({ downloadImages: false });
+    const result = await svc.ingest({ downloadImages: false, pageDelayMs: 0, imageDelayMs: 0 });
 
     console.log('[test] skip empty result:', JSON.stringify(result, null, 2));
 
@@ -206,7 +206,7 @@ describe('WechatMomentsIngestService', () => {
     const { service: retrieval, upsertedDocs } = createMockRetrieval();
 
     const svc = new WechatMomentsIngestService(client, retrieval);
-    const result = await svc.ingest({ downloadImages: true });
+    const result = await svc.ingest({ downloadImages: true, pageDelayMs: 0, imageDelayMs: 0 });
 
     console.log('[test] image download result:', JSON.stringify(result, null, 2));
 
@@ -243,7 +243,7 @@ describe('WechatMomentsIngestService', () => {
     const { service: retrieval } = createMockRetrieval();
 
     const svc = new WechatMomentsIngestService(client, retrieval);
-    const result = await svc.ingest({ downloadImages: true });
+    const result = await svc.ingest({ downloadImages: true, pageDelayMs: 0, imageDelayMs: 0 });
 
     console.log('[test] mixed image result:', JSON.stringify(result, null, 2));
 
@@ -260,7 +260,7 @@ describe('WechatMomentsIngestService', () => {
     const { service: retrieval } = createMockRetrieval();
 
     const svc = new WechatMomentsIngestService(client, retrieval);
-    const result = await svc.ingest({ maxTotal: 5, downloadImages: false });
+    const result = await svc.ingest({ maxTotal: 5, downloadImages: false, pageDelayMs: 0, imageDelayMs: 0 });
 
     console.log('[test] maxTotal result:', JSON.stringify(result, null, 2));
 
@@ -291,7 +291,7 @@ describe('WechatMomentsIngestService', () => {
     const { service: retrieval } = createMockRetrieval();
 
     const svc = new WechatMomentsIngestService(client, retrieval);
-    const result = await svc.ingest({ downloadImages: false });
+    const result = await svc.ingest({ downloadImages: false, pageDelayMs: 0, imageDelayMs: 0 });
 
     console.log('[test] empty page result:', JSON.stringify(result, null, 2));
 
@@ -359,10 +359,10 @@ async function fetchMomentsRaw(config: PadProConfig, maxId = 0): Promise<WXMomen
 }
 
 const padproConfig = loadPadProConfig();
-const SKIP_LIVE = !padproConfig;
+const SKIP_LIVE = process.env.NETWORK_TESTS !== '1' || !padproConfig;
 
 if (SKIP_LIVE) {
-  console.warn('[momentsIngest.test] config.jsonc missing or padpro not configured — live tests skipped');
+  console.warn('[momentsIngest.test] NETWORK_TESTS not set or padpro not configured — live tests skipped');
 }
 
 describe('WechatMomentsIngest — Live API (direct HTTP)', () => {
@@ -418,6 +418,8 @@ describe('WechatMomentsIngest — Live API (direct HTTP)', () => {
     const result = await svc.ingest({
       maxTotal: 5,
       downloadImages: false, // set to true to test real image download
+      pageDelayMs: 0,
+      imageDelayMs: 0,
     });
 
     console.log('[live] ingest result:', JSON.stringify(result, null, 2));

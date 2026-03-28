@@ -39,7 +39,7 @@ import {
   INTEGRATION_TEST_TIMEOUT_MS,
   INTEGRATION_TOOL_USE_TIMEOUT_MS,
   SAMPLE_TOOLS,
-} from '../integrationTestHelpers';
+} from './integrationTestHelpers';
 
 const LOG_PREFIX = '[LLMIntegration]';
 

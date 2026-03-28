@@ -3,12 +3,12 @@ import 'reflect-metadata';
 import { describe, expect, it, test } from 'bun:test';
 import type { AIManager } from '@/ai/AIManager';
 import type { AIGenerateOptions } from '@/ai/types';
+import { LLMService } from '../LLMService';
 import {
   createAIManagerWithProvider,
   getIntegrationProvider,
   INTEGRATION_TEST_TIMEOUT_MS,
-} from '../integrationTestHelpers';
-import { LLMService } from '../LLMService';
+} from './integrationTestHelpers';
 
 function createMockAIManager(): AIManager {
   return {

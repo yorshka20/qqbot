@@ -5,12 +5,9 @@ import type { SubAgentExecutor } from '@/agent/SubAgentExecutor';
 import { SubAgentExecutor as SubAgentExecutorImpl } from '@/agent/SubAgentExecutor';
 import type { IToolRunner } from '@/agent/ToolRunner';
 import type { SubAgentSession } from '@/agent/types';
-import { AIManager } from '@/ai/AIManager';
-import type { AIProvider } from '@/ai/base/AIProvider';
-import { ProviderFactory } from '@/ai/ProviderFactory';
+import { createAIManagerWithProvider, getIntegrationProvider } from '@/ai/services/__tests__/integrationTestHelpers';
 import { LLMService } from '@/ai/services/LLMService';
 import type { FunctionCall, ToolDefinition } from '@/ai/types';
-import { Config } from '@/core/config';
 import { SubAgentManager } from '../SubAgentManager';
 import { SubAgentType } from '../types';
 
@@ -101,60 +98,8 @@ describe('SubAgentManager', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Integration tests: real LLM provider (config-based; skip when provider missing)
+// Integration tests: real LLM provider (requires NETWORK_TESTS=1; skip otherwise)
 // ---------------------------------------------------------------------------
-
-let cachedConfig: Config | null | undefined;
-
-function loadConfigOnce(): Config | null {
-  if (cachedConfig !== undefined) {
-    return cachedConfig;
-  }
-  try {
-    const configPath = process.env.CONFIG_PATH;
-    cachedConfig = new Config(configPath);
-    return cachedConfig;
-  } catch {
-    cachedConfig = null;
-    return null;
-  }
-}
-
-const cachedProviders: Record<string, AIProvider | null> = {};
-
-function getIntegrationProvider(name: 'doubao' | 'deepseek'): AIProvider | null {
-  if (cachedProviders[name] !== undefined) {
-    return cachedProviders[name];
-  }
-  const config = loadConfigOnce();
-  if (!config) {
-    cachedProviders[name] = null;
-    return null;
-  }
-  const aiConfig = config.getAIConfig();
-  const providerConfig = aiConfig?.providers?.[name];
-  if (!providerConfig) {
-    cachedProviders[name] = null;
-    return null;
-  }
-  const provider = ProviderFactory.createProvider(name, providerConfig);
-  if (!provider || !provider.isAvailable()) {
-    cachedProviders[name] = null;
-    return null;
-  }
-  cachedProviders[name] = provider;
-  return provider;
-}
-
-function createAIManagerWithProvider(providerName: 'doubao' | 'deepseek'): AIManager {
-  const manager = new AIManager();
-  const provider = getIntegrationProvider(providerName);
-  if (provider) {
-    manager.registerProvider(provider);
-    manager.setDefaultProvider('llm', providerName);
-  }
-  return manager;
-}
 
 const SUBAGENT_SAMPLE_TOOLS: ToolDefinition[] = [
   {

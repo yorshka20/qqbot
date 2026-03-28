@@ -17,13 +17,24 @@ import { Config } from '@/core/config';
 /** All provider names supported by integration tests. */
 export type IntegrationProviderName = 'doubao' | 'deepseek' | 'gemini' | 'openai' | 'anthropic';
 
+/**
+ * Network/LLM integration tests are skipped by default.
+ * Set NETWORK_TESTS=1 to enable them:
+ *   NETWORK_TESTS=1 bun test
+ *   bun run test:network
+ */
+export function isNetworkTestEnabled(): boolean {
+  return process.env.NETWORK_TESTS === '1';
+}
+
 /** All providers that support tool/function calling. */
 export const ALL_TOOL_USE_PROVIDERS: IntegrationProviderName[] = [
   'doubao',
   'deepseek',
-  'gemini',
-  'openai',
-  'anthropic',
+  // skip expensive providers
+  // 'gemini',
+  // 'openai',
+  // 'anthropic',
 ];
 
 let cachedConfig: Config | null | undefined;
@@ -45,6 +56,9 @@ export function loadConfigOnce(): Config | null {
 const cachedProviders: Record<string, AIProvider | null> = {};
 
 export function getIntegrationProvider(name: IntegrationProviderName): AIProvider | null {
+  if (!isNetworkTestEnabled()) {
+    return null;
+  }
   if (cachedProviders[name] !== undefined) {
     return cachedProviders[name];
   }

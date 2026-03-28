@@ -10,6 +10,7 @@ import 'reflect-metadata';
 
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { PromptManager } from '@/ai/prompt/PromptManager';
+import { ProviderRouter } from '@/ai/routing/ProviderRouter';
 import { CommandBuilder } from '@/command/CommandBuilder';
 import { CommandRouter } from '@/conversation/CommandRouter';
 import { Lifecycle } from '@/conversation/Lifecycle';
@@ -163,6 +164,11 @@ describe('Whitelist functional: non-whitelist skipped but DB+RAG run', () => {
       { allowOverride: true },
     );
     container.registerInstance(DITokens.CONFIG, { getAIConfig: () => undefined }, { allowOverride: true });
+    container.registerInstance(
+      DITokens.PROVIDER_ROUTER,
+      new ProviderRouter({ getProviderForCapability: () => ({ isAvailable: () => true }) } as never),
+      { allowOverride: true },
+    );
     const trigger = new MessageTriggerPlugin({ name: 'messageTrigger', version: 'test', description: 'test' });
     trigger.loadConfig(
       { api: {} as never, events: {} as never },
@@ -233,6 +239,11 @@ describe('Whitelist functional: whitelist group can trigger proactive, messageTr
       { allowOverride: true },
     );
     container.registerInstance(DITokens.CONFIG, { getAIConfig: () => undefined }, { allowOverride: true });
+    container.registerInstance(
+      DITokens.PROVIDER_ROUTER,
+      new ProviderRouter({ getProviderForCapability: () => ({ isAvailable: () => true }) } as never),
+      { allowOverride: true },
+    );
 
     const trigger = new MessageTriggerPlugin({ name: 'messageTrigger', version: 'test', description: 'test' });
     trigger.loadConfig(

@@ -43,9 +43,11 @@ describe('parseCardDeck', () => {
     expect(cards[1].type).toBe('list');
   });
 
-  test('throws when root is not array (single object)', () => {
+  test('auto-wraps single card object into array', () => {
     const json = JSON.stringify(validQaCard);
-    expect(() => parseCardDeck(json)).toThrow('Card deck must be a JSON array');
+    const cards = parseCardDeck(json);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].type).toBe('qa');
   });
 
   test('throws when array is empty', () => {

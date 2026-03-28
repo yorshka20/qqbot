@@ -9,6 +9,7 @@ import 'reflect-metadata';
 
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { PromptManager } from '@/ai/prompt/PromptManager';
+import { ProviderRouter } from '@/ai/routing/ProviderRouter';
 import { CommandBuilder } from '@/command/CommandBuilder';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -109,6 +110,11 @@ async function initMessageTrigger(config: { wakeWords?: string[] } = {}) {
     { allowOverride: true },
   );
   container.registerInstance(DITokens.CONFIG, { getAIConfig: () => undefined }, { allowOverride: true });
+  container.registerInstance(
+    DITokens.PROVIDER_ROUTER,
+    new ProviderRouter({ getProviderForCapability: () => ({ isAvailable: () => true }) } as never),
+    { allowOverride: true },
+  );
   const plugin = new MessageTriggerPlugin({
     name: 'messageTrigger',
     version: 'test',

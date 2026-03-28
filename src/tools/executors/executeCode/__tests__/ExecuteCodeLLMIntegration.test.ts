@@ -23,7 +23,7 @@ import {
   createAIManagerWithProvider,
   getIntegrationProvider,
   type IntegrationProviderName,
-} from '@/ai/services/integrationTestHelpers';
+} from '@/ai/services/__tests__/integrationTestHelpers';
 import { LLMService, type LLMServiceConfig } from '@/ai/services/LLMService';
 import type { ChatMessage, FunctionCall, ToolDefinition } from '@/ai/types';
 import { getContainer } from '@/core/DIContainer';
