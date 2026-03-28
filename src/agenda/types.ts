@@ -49,7 +49,7 @@ export interface AgendaItem extends BaseModel {
    *   - 'intent' (default): LLM interprets the intent text and decides what tools to call
    *   - 'subagent': directly spawn a subagent with the specified preset (bypasses LLM interpretation)
    */
-  actionType?: 'intent' | 'subagent';
+  actionType?: 'intent' | 'subagent' | 'action';
   /** Target for direct execution: subagent presetKey (e.g., 'group_report', 'research') */
   actionTarget?: string;
   /** JSON string of parameters passed to the action (merged into subagent task input) */

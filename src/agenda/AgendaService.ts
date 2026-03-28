@@ -14,6 +14,7 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { logger } from '@/utils/logger';
+import type { ActionHandlerRegistry } from './ActionHandlerRegistry';
 import type { AgendaReporter } from './AgendaReporter';
 import type { AgentLoop } from './AgentLoop';
 import type { InternalEventBus } from './InternalEventBus';
@@ -38,6 +39,7 @@ export class AgendaService {
     private databaseManager: DatabaseManager,
     private agentLoop: AgentLoop,
     private eventBus: InternalEventBus,
+    private actionHandlerRegistry: ActionHandlerRegistry,
     private reporter?: AgendaReporter,
   ) {
     this.config = getContainer().resolve<Config>(DITokens.CONFIG);
@@ -314,7 +316,9 @@ export class AgendaService {
     const startedAtIso = startedAt.toISOString();
 
     try {
-      if (fresh.actionType === 'subagent') {
+      if (fresh.actionType === 'action') {
+        await this.agentLoop.runAction(fresh, eventContext, this.actionHandlerRegistry);
+      } else if (fresh.actionType === 'subagent') {
         await this.agentLoop.runSubAgent(fresh, eventContext);
       } else {
         await this.agentLoop.run(fresh, eventContext);

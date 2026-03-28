@@ -20,4 +20,3 @@ export { ResearchToolExecutor } from './ResearchToolExecutor';
 export { SearchCodeToolExecutor } from './SearchCodeToolExecutor';
 export { SearchMemoryToolExecutor } from './SearchMemoryToolExecutor';
 export { SearchToolExecutor } from './SearchToolExecutor';
-export { TriggerTodoWorkerExecutor } from './TriggerTodoWorkerExecutor';

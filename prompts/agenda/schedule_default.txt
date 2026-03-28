@@ -15,6 +15,8 @@
   - 执行: `subagent research`        (直接触发 research 子代理)
   - 执行: `subagent group_report`    (直接触发 group_report 子代理)
   子代理预设名称对应 prompts/subagent/{presetKey}/ 目录
+  - 执行: `action todo_worker`       (直接执行代码，无 LLM 参与)
+  action 处理器在 AgendaInitializer 中注册，跳过 LLM 直接运行业务逻辑
 
 参数（可选，JSON 格式，传递给子代理的任务输入）:
   - 参数: `{"topic": "AI新闻"}`

@@ -49,7 +49,7 @@ interface ParsedScheduleItem {
   cooldownMs: number;
   maxSteps: number;
   enabled: boolean;
-  actionType?: 'intent' | 'subagent';
+  actionType?: 'intent' | 'subagent' | 'action';
   actionTarget?: string;
   actionParams?: string;
 }
@@ -64,7 +64,7 @@ export interface AppendItemData {
   groupId?: string;
   cooldownMs?: number;
   intent: string;
-  actionType?: 'intent' | 'subagent';
+  actionType?: 'intent' | 'subagent' | 'action';
   actionTarget?: string;
   actionParams?: string;
 }
@@ -331,8 +331,8 @@ export class ScheduleFileService {
     const trigger = this.parseTrigger(triggerRaw, name);
     if (!trigger) return null;
 
-    // For subagent actions, intent is optional (task.txt provides the description)
-    const hasAction = meta.action?.trim().startsWith('subagent ');
+    // For subagent/action actions, intent is optional (task.txt or handler provides the behavior)
+    const hasAction = meta.action?.trim().startsWith('subagent ') || meta.action?.trim().startsWith('action ');
     if (!intent && !hasAction) {
       logger.warn(`[ScheduleFileService] Section "## ${name}": no intent text found, skipping`);
       return null;
@@ -411,6 +411,15 @@ export class ScheduleFileService {
         return {};
       }
       return { actionType: 'subagent', actionTarget };
+    }
+
+    if (s.startsWith('action ')) {
+      const actionTarget = s.slice(7).trim();
+      if (!actionTarget) {
+        logger.warn(`[ScheduleFileService] Section "## ${name}": action has no handler name`);
+        return {};
+      }
+      return { actionType: 'action', actionTarget };
     }
 
     logger.warn(`[ScheduleFileService] Section "## ${name}": unknown action type "${s}"`);

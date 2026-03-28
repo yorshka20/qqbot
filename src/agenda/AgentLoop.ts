@@ -18,6 +18,7 @@ import type { ToolManager } from '@/tools/ToolManager';
 import { stripSkipCardMarker } from '@/utils/contentMarkers';
 import { getCurrentDateTimeForPrompt } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
+import type { ActionHandlerRegistry } from './ActionHandlerRegistry';
 import { buildAgendaHookContext } from './AgendaHookContext';
 import type { AgendaEventContext, AgendaItem } from './types';
 
@@ -135,6 +136,52 @@ export class AgentLoop {
       await this.deliverReply(resultText, item.name, groupId, userId, isPrivate, contextId);
     } catch (err) {
       logger.error(`[AgentLoop] Subagent execution failed for item "${item.name}":`, err);
+      throw err;
+    }
+  }
+
+  /**
+   * Execute an agenda item by directly invoking a registered action handler (actionType === 'action').
+   * No LLM involved — the handler runs code directly.
+   * @param item - The agenda item with actionType='action' and actionTarget set
+   * @param eventContext - Optional event context
+   * @param registry - Action handler registry
+   */
+  async runAction(item: AgendaItem, eventContext: AgendaEventContext, registry: ActionHandlerRegistry): Promise<void> {
+    const handlerName = item.actionTarget;
+    if (!handlerName) {
+      logger.error(`[AgentLoop] Item "${item.name}" has actionType=action but no actionTarget`);
+      return;
+    }
+
+    const handler = registry.get(handlerName);
+    if (!handler) {
+      logger.error(`[AgentLoop] No action handler registered for "${handlerName}"`);
+      return;
+    }
+
+    const { groupId, userId, isPrivate, target, contextId } = this.resolveTarget(item, eventContext);
+    if (!groupId && !userId) {
+      logger.warn(`[AgentLoop] Item "${item.name}" has no groupId or userId; skipping`);
+      return;
+    }
+
+    logger.info(`[AgentLoop] Running action "${handlerName}" for item "${item.name}" → ${target}`);
+
+    try {
+      const result = await handler.execute({
+        item,
+        eventContext,
+        groupId,
+        userId,
+        protocol: this.preferredProtocol,
+      });
+
+      if (result) {
+        await this.deliverReply(result, item.name, groupId, userId, isPrivate, contextId);
+      }
+    } catch (err) {
+      logger.error(`[AgentLoop] Action handler "${handlerName}" failed for item "${item.name}":`, err);
       throw err;
     }
   }

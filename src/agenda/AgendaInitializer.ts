@@ -12,9 +12,11 @@ import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
+import { ActionHandlerRegistry } from './ActionHandlerRegistry';
 import { AgendaReporter } from './AgendaReporter';
 import { AgendaService } from './AgendaService';
 import { AgentLoop } from './AgentLoop';
+import { TodoWorkerHandler } from './handlers/TodoWorkerHandler';
 import { InternalEventBus } from './InternalEventBus';
 import { ScheduleFileService } from './ScheduleFileService';
 
@@ -73,7 +75,10 @@ export class AgendaInitializer {
 
     const reporter = new AgendaReporter(reportsDir);
 
-    const agendaService = new AgendaService(deps.databaseManager, agentLoop, internalEventBus, reporter);
+    const actionHandlerRegistry = new ActionHandlerRegistry();
+    actionHandlerRegistry.register(new TodoWorkerHandler());
+
+    const agendaService = new AgendaService(deps.databaseManager, agentLoop, internalEventBus, actionHandlerRegistry, reporter);
 
     const scheduleFileService = new ScheduleFileService(scheduleFilePath, agendaService, deps.promptManager);
 

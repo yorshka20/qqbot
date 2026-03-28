@@ -138,7 +138,7 @@ export interface AgendaItem extends BaseModel {
   lastRunAt?: string;
   nextRunAt?: string;
   metadata?: string; // JSON string
-  actionType?: 'intent' | 'subagent'; // Execution mode (default: 'intent')
+  actionType?: 'intent' | 'subagent' | 'action'; // Execution mode (default: 'intent')
   actionTarget?: string; // Subagent presetKey
   actionParams?: string; // JSON string of parameters
 }
