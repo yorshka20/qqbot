@@ -138,6 +138,7 @@ export class CardRenderingHelper {
   // ---------------------------------------------------------------------------
 
   shouldUseCardReply(responseText: string): boolean {
+    // skip if marker is detected: /skip_card
     if (hasSkipCardMarker(responseText)) return false;
     return responseText.length >= CardRenderingService.getThreshold();
   }

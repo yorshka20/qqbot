@@ -21,6 +21,7 @@
     "format": "biome format --write src",
     "smoke-test": "bun run src/cli/smoke-test.ts",
     "test": "bun test",
+    "test:network": "NETWORK_TESTS=1 bun test",
     "prepare": "husky"
   },
   "keywords": [

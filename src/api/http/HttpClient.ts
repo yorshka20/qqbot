@@ -71,7 +71,8 @@ export class HttpClient {
   }
 
   /**
-   * Make a generic HTTP request
+   * Make a generic HTTP request.
+   * Timeout covers the ENTIRE request-response cycle (fetch + body parsing).
    */
   async request<T = unknown>(url: string, options: RequestOptions = {}): Promise<T> {
     const method = options.method || 'GET';
@@ -97,30 +98,42 @@ export class HttpClient {
 
     // Retry logic
     for (let attempt = 0; attempt <= retries; attempt++) {
+      // Create timeout controller that covers BOTH fetch and body parsing.
+      // Previously the timeout was cleared after fetch returned headers, leaving
+      // body reading uncovered — causing "The operation timed out." errors for
+      // slow-response APIs (e.g. image generation).
+      const { controller, clear: clearTimer } = this.createTimeoutController(timeout, options.signal);
+
       try {
-        const response = await this.executeRequest(fullUrl, {
+        const response = await this.executeFetch(fullUrl, {
           method,
           headers,
           body,
-          timeout,
-          signal: options.signal,
+          signal: controller.signal,
         });
 
-        // Parse response
+        // Parse response — timeout is still active during body reading
         const data = await this.parseResponse<T>(response);
+
+        // Clear timeout only after body is fully read
+        clearTimer();
 
         // Log response in debug mode
         logger.debug(`[HttpClient] ${method} ${fullUrl} - ${response.status}:${response.statusText}`);
 
         return data;
       } catch (error) {
+        clearTimer();
+
+        // Convert AbortError/TimeoutError to HttpClientError with clear message
+        if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
+          throw new HttpClientError(`Request timeout after ${timeout}ms`);
+        }
+
         lastError = error instanceof Error ? error : new Error(String(error));
 
-        // Don't retry on client errors (4xx) or if signal is aborted
-        if (
-          (error instanceof HttpClientError && error.status && error.status >= 400 && error.status < 500) ||
-          (error instanceof Error && error.name === 'AbortError')
-        ) {
+        // Don't retry on client errors (4xx)
+        if (error instanceof HttpClientError && error.status && error.status >= 400 && error.status < 500) {
           throw error;
         }
 
@@ -221,13 +234,26 @@ export class HttpClient {
     // Log request in debug mode
     logger.debug(`[HttpClient] ${method} ${fullUrl} (streaming)`);
 
-    const response = await this.executeRequest(fullUrl, {
-      method,
-      headers,
-      body,
-      timeout,
-      signal: options.signal,
-    });
+    // For streaming, timeout only covers initial fetch (body is consumed by caller)
+    const { controller, clear: clearTimer } = this.createTimeoutController(timeout, options.signal);
+
+    let response: Response;
+    try {
+      response = await this.executeFetch(fullUrl, {
+        method,
+        headers,
+        body,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      clearTimer();
+      if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
+        throw new HttpClientError(`Request timeout after ${timeout}ms`);
+      }
+      throw error;
+    }
+
+    clearTimer();
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
@@ -246,55 +272,45 @@ export class HttpClient {
   }
 
   /**
-   * Execute the actual fetch request with timeout
+   * Create an AbortController with a timeout, optionally combining with an external signal.
+   * Caller is responsible for calling `clear()` when the full operation completes.
    */
-  private async executeRequest(
+  private createTimeoutController(
+    timeout: number,
+    externalSignal?: AbortSignal,
+  ): { controller: AbortController; clear: () => void } {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        controller.abort();
+      } else {
+        externalSignal.addEventListener('abort', () => controller.abort());
+      }
+    }
+
+    return { controller, clear: () => clearTimeout(timeoutId) };
+  }
+
+  /**
+   * Execute the actual fetch request. Caller manages timeout via signal.
+   */
+  private async executeFetch(
     url: string,
     options: {
       method: string;
       headers: Record<string, string>;
       body: string | undefined;
-      timeout: number;
-      signal?: AbortSignal;
+      signal: AbortSignal;
     },
   ): Promise<Response> {
-    // Create AbortController for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), options.timeout);
-
-    // Combine signals if both are provided
-    const signal = controller.signal;
-    if (options.signal) {
-      // If both signals exist, abort if either is aborted
-      if (options.signal.aborted) {
-        controller.abort();
-      } else {
-        options.signal.addEventListener('abort', () => controller.abort());
-      }
-    }
-
-    try {
-      const response = await fetch(url, {
-        method: options.method,
-        headers: options.headers,
-        body: options.body,
-        signal,
-      });
-
-      clearTimeout(timeoutId);
-      return response;
-    } catch (error) {
-      clearTimeout(timeoutId);
-
-      if (error instanceof Error) {
-        if (error.name === 'AbortError') {
-          throw new HttpClientError(`Request timeout after ${options.timeout}ms`);
-        }
-        throw error;
-      }
-
-      throw new Error(`Unknown error: ${String(error)}`);
-    }
+    return fetch(url, {
+      method: options.method,
+      headers: options.headers,
+      body: options.body,
+      signal: options.signal,
+    });
   }
 
   /**

@@ -37,7 +37,7 @@
 
 ```bash
 bun run typecheck
-bun run lint
+bun run lint:fix
 ```
 
 Commit message 格式：
