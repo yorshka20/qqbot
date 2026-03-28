@@ -11,6 +11,12 @@ import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegist
 
 const TAG = '[RepeatingTodoWorkerHandler]';
 
+interface RoundResult {
+  round: number;
+  status: 'completed' | 'failed';
+  error?: string;
+}
+
 interface RepeatingParams {
   project: string;
   /** Number of times to trigger the todo worker (default: 5) */
@@ -51,78 +57,102 @@ export class RepeatingTodoWorkerHandler implements ActionHandler {
       return `❌ repeating_todo_worker: 未找到项目 "${params.project}"`;
     }
 
-    const targetType = ctx.groupId ? 'group' : 'user';
+    const targetType: 'group' | 'user' = ctx.groupId ? 'group' : 'user';
     const targetId = ctx.groupId ?? ctx.userId ?? '';
+
+    const startTime = Date.now();
 
     logger.info(
       `${TAG} Starting repeating session: project="${project.alias}", repeat=${repeat}, interval=${intervalMinutes}min`,
     );
 
-    const results: Array<{ round: number; status: 'completed' | 'failed'; summary: string }> = [];
+    const projectContext: ProjectContext = {
+      alias: project.alias,
+      type: project.type,
+      description: project.description,
+      hasClaudeMd: project.hasClaudeMd,
+      promptTemplateKey: 'claude-code.task.todo-worker',
+    };
 
-    for (let i = 1; i <= repeat; i++) {
-      // Wait interval before each trigger (except the first)
-      if (i > 1) {
-        logger.info(`${TAG} Waiting ${intervalMinutes} minutes before round ${i}/${repeat}...`);
-        await this.delay(intervalMinutes * 60 * 1000);
-      }
+    // Schedule all rounds at fixed intervals (T=0, T=interval, T=2*interval, ...)
+    // Each round triggers independently — if a previous task hasn't finished,
+    // the new one enters the queue and will execute when ready.
+    const taskPromises = Array.from({ length: repeat }, (_, i) => {
+      const round = i + 1;
+      const delayMs = i * intervalMinutes * 60 * 1000;
 
-      logger.info(`${TAG} Triggering round ${i}/${repeat} for project "${project.alias}"`);
+      return this.scheduleRound({
+        round,
+        repeat,
+        delayMs,
+        claudeCodeService,
+        projectContext,
+        projectPath: project.path,
+        projectAlias: project.alias,
+        prompt: `阅读并完成 ${project.alias} 项目 todo.md 中的待办任务`,
+        target: { type: targetType, id: targetId },
+      });
+    });
 
-      const projectContext: ProjectContext = {
-        alias: project.alias,
-        type: project.type,
-        description: project.description,
-        hasClaudeMd: project.hasClaudeMd,
-        promptTemplateKey: 'claude-code.task.todo-worker',
-      };
+    // Wait for all rounds to complete
+    const results = await Promise.all(taskPromises);
 
-      try {
-        const task = await claudeCodeService.triggerTask(
-          `阅读并完成 ${project.alias} 项目 todo.md 中的待办任务`,
-          { type: targetType, id: targetId },
-          project.path,
-          { taskType: 'dev', projectContext, suppressDefaultNotification: true },
-        );
-
-        logger.info(`${TAG} Round ${i}/${repeat}: task ${task.id} created, waiting for completion...`);
-
-        // Wait for this task to finish
-        const completedTask = await claudeCodeService.awaitTaskCompletion(task.id);
-
-        const status = completedTask.status as 'completed' | 'failed';
-        const summary =
-          status === 'completed'
-            ? this.truncate(completedTask.result || '无结果', 500)
-            : this.truncate(completedTask.error || '未知错误', 500);
-
-        results.push({ round: i, status, summary });
-
-        logger.info(`${TAG} Round ${i}/${repeat}: ${status}`);
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        logger.error(`${TAG} Round ${i}/${repeat} failed:`, error);
-        results.push({ round: i, status: 'failed', summary: msg });
-      }
-    }
-
-    // Build final summary
+    // Build brief summary — individual results are reported by each worker's own notification
+    const elapsedMin = Math.round((Date.now() - startTime) / 1000 / 60);
     const completed = results.filter((r) => r.status === 'completed').length;
     const failed = results.filter((r) => r.status === 'failed').length;
 
     const lines: string[] = [
       `📋 自动开发会话完成 — 项目: ${project.alias}`,
-      `✅ 成功: ${completed}/${repeat}　❌ 失败: ${failed}/${repeat}`,
-      '',
+      `共执行 ${repeat} 轮，✅ 成功 ${completed}，❌ 失败 ${failed}，总耗时 ${elapsedMin} 分钟`,
     ];
 
-    for (const r of results) {
-      const icon = r.status === 'completed' ? '✅' : '❌';
-      lines.push(`${icon} 第 ${r.round} 轮: ${r.summary}`);
-      lines.push('');
+    if (failed > 0) {
+      for (const r of results) {
+        if (r.status === 'failed') {
+          lines.push(`  第 ${r.round} 轮失败: ${r.error}`);
+        }
+      }
     }
 
     return lines.join('\n');
+  }
+
+  private scheduleRound(opts: {
+    round: number;
+    repeat: number;
+    delayMs: number;
+    claudeCodeService: ClaudeCodeService;
+    projectContext: ProjectContext;
+    projectPath: string;
+    projectAlias: string;
+    prompt: string;
+    target: { type: 'group' | 'user'; id: string };
+  }): Promise<RoundResult> {
+    const { round, repeat, delayMs, claudeCodeService, projectContext, projectPath, prompt, target } = opts;
+
+    return new Promise<RoundResult>((resolve) => {
+      setTimeout(async () => {
+        logger.info(`${TAG} Triggering round ${round}/${repeat} for project "${opts.projectAlias}"`);
+        try {
+          const task = await claudeCodeService.triggerTask(prompt, target, projectPath, {
+            taskType: 'dev',
+            projectContext,
+          });
+
+          logger.info(`${TAG} Round ${round}/${repeat}: task ${task.id} created, waiting for completion...`);
+          const completedTask = await claudeCodeService.awaitTaskCompletion(task.id);
+          const status = (completedTask.status as 'completed' | 'failed') ?? 'failed';
+
+          logger.info(`${TAG} Round ${round}/${repeat}: ${status}`);
+          resolve({ round, status, error: status === 'failed' ? completedTask.error || '未知错误' : undefined });
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          logger.error(`${TAG} Round ${round}/${repeat} failed:`, error);
+          resolve({ round, status: 'failed', error: msg });
+        }
+      }, delayMs);
+    });
   }
 
   private parseParams(raw?: string): RepeatingParams {
@@ -132,14 +162,5 @@ export class RepeatingTodoWorkerHandler implements ActionHandler {
     } catch {
       return { project: '' };
     }
-  }
-
-  private truncate(text: string, maxLen: number): string {
-    if (text.length <= maxLen) return text;
-    return `${text.slice(0, maxLen - 10)}...(截断)`;
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
