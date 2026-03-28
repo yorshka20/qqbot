@@ -126,11 +126,13 @@ export class HttpClient {
         clearTimer();
 
         // Convert AbortError/TimeoutError to HttpClientError with clear message
-        if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
-          throw new HttpClientError(`Request timeout after ${timeout}ms`);
-        }
+        const isTimeout = error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError');
 
-        lastError = error instanceof Error ? error : new Error(String(error));
+        lastError = isTimeout
+          ? new HttpClientError(`Request timeout after ${timeout}ms`)
+          : error instanceof Error
+            ? error
+            : new Error(String(error));
 
         // Don't retry on client errors (4xx)
         if (error instanceof HttpClientError && error.status && error.status >= 400 && error.status < 500) {
@@ -139,7 +141,7 @@ export class HttpClient {
 
         // If this is the last attempt, throw the error
         if (attempt === retries) {
-          throw error;
+          throw lastError;
         }
 
         // Wait before retrying
@@ -253,16 +255,19 @@ export class HttpClient {
       throw error;
     }
 
-    clearTimer();
-
     if (!response.ok) {
+      // Read error body while timeout is still active to avoid hanging
       const errorText = await response.text().catch(() => 'Unknown error');
+      clearTimer();
       throw new HttpClientError(
         `HTTP ${response.status} ${response.statusText}: ${errorText}`,
         response.status,
         response.statusText,
       );
     }
+
+    // Clear timeout only after confirming response is OK
+    clearTimer();
 
     if (!response.body) {
       throw new HttpClientError('Response body is null');
@@ -282,15 +287,25 @@ export class HttpClient {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
+    let onExternalAbort: (() => void) | undefined;
     if (externalSignal) {
       if (externalSignal.aborted) {
         controller.abort();
       } else {
-        externalSignal.addEventListener('abort', () => controller.abort());
+        onExternalAbort = () => controller.abort();
+        externalSignal.addEventListener('abort', onExternalAbort);
       }
     }
 
-    return { controller, clear: () => clearTimeout(timeoutId) };
+    return {
+      controller,
+      clear: () => {
+        clearTimeout(timeoutId);
+        if (onExternalAbort && externalSignal) {
+          externalSignal.removeEventListener('abort', onExternalAbort);
+        }
+      },
+    };
   }
 
   /**
@@ -508,6 +523,7 @@ export class HttpClient {
     return new Promise((resolve) => {
       const socket = tlsConnect({ host: hostname, port, rejectUnauthorized: true }, () => {
         // TLS handshake succeeded
+        clearTimeout(timer);
         socket.destroy();
         resolve(true);
       });

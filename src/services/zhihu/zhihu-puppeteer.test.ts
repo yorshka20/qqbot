@@ -49,9 +49,7 @@ describe.skipIf(SKIP)('Zhihu API (real network)', () => {
   });
 
   test('GET answer content', async () => {
-    const resp = await testFetch(
-      'https://www.zhihu.com/api/v4/answers/2017885791959942952?include=content',
-    );
+    const resp = await testFetch('https://www.zhihu.com/api/v4/answers/2017885791959942952?include=content');
     expect(resp.ok).toBe(true);
   });
 
