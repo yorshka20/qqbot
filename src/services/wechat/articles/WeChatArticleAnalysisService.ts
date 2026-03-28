@@ -1,5 +1,5 @@
-// WeChatArticleAnalysisService — fetches unanalyzed articles, runs LLM analysis via deepseek/doubao,
-// and stores extracted insights into wechat_article_insights table.
+// WeChatArticleAnalysisService — fetches unanalyzed articles, runs LLM analysis via configurable provider
+// (default: doubao, no fallback, retry on timeout), and stores extracted insights into wechat_article_insights table.
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -12,11 +12,8 @@ import { fetchArticleText } from './fetchArticleText';
 // Types
 // ────────────────────────────────────────────────────────────────────────────
 
-/** Allowed providers for article analysis (cost-controlled). */
-const ALLOWED_PROVIDERS = ['deepseek', 'doubao'] as const;
-
 export interface ArticleAnalysisConfig {
-  /** Provider name to use for analysis. Default: "deepseek". Only "deepseek" and "doubao" are allowed. */
+  /** Provider name to use for analysis. Default: "doubao". No fallback — retries on timeout. */
   provider?: string;
   /** Path to prompt template file (default "prompts/analysis/wechat_article.txt") */
   promptPath?: string;
@@ -24,6 +21,10 @@ export interface ArticleAnalysisConfig {
   maxArticles?: number;
   /** Concurrency — how many articles to analyze in parallel (default 1) */
   concurrency?: number;
+  /** Max retries on timeout (default 3) */
+  maxRetries?: number;
+  /** Delay between retries in ms (default 2000) */
+  retryDelayMs?: number;
 }
 
 interface AnalysisItem {
@@ -51,18 +52,19 @@ export class WeChatArticleAnalysisService {
   private promptTemplate: string;
   private maxArticles: number;
   private concurrency: number;
+  private maxRetries: number;
+  private retryDelayMs: number;
 
   constructor(
     private db: WeChatDatabase,
     private llmService: LLMService,
     config: ArticleAnalysisConfig,
   ) {
-    const requestedProvider = config.provider ?? 'deepseek';
-    this.provider = ALLOWED_PROVIDERS.includes(requestedProvider as (typeof ALLOWED_PROVIDERS)[number])
-      ? requestedProvider
-      : 'deepseek';
+    this.provider = config.provider ?? 'doubao';
     this.maxArticles = config.maxArticles ?? 100;
     this.concurrency = config.concurrency ?? 1;
+    this.maxRetries = config.maxRetries ?? 5;
+    this.retryDelayMs = config.retryDelayMs ?? 2000;
 
     // Load prompt template
     const promptPath = resolve(config.promptPath ?? 'prompts/analysis/wechat_article.txt');
@@ -211,35 +213,38 @@ export class WeChatArticleAnalysisService {
 
   /**
    * Call LLM via LLMService and parse JSON response.
-   * Fallback is restricted to ALLOWED_PROVIDERS only (deepseek / doubao).
+   * Uses only the configured provider (no fallback). Retries on timeout.
    */
   private async callLLM(prompt: string, title: string): Promise<AnalysisResult | null> {
-    const fallbackProvider = this.provider === 'deepseek' ? 'doubao' : 'deepseek';
+    const provider = await this.llmService.getAvailableProvider(this.provider);
+    if (!provider) {
+      throw new Error(`Provider "${this.provider}" is not available`);
+    }
 
-    for (const providerName of [this.provider, fallbackProvider]) {
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        const provider = await this.llmService.getAvailableProvider(providerName);
-        if (!provider) {
-          logger.warn(`[ArticleAnalysis] Provider "${providerName}" not available, skipping`);
-          continue;
-        }
-
         const response = await provider.generate(prompt, { temperature: 0.3, maxTokens: 2048, jsonMode: true });
         const text = response.text?.trim();
         if (!text) {
-          logger.warn(`[ArticleAnalysis] Empty response from "${providerName}" for "${title}"`);
-          continue;
+          logger.warn(`[ArticleAnalysis] Empty response from "${this.provider}" for "${title}"`);
+          return null;
         }
-
         return this.parseJSON(text, title);
       } catch (err) {
-        logger.warn(`[ArticleAnalysis] Provider "${providerName}" failed for "${title}":`, err);
-        // try fallback
+        const isTimeout = err instanceof Error && (err.message.includes('timeout') || err.name === 'AbortError');
+        if (isTimeout && attempt < this.maxRetries) {
+          logger.warn(
+            `[ArticleAnalysis] Timeout from "${this.provider}" for "${title}", retry ${attempt + 1}/${this.maxRetries}`,
+          );
+          await new Promise((r) => setTimeout(r, this.retryDelayMs));
+          continue;
+        }
+        // Non-timeout error or retries exhausted — throw immediately
+        throw err;
       }
     }
 
-    logger.error(`[ArticleAnalysis] All allowed providers failed for "${title}"`);
-    throw new Error(`All allowed providers (${ALLOWED_PROVIDERS.join(', ')}) failed for "${title}"`);
+    throw new Error(`Provider "${this.provider}" timed out after ${this.maxRetries} retries for "${title}"`);
   }
 
   /**
