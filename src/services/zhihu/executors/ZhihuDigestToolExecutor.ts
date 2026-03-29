@@ -41,16 +41,23 @@ export class ZhihuDigestToolExecutor extends BaseToolExecutor {
     logger.info(`[ZhihuDigestToolExecutor] Fetching feed data for last ${hoursBack}h`);
 
     try {
-      const items = this.feedService.getUndigestedSince(sinceTs);
+      const rawItems = this.feedService.getUndigestedSince(sinceTs);
 
-      if (items.length === 0) {
+      if (rawItems.length === 0) {
         return this.success(`过去 ${hoursBack} 小时没有新的知乎动态。`);
+      }
+
+      // Deduplicate by targetId (same content from different verbs/events)
+      const items = this.deduplicateItems(rawItems);
+      const dedupCount = rawItems.length - items.length;
+      if (dedupCount > 0) {
+        logger.info(`[ZhihuDigestToolExecutor] Deduplicated ${dedupCount} items (${rawItems.length} → ${items.length})`);
       }
 
       const text = this.formatItems(items, hoursBack);
 
-      // Mark items as digested so they won't appear in future digests
-      const itemIds = items.map((i) => i.id);
+      // Mark ALL raw items as digested (including duplicates)
+      const itemIds = rawItems.map((i) => i.id);
       this.feedService.markDigested(itemIds);
 
       logger.info(`[ZhihuDigestToolExecutor] Returned ${items.length} items, ${text.length} chars`);
@@ -60,6 +67,40 @@ export class ZhihuDigestToolExecutor extends BaseToolExecutor {
       logger.error('[ZhihuDigestToolExecutor] Error:', err);
       return this.error('获取知乎动态数据失败', msg);
     }
+  }
+
+  /**
+   * Deduplicate items by targetId+targetType (same content via different verbs)
+   * and by title (e.g., different answers to the same question).
+   * Keeps the item with the highest engagement (voteupCount + commentCount).
+   */
+  private deduplicateItems(items: ZhihuFeedItemRow[]): ZhihuFeedItemRow[] {
+    // First pass: dedup by targetId+targetType
+    const byTarget = new Map<string, ZhihuFeedItemRow>();
+    for (const item of items) {
+      const key = `${item.targetType}:${item.targetId}`;
+      const existing = byTarget.get(key);
+      if (!existing || item.voteupCount + item.commentCount > existing.voteupCount + existing.commentCount) {
+        byTarget.set(key, item);
+      }
+    }
+
+    // Second pass: dedup by title (same question with different answers)
+    const byTitle = new Map<string, ZhihuFeedItemRow>();
+    for (const item of byTarget.values()) {
+      const title = item.title.trim();
+      if (!title || title === '(无标题)') {
+        // Don't dedup untitled items
+        byTitle.set(item.id, item);
+        continue;
+      }
+      const existing = byTitle.get(title);
+      if (!existing || item.voteupCount + item.commentCount > existing.voteupCount + existing.commentCount) {
+        byTitle.set(title, item);
+      }
+    }
+
+    return Array.from(byTitle.values());
   }
 
   private formatItems(items: ZhihuFeedItemRow[], hoursBack: number): string {

@@ -53,7 +53,7 @@ export class TodoWorkerHandler implements ActionHandler {
 
     try {
       const task = await claudeCodeService.triggerTask(
-        `阅读并完成 ${project.alias} 项目 todo.md 中的待办任务`,
+        `完成 ${project.alias} 项目 todo.md 中的待办任务`,
         { type: targetType, id: targetId },
         project.path,
         { taskType: 'dev', projectContext },

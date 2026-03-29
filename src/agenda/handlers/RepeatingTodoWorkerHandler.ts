@@ -89,7 +89,7 @@ export class RepeatingTodoWorkerHandler implements ActionHandler {
         projectContext,
         projectPath: project.path,
         projectAlias: project.alias,
-        prompt: `阅读并完成 ${project.alias} 项目 todo.md 中的待办任务`,
+        prompt: `完成 ${project.alias} 项目 todo.md 中的待办任务`,
         target: { type: targetType, id: targetId },
       });
     });

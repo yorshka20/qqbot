@@ -31,11 +31,37 @@ export class ZhihuContentParser {
     }
   }
 
-  /** Parse multiple feed items. */
+  /** Parse multiple feed items. Logs verb distribution for diagnostics. */
   parseAll(feedItems: ZhihuFeedItem[]): ZhihuContentItem[] {
-    const results: ZhihuContentItem[] = [];
+    // Log raw verb distribution before filtering (helps diagnose missing content types)
+    const verbCounts = new Map<string, number>();
     for (const item of feedItems) {
+      const verb = item.verb || '(empty)';
+      verbCounts.set(verb, (verbCounts.get(verb) ?? 0) + 1);
+      // Also count sub-items in group feeds
+      if (item.list) {
+        for (const sub of item.list) {
+          const subVerb = sub.verb || '(empty)';
+          verbCounts.set(subVerb, (verbCounts.get(subVerb) ?? 0) + 1);
+        }
+      }
+    }
+    const verbSummary = Array.from(verbCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([v, c]) => `${v}:${c}`)
+      .join(', ');
+    logger.info(`[ZhihuContentParser] Raw verb distribution: ${verbSummary}`);
+
+    const results: ZhihuContentItem[] = [];
+    let filteredCount = 0;
+    for (const item of feedItems) {
+      const before = results.length;
       results.push(...this.parse(item));
+      if (results.length === before) filteredCount++;
+    }
+
+    if (filteredCount > 0) {
+      logger.info(`[ZhihuContentParser] Filtered out ${filteredCount}/${feedItems.length} items by verbFilter`);
     }
     return results;
   }
