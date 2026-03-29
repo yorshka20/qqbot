@@ -445,16 +445,28 @@ export class GroupReportPlugin extends PluginBase {
    * Decoupled from execution time so the report always covers the full previous day.
    */
   private getYesterdayRange(): { start: Date; end: Date; dateStr: string } {
-    const formatter = new Intl.DateTimeFormat('en-CA', {
+    const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: DATE_TIMEZONE,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
     });
-    // Get today's date in timezone, then subtract one day
+    // Get today's date components in the target timezone
     const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const dateStr = formatter.format(yesterday); // YYYY-MM-DD
+    const parts = formatter.formatToParts(now);
+    const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? '';
+    const todayYear = parseInt(get('year'), 10);
+    const todayMonth = parseInt(get('month'), 10);
+    const todayDay = parseInt(get('day'), 10);
+
+    // Subtract one calendar day (handles month/year boundaries correctly)
+    const todayLocal = new Date(todayYear, todayMonth - 1, todayDay);
+    todayLocal.setDate(todayLocal.getDate() - 1);
+    const y = todayLocal.getFullYear();
+    const m = String(todayLocal.getMonth() + 1).padStart(2, '0');
+    const d = String(todayLocal.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
+
     // Construct start/end with correct timezone offset (not machine-local time)
     const start = dateInTimezone(dateStr, '00:00:00');
     const end = dateInTimezone(dateStr, '23:59:59.999');

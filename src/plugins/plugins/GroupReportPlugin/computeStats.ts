@@ -39,6 +39,24 @@ function getHourInTimezone(date: Date): number {
  * Compute all mechanical statistics from chat messages.
  * Returns hourly activity, totals, highlight time range, and per-user stats.
  */
+/**
+ * Normalize hourly activity data to always have exactly 24 entries (hours 0-23) in order.
+ * Fills missing hours with 0 count. Handles LLM-corrupted data (reordered, filtered, duplicated).
+ */
+export function normalizeHourlyActivity(raw: HourlyActivity[]): HourlyActivity[] {
+  const counts = new Array<number>(24).fill(0);
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      const hour = typeof entry.hour === 'number' ? Math.floor(entry.hour) : parseInt(String(entry.hour), 10);
+      const count = typeof entry.count === 'number' ? entry.count : parseInt(String(entry.count), 10);
+      if (hour >= 0 && hour < 24 && !Number.isNaN(count) && count >= 0) {
+        counts[hour] = count;
+      }
+    }
+  }
+  return counts.map((count, hour) => ({ hour, count }));
+}
+
 export function computeGroupReportStats(messages: ConversationMessageEntry[]): GroupReportStats {
   // Filter out bot replies
   const userMessages = messages.filter((m) => !m.isBotReply);

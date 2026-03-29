@@ -1,5 +1,6 @@
 // Renders GroupReportData to a full HTML string for Puppeteer screenshot
 
+import { normalizeHourlyActivity } from './computeStats';
 import type { GroupReportData } from './types';
 
 function escapeHtml(text: string): string {
@@ -29,10 +30,11 @@ const RANK_LABELS = ['🥇', '🥈', '🥉', '④', '⑤'];
 const TOPIC_COLORS = ['#FF7043', '#42A5F5', '#66BB6A', '#AB47BC', '#FFA726'];
 
 function buildActivityChart(hourlyActivity: { hour: number; count: number }[]): string {
-  if (!hourlyActivity.length) return '';
-  const maxCount = Math.max(...hourlyActivity.map((h) => h.count), 1);
+  // Normalize to exactly 24 entries (0-23) in order — guards against LLM-corrupted data
+  const normalized = normalizeHourlyActivity(hourlyActivity);
+  const maxCount = Math.max(...normalized.map((h) => h.count), 1);
 
-  const bars = hourlyActivity
+  const bars = normalized
     .map((h) => {
       const heightPct = Math.max((h.count / maxCount) * 100, 3);
       const isActive = h.count > 0;

@@ -6,6 +6,7 @@ import { MessageBuilder } from '@/message/MessageBuilder';
 import { BrowserService } from '@/services/browser/BrowserService';
 import type { ToolCall, ToolExecutionContext, ToolExecutor, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
+import { normalizeHourlyActivity } from './computeStats';
 import { avatarUrl, renderReportHTML } from './renderReportHTML';
 import type { GroupReportData, HourlyActivity } from './types';
 
@@ -75,7 +76,8 @@ export class GroupReportToolExecutor implements ToolExecutor {
       this.precomputedStats.delete(String(groupId));
       logger.debug(`[GroupReportTool] Applied pre-computed stats for group ${groupId}`);
     } else {
-      reportData.hourlyActivity = reportData.hourlyActivity ?? [];
+      // Normalize LLM-provided hourlyActivity to exactly 24 entries (0-23) in order
+      reportData.hourlyActivity = normalizeHourlyActivity(reportData.hourlyActivity ?? []);
       reportData.highlightTimeRange = reportData.highlightTimeRange ?? '';
       reportData.activeMembers = reportData.activeMembers ?? 0;
     }
