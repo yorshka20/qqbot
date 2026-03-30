@@ -2,7 +2,7 @@
 // Handles all mechanical data aggregation so the LLM only does semantic analysis.
 
 import type { ConversationMessageEntry } from '@/conversation/history/ConversationHistoryService';
-import { DATE_TIMEZONE } from '@/utils/dateTime';
+import { DISPLAY_TIMEZONE } from '@/utils/dateTime';
 import type { HourlyActivity } from './types';
 
 export interface UserStats {
@@ -20,11 +20,11 @@ export interface GroupReportStats {
 }
 
 /**
- * Get the hour (0-23) of a date in Asia/Shanghai timezone.
+ * Get the hour (0-23) of a date in display timezone (Asia/Shanghai).
  */
 function getHourInTimezone(date: Date): number {
   const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: DATE_TIMEZONE,
+    timeZone: DISPLAY_TIMEZONE,
     hour: 'numeric',
     hour12: false,
   });
@@ -125,7 +125,7 @@ export function formatMessagesForContext(messages: ConversationMessageEntry[]): 
   if (userMessages.length === 0) return '（昨日暂无聊天记录）';
 
   const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: DATE_TIMEZONE,
+    timeZone: DISPLAY_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,

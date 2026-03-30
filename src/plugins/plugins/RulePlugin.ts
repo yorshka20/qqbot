@@ -63,8 +63,8 @@ interface RulePluginConfig {
    */
   rules?: RuleConfig[];
   /**
-   * Timezone for cron jobs (default: "Asia/Shanghai")
-   * Must be a valid IANA timezone identifier (e.g., "Asia/Shanghai", "Asia/Tokyo", "UTC")
+   * Timezone for cron jobs (default: "Asia/Tokyo")
+   * Must be a valid IANA timezone identifier (e.g., "Asia/Tokyo", "Asia/Shanghai", "UTC")
    */
   timezone?: string;
 }
@@ -85,7 +85,7 @@ export class RulePlugin extends PluginBase {
   private cronJobs = new Map<string, ScheduledTask>();
   private botSelfId: number | null = null;
   private preferredProtocol: ProtocolName = 'milky';
-  private timezone: string = 'Asia/Shanghai'; // Default timezone
+  private timezone: string = 'Asia/Tokyo'; // Default timezone
   /** action name -> handler. Built in onEnable so plugins (e.g. whitelist) are available. */
   private actionHandlers = new Map<string, RuleActionHandler>();
 
@@ -144,7 +144,7 @@ export class RulePlugin extends PluginBase {
       return;
     }
 
-    // Load timezone from config (default: Asia/Shanghai)
+    // Load timezone from config (default: Asia/Tokyo)
     if (pluginConfig.timezone) {
       this.timezone = pluginConfig.timezone;
     }

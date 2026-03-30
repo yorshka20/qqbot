@@ -24,7 +24,7 @@ import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { ToolSpec } from '@/tools/types';
-import { DATE_TIMEZONE, dateInTimezone } from '@/utils/dateTime';
+import { DATE_TIMEZONE, DISPLAY_TIMEZONE, dateInTimezone } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../../decorators';
 import { PluginBase } from '../../PluginBase';
@@ -431,7 +431,7 @@ export class GroupReportPlugin extends PluginBase {
   private formatTime(createdAt: Date | string): string {
     const date = createdAt instanceof Date ? createdAt : new Date(createdAt);
     const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: DATE_TIMEZONE,
+      timeZone: DISPLAY_TIMEZONE,
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,

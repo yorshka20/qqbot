@@ -186,9 +186,9 @@
         "name": "rule",
         "enabled": true,
         "config": {
-          // Timezone for cron jobs (default: "Asia/Shanghai")
-          // Must be a valid IANA timezone identifier (e.g., "Asia/Shanghai", "Asia/Tokyo", "UTC")
-          "timezone": "Asia/Shanghai",
+          // Timezone for cron jobs (default: "Asia/Tokyo")
+          // Must be a valid IANA timezone identifier (e.g., "Asia/Tokyo", "Asia/Shanghai", "UTC")
+          "timezone": "Asia/Tokyo",
           // List of rules to execute
           "rules": [
             {
@@ -239,7 +239,7 @@
       //   "config": {
       //     "intervalDays": 3,
       //     "cron": "0 3 * * *",
-      //     "timezone": "Asia/Shanghai",
+      //     "timezone": "Asia/Tokyo",
       //     "deleteAfterArchive": true
       //   }
       // },
