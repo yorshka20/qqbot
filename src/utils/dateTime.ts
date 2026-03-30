@@ -1,8 +1,8 @@
 /**
- * Unified date/time formatting utilities with Asia/Tokyo timezone support.
+ * Unified date/time formatting utilities with Asia/Shanghai timezone support.
  */
 
-const TIMEZONE = 'Asia/Tokyo';
+const TIMEZONE = 'Asia/Shanghai';
 
 const WEEKDAY_MAP: Record<string, string> = {
   Sunday: '星期日',
@@ -15,7 +15,7 @@ const WEEKDAY_MAP: Record<string, string> = {
 };
 
 /**
- * Format a date to YYYY-MM-DD HH:mm:ss with weekday in Asia/Tokyo timezone.
+ * Format a date to YYYY-MM-DD HH:mm:ss with weekday in Asia/Shanghai timezone.
  * Example output: "2026-03-18 15:30:45 星期三"
  */
 export function formatDateTimeFull(date: Date = new Date()): string {
@@ -57,7 +57,7 @@ export function getCurrentDateTimeForPrompt(): string {
 }
 
 /**
- * Format a date to YYYY-MM-DD HH:mm in Asia/Tokyo timezone.
+ * Format a date to YYYY-MM-DD HH:mm in Asia/Shanghai timezone.
  * Suitable for RAG context and conversation history display.
  * Example output: "2026-03-18 15:30"
  */
@@ -89,7 +89,7 @@ export function formatDateTimeShort(date: Date | string | number): string {
 }
 
 /**
- * Format a date to M/DD HH:mm in Asia/Tokyo timezone.
+ * Format a date to M/DD HH:mm in Asia/Shanghai timezone.
  * Compact format for inline display in conversation history.
  * Example output: "3/18 15:30"
  */
@@ -119,7 +119,7 @@ export function formatTimeCompact(date: Date | string | number): string {
 }
 
 /**
- * Format a date to HH:mm:ss in Asia/Tokyo timezone.
+ * Format a date to HH:mm:ss in Asia/Shanghai timezone.
  * Time-only format for thread display.
  * Example output: "15:30:45"
  */

@@ -43,7 +43,7 @@ function isConversationWindowPayload(payload: unknown): payload is ConversationW
   );
 }
 
-/** Format a single ISO time for display (e.g. 2026-02-28 15:30) using Asia/Tokyo timezone. */
+/** Format a single ISO time for display (e.g. 2026-02-28 15:30) using Asia/Shanghai timezone. */
 const formatTimeShort = formatDateTimeShort;
 
 /**

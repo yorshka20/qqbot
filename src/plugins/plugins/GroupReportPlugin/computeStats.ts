@@ -20,7 +20,7 @@ export interface GroupReportStats {
 }
 
 /**
- * Get the hour (0-23) of a date in Asia/Tokyo timezone.
+ * Get the hour (0-23) of a date in Asia/Shanghai timezone.
  */
 function getHourInTimezone(date: Date): number {
   const formatter = new Intl.DateTimeFormat('en-US', {

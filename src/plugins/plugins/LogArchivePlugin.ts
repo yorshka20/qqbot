@@ -13,7 +13,7 @@ export interface LogArchivePluginConfig {
   intervalDays?: number;
   /** Cron expression for when to run the archive check (default: "0 3 * * *" = daily at 03:00) */
   cron?: string;
-  /** Timezone for the cron job (default: "Asia/Tokyo") */
+  /** Timezone for the cron job (default: "Asia/Shanghai") */
   timezone?: string;
   /** Whether to delete original log directories after successful archival (default: true) */
   deleteAfterArchive?: boolean;
@@ -36,7 +36,7 @@ export class LogArchivePlugin extends PluginBase {
     this.intervalDays = config.intervalDays ?? 3;
     this.deleteAfterArchive = config.deleteAfterArchive ?? true;
     const cron = config.cron ?? '0 3 * * *';
-    const timezone = config.timezone ?? 'Asia/Tokyo';
+    const timezone = config.timezone ?? 'Asia/Shanghai';
 
     if (!existsSync(this.archiveDir)) {
       mkdirSync(this.archiveDir, { recursive: true });

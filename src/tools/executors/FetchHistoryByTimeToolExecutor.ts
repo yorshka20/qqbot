@@ -12,7 +12,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 const MAX_FETCH_LIMIT = 500;
 
 /**
- * Parse a time string relative to today in Asia/Tokyo timezone.
+ * Parse a time string relative to today in Asia/Shanghai timezone.
  * Supports formats:
  * - "HH:mm" or "HH:mm:ss" (today)
  * - "YYYY-MM-DD HH:mm" or "YYYY-MM-DD HH:mm:ss"
@@ -39,7 +39,7 @@ function parseTimeInput(input: string): Date | null {
   const fullMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (fullMatch) {
     const [, year, month, day, hour, minute, second] = fullMatch;
-    // Create date in Asia/Tokyo timezone
+    // Create date in Asia/Shanghai timezone
     const dateStr = `${year}-${month}-${day}T${hour.padStart(2, '0')}:${minute}:${second ?? '00'}`;
     // Parse as local time in the target timezone
     const date = new Date(dateStr);
@@ -47,12 +47,12 @@ function parseTimeInput(input: string): Date | null {
     return date;
   }
 
-  // Time only: HH:mm or HH:mm:ss (today in Asia/Tokyo)
+  // Time only: HH:mm or HH:mm:ss (today in Asia/Shanghai)
   const timeOnlyMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (timeOnlyMatch) {
     const [, hour, minute, second] = timeOnlyMatch;
     const now = new Date();
-    // Get today's date in Asia/Tokyo
+    // Get today's date in Asia/Shanghai
     const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: DATE_TIMEZONE,
       year: 'numeric',

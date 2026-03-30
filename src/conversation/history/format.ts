@@ -3,7 +3,7 @@
 import { formatTimeCompact } from '@/utils/dateTime';
 import type { ConversationMessageEntry } from './ConversationHistoryService';
 
-/** Format time in compact form (M/DD HH:mm) using Asia/Tokyo timezone. */
+/** Format time in compact form (M/DD HH:mm) using Asia/Shanghai timezone. */
 const formatSimpleTime = (d: Date): string => formatTimeCompact(d);
 
 /**
