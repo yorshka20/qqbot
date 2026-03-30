@@ -531,7 +531,12 @@
       // "liteModel": "deepseek-chat",
       // Provider for convert-to-card LLM calls
       // "convert": "deepseek",
-      // "convertModel": "deepseek-chat"
+      // "convertModel": "deepseek-chat",
+      // Provider(s) for sub-agent execution (research, analysis, etc.)
+      // String = fixed provider. Array = random selection per call.
+      // "subagent": "deepseek",
+      // "subagent": ["deepseek", "gemini"],
+      // "subagentModel": ""
     },
     // AI providers configuration
     "providers": {

@@ -38,7 +38,7 @@ export interface SubAgentConfig {
   restrictedTools: string[]; // Restricted tools (empty = no restrictions)
 
   // Provider selection
-  providerName?: string; // LLM provider for this sub-agent (default: use taskProviders.subagent or default LLM provider)
+  providerName?: string | string[]; // LLM provider(s) for this sub-agent. Array = random selection per call. (default: use taskProviders.subagent or default LLM provider)
 
   // LLM generation parameters
   maxTokens?: number; // Max tokens for LLM generation (default: 1500)

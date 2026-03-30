@@ -54,12 +54,13 @@ export interface TaskProvidersConfig {
   /** Model override for convert provider (optional) */
   convertModel?: string;
   /**
-   * Provider for sub-agent execution (research, analysis, etc.).
+   * Provider(s) for sub-agent execution (research, analysis, etc.).
+   * String = fixed provider. Array = random selection per call.
    * Should be a cost-effective provider with tool-use support (e.g. deepseek, gemini, openai).
    * Falls back to defaultProviders.llm if not specified.
    */
-  subagent?: string;
-  /** Model override for sub-agent provider (optional) */
+  subagent?: string | string[];
+  /** Model override for sub-agent provider (only used when subagent is a single string) */
   subagentModel?: string;
 }
 

@@ -244,7 +244,10 @@ export class GroupReportPlugin extends PluginBase {
     // Analyze each batch (sequentially to avoid rate limit pressure)
     const batchResults: BatchAnalysisResult[] = [];
     const preset = getRolePreset('group_report');
-    const providerName = preset.configOverrides.providerName;
+    const configProvider = preset.configOverrides.providerName;
+    const providerName = Array.isArray(configProvider)
+      ? configProvider[Math.floor(Math.random() * configProvider.length)]
+      : configProvider;
 
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];

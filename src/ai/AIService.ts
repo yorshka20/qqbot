@@ -76,7 +76,7 @@ export class AIService {
     databaseManager: DatabaseManager,
     llmService: LLMService,
     providerRouter: ProviderRouter,
-    subagentConfig?: { providerName?: string; model?: string },
+    subagentConfig?: { providerName?: string | string[]; model?: string },
   ) {
     this.visionService = new VisionService(aiManager, providerSelector);
     this.cardRenderingService = new CardRenderingService(aiManager);

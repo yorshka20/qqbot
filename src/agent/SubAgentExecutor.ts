@@ -42,9 +42,21 @@ export class SubAgentExecutor {
     private toolManager: ToolManager,
     private toolRunner: IToolRunner,
     private promptManager: PromptManager,
-    private defaultProviderName?: string,
+    private defaultProviderName?: string | string[],
     private defaultModel?: string,
   ) {}
+
+  /**
+   * Resolve a provider name from a string or string[] (random selection).
+   */
+  private resolveProvider(configProvider?: string | string[]): string | undefined {
+    const provider = configProvider ?? this.defaultProviderName;
+    if (!provider) return undefined;
+    if (Array.isArray(provider)) {
+      return provider[Math.floor(Math.random() * provider.length)];
+    }
+    return provider;
+  }
 
   /**
    * Execute sub-agent
@@ -64,7 +76,9 @@ export class SubAgentExecutor {
 
       // 4. Execute LLM with tools (ToolRunner executes tool calls)
       // Use provider from session config, or fall back to the default provider configured for SubAgentExecutor.
-      const providerName = session.config.providerName ?? this.defaultProviderName;
+      // When providerName is an array, randomly select one for load distribution.
+      const providerName = this.resolveProvider(session.config.providerName);
+      logger.debug(`[SubAgentExecutor] Using provider: ${providerName} for sub-agent ${session.id}`);
       const result = await this.llmService.generateWithTools(
         messages,
         tools,

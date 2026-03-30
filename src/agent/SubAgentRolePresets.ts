@@ -47,7 +47,7 @@ interface PresetConfigFile {
   inheritSoul?: boolean;
   inheritMemory?: boolean;
   inheritPreference?: boolean;
-  providerName?: string;
+  providerName?: string | string[];
   maxTokens?: number;
   maxToolRounds?: number;
   systemTemplate?: string;

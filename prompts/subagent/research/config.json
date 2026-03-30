@@ -7,5 +7,6 @@
   "timeout": 120000,
   "inheritSoul": false,
   "inheritMemory": false,
-  "inheritPreference": false
+  "inheritPreference": false,
+  "providerName": ["deepseek", "gemini"]
 }
