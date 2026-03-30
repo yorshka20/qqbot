@@ -31,6 +31,16 @@ export interface ReportListResponse {
   reports: ReportListItem[]
 }
 
+export interface MessageEntry {
+  time: string
+  sender: string
+  content: string
+  category: string
+  url?: string
+  filePath?: string
+  title?: string
+}
+
 export interface GroupSummary {
   conversationId: string
   groupName?: string
@@ -38,6 +48,7 @@ export interface GroupSummary {
   senderCount: number
   senders: string[]
   formattedMessages: string
+  messages?: MessageEntry[]
   categories: string[]
 }
 

@@ -9,12 +9,13 @@ import {
   MessageSquare,
   Newspaper,
   Users,
+  X,
 } from 'lucide-react';
 import { marked } from 'marked';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getReport } from '../api';
 import { getOutputBase } from '../config';
-import type { ArticleSummary, GroupSummary, ReportDetailResponse, WechatStats } from '../types';
+import type { ArticleSummary, GroupSummary, MessageEntry, ReportDetailResponse, WechatStats } from '../types';
 
 interface ReportDetailProps {
   reportId: string;
@@ -32,6 +33,7 @@ export function ReportDetail({ reportId, onBack }: ReportDetailProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'rich' | 'markdown'>('rich');
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -136,7 +138,7 @@ export function ReportDetail({ reportId, onBack }: ReportDetailProps) {
       </header>
 
       {viewMode === 'rich' ? (
-        <RichContent report={report} />
+        <RichContent report={report} onImageClick={setLightboxUrl} />
       ) : (
         <div
           className="prose prose-zinc dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-blue-600 dark:prose-a:text-blue-400"
@@ -144,6 +146,43 @@ export function ReportDetail({ reportId, onBack }: ReportDetailProps) {
           dangerouslySetInnerHTML={{ __html: markdownHtml }}
         />
       )}
+
+      {/* Image lightbox modal */}
+      {lightboxUrl && <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
+    </div>
+  );
+}
+
+function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handled via useEffect
+    <div
+      role="dialog"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute top-4 right-4 p-2 rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors"
+      >
+        <X className="w-6 h-6" />
+      </button>
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: stop propagation only */}
+      <img
+        src={url}
+        alt="放大查看"
+        className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      />
     </div>
   );
 }
@@ -152,14 +191,20 @@ export function ReportDetail({ reportId, onBack }: ReportDetailProps) {
 // Rich Content Components
 // ────────────────────────────────────────────────────────────────────────────
 
-function RichContent({ report }: { report: ReportDetailResponse['report'] }) {
+function RichContent({
+  report,
+  onImageClick,
+}: {
+  report: ReportDetailResponse['report'];
+  onImageClick: (url: string) => void;
+}) {
   return (
     <div className="space-y-8">
       {/* Stats Overview */}
       {report.stats && <StatsSection stats={report.stats} />}
 
       {/* Groups */}
-      {report.groups.length > 0 && <GroupsSection groups={report.groups} />}
+      {report.groups.length > 0 && <GroupsSection groups={report.groups} onImageClick={onImageClick} />}
 
       {/* Articles */}
       {report.articles.length > 0 && <ArticlesSection articles={report.articles} />}
@@ -253,45 +298,24 @@ function StatCard({
   );
 }
 
-function GroupsSection({ groups }: { groups: GroupSummary[] }) {
+function GroupsSection({ groups, onImageClick }: { groups: GroupSummary[]; onImageClick: (url: string) => void }) {
   return (
     <section>
       <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-4 flex items-center gap-2">
-        <span className="text-xl">💬</span> 群聊摘要
+        <span className="text-xl">💬</span> 群聊消息
       </h2>
       <div className="space-y-4">
         {groups.map((g) => (
-          <GroupCard key={g.conversationId} group={g} />
+          <GroupCard key={g.conversationId} group={g} onImageClick={onImageClick} />
         ))}
       </div>
     </section>
   );
 }
 
-/** Parse "[HH:MM] sender: content" into structured parts */
-interface ParsedMessage {
-  time: string;
-  sender: string;
-  content: string;
-  /** Detected tag like 链接/图片/文件/视频号/other, or null for plain text */
-  tag: string | null;
-  /** Content after the tag prefix (stripped of [tag] wrapper) */
-  body: string;
-}
-
-const MSG_RE = /^\[(\d{2}:\d{2})\]\s+(.+?):\s(.+)$/;
-const TAG_RE = /^\[([^\]]+)\]\s*(.*)$/;
-
-function parseMessage(line: string): ParsedMessage | null {
-  const m = MSG_RE.exec(line);
-  if (!m) return null;
-  const [, time, sender, content] = m;
-  const tagMatch = TAG_RE.exec(content);
-  if (tagMatch) {
-    return { time, sender, content, tag: tagMatch[1], body: tagMatch[2] };
-  }
-  return { time, sender, content, tag: null, body: content };
-}
+// ────────────────────────────────────────────────────────────────────────────
+// Message rendering helpers
+// ────────────────────────────────────────────────────────────────────────────
 
 const TAG_STYLES: Record<string, { bg: string; text: string }> = {
   链接: { bg: 'bg-blue-100 dark:bg-blue-900/40', text: 'text-blue-700 dark:text-blue-300' },
@@ -305,6 +329,22 @@ function getTagStyle(tag: string) {
   return TAG_STYLES[tag] ?? TAG_STYLES.other;
 }
 
+/** Map category to display tag */
+function categoryToTag(category: string): string | null {
+  switch (category) {
+    case 'article':
+      return '链接';
+    case 'image':
+      return '图片';
+    case 'file':
+      return '文件';
+    case 'text':
+      return null;
+    default:
+      return category;
+  }
+}
+
 /** Encode a file path for use in a URL — encode each segment but preserve `/` separators. */
 function encodeFilePath(filePath: string): string {
   return filePath
@@ -313,46 +353,93 @@ function encodeFilePath(filePath: string): string {
     .join('/');
 }
 
-/** Convert an image file path from formattedMessages to a serveable URL.
- *  Paths come as "output/wechat/..." — strip the leading "output/" and prepend getOutputBase(). */
-function toImageUrl(body: string): string | null {
-  const p = body.trim();
+/** Convert an image file path to a serveable URL. */
+function toImageUrl(filePath: string): string | null {
+  const p = filePath.trim();
   if (!p) return null;
   const relative = p.startsWith('output/') ? p.slice('output/'.length) : p;
   return `${getOutputBase()}/${encodeFilePath(relative)}`;
 }
 
-function MessageBody({ parsed: p }: { parsed: ParsedMessage }) {
-  if (p.tag === '图片') {
-    const url = toImageUrl(p.body);
+/** Fallback: parse "[HH:MM] sender: content" for legacy data without structured messages */
+const MSG_RE = /^\[(\d{2}:\d{2})\]\s+(.+?):\s(.+)$/s;
+
+function parseLegacyMessages(formattedMessages: string): MessageEntry[] {
+  const lines = formattedMessages.split('\n');
+  const result: MessageEntry[] = [];
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const m = MSG_RE.exec(line);
+    if (m) {
+      result.push({ time: m[1], sender: m[2], content: m[3], category: 'text' });
+    } else if (result.length > 0) {
+      // Continuation of previous message (multi-line content)
+      const prev = result[result.length - 1];
+      prev.content += `\n${line}`;
+    }
+  }
+
+  return result;
+}
+
+function MessageBody({ msg, onImageClick }: { msg: MessageEntry; onImageClick: (url: string) => void }) {
+  // Image message: show thumbnail, click to open modal
+  if (msg.category === 'image' && msg.filePath) {
+    const url = toImageUrl(msg.filePath);
     if (url) {
       return (
-        <a href={url} target="_blank" rel="noopener noreferrer" className="block mt-1.5">
+        <button type="button" onClick={() => onImageClick(url)} className="block mt-1.5 cursor-zoom-in">
           <img
             src={url}
-            alt={p.body || '图片'}
+            alt="图片"
             loading="lazy"
             decoding="async"
             className="max-w-xs max-h-48 rounded-lg border border-zinc-200 dark:border-zinc-600 object-cover hover:shadow-md transition-shadow"
           />
-        </a>
+        </button>
       );
     }
   }
-  return <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-0.5 break-words leading-relaxed">{p.body}</p>;
+
+  // Article message: show content + open link button
+  if (msg.category === 'article' && msg.url) {
+    return (
+      <div className="mt-0.5">
+        <p className="text-sm text-zinc-600 dark:text-zinc-400 break-words leading-relaxed">{msg.content}</p>
+        <a
+          href={msg.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 mt-1.5 px-2.5 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+        >
+          <ExternalLink className="w-3 h-3" />
+          打开全文
+        </a>
+      </div>
+    );
+  }
+
+  // Text or other: render content preserving newlines
+  return (
+    <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-0.5 break-words leading-relaxed whitespace-pre-wrap">
+      {msg.content}
+    </p>
+  );
 }
 
-const PREVIEW_COUNT = 15;
+const PREVIEW_COUNT = 50;
 
-function GroupCard({ group }: { group: GroupSummary }) {
+function GroupCard({ group, onImageClick }: { group: GroupSummary; onImageClick: (url: string) => void }) {
   const [expanded, setExpanded] = useState(false);
 
   const allMessages = useMemo(() => {
-    return group.formattedMessages
-      .split('\n')
-      .filter((l) => l.trim())
-      .map((line, i) => ({ id: `${i}-${line.slice(0, 32)}`, raw: line, parsed: parseMessage(line) }));
-  }, [group.formattedMessages]);
+    // Prefer structured messages; fall back to legacy string parsing
+    if (group.messages && group.messages.length > 0) {
+      return group.messages;
+    }
+    return parseLegacyMessages(group.formattedMessages);
+  }, [group.messages, group.formattedMessages]);
 
   const visibleMessages = expanded ? allMessages : allMessages.slice(0, PREVIEW_COUNT);
   const hasMore = allMessages.length > PREVIEW_COUNT;
@@ -392,40 +479,32 @@ function GroupCard({ group }: { group: GroupSummary }) {
 
       {/* Message list */}
       <div className="divide-y divide-zinc-100 dark:divide-zinc-700/30">
-        {visibleMessages.map((msg) => {
-          const p = msg.parsed;
-          if (!p) {
-            // Unparseable line — render as-is
-            return (
-              <div key={msg.id} className="px-5 py-2.5 text-sm text-zinc-500 dark:text-zinc-400">
-                {msg.raw}
-              </div>
-            );
-          }
-
+        {visibleMessages.map((msg, idx) => {
+          const tag = categoryToTag(msg.category);
           return (
             <div
-              key={msg.id}
+              // biome-ignore lint/suspicious/noArrayIndexKey: messages have no unique ID
+              key={`${idx}-${msg.time}-${msg.sender}`}
               className="px-5 py-2.5 flex items-start gap-3 hover:bg-zinc-50 dark:hover:bg-zinc-700/20 transition-colors"
             >
               {/* Time */}
               <span className="text-xs text-zinc-400 dark:text-zinc-500 font-mono pt-0.5 shrink-0 w-11 text-right tabular-nums">
-                {p.time}
+                {msg.time}
               </span>
 
               {/* Sender + content */}
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2 flex-wrap">
-                  <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200 shrink-0">{p.sender}</span>
-                  {p.tag && (
+                  <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200 shrink-0">{msg.sender}</span>
+                  {tag && (
                     <span
-                      className={`inline-flex px-1.5 py-px text-[10px] font-semibold rounded ${getTagStyle(p.tag).bg} ${getTagStyle(p.tag).text}`}
+                      className={`inline-flex px-1.5 py-px text-[10px] font-semibold rounded ${getTagStyle(tag).bg} ${getTagStyle(tag).text}`}
                     >
-                      {p.tag}
+                      {tag}
                     </span>
                   )}
                 </div>
-                <MessageBody parsed={p} />
+                <MessageBody msg={msg} onImageClick={onImageClick} />
               </div>
             </div>
           );

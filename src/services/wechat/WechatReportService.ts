@@ -102,7 +102,7 @@ export class WechatReportService {
 
     // Collect data
     const stats = options.includeStats !== false ? this.digestService.getStats(sinceTs) : null;
-    const groups = options.includeGroups !== false ? this.digestService.getGroupSummaries(sinceTs, undefined, 30) : [];
+    const groups = options.includeGroups !== false ? this.digestService.getGroupSummaries(sinceTs, undefined, 0) : [];
     const articles =
       options.includeArticles !== false
         ? this.digestService.getArticleSummaries({ sinceTs, limit: options.maxArticlesToShow ?? 20 })
@@ -128,7 +128,7 @@ export class WechatReportService {
         label: stats?.period ?? this.formatPeriod(sinceTs, now),
       },
       stats,
-      groups: groups.slice(0, options.maxGroupsToShow ?? 5),
+      groups: groups.slice(0, options.maxGroupsToShow ?? 10),
       articles: articles.slice(0, options.maxArticlesToShow ?? 10),
       markdownContent: content,
     };
@@ -332,8 +332,7 @@ export class WechatReportService {
           `> ${g.messageCount} 条消息 | ${g.senderCount} 人发言 | 类型: ${g.categories.join(', ')}`,
           '',
           '```',
-          g.formattedMessages.split('\n').slice(0, 20).join('\n'),
-          groups.length > 20 ? '...(更多消息省略)' : '',
+          g.formattedMessages,
           '```',
           '',
         );

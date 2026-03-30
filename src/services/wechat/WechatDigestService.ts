@@ -8,6 +8,20 @@ import type { WeChatDatabase, WeChatMessageRow } from './WeChatDatabase';
 // Types
 // ────────────────────────────────────────────────────────────────────────────
 
+/** Structured message entry for rich frontend rendering */
+export interface MessageEntry {
+  time: string;
+  sender: string;
+  content: string;
+  category: string;
+  /** Article URL (for category=article) */
+  url?: string;
+  /** Image file path (for category=image) */
+  filePath?: string;
+  /** Article title (for category=article) */
+  title?: string;
+}
+
 /** Formatted group message summary */
 export interface GroupSummary {
   conversationId: string;
@@ -16,6 +30,8 @@ export interface GroupSummary {
   senderCount: number;
   senders: string[];
   formattedMessages: string;
+  /** Structured messages for rich rendering (preserves multi-line content, includes URLs) */
+  messages: MessageEntry[];
   categories: string[];
 }
 
@@ -120,17 +136,24 @@ export class WechatDigestService {
 
       // Sort by time ascending and limit
       const sortedMsgs = msgs.sort((a, b) => a.createTime - b.createTime);
-      const limitedMsgs = sortedMsgs.slice(-maxMessagesPerGroup);
+      const limitedMsgs = maxMessagesPerGroup > 0 ? sortedMsgs.slice(-maxMessagesPerGroup) : sortedMsgs;
 
       const formattedLines: string[] = [];
+      const structuredMessages: MessageEntry[] = [];
+
       for (const m of limitedMsgs) {
         const time = this.formatTime(m.createTime);
         const sender = this.resolveContactName(m.sender) || 'unknown';
         const content = this.formatMessageContent(m);
-        formattedLines.push(`[${time}] ${sender}: ${content}`);
+        // Replace newlines in content for formatted text (prevents multi-line split)
+        formattedLines.push(`[${time}] ${sender}: ${content.replace(/\n/g, ' ')}`);
+        // Build structured message entry
+        const entry: MessageEntry = { time, sender, content, category: m.category };
+        this.enrichMessageEntry(entry, m);
+        structuredMessages.push(entry);
       }
 
-      if (msgs.length > maxMessagesPerGroup) {
+      if (maxMessagesPerGroup > 0 && msgs.length > maxMessagesPerGroup) {
         formattedLines.unshift(`> 显示最近 ${maxMessagesPerGroup} 条，共 ${msgs.length} 条`);
       }
 
@@ -141,6 +164,7 @@ export class WechatDigestService {
         senderCount: senders.length,
         senders,
         formattedMessages: formattedLines.join('\n'),
+        messages: structuredMessages,
         categories,
       });
     }
@@ -557,6 +581,24 @@ export class WechatDigestService {
       hour: '2-digit',
       minute: '2-digit',
     });
+  }
+
+  /** Enrich a MessageEntry with URL/filePath/title extracted from the raw message content */
+  private enrichMessageEntry(entry: MessageEntry, m: WeChatMessageRow): void {
+    try {
+      const parsed = JSON.parse(m.content);
+      switch (m.category) {
+        case 'article':
+          if (parsed.url) entry.url = parsed.url;
+          if (parsed.title) entry.title = parsed.title;
+          break;
+        case 'image':
+          if (parsed.filePath) entry.filePath = parsed.filePath;
+          break;
+      }
+    } catch {
+      // ignore parse errors
+    }
   }
 
   private formatMessageContent(m: WeChatMessageRow): string {
