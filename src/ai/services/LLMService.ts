@@ -715,9 +715,7 @@ export class LLMService {
         maxTokens: 1024,
       });
 
-      logger.info(
-        `[LLMService] Vision provider "${visionProviderName}" described image: ${result.text.length} chars`,
-      );
+      logger.info(`[LLMService] Vision provider "${visionProviderName}" described image: ${result.text.length} chars`);
       return result.text;
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);

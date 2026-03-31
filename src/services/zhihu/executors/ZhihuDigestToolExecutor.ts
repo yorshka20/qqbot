@@ -51,7 +51,9 @@ export class ZhihuDigestToolExecutor extends BaseToolExecutor {
       const items = this.deduplicateItems(rawItems);
       const dedupCount = rawItems.length - items.length;
       if (dedupCount > 0) {
-        logger.info(`[ZhihuDigestToolExecutor] Deduplicated ${dedupCount} items (${rawItems.length} → ${items.length})`);
+        logger.info(
+          `[ZhihuDigestToolExecutor] Deduplicated ${dedupCount} items (${rawItems.length} → ${items.length})`,
+        );
       }
 
       const text = this.formatItems(items, hoursBack);
