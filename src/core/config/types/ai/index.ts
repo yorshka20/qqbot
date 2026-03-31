@@ -54,6 +54,14 @@ export interface TaskProvidersConfig {
   /** Model override for convert provider (optional) */
   convertModel?: string;
   /**
+   * Provider for article analysis (WeChatArticleAnalysisService).
+   * Uses generateFixed (no fallback, retry-only) — ideal for cost-sensitive batch tasks.
+   * Falls back to 'doubao' if not specified.
+   */
+  articleAnalysis?: string;
+  /** Model override for article analysis provider (optional) */
+  articleAnalysisModel?: string;
+  /**
    * Provider(s) for sub-agent execution (research, analysis, etc.).
    * String = fixed provider. Array = random selection per call.
    * Should be a cost-effective provider with tool-use support (e.g. deepseek, gemini, openai).

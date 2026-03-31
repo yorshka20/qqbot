@@ -3,6 +3,7 @@
 
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import type { AIService } from '@/ai/AIService';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { CommandManager } from '@/command/CommandManager';
@@ -29,7 +30,6 @@ import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../../decorators';
 import { PluginBase } from '../../PluginBase';
 import { WechatCommandHandler } from './WechatCommandHandler';
-import { PromptManager } from '@/ai/prompt/PromptManager';
 
 @RegisterPlugin({
   name: 'wechatIngest',
@@ -176,12 +176,16 @@ export class WeChatIngestPlugin extends PluginBase {
     container.registerInstance(WechatDITokens.REPORT_SERVICE, this.reportService);
     logger.info('[WeChatIngestPlugin] WechatReportService registered');
 
-    // Create article analysis service (uses LLMService provider for analysis)
+    // Create article analysis service (uses LLMService.generateFixed — no fallback, retry-only)
     try {
       const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
       const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+      const aiConfig = config.getAIConfig();
+      const articleAnalysisProvider = raw?.analysis?.provider ?? aiConfig?.taskProviders?.articleAnalysis ?? 'doubao';
+      const articleAnalysisModel = aiConfig?.taskProviders?.articleAnalysisModel;
       const analysisService = new WeChatArticleAnalysisService(this.db, llmService, promptManager, {
-        provider: raw?.analysis?.provider,
+        provider: articleAnalysisProvider,
+        model: articleAnalysisModel,
         maxArticles: raw?.analysis?.maxArticles,
         concurrency: raw?.analysis?.concurrency,
       });

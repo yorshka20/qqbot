@@ -207,6 +207,77 @@ export class LLMService {
   }
 
   /**
+   * Generate text using a **fixed** provider with retry-only (no fallback).
+   *
+   * Use this for cost-sensitive background tasks (article analysis, batch processing)
+   * where falling back to an expensive provider would be wasteful.
+   *
+   * @param providerName  Required — the provider to pin to.
+   * @param prompt        The prompt text.
+   * @param options       Generation options.
+   * @param retryConfig   Retry configuration for transient errors.
+   * @throws Error if provider is unavailable or all retries exhausted.
+   */
+  async generateFixed(
+    providerName: string,
+    prompt: string,
+    options?: AIGenerateOptions,
+    retryConfig?: { maxRetries?: number; retryDelayMs?: number },
+  ): Promise<AIGenerateResponse> {
+    const maxRetries = retryConfig?.maxRetries ?? 3;
+    const retryDelayMs = retryConfig?.retryDelayMs ?? 2000;
+
+    // Resolve provider strictly — no fallback to default or session provider
+    const rawProvider = this.aiManager.getProviderForCapability('llm', providerName);
+    if (!rawProvider || !isLLMCapability(rawProvider) || !rawProvider.isAvailable()) {
+      throw new Error(`[LLMService] generateFixed: provider "${providerName}" is not available`);
+    }
+    const provider = rawProvider as LLMCapability;
+
+    const estimatedTokens = this.estimatePromptTokens(prompt, options);
+    await this.rateLimiter.waitForCapacity(estimatedTokens, providerName);
+
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const result = await provider.generate(prompt, options);
+        if (result.usage) {
+          this.rateLimiter.recordUsage(result.usage.totalTokens, providerName);
+        }
+        this.healthCheckManager?.markServiceHealthy(providerName);
+        result.resolvedProviderName = providerName;
+        return result;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        const isTransient =
+          lastError.message.includes('timeout') ||
+          lastError.name === 'AbortError' ||
+          lastError.message.includes('429') ||
+          lastError.message.includes('rate') ||
+          lastError.message.includes('503') ||
+          lastError.message.includes('502');
+
+        if (isTransient && attempt < maxRetries) {
+          logger.warn(
+            `[LLMService] generateFixed: provider "${providerName}" transient error (attempt ${attempt + 1}/${maxRetries}): ${lastError.message}`,
+          );
+          await new Promise((r) => setTimeout(r, retryDelayMs));
+          continue;
+        }
+
+        // Non-transient error or retries exhausted
+        this.healthCheckManager?.markServiceUnhealthy(providerName, lastError.message);
+        break;
+      }
+    }
+
+    throw (
+      lastError ??
+      new Error(`[LLMService] generateFixed: provider "${providerName}" failed after ${maxRetries} retries`)
+    );
+  }
+
+  /**
    * Generate text using LLM capability.
    * Automatically falls back to alternative providers on runtime failure.
    * Updates provider health status based on success/failure.

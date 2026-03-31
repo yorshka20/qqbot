@@ -1,11 +1,11 @@
 // WeChatArticleAnalysisService — fetches unanalyzed articles, runs LLM analysis via configurable provider
 // (default: doubao, no fallback, retry on timeout), and stores extracted insights into wechat_article_insights table.
 
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import { logger } from '@/utils/logger';
 import type { WeChatDatabase, WeChatOAArticleRow } from '../WeChatDatabase';
 import { fetchArticleText } from './fetchArticleText';
-import type { PromptManager } from '@/ai/prompt/PromptManager';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -14,11 +14,13 @@ import type { PromptManager } from '@/ai/prompt/PromptManager';
 export interface ArticleAnalysisConfig {
   /** Provider name to use for analysis. Default: "doubao". No fallback — retries on timeout. */
   provider?: string;
+  /** Model override for the analysis provider (optional) */
+  model?: string;
   /** Max articles to analyze per run (default 100) */
   maxArticles?: number;
   /** Concurrency — how many articles to analyze in parallel (default 1) */
   concurrency?: number;
-  /** Max retries on timeout (default 3) */
+  /** Max retries on transient errors (default 3) */
   maxRetries?: number;
   /** Delay between retries in ms (default 2000) */
   retryDelayMs?: number;
@@ -46,6 +48,7 @@ interface AnalysisResult {
 
 export class WeChatArticleAnalysisService {
   private provider: string;
+  private model: string | undefined;
   private maxArticles: number;
   private concurrency: number;
   private maxRetries: number;
@@ -58,6 +61,7 @@ export class WeChatArticleAnalysisService {
     config: ArticleAnalysisConfig,
   ) {
     this.provider = config.provider ?? 'doubao';
+    this.model = config.model;
     this.maxArticles = config.maxArticles ?? 100;
     this.concurrency = config.concurrency ?? 1;
     this.maxRetries = config.maxRetries ?? 5;
@@ -207,39 +211,31 @@ export class WeChatArticleAnalysisService {
   }
 
   /**
-   * Call LLM via LLMService and parse JSON response.
-   * Uses only the configured provider (no fallback). Retries on timeout.
+   * Call LLM via LLMService.generateFixed (no fallback, retry-only).
+   * Delegates retry logic to LLMService so the service handles transient errors uniformly.
    */
   private async callLLM(prompt: string, title: string): Promise<AnalysisResult | null> {
-    const provider = await this.llmService.getAvailableProvider(this.provider);
-    if (!provider) {
-      throw new Error(`Provider "${this.provider}" is not available`);
-    }
+    const response = await this.llmService.generateFixed(
+      this.provider,
+      prompt,
+      {
+        temperature: 0.3,
+        maxTokens: 2048,
+        jsonMode: true,
+        model: this.model,
+      },
+      {
+        maxRetries: this.maxRetries,
+        retryDelayMs: this.retryDelayMs,
+      },
+    );
 
-    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      try {
-        const response = await provider.generate(prompt, { temperature: 0.3, maxTokens: 2048, jsonMode: true });
-        const text = response.text?.trim();
-        if (!text) {
-          logger.warn(`[ArticleAnalysis] Empty response from "${this.provider}" for "${title}"`);
-          return null;
-        }
-        return this.parseJSON(text, title);
-      } catch (err) {
-        const isTimeout = err instanceof Error && (err.message.includes('timeout') || err.name === 'AbortError');
-        if (isTimeout && attempt < this.maxRetries) {
-          logger.warn(
-            `[ArticleAnalysis] Timeout from "${this.provider}" for "${title}", retry ${attempt + 1}/${this.maxRetries}`,
-          );
-          await new Promise((r) => setTimeout(r, this.retryDelayMs));
-          continue;
-        }
-        // Non-timeout error or retries exhausted — throw immediately
-        throw err;
-      }
+    const text = response.text?.trim();
+    if (!text) {
+      logger.warn(`[ArticleAnalysis] Empty response from "${this.provider}" for "${title}"`);
+      return null;
     }
-
-    throw new Error(`Provider "${this.provider}" timed out after ${this.maxRetries} retries for "${title}"`);
+    return this.parseJSON(text, title);
   }
 
   /**
