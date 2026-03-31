@@ -1,12 +1,11 @@
 // WeChatArticleAnalysisService — fetches unanalyzed articles, runs LLM analysis via configurable provider
 // (default: doubao, no fallback, retry on timeout), and stores extracted insights into wechat_article_insights table.
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import type { LLMService } from '@/ai/services/LLMService';
 import { logger } from '@/utils/logger';
 import type { WeChatDatabase, WeChatOAArticleRow } from '../WeChatDatabase';
 import { fetchArticleText } from './fetchArticleText';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -15,8 +14,6 @@ import { fetchArticleText } from './fetchArticleText';
 export interface ArticleAnalysisConfig {
   /** Provider name to use for analysis. Default: "doubao". No fallback — retries on timeout. */
   provider?: string;
-  /** Path to prompt template file (default "prompts/analysis/wechat_article.txt") */
-  promptPath?: string;
   /** Max articles to analyze per run (default 100) */
   maxArticles?: number;
   /** Concurrency — how many articles to analyze in parallel (default 1) */
@@ -49,7 +46,6 @@ interface AnalysisResult {
 
 export class WeChatArticleAnalysisService {
   private provider: string;
-  private promptTemplate: string;
   private maxArticles: number;
   private concurrency: number;
   private maxRetries: number;
@@ -58,6 +54,7 @@ export class WeChatArticleAnalysisService {
   constructor(
     private db: WeChatDatabase,
     private llmService: LLMService,
+    private promptManager: PromptManager,
     config: ArticleAnalysisConfig,
   ) {
     this.provider = config.provider ?? 'doubao';
@@ -66,10 +63,7 @@ export class WeChatArticleAnalysisService {
     this.maxRetries = config.maxRetries ?? 5;
     this.retryDelayMs = config.retryDelayMs ?? 2000;
 
-    // Load prompt template
-    const promptPath = resolve(config.promptPath ?? 'prompts/analysis/wechat_article.txt');
-    this.promptTemplate = readFileSync(promptPath, 'utf-8');
-    logger.info(`[ArticleAnalysis] Initialized | provider=${this.provider} prompt=${promptPath}`);
+    logger.info(`[ArticleAnalysis] Initialized | provider=${this.provider}`);
   }
 
   /**
@@ -177,10 +171,11 @@ export class WeChatArticleAnalysisService {
 
     // Build prompt
     const content = isFetchFailed ? summary : fullText;
-    const prompt = this.promptTemplate
-      .replace('{{title}}', title)
-      .replace('{{source}}', source || accountNick)
-      .replace('{{content}}', content);
+    const prompt = this.promptManager.render('analysis.wechat_article', {
+      title,
+      source: source || accountNick,
+      content,
+    });
 
     // Call LLM via provider
     const analysisResult = await this.callLLM(prompt, title);

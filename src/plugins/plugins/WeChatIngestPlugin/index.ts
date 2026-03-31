@@ -29,6 +29,7 @@ import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../../decorators';
 import { PluginBase } from '../../PluginBase';
 import { WechatCommandHandler } from './WechatCommandHandler';
+import { PromptManager } from '@/ai/prompt/PromptManager';
 
 @RegisterPlugin({
   name: 'wechatIngest',
@@ -178,11 +179,11 @@ export class WeChatIngestPlugin extends PluginBase {
     // Create article analysis service (uses LLMService provider for analysis)
     try {
       const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
-      const analysisService = new WeChatArticleAnalysisService(this.db, llmService, {
-        provider: raw?.analysis?.provider ?? 'ollama',
+      const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+      const analysisService = new WeChatArticleAnalysisService(this.db, llmService, promptManager, {
+        provider: raw?.analysis?.provider,
         maxArticles: raw?.analysis?.maxArticles,
         concurrency: raw?.analysis?.concurrency,
-        promptPath: raw?.analysis?.promptPath,
       });
       container.registerInstance(WechatDITokens.ARTICLE_ANALYSIS_SERVICE, analysisService);
       logger.info('[WeChatIngestPlugin] WeChatArticleAnalysisService registered');

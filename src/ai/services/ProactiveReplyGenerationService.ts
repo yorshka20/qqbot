@@ -143,10 +143,8 @@ export class ProactiveReplyGenerationService {
       }
     }
     const baseSystemPrompt = this.promptManager.renderBasePrompt({ whitelistLimitedFragment: whitelistFragment }) ?? '';
-    const contextInstruct = this.promptManager.render('llm.context.instruct');
     const toolInstruct = this.promptManager.render('llm.tool.instruct', { toolUsageInstructions });
     const proactiveSystemPrompt = this.promptManager.render('llm.proactive.system', {
-      contextInstruct,
       preferenceText: context.preferenceText,
       toolInstruct,
     });

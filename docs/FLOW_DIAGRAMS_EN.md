@@ -434,7 +434,7 @@ ChatMessage[] ordering:
   └──────────────────────────────────────────────────────────┘
   ┌─ system ─────────────────────────────────────────────────┐
   │  sceneSystem prompt (llm.reply.system)                   │
-  │  Vars: contextInstruct, toolInstruct                     │
+  │  Vars: toolInstruct                     │
   │  toolInstruct = full tool list + whenToUse + params      │
   └──────────────────────────────────────────────────────────┘
   ┌─ history (alternating user/assistant) ───────────────────┐
@@ -739,7 +739,7 @@ ProactiveReplyGenerationService.generateProactiveReply(context)
     ├─ 3. Build Prompt:
     │     ┌─ system: baseSystem prompt                     │
     │     ├─ system: llm.proactive.system                  │
-    │     │    with preference, contextInstruct, toolInstruct│
+    │     │    with preference, toolInstruct│
     │     ├─ history: Thread messages (user/assistant)      │
     │     └─ user: memory + RAG + currentQuery             │
     │
@@ -926,6 +926,7 @@ otherwise → Update lastRunAt
 
 ```markdown
 ## Daily Morning Greeting
+
 - trigger: `cron 0 8 * * *`
 - group: `123456789`
 - cooldown: `23h`
@@ -936,6 +937,7 @@ Generate a natural morning greeting based on recent chat atmosphere.
 ---
 
 ## New Member Welcome
+
 - trigger: `onEvent group_member_join`
 - group: `123456789`
 - cooldown: `30s`

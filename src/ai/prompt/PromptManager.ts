@@ -86,8 +86,11 @@ export class PromptManager {
    *   prompts/
    *     llm/
    *       reply.txt
-   *     vision/
-   *       explain_image.txt
+   *     preference/
+   *       {preferenceKey}/
+   *         full.txt
+   *         trigger.txt
+   *       ...
    */
   private loadTemplatesFromDirectory(directory?: string): void {
     const dir = directory || this.templateDirectory;

@@ -434,7 +434,7 @@ ChatMessage[] 排列顺序:
   └──────────────────────────────────────────────────────────┘
   ┌─ system ─────────────────────────────────────────────────┐
   │  sceneSystem prompt (llm.reply.system)                   │
-  │  变量: contextInstruct, toolInstruct                     │
+  │  变量: toolInstruct                     │
   │  toolInstruct = 完整工具列表 + whenToUse + params         │
   └──────────────────────────────────────────────────────────┘
   ┌─ history (交替 user/assistant) ──────────────────────────┐
@@ -737,7 +737,7 @@ ProactiveReplyGenerationService.generateProactiveReply(context)
     ├─ 3. 构建 Prompt:
     │     ┌─ system: baseSystem prompt                    │
     │     ├─ system: llm.proactive.system                 │
-    │     │    含 preference, contextInstruct, toolInstruct │
+    │     │    含 preference, toolInstruct │
     │     ├─ history: Thread 消息 (user/assistant 交替)   │
     │     └─ user: memory + RAG + currentQuery            │
     │
@@ -924,6 +924,7 @@ once 类型? → 删除 item
 
 ```markdown
 ## 每日早安问候
+
 - 触发: `cron 0 8 * * *`
 - 群: `123456789`
 - 冷却: `23h`
@@ -934,6 +935,7 @@ once 类型? → 删除 item
 ---
 
 ## 新成员欢迎
+
 - 触发: `onEvent group_member_join`
 - 群: `123456789`
 - 冷却: `30s`

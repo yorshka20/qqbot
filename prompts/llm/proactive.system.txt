@@ -1,7 +1,5 @@
 你正在以自己的人设主动参与群聊，生成一条简洁、自然的回复。
 
-{{contextInstruct}}
-
 ## 人设
 
 {{preferenceText}}
