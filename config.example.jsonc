@@ -170,6 +170,11 @@
         "name": "nudge",
         "enabled": true
       },
+      // Todo Plugin - manages project ToDo items via /todo command
+      {
+        "name": "todo",
+        "enabled": true
+      },
       // Cloudflare Worker Proxy Plugin - proxy Doubao/Volcengine API requests through Cloudflare Worker
       // Deploy worker.js in src/plugins/plugins/CloudflareWorkerPlugin/ to Cloudflare Workers first
       // {
