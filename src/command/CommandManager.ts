@@ -232,6 +232,19 @@ export class CommandManager {
   }
 
   /**
+   * Check if a user has the given permission level(s), considering protocol-specific overrides.
+   * Useful for plugins that need to do their own permission checks outside of command execution.
+   */
+  checkUserPermission(
+    userId: string | number,
+    messageType: 'private' | 'group',
+    permissions: PermissionLevel[],
+    protocol?: string,
+  ): boolean {
+    return this.permissionChecker.checkPermission(userId, messageType, permissions, undefined, protocol);
+  }
+
+  /**
    * Register a command handler
    */
   register(handler: CommandHandler, pluginName?: string): void {

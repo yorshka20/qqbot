@@ -89,6 +89,20 @@ export class ClaudeCodePlugin extends PluginBase {
     logger.info('[ClaudeCodePlugin] Claude Code plugin disabled');
   }
 
+  /**
+   * Check if user is allowed to trigger Claude Code tasks.
+   * Bot owner (including per-protocol owner overrides) is always allowed.
+   * Other users are checked against the allowedUsers config.
+   */
+  private isUserAllowedForClaude(userId: string, messageType: 'private' | 'group', protocol?: string): boolean {
+    // Bot owner is always allowed (handles cross-protocol identity via PermissionChecker)
+    if (this.commandManager.checkUserPermission(userId, messageType, ['owner'], protocol)) {
+      return true;
+    }
+    // For non-owner users, check the allowedUsers whitelist
+    return this.claudeCodeService?.canUserTriggerTask(userId) ?? false;
+  }
+
   private async executeClaudeCommand(args: string[], context: CommandContext): Promise<CommandResult> {
     if (!this.claudeCodeService) {
       return {
@@ -149,9 +163,10 @@ export class ClaudeCodePlugin extends PluginBase {
     }
 
     const userId = String(context.userId);
+    const protocol = context.metadata?.protocol as string | undefined;
 
-    // Check if user is allowed
-    if (!this.claudeCodeService.canUserTriggerTask(userId)) {
+    // Check if user is allowed: owner always allowed, others check allowedUsers
+    if (!this.isUserAllowedForClaude(userId, context.messageType, protocol)) {
       return {
         success: false,
         segments: new MessageBuilder().text('您没有权限触发 Claude Code 任务').build(),
@@ -352,7 +367,8 @@ export class ClaudeCodePlugin extends PluginBase {
     }
 
     const userId = String(context.userId);
-    if (!this.claudeCodeService.canUserTriggerTask(userId)) {
+    const protocol = context.metadata?.protocol as string | undefined;
+    if (!this.isUserAllowedForClaude(userId, context.messageType, protocol)) {
       return {
         success: false,
         segments: new MessageBuilder().text('您没有权限触发 Claude Code 任务').build(),
