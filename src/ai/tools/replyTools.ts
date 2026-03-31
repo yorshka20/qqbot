@@ -119,7 +119,15 @@ export async function executeToolCall(
 
   const result: ToolResult = await toolManager.execute(toolCall, toolContext, hookManager, context);
 
-  return result.data ?? result.reply;
+  const baseResult = result.data ?? result.reply;
+
+  // When tool returns multimodal content (e.g. images), wrap with sentinel so LLMService
+  // can inject ContentPart[] into the conversation for vision providers.
+  if (result.contentParts?.length) {
+    return { __contentParts: result.contentParts, result: baseResult };
+  }
+
+  return baseResult;
 }
 
 // Backward-compatible aliases

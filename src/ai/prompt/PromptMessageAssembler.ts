@@ -91,7 +91,7 @@ export class PromptMessageAssembler {
   private serializeEntry(entry: ConversationMessageEntry): string {
     const textFromSegments = this.extractText(entry.segments);
     const text = this.normalize(textFromSegments || entry.content);
-    const imageTags = this.extractImageTags(entry.segments);
+    const imageTags = this.extractImageTags(entry.segments, entry.messageId);
     const core = text || imageTags;
     if (!core) return '';
     if (entry.isBotReply) {
@@ -111,14 +111,16 @@ export class PromptMessageAssembler {
     return text.trim();
   }
 
-  private extractImageTags(segments?: MessageSegment[]): string {
+  private extractImageTags(segments?: MessageSegment[], messageId?: string): string {
     if (!segments?.length) return '';
     const tags: string[] = [];
+    let imageIndex = 0;
     for (const segment of segments) {
       if (segment.type !== 'image') continue;
-      const uri = this.normalize(String(segment.data.uri ?? segment.data.temp_url ?? segment.data.resource_id ?? ''));
+      const id = messageId ? `${messageId}:${imageIndex}` : '';
       const summary = this.normalize(String(segment.data.summary ?? ''));
-      tags.push(`<image_segment uri="${uri}" summary="${summary}" />`);
+      tags.push(`<image_segment${id ? ` id="${id}"` : ''} summary="${summary}" />`);
+      imageIndex++;
     }
     return tags.join('\n');
   }

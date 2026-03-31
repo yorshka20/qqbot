@@ -1,5 +1,6 @@
 // Tool type definitions
 
+import type { ContentPart } from '@/ai/types';
 import type { HookContext } from '@/hooks/types';
 
 /**
@@ -72,6 +73,12 @@ export interface ToolResult {
   data?: Record<string, unknown>;
   error?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * Optional multimodal content parts (e.g. images) to inject into the conversation
+   * after tool result messages. Used by tools like fetch_image that return vision content.
+   * These are injected as a user message with ContentPart[] so all providers can see them.
+   */
+  contentParts?: ContentPart[];
 }
 
 /**

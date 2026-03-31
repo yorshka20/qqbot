@@ -9,6 +9,7 @@ export { DeduplicateFilesToolExecutor } from './DeduplicateFilesToolExecutor';
 export { ExecuteCommandToolExecutor } from './ExecuteCommandToolExecutor';
 export { ExecuteCodeToolExecutor } from './executeCode';
 export { FetchHistoryByTimeToolExecutor } from './FetchHistoryByTimeToolExecutor';
+export { FetchImageToolExecutor } from './FetchImageToolExecutor';
 export { FetchPageToolExecutor } from './FetchPageToolExecutor';
 export { GetGroupMemberListToolExecutor } from './GetGroupMemberListToolExecutor';
 export { GetMemoryToolExecutor } from './GetMemoryToolExecutor';

@@ -12,6 +12,7 @@ import type {
   AIGenerateResponse,
   ChatMessage,
   ChatMessageToolCall,
+  ContentPart,
   StreamingHandler,
   ToolDefinition,
   ToolResult,
@@ -554,6 +555,9 @@ export class LLMService {
           }),
         );
 
+        // Collect vision content parts from tool results (e.g. fetch_image)
+        const pendingVisionParts: ContentPart[] = [];
+
         for (let idx = 0; idx < executionResults.length; idx++) {
           const settlement = executionResults[idx];
           const fc = calls[idx];
@@ -571,7 +575,15 @@ export class LLMService {
           assistantToolCalls.push(toolCall);
 
           if (settlement.status === 'fulfilled') {
-            const toolResult = settlement.value.result;
+            let toolResult = settlement.value.result;
+
+            // Extract vision content parts from wrapped tool results
+            if (toolResult && typeof toolResult === 'object' && '__contentParts' in (toolResult as object)) {
+              const wrapped = toolResult as { __contentParts: ContentPart[]; result: unknown };
+              pendingVisionParts.push(...wrapped.__contentParts);
+              toolResult = wrapped.result;
+            }
+
             allToolCalls.push({ tool: fc.name, result: toolResult });
             toolMessages.push({
               role: 'tool',
@@ -599,6 +611,18 @@ export class LLMService {
         });
         for (const msg of toolMessages) {
           currentMessages.push(msg);
+        }
+
+        // Inject vision content from tool results as a user message (works with all providers)
+        if (pendingVisionParts.length > 0) {
+          currentMessages.push({
+            role: 'user',
+            content: [
+              { type: 'text' as const, text: '[以下是工具获取的图片内容，请结合图片进行分析回复]' },
+              ...pendingVisionParts,
+            ],
+          });
+          logger.info(`[LLMService] Injected ${pendingVisionParts.length} vision content part(s) from tool results`);
         }
 
         if (calls.length > 1) {
