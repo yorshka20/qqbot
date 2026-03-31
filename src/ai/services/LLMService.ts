@@ -613,16 +613,31 @@ export class LLMService {
           currentMessages.push(msg);
         }
 
-        // Inject vision content from tool results as a user message (works with all providers)
+        // Inject vision content from tool results as a user message
         if (pendingVisionParts.length > 0) {
-          currentMessages.push({
-            role: 'user',
-            content: [
-              { type: 'text' as const, text: '[以下是工具获取的图片内容，请结合图片进行分析回复]' },
-              ...pendingVisionParts,
-            ],
-          });
-          logger.info(`[LLMService] Injected ${pendingVisionParts.length} vision content part(s) from tool results`);
+          const currentProvider = this.aiManager.getProvider(currentProviderName);
+          const supportsVision = currentProvider?.supportsCapability('vision') ?? false;
+
+          if (supportsVision) {
+            // Provider supports vision — inject image content parts directly
+            currentMessages.push({
+              role: 'user',
+              content: [
+                { type: 'text' as const, text: '[以下是工具获取的图片内容，请结合图片进行分析回复]' },
+                ...pendingVisionParts,
+              ],
+            });
+          } else {
+            // Provider doesn't support vision — use vision provider to describe the image, inject as text
+            const description = await this.describeImageWithVisionProvider(pendingVisionParts);
+            currentMessages.push({
+              role: 'user',
+              content: `[以下是工具获取的图片的AI视觉分析结果，请结合此分析进行回复]\n${description}`,
+            });
+          }
+          logger.info(
+            `[LLMService] Injected ${pendingVisionParts.length} vision content part(s) from tool results (directVision=${supportsVision})`,
+          );
         }
 
         if (calls.length > 1) {
@@ -665,6 +680,50 @@ export class LLMService {
       toolCalls: allToolCalls,
       stopReason: 'max_rounds',
     };
+  }
+
+  /**
+   * Use a vision-capable provider to describe image content parts as text.
+   * Called when the current LLM provider doesn't support vision but tool results contain images.
+   */
+  private async describeImageWithVisionProvider(visionParts: ContentPart[]): Promise<string> {
+    const visionProvider = this.aiManager.getDefaultProvider('vision');
+    if (!visionProvider || !isLLMCapability(visionProvider)) {
+      logger.warn('[LLMService] No vision-capable provider available for image description');
+      return '[图片内容无法分析：没有可用的视觉分析模型]';
+    }
+
+    const visionProviderName = 'name' in visionProvider ? (visionProvider as { name: string }).name : 'unknown';
+
+    try {
+      const messages: ChatMessage[] = [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text' as const,
+              text: '请详细描述这张图片的内容。如果图片中包含文字、代码、表格等，请完整识别并输出。',
+            },
+            ...visionParts,
+          ],
+        },
+      ];
+
+      const result = await visionProvider.generate('', {
+        messages,
+        temperature: 0.1,
+        maxTokens: 1024,
+      });
+
+      logger.info(
+        `[LLMService] Vision provider "${visionProviderName}" described image: ${result.text.length} chars`,
+      );
+      return result.text;
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error(`[LLMService] Vision provider "${visionProviderName}" failed to describe image: ${errMsg}`);
+      return `[图片内容分析失败: ${errMsg}]`;
+    }
   }
 
   /**

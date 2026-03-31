@@ -59,6 +59,6 @@ describe('PromptMessageAssembler', () => {
       finalUserBlocks: { currentQuery: 'q' },
     });
 
-    expect(messages[1].content).toContain('<image_segment uri="https://example.com/a.png" summary="img" />');
+    expect(messages[1].content).toContain('<image_segment id="1:0" summary="img" />');
   });
 });
