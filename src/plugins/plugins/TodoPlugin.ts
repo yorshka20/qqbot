@@ -138,15 +138,13 @@ export class TodoPlugin extends PluginBase {
     try {
       const existing = readFileSync(todoPath, 'utf-8');
       const newItem = `- [ ] ${content}`;
-      const updated = existing.trimEnd() + '\n' + newItem + '\n';
+      const updated = `${existing.trimEnd()}\n${newItem}\n`;
       writeFileSync(todoPath, updated, 'utf-8');
 
       logger.info(`[TodoPlugin] Added TODO to ${project.alias}: ${content}`);
       return {
         success: true,
-        segments: new MessageBuilder()
-          .text(`已添加 TODO 到项目 "${project.alias}":\n${newItem}`)
-          .build(),
+        segments: new MessageBuilder().text(`已添加 TODO 到项目 "${project.alias}":\n${newItem}`).build(),
       };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
