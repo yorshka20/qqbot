@@ -648,13 +648,21 @@ export class ProactiveConversationService {
       if (!dbMessage?.rawContent) {
         return [];
       }
+      // SQLite adapter auto-parses JSON fields, so rawContent may already be an array.
       let segments: Array<{ type: string; data?: unknown }>;
-      try {
-        segments = JSON.parse(dbMessage.rawContent) as Array<{ type: string; data?: unknown }>;
-      } catch {
-        return [];
-      }
-      if (!Array.isArray(segments)) {
+      if (Array.isArray(dbMessage.rawContent)) {
+        segments = dbMessage.rawContent as Array<{ type: string; data?: unknown }>;
+      } else if (typeof dbMessage.rawContent === 'string') {
+        try {
+          const parsed = JSON.parse(dbMessage.rawContent);
+          if (!Array.isArray(parsed)) {
+            return [];
+          }
+          segments = parsed as Array<{ type: string; data?: unknown }>;
+        } catch {
+          return [];
+        }
+      } else {
         return [];
       }
       // Check for images in the message itself OR a reply segment referencing a message with images

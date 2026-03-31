@@ -359,7 +359,14 @@ export class ConversationHistoryService {
   }
 
   private parseRawSegments(rawContent?: unknown): MessageSegment[] | undefined {
-    // DB may return non-string (e.g. auto-parsed JSON); only treat string as rawContent
+    // DB adapter (SQLite) may auto-parse JSON fields, so rawContent can arrive as
+    // either a JSON string or an already-parsed array. Handle both cases.
+    if (rawContent == null) {
+      return undefined;
+    }
+    if (Array.isArray(rawContent)) {
+      return rawContent.length > 0 ? (rawContent as MessageSegment[]) : undefined;
+    }
     if (typeof rawContent !== 'string' || rawContent.trim() === '') {
       return undefined;
     }

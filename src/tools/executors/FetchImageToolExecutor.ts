@@ -84,20 +84,27 @@ export class FetchImageToolExecutor extends BaseToolExecutor {
       return this.error(`未找到消息: ${messageId}`, `Message not found: ${messageId}`);
     }
 
-    // Parse rawContent to get segments
-    if (!message.rawContent || typeof message.rawContent !== 'string') {
+    // Parse rawContent to get segments.
+    // SQLite adapter auto-parses JSON fields, so rawContent may already be an array.
+    if (!message.rawContent) {
       return this.error('该消息没有保存原始内容（无图片数据）', 'Message has no rawContent');
     }
 
     let segments: MessageSegment[];
-    try {
-      const parsed = JSON.parse(message.rawContent);
-      if (!Array.isArray(parsed)) {
-        return this.error('消息原始内容格式无效', 'rawContent is not an array');
+    if (Array.isArray(message.rawContent)) {
+      segments = message.rawContent as MessageSegment[];
+    } else if (typeof message.rawContent === 'string') {
+      try {
+        const parsed = JSON.parse(message.rawContent);
+        if (!Array.isArray(parsed)) {
+          return this.error('消息原始内容格式无效', 'rawContent is not an array');
+        }
+        segments = parsed as MessageSegment[];
+      } catch {
+        return this.error('消息原始内容解析失败', 'Failed to parse rawContent');
       }
-      segments = parsed as MessageSegment[];
-    } catch {
-      return this.error('消息原始内容解析失败', 'Failed to parse rawContent');
+    } else {
+      return this.error('消息原始内容格式无效', 'rawContent is not a string or array');
     }
 
     // Count image segments and find the target
