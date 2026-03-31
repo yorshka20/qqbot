@@ -164,13 +164,6 @@ export class ClaudeCodeService {
   }
 
   /**
-   * Check if user can trigger Claude Code tasks
-   */
-  canUserTriggerTask(userId: string): boolean {
-    return this.taskManager.isUserAllowed(userId);
-  }
-
-  /**
    * Trigger a Claude Code task.
    * Tasks for the same project are queued and executed serially.
    * Tasks for different projects can run concurrently.

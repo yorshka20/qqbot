@@ -137,16 +137,6 @@ export class ClaudeToolManager {
   }
 
   /**
-   * Check if user is allowed to trigger tasks
-   */
-  isUserAllowed(userId: string): boolean {
-    if (!this.config.allowedUsers || this.config.allowedUsers.length === 0) {
-      return true; // No restrictions
-    }
-    return this.config.allowedUsers.includes(userId);
-  }
-
-  /**
    * Get project key from a task's working directory.
    * Tasks with the same project key are serialized.
    */

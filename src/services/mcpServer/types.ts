@@ -58,8 +58,6 @@ export interface MCPServerConfig {
   claudeCliPath?: string;
   // Working directory for Claude Code tasks
   workingDirectory?: string;
-  // Allowed user IDs that can trigger Claude Code tasks
-  allowedUsers?: string[];
   // Max concurrent tasks
   maxConcurrentTasks?: number;
   // Project registry for multi-project support

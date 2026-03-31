@@ -771,8 +771,6 @@
     "claudeCliPath": "claude",
     // Working directory for Claude Code tasks
     "workingDirectory": "./",
-    // Allowed user IDs that can trigger Claude Code tasks (empty = all admins allowed)
-    "allowedUsers": [],
     // Max concurrent tasks (default: 1)
     "maxConcurrentTasks": 1,
     // Project registry for multi-project support (optional)

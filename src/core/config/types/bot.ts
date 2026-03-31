@@ -44,8 +44,6 @@ export interface ClaudeCodeServiceConfig {
   claudeCliPath?: string;
   // Working directory for Claude Code tasks
   workingDirectory?: string;
-  // Allowed user IDs that can trigger Claude Code tasks (empty = all allowed)
-  allowedUsers?: string[];
   // Max concurrent tasks (default: 1)
   maxConcurrentTasks?: number;
   // Project registry for multi-project support
