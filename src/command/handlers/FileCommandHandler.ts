@@ -7,6 +7,7 @@ import { MessageBuilder } from '@/message/MessageBuilder';
 import type { InfoCardData } from '@/services/card';
 import { CardRenderer } from '@/services/card';
 import type { FileReadService } from '@/services/file';
+import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 
@@ -49,28 +50,37 @@ export class LsCommand implements CommandHandler {
 }
 
 /**
- * Cat command - read file content and render as image
+ * Cat command - read file content (image by default, or plain text with --text)
  */
 @Command({
   name: 'cat',
-  description: 'Read file content and display as image (relative to project root)',
-  usage: '/cat <path>',
+  description:
+    'Read file content (relative to project root). Default: render as image. Use --text to send as plain text for copying.',
+  usage: '/cat <path> [--text]',
   permissions: ['user'],
 })
 @injectable()
 export class CatCommand implements CommandHandler {
   name = 'cat';
-  description = 'Read file content and display as image (relative to project root)';
-  usage = '/cat <path>';
+  description =
+    'Read file content (relative to project root). Default: render as image. Use --text to send as plain text for copying.';
+  usage = '/cat <path> [--text]';
+
+  private readonly argsConfig: ParserConfig = {
+    options: {
+      text: { property: 'plainText', type: 'boolean' },
+    },
+  };
 
   constructor(@inject(DITokens.FILE_READ_SERVICE) private fileReadService: FileReadService) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
-    const path = args[0];
+    const { text: pathArg, options } = CommandArgsParser.parse<{ plainText?: boolean }>(args, this.argsConfig);
+    const path = pathArg.trim();
     if (!path) {
       return {
         success: false,
-        error: '请提供文件路径，例如: /cat README.md',
+        error: '请提供文件路径，例如: /cat README.md 或 /cat --text README.md',
       };
     }
 
@@ -83,11 +93,22 @@ export class CatCommand implements CommandHandler {
       };
     }
 
+    const content = result.content ?? '';
+
+    if (options.plainText) {
+      const messageBuilder = new MessageBuilder();
+      messageBuilder.text(content);
+      return {
+        success: true,
+        segments: messageBuilder.build(),
+      };
+    }
+
     // Caller renders as image (card); FileReadService only returns string content
     const cardData: InfoCardData = {
       type: 'info',
       title: basename(path),
-      content: result.content ?? '',
+      content,
       level: 'info',
     };
     const cardRenderer = CardRenderer.getInstance();

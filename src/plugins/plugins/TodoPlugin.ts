@@ -214,7 +214,10 @@ export class TodoPlugin extends PluginBase {
     }
 
     // Strip markdown code block fences if present
-    const cleaned = text.replace(/^```(?:markdown)?\n?/, '').replace(/\n?```$/, '').trim();
+    const cleaned = text
+      .replace(/^```(?:markdown)?\n?/, '')
+      .replace(/\n?```$/, '')
+      .trim();
 
     // Validate: must contain at least one checkbox item
     if (!cleaned.includes('- [ ]')) {
