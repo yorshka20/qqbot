@@ -801,5 +801,20 @@
         // }
       ]
     }
+  },
+  // Video Knowledge Backend integration (optional)
+  // Provides video analysis capabilities for bilibili videos.
+  // The backend analyzes video content (subtitles, danmaku) and generates summaries/highlights.
+  "videoKnowledge": {
+    "enabled": false,
+    // Base URL of the video-knowledge-backend service
+    "baseURL": "http://localhost:8080",
+    // Local directory where analysis results are stored (only for local deployment)
+    // Path pattern: {dataDir}/kb/{creator_name}/{date}-{sanitized_title}.json
+    "dataDir": "../video-knowledge-backend/data",
+    // Polling interval in milliseconds when waiting for analysis to complete (default: 5000)
+    "pollIntervalMs": 5000,
+    // Polling timeout in milliseconds (default: 300000 = 5 minutes)
+    "pollTimeoutMs": 300000
   }
 }

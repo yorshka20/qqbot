@@ -16,6 +16,7 @@ import type { PromptsConfig } from './types/prompts';
 import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './types/protocol';
 import type { RAGConfig } from './types/rag';
 import type { TTSConfig } from './types/tts';
+import type { VideoKnowledgeConfig } from './types/videoKnowledge';
 
 // Re-export runtime/conversation config (merged from former src/config)
 export { ConversationConfigService, type SessionType } from '../../conversation/ConversationConfigService';
@@ -65,6 +66,7 @@ export type {
 } from './types/protocol';
 export type { RAGConfig } from './types/rag';
 export type { TTSConfig } from './types/tts';
+export type { VideoKnowledgeConfig } from './types/videoKnowledge';
 
 export interface BotConfig {
   protocols: ProtocolConfig[];
@@ -83,6 +85,7 @@ export interface BotConfig {
   staticServer?: StaticServerConfig;
   fileReadService?: FileReadServiceConfig;
   claudeCodeService?: ClaudeCodeServiceConfig;
+  videoKnowledge?: VideoKnowledgeConfig;
 }
 
 export class Config {
@@ -308,5 +311,9 @@ export class Config {
 
   getClaudeCodeServiceConfig(): ClaudeCodeServiceConfig | undefined {
     return this.config.claudeCodeService;
+  }
+
+  getVideoKnowledgeConfig(): VideoKnowledgeConfig | undefined {
+    return this.config.videoKnowledge;
   }
 }

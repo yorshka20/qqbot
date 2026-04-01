@@ -124,3 +124,110 @@ export interface BilibiliCommentData {
     next: number;
   };
 }
+
+// ── Video Knowledge Backend types ──
+
+/** Task status from video-knowledge-backend */
+export type VideoKnowledgeTaskStatus = 'queued' | 'claimed' | 'done' | 'failed';
+
+/** POST /api/v1/analyze request body */
+export interface VideoKnowledgeAnalyzeRequest {
+  platform: string;
+  video_id: string;
+}
+
+/** POST /api/v1/analyze response (202) */
+export interface VideoKnowledgeAnalyzeResponse {
+  task_id: number;
+}
+
+/** POST /api/v1/ingest request body */
+export interface VideoKnowledgeIngestRequest {
+  platform: string;
+  video_id: string;
+  source?: string;
+  video_info?: {
+    title: string;
+    duration: number;
+    creator: string;
+    desc?: string;
+  };
+  subtitles?: Array<{
+    from: number;
+    to: number;
+    content: string;
+    lang?: string;
+  }>;
+  overlays?: Array<{
+    progress_ms: number;
+    content: string;
+    posted_at?: number;
+  }>;
+}
+
+/** POST /api/v1/ingest response (200) */
+export interface VideoKnowledgeIngestResponse {
+  video_id: string;
+  accepted: string[];
+  task_id: number;
+}
+
+/** GET /api/v1/tasks/{id} response */
+export interface VideoKnowledgeTask {
+  id: number;
+  type: string;
+  status: VideoKnowledgeTaskStatus;
+  priority: number;
+  retry_count: number;
+  error_msg?: string;
+  created_at: string;
+  claimed_at?: string;
+  done_at?: string;
+}
+
+/** Analysis result JSON structure (read from local filesystem) */
+export interface VideoKnowledgeResult {
+  video_info: {
+    platform: string;
+    video_id: string;
+    title: string;
+    duration: number;
+    creator: {
+      platform: string;
+      id: string;
+      name: string;
+    };
+    stats?: {
+      view_count: number;
+      like_count: number;
+      comment_count: number;
+      danmaku_count: number;
+    };
+  };
+  summary?: string;
+  highlights?: Array<{
+    start_sec: number;
+    end_sec: number;
+    title: string;
+    description: string;
+    reason?: string;
+  }>;
+  peaks?: Array<{
+    start_sec: number;
+    end_sec: number;
+    count: number;
+    density: number;
+    peak_rank: number;
+    subtitle_text?: string;
+    top_overlays?: string[];
+  }>;
+  data_sources?: string[];
+  processed_at?: string;
+}
+
+/** Poll result wrapper */
+export interface VideoKnowledgePollResult {
+  success: boolean;
+  error?: string;
+  task?: VideoKnowledgeTask;
+}

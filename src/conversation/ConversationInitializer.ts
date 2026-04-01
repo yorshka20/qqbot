@@ -32,6 +32,7 @@ import { HookManager } from '@/hooks/HookManager';
 import { MemoryExtractService, MemoryRAGService, MemoryService } from '@/memory';
 import { MessageUtils } from '@/message/MessageUtils';
 import { BilibiliService } from '@/services/bilibili';
+import { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
 import { FileReadService } from '@/services/file';
 import type { RetrievalService } from '@/services/retrieval';
 import { ToolInitializer, ToolManager } from '@/tools';
@@ -328,6 +329,13 @@ export class ConversationInitializer {
     // Register BilibiliService (used by bilibili command and tool executor)
     const bilibiliService = new BilibiliService();
     container.registerInstance('BilibiliService', bilibiliService);
+
+    // Register VideoKnowledgeClient (video analysis backend)
+    const vkConfig = botConfig.videoKnowledge;
+    const videoKnowledgeClient = new VideoKnowledgeClient(
+      vkConfig ?? { enabled: false, baseURL: 'http://localhost:8080' },
+    );
+    container.registerInstance('VideoKnowledgeClient', videoKnowledgeClient);
 
     const toolManager = new ToolManager();
     const hookManager = new HookManager();

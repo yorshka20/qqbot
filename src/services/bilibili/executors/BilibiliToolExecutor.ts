@@ -6,33 +6,45 @@ import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 import { BilibiliService } from '../BilibiliService';
+import type { VideoKnowledgeClient } from '../VideoKnowledgeClient';
 
 @Tool({
   name: 'bilibili',
-  description: '查询B站内容。支持搜索视频、获取视频详情、查看热门视频和热搜榜。返回视频标题、UP主、播放量等信息。',
+  description:
+    '查询B站内容。支持搜索视频、获取视频详情、查看热门视频、热搜榜、以及提交视频分析任务。返回视频标题、UP主、播放量等信息。',
   executor: 'bilibili',
   visibility: ['reply', 'subagent'],
   parameters: {
     action: {
       type: 'string',
       required: true,
-      description: '操作类型: "search"(搜索视频), "video"(视频详情), "popular"(热门), "hot"(热搜)',
+      description:
+        '操作类型: "search"(搜索视频), "video"(视频详情), "popular"(热门), "hot"(热搜), "analyze"(提交视频分析)',
     },
     query: {
       type: 'string',
       required: false,
-      description: '搜索关键词(action=search时必填)或BV号/链接(action=video时必填)',
+      description:
+        '搜索关键词(action=search时必填)、BV号/链接(action=video/analyze时必填)、或任务ID(action=task_status时必填)',
     },
   },
-  examples: ['搜一下B站上的Minecraft视频', '查看这个B站视频 BV1xx411c7mD', 'B站现在什么最火'],
+  examples: [
+    '搜一下B站上的Minecraft视频',
+    '查看这个B站视频 BV1xx411c7mD',
+    'B站现在什么最火',
+    '分析这个B站视频 BV1xx411c7mD',
+  ],
   triggerKeywords: ['B站', 'b站', 'bilibili', '哔哩哔哩'],
-  whenToUse: '当用户询问B站/bilibili相关内容、想看视频信息、搜索B站视频或查看热门内容时调用。',
+  whenToUse: '当用户询问B站/bilibili相关内容、想看视频信息、搜索B站视频、查看热门内容、或需要分析视频内容时调用。',
 })
 @injectable()
 export class BilibiliToolExecutor extends BaseToolExecutor {
   name = 'bilibili';
 
-  constructor(@inject('BilibiliService') private bilibiliService: BilibiliService) {
+  constructor(
+    @inject('BilibiliService') private bilibiliService: BilibiliService,
+    @inject('VideoKnowledgeClient') private videoKnowledgeClient: VideoKnowledgeClient,
+  ) {
     super();
   }
 
@@ -54,8 +66,10 @@ export class BilibiliToolExecutor extends BaseToolExecutor {
           return this.handlePopular();
         case 'hot':
           return this.handleHotSearch();
+        case 'analyze':
+          return this.handleAnalyze(query);
         default:
-          return this.error(`未知操作: ${action}`, `Unknown action: ${action}. Use search/video/popular/hot`);
+          return this.error(`未知操作: ${action}`, `Unknown action: ${action}. Use search/video/popular/hot/analyze`);
       }
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
@@ -127,5 +141,58 @@ export class BilibiliToolExecutor extends BaseToolExecutor {
       .join('\n');
 
     return this.success(`B站热搜榜:\n\n${formatted}`, { resultCount: items.length });
+  }
+
+  private async handleAnalyze(query: string | undefined): Promise<ToolResult> {
+    if (!this.videoKnowledgeClient.isEnabled()) {
+      return this.error('视频分析服务未启用', 'Video knowledge backend is not enabled in config');
+    }
+
+    if (!query) {
+      return this.error('请提供BV号或视频链接', 'Missing required parameter: query for analyze action');
+    }
+
+    const bvid = BilibiliService.extractBvid(query);
+    if (!bvid) {
+      return this.error(`无法解析视频ID: ${query}`, `Cannot parse bvid from: ${query}`);
+    }
+
+    // Check backend health
+    const healthy = await this.videoKnowledgeClient.healthCheck();
+    if (!healthy) {
+      return this.error('视频分析服务暂时不可用', 'Video knowledge backend health check failed');
+    }
+
+    // Submit analysis task
+    const { task_id } = await this.videoKnowledgeClient.submitAnalysis(bvid);
+
+    // Poll for result
+    const pollResult = await this.videoKnowledgeClient.pollTaskResult(task_id);
+
+    if (!pollResult.success) {
+      return this.success(`视频分析任务 #${task_id} ${pollResult.error}。可稍后查询任务状态。`, {
+        taskId: task_id,
+        bvid,
+        status: pollResult.task?.status || 'unknown',
+      });
+    }
+
+    // Try to read result from filesystem
+    const result = this.videoKnowledgeClient.readResult(bvid);
+    if (result) {
+      const formatted = this.videoKnowledgeClient.formatResult(result);
+      return this.success(`视频分析完成:\n\n${formatted}`, {
+        taskId: task_id,
+        bvid,
+        status: 'done',
+        summary: result.summary,
+      });
+    }
+
+    return this.success(`视频分析任务 #${task_id} 已完成，但未找到结果文件。`, {
+      taskId: task_id,
+      bvid,
+      status: 'done',
+    });
   }
 }
