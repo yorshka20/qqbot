@@ -37,13 +37,13 @@ export class AgendaReporter {
   constructor(private reportsDir: string) {}
 
   /**
-   * Append a run record to today's report file.
+   * Append a run record to the report file for the day the run started.
    * Creates the file (with header) if it doesn't exist.
    */
   async recordRun(record: RunRecord): Promise<void> {
     try {
-      const filePath = this.todayFilePath();
-      await this.ensureFileHeader(filePath);
+      const filePath = this.filePathForDate(record.startedAt);
+      await this.ensureFileHeader(filePath, record.startedAt);
       const entry = this.formatEntry(record);
       await appendFile(filePath, entry, 'utf-8');
     } catch (err) {
@@ -53,12 +53,13 @@ export class AgendaReporter {
   }
 
   /**
-   * Write a summary footer to today's report (call at EOD or on shutdown).
+   * Write a summary footer to the report for the given date (call at EOD or on shutdown).
    * Reads the file to count successes/failures.
+   * @param date - The date whose report file to summarize. Defaults to now.
    */
-  async writeSummary(): Promise<void> {
+  async writeSummary(date: Date = new Date()): Promise<void> {
     try {
-      const filePath = this.todayFilePath();
+      const filePath = this.filePathForDate(date);
       const content = await readFile(filePath, 'utf-8').catch(() => '');
       if (!content) return;
 
@@ -79,16 +80,16 @@ export class AgendaReporter {
 
   // ─── Private ──────────────────────────────────────────────────────────────────
 
-  private todayFilePath(): string {
-    const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    return join(this.reportsDir, `${date}.md`);
+  private filePathForDate(date: Date): string {
+    const dateStr = date.toISOString().slice(0, 10); // YYYY-MM-DD
+    return join(this.reportsDir, `${dateStr}.md`);
   }
 
-  private async ensureFileHeader(filePath: string): Promise<void> {
+  private async ensureFileHeader(filePath: string, date: Date): Promise<void> {
     await mkdir(this.reportsDir, { recursive: true });
 
-    const date = new Date().toISOString().slice(0, 10);
-    const header = `# Bot日报 - ${date}\n\n## 执行记录\n\n`;
+    const dateStr = date.toISOString().slice(0, 10);
+    const header = `# Bot日报 - ${dateStr}\n\n## 执行记录\n\n`;
 
     try {
       await readFile(filePath, 'utf-8');
