@@ -3,6 +3,7 @@
  *
  * Provides a /todo command to add TODO items to a project's ToDo.md file.
  * Supports @{alias} syntax to specify the target project (same as /claude command).
+ * Before inserting, sends the raw content to LLM for optimization (better expression, subtask breakdown).
  *
  * Commands:
  * - /todo @<alias> <content> - Add a TODO item to the specified project
@@ -11,8 +12,11 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
+import type { LLMService } from '@/ai/services/LLMService';
 import type { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
+import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
@@ -30,16 +34,22 @@ const TEMPLATE_PATH = resolve(process.cwd(), 'template/ToDo.md');
 
 @RegisterPlugin({
   name: 'todo',
-  version: '1.0.0',
-  description: 'Add TODO items to project ToDo.md files',
+  version: '1.1.0',
+  description: 'Add TODO items to project ToDo.md files with LLM optimization',
 })
 export class TodoPlugin extends PluginBase {
   private commandManager!: CommandManager;
   private registry: ProjectRegistry | null = null;
+  private llmService!: LLMService;
+  private promptManager!: PromptManager;
+  private config!: Config;
 
   async onInit(): Promise<void> {
     const container = getContainer();
     this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
+    this.llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
+    this.promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+    this.config = container.resolve<Config>(DITokens.CONFIG);
 
     try {
       const claudeCodeService = container.resolve<ClaudeCodeService>(DITokens.CLAUDE_CODE_SERVICE);
@@ -134,17 +144,28 @@ export class TodoPlugin extends PluginBase {
       };
     }
 
-    // Append TODO item
+    // Read existing todo content for LLM context
+    const existingContent = readFileSync(todoPath, 'utf-8');
+
+    // Optimize content via LLM
+    let optimizedContent: string;
     try {
-      const existing = readFileSync(todoPath, 'utf-8');
-      const newItem = `- [ ] ${content}`;
-      const updated = `${existing.trimEnd()}\n${newItem}\n`;
+      optimizedContent = await this.optimizeTodoContent(content, existingContent, project.path, project.alias);
+      logger.info(`[TodoPlugin] LLM optimized TODO: "${content}" -> "${optimizedContent}"`);
+    } catch (error) {
+      logger.warn('[TodoPlugin] LLM optimization failed, using raw content:', error);
+      optimizedContent = `- [ ] ${content}`;
+    }
+
+    // Append optimized TODO item
+    try {
+      const updated = `${existingContent.trimEnd()}\n${optimizedContent}\n`;
       writeFileSync(todoPath, updated, 'utf-8');
 
-      logger.info(`[TodoPlugin] Added TODO to ${project.alias}: ${content}`);
+      logger.info(`[TodoPlugin] Added TODO to ${project.alias}`);
       return {
         success: true,
-        segments: new MessageBuilder().text(`已添加 TODO 到项目 "${project.alias}":\n${newItem}`).build(),
+        segments: new MessageBuilder().text(`已添加 TODO 到项目 "${project.alias}":\n${optimizedContent}`).build(),
       };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -155,6 +176,52 @@ export class TodoPlugin extends PluginBase {
         error: msg,
       };
     }
+  }
+
+  /**
+   * Use LLM to optimize the raw todo content.
+   * Renders the task.todo-optimize prompt template and calls LLM for better task description.
+   */
+  private async optimizeTodoContent(
+    rawContent: string,
+    existingTodoContent: string,
+    projectPath: string,
+    projectAlias: string,
+  ): Promise<string> {
+    const aiConfig = this.config.getAIConfig();
+    const provider = aiConfig?.taskProviders?.todoOptimize ?? aiConfig?.defaultProviders?.llm;
+
+    const prompt = this.promptManager.render('task.todo-optimize', {
+      rawContent,
+      existingTodoContent,
+      projectPath,
+      projectAlias,
+    });
+
+    const response = await this.llmService.generate(
+      prompt,
+      {
+        temperature: 0.3,
+        maxTokens: 1024,
+        ...(aiConfig?.taskProviders?.todoOptimizeModel ? { model: aiConfig.taskProviders.todoOptimizeModel } : {}),
+      },
+      provider,
+    );
+
+    const text = response.text?.trim();
+    if (!text) {
+      throw new Error('LLM returned empty response');
+    }
+
+    // Strip markdown code block fences if present
+    const cleaned = text.replace(/^```(?:markdown)?\n?/, '').replace(/\n?```$/, '').trim();
+
+    // Validate: must contain at least one checkbox item
+    if (!cleaned.includes('- [ ]')) {
+      throw new Error('LLM response does not contain valid checkbox items');
+    }
+
+    return cleaned;
   }
 
   /**

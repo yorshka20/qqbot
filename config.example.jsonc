@@ -540,6 +540,9 @@
       // Provider for article analysis (no fallback, retry-only — cost-sensitive batch task)
       "articleAnalysis": "doubao",
       // "articleAnalysisModel": "",
+      // Provider for todo optimization (TodoPlugin — optimizes task description before inserting)
+      // "todoOptimize": "deepseek",
+      // "todoOptimizeModel": "",
       // Provider(s) for sub-agent execution (research, analysis, etc.)
       // String = fixed provider. Array = random selection per call.
       // "subagent": "deepseek",

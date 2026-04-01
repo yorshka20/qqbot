@@ -61,6 +61,10 @@ export interface TaskProvidersConfig {
   articleAnalysis?: string;
   /** Model override for article analysis provider (optional) */
   articleAnalysisModel?: string;
+  /** Provider for todo optimization (TodoPlugin) */
+  todoOptimize?: string;
+  /** Model override for todo optimization provider (optional) */
+  todoOptimizeModel?: string;
   /**
    * Provider(s) for sub-agent execution (research, analysis, etc.).
    * String = fixed provider. Array = random selection per call.
