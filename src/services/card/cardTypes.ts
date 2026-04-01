@@ -10,7 +10,8 @@ export type CardType =
   | 'quote'
   | 'steps'
   | 'highlight'
-  | 'paragraph';
+  | 'paragraph'
+  | 'image';
 
 export type InfoBoxLevel = 'info' | 'warning' | 'success' | 'tip';
 
@@ -126,6 +127,16 @@ export interface ParagraphCardData extends BaseCardData {
 }
 
 /**
+ * Image block data (single image, base64 data URI)
+ */
+export interface ImageCardData extends BaseCardData {
+  type: 'image';
+  /** Base64 data URI (e.g. "data:image/png;base64,...") */
+  src: string;
+  alt?: string;
+}
+
+/**
  * Union type for all card data types
  */
 export type CardData =
@@ -138,7 +149,8 @@ export type CardData =
   | QuoteCardData
   | StepsCardData
   | HighlightCardData
-  | ParagraphCardData;
+  | ParagraphCardData
+  | ImageCardData;
 
 /**
  * Type guard for Q&A card data
@@ -307,6 +319,23 @@ export function isParagraphCardData(data: unknown): data is ParagraphCardData {
 }
 
 /**
+ * Type guard for image block data
+ */
+export function isImageCardData(data: unknown): data is ImageCardData {
+  if (typeof data !== 'object' || data === null) {
+    return false;
+  }
+  const obj = data as Record<string, unknown>;
+  if (obj.type !== 'image' || typeof obj.src !== 'string') {
+    return false;
+  }
+  if (obj.alt !== undefined && typeof obj.alt !== 'string') {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Type guard for card data
  */
 export function isCardData(data: unknown): data is CardData {
@@ -336,6 +365,8 @@ export function isCardData(data: unknown): data is CardData {
       return isHighlightCardData(data);
     case 'paragraph':
       return isParagraphCardData(data);
+    case 'image':
+      return isImageCardData(data);
     default:
       return false;
   }

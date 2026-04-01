@@ -16,6 +16,7 @@ export {
 export type {
   ComparisonCardData,
   HighlightCardData,
+  ImageCardData,
   InfoCardData,
   KnowledgeCardData,
   ListCardData,

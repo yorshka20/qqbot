@@ -4,6 +4,7 @@ import type {
   CardData,
   ComparisonCardData,
   HighlightCardData,
+  ImageCardData,
   InfoCardData,
   KnowledgeCardData,
   ListCardData,
@@ -314,6 +315,18 @@ export function paragraphCard(data: ParagraphCardData): string {
 }
 
 /**
+ * Image block template (single image, base64 data URI)
+ */
+export function imageCard(data: ImageCardData): string {
+  const alt = data.alt ? escapeHtml(data.alt) : '';
+  return `
+    <div class="image-block">
+      <img src="${data.src}" alt="${alt}" />
+    </div>
+  `;
+}
+
+/**
  * Render card data to HTML
  */
 export function renderCard(data: CardData): string {
@@ -338,6 +351,8 @@ export function renderCard(data: CardData): string {
       return highlightCard(data);
     case 'paragraph':
       return paragraphCard(data);
+    case 'image':
+      return imageCard(data);
     default:
       throw new Error(`Unknown card type: ${(data as { type: string }).type}`);
   }

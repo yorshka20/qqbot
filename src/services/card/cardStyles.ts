@@ -961,6 +961,18 @@ export function getCardStyles({ primary, secondary, primaryRgb, secondaryRgb }: 
     color: #2c3e50;
     font-size: 16px;
   }
+  .image-block {
+    margin: 0;
+    text-align: center;
+  }
+  .image-block img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+    border-radius: 8px;
+    object-fit: contain;
+  }
   img.emoji {
     height: 1.25em;
     width: 1.25em;
