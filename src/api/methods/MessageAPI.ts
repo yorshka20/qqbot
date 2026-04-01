@@ -12,6 +12,12 @@ import { logger } from '@/utils/logger';
 import type { APIClient } from '../APIClient';
 import type { ForwardMessageInput, SendMessageResult, SendTarget } from '../types';
 
+/** Maximum text length per message. Messages exceeding this are automatically split. */
+const MAX_TEXT_LENGTH = 1500;
+
+/** Delay between split message sends to avoid rate limiting (ms). */
+const SPLIT_SEND_DELAY_MS = 300;
+
 /** Context types supported by extractProtocol, recallFromContext, getMessageFromContext. */
 export type MessageAPIContext = CommandContext | NormalizedMessageEvent | NormalizedNoticeEvent;
 
@@ -56,6 +62,91 @@ export class MessageAPI {
   }
 
   /**
+   * Normalize message input to MessageSegment[].
+   */
+  private normalizeToSegments(message: string | unknown[]): MessageSegment[] {
+    if (typeof message === 'string') {
+      return [{ type: 'text', data: { text: message } }];
+    }
+    return message as MessageSegment[];
+  }
+
+  /**
+   * Split text into chunks by line boundaries, ensuring each chunk <= maxLength characters.
+   * Falls back to hard character split for single lines exceeding the limit.
+   */
+  private splitTextByLines(text: string, maxLength: number): string[] {
+    if (text.length <= maxLength) return [text];
+
+    const chunks: string[] = [];
+    const lines = text.split('\n');
+    let current = '';
+
+    for (const line of lines) {
+      const candidate = current ? `${current}\n${line}` : line;
+
+      if (candidate.length > maxLength) {
+        if (current) {
+          chunks.push(current);
+          current = '';
+        }
+        if (line.length > maxLength) {
+          let remaining = line;
+          while (remaining.length > maxLength) {
+            chunks.push(remaining.substring(0, maxLength));
+            remaining = remaining.substring(maxLength);
+          }
+          current = remaining;
+        } else {
+          current = line;
+        }
+      } else {
+        current = candidate;
+      }
+    }
+
+    if (current) chunks.push(current);
+    return chunks;
+  }
+
+  /**
+   * Split message segments into batches if total text content exceeds MAX_TEXT_LENGTH.
+   * Non-text segments are included in the first batch only.
+   */
+  private splitLongMessage(segments: MessageSegment[]): MessageSegment[][] {
+    let totalTextLength = 0;
+    for (const seg of segments) {
+      if (seg.type === 'text') totalTextLength += seg.data.text.length;
+    }
+    if (totalTextLength <= MAX_TEXT_LENGTH) return [segments];
+
+    const nonTextSegments: MessageSegment[] = [];
+    let allText = '';
+    for (const seg of segments) {
+      if (seg.type === 'text') {
+        allText += seg.data.text;
+      } else {
+        nonTextSegments.push(seg);
+      }
+    }
+
+    const textChunks = this.splitTextByLines(allText, MAX_TEXT_LENGTH);
+    logger.debug(`[MessageAPI] Splitting long message (${totalTextLength} chars) into ${textChunks.length} parts`);
+
+    return textChunks.map((chunk, i) => {
+      const batch: MessageSegment[] = [];
+      if (i === 0) batch.push(...nonTextSegments);
+      batch.push({ type: 'text', data: { text: chunk } });
+      return batch;
+    });
+  }
+
+  /** Small delay between split message sends. */
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
    * Send a private message directly by userId and protocol.
    * Use this when no message context is available (e.g. AgentLoop scheduled tasks).
    * When a CommandContext or NormalizedMessageEvent is available, prefer sendFromContext().
@@ -65,20 +156,27 @@ export class MessageAPI {
     message: string | unknown[],
     protocol: ProtocolName,
   ): Promise<number> {
-    const result = await this.apiClient.call<SendMessageResult>(
-      'send_private_msg',
-      {
-        user_id: userId,
-        message,
-      },
-      protocol,
-    );
-    // Milky protocol returns message_seq, other protocols may return message_id
-    const messageId = result.message_seq ?? result.message_id;
-    if (messageId === undefined) {
-      throw new Error('API did not return a valid message ID');
+    const segments = this.normalizeToSegments(message);
+    const batches = this.splitLongMessage(segments);
+
+    let lastMessageId!: number;
+    for (let i = 0; i < batches.length; i++) {
+      if (i > 0) await this.delay(SPLIT_SEND_DELAY_MS);
+      const result = await this.apiClient.call<SendMessageResult>(
+        'send_private_msg',
+        {
+          user_id: userId,
+          message: batches[i],
+        },
+        protocol,
+      );
+      const messageId = result.message_seq ?? result.message_id;
+      if (messageId === undefined) {
+        throw new Error('API did not return a valid message ID');
+      }
+      lastMessageId = messageId;
     }
-    return messageId;
+    return lastMessageId;
   }
 
   /**
@@ -91,20 +189,27 @@ export class MessageAPI {
     message: string | unknown[],
     protocol: ProtocolName,
   ): Promise<number> {
-    const result = await this.apiClient.call<SendMessageResult>(
-      'send_group_msg',
-      {
-        group_id: groupId,
-        message,
-      },
-      protocol,
-    );
-    // Milky protocol returns message_seq, other protocols may return message_id
-    const messageId = result.message_seq ?? result.message_id;
-    if (messageId === undefined) {
-      throw new Error('API did not return a valid message ID');
+    const segments = this.normalizeToSegments(message);
+    const batches = this.splitLongMessage(segments);
+
+    let lastMessageId!: number;
+    for (let i = 0; i < batches.length; i++) {
+      if (i > 0) await this.delay(SPLIT_SEND_DELAY_MS);
+      const result = await this.apiClient.call<SendMessageResult>(
+        'send_group_msg',
+        {
+          group_id: groupId,
+          message: batches[i],
+        },
+        protocol,
+      );
+      const messageId = result.message_seq ?? result.message_id;
+      if (messageId === undefined) {
+        throw new Error('API did not return a valid message ID');
+      }
+      lastMessageId = messageId;
     }
-    return messageId;
+    return lastMessageId;
   }
 
   /**
@@ -133,7 +238,16 @@ export class MessageAPI {
     const protocol = this.extractProtocol(context);
     const adapter = getProtocolAdapter(protocol);
     const target = this.extractSendTarget(context);
-    return adapter.sendMessage(message as string | MessageSegment[], target, timeout);
+
+    const segments = this.normalizeToSegments(message);
+    const batches = this.splitLongMessage(segments);
+
+    let lastResult!: SendMessageResult;
+    for (let i = 0; i < batches.length; i++) {
+      if (i > 0) await this.delay(SPLIT_SEND_DELAY_MS);
+      lastResult = await adapter.sendMessage(batches[i], target, timeout);
+    }
+    return lastResult;
   }
 
   /**
