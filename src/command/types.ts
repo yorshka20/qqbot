@@ -68,6 +68,8 @@ export interface CommandContextMetadata {
   senderRole: string;
   // System execution flag - if true, skip permission checks (for bot/system-initiated commands)
   isSystemExecution?: boolean;
+  // Privileged flag - true when user is admin or owner; allows bypassing path restrictions etc.
+  isPrivileged?: boolean;
 }
 
 /**

@@ -100,9 +100,12 @@ export class FileReadService {
 
     // Also filter any path components that are hidden (starts with .)
     // e.g. /foo/.bar/file.txt or .env or .gitignore
-    const relParts = relFromRoot.split(/[\\/]/);
-    if (relParts.some((part) => part.startsWith('.') && part.length > 1)) {
-      return { resolved: '', error: 'hidden path is not allowed' };
+    // Skip when noCheck (privileged access)
+    if (!noCheck) {
+      const relParts = relFromRoot.split(/[\\/]/);
+      if (relParts.some((part) => part.startsWith('.') && part.length > 1)) {
+        return { resolved: '', error: 'hidden path is not allowed' };
+      }
     }
 
     if (!this.isPathSafe(resolved, this.projectRoot, noCheck)) {
@@ -114,9 +117,10 @@ export class FileReadService {
 
   /**
    * List directory contents (ls-style output)
+   * When noCheck is true, filterPaths are skipped (caller must restrict who uses noCheck).
    */
-  listDirectory(path: string): ListDirectoryResult {
-    const { resolved, error } = this.resolvePath(path);
+  listDirectory(path: string, noCheck = false): ListDirectoryResult {
+    const { resolved, error } = this.resolvePath(path, noCheck);
     if (error) {
       return { success: false, content: '', error };
     }
@@ -129,7 +133,7 @@ export class FileReadService {
 
       const entries = readdirSync(resolved, { withFileTypes: true });
       const lines = entries
-        .filter((e) => !this.filterPaths.some((filter) => e.name.includes(filter)))
+        .filter((e) => noCheck || !this.filterPaths.some((filter) => e.name.includes(filter)))
         .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
         .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
@@ -192,9 +196,10 @@ export class FileReadService {
   /**
    * Read file content only (no card render). Use for read_file task; caller may render as card if needed.
    * @param path - File path (within project root)
+   * When noCheck is true, filterPaths and hidden-path checks are skipped (caller must restrict who uses noCheck).
    */
-  readFile(path: string): ReadFileResult {
-    const { resolved, error } = this.resolvePath(path);
+  readFile(path: string, noCheck = false): ReadFileResult {
+    const { resolved, error } = this.resolvePath(path, noCheck);
     if (error) {
       return { success: false, content: '', error };
     }

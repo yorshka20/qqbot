@@ -27,9 +27,10 @@ export class LsCommand implements CommandHandler {
 
   constructor(@inject(DITokens.FILE_READ_SERVICE) private fileReadService: FileReadService) {}
 
-  execute(args: string[], _context: CommandContext): CommandResult {
+  execute(args: string[], context: CommandContext): CommandResult {
     const path = args[0] ?? '.';
-    const result = this.fileReadService.listDirectory(path);
+    const noCheck = !!context.metadata.isPrivileged;
+    const result = this.fileReadService.listDirectory(path, noCheck);
 
     if (!result.success) {
       return {
@@ -64,7 +65,7 @@ export class CatCommand implements CommandHandler {
 
   constructor(@inject(DITokens.FILE_READ_SERVICE) private fileReadService: FileReadService) {}
 
-  async execute(args: string[], _context: CommandContext): Promise<CommandResult> {
+  async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     const path = args[0];
     if (!path) {
       return {
@@ -73,7 +74,8 @@ export class CatCommand implements CommandHandler {
       };
     }
 
-    const result = this.fileReadService.readFile(path);
+    const noCheck = !!context.metadata.isPrivileged;
+    const result = this.fileReadService.readFile(path, noCheck);
     if (!result.success) {
       return {
         success: false,

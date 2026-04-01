@@ -351,6 +351,9 @@ export class CommandManager {
       context.metadata.protocol,
     );
 
+    // Expose privilege status so command handlers can use it (e.g. bypass path restrictions)
+    context.metadata.isPrivileged = isAdmin;
+
     // Check if command is enabled (skip for admins)
     if (!isAdmin) {
       let isEnabled = registration.enabled ?? true; // Default to enabled if not set
