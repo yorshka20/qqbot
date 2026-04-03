@@ -1,6 +1,1 @@
-# 群聊每日汇报触发关键词
-每日汇报
-群日报
-今日群报
-群报告
-daily report
+# 群聊每日汇报不支持关键词触发，仅通过 /group_report 命令或 schedule action 触发
