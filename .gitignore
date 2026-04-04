@@ -80,3 +80,5 @@ scripts/local
 
 .claude-workbook/*
 .claude-learnings/*
+
+repomix-*.xml
