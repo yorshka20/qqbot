@@ -1,4 +1,4 @@
-import { getFileApiBase, getInsightsApiBase, getMomentsApiBase, getQdrantApiBase, getReportApiBase, getZhihuApiBase } from './config'
+import { getFileApiBase, getInsightsApiBase, getMomentsApiBase, getQdrantApiBase, getReportApiBase, getStatsApiBase, getZhihuApiBase } from './config'
 import type {
   BehaviorResponse,
   ClustersResponse,
@@ -18,6 +18,8 @@ import type {
   ReportListResponse,
   SentimentTrendResponse,
   ZhihuContentDetailResponse,
+  DailyStatsResponse,
+  StatsDateListResponse,
   ZhihuContentsResponse,
   ZhihuStatsResponse,
 } from './types'
@@ -340,4 +342,32 @@ export async function scrollQdrant(opts: {
     throw new Error(err.error ?? `Qdrant scroll failed: ${res.status}`)
   }
   return res.json() as Promise<QdrantScrollResponse>
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Daily Stats API
+// ────────────────────────────────────────────────────────────────────────────
+
+function statsApiBase(): string {
+  return getStatsApiBase()
+}
+
+export async function getDailyStats(date?: string): Promise<DailyStatsResponse> {
+  const params = new URLSearchParams()
+  if (date) params.set('date', date)
+  const res = await fetch(`${statsApiBase()}?${params}`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get daily stats failed: ${res.status}`)
+  }
+  return res.json() as Promise<DailyStatsResponse>
+}
+
+export async function getStatsDates(): Promise<StatsDateListResponse> {
+  const res = await fetch(`${statsApiBase()}/dates`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get stats dates failed: ${res.status}`)
+  }
+  return res.json() as Promise<StatsDateListResponse>
 }

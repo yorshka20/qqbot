@@ -245,6 +245,7 @@ export class LLMService {
         if (result.usage) {
           this.rateLimiter.recordUsage(result.usage.totalTokens, providerName);
         }
+        this.logLLMUsage(providerName, prompt, options, result);
         this.healthCheckManager?.markServiceHealthy(providerName);
         result.resolvedProviderName = providerName;
         return result;
@@ -306,6 +307,7 @@ export class LLMService {
       if (result.usage) {
         this.rateLimiter.recordUsage(result.usage.totalTokens, resolvedName);
       }
+      this.logLLMUsage(resolvedName, prompt, options, result);
       // Mark provider as healthy on success
       this.healthCheckManager?.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
@@ -349,6 +351,7 @@ export class LLMService {
 
     try {
       const result = await this.invokeLiteGeneration(provider, prompt, mergedOptions);
+      this.logLLMUsage(resolvedName, prompt, mergedOptions, result);
       this.healthCheckManager?.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
       return result;
@@ -809,6 +812,43 @@ export class LLMService {
 
   private providerSupportsNativeWebSearch(providerName: string): boolean {
     return this.providersWithNativeWebSearch.includes(providerName.toLowerCase());
+  }
+
+  /**
+   * Log structured LLM usage info for daily stats parsing.
+   * Format: [LLMService] usage | provider=X | promptTokens=X | completionTokens=X | totalTokens=X | promptChars=X | responseChars=X
+   */
+  private logLLMUsage(
+    provider: string,
+    prompt: string,
+    options: AIGenerateOptions | undefined,
+    result: AIGenerateResponse,
+  ): void {
+    const promptChars = this.countPromptChars(prompt, options);
+    const responseChars = result.text?.length ?? 0;
+    const pt = result.usage?.promptTokens ?? 0;
+    const ct = result.usage?.completionTokens ?? 0;
+    const tt = result.usage?.totalTokens ?? 0;
+    logger.info(
+      `[LLMService] usage | provider=${provider} | promptTokens=${pt} | completionTokens=${ct} | totalTokens=${tt} | promptChars=${promptChars} | responseChars=${responseChars}`,
+    );
+  }
+
+  /** Count total prompt character length including messages. */
+  private countPromptChars(prompt: string, options?: AIGenerateOptions): number {
+    let charCount = prompt.length;
+    if (options?.messages) {
+      for (const msg of options.messages) {
+        if (typeof msg.content === 'string') {
+          charCount += msg.content.length;
+        } else if (Array.isArray(msg.content)) {
+          for (const part of msg.content) {
+            if (part.type === 'text') charCount += part.text.length;
+          }
+        }
+      }
+    }
+    return charCount;
   }
 
   /**

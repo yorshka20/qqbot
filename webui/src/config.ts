@@ -60,3 +60,9 @@ export function getQdrantApiBase(): string {
   const serverBase = getStaticServerBase();
   return serverBase ? `${serverBase}/api/qdrant` : '/api/qdrant';
 }
+
+/** Base URL for Daily Stats API requests. */
+export function getStatsApiBase(): string {
+  const serverBase = getStaticServerBase();
+  return serverBase ? `${serverBase}/api/stats` : '/api/stats';
+}

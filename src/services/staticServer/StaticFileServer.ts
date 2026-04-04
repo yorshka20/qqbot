@@ -11,6 +11,7 @@ import { resolve } from 'node:path';
 import { serve } from 'bun';
 import type { StaticServerConfig } from '@/core/config/types/bot';
 import { logger } from '@/utils/logger';
+import { DailyStatsBackend } from './DailyStatsBackend';
 import { FileManagerBackend } from './FileManagerBackend';
 import { InsightsBackend } from './InsightsBackend';
 import { MomentsBackend } from './MomentsBackend';
@@ -79,6 +80,7 @@ export class StaticFileServer implements StaticFileServerInstance {
   private readonly momentsBackend: MomentsBackend;
   private readonly zhihuBackend: ZhihuBackend;
   private readonly qdrantExplorerBackend: QdrantExplorerBackend;
+  private readonly dailyStatsBackend: DailyStatsBackend;
   private readonly outputHost: OutputStaticHost;
 
   // Routes (evaluated in order)
@@ -96,6 +98,7 @@ export class StaticFileServer implements StaticFileServerInstance {
     this.momentsBackend = new MomentsBackend();
     this.zhihuBackend = new ZhihuBackend();
     this.qdrantExplorerBackend = new QdrantExplorerBackend();
+    this.dailyStatsBackend = new DailyStatsBackend();
     this.outputHost = new OutputStaticHost(this.baseDir);
 
     // Define routes (order matters: more specific prefixes first)
@@ -128,6 +131,11 @@ export class StaticFileServer implements StaticFileServerInstance {
       {
         prefix: '/api/qdrant',
         handler: (req, url) => this.qdrantExplorerBackend.handle(url.pathname, req),
+        corsEnabled: true,
+      },
+      {
+        prefix: '/api/stats',
+        handler: (req, url) => this.dailyStatsBackend.handle(url.pathname, req),
         corsEnabled: true,
       },
       {
