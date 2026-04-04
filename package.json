@@ -7,7 +7,7 @@
   "scripts": {
     "start": "bash start.sh",
     "web": "cd webui && bun run dev",
-    "dev": "concurrently -n bot,ui -c blue,green \"LOG_LEVEL=debug bun run src/index.ts\" \"cd webui && bun run dev\"",
+    "dev": "concurrently -n bot,ui -c blue,green \"bun run src/index.ts\" \"cd webui && bun run dev\"",
     "build": "bun run scripts/builds/build.ts production",
     "build:dev": "bun run scripts/builds/build.ts development",
     "build:all": "bun run scripts/builds/build.ts bundleAll",

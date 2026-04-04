@@ -157,7 +157,7 @@ export class GroqProvider extends AIProvider implements LLMCapability {
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
     try {
-      logger.debug(`[GroqProvider] Generating with model: ${model}`);
+      logger.info(`[GroqProvider] Generating with model: ${model}`);
 
       let messages: Array<Record<string, unknown>>;
       if (options?.messages?.length) {
@@ -280,7 +280,7 @@ export class GroqProvider extends AIProvider implements LLMCapability {
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
     try {
-      logger.debug(`[GroqProvider] Generating stream with model: ${model}`);
+      logger.info(`[GroqProvider] Generating stream with model: ${model}`);
 
       let messages: Array<{ role: ChatMessageRole; content: string }>;
       if (options?.messages?.length) {

@@ -237,6 +237,7 @@ export class LLMService {
 
     const estimatedTokens = this.estimatePromptTokens(prompt, options);
     await this.rateLimiter.waitForCapacity(estimatedTokens, providerName);
+    this.logLLMPrompt(providerName, prompt, options);
 
     let lastError: Error | undefined;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -300,6 +301,7 @@ export class LLMService {
     // Estimate prompt tokens from content length (rough: 1 token ≈ 3 chars for CJK, 4 for latin).
     const estimatedTokens = this.estimatePromptTokens(prompt, options);
     await this.rateLimiter.waitForCapacity(estimatedTokens, resolvedName);
+    this.logLLMPrompt(resolvedName, prompt, options);
 
     try {
       const result = await provider.generate(prompt, options);
@@ -347,7 +349,7 @@ export class LLMService {
     };
 
     const resolvedName = this.resolveProviderName(provider, providerName);
-    logger.debug(`[LLMService] generateLite: ${prompt} | ${JSON.stringify(mergedOptions)}`);
+    this.logLLMPrompt(resolvedName, prompt, mergedOptions);
 
     try {
       const result = await this.invokeLiteGeneration(provider, prompt, mergedOptions);
@@ -419,6 +421,7 @@ export class LLMService {
     }
 
     const resolvedName = this.resolveProviderName(provider, providerName);
+    this.logLLMPrompt(resolvedName, prompt, options);
 
     try {
       const result = await provider.generateStream(prompt, handler, options);
@@ -832,6 +835,32 @@ export class LLMService {
     logger.info(
       `[LLMService] usage | provider=${provider} | promptTokens=${pt} | completionTokens=${ct} | totalTokens=${tt} | promptChars=${promptChars} | responseChars=${responseChars}`,
     );
+  }
+
+  /**
+   * Log the full prompt and messages sent to LLM for conversation inspection.
+   * Called before each LLM invocation so operators can review bot behavior.
+   */
+  private logLLMPrompt(provider: string, prompt: string, options?: AIGenerateOptions): void {
+    const parts: string[] = [`[LLMService] prompt | provider=${provider}`];
+    if (prompt) {
+      parts.push(`[system] ${prompt}`);
+    }
+    if (options?.messages?.length) {
+      for (const msg of options.messages) {
+        const content =
+          typeof msg.content === 'string'
+            ? msg.content
+            : Array.isArray(msg.content)
+              ? msg.content
+                  .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
+                  .map((p) => p.text)
+                  .join('')
+              : '';
+        parts.push(`[${msg.role}] ${content}`);
+      }
+    }
+    logger.info(parts.join('\n'));
   }
 
   /** Count total prompt character length including messages. */

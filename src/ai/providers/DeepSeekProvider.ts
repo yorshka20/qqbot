@@ -179,7 +179,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
     const maxTokens = Math.min(Math.max(1, Math.floor(rawMaxTokens)), DEEPSEEK_MAX_TOKENS_LIMIT);
 
     try {
-      logger.debug(`[DeepSeekProvider] Generating with model: ${model}`);
+      logger.info(`[DeepSeekProvider] Generating with model: ${model}`);
 
       let messages: Array<Record<string, unknown>>;
       if (options?.messages?.length) {
@@ -291,7 +291,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
     const maxTokens = Math.min(Math.max(1, Math.floor(rawMaxTokens)), DEEPSEEK_MAX_TOKENS_LIMIT);
 
     try {
-      logger.debug(`[DeepSeekProvider] Generating stream with model: ${model}`);
+      logger.info(`[DeepSeekProvider] Generating stream with model: ${model}`);
 
       let messages: Array<{ role: ChatMessageRole; content: string }>;
       if (options?.messages?.length) {
