@@ -15,12 +15,15 @@ export declare interface Bot {
   emit<U extends keyof BotEvents>(event: U, ...args: Parameters<BotEvents[U]>): boolean;
 }
 
+// biome-ignore lint/suspicious/noUnsafeDeclarationMerging: EventEmitter typed-event pattern requires interface-class merging
 export class Bot extends EventEmitter {
   private config: Config;
   private connectionManager: ConnectionManager;
   private isRunning = false;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private heartbeatIntervalMs = 30000; // 30 seconds default
+  private heartbeatLogCounter = 0;
+  private readonly heartbeatLogEveryN = 60; // log summary every 60 beats ≈ 30 min
 
   constructor(configPath?: string) {
     super();
@@ -178,6 +181,7 @@ export class Bot extends EventEmitter {
     }
 
     let sentCount = 0;
+    const protocols: string[] = [];
     for (const [protocolName, connection] of connections) {
       if (connection.getState() !== 'connected') {
         logger.debug(`[Bot] Skipping heartbeat for ${protocolName} (state: ${connection.getState()})`);
@@ -188,7 +192,7 @@ export class Bot extends EventEmitter {
         // Use native WebSocket ping frame
         connection.ping();
         sentCount++;
-        logger.info(`[Bot] Heartbeat (ping) sent to ${protocolName}`);
+        protocols.push(protocolName);
       } catch (error) {
         // Log error but don't throw - heartbeat failure shouldn't crash the bot
         const err = error instanceof Error ? error : new Error(String(error));
@@ -198,6 +202,12 @@ export class Bot extends EventEmitter {
 
     if (sentCount === 0) {
       logger.warn('[Bot] No heartbeats sent - no connected protocols');
+    } else {
+      this.heartbeatLogCounter++;
+      if (this.heartbeatLogCounter >= this.heartbeatLogEveryN) {
+        logger.info(`[Bot] Heartbeat OK | ${protocols.join(', ')} | ${this.heartbeatLogEveryN} beats since last log`);
+        this.heartbeatLogCounter = 0;
+      }
     }
   }
 }

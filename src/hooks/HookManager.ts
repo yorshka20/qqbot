@@ -145,7 +145,7 @@ export class HookManager {
       ? `notice:${context.notice.noticeType}`
       : context.message?.id || context.message?.messageId || 'unknown';
 
-    logger.info(`🎣 [HookManager] Executing hook: ${hookName} | messageId=${messageId}`);
+    logger.debug(`🎣 [HookManager] Executing hook: ${hookName} | messageId=${messageId}`);
 
     for (const registration of hookList) {
       for (let j = 0; j < registration.handlers.length; j++) {
@@ -173,7 +173,12 @@ export class HookManager {
       }
     }
 
-    logger.info(`✅ [HookManager] All handlers completed for hook: ${hookName} | messageId=${messageId}`);
+    if (hookName === 'onMessageSent') {
+      // [STATS] tag: daily stats parses this line to count sent messages — do not remove
+      logger.info(`[STATS] ✅ [HookManager] All handlers completed for hook: ${hookName} | messageId=${messageId}`);
+    } else {
+      logger.debug(`✅ [HookManager] All handlers completed for hook: ${hookName} | messageId=${messageId}`);
+    }
     return true;
   }
 

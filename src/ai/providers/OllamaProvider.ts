@@ -214,7 +214,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model;
     try {
-      logger.info(`[OllamaProvider] Generating with model: ${model}`);
+      logger.info(`[STATS] [OllamaProvider] Generating with model: ${model}`);
 
       // Always use chat API - it supports both single messages and conversation history
       // This simplifies the code and makes it consistent with other providers
@@ -316,7 +316,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
   ): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model;
     try {
-      logger.info(`[OllamaProvider] Generating stream with model: ${model}`);
+      logger.info(`[STATS] [OllamaProvider] Generating stream with model: ${model}`);
 
       // Always use chat API - it supports both single messages and conversation history
       // This simplifies the code and makes it consistent with other providers

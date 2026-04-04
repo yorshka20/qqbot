@@ -14,7 +14,7 @@ module.exports = {
       max_restarts: 999999,
       treekill: false,
       env: {
-        LOG_LEVEL: 'debug',
+        LOG_LEVEL: 'info',
         NODE_ENV: 'development',
       },
     },

@@ -264,7 +264,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
     try {
-      logger.info(`[AnthropicProvider] Generating with model: ${model}`);
+      logger.info(`[STATS] [AnthropicProvider] Generating with model: ${model}`);
 
       let messages = await this.buildAnthropicMessages(prompt, options);
       this.addHistoryCacheBreakpoint(messages, options);
@@ -343,7 +343,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
     try {
-      logger.info(`[AnthropicProvider] Generating stream with model: ${model}`);
+      logger.info(`[STATS] [AnthropicProvider] Generating stream with model: ${model}`);
 
       const messages = await this.buildAnthropicMessages(prompt, options);
       this.addHistoryCacheBreakpoint(messages, options);
@@ -440,7 +440,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
     try {
-      logger.info(`[AnthropicProvider] Generating with vision, model: ${model}`);
+      logger.info(`[STATS] [AnthropicProvider] Generating with vision, model: ${model}`);
 
       // Build content array with text and images
       const content: AnthropicContentBlock[] = [{ type: 'text', text: prompt }];

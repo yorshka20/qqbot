@@ -108,7 +108,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
     const maxTokens = options?.maxTokens ?? this.config.maxTokens ?? 2000;
 
     try {
-      logger.info(`[OpenRouterProvider] Generating with model: ${model}`);
+      logger.info(`[STATS] [OpenRouterProvider] Generating with model: ${model}`);
 
       let messages: Array<{ role: ChatMessageRole; content: string }>;
       if (options?.messages?.length) {
@@ -184,7 +184,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
     const maxTokens = options?.maxTokens ?? this.config.maxTokens ?? 2000;
 
     try {
-      logger.info(`[OpenRouterProvider] Generating stream with model: ${model}`);
+      logger.info(`[STATS] [OpenRouterProvider] Generating stream with model: ${model}`);
 
       let messages: Array<{ role: ChatMessageRole; content: string }>;
       if (options?.messages?.length) {

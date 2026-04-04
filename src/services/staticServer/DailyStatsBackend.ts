@@ -94,12 +94,13 @@ function errorResponse(message: string, status: number): Response {
 // ---------------------------------------------------------------------------
 
 const LOG_LINE_RE = /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \[(\w+)\] (.*)$/;
-const MESSAGE_RECEIVED_RE = /===========>\[Message\] Group: (.+?) \((\d+)\)/;
-const MESSAGE_SENT_RE = /✅ \[HookManager\] All handlers completed for hook: onMessageSent/;
+// All [STATS]-tagged patterns — source logs are marked with [STATS] to prevent accidental removal.
+const MESSAGE_RECEIVED_RE = /\[STATS\] ===========>\[Message\] Group: (.+?) \((\d+)\)/;
+const MESSAGE_SENT_RE = /\[STATS\] ✅ \[HookManager\] All handlers completed for hook: onMessageSent/;
 const PROVIDER_GENERATING_RE =
-  /\[(\w+Provider)\] Generating (?:with model|stream with model|with vision, model|with model \(chat\/completions\)): (.+)/;
+  /\[STATS\] \[(\w+Provider)\] Generating (?:with model|stream with model|with vision, model|stream with vision, model|with model \(chat\/completions\)): (.+)/;
 const LLM_USAGE_RE =
-  /\[LLMService\] usage \| provider=(\S+) \| promptTokens=(\d+) \| completionTokens=(\d+) \| totalTokens=(\d+) \| promptChars=(\d+) \| responseChars=(\d+)/;
+  /\[STATS\] \[LLMService\] usage \| provider=(\S+) \| promptTokens=(\d+) \| completionTokens=(\d+) \| totalTokens=(\d+) \| promptChars=(\d+) \| responseChars=(\d+)/;
 const ERROR_COMPONENT_RE = /\[([^\]]+)\] (.+)/;
 
 /** Map provider class names to short names. */

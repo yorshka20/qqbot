@@ -369,7 +369,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       body.response_format = { type: 'json_object' };
     }
 
-    logger.info(`[DoubaoProvider] Generating with model (chat/completions): ${model}`);
+    logger.info(`[STATS] [DoubaoProvider] Generating with model (chat/completions): ${model}`);
     const data = await this.httpClient.post<ArkChatCompletionsResponse>('/chat/completions', body);
 
     const text = data.choices?.[0]?.message?.content ?? '';
@@ -401,7 +401,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     }
 
     try {
-      logger.info(`[DoubaoProvider] Generating with model: ${model}`);
+      logger.info(`[STATS] [DoubaoProvider] Generating with model: ${model}`);
 
       const input = await this.buildArkInput(prompt, options);
       const hasTools = !!options?.tools?.length || !!options?.nativeWebSearch;
@@ -485,7 +485,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
 
     const model = options?.model ?? this.config.model ?? DEFAULT_DOUBAO_MODEL;
     try {
-      logger.info(`[DoubaoProvider] Generating stream with model: ${model}`);
+      logger.info(`[STATS] [DoubaoProvider] Generating stream with model: ${model}`);
 
       const input = await this.buildArkInput(prompt, options);
       const body = this.buildRequestBody(model, input, false, options) as ArkResponsesRequest & { stream: boolean };
@@ -712,7 +712,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
 
     const model = options?.model ?? this.config.model ?? DEFAULT_DOUBAO_MODEL;
     try {
-      logger.info(`[DoubaoProvider] Generating with vision, model: ${model}`);
+      logger.info(`[STATS] [DoubaoProvider] Generating with vision, model: ${model}`);
 
       const userContent = this.buildVisionContent(prompt, images);
       const input: ArkInputItem[] = [];
@@ -786,7 +786,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
 
     const model = options?.model ?? this.config.model ?? DEFAULT_DOUBAO_MODEL;
     try {
-      logger.info(`[DoubaoProvider] Generating stream with vision, model: ${model}`);
+      logger.info(`[STATS] [DoubaoProvider] Generating stream with vision, model: ${model}`);
 
       const userContent = this.buildVisionContent(prompt, images);
       const input: ArkInputItem[] = [];

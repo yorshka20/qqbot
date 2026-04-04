@@ -133,7 +133,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
     try {
-      logger.info(`[OpenAIProvider] Generating with model: ${model}`);
+      logger.info(`[STATS] [OpenAIProvider] Generating with model: ${model}`);
 
       let messages: ChatCompletionMessageParam[];
       if (options?.messages?.length) {
@@ -241,7 +241,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
     try {
-      logger.info(`[OpenAIProvider] Generating stream with model: ${model}`);
+      logger.info(`[STATS] [OpenAIProvider] Generating stream with model: ${model}`);
 
       let messages: ChatCompletionMessageParam[];
       if (options?.messages?.length) {
@@ -373,7 +373,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
     try {
-      logger.info(`[OpenAIProvider] Generating with vision, model: ${model}`);
+      logger.info(`[STATS] [OpenAIProvider] Generating with vision, model: ${model}`);
 
       // Build content array with text and images
       const content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = [
@@ -478,7 +478,7 @@ export class OpenAIProvider extends AIProvider implements LLMCapability, VisionC
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
 
     try {
-      logger.info(`[OpenAIProvider] Generating stream with vision, model: ${model}`);
+      logger.info(`[STATS] [OpenAIProvider] Generating stream with vision, model: ${model}`);
 
       // Build content array with text and images
       const content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = [

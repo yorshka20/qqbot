@@ -832,19 +832,21 @@ export class LLMService {
     const pt = result.usage?.promptTokens ?? 0;
     const ct = result.usage?.completionTokens ?? 0;
     const tt = result.usage?.totalTokens ?? 0;
+    // [STATS] tag: daily stats parses this line for token/char usage — do not remove
     logger.info(
-      `[LLMService] usage | provider=${provider} | promptTokens=${pt} | completionTokens=${ct} | totalTokens=${tt} | promptChars=${promptChars} | responseChars=${responseChars}`,
+      `[STATS] [LLMService] usage | provider=${provider} | promptTokens=${pt} | completionTokens=${ct} | totalTokens=${tt} | promptChars=${promptChars} | responseChars=${responseChars}`,
     );
   }
 
   /**
    * Log the full prompt and messages sent to LLM for conversation inspection.
-   * Called before each LLM invocation so operators can review bot behavior.
+   * Each part is logged as a separate line to avoid PM2 line-splitting corruption.
    */
   private logLLMPrompt(provider: string, prompt: string, options?: AIGenerateOptions): void {
-    const parts: string[] = [`[LLMService] prompt | provider=${provider}`];
+    const msgCount = options?.messages?.length ?? 0;
+    logger.info(`[LLMService] prompt | provider=${provider} | messages=${msgCount}`);
     if (prompt) {
-      parts.push(`[system] ${prompt}`);
+      logger.info(`[LLMService] prompt [system] ${prompt}`);
     }
     if (options?.messages?.length) {
       for (const msg of options.messages) {
@@ -857,10 +859,9 @@ export class LLMService {
                   .map((p) => p.text)
                   .join('')
               : '';
-        parts.push(`[${msg.role}] ${content}`);
+        logger.info(`[LLMService] prompt [${msg.role}] ${content}`);
       }
     }
-    logger.info(parts.join('\n'));
   }
 
   /** Count total prompt character length including messages. */

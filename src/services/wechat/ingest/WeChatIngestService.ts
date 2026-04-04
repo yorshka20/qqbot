@@ -359,7 +359,7 @@ export class WeChatIngestService {
         const url = new URL(req.url);
         // Skip logging for HEAD/GET health-checks to avoid log pollution
         if (req.method === 'POST') {
-          logger.info(
+          logger.debug(
             `[WeChatIngestService] HTTP ${req.method} ${url.pathname} from ${req.headers.get('x-forwarded-for') ?? 'unknown'}`,
           );
         }
@@ -460,13 +460,13 @@ export class WeChatIngestService {
     }
 
     if (category === 'system') {
-      logger.info(
+      logger.debug(
         `[WeChatIngestService] [#${this.totalReceived}] system/skip | MsgType=${msg.MsgType} from=${msg.FromUserName}`,
       );
       return new Response('OK', { status: 200 });
     }
 
-    logger.info(
+    logger.debug(
       `[WeChatIngestService] [#${this.totalReceived}] Received | MsgType=${msg.MsgType} category=${category} ` +
         `from=${msg.FromUserName} NewMsgId=${msg.NewMsgId}`,
     );
@@ -1026,7 +1026,7 @@ export class WeChatIngestService {
 
     if (this.db) {
       this.db.insert(row);
-      logger.info(`[WeChatIngestService] DB insert OK | newMsgId=${msg.NewMsgId} conv=${convId} category=${category}`);
+      logger.debug(`[WeChatIngestService] DB insert OK | newMsgId=${msg.NewMsgId} conv=${convId} category=${category}`);
     }
 
     // Publish event to InternalEventBus

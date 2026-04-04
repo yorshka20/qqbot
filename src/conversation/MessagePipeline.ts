@@ -45,7 +45,7 @@ export class MessagePipeline {
       async () => {
         try {
           cacheMessage(event);
-          logger.info(
+          logger.debug(
             `[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId}`,
           );
 
