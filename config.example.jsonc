@@ -242,7 +242,7 @@
       //   "name": "logArchive",
       //   "enabled": true,
       //   "config": {
-      //     "intervalDays": 3,
+      //     "intervalDays": 15,
       //     "cron": "0 3 * * *",
       //     "timezone": "Asia/Tokyo",
       //     "deleteAfterArchive": true

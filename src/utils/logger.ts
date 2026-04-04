@@ -274,9 +274,61 @@ class FileLogger implements Logger {
   }
 }
 
+class ConsoleOnlyLogger implements Logger {
+  private winstonLogger: winston.Logger;
+
+  constructor(level: LogLevel = 'info') {
+    const consoleFormat = winston.format.combine(
+      winston.format.timestamp({ format: 'HH:mm:ss' }),
+      winston.format.errors({ stack: true }),
+      winston.format.splat(),
+      winston.format.printf(({ timestamp, level, message, stack, ...meta }) => {
+        const levelUpper = level.toUpperCase();
+        const color = levelColors[level] || colors.white;
+        const reset = colors.reset;
+        const dim = colors.dim;
+
+        let metaStr = '';
+        if (stack) {
+          metaStr = `\n${dim}${stack}${reset}`;
+        } else if (Object.keys(meta).length) {
+          const formatted = formatMeta(meta);
+          metaStr = formatted
+            .split('\n')
+            .map((line) => `${colors.gray}${line}${reset}`)
+            .join('\n');
+        }
+
+        const levelStr = `${color}${levelUpper.padEnd(5)}${reset}`;
+        const timeStr = `${dim}${timestamp}${reset}`;
+        return `${timeStr} ${levelStr} ${message}${metaStr}`;
+      }),
+    );
+
+    this.winstonLogger = winston.createLogger({
+      level,
+      transports: [new winston.transports.Console({ format: consoleFormat })],
+    });
+  }
+
+  debug(message: string, ...args: unknown[]): void {
+    this.winstonLogger.debug(message, ...args);
+  }
+  info(message: string, ...args: unknown[]): void {
+    this.winstonLogger.info(message, ...args);
+  }
+  warn(message: string, ...args: unknown[]): void {
+    this.winstonLogger.warn(message, ...args);
+  }
+  error(message: string, ...args: unknown[]): void {
+    this.winstonLogger.error(message, ...args);
+  }
+}
+
 // Get default log level from environment variable or use 'info' as fallback
 const defaultLogLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'info';
-let defaultLogger: Logger = new FileLogger(defaultLogLevel);
+const disableFileLog = process.env.NO_FILE_LOG === '1';
+let defaultLogger: Logger = disableFileLog ? new ConsoleOnlyLogger(defaultLogLevel) : new FileLogger(defaultLogLevel);
 
 export function setLogLevel(level: LogLevel): void {
   defaultLogger = new FileLogger(level);
