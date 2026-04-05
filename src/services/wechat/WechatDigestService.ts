@@ -112,7 +112,8 @@ export class WechatDigestService {
       sinceTs: since,
       isGroup: true,
       conversationId,
-      limit: 2000,
+      // No limit — group report must include every received message.
+      limit: 0,
     });
 
     if (messages.length === 0) return [];

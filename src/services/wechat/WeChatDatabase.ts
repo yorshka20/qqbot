@@ -410,8 +410,10 @@ export class WeChatDatabase {
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const limit = options.limit ?? 500;
 
-    const sql = `SELECT * FROM wechat_messages ${whereClause} ORDER BY createTime DESC LIMIT ?`;
-    params.push(limit);
+    // limit <= 0 means no limit — fetch all matching rows.
+    const limitClause = limit > 0 ? 'LIMIT ?' : '';
+    const sql = `SELECT * FROM wechat_messages ${whereClause} ORDER BY createTime DESC ${limitClause}`;
+    if (limit > 0) params.push(limit);
 
     return this.db.query<WeChatMessageRow, (string | number)[]>(sql).all(...params);
   }
