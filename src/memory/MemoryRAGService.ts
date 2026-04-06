@@ -65,6 +65,8 @@ export interface MemoryRAGSearchResult {
   userId: string;
   /** Whether this is group memory */
   isGroupMemory: boolean;
+  /** Qdrant point ID (factHash after Phase 3 migration) */
+  pointId?: string;
 }
 
 /** Options for memory RAG search */
@@ -564,6 +566,7 @@ export class MemoryRAGService {
           score: r.score,
           userId: (r.payload?.userId as string) ?? '',
           isGroupMemory: (r.payload?.isGroupMemory as boolean) ?? false,
+          pointId: r.id != null ? String(r.id) : undefined,
         };
       });
     } catch (error) {
@@ -696,6 +699,7 @@ export class MemoryRAGService {
           score: 1.0, // Always-include, so max score
           userId: (p.payload?.userId as string) ?? '',
           isGroupMemory: (p.payload?.isGroupMemory as boolean) ?? false,
+          pointId: p.id != null ? String(p.id) : undefined,
         };
       });
     } catch (error) {

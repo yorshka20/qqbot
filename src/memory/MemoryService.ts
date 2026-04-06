@@ -7,6 +7,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { ALL_CORE_SCOPES, type ParsedScope } from '@/core/config/types/memory';
 import { logger } from '@/utils/logger';
+import type { MemoryFactMetaService } from './MemoryFactMetaService';
 import type { MemoryRAGService } from './MemoryRAGService';
 
 /** User ID used for group-level memory slot (one file per group: _global_.txt). */
@@ -88,6 +89,7 @@ export class MemoryService {
   private readonly basePath: string;
   private readonly maxContentLength: number;
   private ragService: MemoryRAGService | null = null;
+  private factMetaService: MemoryFactMetaService | null = null;
 
   constructor(options: MemoryServiceOptions = {}) {
     const memoryDir = options.memoryDir ?? DEFAULT_MEMORY_DIR;
@@ -102,6 +104,13 @@ export class MemoryService {
   setRAGService(ragService: MemoryRAGService): void {
     this.ragService = ragService;
     logger.info('[MemoryService] RAG service configured for semantic memory search');
+  }
+
+  /**
+   * Set the fact metadata service for hit count tracking.
+   */
+  setFactMetaService(factMetaService: MemoryFactMetaService): void {
+    this.factMetaService = factMetaService;
   }
 
   /**
@@ -587,6 +596,17 @@ export class MemoryService {
     const alwaysUserCount = alwaysIncludeResults.filter((r) => !r.isGroupMemory).length;
     const relevantGroupCount = relevantResults.filter((r) => r.isGroupMemory).length;
     const relevantUserCount = relevantResults.filter((r) => !r.isGroupMemory).length;
+
+    // Async hit count tracking (fire-and-forget, don't block reply)
+    if (this.factMetaService) {
+      const allResults = [...alwaysIncludeResults, ...relevantResults];
+      const factHashes = allResults.map((r) => r.pointId).filter((id): id is string => !!id);
+      if (factHashes.length > 0) {
+        Promise.resolve()
+          .then(() => this.factMetaService?.incrementHitCount(factHashes))
+          .catch(() => {});
+      }
+    }
 
     return {
       groupMemoryText,

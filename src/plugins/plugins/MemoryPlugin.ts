@@ -116,6 +116,46 @@ export class MemoryPlugin extends PluginBase {
         `[MemoryPlugin] Memory backup scheduled every ${(this.backupIntervalMs / 3600000).toFixed(1)}h to ${this.backupDir}`,
       );
     }
+
+    // Daily memory fact cleanup (stale/zombie detection)
+    const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+    setTimeout(() => void this.runDailyCleanup(), 60 * 60 * 1000); // 1h after startup
+    setInterval(() => void this.runDailyCleanup(), CLEANUP_INTERVAL_MS);
+  }
+
+  /**
+   * Daily cleanup: mark zombie facts as stale, hard-delete old stale facts.
+   */
+  private async runDailyCleanup(): Promise<void> {
+    try {
+      const { MemoryFactMetaService } = await import('@/memory/MemoryFactMetaService');
+      let factMetaService: InstanceType<typeof MemoryFactMetaService>;
+      try {
+        factMetaService = getContainer().resolve(DITokens.MEMORY_FACT_META_SERVICE);
+      } catch {
+        return; // Not registered (non-SQLite)
+      }
+
+      // Rule 1: stale > 30 days → hard delete
+      const STALE_HARD_DELETE_MS = 30 * 24 * 60 * 60 * 1000;
+      const staleFacts = factMetaService.getStaleFacts(STALE_HARD_DELETE_MS);
+      if (staleFacts.length > 0) {
+        factMetaService.deleteMany(staleFacts.map((f) => f.factHash));
+        logger.info(`[MemoryPlugin] Cleanup: deleted ${staleFacts.length} stale facts (>30d)`);
+      }
+
+      // Rule 2: active but 180d no reinforce + hitCount=0 → demote to stale
+      const ZOMBIE_THRESHOLD_MS = 180 * 24 * 60 * 60 * 1000;
+      const zombieFacts = factMetaService.getZombieFacts(ZOMBIE_THRESHOLD_MS);
+      for (const fact of zombieFacts) {
+        factMetaService.markStale(fact.factHash);
+      }
+      if (zombieFacts.length > 0) {
+        logger.info(`[MemoryPlugin] Cleanup: demoted ${zombieFacts.length} zombie facts to stale`);
+      }
+    } catch (err) {
+      logger.warn('[MemoryPlugin] Daily cleanup failed:', err);
+    }
   }
 
   /** Resolve full-history progress file path relative to cwd. */

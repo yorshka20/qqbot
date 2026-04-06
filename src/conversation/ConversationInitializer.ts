@@ -240,6 +240,7 @@ export class ConversationInitializer {
           DITokens.MEMORY_FACT_META_SERVICE,
         );
         memoryRAGService.setFactMetaService(factMetaService);
+        memoryService.setFactMetaService(factMetaService);
       } catch {
         logger.debug('[ConversationInitializer] MemoryFactMetaService not available, using legacy RAG indexing');
       }
