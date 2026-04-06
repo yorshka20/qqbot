@@ -5,6 +5,8 @@
 
 import type { RAGService } from '@/services/retrieval/rag/RAGService';
 import { logger } from '@/utils/logger';
+import type { FactMeta, MemoryFactMetaService } from './MemoryFactMetaService';
+import { MemoryFactMetaService as FactMetaServiceClass } from './MemoryFactMetaService';
 import type { MemorySection } from './MemoryService';
 
 /** Parsed scope components for hierarchical scopes */
@@ -96,8 +98,19 @@ const GROUP_MEMORY_USER_ID = '_global_memory_';
  * This enables retrieving only the relevant facts instead of entire sections.
  */
 export class MemoryRAGService {
+  private factMetaService: MemoryFactMetaService | null = null;
+
   constructor(private ragService: RAGService) {
     logger.info('[MemoryRAGService] Initialized');
+  }
+
+  /**
+   * Set the fact metadata service for incremental diff indexing.
+   * When not set, falls back to delete-all + re-index behavior.
+   */
+  setFactMetaService(service: MemoryFactMetaService): void {
+    this.factMetaService = service;
+    logger.info('[MemoryRAGService] FactMetaService configured for incremental diff');
   }
 
   /**
@@ -212,8 +225,8 @@ export class MemoryRAGService {
     groupId: string,
     userId: string,
     sections: MemorySection[],
-    _source: 'manual' | 'llm_extract' = 'llm_extract',
-    _forceRebuild: boolean = false,
+    source: 'manual' | 'llm_extract' = 'llm_extract',
+    forceRebuild: boolean = false,
   ): Promise<void> {
     if (!this.ragService.isEnabled()) {
       logger.debug('[MemoryRAGService] RAG not enabled, skipping memory indexing');
@@ -225,11 +238,7 @@ export class MemoryRAGService {
       return;
     }
 
-    const collection = this.getCollectionName(groupId);
     const isGroupMemory = userId === GROUP_MEMORY_USER_ID;
-
-    // Delete old facts for this user first to prevent orphans
-    await this.deleteUserFacts(groupId, userId);
 
     // Split all sections into individual facts
     const allFacts: MemoryFact[] = [];
@@ -243,10 +252,31 @@ export class MemoryRAGService {
       return;
     }
 
-    // Create documents for each fact
+    // If no factMetaService, fall back to legacy delete-all + re-index
+    if (!this.factMetaService) {
+      await this.indexMemorySectionsLegacy(groupId, userId, allFacts, isGroupMemory);
+      return;
+    }
+
+    // ── Incremental diff with SQLite metadata ──
+    await this.indexMemorySectionsIncremental(groupId, userId, allFacts, isGroupMemory, source, forceRebuild);
+  }
+
+  /**
+   * Legacy indexing: delete all facts for user, then re-index everything.
+   * Used when MemoryFactMetaService is not available.
+   */
+  private async indexMemorySectionsLegacy(
+    groupId: string,
+    userId: string,
+    allFacts: MemoryFact[],
+    isGroupMemory: boolean,
+  ): Promise<void> {
+    const collection = this.getCollectionName(groupId);
+    await this.deleteUserFacts(groupId, userId);
+
     const documents = allFacts.map((fact) => ({
       id: this.generateFactId(groupId, userId, fact.scope, fact.index),
-      // Include scope in content for better semantic matching
       content: `[${fact.scope}] ${fact.content}`,
       payload: {
         groupId,
@@ -263,13 +293,200 @@ export class MemoryRAGService {
     try {
       await this.ragService.upsertDocuments(collection, documents);
       logger.info(
-        `[MemoryRAGService] Indexed ${documents.length} facts from ${sections.length} sections ` +
+        `[MemoryRAGService] Indexed ${documents.length} facts (legacy) ` +
           `for ${isGroupMemory ? 'group' : 'user'} ${groupId}/${userId}`,
       );
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error('[MemoryRAGService] Failed to index memory facts:', err);
+      logger.error('[MemoryRAGService] Failed to index memory facts (legacy):', err);
     }
+  }
+
+  /**
+   * Incremental diff indexing using SQLite fact metadata.
+   * Only inserts new facts and deletes orphans in Qdrant.
+   */
+  private async indexMemorySectionsIncremental(
+    groupId: string,
+    userId: string,
+    allFacts: MemoryFact[],
+    isGroupMemory: boolean,
+    source: 'manual' | 'llm_extract',
+    forceRebuild: boolean,
+  ): Promise<void> {
+    const collection = this.getCollectionName(groupId);
+    const fms = this.factMetaService!;
+
+    // 1. Compute content hashes for all new facts
+    const newFactMap = new Map<string, MemoryFact>();
+    for (const fact of allFacts) {
+      const hash = FactMetaServiceClass.computeFactHash(groupId, userId, fact.scope, fact.content);
+      newFactMap.set(hash, fact);
+    }
+
+    // 2. Load existing metadata from SQLite (same source only)
+    const existingMeta = fms.getFactMeta(groupId, userId, source);
+
+    // 3. Quick check: any changes?
+    const newHashes = new Set(newFactMap.keys());
+    const oldHashes = new Set(existingMeta.keys());
+    const hasNew = [...newHashes].some((h) => !oldHashes.has(h));
+    const hasRemoved = [...oldHashes].some((h) => !newHashes.has(h));
+
+    if (!hasNew && !hasRemoved && !forceRebuild) {
+      logger.debug(`[MemoryRAGService] No changes for ${groupId}/${userId} (${source}), skipping`);
+      return;
+    }
+
+    // 4. SQLite reconcile: reinforce existing, insert new, mark orphans stale
+    for (const [hash] of newFactMap) {
+      if (existingMeta.has(hash)) {
+        fms.reinforceFact(hash);
+        const meta = existingMeta.get(hash)!;
+        if (meta.status === 'stale') {
+          fms.activateFact(hash);
+        }
+      } else {
+        fms.insertFact({
+          factHash: hash,
+          groupId,
+          userId,
+          scope: newFactMap.get(hash)!.scope,
+          source,
+          firstSeen: Date.now(),
+          lastReinforced: Date.now(),
+          reinforceCount: 1,
+        });
+      }
+    }
+
+    // Orphan handling
+    for (const [hash] of existingMeta) {
+      if (!newHashes.has(hash)) {
+        if (source === 'llm_extract') {
+          fms.markStale(hash);
+        } else {
+          // manual: human removed it, hard delete
+          fms.deleteFact(hash);
+        }
+      }
+    }
+
+    // 5. Qdrant diff: compute target set from all active facts
+    const allActiveFacts = fms.getActiveFacts(groupId, userId);
+    const targetHashes = new Set(allActiveFacts.map((f) => f.factHash));
+
+    if (forceRebuild) {
+      // Full rebuild: delete all, re-insert
+      await this.deleteUserFacts(groupId, userId);
+      const documents = this.buildDocumentsFromActive(allActiveFacts, newFactMap, groupId, userId, isGroupMemory);
+      if (documents.length > 0) {
+        await this.ragService.upsertDocuments(collection, documents);
+      }
+    } else {
+      // Incremental: only add/remove changed points
+      const existingPointIds = await this.getExistingPointIds(groupId, userId, collection);
+      const toDelete = [...existingPointIds].filter((id) => !targetHashes.has(id));
+      const toInsert = [...targetHashes].filter((id) => !existingPointIds.has(id));
+
+      if (toDelete.length > 0) {
+        try {
+          await this.ragService.deleteByIds(collection, toDelete);
+        } catch (err) {
+          logger.warn('[MemoryRAGService] Failed to delete orphan points:', err);
+        }
+      }
+
+      if (toInsert.length > 0) {
+        const insertFactMap = new Map<string, MemoryFact>();
+        for (const hash of toInsert) {
+          const fact = newFactMap.get(hash);
+          if (fact) insertFactMap.set(hash, fact);
+        }
+        const documents = this.buildDocumentsFromMap(insertFactMap, groupId, userId, isGroupMemory);
+        if (documents.length > 0) {
+          await this.ragService.upsertDocuments(collection, documents);
+        }
+      }
+    }
+
+    logger.info(
+      `[MemoryRAGService] Reconciled ${source} facts for ${isGroupMemory ? 'group' : 'user'} ${groupId}/${userId}: ` +
+        `${newFactMap.size} current, ${allActiveFacts.length} active total`,
+    );
+  }
+
+  /**
+   * Get existing Qdrant point IDs for a user (lightweight scroll, no vectors).
+   */
+  private async getExistingPointIds(groupId: string, userId: string, collection: string): Promise<Set<string>> {
+    const filter = {
+      must: [
+        { key: 'groupId', match: { value: groupId } },
+        { key: 'userId', match: { value: userId } },
+      ],
+    };
+    try {
+      const points = await this.ragService.scrollByFilter(collection, filter, { limit: 10000 });
+      return new Set(points.map((p) => String(p.id)));
+    } catch {
+      return new Set();
+    }
+  }
+
+  /**
+   * Build Qdrant documents from active fact metadata + current facts.
+   */
+  private buildDocumentsFromActive(
+    activeFacts: FactMeta[],
+    factMap: Map<string, MemoryFact>,
+    groupId: string,
+    userId: string,
+    isGroupMemory: boolean,
+  ) {
+    return activeFacts
+      .map((meta) => {
+        const fact = factMap.get(meta.factHash);
+        if (!fact) return null;
+        return {
+          id: meta.factHash,
+          content: `[${fact.scope}] ${fact.content}`,
+          payload: {
+            groupId,
+            userId,
+            scope: fact.scope,
+            coreScope: fact.coreScope,
+            subtag: fact.subtag,
+            isGroupMemory,
+            factContent: fact.content,
+          },
+        };
+      })
+      .filter((d): d is NonNullable<typeof d> => d !== null);
+  }
+
+  /**
+   * Build Qdrant documents from a hash → fact map.
+   */
+  private buildDocumentsFromMap(
+    factMap: Map<string, MemoryFact>,
+    groupId: string,
+    userId: string,
+    isGroupMemory: boolean,
+  ) {
+    return [...factMap.entries()].map(([hash, fact]) => ({
+      id: hash,
+      content: `[${fact.scope}] ${fact.content}`,
+      payload: {
+        groupId,
+        userId,
+        scope: fact.scope,
+        coreScope: fact.coreScope,
+        subtag: fact.subtag,
+        isGroupMemory,
+        factContent: fact.content,
+      },
+    }));
   }
 
   /**

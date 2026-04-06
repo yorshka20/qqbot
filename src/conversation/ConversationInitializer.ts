@@ -234,6 +234,15 @@ export class ConversationInitializer {
     const ragService = retrievalService.getRAGService();
     if (ragService) {
       const memoryRAGService = new MemoryRAGService(ragService);
+      // Wire up MemoryFactMetaService for incremental diff indexing
+      try {
+        const factMetaService = container.resolve<import('@/memory/MemoryFactMetaService').MemoryFactMetaService>(
+          DITokens.MEMORY_FACT_META_SERVICE,
+        );
+        memoryRAGService.setFactMetaService(factMetaService);
+      } catch {
+        logger.debug('[ConversationInitializer] MemoryFactMetaService not available, using legacy RAG indexing');
+      }
       memoryService.setRAGService(memoryRAGService);
       logger.info('[ConversationInitializer] Memory RAG enabled for semantic memory filtering');
     }

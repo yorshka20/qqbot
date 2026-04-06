@@ -121,6 +121,15 @@ export class RAGService {
   }
 
   /**
+   * Delete points by ID list.
+   */
+  async deleteByIds(collection: string, ids: Array<string | number>): Promise<void> {
+    if (ids.length === 0) return;
+    await this.ensureCollectionOnce(collection);
+    await this.qdrantClient.deleteByIds(collection, ids);
+  }
+
+  /**
    * Scroll through all points in a collection via async generator.
    */
   async *scrollAll(
