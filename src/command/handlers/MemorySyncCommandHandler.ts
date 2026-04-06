@@ -50,7 +50,17 @@ export class MemorySyncCommand implements CommandHandler {
     }
 
     const groupId = context.groupId.toString();
-    const arg = args[0]?.trim();
+
+    // Parse --force / -f flag
+    let forceRebuild = false;
+    const filteredArgs = args.filter((a) => {
+      if (a === '--force' || a === '-f') {
+        forceRebuild = true;
+        return false;
+      }
+      return true;
+    });
+    const arg = filteredArgs[0]?.trim();
 
     let syncTarget: 'all' | 'group' | 'user' = 'all';
     let targetUserId: string | undefined;
@@ -68,7 +78,7 @@ export class MemorySyncCommand implements CommandHandler {
     }
 
     this.memoryService
-      .syncMemoryToRAG(groupId, syncTarget, targetUserId)
+      .syncMemoryToRAG(groupId, syncTarget, targetUserId, forceRebuild)
       .then((stats) => {
         const parts: string[] = ['记忆同步完成：'];
         if (syncTarget !== 'user') {

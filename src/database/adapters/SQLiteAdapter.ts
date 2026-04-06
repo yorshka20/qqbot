@@ -384,6 +384,22 @@ export class SQLiteAdapter implements DatabaseAdapter {
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`,
+      `CREATE TABLE IF NOT EXISTS memory_fact_meta (
+        id TEXT PRIMARY KEY,
+        factHash TEXT NOT NULL UNIQUE,
+        groupId TEXT NOT NULL,
+        userId TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        source TEXT NOT NULL CHECK(source IN ('manual', 'llm_extract')),
+        firstSeen INTEGER NOT NULL,
+        lastReinforced INTEGER NOT NULL,
+        reinforceCount INTEGER NOT NULL DEFAULT 1,
+        hitCount INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'stale')),
+        staleSince INTEGER,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`,
     ];
 
     for (const statement of statements) {
@@ -458,6 +474,10 @@ export class SQLiteAdapter implements DatabaseAdapter {
       `CREATE INDEX IF NOT EXISTS idx_agenda_items_enabled ON agenda_items(enabled)`,
       `CREATE INDEX IF NOT EXISTS idx_agenda_items_triggerType ON agenda_items(triggerType)`,
       `CREATE INDEX IF NOT EXISTS idx_agenda_items_eventType ON agenda_items(eventType)`,
+      `CREATE INDEX IF NOT EXISTS idx_memory_fact_meta_group_user ON memory_fact_meta(groupId, userId)`,
+      `CREATE INDEX IF NOT EXISTS idx_memory_fact_meta_status ON memory_fact_meta(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_memory_fact_meta_fact_hash ON memory_fact_meta(factHash)`,
+      `CREATE INDEX IF NOT EXISTS idx_memory_fact_meta_source ON memory_fact_meta(source)`,
     ];
 
     for (const statement of indexStatements) {
@@ -497,6 +517,14 @@ export class SQLiteAdapter implements DatabaseAdapter {
       this.db.run('ROLLBACK');
       throw error;
     }
+  }
+
+  /**
+   * Get the raw bun:sqlite Database instance for direct SQL access.
+   * Used by MemoryFactMetaService which needs batch operations beyond ModelAccessor.
+   */
+  getRawDb(): Database | null {
+    return this.db;
   }
 
   private createModels(): DatabaseModel {

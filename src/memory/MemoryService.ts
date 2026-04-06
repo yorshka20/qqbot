@@ -18,8 +18,17 @@ const DEFAULT_MAX_CONTENT_LENGTH = 100_000;
 /** Default base directory for memory files (relative to cwd). Overridden by config. */
 const DEFAULT_MEMORY_DIR = 'data/memory';
 
-/** Filename for group-level memory inside a group directory. */
+/** Filename for group-level memory inside a group directory (legacy). */
 const GROUP_MEMORY_FILENAME = '_global_.txt';
+
+/** Directory name for group-level memory in new structure. */
+const GROUP_MEMORY_DIRNAME = '_global_';
+
+/** Memory layer: 'manual' for human-authored, 'auto' for LLM-extracted */
+export type MemoryLayer = 'manual' | 'auto';
+
+/** Memory source for tracking */
+export type MemorySource = 'manual' | 'llm_extract';
 
 export interface MemoryServiceOptions {
   /** Base directory for memory files (resolved with process.cwd()). Default "data/memory". */
@@ -103,10 +112,21 @@ export class MemoryService {
   }
 
   /**
-   * Resolve file path for a memory slot. Group memory uses _global_.txt; user memory uses {userId}.txt.
-   * Sanitizes groupId and userId to avoid path traversal (only alphanumeric and underscore allowed; else replaced with _).
+   * Resolve file path for a memory slot in the new directory structure.
+   * Structure: {basePath}/{groupId}/{dirName}/{layer}.txt
+   * where dirName is '_global_' for group memory or userId for user memory.
    */
-  private getFilePath(groupId: string, userId: string): string {
+  private getMemoryPath(groupId: string, userId: string, layer: MemoryLayer): string {
+    const safeGroupId = this.sanitizePathSegment(groupId);
+    const dirName = userId === GROUP_MEMORY_USER_ID ? GROUP_MEMORY_DIRNAME : this.sanitizePathSegment(userId);
+    return join(this.basePath, safeGroupId, dirName, `${layer}.txt`);
+  }
+
+  /**
+   * Legacy file path for migration detection.
+   * Old structure: {basePath}/{groupId}/_global_.txt or {basePath}/{groupId}/{userId}.txt
+   */
+  private getLegacyFilePath(groupId: string, userId: string): string {
     const safeGroupId = this.sanitizePathSegment(groupId);
     const filename =
       userId === GROUP_MEMORY_USER_ID ? GROUP_MEMORY_FILENAME : `${this.sanitizePathSegment(userId)}.txt`;
@@ -119,39 +139,90 @@ export class MemoryService {
   }
 
   /**
-   * Get group-level memory text for a group (file: {memoryDir}/{groupId}/_global_.txt).
+   * Read a file, returning empty string on ENOENT.
+   * Falls back to legacy path if new path does not exist (migration compat).
    */
-  getGroupMemoryText(groupId: string): string {
-    const path = this.getFilePath(groupId, GROUP_MEMORY_USER_ID);
+  private readFileOrEmpty(path: string, legacyPath?: string): string {
     try {
-      const content = readFileSync(path, 'utf-8');
-      return content ?? '';
+      return readFileSync(path, 'utf-8') ?? '';
     } catch (err: unknown) {
       const code = err && typeof err === 'object' && 'code' in err ? (err as NodeJS.ErrnoException).code : '';
       if (code === 'ENOENT') {
+        // Try legacy path if provided (pre-migration compat)
+        if (legacyPath) {
+          try {
+            return readFileSync(legacyPath, 'utf-8') ?? '';
+          } catch {
+            return '';
+          }
+        }
         return '';
       }
-      logger.warn('[MemoryService] getGroupMemoryText read failed:', path, err);
+      logger.warn('[MemoryService] read failed:', path, err);
       return '';
     }
   }
 
   /**
-   * Get user-in-group memory text for (groupId, userId).
+   * Combine manual (human-authored) and auto (LLM-extracted) layer texts.
+   * Manual text comes first for higher priority.
+   */
+  private combineLayerTexts(manualText: string, autoText: string): string {
+    const parts: string[] = [];
+    if (manualText.trim()) parts.push(manualText.trim());
+    if (autoText.trim()) parts.push(autoText.trim());
+    return parts.join('\n\n');
+  }
+
+  /**
+   * Get group-level memory text for a group (merged manual + auto layers).
+   * Falls back to legacy single-file format if new structure doesn't exist.
+   */
+  getGroupMemoryText(groupId: string): string {
+    const manualText = this.readFileOrEmpty(this.getMemoryPath(groupId, GROUP_MEMORY_USER_ID, 'manual'));
+    const autoText = this.readFileOrEmpty(
+      this.getMemoryPath(groupId, GROUP_MEMORY_USER_ID, 'auto'),
+      this.getLegacyFilePath(groupId, GROUP_MEMORY_USER_ID),
+    );
+    return this.combineLayerTexts(manualText, autoText);
+  }
+
+  /**
+   * Get group memory text for a specific layer only.
+   * Used by RAG indexing and extract service.
+   */
+  getGroupMemoryTextByLayer(groupId: string, layer: MemoryLayer): string {
+    if (layer === 'auto') {
+      return this.readFileOrEmpty(
+        this.getMemoryPath(groupId, GROUP_MEMORY_USER_ID, 'auto'),
+        this.getLegacyFilePath(groupId, GROUP_MEMORY_USER_ID),
+      );
+    }
+    return this.readFileOrEmpty(this.getMemoryPath(groupId, GROUP_MEMORY_USER_ID, 'manual'));
+  }
+
+  /**
+   * Get user-in-group memory text (merged manual + auto layers).
+   * Falls back to legacy single-file format if new structure doesn't exist.
    */
   getUserMemoryText(groupId: string, userId: string): string {
-    const path = this.getFilePath(groupId, userId);
-    try {
-      const content = readFileSync(path, 'utf-8');
-      return content ?? '';
-    } catch (err: unknown) {
-      const code = err && typeof err === 'object' && 'code' in err ? (err as NodeJS.ErrnoException).code : '';
-      if (code === 'ENOENT') {
-        return '';
-      }
-      logger.warn('[MemoryService] getUserMemoryText read failed:', path, err);
-      return '';
+    const manualText = this.readFileOrEmpty(this.getMemoryPath(groupId, userId, 'manual'));
+    const autoText = this.readFileOrEmpty(
+      this.getMemoryPath(groupId, userId, 'auto'),
+      this.getLegacyFilePath(groupId, userId),
+    );
+    return this.combineLayerTexts(manualText, autoText);
+  }
+
+  /**
+   * Get user memory text for a specific layer only.
+   * Used by RAG indexing and extract service.
+   */
+  getUserMemoryTextByLayer(groupId: string, userId: string, layer: MemoryLayer): string {
+    if (layer === 'auto') {
+      return this.readFileOrEmpty(this.getMemoryPath(groupId, userId, 'auto'), this.getLegacyFilePath(groupId, userId));
     }
+    return this.readFileOrEmpty(this.getMemoryPath(groupId, userId, 'manual'));
   }
 
   /**
@@ -206,12 +277,7 @@ export class MemoryService {
     const limit = Math.max(1, options?.limit ?? 10);
     const results: MemorySearchResult[] = [];
 
-    const candidateUserIds = specificUserId
-      ? [specificUserId]
-      : readdirSync(groupDir)
-          .filter((entry) => entry.endsWith('.txt'))
-          .map((entry) => entry.replace(/\.txt$/, ''))
-          .filter((entry) => entry !== GROUP_MEMORY_FILENAME.replace(/\.txt$/, ''));
+    const candidateUserIds = specificUserId ? [specificUserId] : this.listUserIdsInGroup(groupDir);
 
     if (includeGroupMemory) {
       const groupContent = this.getGroupMemoryText(groupId);
@@ -277,10 +343,17 @@ export class MemoryService {
    * Empty content is written as an empty file so the slot exists and can be edited manually.
    * If RAG is enabled, also indexes the memory sections for semantic search.
    */
-  async upsertMemory(groupId: string, userId: string, _isGlobalMemory: boolean, content: string): Promise<void> {
+  async upsertMemory(
+    groupId: string,
+    userId: string,
+    _isGlobalMemory: boolean,
+    content: string,
+    layer: MemoryLayer = 'auto',
+    source: MemorySource = 'llm_extract',
+  ): Promise<void> {
     const trimmed = this.truncate(content.trim());
 
-    const path = this.getFilePath(groupId, userId);
+    const path = this.getMemoryPath(groupId, userId, layer);
     try {
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, trimmed, 'utf-8');
@@ -288,7 +361,7 @@ export class MemoryService {
       // Index to RAG if enabled (fire-and-forget, don't block on RAG errors)
       if (this.ragService?.isEnabled()) {
         const sections = this.parseMemorySections(trimmed);
-        this.ragService.indexMemorySections(groupId, userId, sections).catch((err) => {
+        this.ragService.indexMemorySections(groupId, userId, sections, source).catch((err) => {
           logger.warn('[MemoryService] RAG indexing failed (non-blocking):', err instanceof Error ? err.message : err);
         });
       }
@@ -543,6 +616,7 @@ export class MemoryService {
     groupId: string,
     target: 'all' | 'group' | 'user' = 'all',
     userId?: string,
+    force: boolean = false,
   ): Promise<{ groupSynced: boolean; usersSynced: string[]; totalFacts: number }> {
     if (!this.ragService?.isEnabled()) {
       throw new Error('RAG service is not available');
@@ -554,43 +628,79 @@ export class MemoryService {
     let groupSynced = false;
     const usersSynced: string[] = [];
 
-    // Sync group memory
+    // Sync group memory (both layers)
     if (target === 'all' || target === 'group') {
-      const groupText = this.getGroupMemoryText(groupId);
-      const groupSections = this.parseMemorySections(groupText);
-      await this.ragService.indexMemorySections(groupId, GROUP_MEMORY_USER_ID, groupSections);
-      groupSynced = groupSections.length > 0;
-      totalFacts += groupSections.length;
+      const manualSections = this.parseMemorySections(this.getGroupMemoryTextByLayer(groupId, 'manual'));
+      const autoSections = this.parseMemorySections(this.getGroupMemoryTextByLayer(groupId, 'auto'));
+      if (manualSections.length > 0) {
+        await this.ragService.indexMemorySections(groupId, GROUP_MEMORY_USER_ID, manualSections, 'manual', force);
+      }
+      if (autoSections.length > 0) {
+        await this.ragService.indexMemorySections(groupId, GROUP_MEMORY_USER_ID, autoSections, 'llm_extract', force);
+      }
+      const sectionCount = manualSections.length + autoSections.length;
+      groupSynced = sectionCount > 0;
+      totalFacts += sectionCount;
     }
 
-    // Sync user memories
+    // Sync user memories (both layers)
     if (target === 'all' || target === 'user') {
       const targetUserIds =
-        target === 'user' && userId
-          ? [userId]
-          : existsSync(groupDir)
-            ? readdirSync(groupDir)
-                .filter((f) => f.endsWith('.txt') && f !== '_global_.txt')
-                .map((f) => f.replace(/\.txt$/, ''))
-            : [];
+        target === 'user' && userId ? [userId] : existsSync(groupDir) ? this.listUserIdsInGroup(groupDir) : [];
 
       for (const uid of targetUserIds) {
-        const userText = this.getUserMemoryText(groupId, uid);
-        const userSections = this.parseMemorySections(userText);
-        await this.ragService.indexMemorySections(groupId, uid, userSections);
-        if (userSections.length > 0) {
+        const manualSections = this.parseMemorySections(this.getUserMemoryTextByLayer(groupId, uid, 'manual'));
+        const autoSections = this.parseMemorySections(this.getUserMemoryTextByLayer(groupId, uid, 'auto'));
+        if (manualSections.length > 0) {
+          await this.ragService.indexMemorySections(groupId, uid, manualSections, 'manual', force);
+        }
+        if (autoSections.length > 0) {
+          await this.ragService.indexMemorySections(groupId, uid, autoSections, 'llm_extract', force);
+        }
+        const sectionCount = manualSections.length + autoSections.length;
+        if (sectionCount > 0) {
           usersSynced.push(uid);
-          totalFacts += userSections.length;
+          totalFacts += sectionCount;
         }
       }
     }
 
     logger.info(
-      `[MemoryService] RAG sync completed for group ${groupId} (target=${target}): ` +
+      `[MemoryService] RAG sync completed for group ${groupId} (target=${target}, force=${force}): ` +
         `group=${groupSynced ? 'synced' : 'skipped/empty'}, ` +
         `users=${usersSynced.length}, totalFacts=${totalFacts}`,
     );
 
     return { groupSynced, usersSynced, totalFacts };
+  }
+
+  // ============================================================================
+  // Directory helpers
+  // ============================================================================
+
+  /**
+   * List user IDs in a group directory.
+   * New structure: subdirectories (excluding _global_) are user IDs.
+   * Legacy: .txt files (excluding _global_.txt) are user IDs.
+   */
+  private listUserIdsInGroup(groupDir: string): string[] {
+    const entries = readdirSync(groupDir, { withFileTypes: true });
+    const userIds = new Set<string>();
+
+    // New structure: subdirectories
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name !== GROUP_MEMORY_DIRNAME) {
+        userIds.add(entry.name);
+      }
+    }
+
+    // Legacy: .txt files (for groups not yet migrated)
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith('.txt') && entry.name !== GROUP_MEMORY_FILENAME) {
+        userIds.add(entry.name.replace(/\.txt$/, ''));
+      }
+    }
+
+    return Array.from(userIds);
   }
 }

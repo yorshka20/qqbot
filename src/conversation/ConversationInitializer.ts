@@ -119,6 +119,23 @@ export class ConversationInitializer {
     const memoryService = new MemoryService({ memoryDir });
     container.registerInstance(DITokens.MEMORY_SERVICE, memoryService);
 
+    // Memory fact metadata service (quality tracking for memory facts via SQLite)
+    try {
+      const { SQLiteAdapter } = await import('@/database/adapters/SQLiteAdapter');
+      const adapter = databaseManager.getAdapter();
+      if (adapter instanceof SQLiteAdapter) {
+        const rawDb = adapter.getRawDb();
+        if (rawDb) {
+          const { MemoryFactMetaService } = await import('@/memory/MemoryFactMetaService');
+          const memoryFactMetaService = new MemoryFactMetaService(rawDb);
+          container.registerInstance(DITokens.MEMORY_FACT_META_SERVICE, memoryFactMetaService);
+          logger.info('[ConversationInitializer] MemoryFactMetaService registered');
+        }
+      }
+    } catch (err) {
+      logger.debug('[ConversationInitializer] MemoryFactMetaService not available (non-SQLite or init error):', err);
+    }
+
     // Conversation config services are required by CommandManager.
     const globalConfigManager = new GlobalConfigManager();
     container.registerInstance(DITokens.GLOBAL_CONFIG_MANAGER, globalConfigManager);

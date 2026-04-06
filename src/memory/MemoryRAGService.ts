@@ -208,7 +208,13 @@ export class MemoryRAGService {
    * @param userId - User ID (or GROUP_MEMORY_USER_ID for group memory)
    * @param sections - Parsed memory sections to index
    */
-  async indexMemorySections(groupId: string, userId: string, sections: MemorySection[]): Promise<void> {
+  async indexMemorySections(
+    groupId: string,
+    userId: string,
+    sections: MemorySection[],
+    _source: 'manual' | 'llm_extract' = 'llm_extract',
+    _forceRebuild: boolean = false,
+  ): Promise<void> {
     if (!this.ragService.isEnabled()) {
       logger.debug('[MemoryRAGService] RAG not enabled, skipping memory indexing');
       return;

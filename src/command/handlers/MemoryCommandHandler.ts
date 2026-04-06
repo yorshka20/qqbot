@@ -188,13 +188,13 @@ export class MemoryEditCommand implements CommandHandler {
 
     // Fire-and-forget: merge and notify
     if (target === 'group') {
-      const existing = this.memoryService.getGroupMemoryText(groupId);
+      const existing = this.memoryService.getGroupMemoryTextByLayer(groupId, 'auto');
       const provider = this.getExtractProvider();
       this.memoryExtractService
         .mergeWithExisting(existing, content, 'global', { provider })
         .then(async (merged: string) => {
           if (merged) {
-            await this.memoryService.upsertMemory(groupId, '_global_', true, merged);
+            await this.memoryService.upsertMemory(groupId, '_global_', true, merged, 'auto', 'llm_extract');
           }
           await this.messageAPI.sendFromContext('群组记忆订正完成。', context, 10000);
         })
@@ -203,13 +203,13 @@ export class MemoryEditCommand implements CommandHandler {
           this.messageAPI.sendFromContext('群组记忆订正失败，请查看日志。', context, 10000).catch(() => {});
         });
     } else {
-      const existing = this.memoryService.getUserMemoryText(groupId, targetUserId);
+      const existing = this.memoryService.getUserMemoryTextByLayer(groupId, targetUserId, 'auto');
       const provider = this.getExtractProvider();
       this.memoryExtractService
         .mergeWithExisting(existing, content, 'user', { provider })
         .then(async (merged: string) => {
           if (merged) {
-            await this.memoryService.upsertMemory(groupId, targetUserId, false, merged);
+            await this.memoryService.upsertMemory(groupId, targetUserId, false, merged, 'auto', 'llm_extract');
           }
           const label = targetUserId === callerUserId ? '你的' : `用户 ${targetUserId} 的`;
           await this.messageAPI.sendFromContext(`${label}记忆订正完成。`, context, 10000);

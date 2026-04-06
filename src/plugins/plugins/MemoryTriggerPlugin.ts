@@ -334,12 +334,12 @@ export class MemoryTriggerPlugin extends PluginBase {
   }
 
   private mergeAndUpsertUserMemory(groupId: string, userId: string, content: string): Promise<void> {
-    const existing = this.memoryService.getUserMemoryText(groupId, userId);
+    const existing = this.memoryService.getUserMemoryTextByLayer(groupId, userId, 'auto');
     return this.memoryExtractService
       .mergeWithExisting(existing, content, 'user', { provider: this.getExtractProvider() })
       .then((merged) => {
         if (merged) {
-          return this.memoryService.upsertMemory(groupId, userId, false, merged);
+          return this.memoryService.upsertMemory(groupId, userId, false, merged, 'auto', 'llm_extract');
         }
       })
       .then(() => {

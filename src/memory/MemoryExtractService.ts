@@ -242,10 +242,10 @@ export class MemoryExtractService {
       if (!newFactsText.trim()) {
         return;
       }
-      const existing = this.memoryService.getUserMemoryText(groupId, userId);
+      const existing = this.memoryService.getUserMemoryTextByLayer(groupId, userId, 'auto');
       const merged = await this.mergeWithExisting(existing, newFactsText, 'user', options);
       if (merged) {
-        await this.memoryService.upsertMemory(groupId, userId, false, merged);
+        await this.memoryService.upsertMemory(groupId, userId, false, merged, 'auto', 'llm_extract');
       }
       logger.info(`[MemoryExtractService] memory updated | group=${groupId} user=${userId} |\n${merged}`);
     } catch (err) {
@@ -308,27 +308,27 @@ export class MemoryExtractService {
     );
 
     try {
-      // for group global memory
+      // for group global memory (read/write auto layer only)
       if (parsed.groupFacts && parsed.groupFacts.length > 0) {
-        const existing = this.memoryService.getGroupMemoryText(groupId);
+        const existing = this.memoryService.getGroupMemoryTextByLayer(groupId, 'auto');
         const newFactsText = parsed.groupFacts.join('\n');
         const merged = await this.mergeWithExisting(existing, newFactsText, 'global', options);
         if (merged) {
-          await this.memoryService.upsertMemory(groupId, GROUP_MEMORY_USER_ID, true, merged);
+          await this.memoryService.upsertMemory(groupId, GROUP_MEMORY_USER_ID, true, merged, 'auto', 'llm_extract');
         }
         logger.info(`[MemoryExtractService] memory updated | group=${groupId} target=GROUP_GLOBAL |\n${merged}`);
       }
 
-      // for user memory
+      // for user memory (read/write auto layer only)
       for (const u of parsed.userFacts ?? []) {
         if (!u.userId || !u.facts?.length) {
           continue;
         }
-        const existing = this.memoryService.getUserMemoryText(groupId, u.userId);
+        const existing = this.memoryService.getUserMemoryTextByLayer(groupId, u.userId, 'auto');
         const newFactsText = u.facts.join('\n');
         const merged = await this.mergeWithExisting(existing, newFactsText, 'user', options);
         if (merged) {
-          await this.memoryService.upsertMemory(groupId, u.userId, false, merged);
+          await this.memoryService.upsertMemory(groupId, u.userId, false, merged, 'auto', 'llm_extract');
         }
         logger.info(`[MemoryExtractService] memory updated | group=${groupId} user=${u.userId} |\n${merged}`);
       }

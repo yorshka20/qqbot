@@ -45,6 +45,7 @@ export const DITokens = {
   PROVIDER_SELECTOR: 'ProviderSelector',
   PROVIDER_ROUTER: 'ProviderRouter',
   LIFECYCLE: 'Lifecycle',
+  MEMORY_FACT_META_SERVICE: 'MemoryFactMetaService',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];
