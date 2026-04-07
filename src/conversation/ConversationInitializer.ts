@@ -119,6 +119,9 @@ export class ConversationInitializer {
     const memoryService = new MemoryService({ memoryDir });
     container.registerInstance(DITokens.MEMORY_SERVICE, memoryService);
 
+    // Auto-migrate legacy single-file memory format to new directory structure
+    await memoryService.migrateLegacyFiles();
+
     // Memory fact metadata service (quality tracking for memory facts via SQLite)
     try {
       const { SQLiteAdapter } = await import('@/database/adapters/SQLiteAdapter');
@@ -245,6 +248,11 @@ export class ConversationInitializer {
         logger.debug('[ConversationInitializer] MemoryFactMetaService not available, using legacy RAG indexing');
       }
       memoryService.setRAGService(memoryRAGService);
+      // Apply quality scoring config if present
+      const scoringConfig = config.getMemoryConfig().qualityScoring;
+      if (scoringConfig) {
+        memoryService.setScoringConfig(scoringConfig);
+      }
       logger.info('[ConversationInitializer] Memory RAG enabled for semantic memory filtering');
     }
 

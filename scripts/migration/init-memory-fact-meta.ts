@@ -76,6 +76,7 @@ function main() {
     userId TEXT NOT NULL,
     scope TEXT NOT NULL,
     source TEXT NOT NULL CHECK(source IN ('manual', 'llm_extract')),
+    normalizedContent TEXT NOT NULL DEFAULT '',
     firstSeen INTEGER NOT NULL,
     lastReinforced INTEGER NOT NULL,
     reinforceCount INTEGER NOT NULL DEFAULT 1,
@@ -88,8 +89,8 @@ function main() {
 
   const insertStmt = db.prepare(`
     INSERT OR IGNORE INTO memory_fact_meta
-      (id, factHash, groupId, userId, scope, source, firstSeen, lastReinforced, reinforceCount, hitCount, status, createdAt, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 'active', ?, ?)
+      (id, factHash, groupId, userId, scope, source, normalizedContent, firstSeen, lastReinforced, reinforceCount, hitCount, status, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 'active', ?, ?)
   `);
 
   const groups = readdirSync(MEMORY_DIR, { withFileTypes: true })
@@ -125,6 +126,7 @@ function main() {
             const hash = computeFactHash(groupId, userId, section.scope, fact);
             totalFacts++;
             try {
+              const normalized = normalizeContent(fact);
               const result = insertStmt.run(
                 crypto.randomUUID(),
                 hash,
@@ -132,6 +134,7 @@ function main() {
                 userId,
                 section.scope,
                 source,
+                normalized,
                 now,
                 now,
                 nowIso,

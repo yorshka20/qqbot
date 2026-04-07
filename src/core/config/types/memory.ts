@@ -47,9 +47,25 @@ export interface MemoryFilterConfig {
   minRelevanceScore?: number;
 }
 
+/** Quality scoring parameters for memory retrieval reranking */
+export interface MemoryQualityScoringConfig {
+  /** Boost multiplier for manual (human-authored) facts. Default: 1.2 */
+  manualBoost?: number;
+  /** Exponential decay half-life in days. Default: 120 */
+  decayHalfLifeDays?: number;
+  /** Minimum decay floor (never goes below this). Default: 0.3 */
+  decayFloor?: number;
+  /** Score boost per reinforce count. Default: 0.02 */
+  frequencyBoostPerReinforce?: number;
+  /** Maximum frequency boost multiplier. Default: 1.3 */
+  frequencyBoostCap?: number;
+}
+
 export interface MemoryConfig {
   /** Directory for memory files (relative to cwd). Group memory: {dir}/{groupId}/_global_.txt, user: {dir}/{groupId}/{userId}.txt */
   dir?: string;
   /** Context-aware memory filtering options */
   filter?: MemoryFilterConfig;
+  /** Quality scoring parameters for retrieval reranking */
+  qualityScoring?: MemoryQualityScoringConfig;
 }

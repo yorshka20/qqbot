@@ -417,3 +417,60 @@ export interface DailyStatsResponse {
 export interface StatsDateListResponse {
   dates: string[]
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Memory Status Types
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface MemoryGlobalStats {
+  totalFacts: number
+  activeFacts: number
+  staleFacts: number
+  manualFacts: number
+  autoFacts: number
+}
+
+export interface MemoryGroupStats {
+  groupId: string
+  totalFacts: number
+  activeFacts: number
+  staleFacts: number
+  manualFacts: number
+  autoFacts: number
+  userCount: number
+}
+
+export interface MemoryGroupUserSummary {
+  userId: string
+  totalFacts: number
+  activeFacts: number
+  staleFacts: number
+  manualFacts: number
+  autoFacts: number
+}
+
+export interface MemoryGroupDetail {
+  groupId: string
+  totalFacts: number
+  users: MemoryGroupUserSummary[]
+}
+
+export interface MemoryFactEntry {
+  factHash: string
+  scope: string
+  source: string
+  status: string
+  reinforceCount: number
+  hitCount: number
+  firstSeen: number
+  lastReinforced: number
+  staleSince?: number
+  ageDays: number
+}
+
+export interface MemoryUserFactDetail {
+  groupId: string
+  userId: string
+  totalFacts: number
+  facts: MemoryFactEntry[]
+}

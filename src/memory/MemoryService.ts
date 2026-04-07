@@ -3,9 +3,9 @@
 // Supports hierarchical scopes: [core_scope:subtag] format (e.g., [preference:food])
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { ALL_CORE_SCOPES, type ParsedScope } from '@/core/config/types/memory';
+import { ALL_CORE_SCOPES, type MemoryQualityScoringConfig, type ParsedScope } from '@/core/config/types/memory';
 import { logger } from '@/utils/logger';
 import type { MemoryFactMetaService } from './MemoryFactMetaService';
 import type { MemoryRAGService } from './MemoryRAGService';
@@ -85,11 +85,21 @@ export interface FilteredMemoryResult {
  * No in-memory cache so manual edits to files are visible on next read.
  * Supports optional RAG-based semantic search when MemoryRAGService is configured.
  */
+/** Default quality scoring parameters (conservative Direction A values) */
+const DEFAULT_SCORING: Required<MemoryQualityScoringConfig> = {
+  manualBoost: 1.2,
+  decayHalfLifeDays: 120,
+  decayFloor: 0.3,
+  frequencyBoostPerReinforce: 0.02,
+  frequencyBoostCap: 1.3,
+};
+
 export class MemoryService {
   private readonly basePath: string;
   private readonly maxContentLength: number;
   private ragService: MemoryRAGService | null = null;
   private factMetaService: MemoryFactMetaService | null = null;
+  private scoringConfig: Required<MemoryQualityScoringConfig> = DEFAULT_SCORING;
 
   constructor(options: MemoryServiceOptions = {}) {
     const memoryDir = options.memoryDir ?? DEFAULT_MEMORY_DIR;
@@ -111,6 +121,13 @@ export class MemoryService {
    */
   setFactMetaService(factMetaService: MemoryFactMetaService): void {
     this.factMetaService = factMetaService;
+  }
+
+  /**
+   * Set quality scoring config (overrides defaults).
+   */
+  setScoringConfig(config: MemoryQualityScoringConfig): void {
+    this.scoringConfig = { ...DEFAULT_SCORING, ...config };
   }
 
   /**
@@ -499,31 +516,22 @@ export class MemoryService {
     userId: string | undefined,
     options: MemoryFilterOptions,
   ): Promise<FilteredMemoryResult> {
-    // RAG is required for memory injection — without it, skip to save tokens
-    if (!this.ragService?.isEnabled() || !options.userMessage.trim()) {
-      logger.debug('[MemoryService] RAG not available or empty query, skipping memory injection');
-      return {
-        groupMemoryText: '',
-        userMemoryText: '',
-        stats: { groupIncluded: 0, groupTotal: 0, userIncluded: 0, userTotal: 0 },
-      };
+    // If RAG is available, use semantic search for quality-scored retrieval
+    if (this.ragService?.isEnabled() && options.userMessage.trim()) {
+      try {
+        const ragResult = await this.getFilteredMemoryWithRAG(groupId, userId, options);
+        logger.debug(
+          `[MemoryService] RAG filtered memory: group ${ragResult.stats.groupIncluded}/${ragResult.stats.groupTotal}, ` +
+            `user ${ragResult.stats.userIncluded}/${ragResult.stats.userTotal}`,
+        );
+        return ragResult;
+      } catch (err) {
+        logger.warn('[MemoryService] RAG search failed, falling back to text concatenation:', err);
+      }
     }
 
-    try {
-      const ragResult = await this.getFilteredMemoryWithRAG(groupId, userId, options);
-      logger.debug(
-        `[MemoryService] RAG filtered memory: group ${ragResult.stats.groupIncluded}/${ragResult.stats.groupTotal}, ` +
-          `user ${ragResult.stats.userIncluded}/${ragResult.stats.userTotal}`,
-      );
-      return ragResult;
-    } catch (err) {
-      logger.warn('[MemoryService] RAG search failed, skipping memory injection:', err);
-      return {
-        groupMemoryText: '',
-        userMemoryText: '',
-        stats: { groupIncluded: 0, groupTotal: 0, userIncluded: 0, userTotal: 0 },
-      };
-    }
+    // Non-RAG fallback: concatenate manual + auto text directly (manual first for higher priority)
+    return this.getFilteredMemoryFallback(groupId, userId);
   }
 
   /**
@@ -554,18 +562,36 @@ export class MemoryService {
       this.ragService.formatResultsAsMemoryText(alwaysIncludeResults);
 
     // Search for semantically relevant facts (fine-grained vector search)
+    // Fetch extra results to allow quality scoring to filter/rerank
     const searchResults = await this.ragService.searchRelevantFacts(groupId, options.userMessage, {
       userId,
       includeGroupMemory: true,
-      limit: options.count,
-      minScore,
+      limit: (options.count ?? 10) * 2,
+      minScore: Math.max(0.5, minScore - 0.15), // Lower threshold, let scoring decide
     });
 
     // Filter out facts from always-include scopes (already fetched above)
-    const relevantResults = searchResults.filter((r) => {
+    let relevantResults = searchResults.filter((r) => {
       const parsedScope = this.parseScope(r.fact.scope);
       return !alwaysIncludeScopes.includes(r.fact.scope) && !alwaysIncludeScopes.includes(parsedScope.core);
     });
+
+    // Apply quality scoring if metadata service is available
+    if (this.factMetaService && relevantResults.length > 0) {
+      const metaMap = this.factMetaService.getFactMetaByHashes(
+        relevantResults.map((r) => r.pointId).filter((id): id is string => !!id),
+      );
+
+      relevantResults = relevantResults
+        .map((r) => {
+          const meta = r.pointId ? metaMap.get(r.pointId) : undefined;
+          const finalScore = this.computeFinalScore(r.score, meta);
+          return { ...r, score: finalScore };
+        })
+        .filter((r) => r.score >= minScore)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, options.count ?? 10);
+    }
 
     // Format vector search results
     const { groupMemoryText: ragGroupText, userMemoryText: ragUserText } =
@@ -621,8 +647,72 @@ export class MemoryService {
   }
 
   // ============================================================================
+  // Quality scoring
+  // ============================================================================
+
+  /**
+   * Compute quality-adjusted final score for a memory fact.
+   * - Manual facts: boosted by manualBoost (no decay)
+   * - Auto facts: exponential time decay + frequency boost from reinforce count
+   */
+  private computeFinalScore(ragScore: number, meta?: import('./MemoryFactMetaService').FactMeta): number {
+    if (!meta) return ragScore;
+    const cfg = this.scoringConfig;
+
+    // Manual fact: boost, no decay
+    if (meta.source === 'manual') {
+      return ragScore * cfg.manualBoost;
+    }
+
+    // Auto fact: exponential decay + frequency boost
+    const ageDays = (Date.now() - meta.lastReinforced) / 86_400_000;
+    // Exponential decay: e^(-age * ln2 / halfLife), floors at decayFloor
+    const decay = Math.max(cfg.decayFloor, Math.exp((-ageDays * Math.LN2) / cfg.decayHalfLifeDays));
+    // Frequency boost: more reinforcements = more reliable, capped
+    const frequency = Math.min(cfg.frequencyBoostCap, 1 + meta.reinforceCount * cfg.frequencyBoostPerReinforce);
+
+    return ragScore * decay * frequency;
+  }
+
+  // ============================================================================
   // RAG sync
   // ============================================================================
+
+  /**
+   * Non-RAG fallback: read manual + auto layers directly and concatenate.
+   * Manual content comes first (marked as authoritative). No quality scoring or decay.
+   */
+  private getFilteredMemoryFallback(groupId: string, userId: string | undefined): FilteredMemoryResult {
+    const manualGroup = this.getGroupMemoryTextByLayer(groupId, 'manual').trim();
+    const autoGroup = this.getGroupMemoryTextByLayer(groupId, 'auto').trim();
+    const groupParts: string[] = [];
+    if (manualGroup) groupParts.push(`【权威信息】\n${manualGroup}`);
+    if (autoGroup) groupParts.push(autoGroup);
+
+    let userParts: string[] = [];
+    if (userId) {
+      const manualUser = this.getUserMemoryTextByLayer(groupId, userId, 'manual').trim();
+      const autoUser = this.getUserMemoryTextByLayer(groupId, userId, 'auto').trim();
+      if (manualUser) userParts.push(`【权威信息】\n${manualUser}`);
+      if (autoUser) userParts.push(autoUser);
+    }
+
+    const groupMemoryText = groupParts.join('\n\n');
+    const userMemoryText = userParts.join('\n\n');
+    const groupSections = this.parseMemorySections(groupMemoryText);
+    const userSections = this.parseMemorySections(userMemoryText);
+
+    return {
+      groupMemoryText,
+      userMemoryText,
+      stats: {
+        groupIncluded: groupSections.length,
+        groupTotal: groupSections.length,
+        userIncluded: userSections.length,
+        userTotal: userSections.length,
+      },
+    };
+  }
 
   /**
    * Re-sync local markdown memory files for a group to Qdrant.
@@ -648,36 +738,28 @@ export class MemoryService {
     let groupSynced = false;
     const usersSynced: string[] = [];
 
-    // Sync group memory (both layers)
+    // Sync only manual layer — auto layer is managed by MemoryExtractService.
+    // Per design: "以 manual.txt 为准做增量 reconcile, 不触碰 auto 的 SQLite 元数据"
     if (target === 'all' || target === 'group') {
       const manualSections = this.parseMemorySections(this.getGroupMemoryTextByLayer(groupId, 'manual'));
-      const autoSections = this.parseMemorySections(this.getGroupMemoryTextByLayer(groupId, 'auto'));
       if (manualSections.length > 0) {
         await this.ragService.indexMemorySections(groupId, GROUP_MEMORY_USER_ID, manualSections, 'manual', force);
       }
-      if (autoSections.length > 0) {
-        await this.ragService.indexMemorySections(groupId, GROUP_MEMORY_USER_ID, autoSections, 'llm_extract', force);
-      }
-      const sectionCount = manualSections.length + autoSections.length;
-      groupSynced = sectionCount > 0;
-      totalFacts += sectionCount;
+      groupSynced = manualSections.length > 0;
+      totalFacts += manualSections.length;
     }
 
-    // Sync user memories (both layers)
+    // Sync user manual layers only
     if (target === 'all' || target === 'user') {
       const targetUserIds =
         target === 'user' && userId ? [userId] : existsSync(groupDir) ? this.listUserIdsInGroup(groupDir) : [];
 
       for (const uid of targetUserIds) {
         const manualSections = this.parseMemorySections(this.getUserMemoryTextByLayer(groupId, uid, 'manual'));
-        const autoSections = this.parseMemorySections(this.getUserMemoryTextByLayer(groupId, uid, 'auto'));
         if (manualSections.length > 0) {
           await this.ragService.indexMemorySections(groupId, uid, manualSections, 'manual', force);
         }
-        if (autoSections.length > 0) {
-          await this.ragService.indexMemorySections(groupId, uid, autoSections, 'llm_extract', force);
-        }
-        const sectionCount = manualSections.length + autoSections.length;
+        const sectionCount = manualSections.length;
         if (sectionCount > 0) {
           usersSynced.push(uid);
           totalFacts += sectionCount;
@@ -722,5 +804,60 @@ export class MemoryService {
     }
 
     return Array.from(userIds);
+  }
+
+  // ============================================================================
+  // Legacy migration
+  // ============================================================================
+
+  /**
+   * Migrate legacy single-file memory format to new directory structure.
+   * Old: data/memory/{groupId}/_global_.txt, data/memory/{groupId}/{userId}.txt
+   * New: data/memory/{groupId}/_global_/auto.txt, data/memory/{groupId}/{userId}/auto.txt
+   *      + empty manual.txt files created alongside
+   *
+   * Safe to call multiple times — only migrates files that still exist in old format.
+   * Should be called once during initialization.
+   */
+  async migrateLegacyFiles(): Promise<void> {
+    if (!existsSync(this.basePath)) return;
+
+    const groupDirs = readdirSync(this.basePath, { withFileTypes: true }).filter((e) => e.isDirectory());
+    let migratedCount = 0;
+
+    for (const groupEntry of groupDirs) {
+      const groupDir = join(this.basePath, groupEntry.name);
+      const entries = readdirSync(groupDir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        if (!entry.isFile() || !entry.name.endsWith('.txt')) continue;
+
+        const oldPath = join(groupDir, entry.name);
+        const baseName = entry.name.replace(/\.txt$/, '');
+
+        // Determine target directory name
+        const targetDirName = entry.name === GROUP_MEMORY_FILENAME ? GROUP_MEMORY_DIRNAME : baseName;
+        const targetDir = join(groupDir, targetDirName);
+
+        // Skip if target directory already exists (already migrated or new-format)
+        if (existsSync(targetDir)) continue;
+
+        try {
+          await mkdir(targetDir, { recursive: true });
+          // Move old file → auto.txt (all old content was LLM-extracted)
+          await rename(oldPath, join(targetDir, 'auto.txt'));
+          // Create empty manual.txt
+          await writeFile(join(targetDir, 'manual.txt'), '', 'utf-8');
+          migratedCount++;
+          logger.info(`[MemoryService] Migrated legacy file: ${entry.name} → ${targetDirName}/auto.txt`);
+        } catch (err) {
+          logger.warn(`[MemoryService] Failed to migrate ${oldPath}:`, err);
+        }
+      }
+    }
+
+    if (migratedCount > 0) {
+      logger.info(`[MemoryService] Legacy migration completed: ${migratedCount} files migrated`);
+    }
   }
 }

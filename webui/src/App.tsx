@@ -6,10 +6,10 @@
  * - ReportsPage: WeChat report viewing
  */
 
-import { BarChart3, BookOpen, Database, FileText, Lightbulb, MessageSquare, Moon, Sun } from 'lucide-react';
+import { BarChart3, BookOpen, Brain, Database, FileText, Lightbulb, MessageSquare, Moon, Sun } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
-import { DailyStatsPage, FilesPage, InsightsPage, MomentsPage, QdrantExplorerPage, ReportsPage, ZhihuPage } from './pages';
+import { DailyStatsPage, FilesPage, InsightsPage, MemoryStatusPage, MomentsPage, QdrantExplorerPage, ReportsPage, ZhihuPage } from './pages';
 import { isActivePage, parseHash, type Route, setHash } from './router';
 
 export default function App() {
@@ -124,6 +124,18 @@ export default function App() {
               <BarChart3 className="w-4 h-4" />
               每日统计
             </button>
+            <button
+              type="button"
+              onClick={() => navigate({ page: 'memory' })}
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+                isActivePage(route, 'memory')
+                  ? 'bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+              }`}
+            >
+              <Brain className="w-4 h-4" />
+              Memory
+            </button>
           </nav>
 
           <div className="flex-1" />
@@ -154,6 +166,7 @@ export default function App() {
       {route.page === 'zhihu' && <ZhihuPage />}
       {route.page === 'qdrant' && <QdrantExplorerPage />}
       {route.page === 'stats' && <DailyStatsPage />}
+      {route.page === 'memory' && <MemoryStatusPage />}
     </div>
   );
 }

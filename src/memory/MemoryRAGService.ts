@@ -340,8 +340,11 @@ export class MemoryRAGService {
       return;
     }
 
-    // 4. SQLite reconcile: reinforce existing, insert new, mark orphans stale
-    for (const [hash] of newFactMap) {
+    // 4. SQLite reconcile: reinforce existing, fuzzy-match or insert new, mark orphans stale
+    const fuzzyMatchedOldHashes = new Set<string>();
+
+    for (const [hash, fact] of newFactMap) {
+      const normalizedContent = FactMetaServiceClass.normalizeContent(fact.content);
       if (existingMeta.has(hash)) {
         fms.reinforceFact(hash);
         const meta = existingMeta.get(hash)!;
@@ -349,22 +352,36 @@ export class MemoryRAGService {
           fms.activateFact(hash);
         }
       } else {
-        fms.insertFact({
-          factHash: hash,
-          groupId,
-          userId,
-          scope: newFactMap.get(hash)!.scope,
-          source,
-          firstSeen: Date.now(),
-          lastReinforced: Date.now(),
-          reinforceCount: 1,
-        });
+        // Source upgrade: if this is a manual fact matching an existing llm_extract fact
+        if (source === 'manual' && fms.upgradeSource(hash)) {
+          // Upgraded llm_extract → manual, no need to insert
+        } else {
+          // Try fuzzy match: same scope, edit distance <= 5 characters
+          const fuzzyMatch = this.findFuzzyMatch(fact, existingMeta, newHashes, fuzzyMatchedOldHashes);
+          if (fuzzyMatch) {
+            // Minor rewrite by LLM — migrate metadata to new hash
+            fms.migrateFact(fuzzyMatch, hash, fact.scope, normalizedContent);
+            fuzzyMatchedOldHashes.add(fuzzyMatch);
+          } else {
+            fms.insertFact({
+              factHash: hash,
+              groupId,
+              userId,
+              scope: fact.scope,
+              source,
+              normalizedContent,
+              firstSeen: Date.now(),
+              lastReinforced: Date.now(),
+              reinforceCount: 1,
+            });
+          }
+        }
       }
     }
 
-    // Orphan handling
+    // Orphan handling (exclude fuzzy-matched old hashes — they were migrated, not orphaned)
     for (const [hash] of existingMeta) {
-      if (!newHashes.has(hash)) {
+      if (!newHashes.has(hash) && !fuzzyMatchedOldHashes.has(hash)) {
         if (source === 'llm_extract') {
           fms.markStale(hash);
         } else {
@@ -416,6 +433,67 @@ export class MemoryRAGService {
       `[MemoryRAGService] Reconciled ${source} facts for ${isGroupMemory ? 'group' : 'user'} ${groupId}/${userId}: ` +
         `${newFactMap.size} current, ${allActiveFacts.length} active total`,
     );
+  }
+
+  /**
+   * Find a fuzzy match for a new fact among existing metadata entries.
+   * Only matches within the same scope with edit distance <= 5 characters.
+   * Returns the old hash if found, null otherwise.
+   */
+  private findFuzzyMatch(
+    newFact: MemoryFact,
+    existingMeta: Map<string, FactMeta>,
+    newHashes: Set<string>,
+    alreadyMatched: Set<string>,
+  ): string | null {
+    const normalizedNew = FactMetaServiceClass.normalizeContent(newFact.content);
+    const MAX_EDIT_DISTANCE = 5;
+
+    for (const [oldHash, meta] of existingMeta) {
+      // Skip if this old hash is already present in new facts (exact match handled elsewhere)
+      if (newHashes.has(oldHash)) continue;
+      // Skip if already claimed by another fuzzy match
+      if (alreadyMatched.has(oldHash)) continue;
+      // Only match within same scope
+      if (meta.scope !== newFact.scope) continue;
+      // Need stored content for comparison
+      if (!meta.normalizedContent) continue;
+
+      const dist = MemoryRAGService.editDistance(normalizedNew, meta.normalizedContent, MAX_EDIT_DISTANCE);
+      if (dist <= MAX_EDIT_DISTANCE) {
+        return oldHash;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Compute Levenshtein edit distance with early termination.
+   * Returns actual distance if <= maxDist, otherwise maxDist + 1.
+   */
+  private static editDistance(a: string, b: string, maxDist: number): number {
+    if (Math.abs(a.length - b.length) > maxDist) return maxDist + 1;
+
+    const m = a.length;
+    const n = b.length;
+    // Single-row DP with early termination
+    let prev = new Array(n + 1);
+    let curr = new Array(n + 1);
+    for (let j = 0; j <= n; j++) prev[j] = j;
+
+    for (let i = 1; i <= m; i++) {
+      curr[0] = i;
+      let rowMin = curr[0];
+      for (let j = 1; j <= n; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+        if (curr[j] < rowMin) rowMin = curr[j];
+      }
+      // Early termination: if minimum in this row already exceeds maxDist, no point continuing
+      if (rowMin > maxDist) return maxDist + 1;
+      [prev, curr] = [curr, prev];
+    }
+    return prev[n];
   }
 
   /**

@@ -11,6 +11,7 @@ export interface FactMeta {
   userId: string;
   scope: string;
   source: 'manual' | 'llm_extract';
+  normalizedContent: string;
   firstSeen: number;
   lastReinforced: number;
   reinforceCount: number;
@@ -74,8 +75,8 @@ export class MemoryFactMetaService {
     this.db
       .query(
         `INSERT OR IGNORE INTO memory_fact_meta
-        (id, factHash, groupId, userId, scope, source, firstSeen, lastReinforced, reinforceCount, hitCount, status, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'active', ?, ?)`,
+        (id, factHash, groupId, userId, scope, source, normalizedContent, firstSeen, lastReinforced, reinforceCount, hitCount, status, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'active', ?, ?)`,
       )
       .run(
         crypto.randomUUID(),
@@ -84,6 +85,7 @@ export class MemoryFactMetaService {
         meta.userId,
         meta.scope,
         meta.source,
+        meta.normalizedContent,
         meta.firstSeen,
         meta.lastReinforced,
         meta.reinforceCount,
@@ -138,6 +140,61 @@ export class MemoryFactMetaService {
       .run(new Date().toISOString(), ...factHashes);
   }
 
+  // ─── Batch queries ───
+
+  /**
+   * Get fact metadata for a list of hashes (for quality scoring during retrieval).
+   */
+  getFactMetaByHashes(hashes: string[]): Map<string, FactMeta> {
+    if (hashes.length === 0) return new Map();
+    const placeholders = hashes.map(() => '?').join(',');
+    const rows = this.db
+      .query(`SELECT * FROM memory_fact_meta WHERE factHash IN (${placeholders})`)
+      .all(...hashes) as FactMeta[];
+    const map = new Map<string, FactMeta>();
+    for (const row of rows) map.set(row.factHash, row);
+    return map;
+  }
+
+  /**
+   * Get all facts for a group (for status/overview API).
+   */
+  getAllFactsForGroup(groupId: string): FactMeta[] {
+    return this.db
+      .query('SELECT * FROM memory_fact_meta WHERE groupId = ?')
+      .all(groupId) as FactMeta[];
+  }
+
+  /**
+   * Get summary stats across all groups.
+   */
+  getGlobalStats(): { totalFacts: number; activeFacts: number; staleFacts: number; manualFacts: number; autoFacts: number } {
+    const total = (this.db.query('SELECT COUNT(*) as c FROM memory_fact_meta').get() as { c: number }).c;
+    const active = (this.db.query("SELECT COUNT(*) as c FROM memory_fact_meta WHERE status = 'active'").get() as { c: number }).c;
+    const stale = (this.db.query("SELECT COUNT(*) as c FROM memory_fact_meta WHERE status = 'stale'").get() as { c: number }).c;
+    const manual = (this.db.query("SELECT COUNT(*) as c FROM memory_fact_meta WHERE source = 'manual'").get() as { c: number }).c;
+    const auto = (this.db.query("SELECT COUNT(*) as c FROM memory_fact_meta WHERE source = 'llm_extract'").get() as { c: number }).c;
+    return { totalFacts: total, activeFacts: active, staleFacts: stale, manualFacts: manual, autoFacts: auto };
+  }
+
+  /**
+   * Get per-group summary stats.
+   */
+  getGroupStats(): Array<{ groupId: string; totalFacts: number; activeFacts: number; staleFacts: number; manualFacts: number; autoFacts: number; userCount: number }> {
+    const rows = this.db.query(`
+      SELECT groupId,
+        COUNT(*) as totalFacts,
+        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as activeFacts,
+        SUM(CASE WHEN status = 'stale' THEN 1 ELSE 0 END) as staleFacts,
+        SUM(CASE WHEN source = 'manual' THEN 1 ELSE 0 END) as manualFacts,
+        SUM(CASE WHEN source = 'llm_extract' THEN 1 ELSE 0 END) as autoFacts,
+        COUNT(DISTINCT userId) as userCount
+      FROM memory_fact_meta
+      GROUP BY groupId
+    `).all() as Array<{ groupId: string; totalFacts: number; activeFacts: number; staleFacts: number; manualFacts: number; autoFacts: number; userCount: number }>;
+    return rows;
+  }
+
   // ─── Cleanup queries ───
 
   /**
@@ -167,6 +224,27 @@ export class MemoryFactMetaService {
   }
 
   /**
+   * Upgrade source from llm_extract to manual if a matching hash exists.
+   * Returns true if an upgrade happened.
+   */
+  upgradeSource(factHash: string): boolean {
+    const existing = this.db.query(
+      "SELECT * FROM memory_fact_meta WHERE factHash = ? AND source = 'llm_extract'",
+    ).get(factHash) as FactMeta | null;
+    if (!existing) return false;
+
+    this.db
+      .query(
+        `UPDATE memory_fact_meta
+      SET source = 'manual', reinforceCount = reinforceCount + 1, lastReinforced = ?, updatedAt = ?
+      WHERE factHash = ?`,
+      )
+      .run(Date.now(), new Date().toISOString(), factHash);
+    logger.debug(`[MemoryFactMetaService] Upgraded source to manual for ${factHash.slice(0, 8)}`);
+    return true;
+  }
+
+  /**
    * Batch delete by fact hashes.
    */
   deleteMany(factHashes: string[]): void {
@@ -178,7 +256,7 @@ export class MemoryFactMetaService {
   /**
    * Migrate metadata from old hash to new hash (for content rewrites).
    */
-  migrateFact(oldHash: string, newHash: string, newScope: string): void {
+  migrateFact(oldHash: string, newHash: string, newScope: string, newNormalizedContent: string): void {
     const old = this.db.query('SELECT * FROM memory_fact_meta WHERE factHash = ?').get(oldHash) as FactMeta | null;
     if (!old) return;
 
@@ -186,8 +264,8 @@ export class MemoryFactMetaService {
     this.db
       .query(
         `INSERT OR REPLACE INTO memory_fact_meta
-        (id, factHash, groupId, userId, scope, source, firstSeen, lastReinforced, reinforceCount, hitCount, status, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+        (id, factHash, groupId, userId, scope, source, normalizedContent, firstSeen, lastReinforced, reinforceCount, hitCount, status, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
       )
       .run(
         crypto.randomUUID(),
@@ -196,6 +274,7 @@ export class MemoryFactMetaService {
         old.userId,
         newScope,
         old.source,
+        newNormalizedContent,
         old.firstSeen,
         Date.now(),
         old.reinforceCount + 1,

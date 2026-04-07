@@ -1,4 +1,4 @@
-import { getFileApiBase, getInsightsApiBase, getMomentsApiBase, getQdrantApiBase, getReportApiBase, getStatsApiBase, getZhihuApiBase } from './config'
+import { getFileApiBase, getInsightsApiBase, getMemoryApiBase, getMomentsApiBase, getQdrantApiBase, getReportApiBase, getStatsApiBase, getZhihuApiBase } from './config'
 import type {
   BehaviorResponse,
   ClustersResponse,
@@ -20,6 +20,8 @@ import type {
   ZhihuContentDetailResponse,
   DailyStatsResponse,
   StatsDateListResponse,
+  MemoryGroupDetail,
+  MemoryUserFactDetail,
   ZhihuContentsResponse,
   ZhihuStatsResponse,
 } from './types'
@@ -370,4 +372,48 @@ export async function getStatsDates(): Promise<StatsDateListResponse> {
     throw new Error(err.error ?? `Get stats dates failed: ${res.status}`)
   }
   return res.json() as Promise<StatsDateListResponse>
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Memory Status API
+// ────────────────────────────────────────────────────────────────────────────
+
+function memoryApiBase(): string {
+  return getMemoryApiBase()
+}
+
+export async function getMemoryStats(): Promise<{ stats: import('./types').MemoryGlobalStats }> {
+  const res = await fetch(`${memoryApiBase()}/stats`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get memory stats failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function getMemoryGroups(): Promise<{ groups: import('./types').MemoryGroupStats[] }> {
+  const res = await fetch(`${memoryApiBase()}/groups`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get memory groups failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function getMemoryGroupDetail(groupId: string): Promise<MemoryGroupDetail> {
+  const res = await fetch(`${memoryApiBase()}/group/${encodeURIComponent(groupId)}`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get memory group detail failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function getMemoryUserFacts(groupId: string, userId: string): Promise<MemoryUserFactDetail> {
+  const res = await fetch(`${memoryApiBase()}/group/${encodeURIComponent(groupId)}/user/${encodeURIComponent(userId)}`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Get memory user facts failed: ${res.status}`)
+  }
+  return res.json()
 }

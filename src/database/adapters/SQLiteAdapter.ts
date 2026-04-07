@@ -391,6 +391,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
         userId TEXT NOT NULL,
         scope TEXT NOT NULL,
         source TEXT NOT NULL CHECK(source IN ('manual', 'llm_extract')),
+        normalizedContent TEXT NOT NULL DEFAULT '',
         firstSeen INTEGER NOT NULL,
         lastReinforced INTEGER NOT NULL,
         reinforceCount INTEGER NOT NULL DEFAULT 1,
@@ -458,6 +459,20 @@ export class SQLiteAdapter implements DatabaseAdapter {
       }
     } catch (error) {
       logger.warn(`[SQLiteAdapter] Failed to add agenda action columns: ${error}`);
+    }
+
+    // Add normalizedContent column to memory_fact_meta if it doesn't exist (migration)
+    try {
+      const metaInfo = this.db.query(`PRAGMA table_info(memory_fact_meta)`).all() as Array<{ name: string }>;
+      if (Array.isArray(metaInfo)) {
+        const cols = new Set(metaInfo.map((c) => c.name));
+        if (!cols.has('normalizedContent')) {
+          this.db.run(`ALTER TABLE memory_fact_meta ADD COLUMN normalizedContent TEXT NOT NULL DEFAULT ''`);
+          logger.info('[SQLiteAdapter] Added normalizedContent column to memory_fact_meta');
+        }
+      }
+    } catch (error) {
+      logger.warn(`[SQLiteAdapter] Failed to add normalizedContent column: ${error}`);
     }
 
     // Create indexes AFTER ensuring messageSeq column exists

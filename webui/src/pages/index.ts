@@ -4,6 +4,7 @@
 
 export { DailyStatsPage } from './DailyStatsPage'
 export { FilesPage } from './FilesPage'
+export { MemoryStatusPage } from './MemoryStatusPage'
 export { InsightsPage } from './InsightsPage'
 export { MomentsPage } from './MomentsPage'
 export { QdrantExplorerPage } from './QdrantExplorerPage'

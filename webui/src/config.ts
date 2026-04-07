@@ -66,3 +66,9 @@ export function getStatsApiBase(): string {
   const serverBase = getStaticServerBase();
   return serverBase ? `${serverBase}/api/stats` : '/api/stats';
 }
+
+/** Base URL for Memory Status API requests. */
+export function getMemoryApiBase(): string {
+  const serverBase = getStaticServerBase();
+  return serverBase ? `${serverBase}/api/memory` : '/api/memory';
+}
