@@ -6,9 +6,8 @@
  * moments-tag.ts, moments-sentiment.ts, moments-ner.ts, etc.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import * as JSONC from 'jsonc-parser';
 
 // ============================================================================
 // Types

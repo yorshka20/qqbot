@@ -18,20 +18,38 @@
  *   # Apply previewed changes
  *   bun scripts/migration/cleanup-memory-with-llm.ts apply <groupId> [userId]
  *
- * Environment:
- *   LLM_API_URL    - OpenAI-compatible API endpoint (required)
- *   LLM_API_KEY    - API key (required)
- *   LLM_MODEL      - Model name (default: deepseek-chat)
+ * Options:
+ *   --provider <key>  - Provider key in config (default: deepseek)
+ *   --model <name>    - Override model name
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { loadConfig, resolveLLMConnection } from '../lib/moments-common';
 
 const MEMORY_DIR = process.env.MEMORY_DIR || 'data/memory';
 const PREVIEW_DIR = 'data/memory_cleanup_preview';
-const LLM_API_URL = process.env.LLM_API_URL;
-const LLM_API_KEY = process.env.LLM_API_KEY;
-const LLM_MODEL = process.env.LLM_MODEL || 'deepseek-chat';
+
+// Parse --provider and --model from argv
+function parseLLMArgs(): { provider: string; model?: string } {
+  const args = process.argv.slice(2);
+  let provider = 'deepseek';
+  let model: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--provider' && args[i + 1]) {
+      provider = args[i + 1];
+      i++;
+    } else if (args[i] === '--model' && args[i + 1]) {
+      model = args[i + 1];
+      i++;
+    }
+  }
+  return { provider, model };
+}
+
+const llmArgs = parseLLMArgs();
+const config = loadConfig();
+const llmConn = resolveLLMConnection(config, llmArgs.provider, llmArgs.model);
 
 const CLEANUP_PROMPT = `你是一个记忆整理助手。以下是一个用户/群组的现有记忆，请执行以下操作：
 
@@ -47,19 +65,25 @@ const CLEANUP_PROMPT = `你是一个记忆整理助手。以下是一个用户/�
 
 输出格式与输入相同：[scope] 开头，每个 scope 一段。`;
 
-async function callLLM(content: string): Promise<string> {
-  if (!LLM_API_URL || !LLM_API_KEY) {
-    throw new Error('LLM_API_URL and LLM_API_KEY environment variables are required');
+async function callCleanupLLM(content: string): Promise<string> {
+  // Build endpoint URL (same logic as moments-common callOpenAICompatibleAPI)
+  let endpoint: string;
+  if (llmConn.baseUrl.match(/\/v\d+$/)) {
+    endpoint = `${llmConn.baseUrl}/chat/completions`;
+  } else {
+    endpoint = `${llmConn.baseUrl}/v1/chat/completions`;
   }
 
-  const response = await fetch(`${LLM_API_URL}/chat/completions`, {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (llmConn.apiKey) {
+    headers.Authorization = `Bearer ${llmConn.apiKey}`;
+  }
+
+  const response = await fetch(endpoint, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${LLM_API_KEY}`,
-    },
+    headers,
     body: JSON.stringify({
-      model: LLM_MODEL,
+      model: llmConn.model,
       messages: [
         { role: 'system', content: CLEANUP_PROMPT },
         { role: 'user', content },
@@ -109,7 +133,7 @@ async function previewOne(groupId: string, userId: string): Promise<void> {
   }
 
   console.log(`  Processing: ${autoPath} (${content.length} chars)...`);
-  const cleaned = await callLLM(content);
+  const cleaned = await callCleanupLLM(content);
 
   const previewPath = getPreviewPath(groupId, userId);
   mkdirSync(join(previewPath, '..'), { recursive: true });

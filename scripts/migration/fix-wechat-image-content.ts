@@ -8,9 +8,8 @@
  */
 
 import { Database } from 'bun:sqlite';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parse as parseJsonc } from 'jsonc-parser';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 const DB_PATH = resolve('data/wechat.db');

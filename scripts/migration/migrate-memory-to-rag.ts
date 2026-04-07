@@ -27,8 +27,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, extname, join } from 'node:path';
-import * as JSONC from 'jsonc-parser';
+import { dirname, join } from 'node:path';
 import { v5 as uuidv5 } from 'uuid';
 
 // ============================================================================
