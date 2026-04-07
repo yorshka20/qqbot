@@ -1,6 +1,6 @@
 // Discord API converter - converts unified API actions to discord.js method calls
 
-import type { Client, TextChannel } from 'discord.js';
+import { AttachmentBuilder, type Client, type TextChannel } from 'discord.js';
 import { logger } from '@/utils/logger';
 import { segmentsToDiscordMessage } from './DiscordSegmentConverter';
 
@@ -35,6 +35,12 @@ export async function executeDiscordAPI(
     case 'get_user_info':
     case 'get_stranger_info':
       return await getUserInfo(client, params);
+
+    case 'upload_group_file':
+      return await uploadChannelFile(client, params);
+
+    case 'upload_private_file':
+      return await uploadPrivateFile(client, params);
 
     default:
       logger.warn(`[DiscordAPIConverter] Unsupported action: ${action}`);
@@ -137,6 +143,45 @@ async function getUserInfo(client: Client, params: Record<string, unknown>): Pro
     user_id: user.id,
     nickname: user.displayName ?? user.username,
   };
+}
+
+function buildFileAttachment(params: Record<string, unknown>): AttachmentBuilder {
+  const fileUri = String(params.file_uri ?? '');
+  const fileName = String(params.file_name ?? 'file');
+
+  if (fileUri.startsWith('base64://')) {
+    const base64Data = fileUri.slice('base64://'.length);
+    const buffer = Buffer.from(base64Data, 'base64');
+    return new AttachmentBuilder(buffer, { name: fileName });
+  }
+
+  // file:// or http:// URLs
+  const path = fileUri.startsWith('file://') ? fileUri.slice('file://'.length) : fileUri;
+  return new AttachmentBuilder(path, { name: fileName });
+}
+
+async function uploadChannelFile(client: Client, params: Record<string, unknown>): Promise<{ file_id: string }> {
+  const channelId = String(params.group_id ?? '');
+  const channel = await client.channels.fetch(channelId);
+  if (!channel || !('send' in channel)) {
+    throw new Error(`Channel ${channelId} not found or is not a text channel`);
+  }
+
+  const attachment = buildFileAttachment(params);
+  const sentMessage = await (channel as TextChannel).send({ files: [attachment] });
+  return { file_id: sentMessage.id };
+}
+
+async function uploadPrivateFile(client: Client, params: Record<string, unknown>): Promise<{ file_id: string }> {
+  const userId = String(params.user_id ?? '');
+  const user = await client.users.fetch(userId);
+  if (!user) {
+    throw new Error(`User ${userId} not found`);
+  }
+
+  const attachment = buildFileAttachment(params);
+  const sentMessage = await user.send({ files: [attachment] });
+  return { file_id: sentMessage.id };
 }
 
 function buildMessageContent(params: Record<string, unknown>): ReturnType<typeof segmentsToDiscordMessage> {

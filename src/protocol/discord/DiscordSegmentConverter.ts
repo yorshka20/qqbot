@@ -99,11 +99,18 @@ export function segmentsToDiscordMessage(segments: MessageSegment[]): {
           content += `[audio: ${segment.data.uri}]`;
         }
         break;
-      case 'file':
-        if (segment.data.uri) {
-          content += segment.data.uri;
+      case 'file': {
+        const fileUri = segment.data.uri;
+        const fileName = segment.data.file_name ?? `file_${files.length}`;
+        if (fileUri?.startsWith('base64://')) {
+          const base64Data = fileUri.slice('base64://'.length);
+          const buffer = Buffer.from(base64Data, 'base64');
+          files.push(new AttachmentBuilder(buffer, { name: fileName }));
+        } else if (fileUri) {
+          files.push(new AttachmentBuilder(fileUri, { name: fileName }));
         }
         break;
+      }
     }
   }
 
