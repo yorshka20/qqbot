@@ -371,6 +371,54 @@ export class MessageAPI {
   }
 
   /**
+   * Upload a file to a group or private chat via Milky protocol file upload API.
+   * @param fileUri - File URI (file://, http(s)://, base64://)
+   * @param fileName - Display name for the uploaded file
+   * @param context - CommandContext or NormalizedMessageEvent to determine target
+   * @param timeout - Upload timeout (default: 60000ms)
+   * @returns file_id from the upload response
+   */
+  async uploadFile(
+    fileUri: string,
+    fileName: string,
+    context: CommandContext | NormalizedMessageEvent,
+    timeout = 60000,
+  ): Promise<string> {
+    const protocol = this.extractProtocol(context);
+
+    if (context.messageType === 'group' && context.groupId) {
+      const result = await this.apiClient.call<{ file_id: string }>(
+        'upload_group_file',
+        {
+          group_id: context.groupId,
+          parent_folder_id: '/',
+          file_uri: fileUri,
+          file_name: fileName,
+        },
+        protocol,
+        timeout,
+      );
+      return result.file_id;
+    }
+
+    if (context.messageType === 'private') {
+      const result = await this.apiClient.call<{ file_id: string }>(
+        'upload_private_file',
+        {
+          user_id: context.userId,
+          file_uri: fileUri,
+          file_name: fileName,
+        },
+        protocol,
+        timeout,
+      );
+      return result.file_id;
+    }
+
+    throw new Error('Unable to determine message type from context for file upload');
+  }
+
+  /**
    * Build NormalizedMessageEvent from a DB Message. Single place for this conversion so we don't duplicate
    * the same logic in two call sites (cache hit with image → prefer DB for bot reply, and cache miss → load from DB).
    * Bot reply: never uses rawContent for segments so referenced card shows cardText only.

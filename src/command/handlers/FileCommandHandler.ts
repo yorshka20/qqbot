@@ -1,12 +1,15 @@
-// File command handlers - ls and cat for project root file access
+// File command handlers - ls, cat, and fetch for project root file access
 
+import { statSync } from 'node:fs';
 import { basename } from 'node:path';
 import { inject, injectable } from 'tsyringe';
+import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { InfoCardData } from '@/services/card';
 import { CardRenderer } from '@/services/card';
 import type { FileReadService } from '@/services/file';
+import { logger } from '@/utils/logger';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
@@ -121,5 +124,69 @@ export class CatCommand implements CommandHandler {
       success: true,
       segments: messageBuilder.build(),
     };
+  }
+}
+
+/**
+ * Fetch command - send a file from project root via QQ file upload API
+ */
+@Command({
+  name: 'fetch',
+  description: 'Send a file from project root via QQ (Milky protocol upload API)',
+  usage: '/fetch <path>',
+  permissions: ['admin'],
+})
+@injectable()
+export class FetchCommand implements CommandHandler {
+  name = 'fetch';
+  description = 'Send a file from project root via QQ (Milky protocol upload API)';
+  usage = '/fetch <path>';
+
+  constructor(
+    @inject(DITokens.FILE_READ_SERVICE) private fileReadService: FileReadService,
+    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
+  ) {}
+
+  async execute(args: string[], context: CommandContext): Promise<CommandResult> {
+    const path = args.join(' ').trim();
+    if (!path) {
+      return {
+        success: false,
+        error: '请提供文件路径，例如: /fetch data/report.csv',
+      };
+    }
+
+    // Resolve path (admin privilege bypass)
+    const noCheck = !!context.metadata.isPrivileged;
+    const { resolved, error } = this.fileReadService.resolvePath(path, noCheck);
+    if (error) {
+      return { success: false, error };
+    }
+
+    // Verify file exists
+    try {
+      const stat = statSync(resolved);
+      if (!stat.isFile()) {
+        return { success: false, error: '路径不是文件' };
+      }
+    } catch {
+      return { success: false, error: '文件不存在' };
+    }
+
+    const fileName = basename(resolved);
+    const fileUri = `file://${resolved}`;
+
+    try {
+      await this.messageAPI.uploadFile(fileUri, fileName, context);
+
+      logger.info(`[FetchCommand] File uploaded | path=${path} | fileName=${fileName}`);
+      const messageBuilder = new MessageBuilder();
+      messageBuilder.text(`✅ 文件已发送: ${fileName}`);
+      return { success: true, segments: messageBuilder.build() };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[FetchCommand] File upload failed | path=${path} | error=${msg}`);
+      return { success: false, error: `文件发送失败: ${msg}` };
+    }
   }
 }
