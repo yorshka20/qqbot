@@ -1,14 +1,10 @@
 /**
- * Static file server service: output directory hosting + file manager backend (API + SPA).
+ * Static file server service: output directory hosting + API backends.
  */
 
 import type { StaticServerConfig } from '@/core/config/types/bot';
 import { StaticFileServer } from './StaticFileServer';
 
-export { FileManagerBackend } from './FileManagerBackend';
-export { OutputStaticHost } from './OutputStaticHost';
-export { resolveSafe } from './pathSafety';
-export { ReportBackend } from './ReportBackend';
 export type { StaticFileServerInstance } from './StaticFileServer';
 export { StaticFileServer } from './StaticFileServer';
 

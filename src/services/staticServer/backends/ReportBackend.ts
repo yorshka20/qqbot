@@ -11,6 +11,8 @@ import { resolve } from 'node:path';
 import { getContainer } from '@/core/DIContainer';
 import { type ReportFile, type ReportMetadata, WechatDITokens, type WechatReportService } from '@/services/wechat';
 import { logger } from '@/utils/logger';
+import type { Backend } from './types';
+import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/reports';
 
@@ -43,35 +45,22 @@ export interface ReportDetailResponse {
   metadata: ReportMetadata;
 }
 
-/** Error payload */
-export interface ErrorResponse {
-  error: string;
-}
-
 // ---------------------------------------------------------------------------
 // HTTP helpers
 // ---------------------------------------------------------------------------
 
-const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
 const TEXT_HEADERS = { 'Content-Type': 'text/plain; charset=utf-8' } as const;
-
-function jsonResponse<T extends object>(data: T, status = 200): Response {
-  return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
-}
 
 function textResponse(text: string, status = 200): Response {
   return new Response(text, { status, headers: TEXT_HEADERS });
-}
-
-function errorResponse(message: string, status: number): Response {
-  return jsonResponse<ErrorResponse>({ error: message }, status);
 }
 
 // ---------------------------------------------------------------------------
 // ReportBackend
 // ---------------------------------------------------------------------------
 
-export class ReportBackend {
+export class ReportBackend implements Backend {
+  readonly prefix = API_PREFIX;
   private reportService: WechatReportService | null = null;
 
   constructor() {

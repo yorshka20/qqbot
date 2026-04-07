@@ -23,6 +23,8 @@ import type { RetrievalService } from '@/services/retrieval';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { WeChatDatabase } from '@/services/wechat/WeChatDatabase';
 import { logger } from '@/utils/logger';
+import type { Backend } from './types';
+import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/moments';
 const COLLECTION = 'wechat_moments';
@@ -122,24 +124,6 @@ export interface ClustersResponse {
   clusteredCount: number;
 }
 
-interface ErrorResponse {
-  error: string;
-}
-
-// ---------------------------------------------------------------------------
-// HTTP helpers
-// ---------------------------------------------------------------------------
-
-const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
-
-function jsonResponse<T extends object>(data: T, status = 200): Response {
-  return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
-}
-
-function errorResponse(message: string, status: number): Response {
-  return jsonResponse<ErrorResponse>({ error: message }, status);
-}
-
 // ---------------------------------------------------------------------------
 // Payload → MomentItem
 // ---------------------------------------------------------------------------
@@ -162,7 +146,8 @@ function payloadToMomentItem(id: string | number, payload: Record<string, unknow
 // MomentsBackend
 // ---------------------------------------------------------------------------
 
-export class MomentsBackend {
+export class MomentsBackend implements Backend {
+  readonly prefix = API_PREFIX;
   private retrieval: RetrievalService | null = null;
   private db: WeChatDatabase | null = null;
 

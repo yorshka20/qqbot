@@ -11,6 +11,8 @@ import { getContainer } from '@/core/DIContainer';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { WeChatArticleInsightRow, WeChatDatabase } from '@/services/wechat/WeChatDatabase';
 import { logger } from '@/utils/logger';
+import type { Backend } from './types';
+import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/insights';
 
@@ -68,24 +70,6 @@ export interface InsightStatsResponse {
   stats: InsightStats;
 }
 
-interface ErrorResponse {
-  error: string;
-}
-
-// ---------------------------------------------------------------------------
-// HTTP helpers
-// ---------------------------------------------------------------------------
-
-const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
-
-function jsonResponse<T extends object>(data: T, status = 200): Response {
-  return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
-}
-
-function errorResponse(message: string, status: number): Response {
-  return jsonResponse<ErrorResponse>({ error: message }, status);
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -133,7 +117,8 @@ function rowToDetail(row: WeChatArticleInsightRow): InsightDetail {
 // InsightsBackend
 // ---------------------------------------------------------------------------
 
-export class InsightsBackend {
+export class InsightsBackend implements Backend {
+  readonly prefix = API_PREFIX;
   private db: WeChatDatabase | null = null;
 
   private getDB(): WeChatDatabase | null {

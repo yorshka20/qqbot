@@ -12,28 +12,17 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { RetrievalService } from '@/services/retrieval';
 import { logger } from '@/utils/logger';
+import type { Backend } from './types';
+import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/qdrant';
-
-// ---------------------------------------------------------------------------
-// HTTP helpers
-// ---------------------------------------------------------------------------
-
-const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
-
-function jsonResponse<T extends object>(data: T, status = 200): Response {
-  return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
-}
-
-function errorResponse(message: string, status: number): Response {
-  return jsonResponse({ error: message }, status);
-}
 
 // ---------------------------------------------------------------------------
 // QdrantExplorerBackend
 // ---------------------------------------------------------------------------
 
-export class QdrantExplorerBackend {
+export class QdrantExplorerBackend implements Backend {
+  readonly prefix = API_PREFIX;
   private retrieval: RetrievalService | null = null;
 
   private getRetrieval(): RetrievalService | null {

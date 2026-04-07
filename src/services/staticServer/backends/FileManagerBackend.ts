@@ -13,6 +13,8 @@ import { readdir, rename, rmdir, stat, unlink } from 'fs/promises';
 import { dirname, join, relative, resolve } from 'path';
 import { logger } from '@/utils/logger';
 import { resolveSafe } from './pathSafety';
+import type { Backend } from './types';
+import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/files';
 
@@ -60,18 +62,6 @@ export interface ErrorResponse {
 // ---------------------------------------------------------------------------
 // HTTP helpers
 // ---------------------------------------------------------------------------
-
-const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
-
-/** Build a JSON response with given status (default 200). */
-function jsonResponse<T extends object>(data: T, status = 200): Response {
-  return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
-}
-
-/** Build a JSON error response { error: message } with given HTTP status. */
-function errorResponse(message: string, status: number): Response {
-  return jsonResponse<ErrorResponse>({ error: message }, status);
-}
 
 /** 204 No Content — used for successful delete / move / rename with no body. */
 function noContent(): Response {
@@ -164,7 +154,8 @@ interface Route {
   handler: Handler;
 }
 
-export class FileManagerBackend {
+export class FileManagerBackend implements Backend {
+  readonly prefix = API_PREFIX;
   private readonly baseDir: string;
   /** Route table: first matching (method, path) wins. */
   private readonly routes: Route[];

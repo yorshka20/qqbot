@@ -16,6 +16,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { logger } from '@/utils/logger';
+import type { Backend } from './types';
+import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/stats';
 
@@ -69,24 +71,6 @@ export interface DailyStats {
   topGroups: GroupActivity[];
   recentErrors: ErrorEntry[];
   logFileCount: number;
-}
-
-interface ErrorResponse {
-  error: string;
-}
-
-// ---------------------------------------------------------------------------
-// HTTP helpers
-// ---------------------------------------------------------------------------
-
-const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
-
-function jsonResponse<T extends object>(data: T, status = 200): Response {
-  return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
-}
-
-function errorResponse(message: string, status: number): Response {
-  return jsonResponse<ErrorResponse>({ error: message }, status);
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +264,8 @@ function getAvailableDates(logsDir: string): string[] {
 // DailyStatsBackend
 // ---------------------------------------------------------------------------
 
-export class DailyStatsBackend {
+export class DailyStatsBackend implements Backend {
+  readonly prefix = API_PREFIX;
   private readonly logsDir: string;
 
   constructor() {

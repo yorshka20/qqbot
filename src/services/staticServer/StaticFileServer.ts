@@ -1,24 +1,15 @@
 /**
- * Static file server with clear routing structure.
+ * Static file server with prefix-based routing.
  *
- * Routes:
- * - /api/files/*    → FileManagerBackend (file operations)
- * - /api/reports/*  → ReportBackend (report API)
- * - /output/*       → OutputStaticHost (static file serving)
+ * Backends are registered via the Backend interface — each provides a prefix
+ * and a handle() method. See backends/index.ts for the registry.
  */
 
 import { resolve } from 'node:path';
 import { serve } from 'bun';
 import type { StaticServerConfig } from '@/core/config/types/bot';
 import { logger } from '@/utils/logger';
-import { DailyStatsBackend } from './DailyStatsBackend';
-import { FileManagerBackend } from './FileManagerBackend';
-import { InsightsBackend } from './InsightsBackend';
-import { MomentsBackend } from './MomentsBackend';
-import { OutputStaticHost } from './OutputStaticHost';
-import { QdrantExplorerBackend } from './QdrantExplorerBackend';
-import { ReportBackend } from './ReportBackend';
-import { ZhihuBackend } from './ZhihuBackend';
+import { type Backend, createBackends } from './backends';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -29,16 +20,6 @@ export type StaticFileServerInstance = {
   getFileURL(relativePath: string): string;
   stop(): void;
 };
-
-/** Route handler that returns Response or null if not matched */
-type RouteHandler = (req: Request, url: URL) => Promise<Response | null> | Response | null;
-
-/** Route definition with prefix matching */
-interface Route {
-  prefix: string;
-  handler: RouteHandler;
-  corsEnabled?: boolean;
-}
 
 // ────────────────────────────────────────────────────────────────────────────
 // CORS
@@ -73,107 +54,37 @@ export class StaticFileServer implements StaticFileServerInstance {
   private server: ReturnType<typeof serve> | null = null;
   private baseURL = '';
 
-  // Backends
-  private readonly fileManager: FileManagerBackend;
-  private readonly reportBackend: ReportBackend;
-  private readonly insightsBackend: InsightsBackend;
-  private readonly momentsBackend: MomentsBackend;
-  private readonly zhihuBackend: ZhihuBackend;
-  private readonly qdrantExplorerBackend: QdrantExplorerBackend;
-  private readonly dailyStatsBackend: DailyStatsBackend;
-  private readonly outputHost: OutputStaticHost;
-
-  // Routes (evaluated in order)
-  private readonly routes: Route[];
+  private readonly backends: Backend[];
 
   constructor(config: StaticServerConfig) {
     this.port = config.port;
     this.baseDir = resolve(config.root);
     this.hostIP = config.host;
-
-    // Initialize backends
-    this.fileManager = new FileManagerBackend(this.baseDir);
-    this.reportBackend = new ReportBackend();
-    this.insightsBackend = new InsightsBackend();
-    this.momentsBackend = new MomentsBackend();
-    this.zhihuBackend = new ZhihuBackend();
-    this.qdrantExplorerBackend = new QdrantExplorerBackend();
-    this.dailyStatsBackend = new DailyStatsBackend();
-    this.outputHost = new OutputStaticHost(this.baseDir);
-
-    // Define routes (order matters: more specific prefixes first)
-    this.routes = [
-      {
-        prefix: '/api/files',
-        handler: (req, url) => this.fileManager.handle(url.pathname, req),
-        corsEnabled: true,
-      },
-      {
-        prefix: '/api/reports',
-        handler: (req, url) => this.reportBackend.handle(url.pathname, req),
-        corsEnabled: true,
-      },
-      {
-        prefix: '/api/insights',
-        handler: (req, url) => this.insightsBackend.handle(url.pathname, req),
-        corsEnabled: true,
-      },
-      {
-        prefix: '/api/moments',
-        handler: (req, url) => this.momentsBackend.handle(url.pathname, req),
-        corsEnabled: true,
-      },
-      {
-        prefix: '/api/zhihu',
-        handler: (req, url) => this.zhihuBackend.handle(url.pathname, req),
-        corsEnabled: true,
-      },
-      {
-        prefix: '/api/qdrant',
-        handler: (req, url) => this.qdrantExplorerBackend.handle(url.pathname, req),
-        corsEnabled: true,
-      },
-      {
-        prefix: '/api/stats',
-        handler: (req, url) => this.dailyStatsBackend.handle(url.pathname, req),
-        corsEnabled: true,
-      },
-      {
-        prefix: '/output',
-        handler: (req, url) => this.outputHost.handle(url.pathname, req),
-        corsEnabled: true,
-      },
-    ];
+    this.backends = createBackends(this.baseDir);
   }
 
   // ──────────────────────────────────────────────────
   // Request handling
   // ──────────────────────────────────────────────────
 
-  /**
-   * Main request handler - matches routes and dispatches to backends.
-   */
   private async handleRequest(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const { pathname } = url;
 
-    // Find matching route
-    for (const route of this.routes) {
-      if (!pathname.startsWith(route.prefix)) continue;
+    for (const backend of this.backends) {
+      if (!pathname.startsWith(backend.prefix)) continue;
 
-      // Handle CORS preflight
-      if (req.method === 'OPTIONS' && route.corsEnabled) {
+      // CORS preflight
+      if (req.method === 'OPTIONS') {
         return corsPreflightResponse();
       }
 
-      // Dispatch to handler
-      const response = await route.handler(req, url);
+      const response = await backend.handle(pathname, req);
       if (response !== null) {
-        return route.corsEnabled ? withCors(response) : response;
+        return withCors(response);
       }
     }
 
-    // No route matched
     return withCors(new Response('Not Found', { status: 404 }));
   }
 
@@ -238,9 +149,6 @@ export class StaticFileServer implements StaticFileServerInstance {
     return this.baseURL;
   }
 
-  /**
-   * Get public URL for a file under the output directory.
-   */
   getFileURL(relativePath: string): string {
     const normalized = relativePath.replace(/\\/g, '/');
     return `${this.baseURL}/output/${normalized}`;
@@ -251,8 +159,8 @@ export class StaticFileServer implements StaticFileServerInstance {
   // ──────────────────────────────────────────────────
 
   private logStartup(): void {
-    const routeInfo = this.routes.map((r) => r.prefix).join(', ');
+    const prefixes = this.backends.map((b) => b.prefix).join(', ');
     logger.info(`[StaticFileServer] Started on ${this.baseURL}`);
-    logger.debug(`[StaticFileServer] Routes: ${routeInfo}`);
+    logger.debug(`[StaticFileServer] Routes: ${prefixes}`);
   }
 }

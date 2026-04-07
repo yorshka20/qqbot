@@ -13,6 +13,7 @@ import { stat } from 'fs/promises';
 import { extname, resolve } from 'path';
 import { logger } from '@/utils/logger';
 import { resolveSafe } from './pathSafety';
+import type { Backend } from './types';
 
 const OUTPUT_PREFIX = '/output/';
 
@@ -33,7 +34,8 @@ const CONTENT_TYPES: Record<string, string> = {
   '.txt': 'text/plain',
 };
 
-export class OutputStaticHost {
+export class OutputStaticHost implements Backend {
+  readonly prefix = '/output';
   private readonly baseDir: string;
 
   constructor(baseDir: string) {

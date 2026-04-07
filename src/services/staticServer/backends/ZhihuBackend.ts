@@ -12,6 +12,8 @@ import { ZhihuDITokens } from '@/services/zhihu/tokens';
 import type { ZhihuFeedItemRow } from '@/services/zhihu/types';
 import type { ZhihuDatabase } from '@/services/zhihu/ZhihuDatabase';
 import { logger } from '@/utils/logger';
+import type { Backend } from './types';
+import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/zhihu';
 
@@ -56,20 +58,6 @@ export interface ZhihuPageStats {
   feedByType: Array<{ targetType: string; count: number }>;
   feedByVerb: Array<{ verb: string; verbLabel: string; count: number }>;
   lastFetchTs: number;
-}
-
-// ---------------------------------------------------------------------------
-// HTTP helpers
-// ---------------------------------------------------------------------------
-
-const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
-
-function jsonResponse<T extends object>(data: T, status = 200): Response {
-  return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
-}
-
-function errorResponse(message: string, status: number): Response {
-  return jsonResponse({ error: message }, status);
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +133,8 @@ function feedRowToListItem(row: ZhihuFeedItemRow): ZhihuFeedListItem {
 // ZhihuBackend
 // ---------------------------------------------------------------------------
 
-export class ZhihuBackend {
+export class ZhihuBackend implements Backend {
+  readonly prefix = API_PREFIX;
   private db: ZhihuDatabase | null = null;
 
   private getDB(): ZhihuDatabase | null {
