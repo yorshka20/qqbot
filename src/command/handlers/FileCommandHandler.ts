@@ -1,6 +1,5 @@
 // File command handlers - ls, cat, and fetch for project root file access
 
-import { statSync } from 'node:fs';
 import { basename } from 'node:path';
 import { inject, injectable } from 'tsyringe';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
@@ -163,18 +162,14 @@ export class FetchCommand implements CommandHandler {
       return { success: false, error };
     }
 
-    // Verify file exists
-    try {
-      const stat = statSync(resolved);
-      if (!stat.isFile()) {
-        return { success: false, error: '路径不是文件' };
-      }
-    } catch {
-      return { success: false, error: '文件不存在' };
+    // Read file locally and encode to base64 (bot and Milky server are on different machines)
+    const binaryResult = this.fileReadService.readFileBinary(path, noCheck);
+    if (!binaryResult.success || !binaryResult.data) {
+      return { success: false, error: binaryResult.error ?? '文件读取失败' };
     }
 
     const fileName = basename(resolved);
-    const fileUri = `file://${resolved}`;
+    const fileUri = `base64://${binaryResult.data.toString('base64')}`;
 
     try {
       await this.messageAPI.uploadFile(fileUri, fileName, context);
