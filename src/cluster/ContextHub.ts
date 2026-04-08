@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Database } from 'bun:sqlite';
 import { logger } from '@/utils/logger';
+import type { ClusterAPIRouter } from './ClusterAPIRouter';
 import type { ClusterConfig } from './config';
 import { EventLog } from './EventLog';
 import { LockManager } from './LockManager';
@@ -49,6 +50,7 @@ export class ContextHub {
 
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
   private dispatchCallback: DispatchCallback | null = null;
+  private apiRouter: ClusterAPIRouter | null = null;
   private sseSubscribers = new Set<SSESubscriber>();
   private helpRequests = new Map<string, HelpRequest>();
 
@@ -62,6 +64,13 @@ export class ContextHub {
     this.workerRegistry = new WorkerRegistry();
 
     this.loadHelpRequests();
+  }
+
+  /**
+   * Set the API router for handling /api/cluster/* requests.
+   */
+  setAPIRouter(router: ClusterAPIRouter): void {
+    this.apiRouter = router;
   }
 
   /**
@@ -386,6 +395,12 @@ export class ContextHub {
     }
 
     try {
+      // Route /api/cluster/* to the API router (WebUI endpoints)
+      if (this.apiRouter && path.startsWith('/api/cluster')) {
+        const result = await this.apiRouter.handle(req, url, headers);
+        if (result) return result;
+      }
+
       // Extract worker ID from header
       const workerId = req.headers.get('X-Worker-Id') || 'unknown';
 

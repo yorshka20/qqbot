@@ -8,6 +8,7 @@
 import type { Database } from 'bun:sqlite';
 import { logger } from '@/utils/logger';
 import { ClaudeCliBackend } from './backends/ClaudeCliBackend';
+import { ClusterAPIRouter } from './ClusterAPIRouter';
 import type { ClusterConfig } from './config';
 import { ClusterScheduler } from './ClusterScheduler';
 import { ContextHub } from './ContextHub';
@@ -31,6 +32,10 @@ export class ClusterManager {
     this.hub = new ContextHub(config, db);
     this.workerPool = new WorkerPool(config, this.hub);
     this.scheduler = new ClusterScheduler(config, this.hub, this.workerPool, db, projectResolver);
+
+    // Wire API router
+    const apiRouter = new ClusterAPIRouter(this.hub, this.workerPool, this.scheduler);
+    this.hub.setAPIRouter(apiRouter);
 
     // Wire dispatch callback
     this.hub.setDispatchCallback(async (candidate) => {

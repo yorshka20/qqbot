@@ -2,6 +2,7 @@
  * Agent Cluster module — barrel export.
  */
 
+export { ClusterAPIRouter } from './ClusterAPIRouter';
 export { ClusterManager } from './ClusterManager';
 export { ClusterScheduler } from './ClusterScheduler';
 export { parseClusterConfig } from './config';
