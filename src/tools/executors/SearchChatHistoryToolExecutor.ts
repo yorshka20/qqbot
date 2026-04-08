@@ -9,9 +9,6 @@ import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
 
-/** Maximum messages to fetch from DB before filtering */
-const MAX_FETCH_LIMIT = 500;
-
 /** Maximum messages to return in results */
 const MAX_RESULTS = 50;
 
@@ -31,7 +28,7 @@ const MAX_RESULTS = 50;
       type: 'string',
       required: false,
       description:
-        '限制搜索的时间范围（从多久前开始）。格式: "-Xh"（X小时前）或 "-Xd"（X天前）。省略则搜索最近500条消息。',
+        '限制搜索的时间范围（从多久前开始）。格式: "-Xh"（X小时前）或 "-Xd"（X天前）。省略则搜索全部记录。',
     },
     includeBot: {
       type: 'boolean',
@@ -76,10 +73,10 @@ export class SearchChatHistoryToolExecutor extends BaseToolExecutor {
     const includeBot = call.parameters?.includeBot === true;
 
     // Determine time filter
-    let sinceTime: Date | null = null;
+    let sinceTime: Date | undefined;
     const timeRange = call.parameters?.timeRange;
     if (typeof timeRange === 'string' && timeRange.trim()) {
-      sinceTime = this.parseTimeRange(timeRange.trim());
+      sinceTime = this.parseTimeRange(timeRange.trim()) ?? undefined;
       if (!sinceTime) {
         return this.error(
           `无法解析时间范围: ${timeRange}。支持格式: "-Xh"（小时）, "-Xd"（天）`,
@@ -88,35 +85,19 @@ export class SearchChatHistoryToolExecutor extends BaseToolExecutor {
       }
     }
 
-    // Fetch messages
+    // Search using DB-level keyword matching
     const { sessionId } = normalizeGroupId(groupId);
-    const allMessages = await this.conversationHistoryService.getRecentMessagesForSession(
-      sessionId,
-      'group',
-      MAX_FETCH_LIMIT,
-    );
-
-    // Filter by time range, bot inclusion, and keyword
-    const lowerKeywords = keywords.map((k) => k.toLowerCase());
-    const filtered = allMessages.filter((msg) => {
-      if (sinceTime) {
-        const msgTime = msg.createdAt instanceof Date ? msg.createdAt.getTime() : new Date(msg.createdAt).getTime();
-        if (msgTime < sinceTime.getTime()) {
-          return false;
-        }
-      }
-      if (!includeBot && msg.isBotReply) {
-        return false;
-      }
-      const contentLower = msg.content.toLowerCase();
-      return lowerKeywords.every((kw) => contentLower.includes(kw));
+    const results = await this.conversationHistoryService.searchMessagesByKeyword(sessionId, 'group', keywords, {
+      since: sinceTime,
+      includeBot,
+      limit: MAX_RESULTS,
     });
 
     logger.info(
-      `[SearchChatHistory] keyword="${keyword}" timeRange=${timeRange ?? 'none'} total=${allMessages.length} matched=${filtered.length}`,
+      `[SearchChatHistory] keyword="${keyword}" timeRange=${timeRange ?? 'none'} matched=${results.length}`,
     );
 
-    if (filtered.length === 0) {
+    if (results.length === 0) {
       return this.success(`没有找到包含「${keyword}」的消息`, {
         groupId,
         keyword,
@@ -124,9 +105,6 @@ export class SearchChatHistoryToolExecutor extends BaseToolExecutor {
         messages: [],
       });
     }
-
-    // Take most recent results
-    const results = filtered.slice(-MAX_RESULTS);
 
     // Format output
     const messageSummary = results
@@ -139,7 +117,7 @@ export class SearchChatHistoryToolExecutor extends BaseToolExecutor {
 
     const reply = [
       `搜索关键词: ${keyword}`,
-      `匹配消息: ${filtered.length}条${filtered.length > MAX_RESULTS ? `（显示最近${MAX_RESULTS}条）` : ''}`,
+      `匹配消息: ${results.length}条${results.length >= MAX_RESULTS ? `（显示最近${MAX_RESULTS}条）` : ''}`,
       '',
       '=== 匹配消息 ===',
       messageSummary,
@@ -148,7 +126,7 @@ export class SearchChatHistoryToolExecutor extends BaseToolExecutor {
     return this.success(reply, {
       groupId,
       keyword,
-      messageCount: filtered.length,
+      messageCount: results.length,
       messages: results.map((m) => ({
         userId: m.userId,
         nickname: m.nickname,

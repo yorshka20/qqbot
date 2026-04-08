@@ -5,6 +5,7 @@ import type { ThreadService } from '@/conversation/thread';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
+import type { SQLiteAdapter } from '@/database/adapters/SQLiteAdapter';
 import type { Conversation, Message } from '@/database/models/types';
 import type { HookContext } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
@@ -513,5 +514,138 @@ export class ConversationHistoryService {
       logger.warn('[ConversationHistoryService] Failed to load session messages since time:', err);
       return [];
     }
+  }
+
+  /**
+   * Search messages by keyword(s) with optional time range, using DB-level LIKE queries.
+   * Returns messages whose plain-text content contains ALL given keywords (AND match).
+   * Uses raw SQL for efficient full-table keyword search instead of loading into memory.
+   */
+  async searchMessagesByKeyword(
+    sessionId: string,
+    sessionType: 'group' | 'user',
+    keywords: string[],
+    options?: {
+      since?: Date;
+      includeBot?: boolean;
+      limit?: number;
+    },
+  ): Promise<ConversationMessageEntry[]> {
+    const adapter = this.databaseManager.getAdapter();
+    if (!adapter?.isConnected()) {
+      return [];
+    }
+
+    const canonicalSessionId = normalizeSessionId(sessionId, sessionType);
+    const maxResults = options?.limit ?? 50;
+
+    try {
+      // Get conversation ID first
+      const conversations = adapter.getModel('conversations');
+      const conversation = await conversations.findOne({
+        sessionId: canonicalSessionId,
+        sessionType,
+      });
+      if (!conversation) {
+        return [];
+      }
+
+      // Use raw SQL for LIKE-based keyword search
+      const rawDb = (adapter as SQLiteAdapter).getRawDb?.();
+      if (!rawDb) {
+        // Fallback: load recent messages and filter client-side (for MongoDB or if getRawDb unavailable)
+        return this.searchMessagesByKeywordFallback(conversation.id, keywords, options);
+      }
+
+      // Build SQL with LIKE conditions for each keyword
+      const conditions: string[] = ['m.conversationId = ?'];
+      const params: (string | number)[] = [conversation.id];
+
+      // Keyword LIKE conditions on content field (plain text)
+      for (const kw of keywords) {
+        conditions.push('m.content LIKE ?');
+        params.push(`%${kw}%`);
+      }
+
+      // Time range filter
+      if (options?.since) {
+        conditions.push('m.createdAt >= ?');
+        params.push(options.since.toISOString());
+      }
+
+      // Exclude bot replies unless includeBot is true
+      if (!options?.includeBot) {
+        conditions.push("(m.metadata IS NULL OR m.metadata NOT LIKE '%\"isBotReply\":true%')");
+      }
+
+      const sql = `
+        SELECT m.* FROM messages m
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY m.createdAt ASC
+        LIMIT ?
+      `;
+      params.push(maxResults);
+
+      const rows = rawDb.query(sql).all(...params) as Record<string, unknown>[];
+
+      // Deserialize rows to Message objects and map to entries
+      return rows.map((row) => {
+        const msg = this.deserializeMessageRow(row);
+        return this.mapMessageToEntry(msg);
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.warn('[ConversationHistoryService] searchMessagesByKeyword failed:', err);
+      return [];
+    }
+  }
+
+  /** Fallback keyword search when raw SQL is not available (e.g. MongoDB). Loads recent messages and filters client-side. */
+  private async searchMessagesByKeywordFallback(
+    conversationId: string,
+    keywords: string[],
+    options?: { since?: Date; includeBot?: boolean; limit?: number },
+  ): Promise<ConversationMessageEntry[]> {
+    const adapter = this.databaseManager.getAdapter();
+    const messages = adapter.getModel('messages');
+    const limit = options?.limit ?? 50;
+
+    // Fetch a large chunk and filter client-side
+    const recent = await messages.find(
+      { conversationId } as Partial<Message>,
+      { orderBy: 'createdAt', order: 'desc', limit: 2000 },
+    );
+
+    const lowerKeywords = keywords.map((k) => k.toLowerCase());
+    const sinceTs = options?.since?.getTime();
+
+    const filtered = (recent as Message[]).filter((msg) => {
+      if (sinceTs && new Date(msg.createdAt).getTime() < sinceTs) return false;
+      if (!options?.includeBot && msg.metadata?.isBotReply) return false;
+      const contentLower = (msg.content ?? '').toLowerCase();
+      return lowerKeywords.every((kw) => contentLower.includes(kw));
+    });
+
+    // Sort ascending and take last N
+    filtered.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    return filtered.slice(-limit).map((m) => this.mapMessageToEntry(m));
+  }
+
+  /** Deserialize a raw SQLite row into a Message-like object (mirrors SQLiteModelAccessor.deserialize). */
+  private deserializeMessageRow(row: Record<string, unknown>): Message {
+    const result = { ...row } as Record<string, unknown>;
+    if (result.createdAt) result.createdAt = new Date(result.createdAt as string);
+    if (result.updatedAt) result.updatedAt = new Date(result.updatedAt as string);
+    // Parse JSON fields
+    for (const field of ['metadata', 'rawContent']) {
+      if (result[field] && typeof result[field] === 'string') {
+        try {
+          result[field] = JSON.parse(result[field] as string);
+        } catch {
+          // keep as string
+        }
+      }
+    }
+    return result as unknown as Message;
   }
 }

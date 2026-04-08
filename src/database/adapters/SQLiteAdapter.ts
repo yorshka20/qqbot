@@ -493,6 +493,8 @@ export class SQLiteAdapter implements DatabaseAdapter {
       `CREATE INDEX IF NOT EXISTS idx_memory_fact_meta_status ON memory_fact_meta(status)`,
       `CREATE INDEX IF NOT EXISTS idx_memory_fact_meta_fact_hash ON memory_fact_meta(factHash)`,
       `CREATE INDEX IF NOT EXISTS idx_memory_fact_meta_source ON memory_fact_meta(source)`,
+      `CREATE INDEX IF NOT EXISTS idx_messages_createdAt ON messages(createdAt)`,
+      `CREATE INDEX IF NOT EXISTS idx_messages_conversationId_createdAt ON messages(conversationId, createdAt)`,
     ];
 
     for (const statement of indexStatements) {
