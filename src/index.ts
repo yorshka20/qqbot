@@ -17,7 +17,7 @@ async function main() {
   try {
     // ── Shared initialization (config, DI, tools, plugins, adapters, etc.) ──
     const configPath = process.env.CONFIG_PATH;
-    const { bot, mcpSystem, claudeCodeService, conversationComponents, eventRouter, retrievalService } =
+    const { bot, mcpSystem, claudeCodeService, clusterManager, conversationComponents, eventRouter, retrievalService } =
       await bootstrapApp(configPath);
 
     const config = bot.getConfig();
@@ -46,12 +46,24 @@ async function main() {
       }
     }
 
+    // Start Agent Cluster (non-fatal)
+    if (clusterManager) {
+      try {
+        await clusterManager.start();
+      } catch (error) {
+        logger.warn('[Main] Agent Cluster failed to start (non-fatal):', error);
+      }
+    }
+
     logger.info('[Main] Bot initialized and ready');
 
     // ── Graceful shutdown ──
     const shutdown = async (signal: string) => {
       logger.info(`[Main] Received ${signal}, shutting down...`);
       stopStaticFileServer();
+      if (clusterManager) {
+        await clusterManager.stop();
+      }
       await ClaudeCodeInitializer.stop(claudeCodeService);
       await bot.stop();
       eventRouter.destroy();

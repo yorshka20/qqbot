@@ -16,6 +16,7 @@ import type { PromptsConfig } from './types/prompts';
 import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './types/protocol';
 import type { RAGConfig } from './types/rag';
 import type { TTSConfig } from './types/tts';
+import type { ClusterConfig } from '@/cluster/config';
 import type { VideoKnowledgeConfig } from './types/videoKnowledge';
 
 // Re-export runtime/conversation config (merged from former src/config)
@@ -86,6 +87,7 @@ export interface BotConfig {
   fileReadService?: FileReadServiceConfig;
   claudeCodeService?: ClaudeCodeServiceConfig;
   videoKnowledge?: VideoKnowledgeConfig;
+  cluster?: Record<string, unknown>;
 }
 
 export class Config {
@@ -315,5 +317,9 @@ export class Config {
 
   getVideoKnowledgeConfig(): VideoKnowledgeConfig | undefined {
     return this.config.videoKnowledge;
+  }
+
+  getClusterConfig(): Record<string, unknown> | undefined {
+    return this.config.cluster;
   }
 }

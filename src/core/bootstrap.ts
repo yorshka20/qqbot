@@ -28,6 +28,7 @@ import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import type { MCPSystem } from '@/services/mcp/MCPInitializer';
 import { MCPInitializer } from '@/services/mcp/MCPInitializer';
+import { ClusterManager, parseClusterConfig } from '@/cluster';
 import { RetrievalService } from '@/services/retrieval';
 import { initStaticFileServer } from '@/services/staticServer';
 import { logger } from '@/utils/logger';
@@ -37,6 +38,7 @@ export interface BootstrapResult {
   bot: Bot;
   mcpSystem: MCPSystem | null;
   claudeCodeService: ClaudeCodeService | null;
+  clusterManager: ClusterManager | null;
   conversationComponents: ConversationComponents;
   eventRouter: EventRouter;
   retrievalService: RetrievalService;
@@ -104,8 +106,49 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   // ── Claude Code init (sync, no connections) ──
   const claudeCodeService = ClaudeCodeInitializer.initialize(config);
 
+  // ── Agent Cluster init (sync, no connections) ──
+  let clusterManager: ClusterManager | null = null;
+  const clusterRawConfig = config.getClusterConfig();
+  const clusterConfig = parseClusterConfig(clusterRawConfig);
+  if (clusterConfig) {
+    logger.info('[Bootstrap] Agent Cluster config found, will initialize after DB is ready');
+  }
+
   // ── Conversation system (tools, hooks, commands, AI, DB, context, agenda) ──
   const conversationComponents = await ConversationInitializer.initialize(config, apiClient);
+
+  // ── Agent Cluster (after DB is ready) ──
+  if (clusterConfig) {
+    try {
+      const { DatabaseManager } = await import('@/database/DatabaseManager');
+      const { SQLiteAdapter } = await import('@/database/adapters/SQLiteAdapter');
+      const dbManager = container.resolve<InstanceType<typeof DatabaseManager>>(DITokens.DATABASE_MANAGER);
+      const adapter = dbManager.getAdapter();
+      if (adapter instanceof SQLiteAdapter) {
+        const rawDb = adapter.getRawDb();
+        if (rawDb) {
+          // Build project resolver from ProjectRegistry if available
+          const projectResolver = (alias: string) => {
+            if (claudeCodeService) {
+              const registry = claudeCodeService.getProjectRegistry();
+              const entry = registry?.resolve(alias);
+              if (entry) return { alias: entry.alias, path: entry.path, type: entry.type };
+            }
+            return undefined;
+          };
+          clusterManager = new ClusterManager(clusterConfig, rawDb, projectResolver);
+          container.registerInstance(DITokens.CLUSTER_MANAGER, clusterManager);
+          logger.info('[Bootstrap] Agent Cluster initialized');
+        } else {
+          logger.warn('[Bootstrap] Agent Cluster requires SQLite — raw DB not available');
+        }
+      } else {
+        logger.warn('[Bootstrap] Agent Cluster requires SQLite database adapter');
+      }
+    } catch (err) {
+      logger.error('[Bootstrap] Failed to initialize Agent Cluster:', err);
+    }
+  }
 
   // ── Retrieval health check (after HealthCheckManager is created) ──
   retrievalService.registerHealthCheck();
@@ -168,6 +211,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     bot,
     mcpSystem,
     claudeCodeService,
+    clusterManager,
     conversationComponents,
     eventRouter,
     retrievalService,
