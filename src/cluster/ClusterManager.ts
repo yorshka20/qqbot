@@ -12,6 +12,7 @@ import { ClusterAPIRouter } from './ClusterAPIRouter';
 import type { ClusterConfig } from './config';
 import { ClusterScheduler } from './ClusterScheduler';
 import { ContextHub } from './ContextHub';
+import { PlannerService } from './PlannerService';
 import { QueueSource } from './sources/QueueSource';
 import { TodoFileSource } from './sources/TodoFileSource';
 import type { ClusterStatus, TaskRecord } from './types';
@@ -21,6 +22,7 @@ export class ClusterManager {
   private hub: ContextHub;
   private workerPool: WorkerPool;
   private scheduler: ClusterScheduler;
+  private plannerService: PlannerService;
   private queueSources = new Map<string, QueueSource>();
   private started = false;
 
@@ -32,6 +34,7 @@ export class ClusterManager {
     this.hub = new ContextHub(config, db);
     this.workerPool = new WorkerPool(config, this.hub);
     this.scheduler = new ClusterScheduler(config, this.hub, this.workerPool, db, projectResolver);
+    this.plannerService = new PlannerService(config, this.hub, this.workerPool);
 
     // Wire API router
     const apiRouter = new ClusterAPIRouter(this.hub, this.workerPool, this.scheduler);
@@ -72,6 +75,9 @@ export class ClusterManager {
     // Start scheduler
     await this.scheduler.start();
 
+    // Start planner service
+    this.plannerService.start();
+
     this.started = true;
     logger.info('[ClusterManager] Agent Cluster started');
   }
@@ -84,6 +90,7 @@ export class ClusterManager {
 
     logger.info('[ClusterManager] Stopping Agent Cluster...');
 
+    this.plannerService.stop();
     await this.scheduler.stop();
     await this.workerPool.stop();
     await this.hub.stop();

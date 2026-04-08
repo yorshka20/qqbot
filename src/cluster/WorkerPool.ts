@@ -76,12 +76,14 @@ export class WorkerPool {
 
   /**
    * Spawn a new worker for a task.
+   * @param role Worker role: 'coder' (default) or 'planner'
    */
   async spawnWorker(
     templateName: string,
     project: string,
     projectPath: string,
     task: TaskRecord,
+    role: 'coder' | 'planner' = 'coder',
   ): Promise<WorkerInstance | null> {
     if (this.paused) {
       logger.warn('[WorkerPool] Pool is paused, not spawning');
@@ -128,7 +130,7 @@ export class WorkerPool {
 
     // Register in hub
     this.hub.workerRegistry.register(workerId, {
-      role: 'coder',
+      role,
       project,
       templateName,
     });
