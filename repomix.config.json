@@ -1,0 +1,60 @@
+{
+  "$schema": "https://repomix.com/schemas/latest/schema.json",
+  "input": {
+    "maxFileSize": 50000000
+  },
+  "output": {
+    "filePath": "repomix-qqbot.md",
+    "style": "markdown",
+    "parsableStyle": false,
+    "compress": false,
+    "headerText": "qqbot — QQ bot for agentic pipeline. Use this pack for architecture review, onboarding, and LLM-assisted changes. Prefer matching existing patterns in src/ and config/.",
+    "fileSummary": true,
+    "directoryStructure": true,
+    "files": true,
+    "removeComments": false,
+    "removeEmptyLines": false,
+    "topFilesLength": 8,
+    "showLineNumbers": true,
+    "truncateBase64": true,
+    "copyToClipboard": false,
+    "includeEmptyDirectories": false,
+    "git": {
+      "sortByChanges": true,
+      "sortByChangesMaxCommits": 100,
+      "includeDiffs": false,
+      "includeLogs": false,
+      "includeLogsCount": 50
+    }
+  },
+  "include": ["**/*"],
+  "ignore": {
+    "useGitignore": true,
+    "useDotIgnore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "comfyu/**",
+      "docs/**",
+      "prompts/**",
+      "template/**",
+      "scripts/**",
+      "**/__tests__/**",
+      "src/services/wechat/**",
+      "src/services/zhihu/**",
+      "repomix-*.md",
+      "**/*.md",
+      "**/*.html",
+      "**/*.jsonc",
+      "**/*.json",
+      "CLAUDE.md",
+      ".claude-workbook/**",
+      ".claude-learnings/**"
+    ]
+  },
+  "security": {
+    "enableSecurityCheck": true
+  },
+  "tokenCount": {
+    "encoding": "o200k_base"
+  }
+}
