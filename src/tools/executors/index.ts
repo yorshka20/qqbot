@@ -18,6 +18,7 @@ export { RagSearchToolExecutor } from './RagSearchToolExecutor';
 export { ReadFileToolExecutor } from './ReadFileToolExecutor';
 export { ReplyToolExecutor } from './ReplyToolExecutor';
 export { ResearchToolExecutor } from './ResearchToolExecutor';
+export { SearchChatHistoryToolExecutor } from './SearchChatHistoryToolExecutor';
 export { SearchCodeToolExecutor } from './SearchCodeToolExecutor';
 export { SearchMemoryToolExecutor } from './SearchMemoryToolExecutor';
 export { SearchToolExecutor } from './SearchToolExecutor';
