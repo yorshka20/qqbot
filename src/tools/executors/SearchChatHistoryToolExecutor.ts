@@ -27,8 +27,7 @@ const MAX_RESULTS = 50;
     timeRange: {
       type: 'string',
       required: false,
-      description:
-        '限制搜索的时间范围（从多久前开始）。格式: "-Xh"（X小时前）或 "-Xd"（X天前）。省略则搜索全部记录。',
+      description: '限制搜索的时间范围（从多久前开始）。格式: "-Xh"（X小时前）或 "-Xd"（X天前）。省略则搜索全部记录。',
     },
     includeBot: {
       type: 'boolean',
@@ -93,9 +92,7 @@ export class SearchChatHistoryToolExecutor extends BaseToolExecutor {
       limit: MAX_RESULTS,
     });
 
-    logger.info(
-      `[SearchChatHistory] keyword="${keyword}" timeRange=${timeRange ?? 'none'} matched=${results.length}`,
-    );
+    logger.info(`[SearchChatHistory] keyword="${keyword}" timeRange=${timeRange ?? 'none'} matched=${results.length}`);
 
     if (results.length === 0) {
       return this.success(`没有找到包含「${keyword}」的消息`, {

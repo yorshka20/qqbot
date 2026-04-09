@@ -9,6 +9,7 @@
 
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import { APIClient } from '@/api/APIClient';
+import { ClusterManager, parseClusterConfig } from '@/cluster';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
 import { ConversationInitializer } from '@/conversation/ConversationInitializer';
 import { Bot } from '@/core/Bot';
@@ -28,7 +29,6 @@ import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import type { MCPSystem } from '@/services/mcp/MCPInitializer';
 import { MCPInitializer } from '@/services/mcp/MCPInitializer';
-import { ClusterManager, parseClusterConfig } from '@/cluster';
 import { RetrievalService } from '@/services/retrieval';
 import { initStaticFileServer } from '@/services/staticServer';
 import { logger } from '@/utils/logger';

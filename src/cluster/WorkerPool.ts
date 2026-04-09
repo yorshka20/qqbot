@@ -4,13 +4,13 @@
  * Spawns, tracks, and terminates worker processes.
  */
 
-import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { logger } from '@/utils/logger';
-import type { ClusterConfig, WorkerTemplateConfig } from './config';
 import type { ContextHub } from './ContextHub';
+import type { ClusterConfig, WorkerTemplateConfig } from './config';
 import type { ClusterStatus, TaskRecord, WorkerBackend, WorkerInstance } from './types';
 
 export class WorkerPool {
@@ -253,7 +253,9 @@ export class WorkerPool {
 
     for (const worker of this.workers.values()) {
       if (worker.status === 'running' && now - worker.lastReport > timeoutMs) {
-        logger.warn(`[WorkerPool] Worker ${worker.id} appears stuck (no report for ${Math.round((now - worker.lastReport) / 1000)}s)`);
+        logger.warn(
+          `[WorkerPool] Worker ${worker.id} appears stuck (no report for ${Math.round((now - worker.lastReport) / 1000)}s)`,
+        );
         stuckWorkers.push(worker.id);
       }
     }

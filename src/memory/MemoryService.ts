@@ -689,7 +689,7 @@ export class MemoryService {
     if (manualGroup) groupParts.push(`【权威信息】\n${manualGroup}`);
     if (autoGroup) groupParts.push(autoGroup);
 
-    let userParts: string[] = [];
+    const userParts: string[] = [];
     if (userId) {
       const manualUser = this.getUserMemoryTextByLayer(groupId, userId, 'manual').trim();
       const autoUser = this.getUserMemoryTextByLayer(groupId, userId, 'auto').trim();

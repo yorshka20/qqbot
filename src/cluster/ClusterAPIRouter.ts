@@ -5,6 +5,9 @@
  * Provides cluster status, job/task queries, worker management, help request handling.
  */
 
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
+import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import { logger } from '@/utils/logger';
 import type { ClusterScheduler } from './ClusterScheduler';
 import type { ContextHub, SSESubscriber } from './ContextHub';
@@ -37,10 +40,7 @@ export class ClusterAPIRouter {
       return null;
     } catch (err) {
       logger.error('[ClusterAPIRouter] Error:', err);
-      return Response.json(
-        { error: err instanceof Error ? err.message : 'Internal error' },
-        { status: 500, headers },
-      );
+      return Response.json({ error: err instanceof Error ? err.message : 'Internal error' }, { status: 500, headers });
     }
   }
 
@@ -50,6 +50,35 @@ export class ClusterAPIRouter {
       case '/': {
         const status = this.workerPool.getStatus();
         return Response.json(status, { headers });
+      }
+
+      case '/projects': {
+        try {
+          const container = getContainer();
+          const claude = container.resolve<ClaudeCodeService>(DITokens.CLAUDE_CODE_SERVICE);
+          const registry = claude.getProjectRegistry();
+          if (!registry) {
+            return Response.json({ error: 'ProjectRegistry not configured' }, { status: 400, headers });
+          }
+
+          const defaultAlias = registry.getDefaultProject();
+          const projects = registry.list().map((p) => ({
+            alias: p.alias,
+            path: p.path,
+            type: p.type,
+            description: p.description,
+            hasClaudeMd: p.hasClaudeMd,
+            promptTemplateKey: p.promptTemplateKey,
+            isDefault: p.alias === defaultAlias,
+            isConfig: registry.isConfigProject(p.alias),
+          }));
+          projects.sort((a, b) => a.alias.localeCompare(b.alias));
+
+          return Response.json({ defaultAlias, projects }, { headers });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return Response.json({ error: message }, { status: 500, headers });
+        }
       }
 
       case '/workers': {
@@ -75,7 +104,7 @@ export class ClusterAPIRouter {
         const offset = parseInt(url.searchParams.get('offset') || '0', 10);
         const type = url.searchParams.get('type') || undefined;
         const events = this.hub.eventLog.query({
-          type: type as any,
+          type: type as Parameters<typeof this.hub.eventLog.query>[0]['type'],
           limit,
           offset,
         });
@@ -118,11 +147,7 @@ export class ClusterAPIRouter {
     }
   }
 
-  private async handlePost(
-    subPath: string,
-    req: Request,
-    headers: Record<string, string>,
-  ): Promise<Response | null> {
+  private async handlePost(subPath: string, req: Request, headers: Record<string, string>): Promise<Response | null> {
     switch (subPath) {
       case '/jobs': {
         const body = (await req.json()) as { project: string; description: string };

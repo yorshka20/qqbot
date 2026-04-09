@@ -4,8 +4,8 @@ import type { SummarizeService } from '@/ai/services/SummarizeService';
 import type { ThreadService } from '@/conversation/thread';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { SQLiteAdapter } from '@/database/adapters/SQLiteAdapter';
+import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { Conversation, Message } from '@/database/models/types';
 import type { HookContext } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
@@ -575,7 +575,7 @@ export class ConversationHistoryService {
 
       // Exclude bot replies unless includeBot is true
       if (!options?.includeBot) {
-        conditions.push("(m.metadata IS NULL OR m.metadata NOT LIKE '%\"isBotReply\":true%')");
+        conditions.push('(m.metadata IS NULL OR m.metadata NOT LIKE \'%"isBotReply":true%\')');
       }
 
       const sql = `
@@ -611,10 +611,11 @@ export class ConversationHistoryService {
     const limit = options?.limit ?? 50;
 
     // Fetch a large chunk and filter client-side
-    const recent = await messages.find(
-      { conversationId } as Partial<Message>,
-      { orderBy: 'createdAt', order: 'desc', limit: 2000 },
-    );
+    const recent = await messages.find({ conversationId } as Partial<Message>, {
+      orderBy: 'createdAt',
+      order: 'desc',
+      limit: 2000,
+    });
 
     const lowerKeywords = keywords.map((k) => k.toLowerCase());
     const sinceTs = options?.since?.getTime();

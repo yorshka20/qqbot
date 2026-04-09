@@ -9,8 +9,8 @@
  */
 
 import { logger } from '@/utils/logger';
-import type { ClusterConfig } from './config';
 import type { ContextHub } from './ContextHub';
+import type { ClusterConfig } from './config';
 import type { HelpRequest } from './types';
 import type { WorkerPool } from './WorkerPool';
 
@@ -55,9 +55,7 @@ export class PlannerService {
     if (pending.length === 0) return;
 
     // Find active planner workers
-    const planners = this.hub.workerRegistry
-      .getActive()
-      .filter((w) => w.role === 'planner');
+    const planners = this.hub.workerRegistry.getActive().filter((w) => w.role === 'planner');
 
     for (const request of pending) {
       if (request.type === 'escalation') {
@@ -88,9 +86,7 @@ export class PlannerService {
    * Notify about an escalation request (would send QQ message in production).
    */
   private notifyEscalation(request: HelpRequest): void {
-    logger.warn(
-      `[PlannerService] Escalation from worker ${request.workerId}: ${request.question}`,
-    );
+    logger.warn(`[PlannerService] Escalation from worker ${request.workerId}: ${request.question}`);
     // In a full implementation, this would send a QQ notification
     // via the InternalEventBus or directly through MessageAPI
   }

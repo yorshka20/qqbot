@@ -115,9 +115,7 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
       type: (s.type as 'todo-file' | 'queue') || 'queue',
       path: s.path as string | undefined,
       pollInterval:
-        typeof s.pollInterval === 'string'
-          ? parseDuration(s.pollInterval)
-          : (s.pollInterval as number | undefined),
+        typeof s.pollInterval === 'string' ? parseDuration(s.pollInterval) : (s.pollInterval as number | undefined),
     }));
     projects[name] = {
       maxWorkers: (proj.maxWorkers as number) || 3,

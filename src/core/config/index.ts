@@ -2,6 +2,7 @@
 
 import { existsSync, statSync } from 'fs';
 import { resolve } from 'path';
+import type { ClusterConfig } from '@/cluster/config';
 import { ConfigError } from '@/utils/errors';
 import { logger } from '@/utils/logger';
 import { loadConfigAuto } from './loadConfigDir';
@@ -16,7 +17,6 @@ import type { PromptsConfig } from './types/prompts';
 import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './types/protocol';
 import type { RAGConfig } from './types/rag';
 import type { TTSConfig } from './types/tts';
-import type { ClusterConfig } from '@/cluster/config';
 import type { VideoKnowledgeConfig } from './types/videoKnowledge';
 
 // Re-export runtime/conversation config (merged from former src/config)

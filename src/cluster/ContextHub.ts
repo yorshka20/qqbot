@@ -6,8 +6,8 @@
  * Also hub_dispatch and hub_directive for planner workers.
  */
 
-import { randomUUID } from 'node:crypto';
 import type { Database } from 'bun:sqlite';
+import { randomUUID } from 'node:crypto';
 import { logger } from '@/utils/logger';
 import type { ClusterAPIRouter } from './ClusterAPIRouter';
 import type { ClusterConfig } from './config';
@@ -178,18 +178,21 @@ export class ContextHub {
     const result = this.lockManager.tryAcquire(input.files, workerId, input.taskId);
 
     if (result.granted) {
-      this.eventLog.append('lock_acquired', workerId, {
-        intent: input.intent,
-        files: input.files,
-      }, { taskId: input.taskId });
+      this.eventLog.append(
+        'lock_acquired',
+        workerId,
+        {
+          intent: input.intent,
+          files: input.files,
+        },
+        { taskId: input.taskId },
+      );
     }
 
     return {
       granted: result.granted,
       conflicts: result.conflicts.length > 0 ? result.conflicts : undefined,
-      suggestion: result.conflicts.length > 0
-        ? '建议先处理不涉及冲突文件的部分，稍后重试 claim'
-        : undefined,
+      suggestion: result.conflicts.length > 0 ? '建议先处理不涉及冲突文件的部分，稍后重试 claim' : undefined,
     };
   }
 
@@ -200,14 +203,20 @@ export class ContextHub {
     const isTerminal = input.status === 'completed' || input.status === 'failed' || input.status === 'blocked';
 
     // Record event
-    const eventType: ClusterEventType = input.status === 'completed' ? 'task_completed' : input.status === 'failed' ? 'task_failed' : 'file_changed';
+    const eventType: ClusterEventType =
+      input.status === 'completed' ? 'task_completed' : input.status === 'failed' ? 'task_failed' : 'file_changed';
     const reg = this.workerRegistry.get(workerId);
-    this.eventLog.append(eventType, workerId, {
-      status: input.status,
-      summary: input.summary,
-      filesModified: input.filesModified,
-      detail: input.detail,
-    }, { taskId: reg?.currentTaskId });
+    this.eventLog.append(
+      eventType,
+      workerId,
+      {
+        status: input.status,
+        summary: input.summary,
+        filesModified: input.filesModified,
+        detail: input.detail,
+      },
+      { taskId: reg?.currentTaskId },
+    );
 
     // Update stats
     if (input.status === 'completed') {
@@ -263,11 +272,16 @@ export class ContextHub {
     this.persistHelpRequest(helpRequest);
 
     // Record event
-    this.eventLog.append('help_request', workerId, {
-      askId,
-      type: input.type,
-      question: input.question,
-    }, { taskId: reg?.currentTaskId });
+    this.eventLog.append(
+      'help_request',
+      workerId,
+      {
+        askId,
+        type: input.type,
+        question: input.question,
+      },
+      { taskId: reg?.currentTaskId },
+    );
 
     // Broadcast SSE for WebUI
     this.broadcastSSE('help_request', {
@@ -406,7 +420,7 @@ export class ContextHub {
 
       // MCP tool endpoints
       if (req.method === 'POST') {
-        const body = await req.json() as Record<string, unknown>;
+        const body = (await req.json()) as Record<string, unknown>;
 
         switch (path) {
           case '/hub/sync':
@@ -463,10 +477,7 @@ export class ContextHub {
       return Response.json({ error: 'Not found' }, { status: 404, headers });
     } catch (err) {
       logger.error('[ContextHub] Request error:', err);
-      return Response.json(
-        { error: err instanceof Error ? err.message : 'Internal error' },
-        { status: 500, headers },
-      );
+      return Response.json({ error: err instanceof Error ? err.message : 'Internal error' }, { status: 500, headers });
     }
   }
 

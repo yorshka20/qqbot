@@ -4,11 +4,11 @@
  * Continuously polls TaskSources, assigns tasks to workers via WorkerPool.
  */
 
-import { randomUUID } from 'node:crypto';
 import type { Database } from 'bun:sqlite';
+import { randomUUID } from 'node:crypto';
 import { logger } from '@/utils/logger';
-import type { ClusterConfig, ClusterProjectConfig } from './config';
 import type { ContextHub } from './ContextHub';
+import type { ClusterConfig, ClusterProjectConfig } from './config';
 import type { TaskSource } from './sources/TaskSource';
 import type { JobRecord, TaskCandidate, TaskRecord } from './types';
 import type { WorkerPool } from './WorkerPool';
@@ -226,12 +226,7 @@ export class ClusterScheduler {
     return candidates.filter((c) => !activeDescriptions.has(c.description));
   }
 
-  private createTask(
-    jobId: string,
-    project: string,
-    description: string,
-    source: TaskCandidate['source'],
-  ): TaskRecord {
+  private createTask(jobId: string, project: string, description: string, source: TaskCandidate['source']): TaskRecord {
     const task: TaskRecord = {
       id: randomUUID(),
       jobId,

@@ -160,28 +160,49 @@ export class MemoryFactMetaService {
    * Get all facts for a group (for status/overview API).
    */
   getAllFactsForGroup(groupId: string): FactMeta[] {
-    return this.db
-      .query('SELECT * FROM memory_fact_meta WHERE groupId = ?')
-      .all(groupId) as FactMeta[];
+    return this.db.query('SELECT * FROM memory_fact_meta WHERE groupId = ?').all(groupId) as FactMeta[];
   }
 
   /**
    * Get summary stats across all groups.
    */
-  getGlobalStats(): { totalFacts: number; activeFacts: number; staleFacts: number; manualFacts: number; autoFacts: number } {
+  getGlobalStats(): {
+    totalFacts: number;
+    activeFacts: number;
+    staleFacts: number;
+    manualFacts: number;
+    autoFacts: number;
+  } {
     const total = (this.db.query('SELECT COUNT(*) as c FROM memory_fact_meta').get() as { c: number }).c;
-    const active = (this.db.query("SELECT COUNT(*) as c FROM memory_fact_meta WHERE status = 'active'").get() as { c: number }).c;
-    const stale = (this.db.query("SELECT COUNT(*) as c FROM memory_fact_meta WHERE status = 'stale'").get() as { c: number }).c;
-    const manual = (this.db.query("SELECT COUNT(*) as c FROM memory_fact_meta WHERE source = 'manual'").get() as { c: number }).c;
-    const auto = (this.db.query("SELECT COUNT(*) as c FROM memory_fact_meta WHERE source = 'llm_extract'").get() as { c: number }).c;
+    const active = (
+      this.db.query("SELECT COUNT(*) as c FROM memory_fact_meta WHERE status = 'active'").get() as { c: number }
+    ).c;
+    const stale = (
+      this.db.query("SELECT COUNT(*) as c FROM memory_fact_meta WHERE status = 'stale'").get() as { c: number }
+    ).c;
+    const manual = (
+      this.db.query("SELECT COUNT(*) as c FROM memory_fact_meta WHERE source = 'manual'").get() as { c: number }
+    ).c;
+    const auto = (
+      this.db.query("SELECT COUNT(*) as c FROM memory_fact_meta WHERE source = 'llm_extract'").get() as { c: number }
+    ).c;
     return { totalFacts: total, activeFacts: active, staleFacts: stale, manualFacts: manual, autoFacts: auto };
   }
 
   /**
    * Get per-group summary stats.
    */
-  getGroupStats(): Array<{ groupId: string; totalFacts: number; activeFacts: number; staleFacts: number; manualFacts: number; autoFacts: number; userCount: number }> {
-    const rows = this.db.query(`
+  getGroupStats(): Array<{
+    groupId: string;
+    totalFacts: number;
+    activeFacts: number;
+    staleFacts: number;
+    manualFacts: number;
+    autoFacts: number;
+    userCount: number;
+  }> {
+    const rows = this.db
+      .query(`
       SELECT groupId,
         COUNT(*) as totalFacts,
         SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as activeFacts,
@@ -191,7 +212,16 @@ export class MemoryFactMetaService {
         COUNT(DISTINCT userId) as userCount
       FROM memory_fact_meta
       GROUP BY groupId
-    `).all() as Array<{ groupId: string; totalFacts: number; activeFacts: number; staleFacts: number; manualFacts: number; autoFacts: number; userCount: number }>;
+    `)
+      .all() as Array<{
+      groupId: string;
+      totalFacts: number;
+      activeFacts: number;
+      staleFacts: number;
+      manualFacts: number;
+      autoFacts: number;
+      userCount: number;
+    }>;
     return rows;
   }
 
@@ -228,9 +258,9 @@ export class MemoryFactMetaService {
    * Returns true if an upgrade happened.
    */
   upgradeSource(factHash: string): boolean {
-    const existing = this.db.query(
-      "SELECT * FROM memory_fact_meta WHERE factHash = ? AND source = 'llm_extract'",
-    ).get(factHash) as FactMeta | null;
+    const existing = this.db
+      .query("SELECT * FROM memory_fact_meta WHERE factHash = ? AND source = 'llm_extract'")
+      .get(factHash) as FactMeta | null;
     if (!existing) return false;
 
     this.db

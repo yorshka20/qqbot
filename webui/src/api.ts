@@ -1,13 +1,36 @@
-import { getFileApiBase, getInsightsApiBase, getMemoryApiBase, getMomentsApiBase, getQdrantApiBase, getReportApiBase, getStatsApiBase, getZhihuApiBase } from './config'
+import {
+  getClusterApiBase,
+  getClusterControlApiBase,
+  getFileApiBase,
+  getInsightsApiBase,
+  getMemoryApiBase,
+  getMomentsApiBase,
+  getProjectsApiBase,
+  getQdrantApiBase,
+  getReportApiBase,
+  getStatsApiBase,
+  getZhihuApiBase,
+} from './config';
 import type {
   BehaviorResponse,
+  ClusterEventListResponse,
+  ClusterHelpRequest,
+  ClusterJob,
+  ClusterLock,
+  ClusterStatus,
   ClustersResponse,
+  ClusterTask,
+  ClusterWorkerRegistration,
+  DailyStatsResponse,
   EntitiesResponse,
   InsightDetailResponse,
   InsightListResponse,
   InsightStatsResponse,
   InterestEvolutionResponse,
   ListResponse,
+  MemoryGroupDetail,
+  MemoryUserFactDetail,
+  ProjectsResponse,
   MomentsListResponse,
   MomentsSearchResponse,
   MomentsStatsResponse,
@@ -17,43 +40,52 @@ import type {
   ReportDetailResponse,
   ReportListResponse,
   SentimentTrendResponse,
-  ZhihuContentDetailResponse,
-  DailyStatsResponse,
   StatsDateListResponse,
-  MemoryGroupDetail,
-  MemoryUserFactDetail,
+  ZhihuContentDetailResponse,
   ZhihuContentsResponse,
   ZhihuStatsResponse,
-} from './types'
+} from './types';
 
 function apiBase(): string {
-  return getFileApiBase()
+  return getFileApiBase();
 }
 
 function reportApiBase(): string {
-  return getReportApiBase()
+  return getReportApiBase();
+}
+
+function clusterApiBase(): string {
+  return getClusterApiBase();
+}
+
+function projectsApiBase(): string {
+  return getProjectsApiBase();
+}
+
+function clusterControlApiBase(): string {
+  return getClusterControlApiBase();
 }
 
 export async function listFiles(path: string): Promise<ListResponse> {
-  const params = new URLSearchParams()
+  const params = new URLSearchParams();
   if (path) {
-    params.set('path', path)
+    params.set('path', path);
   }
-  const res = await fetch(`${apiBase()}/list?${params}`)
+  const res = await fetch(`${apiBase()}/list?${params}`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `List failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List failed: ${res.status}`);
   }
-  return res.json() as Promise<ListResponse>
+  return res.json() as Promise<ListResponse>;
 }
 
 export async function deleteFile(path: string): Promise<void> {
   const res = await fetch(`${apiBase()}?path=${encodeURIComponent(path)}`, {
     method: 'DELETE',
-  })
+  });
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Delete failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Delete failed: ${res.status}`);
   }
 }
 
@@ -62,10 +94,10 @@ export async function moveFile(from: string, to: string): Promise<void> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ from, to }),
-  })
+  });
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Move failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Move failed: ${res.status}`);
   }
 }
 
@@ -74,10 +106,10 @@ export async function renameFile(path: string, newName: string): Promise<void> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path, newName: newName.trim() }),
-  })
+  });
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Rename failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Rename failed: ${res.status}`);
   }
 }
 
@@ -86,21 +118,21 @@ export async function renameFile(path: string, newName: string): Promise<void> {
 // ────────────────────────────────────────────────────────────────────────────
 
 export async function listReports(): Promise<ReportListResponse> {
-  const res = await fetch(`${reportApiBase()}/list`)
+  const res = await fetch(`${reportApiBase()}/list`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `List reports failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List reports failed: ${res.status}`);
   }
-  return res.json() as Promise<ReportListResponse>
+  return res.json() as Promise<ReportListResponse>;
 }
 
 export async function getReport(id: string): Promise<ReportDetailResponse> {
-  const res = await fetch(`${reportApiBase()}/${encodeURIComponent(id)}`)
+  const res = await fetch(`${reportApiBase()}/${encodeURIComponent(id)}`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get report failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get report failed: ${res.status}`);
   }
-  return res.json() as Promise<ReportDetailResponse>
+  return res.json() as Promise<ReportDetailResponse>;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -108,36 +140,36 @@ export async function getReport(id: string): Promise<ReportDetailResponse> {
 // ────────────────────────────────────────────────────────────────────────────
 
 function insightsApiBase(): string {
-  return getInsightsApiBase()
+  return getInsightsApiBase();
 }
 
 export async function listInsights(worthOnly = false): Promise<InsightListResponse> {
-  const params = new URLSearchParams()
-  if (!worthOnly) params.set('worthOnly', 'false')
-  const res = await fetch(`${insightsApiBase()}/list?${params}`)
+  const params = new URLSearchParams();
+  if (!worthOnly) params.set('worthOnly', 'false');
+  const res = await fetch(`${insightsApiBase()}/list?${params}`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `List insights failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List insights failed: ${res.status}`);
   }
-  return res.json() as Promise<InsightListResponse>
+  return res.json() as Promise<InsightListResponse>;
 }
 
 export async function getInsight(articleMsgId: string): Promise<InsightDetailResponse> {
-  const res = await fetch(`${insightsApiBase()}/${encodeURIComponent(articleMsgId)}`)
+  const res = await fetch(`${insightsApiBase()}/${encodeURIComponent(articleMsgId)}`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get insight failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get insight failed: ${res.status}`);
   }
-  return res.json() as Promise<InsightDetailResponse>
+  return res.json() as Promise<InsightDetailResponse>;
 }
 
 export async function getInsightStats(): Promise<InsightStatsResponse> {
-  const res = await fetch(`${insightsApiBase()}/stats`)
+  const res = await fetch(`${insightsApiBase()}/stats`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get insight stats failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get insight stats failed: ${res.status}`);
   }
-  return res.json() as Promise<InsightStatsResponse>
+  return res.json() as Promise<InsightStatsResponse>;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -145,47 +177,44 @@ export async function getInsightStats(): Promise<InsightStatsResponse> {
 // ────────────────────────────────────────────────────────────────────────────
 
 function zhihuApiBase(): string {
-  return getZhihuApiBase()
+  return getZhihuApiBase();
 }
 
 export async function listZhihuContents(opts?: {
-  type?: string
-  sinceTs?: number
-  keyword?: string
-  limit?: number
+  type?: string;
+  sinceTs?: number;
+  keyword?: string;
+  limit?: number;
 }): Promise<ZhihuContentsResponse> {
-  const params = new URLSearchParams()
-  if (opts?.type) params.set('type', opts.type)
-  if (opts?.sinceTs) params.set('sinceTs', String(opts.sinceTs))
-  if (opts?.keyword) params.set('keyword', opts.keyword)
-  if (opts?.limit) params.set('limit', String(opts.limit))
-  const res = await fetch(`${zhihuApiBase()}/contents?${params}`)
+  const params = new URLSearchParams();
+  if (opts?.type) params.set('type', opts.type);
+  if (opts?.sinceTs) params.set('sinceTs', String(opts.sinceTs));
+  if (opts?.keyword) params.set('keyword', opts.keyword);
+  if (opts?.limit) params.set('limit', String(opts.limit));
+  const res = await fetch(`${zhihuApiBase()}/contents?${params}`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `List zhihu contents failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List zhihu contents failed: ${res.status}`);
   }
-  return res.json() as Promise<ZhihuContentsResponse>
+  return res.json() as Promise<ZhihuContentsResponse>;
 }
 
-export async function getZhihuContent(
-  targetType: string,
-  targetId: number,
-): Promise<ZhihuContentDetailResponse> {
-  const res = await fetch(`${zhihuApiBase()}/content/${targetType}/${targetId}`)
+export async function getZhihuContent(targetType: string, targetId: number): Promise<ZhihuContentDetailResponse> {
+  const res = await fetch(`${zhihuApiBase()}/content/${targetType}/${targetId}`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get zhihu content failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get zhihu content failed: ${res.status}`);
   }
-  return res.json() as Promise<ZhihuContentDetailResponse>
+  return res.json() as Promise<ZhihuContentDetailResponse>;
 }
 
 export async function getZhihuStats(): Promise<ZhihuStatsResponse> {
-  const res = await fetch(`${zhihuApiBase()}/stats`)
+  const res = await fetch(`${zhihuApiBase()}/stats`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get zhihu stats failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get zhihu stats failed: ${res.status}`);
   }
-  return res.json() as Promise<ZhihuStatsResponse>
+  return res.json() as Promise<ZhihuStatsResponse>;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -193,106 +222,106 @@ export async function getZhihuStats(): Promise<ZhihuStatsResponse> {
 // ────────────────────────────────────────────────────────────────────────────
 
 function momentsApiBase(): string {
-  return getMomentsApiBase()
+  return getMomentsApiBase();
 }
 
 export async function getMomentsStats(): Promise<MomentsStatsResponse> {
-  const res = await fetch(`${momentsApiBase()}/stats`)
+  const res = await fetch(`${momentsApiBase()}/stats`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get moments stats failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get moments stats failed: ${res.status}`);
   }
-  return res.json() as Promise<MomentsStatsResponse>
+  return res.json() as Promise<MomentsStatsResponse>;
 }
 
 export async function listMoments(opts?: {
-  tag?: string
-  date?: string   // "YYYY-MM-DD"
-  month?: string  // "YYYY-MM"
-  year?: string   // "YYYY"
-  type?: string
-  offset?: string
-  limit?: number
+  tag?: string;
+  date?: string; // "YYYY-MM-DD"
+  month?: string; // "YYYY-MM"
+  year?: string; // "YYYY"
+  type?: string;
+  offset?: string;
+  limit?: number;
 }): Promise<MomentsListResponse> {
-  const params = new URLSearchParams()
-  if (opts?.tag) params.set('tag', opts.tag)
-  if (opts?.date) params.set('date', opts.date)
-  else if (opts?.month) params.set('month', opts.month)
-  else if (opts?.year) params.set('year', opts.year)
-  if (opts?.type) params.set('type', opts.type)
-  if (opts?.offset) params.set('offset', opts.offset)
-  if (opts?.limit) params.set('limit', String(opts.limit))
-  const res = await fetch(`${momentsApiBase()}/list?${params}`)
+  const params = new URLSearchParams();
+  if (opts?.tag) params.set('tag', opts.tag);
+  if (opts?.date) params.set('date', opts.date);
+  else if (opts?.month) params.set('month', opts.month);
+  else if (opts?.year) params.set('year', opts.year);
+  if (opts?.type) params.set('type', opts.type);
+  if (opts?.offset) params.set('offset', opts.offset);
+  if (opts?.limit) params.set('limit', String(opts.limit));
+  const res = await fetch(`${momentsApiBase()}/list?${params}`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `List moments failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List moments failed: ${res.status}`);
   }
-  return res.json() as Promise<MomentsListResponse>
+  return res.json() as Promise<MomentsListResponse>;
 }
 
 export async function searchMoments(opts: {
-  q: string
-  limit?: number
-  minScore?: number
+  q: string;
+  limit?: number;
+  minScore?: number;
 }): Promise<MomentsSearchResponse> {
-  const params = new URLSearchParams()
-  params.set('q', opts.q)
-  if (opts.limit) params.set('limit', String(opts.limit))
-  if (opts.minScore) params.set('minScore', String(opts.minScore))
-  const res = await fetch(`${momentsApiBase()}/search?${params}`)
+  const params = new URLSearchParams();
+  params.set('q', opts.q);
+  if (opts.limit) params.set('limit', String(opts.limit));
+  if (opts.minScore) params.set('minScore', String(opts.minScore));
+  const res = await fetch(`${momentsApiBase()}/search?${params}`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Search moments failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Search moments failed: ${res.status}`);
   }
-  return res.json() as Promise<MomentsSearchResponse>
+  return res.json() as Promise<MomentsSearchResponse>;
 }
 
 export async function getMomentsInterestEvolution(): Promise<InterestEvolutionResponse> {
-  const res = await fetch(`${momentsApiBase()}/interest-evolution`)
+  const res = await fetch(`${momentsApiBase()}/interest-evolution`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get interest evolution failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get interest evolution failed: ${res.status}`);
   }
-  return res.json() as Promise<InterestEvolutionResponse>
+  return res.json() as Promise<InterestEvolutionResponse>;
 }
 
 export async function getMomentsBehavior(): Promise<BehaviorResponse> {
-  const res = await fetch(`${momentsApiBase()}/behavior`)
+  const res = await fetch(`${momentsApiBase()}/behavior`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get behavior failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get behavior failed: ${res.status}`);
   }
-  return res.json() as Promise<BehaviorResponse>
+  return res.json() as Promise<BehaviorResponse>;
 }
 
 export async function getMomentsSentimentTrend(): Promise<SentimentTrendResponse> {
-  const res = await fetch(`${momentsApiBase()}/sentiment-trend`)
+  const res = await fetch(`${momentsApiBase()}/sentiment-trend`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get sentiment trend failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get sentiment trend failed: ${res.status}`);
   }
-  return res.json() as Promise<SentimentTrendResponse>
+  return res.json() as Promise<SentimentTrendResponse>;
 }
 
 export async function getMomentsEntities(opts?: { type?: string; limit?: number }): Promise<EntitiesResponse> {
-  const params = new URLSearchParams()
-  if (opts?.type) params.set('type', opts.type)
-  if (opts?.limit) params.set('limit', String(opts.limit))
-  const res = await fetch(`${momentsApiBase()}/entities?${params}`)
+  const params = new URLSearchParams();
+  if (opts?.type) params.set('type', opts.type);
+  if (opts?.limit) params.set('limit', String(opts.limit));
+  const res = await fetch(`${momentsApiBase()}/entities?${params}`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get entities failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get entities failed: ${res.status}`);
   }
-  return res.json() as Promise<EntitiesResponse>
+  return res.json() as Promise<EntitiesResponse>;
 }
 
 export async function getMomentsClusters(): Promise<ClustersResponse> {
-  const res = await fetch(`${momentsApiBase()}/clusters`)
+  const res = await fetch(`${momentsApiBase()}/clusters`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get clusters failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get clusters failed: ${res.status}`);
   }
-  return res.json() as Promise<ClustersResponse>
+  return res.json() as Promise<ClustersResponse>;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -300,50 +329,47 @@ export async function getMomentsClusters(): Promise<ClustersResponse> {
 // ────────────────────────────────────────────────────────────────────────────
 
 function qdrantApiBase(): string {
-  return getQdrantApiBase()
+  return getQdrantApiBase();
 }
 
 export async function listQdrantCollections(): Promise<QdrantCollectionsResponse> {
-  const res = await fetch(`${qdrantApiBase()}/collections`)
+  const res = await fetch(`${qdrantApiBase()}/collections`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `List collections failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List collections failed: ${res.status}`);
   }
-  return res.json() as Promise<QdrantCollectionsResponse>
+  return res.json() as Promise<QdrantCollectionsResponse>;
 }
 
 export async function searchQdrant(opts: {
-  collection: string
-  q: string
-  limit?: number
-  minScore?: number
+  collection: string;
+  q: string;
+  limit?: number;
+  minScore?: number;
 }): Promise<QdrantSearchResponse> {
-  const params = new URLSearchParams()
-  params.set('collection', opts.collection)
-  params.set('q', opts.q)
-  if (opts.limit) params.set('limit', String(opts.limit))
-  if (opts.minScore) params.set('minScore', String(opts.minScore))
-  const res = await fetch(`${qdrantApiBase()}/search?${params}`)
+  const params = new URLSearchParams();
+  params.set('collection', opts.collection);
+  params.set('q', opts.q);
+  if (opts.limit) params.set('limit', String(opts.limit));
+  if (opts.minScore) params.set('minScore', String(opts.minScore));
+  const res = await fetch(`${qdrantApiBase()}/search?${params}`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Qdrant search failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Qdrant search failed: ${res.status}`);
   }
-  return res.json() as Promise<QdrantSearchResponse>
+  return res.json() as Promise<QdrantSearchResponse>;
 }
 
-export async function scrollQdrant(opts: {
-  collection: string
-  limit?: number
-}): Promise<QdrantScrollResponse> {
-  const params = new URLSearchParams()
-  params.set('collection', opts.collection)
-  if (opts.limit) params.set('limit', String(opts.limit))
-  const res = await fetch(`${qdrantApiBase()}/scroll?${params}`)
+export async function scrollQdrant(opts: { collection: string; limit?: number }): Promise<QdrantScrollResponse> {
+  const params = new URLSearchParams();
+  params.set('collection', opts.collection);
+  if (opts.limit) params.set('limit', String(opts.limit));
+  const res = await fetch(`${qdrantApiBase()}/scroll?${params}`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Qdrant scroll failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Qdrant scroll failed: ${res.status}`);
   }
-  return res.json() as Promise<QdrantScrollResponse>
+  return res.json() as Promise<QdrantScrollResponse>;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -351,27 +377,27 @@ export async function scrollQdrant(opts: {
 // ────────────────────────────────────────────────────────────────────────────
 
 function statsApiBase(): string {
-  return getStatsApiBase()
+  return getStatsApiBase();
 }
 
 export async function getDailyStats(date?: string): Promise<DailyStatsResponse> {
-  const params = new URLSearchParams()
-  if (date) params.set('date', date)
-  const res = await fetch(`${statsApiBase()}?${params}`)
+  const params = new URLSearchParams();
+  if (date) params.set('date', date);
+  const res = await fetch(`${statsApiBase()}?${params}`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get daily stats failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get daily stats failed: ${res.status}`);
   }
-  return res.json() as Promise<DailyStatsResponse>
+  return res.json() as Promise<DailyStatsResponse>;
 }
 
 export async function getStatsDates(): Promise<StatsDateListResponse> {
-  const res = await fetch(`${statsApiBase()}/dates`)
+  const res = await fetch(`${statsApiBase()}/dates`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get stats dates failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get stats dates failed: ${res.status}`);
   }
-  return res.json() as Promise<StatsDateListResponse>
+  return res.json() as Promise<StatsDateListResponse>;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -379,41 +405,220 @@ export async function getStatsDates(): Promise<StatsDateListResponse> {
 // ────────────────────────────────────────────────────────────────────────────
 
 function memoryApiBase(): string {
-  return getMemoryApiBase()
+  return getMemoryApiBase();
 }
 
 export async function getMemoryStats(): Promise<{ stats: import('./types').MemoryGlobalStats }> {
-  const res = await fetch(`${memoryApiBase()}/stats`)
+  const res = await fetch(`${memoryApiBase()}/stats`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get memory stats failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get memory stats failed: ${res.status}`);
   }
-  return res.json()
+  return res.json();
 }
 
 export async function getMemoryGroups(): Promise<{ groups: import('./types').MemoryGroupStats[] }> {
-  const res = await fetch(`${memoryApiBase()}/groups`)
+  const res = await fetch(`${memoryApiBase()}/groups`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get memory groups failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get memory groups failed: ${res.status}`);
   }
-  return res.json()
+  return res.json();
 }
 
 export async function getMemoryGroupDetail(groupId: string): Promise<MemoryGroupDetail> {
-  const res = await fetch(`${memoryApiBase()}/group/${encodeURIComponent(groupId)}`)
+  const res = await fetch(`${memoryApiBase()}/group/${encodeURIComponent(groupId)}`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get memory group detail failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get memory group detail failed: ${res.status}`);
   }
-  return res.json()
+  return res.json();
 }
 
 export async function getMemoryUserFacts(groupId: string, userId: string): Promise<MemoryUserFactDetail> {
-  const res = await fetch(`${memoryApiBase()}/group/${encodeURIComponent(groupId)}/user/${encodeURIComponent(userId)}`)
+  const res = await fetch(`${memoryApiBase()}/group/${encodeURIComponent(groupId)}/user/${encodeURIComponent(userId)}`);
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Get memory user facts failed: ${res.status}`)
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get memory user facts failed: ${res.status}`);
   }
-  return res.json()
+  return res.json();
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Projects API (ProjectRegistry)
+// ────────────────────────────────────────────────────────────────────────────
+
+export async function listProjects(): Promise<ProjectsResponse> {
+  const res = await fetch(`${projectsApiBase()}`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List projects failed: ${res.status}`);
+  }
+  return res.json() as Promise<ProjectsResponse>;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Agent Cluster API
+// ────────────────────────────────────────────────────────────────────────────
+
+export async function getClusterStatus(): Promise<ClusterStatus> {
+  const res = await fetch(`${clusterApiBase()}/status`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get cluster status failed: ${res.status}`);
+  }
+  return res.json() as Promise<ClusterStatus>;
+}
+
+export async function getClusterControlStatus(): Promise<{ started: boolean; status: ClusterStatus }> {
+  const res = await fetch(`${clusterControlApiBase()}/status`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get cluster control status failed: ${res.status}`);
+  }
+  return res.json() as Promise<{ started: boolean; status: ClusterStatus }>;
+}
+
+export async function startCluster(): Promise<{ started: boolean }> {
+  const res = await fetch(`${clusterControlApiBase()}/start`, { method: 'POST' });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Start cluster failed: ${res.status}`);
+  }
+  return res.json() as Promise<{ started: boolean }>;
+}
+
+export async function stopCluster(): Promise<{ started: boolean }> {
+  const res = await fetch(`${clusterControlApiBase()}/stop`, { method: 'POST' });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Stop cluster failed: ${res.status}`);
+  }
+  return res.json() as Promise<{ started: boolean }>;
+}
+
+export async function listClusterWorkers(): Promise<ClusterWorkerRegistration[]> {
+  const res = await fetch(`${clusterApiBase()}/workers`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List cluster workers failed: ${res.status}`);
+  }
+  return res.json() as Promise<ClusterWorkerRegistration[]>;
+}
+
+export async function listClusterJobs(opts?: {
+  status?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<ClusterJob[]> {
+  const params = new URLSearchParams();
+  if (opts?.status) params.set('status', opts.status);
+  if (opts?.limit != null) params.set('limit', String(opts.limit));
+  if (opts?.offset != null) params.set('offset', String(opts.offset));
+  const res = await fetch(`${clusterApiBase()}/jobs?${params}`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List cluster jobs failed: ${res.status}`);
+  }
+  return res.json() as Promise<ClusterJob[]>;
+}
+
+export async function listClusterTasks(): Promise<ClusterTask[]> {
+  const res = await fetch(`${clusterApiBase()}/tasks`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List cluster tasks failed: ${res.status}`);
+  }
+  return res.json() as Promise<ClusterTask[]>;
+}
+
+export async function listClusterEvents(opts?: {
+  type?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<ClusterEventListResponse> {
+  const params = new URLSearchParams();
+  if (opts?.type) params.set('type', opts.type);
+  if (opts?.limit != null) params.set('limit', String(opts.limit));
+  if (opts?.offset != null) params.set('offset', String(opts.offset));
+  const res = await fetch(`${clusterApiBase()}/events?${params}`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List cluster events failed: ${res.status}`);
+  }
+  return res.json() as Promise<ClusterEventListResponse>;
+}
+
+export async function listClusterLocks(): Promise<ClusterLock[]> {
+  const res = await fetch(`${clusterApiBase()}/locks`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List cluster locks failed: ${res.status}`);
+  }
+  return res.json() as Promise<ClusterLock[]>;
+}
+
+export async function listClusterHelpRequests(): Promise<ClusterHelpRequest[]> {
+  const res = await fetch(`${clusterApiBase()}/help`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List cluster help requests failed: ${res.status}`);
+  }
+  return res.json() as Promise<ClusterHelpRequest[]>;
+}
+
+export async function createClusterJob(input: { project: string; description: string }): Promise<ClusterTask> {
+  const res = await fetch(`${clusterApiBase()}/jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Create cluster job failed: ${res.status}`);
+  }
+  return res.json() as Promise<ClusterTask>;
+}
+
+export async function pauseCluster(): Promise<{ paused: boolean }> {
+  const res = await fetch(`${clusterApiBase()}/pause`, { method: 'POST' });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Pause cluster failed: ${res.status}`);
+  }
+  return res.json() as Promise<{ paused: boolean }>;
+}
+
+export async function resumeCluster(): Promise<{ paused: boolean }> {
+  const res = await fetch(`${clusterApiBase()}/resume`, { method: 'POST' });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Resume cluster failed: ${res.status}`);
+  }
+  return res.json() as Promise<{ paused: boolean }>;
+}
+
+export async function killClusterWorker(workerId: string): Promise<{ killed: boolean }> {
+  const res = await fetch(`${clusterApiBase()}/workers/${encodeURIComponent(workerId)}/kill`, { method: 'POST' });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Kill worker failed: ${res.status}`);
+  }
+  return res.json() as Promise<{ killed: boolean }>;
+}
+
+export async function answerClusterHelpRequest(
+  askId: string,
+  input: { answer: string; answeredBy?: string },
+): Promise<{ answered: boolean }> {
+  const res = await fetch(`${clusterApiBase()}/help/${encodeURIComponent(askId)}/answer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Answer help request failed: ${res.status}`);
+  }
+  return res.json() as Promise<{ answered: boolean }>;
 }

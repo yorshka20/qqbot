@@ -4,6 +4,7 @@
  */
 
 import { DailyStatsBackend } from './DailyStatsBackend';
+import { ClusterControlBackend } from './ClusterControlBackend';
 import { FileManagerBackend } from './FileManagerBackend';
 import { InsightsBackend } from './InsightsBackend';
 import { MemoryStatusBackend } from './MemoryStatusBackend';
@@ -15,7 +16,7 @@ import type { Backend } from './types';
 import { ZhihuBackend } from './ZhihuBackend';
 
 export type { Backend } from './types';
-export { jsonResponse, errorResponse } from './types';
+export { errorResponse, jsonResponse } from './types';
 
 /**
  * Create all backends. Called once during server initialization.
@@ -24,6 +25,7 @@ export { jsonResponse, errorResponse } from './types';
 export function createBackends(baseDir: string): Backend[] {
   return [
     new FileManagerBackend(baseDir),
+    new ClusterControlBackend(),
     new ReportBackend(),
     new InsightsBackend(),
     new MomentsBackend(),

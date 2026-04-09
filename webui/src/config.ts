@@ -72,3 +72,21 @@ export function getMemoryApiBase(): string {
   const serverBase = getStaticServerBase();
   return serverBase ? `${serverBase}/api/memory` : '/api/memory';
 }
+
+/** Base URL for Agent Cluster API requests. */
+export function getClusterApiBase(): string {
+  const serverBase = getStaticServerBase();
+  return serverBase ? `${serverBase}/api/cluster` : '/api/cluster';
+}
+
+/** Base URL for Agent Cluster control plane (always-on StaticServer). */
+export function getClusterControlApiBase(): string {
+  const serverBase = getStaticServerBase();
+  return serverBase ? `${serverBase}/api/cluster-control` : '/api/cluster-control';
+}
+
+/** Base URL for Projects API requests (ProjectRegistry). */
+export function getProjectsApiBase(): string {
+  const serverBase = getStaticServerBase();
+  return serverBase ? `${serverBase}/api/cluster/projects` : '/api/cluster/projects';
+}

@@ -9,9 +9,9 @@ import type { Database } from 'bun:sqlite';
 import { logger } from '@/utils/logger';
 import { ClaudeCliBackend } from './backends/ClaudeCliBackend';
 import { ClusterAPIRouter } from './ClusterAPIRouter';
-import type { ClusterConfig } from './config';
 import { ClusterScheduler } from './ClusterScheduler';
 import { ContextHub } from './ContextHub';
+import type { ClusterConfig } from './config';
 import { PlannerService } from './PlannerService';
 import { QueueSource } from './sources/QueueSource';
 import { TodoFileSource } from './sources/TodoFileSource';
@@ -160,9 +160,7 @@ export class ClusterManager {
   private registerBackends(): void {
     for (const [name, template] of Object.entries(this.config.workerTemplates)) {
       if (template.type === 'claude-cli') {
-        this.workerPool.registerBackend(
-          new ClaudeCliBackend(template.command, template.args),
-        );
+        this.workerPool.registerBackend(new ClaudeCliBackend(template.command, template.args));
         break; // Only need one backend instance per type
       }
     }

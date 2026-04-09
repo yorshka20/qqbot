@@ -55,11 +55,7 @@ export class LockManager {
    * Try to acquire locks for a set of files.
    * Returns conflicts if any files are already locked by other workers.
    */
-  tryAcquire(
-    files: string[],
-    workerId: string,
-    taskId?: string,
-  ): { granted: boolean; conflicts: LockConflict[] } {
+  tryAcquire(files: string[], workerId: string, taskId?: string): { granted: boolean; conflicts: LockConflict[] } {
     const conflicts: LockConflict[] = [];
     const now = Date.now();
 

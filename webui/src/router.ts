@@ -21,8 +21,9 @@ export type Route =
   | { page: 'qdrant' }
   | { page: 'stats' }
   | { page: 'memory' }
+  | { page: 'cluster' };
 
-export type PageName = Route['page']
+export type PageName = Route['page'];
 
 // ────────────────────────────────────────────────────────────────────────────
 // Parsing & Navigation
@@ -32,46 +33,50 @@ export type PageName = Route['page']
  * Parse current location hash into a Route object.
  */
 export function parseHash(): Route {
-  const hash = window.location.hash.slice(1) // Remove leading #
+  const hash = window.location.hash.slice(1); // Remove leading #
 
   if (!hash || hash === '/') {
-    return { page: 'files' }
+    return { page: 'files' };
   }
 
   if (hash === '/reports') {
-    return { page: 'reports' }
+    return { page: 'reports' };
   }
 
   if (hash === '/insights') {
-    return { page: 'insights' }
+    return { page: 'insights' };
   }
 
   if (hash === '/zhihu') {
-    return { page: 'zhihu' }
+    return { page: 'zhihu' };
   }
 
   if (hash === '/moments') {
-    return { page: 'moments' }
+    return { page: 'moments' };
   }
 
   if (hash === '/qdrant') {
-    return { page: 'qdrant' }
+    return { page: 'qdrant' };
   }
 
   if (hash === '/stats') {
-    return { page: 'stats' }
+    return { page: 'stats' };
   }
 
   if (hash === '/memory') {
-    return { page: 'memory' }
+    return { page: 'memory' };
   }
 
-  const reportMatch = hash.match(/^\/report\/(.+)$/)
+  if (hash === '/cluster') {
+    return { page: 'cluster' };
+  }
+
+  const reportMatch = hash.match(/^\/report\/(.+)$/);
   if (reportMatch?.[1]) {
-    return { page: 'report', id: reportMatch[1] }
+    return { page: 'report', id: reportMatch[1] };
   }
 
-  return { page: 'files' }
+  return { page: 'files' };
 }
 
 /**
@@ -80,32 +85,35 @@ export function parseHash(): Route {
 export function setHash(route: Route): void {
   switch (route.page) {
     case 'files':
-      window.location.hash = '/'
-      break
+      window.location.hash = '/';
+      break;
     case 'reports':
-      window.location.hash = '/reports'
-      break
+      window.location.hash = '/reports';
+      break;
     case 'report':
-      window.location.hash = `/report/${route.id}`
-      break
+      window.location.hash = `/report/${route.id}`;
+      break;
     case 'insights':
-      window.location.hash = '/insights'
-      break
+      window.location.hash = '/insights';
+      break;
     case 'zhihu':
-      window.location.hash = '/zhihu'
-      break
+      window.location.hash = '/zhihu';
+      break;
     case 'moments':
-      window.location.hash = '/moments'
-      break
+      window.location.hash = '/moments';
+      break;
     case 'qdrant':
-      window.location.hash = '/qdrant'
-      break
+      window.location.hash = '/qdrant';
+      break;
     case 'stats':
-      window.location.hash = '/stats'
-      break
+      window.location.hash = '/stats';
+      break;
     case 'memory':
-      window.location.hash = '/memory'
-      break
+      window.location.hash = '/memory';
+      break;
+    case 'cluster':
+      window.location.hash = '/cluster';
+      break;
   }
 }
 
@@ -113,8 +121,8 @@ export function setHash(route: Route): void {
  * Navigate to a new route (updates both state and hash).
  */
 export function navigateTo(route: Route, setRoute: (r: Route) => void): void {
-  setRoute(route)
-  setHash(route)
+  setRoute(route);
+  setHash(route);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -126,7 +134,7 @@ export function navigateTo(route: Route, setRoute: (r: Route) => void): void {
  */
 export function isActivePage(route: Route, page: PageName): boolean {
   if (page === 'reports') {
-    return route.page === 'reports' || route.page === 'report'
+    return route.page === 'reports' || route.page === 'report';
   }
-  return route.page === page
+  return route.page === page;
 }
