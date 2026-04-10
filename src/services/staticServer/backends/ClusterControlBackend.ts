@@ -13,9 +13,9 @@
  * - POST /api/cluster-control/resume
  */
 
+import type { ClusterManager } from '@/cluster/ClusterManager';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { ClusterManager } from '@/cluster/ClusterManager';
 import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/cluster-control';
@@ -78,4 +78,3 @@ export class ClusterControlBackend {
     }
   }
 }
-

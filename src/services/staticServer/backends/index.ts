@@ -3,8 +3,8 @@
  * To add a new backend: create a file in this directory, then add it to createBackends().
  */
 
-import { DailyStatsBackend } from './DailyStatsBackend';
 import { ClusterControlBackend } from './ClusterControlBackend';
+import { DailyStatsBackend } from './DailyStatsBackend';
 import { FileManagerBackend } from './FileManagerBackend';
 import { InsightsBackend } from './InsightsBackend';
 import { MemoryStatusBackend } from './MemoryStatusBackend';

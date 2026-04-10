@@ -77,10 +77,7 @@ type RegisterToolFn = (
     description: string;
     inputSchema?: Record<string, z.ZodTypeAny>;
   },
-  handler: (
-    args: Record<string, unknown>,
-    extra: ToolExtra,
-  ) => Promise<CallToolResult>,
+  handler: (args: Record<string, unknown>, extra: ToolExtra) => Promise<CallToolResult>,
 ) => void;
 
 export class HubMCPServer {
@@ -158,9 +155,7 @@ export class HubMCPServer {
     // tsc instantiates the SDK's recursive `ToolCallback<Args>` exactly
     // once for the whole file instead of seven times — see RegisterToolFn
     // doc comment for the full story.
-    const register = this.mcpServer.registerTool.bind(
-      this.mcpServer,
-    ) as unknown as RegisterToolFn;
+    const register = this.mcpServer.registerTool.bind(this.mcpServer) as unknown as RegisterToolFn;
 
     // hub_sync — no input. Pulls events / messages / directives since the
     // worker's last cursor and renews the worker's locks as a side effect.
@@ -173,8 +168,7 @@ export class HubMCPServer {
           'minutes) to stay coordinated.',
         inputSchema: {},
       },
-      async (_args, extra) =>
-        this.runTool('hub_sync', extra, (workerId) => this.hub.handleSync(workerId)),
+      async (_args, extra) => this.runTool('hub_sync', extra, (workerId) => this.hub.handleSync(workerId)),
     );
 
     // hub_claim — acquire file locks before editing.
@@ -205,9 +199,7 @@ export class HubMCPServer {
           'Report your task progress to the hub. Use status="working" for in-progress checkpoints, ' +
           '"completed" / "failed" / "blocked" for terminal states. Reports release locks on terminal status.',
         inputSchema: {
-          status: z
-            .enum(['working', 'completed', 'failed', 'blocked'])
-            .describe('Current task status.'),
+          status: z.enum(['working', 'completed', 'failed', 'blocked']).describe('Current task status.'),
           summary: z.string().describe('Short summary of what just happened.'),
           filesModified: z
             .array(z.string())
@@ -238,11 +230,9 @@ export class HubMCPServer {
         description:
           'Ask a question that requires human judgment (clarification, decision between options, conflict ' +
           'resolution, escalation). Hub returns askId immediately and routes the question to the WebUI / QQ ' +
-          "owner. The answer arrives later as a message in your next hub_sync poll.",
+          'owner. The answer arrives later as a message in your next hub_sync poll.',
         inputSchema: {
-          type: z
-            .enum(['clarification', 'decision', 'conflict', 'escalation'])
-            .describe('What kind of help you need.'),
+          type: z.enum(['clarification', 'decision', 'conflict', 'escalation']).describe('What kind of help you need.'),
           question: z.string().describe('The question itself, written for a human reader.'),
           context: z.string().optional().describe('Background context the human will need to answer.'),
           options: z
@@ -252,9 +242,7 @@ export class HubMCPServer {
         },
       },
       async (args, extra) =>
-        this.runTool('hub_ask', extra, (workerId) =>
-          this.hub.handleAsk(workerId, args as unknown as HubAskInput),
-        ),
+        this.runTool('hub_ask', extra, (workerId) => this.hub.handleAsk(workerId, args as unknown as HubAskInput)),
     );
 
     // hub_message — send a message to another worker (or "all").

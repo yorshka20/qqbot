@@ -31,7 +31,7 @@ import type { ParsedWorkerOutput, WorkerBackend, WorkerSpawnConfig } from '../ty
 import { ClaudeCliBackend } from './ClaudeCliBackend';
 
 const MINIMAX_CN_ANTHROPIC_BASE_URL = 'https://api.minimaxi.com/anthropic';
-const MINIMAX_DEFAULT_MODEL = 'MiniMax-M2';
+const MINIMAX_DEFAULT_MODEL = 'MiniMax-M2.7';
 
 export class MinimaxBackend implements WorkerBackend {
   name = 'minimax-cli';

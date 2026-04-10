@@ -7,8 +7,8 @@
 
 import type { Database } from 'bun:sqlite';
 import { logger } from '@/utils/logger';
-import type { EventLog } from './EventLog';
 import type { FileLock, LockConflict } from '../types';
+import type { EventLog } from './EventLog';
 
 export class LockManager {
   private locks = new Map<string, FileLock>();

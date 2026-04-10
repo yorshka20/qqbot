@@ -14,12 +14,13 @@
 //   ├── host/              — LanRelayHost (Bun.serve WebSocket server)
 //   └── client/            — LanRelayClient (auto-reconnecting WebSocket)
 
+export { LAN_DISPATCH_PROTOCOL, LanRelayClient } from './client/LanRelayClient';
+export { LanRelayHost } from './host/LanRelayHost';
+export type { ClientEntry } from './host/registry';
 export type { LanRelayHandle } from './init';
 export { initLanRelay } from './init';
-
 export type { ILanRelayRuntime, LanRelayOutboundParams } from './types/runtime';
 export { getLanRelayRuntime, setLanRelayRuntime } from './types/runtime';
-
 export type {
   LanRelayActionPayload,
   LanRelayActionTarget,
@@ -28,7 +29,3 @@ export type {
   LanRelayOriginContext,
   LanRelayRegisterPayload,
 } from './types/wire';
-
-export type { ClientEntry } from './host/registry';
-export { LanRelayHost } from './host/LanRelayHost';
-export { LanRelayClient, LAN_DISPATCH_PROTOCOL } from './client/LanRelayClient';

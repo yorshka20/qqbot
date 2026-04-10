@@ -137,9 +137,7 @@ export class PluginManager {
         // instantiation, no DI side effects, no db opens). Looks at
         // lanRelay.<role>.disabledPlugins for the current instance role.
         if (this.config.isPluginDisabledByRole(pluginMetadata.name)) {
-          logger.info(
-            `⏭️  [PluginManager] Skipped plugin ${pluginMetadata.name} (disabled by lanRelay role filter)`,
-          );
+          logger.info(`⏭️  [PluginManager] Skipped plugin ${pluginMetadata.name} (disabled by lanRelay role filter)`);
           continue;
         }
 

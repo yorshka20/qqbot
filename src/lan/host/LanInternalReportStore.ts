@@ -33,9 +33,7 @@ export class LanInternalReportStore {
   /** Insert a single report row. Best-effort: caller does not await persistence. */
   insert(payload: LanRelayInternalReportPayload): void {
     try {
-      const stmt = this.db.query(
-        `INSERT INTO lan_internal_reports (clientId, level, text, ts) VALUES (?, ?, ?, ?)`,
-      );
+      const stmt = this.db.query(`INSERT INTO lan_internal_reports (clientId, level, text, ts) VALUES (?, ?, ?, ?)`);
       stmt.run(payload.clientId, payload.level, payload.text, payload.ts);
     } catch (err) {
       // Don't throw — internal reports are best-effort. Caller already has a
@@ -49,7 +47,10 @@ export class LanInternalReportStore {
    * Query the most recent N reports for a client (newest first).
    * `limit` is clamped to [1, LAN_REPORT_MAX_LIMIT].
    */
-  query(clientId: string, opts?: { limit?: number; level?: 'debug' | 'info' | 'warn' | 'error' }): LanInternalReportRow[] {
+  query(
+    clientId: string,
+    opts?: { limit?: number; level?: 'debug' | 'info' | 'warn' | 'error' },
+  ): LanInternalReportRow[] {
     const limit = Math.max(1, Math.min(opts?.limit ?? LAN_REPORT_DEFAULT_LIMIT, LAN_REPORT_MAX_LIMIT));
     let sql = `SELECT id, clientId, level, text, ts FROM lan_internal_reports WHERE clientId = ?`;
     const params: (string | number)[] = [clientId];

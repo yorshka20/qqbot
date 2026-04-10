@@ -7,8 +7,8 @@
 import type { Database } from 'bun:sqlite';
 import { randomUUID } from 'node:crypto';
 import { logger } from '@/utils/logger';
-import type { ContextHub } from './hub/ContextHub';
 import type { ClusterConfig } from './config';
+import type { ContextHub } from './hub/ContextHub';
 import type { TaskSource } from './sources/TaskSource';
 import type { JobRecord, TaskCandidate, TaskRecord } from './types';
 import type { WorkerPool } from './WorkerPool';

@@ -2,7 +2,6 @@
 
 import { existsSync, statSync } from 'fs';
 import { resolve } from 'path';
-import type { LanRelayConfig } from './types/lanRelay';
 import { ConfigError } from '@/utils/errors';
 import { logger } from '@/utils/logger';
 import { loadConfigAuto } from './loadConfigDir';
@@ -10,6 +9,7 @@ import { loadConfigAuto } from './loadConfigDir';
 import type { AIConfig, AIProviderCapability, ContextMemoryConfig, SessionProviderConfig } from './types/ai';
 import type { BotSelfConfig, ClaudeCodeServiceConfig, FileReadServiceConfig, StaticServerConfig } from './types/bot';
 import type { DatabaseConfig } from './types/database';
+import type { LanRelayConfig } from './types/lanRelay';
 import type { MCPConfig } from './types/mcp';
 import type { MemoryConfig } from './types/memory';
 import type { PluginsConfig } from './types/plugins';
@@ -44,6 +44,7 @@ export type {
 export type { BotSelfConfig, ClaudeCodeServiceConfig, ProjectRegistryConfig, StaticServerConfig } from './types/bot';
 export type { LogLevel } from './types/const';
 export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './types/database';
+export type { LanRelayConfig, LanRelayInstanceRole } from './types/lanRelay';
 export type {
   MCPConfig,
   MCPServerConfig,
@@ -68,7 +69,6 @@ export type {
 export type { RAGConfig } from './types/rag';
 export type { TTSConfig } from './types/tts';
 export type { VideoKnowledgeConfig } from './types/videoKnowledge';
-export type { LanRelayConfig, LanRelayInstanceRole } from './types/lanRelay';
 
 export interface BotConfig {
   protocols: ProtocolConfig[];
@@ -180,10 +180,14 @@ export class Config {
         throw new ConfigError('lanRelay.connectUrl is required when lanRelay.instanceRole is client');
       }
       if (!lr.clientId || String(lr.clientId).trim() === '') {
-        throw new ConfigError('lanRelay.clientId is required when lanRelay.instanceRole is client (Phase 2 dispatch model)');
+        throw new ConfigError(
+          'lanRelay.clientId is required when lanRelay.instanceRole is client (Phase 2 dispatch model)',
+        );
       }
       if (!lr.publicAddress || String(lr.publicAddress).trim() === '') {
-        throw new ConfigError('lanRelay.publicAddress is required when lanRelay.instanceRole is client (no auto-detection)');
+        throw new ConfigError(
+          'lanRelay.publicAddress is required when lanRelay.instanceRole is client (no auto-detection)',
+        );
       }
     }
   }

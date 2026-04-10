@@ -36,8 +36,7 @@ export class ClaudeCliBackend implements WorkerBackend {
     // template args (unlikely but harmless to be defensive). The dedupe
     // checks both shapes.
     const args = [...config.args];
-    const hasMcpConfig =
-      args.includes('--mcp-config') || args.some((a) => a.startsWith('--mcp-config='));
+    const hasMcpConfig = args.includes('--mcp-config') || args.some((a) => a.startsWith('--mcp-config='));
     if (!hasMcpConfig) {
       args.push(`--mcp-config=${config.mcpConfigPath}`);
     }

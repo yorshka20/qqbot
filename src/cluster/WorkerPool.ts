@@ -9,8 +9,8 @@ import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { logger } from '@/utils/logger';
-import type { ContextHub } from './hub/ContextHub';
 import type { ClusterConfig } from './config';
+import type { ContextHub } from './hub/ContextHub';
 import type { ClusterStatus, TaskRecord, WorkerBackend, WorkerInstance } from './types';
 
 /**
@@ -432,8 +432,7 @@ export class WorkerPool {
       // non-zero exit code (e.g. 143) which would otherwise flip the
       // task back to `failed` here, racing with the fast-path mark.
       // Treat any prior terminal status as authoritative.
-      const alreadyTerminal =
-        worker.currentTask.status === 'completed' || worker.currentTask.status === 'failed';
+      const alreadyTerminal = worker.currentTask.status === 'completed' || worker.currentTask.status === 'failed';
       if (!alreadyTerminal) {
         worker.currentTask.status = exitCode === 0 ? 'completed' : 'failed';
         worker.currentTask.completedAt = new Date().toISOString();

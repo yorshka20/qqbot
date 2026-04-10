@@ -10,11 +10,6 @@ import type { Database } from 'bun:sqlite';
 import { randomUUID } from 'node:crypto';
 import { logger } from '@/utils/logger';
 import type { ClusterConfig } from '../config';
-import type { ClusterAPIRouter } from './ClusterAPIRouter';
-import { EventLog } from './EventLog';
-import { HubMCPServer } from './HubMCPServer';
-import { LockManager } from './LockManager';
-import { MessageBox } from './MessageBox';
 import type {
   ClusterEventType,
   HelpRequest,
@@ -32,6 +27,11 @@ import type {
   HubUpdate,
   TaskCandidate,
 } from '../types';
+import type { ClusterAPIRouter } from './ClusterAPIRouter';
+import { EventLog } from './EventLog';
+import { HubMCPServer } from './HubMCPServer';
+import { LockManager } from './LockManager';
+import { MessageBox } from './MessageBox';
 import { WorkerRegistry } from './WorkerRegistry';
 
 /** Callback for when planner dispatches a new task */

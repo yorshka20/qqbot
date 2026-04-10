@@ -161,8 +161,7 @@ export class EventLog {
       // Older rows that haven't been backfilled (or pre-migration in-memory
       // entries) may have empty createdAt — derive it from `timestamp` as a
       // safety net so the API contract always returns a valid ISO string.
-      createdAt:
-        (row.createdAt as string | null | undefined) || new Date(row.timestamp as number).toISOString(),
+      createdAt: (row.createdAt as string | null | undefined) || new Date(row.timestamp as number).toISOString(),
       type: row.type as ClusterEventType,
       sourceWorkerId: row.sourceWorkerId as string,
       targetWorkerId: row.targetWorkerId as string | undefined,

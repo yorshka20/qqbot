@@ -24,8 +24,6 @@ import type { EventRouter } from '@/events/EventRouter';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { ILanRelayRuntime } from '../types/runtime';
-import type { LanInternalReportRow } from './LanInternalReportStore';
-import { LanInternalReportStore } from './LanInternalReportStore';
 import type {
   LanRelayActionPayload,
   LanRelayDispatchPayload,
@@ -37,6 +35,8 @@ import type {
   LanRelayRegisterPayload,
 } from '../types/wire';
 import { LAN_RELAY_WS_PATH } from '../types/wire';
+import type { LanInternalReportRow } from './LanInternalReportStore';
+import { LanInternalReportStore } from './LanInternalReportStore';
 import type { ClientData, ClientEntry } from './registry';
 
 export class LanRelayHost implements ILanRelayRuntime {
@@ -50,12 +50,7 @@ export class LanRelayHost implements ILanRelayRuntime {
   /** Store for client internal_report envelopes; null when no rawDb available. */
   private readonly reportStore: LanInternalReportStore | null;
 
-  constructor(
-    config: Config,
-    _eventRouter: EventRouter,
-    messageAPI: MessageAPI,
-    rawDb: Database | null = null,
-  ) {
+  constructor(config: Config, _eventRouter: EventRouter, messageAPI: MessageAPI, rawDb: Database | null = null) {
     const lr = config.getLanRelayConfig();
     if (!lr) {
       throw new Error('LanRelayHost: lanRelay config missing');
@@ -319,9 +314,7 @@ async function handleHostClientMessage(
     }
 
     if (ws.data?.clientId && ws.data.clientId !== p.clientId) {
-      logger.warn(
-        `[LanRelayHost] client_register clientId (${p.clientId}) differs from hello (${ws.data.clientId})`,
-      );
+      logger.warn(`[LanRelayHost] client_register clientId (${p.clientId}) differs from hello (${ws.data.clientId})`);
       return;
     }
 

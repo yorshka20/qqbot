@@ -66,9 +66,11 @@ export class GeminiCliBackend implements WorkerBackend {
     // 3. Schedule cleanup when the process exits, regardless of how it
     //    exited (success / failure / kill). Fire-and-forget — the
     //    `monitorProcess` in WorkerPool waits on `proc.exited` separately.
-    void proc.exited.finally(() => settingsRestore().catch((err) => {
-      logger.warn(`[GeminiCliBackend] settings.json restore failed for ${config.workerId}:`, err);
-    }));
+    void proc.exited.finally(() =>
+      settingsRestore().catch((err) => {
+        logger.warn(`[GeminiCliBackend] settings.json restore failed for ${config.workerId}:`, err);
+      }),
+    );
 
     return proc;
   }
