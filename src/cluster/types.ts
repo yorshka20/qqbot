@@ -6,7 +6,9 @@
 
 export interface EventEntry {
   seq: number;
+  /** Epoch milliseconds — used for in-memory ring buffer ordering and cursor math. */
   timestamp: number;
+  createdAt: string;
   type: ClusterEventType;
   sourceWorkerId: string;
   targetWorkerId?: string;

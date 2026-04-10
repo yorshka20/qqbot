@@ -9,7 +9,7 @@
  */
 
 import { logger } from '@/utils/logger';
-import type { ContextHub } from './ContextHub';
+import type { ContextHub } from './hub/ContextHub';
 import type { ClusterConfig } from './config';
 import type { HelpRequest } from './types';
 import type { WorkerPool } from './WorkerPool';

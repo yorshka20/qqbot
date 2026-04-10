@@ -5,7 +5,7 @@
  */
 
 import { logger } from '@/utils/logger';
-import type { WorkerRegistration } from './types';
+import type { WorkerRegistration } from '../types';
 
 export class WorkerRegistry {
   private workers = new Map<string, WorkerRegistration>();

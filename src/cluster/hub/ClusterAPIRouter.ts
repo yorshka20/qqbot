@@ -9,9 +9,9 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import { logger } from '@/utils/logger';
-import type { ClusterScheduler } from './ClusterScheduler';
+import type { ClusterScheduler } from '../ClusterScheduler';
+import type { WorkerPool } from '../WorkerPool';
 import type { ContextHub, SSESubscriber } from './ContextHub';
-import type { WorkerPool } from './WorkerPool';
 
 export class ClusterAPIRouter {
   constructor(

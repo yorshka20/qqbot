@@ -7,7 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { logger } from '@/utils/logger';
-import type { HubUpdate } from './types';
+import type { HubUpdate } from '../types';
 
 export interface PendingMessage {
   id: string;

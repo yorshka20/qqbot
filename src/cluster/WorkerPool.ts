@@ -9,7 +9,7 @@ import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { logger } from '@/utils/logger';
-import type { ContextHub } from './ContextHub';
+import type { ContextHub } from './hub/ContextHub';
 import type { ClusterConfig } from './config';
 import type { ClusterStatus, TaskRecord, WorkerBackend, WorkerInstance } from './types';
 
@@ -465,10 +465,20 @@ export class WorkerPool {
   private async generateMCPConfig(workerId: string, hubUrl: string): Promise<string> {
     // Generate a temporary MCP config file that points to our ContextHub.
     // Format is Claude CLI's `--mcp-config` shape (mcpServers object).
+    //
+    // The `url` MUST include the `/mcp` suffix because that's where
+    // HubMCPServer's WebStandardStreamableHTTPServerTransport is mounted
+    // inside ContextHub.handleRequest. Without /mcp the worker would hit
+    // the legacy /hub/* REST stubs which don't speak MCP protocol.
+    //
+    // The `X-Worker-Id` header is sent on every request the MCP client
+    // makes, and the hub reads it from `extra.requestInfo.headers` inside
+    // each tool handler to identify the caller — no session table needed.
     const mcpConfig = {
       mcpServers: {
-        'context-hub': {
-          url: hubUrl,
+        'cluster-context-hub': {
+          type: 'http',
+          url: `${hubUrl}/mcp`,
           headers: {
             'X-Worker-Id': workerId,
           },

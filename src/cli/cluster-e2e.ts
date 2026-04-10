@@ -3,8 +3,18 @@
 // flows through scheduler → worker → backend → DB writeback.
 //
 // Usage:
-//   bun run cluster:e2e [--project <alias>] [--task "<prompt>"] [--timeout-sec 300]
-//   PROJECT=qqbot bun run cluster:e2e
+//   bun run cluster:e2e [--project <alias>] [--template <name>] \
+//                       [--task "<prompt>"] [--timeout-sec 300] \
+//                       [--hub-port 3201] [--sentinel STR]
+//
+// Examples:
+//   bun run cluster:e2e                           # default workerPreference
+//   bun run cluster:e2e --template gemini-pro     # force gemini-pro template
+//   bun run cluster:e2e --template minimax-m2 --timeout-sec 240
+//
+// The --template flag overrides `projects[<project>].workerPreference` for
+// this run only — useful when you want to e2e-test a specific provider
+// without editing cluster.jsonc.
 //
 // Exit codes:
 //   0 — task completed successfully and output contained the sentinel
@@ -12,9 +22,11 @@
 //
 // Requires:
 //   - cluster.enabled === true in config
-//   - The configured workerPreference's CLI binary is on PATH and authed
-//     (e.g. `claude` for the default `claude-sonnet` template, or
-//     `codex`/`gemini` if you switched workerPreference)
+//   - The chosen template's CLI binary is on PATH and authed
+//     (e.g. `claude` for claude-sonnet/minimax-m2, `gemini` for gemini-pro,
+//     `codex` for codex-gpt5)
+//   - For provider-specific templates, the matching API key in template.env
+//     (ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, etc.)
 //
 // Why a sentinel string in the prompt?
 //   The default Phase 1 success criterion is "task ran end-to-end and we
@@ -36,6 +48,8 @@ import { logger } from '@/utils/logger';
 
 interface E2EArgs {
   project: string;
+  /** Optional override for the project's workerPreference template name. */
+  template: string | null;
   task: string;
   timeoutSec: number;
   sentinel: string;
@@ -50,8 +64,10 @@ function parseArgs(): E2EArgs {
     return fallback;
   };
   const sentinel = get('--sentinel', 'CLUSTER_E2E_OK_42');
+  const templateRaw = get('--template', '');
   return {
     project: get('--project', process.env.CLUSTER_E2E_PROJECT || 'qqbot'),
+    template: templateRaw || null,
     task: get(
       '--task',
       `This is an end-to-end test of the cluster pipeline. Please reply with EXACTLY the literal string ${sentinel} on a single line, with no additional commentary.`,
@@ -107,12 +123,50 @@ async function main() {
 
   // Override the hub port BEFORE start() so we don't collide with a live
   // dev bot also holding the conventional cluster port. ContextHub reads
-  // `config.hub.port` lazily inside `start()`, so mutating the parsed
-  // ClusterConfig object after construction is safe.
-  const clusterConfig = (cluster as unknown as { config: { hub: { port: number } } }).config;
+  // `config.hub.port` lazily inside `start()`, and ClusterScheduler reads
+  // `config.projects[*].workerPreference` inside its dispatch helper, so
+  // mutating the parsed ClusterConfig object after construction is safe.
+  const clusterConfig = (
+    cluster as unknown as {
+      config: {
+        hub: { port: number };
+        projects: Record<string, { workerPreference: string }>;
+        workerTemplates: Record<string, unknown>;
+      };
+    }
+  ).config;
+
   if (clusterConfig?.hub) {
     logger.info(`[ClusterE2E] Overriding hub port: ${clusterConfig.hub.port} → ${args.hubPort}`);
     clusterConfig.hub.port = args.hubPort;
+  }
+
+  // Optional --template override: rewrite the project's workerPreference
+  // for this run only. Validate that the requested template actually
+  // exists in workerTemplates so a typo gets caught up front instead of
+  // failing inside spawnWorker.
+  if (args.template) {
+    if (!clusterConfig?.workerTemplates || !(args.template in clusterConfig.workerTemplates)) {
+      logger.error(
+        `[ClusterE2E] ✗ Unknown worker template "${args.template}". Available: ${
+          clusterConfig?.workerTemplates ? Object.keys(clusterConfig.workerTemplates).join(', ') : '(none)'
+        }`,
+      );
+      await teardown(conversationComponents);
+      process.exit(1);
+    }
+    const projectEntry = clusterConfig.projects?.[args.project];
+    if (!projectEntry) {
+      logger.error(
+        `[ClusterE2E] ✗ Project "${args.project}" not found in cluster.projects. Cannot override workerPreference.`,
+      );
+      await teardown(conversationComponents);
+      process.exit(1);
+    }
+    logger.info(
+      `[ClusterE2E] Overriding workerPreference for project "${args.project}": ${projectEntry.workerPreference} → ${args.template}`,
+    );
+    projectEntry.workerPreference = args.template;
   }
 
   try {

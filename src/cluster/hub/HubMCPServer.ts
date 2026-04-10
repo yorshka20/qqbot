@@ -1,0 +1,337 @@
+/**
+ * HubMCPServer — exposes ContextHub methods as MCP tools over HTTP.
+ *
+ * Wraps `@modelcontextprotocol/sdk`'s high-level `McpServer` and the
+ * Bun-compatible `WebStandardStreamableHTTPServerTransport` to give cluster
+ * workers a real MCP endpoint at `/mcp` on the same Bun.serve instance the
+ * REST API uses.
+ *
+ * ## Why this exists
+ *
+ * Pre-Phase-2 the `ContextHub` had a custom `/hub/sync` REST API that the
+ * workers were never wired to use — the `WorkerPool.generateMCPConfig()`
+ * helper wrote a claude-CLI-shape MCP config file but the spawned worker
+ * binaries never received the `--mcp-config` flag, and even if they had,
+ * the hub didn't speak MCP at the URL they would have connected to.
+ *
+ * This module closes both gaps. After Phase 2:
+ *
+ *   1. Hub speaks MCP Streamable HTTP at `/mcp`
+ *   2. Workers' MCP config points to `http://hub-host:hub-port/mcp`
+ *   3. Each backend (claude/codex/gemini/minimax) wires that config into
+ *      its native CLI invocation
+ *
+ * ## Worker identification
+ *
+ * Every MCP HTTP request from a worker carries the static header
+ * `X-Worker-Id: <workerId>`, which we set in
+ * `WorkerPool.generateMCPConfig()`. The MCP SDK exposes the original HTTP
+ * request via `RequestHandlerExtra.requestInfo.headers`, so each tool
+ * handler can read the workerId directly with no session-table bookkeeping.
+ *
+ * If the header is missing (e.g. someone curls `/mcp` manually), the tool
+ * returns an `isError: true` payload instead of crashing — the worker can
+ * surface this to the LLM as a tool error.
+ */
+
+import { randomUUID } from 'node:crypto';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
+import { logger } from '@/utils/logger';
+import type { ContextHub } from './ContextHub';
+import type {
+  HubAskInput,
+  HubClaimInput,
+  HubDirectiveInput,
+  HubDispatchInput,
+  HubMessageInput,
+  HubReportInput,
+} from '../types';
+
+/** Shape of the `extra` parameter we care about — narrowed from the SDK type. */
+interface ToolExtra {
+  requestInfo?: {
+    headers?: Record<string, string | string[] | undefined>;
+  };
+  sessionId?: string;
+}
+
+export class HubMCPServer {
+  private readonly mcpServer: McpServer;
+  private readonly transport: WebStandardStreamableHTTPServerTransport;
+  private connected = false;
+
+  constructor(private readonly hub: ContextHub) {
+    this.mcpServer = new McpServer(
+      { name: 'cluster-context-hub', version: '1.0.0' },
+      {
+        capabilities: { tools: {} },
+        instructions:
+          'You are a worker in an Agent Cluster. Use these tools to coordinate with the hub: ' +
+          'hub_sync (poll for events / messages), hub_claim (acquire file locks before editing), ' +
+          'hub_report (report progress / completion / failure / blocked), hub_ask (escalate to a human), ' +
+          'hub_message (send a message to another worker). Planner-only: hub_dispatch (queue a new task), ' +
+          'hub_directive (push an instruction to a coder worker).',
+      },
+    );
+
+    this.transport = new WebStandardStreamableHTTPServerTransport({
+      // Stateful: each worker MCP client gets its own session ID. We don't
+      // actually need the session table for routing (we use X-Worker-Id from
+      // request headers), but stateful mode is required by the SDK to support
+      // long-lived MCP clients that send multiple tool calls per session.
+      sessionIdGenerator: () => randomUUID(),
+      // JSON response mode keeps wire protocol simple — no SSE, request goes
+      // in, response comes back. Avoids the complexity of streaming for
+      // tool calls that are inherently request/response anyway.
+      enableJsonResponse: true,
+    });
+
+    this.registerTools();
+  }
+
+  /**
+   * Start the MCP server. Idempotent. Must be called after construction
+   * but before the hub Bun.serve starts accepting requests, so by the time
+   * a worker connects the transport is ready.
+   */
+  async start(): Promise<void> {
+    if (this.connected) return;
+    await this.mcpServer.connect(this.transport);
+    this.connected = true;
+    logger.info('[HubMCPServer] Connected — 7 tools registered, ready at /mcp');
+  }
+
+  /**
+   * Tear down the server (closes the underlying transport, ending any
+   * in-flight sessions). Called from `ContextHub.stop()`.
+   */
+  async stop(): Promise<void> {
+    if (!this.connected) return;
+    try {
+      await this.mcpServer.close();
+    } catch (err) {
+      logger.warn('[HubMCPServer] Error closing MCP server (non-fatal):', err);
+    }
+    this.connected = false;
+  }
+
+  /**
+   * Delegate an HTTP request to the underlying transport. Called from
+   * `ContextHub.handleRequest()` for any URL under `/mcp`.
+   */
+  async handleRequest(req: Request): Promise<Response> {
+    return this.transport.handleRequest(req);
+  }
+
+  // ── Tool registration ──
+
+  private registerTools(): void {
+    // hub_sync — no input. Pulls events / messages / directives since the
+    // worker's last cursor and renews the worker's locks as a side effect.
+    this.mcpServer.registerTool(
+      'hub_sync',
+      {
+        description:
+          'Sync events from the cluster hub since your last cursor. Returns new events from other workers, ' +
+          'pending messages directed at you, and any directives from the planner. Call regularly (every few ' +
+          'minutes) to stay coordinated.',
+        inputSchema: {},
+      },
+      async (_args, extra) => this.runTool('hub_sync', extra, (workerId) => this.hub.handleSync(workerId)),
+    );
+
+    // hub_claim — acquire file locks before editing.
+    this.mcpServer.registerTool(
+      'hub_claim',
+      {
+        description:
+          'Acquire exclusive locks on a set of files before editing them. Returns granted=false with the ' +
+          'list of conflicting files (and their current holders) if any of the requested files are already ' +
+          'locked by another worker. Always claim before writing.',
+        inputSchema: {
+          taskId: z.string().describe('Your current task ID (from CLUSTER_TASK_ID env var).'),
+          intent: z.string().describe('One-sentence description of what you intend to do with the files.'),
+          files: z.array(z.string()).describe('Absolute or repo-relative file paths to lock.'),
+        },
+      },
+      async (args, extra) =>
+        this.runTool('hub_claim', extra, (workerId) => this.hub.handleClaim(workerId, args as HubClaimInput)),
+    );
+
+    // hub_report — progress / completion / failure / blocked status.
+    this.mcpServer.registerTool(
+      'hub_report',
+      {
+        description:
+          'Report your task progress to the hub. Use status="working" for in-progress checkpoints, ' +
+          '"completed" / "failed" / "blocked" for terminal states. Reports release locks on terminal status.',
+        inputSchema: {
+          status: z
+            .enum(['working', 'completed', 'failed', 'blocked'])
+            .describe('Current task status.'),
+          summary: z.string().describe('Short summary of what just happened.'),
+          filesModified: z
+            .array(z.string())
+            .optional()
+            .describe('List of files you modified during this report period.'),
+          detail: z
+            .object({
+              linesAdded: z.number().optional(),
+              linesRemoved: z.number().optional(),
+              testsRan: z.number().optional(),
+              testsPassed: z.number().optional(),
+              error: z.string().optional(),
+              blockReason: z.string().optional(),
+            })
+            .optional(),
+        },
+      },
+      async (args, extra) =>
+        this.runTool('hub_report', extra, (workerId) => this.hub.handleReport(workerId, args as HubReportInput)),
+    );
+
+    // hub_ask — escalate to a human via the planner / WebUI.
+    this.mcpServer.registerTool(
+      'hub_ask',
+      {
+        description:
+          'Ask a question that requires human judgment (clarification, decision between options, conflict ' +
+          'resolution, escalation). Hub returns askId immediately and routes the question to the WebUI / QQ ' +
+          "owner. The answer arrives later as a message in your next hub_sync poll.",
+        inputSchema: {
+          type: z
+            .enum(['clarification', 'decision', 'conflict', 'escalation'])
+            .describe('What kind of help you need.'),
+          question: z.string().describe('The question itself, written for a human reader.'),
+          context: z.string().optional().describe('Background context the human will need to answer.'),
+          options: z
+            .array(z.string())
+            .optional()
+            .describe('If type=decision, list the options the human should choose between.'),
+        },
+      },
+      async (args, extra) =>
+        this.runTool('hub_ask', extra, (workerId) => this.hub.handleAsk(workerId, args as HubAskInput)),
+    );
+
+    // hub_message — send a message to another worker (or "all").
+    this.mcpServer.registerTool(
+      'hub_message',
+      {
+        description:
+          'Send a free-form message to another worker, or to "all" to broadcast. Use sparingly — most ' +
+          'coordination should go through hub_sync events and hub_claim locks. Reserved for cases where you ' +
+          'need to nudge a peer about something time-sensitive.',
+        inputSchema: {
+          to: z.string().describe('Target workerId, or "all" to broadcast to every active worker.'),
+          content: z.string().describe('The message body.'),
+          priority: z.enum(['info', 'warning']).describe('Message priority.'),
+        },
+      },
+      async (args, extra) =>
+        this.runTool('hub_message', extra, (workerId) =>
+          this.hub.handleMessage(workerId, args as HubMessageInput),
+        ),
+    );
+
+    // hub_dispatch — planner-only: queue a new task for a coder worker.
+    this.mcpServer.registerTool(
+      'hub_dispatch',
+      {
+        description:
+          'PLANNER ONLY. Queue a new task for a coder worker. The hub schedules it through the normal ' +
+          'task pipeline, picking the worker template from your hint or the project default.',
+        inputSchema: {
+          project: z.string().describe('Target project alias.'),
+          taskDescription: z.string().describe('Full task description for the coder worker.'),
+          files: z.array(z.string()).describe('Files the coder is expected to touch (used for upfront locking).'),
+          workerTemplate: z.string().optional().describe('Override the project default workerPreference.'),
+          priority: z.number().optional().describe('Higher numbers run first within the same scheduling tick.'),
+        },
+      },
+      async (args, extra) =>
+        this.runTool('hub_dispatch', extra, async (workerId) =>
+          this.hub.handleDispatch(workerId, args as HubDispatchInput),
+        ),
+    );
+
+    // hub_directive — planner-only: push an instruction into a worker's
+    // message box, delivered as a directive on its next hub_sync.
+    this.mcpServer.registerTool(
+      'hub_directive',
+      {
+        description:
+          'PLANNER ONLY. Send a directive to a specific coder worker. The directive arrives as a message in ' +
+          "the worker's next hub_sync poll, marked with high priority.",
+        inputSchema: {
+          to: z.string().describe('Target workerId.'),
+          content: z.string().describe('The directive text.'),
+        },
+      },
+      async (args, extra) =>
+        this.runTool('hub_directive', extra, (workerId) =>
+          this.hub.handleDirective(workerId, args as HubDirectiveInput),
+        ),
+    );
+  }
+
+  // ── Helpers ──
+
+  /**
+   * Common wrapper for tool handlers: extract workerId, run the body
+   * (which may be sync or async), serialize the result. Centralized so
+   * every tool handles missing-header / thrown-error cases the same way.
+   */
+  private async runTool(
+    toolName: string,
+    extra: unknown,
+    body: (workerId: string) => unknown | Promise<unknown>,
+  ): Promise<CallToolResult> {
+    const workerId = this.extractWorkerId(extra as ToolExtra);
+    if (!workerId) {
+      logger.warn(`[HubMCPServer] ${toolName}: missing X-Worker-Id header`);
+      return this.errorResult(
+        'Missing X-Worker-Id header. Your MCP client config must set headers["X-Worker-Id"] to your worker ID.',
+      );
+    }
+    try {
+      const result = await body(workerId);
+      return this.jsonResult(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(`[HubMCPServer] ${toolName} (worker=${workerId}) threw:`, err);
+      return this.errorResult(`hub method threw: ${message}`);
+    }
+  }
+
+  /**
+   * Read the worker ID from the original HTTP request's headers. The MCP
+   * SDK normalizes header names to lowercase per HTTP convention.
+   */
+  private extractWorkerId(extra: ToolExtra): string | null {
+    const h = extra?.requestInfo?.headers;
+    if (!h) return null;
+    const raw = h['x-worker-id'];
+    if (typeof raw === 'string' && raw.trim()) return raw.trim();
+    if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === 'string' && raw[0].trim()) {
+      return raw[0].trim();
+    }
+    return null;
+  }
+
+  private jsonResult(data: unknown): CallToolResult {
+    return {
+      content: [{ type: 'text', text: JSON.stringify(data) }],
+    };
+  }
+
+  private errorResult(message: string): CallToolResult {
+    return {
+      content: [{ type: 'text', text: message }],
+      isError: true,
+    };
+  }
+}

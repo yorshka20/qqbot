@@ -11,9 +11,9 @@ import { ClaudeCliBackend } from './backends/ClaudeCliBackend';
 import { CodexCliBackend } from './backends/CodexCliBackend';
 import { GeminiCliBackend } from './backends/GeminiCliBackend';
 import { MinimaxBackend } from './backends/MinimaxBackend';
-import { ClusterAPIRouter } from './ClusterAPIRouter';
+import { ClusterAPIRouter } from './hub/ClusterAPIRouter';
 import { ClusterScheduler } from './ClusterScheduler';
-import { ContextHub } from './ContextHub';
+import { ContextHub } from './hub/ContextHub';
 import type { ClusterConfig } from './config';
 import { PlannerService } from './PlannerService';
 import { QueueSource } from './sources/QueueSource';
@@ -262,6 +262,7 @@ export class ClusterManager {
       `CREATE TABLE IF NOT EXISTS cluster_events (
         seq INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp INTEGER NOT NULL,
+        createdAt TEXT NOT NULL,
         type TEXT NOT NULL,
         sourceWorkerId TEXT,
         targetWorkerId TEXT,

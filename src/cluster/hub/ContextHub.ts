@@ -9,9 +9,10 @@
 import type { Database } from 'bun:sqlite';
 import { randomUUID } from 'node:crypto';
 import { logger } from '@/utils/logger';
+import type { ClusterConfig } from '../config';
 import type { ClusterAPIRouter } from './ClusterAPIRouter';
-import type { ClusterConfig } from './config';
 import { EventLog } from './EventLog';
+import { HubMCPServer } from './HubMCPServer';
 import { LockManager } from './LockManager';
 import { MessageBox } from './MessageBox';
 import type {
@@ -30,7 +31,7 @@ import type {
   HubSyncOutput,
   HubUpdate,
   TaskCandidate,
-} from './types';
+} from '../types';
 import { WorkerRegistry } from './WorkerRegistry';
 
 /** Callback for when planner dispatches a new task */
@@ -47,6 +48,12 @@ export class ContextHub {
   readonly lockManager: LockManager;
   readonly messageBox: MessageBox;
   readonly workerRegistry: WorkerRegistry;
+  /**
+   * MCP server for worker tool calls. Mounted at `/mcp` on the same Bun.serve
+   * instance that hosts the REST API. Workers' MCP clients connect here via
+   * the config file written by `WorkerPool.generateMCPConfig()`.
+   */
+  readonly mcpServer: HubMCPServer;
 
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
   private dispatchCallback: DispatchCallback | null = null;
@@ -62,6 +69,7 @@ export class ContextHub {
     this.lockManager = new LockManager(db, this.eventLog, config.hub.lockTTL);
     this.messageBox = new MessageBox();
     this.workerRegistry = new WorkerRegistry();
+    this.mcpServer = new HubMCPServer(this);
 
     this.loadHelpRequests();
   }
@@ -81,10 +89,14 @@ export class ContextHub {
   }
 
   /**
-   * Start the HTTP server.
+   * Start the HTTP server. The MCP server is connected first so the
+   * `/mcp` route is ready to accept requests the moment Bun.serve is up.
    */
   async start(): Promise<string> {
     const { port, host } = this.config.hub;
+
+    // Start MCP first so /mcp handler is ready before bind.
+    await this.mcpServer.start();
 
     this.httpServer = Bun.serve({
       port,
@@ -93,12 +105,13 @@ export class ContextHub {
     });
 
     const url = `http://${host}:${port}`;
-    logger.info(`[ContextHub] Started on ${url}`);
+    logger.info(`[ContextHub] Started on ${url} (REST + /mcp)`);
     return url;
   }
 
   /**
-   * Stop the hub.
+   * Stop the hub. MCP server is closed AFTER the HTTP server so any
+   * in-flight tool calls have a chance to drain.
    */
   async stop(): Promise<void> {
     this.lockManager.stop();
@@ -106,6 +119,7 @@ export class ContextHub {
       this.httpServer.stop();
       this.httpServer = null;
     }
+    await this.mcpServer.stop();
     // Close all SSE connections
     for (const sub of this.sseSubscribers) {
       sub.close();
@@ -409,6 +423,14 @@ export class ContextHub {
     }
 
     try {
+      // Route /mcp/* to the MCP server (worker tool calls). This must come
+      // BEFORE the REST API check so the MCP transport gets full control
+      // of its endpoint and can handle GET (SSE), POST (tool calls), and
+      // DELETE (session termination).
+      if (path === '/mcp' || path.startsWith('/mcp/')) {
+        return this.mcpServer.handleRequest(req);
+      }
+
       // Route /api/cluster/* to the API router (WebUI endpoints)
       if (this.apiRouter && path.startsWith('/api/cluster')) {
         const result = await this.apiRouter.handle(req, url, headers);

@@ -19,10 +19,21 @@ export class ClaudeCliBackend implements WorkerBackend {
   name = 'claude-cli';
 
   async spawn(config: WorkerSpawnConfig): Promise<import('bun').Subprocess> {
-    const cmd = [config.command, ...config.args, config.taskPrompt];
+    // Inject the cluster ContextHub MCP config so the worker's claude CLI
+    // can call hub_sync / hub_claim / hub_report / hub_ask / etc. The
+    // generated tmp file lives at config.mcpConfigPath and contains the
+    // MCP server URL + X-Worker-Id header (see WorkerPool.generateMCPConfig).
+    //
+    // We dedupe in case the user already put `--mcp-config` in their
+    // template args (unlikely but harmless to be defensive).
+    const args = [...config.args];
+    if (!args.includes('--mcp-config')) {
+      args.push('--mcp-config', config.mcpConfigPath);
+    }
+    const cmd = [config.command, ...args, config.taskPrompt];
 
     logger.info(
-      `[ClaudeCliBackend] Spawning worker ${config.workerId}: ${config.command} (cwd: ${config.projectPath})`,
+      `[ClaudeCliBackend] Spawning worker ${config.workerId}: ${config.command} (cwd: ${config.projectPath}, mcp: ${config.mcpConfigPath})`,
     );
 
     return spawn({

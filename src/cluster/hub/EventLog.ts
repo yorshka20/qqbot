@@ -7,7 +7,7 @@
 
 import type { Database } from 'bun:sqlite';
 import { logger } from '@/utils/logger';
-import type { ClusterEventType, EventEntry } from './types';
+import type { ClusterEventType, EventEntry } from '../types';
 
 export class EventLog {
   /** In-memory ring buffer of recent events */
@@ -49,9 +49,14 @@ export class EventLog {
     data: Record<string, unknown>,
     opts?: { targetWorkerId?: string; jobId?: string; taskId?: string },
   ): EventEntry {
+    const now = Date.now();
     const entry: EventEntry = {
       seq: this.nextSeq++,
-      timestamp: Date.now(),
+      timestamp: now,
+      // Human-readable ISO mirror of `timestamp`. Same instant, two columns —
+      // `timestamp` is used for in-memory cursor / ordering, `createdAt` is
+      // what humans read in SQLite Viewer / WebUI / log queries.
+      createdAt: new Date(now).toISOString(),
       type,
       sourceWorkerId,
       targetWorkerId: opts?.targetWorkerId,
@@ -64,12 +69,13 @@ export class EventLog {
     try {
       this.db
         .query(
-          `INSERT INTO cluster_events (seq, timestamp, type, sourceWorkerId, targetWorkerId, data, jobId, taskId)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO cluster_events (seq, timestamp, createdAt, type, sourceWorkerId, targetWorkerId, data, jobId, taskId)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           entry.seq,
           entry.timestamp,
+          entry.createdAt,
           entry.type,
           entry.sourceWorkerId,
           entry.targetWorkerId ?? null,
@@ -152,6 +158,11 @@ export class EventLog {
     return rows.map((row) => ({
       seq: row.seq as number,
       timestamp: row.timestamp as number,
+      // Older rows that haven't been backfilled (or pre-migration in-memory
+      // entries) may have empty createdAt — derive it from `timestamp` as a
+      // safety net so the API contract always returns a valid ISO string.
+      createdAt:
+        (row.createdAt as string | null | undefined) || new Date(row.timestamp as number).toISOString(),
       type: row.type as ClusterEventType,
       sourceWorkerId: row.sourceWorkerId as string,
       targetWorkerId: row.targetWorkerId as string | undefined,
