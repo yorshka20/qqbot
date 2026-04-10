@@ -16,10 +16,12 @@ import type {
   ClusterEventListResponse,
   ClusterHelpRequest,
   ClusterJob,
+  ClusterJobWithTasks,
   ClusterLock,
   ClusterStatus,
   ClustersResponse,
   ClusterTask,
+  ClusterTemplatesResponse,
   ClusterWorkerRegistration,
   DailyStatsResponse,
   EntitiesResponse,
@@ -523,6 +525,32 @@ export async function listClusterJobs(opts?: {
   return res.json() as Promise<ClusterJob[]>;
 }
 
+/**
+ * Snapshot of configured worker templates + per-project default
+ * `workerPreference`. Used by the submit form's template picker.
+ */
+export async function getClusterTemplates(): Promise<ClusterTemplatesResponse> {
+  const res = await fetch(`${clusterApiBase()}/templates`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get cluster templates failed: ${res.status}`);
+  }
+  return res.json() as Promise<ClusterTemplatesResponse>;
+}
+
+/**
+ * Fetch a single job along with its tasks. Used by the WebUI to expand a
+ * job row and show its task breakdown (status / output / error).
+ */
+export async function getClusterJob(jobId: string): Promise<ClusterJobWithTasks> {
+  const res = await fetch(`${clusterApiBase()}/jobs/${encodeURIComponent(jobId)}`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get cluster job failed: ${res.status}`);
+  }
+  return res.json() as Promise<ClusterJobWithTasks>;
+}
+
 export async function listClusterTasks(): Promise<ClusterTask[]> {
   const res = await fetch(`${clusterApiBase()}/tasks`);
   if (!res.ok) {
@@ -567,7 +595,11 @@ export async function listClusterHelpRequests(): Promise<ClusterHelpRequest[]> {
   return res.json() as Promise<ClusterHelpRequest[]>;
 }
 
-export async function createClusterJob(input: { project: string; description: string }): Promise<ClusterTask> {
+export async function createClusterJob(input: {
+  project: string;
+  description: string;
+  workerTemplate?: string;
+}): Promise<ClusterTask> {
   const res = await fetch(`${clusterApiBase()}/jobs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

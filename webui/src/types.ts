@@ -406,11 +406,43 @@ export interface ClusterEventEntry {
   taskId?: string;
 }
 
-export interface ClusterEventListResponse {
-  events: ClusterEventEntry[];
-  total: number;
-  limit: number;
-  offset: number;
+/**
+ * `/api/cluster/events` returns a bare array of events.
+ * (Older versions of this type wrapped them in {events, total, limit, offset}
+ * but the server has always returned the bare array — the wrapper was a
+ * lie that worked because no caller ever read total/limit/offset.)
+ */
+export type ClusterEventListResponse = ClusterEventEntry[];
+
+/**
+ * `/api/cluster/jobs/:id` returns a job augmented with its tasks.
+ */
+export interface ClusterJobWithTasks extends ClusterJob {
+  tasks: ClusterTask[];
+}
+
+/**
+ * One entry in the WorkerTemplates dictionary — mirrors the server's
+ * snapshot response from `GET /api/cluster/templates`.
+ */
+export interface ClusterWorkerTemplate {
+  name: string;
+  type: string;
+  command: string;
+  maxConcurrent: number;
+  capabilities: string[];
+  costTier: "low" | "medium" | "high";
+}
+
+/**
+ * `/api/cluster/templates` response: list of configured templates plus a
+ * map of project alias → default workerPreference. The WebUI submit form
+ * uses this to render a template picker and default-select the project's
+ * preferred template.
+ */
+export interface ClusterTemplatesResponse {
+  templates: ClusterWorkerTemplate[];
+  projectDefaults: Record<string, string>;
 }
 
 export interface ClusterLock {

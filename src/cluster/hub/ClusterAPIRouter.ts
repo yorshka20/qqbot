@@ -10,6 +10,7 @@ import { DITokens } from '@/core/DITokens';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import { logger } from '@/utils/logger';
 import type { ClusterScheduler } from '../ClusterScheduler';
+import type { ClusterConfig } from '../config';
 import type { WorkerPool } from '../WorkerPool';
 import type { ContextHub, SSESubscriber } from './ContextHub';
 
@@ -18,6 +19,7 @@ export class ClusterAPIRouter {
     private hub: ContextHub,
     private workerPool: WorkerPool,
     private scheduler: ClusterScheduler,
+    private config: ClusterConfig,
   ) {}
 
   /**
@@ -50,6 +52,25 @@ export class ClusterAPIRouter {
       case '/': {
         const status = this.workerPool.getStatus();
         return Response.json(status, { headers });
+      }
+
+      case '/templates': {
+        // Snapshot of configured worker templates + per-project default
+        // workerPreference. The WebUI submit form uses this to render a
+        // template picker and default-select the right one per project.
+        const templates = Object.entries(this.config.workerTemplates).map(([name, t]) => ({
+          name,
+          type: t.type,
+          command: t.command,
+          maxConcurrent: t.maxConcurrent,
+          capabilities: t.capabilities,
+          costTier: t.costTier,
+        }));
+        const projectDefaults: Record<string, string> = {};
+        for (const [alias, p] of Object.entries(this.config.projects)) {
+          projectDefaults[alias] = p.workerPreference;
+        }
+        return Response.json({ templates, projectDefaults }, { headers });
       }
 
       case '/projects': {
@@ -150,13 +171,22 @@ export class ClusterAPIRouter {
   private async handlePost(subPath: string, req: Request, headers: Record<string, string>): Promise<Response | null> {
     switch (subPath) {
       case '/jobs': {
-        const body = (await req.json()) as { project: string; description: string };
+        const body = (await req.json()) as {
+          project: string;
+          description: string;
+          workerTemplate?: string;
+        };
         if (!body.project || !body.description) {
           return Response.json({ error: 'Missing required fields: project, description' }, { status: 400, headers });
         }
-        const task = await this.scheduler.submitTask(body.project, body.description);
+        const task = await this.scheduler.submitTask(body.project, body.description, {
+          workerTemplate: body.workerTemplate,
+        });
         if (!task) {
-          return Response.json({ error: 'Failed to create task (unknown project?)' }, { status: 400, headers });
+          return Response.json(
+            { error: 'Failed to create task (unknown project or workerTemplate?)' },
+            { status: 400, headers },
+          );
         }
         return Response.json(task, { status: 201, headers });
       }

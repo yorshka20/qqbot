@@ -40,7 +40,7 @@ export class ClusterManager {
     this.plannerService = new PlannerService(config, this.hub, this.workerPool);
 
     // Wire API router
-    const apiRouter = new ClusterAPIRouter(this.hub, this.workerPool, this.scheduler);
+    const apiRouter = new ClusterAPIRouter(this.hub, this.workerPool, this.scheduler, this.config);
     this.hub.setAPIRouter(apiRouter);
 
     // Wire dispatch callback
@@ -173,10 +173,16 @@ export class ClusterManager {
   }
 
   /**
-   * Submit a manual task.
+   * Submit a manual task. `options.workerTemplate` overrides the project's
+   * default `workerPreference` for this run only — used by the WebUI submit
+   * form's template picker.
    */
-  async submitTask(project: string, description: string): Promise<TaskRecord | null> {
-    return this.scheduler.submitTask(project, description);
+  async submitTask(
+    project: string,
+    description: string,
+    options?: { workerTemplate?: string },
+  ): Promise<TaskRecord | null> {
+    return this.scheduler.submitTask(project, description, options);
   }
 
   /**

@@ -150,10 +150,25 @@ export class ClusterScheduler {
    * `POST /api/cluster/jobs`) all depended on the spawn happening — see
    * docs/local/agent-cluster.md for the bug history.
    */
-  async submitTask(project: string, description: string): Promise<TaskRecord | null> {
+  async submitTask(
+    project: string,
+    description: string,
+    options?: { workerTemplate?: string },
+  ): Promise<TaskRecord | null> {
     const projectInfo = this.projectResolver(project);
     if (!projectInfo) {
       this.warnUnknownProjectOnce(project);
+      return null;
+    }
+
+    // Validate the optional template override BEFORE creating the job so a
+    // typo doesn't leave a half-formed job sitting in the DB. Returning
+    // null here is consistent with the "unknown project" path above.
+    if (options?.workerTemplate && !this.config.workerTemplates[options.workerTemplate]) {
+      logger.warn(
+        `[ClusterScheduler] submitTask: unknown workerTemplate "${options.workerTemplate}". ` +
+          `Available: ${Object.keys(this.config.workerTemplates).join(', ') || '(none)'}`,
+      );
       return null;
     }
 
@@ -173,6 +188,12 @@ export class ClusterScheduler {
     this.persistJob(job);
 
     const task = this.createTask(jobId, project, description, 'queue');
+    if (options?.workerTemplate) {
+      // Stash the override on the task so tryDispatch (now and on later
+      // scheduler ticks if the initial dispatch is full) uses it instead
+      // of falling back to projectConfig.workerPreference.
+      task.workerTemplate = options.workerTemplate;
+    }
 
     // Immediately try to dispatch — if the pool is full, the task stays
     // in `activeTasks` as `pending` and the next scheduling tick can
@@ -198,8 +219,14 @@ export class ClusterScheduler {
   ): Promise<boolean> {
     if (!this.workerPool.canSpawnMore()) return false;
 
+    // Template selection precedence:
+    //   1. task.workerTemplate (pre-stamped by submitTask via the WebUI/API
+    //      override or by a previous dispatch attempt)
+    //   2. projectConfig.workerPreference
+    //   3. first declared workerTemplate (last-resort fallback)
     const projectConfig = this.config.projects[task.project];
-    const templateName = projectConfig?.workerPreference || Object.keys(this.config.workerTemplates)[0];
+    const templateName =
+      task.workerTemplate || projectConfig?.workerPreference || Object.keys(this.config.workerTemplates)[0];
     if (!templateName) {
       logger.warn(
         `[ClusterScheduler] No workerPreference / workerTemplates configured for project "${task.project}" — task ${task.id} cannot dispatch`,
