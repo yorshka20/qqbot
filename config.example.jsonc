@@ -86,15 +86,56 @@
   // LAN WebSocket relay (optional). Independent of Agent Cluster.
   // - host: listens for clients; set relayInboundFromIm to fan out IM messages to clients.
   // - client: does not open QQ/Discord connections; outbound replies go to host via relay_action.
+  // LAN WebSocket relay (Phase 2 dispatch model).
+  //
+  // Same config.d/ deploys to host and client; only `instanceRole` and the
+  // role-specific fields differ between machines. Token must match across
+  // all peers (rotate everywhere simultaneously).
+  //
+  // Phase 2 model:
+  //   1. Client is silent unless host explicitly dispatches via `/lan @<id>`.
+  //   2. Dispatch is routed to a specific client by `clientId` (no broadcast).
+  //   3. Client replies / sendToUser go back through host → original IM platform.
+  //   4. zhihu/wechat/staticServer etc. can be skipped per role via the
+  //      role-scoped disable lists below (PluginInitializer + bootstrap apply
+  //      them BEFORE plugin instantiation; no DI side effects on disabled).
   "lanRelay": {
     "enabled": false,
-    "instanceRole": "host",
-    "token": "change_me_lan_relay_token",
+    "instanceRole": "host", // 'host' | 'client'
+    "token": "change_me_lan_relay_token", // shared secret — generate with: openssl rand -hex 24
+
+    // ── Host-only fields ──────────────────────────────────────────────
     "listenHost": "0.0.0.0",
     "listenPort": 47123,
-    "connectUrl": "ws://127.0.0.1:47123/lan-relay",
-    "clientId": "",
-    "relayInboundFromIm": false
+    // Fallback target when a client calls runtime.sendToUser() without a
+    // dispatch origin (e.g. cron-driven autonomous tasks). Required if you
+    // want client-initiated outbound messages.
+    "defaultReplyTarget": {
+      "protocol": "milky",
+      "chatType": "private",
+      "userId": "123456789"
+    },
+
+    // ── Client-only fields (required when instanceRole=client) ────────
+    "connectUrl": "ws://192.168.50.209:47123/lan-relay",
+    "clientId": "workstation-A",      // unique across connected clients; duplicates rejected
+    "clientLabel": "MacBook Pro M3",  // optional human-readable label for /lan list
+    "publicAddress": "192.168.50.42", // LAN-reachable IP of THIS client (no auto-detection)
+
+    // ── Role-scoped service/plugin filter ─────────────────────────────
+    // The same config.d/ runs on host and client. The matching role's
+    // disable lists are applied at PluginInitializer / bootstrap time.
+    "host": {
+      "disabledPlugins": [],
+      "disabledServices": []
+    },
+    "client": {
+      // zhihu / wechat are data-collection plugins that should only run on
+      // the host (single-source-of-truth). Add others as needed.
+      "disabledPlugins": ["zhihuFeed", "wechatIngest"],
+      // staticServer hosts data centrally on host; client doesn't need it.
+      "disabledServices": ["staticServer"]
+    }
   },
   // Bot configuration
   "bot": {
