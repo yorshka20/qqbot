@@ -112,8 +112,22 @@ export class Bot extends EventEmitter {
   }
 
   private async waitForConnections(): Promise<void> {
+    // Fast path for LAN-relay client deployments: when there are no IM
+    // protocols to connect, connectionManager.connectAll() emits
+    // `connectSettled` synchronously before this function ever attaches a
+    // listener. Short-circuit here so client-mode Bot.start() doesn't end up
+    // waiting on a listener that will never fire.
+    if (this.config.getProtocolsToConnect().length === 0) {
+      return;
+    }
+
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
+        const toConnect = this.config.getProtocolsToConnect().length;
+        if (toConnect === 0) {
+          resolve();
+          return;
+        }
         // Even on timeout, allow startup if at least one protocol is connected
         const connected = this.connectionManager.getConnectedProtocols();
         if (connected.length > 0) {
@@ -128,6 +142,11 @@ export class Bot extends EventEmitter {
 
       this.connectionManager.once('connectSettled', (connected, failed) => {
         clearTimeout(timeout);
+        const toConnect = this.config.getProtocolsToConnect().length;
+        if (toConnect === 0) {
+          resolve();
+          return;
+        }
         if (connected.length > 0) {
           if (failed.length > 0) {
             logger.warn(`[Bot] Starting with ${connected.length} protocol(s), failed: ${failed.join(', ')}`);

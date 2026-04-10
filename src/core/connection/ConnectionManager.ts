@@ -41,7 +41,7 @@ export class ConnectionManager extends EventEmitter implements ConnectionManager
   }
 
   async connectAll(): Promise<void> {
-    const enabledProtocols = this.config.getEnabledProtocols();
+    const enabledProtocols = this.config.getProtocolsToConnect();
     logger.info(`[ConnectionManager] Connecting to ${enabledProtocols.length} protocol(s)`);
 
     const results = await Promise.allSettled(
@@ -134,7 +134,10 @@ export class ConnectionManager extends EventEmitter implements ConnectionManager
   }
 
   isAllConnected(): boolean {
-    const enabledProtocols = this.config.getEnabledProtocols();
+    const enabledProtocols = this.config.getProtocolsToConnect();
+    if (enabledProtocols.length === 0) {
+      return true;
+    }
     return enabledProtocols.every((protocol) => {
       const connection = this.connections.get(protocol.name);
       return connection?.getState() === 'connected';

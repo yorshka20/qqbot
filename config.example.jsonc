@@ -83,6 +83,19 @@
       "window": 5000
     }
   },
+  // LAN WebSocket relay (optional). Independent of Agent Cluster.
+  // - host: listens for clients; set relayInboundFromIm to fan out IM messages to clients.
+  // - client: does not open QQ/Discord connections; outbound replies go to host via relay_action.
+  "lanRelay": {
+    "enabled": false,
+    "instanceRole": "host",
+    "token": "change_me_lan_relay_token",
+    "listenHost": "0.0.0.0",
+    "listenPort": 47123,
+    "connectUrl": "ws://127.0.0.1:47123/lan-relay",
+    "clientId": "",
+    "relayInboundFromIm": false
+  },
   // Bot configuration
   "bot": {
     "selfId": null,

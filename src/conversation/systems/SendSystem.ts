@@ -8,7 +8,8 @@ import { SystemPriority, SystemStage } from '@/core/system';
 import type { HookManager } from '@/hooks/HookManager';
 import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookContext } from '@/hooks/types';
-import { getProtocolAdapter } from '@/protocol/ProtocolRegistry';
+import { getLanRelayRuntime } from '@/lan/runtime';
+import { getProtocolAdapter, isProtocolRegistered } from '@/protocol/ProtocolRegistry';
 import { logger } from '@/utils/logger';
 
 /**
@@ -55,13 +56,48 @@ export class SendSystem implements System {
     }
 
     const event = context.message;
-    const adapter = getProtocolAdapter(event.protocol);
-    const useForward = adapter.supportsForwardMessage() && replyContent.metadata?.sendAsForward === true;
+    const protocolRegistered = isProtocolRegistered(event.protocol);
+    const useForward =
+      replyContent.metadata?.sendAsForward === true &&
+      (protocolRegistered ? getProtocolAdapter(event.protocol).supportsForwardMessage() : true);
     logger.debug(`[SendSystem] Sending | useForward=${useForward} | protocol=${event.protocol}`);
 
     let sentMessageResponse: SendMessageResult;
 
-    if (useForward) {
+    // LAN-relay branch: when no IM adapter is registered for this event's
+    // protocol, normally that's a fatal misconfiguration. The exception is
+    // a LAN-relay client instance — it never opens IM connections itself,
+    // so we route the outbound send to the host machine that does. See
+    // src/lan/ and the lanRelay config block for context.
+    const relay = getLanRelayRuntime();
+    if (!protocolRegistered && !relay?.isClientMode()) {
+      throw new Error(
+        `Protocol "${event.protocol}" is not registered. Connect the IM protocol on this instance, or set lanRelay.enabled + instanceRole client with a reachable host.`,
+      );
+    }
+    if (!protocolRegistered && relay?.isClientMode()) {
+      if (useForward) {
+        // Forward replies need the bot's own QQ id as the synthetic sender of
+        // the forward node — pass it across the wire so the host can use the
+        // same id (rather than its own selfId, which may differ).
+        const botSelfId = Number(context.metadata.get('botSelfId'));
+        if (Number.isNaN(botSelfId) || botSelfId <= 0) {
+          throw new Error("Forward relay requires bot self ID. Set config.bot.selfId to the bot's own QQ user id.");
+        }
+        sentMessageResponse = await relay.relayOutboundSend({
+          segments: replyContent.segments,
+          event,
+          useForward: true,
+          botSelfIdForForward: botSelfId,
+        });
+      } else {
+        sentMessageResponse = await relay.relayOutboundSend({
+          segments: replyContent.segments,
+          event,
+          useForward: false,
+        });
+      }
+    } else if (useForward) {
       const botSelfId = Number(context.metadata.get('botSelfId'));
       if (Number.isNaN(botSelfId) || botSelfId <= 0) {
         throw new Error("Forward message requires bot self ID. Set config.bot.selfId to the bot's own QQ user id.");
@@ -105,7 +141,18 @@ export class SendSystem implements System {
 
     this.sendingError = true;
     try {
-      await this.messageAPI.sendFromContext([{ type: 'text', data: { text: errorText } }], event, 10000);
+      // Same LAN-relay branch as the main send path: a client instance has no
+      // local IM adapter, so even error notifications must go via the host.
+      const relay = getLanRelayRuntime();
+      if (!isProtocolRegistered(event.protocol) && relay?.isClientMode()) {
+        await relay.relayOutboundSend({
+          segments: [{ type: 'text', data: { text: errorText } }],
+          event,
+          useForward: false,
+        });
+      } else {
+        await this.messageAPI.sendFromContext([{ type: 'text', data: { text: errorText } }], event, 10000);
+      }
       logger.debug('[SendSystem] Error message sent to user');
     } catch (sendError) {
       logger.error('[SendSystem] Failed to send error message to user', sendError);

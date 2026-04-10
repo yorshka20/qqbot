@@ -2,7 +2,7 @@
 
 import { existsSync, statSync } from 'fs';
 import { resolve } from 'path';
-import type { ClusterConfig } from '@/cluster/config';
+import type { LanRelayConfig } from './types/lanRelay';
 import { ConfigError } from '@/utils/errors';
 import { logger } from '@/utils/logger';
 import { loadConfigAuto } from './loadConfigDir';
@@ -68,6 +68,7 @@ export type {
 export type { RAGConfig } from './types/rag';
 export type { TTSConfig } from './types/tts';
 export type { VideoKnowledgeConfig } from './types/videoKnowledge';
+export type { LanRelayConfig, LanRelayInstanceRole } from './types/lanRelay';
 
 export interface BotConfig {
   protocols: ProtocolConfig[];
@@ -88,6 +89,8 @@ export interface BotConfig {
   claudeCodeService?: ClaudeCodeServiceConfig;
   videoKnowledge?: VideoKnowledgeConfig;
   cluster?: Record<string, unknown>;
+  /** LAN WebSocket relay (host/client); optional. */
+  lanRelay?: LanRelayConfig;
 }
 
 export class Config {
@@ -147,15 +150,47 @@ export class Config {
     return merged as unknown as BotConfig;
   }
 
+  /**
+   * Cross-field validation for the lanRelay block. Disabled blocks pass
+   * through untouched (every field is optional in that case). When enabled,
+   * the role-dependent fields (listenPort for host, connectUrl for client)
+   * are required so we can fail loudly at boot rather than at first use.
+   */
+  private validateLanRelayConfig(lr: LanRelayConfig | undefined): void {
+    if (!lr || !lr.enabled) {
+      return;
+    }
+    if (!lr.instanceRole) {
+      throw new ConfigError('lanRelay.instanceRole is required when lanRelay.enabled is true');
+    }
+    if (!lr.token || String(lr.token).trim() === '') {
+      throw new ConfigError('lanRelay.token is required when lanRelay.enabled is true');
+    }
+    if (lr.instanceRole === 'host') {
+      if (lr.listenPort == null || Number.isNaN(Number(lr.listenPort))) {
+        throw new ConfigError('lanRelay.listenPort is required when lanRelay.instanceRole is host');
+      }
+    }
+    if (lr.instanceRole === 'client') {
+      if (!lr.connectUrl || String(lr.connectUrl).trim() === '') {
+        throw new ConfigError('lanRelay.connectUrl is required when lanRelay.instanceRole is client');
+      }
+    }
+  }
+
   private validateConfig(): void {
     if (!Array.isArray(this.config.protocols)) {
       throw new ConfigError('protocols must be an array');
     }
 
     const enabledProtocols = this.config.protocols.filter((p) => p.enabled);
-    if (enabledProtocols.length === 0) {
-      throw new ConfigError('At least one protocol must be enabled');
+    const lr = this.config.lanRelay;
+    const clientRelayOnly = lr?.enabled === true && lr.instanceRole === 'client';
+    if (enabledProtocols.length === 0 && !clientRelayOnly) {
+      throw new ConfigError('At least one protocol must be enabled (unless lanRelay.enabled + instanceRole client)');
     }
+
+    this.validateLanRelayConfig(lr);
 
     // Validate each protocol config
     for (const protocol of this.config.protocols) {
@@ -194,6 +229,27 @@ export class Config {
 
   getEnabledProtocols(): ProtocolConfig[] {
     return this.config.protocols.filter((p) => p.enabled).sort((a, b) => a.priority - b.priority);
+  }
+
+  /**
+   * Protocols that should actually open IM connections.
+   * LAN relay clients skip all IM protocols while keeping a full config file.
+   */
+  getProtocolsToConnect(): ProtocolConfig[] {
+    const lr = this.config.lanRelay;
+    if (lr?.enabled && lr.instanceRole === 'client') {
+      return [];
+    }
+    return this.getEnabledProtocols();
+  }
+
+  getLanRelayConfig(): LanRelayConfig | undefined {
+    return this.config.lanRelay;
+  }
+
+  isLanRelayClientMode(): boolean {
+    const lr = this.config.lanRelay;
+    return lr?.enabled === true && lr.instanceRole === 'client';
   }
 
   getProtocolConfig(name: ProtocolName): ProtocolConfig | undefined {

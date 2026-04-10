@@ -6,6 +6,7 @@ import type { MessageAPI } from './api/methods/MessageAPI';
 import { bootstrapApp } from './core/bootstrap';
 import { getContainer } from './core/DIContainer';
 import { DITokens } from './core/DITokens';
+import { initLanRelay } from './lan/initLanRelay';
 import { ClaudeCodeInitializer } from './services/claudeCode';
 import { MCPInitializer } from './services/mcp/MCPInitializer';
 import { stopStaticFileServer } from './services/staticServer';
@@ -21,11 +22,15 @@ async function main() {
       await bootstrapApp(configPath);
 
     const config = bot.getConfig();
+    const container = getContainer();
+    const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
 
     // ── Live connections (the ONLY things not covered by bootstrapApp) ──
 
     // Start bot (opens WebSocket connections)
     await bot.start();
+
+    const lanRelayHandle = await initLanRelay({ config, eventRouter, messageAPI });
 
     // Connect to MCP servers
     if (mcpSystem) {
@@ -36,8 +41,6 @@ async function main() {
     // Start Claude Code service (non-fatal if port is in use)
     if (claudeCodeService) {
       try {
-        const container = getContainer();
-        const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
         await ClaudeCodeInitializer.start(claudeCodeService, messageAPI);
         const protocols = config.getEnabledProtocols().map((p) => p.name);
         ClaudeCodeInitializer.updateBotInfo(claudeCodeService, config.getConfig().bot.selfId, protocols);
@@ -64,6 +67,7 @@ async function main() {
       if (clusterManager) {
         await clusterManager.stop();
       }
+      await lanRelayHandle.stop();
       await ClaudeCodeInitializer.stop(claudeCodeService);
       await bot.stop();
       eventRouter.destroy();

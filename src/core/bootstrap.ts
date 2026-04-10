@@ -171,7 +171,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     websocket: WebSocketConnection,
     discord: DiscordConnection,
   };
-  for (const protocol of config.getEnabledProtocols()) {
+  for (const protocol of config.getProtocolsToConnect()) {
     const type = protocol.connectionType;
     const ctor = connectionTypeMap[type];
     if (ctor) {
