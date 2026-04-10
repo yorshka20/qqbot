@@ -142,6 +142,56 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
           };
           clusterManager = new ClusterManager(clusterConfig, rawDb, projectResolver);
           container.registerInstance(DITokens.CLUSTER_MANAGER, clusterManager);
+
+          // Wire human escalation: when a worker fires hub_ask, route the
+          // request to the bot owner via QQ private message. The owner can
+          // reply with `/cluster ask answer <id> <text>`. Resolved here
+          // (instead of inside ClusterManager's constructor) so the cluster
+          // module stays free of any QQ/MessageAPI imports — keeps the
+          // option of running cluster headless or behind WebUI only.
+          try {
+            const { MessageAPI } = await import('@/api/methods/MessageAPI');
+            const messageAPI = container.resolve<InstanceType<typeof MessageAPI>>(DITokens.MESSAGE_API);
+            const ownerId = config.getConfig().bot?.owner;
+            const enabledProtocols = config.getEnabledProtocols();
+            const preferredProtocol = enabledProtocols[0]?.name;
+            if (ownerId && preferredProtocol) {
+              clusterManager.attachEscalationNotifier(async (request) => {
+                const lines = [
+                  `[Cluster] Worker ${request.workerId} 请求帮助`,
+                  `类型: ${request.type}`,
+                  `askId: ${request.id}`,
+                  '',
+                  `问题: ${request.question}`,
+                ];
+                if (request.context) {
+                  lines.push('', `上下文: ${request.context}`);
+                }
+                if (request.options && request.options.length > 0) {
+                  lines.push('', '选项:');
+                  request.options.forEach((opt, i) => {
+                    lines.push(`  ${i + 1}. ${opt}`);
+                  });
+                }
+                lines.push('', `回复: /cluster ask answer ${request.id} <你的答复>`);
+                try {
+                  await messageAPI.sendPrivateMessage(ownerId, lines.join('\n'), preferredProtocol);
+                } catch (err) {
+                  logger.error(
+                    `[Bootstrap] Failed to send escalation notification to owner ${ownerId} via ${preferredProtocol}:`,
+                    err,
+                  );
+                }
+              });
+            } else {
+              logger.warn(
+                `[Bootstrap] Cluster escalation notifier NOT wired — bot.owner=${ownerId || 'missing'} preferredProtocol=${preferredProtocol || 'missing'}`,
+              );
+            }
+          } catch (err) {
+            logger.warn('[Bootstrap] Failed to wire cluster escalation notifier (non-fatal):', err);
+          }
+
           logger.info('[Bootstrap] Agent Cluster initialized');
         } else {
           logger.warn('[Bootstrap] Agent Cluster requires SQLite — raw DB not available');

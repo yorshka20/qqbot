@@ -11,14 +11,14 @@ import { ClaudeCliBackend } from './backends/ClaudeCliBackend';
 import { CodexCliBackend } from './backends/CodexCliBackend';
 import { GeminiCliBackend } from './backends/GeminiCliBackend';
 import { MinimaxBackend } from './backends/MinimaxBackend';
-import { ClusterAPIRouter } from './hub/ClusterAPIRouter';
 import { ClusterScheduler } from './ClusterScheduler';
-import { ContextHub } from './hub/ContextHub';
 import type { ClusterConfig } from './config';
+import { ClusterAPIRouter } from './hub/ClusterAPIRouter';
+import { ContextHub } from './hub/ContextHub';
 import { PlannerService } from './PlannerService';
 import { QueueSource } from './sources/QueueSource';
 import { TodoFileSource } from './sources/TodoFileSource';
-import type { ClusterStatus, TaskRecord } from './types';
+import type { ClusterStatus, HelpRequest, TaskRecord } from './types';
 import { WorkerPool } from './WorkerPool';
 
 export class ClusterManager {
@@ -205,6 +205,49 @@ export class ClusterManager {
    */
   getScheduler(): ClusterScheduler {
     return this.scheduler;
+  }
+
+  /**
+   * Access the planner service (for wiring escalation callbacks from
+   * outside the cluster module).
+   */
+  getPlannerService(): PlannerService {
+    return this.plannerService;
+  }
+
+  /**
+   * Wire human-escalation notification for hub_ask requests. Called from
+   * bootstrap once MessageAPI is constructed. The cluster module
+   * intentionally doesn't import MessageAPI / ProtocolName directly —
+   * keeping it self-contained means a future deployment without QQ
+   * (e.g. WebUI-only) can skip this wiring. Without it, escalation
+   * requests still get persisted and surfaced via the WebUI / `/cluster
+   * ask list` command, just no QQ push notification.
+   *
+   * `notify` receives the same `HelpRequest` shape as the underlying
+   * `EscalationCallback` and is expected to handle delivery + error
+   * recovery internally.
+   */
+  attachEscalationNotifier(notify: (request: HelpRequest) => Promise<void> | void): void {
+    this.plannerService.setEscalationCallback(notify);
+    logger.info('[ClusterManager] Escalation notifier attached');
+  }
+
+  /**
+   * Answer a pending hub_ask help request from outside the cluster
+   * module (typically a `/cluster ask answer` QQ command). Returns
+   * `false` if the askId is unknown or already answered.
+   */
+  answerHelpRequest(askId: string, answer: string, answeredBy: string): boolean {
+    return this.hub.answerHelpRequest(askId, answer, answeredBy);
+  }
+
+  /**
+   * List currently-pending help requests. Used by `/cluster ask list`
+   * and the WebUI's pending-help panel.
+   */
+  getPendingHelpRequests(): HelpRequest[] {
+    return this.hub.getPendingHelpRequests();
   }
 
   /**

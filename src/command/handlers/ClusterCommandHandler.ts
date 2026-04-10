@@ -2,11 +2,13 @@
  * ClusterCommandHandler — QQ commands for Agent Cluster control.
  *
  * Commands:
- *   /cluster                       → status summary
- *   /cluster start                 → start cluster
- *   /cluster stop                  → stop cluster
- *   /cluster pause / resume        → pause/resume scheduling
- *   /cluster task <project> "desc" → submit manual task
+ *   /cluster                          → status summary
+ *   /cluster start                    → start cluster
+ *   /cluster stop                     → stop cluster
+ *   /cluster pause / resume           → pause/resume scheduling
+ *   /cluster task <project> "desc"    → submit manual task
+ *   /cluster ask list                 → list pending hub_ask requests
+ *   /cluster ask answer <id> <text>   → answer a pending hub_ask request
  */
 
 import { inject, injectable } from 'tsyringe';
@@ -35,7 +37,7 @@ export class ClusterCommand implements CommandHandler {
 
   constructor(@inject(DITokens.CLUSTER_MANAGER) private clusterManager: ClusterManager) {}
 
-  async execute(args: string[], _context: CommandContext): Promise<CommandResult> {
+  async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     const subcommand = args[0]?.toLowerCase() || 'status';
 
     try {
@@ -52,10 +54,12 @@ export class ClusterCommand implements CommandHandler {
           return this.handleResume();
         case 'task':
           return this.handleTask(args.slice(1));
+        case 'ask':
+          return this.handleAsk(args.slice(1), context);
         default:
           return {
             success: false,
-            error: `未知子命令: ${subcommand}\n用法: /cluster [status|start|stop|pause|resume|task]`,
+            error: `未知子命令: ${subcommand}\n用法: /cluster [status|start|stop|pause|resume|task|ask]`,
           };
       }
     } catch (err) {
@@ -113,6 +117,63 @@ export class ClusterCommand implements CommandHandler {
   private handleResume(): CommandResult {
     this.clusterManager.resume();
     return textResult('Agent Cluster 调度已恢复');
+  }
+
+  private handleAsk(args: string[], context: CommandContext): CommandResult {
+    const sub = args[0]?.toLowerCase();
+
+    if (sub === 'list' || sub === undefined) {
+      const pending = this.clusterManager.getPendingHelpRequests();
+      if (pending.length === 0) {
+        return textResult('当前没有待处理的 hub_ask 请求');
+      }
+      const lines: string[] = [`待处理 hub_ask 请求 (${pending.length}):`];
+      for (const req of pending) {
+        // Truncate long questions to keep the QQ message readable.
+        const q = req.question.length > 200 ? `${req.question.slice(0, 200)}…` : req.question;
+        lines.push('', `askId: ${req.id}`);
+        lines.push(`worker: ${req.workerId}${req.taskId ? ` (task=${req.taskId})` : ''}`);
+        lines.push(`type: ${req.type}`);
+        lines.push(`问题: ${q}`);
+        if (req.options && req.options.length > 0) {
+          lines.push('选项:');
+          req.options.forEach((opt, i) => {
+            lines.push(`  ${i + 1}. ${opt}`);
+          });
+        }
+      }
+      lines.push('', '回复: /cluster ask answer <askId> <答复内容>');
+      return textResult(lines.join('\n'));
+    }
+
+    if (sub === 'answer') {
+      const askId = args[1];
+      const answer = args.slice(2).join(' ').trim();
+      if (!askId || !answer) {
+        return {
+          success: false,
+          error: '用法: /cluster ask answer <askId> <答复内容>',
+        };
+      }
+      // Stamp `answeredBy` with the QQ user id of the operator so the
+      // worker (and audit log / WebUI) sees who actually replied. Owner
+      // permissions are already enforced at the command-decorator level
+      // (`permissions: ['owner']`).
+      const answeredBy = `qq:${context.userId}`;
+      const ok = this.clusterManager.answerHelpRequest(askId, answer, answeredBy);
+      if (!ok) {
+        return {
+          success: false,
+          error: `未找到 askId=${askId} 的待处理请求（已应答 / 已过期 / 不存在）`,
+        };
+      }
+      return textResult(`已应答 askId=${askId}`);
+    }
+
+    return {
+      success: false,
+      error: '用法: /cluster ask [list|answer <id> <text>]',
+    };
   }
 
   private async handleTask(args: string[]): Promise<CommandResult> {

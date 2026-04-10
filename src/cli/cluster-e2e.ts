@@ -9,29 +9,36 @@
 //      Validates: spawn → stdout capture → parseOutput → markTaskCompleted
 //      → persistTask → poll readback.
 //
-//   2. MCP mode (--mcp-tool hub_claim | hub_report) — Phase 2 wiring check.
-//      Prompts the agent to call a hub_xxx MCP tool with a unique sentinel
-//      argument, then asserts the hub-side EventLog recorded the call.
-//      Validates the complete worker→hub loop: claude MCP client → /mcp →
-//      HubMCPServer → ContextHub.handleXxx → EventLog → SQLite.
+//   2. MCP mode (--mcp-tool hub_claim | hub_report | hub_ask) — Phase 2
+//      wiring check. Prompts the agent to call a hub_xxx MCP tool with a
+//      unique sentinel argument, then asserts the hub-side EventLog (or
+//      escalation callback) recorded the call. Validates the complete
+//      worker→hub loop: claude MCP client → /mcp → HubMCPServer →
+//      ContextHub.handleXxx → EventLog/PlannerService → SQLite.
 //       - hub_claim: asserts a `lock_acquired` event with our UUID file path
 //         in its `files` array. Validates LockManager path.
 //       - hub_report: asserts a `task_completed` event with our UUID summary
 //         string. Additionally validates the Phase 2 round 2 reportCallback
 //         wiring (ContextHub → ClusterScheduler.markTaskCompleted without
 //         waiting for process exit).
+//       - hub_ask: asserts the EscalationCallback (installed in-test,
+//         overriding the bootstrap QQ-owner notifier) was fired with our
+//         UUID question. Validates the Phase 2 round 2 §2.5 PlannerService
+//         escalation path: ContextHub.handleAsk → cluster_help_requests →
+//         PlannerService.processHelpRequests poll → notifyEscalation.
 //
 // Usage:
 //   bun run cluster:e2e [--project <alias>] [--template <name>] \
 //                       [--task "<prompt>"] [--timeout-sec 300] \
 //                       [--hub-port 3201] [--sentinel STR] \
-//                       [--mcp-tool hub_claim|hub_report]
+//                       [--mcp-tool hub_claim|hub_report|hub_ask]
 //
 // Examples:
 //   bun run cluster:e2e                                # sentinel mode, default template
 //   bun run cluster:e2e --template gemini-pro          # sentinel mode, force gemini-pro
 //   bun run cluster:e2e --mcp-tool hub_claim           # hub_claim wiring
 //   bun run cluster:e2e --mcp-tool hub_report          # hub_report + reportCallback wiring
+//   bun run cluster:e2e --mcp-tool hub_ask             # hub_ask + escalation callback wiring
 //   bun run cluster:e2e --template minimax-m2 --timeout-sec 240
 //
 // The --template flag overrides `projects[<project>].workerPreference` for
@@ -62,7 +69,7 @@ import { stopStaticFileServer } from '@/services/staticServer';
 import { logger } from '@/utils/logger';
 
 /** Supported values for --mcp-tool. Empty string = sentinel mode. */
-type McpTool = '' | 'hub_claim' | 'hub_report';
+type McpTool = '' | 'hub_claim' | 'hub_report' | 'hub_ask';
 
 interface E2EArgs {
   project: string;
@@ -86,6 +93,12 @@ interface E2EArgs {
    * `task_completed` event from a previous run.
    */
   mcpReportSummary: string;
+  /**
+   * hub_ask mode only: a unique question string the agent must pass to
+   * hub_ask. Per-run so the EscalationCallback assert can't false-positive
+   * on a prior run's pending request.
+   */
+  mcpAskQuestion: string;
 }
 
 function parseArgs(): E2EArgs {
@@ -99,25 +112,23 @@ function parseArgs(): E2EArgs {
   const templateRaw = get('--template', '');
 
   const mcpToolRaw = get('--mcp-tool', '');
-  if (mcpToolRaw && mcpToolRaw !== 'hub_claim' && mcpToolRaw !== 'hub_report') {
-    throw new Error(`Unsupported --mcp-tool "${mcpToolRaw}". Supported: hub_claim, hub_report`);
+  if (mcpToolRaw && mcpToolRaw !== 'hub_claim' && mcpToolRaw !== 'hub_report' && mcpToolRaw !== 'hub_ask') {
+    throw new Error(`Unsupported --mcp-tool "${mcpToolRaw}". Supported: hub_claim, hub_report, hub_ask`);
   }
   const mcpTool = mcpToolRaw as McpTool;
 
   // Per-run unique path so the EventLog assertion below can't accidentally
   // match a `lock_acquired` event from a previous run. The file doesn't
   // need to exist on disk — LockManager only stores the path string.
-  const mcpClaimFile = get(
-    '--mcp-claim-file',
-    `/tmp/cluster-e2e-${randomUUID()}.txt`,
-  );
+  const mcpClaimFile = get('--mcp-claim-file', `/tmp/cluster-e2e-${randomUUID()}.txt`);
 
   // Per-run unique summary for hub_report mode. Same rationale: prevents a
   // prior run's `task_completed` event from producing a false positive.
-  const mcpReportSummary = get(
-    '--mcp-report-summary',
-    `cluster-e2e hub_report wiring test ${randomUUID()}`,
-  );
+  const mcpReportSummary = get('--mcp-report-summary', `cluster-e2e hub_report wiring test ${randomUUID()}`);
+
+  // Per-run unique question for hub_ask mode. The EscalationCallback assert
+  // looks for this exact string in the HelpRequest payload it receives.
+  const mcpAskQuestion = get('--mcp-ask-question', `cluster-e2e hub_ask escalation wiring test ${randomUUID()}`);
 
   // Default task is sentinel-mode. In MCP mode, we build a more specific
   // prompt that asks the agent to call the hub tool.
@@ -148,11 +159,30 @@ function parseArgs(): E2EArgs {
     `on a single line and nothing else. Do not call any other tools. Do not ` +
     `edit or create files on disk.`;
 
+  // hub_ask mode: ask the agent to escalate via hub_ask. We force
+  // type=escalation so PlannerService routes through the human-notification
+  // path (notifyEscalation → escalationCallback) instead of trying to find
+  // a planner worker. The assert below installs a synchronous in-test
+  // EscalationCallback that records the HelpRequest, then verifies the
+  // recorded request's `question` matches our per-run UUID.
+  const defaultMcpAskTask =
+    `This is an end-to-end test of the cluster's MCP wiring. You have an MCP ` +
+    `server registered as "cluster-context-hub" which exposes a tool called ` +
+    `"hub_ask". Call that tool EXACTLY ONCE with these arguments:\n` +
+    `  type: "escalation"\n` +
+    `  question: "${mcpAskQuestion}"\n` +
+    `After the tool returns (it returns immediately with an askId — you do ` +
+    `NOT need to wait for a real answer), reply with EXACTLY the literal ` +
+    `string ${sentinel} on a single line and nothing else. Do not call any ` +
+    `other tools. Do not edit or create files on disk.`;
+
   let defaultTask: string;
   if (mcpTool === 'hub_claim') {
     defaultTask = defaultMcpClaimTask;
   } else if (mcpTool === 'hub_report') {
     defaultTask = defaultMcpReportTask;
+  } else if (mcpTool === 'hub_ask') {
+    defaultTask = defaultMcpAskTask;
   } else {
     defaultTask = defaultSentinelTask;
   }
@@ -169,6 +199,7 @@ function parseArgs(): E2EArgs {
     mcpTool,
     mcpClaimFile,
     mcpReportSummary,
+    mcpAskQuestion,
   };
 }
 
@@ -261,6 +292,27 @@ async function main() {
     projectEntry.workerPreference = args.template;
   }
 
+  // hub_ask mode: install an in-test EscalationCallback that records the
+  // HelpRequest synchronously so the assert below can verify the agent
+  // really called hub_ask with our per-run UUID question. This OVERRIDES
+  // the QQ-owner notifier wired by bootstrap — that's intentional, the
+  // e2e doesn't want to actually push a QQ message every run.
+  //
+  // PlannerService.setEscalationCallback is last-write-wins, so just
+  // calling attachEscalationNotifier here replaces the bootstrap one.
+  // We deliberately do NOT restore the bootstrap notifier on teardown:
+  // the e2e process exits right after, so the bootstrap notifier never
+  // gets a chance to run anyway.
+  let recordedEscalation: import('@/cluster/types').HelpRequest | null = null;
+  if (args.mcpTool === 'hub_ask') {
+    cluster.attachEscalationNotifier((request) => {
+      logger.info(
+        `[ClusterE2E] EscalationCallback received: askId=${request.id} type=${request.type} question="${request.question.slice(0, 80)}"`,
+      );
+      recordedEscalation = request;
+    });
+  }
+
   try {
     await cluster.start();
     logger.info('[ClusterE2E] Cluster started; submitting task');
@@ -311,6 +363,26 @@ async function main() {
         logger.warn(
           `[ClusterE2E] hub_report mode: waited ${graceMs}ms after terminal status but task.output ` +
             `is still empty. Worker may have crashed or never printed anything after hub_report.`,
+        );
+      }
+    }
+
+    // hub_ask mode: PlannerService.processHelpRequests polls every 10s,
+    // so the escalation callback may not have fired yet by the time the
+    // worker process exits. Wait up to 15s for `recordedEscalation` to be
+    // populated. The callback is what we're asserting on; this can't be
+    // skipped — the polling interval is the inherent latency.
+    if (args.mcpTool === 'hub_ask' && !recordedEscalation) {
+      const graceMs = 15_000;
+      const start = Date.now();
+      while (Date.now() - start < graceMs && !recordedEscalation) {
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      if (!recordedEscalation) {
+        logger.warn(
+          `[ClusterE2E] hub_ask mode: waited ${graceMs}ms for PlannerService to fire escalation ` +
+            `callback but it never did. Either the agent didn't call hub_ask, hub_ask wasn't ` +
+            `routed through notifyEscalation, or the escalation callback is missing.`,
         );
       }
     }
@@ -373,11 +445,24 @@ async function main() {
         `[ClusterE2E] MCP mode assertion: scanned ${mcpEvents.length} task_completed event(s); ` +
           `matched our report summary? ${mcpEventMatched}`,
       );
+    } else if (args.mcpTool === 'hub_ask') {
+      // hub_ask doesn't use the EventLog scan path. The recorded
+      // escalation callback's HelpRequest.question is the canonical
+      // assert source. We narrow the type because TS doesn't know the
+      // closure mutated `recordedEscalation` from null.
+      const captured = recordedEscalation as import('@/cluster/types').HelpRequest | null;
+      mcpEventMatched = captured !== null && captured.question === args.mcpAskQuestion;
+      logger.info(
+        `[ClusterE2E] MCP mode assertion: escalation callback fired? ${captured !== null}; ` +
+          `question matched? ${mcpEventMatched}`,
+      );
     }
 
     const sentinelPass = sentinelInOutput;
     const mcpPass =
-      args.mcpTool === 'hub_claim' || args.mcpTool === 'hub_report' ? mcpEventMatched : true;
+      args.mcpTool === 'hub_claim' || args.mcpTool === 'hub_report' || args.mcpTool === 'hub_ask'
+        ? mcpEventMatched
+        : true;
     const success = task.status === 'completed' && sentinelPass && mcpPass;
 
     await cluster.stop();
@@ -393,6 +478,11 @@ async function main() {
         logger.info(
           `[ClusterE2E] ✅ PASS (MCP mode) — task completed, sentinel echoed, and hub recorded ` +
             `task_completed event with summary "${args.mcpReportSummary}"`,
+        );
+      } else if (args.mcpTool === 'hub_ask') {
+        logger.info(
+          `[ClusterE2E] ✅ PASS (MCP mode) — task completed, sentinel echoed, and PlannerService ` +
+            `fired the escalation callback with question matching "${args.mcpAskQuestion}"`,
         );
       } else {
         logger.info(`[ClusterE2E] ✅ PASS — task completed and output contained sentinel "${args.sentinel}"`);
@@ -416,12 +506,20 @@ async function main() {
             `or claude silently skipped the tool call. Check [HubMCPServer] logs above and verify the ` +
             `worker MCP config file on disk.`,
         );
-      } else {
+      } else if (args.mcpTool === 'hub_report') {
         logger.error(
           `[ClusterE2E] ✗ FAIL (MCP mode) — task completed and sentinel echoed, but hub saw no ` +
             `task_completed event with summary "${args.mcpReportSummary}". The agent printed the ` +
             `sentinel WITHOUT actually calling hub_report, or called it with a different summary. ` +
             `Check [HubMCPServer] logs above and verify hub_report was invoked.`,
+        );
+      } else {
+        // hub_ask
+        logger.error(
+          `[ClusterE2E] ✗ FAIL (MCP mode) — task completed and sentinel echoed, but PlannerService ` +
+            `never fired the escalation callback with question "${args.mcpAskQuestion}". Either the ` +
+            `agent didn't call hub_ask, called it with the wrong question, or PlannerService.processHelpRequests ` +
+            `polling didn't catch up within the grace period.`,
         );
       }
       process.exit(1);
