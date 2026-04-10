@@ -153,8 +153,12 @@ export class Config {
   /**
    * Cross-field validation for the lanRelay block. Disabled blocks pass
    * through untouched (every field is optional in that case). When enabled,
-   * the role-dependent fields (listenPort for host, connectUrl for client)
-   * are required so we can fail loudly at boot rather than at first use.
+   * the role-dependent fields are required so we can fail loudly at boot
+   * rather than at first use.
+   *
+   * Phase 2 also requires:
+   *   - clientId + publicAddress for client mode (dispatch model needs them)
+   *   - defaultReplyTarget on host for client sendToUser fallback
    */
   private validateLanRelayConfig(lr: LanRelayConfig | undefined): void {
     if (!lr || !lr.enabled) {
@@ -174,6 +178,12 @@ export class Config {
     if (lr.instanceRole === 'client') {
       if (!lr.connectUrl || String(lr.connectUrl).trim() === '') {
         throw new ConfigError('lanRelay.connectUrl is required when lanRelay.instanceRole is client');
+      }
+      if (!lr.clientId || String(lr.clientId).trim() === '') {
+        throw new ConfigError('lanRelay.clientId is required when lanRelay.instanceRole is client (Phase 2 dispatch model)');
+      }
+      if (!lr.publicAddress || String(lr.publicAddress).trim() === '') {
+        throw new ConfigError('lanRelay.publicAddress is required when lanRelay.instanceRole is client (no auto-detection)');
       }
     }
   }
@@ -250,6 +260,39 @@ export class Config {
   isLanRelayClientMode(): boolean {
     const lr = this.config.lanRelay;
     return lr?.enabled === true && lr.instanceRole === 'client';
+  }
+
+  isLanRelayHostMode(): boolean {
+    const lr = this.config.lanRelay;
+    return lr?.enabled === true && lr.instanceRole === 'host';
+  }
+
+  /**
+   * Phase 2 role-based filter: returns true if the named plugin should be
+   * skipped at PluginInitializer time on this instance. Honors the role-
+   * scoped `lanRelay.client.disabledPlugins` / `lanRelay.host.disabledPlugins`
+   * lists. Returns false if LAN relay is disabled (no filtering).
+   */
+  isPluginDisabledByRole(pluginName: string): boolean {
+    const lr = this.config.lanRelay;
+    if (!lr?.enabled || !lr.instanceRole) {
+      return false;
+    }
+    const roleCfg = lr.instanceRole === 'host' ? lr.host : lr.client;
+    return roleCfg?.disabledPlugins?.includes(pluginName) === true;
+  }
+
+  /**
+   * Phase 2 role-based filter: returns true if the named service block
+   * should be skipped at bootstrap time on this instance.
+   */
+  isServiceDisabledByRole(serviceName: string): boolean {
+    const lr = this.config.lanRelay;
+    if (!lr?.enabled || !lr.instanceRole) {
+      return false;
+    }
+    const roleCfg = lr.instanceRole === 'host' ? lr.host : lr.client;
+    return roleCfg?.disabledServices?.includes(serviceName) === true;
   }
 
   getProtocolConfig(name: ProtocolName): ProtocolConfig | undefined {

@@ -10,9 +10,9 @@ import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
 import type { EventRouter } from '@/events/EventRouter';
 import { logger } from '@/utils/logger';
-import { LanRelayClient } from './LanRelayClient';
-import { LanRelayHost } from './LanRelayHost';
-import { setLanRelayRuntime } from './runtime';
+import { LanRelayClient } from './client/LanRelayClient';
+import { LanRelayHost } from './host/LanRelayHost';
+import { setLanRelayRuntime } from './types/runtime';
 
 /** Lifecycle handle returned by initLanRelay; main() calls .stop() on shutdown. */
 export interface LanRelayHandle {
@@ -25,9 +25,6 @@ export async function initLanRelay(opts: {
   messageAPI: MessageAPI;
 }): Promise<LanRelayHandle> {
   const lr = opts.config.getLanRelayConfig();
-  // Disabled (or no lanRelay block at all) → ensure the runtime slot is empty
-  // so getLanRelayRuntime() returns null and SendSystem stays on its native
-  // MessageAPI path. The handle's stop() is a no-op in this branch.
   if (!lr?.enabled) {
     setLanRelayRuntime(null);
     return {
@@ -36,8 +33,6 @@ export async function initLanRelay(opts: {
   }
 
   if (lr.instanceRole === 'host') {
-    // Host mode: spin up a Bun.serve WebSocket server. Awaiting start() lets
-    // a port-bind error fail loudly during boot rather than later.
     const host = new LanRelayHost(opts.config, opts.eventRouter, opts.messageAPI);
     await host.start();
     setLanRelayRuntime(host);

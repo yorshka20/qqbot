@@ -11,6 +11,7 @@
 import type { SendMessageResult } from '@/api/types';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { MessageSegment } from '@/message/types';
+import type { LanRelayOriginContext } from './wire';
 
 /**
  * Parameters for a client-side outbound relay call. Mirrors the arguments
@@ -27,9 +28,14 @@ export interface LanRelayOutboundParams {
 
 /**
  * Common interface implemented by both LanRelayHost and LanRelayClient.
- * SendSystem only needs the role-check methods + relayOutboundSend, so the
- * interface stays narrow and the host's implementation of relayOutboundSend
- * just throws (it's never called on the host side).
+ *
+ * Phase 1 methods (SendSystem uses isClientMode + relayOutboundSend):
+ *   - isClientMode / isHostMode / relayOutboundSend / stop
+ *
+ * Phase 2 additions (for client → host communication):
+ *   - sendToUser    : ask host to deliver a message to the user via IM
+ *   - reportToHost  : send an internal status line to host (no IM)
+ *   - getCurrentOrigin : last dispatch origin (覆盖式)
  */
 export interface ILanRelayRuntime {
   /** True when config has lanRelay.enabled + instanceRole client. */
@@ -38,6 +44,26 @@ export interface ILanRelayRuntime {
   isHostMode(): boolean;
   /** Client: send reply through host; throws if not connected or host rejects. */
   relayOutboundSend(params: LanRelayOutboundParams): Promise<SendMessageResult>;
+
+  /**
+   * Phase 2 — Client: ask host to deliver `segments` to the dispatch originator.
+   * Uses the most recent origin context (from the last `dispatch_to_client`).
+   * Falls back to sending to bot owner if no origin is available.
+   */
+  sendToUser(segments: MessageSegment[]): Promise<SendMessageResult>;
+
+  /**
+   * Phase 2 — Client: send an internal report to the host (no IM).
+   * Host persists it to sqlite `lan_internal_reports` for `/lan log`.
+   */
+  reportToHost(level: 'debug' | 'info' | 'warn' | 'error', text: string): Promise<void>;
+
+  /**
+   * Phase 2 — Client: return the origin context from the most recent dispatch.
+   * Null if no dispatch has been received yet.
+   */
+  getCurrentOrigin(): LanRelayOriginContext | null;
+
   stop(): Promise<void>;
 }
 

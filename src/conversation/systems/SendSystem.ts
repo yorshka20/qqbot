@@ -8,7 +8,7 @@ import { SystemPriority, SystemStage } from '@/core/system';
 import type { HookManager } from '@/hooks/HookManager';
 import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookContext } from '@/hooks/types';
-import { getLanRelayRuntime } from '@/lan/runtime';
+import { getLanRelayRuntime } from '@/lan';
 import { getProtocolAdapter, isProtocolRegistered } from '@/protocol/ProtocolRegistry';
 import { logger } from '@/utils/logger';
 

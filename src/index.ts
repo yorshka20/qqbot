@@ -6,7 +6,7 @@ import type { MessageAPI } from './api/methods/MessageAPI';
 import { bootstrapApp } from './core/bootstrap';
 import { getContainer } from './core/DIContainer';
 import { DITokens } from './core/DITokens';
-import { initLanRelay } from './lan/initLanRelay';
+import { initLanRelay } from './lan';
 import { ClaudeCodeInitializer } from './services/claudeCode';
 import { MCPInitializer } from './services/mcp/MCPInitializer';
 import { stopStaticFileServer } from './services/staticServer';
