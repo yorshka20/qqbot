@@ -133,6 +133,16 @@ export class PluginManager {
           continue;
         }
 
+        // LAN relay role-based filter (C5 decision: completely skip — no
+        // instantiation, no DI side effects, no db opens). Looks at
+        // lanRelay.<role>.disabledPlugins for the current instance role.
+        if (this.config.isPluginDisabledByRole(pluginMetadata.name)) {
+          logger.info(
+            `⏭️  [PluginManager] Skipped plugin ${pluginMetadata.name} (disabled by lanRelay role filter)`,
+          );
+          continue;
+        }
+
         const plugin: Plugin = new PluginClass(pluginMetadata);
 
         if (this.plugins.has(plugin.name)) {

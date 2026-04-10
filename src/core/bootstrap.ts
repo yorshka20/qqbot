@@ -98,9 +98,13 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   }
 
   // ── Static file server (must precede ConversationInitializer — ImageGenerationService needs it) ──
+  // LAN relay role filter: client mode skips staticServer (data is centralized
+  // on host per C2 decision). Use lanRelay.client.disabledServices to opt out.
   const staticServerConfig = config.getStaticServerConfig();
-  if (staticServerConfig) {
+  if (staticServerConfig && !config.isServiceDisabledByRole('staticServer')) {
     await initStaticFileServer(staticServerConfig);
+  } else if (staticServerConfig && config.isServiceDisabledByRole('staticServer')) {
+    logger.info('[Bootstrap] Skipped staticServer (disabled by lanRelay role filter)');
   }
 
   // ── Claude Code init (sync, no connections) ──
