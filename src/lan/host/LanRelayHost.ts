@@ -15,6 +15,7 @@
 //
 // Independent of Agent Cluster (ContextHub) — runs its own Bun.serve.
 
+import type { Database } from 'bun:sqlite';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { SendMessageResult } from '@/api/types';
 import type { Config } from '@/core/config';
@@ -23,6 +24,8 @@ import type { EventRouter } from '@/events/EventRouter';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { ILanRelayRuntime } from '../types/runtime';
+import type { LanInternalReportRow } from './LanInternalReportStore';
+import { LanInternalReportStore } from './LanInternalReportStore';
 import type {
   LanRelayActionPayload,
   LanRelayDispatchPayload,
@@ -44,11 +47,14 @@ export class LanRelayHost implements ILanRelayRuntime {
   private readonly cfg: LanRelayConfig;
   private readonly token: string;
   private readonly messageAPI: MessageAPI;
+  /** Store for client internal_report envelopes; null when no rawDb available. */
+  private readonly reportStore: LanInternalReportStore | null;
 
   constructor(
     config: Config,
     _eventRouter: EventRouter,
     messageAPI: MessageAPI,
+    rawDb: Database | null = null,
   ) {
     const lr = config.getLanRelayConfig();
     if (!lr) {
@@ -60,6 +66,7 @@ export class LanRelayHost implements ILanRelayRuntime {
     }
     this.token = lr.token;
     this.messageAPI = messageAPI;
+    this.reportStore = rawDb ? new LanInternalReportStore(rawDb) : null;
   }
 
   // ── ILanRelayRuntime — role checks ────────────────────────────────────
@@ -129,6 +136,25 @@ export class LanRelayHost implements ILanRelayRuntime {
     }
   }
 
+  /**
+   * Query the most recent N internal reports for a client.
+   * Returns an empty array if the host has no DB-backed report store.
+   */
+  getReports(
+    clientId: string,
+    opts?: { limit?: number; level?: 'debug' | 'info' | 'warn' | 'error' },
+  ): LanInternalReportRow[] {
+    if (!this.reportStore) {
+      return [];
+    }
+    return this.reportStore.query(clientId, opts);
+  }
+
+  /** Whether the host has a DB-backed report store wired up. */
+  hasReportStore(): boolean {
+    return this.reportStore !== null;
+  }
+
   /** Force-disconnect a client by id (for /lan kick). */
   kickClient(clientId: string): boolean {
     const entry = this.clientsById.get(clientId);
@@ -157,6 +183,7 @@ export class LanRelayHost implements ILanRelayRuntime {
     const token = this.token;
     const clientsById = this.clientsById;
     const messageAPI = this.messageAPI;
+    const reportStore = this.reportStore;
 
     this.server = Bun.serve<ClientData>({
       port,
@@ -182,7 +209,7 @@ export class LanRelayHost implements ILanRelayRuntime {
           logger.info('[LanRelayHost] Client connected (awaiting hello)');
         },
         message(ws, message) {
-          void handleHostClientMessage(ws, message, messageAPI, clientsById);
+          void handleHostClientMessage(ws, message, messageAPI, clientsById, reportStore);
         },
         close(ws) {
           if (ws.data?.clientId) {
@@ -227,6 +254,7 @@ async function handleHostClientMessage(
   message: string | Buffer,
   messageAPI: MessageAPI,
   clientsById: Map<string, ClientEntry>,
+  reportStore: LanInternalReportStore | null,
 ): Promise<void> {
   const text = typeof message === 'string' ? message : message.toString();
   let parsed: LanRelayEnvelope;
@@ -328,7 +356,10 @@ async function handleHostClientMessage(
     }
     const entry = clientsById.get(p.clientId);
     if (entry) entry.lastSeenAt = Date.now();
-    // TODO: Step 7 will wire this to sqlite persistence.
+    // Persist to sqlite (best-effort) and log to console for live monitoring.
+    if (reportStore) {
+      reportStore.insert(p);
+    }
     logger.info(`[LanRelayHost] Report from ${p.clientId} [${p.level}]: ${p.text}`);
     return;
   }

@@ -30,7 +30,22 @@ async function main() {
     // Start bot (opens WebSocket connections)
     await bot.start();
 
-    const lanRelayHandle = await initLanRelay({ config, eventRouter, messageAPI });
+    // Pull rawDb (sqlite only) so the host can persist client internal_report
+    // envelopes into `lan_internal_reports`. Non-sqlite deployments pass null
+    // and reports just log to console.
+    let rawDb: import('bun:sqlite').Database | null = null;
+    try {
+      const adapter = conversationComponents.databaseManager.getAdapter() as unknown as {
+        getRawDb?: () => import('bun:sqlite').Database | null;
+      };
+      // Duck-type: SQLiteAdapter exposes getRawDb(); other adapters do not.
+      if (typeof adapter.getRawDb === 'function') {
+        rawDb = adapter.getRawDb();
+      }
+    } catch {
+      rawDb = null;
+    }
+    const lanRelayHandle = await initLanRelay({ config, eventRouter, messageAPI, rawDb });
 
     // Connect to MCP servers
     if (mcpSystem) {

@@ -6,6 +6,7 @@
 // events or accepting incoming connections. Returns a handle whose stop()
 // method is invoked from the shutdown signal handler.
 
+import type { Database } from 'bun:sqlite';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
 import type { EventRouter } from '@/events/EventRouter';
@@ -23,6 +24,8 @@ export async function initLanRelay(opts: {
   config: Config;
   eventRouter: EventRouter;
   messageAPI: MessageAPI;
+  /** Optional sqlite raw db (host only — for internal_report persistence). */
+  rawDb?: Database | null;
 }): Promise<LanRelayHandle> {
   const lr = opts.config.getLanRelayConfig();
   if (!lr?.enabled) {
@@ -33,7 +36,7 @@ export async function initLanRelay(opts: {
   }
 
   if (lr.instanceRole === 'host') {
-    const host = new LanRelayHost(opts.config, opts.eventRouter, opts.messageAPI);
+    const host = new LanRelayHost(opts.config, opts.eventRouter, opts.messageAPI, opts.rawDb ?? null);
     await host.start();
     setLanRelayRuntime(host);
     logger.info('[LanRelay] Host mode active');

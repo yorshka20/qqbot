@@ -169,6 +169,9 @@ export class LanRelayClient implements ILanRelayRuntime {
           // duplicate clientId), the close handler will catch it.
           this.sendRegister(socket);
 
+          // F3 auto report: connected.
+          this.autoReport('info', `client connected (uptime ${Math.floor((Date.now() - this.startedAt) / 1000)}s)`);
+
           resolve();
         });
 
@@ -210,6 +213,16 @@ export class LanRelayClient implements ILanRelayRuntime {
         }
       }
     });
+  }
+
+  /**
+   * Auto report (F3 decision: lifecycle events + fatal errors).
+   * Sends an internal_report to the host on connect/disconnect/start/stop.
+   * Manual reports go through the public reportToHost API.
+   */
+  private autoReport(level: 'debug' | 'info' | 'warn' | 'error', text: string): void {
+    // reportToHost is best-effort and silent on failure, perfect for auto reports.
+    void this.reportToHost(level, text);
   }
 
   /** Build and send the client_register envelope. */

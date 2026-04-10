@@ -67,8 +67,19 @@ export class SendSystem implements System {
     // LAN-relay branch: when no IM adapter is registered for this event's
     // protocol, normally that's a fatal misconfiguration. The exception is
     // a LAN-relay client instance — it never opens IM connections itself,
-    // so we route the outbound send to the host machine that does. See
-    // src/lan/ and the lanRelay config block for context.
+    // so we route the outbound send to the host machine that does.
+    //
+    // Phase 2 dispatch flow:
+    //   1. Host sends `dispatch_to_client` to a specific client.
+    //   2. Client synthesizes a NormalizedMessageEvent with protocol
+    //      `lan-dispatch` (LAN_DISPATCH_PROTOCOL) and routes it through
+    //      its own EventRouter so commands/AI run locally.
+    //   3. The pipeline reaches this SendSystem; `protocolRegistered` is
+    //      false (lan-dispatch is not a real IM adapter) and the runtime
+    //      is in client mode → we hit `relay.relayOutboundSend(...)`.
+    //   4. LanRelayClient stamps `target` from its currentOrigin so the
+    //      host can route the reply to the correct IM chat (e.g. private
+    //      milky DM with the user who issued `/lan @<clientId> ...`).
     const relay = getLanRelayRuntime();
     if (!protocolRegistered && !relay?.isClientMode()) {
       throw new Error(

@@ -180,17 +180,25 @@ export class LanControlPlugin extends PluginBase {
     return reply(lines.join('\n').trimEnd());
   }
 
-  private logCommand(_host: LanRelayHost, args: string[]): CommandResult {
+  private logCommand(host: LanRelayHost, args: string[]): CommandResult {
     const clientId = args[0];
     if (!clientId) {
       return reply('用法：/lan log <clientId> [n]');
     }
-    // Step 7 will wire this to LanInternalReportService.query.
-    // Until then, return a placeholder so the command shape is stable.
-    return reply(
-      `(internal report storage 尚未启用，将在 Step 7 中接入)\n` +
-        `clientId=${clientId}, n=${args[1] ?? 20}`,
-    );
+    if (!host.hasReportStore()) {
+      return reply('host 没有启用 sqlite，internal report 未持久化');
+    }
+    const n = args[1] ? parseInt(args[1], 10) : undefined;
+    const rows = host.getReports(clientId, { limit: Number.isFinite(n) ? n : undefined });
+    if (rows.length === 0) {
+      return reply(`📭 ${clientId} 没有任何 internal report`);
+    }
+    const lines = [`📜 ${clientId} — last ${rows.length} report(s) (newest first)`, ''];
+    for (const r of rows) {
+      const ts = new Date(r.ts).toISOString().replace('T', ' ').slice(0, 19);
+      lines.push(`[${ts}] [${r.level}] ${r.text}`);
+    }
+    return reply(lines.join('\n'));
   }
 
   private kickCommand(host: LanRelayHost, args: string[]): CommandResult {

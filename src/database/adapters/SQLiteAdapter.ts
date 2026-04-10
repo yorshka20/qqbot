@@ -384,6 +384,13 @@ export class SQLiteAdapter implements DatabaseAdapter {
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`,
+      `CREATE TABLE IF NOT EXISTS lan_internal_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        clientId TEXT NOT NULL,
+        level TEXT NOT NULL CHECK(level IN ('debug', 'info', 'warn', 'error')),
+        text TEXT NOT NULL,
+        ts INTEGER NOT NULL
+      )`,
       `CREATE TABLE IF NOT EXISTS memory_fact_meta (
         id TEXT PRIMARY KEY,
         factHash TEXT NOT NULL UNIQUE,
