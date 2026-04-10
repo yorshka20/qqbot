@@ -16,16 +16,29 @@ import type { ProviderSelector } from '../ProviderSelector';
 
 /**
  * Image Generation Service
- * Provides text-to-image and image-to-image generation capabilities
+ * Provides text-to-image and image-to-image generation capabilities.
+ *
+ * The static file server is resolved lazily on first use rather than in the
+ * constructor — LAN-relay client instances disable staticServer entirely
+ * (it's centralized on host) but still construct AIService at boot time.
+ * Constructing this service must not fail in that case; only actual image
+ * generation calls (which a silent client shouldn't make) will hit the
+ * "static file server not initialized" error.
  */
 export class ImageGenerationService {
-  private staticFileServer: StaticFileServer;
+  private staticFileServerCache: StaticFileServer | null = null;
 
   constructor(
     private aiManager: AIManager,
     private providerSelector?: ProviderSelector,
-  ) {
-    this.staticFileServer = getStaticFileServer();
+  ) {}
+
+  /** Lazy accessor — see class doc for why this is not resolved in the constructor. */
+  private get staticFileServer(): StaticFileServer {
+    if (!this.staticFileServerCache) {
+      this.staticFileServerCache = getStaticFileServer();
+    }
+    return this.staticFileServerCache;
   }
 
   /**
