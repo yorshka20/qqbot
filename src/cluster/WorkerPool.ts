@@ -10,19 +10,47 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { logger } from '@/utils/logger';
 import type { ContextHub } from './ContextHub';
-import type { ClusterConfig, WorkerTemplateConfig } from './config';
+import type { ClusterConfig } from './config';
 import type { ClusterStatus, TaskRecord, WorkerBackend, WorkerInstance } from './types';
+
+/**
+ * Callback invoked when a worker process exits and its task transitions to
+ * a terminal state (`completed` / `failed`). Receives the populated
+ * `TaskRecord` with `output` / `error` / `completedAt` filled in.
+ *
+ * Wired by ClusterManager to `ClusterScheduler.markTaskCompleted` so the
+ * scheduler can persist final state, update parent job counts, and remove
+ * the task from `activeTasks`. See docs/local/agent-cluster.md Issue D.
+ */
+export type TaskCompletedCallback = (task: TaskRecord) => void | Promise<void>;
+
+/**
+ * Maximum number of recently-exited workers retained in memory for
+ * status / history queries before they fall off the FIFO buffer.
+ */
+const RECENTLY_EXITED_MAX = 50;
 
 export class WorkerPool {
   private workers = new Map<string, WorkerInstance>();
+  /** FIFO history of exited worker instances; capped at RECENTLY_EXITED_MAX. */
+  private recentlyExited: WorkerInstance[] = [];
   private backends = new Map<string, WorkerBackend>();
   private paused = false;
   private running = false;
+  private taskCompletedCallback: TaskCompletedCallback | null = null;
 
   constructor(
     private config: ClusterConfig,
     private hub: ContextHub,
   ) {}
+
+  /**
+   * Register a callback that fires when a worker exits and its task
+   * reaches a terminal state. Idempotent — last setter wins.
+   */
+  setTaskCompletedCallback(cb: TaskCompletedCallback): void {
+    this.taskCompletedCallback = cb;
+  }
 
   /**
    * Register a backend implementation.
@@ -41,16 +69,33 @@ export class WorkerPool {
   }
 
   /**
-   * Stop all workers and clean up.
+   * Stop all workers and clean up. Sends kill signals to every live
+   * worker, then waits for each subprocess to exit so the in-flight
+   * `monitorProcess` loops can run their normal teardown path
+   * (recordExited + taskCompletedCallback). Falls back to a hard clear
+   * if anything is still around after the drain.
    */
   async stop(): Promise<void> {
     this.running = false;
-    const promises: Promise<void>[] = [];
+
+    const exitPromises: Promise<unknown>[] = [];
     for (const worker of this.workers.values()) {
-      promises.push(this.killWorkerInstance(worker));
+      if (worker.process) {
+        exitPromises.push((worker.process.exited as unknown as Promise<unknown>).catch(() => undefined));
+      }
+      void this.killWorkerInstance(worker);
     }
-    await Promise.allSettled(promises);
-    this.workers.clear();
+
+    await Promise.allSettled(exitPromises);
+    // Yield once more so any pending monitorProcess microtasks (recordExited /
+    // taskCompletedCallback) get a chance to run before we hard-clear.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    if (this.workers.size > 0) {
+      logger.warn(`[WorkerPool] ${this.workers.size} worker(s) did not drain cleanly; force-clearing`);
+      this.workers.clear();
+    }
+    this.recentlyExited = [];
     logger.info('[WorkerPool] Stopped, all workers terminated');
   }
 
@@ -105,7 +150,7 @@ export class WorkerPool {
     const backendType = template.type || 'claude-cli';
     const backend = this.backends.get(backendType);
     if (!backend) {
-      logger.error(`[WorkerPool] No backend registered for type: ${backendType}`);
+      logger.error(`[WorkerPool] No backend registered for type: ${backendType} (template "${templateName}")`);
       return null;
     }
 
@@ -146,7 +191,11 @@ export class WorkerPool {
         taskPrompt: task.description,
         projectPath,
         mcpConfigPath,
+        hubUrl,
+        command: template.command,
+        args: template.args,
         env: {
+          ...(template.env || {}),
           CLUSTER_WORKER_ID: workerId,
           CLUSTER_HUB_URL: hubUrl,
           CLUSTER_TASK_ID: task.id,
@@ -164,8 +213,22 @@ export class WorkerPool {
       return workerInstance;
     } catch (err) {
       logger.error(`[WorkerPool] Failed to spawn worker ${workerId}:`, err);
+      // Spawn failed before monitorProcess attached — clean up directly here
+      // since the normal monitor path will never run for this worker.
       this.workers.delete(workerId);
       this.hub.workerExited(workerId);
+      // Surface the failure to the scheduler so the task transitions to
+      // 'failed' instead of being stuck in 'pending' forever.
+      if (this.taskCompletedCallback) {
+        try {
+          task.status = 'failed';
+          task.error = err instanceof Error ? err.message : String(err);
+          task.completedAt = new Date().toISOString();
+          await this.taskCompletedCallback(task);
+        } catch (cbErr) {
+          logger.error(`[WorkerPool] taskCompletedCallback threw on spawn-failure path:`, cbErr);
+        }
+      }
       return null;
     }
   }
@@ -231,10 +294,18 @@ export class WorkerPool {
   }
 
   /**
-   * Get all worker instances.
+   * Get all live worker instances (excludes recently-exited history).
    */
   getWorkers(): WorkerInstance[] {
     return Array.from(this.workers.values());
+  }
+
+  /**
+   * Get the FIFO history of recently-exited workers (most recent last).
+   * Capped at RECENTLY_EXITED_MAX entries.
+   */
+  getHistory(): readonly WorkerInstance[] {
+    return this.recentlyExited;
   }
 
   /**
@@ -275,22 +346,27 @@ export class WorkerPool {
 
   // ── Private ──
 
+  /**
+   * Send a kill signal to a worker subprocess. The actual cleanup
+   * (status update, hub notification, recordExited, callback) is handled
+   * by `monitorProcess` once `proc.exited` resolves — this method only
+   * triggers the exit, it does NOT clean up state itself, to avoid
+   * doubled-up `hub.workerExited` calls and race conditions with the
+   * monitor loop.
+   */
   private async killWorkerInstance(worker: WorkerInstance): Promise<void> {
     worker.status = 'stopping';
     if (worker.process) {
       try {
         worker.process.kill();
       } catch {
-        // Process may have already exited
+        // Process may have already exited.
       }
     }
-    worker.status = 'exited';
-    worker.process = null;
-    this.hub.workerExited(worker.id);
   }
 
   private async monitorProcess(worker: WorkerInstance, proc: import('bun').Subprocess): Promise<void> {
-    // Collect stdout
+    // Collect stdout (best-effort; stream may close mid-read on kill).
     const stdoutChunks: string[] = [];
     if (proc.stdout) {
       const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
@@ -306,31 +382,89 @@ export class WorkerPool {
       }
     }
 
-    // Wait for exit
+    // Wait for exit.
     const exitCode = await proc.exited;
-    const output = stdoutChunks.join('');
+    const rawOutput = stdoutChunks.join('');
 
     logger.info(`[WorkerPool] Worker ${worker.id} exited with code ${exitCode}`);
 
-    // Update worker state
+    // Update worker state.
     worker.status = 'exited';
     worker.process = null;
 
-    // Notify hub
+    // Notify hub (event log + worker registry).
     this.hub.workerExited(worker.id);
 
-    // Store output on the task (if still exists)
+    // Populate the task with final output / status. Use the backend's
+    // `parseOutput` (Issue C — stream-json parser) when available so the
+    // user-facing `task.output` is the clean final message instead of a
+    // wall of JSONL events. Raw events go on `task.metadata` for replay.
     if (worker.currentTask) {
-      worker.currentTask.output = output;
+      const backend = this.backends.get(this.config.workerTemplates[worker.templateName]?.type || 'claude-cli');
+      let finalMessage = rawOutput;
+      let rawEvents: unknown;
+      if (backend?.parseOutput) {
+        try {
+          const parsed = backend.parseOutput(rawOutput);
+          finalMessage = parsed.finalMessage;
+          rawEvents = parsed.rawEvents;
+        } catch (err) {
+          logger.warn(
+            `[WorkerPool] parseOutput threw for worker ${worker.id} (backend=${backend.name}); falling back to raw stdout:`,
+            err,
+          );
+        }
+      }
+
+      worker.currentTask.output = finalMessage;
       worker.currentTask.status = exitCode === 0 ? 'completed' : 'failed';
+      worker.currentTask.completedAt = new Date().toISOString();
       if (exitCode !== 0) {
         worker.currentTask.error = `Process exited with code ${exitCode}`;
+      }
+      if (rawEvents !== undefined) {
+        try {
+          worker.currentTask.metadata = JSON.stringify({ rawEvents });
+        } catch {
+          // Non-serializable events — drop silently, finalMessage is what matters.
+        }
+      }
+    }
+
+    // Move into recently-exited history before deleting from the live map.
+    // This bounds memory growth (Issue G) while still letting status APIs
+    // and the e2e script see the final state of just-finished workers.
+    this.recordExited(worker);
+
+    // Fire the completion callback so the scheduler can persist final state,
+    // update job counts, and remove the task from `activeTasks`. Failures in
+    // the callback should NOT crash the monitor — log and continue.
+    if (worker.currentTask && this.taskCompletedCallback) {
+      try {
+        await this.taskCompletedCallback(worker.currentTask);
+      } catch (err) {
+        logger.error(`[WorkerPool] taskCompletedCallback threw for worker ${worker.id}:`, err);
       }
     }
   }
 
+  /**
+   * Move a worker from the live `workers` map into the bounded
+   * `recentlyExited` FIFO. Idempotent — calling twice for the same worker
+   * is safe (second call is a no-op).
+   */
+  private recordExited(worker: WorkerInstance): void {
+    if (!this.workers.has(worker.id)) return;
+    this.workers.delete(worker.id);
+    this.recentlyExited.push(worker);
+    while (this.recentlyExited.length > RECENTLY_EXITED_MAX) {
+      this.recentlyExited.shift();
+    }
+  }
+
   private async generateMCPConfig(workerId: string, hubUrl: string): Promise<string> {
-    // Generate a temporary MCP config file that points to our ContextHub
+    // Generate a temporary MCP config file that points to our ContextHub.
+    // Format is Claude CLI's `--mcp-config` shape (mcpServers object).
     const mcpConfig = {
       mcpServers: {
         'context-hub': {
@@ -345,9 +479,5 @@ export class WorkerPool {
     const configPath = join(tmpdir(), `cluster-mcp-${workerId}.json`);
     await writeFile(configPath, JSON.stringify(mcpConfig, null, 2));
     return configPath;
-  }
-
-  private getTemplateConfig(templateName: string): WorkerTemplateConfig | undefined {
-    return this.config.workerTemplates[templateName];
   }
 }

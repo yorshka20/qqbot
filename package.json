@@ -20,6 +20,7 @@
     "lint:fix": "biome check --write src",
     "format": "biome format --write src",
     "smoke-test": "NO_FILE_LOG=1 bun run src/cli/smoke-test.ts",
+    "cluster:e2e": "NO_FILE_LOG=1 bun run src/cli/cluster-e2e.ts",
     "test": "bun test",
     "test:network": "NETWORK_TESTS=1 bun test",
     "prepare": "husky"

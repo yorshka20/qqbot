@@ -241,14 +241,50 @@ export interface WorkerSpawnConfig {
   workerId: string;
   taskPrompt: string;
   projectPath: string;
+  /**
+   * Path to a generated MCP server config (Claude CLI format).
+   * Backends that don't consume this format (e.g. codex, gemini) ignore it
+   * and arrange MCP wiring through their own config locations.
+   */
   mcpConfigPath: string;
+  /** Hub URL — used by backends that inject MCP config into provider-native locations. */
+  hubUrl: string;
+  /** Executable to invoke (template.command). */
+  command: string;
+  /** Base CLI args (template.args). The backend appends prompt-related args. */
+  args: string[];
+  /** Environment variables: process.env + template.env + cluster-injected vars. */
   env: Record<string, string>;
   timeout: number;
+}
+
+/**
+ * Result of parsing a worker process's stdout into a final user-facing message.
+ *
+ * Backends that emit JSONL streaming output (claude `--output-format stream-json`,
+ * codex `--json`, gemini `--output-format stream-json`) can implement
+ * `parseOutput` to extract just the final assistant message and surface
+ * raw events on `task.metadata` for debugging.
+ */
+export interface ParsedWorkerOutput {
+  /** Final user-facing message — what to store in `task.output`. */
+  finalMessage: string;
+  /**
+   * Optional structured representation of all events for debug/replay.
+   * If present, WorkerPool serializes it into `task.metadata`.
+   */
+  rawEvents?: unknown;
 }
 
 export interface WorkerBackend {
   name: string;
   spawn(config: WorkerSpawnConfig): Promise<import('bun').Subprocess>;
+  /**
+   * Optional: parse the worker's stdout into a clean final message.
+   * Default behavior (when not implemented) is to use the raw stdout
+   * as `finalMessage` verbatim.
+   */
+  parseOutput?(raw: string): ParsedWorkerOutput;
 }
 
 // ── Cluster status ──

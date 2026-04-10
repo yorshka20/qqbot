@@ -8,7 +8,7 @@ import type { Database } from 'bun:sqlite';
 import { randomUUID } from 'node:crypto';
 import { logger } from '@/utils/logger';
 import type { ContextHub } from './ContextHub';
-import type { ClusterConfig, ClusterProjectConfig } from './config';
+import type { ClusterConfig } from './config';
 import type { TaskSource } from './sources/TaskSource';
 import type { JobRecord, TaskCandidate, TaskRecord } from './types';
 import type { WorkerPool } from './WorkerPool';
@@ -19,6 +19,13 @@ export class ClusterScheduler {
   private taskSources = new Map<string, TaskSource[]>(); // project → sources
   private activeTasks = new Map<string, TaskRecord>(); // taskId → record
   private jobs = new Map<string, JobRecord>(); // jobId → record
+  /**
+   * Project aliases for which we have already emitted an "unknown project"
+   * warning. Prevents the scheduler loop from spamming logs every poll.
+   * Reset on `start()` so config changes between cluster restarts are
+   * still surfaced.
+   */
+  private warnedMissingProjects = new Set<string>();
 
   constructor(
     private config: ClusterConfig,
@@ -41,8 +48,45 @@ export class ClusterScheduler {
    */
   async start(): Promise<void> {
     this.running = true;
+    // Reset warn-once state so config changes between restarts surface again.
+    this.warnedMissingProjects.clear();
     logger.info(`[ClusterScheduler] Started (interval: ${this.config.schedulingInterval}ms)`);
     this.scheduleNextRun();
+  }
+
+  /**
+   * Mark a task as terminally completed (success or failure) and propagate
+   * the new state through DB persistence + parent job counters + the
+   * in-memory `activeTasks` map. Called by `WorkerPool` via the
+   * `taskCompletedCallback` wired in `ClusterManager`.
+   *
+   * Idempotent: re-calling for an already-removed task is safe (no-op).
+   * See docs/local/agent-cluster.md Issue D for the original bug report.
+   */
+  markTaskCompleted(task: TaskRecord): void {
+    // Persist final task state to DB.
+    this.persistTask(task);
+
+    // Update parent job counters and roll job to a terminal state when all
+    // its tasks are accounted for.
+    const job = this.jobs.get(task.jobId);
+    if (job) {
+      if (task.status === 'completed') {
+        job.tasksCompleted += 1;
+      } else if (task.status === 'failed') {
+        job.tasksFailed += 1;
+      }
+      const totalDone = job.tasksCompleted + job.tasksFailed;
+      if (totalDone >= job.taskCount) {
+        job.status = job.tasksFailed > 0 && job.tasksCompleted === 0 ? 'failed' : 'completed';
+        job.completedAt = new Date().toISOString();
+      }
+      this.persistJob(job);
+    }
+
+    // Drop from active map so the next scheduler tick won't see this task
+    // as "in progress" via filterActionable().
+    this.activeTasks.delete(task.id);
   }
 
   /**
@@ -58,16 +102,28 @@ export class ClusterScheduler {
   }
 
   /**
-   * Manually submit a task to the queue.
+   * Manually submit a task. Creates a one-off job + task and immediately
+   * tries to dispatch a worker for it (without waiting for the next
+   * scheduling tick). If the worker pool is at capacity, the task stays
+   * in `activeTasks` with status `pending` and is left for the user to
+   * retry — Phase 1 does not auto-queue rejected manual submissions
+   * because there is no manual-queue source separate from the task object
+   * itself.
+   *
+   * Pre-Phase-1 versions of this method created the task and returned it
+   * but never actually spawned a worker, leaving the task orphaned in
+   * `activeTasks`. The e2e script (and the QQ `/cluster` command, and
+   * `POST /api/cluster/jobs`) all depended on the spawn happening — see
+   * docs/local/agent-cluster.md for the bug history.
    */
   async submitTask(project: string, description: string): Promise<TaskRecord | null> {
     const projectInfo = this.projectResolver(project);
     if (!projectInfo) {
-      logger.warn(`[ClusterScheduler] Unknown project: ${project}`);
+      this.warnUnknownProjectOnce(project);
       return null;
     }
 
-    // Create a one-off job
+    // Create a one-off job for this manual submission.
     const jobId = randomUUID();
     const job: JobRecord = {
       id: jobId,
@@ -83,7 +139,50 @@ export class ClusterScheduler {
     this.persistJob(job);
 
     const task = this.createTask(jobId, project, description, 'queue');
+
+    // Immediately try to dispatch — if the pool is full, the task stays
+    // in `activeTasks` as `pending` and the next scheduling tick can
+    // re-attempt it via dispatchPendingTasks().
+    await this.tryDispatch(task, projectInfo);
     return task;
+  }
+
+  /**
+   * Try to spawn a worker for a single TaskRecord. Returns true on
+   * successful spawn. Used by both `submitTask` (manual one-off) and
+   * `runOnce` (source-driven candidates) so the dispatch logic
+   * (template lookup → spawn → state mutation → persistTask) lives in
+   * exactly one place.
+   *
+   * If `canSpawnMore` is false, the task is left untouched (status stays
+   * `pending`) and false is returned — the caller decides whether to
+   * retry on the next tick.
+   */
+  private async tryDispatch(
+    task: TaskRecord,
+    projectInfo: { alias: string; path: string; type: string },
+  ): Promise<boolean> {
+    if (!this.workerPool.canSpawnMore()) return false;
+
+    const projectConfig = this.config.projects[task.project];
+    const templateName = projectConfig?.workerPreference || Object.keys(this.config.workerTemplates)[0];
+    if (!templateName) {
+      logger.warn(
+        `[ClusterScheduler] No workerPreference / workerTemplates configured for project "${task.project}" — task ${task.id} cannot dispatch`,
+      );
+      return false;
+    }
+
+    const worker = await this.workerPool.spawnWorker(templateName, task.project, projectInfo.path, task);
+    if (worker) {
+      task.status = 'running';
+      task.workerId = worker.id;
+      task.workerTemplate = templateName;
+      task.startedAt = new Date().toISOString();
+      this.persistTask(task);
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -147,18 +246,17 @@ export class ClusterScheduler {
     // 3. Sort by priority
     const sorted = actionable.sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
-    // 4. Assign to workers
+    // 4. Assign to workers via the shared dispatch helper.
     for (const candidate of sorted) {
       if (!this.workerPool.canSpawnMore()) break;
 
-      const projectConfig = this.config.projects[candidate.project];
-      const templateName = projectConfig?.workerPreference || Object.keys(this.config.workerTemplates)[0];
-      if (!templateName) continue;
-
       const projectInfo = this.projectResolver(candidate.project);
-      if (!projectInfo) continue;
+      if (!projectInfo) {
+        this.warnUnknownProjectOnce(candidate.project);
+        continue;
+      }
 
-      // Create job + task
+      // Source-driven candidates each get their own one-off job.
       const jobId = randomUUID();
       const job: JobRecord = {
         id: jobId,
@@ -175,19 +273,20 @@ export class ClusterScheduler {
       this.persistJob(job);
 
       const task = this.createTask(jobId, candidate.project, candidate.description, candidate.source);
-
-      // Spawn worker
-      const worker = await this.workerPool.spawnWorker(templateName, candidate.project, projectInfo.path, task);
-      if (worker) {
-        task.status = 'running';
-        task.workerId = worker.id;
-        task.workerTemplate = templateName;
-        task.startedAt = new Date().toISOString();
-        this.persistTask(task);
-      }
+      await this.tryDispatch(task, projectInfo);
     }
 
-    // 5. Health check
+    // 5. Re-attempt any pending tasks from prior submitTask() calls that
+    //    couldn't dispatch immediately because the pool was full.
+    for (const task of this.activeTasks.values()) {
+      if (task.status !== 'pending') continue;
+      if (!this.workerPool.canSpawnMore()) break;
+      const projectInfo = this.projectResolver(task.project);
+      if (!projectInfo) continue;
+      await this.tryDispatch(task, projectInfo);
+    }
+
+    // 6. Health check
     const stuckWorkers = this.workerPool.healthCheck();
     for (const workerId of stuckWorkers) {
       logger.warn(`[ClusterScheduler] Killing stuck worker: ${workerId}`);
@@ -200,7 +299,10 @@ export class ClusterScheduler {
 
     for (const [project, sources] of this.taskSources) {
       const projectInfo = this.projectResolver(project);
-      if (!projectInfo) continue;
+      if (!projectInfo) {
+        this.warnUnknownProjectOnce(project);
+        continue;
+      }
 
       for (const source of sources) {
         try {
@@ -213,6 +315,48 @@ export class ClusterScheduler {
     }
 
     return all;
+  }
+
+  /**
+   * Emit a warning about an unknown project alias at most once per scheduler
+   * lifetime. Used by both `collectTasks()` and the per-candidate spawn path
+   * in `runOnce()` to avoid log spam when a misconfigured project is polled
+   * every scheduling interval.
+   */
+  private warnUnknownProjectOnce(project: string): void {
+    if (this.warnedMissingProjects.has(project)) return;
+    this.warnedMissingProjects.add(project);
+    logger.warn(
+      `[ClusterScheduler] Unknown project "${project}" — not registered in ClaudeCodeService.projectRegistry. ` +
+        `Tasks for this project will be skipped. Check cluster.jsonc projects keys against your project registry.`,
+    );
+  }
+
+  /**
+   * Pre-flight project alias validation. Called by `ClusterManager.start()`
+   * after the scheduler is ready but before the first scheduling tick, so
+   * misconfigured aliases produce a single up-front error log instead of
+   * silent skips later. Returns the list of missing aliases for the caller
+   * to surface (e.g. to the WebUI control plane).
+   */
+  validateProjects(): string[] {
+    const missing: string[] = [];
+    for (const alias of Object.keys(this.config.projects)) {
+      if (!this.projectResolver(alias)) {
+        missing.push(alias);
+      }
+    }
+    if (missing.length > 0) {
+      logger.error(
+        `[ClusterScheduler] Project alias validation failed: ${missing.join(', ')}. ` +
+          `These cluster projects are NOT registered in ClaudeCodeService.projectRegistry — ` +
+          `tasks for them will be skipped until you fix the config.`,
+      );
+      // Pre-seed warnedMissingProjects so the runtime warn-once path doesn't
+      // re-warn these immediately on the first tick.
+      for (const alias of missing) this.warnedMissingProjects.add(alias);
+    }
+    return missing;
   }
 
   private filterActionable(candidates: TaskCandidate[]): TaskCandidate[] {

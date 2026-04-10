@@ -870,5 +870,51 @@
     "pollIntervalMs": 5000,
     // Polling timeout in milliseconds (default: 300000 = 5 minutes)
     "pollTimeoutMs": 300000
+  },
+
+  // Agent Cluster — local multi-agent task execution.
+  // Spawns coding agent workers (Claude Code / Codex / Gemini / MiniMax)
+  // to process tasks autonomously. Disabled by default. The full template
+  // (with all 4 providers + tokens) lives in config.d/cluster.jsonc which
+  // is gitignored — keep API keys there, not here.
+  //
+  // Supported worker template `type` values:
+  //   - "claude-cli"  Claude Code CLI (also Anthropic-compat endpoints
+  //                   like MiniMax via ANTHROPIC_BASE_URL env override)
+  //   - "codex-cli"   OpenAI Codex CLI (`codex exec`)
+  //   - "gemini-cli"  Google Gemini CLI (`gemini -p`)
+  //
+  // Each template inherits process.env and merges its own `env` on top,
+  // so you can ship per-template API keys / model overrides.
+  "cluster": {
+    "enabled": false,
+    "schedulingInterval": "30s",
+    "maxConcurrentWorkers": 4,
+    "hub": {
+      "host": "127.0.0.1",
+      "port": 3200,
+      "lockTTL": "10m",
+      "eventLogMaxSize": 2000
+    },
+    "workerTemplates": {
+      "claude-sonnet": {
+        "type": "claude-cli",
+        "command": "claude",
+        "args": ["--print", "--dangerously-skip-permissions", "--output-format", "text"],
+        "maxConcurrent": 2,
+        "timeout": "20m",
+        "capabilities": ["code"],
+        "costTier": "medium"
+      }
+      // See config.d/cluster.jsonc for codex-cli / gemini-cli / minimax-m2
+      // template examples.
+    },
+    "projects": {
+      "qqbot": {
+        "maxWorkers": 2,
+        "taskSources": [{ "type": "queue" }],
+        "workerPreference": "claude-sonnet"
+      }
+    }
   }
 }

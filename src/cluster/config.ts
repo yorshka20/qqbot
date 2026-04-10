@@ -40,10 +40,19 @@ export interface ClusterConfig {
   };
 }
 
+export type WorkerBackendType = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'minimax-cli';
+
 export interface WorkerTemplateConfig {
-  type: string; // 'claude-cli' | future backends
+  type: WorkerBackendType;
   command: string;
   args: string[];
+  /**
+   * Environment variables injected into the worker process.
+   * Useful for API keys, base URL overrides, model selection, etc.
+   * For "minimax-cli" templates, only `ANTHROPIC_API_KEY` is required —
+   * the backend bakes in MiniMax CN's base URL and default model.
+   */
+  env?: Record<string, string>;
   maxConcurrent: number;
   timeout: number; // ms
   capabilities: string[];
@@ -59,6 +68,35 @@ export interface ClusterProjectConfig {
   }>;
   workerPreference: string;
   plannerTemplate?: string;
+}
+
+function defaultCommandForType(type: WorkerBackendType): string {
+  switch (type) {
+    case 'codex-cli':
+      return 'codex';
+    case 'gemini-cli':
+      return 'gemini';
+    case 'minimax-cli':
+      // minimax-cli is a façade that delegates to the `claude` binary
+      // (see MinimaxBackend) with MiniMax CN env vars baked in.
+      return 'claude';
+    default:
+      return 'claude';
+  }
+}
+
+function defaultArgsForType(type: WorkerBackendType): string[] {
+  switch (type) {
+    case 'codex-cli':
+      return ['exec', '--json', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check'];
+    case 'gemini-cli':
+      return ['--approval-mode=yolo', '--output-format', 'stream-json'];
+    case 'minimax-cli':
+      // Same flags as claude-cli — minimax just routes to a different host.
+      return ['--print', '--dangerously-skip-permissions', '--output-format', 'text'];
+    default:
+      return ['--print', '--dangerously-skip-permissions', '--output-format', 'text'];
+  }
 }
 
 /**
@@ -98,10 +136,14 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
 
   const workerTemplates: Record<string, WorkerTemplateConfig> = {};
   for (const [name, tpl] of Object.entries(templatesRaw)) {
+    const rawType = (tpl.type as string) || 'claude-cli';
+    const type: WorkerBackendType =
+      rawType === 'codex-cli' || rawType === 'gemini-cli' || rawType === 'minimax-cli' ? rawType : 'claude-cli';
     workerTemplates[name] = {
-      type: (tpl.type as string) || 'claude-cli',
-      command: (tpl.command as string) || 'claude',
-      args: (tpl.args as string[]) || ['--print', '--dangerously-skip-permissions', '--output-format', 'text'],
+      type,
+      command: (tpl.command as string) || defaultCommandForType(type),
+      args: (tpl.args as string[]) || defaultArgsForType(type),
+      env: (tpl.env as Record<string, string>) || undefined,
       maxConcurrent: (tpl.maxConcurrent as number) || 4,
       timeout: typeof tpl.timeout === 'string' ? parseDuration(tpl.timeout) : (tpl.timeout as number) || 600_000,
       capabilities: (tpl.capabilities as string[]) || [],

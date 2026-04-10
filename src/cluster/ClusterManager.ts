@@ -8,6 +8,9 @@
 import type { Database } from 'bun:sqlite';
 import { logger } from '@/utils/logger';
 import { ClaudeCliBackend } from './backends/ClaudeCliBackend';
+import { CodexCliBackend } from './backends/CodexCliBackend';
+import { GeminiCliBackend } from './backends/GeminiCliBackend';
+import { MinimaxBackend } from './backends/MinimaxBackend';
 import { ClusterAPIRouter } from './ClusterAPIRouter';
 import { ClusterScheduler } from './ClusterScheduler';
 import { ContextHub } from './ContextHub';
@@ -48,6 +51,13 @@ export class ClusterManager {
       }
     });
 
+    // Wire task-completion callback: when a worker exits, the scheduler
+    // persists the task's terminal state, updates job counters, and removes
+    // it from the active map. See docs/local/agent-cluster.md Issue D.
+    this.workerPool.setTaskCompletedCallback((task) => {
+      this.scheduler.markTaskCompleted(task);
+    });
+
     // Register backends
     this.registerBackends();
 
@@ -74,6 +84,17 @@ export class ClusterManager {
 
     // Start scheduler
     await this.scheduler.start();
+
+    // Up-front project alias validation. Done after scheduler.start() so
+    // we have a single error log surfacing misconfigured aliases instead
+    // of silent skips on every scheduling tick. Non-fatal — cluster keeps
+    // running with whatever projects DO resolve.
+    const missingProjects = this.scheduler.validateProjects();
+    if (missingProjects.length > 0) {
+      logger.warn(
+        `[ClusterManager] Cluster started with ${missingProjects.length} unresolved project alias(es): ${missingProjects.join(', ')}`,
+      );
+    }
 
     // Start planner service
     this.plannerService.start();
@@ -158,15 +179,28 @@ export class ClusterManager {
   // ── Private ──
 
   private registerBackends(): void {
-    for (const [name, template] of Object.entries(this.config.workerTemplates)) {
-      if (template.type === 'claude-cli') {
-        this.workerPool.registerBackend(new ClaudeCliBackend(template.command, template.args));
-        break; // Only need one backend instance per type
-      }
+    // Backends are now stateless: per-template command/args/env flow through
+    // WorkerSpawnConfig at spawn time. We register one instance per type that
+    // appears in the workerTemplates config. claude-cli is always registered
+    // as a safe default (also used by anthropic-compat templates like MiniMax
+    // via ANTHROPIC_BASE_URL env override).
+    const types = new Set<string>();
+    for (const tpl of Object.values(this.config.workerTemplates)) {
+      types.add(tpl.type || 'claude-cli');
     }
-    // Fallback: always register a default claude-cli backend
-    if (!this.workerPool.getWorkers().length) {
+    types.add('claude-cli'); // always available as fallback
+
+    if (types.has('claude-cli')) {
       this.workerPool.registerBackend(new ClaudeCliBackend());
+    }
+    if (types.has('codex-cli')) {
+      this.workerPool.registerBackend(new CodexCliBackend());
+    }
+    if (types.has('gemini-cli')) {
+      this.workerPool.registerBackend(new GeminiCliBackend());
+    }
+    if (types.has('minimax-cli')) {
+      this.workerPool.registerBackend(new MinimaxBackend());
     }
   }
 
