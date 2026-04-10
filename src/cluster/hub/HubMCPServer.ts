@@ -40,7 +40,6 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { logger } from '@/utils/logger';
-import type { ContextHub } from './ContextHub';
 import type {
   HubAskInput,
   HubClaimInput,
@@ -49,6 +48,7 @@ import type {
   HubMessageInput,
   HubReportInput,
 } from '../types';
+import type { ContextHub } from './ContextHub';
 
 /** Shape of the `extra` parameter we care about — narrowed from the SDK type. */
 interface ToolExtra {
@@ -57,6 +57,31 @@ interface ToolExtra {
   };
   sessionId?: string;
 }
+
+/**
+ * Non-generic shape for `McpServer.registerTool`. We deliberately erase the
+ * SDK's `registerTool<OutputArgs, InputArgs>` generics — chained 7 times in
+ * one file (one per hub tool), the SDK's `ToolCallback<Args>` /
+ * `SchemaOutput<Args>` recursive instantiation balloons tsc heap usage past
+ * 4 GB and OOMs. Since every handler in this file already casts `args` to a
+ * concrete `HubXxxInput` internally, we don't need the inferred shape — a
+ * plain `Record<string, unknown>` callback signature is sufficient.
+ *
+ * Runtime is unchanged: the SDK still receives the Zod shape and validates
+ * input via `safeParseAsync` exactly as before. This cast only affects what
+ * the type checker has to instantiate.
+ */
+type RegisterToolFn = (
+  name: string,
+  config: {
+    description: string;
+    inputSchema?: Record<string, z.ZodTypeAny>;
+  },
+  handler: (
+    args: Record<string, unknown>,
+    extra: ToolExtra,
+  ) => Promise<CallToolResult>,
+) => void;
 
 export class HubMCPServer {
   private readonly mcpServer: McpServer;
@@ -129,9 +154,17 @@ export class HubMCPServer {
   // ── Tool registration ──
 
   private registerTools(): void {
+    // Bind registerTool through the non-generic `RegisterToolFn` shape so
+    // tsc instantiates the SDK's recursive `ToolCallback<Args>` exactly
+    // once for the whole file instead of seven times — see RegisterToolFn
+    // doc comment for the full story.
+    const register = this.mcpServer.registerTool.bind(
+      this.mcpServer,
+    ) as unknown as RegisterToolFn;
+
     // hub_sync — no input. Pulls events / messages / directives since the
     // worker's last cursor and renews the worker's locks as a side effect.
-    this.mcpServer.registerTool(
+    register(
       'hub_sync',
       {
         description:
@@ -140,11 +173,12 @@ export class HubMCPServer {
           'minutes) to stay coordinated.',
         inputSchema: {},
       },
-      async (_args, extra) => this.runTool('hub_sync', extra, (workerId) => this.hub.handleSync(workerId)),
+      async (_args, extra) =>
+        this.runTool('hub_sync', extra, (workerId) => this.hub.handleSync(workerId)),
     );
 
     // hub_claim — acquire file locks before editing.
-    this.mcpServer.registerTool(
+    register(
       'hub_claim',
       {
         description:
@@ -158,11 +192,13 @@ export class HubMCPServer {
         },
       },
       async (args, extra) =>
-        this.runTool('hub_claim', extra, (workerId) => this.hub.handleClaim(workerId, args as HubClaimInput)),
+        this.runTool('hub_claim', extra, (workerId) =>
+          this.hub.handleClaim(workerId, args as unknown as HubClaimInput),
+        ),
     );
 
     // hub_report — progress / completion / failure / blocked status.
-    this.mcpServer.registerTool(
+    register(
       'hub_report',
       {
         description:
@@ -190,11 +226,13 @@ export class HubMCPServer {
         },
       },
       async (args, extra) =>
-        this.runTool('hub_report', extra, (workerId) => this.hub.handleReport(workerId, args as HubReportInput)),
+        this.runTool('hub_report', extra, (workerId) =>
+          this.hub.handleReport(workerId, args as unknown as HubReportInput),
+        ),
     );
 
     // hub_ask — escalate to a human via the planner / WebUI.
-    this.mcpServer.registerTool(
+    register(
       'hub_ask',
       {
         description:
@@ -214,11 +252,13 @@ export class HubMCPServer {
         },
       },
       async (args, extra) =>
-        this.runTool('hub_ask', extra, (workerId) => this.hub.handleAsk(workerId, args as HubAskInput)),
+        this.runTool('hub_ask', extra, (workerId) =>
+          this.hub.handleAsk(workerId, args as unknown as HubAskInput),
+        ),
     );
 
     // hub_message — send a message to another worker (or "all").
-    this.mcpServer.registerTool(
+    register(
       'hub_message',
       {
         description:
@@ -233,12 +273,12 @@ export class HubMCPServer {
       },
       async (args, extra) =>
         this.runTool('hub_message', extra, (workerId) =>
-          this.hub.handleMessage(workerId, args as HubMessageInput),
+          this.hub.handleMessage(workerId, args as unknown as HubMessageInput),
         ),
     );
 
     // hub_dispatch — planner-only: queue a new task for a coder worker.
-    this.mcpServer.registerTool(
+    register(
       'hub_dispatch',
       {
         description:
@@ -254,13 +294,13 @@ export class HubMCPServer {
       },
       async (args, extra) =>
         this.runTool('hub_dispatch', extra, async (workerId) =>
-          this.hub.handleDispatch(workerId, args as HubDispatchInput),
+          this.hub.handleDispatch(workerId, args as unknown as HubDispatchInput),
         ),
     );
 
     // hub_directive — planner-only: push an instruction into a worker's
     // message box, delivered as a directive on its next hub_sync.
-    this.mcpServer.registerTool(
+    register(
       'hub_directive',
       {
         description:
@@ -273,7 +313,7 @@ export class HubMCPServer {
       },
       async (args, extra) =>
         this.runTool('hub_directive', extra, (workerId) =>
-          this.hub.handleDirective(workerId, args as HubDirectiveInput),
+          this.hub.handleDirective(workerId, args as unknown as HubDirectiveInput),
         ),
     );
   }

@@ -57,18 +57,40 @@ export class ClusterScheduler {
   /**
    * Mark a task as terminally completed (success or failure) and propagate
    * the new state through DB persistence + parent job counters + the
-   * in-memory `activeTasks` map. Called by `WorkerPool` via the
-   * `taskCompletedCallback` wired in `ClusterManager`.
+   * in-memory `activeTasks` map.
    *
-   * Idempotent: re-calling for an already-removed task is safe (no-op).
-   * See docs/local/agent-cluster.md Issue D for the original bug report.
+   * Two callers go through here:
+   *   1. `WorkerPool.taskCompletedCallback` on process exit (Phase 1 path)
+   *   2. `ContextHub.reportCallback` on `hub_report({status: 'completed'|'failed'})`
+   *      (Phase 2 round 2 path — the LLM voluntarily declares done)
+   *
+   * Both callers can fire for the same task in the same run: hub_report
+   * usually arrives first because the LLM reports "done" before the
+   * process actually exits. The second caller would otherwise double-count
+   * job.tasksCompleted / tasksFailed. So we use `activeTasks.has(task.id)`
+   * as the "first time through" gate for counter updates — but we still
+   * `persistTask()` on every call so the second caller can refresh DB rows
+   * with the fuller output captured after process exit.
+   *
+   * Idempotency model:
+   *   - persistTask: runs every call (SQLite UPSERT, latest-write-wins)
+   *   - job counter update + activeTasks.delete: runs exactly once
+   *
+   * See docs/local/agent-cluster.md Issue D (original Phase 1 bug) and
+   * §2.3 (hub_report wiring) for the full story.
    */
   markTaskCompleted(task: TaskRecord): void {
-    // Persist final task state to DB.
+    // Always persist — allows the post-exit code path to overwrite the
+    // row with richer `task.output` even when hub_report fired first.
     this.persistTask(task);
 
-    // Update parent job counters and roll job to a terminal state when all
-    // its tasks are accounted for.
+    // Job counter updates must happen exactly once per task. If the task
+    // has already been removed from activeTasks, a prior call already
+    // incremented the counters; skip them this time.
+    if (!this.activeTasks.has(task.id)) {
+      return;
+    }
+
     const job = this.jobs.get(task.jobId);
     if (job) {
       if (task.status === 'completed') {
@@ -87,6 +109,18 @@ export class ClusterScheduler {
     // Drop from active map so the next scheduler tick won't see this task
     // as "in progress" via filterActionable().
     this.activeTasks.delete(task.id);
+  }
+
+  /**
+   * Look up a task currently tracked by the scheduler. Used by
+   * `ContextHub.reportCallback` to resolve a taskId coming in via
+   * `hub_report` to the live `TaskRecord` object the scheduler is managing.
+   *
+   * Returns `undefined` if the task has already been removed (terminal) or
+   * was never scheduled through this ClusterScheduler instance.
+   */
+  getActiveTask(taskId: string): TaskRecord | undefined {
+    return this.activeTasks.get(taskId);
   }
 
   /**

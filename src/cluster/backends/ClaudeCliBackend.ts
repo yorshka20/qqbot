@@ -24,11 +24,22 @@ export class ClaudeCliBackend implements WorkerBackend {
     // generated tmp file lives at config.mcpConfigPath and contains the
     // MCP server URL + X-Worker-Id header (see WorkerPool.generateMCPConfig).
     //
+    // **Use the `--mcp-config=<path>` (single arg with `=`) form, NOT
+    // `--mcp-config <path>` (two args).** Claude CLI parses `--mcp-config`
+    // as a multi-value option that greedily slurps every following
+    // positional until the next flag — which means the two-arg form would
+    // turn the trailing taskPrompt into an additional MCP config path and
+    // crash with "MCP config file not found: <prompt text>". The `=` form
+    // binds the path tightly to the flag and leaves the prompt alone.
+    //
     // We dedupe in case the user already put `--mcp-config` in their
-    // template args (unlikely but harmless to be defensive).
+    // template args (unlikely but harmless to be defensive). The dedupe
+    // checks both shapes.
     const args = [...config.args];
-    if (!args.includes('--mcp-config')) {
-      args.push('--mcp-config', config.mcpConfigPath);
+    const hasMcpConfig =
+      args.includes('--mcp-config') || args.some((a) => a.startsWith('--mcp-config='));
+    if (!hasMcpConfig) {
+      args.push(`--mcp-config=${config.mcpConfigPath}`);
     }
     const cmd = [config.command, ...args, config.taskPrompt];
 

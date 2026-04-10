@@ -2,14 +2,36 @@
 // Agent Cluster, submits one minimal task, and asserts that it actually
 // flows through scheduler → worker → backend → DB writeback.
 //
+// Two modes:
+//
+//   1. Sentinel mode (default) — Phase 1 pipeline check. Prompts the agent
+//      to echo a literal string and asserts it appears in task.output.
+//      Validates: spawn → stdout capture → parseOutput → markTaskCompleted
+//      → persistTask → poll readback.
+//
+//   2. MCP mode (--mcp-tool hub_claim | hub_report) — Phase 2 wiring check.
+//      Prompts the agent to call a hub_xxx MCP tool with a unique sentinel
+//      argument, then asserts the hub-side EventLog recorded the call.
+//      Validates the complete worker→hub loop: claude MCP client → /mcp →
+//      HubMCPServer → ContextHub.handleXxx → EventLog → SQLite.
+//       - hub_claim: asserts a `lock_acquired` event with our UUID file path
+//         in its `files` array. Validates LockManager path.
+//       - hub_report: asserts a `task_completed` event with our UUID summary
+//         string. Additionally validates the Phase 2 round 2 reportCallback
+//         wiring (ContextHub → ClusterScheduler.markTaskCompleted without
+//         waiting for process exit).
+//
 // Usage:
 //   bun run cluster:e2e [--project <alias>] [--template <name>] \
 //                       [--task "<prompt>"] [--timeout-sec 300] \
-//                       [--hub-port 3201] [--sentinel STR]
+//                       [--hub-port 3201] [--sentinel STR] \
+//                       [--mcp-tool hub_claim|hub_report]
 //
 // Examples:
-//   bun run cluster:e2e                           # default workerPreference
-//   bun run cluster:e2e --template gemini-pro     # force gemini-pro template
+//   bun run cluster:e2e                                # sentinel mode, default template
+//   bun run cluster:e2e --template gemini-pro          # sentinel mode, force gemini-pro
+//   bun run cluster:e2e --mcp-tool hub_claim           # hub_claim wiring
+//   bun run cluster:e2e --mcp-tool hub_report          # hub_report + reportCallback wiring
 //   bun run cluster:e2e --template minimax-m2 --timeout-sec 240
 //
 // The --template flag overrides `projects[<project>].workerPreference` for
@@ -17,8 +39,8 @@
 // without editing cluster.jsonc.
 //
 // Exit codes:
-//   0 — task completed successfully and output contained the sentinel
-//   1 — task failed, timed out, or anything else went wrong
+//   0 — task completed and the mode-specific assertion passed
+//   1 — task failed, timed out, or assertion failed
 //
 // Requires:
 //   - cluster.enabled === true in config
@@ -27,24 +49,20 @@
 //     `codex` for codex-gpt5)
 //   - For provider-specific templates, the matching API key in template.env
 //     (ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, etc.)
-//
-// Why a sentinel string in the prompt?
-//   The default Phase 1 success criterion is "task ran end-to-end and we
-//   can read its output back from DB / WorkerPool". Asking the agent to
-//   echo a fixed string lets the script assert that the entire pipeline
-//   (spawn → stdout capture → parseOutput → markTaskCompleted →
-//   persistTask → poll readback) is intact, without depending on any
-//   specific LLM behavior beyond "follow a one-line instruction."
 
 import 'reflect-metadata';
 
+import { randomUUID } from 'node:crypto';
 import type { ClusterManager } from '@/cluster/ClusterManager';
-import type { TaskRecord } from '@/cluster/types';
+import type { EventEntry, TaskRecord } from '@/cluster/types';
 import { bootstrapApp } from '@/core/bootstrap';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { stopStaticFileServer } from '@/services/staticServer';
 import { logger } from '@/utils/logger';
+
+/** Supported values for --mcp-tool. Empty string = sentinel mode. */
+type McpTool = '' | 'hub_claim' | 'hub_report';
 
 interface E2EArgs {
   project: string;
@@ -54,6 +72,20 @@ interface E2EArgs {
   timeoutSec: number;
   sentinel: string;
   hubPort: number;
+  /** Empty = Phase 1 sentinel mode; non-empty = Phase 2 MCP wiring mode. */
+  mcpTool: McpTool;
+  /**
+   * hub_claim mode only: a unique file path the agent must pass to hub_claim.
+   * We generate it per-run so the post-task EventLog scan can match this
+   * exact value, ruling out any stale `lock_acquired` events from prior runs.
+   */
+  mcpClaimFile: string;
+  /**
+   * hub_report mode only: a unique summary string the agent must pass to
+   * hub_report. Per-run so the assert can't accidentally match a stale
+   * `task_completed` event from a previous run.
+   */
+  mcpReportSummary: string;
 }
 
 function parseArgs(): E2EArgs {
@@ -65,18 +97,78 @@ function parseArgs(): E2EArgs {
   };
   const sentinel = get('--sentinel', 'CLUSTER_E2E_OK_42');
   const templateRaw = get('--template', '');
+
+  const mcpToolRaw = get('--mcp-tool', '');
+  if (mcpToolRaw && mcpToolRaw !== 'hub_claim' && mcpToolRaw !== 'hub_report') {
+    throw new Error(`Unsupported --mcp-tool "${mcpToolRaw}". Supported: hub_claim, hub_report`);
+  }
+  const mcpTool = mcpToolRaw as McpTool;
+
+  // Per-run unique path so the EventLog assertion below can't accidentally
+  // match a `lock_acquired` event from a previous run. The file doesn't
+  // need to exist on disk — LockManager only stores the path string.
+  const mcpClaimFile = get(
+    '--mcp-claim-file',
+    `/tmp/cluster-e2e-${randomUUID()}.txt`,
+  );
+
+  // Per-run unique summary for hub_report mode. Same rationale: prevents a
+  // prior run's `task_completed` event from producing a false positive.
+  const mcpReportSummary = get(
+    '--mcp-report-summary',
+    `cluster-e2e hub_report wiring test ${randomUUID()}`,
+  );
+
+  // Default task is sentinel-mode. In MCP mode, we build a more specific
+  // prompt that asks the agent to call the hub tool.
+  const defaultSentinelTask = `This is an end-to-end test of the cluster pipeline. Please reply with EXACTLY the literal string ${sentinel} on a single line, with no additional commentary.`;
+
+  const defaultMcpClaimTask =
+    `This is an end-to-end test of the cluster's MCP wiring. You have an MCP ` +
+    `server registered as "cluster-context-hub" which exposes a tool called ` +
+    `"hub_claim". Call that tool EXACTLY ONCE with these arguments:\n` +
+    `  taskId: "${sentinel}"\n` +
+    `  intent: "cluster-e2e MCP wiring test"\n` +
+    `  files: ["${mcpClaimFile}"]\n` +
+    `After the tool returns, reply with EXACTLY the literal string ${sentinel} ` +
+    `on a single line and nothing else. Do not call any other tools. Do not ` +
+    `edit or create files on disk.`;
+
+  // hub_report mode: ask the agent to declare itself done via hub_report,
+  // passing the per-run summary string. The hub-side reportCallback will
+  // fire and flush scheduler state; the assert below scans cluster_events
+  // for a `task_completed` event whose summary matches.
+  const defaultMcpReportTask =
+    `This is an end-to-end test of the cluster's MCP wiring. You have an MCP ` +
+    `server registered as "cluster-context-hub" which exposes a tool called ` +
+    `"hub_report". Call that tool EXACTLY ONCE with these arguments:\n` +
+    `  status: "completed"\n` +
+    `  summary: "${mcpReportSummary}"\n` +
+    `After the tool returns, reply with EXACTLY the literal string ${sentinel} ` +
+    `on a single line and nothing else. Do not call any other tools. Do not ` +
+    `edit or create files on disk.`;
+
+  let defaultTask: string;
+  if (mcpTool === 'hub_claim') {
+    defaultTask = defaultMcpClaimTask;
+  } else if (mcpTool === 'hub_report') {
+    defaultTask = defaultMcpReportTask;
+  } else {
+    defaultTask = defaultSentinelTask;
+  }
+
   return {
     project: get('--project', process.env.CLUSTER_E2E_PROJECT || 'qqbot'),
     template: templateRaw || null,
-    task: get(
-      '--task',
-      `This is an end-to-end test of the cluster pipeline. Please reply with EXACTLY the literal string ${sentinel} on a single line, with no additional commentary.`,
-    ),
+    task: get('--task', defaultTask),
     timeoutSec: Number(get('--timeout-sec', '300')),
     sentinel,
     // Default to 3201 (one above the conventional 3200) so the e2e can run
     // alongside a live `bun run dev` cluster without port collision.
     hubPort: Number(get('--hub-port', '3201')),
+    mcpTool,
+    mcpClaimFile,
+    mcpReportSummary,
   };
 }
 
@@ -198,6 +290,31 @@ async function main() {
       process.exit(1);
     }
 
+    // In hub_report mode the reportCallback fast-path can mark the task
+    // terminal **before** the worker process has flushed its final stdout
+    // (the agent typically calls hub_report, then prints the sentinel
+    // afterwards). If we proceed straight to cluster.stop() now, SIGTERM
+    // would kill the worker mid-flush, parseOutput would see truncated
+    // output, and the sentinel assertion would falsely fail.
+    //
+    // Wait for `task.output` to become non-empty (capped at 30s) so the
+    // exit-code path has a chance to populate it. For sentinel/hub_claim
+    // modes the output is set by the same code path that flips status, so
+    // this is a no-op (output is already populated when status is terminal).
+    if (args.mcpTool === 'hub_report' && !task.output) {
+      const graceMs = 30_000;
+      const start = Date.now();
+      while (Date.now() - start < graceMs && !task.output) {
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      if (!task.output) {
+        logger.warn(
+          `[ClusterE2E] hub_report mode: waited ${graceMs}ms after terminal status but task.output ` +
+            `is still empty. Worker may have crashed or never printed anything after hub_report.`,
+        );
+      }
+    }
+
     logger.info(`[ClusterE2E] Task ${task.id} terminal status: ${task.status}`);
     if (task.output) {
       const preview = task.output.length > 500 ? `${task.output.slice(0, 500)}…` : task.output;
@@ -207,24 +324,110 @@ async function main() {
       logger.error(`[ClusterE2E] Task error: ${task.error}`);
     }
 
-    const success = task.status === 'completed' && (task.output ?? '').includes(args.sentinel);
+    const sentinelInOutput = (task.output ?? '').includes(args.sentinel);
+
+    // Mode-specific assertion.
+    //
+    // Sentinel mode: task.output must contain the sentinel string. That's it.
+    //
+    // hub_claim mode: in addition to the sentinel echo, the hub-side EventLog
+    // must contain a `lock_acquired` event whose `files` includes the unique
+    // path we handed to the agent. Scanning the EventLog proves the full loop
+    // ran:
+    //   claude → stdio MCP client → /mcp route in ContextHub → HubMCPServer
+    //   → extractWorkerId(X-Worker-Id) → runTool('hub_claim', ...) →
+    //   ContextHub.handleClaim → LockManager.tryAcquire → eventLog.append.
+    //
+    // hub_report mode: scans for a `task_completed` event whose `summary` is
+    // the per-run UUID we handed the agent. This additionally validates the
+    // Phase 2 round 2 reportCallback: the scheduler must see the task marked
+    // completed via the hub_report path (the assert below on task.status
+    // would also be satisfied by the exit-code path, so the summary-scan is
+    // the part that actually differentiates the two).
+    //
+    // We query AFTER cluster.stop() is called further down to keep the hub
+    // DB handle alive while we read — hub and hub DB share the app's
+    // SQLiteAdapter so reads are cheap and don't race the worker.
+    let mcpEventMatched = false;
+    let mcpEvents: EventEntry[] = [];
+    if (args.mcpTool === 'hub_claim') {
+      // Limit high enough to span all events from this short run. EventLog
+      // stores most recent first, so the relevant ones are always at the top.
+      mcpEvents = cluster.getHub().eventLog.query({ type: 'lock_acquired', limit: 200 });
+      mcpEventMatched = mcpEvents.some((e) => {
+        const data = e.data as { files?: unknown; intent?: unknown } | undefined;
+        const files = Array.isArray(data?.files) ? (data.files as unknown[]) : [];
+        return files.some((f) => f === args.mcpClaimFile);
+      });
+      logger.info(
+        `[ClusterE2E] MCP mode assertion: scanned ${mcpEvents.length} lock_acquired event(s); ` +
+          `matched our claim file? ${mcpEventMatched}`,
+      );
+    } else if (args.mcpTool === 'hub_report') {
+      mcpEvents = cluster.getHub().eventLog.query({ type: 'task_completed', limit: 200 });
+      mcpEventMatched = mcpEvents.some((e) => {
+        const data = e.data as { summary?: unknown } | undefined;
+        return typeof data?.summary === 'string' && data.summary === args.mcpReportSummary;
+      });
+      logger.info(
+        `[ClusterE2E] MCP mode assertion: scanned ${mcpEvents.length} task_completed event(s); ` +
+          `matched our report summary? ${mcpEventMatched}`,
+      );
+    }
+
+    const sentinelPass = sentinelInOutput;
+    const mcpPass =
+      args.mcpTool === 'hub_claim' || args.mcpTool === 'hub_report' ? mcpEventMatched : true;
+    const success = task.status === 'completed' && sentinelPass && mcpPass;
 
     await cluster.stop();
     await teardown(conversationComponents);
 
     if (success) {
-      logger.info(`[ClusterE2E] ✅ PASS — task completed and output contained sentinel "${args.sentinel}"`);
+      if (args.mcpTool === 'hub_claim') {
+        logger.info(
+          `[ClusterE2E] ✅ PASS (MCP mode) — task completed, sentinel echoed, and hub recorded ` +
+            `lock_acquired event for ${args.mcpClaimFile}`,
+        );
+      } else if (args.mcpTool === 'hub_report') {
+        logger.info(
+          `[ClusterE2E] ✅ PASS (MCP mode) — task completed, sentinel echoed, and hub recorded ` +
+            `task_completed event with summary "${args.mcpReportSummary}"`,
+        );
+      } else {
+        logger.info(`[ClusterE2E] ✅ PASS — task completed and output contained sentinel "${args.sentinel}"`);
+      }
       process.exit(0);
-    } else if (task.status === 'completed') {
+    }
+
+    if (task.status === 'completed' && !sentinelPass) {
       logger.error(
         `[ClusterE2E] ✗ FAIL — task completed but sentinel "${args.sentinel}" not found in output. ` +
           `The cluster pipeline works, but the agent didn't follow instructions; check the output above.`,
       );
       process.exit(1);
-    } else {
-      logger.error(`[ClusterE2E] ✗ FAIL — task ended in status="${task.status}"`);
+    }
+    if (task.status === 'completed' && !mcpPass) {
+      if (args.mcpTool === 'hub_claim') {
+        logger.error(
+          `[ClusterE2E] ✗ FAIL (MCP mode) — task completed and sentinel echoed, but hub saw no ` +
+            `lock_acquired event for "${args.mcpClaimFile}". This means the agent printed the sentinel ` +
+            `WITHOUT actually calling hub_claim — either the MCP client didn't connect to /mcp at all, ` +
+            `or claude silently skipped the tool call. Check [HubMCPServer] logs above and verify the ` +
+            `worker MCP config file on disk.`,
+        );
+      } else {
+        logger.error(
+          `[ClusterE2E] ✗ FAIL (MCP mode) — task completed and sentinel echoed, but hub saw no ` +
+            `task_completed event with summary "${args.mcpReportSummary}". The agent printed the ` +
+            `sentinel WITHOUT actually calling hub_report, or called it with a different summary. ` +
+            `Check [HubMCPServer] logs above and verify hub_report was invoked.`,
+        );
+      }
       process.exit(1);
     }
+    logger.error(`[ClusterE2E] ✗ FAIL — task ended in status="${task.status}"`);
+    process.exit(1);
   } catch (err) {
     logger.error('[ClusterE2E] ✗ Unhandled error during e2e:', err);
     try {

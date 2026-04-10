@@ -37,6 +37,25 @@ import { WorkerRegistry } from './WorkerRegistry';
 /** Callback for when planner dispatches a new task */
 export type DispatchCallback = (candidate: TaskCandidate) => Promise<void>;
 
+/**
+ * Callback fired when a worker reports a terminal task status via
+ * `hub_report`. Fires BEFORE the worker process exits — the LLM
+ * voluntarily declaring "I'm done" rather than the kernel telling us
+ * via exit code. `ClusterManager` wires this to
+ * `ClusterScheduler.markTaskCompleted` so WebUI/SSE/DB see the new
+ * status immediately instead of waiting for the process teardown to
+ * propagate through `WorkerPool.monitorProcess`.
+ *
+ * Implementations must be tolerant of `taskId` being `undefined` (worker
+ * didn't know its taskId for some reason) or stale (task already removed
+ * from activeTasks). Never throws — errors are caught by the caller.
+ */
+export type ReportCallback = (
+  workerId: string,
+  taskId: string | undefined,
+  input: HubReportInput,
+) => void | Promise<void>;
+
 /** SSE subscriber for real-time event streaming */
 export interface SSESubscriber {
   send(event: string, data: unknown): void;
@@ -57,6 +76,7 @@ export class ContextHub {
 
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
   private dispatchCallback: DispatchCallback | null = null;
+  private reportCallback: ReportCallback | null = null;
   private apiRouter: ClusterAPIRouter | null = null;
   private sseSubscribers = new Set<SSESubscriber>();
   private helpRequests = new Map<string, HelpRequest>();
@@ -89,6 +109,16 @@ export class ContextHub {
   }
 
   /**
+   * Set callback for worker report events. `ClusterManager` wires this
+   * to `ClusterScheduler.markTaskCompleted` so terminal statuses flow
+   * straight to DB / job counters instead of waiting for process exit.
+   * See `ReportCallback` doc comment for the full rationale.
+   */
+  setReportCallback(cb: ReportCallback): void {
+    this.reportCallback = cb;
+  }
+
+  /**
    * Start the HTTP server. The MCP server is connected first so the
    * `/mcp` route is ready to accept requests the moment Bun.serve is up.
    */
@@ -101,6 +131,13 @@ export class ContextHub {
     this.httpServer = Bun.serve({
       port,
       hostname: host,
+      // MCP clients (claude's streamable HTTP transport in particular) keep
+      // HTTP keep-alive connections open across tool calls. The default Bun
+      // idleTimeout of 10s prints a "request timed out" warning whenever
+      // there's a gap that long between calls, which is false noise — the
+      // connection is fine, just idle. Bump to 255s (Bun's max) to silence it
+      // without disabling timeouts entirely.
+      idleTimeout: 255,
       fetch: (req) => this.handleRequest(req),
     });
 
@@ -216,10 +253,16 @@ export class ContextHub {
 
     const isTerminal = input.status === 'completed' || input.status === 'failed' || input.status === 'blocked';
 
+    // Snapshot the taskId up front. The registration object is mutated
+    // by `setTask(workerId, undefined)` further down in the terminal path,
+    // and since `reg` is a reference, any later `reg?.currentTaskId` reads
+    // would see undefined. Capture it into a local now.
+    const reg = this.workerRegistry.get(workerId);
+    const taskIdSnapshot = reg?.currentTaskId;
+
     // Record event
     const eventType: ClusterEventType =
       input.status === 'completed' ? 'task_completed' : input.status === 'failed' ? 'task_failed' : 'file_changed';
-    const reg = this.workerRegistry.get(workerId);
     this.eventLog.append(
       eventType,
       workerId,
@@ -229,7 +272,7 @@ export class ContextHub {
         filesModified: input.filesModified,
         detail: input.detail,
       },
-      { taskId: reg?.currentTaskId },
+      { taskId: taskIdSnapshot },
     );
 
     // Update stats
@@ -256,8 +299,26 @@ export class ContextHub {
       workerId,
       status: input.status,
       summary: input.summary,
-      taskId: reg?.currentTaskId,
+      taskId: taskIdSnapshot,
     });
+
+    // Notify the scheduler so terminal statuses propagate to DB / job
+    // counters / activeTasks immediately — without this, the worker exit
+    // path (WorkerPool.monitorProcess → taskCompletedCallback) is the only
+    // way scheduler state advances, which means WebUI shows "running" for
+    // tasks the LLM has already marked done. Fire-and-forget so report()
+    // never blocks on scheduler internals; `markTaskCompleted` is already
+    // idempotent against the later exit-code path.
+    //
+    // We only fire for `completed` and `failed`. `blocked` means the
+    // worker is still alive waiting for intervention, so the task is not
+    // terminal from the scheduler's POV; `working` is obviously not
+    // terminal either.
+    if (this.reportCallback && (input.status === 'completed' || input.status === 'failed')) {
+      Promise.resolve(this.reportCallback(workerId, taskIdSnapshot, input)).catch((err) => {
+        logger.error(`[ContextHub] reportCallback threw (worker=${workerId}, status=${input.status}):`, err);
+      });
+    }
 
     return {
       ack: true,

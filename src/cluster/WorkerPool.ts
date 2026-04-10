@@ -179,6 +179,13 @@ export class WorkerPool {
       project,
       templateName,
     });
+    // Stamp the taskId onto the registration so hub_report can look it up
+    // without requiring a prior hub_claim call. Pre-Phase-2-round-2 this
+    // only happened inside handleClaim(setTask), which meant any hub_report
+    // without a preceding hub_claim would arrive at ContextHub with
+    // `reg.currentTaskId === undefined` and skip the reportCallback
+    // fast-path entirely.
+    this.hub.workerRegistry.setTask(workerId, task.id);
     this.hub.eventLog.append('worker_joined', workerId, {
       template: templateName,
       project,
@@ -417,10 +424,22 @@ export class WorkerPool {
       }
 
       worker.currentTask.output = finalMessage;
-      worker.currentTask.status = exitCode === 0 ? 'completed' : 'failed';
-      worker.currentTask.completedAt = new Date().toISOString();
-      if (exitCode !== 0) {
-        worker.currentTask.error = `Process exited with code ${exitCode}`;
+      // **Don't downgrade a terminal status set by hub_report**.
+      // Phase 2 round 2 lets workers voluntarily declare done via
+      // hub_report → reportCallback → markTaskCompleted before the
+      // process actually exits. If the e2e script (or any other observer)
+      // then calls cluster.stop(), the resulting SIGTERM produces a
+      // non-zero exit code (e.g. 143) which would otherwise flip the
+      // task back to `failed` here, racing with the fast-path mark.
+      // Treat any prior terminal status as authoritative.
+      const alreadyTerminal =
+        worker.currentTask.status === 'completed' || worker.currentTask.status === 'failed';
+      if (!alreadyTerminal) {
+        worker.currentTask.status = exitCode === 0 ? 'completed' : 'failed';
+        worker.currentTask.completedAt = new Date().toISOString();
+        if (exitCode !== 0) {
+          worker.currentTask.error = `Process exited with code ${exitCode}`;
+        }
       }
       if (rawEvents !== undefined) {
         try {

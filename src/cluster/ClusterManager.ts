@@ -58,6 +58,44 @@ export class ClusterManager {
       this.scheduler.markTaskCompleted(task);
     });
 
+    // Wire hub_report callback (Phase 2 round 2, agent-cluster.md §2.3):
+    // when a worker voluntarily declares done via hub_report, update the
+    // live TaskRecord in-place and flush it through markTaskCompleted so
+    // scheduler state (DB + job counters + activeTasks) advances without
+    // waiting for the kernel exit code. The later taskCompletedCallback
+    // on process exit will re-run markTaskCompleted, but that path is
+    // idempotent now — persistTask will overwrite the DB row with any
+    // richer stdout captured post-report, and job counters only update
+    // on the first call.
+    this.hub.setReportCallback((workerId, taskId, input) => {
+      if (!taskId) {
+        logger.warn(
+          `[ClusterManager] reportCallback: worker ${workerId} reported ${input.status} without a taskId; cannot advance scheduler state`,
+        );
+        return;
+      }
+      const task = this.scheduler.getActiveTask(taskId);
+      if (!task) {
+        // Already removed from activeTasks — either the exit-code path
+        // beat us to it, or the worker reported after a prior fatal error.
+        // Nothing to do.
+        return;
+      }
+      task.status = input.status === 'completed' ? 'completed' : 'failed';
+      task.completedAt = new Date().toISOString();
+      // **Do NOT overwrite `task.output` here.** parseOutput on process
+      // exit is the sole authoritative source for `output`. report.summary
+      // is a short LLM-authored one-liner ("completed unit tests, 12
+      // passed") that often arrives BEFORE the agent finishes printing the
+      // actual answer to stdout — clobbering output now would lose that.
+      // The summary is already preserved on the corresponding
+      // task_completed event in EventLog if anything needs to surface it.
+      if (input.status === 'failed' && input.detail?.error) {
+        task.error = input.detail.error;
+      }
+      this.scheduler.markTaskCompleted(task);
+    });
+
     // Register backends
     this.registerBackends();
 
