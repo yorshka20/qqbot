@@ -1,24 +1,21 @@
 /**
- * Reports Page - WeChat report viewing.
- * Shows report list and detail views.
+ * Reports page (route entry) — WeChat report viewing.
  */
 
-import { ReportDetail } from '../components/ReportDetail'
-import { ReportList } from '../components/ReportList'
+import { ReportDetail } from '../../components/ReportDetail';
+import { ReportList } from '../../components/ReportList';
 
 interface ReportsPageProps {
   /** If provided, show detail view for this report ID */
-  reportId?: string
+  reportId?: string;
   /** Called when navigating to a specific report */
-  onSelectReport: (id: string) => void
+  onSelectReport: (id: string) => void;
   /** Called when navigating back to list */
-  onBack: () => void
+  onBack: () => void;
 }
 
 export function ReportsPage({ reportId, onSelectReport, onBack }: ReportsPageProps) {
-  // If reportId is provided via props (from URL), show detail
-  // Otherwise show list
-  const showDetail = !!reportId
+  const showDetail = !!reportId;
 
   return (
     <main className="flex-1 min-h-0 overflow-auto p-6">
@@ -28,5 +25,5 @@ export function ReportsPage({ reportId, onSelectReport, onBack }: ReportsPagePro
         <ReportList onSelectReport={onSelectReport} />
       )}
     </main>
-  )
+  );
 }

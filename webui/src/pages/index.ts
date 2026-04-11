@@ -1,13 +1,14 @@
 /**
  * Page components for the webui.
+ * Each route lives in its own folder; **`index.tsx` is the route entry** (exported `*Page` component).
  */
 
-export { ClusterPage } from './ClusterPage';
-export { DailyStatsPage } from './DailyStatsPage';
-export { FilesPage } from './FilesPage';
-export { InsightsPage } from './InsightsPage';
-export { MemoryStatusPage } from './MemoryStatusPage';
-export { MomentsPage } from './MomentsPage';
-export { QdrantExplorerPage } from './QdrantExplorerPage';
-export { ReportsPage } from './ReportsPage';
-export { ZhihuPage } from './ZhihuPage';
+export { ClusterPage } from './cluster';
+export { DailyStatsPage } from './daily-stats';
+export { FilesPage } from './files';
+export { InsightsPage } from './insights';
+export { MemoryStatusPage } from './memory-status';
+export { MomentsPage } from './moments';
+export { QdrantExplorerPage } from './qdrant';
+export { ReportsPage } from './reports';
+export { ZhihuPage } from './zhihu';

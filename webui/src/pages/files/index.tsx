@@ -1,20 +1,20 @@
 /**
- * Files Page - Output resource management.
+ * Files page (route entry) — output resource management.
  * Browse, preview, rename, move, and delete files in the output directory.
  */
 
-import { FolderInput, Loader2, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { deleteFile, listFiles, moveFile, renameFile } from "../api";
-import { BatchMoveModal } from "../components/BatchMoveModal";
-import { Breadcrumb } from "../components/Breadcrumb";
-import { CardWall } from "../components/CardWall";
-import { ConfirmDialog } from "../components/ConfirmDialog";
-import { MoveModal } from "../components/MoveModal";
-import { PreviewModal } from "../components/PreviewModal";
-import { RenameModal } from "../components/RenameModal";
-import { Sidebar } from "../components/Sidebar";
-import type { FileItem } from "../types";
+import { Loader2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { deleteFile, listFiles, moveFile, renameFile } from '../../api';
+import { BatchMoveModal } from '../../components/BatchMoveModal';
+import { Breadcrumb } from '../../components/Breadcrumb';
+import { CardWall } from '../../components/CardWall';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { MoveModal } from '../../components/MoveModal';
+import { PreviewModal } from '../../components/PreviewModal';
+import { RenameModal } from '../../components/RenameModal';
+import { Sidebar } from '../../components/Sidebar';
+import type { FileItem } from '../../types';
 import {
   type FilterType,
   filterByType,
@@ -22,10 +22,11 @@ import {
   groupItems,
   type SortOrder,
   sortItems,
-} from "../utils/fileType";
+} from '../../utils/fileType';
+import { FilesMultiSelectToolbar } from './components/FilesMultiSelectToolbar';
 
 export function FilesPage() {
-  const [currentPath, setCurrentPath] = useState("");
+  const [currentPath, setCurrentPath] = useState('');
   const [previewFile, setPreviewFile] = useState<{
     path: string;
     name: string;
@@ -34,15 +35,13 @@ export function FilesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [typeFilter, setTypeFilter] = useState<FilterType>("all");
-  const [sortOrder, setSortOrder] = useState<SortOrder>("dateDesc");
-  const [groupBy, setGroupBy] = useState<GroupBy>("none");
+  const [typeFilter, setTypeFilter] = useState<FilterType>('all');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('dateDesc');
+  const [groupBy, setGroupBy] = useState<GroupBy>('none');
 
-  // Multi-select
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const selectMode = selectedPaths.size > 0;
 
-  // Modal states
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [moveTarget, setMoveTarget] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<{
@@ -52,10 +51,6 @@ export function FilesPage() {
   const [batchDeletePending, setBatchDeletePending] = useState(false);
   const [batchMovePending, setBatchMovePending] = useState(false);
 
-  // ──────────────────────────────────────────────────
-  // Data loading
-  // ──────────────────────────────────────────────────
-
   const load = useCallback(async (path: string) => {
     setLoading(true);
     setError(null);
@@ -63,7 +58,7 @@ export function FilesPage() {
       const data = await listFiles(path);
       setItems(data.items);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(e instanceof Error ? e.message : 'Failed to load');
       setItems([]);
     } finally {
       setLoading(false);
@@ -74,13 +69,9 @@ export function FilesPage() {
     load(currentPath);
   }, [currentPath, load]);
 
-  // ──────────────────────────────────────────────────
-  // Navigation handlers
-  // ──────────────────────────────────────────────────
-
   const handleNavigate = useCallback((path: string) => {
     setCurrentPath(path);
-    setTypeFilter("all");
+    setTypeFilter('all');
     setSelectedPaths(new Set());
     setPreviewFile(null);
   }, []);
@@ -95,10 +86,6 @@ export function FilesPage() {
     setPreviewFile({ path: item.path, name: item.name });
   }, []);
 
-  // ──────────────────────────────────────────────────
-  // Single item operations
-  // ──────────────────────────────────────────────────
-
   const handleDeleteClick = useCallback((path: string) => {
     setDeleteTarget(path);
   }, []);
@@ -112,7 +99,7 @@ export function FilesPage() {
       if (previewFile?.path === path) setPreviewFile(null);
       await load(currentPath);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Delete failed");
+      setError(e instanceof Error ? e.message : 'Delete failed');
     }
   }, [deleteTarget, previewFile?.path, currentPath, load]);
 
@@ -128,11 +115,11 @@ export function FilesPage() {
       try {
         await moveFile(fromPath, toPath);
         if (previewFile?.path === fromPath) {
-          setPreviewFile({ path: toPath, name: toPath.split("/").pop() ?? "" });
+          setPreviewFile({ path: toPath, name: toPath.split('/').pop() ?? '' });
         }
         await load(currentPath);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Move failed");
+        setError(e instanceof Error ? e.message : 'Move failed');
       }
     },
     [moveTarget, previewFile?.path, currentPath, load],
@@ -153,23 +140,16 @@ export function FilesPage() {
       setRenameTarget(null);
       try {
         await renameFile(path, newName);
-        const dir = path.includes("/")
-          ? path.slice(0, path.lastIndexOf("/"))
-          : "";
+        const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
         const newPath = dir ? `${dir}/${newName}` : newName;
-        if (previewFile?.path === path)
-          setPreviewFile({ path: newPath, name: newName });
+        if (previewFile?.path === path) setPreviewFile({ path: newPath, name: newName });
         await load(currentPath);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Rename failed");
+        setError(e instanceof Error ? e.message : 'Rename failed');
       }
     },
     [renameTarget, previewFile?.path, currentPath, load],
   );
-
-  // ──────────────────────────────────────────────────
-  // Multi-select operations
-  // ──────────────────────────────────────────────────
 
   const handleToggleSelect = useCallback((path: string) => {
     setSelectedPaths((prev) => {
@@ -185,10 +165,7 @@ export function FilesPage() {
     setSelectedPaths(new Set(allPaths));
   }, [items]);
 
-  const handleClearSelection = useCallback(
-    () => setSelectedPaths(new Set()),
-    [],
-  );
+  const handleClearSelection = useCallback(() => setSelectedPaths(new Set()), []);
 
   const handleBatchDeleteConfirm = useCallback(async () => {
     const paths = [...selectedPaths];
@@ -198,7 +175,7 @@ export function FilesPage() {
       await Promise.all(paths.map((p) => deleteFile(p)));
       await load(currentPath);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Delete failed");
+      setError(e instanceof Error ? e.message : 'Delete failed');
     }
   }, [selectedPaths, currentPath, load]);
 
@@ -209,22 +186,18 @@ export function FilesPage() {
       try {
         await Promise.all(
           paths.map((p) => {
-            const fileName = p.split("/").pop() ?? p;
+            const fileName = p.split('/').pop() ?? p;
             const toPath = destDir ? `${destDir}/${fileName}` : fileName;
             return moveFile(p, toPath);
           }),
         );
         await load(currentPath);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Move failed");
+        setError(e instanceof Error ? e.message : 'Move failed');
       }
     },
     [selectedPaths, currentPath, load],
   );
-
-  // ──────────────────────────────────────────────────
-  // Computed values
-  // ──────────────────────────────────────────────────
 
   const groupedItems = useMemo(() => {
     const filtered = filterByType(items, typeFilter);
@@ -232,16 +205,10 @@ export function FilesPage() {
     return groupItems(sorted, groupBy);
   }, [items, typeFilter, sortOrder, groupBy]);
 
-  // Key to reset CardWall progressive rendering when path/filter/sort/group changes
   const cardWallKey = `${currentPath}|${typeFilter}|${sortOrder}|${groupBy}`;
-
-  // ──────────────────────────────────────────────────
-  // Render
-  // ──────────────────────────────────────────────────
 
   return (
     <>
-      {/* Subheader with breadcrumb */}
       <div className="shrink-0 px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700">
         <Breadcrumb path={currentPath} onNavigate={handleNavigate} />
       </div>
@@ -259,10 +226,7 @@ export function FilesPage() {
           {loading ? (
             <div className="flex items-center justify-center py-24">
               <div className="flex flex-col items-center gap-3 text-zinc-500 dark:text-zinc-400">
-                <Loader2
-                  className="w-10 h-10 animate-spin text-zinc-400 dark:text-zinc-500"
-                  aria-hidden
-                />
+                <Loader2 className="w-10 h-10 animate-spin text-zinc-400 dark:text-zinc-500" aria-hidden />
                 <span className="text-sm font-medium">Loading…</span>
               </div>
             </div>
@@ -289,7 +253,7 @@ export function FilesPage() {
           ) : (
             <div className="flex flex-col gap-8">
               {groupedItems.map((group) => (
-                <section key={group.label || "all"}>
+                <section key={group.label || 'all'}>
                   {group.label ? (
                     <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3">
                       {group.label}
@@ -316,48 +280,16 @@ export function FilesPage() {
         </main>
       </div>
 
-      {/* Multi-select toolbar */}
       {selectMode && (
-        <div className="shrink-0 border-t border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-3 flex items-center gap-3 shadow-lg z-30">
-          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            {selectedPaths.size} selected
-          </span>
-          <button
-            type="button"
-            onClick={handleSelectAll}
-            className="text-xs px-2 py-1 rounded border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-700"
-          >
-            Select all files
-          </button>
-          <div className="flex-1" />
-          <button
-            type="button"
-            onClick={() => setBatchMovePending(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-600"
-          >
-            <FolderInput className="w-4 h-4" />
-            Move to…
-          </button>
-          <button
-            type="button"
-            onClick={() => setBatchDeletePending(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-50 dark:bg-red-950/50 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50"
-          >
-            <Trash2 className="w-4 h-4" />
-            Delete
-          </button>
-          <button
-            type="button"
-            onClick={handleClearSelection}
-            className="p-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700"
-            title="Clear selection"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+        <FilesMultiSelectToolbar
+          selectedCount={selectedPaths.size}
+          onSelectAll={handleSelectAll}
+          onBatchMove={() => setBatchMovePending(true)}
+          onBatchDelete={() => setBatchDeletePending(true)}
+          onClearSelection={handleClearSelection}
+        />
       )}
 
-      {/* Modals */}
       {previewFile && (
         <PreviewModal
           path={previewFile.path}
@@ -369,11 +301,7 @@ export function FilesPage() {
       <ConfirmDialog
         open={deleteTarget !== null}
         title="删除确认"
-        message={
-          deleteTarget
-            ? `确定要删除 "${deleteTarget}" 吗？此操作无法撤销。`
-            : ""
-        }
+        message={deleteTarget ? `确定要删除 "${deleteTarget}" 吗？此操作无法撤销。` : ''}
         confirmLabel="删除"
         danger
         onConfirm={handleDeleteConfirm}
@@ -391,18 +319,18 @@ export function FilesPage() {
       />
 
       <RenameModal
-        key={renameTarget?.path ?? "closed"}
+        key={renameTarget?.path ?? 'closed'}
         open={renameTarget !== null}
-        path={renameTarget?.path ?? ""}
-        currentName={renameTarget?.name ?? ""}
+        path={renameTarget?.path ?? ''}
+        currentName={renameTarget?.name ?? ''}
         onRename={handleRenameConfirm}
         onCancel={() => setRenameTarget(null)}
       />
 
       <MoveModal
-        key={moveTarget ?? "closed"}
+        key={moveTarget ?? 'closed'}
         open={moveTarget !== null}
-        fromPath={moveTarget ?? ""}
+        fromPath={moveTarget ?? ''}
         currentPath={currentPath}
         onMove={handleMoveConfirm}
         onCancel={() => setMoveTarget(null)}
