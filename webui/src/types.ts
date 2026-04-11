@@ -393,6 +393,13 @@ export interface ClusterTask {
   filesModified?: string;
   diffSummary?: string;
   metadata?: unknown;
+  /**
+   * Phase 3 multi-agent: parent task that spawned this one. Root tasks
+   * (user-submitted) have this unset; planner-spawned children have it
+   * set to the planner's taskId. Used by the WebUI to render the
+   * task tree (one level of indentation: planner row → child rows).
+   */
+  parentTaskId?: string;
 }
 
 export interface ClusterEventEntry {
@@ -730,6 +737,18 @@ export interface TicketFrontmatter {
   created: string;
   updated: string;
   dispatchedJobId?: string;
+  /**
+   * Phase 3 multi-agent: ticket dispatched in planner mode. When `true`,
+   * dispatch forces the scheduler to pick a planner-role worker template
+   * instead of a regular executor.
+   */
+  usePlanner?: boolean;
+  /**
+   * Phase 3 multi-agent: optional cap on how many child workers the
+   * planner is allowed to spawn. Surfaced to the planner via prompt only
+   * — the hub does not hard-enforce this number.
+   */
+  maxChildren?: number;
 }
 
 /** Full ticket including markdown body. Returned by GET /api/tickets/:id. */

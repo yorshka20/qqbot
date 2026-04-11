@@ -600,6 +600,7 @@ export async function createClusterJob(input: {
   project: string;
   description: string;
   workerTemplate?: string;
+  requirePlannerRole?: boolean;
 }): Promise<ClusterTask> {
   const res = await fetch(`${clusterApiBase()}/jobs`, {
     method: 'POST',
@@ -714,10 +715,7 @@ export async function listLanReports(
   return res.json() as Promise<LanReportsResponse>;
 }
 
-export async function dispatchLanCommand(
-  clientId: string,
-  text: string,
-): Promise<{ dispatched: boolean }> {
+export async function dispatchLanCommand(clientId: string, text: string): Promise<{ dispatched: boolean }> {
   const res = await fetch(`${lanApiBase()}/clients/${encodeURIComponent(clientId)}/dispatch`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -790,6 +788,10 @@ export async function createTicket(input: {
   template?: string;
   project?: string;
   body?: string;
+  /** Phase 3: enable planner-mode dispatch for this ticket. */
+  usePlanner?: boolean;
+  /** Phase 3: optional cap on planner child workers (passed via prompt). */
+  maxChildren?: number;
 }): Promise<Ticket> {
   const res = await fetch(`${ticketsApiBase()}`, {
     method: 'POST',
@@ -817,6 +819,8 @@ export async function updateTicket(
     project?: string | null;
     body?: string;
     dispatchedJobId?: string | null;
+    usePlanner?: boolean | null;
+    maxChildren?: number | null;
   },
 ): Promise<Ticket> {
   const res = await fetch(`${ticketsApiBase()}/${encodeURIComponent(id)}`, {

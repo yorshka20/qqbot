@@ -35,6 +35,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -46,7 +48,10 @@ import type {
   HubDirectiveInput,
   HubDispatchInput,
   HubMessageInput,
+  HubQueryTaskInput,
   HubReportInput,
+  HubSpawnInput,
+  HubWaitTaskInput,
 } from '../types';
 import type { ContextHub } from './ContextHub';
 
@@ -56,6 +61,34 @@ interface ToolExtra {
     headers?: Record<string, string | string[] | undefined>;
   };
   sessionId?: string;
+}
+
+/**
+ * Relative path (from project cwd) to the MCP server `instructions` field
+ * content. This is the worker-facing description of the cluster MCP toolbox
+ * — it shows up when the LLM client first connects to /mcp and lists the
+ * server's purpose. Kept in a file so it can be edited as prose without a
+ * code change, mirroring how role system prompts live in
+ * `prompts/cluster/<role>-system.md`.
+ */
+const HUB_MCP_INSTRUCTIONS_PATH = 'prompts/cluster/hub-mcp-instructions.md';
+
+/**
+ * Sync-load the MCP server instructions text. Called exactly once at
+ * HubMCPServer construction. Falls back to a minimal one-line hint if the
+ * file is missing so cluster start doesn't break — same degradation policy
+ * as the role prompt loaders in WorkerPool.
+ */
+function loadHubMcpInstructions(): string {
+  const path = resolvePath(process.cwd(), HUB_MCP_INSTRUCTIONS_PATH);
+  try {
+    return readFileSync(path, 'utf-8');
+  } catch (err) {
+    logger.warn(
+      `[HubMCPServer] Could not load MCP instructions from ${path} (${err instanceof Error ? err.message : String(err)}). Using fallback string.`,
+    );
+    return 'You are a worker in an Agent Cluster. Use the hub_* MCP tools to coordinate with the hub.';
+  }
 }
 
 /**
@@ -90,12 +123,13 @@ export class HubMCPServer {
       { name: 'cluster-context-hub', version: '1.0.0' },
       {
         capabilities: { tools: {} },
-        instructions:
-          'You are a worker in an Agent Cluster. Use these tools to coordinate with the hub: ' +
-          'hub_sync (poll for events / messages), hub_claim (acquire file locks before editing), ' +
-          'hub_report (report progress / completion / failure / blocked), hub_ask (escalate to a human), ' +
-          'hub_message (send a message to another worker). Planner-only: hub_dispatch (queue a new task), ' +
-          'hub_directive (push an instruction to a coder worker).',
+        // Loaded from prompts/cluster/hub-mcp-instructions.md so the
+        // worker-facing description of the cluster MCP toolbox stays
+        // editable as content rather than buried in TS string literals.
+        // Sync read because the constructor itself is sync; happens once
+        // per cluster start. Falls back to a minimal hardcoded line if
+        // the file is missing — better than refusing to construct.
+        instructions: loadHubMcpInstructions(),
       },
     );
 
@@ -123,7 +157,7 @@ export class HubMCPServer {
     if (this.connected) return;
     await this.mcpServer.connect(this.transport);
     this.connected = true;
-    logger.info('[HubMCPServer] Connected — 7 tools registered, ready at /mcp');
+    logger.info('[HubMCPServer] Connected — 10 tools registered, ready at /mcp');
   }
 
   /**
@@ -302,6 +336,78 @@ export class HubMCPServer {
       async (args, extra) =>
         this.runTool('hub_directive', extra, (workerId) =>
           this.hub.handleDirective(workerId, args as unknown as HubDirectiveInput),
+        ),
+    );
+
+    // ── Phase 3 multi-agent: planner-only spawn / query / wait ──
+    //
+    // These three tools let a planner worker create executor children, poll
+    // their status, and block on completion. The role gate (planner-only)
+    // is enforced inside ContextHub — calling them as an executor will throw
+    // and the runTool wrapper turns the throw into an `isError: true`
+    // tool result that the LLM sees as a tool error.
+
+    // hub_spawn — planner creates a child executor task.
+    register(
+      'hub_spawn',
+      {
+        description:
+          'PLANNER ONLY. Spawn a child executor worker to handle a subtask. You must pick the executor template ' +
+          'explicitly (e.g. "claude-sonnet-executor", "minimax-executor"). Returns childTaskId — pass it to ' +
+          'hub_query_task / hub_wait_task to monitor the child. You can NOT spawn another planner; the role ' +
+          'argument, if given, must be "executor". One layer of decomposition only.',
+        inputSchema: {
+          description: z
+            .string()
+            .describe('Full prompt the executor will receive (include goal/context/acceptance criteria).'),
+          template: z.string().describe('Worker template name from cluster config — required, no fallback.'),
+          role: z
+            .enum(['executor'])
+            .optional()
+            .describe('Optional; only "executor" is allowed. Nested planners are forbidden.'),
+          capabilities: z.array(z.string()).optional().describe('Optional capability hints (informational).'),
+        },
+      },
+      async (args, extra) =>
+        this.runTool('hub_spawn', extra, (workerId) =>
+          this.hub.handleSpawn(workerId, args as unknown as HubSpawnInput),
+        ),
+    );
+
+    // hub_query_task — planner non-blocking status check on a child.
+    register(
+      'hub_query_task',
+      {
+        description:
+          'PLANNER ONLY. Non-blocking snapshot of a child task you previously spawned. Returns status / output / ' +
+          'error / timestamps. You can only query tasks that are direct children of your current task — querying ' +
+          "another worker's tasks is rejected. Use hub_wait_task if you want to block until the child terminates.",
+        inputSchema: {
+          taskId: z.string().describe('childTaskId returned by hub_spawn.'),
+        },
+      },
+      async (args, extra) =>
+        this.runTool('hub_query_task', extra, (workerId) =>
+          this.hub.handleQueryTask(workerId, args as unknown as HubQueryTaskInput),
+        ),
+    );
+
+    // hub_wait_task — planner blocking wait, polls handleQueryTask internally.
+    register(
+      'hub_wait_task',
+      {
+        description:
+          'PLANNER ONLY. Block until a child task you spawned reaches a terminal status (completed/failed) or ' +
+          'the timeout elapses. Internally polls hub_query_task every 500ms. Default timeout 600000ms (10 min); ' +
+          'hub clamps to a 30-min hard cap. Same security check as hub_query_task: child must belong to you.',
+        inputSchema: {
+          taskId: z.string().describe('childTaskId returned by hub_spawn.'),
+          timeoutMs: z.number().optional().describe('Max wait in milliseconds. Default 600000. Hard max 1800000.'),
+        },
+      },
+      async (args, extra) =>
+        this.runTool('hub_wait_task', extra, (workerId) =>
+          this.hub.handleWaitTask(workerId, args as unknown as HubWaitTaskInput),
         ),
     );
   }

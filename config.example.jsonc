@@ -932,6 +932,10 @@
     "workerTemplates": {
       "claude-sonnet": {
         "type": "claude-cli",
+        // Phase 3 multi-agent: omit `role` (defaults to "executor") for
+        // single-task workers. Tag a template with `"role": "planner"` to
+        // make it eligible for planner-mode ticket dispatch (see
+        // `defaultPlannerTemplate` and ticket `usePlanner: true` below).
         "command": "claude",
         "args": ["--print", "--dangerously-skip-permissions", "--output-format", "text"],
         "maxConcurrent": 2,
@@ -939,9 +943,25 @@
         "capabilities": ["code"],
         "costTier": "medium"
       }
+      // Example planner template (uncomment + customize):
+      // "claude-opus-planner": {
+      //   "type": "claude-cli",
+      //   "role": "planner",
+      //   "command": "claude",
+      //   "args": ["--print", "--dangerously-skip-permissions", "--model", "opus"],
+      //   "maxConcurrent": 1,
+      //   "timeout": "30m",
+      //   "capabilities": ["plan"],
+      //   "costTier": "high"
+      // }
       // See config.d/cluster.jsonc for codex-cli / gemini-cli / minimax-m2
       // template examples.
     },
+    // Phase 3 multi-agent: when a ticket has `usePlanner: true` but doesn't
+    // pin its own template, the scheduler picks this one. Must reference a
+    // template whose `role === 'planner'`. Optional — falls back to
+    // scanning workerTemplates for any planner-role entry.
+    // "defaultPlannerTemplate": "claude-opus-planner",
     "projects": {
       "qqbot": {
         "maxWorkers": 2,

@@ -101,6 +101,13 @@ export interface TaskRecord {
   filesModified?: string;
   diffSummary?: string;
   metadata?: string;
+  /**
+   * Phase 3 multi-agent: parent task that spawned this one via `hub_spawn`.
+   * `undefined` → root task (user-submitted ticket / command).
+   * Set → child task created by a planner worker. The cluster_tasks SQL
+   * column is named `parentTaskId`.
+   */
+  parentTaskId?: string;
 }
 
 export interface TaskCandidate {
@@ -235,6 +242,49 @@ export interface HubDispatchInput {
 export interface HubDirectiveInput {
   to: string;
   content: string;
+}
+
+// ── Phase 3 multi-agent: planner spawn/query tools ──
+
+export interface HubSpawnInput {
+  /** The full prompt text the executor child worker will receive. */
+  description: string;
+  /** Required: planner must explicitly choose which executor template to use. */
+  template: string;
+  /**
+   * Optional role tag. Only `'executor'` is permitted — planners are not
+   * allowed to spawn nested planners (one-layer rule). Defaults to executor
+   * if omitted; explicit `'planner'` is rejected by the hub.
+   */
+  role?: 'executor';
+  /** Optional capability hints (informational; not yet used by scheduler). */
+  capabilities?: string[];
+}
+
+export interface HubSpawnOutput {
+  childTaskId: string;
+  /** `'running'` if a worker was spawned immediately, `'queued'` if pool full. */
+  status: 'queued' | 'running';
+}
+
+export interface HubQueryTaskInput {
+  taskId: string;
+}
+
+export interface HubQueryTaskOutput {
+  taskId: string;
+  status: TaskStatus;
+  workerId?: string;
+  output?: string;
+  error?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export interface HubWaitTaskInput {
+  taskId: string;
+  /** Default 600_000 ms (10 min). Hub also enforces an absolute upper bound. */
+  timeoutMs?: number;
 }
 
 // ── Worker Backend types ──

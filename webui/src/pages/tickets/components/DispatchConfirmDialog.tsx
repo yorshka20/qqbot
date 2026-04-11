@@ -69,8 +69,29 @@ export function DispatchConfirmDialog({
             <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
               project: <span className="font-mono">{resolvedProject || '(none — required!)'}</span> ·
               template: <span className="font-mono">{resolvedTemplate || '(project default)'}</span>
+              {ticket.frontmatter.usePlanner && (
+                <>
+                  {' · '}
+                  <span className="font-mono text-purple-700 dark:text-purple-300">planner mode</span>
+                  {ticket.frontmatter.maxChildren && (
+                    <span className="font-mono text-zinc-500 dark:text-zinc-400">
+                      {' '}
+                      (maxChildren={ticket.frontmatter.maxChildren})
+                    </span>
+                  )}
+                </>
+              )}
             </div>
           </div>
+
+          {ticket.frontmatter.usePlanner && (
+            <div className="rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/30 p-3 text-xs text-purple-800 dark:text-purple-300">
+              <strong>Planner mode</strong>: dispatch will pick a planner-role worker template (or
+              <code className="mx-1">cluster.defaultPlannerTemplate</code> if none is pinned). The
+              planner is expected to decompose this ticket and spawn child executor workers via
+              <code className="mx-1">hub_spawn</code>. If no planner-role template exists, dispatch will fail.
+            </div>
+          )}
 
           {!resolvedProject && (
             <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3 text-xs text-red-800 dark:text-red-300">

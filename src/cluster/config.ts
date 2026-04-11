@@ -16,6 +16,16 @@ export interface ClusterConfig {
 
   workerTemplates: Record<string, WorkerTemplateConfig>;
 
+  /**
+   * Phase 3 multi-agent: name of the worker template the scheduler should
+   * pick when a ticket is dispatched with `usePlanner: true` but doesn't
+   * specify its own template. Must reference a `workerTemplates` entry
+   * whose `role === 'planner'`. Optional — if unset, planner dispatches
+   * with no explicit template fall back to the first planner-role
+   * template found in `workerTemplates`.
+   */
+  defaultPlannerTemplate?: string;
+
   projects: Record<string, ClusterProjectConfig>;
 
   notifications: {
@@ -42,8 +52,23 @@ export interface ClusterConfig {
 
 export type WorkerBackendType = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'minimax-cli';
 
+export type WorkerTemplateRole = 'planner' | 'executor';
+
 export interface WorkerTemplateConfig {
   type: WorkerBackendType;
+  /**
+   * Phase 3 multi-agent role tag. Defaults to `'executor'` (backwards
+   * compatible — pre-Phase-3 templates are all executors). A `'planner'`
+   * template gets a different system prompt and is the only template
+   * type the scheduler will pick when a ticket is dispatched with
+   * `usePlanner: true`.
+   *
+   * Only one layer of planning is supported: planner-spawned children
+   * always run on executor templates (the hub_spawn tool rejects
+   * `role: 'planner'`). See docs/local/agent-cluster-phase3-multi-agent.md
+   * for the full design.
+   */
+  role?: WorkerTemplateRole;
   command: string;
   args: string[];
   /**
@@ -139,8 +164,11 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
     const rawType = (tpl.type as string) || 'claude-cli';
     const type: WorkerBackendType =
       rawType === 'codex-cli' || rawType === 'gemini-cli' || rawType === 'minimax-cli' ? rawType : 'claude-cli';
+    const rawRole = tpl.role as string | undefined;
+    const role: WorkerTemplateRole | undefined = rawRole === 'planner' || rawRole === 'executor' ? rawRole : undefined;
     workerTemplates[name] = {
       type,
+      role,
       command: (tpl.command as string) || defaultCommandForType(type),
       args: (tpl.args as string[]) || defaultArgsForType(type),
       env: (tpl.env as Record<string, string>) || undefined,
@@ -182,6 +210,7 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
       eventLogMaxSize: (hubRaw.eventLogMaxSize as number) || 1000,
     },
     workerTemplates,
+    defaultPlannerTemplate: typeof r.defaultPlannerTemplate === 'string' ? r.defaultPlannerTemplate : undefined,
     projects,
     notifications: {
       qq: notificationsRaw.qq as ClusterConfig['notifications']['qq'],

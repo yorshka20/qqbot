@@ -52,6 +52,10 @@ interface EditorState {
   template: string;
   project: string;
   body: string;
+  /** Phase 3: planner-mode toggle. */
+  usePlanner: boolean;
+  /** Phase 3: optional max-children cap. null = unset (planner uses default 5). */
+  maxChildren: number | null;
 }
 
 export function TicketsPage() {
@@ -115,6 +119,8 @@ export function TicketsPage() {
       template: '',
       project: lastProject,
       body: DEFAULT_TICKET_BODY,
+      usePlanner: false,
+      maxChildren: null,
     });
   };
 
@@ -129,6 +135,8 @@ export function TicketsPage() {
         template: ticket.frontmatter.template ?? '',
         project: ticket.frontmatter.project ?? '',
         body: ticket.body,
+        usePlanner: ticket.frontmatter.usePlanner === true,
+        maxChildren: typeof ticket.frontmatter.maxChildren === 'number' ? ticket.frontmatter.maxChildren : null,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -143,6 +151,8 @@ export function TicketsPage() {
     template: string;
     project: string;
     body: string;
+    usePlanner: boolean;
+    maxChildren: number | null;
   }) => {
     if (!editor) return;
     setSavingEditor(true);
@@ -156,6 +166,8 @@ export function TicketsPage() {
           template: next.template || undefined,
           project: next.project || undefined,
           body: next.body,
+          usePlanner: next.usePlanner || undefined,
+          maxChildren: next.maxChildren ?? undefined,
         });
         setEditor(null);
         await refresh();
@@ -169,6 +181,9 @@ export function TicketsPage() {
           template: next.template ? next.template : null,
           project: next.project ? next.project : null,
           body: next.body,
+          // false = clear (turn off planner mode); true = set
+          usePlanner: next.usePlanner ? true : null,
+          maxChildren: next.maxChildren,
         });
         setEditor(null);
         await refresh();
@@ -217,10 +232,15 @@ export function TicketsPage() {
     setError(null);
     try {
       // 1. Create the cluster job — body becomes the worker prompt verbatim.
+      // Phase 3: tickets with usePlanner=true forward requirePlannerRole so
+      // the scheduler refuses to dispatch unless the resolved template is
+      // a planner-role template (or falls back to defaultPlannerTemplate
+      // when no explicit template is pinned).
       const job = await createClusterJob({
         project: project.trim(),
         description: dispatchTicket.body,
         workerTemplate: dispatchTicket.frontmatter.template || undefined,
+        requirePlannerRole: dispatchTicket.frontmatter.usePlanner === true ? true : undefined,
       });
 
       // 2. Mark the ticket as dispatched + record the job linkage.

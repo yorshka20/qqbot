@@ -248,9 +248,19 @@ export class ClusterAPIBackend {
 
     switch (subPath) {
       case '/jobs': {
-        let body: { project?: string; description?: string; workerTemplate?: string };
+        let body: {
+          project?: string;
+          description?: string;
+          workerTemplate?: string;
+          /**
+           * Phase 3: when true, scheduler enforces that the resolved
+           * worker template has `role: 'planner'`. Set by the WebUI ticket
+           * dispatch flow when the ticket frontmatter has `usePlanner: true`.
+           */
+          requirePlannerRole?: boolean;
+        };
         try {
-          body = (await req.json()) as { project?: string; description?: string; workerTemplate?: string };
+          body = (await req.json()) as typeof body;
         } catch {
           return errorResponse('Invalid JSON body', 400);
         }
@@ -259,9 +269,13 @@ export class ClusterAPIBackend {
         }
         const task = await live.submitTask(body.project, body.description, {
           workerTemplate: body.workerTemplate,
+          requirePlannerRole: body.requirePlannerRole === true ? true : undefined,
         });
         if (!task) {
-          return errorResponse('Failed to create task (unknown project or workerTemplate?)', 400);
+          return errorResponse(
+            'Failed to create task (unknown project, unknown workerTemplate, or requirePlannerRole could not resolve a planner template)',
+            400,
+          );
         }
         return jsonResponse(task, 201);
       }

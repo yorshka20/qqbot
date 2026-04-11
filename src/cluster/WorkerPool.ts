@@ -5,9 +5,9 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve as resolvePath } from 'node:path';
 import { logger } from '@/utils/logger';
 import type { ClusterConfig } from './config';
 import type { ContextHub } from './hub/ContextHub';
@@ -30,6 +30,24 @@ export type TaskCompletedCallback = (task: TaskRecord) => void | Promise<void>;
  */
 const RECENTLY_EXITED_MAX = 50;
 
+/**
+ * Phase 3: relative paths (from project cwd) to the role-specific system
+ * prompt files. Loaded once on first spawn of each role and cached. The
+ * prompt is prepended to the worker's `taskPrompt` so every backend gets
+ * role-mode behavior without per-backend changes — the LLM sees the
+ * role instructions as the first thing in its task input.
+ *
+ * **Why files instead of inline strings**: prompts are content, not code.
+ * They get edited and tuned independently of release cycles, sometimes
+ * by non-engineers. Hardcoding them in TS would force a typecheck/build
+ * round-trip on every prompt tweak and bury the content under quoting
+ * noise. Files also let `git diff` show the actual prose change.
+ */
+const ROLE_SYSTEM_PROMPT_PATHS: Record<'planner' | 'coder', string> = {
+  planner: 'prompts/cluster/planner-system.md',
+  coder: 'prompts/cluster/executor-system.md',
+};
+
 export class WorkerPool {
   private workers = new Map<string, WorkerInstance>();
   /** FIFO history of exited worker instances; capped at RECENTLY_EXITED_MAX. */
@@ -38,6 +56,17 @@ export class WorkerPool {
   private paused = false;
   private running = false;
   private taskCompletedCallback: TaskCompletedCallback | null = null;
+  /**
+   * Lazy-loaded role system prompt content, keyed by worker role.
+   * Each entry: `null` = not yet attempted, `''` = loaded but missing /
+   * empty (warned once), populated string = ready. On a missing file the
+   * worker still runs without the role preamble — degraded behavior but
+   * the cluster doesn't crash.
+   */
+  private rolePromptCache: Record<'planner' | 'coder', string | null> = {
+    planner: null,
+    coder: null,
+  };
 
   constructor(
     private config: ClusterConfig,
@@ -120,15 +149,17 @@ export class WorkerPool {
   }
 
   /**
-   * Spawn a new worker for a task.
-   * @param role Worker role: 'coder' (default) or 'planner'
+   * Spawn a new worker for a task. The worker's role in WorkerRegistry is
+   * derived from the template's `role` field (Phase 3): templates marked
+   * `role: 'planner'` register as planner workers, everything else (including
+   * pre-Phase-3 templates with no role) registers as `coder`. The role is
+   * what gates `hub_spawn` / `hub_query_task` / `hub_wait_task` access.
    */
   async spawnWorker(
     templateName: string,
     project: string,
     projectPath: string,
     task: TaskRecord,
-    role: 'coder' | 'planner' = 'coder',
   ): Promise<WorkerInstance | null> {
     if (this.paused) {
       logger.warn('[WorkerPool] Pool is paused, not spawning');
@@ -140,6 +171,21 @@ export class WorkerPool {
       logger.error(`[WorkerPool] Unknown worker template: ${templateName}`);
       return null;
     }
+
+    // Phase 3: derive WorkerRegistry role from template config. Defaults to
+    // 'coder' for backwards compat with Phase-1/2 executor-only templates.
+    const role: 'coder' | 'planner' = template.role === 'planner' ? 'planner' : 'coder';
+
+    // Phase 3: prepend the role-specific system prompt to the task
+    // description. Both planner and executor (coder) get a role preamble
+    // loaded from prompts/cluster/<role>-system.md. We mutate `taskPrompt`
+    // for the spawn call only — the persisted TaskRecord.description is
+    // unchanged so the WebUI / DB still show the user's original ticket
+    // text without the boilerplate. Backend-agnostic: every backend just
+    // passes taskPrompt through to its CLI, so prefixing here works
+    // uniformly without touching ClaudeCli/Codex/Gemini/Minimax individually.
+    const rolePrompt = await this.loadRoleSystemPrompt(role, projectPath);
+    const effectivePrompt = rolePrompt ? `${rolePrompt}\n\n${task.description}` : task.description;
 
     // Check concurrent limits
     if (!this.canSpawnMore(templateName)) {
@@ -195,7 +241,7 @@ export class WorkerPool {
     try {
       const proc = await backend.spawn({
         workerId,
-        taskPrompt: task.description,
+        taskPrompt: effectivePrompt,
         projectPath,
         mcpConfigPath,
         hubUrl,
@@ -478,6 +524,46 @@ export class WorkerPool {
     while (this.recentlyExited.length > RECENTLY_EXITED_MAX) {
       this.recentlyExited.shift();
     }
+  }
+
+  /**
+   * Lazy-load the role-specific system prompt from disk and cache it.
+   * Both `'planner'` and `'coder'` (executor) roles get a preamble loaded
+   * from `prompts/cluster/<role>-system.md`. First spawn of each role pays
+   * the file IO; subsequent spawns of that role reuse the cached string.
+   *
+   * Resolution order (per role):
+   *   1. `<projectPath>/prompts/cluster/<role>-system.md` — per-project
+   *      override (rare; for projects that want to customize role behavior)
+   *   2. `process.cwd()/prompts/cluster/<role>-system.md` — repo default
+   *
+   * If neither exists, returns empty string and logs once. The worker
+   * still runs but without the role preamble — degraded behavior but the
+   * cluster doesn't crash. Better than failing the whole spawn over a
+   * missing prompt file.
+   */
+  private async loadRoleSystemPrompt(role: 'planner' | 'coder', projectPath: string): Promise<string> {
+    const cached = this.rolePromptCache[role];
+    if (cached !== null) return cached;
+
+    const relativePath = ROLE_SYSTEM_PROMPT_PATHS[role];
+    const candidates = [resolvePath(projectPath, relativePath), resolvePath(process.cwd(), relativePath)];
+    for (const path of candidates) {
+      try {
+        const content = await readFile(path, 'utf-8');
+        logger.info(`[WorkerPool] Loaded ${role} system prompt from ${path} (${content.length} chars)`);
+        this.rolePromptCache[role] = content;
+        return content;
+      } catch {
+        // try next candidate
+      }
+    }
+    logger.warn(
+      `[WorkerPool] ${role} system prompt not found at any candidate path: ${candidates.join(', ')}. ` +
+        `${role} workers will run without a role preamble.`,
+    );
+    this.rolePromptCache[role] = '';
+    return '';
   }
 
   private async generateMCPConfig(workerId: string, hubUrl: string): Promise<string> {

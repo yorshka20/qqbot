@@ -21,11 +21,17 @@ import type {
   HubDispatchInput,
   HubMessageInput,
   HubMessageOutput,
+  HubQueryTaskInput,
+  HubQueryTaskOutput,
   HubReportInput,
   HubReportOutput,
+  HubSpawnInput,
+  HubSpawnOutput,
   HubSyncOutput,
   HubUpdate,
+  HubWaitTaskInput,
   TaskCandidate,
+  TaskRecord,
 } from '../types';
 import { EventLog } from './EventLog';
 import { HubMCPServer } from './HubMCPServer';
@@ -61,6 +67,29 @@ export interface SSESubscriber {
   close(): void;
 }
 
+/**
+ * Phase 3 multi-agent: minimal interface ContextHub uses to talk back to
+ * ClusterScheduler when handling planner-only tools (`hub_spawn`,
+ * `hub_query_task`, `hub_wait_task`). Defined as an interface (not a direct
+ * scheduler import) so the hub stays decoupled from the scheduler module
+ * graph and can be wired in unit tests with a stub.
+ *
+ * Wired by `ClusterManager` in its constructor via `setSchedulerBridge()`.
+ * If unset, all three planner tools return an error indicating cluster
+ * misconfiguration — the cluster will still run, executor-only flows are
+ * unaffected.
+ */
+export interface SchedulerBridge {
+  submitChildTask(opts: {
+    parentTaskId: string;
+    parentJobId: string;
+    project: string;
+    description: string;
+    template: string;
+  }): Promise<TaskRecord | null>;
+  findTask(taskId: string): TaskRecord | undefined;
+}
+
 export class ContextHub {
   readonly eventLog: EventLog;
   readonly lockManager: LockManager;
@@ -76,6 +105,7 @@ export class ContextHub {
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
   private dispatchCallback: DispatchCallback | null = null;
   private reportCallback: ReportCallback | null = null;
+  private schedulerBridge: SchedulerBridge | null = null;
   private sseSubscribers = new Set<SSESubscriber>();
   private helpRequests = new Map<string, HelpRequest>();
 
@@ -107,6 +137,16 @@ export class ContextHub {
    */
   setReportCallback(cb: ReportCallback): void {
     this.reportCallback = cb;
+  }
+
+  /**
+   * Phase 3: wire the scheduler bridge so planner-only tools (`hub_spawn`,
+   * `hub_query_task`, `hub_wait_task`) can submit children and look up
+   * task records. Without this, those three tools return an error to the
+   * planner. Set once at cluster construction time.
+   */
+  setSchedulerBridge(bridge: SchedulerBridge): void {
+    this.schedulerBridge = bridge;
   }
 
   /**
@@ -412,6 +452,139 @@ export class ContextHub {
   handleDirective(_workerId: string, input: HubDirectiveInput): { sent: boolean } {
     this.messageBox.send(input.to, 'planner', input.content, 'directive', 'warning');
     return { sent: true };
+  }
+
+  // ── Phase 3 multi-agent: planner spawn / query / wait ──
+
+  /**
+   * Hub side of `hub_spawn`. Validates the calling worker is a planner with
+   * a live current task, then asks the scheduler to create + dispatch a
+   * child task. Throws on any precondition failure — the MCP runTool
+   * wrapper turns thrown errors into `isError: true` tool results that the
+   * LLM sees as a tool error message.
+   *
+   * Safety rules:
+   *   1. Caller must be `role === 'planner'` (executors get a hard reject).
+   *   2. Caller must have a `currentTaskId` (the parent for the spawn).
+   *   3. `input.role`, if specified, must be `'executor'` — nested planners
+   *      are explicitly forbidden (one-layer rule, see Phase 3 design doc).
+   *   4. Scheduler bridge must be wired (otherwise cluster misconfig).
+   */
+  async handleSpawn(workerId: string, input: HubSpawnInput): Promise<HubSpawnOutput> {
+    this.workerRegistry.touch(workerId);
+    const reg = this.workerRegistry.get(workerId);
+    if (!reg || reg.role !== 'planner') {
+      throw new Error('hub_spawn is only available to planner-role workers');
+    }
+    if (input.role && input.role !== 'executor') {
+      throw new Error('hub_spawn cannot create planner-role workers (one-layer rule)');
+    }
+    const parentTaskId = reg.currentTaskId;
+    if (!parentTaskId) {
+      throw new Error('hub_spawn: planner has no current task to be a parent of');
+    }
+    if (!this.schedulerBridge) {
+      throw new Error('hub_spawn: scheduler bridge not wired (cluster misconfiguration)');
+    }
+    const parent = this.schedulerBridge.findTask(parentTaskId);
+    if (!parent) {
+      throw new Error(`hub_spawn: parent task ${parentTaskId} not found in scheduler`);
+    }
+    const child = await this.schedulerBridge.submitChildTask({
+      parentTaskId,
+      parentJobId: parent.jobId,
+      project: parent.project,
+      description: input.description,
+      template: input.template,
+    });
+    if (!child) {
+      throw new Error(
+        `hub_spawn: scheduler refused to create child task (unknown template "${input.template}" or unknown project)`,
+      );
+    }
+    return {
+      childTaskId: child.id,
+      // tryDispatch sets status='running' on successful immediate spawn,
+      // leaves it as 'pending' if the pool was full.
+      status: child.status === 'running' ? 'running' : 'queued',
+    };
+  }
+
+  /**
+   * Hub side of `hub_query_task`. Returns a snapshot of one task's state.
+   * Security check: the caller (planner) must be the parent of the task it
+   * is asking about — otherwise a planner could enumerate / spy on tasks
+   * across the whole cluster.
+   *
+   * Returns a snapshot even after the task is terminal: scheduler.findTask
+   * falls back to a DB read so a planner can poll children that have
+   * already been removed from the in-memory active map.
+   */
+  handleQueryTask(workerId: string, input: HubQueryTaskInput): HubQueryTaskOutput {
+    this.workerRegistry.touch(workerId);
+    const reg = this.workerRegistry.get(workerId);
+    if (!reg || reg.role !== 'planner') {
+      throw new Error('hub_query_task is only available to planner-role workers');
+    }
+    if (!this.schedulerBridge) {
+      throw new Error('hub_query_task: scheduler bridge not wired');
+    }
+    const target = this.schedulerBridge.findTask(input.taskId);
+    if (!target) {
+      throw new Error(`hub_query_task: task ${input.taskId} not found`);
+    }
+    if (target.parentTaskId !== reg.currentTaskId) {
+      // Don't leak whether a non-child task exists; both "not yours" and
+      // "not exists" should look the same from the planner's POV.
+      throw new Error(`hub_query_task: task ${input.taskId} is not a child of your current task`);
+    }
+    return {
+      taskId: target.id,
+      status: target.status,
+      workerId: target.workerId,
+      output: target.output,
+      error: target.error,
+      startedAt: target.startedAt,
+      completedAt: target.completedAt,
+    };
+  }
+
+  /**
+   * Hub side of `hub_wait_task`. Polls `handleQueryTask` every 500ms until
+   * the target task reaches a terminal status (`completed` / `failed`) or
+   * the timeout elapses. Returns the same shape as `hub_query_task`.
+   *
+   * Implementation note: this blocks the MCP request handler (which is
+   * fine — MCP tool calls are inherently long-running and we use
+   * `enableJsonResponse: true` so there's no streaming overhead). The hub
+   * itself is single-process; other workers' tool calls run in parallel
+   * because Bun.serve fetch handlers are independent async closures.
+   *
+   * Timeout is clamped to a hard upper bound of 30 minutes regardless of
+   * what the planner asks for — keeps a misbehaving planner from leaking
+   * Bun.serve fetch handlers indefinitely if it picks Number.MAX_SAFE_INTEGER.
+   */
+  async handleWaitTask(workerId: string, input: HubWaitTaskInput): Promise<HubQueryTaskOutput> {
+    const HARD_MAX_MS = 30 * 60_000;
+    const requestedTimeout = typeof input.timeoutMs === 'number' && input.timeoutMs > 0 ? input.timeoutMs : 600_000;
+    const timeoutMs = Math.min(requestedTimeout, HARD_MAX_MS);
+    const deadline = Date.now() + timeoutMs;
+    const POLL_INTERVAL_MS = 500;
+
+    // Use handleQueryTask for consistency: same auth checks, same shape.
+    while (true) {
+      const snapshot = this.handleQueryTask(workerId, { taskId: input.taskId });
+      if (snapshot.status === 'completed' || snapshot.status === 'failed') {
+        return snapshot;
+      }
+      if (Date.now() >= deadline) {
+        // Return the latest non-terminal snapshot — planner can decide
+        // whether to retry, escalate, or give up. Don't throw on timeout
+        // because the task hasn't actually failed; it's just taking long.
+        return snapshot;
+      }
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    }
   }
 
   // ── Help request management ──

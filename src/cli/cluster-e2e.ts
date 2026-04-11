@@ -99,6 +99,17 @@ interface E2EArgs {
    * on a prior run's pending request.
    */
   mcpAskQuestion: string;
+  /**
+   * Phase 3 planner mode (`--planner`). Boots a planner-role worker and
+   * asserts that it spawned exactly N executor children via hub_spawn,
+   * each writing a per-run UUID sentinel that we then verify in
+   * cluster_tasks. Mutually exclusive with --mcp-tool.
+   */
+  plannerMode: boolean;
+  /** Planner mode: per-run UUIDs the children must echo (one per child). */
+  plannerChildSentinels: string[];
+  /** Planner mode: name of the executor template the children use. */
+  plannerExecutorTemplate: string;
 }
 
 function parseArgs(): E2EArgs {
@@ -159,6 +170,24 @@ function parseArgs(): E2EArgs {
     `on a single line and nothing else. Do not call any other tools. Do not ` +
     `edit or create files on disk.`;
 
+  // ── Phase 3 planner mode flag + per-run child sentinels ──
+  // Planner mode is mutually exclusive with --mcp-tool. We generate three
+  // per-run UUID sentinels up front and embed them in the planner prompt
+  // so the planner can hand each child its own unique string. The asserts
+  // below scan cluster_tasks for matching child outputs, which proves that
+  // (a) hub_spawn → submitChildTask → tryDispatch worked, (b) the child
+  // executors actually ran, and (c) parentTaskId was stamped correctly.
+  const plannerMode = argv.includes('--planner');
+  if (plannerMode && mcpTool) {
+    throw new Error('--planner cannot be combined with --mcp-tool (different e2e modes)');
+  }
+  const plannerChildCount = 3;
+  const plannerChildSentinels = Array.from(
+    { length: plannerChildCount },
+    () => `CLUSTER_E2E_PLANNER_CHILD_${randomUUID()}`,
+  );
+  const plannerExecutorTemplate = get('--planner-executor', 'claude-sonnet');
+
   // hub_ask mode: ask the agent to escalate via hub_ask. We force
   // type=escalation so PlannerService routes through the human-notification
   // path (notifyEscalation → escalationCallback) instead of trying to find
@@ -176,8 +205,39 @@ function parseArgs(): E2EArgs {
     `string ${sentinel} on a single line and nothing else. Do not call any ` +
     `other tools. Do not edit or create files on disk.`;
 
+  // Planner mode prompt: explicit step-by-step instructions to spawn three
+  // children, each printing one sentinel, then wait for all three. Phrased
+  // as bare bullets because LLMs are slightly more reliable when the prompt
+  // looks like a numbered procedure rather than free prose.
+  //
+  // We explicitly tell the planner NOT to do the work itself — the whole
+  // point of this e2e is to verify that hub_spawn / hub_query_task /
+  // hub_wait_task wiring works through the real MCP transport. If the
+  // planner just echoes the sentinels itself, the assert below will catch
+  // it (no children in cluster_tasks).
+  const defaultPlannerTask =
+    `This is an end-to-end test of the cluster's planner mode. You are running as a planner worker. ` +
+    `You must spawn EXACTLY ${plannerChildCount} executor child workers via hub_spawn. ` +
+    `For each child, use template "${plannerExecutorTemplate}". Each child should be given a tiny task ` +
+    `that asks it to print exactly one sentinel string. The three sentinels are:\n` +
+    plannerChildSentinels.map((s, i) => `  ${i + 1}. ${s}`).join('\n') +
+    `\n\nProcedure:\n` +
+    `1. Call hub_spawn three times. For each call:\n` +
+    `   - template: "${plannerExecutorTemplate}"\n` +
+    `   - description: "This is an end-to-end test. Reply with EXACTLY the literal string <SENTINEL_N> ` +
+    `on a single line, with no additional commentary." (substitute <SENTINEL_N> with the matching sentinel above)\n` +
+    `   - Save the returned childTaskId.\n` +
+    `2. Call hub_wait_task on each childTaskId in turn (so they run and complete).\n` +
+    `3. After all 3 children are completed, call hub_report with status="completed" and a one-line summary.\n` +
+    `4. Reply with EXACTLY the literal string ${sentinel} on a single line and nothing else.\n\n` +
+    `Do NOT do the work yourself. Do NOT print the child sentinels in your own output. ` +
+    `Do NOT spawn nested planners. Do NOT modify files. The whole point of this test is that the children ` +
+    `print their sentinels via separate worker processes.`;
+
   let defaultTask: string;
-  if (mcpTool === 'hub_claim') {
+  if (plannerMode) {
+    defaultTask = defaultPlannerTask;
+  } else if (mcpTool === 'hub_claim') {
     defaultTask = defaultMcpClaimTask;
   } else if (mcpTool === 'hub_report') {
     defaultTask = defaultMcpReportTask;
@@ -191,7 +251,9 @@ function parseArgs(): E2EArgs {
     project: get('--project', process.env.CLUSTER_E2E_PROJECT || 'qqbot'),
     template: templateRaw || null,
     task: get('--task', defaultTask),
-    timeoutSec: Number(get('--timeout-sec', '300')),
+    // Planner mode runs ~4 LLM round trips serially (1 planner + 3 children),
+    // so it needs a bigger timeout than the single-shot modes.
+    timeoutSec: Number(get('--timeout-sec', plannerMode ? '900' : '300')),
     sentinel,
     // Default to 3201 (one above the conventional 3200) so the e2e can run
     // alongside a live `bun run dev` cluster without port collision.
@@ -200,6 +262,9 @@ function parseArgs(): E2EArgs {
     mcpClaimFile,
     mcpReportSummary,
     mcpAskQuestion,
+    plannerMode,
+    plannerChildSentinels,
+    plannerExecutorTemplate,
   };
 }
 
@@ -254,7 +319,8 @@ async function main() {
       config: {
         hub: { port: number };
         projects: Record<string, { workerPreference: string }>;
-        workerTemplates: Record<string, unknown>;
+        workerTemplates: Record<string, Record<string, unknown>>;
+        defaultPlannerTemplate?: string;
       };
     }
   ).config;
@@ -262,6 +328,45 @@ async function main() {
   if (clusterConfig?.hub) {
     logger.info(`[ClusterE2E] Overriding hub port: ${clusterConfig.hub.port} → ${args.hubPort}`);
     clusterConfig.hub.port = args.hubPort;
+  }
+
+  // ── Planner mode setup ──
+  // The user's cluster.jsonc may not have a planner-role template at all
+  // (Phase 3 is brand new). We synthesize one in-memory by cloning the
+  // default executor template and stamping role='planner'. This keeps the
+  // e2e self-contained — no config edits needed to run --planner mode,
+  // and the synthetic template never persists anywhere.
+  //
+  // The synthetic template's name is 'cluster-e2e-planner', deliberately
+  // namespaced so it can't collide with anything in real configs.
+  const PLANNER_TEMPLATE_NAME = 'cluster-e2e-planner';
+  if (args.plannerMode) {
+    if (!clusterConfig?.workerTemplates) {
+      logger.error('[ClusterE2E] ✗ planner mode: cluster has no workerTemplates configured');
+      await teardown(conversationComponents);
+      process.exit(1);
+    }
+    const baseExecutor = clusterConfig.workerTemplates[args.plannerExecutorTemplate];
+    if (!baseExecutor) {
+      logger.error(
+        `[ClusterE2E] ✗ planner mode: --planner-executor "${args.plannerExecutorTemplate}" not found in workerTemplates. ` +
+          `Available: ${Object.keys(clusterConfig.workerTemplates).join(', ')}`,
+      );
+      await teardown(conversationComponents);
+      process.exit(1);
+    }
+    // Shallow clone — same backend type / args / env / timeout, just role flipped.
+    clusterConfig.workerTemplates[PLANNER_TEMPLATE_NAME] = {
+      ...baseExecutor,
+      role: 'planner',
+      // Bump timeout: planner waits on 3 children sequentially; default
+      // executor timeout (e.g. 20m) might be cut close.
+      timeout: 30 * 60_000,
+    };
+    clusterConfig.defaultPlannerTemplate = PLANNER_TEMPLATE_NAME;
+    logger.info(
+      `[ClusterE2E] Planner mode: synthesized template "${PLANNER_TEMPLATE_NAME}" cloned from "${args.plannerExecutorTemplate}" with role=planner`,
+    );
   }
 
   // Optional --template override: rewrite the project's workerPreference
@@ -317,7 +422,10 @@ async function main() {
     await cluster.start();
     logger.info('[ClusterE2E] Cluster started; submitting task');
 
-    const task = await cluster.submitTask(args.project, args.task);
+    const submitOptions = args.plannerMode
+      ? { workerTemplate: PLANNER_TEMPLATE_NAME, requirePlannerRole: true }
+      : undefined;
+    const task = await cluster.submitTask(args.project, args.task, submitOptions);
     if (!task) {
       logger.error(
         `[ClusterE2E] ✗ submitTask returned null — project alias "${args.project}" probably not registered in ClaudeCodeService.projectRegistry`,
@@ -396,6 +504,62 @@ async function main() {
       logger.error(`[ClusterE2E] Task error: ${task.error}`);
     }
 
+    // ── Phase 3 planner mode assertion ──
+    // Query the scheduler for all tasks belonging to this job (the planner's
+    // jobId is shared with all its children — see ClusterScheduler.submitChildTask).
+    // Verify: 1 root + N children, all child statuses=='completed', each child
+    // output contains its corresponding sentinel.
+    let plannerPass = true;
+    let plannerDiagnostics = '';
+    if (args.plannerMode) {
+      const allTasks = cluster.getScheduler().getJobTasks(task.jobId);
+      const root = allTasks.find((t) => t.id === task.id);
+      const children = allTasks.filter((t) => t.parentTaskId === task.id);
+      logger.info(
+        `[ClusterE2E] Planner mode: found ${allTasks.length} task(s) in job — 1 expected root + ${args.plannerChildSentinels.length} children. ` +
+          `Got: 1 root + ${children.length} children`,
+      );
+      if (!root) {
+        plannerPass = false;
+        plannerDiagnostics = `root task ${task.id} not found in getJobTasks result`;
+      } else if (children.length !== args.plannerChildSentinels.length) {
+        plannerPass = false;
+        plannerDiagnostics = `expected ${args.plannerChildSentinels.length} children, got ${children.length}`;
+      } else {
+        // Each sentinel must appear in exactly one child's output. We don't
+        // care about ordering — the planner is free to spawn in any order.
+        const unmatched: string[] = [];
+        for (const sentinelStr of args.plannerChildSentinels) {
+          const matchingChild = children.find((c) => (c.output ?? '').includes(sentinelStr));
+          if (!matchingChild) {
+            unmatched.push(sentinelStr);
+          }
+        }
+        if (unmatched.length > 0) {
+          plannerPass = false;
+          plannerDiagnostics =
+            `${unmatched.length} sentinel(s) not echoed by any child: ${unmatched.join(', ')}. ` +
+            `Child outputs: ${children.map((c) => `${c.id.slice(0, 8)}=${(c.output ?? '').slice(0, 60)}`).join(' | ')}`;
+        }
+        // Also assert children are all completed (cascade-killed children
+        // would be 'failed' with error mentioning parent termination).
+        const failedChildren = children.filter((c) => c.status !== 'completed');
+        if (failedChildren.length > 0 && plannerPass) {
+          plannerPass = false;
+          plannerDiagnostics = `${failedChildren.length} child(ren) not in 'completed' state: ${failedChildren
+            .map((c) => `${c.id.slice(0, 8)}=${c.status}`)
+            .join(', ')}`;
+        }
+      }
+      if (plannerPass) {
+        logger.info(
+          `[ClusterE2E] Planner mode assertion: ✓ all ${args.plannerChildSentinels.length} children completed and echoed their sentinels`,
+        );
+      } else {
+        logger.error(`[ClusterE2E] Planner mode assertion failed: ${plannerDiagnostics}`);
+      }
+    }
+
     const sentinelInOutput = (task.output ?? '').includes(args.sentinel);
 
     // Mode-specific assertion.
@@ -463,12 +627,19 @@ async function main() {
       args.mcpTool === 'hub_claim' || args.mcpTool === 'hub_report' || args.mcpTool === 'hub_ask'
         ? mcpEventMatched
         : true;
-    const success = task.status === 'completed' && sentinelPass && mcpPass;
+    const success = task.status === 'completed' && sentinelPass && mcpPass && plannerPass;
 
     await cluster.stop();
     await teardown(conversationComponents);
 
     if (success) {
+      if (args.plannerMode) {
+        logger.info(
+          `[ClusterE2E] ✅ PASS (planner mode) — root planner completed, ${args.plannerChildSentinels.length} child executors ` +
+            `completed with parentTaskId stamped, and all per-run sentinels were echoed`,
+        );
+        process.exit(0);
+      }
       if (args.mcpTool === 'hub_claim') {
         logger.info(
           `[ClusterE2E] ✅ PASS (MCP mode) — task completed, sentinel echoed, and hub recorded ` +
@@ -490,6 +661,14 @@ async function main() {
       process.exit(0);
     }
 
+    if (task.status === 'completed' && args.plannerMode && !plannerPass) {
+      logger.error(
+        `[ClusterE2E] ✗ FAIL (planner mode) — root planner completed but task tree assertion failed: ${plannerDiagnostics}. ` +
+          `Either the planner didn't actually call hub_spawn (check [HubMCPServer] logs), the children failed, ` +
+          `or the synthesized planner template prompt didn't reach the LLM. Inspect cluster_tasks for jobId ${task.jobId}.`,
+      );
+      process.exit(1);
+    }
     if (task.status === 'completed' && !sentinelPass) {
       logger.error(
         `[ClusterE2E] ✗ FAIL — task completed but sentinel "${args.sentinel}" not found in output. ` +

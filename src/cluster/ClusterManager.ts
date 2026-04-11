@@ -63,6 +63,16 @@ export class ClusterManager {
     // idempotent now — persistTask will overwrite the DB row with any
     // richer stdout captured post-report, and job counters only update
     // on the first call.
+    // Wire scheduler bridge for Phase 3 planner-only MCP tools (hub_spawn /
+    // hub_query_task / hub_wait_task). The bridge gives ContextHub minimal
+    // access to the scheduler (submitChildTask + findTask) without
+    // collapsing the layering — see SchedulerBridge in ContextHub.ts for
+    // the full rationale.
+    this.hub.setSchedulerBridge({
+      submitChildTask: (opts) => this.scheduler.submitChildTask(opts),
+      findTask: (taskId) => this.scheduler.findTask(taskId),
+    });
+
     this.hub.setReportCallback((workerId, taskId, input) => {
       if (!taskId) {
         logger.warn(
@@ -171,12 +181,14 @@ export class ClusterManager {
   /**
    * Submit a manual task. `options.workerTemplate` overrides the project's
    * default `workerPreference` for this run only — used by the WebUI submit
-   * form's template picker.
+   * form's template picker. `options.requirePlannerRole` enforces that the
+   * resolved template has `role: 'planner'` (set by ticket dispatch when
+   * the ticket frontmatter has `usePlanner: true`).
    */
   async submitTask(
     project: string,
     description: string,
-    options?: { workerTemplate?: string },
+    options?: { workerTemplate?: string; requirePlannerRole?: boolean },
   ): Promise<TaskRecord | null> {
     return this.scheduler.submitTask(project, description, options);
   }
@@ -349,8 +361,10 @@ export class ClusterManager {
         error TEXT,
         filesModified TEXT,
         diffSummary TEXT,
-        metadata TEXT
+        metadata TEXT,
+        parentTaskId TEXT
       )`,
+      `CREATE INDEX IF NOT EXISTS idx_cluster_tasks_parent ON cluster_tasks(parentTaskId)`,
       `CREATE TABLE IF NOT EXISTS cluster_events (
         seq INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp INTEGER NOT NULL,

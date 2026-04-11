@@ -1,6 +1,6 @@
-import { Save, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import type { ClusterTemplatesResponse, TicketStatus } from '../../../types';
+import { Save, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import type { ClusterTemplatesResponse, TicketStatus } from "../../../types";
 
 /**
  * Modal editor for a single ticket. Used both for "create new" (the
@@ -30,12 +30,14 @@ export function TicketEditor({
   saving,
 }: {
   initial: {
-    id: string;            // empty string when creating
+    id: string; // empty string when creating
     title: string;
     status: TicketStatus;
-    template: string;      // empty string when unset
-    project: string;       // empty string when unset
+    template: string; // empty string when unset
+    project: string; // empty string when unset
     body: string;
+    usePlanner: boolean;
+    maxChildren: number | null;
   };
   templates: ClusterTemplatesResponse | null;
   onCancel: () => void;
@@ -45,6 +47,8 @@ export function TicketEditor({
     template: string;
     project: string;
     body: string;
+    usePlanner: boolean;
+    maxChildren: number | null;
   }) => Promise<void> | void;
   saving: boolean;
 }) {
@@ -56,6 +60,12 @@ export function TicketEditor({
   const [template, setTemplate] = useState(initial.template);
   const [project, setProject] = useState(initial.project);
   const [body, setBody] = useState(initial.body);
+  const [usePlanner, setUsePlanner] = useState(initial.usePlanner);
+  // maxChildren stays as a string in form state so the user can clear the
+  // input. We coerce to number on save (empty → null = unset).
+  const [maxChildrenStr, setMaxChildrenStr] = useState(
+    initial.maxChildren !== null ? String(initial.maxChildren) : "",
+  );
 
   useEffect(() => {
     setTitle(initial.title);
@@ -63,19 +73,29 @@ export function TicketEditor({
     setTemplate(initial.template);
     setProject(initial.project);
     setBody(initial.body);
+    setUsePlanner(initial.usePlanner);
+    setMaxChildrenStr(
+      initial.maxChildren !== null ? String(initial.maxChildren) : "",
+    );
   }, [initial]);
 
-  const isCreate = initial.id === '';
+  const isCreate = initial.id === "";
   const canSave = !saving && title.trim().length > 0;
 
   const submit = async () => {
     if (!canSave) return;
+    const parsedMax = maxChildrenStr.trim()
+      ? Number.parseInt(maxChildrenStr.trim(), 10)
+      : NaN;
     await onSave({
       title: title.trim(),
       status,
       template: template.trim(),
       project: project.trim(),
       body,
+      usePlanner,
+      maxChildren:
+        Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : null,
     });
   };
 
@@ -87,7 +107,7 @@ export function TicketEditor({
         if (!saving) onCancel();
       }}
       onKeyDown={(e) => {
-        if (e.key === 'Escape' && !saving) onCancel();
+        if (e.key === "Escape" && !saving) onCancel();
       }}
     >
       {/* biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper inside modal backdrop */}
@@ -98,9 +118,13 @@ export function TicketEditor({
       >
         {/* Header */}
         <div className="shrink-0 px-5 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center gap-3">
-          <div className="font-semibold">{isCreate ? 'New ticket' : 'Edit ticket'}</div>
+          <div className="font-semibold">
+            {isCreate ? "New ticket" : "Edit ticket"}
+          </div>
           {!isCreate && (
-            <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">{initial.id}</div>
+            <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">
+              {initial.id}
+            </div>
           )}
           <div className="flex-1" />
           <button
@@ -119,18 +143,21 @@ export function TicketEditor({
           {/* Frontmatter form */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
             <div className="md:col-span-12">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">title</div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                title
+              </div>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
                 placeholder='e.g. "Fix Discord emoji rendering"'
                 disabled={saving}
-                autoFocus
               />
             </div>
             <div className="md:col-span-3">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">status</div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                status
+              </div>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as TicketStatus)}
@@ -145,7 +172,9 @@ export function TicketEditor({
               </select>
             </div>
             <div className="md:col-span-5">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">template</div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                template
+              </div>
               <select
                 value={template}
                 onChange={(e) => setTemplate(e.target.value)}
@@ -161,7 +190,9 @@ export function TicketEditor({
               </select>
             </div>
             <div className="md:col-span-4">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">project</div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                project
+              </div>
               <input
                 value={project}
                 onChange={(e) => setProject(e.target.value)}
@@ -170,12 +201,47 @@ export function TicketEditor({
                 disabled={saving}
               />
             </div>
+            {/* Phase 3: planner mode toggle. usePlanner forces dispatch to
+                pick a planner-role worker template. maxChildren is a soft
+                cap surfaced to the planner via prompt — empty/0 = no cap. */}
+            <div className="md:col-span-4 flex items-center gap-2 pt-5">
+              <input
+                id="ticket-use-planner"
+                type="checkbox"
+                checked={usePlanner}
+                onChange={(e) => setUsePlanner(e.target.checked)}
+                disabled={saving}
+                className="w-4 h-4"
+              />
+              <label
+                htmlFor="ticket-use-planner"
+                className="text-xs text-zinc-700 dark:text-zinc-300 select-none"
+              >
+                use planner (multi-agent decomposition)
+              </label>
+            </div>
+            <div className="md:col-span-3">
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                maxChildren (planner only)
+              </div>
+              <input
+                type="number"
+                min={1}
+                value={maxChildrenStr}
+                onChange={(e) => setMaxChildrenStr(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm disabled:opacity-50"
+                placeholder="(default 3)"
+                disabled={saving || !usePlanner}
+              />
+            </div>
           </div>
 
           {/* Markdown body */}
           <div>
             <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1 flex items-center gap-2">
-              <span>body (markdown — this is what the worker will see verbatim)</span>
+              <span>
+                body (markdown — this is what the worker will see verbatim)
+              </span>
             </div>
             <textarea
               value={body}
@@ -204,7 +270,7 @@ export function TicketEditor({
             className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
           >
             <Save className="w-4 h-4" />
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? "Saving…" : "Save"}
           </button>
         </div>
       </div>
