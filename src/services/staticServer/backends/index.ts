@@ -3,6 +3,7 @@
  * To add a new backend: create a file in this directory, then add it to createBackends().
  */
 
+import { ClusterAPIBackend } from './ClusterAPIBackend';
 import { ClusterControlBackend } from './ClusterControlBackend';
 import { DailyStatsBackend } from './DailyStatsBackend';
 import { FileManagerBackend } from './FileManagerBackend';
@@ -25,6 +26,7 @@ export { errorResponse, jsonResponse } from './types';
 export function createBackends(baseDir: string): Backend[] {
   return [
     new FileManagerBackend(baseDir),
+    new ClusterAPIBackend(),
     new ClusterControlBackend(),
     new ReportBackend(),
     new InsightsBackend(),
