@@ -147,6 +147,22 @@ export class MessageAPI {
   }
 
   /**
+   * Normalize a chat id (user_id / group_id) before handing it to the protocol adapter.
+   *
+   * Milky/OneBot11 zod-validate these fields as `number` and will reject numeric strings,
+   * while Discord/Satori stringify them anyway. Normalizing numeric strings to numbers
+   * here satisfies both sides, so call sites can freely pass whatever shape they have
+   * (config strings, wire payloads, already-numeric values) without sprinkling `Number(...)`.
+   *
+   * Non-numeric strings (e.g. Discord snowflakes that happen to include non-digits, or
+   * future string-ID protocols) are returned as-is.
+   */
+  private normalizeChatId(id: number | string): number | string {
+    if (typeof id === 'number') return id;
+    return /^\d+$/.test(id) ? Number(id) : id;
+  }
+
+  /**
    * Send a private message directly by userId and protocol.
    * Use this when no message context is available (e.g. AgentLoop scheduled tasks).
    * When a CommandContext or NormalizedMessageEvent is available, prefer sendFromContext().
@@ -156,6 +172,7 @@ export class MessageAPI {
     message: string | unknown[],
     protocol: ProtocolName,
   ): Promise<number> {
+    const normalizedUserId = this.normalizeChatId(userId);
     const segments = this.normalizeToSegments(message);
     const batches = this.splitLongMessage(segments);
 
@@ -165,7 +182,7 @@ export class MessageAPI {
       const result = await this.apiClient.call<SendMessageResult>(
         'send_private_msg',
         {
-          user_id: userId,
+          user_id: normalizedUserId,
           message: batches[i],
         },
         protocol,
@@ -189,6 +206,7 @@ export class MessageAPI {
     message: string | unknown[],
     protocol: ProtocolName,
   ): Promise<number> {
+    const normalizedGroupId = this.normalizeChatId(groupId);
     const segments = this.normalizeToSegments(message);
     const batches = this.splitLongMessage(segments);
 
@@ -198,7 +216,7 @@ export class MessageAPI {
       const result = await this.apiClient.call<SendMessageResult>(
         'send_group_msg',
         {
-          group_id: groupId,
+          group_id: normalizedGroupId,
           message: batches[i],
         },
         protocol,
