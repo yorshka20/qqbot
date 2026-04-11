@@ -8,7 +8,7 @@ import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
 import type { HookContext } from '@/hooks/types';
 import { MessageUtils } from '@/message/MessageUtils';
-import { getProtocolAdapter } from '@/protocol/ProtocolRegistry';
+import { getProtocolAdapter, isProtocolRegistered } from '@/protocol/ProtocolRegistry';
 import { logger } from '@/utils/logger';
 
 /**
@@ -85,11 +85,17 @@ export class ReplyPrepareSystem implements System {
     const reply = context.reply!;
     const segments = reply.segments;
 
-    // Only protocols that support forward messages can use sendAsForward
-    const adapter = getProtocolAdapter(context.message.protocol);
-    if (!adapter.supportsForwardMessage()) {
-      reply.metadata = { ...reply.metadata, sendAsForward: false };
-      return;
+    // Only protocols that support forward messages can use sendAsForward.
+    // Synthetic protocols (e.g. `lan-dispatch` used by LanRelayClient) are not
+    // registered here — they route through LAN relay to the host, which owns
+    // the real adapter. SendSystem assumes supportsForwardMessage=true for
+    // unregistered protocols; we mirror that to keep behavior consistent.
+    if (isProtocolRegistered(context.message.protocol)) {
+      const adapter = getProtocolAdapter(context.message.protocol);
+      if (!adapter.supportsForwardMessage()) {
+        reply.metadata = { ...reply.metadata, sendAsForward: false };
+        return;
+      }
     }
 
     // Image/record segments can't be forwarded reliably — always send directly

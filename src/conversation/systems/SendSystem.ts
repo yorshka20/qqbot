@@ -57,6 +57,12 @@ export class SendSystem implements System {
 
     const event = context.message;
     const protocolRegistered = isProtocolRegistered(event.protocol);
+    // `protocolRegistered` guard: synthetic protocols like `lan-dispatch` are
+    // intentionally NOT in the registry (see LAN-relay branch below). Calling
+    // getProtocolAdapter() on them would throw, so we short-circuit to `true`
+    // and let the host-side adapter make the real capability decision when it
+    // actually sends the message. ReplyPrepareSystem.resolveSendAsForward()
+    // must apply the same guard — keep the two in sync.
     const useForward =
       replyContent.metadata?.sendAsForward === true &&
       (protocolRegistered ? getProtocolAdapter(event.protocol).supportsForwardMessage() : true);
