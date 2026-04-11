@@ -14,7 +14,6 @@ import { GeminiCliBackend } from './backends/GeminiCliBackend';
 import { MinimaxBackend } from './backends/MinimaxBackend';
 import { ClusterScheduler } from './ClusterScheduler';
 import type { ClusterConfig } from './config';
-import { ClusterAPIRouter } from './hub/ClusterAPIRouter';
 import { ContextHub } from './hub/ContextHub';
 import { PlannerService } from './PlannerService';
 import { QueueSource } from './sources/QueueSource';
@@ -39,10 +38,6 @@ export class ClusterManager {
     this.workerPool = new WorkerPool(config, this.hub);
     this.scheduler = new ClusterScheduler(config, this.hub, this.workerPool, db, projectRegistry);
     this.plannerService = new PlannerService(config, this.hub, this.workerPool);
-
-    // Wire API router
-    const apiRouter = new ClusterAPIRouter(this.hub, this.workerPool, this.scheduler, this.config);
-    this.hub.setAPIRouter(apiRouter);
 
     // Wire dispatch callback
     this.hub.setDispatchCallback(async (candidate) => {
@@ -205,6 +200,15 @@ export class ClusterManager {
    */
   getHub(): ContextHub {
     return this.hub;
+  }
+
+  /**
+   * Access the parsed cluster config (for read-only WebUI views like
+   * /api/cluster/templates, which need to expose workerTemplates +
+   * per-project workerPreference even before the cluster is started).
+   */
+  getConfig(): ClusterConfig {
+    return this.config;
   }
 
   /**

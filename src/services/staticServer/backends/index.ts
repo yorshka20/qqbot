@@ -4,7 +4,6 @@
  */
 
 import { ClusterAPIBackend } from './ClusterAPIBackend';
-import { ClusterControlBackend } from './ClusterControlBackend';
 import { DailyStatsBackend } from './DailyStatsBackend';
 import { FileManagerBackend } from './FileManagerBackend';
 import { InsightsBackend } from './InsightsBackend';
@@ -27,7 +26,6 @@ export function createBackends(baseDir: string): Backend[] {
   return [
     new FileManagerBackend(baseDir),
     new ClusterAPIBackend(),
-    new ClusterControlBackend(),
     new ReportBackend(),
     new InsightsBackend(),
     new MomentsBackend(),

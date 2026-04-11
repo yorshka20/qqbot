@@ -73,16 +73,17 @@ export function getMemoryApiBase(): string {
   return serverBase ? `${serverBase}/api/memory` : '/api/memory';
 }
 
-/** Base URL for Agent Cluster API requests. */
+/**
+ * Base URL for all Agent Cluster API requests. Includes the always-on
+ * control plane (status / start / stop / templates / projects) plus the
+ * gated query routes (workers / jobs / events / etc.) — see
+ * src/services/staticServer/backends/ClusterAPIBackend.ts for the full
+ * route list. There is no separate `/api/cluster-control` prefix; the
+ * control routes live under this base too.
+ */
 export function getClusterApiBase(): string {
   const serverBase = getStaticServerBase();
   return serverBase ? `${serverBase}/api/cluster` : '/api/cluster';
-}
-
-/** Base URL for Agent Cluster control plane (always-on StaticServer). */
-export function getClusterControlApiBase(): string {
-  const serverBase = getStaticServerBase();
-  return serverBase ? `${serverBase}/api/cluster-control` : '/api/cluster-control';
 }
 
 /** Base URL for Projects API requests (ProjectRegistry). */

@@ -7,7 +7,6 @@ export { ClusterManager } from './ClusterManager';
 export { ClusterScheduler } from './ClusterScheduler';
 export type { ClusterConfig, ClusterProjectConfig, WorkerTemplateConfig } from './config';
 export { parseClusterConfig } from './config';
-export { ClusterAPIRouter } from './hub/ClusterAPIRouter';
 export { ContextHub } from './hub/ContextHub';
 export { HubMCPServer } from './hub/HubMCPServer';
 export type {

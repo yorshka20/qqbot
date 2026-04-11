@@ -31,7 +31,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   createClusterJob,
-  getClusterControlStatus,
   getClusterStatus,
   getClusterTemplates,
   killClusterWorker,
@@ -98,11 +97,11 @@ export function ClusterPage() {
     setLoading(true);
     setError(null);
     try {
-      const control = await getClusterControlStatus();
-      setStarted(control.started);
+      const snapshot = await getClusterStatus();
+      setStarted(snapshot.started);
 
-      if (!control.started) {
-        setStatus(control.status ?? null);
+      if (!snapshot.started) {
+        setStatus(snapshot.status ?? null);
         setWorkers([]);
         setLocks([]);
         setHelp([]);
@@ -113,15 +112,18 @@ export function ClusterPage() {
 
       const eventTypeArg = eventTypeFilter || undefined;
 
-      const [s, w, l, h, j, e] = await Promise.all([
-        getClusterStatus(),
+      // Cluster is running — fetch the live state in parallel. The
+      // status from the snapshot above is fine to keep using here, but
+      // re-pulling alongside the rest costs nothing and keeps everything
+      // consistent within a single refresh tick.
+      const [w, l, h, j, e] = await Promise.all([
         listClusterWorkers(),
         listClusterLocks(),
         listClusterHelpRequests(),
         listClusterJobs({ limit: 30 }),
         listClusterEvents({ type: eventTypeArg, limit: 50 }),
       ]);
-      setStatus(s);
+      setStatus(snapshot.status);
       setWorkers(w);
       setLocks(l);
       setHelp(h);

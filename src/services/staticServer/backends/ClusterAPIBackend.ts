@@ -1,30 +1,36 @@
 /**
  * ClusterAPIBackend — StaticServer backend for Agent Cluster REST API.
  *
- * Provides the same /api/cluster/* routes as ContextHub's ClusterAPIRouter,
- * but runs on StaticServer (port 8888) so WebUI can query cluster state
- * regardless of whether ContextHub is online.
- *
- * Only available when the cluster is started. Start/stop/pause/resume are
- * handled separately by ClusterControlBackend (/api/cluster-control/*).
+ * Single source of truth for HTTP access to the cluster. Mounted on
+ * StaticServer (port 8888) so WebUI can hit it regardless of whether the
+ * cluster is currently running. Routes that need a live cluster gate
+ * themselves with `requireStarted()`; routes that should work even when
+ * the cluster is stopped (control plane: status / start / stop, plus
+ * static config snapshots like templates / projects) skip the gate.
  *
  * Routes:
- * - GET  /api/cluster/status
- * - GET  /api/cluster/templates
- * - GET  /api/cluster/projects
- * - GET  /api/cluster/workers
- * - GET  /api/cluster/jobs
- * - GET  /api/cluster/jobs/:id
- * - GET  /api/cluster/tasks
- * - GET  /api/cluster/events
- * - GET  /api/cluster/locks
- * - GET  /api/cluster/help
- * - GET  /api/cluster/stream  (SSE)
- * - POST /api/cluster/jobs
- * - POST /api/cluster/pause
- * - POST /api/cluster/resume
- * - POST /api/cluster/workers/:id/kill
- * - POST /api/cluster/help/:id/answer
+ *   Always available:
+ *   - GET  /api/cluster/status            { started, status }
+ *   - GET  /api/cluster/templates         worker templates + projectDefaults
+ *   - GET  /api/cluster/projects          ProjectRegistry snapshot
+ *   - POST /api/cluster/start             idempotent
+ *   - POST /api/cluster/stop              idempotent
+ *
+ *   Require started cluster (else 503):
+ *   - GET  /api/cluster/workers
+ *   - GET  /api/cluster/jobs
+ *   - GET  /api/cluster/jobs/:id
+ *   - GET  /api/cluster/tasks
+ *   - GET  /api/cluster/tasks/:id/events
+ *   - GET  /api/cluster/events
+ *   - GET  /api/cluster/locks
+ *   - GET  /api/cluster/help
+ *   - GET  /api/cluster/stream            SSE
+ *   - POST /api/cluster/jobs              submit task
+ *   - POST /api/cluster/pause
+ *   - POST /api/cluster/resume
+ *   - POST /api/cluster/workers/:id/kill
+ *   - POST /api/cluster/help/:id/answer
  */
 
 import type { ClusterManager } from '@/cluster/ClusterManager';
@@ -32,6 +38,7 @@ import type { ClusterEventType } from '@/cluster/types';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
+import { logger } from '@/utils/logger';
 import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/cluster';
@@ -47,15 +54,24 @@ export class ClusterAPIBackend {
     }
   }
 
-  async handle(pathname: string, req: Request): Promise<Response | null> {
-    if (!pathname.startsWith(API_PREFIX)) return null;
-
-    const subPath = pathname.slice(API_PREFIX.length);
-    const cluster = this.resolveClusterManager();
-
-    if (!cluster || !cluster.isStarted()) {
+  /**
+   * Returns either the live ClusterManager (when started) or a 503
+   * Response that the caller should pipe straight back to the client.
+   * Use this in handlers that can't function without a running cluster.
+   */
+  private requireStarted(cluster: ClusterManager | null): ClusterManager | Response {
+    if (!cluster) {
+      return errorResponse('Agent Cluster not configured (or requires SQLite)', 503);
+    }
+    if (!cluster.isStarted()) {
       return errorResponse('Agent Cluster not running', 503);
     }
+    return cluster;
+  }
+
+  async handle(pathname: string, req: Request): Promise<Response | null> {
+    const subPath = pathname.slice(API_PREFIX.length);
+    const cluster = this.resolveClusterManager();
 
     if (req.method === 'GET') {
       return this.handleGet(subPath, req, cluster);
@@ -68,24 +84,41 @@ export class ClusterAPIBackend {
     return errorResponse('Method not allowed', 405);
   }
 
-  private handleGet(subPath: string, req: Request, cluster: ClusterManager): Response {
+  private handleGet(subPath: string, req: Request, cluster: ClusterManager | null): Response {
     const url = new URL(req.url);
 
+    // ── Always-on routes (work even when cluster is stopped) ──
     switch (subPath) {
-      case '/status':
+      case '':
       case '/':
-        return jsonResponse(cluster.getStatus());
+      case '/status': {
+        if (!cluster) {
+          return errorResponse('Agent Cluster not configured (or requires SQLite)', 503);
+        }
+        return jsonResponse({
+          started: cluster.isStarted(),
+          status: cluster.getStatus(),
+        });
+      }
 
       case '/templates': {
-        // Templates are static config — read directly from ClusterManager's hub config.
-        // We access this via the hub's config, which mirrors the original config.
-        const hub = cluster.getHub();
-        const config = (hub as unknown as { config: { workerTemplates: Record<string, unknown> } }).config;
-        const templates = Object.entries(config?.workerTemplates ?? {}).map(([name, t]) => ({
+        if (!cluster) {
+          return errorResponse('Agent Cluster not configured (or requires SQLite)', 503);
+        }
+        const config = cluster.getConfig();
+        const templates = Object.entries(config.workerTemplates).map(([name, t]) => ({
           name,
-          ...(t as Record<string, unknown>),
+          type: t.type,
+          command: t.command,
+          maxConcurrent: t.maxConcurrent,
+          capabilities: t.capabilities,
+          costTier: t.costTier,
         }));
-        return jsonResponse({ templates, projectDefaults: {} });
+        const projectDefaults: Record<string, string> = {};
+        for (const [alias, p] of Object.entries(config.projects)) {
+          projectDefaults[alias] = p.workerPreference;
+        }
+        return jsonResponse({ templates, projectDefaults });
       }
 
       case '/projects': {
@@ -114,51 +147,60 @@ export class ClusterAPIBackend {
         }
       }
 
+      // Fall through to gated routes below.
+    }
+
+    // ── Gated routes (require a started cluster) ──
+    const gated = this.requireStarted(cluster);
+    if (gated instanceof Response) return gated;
+    const live = gated;
+
+    switch (subPath) {
       case '/workers':
-        return jsonResponse(cluster.getHub().workerRegistry.getAll());
+        return jsonResponse(live.getHub().workerRegistry.getAll());
 
       case '/jobs': {
         const limit = parseInt(url.searchParams.get('limit') || '50', 10);
         const offset = parseInt(url.searchParams.get('offset') || '0', 10);
         const status = url.searchParams.get('status') || undefined;
-        const jobs = cluster.getScheduler().getJobs({ status, limit, offset });
+        const jobs = live.getScheduler().getJobs({ status, limit, offset });
         return jsonResponse(jobs);
       }
 
       case '/tasks':
-        return jsonResponse(cluster.getScheduler().getActiveTasks());
+        return jsonResponse(live.getScheduler().getActiveTasks());
 
       case '/events': {
         const limit = parseInt(url.searchParams.get('limit') || '50', 10);
         const offset = parseInt(url.searchParams.get('offset') || '0', 10);
         const type = url.searchParams.get('type') || undefined;
-        const events = cluster.getHub().eventLog.query({ type: type as ClusterEventType | undefined, limit, offset });
+        const events = live.getHub().eventLog.query({ type: type as ClusterEventType | undefined, limit, offset });
         return jsonResponse(events);
       }
 
       case '/locks':
-        return jsonResponse(cluster.getHub().lockManager.getActiveLocks());
+        return jsonResponse(live.getHub().lockManager.getActiveLocks());
 
       case '/help':
-        return jsonResponse(cluster.getHub().getPendingHelpRequests());
+        return jsonResponse(live.getHub().getPendingHelpRequests());
 
       case '/stream':
-        return this.handleSSEStream(cluster);
+        return this.handleSSEStream(live);
 
       default: {
         // /jobs/:id
         const jobMatch = subPath.match(/^\/jobs\/([^/]+)$/);
         if (jobMatch) {
-          const job = cluster.getScheduler().getJob(jobMatch[1]);
+          const job = live.getScheduler().getJob(jobMatch[1]);
           if (!job) return errorResponse('Job not found', 404);
-          const tasks = cluster.getScheduler().getJobTasks(jobMatch[1]);
+          const tasks = live.getScheduler().getJobTasks(jobMatch[1]);
           return jsonResponse({ ...job, tasks });
         }
 
         // /tasks/:id/events
         const taskEventsMatch = subPath.match(/^\/tasks\/([^/]+)\/events$/);
         if (taskEventsMatch) {
-          const events = cluster.getHub().eventLog.query({ taskId: taskEventsMatch[1] });
+          const events = live.getHub().eventLog.query({ taskId: taskEventsMatch[1] });
           return jsonResponse(events);
         }
 
@@ -167,7 +209,43 @@ export class ClusterAPIBackend {
     }
   }
 
-  private async handlePost(subPath: string, req: Request, cluster: ClusterManager): Promise<Response> {
+  private async handlePost(subPath: string, req: Request, cluster: ClusterManager | null): Promise<Response> {
+    // ── Always-on control plane (work even when cluster is stopped) ──
+    if (subPath === '/start') {
+      if (!cluster) {
+        return errorResponse('Agent Cluster not configured (or requires SQLite)', 503);
+      }
+      if (!cluster.isStarted()) {
+        try {
+          await cluster.start();
+        } catch (err) {
+          logger.error('[ClusterAPIBackend] /start failed:', err);
+          return errorResponse(err instanceof Error ? err.message : String(err), 500);
+        }
+      }
+      return jsonResponse({ started: true });
+    }
+
+    if (subPath === '/stop') {
+      if (!cluster) {
+        return errorResponse('Agent Cluster not configured (or requires SQLite)', 503);
+      }
+      if (cluster.isStarted()) {
+        try {
+          await cluster.stop();
+        } catch (err) {
+          logger.error('[ClusterAPIBackend] /stop failed:', err);
+          return errorResponse(err instanceof Error ? err.message : String(err), 500);
+        }
+      }
+      return jsonResponse({ started: false });
+    }
+
+    // ── Gated routes (require a started cluster) ──
+    const gated = this.requireStarted(cluster);
+    if (gated instanceof Response) return gated;
+    const live = gated;
+
     switch (subPath) {
       case '/jobs': {
         let body: { project?: string; description?: string; workerTemplate?: string };
@@ -179,7 +257,7 @@ export class ClusterAPIBackend {
         if (!body.project || !body.description) {
           return errorResponse('Missing required fields: project, description', 400);
         }
-        const task = await cluster.submitTask(body.project, body.description, {
+        const task = await live.submitTask(body.project, body.description, {
           workerTemplate: body.workerTemplate,
         });
         if (!task) {
@@ -189,12 +267,12 @@ export class ClusterAPIBackend {
       }
 
       case '/pause': {
-        cluster.pause();
+        live.pause();
         return jsonResponse({ paused: true });
       }
 
       case '/resume': {
-        cluster.resume();
+        live.resume();
         return jsonResponse({ paused: false });
       }
 
@@ -202,7 +280,7 @@ export class ClusterAPIBackend {
         // /workers/:id/kill
         const killMatch = subPath.match(/^\/workers\/([^/]+)\/kill$/);
         if (killMatch) {
-          const killed = await cluster.killWorker(killMatch[1]);
+          const killed = await live.killWorker(killMatch[1]);
           return jsonResponse({ killed });
         }
 
@@ -218,7 +296,7 @@ export class ClusterAPIBackend {
           if (!body.answer) {
             return errorResponse('Missing required field: answer', 400);
           }
-          const answered = cluster.answerHelpRequest(answerMatch[1], body.answer, body.answeredBy || 'human');
+          const answered = live.answerHelpRequest(answerMatch[1], body.answer, body.answeredBy || 'human');
           return jsonResponse({ answered });
         }
 

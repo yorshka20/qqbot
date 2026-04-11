@@ -1,6 +1,5 @@
 import {
   getClusterApiBase,
-  getClusterControlApiBase,
   getFileApiBase,
   getInsightsApiBase,
   getMemoryApiBase,
@@ -62,10 +61,6 @@ function clusterApiBase(): string {
 
 function projectsApiBase(): string {
   return getProjectsApiBase();
-}
-
-function clusterControlApiBase(): string {
-  return getClusterControlApiBase();
 }
 
 export async function listFiles(path: string): Promise<ListResponse> {
@@ -463,26 +458,22 @@ export async function listProjects(): Promise<ProjectsResponse> {
 // Agent Cluster API
 // ────────────────────────────────────────────────────────────────────────────
 
-export async function getClusterStatus(): Promise<ClusterStatus> {
+/**
+ * Cluster status snapshot. Returned by `/api/cluster/status` whether or
+ * not the cluster is currently started — `started` reflects the live
+ * state and `status` is always populated (counters are zero when stopped).
+ */
+export async function getClusterStatus(): Promise<{ started: boolean; status: ClusterStatus }> {
   const res = await fetch(`${clusterApiBase()}/status`);
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Get cluster status failed: ${res.status}`);
   }
-  return res.json() as Promise<ClusterStatus>;
-}
-
-export async function getClusterControlStatus(): Promise<{ started: boolean; status: ClusterStatus }> {
-  const res = await fetch(`${clusterControlApiBase()}/status`);
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(err.error ?? `Get cluster control status failed: ${res.status}`);
-  }
   return res.json() as Promise<{ started: boolean; status: ClusterStatus }>;
 }
 
 export async function startCluster(): Promise<{ started: boolean }> {
-  const res = await fetch(`${clusterControlApiBase()}/start`, { method: 'POST' });
+  const res = await fetch(`${clusterApiBase()}/start`, { method: 'POST' });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Start cluster failed: ${res.status}`);
@@ -491,7 +482,7 @@ export async function startCluster(): Promise<{ started: boolean }> {
 }
 
 export async function stopCluster(): Promise<{ started: boolean }> {
-  const res = await fetch(`${clusterControlApiBase()}/stop`, { method: 'POST' });
+  const res = await fetch(`${clusterApiBase()}/stop`, { method: 'POST' });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Stop cluster failed: ${res.status}`);

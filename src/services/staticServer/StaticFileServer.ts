@@ -72,7 +72,13 @@ export class StaticFileServer implements StaticFileServerInstance {
     const { pathname } = url;
 
     for (const backend of this.backends) {
-      if (!pathname.startsWith(backend.prefix)) continue;
+      // Strict prefix match: the next char must be '/' or end-of-string.
+      // A loose startsWith would let a backend with prefix "/api/cluster"
+      // shadow another with prefix "/api/cluster-control", because dispatch
+      // order is list order and the first match wins.
+      if (pathname !== backend.prefix && !pathname.startsWith(`${backend.prefix}/`)) {
+        continue;
+      }
 
       // CORS preflight
       if (req.method === 'OPTIONS') {

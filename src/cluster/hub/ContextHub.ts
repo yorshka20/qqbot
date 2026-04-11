@@ -27,7 +27,6 @@ import type {
   HubUpdate,
   TaskCandidate,
 } from '../types';
-import type { ClusterAPIRouter } from './ClusterAPIRouter';
 import { EventLog } from './EventLog';
 import { HubMCPServer } from './HubMCPServer';
 import { LockManager } from './LockManager';
@@ -77,7 +76,6 @@ export class ContextHub {
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
   private dispatchCallback: DispatchCallback | null = null;
   private reportCallback: ReportCallback | null = null;
-  private apiRouter: ClusterAPIRouter | null = null;
   private sseSubscribers = new Set<SSESubscriber>();
   private helpRequests = new Map<string, HelpRequest>();
 
@@ -92,13 +90,6 @@ export class ContextHub {
     this.mcpServer = new HubMCPServer(this);
 
     this.loadHelpRequests();
-  }
-
-  /**
-   * Set the API router for handling /api/cluster/* requests.
-   */
-  setAPIRouter(router: ClusterAPIRouter): void {
-    this.apiRouter = router;
   }
 
   /**
@@ -492,11 +483,10 @@ export class ContextHub {
         return this.mcpServer.handleRequest(req);
       }
 
-      // Route /api/cluster/* to the API router (WebUI endpoints)
-      if (this.apiRouter && path.startsWith('/api/cluster')) {
-        const result = await this.apiRouter.handle(req, url, headers);
-        if (result) return result;
-      }
+      // /api/cluster/* used to be handled here too, but the WebUI never
+      // hit ContextHub directly — it always goes through StaticServer's
+      // ClusterAPIBackend. ContextHub now only serves /mcp (worker MCP)
+      // and /hub/* (legacy worker REST endpoints below).
 
       // Extract worker ID from header
       const workerId = req.headers.get('X-Worker-Id') || 'unknown';
