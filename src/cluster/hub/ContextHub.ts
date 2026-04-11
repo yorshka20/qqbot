@@ -1,9 +1,29 @@
 /**
  * ContextHub — central communication hub for the Agent Cluster.
  *
- * Runs as an HTTP server inside the QQ Bot process.
- * Exposes MCP tool endpoints: hub_sync, hub_claim, hub_report, hub_ask, hub_message.
- * Also hub_dispatch and hub_directive for planner workers.
+ * Runs an HTTP server inside the QQ Bot process. The only HTTP route is
+ * `/mcp`, served by `HubMCPServer` over the MCP Streamable HTTP transport.
+ * Workers connect via the MCP config file written by
+ * `WorkerPool.generateMCPConfig()`.
+ *
+ * MCP tools exposed:
+ *   - Common (any role):
+ *       hub_sync   — poll events / messages / directives since last cursor
+ *       hub_claim  — acquire file locks before editing
+ *       hub_report — report progress / completion / failure / blocked
+ *       hub_ask    — escalate to a human (decision / clarification / ...)
+ *       hub_message — message another worker
+ *   - Planner-only (Phase 2):
+ *       hub_dispatch  — queue a new task (legacy; use hub_spawn for Phase 3)
+ *       hub_directive — push an instruction into a worker's message box
+ *   - Planner-only (Phase 3 multi-agent):
+ *       hub_spawn      — spawn a child executor worker for a subtask
+ *       hub_query_task — non-blocking snapshot of a child task
+ *       hub_wait_task  — block until a child reaches terminal status
+ *
+ * The Phase 1 `/hub/*` REST stubs were removed in batch 15. The WebUI
+ * never connected to ContextHub directly — it has always gone through
+ * StaticServer's ClusterAPIBackend.
  */
 
 import type { Database } from 'bun:sqlite';
@@ -631,11 +651,25 @@ export class ContextHub {
 
   // ── HTTP handler ──
 
+  /**
+   * The hub's Bun.serve fetch handler. After Phase 2 (MCP wiring) the
+   * **only** route this server speaks is `/mcp`. All worker coordination
+   * goes through the MCP transport — the Phase 1 `/hub/*` REST stubs
+   * (sync / claim / report / ask / message / dispatch / directive +
+   * GET status/events/locks/help) were dead code from before MCP shipped
+   * and got removed in batch 15. The WebUI never hit ContextHub directly;
+   * it has always gone through StaticServer's ClusterAPIBackend.
+   *
+   * Anything that isn't `/mcp` returns 404 — workers shouldn't see it
+   * unless something is misconfigured, in which case the 404 is the
+   * fastest way to surface the problem.
+   */
   private async handleRequest(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const path = url.pathname;
 
-    // CORS headers
+    // CORS headers — only used for the 404 / OPTIONS path now; the MCP
+    // transport sets its own headers.
     const headers = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -648,76 +682,11 @@ export class ContextHub {
     }
 
     try {
-      // Route /mcp/* to the MCP server (worker tool calls). This must come
-      // BEFORE the REST API check so the MCP transport gets full control
-      // of its endpoint and can handle GET (SSE), POST (tool calls), and
-      // DELETE (session termination).
+      // Route /mcp/* to the MCP server (worker tool calls). The MCP
+      // transport handles GET (SSE), POST (tool calls), and DELETE
+      // (session termination) on its own.
       if (path === '/mcp' || path.startsWith('/mcp/')) {
         return this.mcpServer.handleRequest(req);
-      }
-
-      // /api/cluster/* used to be handled here too, but the WebUI never
-      // hit ContextHub directly — it always goes through StaticServer's
-      // ClusterAPIBackend. ContextHub now only serves /mcp (worker MCP)
-      // and /hub/* (legacy worker REST endpoints below).
-
-      // Extract worker ID from header
-      const workerId = req.headers.get('X-Worker-Id') || 'unknown';
-
-      // MCP tool endpoints
-      if (req.method === 'POST') {
-        const body = (await req.json()) as Record<string, unknown>;
-
-        switch (path) {
-          case '/hub/sync':
-            return Response.json(this.handleSync(workerId), { headers });
-
-          case '/hub/claim':
-            return Response.json(this.handleClaim(workerId, body as unknown as HubClaimInput), { headers });
-
-          case '/hub/report':
-            return Response.json(this.handleReport(workerId, body as unknown as HubReportInput), { headers });
-
-          case '/hub/ask':
-            return Response.json(this.handleAsk(workerId, body as unknown as HubAskInput), { headers });
-
-          case '/hub/message':
-            return Response.json(this.handleMessage(workerId, body as unknown as HubMessageInput), { headers });
-
-          case '/hub/dispatch':
-            return Response.json(await this.handleDispatch(workerId, body as unknown as HubDispatchInput), { headers });
-
-          case '/hub/directive':
-            return Response.json(this.handleDirective(workerId, body as unknown as HubDirectiveInput), { headers });
-        }
-      }
-
-      // Query endpoints (for WebUI / debugging)
-      if (req.method === 'GET') {
-        switch (path) {
-          case '/hub/status':
-            return Response.json(
-              {
-                activeWorkers: this.workerRegistry.getActiveCount(),
-                workers: this.workerRegistry.getAll(),
-                locks: this.lockManager.getActiveLocks(),
-                pendingHelp: this.getPendingHelpRequests().length,
-              },
-              { headers },
-            );
-
-          case '/hub/events': {
-            const limit = parseInt(url.searchParams.get('limit') || '50', 10);
-            const offset = parseInt(url.searchParams.get('offset') || '0', 10);
-            return Response.json(this.eventLog.query({ limit, offset }), { headers });
-          }
-
-          case '/hub/locks':
-            return Response.json(this.lockManager.getActiveLocks(), { headers });
-
-          case '/hub/help':
-            return Response.json(this.getPendingHelpRequests(), { headers });
-        }
       }
 
       return Response.json({ error: 'Not found' }, { status: 404, headers });

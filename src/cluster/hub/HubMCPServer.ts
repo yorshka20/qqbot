@@ -8,18 +8,22 @@
  *
  * ## Why this exists
  *
- * Pre-Phase-2 the `ContextHub` had a custom `/hub/sync` REST API that the
- * workers were never wired to use — the `WorkerPool.generateMCPConfig()`
- * helper wrote a claude-CLI-shape MCP config file but the spawned worker
- * binaries never received the `--mcp-config` flag, and even if they had,
- * the hub didn't speak MCP at the URL they would have connected to.
+ * Pre-Phase-2 the `ContextHub` had a set of custom `/hub/*` REST stubs
+ * (sync / claim / report / ask / message / dispatch / directive) that no
+ * worker actually called — `WorkerPool.generateMCPConfig()` was writing
+ * an MCP config file but the spawned worker binaries never received the
+ * `--mcp-config` flag, and even if they had, the hub didn't speak MCP at
+ * the URL they would have connected to.
  *
- * This module closes both gaps. After Phase 2:
+ * Phase 2 closed both gaps:
  *
  *   1. Hub speaks MCP Streamable HTTP at `/mcp`
  *   2. Workers' MCP config points to `http://hub-host:hub-port/mcp`
  *   3. Each backend (claude/codex/gemini/minimax) wires that config into
  *      its native CLI invocation
+ *
+ * Batch 15 deleted the dead `/hub/*` REST stubs entirely. ContextHub now
+ * only speaks `/mcp`.
  *
  * ## Worker identification
  *

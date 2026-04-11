@@ -40,6 +40,7 @@ import type {
 } from '../../types';
 import { DispatchConfirmDialog } from './components/DispatchConfirmDialog';
 import { TicketCard } from './components/TicketCard';
+import { TicketDetailPanel } from './components/TicketDetailPanel';
 import { TicketEditor } from './components/TicketEditor';
 import { TicketsList } from './components/TicketsList';
 import { DEFAULT_TICKET_BODY } from './utils';
@@ -64,6 +65,14 @@ export function TicketsPage() {
 
   const [tickets, setTickets] = useState<TicketFrontmatter[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /**
+   * Full ticket (with body) for the currently-selected row, fetched on
+   * demand when `selectedId` changes. The list endpoint only returns
+   * frontmatter, so we can't render the detail panel without an extra
+   * GET. Refetched after edit / dispatch so the panel reflects fresh state.
+   */
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const [loadingSelected, setLoadingSelected] = useState(false);
 
   const [templates, setTemplates] = useState<ClusterTemplatesResponse | null>(null);
 
@@ -91,6 +100,43 @@ export function TicketsPage() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Fetch the full ticket (with body) whenever the selected row changes
+  // or its frontmatter timestamp moves. The list endpoint only returns
+  // frontmatter, so the detail panel needs an extra GET for the body.
+  // The `selectedUpdated` dep makes the effect re-fire when the listing
+  // refresh brings a newer `updated` for the selected row (e.g. after
+  // dispatch stamps `dispatchedJobId`), so the panel picks it up without
+  // an extra round trip.
+  const selectedUpdated = tickets.find((t) => t.id === selectedId)?.updated;
+  useEffect(() => {
+    if (!selectedId) {
+      setSelectedTicket(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingSelected(true);
+    // Capture the trigger so the static analyzer sees both deps as
+    // load-bearing — `selectedUpdated` is the "row changed on server"
+    // signal even though we don't pass it to getTicket itself.
+    const refetchKey = selectedUpdated ?? '<initial>';
+    getTicket(selectedId)
+      .then((t) => {
+        if (!cancelled) setSelectedTicket(t);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn(`[TicketsPage] getTicket failed for ${selectedId} (refetchKey=${refetchKey}):`, err);
+          setSelectedTicket(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSelected(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, selectedUpdated]);
 
   // Templates: fetch once on mount (config-static, doesn't change at runtime
   // unless cluster restarts). Same strategy as ClusterPage.
@@ -300,7 +346,7 @@ export function TicketsPage() {
         </div>
 
         {/* Body */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-zinc-100 dark:bg-zinc-900">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-zinc-100 dark:bg-zinc-900 space-y-4">
           <TicketCard title="All tickets" count={tickets.length}>
             <TicketsList
               tickets={tickets}
@@ -311,6 +357,20 @@ export function TicketsPage() {
               onDelete={handleDelete}
             />
           </TicketCard>
+
+          {/* Detail panel: appears below the list when a row is selected.
+              Shows the ticket frontmatter / body / cluster job task tree
+              (if dispatched) so the user can read the original prompt and
+              live execution side by side without bouncing to the cluster
+              page. Polling lives inside TicketDetailPanel itself. */}
+          {selectedId && selectedTicket && (
+            <TicketDetailPanel ticket={selectedTicket} onClose={() => setSelectedId(null)} />
+          )}
+          {selectedId && !selectedTicket && loadingSelected && (
+            <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-3 text-xs text-zinc-500 dark:text-zinc-400">
+              Loading ticket {selectedId}…
+            </div>
+          )}
         </div>
       </div>
 
