@@ -5,6 +5,6 @@ import type { NormalizedNoticeEvent } from '../types';
 
 export class NoticeHandler {
   handle(event: NormalizedNoticeEvent): void {
-    logger.debug(`[Notice] ${event.noticeType}: ${JSON.stringify(event)}`);
+    logger.info(`[Notice] ${event.noticeType}: ${JSON.stringify(event)}`);
   }
 }
