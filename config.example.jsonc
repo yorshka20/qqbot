@@ -96,9 +96,9 @@
   //   1. Client is silent unless host explicitly dispatches via `/lan @<id>`.
   //   2. Dispatch is routed to a specific client by `clientId` (no broadcast).
   //   3. Client replies / sendToUser go back through host → original IM platform.
-  //   4. zhihu/wechat/staticServer etc. can be skipped per role via the
-  //      role-scoped disable lists below (PluginInitializer + bootstrap apply
-  //      them BEFORE plugin instantiation; no DI side effects on disabled).
+  //   4. zhihu/wechat plugins and StaticServer backend modules can be skipped per
+  //      role via the lists below (PluginInitializer + bootstrap apply them BEFORE
+  //      plugin instantiation where applicable).
   "lanRelay": {
     "enabled": false,
     "instanceRole": "host", // 'host' | 'client'
@@ -133,8 +133,9 @@
       // zhihu / wechat are data-collection plugins that should only run on
       // the host (single-source-of-truth). Add others as needed.
       "disabledPlugins": ["zhihuFeed", "wechatIngest"],
-      // staticServer hosts data centrally on host; client doesn't need it.
-      "disabledServices": ["staticServer"]
+      "disabledServices": [],
+      // Optional: omit disk file routes on this client (host holds shared files). See createBackends registry for ids.
+      "disabledStaticBackends": ["files", "output"]
     }
   },
   // Bot configuration

@@ -2,7 +2,7 @@
 // Used by AgentLoop to create daily/weekly/monthly reports
 
 import { inject, injectable } from 'tsyringe';
-import { getStaticFileServer } from '@/services/staticServer';
+import { getStaticServer } from '@/services/staticServer';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { ReportType, WechatReportService } from '@/services/wechat/WechatReportService';
 import { Tool } from '@/tools/decorators';
@@ -110,7 +110,7 @@ export class WechatReportToolExecutor extends BaseToolExecutor {
       // Generate report URL for webui
       let reportUrl: string | null = null;
       try {
-        const staticServer = getStaticFileServer();
+        const staticServer = getStaticServer();
         // Use webui base URL (same host, port 5173) instead of static server URL
         const staticUrl = new URL(staticServer.getBaseURL());
         const baseUrl = `${staticUrl.protocol}//${staticUrl.hostname}:5173`;

@@ -31,7 +31,7 @@ import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
 import type { MCPSystem } from '@/services/mcp/MCPInitializer';
 import { MCPInitializer } from '@/services/mcp/MCPInitializer';
 import { RetrievalService } from '@/services/retrieval';
-import { initStaticFileServer } from '@/services/staticServer';
+import { initStaticServer } from '@/services/staticServer';
 import { logger } from '@/utils/logger';
 import { registerConnectionClass } from './connection/ConnectionManager';
 
@@ -98,14 +98,12 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     );
   }
 
-  // ── Static file server (must precede ConversationInitializer — ImageGenerationService needs it) ──
-  // LAN relay role filter: client mode skips staticServer (data is centralized
-  // on host per C2 decision). Use lanRelay.client.disabledServices to opt out.
+  // ── StaticServer (local HTTP + backends; must precede ConversationInitializer — ImageGenerationService needs it) ──
+  // Optional: `lanRelay.*.disabledStaticBackends` omits specific backend modules (see createBackends registry).
   const staticServerConfig = config.getStaticServerConfig();
-  if (staticServerConfig && !config.isServiceDisabledByRole('staticServer')) {
-    await initStaticFileServer(staticServerConfig);
-  } else if (staticServerConfig && config.isServiceDisabledByRole('staticServer')) {
-    logger.info('[Bootstrap] Skipped staticServer (disabled by lanRelay role filter)');
+  if (staticServerConfig) {
+    const disabledBackendIds = config.getDisabledStaticBackendIds();
+    await initStaticServer(staticServerConfig, { disabledBackendIds });
   }
 
   // ── ProjectRegistry (independent, before ClaudeCode so it can be resolved by both) ──

@@ -7,7 +7,7 @@
 import 'reflect-metadata';
 
 import { bootstrapApp } from '@/core/bootstrap';
-import { stopStaticFileServer } from '@/services/staticServer';
+import { stopStaticServer } from '@/services/staticServer';
 import { logger } from '@/utils/logger';
 
 const timeoutMs = (() => {
@@ -27,7 +27,7 @@ async function smokeTest() {
   const { conversationComponents } = await bootstrapApp(configPath, { skipPluginEnable: true });
 
   // ── Cleanup ──
-  stopStaticFileServer();
+  stopStaticServer();
   await conversationComponents.databaseManager.close();
 
   logger.info('[SmokeTest] ✅ Smoke test passed — all initialization stages completed successfully');

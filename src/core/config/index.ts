@@ -24,7 +24,6 @@ import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './typ
 import type { RAGConfig } from './types/rag';
 import type { TTSConfig } from './types/tts';
 import type { VideoKnowledgeConfig } from './types/videoKnowledge';
-
 // Re-export runtime/conversation config (merged from former src/config)
 export { ConversationConfigService, type SessionType } from '../../conversation/ConversationConfigService';
 export { updateEnabledDisabled } from './ConfigUtils';
@@ -304,6 +303,26 @@ export class Config {
     }
     const roleCfg = lr.instanceRole === 'host' ? lr.host : lr.client;
     return roleCfg?.disabledServices?.includes(serviceName) === true;
+  }
+
+  /**
+   * Backend module ids StaticServer should omit — **only** from `lanRelay.host` /
+   * `lanRelay.client` → `disabledStaticBackends` in config (see `createBackends` registry comment for valid ids).
+   */
+  getDisabledStaticBackendIds(): string[] {
+    const lr = this.config.lanRelay;
+    if (!lr?.enabled || !lr.instanceRole) {
+      return [];
+    }
+    const roleCfg = lr.instanceRole === 'host' ? lr.host : lr.client;
+    const ids = new Set<string>();
+    for (const raw of roleCfg?.disabledStaticBackends ?? []) {
+      const id = raw?.trim();
+      if (id) {
+        ids.add(id);
+      }
+    }
+    return [...ids].sort();
   }
 
   getProtocolConfig(name: ProtocolName): ProtocolConfig | undefined {

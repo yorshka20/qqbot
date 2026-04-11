@@ -1,7 +1,7 @@
 /**
  * Pure static file hosting for the output directory.
  * Serves only GET /output/* with path traversal protection.
- * Used by ImageGenerationService and other consumers of getFileURL().
+ * Use `outputPublicFileUrl(staticServer.getBaseURL(), relativePath)` for public URLs.
  *
  * Caching strategy:
  *  - ETag (weak, based on mtime + size) for conditional requests (304 Not Modified)
@@ -100,4 +100,14 @@ export class OutputStaticHost implements Backend {
       return new Response('File not found', { status: 404 });
     }
   }
+}
+
+/**
+ * Public URL for a file served by {@link OutputStaticHost} at `GET /output/<relativePath>`.
+ * @param staticServerBaseURL - `StaticServer.getBaseURL()` (trailing slash is stripped).
+ */
+export function outputPublicFileUrl(staticServerBaseURL: string, relativePath: string): string {
+  const base = staticServerBaseURL.replace(/\/$/, '');
+  const normalized = relativePath.replace(/\\/g, '/');
+  return `${base}/output/${normalized}`;
 }

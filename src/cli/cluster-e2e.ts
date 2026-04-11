@@ -65,7 +65,7 @@ import type { EventEntry, TaskRecord } from '@/cluster/types';
 import { bootstrapApp } from '@/core/bootstrap';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { stopStaticFileServer } from '@/services/staticServer';
+import { stopStaticServer } from '@/services/staticServer';
 import { logger } from '@/utils/logger';
 
 /** Supported values for --mcp-tool. Empty string = sentinel mode. */
@@ -719,7 +719,7 @@ async function main() {
 
 async function teardown(components: Awaited<ReturnType<typeof bootstrapApp>>['conversationComponents']): Promise<void> {
   try {
-    stopStaticFileServer();
+    stopStaticServer();
   } catch {
     // best effort
   }

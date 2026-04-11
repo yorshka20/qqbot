@@ -1,6 +1,6 @@
 // Image Generation Service - provides image generation capabilities
 
-import { getStaticFileServer, type StaticFileServer } from '@/services/staticServer';
+import { getStaticServer, outputPublicFileUrl, type StaticServer } from '@/services/staticServer';
 import type { AIManager } from '../AIManager';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
 import { isImage2ImageCapability } from '../capabilities/Image2ImageCapability';
@@ -18,15 +18,12 @@ import type { ProviderSelector } from '../ProviderSelector';
  * Image Generation Service
  * Provides text-to-image and image-to-image generation capabilities.
  *
- * The static file server is resolved lazily on first use rather than in the
- * constructor — LAN-relay client instances disable staticServer entirely
- * (it's centralized on host) but still construct AIService at boot time.
- * Constructing this service must not fail in that case; only actual image
- * generation calls (which a silent client shouldn't make) will hit the
- * "static file server not initialized" error.
+ * Resolves **StaticServer** (local HTTP) lazily on first use. If `staticServer`
+ * is omitted from bot config, init never runs and public URL generation fails.
+ * If LAN disables the `output` backend, URLs built with `outputPublicFileUrl` will 404.
  */
 export class ImageGenerationService {
-  private staticFileServerCache: StaticFileServer | null = null;
+  private staticServerCache: StaticServer | null = null;
 
   constructor(
     private aiManager: AIManager,
@@ -34,11 +31,11 @@ export class ImageGenerationService {
   ) {}
 
   /** Lazy accessor — see class doc for why this is not resolved in the constructor. */
-  private get staticFileServer(): StaticFileServer {
-    if (!this.staticFileServerCache) {
-      this.staticFileServerCache = getStaticFileServer();
+  private get staticServer(): StaticServer {
+    if (!this.staticServerCache) {
+      this.staticServerCache = getStaticServer();
     }
-    return this.staticFileServerCache;
+    return this.staticServerCache;
   }
 
   /**
@@ -55,7 +52,7 @@ export class ImageGenerationService {
     const convertedImages = response.images.map((image) => {
       // Priority 1: Convert relativePath to URL (relativePath is removed from final output)
       if (image.relativePath) {
-        const url = this.staticFileServer.getFileURL(image.relativePath);
+        const url = outputPublicFileUrl(this.staticServer.getBaseURL(), image.relativePath);
         return { url };
       }
       // Priority 2: Keep external URL as-is (from providers like LocalText2ImageProvider)

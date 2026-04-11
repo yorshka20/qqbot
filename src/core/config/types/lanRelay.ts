@@ -27,13 +27,16 @@ export type LanRelayInstanceRole = 'host' | 'client';
  * disabledPlugins: plugin names that should NOT be instantiated in this role.
  *                  Filtering happens BEFORE PluginManager.loadPlugins so the
  *                  plugin code never runs (no DI side effects, no db opens).
- * disabledServices: service-config keys that should be skipped in bootstrap.
- *                  Currently used to skip zhihu/wechat data-collection
- *                  services on the client.
+ * disabledServices: other bootstrap toggles (not used for StaticServer — use
+ *                  `disabledStaticBackends` for HTTP backend modules).
+ * disabledStaticBackends: StaticServer backend module ids to exclude on this role
+ *                  (strings like `"files"`, `"output"` — see `createBackends` registry).
  */
 export interface LanRelayRoleConfig {
   disabledPlugins?: string[];
   disabledServices?: string[];
+  /** StaticServer backend module ids to omit (config only; no code presets). */
+  disabledStaticBackends?: string[];
 }
 
 /**

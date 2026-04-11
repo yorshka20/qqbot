@@ -1,6 +1,9 @@
 /**
- * Backend registry — creates all API backends for the static file server.
- * To add a new backend: create a file in this directory, then add it to createBackends().
+ * Backend registry — creates API backends for **StaticServer**.
+ * To add a backend: register in `buildBackendRegistry()` with a stable `id` string.
+ *
+ * Valid `id` values (for `lanRelay.*.disabledStaticBackends` in config.d):
+ *   files, cluster, lan, tickets, reports, insights, moments, zhihu, qdrant, stats, memory, output
  */
 
 import { ClusterAPIBackend } from './ClusterAPIBackend';
@@ -20,23 +23,43 @@ import { ZhihuBackend } from './ZhihuBackend';
 export type { Backend } from './types';
 export { errorResponse, jsonResponse } from './types';
 
-/**
- * Create all backends. Called once during server initialization.
- * @param baseDir - Base directory for file-serving backends.
- */
-export function createBackends(baseDir: string): Backend[] {
+type BackendFactory = { id: string; create: (baseDir: string) => Backend };
+
+function buildBackendRegistry(): BackendFactory[] {
   return [
-    new FileManagerBackend(baseDir),
-    new ClusterAPIBackend(),
-    new LanAPIBackend(),
-    new TicketBackend(),
-    new ReportBackend(),
-    new InsightsBackend(),
-    new MomentsBackend(),
-    new ZhihuBackend(),
-    new QdrantExplorerBackend(),
-    new DailyStatsBackend(),
-    new MemoryStatusBackend(),
-    new OutputStaticHost(baseDir),
+    { id: 'files', create: (d) => new FileManagerBackend(d) },
+    { id: 'cluster', create: () => new ClusterAPIBackend() },
+    { id: 'lan', create: () => new LanAPIBackend() },
+    { id: 'tickets', create: () => new TicketBackend() },
+    { id: 'reports', create: () => new ReportBackend() },
+    { id: 'insights', create: () => new InsightsBackend() },
+    { id: 'moments', create: () => new MomentsBackend() },
+    { id: 'zhihu', create: () => new ZhihuBackend() },
+    { id: 'qdrant', create: () => new QdrantExplorerBackend() },
+    { id: 'stats', create: () => new DailyStatsBackend() },
+    { id: 'memory', create: () => new MemoryStatusBackend() },
+    { id: 'output', create: (d) => new OutputStaticHost(d) },
   ];
+}
+
+const registry = buildBackendRegistry();
+
+/**
+ * Create backends for **StaticServer**. Order matches registration order (prefix dispatch).
+ * @param baseDir - Base directory for file-serving backends.
+ * @param options.disabledIds - Backend ids to omit (from `lanRelay.*.disabledStaticBackends`).
+ */
+export function createBackends(
+  baseDir: string,
+  options?: { disabledIds?: ReadonlySet<string> },
+): Backend[] {
+  const disabled = options?.disabledIds ?? new Set<string>();
+  const out: Backend[] = [];
+  for (const entry of registry) {
+    if (disabled.has(entry.id)) {
+      continue;
+    }
+    out.push(entry.create(baseDir));
+  }
+  return out;
 }

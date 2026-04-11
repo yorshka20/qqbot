@@ -109,7 +109,8 @@ All envelopes are `{ v: 1, type, id?, payload }` JSON. Versioning lives in
     "publicAddress": "192.168.50.42",
     "client": {
       "disabledPlugins": ["zhihuFeed", "wechatIngest"],
-      "disabledServices": ["staticServer"]
+      // Optional: StaticServer backend module ids to omit (see `createBackends` in staticServer/backends/index.ts).
+      "disabledStaticBackends": ["files", "output"]
     }
   }
 }

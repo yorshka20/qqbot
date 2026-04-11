@@ -1,6 +1,6 @@
 # Bot Web UI
 
-React + Vite admin UI for the QQ bot. Backed by 14 HTTP backends mounted on the bot's `StaticFileServer` (default port 8888): file browser, reports, insights, zhihu, moments, qdrant explorer, daily stats, memory, cluster, tickets, lan, projects, output static.
+React + Vite admin UI for the QQ bot. Backed by 14 HTTP backends mounted on the bot's **StaticServer** (default port 8888): file browser, reports, insights, zhihu, moments, qdrant explorer, daily stats, memory, cluster, tickets, lan, projects, output static.
 
 ## Two backend categories (read this if you're deploying a client bot)
 
@@ -22,7 +22,7 @@ The 14 WebUI backends naturally split into two categories — they have **differ
 
 These represent **knowledge accumulated by ONE bot**. A client bot on another machine doesn't have any of this data, so it should cross-read it from the host.
 
-**Configured by `VITE_STATIC_SERVER_BASE`** (legacy name kept for backwards compat). Empty = same origin.
+**Configured by `VITE_STATIC_SERVER_BASE`**. Empty = same origin.
 
 ### Category 2: Per-machine runtime state
 
@@ -56,7 +56,7 @@ VITE_STATIC_SERVER_BASE=http://192.168.50.209:8889
 
 Then `bun run build:admin` on the client and run the client bot. Open `http://<client-ip>:8888` → file/reports/etc come from host, cluster/tickets/lan come from client itself.
 
-**CORS**: when `VITE_STATIC_SERVER_BASE` points at a different origin, the host's StaticFileServer must send `Access-Control-Allow-Origin` permitting the client's origin. The host's backends already set permissive CORS headers for the API endpoints (verify in `src/services/staticServer/`).
+**CORS**: when `VITE_STATIC_SERVER_BASE` points at a different origin, the host's StaticServer must send `Access-Control-Allow-Origin` permitting the client's origin. The host's backends already set permissive CORS headers for the API endpoints (verify in `src/services/staticServer/`).
 
 ### C) Detached webui dev server (Vite on laptop, bot on NAS)
 
@@ -67,15 +67,15 @@ VITE_STATIC_SERVER_BASE=http://192.168.1.100:8888
 VITE_LOCAL_API_BASE=http://192.168.1.100:8888
 ```
 
-### D) Original "webui split from static server" scenario
+### D) Shared content from host, local APIs default same-origin
 
-If you only have the legacy `VITE_STATIC_SERVER_BASE` set and don't set `VITE_LOCAL_API_BASE`, behavior is the **old** (pre-Phase-3) behavior for the content backends, but cluster/tickets/lan/projects will go same-origin. That's almost always what you want anyway — but be aware if you're upgrading from a setup where you relied on cluster also going through the remote base.
+If only `VITE_STATIC_SERVER_BASE` is set and `VITE_LOCAL_API_BASE` is unset, shared-content requests use the remote base while cluster/tickets/lan/projects use same-origin (the machine serving the WebUI).
 
 ## Two processes (dev mode)
 
 | Process | Port | Role |
 |--------|------|------|
-| **Bot + StaticFileServer** | 8888 | Serves `/output/*` (static files) and `/api/*` (all 14 backends). |
+| **Bot + StaticServer** | 8888 | Serves `/output/*` (disk files) and `/api/*` (all 14 backends). |
 | **Vite dev server (this UI)** | 5173 | Serves the React app. Proxies `/api` and `/output` to 8888. |
 
 Run both with one command from repo root:

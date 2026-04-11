@@ -9,7 +9,7 @@ import { DITokens } from './core/DITokens';
 import { initLanRelay } from './lan';
 import { ClaudeCodeInitializer } from './services/claudeCode';
 import { MCPInitializer } from './services/mcp/MCPInitializer';
-import { stopStaticFileServer } from './services/staticServer';
+import { stopStaticServer } from './services/staticServer';
 import { logger } from './utils/logger';
 
 async function main() {
@@ -78,7 +78,7 @@ async function main() {
     // ── Graceful shutdown ──
     const shutdown = async (signal: string) => {
       logger.info(`[Main] Received ${signal}, shutting down...`);
-      stopStaticFileServer();
+      stopStaticServer();
       if (clusterManager) {
         await clusterManager.stop();
       }
