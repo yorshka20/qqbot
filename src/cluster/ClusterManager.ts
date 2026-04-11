@@ -410,6 +410,31 @@ export class ClusterManager {
       }
     }
 
+    this.migrateClusterEventsCreatedAtColumn();
+
     logger.info('[ClusterManager] Database tables initialized');
+  }
+
+  /**
+   * Older deployments created `cluster_events` before `createdAt` existed.
+   * `CREATE TABLE IF NOT EXISTS` does not add new columns — ALTER + backfill.
+   */
+  private migrateClusterEventsCreatedAtColumn(): void {
+    try {
+      const cols = this.db.query('PRAGMA table_info(cluster_events)').all() as Array<{ name: string }>;
+      if (cols.length === 0) {
+        return;
+      }
+      if (cols.some((c) => c.name === 'createdAt')) {
+        return;
+      }
+      this.db.run('ALTER TABLE cluster_events ADD COLUMN createdAt TEXT');
+      this.db.run(
+        `UPDATE cluster_events SET createdAt = datetime(timestamp / 1000, 'unixepoch') || 'Z' WHERE createdAt IS NULL`,
+      );
+      logger.info('[ClusterManager] Migrated cluster_events: added createdAt column (backfilled from timestamp)');
+    } catch (err) {
+      logger.error('[ClusterManager] cluster_events createdAt migration failed:', err);
+    }
   }
 }
