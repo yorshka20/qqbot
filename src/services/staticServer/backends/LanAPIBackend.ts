@@ -84,10 +84,7 @@ export class LanAPIBackend {
       return jsonResponse({
         enabled: !!lr?.enabled,
         role: runtime ? (runtime.isHostMode() ? 'host' : 'client') : null,
-        listen:
-          lr?.instanceRole === 'host'
-            ? { host: lr.listenHost ?? '0.0.0.0', port: lr.listenPort ?? null }
-            : null,
+        listen: lr?.instanceRole === 'host' ? { host: lr.listenHost ?? '0.0.0.0', port: lr.listenPort ?? null } : null,
         clientCount: runtime?.isHostMode() ? (runtime as LanRelayHost).listClients().length : 0,
       });
     }

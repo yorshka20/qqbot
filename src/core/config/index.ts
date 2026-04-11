@@ -7,7 +7,13 @@ import { logger } from '@/utils/logger';
 import { loadConfigAuto } from './loadConfigDir';
 // Import all config types
 import type { AIConfig, AIProviderCapability, ContextMemoryConfig, SessionProviderConfig } from './types/ai';
-import type { BotSelfConfig, ClaudeCodeServiceConfig, FileReadServiceConfig, ProjectRegistryConfig, StaticServerConfig } from './types/bot';
+import type {
+  BotSelfConfig,
+  ClaudeCodeServiceConfig,
+  FileReadServiceConfig,
+  ProjectRegistryConfig,
+  StaticServerConfig,
+} from './types/bot';
 import type { DatabaseConfig } from './types/database';
 import type { LanRelayConfig } from './types/lanRelay';
 import type { MCPConfig } from './types/mcp';

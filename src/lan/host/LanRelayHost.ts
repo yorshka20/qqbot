@@ -205,11 +205,7 @@ export class LanRelayHost implements ILanRelayRuntime {
    * `/lan @<id> <text>` command path stays untouched and uses the live
    * `CommandContext` for its origin.
    */
-  dispatchFromWebUI(
-    clientId: string,
-    text: string,
-    opts: { ownerUserId: string | number; protocol: string },
-  ): boolean {
+  dispatchFromWebUI(clientId: string, text: string, opts: { ownerUserId: string | number; protocol: string }): boolean {
     const dispatchId = randomUUID();
     const origin: LanRelayOriginContext = {
       protocol: opts.protocol as LanRelayOriginContext['protocol'],
