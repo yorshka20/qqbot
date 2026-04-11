@@ -1,0 +1,113 @@
+import { Send, X } from 'lucide-react';
+import type { Ticket } from '../../../types';
+
+/**
+ * Confirm dialog before dispatching a ticket as a cluster job. Shows the
+ * full prompt the worker will receive (the entire markdown body) so the
+ * user can sanity-check before pulling the trigger — and a brief summary
+ * of which template/project it'll go to.
+ *
+ * Why a separate confirm step (vs just sending immediately): once
+ * dispatched the ticket switches to `dispatched` status and a real
+ * cluster_job is created consuming a worker slot. That's not free,
+ * especially if you accidentally hit the wrong row.
+ */
+export function DispatchConfirmDialog({
+  ticket,
+  resolvedTemplate,
+  resolvedProject,
+  submitting,
+  onCancel,
+  onConfirm,
+}: {
+  ticket: Ticket;
+  /** Effective template after applying project default. May still be empty. */
+  resolvedTemplate: string;
+  /** Effective project. Required for dispatch — must be non-empty. */
+  resolvedProject: string;
+  submitting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const canDispatch = !submitting && resolvedProject.trim().length > 0;
+
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop pattern, keyboard escape handler attached
+    <div
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+      onClick={() => {
+        if (!submitting) onCancel();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && !submitting) onCancel();
+      }}
+    >
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper inside modal backdrop */}
+      <div
+        className="bg-white dark:bg-zinc-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
+        <div className="shrink-0 px-5 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center gap-3">
+          <div className="font-semibold">Dispatch ticket</div>
+          <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">{ticket.id}</div>
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={onCancel}
+            className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700"
+            disabled={submitting}
+            title="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-3">
+          <div className="text-sm">
+            <div className="font-semibold text-zinc-900 dark:text-zinc-100">{ticket.frontmatter.title}</div>
+            <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+              project: <span className="font-mono">{resolvedProject || '(none — required!)'}</span> ·
+              template: <span className="font-mono">{resolvedTemplate || '(project default)'}</span>
+            </div>
+          </div>
+
+          {!resolvedProject && (
+            <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3 text-xs text-red-800 dark:text-red-300">
+              This ticket has no <code>project</code> set. Edit the ticket and pick one before dispatching.
+            </div>
+          )}
+
+          <div>
+            <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+              Worker prompt preview (full ticket body — sent verbatim)
+            </div>
+            <pre className="text-xs font-mono bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg p-3 max-h-[400px] overflow-y-auto whitespace-pre-wrap break-words">
+              {ticket.body}
+            </pre>
+          </div>
+        </div>
+
+        <div className="shrink-0 px-5 py-3 border-t border-zinc-200 dark:border-zinc-700 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+            disabled={submitting}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={!canDispatch}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+          >
+            <Send className="w-4 h-4" />
+            {submitting ? 'Dispatching…' : 'Dispatch'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -13,6 +13,7 @@ import { MomentsBackend } from './MomentsBackend';
 import { OutputStaticHost } from './OutputStaticHost';
 import { QdrantExplorerBackend } from './QdrantExplorerBackend';
 import { ReportBackend } from './ReportBackend';
+import { TicketBackend } from './TicketBackend';
 import type { Backend } from './types';
 import { ZhihuBackend } from './ZhihuBackend';
 
@@ -28,6 +29,7 @@ export function createBackends(baseDir: string): Backend[] {
     new FileManagerBackend(baseDir),
     new ClusterAPIBackend(),
     new LanAPIBackend(),
+    new TicketBackend(),
     new ReportBackend(),
     new InsightsBackend(),
     new MomentsBackend(),

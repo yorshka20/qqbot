@@ -92,6 +92,18 @@ export function getLanApiBase(): string {
   return serverBase ? `${serverBase}/api/lan` : '/api/lan';
 }
 
+/**
+ * Base URL for cluster ticket CRUD (TicketBackend). Tickets live under
+ * `tickets/` at the project root and are stored as markdown files; this
+ * API is intentionally separate from `/api/cluster/*` because tickets
+ * are an input artifact for cluster (and potentially future) workflows,
+ * not part of cluster's runtime state.
+ */
+export function getTicketsApiBase(): string {
+  const serverBase = getStaticServerBase();
+  return serverBase ? `${serverBase}/api/tickets` : '/api/tickets';
+}
+
 /** Base URL for Projects API requests (ProjectRegistry). */
 export function getProjectsApiBase(): string {
   const serverBase = getStaticServerBase();

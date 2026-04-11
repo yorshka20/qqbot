@@ -9,6 +9,7 @@ import {
   getQdrantApiBase,
   getReportApiBase,
   getStatsApiBase,
+  getTicketsApiBase,
   getZhihuApiBase,
 } from './config';
 import type {
@@ -47,6 +48,10 @@ import type {
   ReportListResponse,
   SentimentTrendResponse,
   StatsDateListResponse,
+  Ticket,
+  TicketFrontmatter,
+  TicketStatus,
+  TicketsListResponse,
   ZhihuContentDetailResponse,
   ZhihuContentsResponse,
   ZhihuStatsResponse,
@@ -744,4 +749,92 @@ export async function kickLanClient(clientId: string): Promise<{ kicked: boolean
  */
 export function getLanStreamUrl(): string {
   return `${lanApiBase()}/stream`;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Cluster Ticket API
+// ────────────────────────────────────────────────────────────────────────────
+
+function ticketsApiBase(): string {
+  return getTicketsApiBase();
+}
+
+/** List all tickets (frontmatter only — no body). Newest first. */
+export async function listTickets(): Promise<TicketFrontmatter[]> {
+  const res = await fetch(`${ticketsApiBase()}`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List tickets failed: ${res.status}`);
+  }
+  const body = (await res.json()) as TicketsListResponse;
+  return body.tickets;
+}
+
+/** Fetch a single ticket including its markdown body. */
+export async function getTicket(id: string): Promise<Ticket> {
+  const res = await fetch(`${ticketsApiBase()}/${encodeURIComponent(id)}`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get ticket failed: ${res.status}`);
+  }
+  return res.json() as Promise<Ticket>;
+}
+
+/**
+ * Create a new ticket. The server allocates the id from `<date>-<slug>`
+ * (slug derived from title) and returns the full Ticket.
+ */
+export async function createTicket(input: {
+  title: string;
+  status?: TicketStatus;
+  template?: string;
+  project?: string;
+  body?: string;
+}): Promise<Ticket> {
+  const res = await fetch(`${ticketsApiBase()}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Create ticket failed: ${res.status}`);
+  }
+  return res.json() as Promise<Ticket>;
+}
+
+/**
+ * Patch an existing ticket. Any field left undefined is preserved;
+ * passing `null` to a nullable field clears it (used to remove
+ * `template` / `project` / `dispatchedJobId`).
+ */
+export async function updateTicket(
+  id: string,
+  patch: {
+    title?: string;
+    status?: TicketStatus;
+    template?: string | null;
+    project?: string | null;
+    body?: string;
+    dispatchedJobId?: string | null;
+  },
+): Promise<Ticket> {
+  const res = await fetch(`${ticketsApiBase()}/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Update ticket failed: ${res.status}`);
+  }
+  return res.json() as Promise<Ticket>;
+}
+
+export async function deleteTicket(id: string): Promise<void> {
+  const res = await fetch(`${ticketsApiBase()}/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Delete ticket failed: ${res.status}`);
+  }
 }

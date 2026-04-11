@@ -704,3 +704,42 @@ export interface LanStreamInternalReportEvent {
   text: string;
   ts: number;
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Cluster Ticket Types
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Lifecycle of a cluster task ticket. Mirrors the server-side
+ * `TicketBackend` enum.
+ *
+ *   draft     — editing, dispatch disabled
+ *   ready     — done editing, can dispatch
+ *   dispatched — cluster job created, dispatchedJobId filled
+ *   done      — worker finished, result captured
+ *   abandoned — won't do, kept as record
+ */
+export type TicketStatus = 'draft' | 'ready' | 'dispatched' | 'done' | 'abandoned';
+
+export interface TicketFrontmatter {
+  id: string;
+  title: string;
+  status: TicketStatus;
+  template?: string;
+  project?: string;
+  created: string;
+  updated: string;
+  dispatchedJobId?: string;
+}
+
+/** Full ticket including markdown body. Returned by GET /api/tickets/:id. */
+export interface Ticket {
+  id: string;
+  frontmatter: TicketFrontmatter;
+  body: string;
+}
+
+/** Listing endpoint shape. Frontmatter only — no body. */
+export interface TicketsListResponse {
+  tickets: TicketFrontmatter[];
+}

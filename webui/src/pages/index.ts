@@ -12,4 +12,5 @@ export { MemoryStatusPage } from './memory-status';
 export { MomentsPage } from './moments';
 export { QdrantExplorerPage } from './qdrant';
 export { ReportsPage } from './reports';
+export { TicketsPage } from './tickets';
 export { ZhihuPage } from './zhihu';
