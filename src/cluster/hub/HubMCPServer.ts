@@ -357,7 +357,7 @@ export class HubMCPServer {
       {
         description:
           'PLANNER ONLY. Spawn a child executor worker to handle a subtask. You must pick the executor template ' +
-          'explicitly (e.g. "claude-sonnet-executor", "minimax-executor"). Returns childTaskId — pass it to ' +
+          'explicitly (e.g. "claude-sonnet", "minimax-m2" — must match a cluster.workerTemplates key). Returns childTaskId — pass it to ' +
           'hub_query_task / hub_wait_task to monitor the child. You can NOT spawn another planner; the role ' +
           'argument, if given, must be "executor". One layer of decomposition only.',
         inputSchema: {

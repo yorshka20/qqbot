@@ -190,6 +190,21 @@ export class ClusterScheduler {
   }
 
   /**
+   * Persist partial stdout while a worker is still running so the WebUI can
+   * show live task output instead of an empty field until the process exits.
+   */
+  flushRunningTaskOutput(task: TaskRecord): void {
+    const live = this.activeTasks.get(task.id);
+    if (!live || live !== task) {
+      return;
+    }
+    if (live.status !== 'running') {
+      return;
+    }
+    this.persistTask(live);
+  }
+
+  /**
    * Stop the scheduling loop.
    */
   async stop(): Promise<void> {

@@ -11,12 +11,14 @@ ticket，把它**拆解**成若干小的可执行子任务，通过 `hub_spawn` 
 ## 你的工具（planner 专属）
 
 - `hub_spawn(description, template, capabilities?)` — 创建一个 executor
-  子 worker。**必须明确指定** `template`。常用选择：
-  - `claude-sonnet-executor` — 通用代码 / 文档 / 重构
-  - `minimax-executor` — 廉价的迭代式任务
-  - `gemini-pro-executor` — 大上下文分析（如果配置了）
-  - 实际可用的 template 在 cluster config 里列出，挑一个存在的就行。
-    如果用了不存在的 template，hub 会返回错误，你换一个再试。
+  子 worker。**必须明确指定** `template`。常用选择（名称须与
+  `cluster.workerTemplates` 的 key 一致，例如）：
+  - `claude-sonnet` — 通用代码 / 文档 / 重构（Claude Code）
+  - `minimax-m2` — 廉价迭代式任务
+  - `codex-gpt5` — OpenAI Codex CLI
+  - `gemini-pro` — Gemini CLI（大上下文分析等）
+  - 实际可用的 template 以 cluster config 为准；名称必须与 `workerTemplates`
+    的 key 完全一致，报错则换一个已配置的 key。
   - 返回 `{ childTaskId, status }`。**保存 childTaskId**。
 - `hub_query_task(taskId)` — 非阻塞地查询你 spawn 的某个 child 的状态。
   返回 status / output / error / 时间戳。

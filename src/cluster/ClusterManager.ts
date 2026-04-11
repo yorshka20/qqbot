@@ -54,6 +54,10 @@ export class ClusterManager {
       this.scheduler.markTaskCompleted(task);
     });
 
+    this.workerPool.setTaskProgressCallback((task) => {
+      this.scheduler.flushRunningTaskOutput(task);
+    });
+
     // Wire hub_report callback (Phase 2 round 2, agent-cluster.md §2.3):
     // when a worker voluntarily declares done via hub_report, update the
     // live TaskRecord in-place and flush it through markTaskCompleted so

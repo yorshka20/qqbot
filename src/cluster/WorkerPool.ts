@@ -24,6 +24,9 @@ import type { ClusterStatus, TaskRecord, WorkerBackend, WorkerInstance } from '.
  */
 export type TaskCompletedCallback = (task: TaskRecord) => void | Promise<void>;
 
+/** Throttled flush of partial stdout to the scheduler DB while a worker runs. */
+export type TaskProgressCallback = (task: TaskRecord) => void | Promise<void>;
+
 /**
  * Maximum number of recently-exited workers retained in memory for
  * status / history queries before they fall off the FIFO buffer.
@@ -56,6 +59,7 @@ export class WorkerPool {
   private paused = false;
   private running = false;
   private taskCompletedCallback: TaskCompletedCallback | null = null;
+  private taskProgressCallback: TaskProgressCallback | null = null;
   /**
    * Lazy-loaded role system prompt content, keyed by worker role.
    * Each entry: `null` = not yet attempted, `''` = loaded but missing /
@@ -79,6 +83,11 @@ export class WorkerPool {
    */
   setTaskCompletedCallback(cb: TaskCompletedCallback): void {
     this.taskCompletedCallback = cb;
+  }
+
+  /** Optional: persist partial stdout while the subprocess is still running. */
+  setTaskProgressCallback(cb: TaskProgressCallback | null): void {
+    this.taskProgressCallback = cb;
   }
 
   /**
@@ -420,15 +429,31 @@ export class WorkerPool {
 
   private async monitorProcess(worker: WorkerInstance, proc: import('bun').Subprocess): Promise<void> {
     // Collect stdout (best-effort; stream may close mid-read on kill).
-    const stdoutChunks: string[] = [];
+    let rawOutput = '';
+    const progressIntervalMs = 2000;
+    let lastProgressFlush = 0;
     if (proc.stdout) {
       const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
       const decoder = new TextDecoder();
       try {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
-          stdoutChunks.push(decoder.decode(value, { stream: true }));
+          if (done) {
+            break;
+          }
+          rawOutput += decoder.decode(value, { stream: true });
+          if (worker.currentTask) {
+            worker.currentTask.output = rawOutput;
+            const now = Date.now();
+            if (this.taskProgressCallback && now - lastProgressFlush >= progressIntervalMs) {
+              lastProgressFlush = now;
+              try {
+                await Promise.resolve(this.taskProgressCallback(worker.currentTask));
+              } catch (err) {
+                logger.warn(`[WorkerPool] taskProgressCallback threw for worker ${worker.id}:`, err);
+              }
+            }
+          }
         }
       } catch {
         // Stream closed
@@ -437,7 +462,6 @@ export class WorkerPool {
 
     // Wait for exit.
     const exitCode = await proc.exited;
-    const rawOutput = stdoutChunks.join('');
 
     logger.info(`[WorkerPool] Worker ${worker.id} exited with code ${exitCode}`);
 
