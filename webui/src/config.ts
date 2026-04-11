@@ -1,22 +1,68 @@
 /**
- * Configurable base URL for file API and static output when webui and static file server
- * are deployed separately (e.g. webui on one machine, static server on another on the LAN).
+ * Two independent base URLs for the WebUI's HTTP backends, because the
+ * 14 backends naturally split into two deployment categories:
  *
- * Set VITE_STATIC_SERVER_BASE at build time, e.g.:
- *   VITE_STATIC_SERVER_BASE=http://192.168.1.100:3456 bun run build
- * Or in .env:
- *   VITE_STATIC_SERVER_BASE=http://192.168.1.100:3456
+ *   1. **Shared content** (host is the single source of truth): file
+ *      browser, reports, insights, zhihu cache, moments, Qdrant explorer,
+ *      memory status, daily stats, output static. These represent
+ *      knowledge accumulated by ONE bot (the host) — a client bot on
+ *      another machine doesn't have most of this data, so it should
+ *      cross-read it from the host. Controlled by `VITE_STATIC_SERVER_BASE`.
  *
- * When unset or empty, uses relative paths (same origin). So when you open the webui at
- * http://192.168.50.209:5173, API requests go to http://192.168.50.209:5173/api/... and
- * the dev server proxy forwards them to the backend (e.g. localhost:8888 on the server).
+ *   2. **Per-machine runtime state**: Agent Cluster, tickets, LAN relay
+ *      control, ProjectRegistry. Each bot deployment runs its own cluster,
+ *      keeps its own `tickets/` directory, has its own LAN role, and has
+ *      its own ProjectRegistry pointing at this machine's local source
+ *      paths. These MUST hit the local bot's own backend, never the
+ *      host's. Controlled by `VITE_LOCAL_API_BASE` (defaults to empty
+ *      = same origin, which is the right default in every deployment
+ *      since the WebUI is always served by the same bot that owns the
+ *      local state).
+ *
+ * Both env vars are read at build time. Set them in `.env`, `.env.local`,
+ * or as `VITE_X=... bun run build`.
+ *
+ * Typical configurations:
+ *
+ *   ## Host bot (single-machine setup)
+ *   Both unset → everything is same-origin. Identical to pre-Phase-3 behavior.
+ *
+ *   ## Client bot reading host content
+ *   .env on the client machine:
+ *     VITE_STATIC_SERVER_BASE=http://192.168.50.209:8889
+ *     # VITE_LOCAL_API_BASE unset (defaults to same-origin)
+ *
+ *   The client's WebUI then pulls files/reports/insights/etc from the
+ *   host (single knowledge source) but reads cluster/tickets/lan/projects
+ *   from its own bot at the same origin the WebUI was loaded from.
+ *
+ *   ## Detached WebUI dev server
+ *   Run `bun run dev:webui` against any backend by setting BOTH vars to
+ *   the same backend URL — both groups go to that one place.
  */
 
-const base = (import.meta.env.VITE_STATIC_SERVER_BASE as string | undefined)?.trim() || '';
+const sharedContentBase = (import.meta.env.VITE_STATIC_SERVER_BASE as string | undefined)?.trim() || '';
+const localApiBase = (import.meta.env.VITE_LOCAL_API_BASE as string | undefined)?.trim() || '';
 
-/** Base URL for the static file server (no trailing slash). Empty string means same origin (relative paths). */
+/**
+ * Base URL for the **shared-content** backends (file browser, reports,
+ * insights, zhihu, moments, qdrant, memory, stats, output static).
+ * Empty string = same origin. Set via `VITE_STATIC_SERVER_BASE` to point
+ * a client deployment at a remote host bot.
+ */
 export function getStaticServerBase(): string {
-  return base ? base.replace(/\/$/, '') : '';
+  return sharedContentBase ? sharedContentBase.replace(/\/$/, '') : '';
+}
+
+/**
+ * Base URL for the **per-machine** backends (cluster, tickets, LAN,
+ * projects). Empty string = same origin (the default — the WebUI is
+ * always served by the same bot that owns this machine's local state).
+ * Override via `VITE_LOCAL_API_BASE` only for unusual setups like
+ * running the WebUI dev server against a remote bot.
+ */
+export function getLocalApiBase(): string {
+  return localApiBase ? localApiBase.replace(/\/$/, '') : '';
 }
 
 /** Base URL for file API requests: same-origin '/api/files' when no base set, else getStaticServerBase() + '/api/files'. */
@@ -73,6 +119,15 @@ export function getMemoryApiBase(): string {
   return serverBase ? `${serverBase}/api/memory` : '/api/memory';
 }
 
+// ── Per-machine backends (use VITE_LOCAL_API_BASE / same-origin) ──
+//
+// The four helpers below intentionally use `getLocalApiBase()` instead
+// of `getStaticServerBase()`. Cluster jobs, ticket markdown files, LAN
+// role state, and ProjectRegistry are all per-machine — when a client
+// bot loads its own WebUI, these MUST hit the client's own bot, never
+// the remote host. Same-origin default (empty `getLocalApiBase()`) is
+// what makes this work without any client-side env config.
+
 /**
  * Base URL for all Agent Cluster API requests. Includes the always-on
  * control plane (status / start / stop / templates / projects) plus the
@@ -82,13 +137,13 @@ export function getMemoryApiBase(): string {
  * control routes live under this base too.
  */
 export function getClusterApiBase(): string {
-  const serverBase = getStaticServerBase();
+  const serverBase = getLocalApiBase();
   return serverBase ? `${serverBase}/api/cluster` : '/api/cluster';
 }
 
 /** Base URL for LAN relay API requests (host mode only — see LanAPIBackend). */
 export function getLanApiBase(): string {
-  const serverBase = getStaticServerBase();
+  const serverBase = getLocalApiBase();
   return serverBase ? `${serverBase}/api/lan` : '/api/lan';
 }
 
@@ -100,12 +155,12 @@ export function getLanApiBase(): string {
  * not part of cluster's runtime state.
  */
 export function getTicketsApiBase(): string {
-  const serverBase = getStaticServerBase();
+  const serverBase = getLocalApiBase();
   return serverBase ? `${serverBase}/api/tickets` : '/api/tickets';
 }
 
 /** Base URL for Projects API requests (ProjectRegistry). */
 export function getProjectsApiBase(): string {
-  const serverBase = getStaticServerBase();
+  const serverBase = getLocalApiBase();
   return serverBase ? `${serverBase}/api/cluster/projects` : '/api/cluster/projects';
 }
