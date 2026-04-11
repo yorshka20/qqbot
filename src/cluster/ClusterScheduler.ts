@@ -6,6 +6,7 @@
 
 import type { Database } from 'bun:sqlite';
 import { randomUUID } from 'node:crypto';
+import type { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
 import { logger } from '@/utils/logger';
 import type { ClusterConfig } from './config';
 import type { ContextHub } from './hub/ContextHub';
@@ -32,7 +33,7 @@ export class ClusterScheduler {
     private hub: ContextHub,
     private workerPool: WorkerPool,
     private db: Database,
-    private projectResolver: (alias: string) => { alias: string; path: string; type: string } | undefined,
+    private projectRegistry: ProjectRegistry,
   ) {}
 
   /**
@@ -155,7 +156,7 @@ export class ClusterScheduler {
     description: string,
     options?: { workerTemplate?: string },
   ): Promise<TaskRecord | null> {
-    const projectInfo = this.projectResolver(project);
+    const projectInfo = this.projectRegistry.resolve(project);
     if (!projectInfo) {
       this.warnUnknownProjectOnce(project);
       return null;
@@ -311,7 +312,7 @@ export class ClusterScheduler {
     for (const candidate of sorted) {
       if (!this.workerPool.canSpawnMore()) break;
 
-      const projectInfo = this.projectResolver(candidate.project);
+      const projectInfo = this.projectRegistry.resolve(candidate.project);
       if (!projectInfo) {
         this.warnUnknownProjectOnce(candidate.project);
         continue;
@@ -342,7 +343,7 @@ export class ClusterScheduler {
     for (const task of this.activeTasks.values()) {
       if (task.status !== 'pending') continue;
       if (!this.workerPool.canSpawnMore()) break;
-      const projectInfo = this.projectResolver(task.project);
+      const projectInfo = this.projectRegistry.resolve(task.project);
       if (!projectInfo) continue;
       await this.tryDispatch(task, projectInfo);
     }
@@ -359,7 +360,7 @@ export class ClusterScheduler {
     const all: TaskCandidate[] = [];
 
     for (const [project, sources] of this.taskSources) {
-      const projectInfo = this.projectResolver(project);
+      const projectInfo = this.projectRegistry.resolve(project);
       if (!projectInfo) {
         this.warnUnknownProjectOnce(project);
         continue;
@@ -403,7 +404,7 @@ export class ClusterScheduler {
   validateProjects(): string[] {
     const missing: string[] = [];
     for (const alias of Object.keys(this.config.projects)) {
-      if (!this.projectResolver(alias)) {
+      if (!this.projectRegistry.resolve(alias)) {
         missing.push(alias);
       }
     }

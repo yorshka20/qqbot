@@ -9,7 +9,7 @@
 
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import { APIClient } from '@/api/APIClient';
-import { ClusterManager, parseClusterConfig } from '@/cluster';
+import { ClusterManager, parseClusterConfig, wireClusterEscalation } from '@/cluster';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
 import { ConversationInitializer } from '@/conversation/ConversationInitializer';
 import { Bot } from '@/core/Bot';
@@ -27,6 +27,7 @@ import { DiscordConnection } from '@/protocol/discord/DiscordConnection';
 import { ProtocolAdapterInitializer } from '@/protocol/ProtocolAdapterInitializer';
 import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
+import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
 import type { MCPSystem } from '@/services/mcp/MCPInitializer';
 import { MCPInitializer } from '@/services/mcp/MCPInitializer';
 import { RetrievalService } from '@/services/retrieval';
@@ -107,6 +108,11 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     logger.info('[Bootstrap] Skipped staticServer (disabled by lanRelay role filter)');
   }
 
+  // ── ProjectRegistry (independent, before ClaudeCode so it can be resolved by both) ──
+  const projectRegistry = new ProjectRegistry(config.getProjectRegistryConfig());
+  container.registerInstance(DITokens.PROJECT_REGISTRY, projectRegistry);
+  logger.info('[Bootstrap] ProjectRegistry initialized');
+
   // ── Claude Code init (sync, no connections) ──
   const claudeCodeService = ClaudeCodeInitializer.initialize(config);
 
@@ -114,9 +120,6 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   let clusterManager: ClusterManager | null = null;
   const clusterRawConfig = config.getClusterConfig();
   const clusterConfig = parseClusterConfig(clusterRawConfig);
-  if (clusterConfig) {
-    logger.info('[Bootstrap] Agent Cluster config found, will initialize after DB is ready');
-  }
 
   // ── Conversation system (tools, hooks, commands, AI, DB, context, agenda) ──
   const conversationComponents = await ConversationInitializer.initialize(config, apiClient);
@@ -128,77 +131,22 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
       const { SQLiteAdapter } = await import('@/database/adapters/SQLiteAdapter');
       const dbManager = container.resolve<InstanceType<typeof DatabaseManager>>(DITokens.DATABASE_MANAGER);
       const adapter = dbManager.getAdapter();
-      if (adapter instanceof SQLiteAdapter) {
-        const rawDb = adapter.getRawDb();
-        if (rawDb) {
-          // Build project resolver from ProjectRegistry if available
-          const projectResolver = (alias: string) => {
-            if (claudeCodeService) {
-              const registry = claudeCodeService.getProjectRegistry();
-              const entry = registry?.resolve(alias);
-              if (entry) return { alias: entry.alias, path: entry.path, type: entry.type };
-            }
-            return undefined;
-          };
-          clusterManager = new ClusterManager(clusterConfig, rawDb, projectResolver);
-          container.registerInstance(DITokens.CLUSTER_MANAGER, clusterManager);
-
-          // Wire human escalation: when a worker fires hub_ask, route the
-          // request to the bot owner via QQ private message. The owner can
-          // reply with `/cluster ask answer <id> <text>`. Resolved here
-          // (instead of inside ClusterManager's constructor) so the cluster
-          // module stays free of any QQ/MessageAPI imports — keeps the
-          // option of running cluster headless or behind WebUI only.
-          try {
-            const { MessageAPI } = await import('@/api/methods/MessageAPI');
-            const messageAPI = container.resolve<InstanceType<typeof MessageAPI>>(DITokens.MESSAGE_API);
-            const ownerId = config.getConfig().bot?.owner;
-            const enabledProtocols = config.getEnabledProtocols();
-            const preferredProtocol = enabledProtocols[0]?.name;
-            if (ownerId && preferredProtocol) {
-              clusterManager.attachEscalationNotifier(async (request) => {
-                const lines = [
-                  `[Cluster] Worker ${request.workerId} 请求帮助`,
-                  `类型: ${request.type}`,
-                  `askId: ${request.id}`,
-                  '',
-                  `问题: ${request.question}`,
-                ];
-                if (request.context) {
-                  lines.push('', `上下文: ${request.context}`);
-                }
-                if (request.options && request.options.length > 0) {
-                  lines.push('', '选项:');
-                  request.options.forEach((opt, i) => {
-                    lines.push(`  ${i + 1}. ${opt}`);
-                  });
-                }
-                lines.push('', `回复: /cluster ask answer ${request.id} <你的答复>`);
-                try {
-                  await messageAPI.sendPrivateMessage(ownerId, lines.join('\n'), preferredProtocol);
-                } catch (err) {
-                  logger.error(
-                    `[Bootstrap] Failed to send escalation notification to owner ${ownerId} via ${preferredProtocol}:`,
-                    err,
-                  );
-                }
-              });
-            } else {
-              logger.warn(
-                `[Bootstrap] Cluster escalation notifier NOT wired — bot.owner=${ownerId || 'missing'} preferredProtocol=${preferredProtocol || 'missing'}`,
-              );
-            }
-          } catch (err) {
-            logger.warn('[Bootstrap] Failed to wire cluster escalation notifier (non-fatal):', err);
-          }
-
-          logger.info('[Bootstrap] Agent Cluster initialized');
-        } else {
-          logger.warn('[Bootstrap] Agent Cluster requires SQLite — raw DB not available');
-        }
-      } else {
-        logger.warn('[Bootstrap] Agent Cluster requires SQLite database adapter');
+      if (!(adapter instanceof SQLiteAdapter)) {
+        throw new Error('[Bootstrap] Agent Cluster requires SQLite database adapter');
       }
+      const rawDb = adapter.getRawDb();
+      if (!rawDb) {
+        throw new Error('[Bootstrap] Agent Cluster requires SQLite — raw DB not available');
+      }
+      const projectRegistry = container.resolve<
+        InstanceType<typeof import('@/services/claudeCode/ProjectRegistry').ProjectRegistry>
+      >(DITokens.PROJECT_REGISTRY);
+      clusterManager = new ClusterManager(clusterConfig, rawDb, projectRegistry);
+      container.registerInstance(DITokens.CLUSTER_MANAGER, clusterManager);
+
+      await wireClusterEscalation(clusterManager, config);
+
+      logger.info('[Bootstrap] Agent Cluster initialized');
     } catch (err) {
       logger.error('[Bootstrap] Failed to initialize Agent Cluster:', err);
     }

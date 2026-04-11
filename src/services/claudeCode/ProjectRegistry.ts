@@ -38,11 +38,11 @@ interface PersistedProject {
 
 export interface ProjectRegistryOptions {
   /** Security whitelist: only allow projects under these directories */
-  allowedBasePaths: string[];
+  allowedBasePaths?: string[];
   /** Default project alias */
-  defaultProject: string;
+  defaultProject?: string;
   /** Pre-registered projects from config */
-  projects: Array<PersistedProject>;
+  projects?: Array<PersistedProject>;
   /** Path to persist dynamically added projects (default: data/projects.json) */
   persistPath?: string;
 }
@@ -58,13 +58,14 @@ export class ProjectRegistry {
   private defaultProject: string;
   private persistPath: string;
 
-  constructor(options: ProjectRegistryOptions) {
-    this.allowedBasePaths = options.allowedBasePaths.map((p) => resolve(p));
-    this.defaultProject = options.defaultProject;
-    this.persistPath = options.persistPath || resolve(process.cwd(), 'data/projects.json');
+  constructor(options: ProjectRegistryOptions | undefined = {}) {
+    const opts = options ?? {};
+    this.allowedBasePaths = (opts.allowedBasePaths ?? [process.cwd()]).map((p) => resolve(p));
+    this.defaultProject = opts.defaultProject ?? 'default';
+    this.persistPath = opts.persistPath || resolve(process.cwd(), 'data/projects.json');
 
     // 1. Register config projects (immutable via commands)
-    for (const proj of options.projects) {
+    for (const proj of options.projects ?? []) {
       try {
         this.register(proj);
         this.configAliases.add(proj.alias);

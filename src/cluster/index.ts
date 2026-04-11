@@ -2,6 +2,7 @@
  * Agent Cluster module — barrel export.
  */
 
+export { wireClusterEscalation } from './ClusterEscalation';
 export { ClusterManager } from './ClusterManager';
 export { ClusterScheduler } from './ClusterScheduler';
 export type { ClusterConfig, ClusterProjectConfig, WorkerTemplateConfig } from './config';

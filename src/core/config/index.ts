@@ -7,7 +7,7 @@ import { logger } from '@/utils/logger';
 import { loadConfigAuto } from './loadConfigDir';
 // Import all config types
 import type { AIConfig, AIProviderCapability, ContextMemoryConfig, SessionProviderConfig } from './types/ai';
-import type { BotSelfConfig, ClaudeCodeServiceConfig, FileReadServiceConfig, StaticServerConfig } from './types/bot';
+import type { BotSelfConfig, ClaudeCodeServiceConfig, FileReadServiceConfig, ProjectRegistryConfig, StaticServerConfig } from './types/bot';
 import type { DatabaseConfig } from './types/database';
 import type { LanRelayConfig } from './types/lanRelay';
 import type { MCPConfig } from './types/mcp';
@@ -88,6 +88,7 @@ export interface BotConfig {
   fileReadService?: FileReadServiceConfig;
   claudeCodeService?: ClaudeCodeServiceConfig;
   videoKnowledge?: VideoKnowledgeConfig;
+  projectRegistry?: ProjectRegistryConfig;
   cluster?: Record<string, unknown>;
   /** LAN WebSocket relay (host/client); optional. */
   lanRelay?: LanRelayConfig;
@@ -424,5 +425,9 @@ export class Config {
 
   getClusterConfig(): Record<string, unknown> | undefined {
     return this.config.cluster;
+  }
+
+  getProjectRegistryConfig(): ProjectRegistryConfig | undefined {
+    return this.config.projectRegistry;
   }
 }

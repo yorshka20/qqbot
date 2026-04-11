@@ -41,6 +41,7 @@ export const DITokens = {
   AGENDA_REPORTER: 'AgendaReporter',
   SCHEDULE_FILE_SERVICE: 'ScheduleFileService',
   CLAUDE_CODE_SERVICE: 'ClaudeCodeService',
+  PROJECT_REGISTRY: 'ProjectRegistry',
   SUB_AGENT_MANAGER: 'SubAgentManager',
   PROVIDER_SELECTOR: 'ProviderSelector',
   PROVIDER_ROUTER: 'ProviderRouter',

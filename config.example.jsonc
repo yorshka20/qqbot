@@ -885,6 +885,26 @@
     "pollTimeoutMs": 300000
   },
 
+  // Project registry — shared across ClaudeCode and Cluster workers.
+  // Defines allowed project directories and pre-registered projects.
+  "projectRegistry": {
+    // Security whitelist: only allow projects under these directories
+    "allowedBasePaths": [
+      "/home/user/projects"
+    ],
+    // Default project alias (used when no @alias specified)
+    "defaultProject": "default",
+    // Pre-registered projects
+    "projects": [
+      // {
+      //   "alias": "my-project",
+      //   "path": "/home/user/projects/my-project",
+      //   "type": "bun",
+      //   "description": "My Project"
+      // }
+    ]
+  },
+
   // Agent Cluster — local multi-agent task execution.
   // Spawns coding agent workers (Claude Code / Codex / Gemini / MiniMax)
   // to process tasks autonomously. Disabled by default. The full template

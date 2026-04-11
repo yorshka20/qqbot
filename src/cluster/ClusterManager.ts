@@ -6,6 +6,7 @@
  */
 
 import type { Database } from 'bun:sqlite';
+import type { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
 import { logger } from '@/utils/logger';
 import { ClaudeCliBackend } from './backends/ClaudeCliBackend';
 import { CodexCliBackend } from './backends/CodexCliBackend';
@@ -32,11 +33,11 @@ export class ClusterManager {
   constructor(
     private config: ClusterConfig,
     private db: Database,
-    private projectResolver: (alias: string) => { alias: string; path: string; type: string } | undefined,
+    projectRegistry: ProjectRegistry,
   ) {
     this.hub = new ContextHub(config, db);
     this.workerPool = new WorkerPool(config, this.hub);
-    this.scheduler = new ClusterScheduler(config, this.hub, this.workerPool, db, projectResolver);
+    this.scheduler = new ClusterScheduler(config, this.hub, this.workerPool, db, projectRegistry);
     this.plannerService = new PlannerService(config, this.hub, this.workerPool);
 
     // Wire API router
