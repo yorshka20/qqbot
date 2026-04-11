@@ -26,6 +26,7 @@ export { AnthropicProvider } from './providers/AnthropicProvider';
 export { DeepSeekProvider } from './providers/DeepSeekProvider';
 export { GoogleCloudRunProvider } from './providers/GoogleCloudRunProvider';
 export { LocalText2ImageProvider } from './providers/LocalText2ImageProvider';
+export { MinimaxProvider } from './providers/MinimaxProvider';
 export { OllamaProvider } from './providers/OllamaProvider';
 export { OpenAIProvider } from './providers/OpenAIProvider';
 export { RunPodProvider } from './providers/RunPodProvider';

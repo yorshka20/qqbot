@@ -725,6 +725,19 @@
       //   "model": "qwen/qwen3-32b",
       //   "temperature": 0.7,
       //   "maxTokens": 2000
+      // },
+      // MiniMax provider (LLM + Vision). OpenAI-compatible API at https://api.minimax.io/v1
+      // Supports MiniMax-M2.7, MiniMax-M2.5, MiniMax-M2.1, MiniMax-M2 and highspeed variants.
+      // Vision is supported via image_url content parts (MiniMax-Text-01 model or reasoning models).
+      // "minimax": {
+      //   "type": "minimax",
+      //   "apiKey": "your_minimax_api_key_here",
+      //   "model": "MiniMax-M2.7",
+      //   "temperature": 1.0,
+      //   "maxTokens": 2000,
+      //   "enableContext": true,
+      //   "contextMessageCount": 10,
+      //   "reasoningSplit": true
       // }
     }
   },

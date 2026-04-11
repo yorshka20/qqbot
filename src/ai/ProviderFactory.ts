@@ -11,6 +11,7 @@ import { GoogleCloudRunProvider } from './providers/GoogleCloudRunProvider';
 import { GroqProvider } from './providers/GroqProvider';
 import { LaozhangProvider } from './providers/LaozhangProvider';
 import { LocalText2ImageProvider } from './providers/LocalText2ImageProvider';
+import { MinimaxProvider } from './providers/MinimaxProvider';
 import { NovelAIProvider } from './providers/NovelAIProvider';
 import { OllamaProvider } from './providers/OllamaProvider';
 import { OpenAIProvider } from './providers/OpenAIProvider';
@@ -180,6 +181,19 @@ export class ProviderFactory {
             defaultMaxTokens: config.maxTokens,
             enableContext: config.enableContext,
             contextMessageCount: config.contextMessageCount,
+          });
+        }
+        case 'minimax': {
+          const minimaxConfig = config as Extract<AIProviderConfig, { type: 'minimax' }>;
+          return new MinimaxProvider({
+            apiKey: minimaxConfig.apiKey,
+            model: minimaxConfig.model,
+            baseURL: minimaxConfig.baseURL,
+            defaultTemperature: minimaxConfig.temperature,
+            defaultMaxTokens: minimaxConfig.maxTokens,
+            enableContext: minimaxConfig.enableContext,
+            contextMessageCount: minimaxConfig.contextMessageCount,
+            reasoningSplit: minimaxConfig.reasoningSplit,
           });
         }
         default: {

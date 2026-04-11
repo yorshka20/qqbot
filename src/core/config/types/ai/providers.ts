@@ -13,7 +13,8 @@ export type AIProviderType =
   | 'gemini'
   | 'doubao'
   | 'laozhang'
-  | 'groq';
+  | 'groq'
+  | 'minimax';
 
 export interface OpenAIProviderConfig {
   type: 'openai';
@@ -216,6 +217,21 @@ export interface GroqProviderConfig {
   contextMessageCount?: number;
 }
 
+export interface MinimaxProviderConfig {
+  type: 'minimax';
+  apiKey: string;
+  /** Model: MiniMax-M2.7, MiniMax-M2.7-highspeed, MiniMax-M2.5, MiniMax-M2.5-highspeed, MiniMax-M2.1, MiniMax-M2.1-highspeed, MiniMax-M2. */
+  model?: string;
+  /** Default: https://api.minimax.io/v1 */
+  baseURL?: string;
+  temperature?: number; // Range: (0, 1] — MiniMax does not accept 0
+  maxTokens?: number;
+  enableContext?: boolean;
+  contextMessageCount?: number; // default: 10
+  /** Split reasoning content into a separate field (default: true for reasoning models). */
+  reasoningSplit?: boolean;
+}
+
 export type AIProviderConfig =
   | OpenAIProviderConfig
   | AnthropicProviderConfig
@@ -229,4 +245,5 @@ export type AIProviderConfig =
   | LaozhangProviderConfig
   | RunPodProviderConfig
   | GoogleCloudRunProviderConfig
-  | GroqProviderConfig;
+  | GroqProviderConfig
+  | MinimaxProviderConfig;

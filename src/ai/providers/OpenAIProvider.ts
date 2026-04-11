@@ -13,7 +13,6 @@ import type {
   ChatMessage,
   ChatMessageRoleBase,
   StreamingHandler,
-  ToolDefinition,
 } from '../types';
 
 export interface OpenAIProviderConfig {
