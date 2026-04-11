@@ -16,6 +16,7 @@
 // Independent of Agent Cluster (ContextHub) — runs its own Bun.serve.
 
 import type { Database } from 'bun:sqlite';
+import { randomUUID } from 'node:crypto';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { SendMessageResult } from '@/api/types';
 import type { Config } from '@/core/config';
@@ -39,6 +40,42 @@ import type { LanInternalReportRow } from './LanInternalReportStore';
 import { LanInternalReportStore } from './LanInternalReportStore';
 import type { ClientData, ClientEntry } from './registry';
 
+/**
+ * Subscriber for live LAN host state changes (used by WebUI's
+ * `/api/lan/stream` SSE backend). The host fires `event` for transient
+ * occurrences (`client_connected`, `client_disconnected`, `internal_report`)
+ * — subscribers are expected to push them down their own SSE stream.
+ *
+ * Subscribers must NOT throw; the host will silently drop on error.
+ */
+export interface LanHostSubscriber {
+  send(event: string, data: unknown): void;
+  close(): void;
+}
+
+/** JSON-safe view of a connected client (drops the live `ws` field). */
+export interface ClientSnapshot {
+  clientId: string;
+  label?: string;
+  lanAddress: string;
+  startedAt: number;
+  connectedAt: number;
+  lastSeenAt: number;
+  enabledPlugins?: string[];
+}
+
+function snapshot(entry: ClientEntry): ClientSnapshot {
+  return {
+    clientId: entry.clientId,
+    label: entry.label,
+    lanAddress: entry.lanAddress,
+    startedAt: entry.startedAt,
+    connectedAt: entry.connectedAt,
+    lastSeenAt: entry.lastSeenAt,
+    enabledPlugins: entry.enabledPlugins,
+  };
+}
+
 export class LanRelayHost implements ILanRelayRuntime {
   /** Underlying Bun HTTP/WebSocket server; null until start() and after stop(). */
   private server: ReturnType<typeof Bun.serve> | null = null;
@@ -49,6 +86,8 @@ export class LanRelayHost implements ILanRelayRuntime {
   private readonly messageAPI: MessageAPI;
   /** Store for client internal_report envelopes; null when no rawDb available. */
   private readonly reportStore: LanInternalReportStore | null;
+  /** Live subscribers for state changes. WebUI's /api/lan/stream attaches here. */
+  private readonly subscribers = new Set<LanHostSubscriber>();
 
   constructor(config: Config, _eventRouter: EventRouter, messageAPI: MessageAPI, rawDb: Database | null = null) {
     const lr = config.getLanRelayConfig();
@@ -101,9 +140,83 @@ export class LanRelayHost implements ILanRelayRuntime {
     return Array.from(this.clientsById.values());
   }
 
+  /**
+   * Return JSON-safe snapshots of all clients (used by the WebUI / API
+   * surface — `ClientEntry.ws` cannot be serialized).
+   */
+  listClientSnapshots(): ClientSnapshot[] {
+    return Array.from(this.clientsById.values()).map(snapshot);
+  }
+
   /** Find a client by id. */
   getClient(clientId: string): ClientEntry | undefined {
     return this.clientsById.get(clientId);
+  }
+
+  /** JSON-safe snapshot of a single client. */
+  getClientSnapshot(clientId: string): ClientSnapshot | undefined {
+    const entry = this.clientsById.get(clientId);
+    return entry ? snapshot(entry) : undefined;
+  }
+
+  // ── SSE-style subscribers (state-change push for WebUI) ──────────────
+
+  /**
+   * Register a subscriber. Returns the subscriber back so the caller can
+   * remove it later. The host fires `event` on every state change
+   * (`client_connected`, `client_disconnected`, `internal_report`); the
+   * subscriber's `send(event, data)` is responsible for shipping it to its
+   * own transport (typically an SSE stream).
+   */
+  addSubscriber(sub: LanHostSubscriber): LanHostSubscriber {
+    this.subscribers.add(sub);
+    return sub;
+  }
+
+  /** Remove a previously-registered subscriber. */
+  removeSubscriber(sub: LanHostSubscriber): void {
+    this.subscribers.delete(sub);
+  }
+
+  /**
+   * Fan an event out to every subscriber. Internal — used by the WS
+   * message handler. Best-effort: a subscriber that throws on `send` is
+   * removed silently so a stuck SSE consumer can't take down the host.
+   */
+  emit(event: string, data: unknown): void {
+    for (const sub of this.subscribers) {
+      try {
+        sub.send(event, data);
+      } catch {
+        this.subscribers.delete(sub);
+      }
+    }
+  }
+
+  // ── Dispatch helpers ─────────────────────────────────────────────────
+
+  /**
+   * Dispatch a command from the WebUI (no real IM origin). Synthesizes an
+   * origin pointing at the bot owner so any return-path reply (`sendToUser`)
+   * lands as a private message to the owner via the host's preferred
+   * protocol. Returns `false` if the client is not connected.
+   *
+   * Used by `POST /api/lan/clients/:id/dispatch`. The QQ-side
+   * `/lan @<id> <text>` command path stays untouched and uses the live
+   * `CommandContext` for its origin.
+   */
+  dispatchFromWebUI(
+    clientId: string,
+    text: string,
+    opts: { ownerUserId: string | number; protocol: string },
+  ): boolean {
+    const dispatchId = randomUUID();
+    const origin: LanRelayOriginContext = {
+      protocol: opts.protocol as LanRelayOriginContext['protocol'],
+      userId: opts.ownerUserId,
+      dispatchedAt: Date.now(),
+    };
+    return this.dispatchToClient(clientId, { text, origin, dispatchId });
   }
 
   /**
@@ -163,6 +276,11 @@ export class LanRelayHost implements ILanRelayRuntime {
       // Already closed.
     }
     logger.info(`[LanRelayHost] Kicked client: ${clientId}`);
+    // Note: the WS `close` handler also tries to emit `client_disconnected`,
+    // but it short-circuits on `entry && entry.ws === ws` because we
+    // already deleted the entry above. Fire it ourselves so subscribers
+    // see kicks reflected without waiting for the WS round-trip.
+    this.emit('client_disconnected', { clientId });
     return true;
   }
 
@@ -179,6 +297,7 @@ export class LanRelayHost implements ILanRelayRuntime {
     const clientsById = this.clientsById;
     const messageAPI = this.messageAPI;
     const reportStore = this.reportStore;
+    const host = this;
 
     this.server = Bun.serve<ClientData>({
       port,
@@ -204,7 +323,7 @@ export class LanRelayHost implements ILanRelayRuntime {
           logger.info('[LanRelayHost] Client connected (awaiting hello)');
         },
         message(ws, message) {
-          void handleHostClientMessage(ws, message, messageAPI, clientsById, reportStore);
+          void handleHostClientMessage(ws, message, messageAPI, clientsById, reportStore, host);
         },
         close(ws) {
           if (ws.data?.clientId) {
@@ -212,6 +331,7 @@ export class LanRelayHost implements ILanRelayRuntime {
             if (entry && entry.ws === ws) {
               clientsById.delete(ws.data.clientId);
               logger.info(`[LanRelayHost] Client disconnected: ${ws.data.clientId}`);
+              host.emit('client_disconnected', { clientId: ws.data.clientId });
             }
           } else {
             logger.info('[LanRelayHost] Unauthenticated client disconnected');
@@ -229,6 +349,16 @@ export class LanRelayHost implements ILanRelayRuntime {
       this.server = null;
     }
     this.clientsById.clear();
+    // Drop all SSE subscribers — their underlying ReadableStream controllers
+    // will see the close() call and tear down on their side.
+    for (const sub of this.subscribers) {
+      try {
+        sub.close();
+      } catch {
+        // ignore
+      }
+    }
+    this.subscribers.clear();
     logger.info('[LanRelayHost] Stopped');
   }
 }
@@ -250,6 +380,7 @@ async function handleHostClientMessage(
   messageAPI: MessageAPI,
   clientsById: Map<string, ClientEntry>,
   reportStore: LanInternalReportStore | null,
+  host: LanRelayHost,
 ): Promise<void> {
   const text = typeof message === 'string' ? message : message.toString();
   let parsed: LanRelayEnvelope;
@@ -339,6 +470,7 @@ async function handleHostClientMessage(
     clientsById.set(p.clientId, entry);
     if (ws.data) ws.data.clientId = p.clientId;
     logger.info(`[LanRelayHost] Client registered: ${p.clientId} (${p.lanAddress})`);
+    host.emit('client_connected', host.getClientSnapshot(p.clientId));
     return;
   }
 
@@ -354,6 +486,12 @@ async function handleHostClientMessage(
       reportStore.insert(p);
     }
     logger.info(`[LanRelayHost] Report from ${p.clientId} [${p.level}]: ${p.text}`);
+    host.emit('internal_report', {
+      clientId: p.clientId,
+      level: p.level,
+      text: p.text,
+      ts: p.ts,
+    });
     return;
   }
 

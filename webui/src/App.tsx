@@ -16,6 +16,7 @@ import {
   Lightbulb,
   MessageSquare,
   Moon,
+  Network,
   Sun,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -25,6 +26,7 @@ import {
   DailyStatsPage,
   FilesPage,
   InsightsPage,
+  LanPage,
   MemoryStatusPage,
   MomentsPage,
   QdrantExplorerPage,
@@ -171,6 +173,18 @@ export default function App() {
               <GitBranch className="w-4 h-4" />
               Cluster
             </button>
+            <button
+              type="button"
+              onClick={() => navigate({ page: "lan" })}
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+                isActivePage(route, "lan")
+                  ? "bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100"
+                  : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+              }`}
+            >
+              <Network className="w-4 h-4" />
+              LAN
+            </button>
           </nav>
 
           <div className="flex-1" />
@@ -207,6 +221,7 @@ export default function App() {
       {route.page === "stats" && <DailyStatsPage />}
       {route.page === "memory" && <MemoryStatusPage />}
       {route.page === "cluster" && <ClusterPage />}
+      {route.page === "lan" && <LanPage />}
     </div>
   );
 }

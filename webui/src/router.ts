@@ -21,7 +21,8 @@ export type Route =
   | { page: 'qdrant' }
   | { page: 'stats' }
   | { page: 'memory' }
-  | { page: 'cluster' };
+  | { page: 'cluster' }
+  | { page: 'lan' };
 
 export type PageName = Route['page'];
 
@@ -71,6 +72,10 @@ export function parseHash(): Route {
     return { page: 'cluster' };
   }
 
+  if (hash === '/lan') {
+    return { page: 'lan' };
+  }
+
   const reportMatch = hash.match(/^\/report\/(.+)$/);
   if (reportMatch?.[1]) {
     return { page: 'report', id: reportMatch[1] };
@@ -113,6 +118,9 @@ export function setHash(route: Route): void {
       break;
     case 'cluster':
       window.location.hash = '/cluster';
+      break;
+    case 'lan':
+      window.location.hash = '/lan';
       break;
   }
 }

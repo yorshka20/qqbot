@@ -2,6 +2,7 @@ import {
   getClusterApiBase,
   getFileApiBase,
   getInsightsApiBase,
+  getLanApiBase,
   getMemoryApiBase,
   getMomentsApiBase,
   getProjectsApiBase,
@@ -28,6 +29,10 @@ import type {
   InsightListResponse,
   InsightStatsResponse,
   InterestEvolutionResponse,
+  LanClientSnapshot,
+  LanClientsResponse,
+  LanReportsResponse,
+  LanStatusResponse,
   ListResponse,
   MemoryGroupDetail,
   MemoryUserFactDetail,
@@ -644,4 +649,99 @@ export async function answerClusterHelpRequest(
     throw new Error(err.error ?? `Answer help request failed: ${res.status}`);
   }
   return res.json() as Promise<{ answered: boolean }>;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// LAN Relay API
+// ────────────────────────────────────────────────────────────────────────────
+
+function lanApiBase(): string {
+  return getLanApiBase();
+}
+
+/**
+ * Always-on status. On a non-host instance the response is still valid
+ * (with `role !== 'host'`) so the LanPage can render an informative
+ * "not in host mode" panel instead of failing.
+ */
+export async function getLanStatus(): Promise<LanStatusResponse> {
+  const res = await fetch(`${lanApiBase()}/status`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get LAN status failed: ${res.status}`);
+  }
+  return res.json() as Promise<LanStatusResponse>;
+}
+
+export async function listLanClients(): Promise<LanClientSnapshot[]> {
+  const res = await fetch(`${lanApiBase()}/clients`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List LAN clients failed: ${res.status}`);
+  }
+  const body = (await res.json()) as LanClientsResponse;
+  return body.clients;
+}
+
+export async function getLanClient(clientId: string): Promise<LanClientSnapshot> {
+  const res = await fetch(`${lanApiBase()}/clients/${encodeURIComponent(clientId)}`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get LAN client failed: ${res.status}`);
+  }
+  return res.json() as Promise<LanClientSnapshot>;
+}
+
+export async function listLanReports(
+  clientId: string,
+  opts?: { limit?: number; level?: 'debug' | 'info' | 'warn' | 'error' },
+): Promise<LanReportsResponse> {
+  const params = new URLSearchParams();
+  if (opts?.limit != null) params.set('limit', String(opts.limit));
+  if (opts?.level) params.set('level', opts.level);
+  const qs = params.toString();
+  const url = `${lanApiBase()}/clients/${encodeURIComponent(clientId)}/reports${qs ? `?${qs}` : ''}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List LAN reports failed: ${res.status}`);
+  }
+  return res.json() as Promise<LanReportsResponse>;
+}
+
+export async function dispatchLanCommand(
+  clientId: string,
+  text: string,
+): Promise<{ dispatched: boolean }> {
+  const res = await fetch(`${lanApiBase()}/clients/${encodeURIComponent(clientId)}/dispatch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Dispatch LAN command failed: ${res.status}`);
+  }
+  return res.json() as Promise<{ dispatched: boolean }>;
+}
+
+export async function kickLanClient(clientId: string): Promise<{ kicked: boolean }> {
+  const res = await fetch(`${lanApiBase()}/clients/${encodeURIComponent(clientId)}/kick`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Kick LAN client failed: ${res.status}`);
+  }
+  return res.json() as Promise<{ kicked: boolean }>;
+}
+
+/**
+ * URL for the SSE stream. The LanPage opens an EventSource against this
+ * and listens for `init` / `client_connected` / `client_disconnected` /
+ * `internal_report` events. Returned as a string (not an EventSource)
+ * so the page can decide when to (re)open it.
+ */
+export function getLanStreamUrl(): string {
+  return `${lanApiBase()}/stream`;
 }

@@ -7,6 +7,7 @@ export { ClusterPage } from './cluster';
 export { DailyStatsPage } from './daily-stats';
 export { FilesPage } from './files';
 export { InsightsPage } from './insights';
+export { LanPage } from './lan';
 export { MemoryStatusPage } from './memory-status';
 export { MomentsPage } from './moments';
 export { QdrantExplorerPage } from './qdrant';

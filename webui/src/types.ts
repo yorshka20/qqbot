@@ -637,3 +637,70 @@ export interface MemoryUserFactDetail {
   totalFacts: number;
   facts: MemoryFactEntry[];
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// LAN Relay Types
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Returned by `/api/lan/status`. Always-on; usable on a non-host instance. */
+export interface LanStatusResponse {
+  enabled: boolean;
+  /** `host` | `client` | `null` (LAN relay disabled or runtime not yet wired). */
+  role: 'host' | 'client' | null;
+  /** Listen address; only set when this instance is in host mode. */
+  listen: { host: string; port: number | null } | null;
+  clientCount: number;
+}
+
+/** Snapshot of a connected LAN client (JSON-safe view of `ClientEntry`). */
+export interface LanClientSnapshot {
+  clientId: string;
+  label?: string;
+  lanAddress: string;
+  startedAt: number;
+  connectedAt: number;
+  lastSeenAt: number;
+  enabledPlugins?: string[];
+}
+
+export interface LanClientsResponse {
+  clients: LanClientSnapshot[];
+}
+
+export type LanReportLevel = 'debug' | 'info' | 'warn' | 'error';
+
+export interface LanReportRow {
+  id: number;
+  clientId: string;
+  level: LanReportLevel;
+  text: string;
+  ts: number;
+}
+
+export interface LanReportsResponse {
+  reports: LanReportRow[];
+}
+
+/** SSE event types pushed by `/api/lan/stream`. */
+export interface LanStreamInitEvent {
+  type: 'init';
+  clients: LanClientSnapshot[];
+}
+
+export interface LanStreamClientConnectedEvent {
+  type: 'client_connected';
+  client: LanClientSnapshot;
+}
+
+export interface LanStreamClientDisconnectedEvent {
+  type: 'client_disconnected';
+  clientId: string;
+}
+
+export interface LanStreamInternalReportEvent {
+  type: 'internal_report';
+  clientId: string;
+  level: LanReportLevel;
+  text: string;
+  ts: number;
+}

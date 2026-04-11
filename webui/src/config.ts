@@ -86,6 +86,12 @@ export function getClusterApiBase(): string {
   return serverBase ? `${serverBase}/api/cluster` : '/api/cluster';
 }
 
+/** Base URL for LAN relay API requests (host mode only — see LanAPIBackend). */
+export function getLanApiBase(): string {
+  const serverBase = getStaticServerBase();
+  return serverBase ? `${serverBase}/api/lan` : '/api/lan';
+}
+
 /** Base URL for Projects API requests (ProjectRegistry). */
 export function getProjectsApiBase(): string {
   const serverBase = getStaticServerBase();

@@ -7,6 +7,7 @@ import { ClusterAPIBackend } from './ClusterAPIBackend';
 import { DailyStatsBackend } from './DailyStatsBackend';
 import { FileManagerBackend } from './FileManagerBackend';
 import { InsightsBackend } from './InsightsBackend';
+import { LanAPIBackend } from './LanAPIBackend';
 import { MemoryStatusBackend } from './MemoryStatusBackend';
 import { MomentsBackend } from './MomentsBackend';
 import { OutputStaticHost } from './OutputStaticHost';
@@ -26,6 +27,7 @@ export function createBackends(baseDir: string): Backend[] {
   return [
     new FileManagerBackend(baseDir),
     new ClusterAPIBackend(),
+    new LanAPIBackend(),
     new ReportBackend(),
     new InsightsBackend(),
     new MomentsBackend(),
