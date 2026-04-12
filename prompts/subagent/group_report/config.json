@@ -1,7 +1,7 @@
 {
   "displayName": "群聊日报",
   "type": "analysis",
-  "allowedTools": ["render_group_report"],
+  "allowedTools": ["render_group_report", "get_group_member_list"],
   "maxDepth": 1,
   "maxChildren": 0,
   "timeout": 120000,
