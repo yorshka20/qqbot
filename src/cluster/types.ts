@@ -21,6 +21,8 @@ export type ClusterEventType =
   | 'file_changed'
   | 'task_completed'
   | 'task_failed'
+  | 'task_blocked'
+  | 'worker_progress'
   | 'directive'
   | 'answer'
   | 'lock_released'
@@ -42,8 +44,24 @@ export interface WorkerRegistration {
   templateName: string;
   status: 'active' | 'idle' | 'exited';
   currentTaskId?: string;
+  /**
+   * Last task id this worker was bound to (set on setTask with a task).
+   * Kept after terminal hub_report clears `currentTaskId` so WebUI can still
+   * show which task/ticket the worker ran.
+   */
+  lastBoundTaskId?: string;
+  /** Epoch ms when markExited ran (process ended). */
+  exitedAt?: number;
   lastSeen: number;
   syncCursor: number;
+  /** Epoch ms of the last hub_report (any status). Used by WebUI + liveness. */
+  lastHubReportAt?: number;
+  /** Latest hub_report summary line. */
+  lastReportSummary?: string;
+  /** Latest hub_report nextSteps (required for status=working). */
+  lastReportNextSteps?: string;
+  /** Status from the most recent hub_report. */
+  lastReportStatus?: 'working' | 'completed' | 'failed' | 'blocked';
   stats: {
     tasksCompleted: number;
     tasksFailed: number;
@@ -192,6 +210,11 @@ export interface HubClaimOutput {
 export interface HubReportInput {
   status: 'working' | 'completed' | 'failed' | 'blocked';
   summary: string;
+  /**
+   * Required when status is `working`: what you will do next before the next
+   * report. Proves the worker is not stuck; shown in WebUI.
+   */
+  nextSteps?: string;
   filesModified?: string[];
   detail?: {
     linesAdded?: number;

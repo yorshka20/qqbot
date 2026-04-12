@@ -356,9 +356,25 @@ export interface ClusterWorkerRegistration {
   templateName?: string;
   status?: string;
   currentTaskId?: string;
+  /** Kept after task completes — server may omit on old sessions */
+  lastBoundTaskId?: string;
+  /** Epoch ms when worker process exited */
+  exitedAt?: number;
   lastSeen?: number;
   syncCursor?: number;
-  stats?: Record<string, number>;
+  /** Epoch ms of last hub_report */
+  lastHubReportAt?: number;
+  lastReportSummary?: string;
+  lastReportNextSteps?: string;
+  lastReportStatus?: string;
+  stats?: { registeredAt?: number; tasksCompleted?: number; tasksFailed?: number; totalReports?: number };
+  /** Process / hub registration time (epoch ms), mirrors stats.registeredAt */
+  spawnedAt?: number;
+  boundJobId?: string;
+  boundTicketId?: string;
+  boundTaskSummary?: string;
+  /** Task id after server resolution (DB fallback) */
+  resolvedTaskId?: string;
 }
 
 export interface ClusterJob {

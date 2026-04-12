@@ -387,7 +387,7 @@ export class WorkerPool {
     for (const worker of this.workers.values()) {
       if (worker.status === 'running' && now - worker.lastReport > timeoutMs) {
         logger.warn(
-          `[WorkerPool] Worker ${worker.id} appears stuck (no report for ${Math.round((now - worker.lastReport) / 1000)}s)`,
+          `[WorkerPool] Worker ${worker.id} appears stuck (no hub_report for ${Math.round((now - worker.lastReport) / 1000)}s)`,
         );
         stuckWorkers.push(worker.id);
       }
@@ -397,7 +397,9 @@ export class WorkerPool {
   }
 
   /**
-   * Update lastReport timestamp for a worker (called when hub receives a report).
+   * Update lastReport timestamp for a worker. Called from ContextHub on every
+   * successful hub_report (via heartbeat callback) so healthCheck measures time
+   * since last report, not time since process spawn.
    */
   updateLastReport(workerId: string): void {
     const worker = this.workers.get(workerId);

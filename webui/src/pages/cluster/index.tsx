@@ -9,7 +9,9 @@
  *   - Workers card
  *   - Locks card
  *
- * Click any task in the Jobs card to open a modal with the full output.
+ * Click any task in the Jobs card (or **Task output** on a worker row) to open
+ * a modal with the full task record: **Output** is worker CLI stdout; hub_report
+ * lines on the worker card are short checkpoints only.
  *
  * Background polling refreshes every 5s; SSE (when cluster.started) just
  * triggers a refresh on push events instead of incrementally updating
@@ -17,22 +19,14 @@
  * are small enough that the extra round-trip is fine.
  */
 
-import {
-  GitBranch,
-  Pause,
-  Play,
-  Power,
-  RefreshCw,
-  Send,
-  Skull,
-  Square,
-} from 'lucide-react';
+import { GitBranch, Pause, Play, Power, RefreshCw, Send, Square } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   createClusterJob,
   getClusterProjects,
   getClusterStatus,
+  getClusterTask,
   getClusterTemplates,
   killClusterWorker,
   listClusterEvents,
@@ -58,11 +52,12 @@ import type {
   ProjectRegistryEntry,
 } from '../../types';
 import { ClusterCard } from './components/ClusterCard';
+import { WorkerBlock } from './components/WorkerBlock';
 import { HelpRequestRow } from './components/HelpRequestRow';
 import { JobRow } from './components/JobRow';
 import { KillWorkerDialog } from './components/KillWorkerDialog';
 import { TaskOutputModal } from './components/TaskOutputModal';
-import { formatMs } from './utils';
+import { CLUSTER_CARD_BODY_SCROLL, formatClusterEventSummary } from './utils';
 
 export function ClusterPage() {
   const [loading, setLoading] = useState(false);
@@ -138,6 +133,38 @@ export function ClusterPage() {
       setLoading(false);
     }
   }, [eventTypeFilter]);
+
+  const activeWorkers = useMemo(() => {
+    if (!workers) {
+      return [];
+    }
+    return workers
+      .filter((w) => w.status !== 'exited')
+      .slice()
+      .sort((a, b) => (a.workerId || '').localeCompare(b.workerId || ''));
+  }, [workers]);
+
+  const oldWorkers = useMemo(() => {
+    if (!workers) {
+      return [];
+    }
+    return workers
+      .filter((w) => w.status === 'exited')
+      .slice()
+      .sort((a, b) => (a.workerId || '').localeCompare(b.workerId || ''));
+  }, [workers]);
+
+  const openTaskOutput = useCallback(async (taskId: string) => {
+    try {
+      setError(null);
+      const raw = await getClusterTask(taskId);
+      const { children, ...task } = raw;
+      void children;
+      setOpenTask(task as ClusterTask);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
 
   useEffect(() => {
     if (!started) {
@@ -307,7 +334,7 @@ export function ClusterPage() {
                 </div>
               }
             >
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
+              <div className={`grid grid-cols-1 md:grid-cols-12 gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}>
                 <div className="md:col-span-3">
                   <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Project</div>
                   <select
@@ -383,7 +410,7 @@ export function ClusterPage() {
               ) : help.length === 0 ? (
                 <div className="text-sm text-zinc-500 dark:text-zinc-400">No pending requests</div>
               ) : (
-                <div className="flex flex-col gap-2 max-h-[400px] overflow-y-auto">
+                <div className={`flex flex-col gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}>
                   {help.map((h) => (
                     <HelpRequestRow key={h.id} request={h} onAnswered={refresh} />
                   ))}
@@ -398,7 +425,7 @@ export function ClusterPage() {
                 ) : jobs.length === 0 ? (
                   <div className="text-sm text-zinc-500 dark:text-zinc-400">No jobs yet — submit one above</div>
                 ) : (
-                  <div className="flex flex-col gap-2">
+                  <div className={`flex flex-col gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}>
                     {jobs.map((j) => (
                       <JobRow key={j.id} job={j} onTaskClick={setOpenTask} />
                     ))}
@@ -407,128 +434,175 @@ export function ClusterPage() {
               </ClusterCard>
             </div>
 
-            <ClusterCard title="Workers" count={workers?.length}>
-              {!workers ? (
-                <div className="text-sm text-zinc-500 dark:text-zinc-400">-</div>
-              ) : workers.length === 0 ? (
-                <div className="text-sm text-zinc-500 dark:text-zinc-400">No workers</div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {workers
-                    .slice()
-                    .sort((a, b) => (a.workerId || '').localeCompare(b.workerId || ''))
-                    .map((w) => {
-                      const isRunning = w.status === 'running' || w.status === 'active';
-                      return (
-                        <div
-                          key={w.workerId}
-                          className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white/60 dark:bg-zinc-900/30 px-3 py-2"
-                        >
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <div className="font-mono text-xs text-zinc-700 dark:text-zinc-200">{w.workerId}</div>
-                            <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                              {w.project ?? '-'} · {w.templateName ?? '-'} · {w.role ?? '-'} · {w.status ?? '-'}
-                            </div>
-                            <div className="flex-1" />
-                            <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                              lastSeen: {w.lastSeen ? formatMs(Date.now() - w.lastSeen) : '-'}
-                            </div>
-                            {isRunning && (
-                              <button
-                                type="button"
-                                onClick={() => setKillConfirmId(w.workerId)}
-                                className="p-1 rounded text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30"
-                                aria-label={`Kill worker ${w.workerId}`}
-                                title="Kill worker"
-                              >
-                                <Skull className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                          {w.currentTaskId && (
-                            <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">task: {w.currentTaskId}</div>
-                          )}
-                        </div>
-                      );
-                    })}
-                </div>
-              )}
-            </ClusterCard>
-
-            <ClusterCard title="Locks" count={locks?.length}>
-              {!locks ? (
-                <div className="text-sm text-zinc-500 dark:text-zinc-400">-</div>
-              ) : locks.length === 0 ? (
-                <div className="text-sm text-zinc-500 dark:text-zinc-400">No active locks</div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {locks
-                    .slice()
-                    .sort((a, b) => a.filePath.localeCompare(b.filePath))
-                    .map((l) => (
-                      <div
-                        key={l.filePath}
-                        className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white/60 dark:bg-zinc-900/30 px-3 py-2"
-                      >
-                        <div className="font-mono text-xs text-zinc-700 dark:text-zinc-200">{l.filePath}</div>
-                        <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                          by {l.workerId} · task {l.taskId ?? '-'}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </ClusterCard>
-
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-2 w-full min-w-0">
               <ClusterCard
-                title="Events"
-                count={events?.length}
+                title="Workers"
+                count={workers?.length}
                 right={
-                  <select
-                    value={eventTypeFilter}
-                    onChange={(e) => setEventTypeFilter(e.target.value)}
-                    className="px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs"
-                  >
-                    <option value="">All types</option>
-                    <option value="worker_joined">worker_joined</option>
-                    <option value="worker_left">worker_left</option>
-                    <option value="task_completed">task_completed</option>
-                    <option value="task_failed">task_failed</option>
-                    <option value="lock_acquired">lock_acquired</option>
-                    <option value="lock_released">lock_released</option>
-                    <option value="help_request">help_request</option>
-                    <option value="message">message</option>
-                  </select>
+                  workers && workers.length > 0 ? (
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400 font-normal">
+                      active {activeWorkers.length} · old {oldWorkers.length}
+                    </span>
+                  ) : null
                 }
               >
-                {!events ? (
+                {!workers ? (
                   <div className="text-sm text-zinc-500 dark:text-zinc-400">-</div>
-                ) : events.length === 0 ? (
-                  <div className="text-sm text-zinc-500 dark:text-zinc-400">
-                    No events{eventTypeFilter && ` matching "${eventTypeFilter}"`}
-                  </div>
+                ) : workers.length === 0 ? (
+                  <div className="text-sm text-zinc-500 dark:text-zinc-400">No workers</div>
                 ) : (
-                  <div className="flex flex-col gap-1 max-h-[40vh] overflow-y-auto">
-                    {events.map((ev) => (
-                      <div
-                        key={`${ev.seq}-${ev.timestamp}`}
-                        className="flex items-start gap-2 px-2 py-1 rounded text-xs hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
-                      >
-                        <div className="font-mono text-zinc-400 dark:text-zinc-500 shrink-0 w-16">#{ev.seq}</div>
-                        <div className="font-mono text-zinc-600 dark:text-zinc-300 shrink-0 w-24 truncate">{ev.type}</div>
-                        <div className="font-mono text-zinc-500 dark:text-zinc-400 shrink-0 truncate w-28">
-                          {ev.sourceWorkerId ?? '-'}
+                  <div className="flex flex-col gap-2 min-h-0 w-full min-w-0">
+                    <div className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0">
+                      Worker CLI stdout is on the <strong className="text-zinc-600 dark:text-zinc-300">task</strong> record
+                      (<strong className="text-zinc-600 dark:text-zinc-300">Task output</strong> or Recent jobs). hub_report
+                      lines are checkpoints only.
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 min-h-0 items-stretch w-full min-w-0">
+                      <div className="flex flex-col gap-2 min-h-0 min-w-0 w-full">
+                        <div className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 shrink-0">
+                          Active
                         </div>
-                        <div className="flex-1 text-zinc-700 dark:text-zinc-200 truncate">{JSON.stringify(ev.data)}</div>
-                        <div className="text-zinc-400 dark:text-zinc-500 shrink-0">
-                          {new Date(ev.timestamp).toLocaleTimeString()}
+                        <div className={`flex flex-col gap-2 w-full min-w-0 ${CLUSTER_CARD_BODY_SCROLL}`}>
+                          {activeWorkers.length === 0 ? (
+                            <div className="text-xs text-zinc-500 dark:text-zinc-400">None</div>
+                          ) : (
+                            activeWorkers.map((w) => (
+                              <WorkerBlock
+                                key={w.workerId}
+                                w={w}
+                                onOpenTaskOutput={openTaskOutput}
+                                onRequestKill={setKillConfirmId}
+                              />
+                            ))
+                          )}
                         </div>
                       </div>
-                    ))}
+                      <div className="flex flex-col gap-2 min-h-0 min-w-0 w-full border-t border-zinc-200 dark:border-zinc-700 pt-3 lg:border-t-0 lg:pt-0 lg:border-l lg:pl-3 lg:border-zinc-200 lg:dark:border-zinc-700">
+                        <div className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 shrink-0">
+                          Old workers
+                        </div>
+                        <div className={`flex flex-col gap-2 w-full min-w-0 ${CLUSTER_CARD_BODY_SCROLL}`}>
+                          {oldWorkers.length === 0 ? (
+                            <div className="text-xs text-zinc-500 dark:text-zinc-400">None</div>
+                          ) : (
+                            oldWorkers.map((w) => (
+                              <WorkerBlock
+                                key={w.workerId}
+                                w={w}
+                                onOpenTaskOutput={openTaskOutput}
+                                onRequestKill={setKillConfirmId}
+                              />
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </ClusterCard>
+            </div>
+
+            <div className="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+              <div className="min-h-0 min-w-0">
+                <ClusterCard
+                  title="Events"
+                  count={events?.length}
+                  right={
+                    <select
+                      value={eventTypeFilter}
+                      onChange={(e) => setEventTypeFilter(e.target.value)}
+                      className="px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs max-w-[140px]"
+                    >
+                      <option value="">All types</option>
+                      <option value="worker_joined">worker_joined</option>
+                      <option value="worker_left">worker_left</option>
+                      <option value="task_completed">task_completed</option>
+                      <option value="task_failed">task_failed</option>
+                      <option value="task_blocked">task_blocked</option>
+                      <option value="worker_progress">worker_progress</option>
+                      <option value="lock_acquired">lock_acquired</option>
+                      <option value="lock_released">lock_released</option>
+                      <option value="help_request">help_request</option>
+                      <option value="message">message</option>
+                    </select>
+                  }
+                >
+                  {!events ? (
+                    <div className="text-sm text-zinc-500 dark:text-zinc-400">-</div>
+                  ) : events.length === 0 ? (
+                    <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                      No events{eventTypeFilter && ` matching "${eventTypeFilter}"`}
+                    </div>
+                  ) : (
+                    <div className={`flex flex-col gap-0.5 ${CLUSTER_CARD_BODY_SCROLL}`}>
+                      {events.map((ev) => (
+                        <div
+                          key={`${ev.seq}-${ev.timestamp}`}
+                          className="rounded-lg border border-zinc-100 dark:border-zinc-800 bg-white/50 dark:bg-zinc-900/20 px-2 py-2 text-xs hover:bg-zinc-50 dark:hover:bg-zinc-800/40"
+                        >
+                          <div className="flex items-start gap-2">
+                            <span className="text-zinc-400 dark:text-zinc-500 shrink-0 w-11 tabular-nums">
+                              #{ev.seq}
+                            </span>
+                            <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-zinc-200/90 dark:bg-zinc-700/80 text-[10px] font-mono text-zinc-800 dark:text-zinc-100 max-w-[8.5rem] truncate">
+                              {ev.type}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-zinc-800 dark:text-zinc-100 leading-snug break-words">
+                                {formatClusterEventSummary(ev)}
+                              </div>
+                              {ev.sourceWorkerId ? (
+                                <div className="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono truncate mt-0.5">
+                                  {ev.sourceWorkerId}
+                                </div>
+                              ) : null}
+                            </div>
+                            <time className="text-zinc-400 dark:text-zinc-500 shrink-0 text-[10px] tabular-nums whitespace-nowrap">
+                              {new Date(ev.timestamp).toLocaleTimeString()}
+                            </time>
+                          </div>
+                          <details className="mt-1.5 ml-[3.25rem]">
+                            <summary className="cursor-pointer text-[10px] text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 select-none">
+                              Raw payload
+                            </summary>
+                            <pre className="mt-1 p-2 rounded-md bg-zinc-100 dark:bg-zinc-950 text-[10px] leading-relaxed text-zinc-700 dark:text-zinc-300 overflow-x-auto whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                              {JSON.stringify(ev.data, null, 2)}
+                            </pre>
+                          </details>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ClusterCard>
+              </div>
+              <div className="min-h-0 min-w-0">
+                <ClusterCard title="Locks" count={locks?.length}>
+                  {!locks ? (
+                    <div className="text-sm text-zinc-500 dark:text-zinc-400">-</div>
+                  ) : locks.length === 0 ? (
+                    <div className="text-sm text-zinc-500 dark:text-zinc-400">No active locks</div>
+                  ) : (
+                    <div className={`flex flex-col gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}>
+                      {locks
+                        .slice()
+                        .sort((a, b) => a.filePath.localeCompare(b.filePath))
+                        .map((l) => (
+                          <div
+                            key={l.filePath}
+                            className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white/60 dark:bg-zinc-900/30 px-3 py-2"
+                          >
+                            <div className="font-mono text-xs text-zinc-700 dark:text-zinc-200 break-all">
+                              {l.filePath}
+                            </div>
+                            <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                              by {l.workerId} · task {l.taskId ?? '-'}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </ClusterCard>
+              </div>
             </div>
           </div>
         </div>

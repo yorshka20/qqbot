@@ -438,6 +438,43 @@ export class ClusterScheduler {
   }
 
   /**
+   * Job by id — in-memory first, then `cluster_jobs` (for ticketId after the
+   * job row aged out of the live map or across hub-only lookups).
+   */
+  resolveJob(jobId: string): JobRecord | undefined {
+    const live = this.jobs.get(jobId);
+    if (live) {
+      return live;
+    }
+    try {
+      const row = this.db.query(`SELECT * FROM cluster_jobs WHERE id = ? LIMIT 1`).get(jobId) as Record<
+        string,
+        unknown
+      > | null;
+      if (!row) {
+        return undefined;
+      }
+      return {
+        id: row.id as string,
+        project: row.project as string,
+        description: row.description as string,
+        status: row.status as JobRecord['status'],
+        createdAt: row.createdAt as string,
+        startedAt: (row.startedAt as string | null) ?? undefined,
+        completedAt: (row.completedAt as string | null) ?? undefined,
+        taskCount: Number(row.taskCount),
+        tasksCompleted: Number(row.tasksCompleted),
+        tasksFailed: Number(row.tasksFailed),
+        metadata: (row.metadata as string | null) ?? undefined,
+        ticketId: (row.ticketId as string | null) ?? undefined,
+      };
+    } catch (err) {
+      logger.warn(`[ClusterScheduler] resolveJob DB lookup failed for ${jobId}:`, err);
+      return undefined;
+    }
+  }
+
+  /**
    * Get tasks for a specific job. Returns the union of:
    *   - live entries in `activeTasks` (in-progress / pending)
    *   - persisted rows in `cluster_tasks` for the same jobId (completed,
@@ -747,6 +784,31 @@ export class ClusterScheduler {
       return this.rowToTask(row);
     } catch (err) {
       logger.warn(`[ClusterScheduler] findTask DB lookup failed for ${taskId}:`, err);
+      return undefined;
+    }
+  }
+
+  /**
+   * Latest persisted/live task row for a worker id (WebUI worker card enrichment
+   * when `lastBoundTaskId` is missing on older registrations).
+   */
+  findLatestTaskForWorker(workerId: string): TaskRecord | undefined {
+    const live = Array.from(this.activeTasks.values()).find((t) => t.workerId === workerId);
+    if (live) {
+      return live;
+    }
+    try {
+      const row = this.db
+        .query(
+          `SELECT * FROM cluster_tasks WHERE workerId = ? ORDER BY COALESCE(startedAt, createdAt) DESC LIMIT 1`,
+        )
+        .get(workerId) as Record<string, unknown> | null;
+      if (!row) {
+        return undefined;
+      }
+      return this.rowToTask(row);
+    } catch (err) {
+      logger.warn(`[ClusterScheduler] findLatestTaskForWorker failed for ${workerId}:`, err);
       return undefined;
     }
   }

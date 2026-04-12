@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { getClusterJob } from '../../../api';
 import type { ClusterJob, ClusterJobWithTasks, ClusterTask } from '../../../types';
-import { formatTimestamp } from '../utils';
+import { CLUSTER_CARD_BODY_SCROLL, formatTimestamp } from '../utils';
 import { ClusterStatusBadge } from './ClusterStatusBadge';
 import { orderTasksAsTree, TaskTreeRow } from './TaskTree';
 
@@ -63,7 +63,9 @@ export function JobRow({
         </div>
       </button>
       {expanded && (
-        <div className="border-t border-zinc-200 dark:border-zinc-700 px-3 py-2 bg-zinc-50/50 dark:bg-zinc-900/50">
+        <div
+          className={`border-t border-zinc-200 dark:border-zinc-700 px-3 py-2 bg-zinc-50/50 dark:bg-zinc-900/50 ${CLUSTER_CARD_BODY_SCROLL}`}
+        >
           <div className="grid grid-cols-2 gap-2 text-xs text-zinc-500 dark:text-zinc-400 mb-2">
             <div>
               project: <span className="font-mono">{job.project}</span>

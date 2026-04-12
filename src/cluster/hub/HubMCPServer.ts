@@ -235,10 +235,18 @@ export class HubMCPServer {
       {
         description:
           'Report your task progress to the hub. Use status="working" for in-progress checkpoints, ' +
-          '"completed" / "failed" / "blocked" for terminal states. Reports release locks on terminal status.',
+          '"completed" / "failed" / "blocked" for terminal states. Reports release locks on terminal status. ' +
+          'When status is "working", nextSteps is REQUIRED (what you will do next) so the hub can prove you are not stuck.',
         inputSchema: {
           status: z.enum(['working', 'completed', 'failed', 'blocked']).describe('Current task status.'),
           summary: z.string().describe('Short summary of what just happened.'),
+          nextSteps: z
+            .string()
+            .optional()
+            .describe(
+              'Required when status=working: one or two sentences on what you will do before the next report. ' +
+                'Optional for terminal statuses.',
+            ),
           filesModified: z
             .array(z.string())
             .optional()
@@ -255,10 +263,15 @@ export class HubMCPServer {
             .optional(),
         },
       },
-      async (args, extra) =>
-        this.runTool('hub_report', extra, (workerId) =>
-          this.hub.handleReport(workerId, args as unknown as HubReportInput),
-        ),
+      async (args, extra) => {
+        const input = args as unknown as HubReportInput;
+        if (input.status === 'working' && (!input.nextSteps || !String(input.nextSteps).trim())) {
+          return this.errorResult(
+            'hub_report with status="working" requires a non-empty nextSteps string (what you will do next before the next report).',
+          );
+        }
+        return this.runTool('hub_report', extra, (workerId) => this.hub.handleReport(workerId, input));
+      },
     );
 
     // hub_ask — escalate to a human via the planner / WebUI.

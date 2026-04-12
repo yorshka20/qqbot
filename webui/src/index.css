@@ -3,6 +3,51 @@
 
 @variant dark (&:where(.dark, .dark *));
 
+/* ── Global scrollbars (Firefox + WebKit) — thin, rounded, dark-mode friendly ── */
+:root {
+  --sb-size: 9px;
+  --sb-thumb: color-mix(in srgb, theme(colors.zinc.400) 50%, transparent);
+  --sb-thumb-hover: color-mix(in srgb, theme(colors.zinc.500) 72%, transparent);
+  --sb-track: transparent;
+}
+
+html.dark {
+  /* Slightly brighter thumb on dark surfaces; transparent track avoids a gray “rail” */
+  --sb-thumb: color-mix(in srgb, theme(colors.zinc.500) 58%, transparent);
+  --sb-thumb-hover: color-mix(in srgb, theme(colors.zinc.400) 55%, transparent);
+  --sb-track: transparent;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sb-thumb) var(--sb-track);
+}
+
+*::-webkit-scrollbar {
+  width: var(--sb-size);
+  height: var(--sb-size);
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--sb-track);
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--sb-thumb);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--sb-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 body {
   margin: 0;
   min-height: 100vh;

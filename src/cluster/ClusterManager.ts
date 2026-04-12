@@ -108,6 +108,10 @@ export class ClusterManager {
       this.scheduler.markTaskCompleted(task);
     });
 
+    this.hub.setHeartbeatCallback((workerId) => {
+      this.workerPool.updateLastReport(workerId);
+    });
+
     // Register backends
     this.registerBackends();
 

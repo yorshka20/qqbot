@@ -2,7 +2,7 @@
 
 - `hub_sync` — 轮询自上次 **cursor** 以来的事件 / 消息 / 指令
 - `hub_claim` — 在编辑前获取文件锁
-- `hub_report` — 汇报进度 / 完成 / 失败 / 阻塞
+- `hub_report` — 汇报进度 / 完成 / 失败 / 阻塞（`status=working` 时必须带 `nextSteps`）
 - `hub_ask` — 升级至人工（决策 / 澄清 / 冲突）
 - `hub_message` — 向另一名 **worker** 发送消息（或发送 "all" 进行广播）
 

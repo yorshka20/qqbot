@@ -12,9 +12,9 @@
 
 - `hub_claim(taskId, intent, files)` — **修改文件之前必须先 claim**。如果
   返回 `granted: false`，意味着别的 worker 正在改你想动的文件。
-- `hub_report({status, summary, filesModified?, detail?})` — 汇报进展或终态。
-  - `status: 'working'` —— 中间检查点
-  - `status: 'completed'` —— 任务成功，附改动摘要
+- `hub_report({status, summary, nextSteps?, filesModified?, detail?})` — 汇报进展或终态。
+  - `status: 'working'` —— 中间检查点；**必须**同时提供非空的 `nextSteps`（下一步打算做什么），否则 hub 会拒绝。
+  - `status: 'completed'` —— 任务成功，附改动摘要（`nextSteps` 可省略）
   - `status: 'failed'` —— 任务失败，`detail.error` 写错误信息
   - `status: 'blocked'` —— 卡住了不能继续，`detail.blockReason` 写原因
 - `hub_sync()` — 拉取自上次以来的事件 / 消息 / directive。**长跑任务定期
@@ -55,7 +55,12 @@ hub_claim({
 ### 3. 中间汇报
 
 每完成一个**有意义的步骤**（一个文件改完、一个函数写完、一次测试跑完），
-调一次 `hub_report({status: 'working', summary: '...'})`。
+调一次 `hub_report({status: 'working', summary: '...', nextSteps: '...'})`。
+`nextSteps` 用一两句话写清**接下来**要做什么（直到下一次 report 之前）——
+运维会在 WebUI 里根据它判断你是否在按预期推进。
+
+**长跑任务**：若单次执行可能超过 **8 分钟**，必须至少每 **8 分钟** 再打一
+次 `working` report（带 `nextSteps`），否则集群会判定 worker 失联并强制终止进程。
 
 如果你**改了 > 3 个文件** 或者**跑了 > 5 分钟**，再补一次 `hub_sync` 看看
 外部有没有新事件 / directive。

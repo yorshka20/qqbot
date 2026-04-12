@@ -1,3 +1,10 @@
+/**
+ * Default scroll area for Cluster page list cards — keeps blocks from growing
+ * with content; scroll inside the card instead.
+ */
+export const CLUSTER_CARD_BODY_SCROLL =
+  'max-h-[min(42vh,24rem)] overflow-y-auto overflow-x-hidden overscroll-contain pr-0.5';
+
 export function formatMs(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '-';
   const s = Math.round(ms / 1000);
@@ -15,6 +22,74 @@ export function formatTimestamp(iso?: string): string {
     return d.toLocaleString();
   } catch {
     return iso;
+  }
+}
+
+/** Local date/time string from epoch ms (WebUI cluster worker spawned/exited). */
+export function formatEpoch(epoch?: number): string {
+  if (epoch == null || !Number.isFinite(epoch)) {
+    return '-';
+  }
+  try {
+    return new Date(epoch).toLocaleString();
+  } catch {
+    return '-';
+  }
+}
+
+import type { ClusterEventEntry } from '../../types';
+
+/**
+ * Human-readable one-line summary for cluster event log rows (replaces raw JSON in the main view).
+ */
+export function formatClusterEventSummary(ev: ClusterEventEntry): string {
+  const d = ev.data ?? {};
+  switch (ev.type) {
+    case 'file_changed':
+      return `Files: ${(d.filesModified as string[] | undefined)?.join(', ') || '—'}`;
+    case 'worker_progress': {
+      const s = String(d.summary ?? '').trim();
+      const n = d.nextSteps ? ` → Next: ${String(d.nextSteps)}` : '';
+      return (s + n).trim() || 'Progress';
+    }
+    case 'task_completed':
+      return `Completed: ${String(d.summary ?? '').trim() || '—'}`;
+    case 'task_failed':
+      return `Failed: ${String(d.summary ?? '').trim() || '—'}`;
+    case 'task_blocked':
+      return `Blocked: ${String(d.summary ?? '').trim() || '—'}`;
+    case 'lock_acquired': {
+      const files = d.files as string[] | undefined;
+      return `Lock: ${files?.join(', ') || String(d.file ?? '') || '—'}`;
+    }
+    case 'lock_released':
+      return `Unlock: ${String(d.file ?? '—')}`;
+    case 'worker_joined': {
+      const bits = [d.template, d.project].filter(Boolean).map(String);
+      return bits.length ? `Joined · ${bits.join(' · ')}` : 'Worker joined';
+    }
+    case 'worker_left':
+      return 'Worker left';
+    case 'help_request':
+      return `Help: ${String(d.question ?? '').slice(0, 240)}${String(d.question ?? '').length > 240 ? '…' : ''}`;
+    case 'message':
+      return `Message: ${String(d.content ?? '').slice(0, 240)}`;
+    case 'answer':
+      return `Answer: ${String(d.content ?? '').slice(0, 240)}`;
+    case 'directive':
+      return `Directive: ${String(d.content ?? '').slice(0, 240)}`;
+    default: {
+      const s = String(d.summary ?? d.question ?? d.content ?? '').trim();
+      if (s) {
+        return s.slice(0, 200);
+      }
+      try {
+        const raw = JSON.stringify(d);
+        return raw.length > 160 ? `${raw.slice(0, 160)}…` : raw;
+      } catch {
+        return ev.type;
+      }
+    }
   }
 }
 

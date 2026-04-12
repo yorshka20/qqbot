@@ -59,6 +59,9 @@ export function TaskOutputModal({
             {task.output && (
               <div>
                 <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-1">Output</div>
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-2">
+                  Worker CLI stdout (stream-json may be parsed to a cleaner final message when the backend supports it).
+                </div>
                 <pre className="text-xs whitespace-pre-wrap break-words bg-zinc-100 dark:bg-zinc-900 p-3 rounded-lg text-zinc-800 dark:text-zinc-100 max-h-[40vh] overflow-y-auto">
                   {task.output}
                 </pre>

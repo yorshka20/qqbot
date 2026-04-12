@@ -34,7 +34,7 @@
  */
 
 import type { ClusterManager } from '@/cluster/ClusterManager';
-import type { ClusterEventType } from '@/cluster/types';
+import type { ClusterEventType, WorkerRegistration } from '@/cluster/types';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
@@ -43,8 +43,54 @@ import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/cluster';
 
+/** Worker registry row plus resolved job/ticket for WebUI (GET /workers). */
+export type EnrichedWorkerRegistration = WorkerRegistration & {
+  /** Same as stats.registeredAt — process / hub registration time (epoch ms). */
+  spawnedAt: number;
+  boundJobId?: string;
+  boundTicketId?: string;
+  /** Truncated task description for the resolved task. */
+  boundTaskSummary?: string;
+  /** Task id used for resolution (current, last bound, or DB fallback). */
+  resolvedTaskId?: string;
+};
+
 export class ClusterAPIBackend {
   readonly prefix = API_PREFIX;
+
+  private enrichWorkerRegistrations(
+    cluster: ClusterManager,
+    workers: WorkerRegistration[],
+  ): EnrichedWorkerRegistration[] {
+    const sched = cluster.getScheduler();
+    return workers.map((w) => {
+      const hintedId = w.currentTaskId ?? w.lastBoundTaskId;
+      let task = hintedId ? sched.findTask(hintedId) : undefined;
+      if (!task) {
+        task = sched.findLatestTaskForWorker(w.workerId);
+      }
+      let boundJobId: string | undefined;
+      let boundTicketId: string | undefined;
+      let boundTaskSummary: string | undefined;
+      let resolvedTaskId: string | undefined;
+      if (task) {
+        resolvedTaskId = task.id;
+        boundJobId = task.jobId;
+        const desc = task.description || '';
+        boundTaskSummary = desc.length > 280 ? `${desc.slice(0, 280)}…` : desc;
+        const job = sched.resolveJob(task.jobId);
+        boundTicketId = job?.ticketId;
+      }
+      return {
+        ...w,
+        spawnedAt: w.stats.registeredAt,
+        boundJobId,
+        boundTicketId,
+        boundTaskSummary,
+        resolvedTaskId,
+      };
+    });
+  }
 
   private resolveClusterManager(): ClusterManager | null {
     try {
@@ -158,7 +204,7 @@ export class ClusterAPIBackend {
 
     switch (subPath) {
       case '/workers':
-        return jsonResponse(live.getHub().workerRegistry.getAll());
+        return jsonResponse(this.enrichWorkerRegistrations(live, live.getHub().workerRegistry.getAll()));
 
       case '/jobs': {
         const limit = parseInt(url.searchParams.get('limit') || '50', 10);

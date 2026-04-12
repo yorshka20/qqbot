@@ -81,6 +81,9 @@ export type ReportCallback = (
   input: HubReportInput,
 ) => void | Promise<void>;
 
+/** Called after every successful hub_report so WorkerPool can refresh lastReport (stuck detection). */
+export type HeartbeatCallback = (workerId: string) => void;
+
 /** SSE subscriber for real-time event streaming */
 export interface SSESubscriber {
   send(event: string, data: unknown): void;
@@ -125,6 +128,7 @@ export class ContextHub {
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
   private dispatchCallback: DispatchCallback | null = null;
   private reportCallback: ReportCallback | null = null;
+  private heartbeatCallback: HeartbeatCallback | null = null;
   private schedulerBridge: SchedulerBridge | null = null;
   private sseSubscribers = new Set<SSESubscriber>();
   private helpRequests = new Map<string, HelpRequest>();
@@ -157,6 +161,14 @@ export class ContextHub {
    */
   setReportCallback(cb: ReportCallback): void {
     this.reportCallback = cb;
+  }
+
+  /**
+   * Wire `WorkerPool.updateLastReport` (or equivalent) so every hub_report
+   * resets the stuck-worker timer.
+   */
+  setHeartbeatCallback(cb: HeartbeatCallback): void {
+    this.heartbeatCallback = cb;
   }
 
   /**
@@ -299,8 +311,13 @@ export class ContextHub {
   }
 
   handleReport(workerId: string, input: HubReportInput): HubReportOutput {
-    this.workerRegistry.touch(workerId);
+    this.workerRegistry.register(workerId, {});
     this.workerRegistry.incrementStat(workerId, 'totalReports');
+    this.workerRegistry.recordHubReport(workerId, {
+      summary: input.summary,
+      nextSteps: input.nextSteps,
+      status: input.status,
+    });
 
     const isTerminal = input.status === 'completed' || input.status === 'failed' || input.status === 'blocked';
 
@@ -311,15 +328,24 @@ export class ContextHub {
     const reg = this.workerRegistry.get(workerId);
     const taskIdSnapshot = reg?.currentTaskId;
 
-    // Record event
-    const eventType: ClusterEventType =
-      input.status === 'completed' ? 'task_completed' : input.status === 'failed' ? 'task_failed' : 'file_changed';
+    // Record event — dedicated types for progress vs terminal outcomes.
+    let eventType: ClusterEventType;
+    if (input.status === 'completed') {
+      eventType = 'task_completed';
+    } else if (input.status === 'failed') {
+      eventType = 'task_failed';
+    } else if (input.status === 'blocked') {
+      eventType = 'task_blocked';
+    } else {
+      eventType = 'worker_progress';
+    }
     this.eventLog.append(
       eventType,
       workerId,
       {
         status: input.status,
         summary: input.summary,
+        nextSteps: input.nextSteps,
         filesModified: input.filesModified,
         detail: input.detail,
       },
@@ -350,8 +376,17 @@ export class ContextHub {
       workerId,
       status: input.status,
       summary: input.summary,
+      nextSteps: input.nextSteps,
       taskId: taskIdSnapshot,
     });
+
+    if (this.heartbeatCallback) {
+      try {
+        this.heartbeatCallback(workerId);
+      } catch (err) {
+        logger.error(`[ContextHub] heartbeatCallback threw (worker=${workerId}):`, err);
+      }
+    }
 
     // Notify the scheduler so terminal statuses propagate to DB / job
     // counters / activeTasks immediately — without this, the worker exit
@@ -724,10 +759,14 @@ export class ContextHub {
     switch (type) {
       case 'file_changed':
         return `修改了文件: ${(data.filesModified as string[] | undefined)?.join(', ') || '(unknown)'}`;
+      case 'worker_progress':
+        return `进展: ${data.summary || ''}${data.nextSteps ? ` → 下一步: ${data.nextSteps}` : ''}`;
       case 'task_completed':
         return `任务完成: ${data.summary || ''}`;
       case 'task_failed':
         return `任务失败: ${data.summary || ''}`;
+      case 'task_blocked':
+        return `阻塞: ${data.summary || ''}`;
       case 'lock_acquired':
         return `锁定文件: ${(data.files as string[] | undefined)?.join(', ') || data.file || ''}`;
       case 'lock_released':

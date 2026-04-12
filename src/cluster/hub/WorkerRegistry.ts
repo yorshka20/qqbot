@@ -65,6 +65,7 @@ export class WorkerRegistry {
     const worker = this.workers.get(workerId);
     if (worker) {
       worker.status = 'exited';
+      worker.exitedAt = Date.now();
       logger.info(`[WorkerRegistry] Worker exited: ${workerId}`);
     }
   }
@@ -91,13 +92,42 @@ export class WorkerRegistry {
   }
 
   /**
+   * Store the latest hub_report payload for WebUI and debugging.
+   */
+  recordHubReport(
+    workerId: string,
+    payload: {
+      summary: string;
+      nextSteps?: string;
+      status: 'working' | 'completed' | 'failed' | 'blocked';
+    },
+  ): void {
+    const worker = this.workers.get(workerId);
+    if (!worker) {
+      return;
+    }
+    const now = Date.now();
+    worker.lastSeen = now;
+    worker.lastHubReportAt = now;
+    worker.lastReportSummary = payload.summary;
+    worker.lastReportNextSteps = payload.nextSteps;
+    worker.lastReportStatus = payload.status;
+  }
+
+  /**
    * Set current task for a worker.
    */
   setTask(workerId: string, taskId: string | undefined): void {
     const worker = this.workers.get(workerId);
     if (worker) {
-      worker.currentTaskId = taskId;
-      worker.status = taskId ? 'active' : 'idle';
+      if (taskId) {
+        worker.currentTaskId = taskId;
+        worker.lastBoundTaskId = taskId;
+        worker.status = 'active';
+      } else {
+        worker.currentTaskId = undefined;
+        worker.status = 'idle';
+      }
     }
   }
 
