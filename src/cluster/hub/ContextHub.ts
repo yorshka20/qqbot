@@ -723,25 +723,19 @@ export class ContextHub {
 
   private loadHelpRequests(): void {
     try {
-      const rows = this.db.query("SELECT * FROM cluster_help_requests WHERE status = 'pending'").all() as Array<
-        Record<string, unknown>
-      >;
-      for (const row of rows) {
-        const request: HelpRequest = {
-          id: row.id as string,
-          workerId: row.workerId as string,
-          taskId: row.taskId as string | undefined,
-          type: row.type as HelpRequest['type'],
-          question: row.question as string,
-          context: row.context as string | undefined,
-          options: row.options ? JSON.parse(row.options as string) : undefined,
-          status: row.status as HelpRequest['status'],
-          answer: row.answer as string | undefined,
-          answeredBy: row.answeredBy as string | undefined,
-          createdAt: row.createdAt as string,
-          answeredAt: row.answeredAt as string | undefined,
-        };
-        this.helpRequests.set(request.id, request);
+      // Mark all previously-pending help requests as expired. On restart
+      // the workers that created them are gone, so these requests are
+      // stale and should not trigger new QQ notifications.
+      const expired = this.db
+        .query(
+          "UPDATE cluster_help_requests SET status = 'expired' WHERE status = 'pending' RETURNING id",
+        )
+        .all() as Array<Record<string, unknown>>;
+
+      if (expired.length > 0) {
+        logger.info(
+          `[ContextHub] Expired ${expired.length} stale pending help request(s) from previous session`,
+        );
       }
     } catch {
       // Table may not exist yet
