@@ -19,8 +19,16 @@
  * are small enough that the extra round-trip is fine.
  */
 
-import { GitBranch, Pause, Play, Power, RefreshCw, Send, Square } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  GitBranch,
+  Pause,
+  Play,
+  Power,
+  RefreshCw,
+  Send,
+  Square,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createClusterJob,
@@ -38,8 +46,9 @@ import {
   resumeCluster,
   startCluster,
   stopCluster,
-} from '../../api';
-import { getClusterApiBase } from '../../config';
+} from "../../api";
+import { RegistryProjectSelect } from "../../components/RegistryProjectSelect";
+import { getClusterApiBase } from "../../config";
 import type {
   ClusterEventEntry,
   ClusterHelpRequest,
@@ -50,14 +59,14 @@ import type {
   ClusterTemplatesResponse,
   ClusterWorkerRegistration,
   ProjectRegistryEntry,
-} from '../../types';
-import { ClusterCard } from './components/ClusterCard';
-import { WorkerBlock } from './components/WorkerBlock';
-import { HelpRequestRow } from './components/HelpRequestRow';
-import { JobRow } from './components/JobRow';
-import { KillWorkerDialog } from './components/KillWorkerDialog';
-import { TaskOutputModal } from './components/TaskOutputModal';
-import { CLUSTER_CARD_BODY_SCROLL, formatClusterEventSummary } from './utils';
+} from "../../types";
+import { ClusterCard } from "./components/ClusterCard";
+import { HelpRequestRow } from "./components/HelpRequestRow";
+import { JobRow } from "./components/JobRow";
+import { KillWorkerDialog } from "./components/KillWorkerDialog";
+import { TaskOutputModal } from "./components/TaskOutputModal";
+import { WorkerBlock } from "./components/WorkerBlock";
+import { CLUSTER_CARD_BODY_SCROLL, formatClusterEventSummary } from "./utils";
 
 export function ClusterPage() {
   const [loading, setLoading] = useState(false);
@@ -65,17 +74,21 @@ export function ClusterPage() {
 
   const [started, setStarted] = useState<boolean | null>(null);
   const [status, setStatus] = useState<ClusterStatus | null>(null);
-  const [workers, setWorkers] = useState<ClusterWorkerRegistration[] | null>(null);
+  const [workers, setWorkers] = useState<ClusterWorkerRegistration[] | null>(
+    null,
+  );
   const [locks, setLocks] = useState<ClusterLock[] | null>(null);
   const [help, setHelp] = useState<ClusterHelpRequest[] | null>(null);
   const [jobs, setJobs] = useState<ClusterJob[] | null>(null);
   const [events, setEvents] = useState<ClusterEventEntry[] | null>(null);
-  const [eventTypeFilter, setEventTypeFilter] = useState<string>('');
-  const [templates, setTemplates] = useState<ClusterTemplatesResponse | null>(null);
+  const [eventTypeFilter, setEventTypeFilter] = useState<string>("");
+  const [templates, setTemplates] = useState<ClusterTemplatesResponse | null>(
+    null,
+  );
   const [projects, setProjects] = useState<ProjectRegistryEntry[]>([]);
 
-  const [project, setProject] = useState('');
-  const [desc, setDesc] = useState('');
+  const [project, setProject] = useState("");
+  const [desc, setDesc] = useState("");
   /**
    * Explicit template override for the submit form. Empty string = "use
    * project default" (projectDefaults[project] from the templates
@@ -84,7 +97,7 @@ export function ClusterPage() {
    * applies to any project — resetting on every project change would
    * throw away their selection.
    */
-  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
+  const [selectedTemplate, setSelectedTemplate] = useState<string>("");
 
   const [openTask, setOpenTask] = useState<ClusterTask | null>(null);
   const [killConfirmId, setKillConfirmId] = useState<string | null>(null);
@@ -139,9 +152,9 @@ export function ClusterPage() {
       return [];
     }
     return workers
-      .filter((w) => w.status !== 'exited')
+      .filter((w) => w.status !== "exited")
       .slice()
-      .sort((a, b) => (a.workerId || '').localeCompare(b.workerId || ''));
+      .sort((a, b) => (a.workerId || "").localeCompare(b.workerId || ""));
   }, [workers]);
 
   const oldWorkers = useMemo(() => {
@@ -149,9 +162,9 @@ export function ClusterPage() {
       return [];
     }
     return workers
-      .filter((w) => w.status === 'exited')
+      .filter((w) => w.status === "exited")
       .slice()
-      .sort((a, b) => (a.workerId || '').localeCompare(b.workerId || ''));
+      .sort((a, b) => (a.workerId || "").localeCompare(b.workerId || ""));
   }, [workers]);
 
   const openTaskOutput = useCallback(async (taskId: string) => {
@@ -174,7 +187,7 @@ export function ClusterPage() {
     getClusterTemplates()
       .then(setTemplates)
       .catch((err) => {
-        console.warn('[ClusterPage] getClusterTemplates failed:', err);
+        console.warn("[ClusterPage] getClusterTemplates failed:", err);
       });
   }, [started]);
 
@@ -194,7 +207,7 @@ export function ClusterPage() {
         }
       })
       .catch((err) => {
-        console.warn('[ClusterPage] getClusterProjects failed:', err);
+        console.warn("[ClusterPage] getClusterProjects failed:", err);
       });
   });
 
@@ -211,11 +224,11 @@ export function ClusterPage() {
     }
     try {
       es = new EventSource(sseUrl);
-      es.addEventListener('worker_status', () => refresh());
-      es.addEventListener('help_request', () => refresh());
-      es.addEventListener('task_spawned', () => refresh());
-      es.addEventListener('task_output', () => refresh());
-      es.addEventListener('init', () => refresh());
+      es.addEventListener("worker_status", () => refresh());
+      es.addEventListener("help_request", () => refresh());
+      es.addEventListener("task_spawned", () => refresh());
+      es.addEventListener("task_output", () => refresh());
+      es.addEventListener("init", () => refresh());
       es.onerror = () => {
         es?.close();
       };
@@ -229,13 +242,13 @@ export function ClusterPage() {
 
   const summary = status
     ? [
-        `started=${started === null ? '-' : started ? 'true' : 'false'}`,
+        `started=${started === null ? "-" : started ? "true" : "false"}`,
         `running=${status.running}`,
         `paused=${status.paused}`,
         `workers=${status.activeWorkers + status.idleWorkers}`,
         `tasks=${status.runningTasks}🏃 ${status.pendingTasks}⏳ ${status.completedTasks}✓ ${status.failedTasks}✗`,
-      ].join(' · ')
-    : '-';
+      ].join(" · ")
+    : "-";
 
   return (
     <div className="flex-1 min-h-0 overflow-hidden">
@@ -246,7 +259,9 @@ export function ClusterPage() {
               <GitBranch className="w-4 h-4 text-zinc-600 dark:text-zinc-300" />
               <div className="font-semibold">Agent Cluster</div>
             </div>
-            <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">{summary}</div>
+            <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">
+              {summary}
+            </div>
             <div className="flex-1" />
             <button
               type="button"
@@ -254,11 +269,17 @@ export function ClusterPage() {
               className="px-3 py-1.5 rounded-lg text-sm font-medium border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors flex items-center gap-2"
               disabled={loading}
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw
+                className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+              />
               Refresh
             </button>
           </div>
-          {error && <div className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</div>}
+          {error && (
+            <div className="mt-2 text-sm text-red-600 dark:text-red-400">
+              {error}
+            </div>
+          )}
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-zinc-100 dark:bg-zinc-900">
@@ -334,24 +355,23 @@ export function ClusterPage() {
                 </div>
               }
             >
-              <div className={`grid grid-cols-1 md:grid-cols-12 gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}>
+              <div
+                className={`grid grid-cols-1 md:grid-cols-12 gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}
+              >
                 <div className="md:col-span-3">
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Project</div>
-                  <select
+                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                    Project
+                  </div>
+                  <RegistryProjectSelect
                     value={project}
-                    onChange={(e) => setProject(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
-                  >
-                    {projects.map((p) => (
-                      <option key={p.alias} value={p.alias}>
-                        {p.alias}
-                      </option>
-                    ))}
-                    {projects.length === 0 && <option value="">loading…</option>}
-                  </select>
+                    onChange={setProject}
+                    projects={projects}
+                  />
                 </div>
-                <div className="md:col-span-3">
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Template</div>
+                <div className="md:col-span-4">
+                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                    Template
+                  </div>
                   <select
                     value={selectedTemplate}
                     onChange={(e) => setSelectedTemplate(e.target.value)}
@@ -360,7 +380,10 @@ export function ClusterPage() {
                   >
                     <option value="">
                       (default
-                      {templates?.projectDefaults?.[project] ? `: ${templates.projectDefaults[project]}` : ''})
+                      {templates?.projectDefaults?.[project]
+                        ? `: ${templates.projectDefaults[project]}`
+                        : ""}
+                      )
                     </option>
                     {templates?.templates.map((t) => (
                       <option key={t.name} value={t.name}>
@@ -369,50 +392,65 @@ export function ClusterPage() {
                     ))}
                   </select>
                 </div>
-                <div className="md:col-span-6">
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Description</div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={desc}
-                      onChange={(e) => setDesc(e.target.value)}
-                      className="flex-1 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
-                      placeholder='e.g. "fix type errors in cluster api page"'
-                    />
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          if (!project.trim() || !desc.trim()) return;
-                          await createClusterJob({
-                            project: project.trim(),
-                            description: desc.trim(),
-                            workerTemplate: selectedTemplate || undefined,
-                          });
-                          setDesc('');
-                          await refresh();
-                        } catch (err) {
-                          setError(err instanceof Error ? err.message : String(err));
-                        }
-                      }}
-                      className="px-3 py-2 rounded-lg text-sm font-medium bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 hover:opacity-90 transition-opacity flex items-center gap-2"
-                    >
-                      <Send className="w-4 h-4" />
-                      Submit
-                    </button>
+                <div className="md:col-span-12">
+                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                    Description
                   </div>
+                  <textarea
+                    value={desc}
+                    onChange={(e) => setDesc(e.target.value)}
+                    rows={5}
+                    className="w-full min-h-[120px] px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-mono leading-relaxed resize-y"
+                    placeholder='e.g. "fix type errors in cluster api page"'
+                  />
+                </div>
+                <div className="md:col-span-12 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        if (!project.trim() || !desc.trim()) return;
+                        await createClusterJob({
+                          project: project.trim(),
+                          description: desc.trim(),
+                          workerTemplate: selectedTemplate || undefined,
+                        });
+                        setDesc("");
+                        await refresh();
+                      } catch (err) {
+                        setError(
+                          err instanceof Error ? err.message : String(err),
+                        );
+                      }
+                    }}
+                    className="px-3 py-2 rounded-lg text-sm font-medium bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 hover:opacity-90 transition-opacity flex items-center gap-2"
+                  >
+                    <Send className="w-4 h-4" />
+                    Submit
+                  </button>
                 </div>
               </div>
             </ClusterCard>
 
             <ClusterCard title="Help requests" count={help?.length}>
               {!help ? (
-                <div className="text-sm text-zinc-500 dark:text-zinc-400">-</div>
+                <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                  -
+                </div>
               ) : help.length === 0 ? (
-                <div className="text-sm text-zinc-500 dark:text-zinc-400">No pending requests</div>
+                <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                  No pending requests
+                </div>
               ) : (
-                <div className={`flex flex-col gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}>
+                <div
+                  className={`flex flex-col gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}
+                >
                   {help.map((h) => (
-                    <HelpRequestRow key={h.id} request={h} onAnswered={refresh} />
+                    <HelpRequestRow
+                      key={h.id}
+                      request={h}
+                      onAnswered={refresh}
+                    />
                   ))}
                 </div>
               )}
@@ -421,11 +459,17 @@ export function ClusterPage() {
             <div className="lg:col-span-2">
               <ClusterCard title="Recent jobs" count={jobs?.length}>
                 {!jobs ? (
-                  <div className="text-sm text-zinc-500 dark:text-zinc-400">-</div>
+                  <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                    -
+                  </div>
                 ) : jobs.length === 0 ? (
-                  <div className="text-sm text-zinc-500 dark:text-zinc-400">No jobs yet — submit one above</div>
+                  <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                    No jobs yet — submit one above
+                  </div>
                 ) : (
-                  <div className={`flex flex-col gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}>
+                  <div
+                    className={`flex flex-col gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}
+                  >
                     {jobs.map((j) => (
                       <JobRow key={j.id} job={j} onTaskClick={setOpenTask} />
                     ))}
@@ -447,24 +491,38 @@ export function ClusterPage() {
                 }
               >
                 {!workers ? (
-                  <div className="text-sm text-zinc-500 dark:text-zinc-400">-</div>
+                  <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                    -
+                  </div>
                 ) : workers.length === 0 ? (
-                  <div className="text-sm text-zinc-500 dark:text-zinc-400">No workers</div>
+                  <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                    No workers
+                  </div>
                 ) : (
                   <div className="flex flex-col gap-2 min-h-0 w-full min-w-0">
                     <div className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0">
-                      Worker CLI stdout is on the <strong className="text-zinc-600 dark:text-zinc-300">task</strong> record
-                      (<strong className="text-zinc-600 dark:text-zinc-300">Task output</strong> or Recent jobs). hub_report
-                      lines are checkpoints only.
+                      Worker CLI stdout is on the{" "}
+                      <strong className="text-zinc-600 dark:text-zinc-300">
+                        task
+                      </strong>{" "}
+                      record (
+                      <strong className="text-zinc-600 dark:text-zinc-300">
+                        Task output
+                      </strong>{" "}
+                      or Recent jobs). hub_report lines are checkpoints only.
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 min-h-0 items-stretch w-full min-w-0">
                       <div className="flex flex-col gap-2 min-h-0 min-w-0 w-full">
                         <div className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 shrink-0">
                           Active
                         </div>
-                        <div className={`flex flex-col gap-2 w-full min-w-0 ${CLUSTER_CARD_BODY_SCROLL}`}>
+                        <div
+                          className={`flex flex-col gap-2 w-full min-w-0 ${CLUSTER_CARD_BODY_SCROLL}`}
+                        >
                           {activeWorkers.length === 0 ? (
-                            <div className="text-xs text-zinc-500 dark:text-zinc-400">None</div>
+                            <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                              None
+                            </div>
                           ) : (
                             activeWorkers.map((w) => (
                               <WorkerBlock
@@ -481,9 +539,13 @@ export function ClusterPage() {
                         <div className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 shrink-0">
                           Old workers
                         </div>
-                        <div className={`flex flex-col gap-2 w-full min-w-0 ${CLUSTER_CARD_BODY_SCROLL}`}>
+                        <div
+                          className={`flex flex-col gap-2 w-full min-w-0 ${CLUSTER_CARD_BODY_SCROLL}`}
+                        >
                           {oldWorkers.length === 0 ? (
-                            <div className="text-xs text-zinc-500 dark:text-zinc-400">None</div>
+                            <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                              None
+                            </div>
                           ) : (
                             oldWorkers.map((w) => (
                               <WorkerBlock
@@ -528,13 +590,18 @@ export function ClusterPage() {
                   }
                 >
                   {!events ? (
-                    <div className="text-sm text-zinc-500 dark:text-zinc-400">-</div>
+                    <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                      -
+                    </div>
                   ) : events.length === 0 ? (
                     <div className="text-sm text-zinc-500 dark:text-zinc-400">
-                      No events{eventTypeFilter && ` matching "${eventTypeFilter}"`}
+                      No events
+                      {eventTypeFilter && ` matching "${eventTypeFilter}"`}
                     </div>
                   ) : (
-                    <div className={`flex flex-col gap-0.5 ${CLUSTER_CARD_BODY_SCROLL}`}>
+                    <div
+                      className={`flex flex-col gap-0.5 ${CLUSTER_CARD_BODY_SCROLL}`}
+                    >
                       {events.map((ev) => (
                         <div
                           key={`${ev.seq}-${ev.timestamp}`}
@@ -578,11 +645,17 @@ export function ClusterPage() {
               <div className="min-h-0 min-w-0">
                 <ClusterCard title="Locks" count={locks?.length}>
                   {!locks ? (
-                    <div className="text-sm text-zinc-500 dark:text-zinc-400">-</div>
+                    <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                      -
+                    </div>
                   ) : locks.length === 0 ? (
-                    <div className="text-sm text-zinc-500 dark:text-zinc-400">No active locks</div>
+                    <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                      No active locks
+                    </div>
                   ) : (
-                    <div className={`flex flex-col gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}>
+                    <div
+                      className={`flex flex-col gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}
+                    >
                       {locks
                         .slice()
                         .sort((a, b) => a.filePath.localeCompare(b.filePath))
@@ -595,7 +668,7 @@ export function ClusterPage() {
                               {l.filePath}
                             </div>
                             <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                              by {l.workerId} · task {l.taskId ?? '-'}
+                              by {l.workerId} · task {l.taskId ?? "-"}
                             </div>
                           </div>
                         ))}
@@ -608,7 +681,9 @@ export function ClusterPage() {
         </div>
       </div>
 
-      {openTask && <TaskOutputModal task={openTask} onClose={() => setOpenTask(null)} />}
+      {openTask && (
+        <TaskOutputModal task={openTask} onClose={() => setOpenTask(null)} />
+      )}
 
       {killConfirmId && (
         <KillWorkerDialog

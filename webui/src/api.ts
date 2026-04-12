@@ -799,6 +799,17 @@ export async function getTicket(id: string): Promise<Ticket> {
   return res.json() as Promise<Ticket>;
 }
 
+/** Fetch the default ticket body template (`tickets/_template.md`). Returns the raw markdown string. */
+export async function getTicketTemplate(): Promise<string> {
+  const res = await fetch(`${ticketsApiBase()}/template`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `getTicketTemplate failed: ${res.status}`);
+  }
+  const data = (await res.json()) as { content: string };
+  return data.content;
+}
+
 /**
  * Create a new ticket. The server allocates the id from `<date>-<slug>`
  * (slug derived from title) and returns the full Ticket.
@@ -813,6 +824,8 @@ export async function createTicket(input: {
   usePlanner?: boolean;
   /** Phase 3: optional cap on planner child workers (passed via prompt). */
   maxChildren?: number;
+  /** Hints for planner executor selection: trivial | low | medium | high. */
+  estimatedComplexity?: 'trivial' | 'low' | 'medium' | 'high';
 }): Promise<Ticket> {
   const res = await fetch(`${ticketsApiBase()}`, {
     method: 'POST',
@@ -842,6 +855,7 @@ export async function updateTicket(
     dispatchedJobId?: string | null;
     usePlanner?: boolean | null;
     maxChildren?: number | null;
+    estimatedComplexity?: 'trivial' | 'low' | 'medium' | 'high' | null;
   },
 ): Promise<Ticket> {
   const res = await fetch(`${ticketsApiBase()}/${encodeURIComponent(id)}`, {
