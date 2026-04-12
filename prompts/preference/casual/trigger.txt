@@ -2,4 +2,3 @@
 # Casual chat: bot actively responds to user summons and casual talk.
 # Empty lines and lines starting with # are ignored.
 
-高手
