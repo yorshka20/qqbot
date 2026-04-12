@@ -522,6 +522,19 @@ export class ContextHub {
         `hub_spawn: scheduler refused to create child task (unknown template "${input.template}" or unknown project)`,
       );
     }
+
+    // Broadcast so WebUI can show planner's decomposed sub-tasks in real time
+    this.broadcastSSE('task_spawned', {
+      taskId: child.id,
+      parentTaskId,
+      parentWorkerId: workerId,
+      project: parent.project,
+      jobId: parent.jobId,
+      template: input.template,
+      description: input.description,
+      status: child.status === 'running' ? 'running' : 'queued',
+    });
+
     return {
       childTaskId: child.id,
       // tryDispatch sets status='running' on successful immediate spawn,
@@ -629,6 +642,15 @@ export class ContextHub {
     return Array.from(this.helpRequests.values()).filter((r) => r.status === 'pending');
   }
 
+  /**
+   * Broadcast intermediate worker output via SSE so the WebUI can show
+   * live progress. Called from ClusterManager's taskProgressCallback.
+   */
+  broadcastTaskOutput(taskId: string, workerId: string | undefined, output: string | undefined): void {
+    if (!output) return;
+    this.broadcastSSE('task_output', { taskId, workerId, output });
+  }
+
   // ── SSE ──
 
   addSSESubscriber(subscriber: SSESubscriber): void {
@@ -727,15 +749,11 @@ export class ContextHub {
       // the workers that created them are gone, so these requests are
       // stale and should not trigger new QQ notifications.
       const expired = this.db
-        .query(
-          "UPDATE cluster_help_requests SET status = 'expired' WHERE status = 'pending' RETURNING id",
-        )
+        .query("UPDATE cluster_help_requests SET status = 'expired' WHERE status = 'pending' RETURNING id")
         .all() as Array<Record<string, unknown>>;
 
       if (expired.length > 0) {
-        logger.info(
-          `[ContextHub] Expired ${expired.length} stale pending help request(s) from previous session`,
-        );
+        logger.info(`[ContextHub] Expired ${expired.length} stale pending help request(s) from previous session`);
       }
     } catch {
       // Table may not exist yet

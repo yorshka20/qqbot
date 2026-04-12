@@ -49,10 +49,7 @@ const registry = buildBackendRegistry();
  * @param baseDir - Base directory for file-serving backends.
  * @param options.disabledIds - Backend ids to omit (from `lanRelay.*.disabledStaticBackends`).
  */
-export function createBackends(
-  baseDir: string,
-  options?: { disabledIds?: ReadonlySet<string> },
-): Backend[] {
+export function createBackends(baseDir: string, options?: { disabledIds?: ReadonlySet<string> }): Backend[] {
   const disabled = options?.disabledIds ?? new Set<string>();
   const out: Backend[] = [];
   for (const entry of registry) {

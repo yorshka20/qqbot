@@ -27,10 +27,11 @@ import {
   Skull,
   Square,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   createClusterJob,
+  getClusterProjects,
   getClusterStatus,
   getClusterTemplates,
   killClusterWorker,
@@ -54,6 +55,7 @@ import type {
   ClusterTask,
   ClusterTemplatesResponse,
   ClusterWorkerRegistration,
+  ProjectRegistryEntry,
 } from '../../types';
 import { ClusterCard } from './components/ClusterCard';
 import { HelpRequestRow } from './components/HelpRequestRow';
@@ -75,8 +77,9 @@ export function ClusterPage() {
   const [events, setEvents] = useState<ClusterEventEntry[] | null>(null);
   const [eventTypeFilter, setEventTypeFilter] = useState<string>('');
   const [templates, setTemplates] = useState<ClusterTemplatesResponse | null>(null);
+  const [projects, setProjects] = useState<ProjectRegistryEntry[]>([]);
 
-  const [project, setProject] = useState('qqbot');
+  const [project, setProject] = useState('');
   const [desc, setDesc] = useState('');
   /**
    * Explicit template override for the submit form. Empty string = "use
@@ -148,6 +151,26 @@ export function ClusterPage() {
       });
   }, [started]);
 
+  // Fetch projects once on mount (always-on endpoint, doesn't require started cluster)
+  const projectInitRef = useRef(false);
+  useEffect(() => {
+    if (projectInitRef.current) return;
+    projectInitRef.current = true;
+    getClusterProjects()
+      .then((resp) => {
+        setProjects(resp.projects);
+        // Auto-select default project
+        if (resp.defaultAlias) {
+          setProject(resp.defaultAlias);
+        } else if (resp.projects.length > 0) {
+          setProject(resp.projects[0].alias);
+        }
+      })
+      .catch((err) => {
+        console.warn('[ClusterPage] getClusterProjects failed:', err);
+      });
+  });
+
   useEffect(() => {
     refresh();
     const t = window.setInterval(() => refresh(), 5000);
@@ -163,6 +186,8 @@ export function ClusterPage() {
       es = new EventSource(sseUrl);
       es.addEventListener('worker_status', () => refresh());
       es.addEventListener('help_request', () => refresh());
+      es.addEventListener('task_spawned', () => refresh());
+      es.addEventListener('task_output', () => refresh());
       es.addEventListener('init', () => refresh());
       es.onerror = () => {
         es?.close();
@@ -285,12 +310,18 @@ export function ClusterPage() {
               <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
                 <div className="md:col-span-3">
                   <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Project</div>
-                  <input
+                  <select
                     value={project}
                     onChange={(e) => setProject(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
-                    placeholder="qqbot"
-                  />
+                  >
+                    {projects.map((p) => (
+                      <option key={p.alias} value={p.alias}>
+                        {p.alias}
+                      </option>
+                    ))}
+                    {projects.length === 0 && <option value="">loading…</option>}
+                  </select>
                 </div>
                 <div className="md:col-span-3">
                   <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Template</div>
@@ -352,7 +383,7 @@ export function ClusterPage() {
               ) : help.length === 0 ? (
                 <div className="text-sm text-zinc-500 dark:text-zinc-400">No pending requests</div>
               ) : (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 max-h-[400px] overflow-y-auto">
                   {help.map((h) => (
                     <HelpRequestRow key={h.id} request={h} onAnswered={refresh} />
                   ))}

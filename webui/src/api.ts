@@ -526,6 +526,16 @@ export async function listClusterJobs(opts?: {
   return res.json() as Promise<ClusterJob[]>;
 }
 
+/** Fetch all registered projects from ProjectRegistry. */
+export async function getClusterProjects(): Promise<ProjectsResponse> {
+  const res = await fetch(`${clusterApiBase()}/projects`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get cluster projects failed: ${res.status}`);
+  }
+  return res.json() as Promise<ProjectsResponse>;
+}
+
 /**
  * Snapshot of configured worker templates + per-project default
  * `workerPreference`. Used by the submit form's template picker.
@@ -559,6 +569,16 @@ export async function listClusterTasks(): Promise<ClusterTask[]> {
     throw new Error(err.error ?? `List cluster tasks failed: ${res.status}`);
   }
   return res.json() as Promise<ClusterTask[]>;
+}
+
+/** Fetch a single task with full detail (description, output, metadata, children). */
+export async function getClusterTask(taskId: string): Promise<ClusterTask & { children?: ClusterTask[] }> {
+  const res = await fetch(`${clusterApiBase()}/tasks/${encodeURIComponent(taskId)}`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get cluster task failed: ${res.status}`);
+  }
+  return res.json() as Promise<ClusterTask & { children?: ClusterTask[] }>;
 }
 
 export async function listClusterEvents(opts?: {
@@ -601,6 +621,7 @@ export async function createClusterJob(input: {
   description: string;
   workerTemplate?: string;
   requirePlannerRole?: boolean;
+  ticketId?: string;
 }): Promise<ClusterTask> {
   const res = await fetch(`${clusterApiBase()}/jobs`, {
     method: 'POST',
@@ -841,4 +862,23 @@ export async function deleteTicket(id: string): Promise<void> {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Delete ticket failed: ${res.status}`);
   }
+}
+
+/** List result files for a ticket. */
+export async function listTicketResults(id: string): Promise<string[]> {
+  const res = await fetch(`${ticketsApiBase()}/${encodeURIComponent(id)}/results`);
+  if (!res.ok) return [];
+  const body = (await res.json()) as { files: string[] };
+  return body.files;
+}
+
+/** Read a specific result file content. */
+export async function getTicketResult(id: string, filename: string): Promise<string> {
+  const res = await fetch(`${ticketsApiBase()}/${encodeURIComponent(id)}/results/${encodeURIComponent(filename)}`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get ticket result failed: ${res.status}`);
+  }
+  const body = (await res.json()) as { filename: string; content: string };
+  return body.content;
 }

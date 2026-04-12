@@ -5,6 +5,7 @@
 export { wireClusterEscalation } from './ClusterEscalation';
 export { ClusterManager } from './ClusterManager';
 export { ClusterScheduler } from './ClusterScheduler';
+export { wireClusterTicketWriteback } from './ClusterTicketWriteback';
 export type { ClusterConfig, ClusterProjectConfig, WorkerTemplateConfig } from './config';
 export { parseClusterConfig } from './config';
 export { ContextHub } from './hub/ContextHub';

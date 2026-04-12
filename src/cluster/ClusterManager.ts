@@ -18,7 +18,7 @@ import { ContextHub } from './hub/ContextHub';
 import { PlannerService } from './PlannerService';
 import { QueueSource } from './sources/QueueSource';
 import { TodoFileSource } from './sources/TodoFileSource';
-import type { ClusterStatus, HelpRequest, TaskRecord } from './types';
+import type { ClusterStatus, HelpRequest, JobRecord, TaskRecord } from './types';
 import { WorkerPool } from './WorkerPool';
 
 export class ClusterManager {
@@ -56,6 +56,8 @@ export class ClusterManager {
 
     this.workerPool.setTaskProgressCallback((task) => {
       this.scheduler.flushRunningTaskOutput(task);
+      // Broadcast intermediate output so WebUI can show live worker progress
+      this.hub.broadcastTaskOutput(task.id, task.workerId, task.output);
     });
 
     // Wire hub_report callback (Phase 2 round 2, agent-cluster.md §2.3):
@@ -192,7 +194,7 @@ export class ClusterManager {
   async submitTask(
     project: string,
     description: string,
-    options?: { workerTemplate?: string; requirePlannerRole?: boolean },
+    options?: { workerTemplate?: string; requirePlannerRole?: boolean; ticketId?: string },
   ): Promise<TaskRecord | null> {
     return this.scheduler.submitTask(project, description, options);
   }
@@ -258,6 +260,14 @@ export class ClusterManager {
   attachEscalationNotifier(notify: (request: HelpRequest) => Promise<void> | void): void {
     this.plannerService.setEscalationCallback(notify);
     logger.info('[ClusterManager] Escalation notifier attached');
+  }
+
+  /**
+   * Wire a callback that fires when a job reaches terminal status.
+   * Used by bootstrap to connect ticket result writeback.
+   */
+  setJobCompletedCallback(cb: (job: JobRecord, tasks: TaskRecord[]) => void): void {
+    this.scheduler.setJobCompletedCallback(cb);
   }
 
   /**
@@ -346,7 +356,8 @@ export class ClusterManager {
         taskCount INTEGER DEFAULT 0,
         tasksCompleted INTEGER DEFAULT 0,
         tasksFailed INTEGER DEFAULT 0,
-        metadata TEXT
+        metadata TEXT,
+        ticketId TEXT
       )`,
       `CREATE TABLE IF NOT EXISTS cluster_tasks (
         id TEXT PRIMARY KEY,
@@ -415,6 +426,7 @@ export class ClusterManager {
     }
 
     this.migrateClusterEventsCreatedAtColumn();
+    this.migrateClusterJobsTicketIdColumn();
 
     logger.info('[ClusterManager] Database tables initialized');
   }
@@ -439,6 +451,18 @@ export class ClusterManager {
       logger.info('[ClusterManager] Migrated cluster_events: added createdAt column (backfilled from timestamp)');
     } catch (err) {
       logger.error('[ClusterManager] cluster_events createdAt migration failed:', err);
+    }
+  }
+
+  private migrateClusterJobsTicketIdColumn(): void {
+    try {
+      const cols = this.db.query('PRAGMA table_info(cluster_jobs)').all() as Array<{ name: string }>;
+      if (cols.length === 0) return;
+      if (cols.some((c) => c.name === 'ticketId')) return;
+      this.db.run('ALTER TABLE cluster_jobs ADD COLUMN ticketId TEXT');
+      logger.info('[ClusterManager] Migrated cluster_jobs: added ticketId column');
+    } catch (err) {
+      logger.error('[ClusterManager] cluster_jobs ticketId migration failed:', err);
     }
   }
 }

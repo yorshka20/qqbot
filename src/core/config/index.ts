@@ -24,6 +24,7 @@ import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './typ
 import type { RAGConfig } from './types/rag';
 import type { TTSConfig } from './types/tts';
 import type { VideoKnowledgeConfig } from './types/videoKnowledge';
+
 // Re-export runtime/conversation config (merged from former src/config)
 export { ConversationConfigService, type SessionType } from '../../conversation/ConversationConfigService';
 export { updateEnabledDisabled } from './ConfigUtils';

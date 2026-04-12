@@ -9,7 +9,7 @@
 
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import { APIClient } from '@/api/APIClient';
-import { ClusterManager, parseClusterConfig, wireClusterEscalation } from '@/cluster';
+import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
 import { ConversationInitializer } from '@/conversation/ConversationInitializer';
 import { Bot } from '@/core/Bot';
@@ -143,6 +143,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
       container.registerInstance(DITokens.CLUSTER_MANAGER, clusterManager);
 
       await wireClusterEscalation(clusterManager, config);
+      wireClusterTicketWriteback(clusterManager);
 
       logger.info('[Bootstrap] Agent Cluster initialized');
     } catch (err) {

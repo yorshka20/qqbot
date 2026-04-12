@@ -287,6 +287,7 @@ export function TicketsPage() {
         description: dispatchTicket.body,
         workerTemplate: dispatchTicket.frontmatter.template || undefined,
         requirePlannerRole: dispatchTicket.frontmatter.usePlanner === true ? true : undefined,
+        ticketId: dispatchTicket.id,
       });
 
       // 2. Mark the ticket as dispatched + record the job linkage.

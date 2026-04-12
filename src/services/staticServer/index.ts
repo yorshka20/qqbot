@@ -3,11 +3,11 @@
  */
 
 import type { StaticServerConfig } from '@/core/config/types/bot';
-import { type StaticServerInitOptions, StaticServer } from './StaticServer';
+import { StaticServer, type StaticServerInitOptions } from './StaticServer';
 
-export type { StaticServerInstance, StaticServerInitOptions } from './StaticServer';
-export { StaticServer } from './StaticServer';
 export { outputPublicFileUrl } from './backends/OutputStaticHost';
+export type { StaticServerInitOptions, StaticServerInstance } from './StaticServer';
+export { StaticServer } from './StaticServer';
 
 let serverInstance: StaticServer | null = null;
 

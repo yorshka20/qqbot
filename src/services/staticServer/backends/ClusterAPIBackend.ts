@@ -197,6 +197,16 @@ export class ClusterAPIBackend {
           return jsonResponse({ ...job, tasks });
         }
 
+        // /tasks/:id — single task detail (includes full description, output, metadata)
+        const taskMatch = subPath.match(/^\/tasks\/([^/]+)$/);
+        if (taskMatch) {
+          const task = live.getScheduler().findTask(taskMatch[1]);
+          if (!task) return errorResponse('Task not found', 404);
+          // Include child tasks if this is a planner task
+          const children = live.getScheduler().getChildTasks(taskMatch[1]);
+          return jsonResponse({ ...task, children: children.length > 0 ? children : undefined });
+        }
+
         // /tasks/:id/events
         const taskEventsMatch = subPath.match(/^\/tasks\/([^/]+)\/events$/);
         if (taskEventsMatch) {
@@ -258,6 +268,8 @@ export class ClusterAPIBackend {
            * dispatch flow when the ticket frontmatter has `usePlanner: true`.
            */
           requirePlannerRole?: boolean;
+          /** Ticket id for result writeback. Set by the WebUI dispatch flow. */
+          ticketId?: string;
         };
         try {
           body = (await req.json()) as typeof body;
@@ -270,6 +282,7 @@ export class ClusterAPIBackend {
         const task = await live.submitTask(body.project, body.description, {
           workerTemplate: body.workerTemplate,
           requirePlannerRole: body.requirePlannerRole === true ? true : undefined,
+          ticketId: body.ticketId?.trim() || undefined,
         });
         if (!task) {
           return errorResponse(

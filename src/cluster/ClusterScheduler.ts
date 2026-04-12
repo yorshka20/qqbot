@@ -27,6 +27,7 @@ export class ClusterScheduler {
    * still surfaced.
    */
   private warnedMissingProjects = new Set<string>();
+  private jobCompletedCallback: ((job: JobRecord, tasks: TaskRecord[]) => void) | null = null;
 
   constructor(
     private config: ClusterConfig,
@@ -35,6 +36,14 @@ export class ClusterScheduler {
     private db: Database,
     private projectRegistry: ProjectRegistry,
   ) {}
+
+  /**
+   * Set a callback that fires when a job reaches terminal status.
+   * Used for ticket result writeback.
+   */
+  setJobCompletedCallback(cb: (job: JobRecord, tasks: TaskRecord[]) => void): void {
+    this.jobCompletedCallback = cb;
+  }
 
   /**
    * Register task sources for a project.
@@ -105,6 +114,11 @@ export class ClusterScheduler {
         job.completedAt = new Date().toISOString();
       }
       this.persistJob(job);
+
+      // Fire writeback callback when job reaches terminal status
+      if (job.status === 'completed' || job.status === 'failed') {
+        this.fireJobCompletedCallback(job);
+      }
     }
 
     // Drop from active map so the next scheduler tick won't see this task
@@ -177,6 +191,16 @@ export class ClusterScheduler {
     }
   }
 
+  private fireJobCompletedCallback(job: JobRecord): void {
+    if (!this.jobCompletedCallback) return;
+    try {
+      const tasks = this.getJobTasks(job.id);
+      this.jobCompletedCallback(job, tasks);
+    } catch (err) {
+      logger.error(`[ClusterScheduler] jobCompletedCallback threw for job ${job.id}:`, err);
+    }
+  }
+
   /**
    * Look up a task currently tracked by the scheduler. Used by
    * `ContextHub.reportCallback` to resolve a taskId coming in via
@@ -234,7 +258,7 @@ export class ClusterScheduler {
   async submitTask(
     project: string,
     description: string,
-    options?: { workerTemplate?: string; requirePlannerRole?: boolean },
+    options?: { workerTemplate?: string; requirePlannerRole?: boolean; ticketId?: string },
   ): Promise<TaskRecord | null> {
     const projectInfo = this.projectRegistry.resolve(project);
     if (!projectInfo) {
@@ -292,6 +316,7 @@ export class ClusterScheduler {
       taskCount: 1,
       tasksCompleted: 0,
       tasksFailed: 0,
+      ticketId: options?.ticketId,
     };
     this.jobs.set(jobId, job);
     this.persistJob(job);
@@ -354,8 +379,6 @@ export class ClusterScheduler {
     task: TaskRecord,
     projectInfo: { alias: string; path: string; type: string },
   ): Promise<boolean> {
-    if (!this.workerPool.canSpawnMore()) return false;
-
     // Template selection precedence:
     //   1. task.workerTemplate (pre-stamped by submitTask via the WebUI/API
     //      override or by a previous dispatch attempt)
@@ -370,6 +393,9 @@ export class ClusterScheduler {
       );
       return false;
     }
+
+    // Check both global and per-template concurrency limits before spawning.
+    if (!this.workerPool.canSpawnMore(templateName)) return false;
 
     const worker = await this.workerPool.spawnWorker(templateName, task.project, projectInfo.path, task);
     if (worker) {
@@ -613,8 +639,8 @@ export class ClusterScheduler {
       this.db
         .query(
           `INSERT OR REPLACE INTO cluster_jobs
-         (id, project, description, status, createdAt, startedAt, completedAt, taskCount, tasksCompleted, tasksFailed, metadata)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, project, description, status, createdAt, startedAt, completedAt, taskCount, tasksCompleted, tasksFailed, metadata, ticketId)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           job.id,
@@ -628,6 +654,7 @@ export class ClusterScheduler {
           job.tasksCompleted,
           job.tasksFailed,
           job.metadata ?? null,
+          job.ticketId ?? null,
         );
     } catch (err) {
       logger.error('[ClusterScheduler] Failed to persist job:', err);

@@ -81,6 +81,8 @@ export interface JobRecord {
   tasksCompleted: number;
   tasksFailed: number;
   metadata?: string;
+  /** Ticket id that dispatched this job. Used for result writeback. */
+  ticketId?: string;
 }
 
 export interface TaskRecord {

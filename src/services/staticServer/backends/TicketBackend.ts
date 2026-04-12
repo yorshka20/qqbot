@@ -1,25 +1,21 @@
 /**
  * TicketBackend — REST API for cluster task tickets.
  *
- * Storage: each ticket is a single markdown file under `tickets/` at the
- * project root (NOT under `data/` because data/ is gitignored — tickets
- * are project knowledge and meant to be committed). Filename is the
- * ticket id with `.md` suffix; id format is `YYYY-MM-DD-<slug>` so the
- * filesystem-sorted listing matches creation order.
+ * Storage: each ticket is a **directory** under `tickets/` at the project
+ * root (NOT under `data/` because data/ is gitignored — tickets are project
+ * knowledge and meant to be committed). Directory name is the ticket id;
+ * id format is `YYYY-MM-DD-<slug>` so the filesystem-sorted listing
+ * matches creation order.
  *
- * File format:
- *   ---
- *   id: 2026-04-11-fix-discord-emoji
- *   title: Fix Discord emoji rendering
- *   status: ready              # draft | ready | dispatched | done | abandoned
- *   template: claude-sonnet
- *   project: qqbot
- *   created: 2026-04-11T10:00:00+09:00
- *   updated: 2026-04-11T11:30:00+09:00
- *   dispatchedJobId:           # optional, set when dispatched
- *   ---
+ * Directory layout:
+ *   tickets/<id>/
+ *     ticket.md              — frontmatter + markdown body (the "ticket")
+ *     results/               — auto-generated execution artifacts
+ *       summary.md           — job completion summary
+ *       task-<taskId>.md     — per-task input (description) + output
  *
- *   <markdown body — Goal / Context / Acceptance / etc.>
+ * Backward compat: if `tickets/<id>.md` exists (pre-directory era), it is
+ * auto-migrated into `tickets/<id>/ticket.md` on first read.
  *
  * The dispatch action is NOT in this backend — the WebUI calls the
  * existing `POST /api/cluster/jobs` with the full ticket markdown as
@@ -29,13 +25,15 @@
  * Routes (prefix `/api/tickets`):
  *   GET    /api/tickets               { tickets: TicketSummary[] } (frontmatter only, no body)
  *   GET    /api/tickets/:id           full ticket { id, frontmatter, body }
+ *   GET    /api/tickets/:id/results   list result files
+ *   GET    /api/tickets/:id/results/:file  read a specific result file
  *   POST   /api/tickets               create; body { title, status?, template?, project?, body }
  *   PUT    /api/tickets/:id           update; body any subset of mutable fields
- *   DELETE /api/tickets/:id           delete file
+ *   DELETE /api/tickets/:id           delete directory
  */
 
-import { existsSync, mkdirSync } from 'node:fs';
-import { readdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { existsSync, mkdirSync, renameSync, statSync } from 'node:fs';
+import { readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { logger } from '@/utils/logger';
 import { resolveSafe } from './pathSafety';
@@ -153,6 +151,18 @@ export class TicketBackend {
       return jsonResponse({ tickets });
     }
 
+    // /:id/results/:file — read a specific result file
+    const resultFileMatch = subPath.match(/^\/([^/]+)\/results\/([^/]+)$/);
+    if (resultFileMatch) {
+      return this.handleGetResultFile(resultFileMatch[1], resultFileMatch[2]);
+    }
+
+    // /:id/results — list result files
+    const resultsMatch = subPath.match(/^\/([^/]+)\/results$/);
+    if (resultsMatch) {
+      return this.handleListResults(resultsMatch[1]);
+    }
+
     // /:id
     const idMatch = subPath.match(/^\/([^/]+)$/);
     if (idMatch) {
@@ -164,25 +174,67 @@ export class TicketBackend {
     return errorResponse('Not found', 404);
   }
 
+  private async handleListResults(id: string): Promise<Response> {
+    const dir = this.ticketDir(id);
+    if (!dir) return errorResponse('Invalid ticket id', 400);
+    const resultsDir = join(dir, 'results');
+    try {
+      const files = await readdir(resultsDir);
+      return jsonResponse({ files: files.filter((f) => f.endsWith('.md')) });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return jsonResponse({ files: [] });
+      throw err;
+    }
+  }
+
+  private async handleGetResultFile(id: string, filename: string): Promise<Response> {
+    const dir = this.ticketDir(id);
+    if (!dir) return errorResponse('Invalid ticket id', 400);
+    // Prevent path traversal
+    if (filename.includes('/') || filename.includes('\\') || filename.startsWith('.')) {
+      return errorResponse('Invalid filename', 400);
+    }
+    const filePath = join(dir, 'results', filename);
+    try {
+      const content = await readFile(filePath, 'utf-8');
+      return jsonResponse({ filename, content });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return errorResponse('Result file not found', 404);
+      throw err;
+    }
+  }
+
   /** List frontmatter-only summaries, sorted by `created` desc. */
   private async listAll(): Promise<TicketSummary[]> {
-    let files: string[];
+    let entries: string[];
     try {
-      files = await readdir(this.ticketsDir);
+      entries = await readdir(this.ticketsDir);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
       throw err;
     }
 
     const summaries: TicketSummary[] = [];
-    for (const filename of files) {
-      if (!filename.endsWith('.md')) continue;
-      const id = filename.slice(0, -3);
+    for (const entry of entries) {
+      // New format: directory with ticket.md inside
+      // Legacy format: <id>.md file (auto-migrated on read)
+      let id: string;
+      const fullPath = join(this.ticketsDir, entry);
+      try {
+        const stat = statSync(fullPath);
+        if (stat.isDirectory()) {
+          id = entry;
+        } else if (entry.endsWith('.md')) {
+          id = entry.slice(0, -3);
+        } else {
+          continue;
+        }
+      } catch {
+        continue;
+      }
+
       const ticket = await this.readTicket(id).catch((err) => {
-        // Don't blow up the whole listing on a single bad file. Surface
-        // it as a synthetic error ticket so the WebUI can show "this
-        // file failed to parse" instead of disappearing it.
-        logger.warn(`[TicketBackend] Failed to parse ${filename}:`, err);
+        logger.warn(`[TicketBackend] Failed to parse ${entry}:`, err);
         return null;
       });
       if (ticket) summaries.push(ticket.frontmatter);
@@ -194,14 +246,26 @@ export class TicketBackend {
   }
 
   private async readTicket(id: string): Promise<Ticket | null> {
-    const filePath = this.ticketPath(id);
-    if (!filePath) return null;
+    const dir = this.ticketDir(id);
+    if (!dir) return null;
+
+    // Auto-migrate legacy single-file format → directory format
+    const legacyPath = join(this.ticketsDir, `${id}.md`);
+    if (!existsSync(dir) && existsSync(legacyPath)) {
+      try {
+        mkdirSync(dir, { recursive: true });
+        renameSync(legacyPath, join(dir, 'ticket.md'));
+        logger.info(`[TicketBackend] Migrated legacy ticket ${id}.md → ${id}/ticket.md`);
+      } catch (err) {
+        logger.warn(`[TicketBackend] Failed to migrate legacy ticket ${id}:`, err);
+        // Fall through — try to read from whichever location exists
+      }
+    }
+
+    const filePath = join(dir, 'ticket.md');
     try {
       const raw = await readFile(filePath, 'utf-8');
       const { frontmatter, body } = parseMarkdownTicket(raw);
-      // Trust the filename over any drift in the file's own `id`. If they
-      // don't match, the filename wins and we silently fix the in-memory
-      // copy. The next PUT will normalize the file.
       return { id, frontmatter: { ...frontmatter, id }, body };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
@@ -272,7 +336,8 @@ export class TicketBackend {
     const base = `${datePrefix}-${slug}`;
     let candidate = base;
     let n = 1;
-    while (existsSync(join(this.ticketsDir, `${candidate}.md`))) {
+    // Check both directory (new format) and file (legacy) to avoid collisions
+    while (existsSync(join(this.ticketsDir, candidate)) || existsSync(join(this.ticketsDir, `${candidate}.md`))) {
       n += 1;
       candidate = `${base}-${n}`;
     }
@@ -347,11 +412,11 @@ export class TicketBackend {
     const idMatch = subPath.match(/^\/([^/]+)$/);
     if (!idMatch) return errorResponse('Not found', 404);
 
-    const filePath = this.ticketPath(idMatch[1]);
-    if (!filePath) return errorResponse('Invalid ticket id', 400);
+    const dir = this.ticketDir(idMatch[1]);
+    if (!dir) return errorResponse('Invalid ticket id', 400);
 
     try {
-      await unlink(filePath);
+      await rm(dir, { recursive: true });
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         return errorResponse('Ticket not found', 404);
@@ -364,27 +429,54 @@ export class TicketBackend {
   // ── Storage helpers ────────────────────────────────────────────────────
 
   /**
-   * Resolve `tickets/<id>.md`, refusing path traversal. Also rejects ids
-   * with slashes / .md suffix / leading dots so the wire-level id stays
-   * a clean alphanumeric-dash form.
+   * Resolve `tickets/<id>/` directory, refusing path traversal.
    */
-  private ticketPath(id: string): string | null {
+  private ticketDir(id: string): string | null {
     if (!id || id.includes('/') || id.includes('\\') || id.startsWith('.') || id.endsWith('.md')) {
       return null;
     }
-    return resolveSafe(this.ticketsDir, `${id}.md`);
+    return resolveSafe(this.ticketsDir, id);
+  }
+
+  /**
+   * Get the results directory for a ticket. Creates it if needed.
+   */
+  getResultsDir(id: string): string | null {
+    const dir = this.ticketDir(id);
+    if (!dir) return null;
+    const resultsDir = join(dir, 'results');
+    if (!existsSync(resultsDir)) {
+      mkdirSync(resultsDir, { recursive: true });
+    }
+    return resultsDir;
+  }
+
+  /**
+   * Write a result file into the ticket's results/ directory.
+   * Used by the cluster writeback mechanism.
+   */
+  async writeResult(ticketId: string, filename: string, content: string): Promise<boolean> {
+    const resultsDir = this.getResultsDir(ticketId);
+    if (!resultsDir) return false;
+    try {
+      await writeFile(join(resultsDir, filename), content, 'utf-8');
+      return true;
+    } catch (err) {
+      logger.warn(`[TicketBackend] Failed to write result ${filename} for ticket ${ticketId}:`, err);
+      return false;
+    }
   }
 
   private async writeTicket(ticket: Ticket): Promise<void> {
-    const filePath = this.ticketPath(ticket.id);
-    if (!filePath) {
+    const dir = this.ticketDir(ticket.id);
+    if (!dir) {
       throw new Error(`Invalid ticket id: ${ticket.id}`);
     }
-    if (!existsSync(this.ticketsDir)) {
-      mkdirSync(this.ticketsDir, { recursive: true });
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
     }
     const content = serializeTicket(ticket);
-    await writeFile(filePath, content, 'utf-8');
+    await writeFile(join(dir, 'ticket.md'), content, 'utf-8');
   }
 }
 

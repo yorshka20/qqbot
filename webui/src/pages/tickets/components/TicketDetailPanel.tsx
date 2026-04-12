@@ -1,7 +1,8 @@
-import { ExternalLink, RefreshCw, X } from 'lucide-react';
+import { ExternalLink, FileText, RefreshCw, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { getClusterJob } from '../../../api';
+import { getClusterJob, getTicketResult, listTicketResults } from '../../../api';
+import { getClusterApiBase } from '../../../config';
 import type { ClusterJobWithTasks, ClusterTask, Ticket } from '../../../types';
 import { orderTasksAsTree, TaskTreeRow } from '../../cluster/components/TaskTree';
 import { TaskOutputModal } from '../../cluster/components/TaskOutputModal';
@@ -41,6 +42,8 @@ export function TicketDetailPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [taskModal, setTaskModal] = useState<ClusterTask | null>(null);
+  const [resultFiles, setResultFiles] = useState<string[]>([]);
+  const [resultContent, setResultContent] = useState<{ filename: string; content: string } | null>(null);
 
   // Capture the dispatchedJobId once per ticket. Used by the polling
   // effect; gating both the fetch trigger and the polling teardown on
@@ -99,6 +102,31 @@ export function TicketDetailPanel({
       }
     };
   }, [job, fetchJob]);
+
+  // SSE: listen for task_spawned / task_output to trigger immediate refresh
+  // so the user sees child tasks appear and output stream in near real-time
+  // instead of waiting for the 3s poll.
+  useEffect(() => {
+    if (!dispatchedJobId) return;
+    const sseUrl = `${getClusterApiBase()}/stream`;
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(sseUrl);
+      es.addEventListener('task_spawned', () => void fetchJob());
+      es.addEventListener('task_output', () => void fetchJob());
+      es.onerror = () => { es?.close(); };
+    } catch {
+      // SSE not available — polling remains active
+    }
+    return () => { es?.close(); };
+  }, [dispatchedJobId, fetchJob]);
+
+  // Fetch result files when job reaches terminal state
+  const jobStatus = job?.status;
+  useEffect(() => {
+    if (jobStatus !== 'completed' && jobStatus !== 'failed') return;
+    void listTicketResults(ticket.id).then(setResultFiles).catch(() => {});
+  }, [jobStatus, ticket.id]);
 
   const fm = ticket.frontmatter;
   const treeRows = job ? orderTasksAsTree(job.tasks) : [];
@@ -225,10 +253,41 @@ export function TicketDetailPanel({
           </div>
         )}
 
-        {dispatchedJobId && job && (job.status === 'completed' || job.status === 'failed') && (
+        {dispatchedJobId && job && (job.status === 'completed' || job.status === 'failed') && resultFiles.length > 0 && (
+          <div className="mt-3">
+            <div className="text-xs text-zinc-500 dark:text-zinc-400 font-medium mb-1 flex items-center gap-1">
+              <FileText className="w-3 h-3" />
+              execution results
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {resultFiles.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => {
+                    void getTicketResult(ticket.id, f).then((content) => setResultContent({ filename: f, content })).catch(() => {});
+                  }}
+                  className={`px-2 py-0.5 rounded text-xs font-mono border transition-colors ${
+                    resultContent?.filename === f
+                      ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
+                      : 'border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800'
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+            {resultContent && (
+              <pre className="mt-2 text-xs font-mono bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded p-2 max-h-[300px] overflow-y-auto whitespace-pre-wrap break-words text-zinc-700 dark:text-zinc-200">
+                {resultContent.content}
+              </pre>
+            )}
+          </div>
+        )}
+
+        {dispatchedJobId && job && (job.status === 'completed' || job.status === 'failed') && resultFiles.length === 0 && (
           <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400 italic">
-            Job is in terminal state. To capture the result back into this ticket, edit the ticket and
-            paste the relevant child outputs into a "## Result" section in the body.
+            Job completed. Results will be written to the ticket directory automatically.
           </div>
         )}
       </div>
