@@ -27,6 +27,7 @@ import {
   createClusterJob,
   createTicket,
   deleteTicket,
+  getClusterProjects,
   getClusterTemplates,
   getTicket,
   listTickets,
@@ -34,6 +35,7 @@ import {
 } from '../../api';
 import type {
   ClusterTemplatesResponse,
+  ProjectRegistryEntry,
   Ticket,
   TicketFrontmatter,
   TicketStatus,
@@ -104,6 +106,9 @@ export function TicketsPage() {
   const [loadingSelected, setLoadingSelected] = useState(false);
 
   const [templates, setTemplates] = useState<ClusterTemplatesResponse | null>(null);
+  const [registryProjects, setRegistryProjects] = useState<ProjectRegistryEntry[]>([]);
+  const [registryDefaultAlias, setRegistryDefaultAlias] = useState<string | null>(null);
+  const [registryError, setRegistryError] = useState<string | null>(null);
 
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [savingEditor, setSavingEditor] = useState(false);
@@ -180,19 +185,40 @@ export function TicketsPage() {
       });
   }, []);
 
+  // ProjectRegistry snapshot (always-on route — same source as Cluster page).
+  useEffect(() => {
+    getClusterProjects()
+      .then((resp) => {
+        setRegistryProjects(resp.projects);
+        setRegistryDefaultAlias(resp.defaultAlias || null);
+        setRegistryError(null);
+      })
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        setRegistryProjects([]);
+        setRegistryDefaultAlias(null);
+        setRegistryError(msg);
+        console.warn('[TicketsPage] getClusterProjects failed:', err);
+      });
+  }, []);
+
   // ── Open editor ────────────────────────────────────────────────────────
 
   const openCreate = () => {
-    // Default project = the project from the most-recently-updated ticket,
-    // if any — saves the user from re-typing "qqbot" every time. Falls
-    // back to empty string.
-    const lastProject = tickets[0]?.project ?? '';
+    const aliases = new Set(registryProjects.map((p) => p.alias));
+    const last = tickets[0]?.project?.trim() ?? '';
+    const lastOk = last && aliases.has(last) ? last : '';
+    const fallback =
+      (registryDefaultAlias && aliases.has(registryDefaultAlias) ? registryDefaultAlias : null) ??
+      registryProjects.find((p) => p.isDefault)?.alias ??
+      registryProjects[0]?.alias ??
+      '';
     setEditor({
       id: '',
       title: '',
       status: 'draft',
       template: '',
-      project: lastProject,
+      project: lastOk || fallback,
       body: DEFAULT_TICKET_BODY,
       usePlanner: false,
       maxChildren: null,
@@ -239,7 +265,7 @@ export function TicketsPage() {
           title: next.title,
           status: next.status,
           template: next.template || undefined,
-          project: next.project || undefined,
+          project: next.project,
           body: next.body,
           usePlanner: next.usePlanner || undefined,
           maxChildren: next.maxChildren ?? undefined,
@@ -298,10 +324,12 @@ export function TicketsPage() {
     }
   };
 
-  const confirmDispatch = async () => {
+  const confirmDispatch = async (project: string) => {
     if (!dispatchTicket) return;
-    const project = dispatchTicket.frontmatter.project ?? '';
-    if (!project.trim()) return; // dialog already disables the button in this case
+    const trimmed = project.trim();
+    if (!trimmed || !registryProjects.some((p) => p.alias === trimmed)) {
+      return;
+    }
 
     setDispatching(true);
     setError(null);
@@ -322,13 +350,9 @@ export function TicketsPage() {
         }
       }
       const job = await createClusterJob({
-        project: project.trim(),
+        project: trimmed,
         description: dispatchTicket.body,
-        workerTemplate: workerTemplateForPlannerDispatch(
-          usePlanner,
-          dispatchTicket.frontmatter.template,
-          tplSnapshot,
-        ),
+        workerTemplate: workerTemplateForPlannerDispatch(usePlanner, dispatchTicket.frontmatter.template, tplSnapshot),
         requirePlannerRole: usePlanner ? true : undefined,
         ticketId: dispatchTicket.id,
       });
@@ -341,6 +365,7 @@ export function TicketsPage() {
       await updateTicket(dispatchTicket.id, {
         status: 'dispatched',
         dispatchedJobId: jobIdRef,
+        project: trimmed,
       });
 
       setDispatchTicket(null);
@@ -421,8 +446,11 @@ export function TicketsPage() {
       {/* Editor modal */}
       {editor && (
         <TicketEditor
+          key={editor.id || 'new'}
           initial={editor}
           templates={templates}
+          registryProjects={registryProjects}
+          registryError={registryError}
           onCancel={() => {
             if (!savingEditor) setEditor(null);
           }}
@@ -434,9 +462,11 @@ export function TicketsPage() {
       {/* Dispatch confirm modal */}
       {dispatchTicket && (
         <DispatchConfirmDialog
+          key={dispatchTicket.id}
           ticket={dispatchTicket}
           resolvedTemplate={dispatchTicket.frontmatter.template ?? ''}
-          resolvedProject={dispatchTicket.frontmatter.project ?? ''}
+          registryProjects={registryProjects}
+          registryError={registryError}
           submitting={dispatching}
           onCancel={() => {
             if (!dispatching) setDispatchTicket(null);

@@ -1,5 +1,7 @@
 import { Send, X } from 'lucide-react';
-import type { Ticket } from '../../../types';
+import { useMemo, useState } from 'react';
+import { RegistryProjectSelect } from '../../../components/RegistryProjectSelect';
+import type { ProjectRegistryEntry, Ticket } from '../../../types';
 
 /**
  * Confirm dialog before dispatching a ticket as a cluster job. Shows the
@@ -15,7 +17,8 @@ import type { Ticket } from '../../../types';
 export function DispatchConfirmDialog({
   ticket,
   resolvedTemplate,
-  resolvedProject,
+  registryProjects,
+  registryError,
   submitting,
   onCancel,
   onConfirm,
@@ -23,13 +26,27 @@ export function DispatchConfirmDialog({
   ticket: Ticket;
   /** Effective template after applying project default. May still be empty. */
   resolvedTemplate: string;
-  /** Effective project. Required for dispatch — must be non-empty. */
-  resolvedProject: string;
+  /** ProjectRegistry snapshot — dispatch target must be one of these aliases. */
+  registryProjects: ProjectRegistryEntry[];
+  registryError?: string | null;
   submitting: boolean;
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm: (project: string) => void;
 }) {
-  const canDispatch = !submitting && resolvedProject.trim().length > 0;
+  const defaultProject = useMemo(() => {
+    if (registryProjects.length === 0) return '';
+    const aliases = new Set(registryProjects.map((p) => p.alias));
+    const raw = ticket.frontmatter.project?.trim() ?? '';
+    if (raw && aliases.has(raw)) return raw;
+    return registryProjects.find((p) => p.isDefault)?.alias ?? registryProjects[0]?.alias ?? '';
+  }, [ticket.frontmatter.project, registryProjects]);
+
+  /** User override; reset when the dialog remounts (`key={ticket.id}` on parent). */
+  const [picked, setPicked] = useState<string | null>(null);
+  const dispatchProject = picked ?? defaultProject;
+
+  const projectOk = dispatchProject.trim().length > 0 && registryProjects.some((p) => p.alias === dispatchProject);
+  const canDispatch = !submitting && projectOk && !registryError && registryProjects.length > 0;
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop pattern, keyboard escape handler attached
@@ -67,7 +84,6 @@ export function DispatchConfirmDialog({
           <div className="text-sm">
             <div className="font-semibold text-zinc-900 dark:text-zinc-100">{ticket.frontmatter.title}</div>
             <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-              project: <span className="font-mono">{resolvedProject || '(none — required!)'}</span> ·
               template: <span className="font-mono">{resolvedTemplate || '(project default)'}</span>
               {ticket.frontmatter.usePlanner && (
                 <>
@@ -84,18 +100,29 @@ export function DispatchConfirmDialog({
             </div>
           </div>
 
+          <div>
+            <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">project</div>
+            <RegistryProjectSelect
+              value={dispatchProject}
+              onChange={(alias) => setPicked(alias)}
+              projects={registryProjects}
+              disabled={submitting}
+            />
+            {registryError && <div className="mt-1 text-xs text-red-600 dark:text-red-400">{registryError}</div>}
+          </div>
+
           {ticket.frontmatter.usePlanner && (
             <div className="rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/30 p-3 text-xs text-purple-800 dark:text-purple-300">
               <strong>Planner mode</strong>: dispatch will pick a planner-role worker template (or
-              <code className="mx-1">cluster.defaultPlannerTemplate</code> if none is pinned). The
-              planner is expected to decompose this ticket and spawn child executor workers via
+              <code className="mx-1">cluster.defaultPlannerTemplate</code> if none is pinned). The planner is expected
+              to decompose this ticket and spawn child executor workers via
               <code className="mx-1">hub_spawn</code>. If no planner-role template exists, dispatch will fail.
             </div>
           )}
 
-          {!resolvedProject && (
-            <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3 text-xs text-red-800 dark:text-red-300">
-              This ticket has no <code>project</code> set. Edit the ticket and pick one before dispatching.
+          {!registryError && registryProjects.length === 0 && (
+            <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-800 dark:text-amber-300">
+              Loading registered projects…
             </div>
           )}
 
@@ -120,7 +147,7 @@ export function DispatchConfirmDialog({
           </button>
           <button
             type="button"
-            onClick={onConfirm}
+            onClick={() => onConfirm(dispatchProject)}
             disabled={!canDispatch}
             className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
           >

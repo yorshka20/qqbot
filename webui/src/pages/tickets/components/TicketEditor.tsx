@@ -1,7 +1,21 @@
-import { Save, X } from "lucide-react";
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
-import type { ClusterTemplatesResponse, TicketStatus } from "../../../types";
+import { Save, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { RegistryProjectSelect } from '../../../components/RegistryProjectSelect';
+import type { ClusterTemplatesResponse, ProjectRegistryEntry, TicketStatus } from '../../../types';
+
+/** Map raw frontmatter / local state to a registry alias when the snapshot is available. */
+function resolveRegistryProject(
+  current: string,
+  registryProjects: ProjectRegistryEntry[],
+  initialProject: string,
+): string {
+  if (registryProjects.length === 0) return current;
+  const aliases = new Set(registryProjects.map((p) => p.alias));
+  if (aliases.has(current)) return current;
+  const fromFm = initialProject.trim() && aliases.has(initialProject.trim()) ? initialProject.trim() : '';
+  return fromFm || registryProjects.find((p) => p.isDefault)?.alias || registryProjects[0]?.alias || '';
+}
 
 /**
  * Modal editor for a single ticket. Used both for "create new" (the
@@ -26,6 +40,8 @@ import type { ClusterTemplatesResponse, TicketStatus } from "../../../types";
 export function TicketEditor({
   initial,
   templates,
+  registryProjects,
+  registryError,
   onCancel,
   onSave,
   saving,
@@ -41,6 +57,10 @@ export function TicketEditor({
     maxChildren: number | null;
   };
   templates: ClusterTemplatesResponse | null;
+  /** From `GET /api/cluster/projects` — project must be one of these aliases. */
+  registryProjects: ProjectRegistryEntry[];
+  /** When set, registry snapshot failed; save stays disabled. */
+  registryError?: string | null;
   onCancel: () => void;
   onSave: (next: {
     title: string;
@@ -53,9 +73,8 @@ export function TicketEditor({
   }) => Promise<void> | void;
   saving: boolean;
 }) {
-  // Local form state — committed only on Save. Re-initialized when the
-  // `initial` reference changes so re-opening the editor on a different
-  // ticket actually shows the new ticket's content.
+  // Local form state — committed only on Save. TicketsPage remounts this
+  // component (`key`) when switching create vs edit or changing ticket id.
   const [title, setTitle] = useState(initial.title);
   const [status, setStatus] = useState<TicketStatus>(initial.status);
   const [template, setTemplate] = useState(initial.template);
@@ -64,39 +83,28 @@ export function TicketEditor({
   const [usePlanner, setUsePlanner] = useState(initial.usePlanner);
   // maxChildren stays as a string in form state so the user can clear the
   // input. We coerce to number on save (empty → null = unset).
-  const [maxChildrenStr, setMaxChildrenStr] = useState(
-    initial.maxChildren !== null ? String(initial.maxChildren) : "",
+  const [maxChildrenStr, setMaxChildrenStr] = useState(initial.maxChildren !== null ? String(initial.maxChildren) : '');
+
+  const effectiveProject = useMemo(
+    () => resolveRegistryProject(project, registryProjects, initial.project),
+    [project, registryProjects, initial.project],
   );
 
-  useEffect(() => {
-    setTitle(initial.title);
-    setStatus(initial.status);
-    setTemplate(initial.template);
-    setProject(initial.project);
-    setBody(initial.body);
-    setUsePlanner(initial.usePlanner);
-    setMaxChildrenStr(
-      initial.maxChildren !== null ? String(initial.maxChildren) : "",
-    );
-  }, [initial]);
-
-  const isCreate = initial.id === "";
-  const canSave = !saving && title.trim().length > 0;
+  const isCreate = initial.id === '';
+  const projectListed = registryProjects.some((p) => p.alias === effectiveProject);
+  const canSave = !saving && title.trim().length > 0 && projectListed && !registryError;
 
   const submit = async () => {
     if (!canSave) return;
-    const parsedMax = maxChildrenStr.trim()
-      ? Number.parseInt(maxChildrenStr.trim(), 10)
-      : NaN;
+    const parsedMax = maxChildrenStr.trim() ? Number.parseInt(maxChildrenStr.trim(), 10) : NaN;
     await onSave({
       title: title.trim(),
       status,
       template: template.trim(),
-      project: project.trim(),
+      project: effectiveProject.trim(),
       body,
       usePlanner,
-      maxChildren:
-        Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : null,
+      maxChildren: Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : null,
     });
   };
 
@@ -108,7 +116,7 @@ export function TicketEditor({
         if (!saving) onCancel();
       }}
       onKeyDown={(e) => {
-        if (e.key === "Escape" && !saving) onCancel();
+        if (e.key === 'Escape' && !saving) onCancel();
       }}
     >
       {/* biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper inside modal backdrop */}
@@ -119,14 +127,8 @@ export function TicketEditor({
       >
         {/* Header */}
         <div className="shrink-0 px-5 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center gap-3">
-          <div className="font-semibold">
-            {isCreate ? "New ticket" : "Edit ticket"}
-          </div>
-          {!isCreate && (
-            <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">
-              {initial.id}
-            </div>
-          )}
+          <div className="font-semibold">{isCreate ? 'New ticket' : 'Edit ticket'}</div>
+          {!isCreate && <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">{initial.id}</div>}
           <div className="flex-1" />
           <button
             type="button"
@@ -144,9 +146,7 @@ export function TicketEditor({
           {/* Frontmatter form */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
             <div className="md:col-span-12">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                title
-              </div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">title</div>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -156,9 +156,7 @@ export function TicketEditor({
               />
             </div>
             <div className="md:col-span-3">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                status
-              </div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">status</div>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as TicketStatus)}
@@ -173,9 +171,7 @@ export function TicketEditor({
               </select>
             </div>
             <div className="md:col-span-5">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                template
-              </div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">template</div>
               <select
                 value={template}
                 onChange={(e) => setTemplate(e.target.value)}
@@ -191,16 +187,14 @@ export function TicketEditor({
               </select>
             </div>
             <div className="md:col-span-4">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                project
-              </div>
-              <input
-                value={project}
-                onChange={(e) => setProject(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
-                placeholder="qqbot"
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">project</div>
+              <RegistryProjectSelect
+                value={effectiveProject}
+                onChange={setProject}
+                projects={registryProjects}
                 disabled={saving}
               />
+              {registryError && <div className="mt-1 text-xs text-red-600 dark:text-red-400">{registryError}</div>}
             </div>
             {/* Phase 3: planner mode toggle. usePlanner forces dispatch to
                 pick a planner-role worker template. maxChildren is a soft
@@ -214,17 +208,12 @@ export function TicketEditor({
                 disabled={saving}
                 className="w-4 h-4"
               />
-              <label
-                htmlFor="ticket-use-planner"
-                className="text-xs text-zinc-700 dark:text-zinc-300 select-none"
-              >
+              <label htmlFor="ticket-use-planner" className="text-xs text-zinc-700 dark:text-zinc-300 select-none">
                 use planner (multi-agent decomposition)
               </label>
             </div>
             <div className="md:col-span-3">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                maxChildren (planner only)
-              </div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">maxChildren (planner only)</div>
               <input
                 type="number"
                 min={1}
@@ -240,9 +229,7 @@ export function TicketEditor({
           {/* Markdown body */}
           <div>
             <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1 flex items-center gap-2">
-              <span>
-                body (markdown — this is what the worker will see verbatim)
-              </span>
+              <span>body (markdown — this is what the worker will see verbatim)</span>
             </div>
             <textarea
               value={body}
@@ -271,7 +258,7 @@ export function TicketEditor({
             className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
           >
             <Save className="w-4 h-4" />
-            {saving ? "Saving…" : "Save"}
+            {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
       </div>

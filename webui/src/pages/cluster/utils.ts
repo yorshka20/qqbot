@@ -3,7 +3,7 @@
  * with content; scroll inside the card instead.
  */
 export const CLUSTER_CARD_BODY_SCROLL =
-  'max-h-[min(42vh,24rem)] overflow-y-auto overflow-x-hidden overscroll-contain pr-0.5';
+  'max-h-[min(42vh,24rem)] overflow-y-auto overflow-x-hidden overscroll-contain px-0.5';
 
 export function formatMs(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '-';
