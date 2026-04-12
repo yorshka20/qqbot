@@ -799,9 +799,7 @@ export class ClusterScheduler {
     }
     try {
       const row = this.db
-        .query(
-          `SELECT * FROM cluster_tasks WHERE workerId = ? ORDER BY COALESCE(startedAt, createdAt) DESC LIMIT 1`,
-        )
+        .query(`SELECT * FROM cluster_tasks WHERE workerId = ? ORDER BY COALESCE(startedAt, createdAt) DESC LIMIT 1`)
         .get(workerId) as Record<string, unknown> | null;
       if (!row) {
         return undefined;

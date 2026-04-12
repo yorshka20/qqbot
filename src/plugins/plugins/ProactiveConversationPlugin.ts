@@ -246,7 +246,14 @@ export class ProactiveConversationPlugin extends PluginBase {
       logger.info(`[ProactiveConversationPlugin] Cooldown activated | group=${groupId} duration=${minutes}min`);
       return {
         success: true,
-        segments: [{ type: 'text', data: { text: `主动对话已静默 ${minutes} 分钟，将于 ${expireTime} 自动恢复。使用 /proactive resume 可提前解除。` } }],
+        segments: [
+          {
+            type: 'text',
+            data: {
+              text: `主动对话已静默 ${minutes} 分钟，将于 ${expireTime} 自动恢复。使用 /proactive resume 可提前解除。`,
+            },
+          },
+        ],
       };
     }
 
@@ -264,12 +271,15 @@ export class ProactiveConversationPlugin extends PluginBase {
     // Show current status
     const cooling = this.isInCooldown(groupId);
     const until = this.cooldownUntil.get(groupId);
-    const statusText = cooling && until
-      ? `主动对话静默中，恢复时间: ${new Date(until).toLocaleTimeString('zh-CN', { hour12: false })}`
-      : '主动对话正常运行中';
+    const statusText =
+      cooling && until
+        ? `主动对话静默中，恢复时间: ${new Date(until).toLocaleTimeString('zh-CN', { hour12: false })}`
+        : '主动对话正常运行中';
     return {
       success: true,
-      segments: [{ type: 'text', data: { text: `${statusText}\n用法: /proactive cooldown [分钟] | /proactive resume` } }],
+      segments: [
+        { type: 'text', data: { text: `${statusText}\n用法: /proactive cooldown [分钟] | /proactive resume` } },
+      ],
     };
   }
 
