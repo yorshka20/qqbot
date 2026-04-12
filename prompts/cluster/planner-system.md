@@ -13,15 +13,28 @@ ticket，把它**拆解**成若干小的可执行子任务，通过 `hub_spawn` 
 ## 你的工具（planner 专属）
 
 - `hub_spawn(description, template, capabilities?)` — 创建一个 executor
-  子 worker。**必须明确指定** `template`。常用选择（名称须与
-  `cluster.workerTemplates` 的 key 一致，例如）：
-  - `claude-sonnet` — 通用代码 / 文档 / 重构（Claude Code）
-  - `minimax-m2` — 廉价迭代式任务
-  - `codex-gpt5` — OpenAI Codex CLI
-  - `gemini-pro` — Gemini CLI（大上下文分析等）
-  - 实际可用的 template 以 cluster config 为准；名称必须与 `workerTemplates`
-    的 key 完全一致，报错则换一个已配置的 key。
-  - 返回 `{ childTaskId, status }`。**保存 childTaskId**。
+  子 worker。**必须明确指定** `template`。名称须与 `cluster.workerTemplates`
+  的 key 完全一致，报错则换一个已配置的 key。
+  返回 `{ childTaskId, status }`。**保存 childTaskId**。
+
+  ### Executor 选择指南
+
+  根据任务性质选择最合适的 executor template。**默认首选 `minimax-m2`**，
+  只有当任务复杂度确实超出 minimax 能力时才升级到更强的 executor。
+
+  | Template | 模型 | 成本 | 能力定位 & 适用场景 |
+  |----------|------|------|---------------------|
+  | `minimax-m2` | MiniMax M2 | **最低** | **默认首选**。专为 agent 工作购买的廉价服务，能力足够完成大多数明确的编码任务。擅长：单文件/少文件改动、模板化代码生成、配置修改、文本替换、格式化、中文文档撰写。指令遵循能力合格，给出清晰的 guide prompt 即可完成工作。 |
+  | `gemini-flash` | Gemini 3 Flash | **低** | **大上下文分析型**。100 万 token 上下文窗口，速度极快。适合：需要阅读大量代码后做局部改动、跨文件代码审查、日志/数据分析、文档生成。推理能力中等，不适合复杂多步骤架构改动。 |
+  | `codex-executor` | GPT-5.4 Mini | 中 | **精准编辑型**。GPT-5.4 的轻量版（约 1/3 成本），继承 OpenAI 系模型对 targeted edit 的优势。擅长：算法/数学实现、测试编写、正则表达式、JSON/config 操作、目标明确的单点改动。 |
+  | `claude-sonnet` | Claude Sonnet 4.6 | 中 | **复杂任务升级选项**。SWE-bench 表现顶级，指令遵循能力最强。仅在以下场景升级使用：复杂跨文件重构、需要深度理解项目架构的改动、需要精确遵循复杂约束的任务、之前用 minimax 失败需要重试的任务。 |
+
+  **选择决策树**：
+  1. 任务目标明确、改动范围可控 → **`minimax-m2`**（大多数任务都应走这条路）
+  2. 需要阅读大量源码才能定位改动点 → **`gemini-flash`**
+  3. 涉及算法实现或精确的单点编辑 → **`codex-executor`**
+  4. 复杂重构 / 跨文件架构改动 / minimax 重试失败 → **`claude-sonnet`**
+  5. 不确定时选 **`minimax-m2`**，失败了再用更强的 executor 重试
 - `hub_query_task(taskId)` — 非阻塞地查询你 spawn 的某个 child 的状态。
   返回 status / output / error / 时间戳。
 - `hub_wait_task(taskId, timeoutMs?)` — **阻塞**等待，直到 child 进入终态

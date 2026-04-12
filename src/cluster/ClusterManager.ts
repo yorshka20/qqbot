@@ -20,6 +20,7 @@ import { QueueSource } from './sources/QueueSource';
 import { TodoFileSource } from './sources/TodoFileSource';
 import type { ClusterStatus, HelpRequest, JobRecord, TaskRecord } from './types';
 import { WorkerPool } from './WorkerPool';
+import { checkWorkerTemplateHealth } from './WorkerTemplateHealthCheck';
 
 export class ClusterManager {
   private hub: ContextHub;
@@ -129,6 +130,9 @@ export class ClusterManager {
 
     // Initialize DB tables
     this.initDatabase();
+
+    // Pre-flight: check worker template availability
+    await checkWorkerTemplateHealth(this.config);
 
     // Start hub
     await this.hub.start();
