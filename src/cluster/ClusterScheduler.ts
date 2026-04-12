@@ -60,6 +60,13 @@ export class ClusterScheduler {
     this.running = true;
     // Reset warn-once state so config changes between restarts surface again.
     this.warnedMissingProjects.clear();
+
+    // Restore recent jobs & tasks from DB so the WebUI shows history
+    // after a cluster restart. Only terminal (completed/failed/cancelled)
+    // records are loaded — we never resume in-progress work across
+    // restarts because the worker processes are gone.
+    this.restoreRecentFromDb();
+
     logger.info(`[ClusterScheduler] Started (interval: ${this.config.schedulingInterval}ms)`);
     this.scheduleNextRun();
   }
@@ -808,6 +815,49 @@ export class ClusterScheduler {
     } catch (err) {
       logger.warn(`[ClusterScheduler] findLatestTaskForWorker failed for ${workerId}:`, err);
       return undefined;
+    }
+  }
+
+  /**
+   * Hydrate in-memory `jobs` map from the DB so WebUI can show recent
+   * history after a cluster restart. Only loads jobs from the last 7 days.
+   * Tasks are NOT loaded into `activeTasks` (they are fetched on-demand
+   * via `getJobTasks` which already does a DB fallback). This avoids
+   * accidentally re-dispatching completed work.
+   */
+  private restoreRecentFromDb(): void {
+    try {
+      const cutoff = new Date(Date.now() - 7 * 24 * 3600_000).toISOString();
+      const rows = this.db
+        .query(`SELECT * FROM cluster_jobs WHERE createdAt >= ? ORDER BY createdAt DESC LIMIT 200`)
+        .all(cutoff) as Array<Record<string, unknown>>;
+
+      let restored = 0;
+      for (const row of rows) {
+        const id = row.id as string;
+        if (this.jobs.has(id)) continue; // already in memory (shouldn't happen on fresh start)
+        const job: JobRecord = {
+          id,
+          project: row.project as string,
+          description: row.description as string,
+          status: row.status as JobRecord['status'],
+          createdAt: row.createdAt as string,
+          startedAt: (row.startedAt as string | null) ?? undefined,
+          completedAt: (row.completedAt as string | null) ?? undefined,
+          taskCount: Number(row.taskCount),
+          tasksCompleted: Number(row.tasksCompleted),
+          tasksFailed: Number(row.tasksFailed),
+          metadata: (row.metadata as string | null) ?? undefined,
+          ticketId: (row.ticketId as string | null) ?? undefined,
+        };
+        this.jobs.set(id, job);
+        restored++;
+      }
+      if (restored > 0) {
+        logger.info(`[ClusterScheduler] Restored ${restored} recent job(s) from DB`);
+      }
+    } catch (err) {
+      logger.warn('[ClusterScheduler] restoreRecentFromDb failed (non-fatal):', err);
     }
   }
 

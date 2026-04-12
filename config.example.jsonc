@@ -956,8 +956,15 @@
       //   "capabilities": ["plan"],
       //   "costTier": "high"
       // }
-      // See config.d/cluster.jsonc for codex-cli / gemini-cli / minimax-m2
-      // template examples.
+      //
+      // Heavy executor templates for complex tasks (planner dispatches
+      // to these only when standard executors are insufficient):
+      // "claude-opus":  claude-cli + opus model (top-tier reasoning)
+      // "codex-full":   codex-cli + gpt-5.4-codex (algorithm/math)
+      // "gemini-pro":   gemini-cli + gemini-3.1-pro (huge context)
+      //
+      // See config.d/cluster.jsonc for full template examples including
+      // codex-cli / gemini-cli / minimax-m2 / heavy executors.
     },
     // Phase 3 multi-agent: when a ticket has `usePlanner: true` but doesn't
     // pin its own template, the scheduler picks this one. Must reference a

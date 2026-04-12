@@ -89,14 +89,21 @@ export function TaskTreeRow({
             {formatTimestamp(task.completedAt ?? task.createdAt)}
           </div>
         </div>
-        {/* Collapsed preview — only when not expanded */}
-        {!expanded && task.output && (
+        {/* Collapsed preview — prefer diffSummary (clean report) over raw CLI output */}
+        {!expanded && (task.diffSummary || task.output) && (
           <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-400 truncate">
-            {task.output.slice(0, 120)}
-            {task.output.length > 120 ? '…' : ''}
+            {(() => {
+              const preview = task.diffSummary || task.output || '';
+              return (
+                <>
+                  {preview.slice(0, 120)}
+                  {preview.length > 120 ? '…' : ''}
+                </>
+              );
+            })()}
           </div>
         )}
-        {!expanded && !task.output && task.error && (
+        {!expanded && !task.diffSummary && !task.output && task.error && (
           <div className="mt-1 text-xs text-red-600 dark:text-red-400 truncate">{task.error}</div>
         )}
       </button>

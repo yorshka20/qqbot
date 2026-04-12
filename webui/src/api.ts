@@ -598,6 +598,16 @@ export async function listClusterEvents(opts?: {
   return res.json() as Promise<ClusterEventListResponse>;
 }
 
+/** Fetch events for a specific task (hub_report timeline). */
+export async function getClusterTaskEvents(taskId: string): Promise<ClusterEventListResponse> {
+  const res = await fetch(`${clusterApiBase()}/tasks/${encodeURIComponent(taskId)}/events`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get task events failed: ${res.status}`);
+  }
+  return res.json() as Promise<ClusterEventListResponse>;
+}
+
 export async function listClusterLocks(): Promise<ClusterLock[]> {
   const res = await fetch(`${clusterApiBase()}/locks`);
   if (!res.ok) {

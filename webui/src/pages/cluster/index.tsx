@@ -485,7 +485,7 @@ export function ClusterPage() {
                 right={
                   workers && workers.length > 0 ? (
                     <span className="text-xs text-zinc-500 dark:text-zinc-400 font-normal">
-                      active {activeWorkers.length} · old {oldWorkers.length}
+                      active {activeWorkers.length} · exited {oldWorkers.length}
                     </span>
                   ) : null
                 }
@@ -499,66 +499,39 @@ export function ClusterPage() {
                     No workers
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-2 min-h-0 w-full min-w-0">
-                    <div className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0">
-                      Worker CLI stdout is on the{" "}
-                      <strong className="text-zinc-600 dark:text-zinc-300">
-                        task
-                      </strong>{" "}
-                      record (
-                      <strong className="text-zinc-600 dark:text-zinc-300">
-                        Task output
-                      </strong>{" "}
-                      or Recent jobs). hub_report lines are checkpoints only.
-                    </div>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 min-h-0 items-stretch w-full min-w-0">
-                      <div className="flex flex-col gap-2 min-h-0 min-w-0 w-full">
-                        <div className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 shrink-0">
-                          Active
+                  <div className="flex flex-col gap-2 max-h-[min(60vh,40rem)] overflow-y-auto overflow-x-hidden overscroll-contain px-0.5">
+                    {/* Active workers first */}
+                    {activeWorkers.length > 0 && (
+                      <>
+                        <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 shrink-0 sticky top-0 bg-white/90 dark:bg-zinc-800/90 backdrop-blur-sm py-1 z-10">
+                          Active ({activeWorkers.length})
                         </div>
-                        <div
-                          className={`flex flex-col gap-2 w-full min-w-0 ${CLUSTER_CARD_BODY_SCROLL}`}
-                        >
-                          {activeWorkers.length === 0 ? (
-                            <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                              None
-                            </div>
-                          ) : (
-                            activeWorkers.map((w) => (
-                              <WorkerBlock
-                                key={w.workerId}
-                                w={w}
-                                onOpenTaskOutput={openTaskOutput}
-                                onRequestKill={setKillConfirmId}
-                              />
-                            ))
-                          )}
+                        {activeWorkers.map((w) => (
+                          <WorkerBlock
+                            key={w.workerId}
+                            w={w}
+                            onOpenTaskOutput={openTaskOutput}
+                            onRequestKill={setKillConfirmId}
+                          />
+                        ))}
+                      </>
+                    )}
+                    {/* Exited workers */}
+                    {oldWorkers.length > 0 && (
+                      <>
+                        <div className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 shrink-0 sticky top-0 bg-white/90 dark:bg-zinc-800/90 backdrop-blur-sm py-1 z-10">
+                          Exited ({oldWorkers.length})
                         </div>
-                      </div>
-                      <div className="flex flex-col gap-2 min-h-0 min-w-0 w-full border-t border-zinc-200 dark:border-zinc-700 pt-3 lg:border-t-0 lg:pt-0 lg:border-l lg:pl-3 lg:border-zinc-200 lg:dark:border-zinc-700">
-                        <div className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 shrink-0">
-                          Old workers
-                        </div>
-                        <div
-                          className={`flex flex-col gap-2 w-full min-w-0 ${CLUSTER_CARD_BODY_SCROLL}`}
-                        >
-                          {oldWorkers.length === 0 ? (
-                            <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                              None
-                            </div>
-                          ) : (
-                            oldWorkers.map((w) => (
-                              <WorkerBlock
-                                key={w.workerId}
-                                w={w}
-                                onOpenTaskOutput={openTaskOutput}
-                                onRequestKill={setKillConfirmId}
-                              />
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                        {oldWorkers.map((w) => (
+                          <WorkerBlock
+                            key={w.workerId}
+                            w={w}
+                            onOpenTaskOutput={openTaskOutput}
+                            onRequestKill={setKillConfirmId}
+                          />
+                        ))}
+                      </>
+                    )}
                   </div>
                 )}
               </ClusterCard>

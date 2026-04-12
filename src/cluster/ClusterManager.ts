@@ -101,8 +101,17 @@ export class ClusterManager {
       // is a short LLM-authored one-liner ("completed unit tests, 12
       // passed") that often arrives BEFORE the agent finishes printing the
       // actual answer to stdout — clobbering output now would lose that.
-      // The summary is already preserved on the corresponding
-      // task_completed event in EventLog if anything needs to surface it.
+      //
+      // Instead, persist the terminal summary into `diffSummary` (a DB
+      // column that was reserved but never populated). The WebUI reads
+      // this field to show a clean markdown-rendered report alongside
+      // the raw CLI stdout in `output`.
+      if (input.summary) {
+        task.diffSummary = input.summary;
+      }
+      if (input.filesModified && input.filesModified.length > 0) {
+        task.filesModified = JSON.stringify(input.filesModified);
+      }
       if (input.status === 'failed' && input.detail?.error) {
         task.error = input.detail.error;
       }
