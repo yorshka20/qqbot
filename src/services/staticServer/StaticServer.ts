@@ -99,6 +99,9 @@ export class StaticServer implements StaticServerInstance {
         this.server = serve({
           port: tryPort,
           hostname: '0.0.0.0',
+          // Match ContextHub: long-lived requests (SSE, slow cluster APIs) must
+          // not hit Bun's default 10s idle timeout.
+          idleTimeout: 255,
           fetch: (req) => this.handleRequest(req),
         });
 

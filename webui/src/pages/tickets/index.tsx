@@ -45,6 +45,35 @@ import { TicketEditor } from './components/TicketEditor';
 import { TicketsList } from './components/TicketsList';
 import { DEFAULT_TICKET_BODY } from './utils';
 
+/**
+ * When `usePlanner` is true, the root cluster task must use a planner-role
+ * template. Tickets often pin `template: claude-sonnet` for executor work;
+ * forwarding that with requirePlannerRole causes the scheduler to reject.
+ * Omit workerTemplate so the server uses cluster.defaultPlannerTemplate,
+ * unless the ticket explicitly names a planner template.
+ */
+function workerTemplateForPlannerDispatch(
+  usePlanner: boolean,
+  templateName: string | undefined,
+  clusterTemplates: ClusterTemplatesResponse | null,
+): string | undefined {
+  const raw = templateName?.trim() || undefined;
+  if (!usePlanner) {
+    return raw;
+  }
+  if (!raw) {
+    return undefined;
+  }
+  const entry = clusterTemplates?.templates.find((t) => t.name === raw);
+  if (!entry) {
+    return raw;
+  }
+  if (entry.role === 'planner') {
+    return raw;
+  }
+  return undefined;
+}
+
 interface EditorState {
   // The full Ticket-like shape passed into TicketEditor. id === '' on create.
   id: string;
@@ -282,11 +311,25 @@ export function TicketsPage() {
       // the scheduler refuses to dispatch unless the resolved template is
       // a planner-role template (or falls back to defaultPlannerTemplate
       // when no explicit template is pinned).
+      const usePlanner = dispatchTicket.frontmatter.usePlanner === true;
+      let tplSnapshot = templates;
+      if (usePlanner && !tplSnapshot) {
+        try {
+          tplSnapshot = await getClusterTemplates();
+          setTemplates(tplSnapshot);
+        } catch {
+          // workerTemplateForPlannerDispatch passes through unknown names; server validates.
+        }
+      }
       const job = await createClusterJob({
         project: project.trim(),
         description: dispatchTicket.body,
-        workerTemplate: dispatchTicket.frontmatter.template || undefined,
-        requirePlannerRole: dispatchTicket.frontmatter.usePlanner === true ? true : undefined,
+        workerTemplate: workerTemplateForPlannerDispatch(
+          usePlanner,
+          dispatchTicket.frontmatter.template,
+          tplSnapshot,
+        ),
+        requirePlannerRole: usePlanner ? true : undefined,
         ticketId: dispatchTicket.id,
       });
 

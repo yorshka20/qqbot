@@ -109,6 +109,7 @@ export class ClusterAPIBackend {
         const templates = Object.entries(config.workerTemplates).map(([name, t]) => ({
           name,
           type: t.type,
+          role: t.role ?? 'executor',
           command: t.command,
           maxConcurrent: t.maxConcurrent,
           capabilities: t.capabilities,

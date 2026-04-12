@@ -435,6 +435,8 @@ export interface ClusterJobWithTasks extends ClusterJob {
 export interface ClusterWorkerTemplate {
   name: string;
   type: string;
+  /** Planner vs executor — root planner tasks must use a planner-role template. */
+  role?: "planner" | "executor";
   command: string;
   maxConcurrent: number;
   capabilities: string[];
