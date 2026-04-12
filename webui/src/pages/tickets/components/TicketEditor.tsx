@@ -55,6 +55,7 @@ export function TicketEditor({
     body: string;
     usePlanner: boolean;
     maxChildren: number | null;
+    estimatedComplexity: 'trivial' | 'low' | 'medium' | 'high' | '';
   };
   templates: ClusterTemplatesResponse | null;
   /** From `GET /api/cluster/projects` — project must be one of these aliases. */
@@ -70,6 +71,7 @@ export function TicketEditor({
     body: string;
     usePlanner: boolean;
     maxChildren: number | null;
+    estimatedComplexity: 'trivial' | 'low' | 'medium' | 'high' | '';
   }) => Promise<void> | void;
   saving: boolean;
 }) {
@@ -84,6 +86,7 @@ export function TicketEditor({
   // maxChildren stays as a string in form state so the user can clear the
   // input. We coerce to number on save (empty → null = unset).
   const [maxChildrenStr, setMaxChildrenStr] = useState(initial.maxChildren !== null ? String(initial.maxChildren) : '');
+  const [estimatedComplexity, setEstimatedComplexity] = useState(initial.estimatedComplexity);
 
   const effectiveProject = useMemo(
     () => resolveRegistryProject(project, registryProjects, initial.project),
@@ -105,6 +108,7 @@ export function TicketEditor({
       body,
       usePlanner,
       maxChildren: Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : null,
+      estimatedComplexity: estimatedComplexity || '',
     });
   };
 
@@ -211,6 +215,21 @@ export function TicketEditor({
               <label htmlFor="ticket-use-planner" className="text-xs text-zinc-700 dark:text-zinc-300 select-none">
                 use planner (multi-agent decomposition)
               </label>
+            </div>
+            <div className="md:col-span-3">
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">estimatedComplexity</div>
+              <select
+                value={estimatedComplexity}
+                onChange={(e) => setEstimatedComplexity(e.target.value as 'trivial' | 'low' | 'medium' | 'high' | '')}
+                className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
+                disabled={saving}
+              >
+                <option value="">(not set)</option>
+                <option value="trivial">trivial — single executor task</option>
+                <option value="low">low — minimax sufficient</option>
+                <option value="medium">medium — normal executor</option>
+                <option value="high">high — consider claude-sonnet</option>
+              </select>
             </div>
             <div className="md:col-span-3">
               <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">maxChildren (planner only)</div>

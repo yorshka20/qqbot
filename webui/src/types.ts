@@ -452,11 +452,11 @@ export interface ClusterWorkerTemplate {
   name: string;
   type: string;
   /** Planner vs executor — root planner tasks must use a planner-role template. */
-  role?: "planner" | "executor";
+  role?: 'planner' | 'executor';
   command: string;
   maxConcurrent: number;
   capabilities: string[];
-  costTier: "low" | "medium" | "high";
+  costTier: 'low' | 'medium' | 'high';
 }
 
 /**
@@ -767,6 +767,13 @@ export interface TicketFrontmatter {
    * — the hub does not hard-enforce this number.
    */
   maxChildren?: number;
+  /**
+   * Hints to the planner about task complexity, used for executor selection:
+   *   trivial | low  → planner may dispatch as a single task directly
+   *   medium             → normal executor selection
+   *   high              → planner should consider claude-sonnet executor
+   */
+  estimatedComplexity?: 'trivial' | 'low' | 'medium' | 'high';
 }
 
 /** Full ticket including markdown body. Returned by GET /api/tickets/:id. */

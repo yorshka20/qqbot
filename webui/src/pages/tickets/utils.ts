@@ -45,32 +45,5 @@ export function formatTicketTimestamp(iso: string): string {
   }
 }
 
-/**
- * Default body content for a freshly-created ticket. Uses a plain
- * markdown skeleton — same sections the planner / executor agents are
- * trained to look for. Keep this in sync with the prompt expectations
- * in `prompts/cluster-worker-system.md` if those evolve.
- */
-export const DEFAULT_TICKET_BODY = `## Goal
-
-(What outcome do you want? One or two sentences.)
-
-## Context
-
-- Relevant files / modules:
-- Current behavior:
-- Why this matters:
-
-## Acceptance criteria
-
-- [ ] (Concrete, checkable criterion 1)
-- [ ] (Concrete, checkable criterion 2)
-
-## Out of scope
-
-- (Things the worker should NOT touch)
-
-## Notes
-
-(Anything else the worker needs to know)
-`;
+// Ticket body templates are now loaded from the file `tickets/_template.md`
+// via `GET /api/tickets/template`. There is no hardcoded fallback body.

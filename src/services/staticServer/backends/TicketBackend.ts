@@ -24,6 +24,7 @@
  *
  * Routes (prefix `/api/tickets`):
  *   GET    /api/tickets               { tickets: TicketSummary[] } (frontmatter only, no body)
+ *   GET    /api/tickets/template      { content } — default ticket body template
  *   GET    /api/tickets/:id           full ticket { id, frontmatter, body }
  *   GET    /api/tickets/:id/results   list result files
  *   GET    /api/tickets/:id/results/:file  read a specific result file
@@ -35,6 +36,9 @@
 import { existsSync, mkdirSync, renameSync, statSync } from 'node:fs';
 import { readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import { resolveSafe } from './pathSafety';
 import { errorResponse, jsonResponse } from './types';
@@ -77,6 +81,13 @@ interface TicketFrontmatter {
    * planner system prompt).
    */
   maxChildren?: number;
+  /**
+   * Hints to the planner about task complexity, used for executor selection:
+   *   trivial | low  → planner may dispatch as a single task directly
+   *   medium             → normal executor selection
+   *   high              → planner should consider claude-sonnet executor
+   */
+  estimatedComplexity?: 'trivial' | 'low' | 'medium' | 'high';
 }
 
 interface Ticket {
@@ -98,6 +109,7 @@ interface TicketSummary {
   dispatchedJobId?: string;
   usePlanner?: boolean;
   maxChildren?: number;
+  estimatedComplexity?: 'trivial' | 'low' | 'medium' | 'high';
 }
 
 export class TicketBackend {
@@ -145,10 +157,31 @@ export class TicketBackend {
 
   // ── GET ────────────────────────────────────────────────────────────────
 
+  private async handleGetTemplate(): Promise<Response> {
+    try {
+      const container = getContainer();
+      const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+      // Template is stored under prompts/cluster/ so the key is 'cluster.ticket-template'.
+      const content = promptManager.render('cluster.ticket-template');
+      return jsonResponse({ content });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('not found') || msg.includes('Template')) {
+        return errorResponse('Ticket template not found', 404);
+      }
+      throw err;
+    }
+  }
+
   private async handleGet(subPath: string): Promise<Response> {
     if (subPath === '' || subPath === '/') {
       const tickets = await this.listAll();
       return jsonResponse({ tickets });
+    }
+
+    // /template — return the default ticket template body
+    if (subPath === '/template') {
+      return this.handleGetTemplate();
     }
 
     // /:id/results/:file — read a specific result file
@@ -288,6 +321,7 @@ export class TicketBackend {
       body?: string;
       usePlanner?: boolean;
       maxChildren?: number;
+      estimatedComplexity?: 'trivial' | 'low' | 'medium' | 'high';
     };
     try {
       body = (await req.json()) as typeof body;
@@ -318,6 +352,7 @@ export class TicketBackend {
         updated: now,
         usePlanner: body.usePlanner === true ? true : undefined,
         maxChildren: typeof body.maxChildren === 'number' && body.maxChildren > 0 ? body.maxChildren : undefined,
+        estimatedComplexity: body.estimatedComplexity || undefined,
       },
       body: body.body ?? '',
     };
@@ -363,6 +398,7 @@ export class TicketBackend {
       dispatchedJobId?: string | null;
       usePlanner?: boolean | null;
       maxChildren?: number | null;
+      estimatedComplexity?: 'trivial' | 'low' | 'medium' | 'high' | null;
     };
     try {
       patch = (await req.json()) as typeof patch;
@@ -385,6 +421,12 @@ export class TicketBackend {
     const positiveInt = (v: number): number | undefined =>
       typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : undefined;
 
+    const validComplexity = (v: string | null | undefined): 'trivial' | 'low' | 'medium' | 'high' | undefined => {
+      if (v === null || v === undefined) return undefined;
+      if (['trivial', 'low', 'medium', 'high'].includes(v)) return v as 'trivial' | 'low' | 'medium' | 'high';
+      return undefined;
+    };
+
     const next: Ticket = {
       id,
       frontmatter: {
@@ -398,6 +440,7 @@ export class TicketBackend {
         dispatchedJobId: patchField(patch.dispatchedJobId, existing.frontmatter.dispatchedJobId, trimmedString),
         usePlanner: patchField(patch.usePlanner, existing.frontmatter.usePlanner, trueOrUndefined),
         maxChildren: patchField(patch.maxChildren, existing.frontmatter.maxChildren, positiveInt),
+        estimatedComplexity: validComplexity(patch.estimatedComplexity ?? null),
       },
       body: patch.body !== undefined ? patch.body : existing.body,
     };
@@ -566,6 +609,13 @@ export function parseMarkdownTicket(raw: string): {
   const rawMaxChildren = fm.maxChildren ? Number.parseInt(fm.maxChildren, 10) : NaN;
   const maxChildren = Number.isFinite(rawMaxChildren) && rawMaxChildren > 0 ? rawMaxChildren : undefined;
 
+  // estimatedComplexity: one of the four known values, or undefined if absent/malformed.
+  const rawComplexity = fm.estimatedComplexity?.toLowerCase();
+  const estimatedComplexity =
+    rawComplexity && ['trivial', 'low', 'medium', 'high'].includes(rawComplexity)
+      ? (rawComplexity as 'trivial' | 'low' | 'medium' | 'high')
+      : undefined;
+
   // Map raw fm record into a typed frontmatter, applying defaults for
   // missing required fields.
   const frontmatter: TicketFrontmatter = {
@@ -579,6 +629,7 @@ export function parseMarkdownTicket(raw: string): {
     dispatchedJobId: fm.dispatchedJobId || undefined,
     usePlanner,
     maxChildren,
+    estimatedComplexity,
   };
 
   return { frontmatter, body };
@@ -601,6 +652,7 @@ export function serializeTicket(ticket: Ticket): string {
   if (fm.dispatchedJobId) lines.push(`dispatchedJobId: ${fm.dispatchedJobId}`);
   if (fm.usePlanner) lines.push(`usePlanner: true`);
   if (fm.maxChildren) lines.push(`maxChildren: ${fm.maxChildren}`);
+  if (fm.estimatedComplexity) lines.push(`estimatedComplexity: ${fm.estimatedComplexity}`);
   lines.push('---');
   lines.push('');
   lines.push(ticket.body);
