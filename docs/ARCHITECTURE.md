@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the architecture of the QQ Bot framework, a production-ready TypeScript-based bot system built with Bun runtime. The framework supports multiple protocols (OneBot11, Milky, Satori) simultaneously, providing a unified interface for bot development while leveraging the strengths of each protocol.
+This document describes the architecture of the QQ Bot framework, a production-ready TypeScript-based bot system built with Bun runtime. The framework supports multiple protocols (OneBot11, Milky, Satori) simultaneously, provides an AI-powered conversation pipeline, and includes a full agent cluster system for multi-worker coordination.
 
 ## Table of Contents
 
@@ -15,20 +15,29 @@ This document describes the architecture of the QQ Bot framework, a production-r
 7. [Protocol Support](#protocol-support)
 8. [Configuration](#configuration)
 9. [Plugin System](#plugin-system)
-10. [Error Handling](#error-handling)
-11. [Development Workflow](#development-workflow)
+10. [Hook System](#hook-system)
+11. [Command System](#command-system)
+12. [AI Service](#ai-service)
+13. [Tool System](#tool-system)
+14. [Memory System](#memory-system)
+15. [Database Layer](#database-layer)
+16. [Cluster System](#cluster-system)
+17. [Error Handling](#error-handling)
+18. [Development Workflow](#development-workflow)
 
 ## System Overview
 
 ### Purpose
 
-The QQ Bot framework is designed to connect to QQ clients via LLBot (LuckyLilliaBot), a protocol forwarding layer that exposes multiple protocol endpoints simultaneously. The framework allows developers to:
+The QQ Bot framework connects to QQ clients via LLBot (LuckyLilliaBot), a protocol forwarding layer that exposes multiple protocol endpoints simultaneously. The framework allows developers to:
 
 - Connect to multiple protocols in parallel (Milky, OneBot11, Satori)
 - Develop plugins that work across all protocols with a unified API
 - Leverage protocol-specific advantages (e.g., OneBot11's rich ecosystem, Milky's modern features)
 - Handle events from multiple protocols with automatic deduplication
-- Route API calls intelligently based on protocol capabilities
+- Run AI-powered conversations with multi-provider LLM support
+- Execute LLM-callable tools with fine-grained visibility scopes
+- Coordinate multi-worker agent clusters for parallel task execution
 
 ### Key Features
 
@@ -36,8 +45,12 @@ The QQ Bot framework is designed to connect to QQ clients via LLBot (LuckyLillia
 - **Type Safety**: Full TypeScript coverage with strict type checking
 - **Event Deduplication**: Prevents duplicate event processing when same event arrives via multiple protocols
 - **Protocol Abstraction**: Plugins work with unified interface, protocol details are hidden
-- **Extensible Plugin System**: Easy to add new features through plugins
-- **Intelligent API Routing**: Choose optimal protocol per API call
+- **AI-Powered Conversations**: Multi-provider LLM integration (OpenAI, Anthropic, DeepSeek, Doubao, Gemini, Ollama, etc.)
+- **Hook Pipeline**: 14 hook points for intercepting and modifying behavior at every stage
+- **Extensible Plugin System**: Easy to add new features through config-based plugins
+- **Tool System**: LLM-callable tools via `@Tool()` decorator with scoped visibility
+- **Memory System**: Per-user and per-group long-term memory with LLM extraction
+- **Agent Cluster**: Multi-worker coordination system for parallel AI task execution
 - **Automatic Reconnection**: Robust connection management with exponential backoff
 
 ## Architecture Principles
@@ -47,8 +60,9 @@ The QQ Bot framework is designed to connect to QQ clients via LLBot (LuckyLillia
 3. **Protocol Abstraction**: Unified interface hides protocol differences from plugins
 4. **Event-Driven**: All communication flows through typed events (with deduplication)
 5. **Separation of Concerns**: Each layer has a single, well-defined responsibility
-6. **Extensibility**: Plugin system allows adding features without modifying core
-7. **Testability**: Each component can be tested independently with typed mocks
+6. **Extensibility**: Plugin system and hook system allow adding features without modifying core
+7. **Dependency Injection**: Uses `tsyringe` for DI throughout the codebase
+8. **Single Bootstrap Source**: All initialization logic is in `src/core/bootstrap.ts`
 
 ## Technology Stack
 
@@ -56,8 +70,10 @@ The QQ Bot framework is designed to connect to QQ clients via LLBot (LuckyLillia
 - **Language**: TypeScript (full type safety with strict mode)
 - **Build Tool**: Bun's built-in bundler
 - **Package Manager**: Bun
-- **Code Quality**: Biome (linter/formatter) + Prettier
+- **Dependency Injection**: tsyringe
+- **Code Quality**: Biome (linter/formatter)
 - **Configuration**: JSONC (JSON with Comments)
+- **Database**: SQLite (via bun:sqlite) or MongoDB
 
 ## System Architecture
 
@@ -82,7 +98,7 @@ The QQ Bot framework is designed to connect to QQ clients via LLBot (LuckyLillia
                       │
         ┌─────────────▼─────────────┐
         │   Protocol Adapters       │
-        │  (Milky, OneBot11, Satori) │
+        │  (Milky, OneBot11, Satori)│
         └─────────────┬─────────────┘
                       │
         ┌─────────────▼─────────────┐
@@ -91,18 +107,26 @@ The QQ Bot framework is designed to connect to QQ clients via LLBot (LuckyLillia
         └─────────────┬─────────────┘
                       │
         ┌─────────────▼─────────────┐
-        │     EventRouter            │
+        │     EventRouter           │
         │  (Route by Event Type)    │
         └─────────────┬─────────────┘
                       │
         ┌─────────────▼─────────────┐
-        │   Event Handlers          │
-        │  (Message, Notice, etc.)  │
+        │   ConversationManager     │
+        │  (Session Management)     │
         └─────────────┬─────────────┘
                       │
         ┌─────────────▼─────────────┐
-        │    PluginManager          │
-        │   (Load & Execute)        │
+        │   MessagePipeline         │
+        │  (6-Stage Lifecycle)      │
+        │  RECEIVE → PREPROCESS     │
+        │  PROCESS → PREPARE        │
+        │  SEND → COMPLETE          │
+        └─────────────┬─────────────┘
+                      │
+        ┌─────────────▼─────────────┐
+        │   HookManager             │
+        │  (14 Hook Points)         │
         └───────────────────────────┘
 ```
 
@@ -110,13 +134,28 @@ The QQ Bot framework is designed to connect to QQ clients via LLBot (LuckyLillia
 
 The system is organized into the following layers:
 
-1. **Core Layer** (`src/core/`): Bot lifecycle, connection management, configuration
-2. **Protocol Layer** (`src/protocol/`): Protocol-specific implementations
-3. **API Layer** (`src/api/`): Unified API client and routing
+1. **Core Layer** (`src/core/`): Bot lifecycle, connection management, configuration, DI container, bootstrap
+2. **Protocol Layer** (`src/protocol/`): Protocol-specific adapters (Milky, OneBot11, Satori, Discord)
+3. **API Layer** (`src/api/`): Unified API client, routing, context-based calls
 4. **Event Layer** (`src/events/`): Event routing, deduplication, and handling
-5. **Message Layer** (`src/message/`): Message construction and parsing
-6. **Plugin Layer** (`src/plugins/`): Plugin system and management
-7. **Utils Layer** (`src/utils/`): Logging, error handling
+5. **Conversation Layer** (`src/conversation/`): ConversationManager, MessagePipeline, 6-stage lifecycle
+6. **Hook Layer** (`src/hooks/`): 14 hook points for pipeline interception
+7. **Command Layer** (`src/command/`): Prefix-based commands with permission levels
+8. **AI Layer** (`src/ai/`): Multi-provider LLM integration, reply pipeline, image generation
+9. **Agent Layer** (`src/agent/`): Sub-agent spawning and tool execution
+10. **Tool Layer** (`src/tools/`): LLM-callable tools with @Tool() decorator
+11. **Memory Layer** (`src/memory/`): Per-user/per-group long-term memory with LLM extraction
+12. **Context Layer** (`src/context/`): HookContext building, conversation context management
+13. **Database Layer** (`src/database/`): SQLite and MongoDB adapters
+14. **Plugin Layer** (`src/plugins/`): Config-based plugin system
+15. **Services Layer** (`src/services/`): MCP, Claude Code, card rendering, retrieval, static server
+16. **Cluster Layer** (`src/cluster/`): Agent cluster for multi-worker coordination
+17. **Message Layer** (`src/message/`): Message construction, parsing, and caching
+18. **Agenda Layer** (`src/agenda/`): Scheduled task execution
+19. **LAN Layer** (`src/lan/`): LAN relay and local network communication
+20. **Utils Layer** (`src/utils/`): Logging, error handling, shared utilities
+21. **CLI Layer** (`src/cli/`): Smoke-test, dev tooling
+22. **Tests Layer** (`src/__tests__/`): Integration and unit tests
 
 ## Component Details
 
@@ -127,79 +166,43 @@ The system is organized into the following layers:
 The main orchestrator class that coordinates all system components.
 
 **Responsibilities:**
-
 - Initialize and manage all system components
 - Coordinate bot lifecycle (start, stop, restart)
-- Provide unified interface for plugins
+- Provide access to ConnectionManager and Config
 - Emit bot-level events (ready, error)
-
-**Key Methods:**
-
-- `start()`: Initialize and connect to all enabled protocols
-- `stop()`: Gracefully shutdown all connections
-- `getConfig()`: Access configuration
-- `getConnectionManager()`: Access connection manager
 
 #### ConnectionManager.ts
 
 Manages multiple protocol connections simultaneously.
 
 **Responsibilities:**
-
 - Connect to all enabled protocols in parallel
 - Monitor connection health for all protocols
 - Coordinate reconnection strategies across protocols
 - Provide unified connection status
 
-**Key Methods:**
-
-- `connectAll()`: Connect to all enabled protocols
-- `disconnectAll()`: Disconnect all protocols
-- `isAllConnected()`: Check if all protocols are connected
-- `getConnection(protocolName)`: Get connection for specific protocol
-
-**Events:**
-
-- `connectionOpen`: Emitted when a protocol connection opens
-- `connectionClose`: Emitted when a protocol connection closes
-- `connectionError`: Emitted when a connection error occurs
-- `allConnected`: Emitted when all protocols are connected
-- `allDisconnected`: Emitted when all protocols are disconnected
-
-#### Connection.ts
-
-Manages a single WebSocket connection for one protocol.
-
-**Responsibilities:**
-
-- Handle WebSocket connection lifecycle
-- Automatic reconnection with exponential backoff
-- Connection state management
-- Message sending and receiving
-
-**Connection States:**
-
-- `disconnected`: Not connected
-- `connecting`: Connection in progress
-- `connected`: Successfully connected
-- `reconnecting`: Attempting to reconnect
-
 #### Config.ts
 
-Manages configuration loading and validation.
+Manages configuration loading and validation. Supports both single-file and split-directory layouts.
 
-**Responsibilities:**
+**Configuration Resolution (priority order):**
+1. Constructor argument: `new Config('/path/to/config.jsonc')` or `new Config('/path/to/config.d')`
+2. `CONFIG_PATH` environment variable (file or directory)
+3. `config.d/` directory in project root
+4. `config.jsonc` file in project root
 
-- Load configuration from JSONC file
-- Validate configuration structure
-- Provide type-safe access to config values
-- Support environment variable overrides
+#### bootstrap.ts
 
-**Configuration Sources (priority order):**
+Single source of truth for application initialization order. Both `src/index.ts` (production) and `src/cli/smoke-test.ts` call `bootstrapApp()`.
 
-1. Constructor argument
-2. `CONFIG_PATH` environment variable
-3. Default `config.jsonc` in project root
+**Initialization sequence:**
+```
+Config → APIClient → PromptInitializer → PluginInitializer (factory) →
+MCPInitializer → HealthCheckManager → RetrievalService → StaticServer →
+ProjectRegistry → ClaudeCodeInitializer → ConversationInitializer →
+ClusterManager → EventInitializer → ServiceRegistry.verify() →
+ProtocolAdapterInitializer → PluginInitializer.loadPlugins()
+```
 
 ### Protocol Layer
 
@@ -207,161 +210,38 @@ Manages configuration loading and validation.
 
 Abstract base class for all protocol implementations.
 
-**Responsibilities:**
-
-- Define common interface for all protocols
-- Handle API request/response correlation
-- Normalize protocol-specific events to unified format
-- Manage connection lifecycle
-
 **Key Methods:**
-
-- `normalizeEvent(rawEvent)`: Convert protocol event to normalized format
-- `sendAPI(context)`: Send API request using context-based approach
+- `normalizeEvent(rawEvent)`: Convert protocol event to unified format
+- `sendAPI(context)`: Send API request using `APIContext` object
 - `onEvent(callback)`: Register event handler
-- `getProtocolName()`: Return protocol identifier
 
-**Context-Based API Calls:**
+#### Context-Based API Calls
 
-The `sendAPI()` method accepts an `APIContext` object instead of individual parameters. This allows:
-
-- Access to all call information (action, params, timeout, protocol) from context
-- Storing echo ID in context for request tracking
+The `sendAPI()` method accepts an `APIContext` object. This provides:
+- Access to all call information (action, params, timeout, protocol) from a single object
+- Request tracking via echo ID stored in context
 - Better error messages with full context information
 - Extensibility without changing method signatures
 
-#### OneBot11Adapter
-
-Implements OneBot11 protocol specification.
-
-**Features:**
-
-- Full OneBot11 event support (message, notice, request, meta_event)
-- OneBot11 API method support
-- Type definitions based on OneBot11 specification
-- Leverages rich OneBot11 ecosystem
-
-#### MilkyAdapter
-
-Implements Milky protocol specification.
-
-**Features:**
-
-- Modern protocol design
-- Milky event structure support
-- Milky API method support
-- Type definitions based on Milky specification
-
-#### SatoriAdapter
-
-Implements Satori protocol specification.
-
-**Features:**
-
-- Satori event structure support
-- Satori API method support
-- Type definitions based on Satori specification
-
 ### API Layer
-
-#### APIContext
-
-Context-based design pattern for API calls, similar to request context in backend frameworks (Express, Koa, Fastify, etc.).
-
-**Purpose:**
-
-The `APIContext` class encapsulates all information about an API call, allowing it to be passed through the entire call chain without adding parameters to every method signature. This provides:
-
-- **Better extensibility**: Add new call metadata without changing method signatures
-- **Improved debugging**: Track echo IDs, selected protocols, and timestamps throughout the call chain
-- **Cleaner architecture**: Single context object instead of multiple parameters
-- **Request tracking**: Store request metadata (echo ID, selected protocol) for correlation
-
-**Context Properties:**
-
-- `action`: API action name
-- `params`: API parameters
-- `protocol`: Protocol used for the request (user-specified or auto-selected by router)
-- `timeout`: Request timeout in milliseconds
-- `timestamp`: When the context was created
-- `echo`: Request echo ID (generated automatically)
-- `metadata`: Extensible metadata map for custom data
-
-**Protocol Selection:**
-
-- If user specifies a protocol in `call()`, that protocol is used (or an error is thrown if unavailable)
-- If user doesn't specify a protocol, the router selects one based on strategy (priority, round-robin, etc.)
-- The `protocol` field always reflects the actual protocol used for the request
-
-**Context Flow:**
-
-```
-APIClient.call()
-  → Creates APIContext
-  → APIRouter.getAdapter(context)
-  → ProtocolAdapter.sendAPI(context)
-  → Context flows through entire chain
-```
 
 #### APIClient.ts
 
-Unified API client that provides protocol-agnostic interface.
-
-**Responsibilities:**
-
-- Provide unified interface for API calls
-- Create and manage API context for each call
-- Route API calls to appropriate protocol adapter
-- Handle errors and timeouts
-- Manage protocol selection strategy
+Unified API client providing protocol-agnostic interface.
 
 **Key Methods:**
-
-- `call(action, params, protocol?, timeout)`: Make API call (creates context internally)
+- `call(action, params, protocol?, timeout)`: Make an API call
 - `registerAdapter(protocol, adapter)`: Register protocol adapter
-- `unregisterAdapter(protocol)`: Unregister protocol adapter
-- `getAvailableProtocols()`: Get list of available protocols
-
-**Context Usage:**
-
-The `call()` method creates an `APIContext` and passes it through the entire call chain. The context is used by:
-
-- `APIRouter` to select the appropriate adapter
-- `ProtocolAdapter` to execute the API call
-- Error handlers to provide detailed error information
+- `getAvailableProtocols()`: List available protocols
 
 #### APIRouter.ts
 
-Routes API calls to appropriate protocol adapter based on strategy.
-
-**Responsibilities:**
-
-- Select adapter based on context's protocol preference or routing strategy
-- Store selected protocol in context for tracking
-- Handle adapter availability and connection state
+Routes API calls to appropriate protocol adapter.
 
 **Routing Strategies:**
-
 - **Priority**: Use preferred protocol first, fallback to others
 - **Round-robin**: Distribute requests across protocols
 - **Capability-based**: Choose protocol based on feature support
-
-**Context Integration:**
-
-The router uses `context.protocol` to determine if a specific protocol was requested. If not specified, the router selects a protocol based on strategy and stores it in `context.protocol` using `context.setProtocol()`.
-
-#### RequestManager.ts
-
-Tracks pending API requests and correlates responses.
-
-**Note:** RequestManager is currently not used, as each ProtocolAdapter manages its own pending requests. The context-based design allows for future centralized request management if needed.
-
-**Responsibilities:**
-
-- Track requests by echo ID
-- Handle request timeouts
-- Correlate responses to requests
-- Manage request lifecycle
 
 ### Event Layer
 
@@ -369,70 +249,49 @@ Tracks pending API requests and correlates responses.
 
 Routes normalized events to appropriate handlers.
 
-**Responsibilities:**
-
-- Route events by type (message, notice, request, meta_event)
-- Emit typed events for plugins
-- Support wildcard event handlers
-- Integrate with EventDeduplicator
-
 **Event Types:**
-
 - `message`: Private and group messages
 - `notice`: Notifications (member join/leave, etc.)
 - `request`: Friend/group requests
 - `meta_event`: Heartbeat, lifecycle events
-- `*`: Wildcard for all events
 
 #### EventDeduplicator.ts
 
 Prevents duplicate event processing from multiple protocols.
 
-**Why Needed:**
-Since all protocols come from the same LLBot server (same QQ account), the same event may arrive via different protocols simultaneously.
-
 **Deduplication Strategies:**
+- `first-received`: Process first event, ignore duplicates
+- `priority-protocol`: Process event from highest-priority protocol
+- `merge`: Merge data from multiple protocol versions
 
-- **first-received**: Process first event, ignore duplicates
-- **priority-protocol**: Process event from highest priority protocol
-- **merge**: Merge data from multiple protocol versions
+### Conversation Layer
 
-**Deduplication Window:**
-Events within a configurable time window (default: 5000ms) are considered duplicates if they have the same fingerprint.
+#### ConversationManager
 
-**Event Fingerprinting:**
+Manages per-session conversation state. Routes incoming message events to the `MessagePipeline` for the appropriate session.
 
-- Message ID
-- Timestamp
-- Content hash
-- Event type and source
+#### MessagePipeline
 
-#### Event Handlers
+Processes messages through the complete 6-stage lifecycle using `Lifecycle`.
 
-Specialized handlers for different event types:
+**6-Stage Lifecycle:**
 
-- **MessageHandler**: Processes message events
-- **NoticeHandler**: Processes notice events
-- **RequestHandler**: Processes friend/group requests
-- **MetaEventHandler**: Processes heartbeat and lifecycle events
+| Stage | Hook | Description |
+|-------|------|-------------|
+| RECEIVE | `onMessageReceived` | Message arrives, cached, initial metadata set |
+| PREPROCESS | `onMessagePreprocess` | Permissions checked, filters applied |
+| PROCESS | `onCommandDetected`, `onCommandExecuted` | Commands and AI tool execution |
+| PREPARE | `onMessageBeforeAI`, `onAIGenerationStart`, `onAIGenerationComplete` | Reply generation |
+| SEND | `onMessageBeforeSend`, `onMessageSent` | Message delivery |
+| COMPLETE | `onMessageComplete` | Post-processing, history update |
+
+Each stage can be intercepted and short-circuited via the Hook System. Message context is registered in async local storage so `PromptManager` can resolve the correct context per async chain.
 
 ### Message Layer
-
-#### MessageSegment Types
-
-Type definitions for message segments:
-
-- `TextSegment`: Plain text
-- `AtSegment`: @ mention
-- `FaceSegment`: Emoji/face
-- `ImageSegment`: Image
-- `ReplySegment`: Reply to message
 
 #### MessageBuilder.ts
 
 Fluent API for constructing messages.
-
-**Example:**
 
 ```typescript
 const message = new MessageBuilder().text('Hello ').at(userId).text('!').build();
@@ -442,278 +301,511 @@ const message = new MessageBuilder().text('Hello ').at(userId).text('!').build()
 
 Converts message segments to text or structured objects.
 
-**Features:**
+#### MessageCache
 
-- Convert segments to plain text
-- Parse segments to structured format
-- Handle different segment types
+In-memory cache for recently seen messages (used for reply deduplication and reply-to resolution).
 
 ### Plugin System
+
+#### Overview
+
+Plugins are managed through configuration (`plugins.list`) and implemented in `src/plugins/plugins/`. They are **not** discovered by scanning the filesystem — the enabled set is determined by config.
 
 #### PluginManager.ts
 
 Manages plugin loading and lifecycle.
 
 **Responsibilities:**
-
-- Load plugins from directory
+- Load plugins from `src/plugins/plugins/` directory (fixed path)
 - Manage plugin lifecycle (init, enable, disable)
-- Provide plugin context (API, events, bot)
-- Track enabled/disabled plugins
+- Provide `PluginContext` to each plugin (API client, event router)
+- Track enabled/disabled plugins per config
 
-**Plugin Loading:**
-
-- Scans `plugins/` directory for `.ts` or `.js` files
-- Supports both default and named exports
-- Validates plugin structure (name, version required)
+**Plugin Loading (config-based):**
+1. Read `plugins.list` from config
+2. For each enabled plugin, scan `src/plugins/plugins/` for a matching file
+3. Call `plugin.loadConfig(context, entry)` then `plugin.onInit()`
+4. If enabled, call `plugin.onEnable()`
 
 #### PluginBase.ts
 
-Abstract base class for plugins (optional, for convenience).
+Abstract base class for plugins.
 
-**Lifecycle Hooks:**
+```typescript
+export abstract class PluginBase {
+  readonly name: string;
+  readonly version: string;
+  readonly description: string;
 
-- `onInit(context)`: Called when plugin is loaded
-- `onEnable(context)`: Called when plugin is enabled
-- `onDisable()`: Called when plugin is disabled
+  onInit?(): void | Promise<void>;
+  onEnable(): void | Promise<void>;
+  onDisable(): void | Promise<void>;
+
+  protected on<T extends NormalizedEvent>(eventType: string, handler: EventHandler<T>): void;
+  protected off<T extends NormalizedEvent>(eventType: string, handler: EventHandler<T>): void;
+
+  get api(): APIClient;
+  get events(): EventRouter;
+}
+```
 
 #### Plugin Interface
 
 ```typescript
-interface Plugin {
-  name: string;
-  version: string;
-  description?: string;
-  author?: string;
-  onInit?(context: PluginContext): void | Promise<void>;
-  onEnable?(context: PluginContext): void | Promise<void>;
+interface Plugin extends PluginInfo, PluginHooks {
+  loadConfig(context: PluginContext, pluginEntry?: PluginConfigEntry): void;
+  onInit?(): void | Promise<void>;
+  onEnable?(): void | Promise<void>;
   onDisable?(): void | Promise<void>;
 }
 ```
 
-**Plugin Context:**
+#### Plugin Context
 
 ```typescript
 interface PluginContext {
-  api: APIClient; // Unified API client
+  api: APIClient;    // Unified API client
   events: EventRouter; // Event router for subscribing to events
-  bot: {
-    getConfig: () => unknown; // Access bot configuration
-  };
 }
 ```
 
+Config and other services are resolved from the DI container via `getContainer().resolve(DITokens.CONFIG)`.
+
+#### Plugin Hooks (via decorator)
+
+Plugins can register hook handlers using the `@Hook()` decorator:
+
+```typescript
+@Plugin({ name: 'my-plugin', version: '1.0.0', description: '...' })
+export class MyPlugin extends PluginBase {
+  @Hook('onMessageReceived', { priority: 10 })
+  async onReceived(context: HookContext): Promise<boolean> {
+    // intercept message
+    return true; // return false to stop pipeline
+  }
+}
+```
+
+## Hook System
+
+### Overview
+
+The hook system provides 14 named interception points throughout the message processing pipeline. Plugins and core systems register handlers on hooks; the `HookManager` executes them in priority order.
+
+### Core Hooks
+
+Core hooks cover the message lifecycle:
+
+| Hook Name | Stage | When Fired |
+|-----------|-------|-----------|
+| `onMessageReceived` | RECEIVE | Message arrives from protocol |
+| `onMessagePreprocess` | PREPROCESS | After initial metadata enrichment |
+| `onMessageBeforeSend` | SEND | Before reply is sent |
+| `onMessageSent` | SEND | After reply is sent successfully |
+| `onMessageComplete` | COMPLETE | After all post-processing |
+| `onError` | Any | When an unhandled error occurs |
+
+### Extended Hooks
+
+Extended hooks are declared by subsystems at runtime:
+
+| Hook Name | Declared By | When Fired |
+|-----------|-------------|-----------|
+| `onCommandDetected` | CommandSystem | When a command prefix is matched |
+| `onCommandExecuted` | CommandSystem | After command handler runs |
+| `onMessageBeforeAI` | GateCheckStage | Before the AI generation gate |
+| `onAIGenerationStart` | GateCheckStage | After gate passes, before LLM call |
+| `onAIGenerationComplete` | ResponseDispatchStage | After LLM response is ready |
+| `onTaskBeforeExecute` | ToolManager | Before a tool call executes |
+| `onTaskExecuted` | ToolManager | After a tool call completes |
+| `onNoticeReceived` | EventInitializer | When a notice event is routed |
+
+### HookManager.ts
+
+Registers hooks and executes them in priority order.
+
+- `register(hookName, priority)`: Declare a hook point
+- `addHandler(hookName, handler, priority)`: Add a handler to an existing hook
+- `execute(hookName, context)`: Run all registered handlers; returns `false` if any handler short-circuits
+
+## Command System
+
+### Overview
+
+The command system provides prefix-based commands (e.g., `/help`) with three permission levels: owner, admin, and user.
+
+### CommandManager.ts
+
+**Responsibilities:**
+- Auto-register decorated commands at startup
+- Parse incoming messages for command prefixes
+- Check permissions before dispatch
+- Manage per-group enabled/disabled state
+
+**Command Registration (via decorator):**
+
+```typescript
+@Command({
+  name: 'help',
+  description: 'Show help',
+  permissions: [CommandPermission.USER],
+  aliases: ['h'],
+})
+export class HelpCommand implements CommandHandler {
+  async execute(context: CommandContext): Promise<CommandResult> {
+    // ...
+  }
+}
+```
+
+Commands use lazy instantiation — handlers are created on first execution via DI.
+
+**Permission Levels:**
+- `OWNER`: Bot owner only
+- `ADMIN`: Bot admins and owner
+- `USER`: Any user
+
+### CommandSystem
+
+Sits inside the PROCESS stage of the message lifecycle. Fires `onCommandDetected` and `onCommandExecuted` hooks around each command execution.
+
+## AI Service
+
+### Overview
+
+`AIService` is a pure facade that delegates to specialized sub-services. It is the entry point for all AI capabilities used by `ReplySystem`.
+
+### Sub-services
+
+| Sub-service | Responsibility |
+|-------------|---------------|
+| `ReplyPipelineOrchestrator` | Normal reply generation (multi-stage pipeline) |
+| `NsfwReplyService` | NSFW-mode reply generation |
+| `ProactiveReplyGenerationService` | Proactive group reply generation |
+| `ImageFacadeService` | Image generation (text2img, img2img, i2v) with hook lifecycle |
+| `SubAgentManager` | Sub-agent spawning and execution |
+| `VisionService` | Image understanding and explanation |
+
+### AI Reply Pipeline
+
+The reply pipeline inside `ReplyPipelineOrchestrator` is composed of ordered stages:
+
+1. `ContextResolutionStage` — Resolve conversation session and history
+2. `GateCheckStage` — Run `onMessageBeforeAI` / `onAIGenerationStart` hooks
+3. `HistoryStage` — Load and compress conversation history
+4. `ContextEnrichmentStage` — Attach memory, retrieval results
+5. `PromptAssemblyStage` — Build system + user prompt from templates
+6. `ProviderSelectionStage` — Select LLM provider via `ProviderSelector`
+7. `GenerationStage` — Execute LLM call with tool loop
+8. `ResponseDispatchStage` — Fire `onAIGenerationComplete`, dispatch reply
+
+### AI Providers
+
+Multi-provider support is handled by `AIManager` + `ProviderRouter`:
+
+- OpenAI / OpenAI-compatible
+- Anthropic (Claude)
+- DeepSeek
+- Doubao (ByteDance)
+- Gemini
+- Minimax
+- Ollama (local)
+
+## Tool System
+
+### Overview
+
+LLM-callable tools are defined via the `@Tool()` decorator in `src/tools/executors/`. The `ToolManager` auto-registers all decorated tools at startup using lazy executor instantiation.
+
+### Tool Definition
+
+```typescript
+@Tool({
+  name: 'search',
+  description: 'Search the web for information',
+  executor: 'SearchExecutor',
+  visibility: ['reply', 'subagent'],
+  parameters: { ... },
+})
+@injectable()
+export class SearchExecutor implements ToolExecutor {
+  async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
+    // ...
+  }
+}
+```
+
+### Visibility Scopes
+
+| Scope | Where the tool is available |
+|-------|-----------------------------|
+| `reply` | Main reply generation loop |
+| `subagent` | Sub-agent spawned by the bot |
+| `internal` | Internal system use only |
+
+### ToolManager
+
+- `autoRegisterTools()`: Discovers all `@Tool()` decorated classes and registers them
+- `executeTool(call, context, hookManager)`: Execute a tool, firing `onTaskBeforeExecute` / `onTaskExecuted` hooks
+- Executors are created on-demand via DI (`tsyringe`)
+
+## Memory System
+
+### Overview
+
+`MemoryService` provides file-based long-term memory for each user and group. Memories persist in `data/memory/` and are injected into LLM prompts during context enrichment.
+
+### Storage Layout
+
+```
+data/memory/
+├── {groupId}/
+│   ├── _global_/         # Group-level memory
+│   │   └── auto.txt      # LLM-extracted group memory
+│   └── {userId}/         # Per-user memory within a group
+│       ├── manual.txt    # Human-authored memory
+│       └── auto.txt      # LLM-extracted memory
+```
+
+### Memory Layers
+
+| Layer | Source | Description |
+|-------|--------|-------------|
+| `manual` | Human-authored | Written directly into memory files |
+| `auto` | LLM-extracted | Extracted by the bot from conversation history |
+
+### Hierarchical Scopes
+
+Memory is organized into named scopes using a `[scope:subtag]` syntax:
+
+```
+[preference:food]
+Likes spicy food
+
+[identity]
+Name: Alice
+```
+
+Core scopes: `instruction`, `rule`, `preference`, `identity`, `fact`, and custom scopes.
+
+### Optional RAG Support
+
+When RAG is configured, `MemoryRAGService` uses Ollama embeddings + Qdrant vector search to perform semantic retrieval instead of keyword matching.
+
+## Database Layer
+
+### Overview
+
+`DatabaseManager` creates and manages a single database adapter based on config. Two adapter types are supported.
+
+### Adapters
+
+| Adapter | Backend | Usage |
+|---------|---------|-------|
+| `SQLiteAdapter` | bun:sqlite | Default, recommended for single-instance |
+| `MongoDBAdapter` | MongoDB | For distributed or multi-instance deployments |
+
+### Initialization
+
+```
+DatabaseManager.initialize(config)
+  → creates adapter (SQLiteAdapter or MongoDBAdapter)
+  → adapter.connect()
+  → adapter.migrate()    ← runs schema migrations automatically
+```
+
+The Agent Cluster requires SQLite — it uses the raw `bun:sqlite` `Database` handle directly for SQLite-specific operations.
+
+## Cluster System
+
+### Overview
+
+The Agent Cluster (`src/cluster/`) enables multi-worker parallel task execution. A planner LLM decomposes high-level goals into subtasks; workers execute them concurrently with file-lock coordination via `ContextHub`.
+
+### Key Components
+
+| Component | Responsibility |
+|-----------|---------------|
+| `ClusterManager` | Top-level orchestrator; initializes all sub-components |
+| `ContextHub` | Shared coordination hub — lock manager, event log, message box |
+| `WorkerPool` | Spawns and manages worker subprocesses |
+| `ClusterScheduler` | Assigns tasks to workers; persists task state to SQLite |
+| `PlannerService` | Uses LLM to decompose goals into task plans |
+| `LockManager` | File-level lock granting/releasing for workers |
+| `EventLog` | Append-only event log for cluster activity |
+
+### Worker Backends
+
+Workers are spawned as CLI subprocesses using one of:
+
+| Backend | CLI Tool |
+|---------|----------|
+| `ClaudeCliBackend` | `claude` (Claude Code CLI) |
+| `GeminiCliBackend` | `gemini` (Gemini CLI) |
+| `CodexCliBackend` | `codex` (OpenAI Codex CLI) |
+| `MinimaxBackend` | Minimax API |
+
+### Task Sources
+
+Tasks can be fed from:
+- `TodoFileSource`: Reads a todo markdown file
+- `QueueSource`: In-memory queue for programmatic task injection
+
+### Worker Protocol
+
+Workers communicate with the hub via MCP tool calls (`hub_claim`, `hub_report`, `hub_sync`, `hub_ask`, `hub_message`). The hub is exposed as an MCP server (`HubMCPServer`).
+
 ## Data Flow
 
-### Event Flow (Incoming)
+### Incoming Event Flow
 
 ```
 LLBot Server
-    ↓ (WebSocket messages)
+    ↓ (WebSocket)
 ConnectionManager
     ↓ (raw protocol messages)
-Protocol Adapters (OneBot11, Milky, Satori)
+Protocol Adapters (Milky, OneBot11, Satori)
     ↓ (normalize to BaseEvent)
 EventDeduplicator
     ↓ (deduplicated events)
 EventRouter
     ↓ (routed by type)
-Event Handlers
-    ↓ (internal events)
-PluginManager → Plugins
+ConversationManager
+    ↓ (per-session dispatch)
+MessagePipeline
+    ↓ (6-stage lifecycle with HookManager)
+PluginManager → Plugins (via hook handlers)
 ```
 
-### API Flow (Outgoing)
+### Outgoing API Flow
 
 ```
-Plugin/Handler
-    ↓ (API call: action, params, protocol?, timeout)
+Plugin or System
+    ↓ (api.call(action, params))
 APIClient.call()
-    ↓ (creates APIContext with all call information)
+    ↓ (creates APIContext)
 APIRouter.getAdapter(context)
-    ↓ (uses context.protocol or selects based on strategy)
-    ↓ (stores selected protocol in context.selectedProtocol)
+    ↓ (selects protocol, stores in context)
 ProtocolAdapter.sendAPI(context)
-    ↓ (extracts action, params, timeout from context)
-    ↓ (generates/stores echo ID in context.echo)
-    ↓ (protocol-specific request)
-Connection
-    ↓ (WebSocket/HTTP message)
+    ↓ (extracts action/params/echo from context)
+Connection (WebSocket/HTTP)
+    ↓
 LLBot Server
     ↓ (response)
-Protocol Adapter
-    ↓ (normalize response, correlate via context.echo)
-APIClient
-    ↓ (return to caller with context tracking info)
-Plugin/Handler
+ProtocolAdapter
+    ↓ (correlate via echo ID in context)
+APIClient → caller
 ```
 
-**Context Benefits in API Flow:**
+### AI Reply Flow
 
-- **Single source of truth**: All call information in one object
-- **Request tracking**: Echo ID and selected protocol stored in context
-- **Better error messages**: Context provides detailed information for debugging
-- **Extensibility**: New metadata can be added without changing method signatures
+```
+MessagePipeline (PREPARE stage)
+    ↓
+ReplySystem
+    ↓
+AIService.generateReply(hookContext)
+    ↓
+ReplyPipelineOrchestrator
+    ↓  ContextResolutionStage
+    ↓  GateCheckStage (onMessageBeforeAI → onAIGenerationStart)
+    ↓  HistoryStage
+    ↓  ContextEnrichmentStage (memory, retrieval)
+    ↓  PromptAssemblyStage
+    ↓  ProviderSelectionStage
+    ↓  GenerationStage (LLM call + tool loop)
+    ↓  ResponseDispatchStage (onAIGenerationComplete)
+    ↓
+Reply segments → MessagePipeline (SEND stage)
+```
 
 ## Protocol Support
 
 ### Multi-Protocol Design
 
-The framework supports connecting to multiple protocols simultaneously:
-
 1. **Milky Protocol** (Primary)
    - Modern protocol design
    - Endpoint: `ws://host:3011/event`
-   - API: `http://host:3011/api`
 
 2. **OneBot11 Protocol** (Fallback)
    - Rich ecosystem and community resources
    - Endpoint: `ws://host:3010/event`
-   - API: `http://host:3010/api`
 
 3. **Satori Protocol** (Optional)
-   - Modern unified protocol
    - Endpoint: `ws://host:3012/event`
-   - API: `http://host:3012/api`
 
-### Protocol Selection
-
-API calls can be routed using different strategies:
-
-- **Priority Strategy**: Use preferred protocol (e.g., Milky) first, fallback to OneBot11 if unavailable
-- **Round-Robin Strategy**: Distribute requests across protocols for load balancing
-- **Capability-Based Strategy**: Choose protocol based on feature support
+4. **Discord** (Optional)
+   - Via `DiscordConnection`
 
 ### Event Deduplication
 
-Since all protocols connect to the same LLBot server (same QQ account), events may arrive via multiple protocols. The EventDeduplicator ensures each event is processed only once.
+Since all protocols connect to the same LLBot server (same QQ account), events may arrive via multiple protocols simultaneously. `EventDeduplicator` ensures each event is processed only once.
+
+**Deduplication window:** configurable (default 5000ms)
+**Event fingerprint:** message ID + timestamp + content hash + event type
 
 ## Configuration
 
-### Configuration File Structure
+### Configuration File Layouts
 
-Configuration is stored in `config.jsonc` (JSON with Comments):
+The bot supports two layouts:
 
+**Single file** (`config.jsonc`):
 ```jsonc
 {
-  // Protocol configurations
-  "protocols": [
-    {
-      "name": "milky",
-      "enabled": true,
-      "priority": 1,
-      "connection": {
-        "url": "ws://192.168.50.97:3011/event",
-        "apiUrl": "http://192.168.50.97:3011/api",
-        "accessToken": "your_access_token_here",
-      },
-      "reconnect": {
-        "enabled": true,
-        "maxRetries": 10,
-        "backoff": "exponential",
-        "initialDelay": 1000,
-        "maxDelay": 30000,
-      },
-    },
-  ],
-  // API configuration
-  "api": {
-    "strategy": "priority",
-    "preferredProtocol": "milky",
-  },
-  // Event deduplication configuration
-  "events": {
-    "deduplication": {
-      "enabled": true,
-      "strategy": "first-received",
-      "window": 5000,
-    },
-  },
-  // Bot configuration
-  "bot": {
-    "selfId": null,
-  },
-  // Plugin configuration
-  "plugins": {
-    "enabled": ["echo"],
-    "directory": "./plugins",
-  },
+  "protocols": [ ... ],
+  "database": { "type": "sqlite", "sqlite": { "path": "./data/db.sqlite" } },
+  "bot": { "ownerId": 123456789 },
+  "ai": { "defaultProvider": "openai", "providers": { ... } },
+  "plugins": { "list": [ { "name": "echo", "enabled": true } ] }
 }
 ```
 
-### Configuration Loading
-
-Configuration is loaded in the following priority order:
-
-1. Constructor argument: `new Config('/path/to/config.jsonc')`
-2. Environment variable: `CONFIG_PATH=/path/to/config.jsonc`
-3. Default location: `./config.jsonc` in project root
-
-## Plugin System
-
-### Creating a Plugin
-
-Plugins are TypeScript/JavaScript classes that implement the `Plugin` interface:
-
-```typescript
-import type { Plugin, PluginContext } from '@/plugins/types';
-import type { NormalizedMessageEvent } from '@/events/types';
-
-export class MyPlugin implements Plugin {
-  name = 'my-plugin';
-  version = '1.0.0';
-  description = 'My awesome plugin';
-
-  async onEnable(context: PluginContext): Promise<void> {
-    // Subscribe to message events
-    context.events.onEvent<NormalizedMessageEvent>('message', async (event) => {
-      if (event.messageType === 'private') {
-        // Send reply
-        await context.api.call('send_private_msg', {
-          user_id: event.userId,
-          message: 'Hello!',
-        });
-      }
-    });
-  }
-
-  async onDisable(): Promise<void> {
-    // Cleanup
-  }
-}
+**Split directory** (`config.d/`):
+```
+config.d/
+├── protocols.jsonc
+├── database.jsonc
+├── bot.jsonc
+├── ai.jsonc
+└── plugins.jsonc
 ```
 
-### Plugin Lifecycle
+### Configuration Resolution Order
 
-1. **Load**: Plugin file is loaded from `plugins/` directory
-2. **Init**: `onInit()` is called with plugin context
-3. **Enable**: If plugin is in `enabled` list, `onEnable()` is called
-4. **Disable**: `onDisable()` is called when plugin is disabled
-5. **Unload**: Plugin is removed from memory
+1. Constructor argument: `new Config('/path/to/config.d')` or `new Config('/path/to/config.jsonc')`
+2. `CONFIG_PATH` environment variable (file or directory)
+3. `config.d/` directory in project root
+4. `config.jsonc` file in project root
 
-### Plugin Context
+### Key Configuration Sections
 
-Plugins receive a context object providing access to:
-
-- **API Client**: Make API calls (protocol-agnostic)
-- **Event Router**: Subscribe to events
-- **Bot Config**: Access bot configuration
+| Section | Purpose |
+|---------|---------|
+| `protocols` | Connection URLs and access tokens per protocol |
+| `database` | Adapter type (sqlite/mongodb) and connection details |
+| `bot` | Owner ID, admin IDs, self ID |
+| `ai` | Default providers and API keys |
+| `plugins.list` | Enabled plugins and per-plugin config |
+| `prompts` | Directory for prompt templates (default: `./prompts`) |
+| `memory` | Memory directory and RAG settings |
+| `cluster` | Agent cluster configuration |
+| `mcp` | MCP server list |
 
 ## Error Handling
 
 ### Error Types
 
-The framework defines custom error types:
-
 - **ConfigError**: Configuration loading/validation errors
 - **APIError**: API call failures
 - **ConnectionError**: Connection-related errors
 
-### Error Handling Strategy
+### Strategy
 
 - **Connection Errors**: Automatic reconnection with exponential backoff
 - **API Errors**: Propagated to caller with context
-- **Plugin Errors**: Logged but don't crash the bot
+- **Plugin Errors**: Caught and logged; do not crash the bot
+- **Pipeline Errors**: Fire `onError` hook; logged with full context
 - **Configuration Errors**: Fail fast with clear error messages
 
 ## Development Workflow
@@ -723,42 +815,69 @@ The framework defines custom error types:
 ```
 qqbot/
 ├── src/
-│   ├── core/           # Core bot functionality
-│   ├── protocol/       # Protocol adapters
-│   ├── api/            # API layer
-│   ├── events/         # Event system
-│   ├── message/        # Message utilities
-│   ├── plugins/        # Plugin system
-│   ├── utils/          # Utilities
-│   └── index.ts        # Entry point
-├── plugins/            # User plugins directory
-├── config.jsonc        # Configuration file
-├── tsconfig.json       # TypeScript config
-├── package.json        # Dependencies
-└── README.md           # Documentation
+│   ├── __tests__/       # Integration and unit tests
+│   ├── agenda/          # Scheduled task execution
+│   ├── agent/           # Sub-agent spawning and tool running
+│   ├── ai/              # AI service, providers, reply pipeline
+│   ├── api/             # Unified API client and routing
+│   ├── cli/             # Smoke-test, dev CLI tools
+│   ├── cluster/         # Agent cluster (multi-worker coordination)
+│   ├── command/         # Command system with permission levels
+│   ├── context/         # HookContext builder and message context storage
+│   ├── conversation/    # ConversationManager, MessagePipeline, Lifecycle
+│   ├── core/            # Bot, Config, ConnectionManager, DI, bootstrap
+│   ├── database/        # SQLite and MongoDB adapters
+│   ├── events/          # EventRouter, EventDeduplicator, handlers
+│   ├── hooks/           # HookManager and hook types
+│   ├── lan/             # LAN relay and local network communication
+│   ├── memory/          # Per-user/per-group memory service
+│   ├── message/         # MessageBuilder, MessageParser, MessageCache
+│   ├── plugins/         # Plugin system, PluginBase, built-in plugins
+│   ├── protocol/        # Protocol adapters (Milky, OneBot11, Satori, Discord)
+│   ├── services/        # MCP, ClaudeCode, card rendering, retrieval
+│   ├── tools/           # Tool system with @Tool() decorator
+│   ├── utils/           # Logger, error handling, shared utilities
+│   └── index.ts         # Entry point
+├── prompts/             # Prompt template directory
+├── data/                # Runtime data (memory, SQLite DB)
+├── docs/                # Architecture and design documents
+├── config.jsonc         # Configuration file (local, not committed)
+├── config.example.jsonc # Example configuration
+├── tsconfig.json        # TypeScript config
+├── package.json         # Dependencies
+└── README.md            # Documentation
 ```
 
 ### Development Commands
 
 ```bash
-# Development mode (with hot reload)
+# Development with hot reload + WebUI
 bun run dev
 
+# Production build and start
+bun run build && bun run start
+
 # Type checking
-bun run type-check
+bun run typecheck
 
-# Linting
-bun run lint
+# Linting and formatting
+bun run lint          # Check for issues
+bun run lint:fix      # Auto-fix issues
+bun run format        # Format code
 
-# Format code
-bun run format
+# Testing
+bun test
 
-# Build for production
-bun run build
+# Smoke test (MANDATORY before committing)
+bun run smoke-test
 
-# Run production build
-bun run start
+# Debug mode with mock message sending
+bun run debug
 ```
+
+### Why smoke-test is Mandatory
+
+`typecheck` and `build` only validate static types. They cannot catch runtime initialization issues such as circular imports causing TDZ errors, DI tokens referenced before registration, or missing DI bindings. The `smoke-test` runs the exact same `bootstrapApp()` function as production, verifying that every service, plugin, and tool executor initializes successfully without live network connections.
 
 ### Type Safety
 
@@ -767,24 +886,4 @@ The entire codebase uses TypeScript with strict mode enabled:
 - All functions and methods are fully typed
 - Protocol events and API calls are type-safe
 - Plugin interfaces are typed
-- Configuration is type-checked
-
-## Stage 2: AI-Enabled Architecture
-
-Stage 2 extends the base architecture with AI-driven conversation capabilities. See [ARCHITECTURE_STAGE2.md](./ARCHITECTURE_STAGE2.md) for detailed documentation.
-
-### Key Additions in Stage 2
-
-- **Plugin Hook System**: 13 hook stages for complete lifecycle management
-- **Command System**: Built-in and plugin command support with prefix parsing
-- **Task System**: AI-driven task analysis and execution
-- **AI Provider Layer**: Multi-provider support (OpenAI, Anthropic, Ollama)
-- **Context Management**: Conversation history with compression support
-- **Database Persistence**: SQLite and MongoDB adapters
-- **Complete Conversation Flow**: Command → AI → Task → Reply pipeline
-
-## Conclusion
-
-This architecture provides a robust, extensible, and type-safe foundation for building QQ bots. The multi-protocol support allows developers to leverage the strengths of different protocols while maintaining a unified development experience. The plugin system enables easy extensibility without modifying core code.
-
-Stage 2 adds AI capabilities, making the bot intelligent and context-aware, with full support for command processing, task execution, and conversation management.
+- Configuration is type-checked via generated types

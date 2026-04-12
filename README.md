@@ -129,7 +129,7 @@ Default provider keys (e.g. `ollama`, `openai`, `anthropic`, `deepseek`, `doubao
 ## Development
 
 ```bash
-bun run type-check   # tsc --noEmit
+bun run typecheck    # tsc --noEmit
 bun run lint         # Biome
 bun run lint:fix
 bun run format
