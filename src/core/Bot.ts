@@ -51,11 +51,20 @@ export class Bot extends EventEmitter {
     this.isRunning = true;
 
     try {
-      // Connect to all enabled protocols
+      // Connect to all enabled protocols.
+      // connectAll() uses Promise.allSettled internally and emits
+      // 'connectSettled' synchronously before returning, so there is no
+      // need for a separate waitForConnections() — awaiting connectAll()
+      // already guarantees all connection attempts have completed.
       await this.connectionManager.connectAll();
 
-      // Wait for all connections to be established
-      await this.waitForConnections();
+      // Verify at least one protocol connected (same logic that the old
+      // 30s timeout fallback used to enforce).
+      const connected = this.connectionManager.getConnectedProtocols();
+      const toConnect = this.config.getProtocolsToConnect().length;
+      if (toConnect > 0 && connected.length === 0) {
+        throw new Error('All protocol connections failed');
+      }
 
       // Start heartbeat to keep connections alive
       this.startHeartbeat();
@@ -108,54 +117,6 @@ export class Bot extends EventEmitter {
     this.connectionManager.on('connectionError', (protocol, error) => {
       logger.error(`[Bot] Connection error for protocol ${protocol}:`, error);
       this.emit('error', error);
-    });
-  }
-
-  private async waitForConnections(): Promise<void> {
-    // Fast path for LAN-relay client deployments: when there are no IM
-    // protocols to connect, connectionManager.connectAll() emits
-    // `connectSettled` synchronously before this function ever attaches a
-    // listener. Short-circuit here so client-mode Bot.start() doesn't end up
-    // waiting on a listener that will never fire.
-    if (this.config.getProtocolsToConnect().length === 0) {
-      return;
-    }
-
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        const toConnect = this.config.getProtocolsToConnect().length;
-        if (toConnect === 0) {
-          resolve();
-          return;
-        }
-        // Even on timeout, allow startup if at least one protocol is connected
-        const connected = this.connectionManager.getConnectedProtocols();
-        if (connected.length > 0) {
-          logger.warn(
-            `[Bot] Connection timeout, but continuing with ${connected.length} connected protocol(s): ${connected.join(', ')}`,
-          );
-          resolve();
-        } else {
-          reject(new Error('Timeout waiting for connections: no protocol connected'));
-        }
-      }, 30000);
-
-      this.connectionManager.once('connectSettled', (connected, failed) => {
-        clearTimeout(timeout);
-        const toConnect = this.config.getProtocolsToConnect().length;
-        if (toConnect === 0) {
-          resolve();
-          return;
-        }
-        if (connected.length > 0) {
-          if (failed.length > 0) {
-            logger.warn(`[Bot] Starting with ${connected.length} protocol(s), failed: ${failed.join(', ')}`);
-          }
-          resolve();
-        } else {
-          reject(new Error(`All protocol connections failed: ${failed.join(', ')}`));
-        }
-      });
     });
   }
 

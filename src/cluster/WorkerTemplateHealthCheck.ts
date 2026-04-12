@@ -73,6 +73,10 @@ function isPlaceholder(value: string): boolean {
   return lower.includes('replace') || lower === 'sk-...' || lower === 'your-api-key';
 }
 
+/** Timeout for `--version` probes (ms). CLI tools like claude/gemini may
+ *  perform auth checks on startup, so keep this short to avoid blocking. */
+const VERSION_TIMEOUT_MS = 3_000;
+
 async function checkBinaryVersion(
   binaryName: string,
   versionArgs: string[],
@@ -86,8 +90,19 @@ async function checkBinaryVersion(
       stdout: 'pipe',
       stderr: 'pipe',
     });
-    const exitCode = await proc.exited;
-    if (exitCode === 0) {
+
+    // Race against timeout — don't let a slow CLI block startup
+    const exited = await Promise.race([
+      proc.exited,
+      new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), VERSION_TIMEOUT_MS)),
+    ]);
+
+    if (exited === 'timeout') {
+      proc.kill();
+      return { found: true, version: '(version check timed out)' };
+    }
+
+    if (exited === 0) {
       const stdout = await new Response(proc.stdout).text();
       const version = stdout.trim().split('\n')[0]?.slice(0, 80);
       return { found: true, version };
@@ -161,9 +176,23 @@ async function checkTemplate(
  * Returns per-template results and logs a summary.
  */
 export async function checkWorkerTemplateHealth(config: ClusterConfig): Promise<TemplateHealthResult[]> {
-  const results: TemplateHealthResult[] = [];
+  // Pre-resolve all unique binaries in parallel (each may take up to VERSION_TIMEOUT_MS)
   const binaryCache = new Map<string, { found: boolean; version?: string }>();
+  const binaryNames = new Set<string>();
+  for (const tpl of Object.values(config.workerTemplates)) {
+    const type = tpl.type || 'claude-cli';
+    binaryNames.add(tpl.command || BACKEND_REQUIREMENTS[type].binary);
+  }
+  await Promise.all(
+    [...binaryNames].map(async (name) => {
+      const type = Object.values(BACKEND_REQUIREMENTS).find((r) => r.binary === name);
+      const result = await checkBinaryVersion(name, type?.versionArgs ?? ['--version']);
+      binaryCache.set(name, result);
+    }),
+  );
 
+  // Template checks are now synchronous (binary results cached, env is pure config read)
+  const results: TemplateHealthResult[] = [];
   for (const [name, template] of Object.entries(config.workerTemplates)) {
     results.push(await checkTemplate(name, template, binaryCache));
   }
