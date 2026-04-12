@@ -1,6 +1,10 @@
 // Proactive Conversation Plugin - schedules group analysis and configures proactive participation (Phase 1)
 
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
+import type { CommandManager } from '@/command/CommandManager';
+import type { CommandContext, CommandResult } from '@/command/types';
 import { hasWhitelistCapability } from '@/context/HookContextHelpers';
 import type { ProactiveConversationService } from '@/conversation/proactive';
 import type { ThreadService } from '@/conversation/thread';
@@ -11,16 +15,21 @@ import type { HookContext, HookResult } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
+import { PluginCommandHandler } from '../PluginCommandHandler';
 import { WHITELIST_CAPABILITY } from './whitelistCapabilities';
 
 /** Template name pattern for trigger words: prompts/preference/{preferenceKey}/trigger.txt (one word per line). */
 const TRIGGER_TEMPLATE_SUFFIX = '.trigger';
+/** File path for persisting cooldown state across restarts. */
+const COOLDOWN_STATE_FILE = 'data/proactive-cooldown.json';
 
 export interface ProactiveConversationPluginConfig {
   /** Groups that have proactive analysis enabled. Same groupId can appear multiple times with different preferenceKey (multiple preferences per group). */
   groups?: Array<{ groupId: string; preferenceKey: string }>;
   /** LLM provider name for preliminary analysis (e.g. "doubao", "deepseek"). Must be registered in ai.providers. Required if not set in taskProviders.lite or defaultProviders.llm. */
   analysisProvider?: string;
+  /** Default cooldown duration in minutes when /proactive cooldown is used without explicit duration. Default: 30. */
+  cooldownDefaultMinutes?: number;
 }
 
 @RegisterPlugin({
@@ -36,9 +45,14 @@ export class ProactiveConversationPlugin extends PluginBase {
   private triggerWords: Record<string, string[]> = {};
   private triggerAccumulator: Record<string, number> = {};
   private accumulatorThreshold = 30;
+  /** Default cooldown duration in minutes. */
+  private cooldownDefaultMinutes = 30;
+  /** groupId -> cooldown expiry timestamp (ms). While active, proactive analysis is suppressed. */
+  private cooldownUntil = new Map<string, number>();
 
   private proactiveConversationService!: ProactiveConversationService;
   private threadService!: ThreadService;
+  private commandManager!: CommandManager;
 
   /**
    * Parse template content into trigger words: one per line, skip empty and # lines.
@@ -136,6 +150,127 @@ export class ProactiveConversationPlugin extends PluginBase {
       this.proactiveConversationService.setAnalysisProvider(analysisProvider);
       logger.info(`[ProactiveConversationPlugin] Analysis and reply provider: ${analysisProvider}`);
     }
+
+    // Cooldown config
+    if (pluginConfig?.cooldownDefaultMinutes != null && pluginConfig.cooldownDefaultMinutes > 0) {
+      this.cooldownDefaultMinutes = pluginConfig.cooldownDefaultMinutes;
+    }
+
+    // Register /proactive command
+    this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
+    const proactiveCommandHandler = new PluginCommandHandler(
+      'proactive',
+      'Manage proactive conversation. Subcommands: cooldown [minutes] — mute proactive for N minutes (default from config); resume — lift cooldown immediately.',
+      '/proactive cooldown [minutes] | /proactive resume',
+      async (args: string[], context: CommandContext): Promise<CommandResult> => {
+        return this.executeProactiveCommand(args, context);
+      },
+      this.context,
+      ['admin'],
+    );
+    this.commandManager.register(proactiveCommandHandler, 'proactiveConversation');
+
+    // Restore persisted cooldown state
+    await this.loadCooldownState();
+  }
+
+  /**
+   * Check whether a group is currently in cooldown (proactive analysis suppressed).
+   */
+  private isInCooldown(groupId: string): boolean {
+    const until = this.cooldownUntil.get(groupId);
+    if (!until) return false;
+    if (Date.now() >= until) {
+      this.cooldownUntil.delete(groupId);
+      this.saveCooldownState();
+      return false;
+    }
+    return true;
+  }
+
+  /** Load cooldown state from disk, pruning expired entries. */
+  private async loadCooldownState(): Promise<void> {
+    try {
+      const path = join(process.cwd(), COOLDOWN_STATE_FILE);
+      const raw = await readFile(path, 'utf-8');
+      const data = JSON.parse(raw) as Record<string, number>;
+      const now = Date.now();
+      for (const [groupId, until] of Object.entries(data)) {
+        if (until > now) {
+          this.cooldownUntil.set(groupId, until);
+        }
+      }
+      if (this.cooldownUntil.size > 0) {
+        logger.info(`[ProactiveConversationPlugin] Restored cooldown for ${this.cooldownUntil.size} group(s)`);
+      }
+    } catch {
+      // File doesn't exist or invalid — start fresh
+    }
+  }
+
+  /** Persist current cooldown state to disk. */
+  private async saveCooldownState(): Promise<void> {
+    try {
+      const path = join(process.cwd(), COOLDOWN_STATE_FILE);
+      await mkdir(dirname(path), { recursive: true });
+      const data: Record<string, number> = {};
+      for (const [groupId, until] of this.cooldownUntil) {
+        data[groupId] = until;
+      }
+      await writeFile(path, JSON.stringify(data), 'utf-8');
+    } catch (err) {
+      logger.warn('[ProactiveConversationPlugin] Failed to save cooldown state:', err);
+    }
+  }
+
+  /**
+   * /proactive command handler.
+   */
+  private executeProactiveCommand(args: string[], context: CommandContext): CommandResult {
+    const sub = args[0]?.toLowerCase();
+    const groupId = context.groupId?.toString();
+
+    if (!groupId) {
+      return { success: false, error: '此命令仅在群聊中可用' };
+    }
+
+    if (sub === 'cooldown' || sub === 'cd') {
+      const minutes = args[1] ? Number.parseInt(args[1], 10) : this.cooldownDefaultMinutes;
+      if (Number.isNaN(minutes) || minutes <= 0) {
+        return { success: false, error: `无效的时间: ${args[1]}，请提供正整数（分钟）` };
+      }
+      const until = Date.now() + minutes * 60_000;
+      this.cooldownUntil.set(groupId, until);
+      this.saveCooldownState();
+      const expireTime = new Date(until).toLocaleTimeString('zh-CN', { hour12: false });
+      logger.info(`[ProactiveConversationPlugin] Cooldown activated | group=${groupId} duration=${minutes}min`);
+      return {
+        success: true,
+        segments: [{ type: 'text', data: { text: `主动对话已静默 ${minutes} 分钟，将于 ${expireTime} 自动恢复。使用 /proactive resume 可提前解除。` } }],
+      };
+    }
+
+    if (sub === 'resume') {
+      const wasCooling = this.cooldownUntil.has(groupId);
+      this.cooldownUntil.delete(groupId);
+      this.saveCooldownState();
+      logger.info(`[ProactiveConversationPlugin] Cooldown lifted | group=${groupId} wasCooling=${wasCooling}`);
+      return {
+        success: true,
+        segments: [{ type: 'text', data: { text: wasCooling ? '主动对话已恢复。' : '当前没有处于静默状态。' } }],
+      };
+    }
+
+    // Show current status
+    const cooling = this.isInCooldown(groupId);
+    const until = this.cooldownUntil.get(groupId);
+    const statusText = cooling && until
+      ? `主动对话静默中，恢复时间: ${new Date(until).toLocaleTimeString('zh-CN', { hour12: false })}`
+      : '主动对话正常运行中';
+    return {
+      success: true,
+      segments: [{ type: 'text', data: { text: `${statusText}\n用法: /proactive cooldown [分钟] | /proactive resume` } }],
+    };
   }
 
   @Hook({
@@ -193,6 +328,11 @@ export class ProactiveConversationPlugin extends PluginBase {
 
     // Do not run proactive analysis for command messages; command uses its own send path and should not trigger LLM.
     if (context.command) {
+      return true;
+    }
+
+    // Cooldown: suppress all proactive analysis (accumulator + trigger words) but not wake words / commands / direct triggers
+    if (this.isInCooldown(groupId)) {
       return true;
     }
 

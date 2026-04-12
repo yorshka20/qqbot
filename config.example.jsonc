@@ -323,6 +323,7 @@
         "enabled": true,
         "config": {
           "analysisProvider": "ollama", // optional: LLM for analysis/reply (default "ollama")
+          "cooldownDefaultMinutes": 30, // default cooldown duration for /proactive cooldown (minutes)
           "groups": [
             {
               "groupId": "9999",
