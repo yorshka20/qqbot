@@ -1,5 +1,6 @@
 import { Save, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ClusterTemplatesResponse, TicketStatus } from "../../../types";
 
 /**
@@ -99,10 +100,10 @@ export function TicketEditor({
     });
   };
 
-  return (
+  return createPortal(
     // biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop pattern, keyboard escape handler attached
     <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 text-zinc-900 dark:text-zinc-100"
       onClick={() => {
         if (!saving) onCancel();
       }}
@@ -112,7 +113,7 @@ export function TicketEditor({
     >
       {/* biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper inside modal backdrop */}
       <div
-        className="bg-white dark:bg-zinc-800 rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col"
+        className="bg-white dark:bg-zinc-800 rounded-xl shadow-xl w-[min(100%,900px)] max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
       >
@@ -274,6 +275,7 @@ export function TicketEditor({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

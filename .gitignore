@@ -84,4 +84,4 @@ scripts/local
 repomix-*.xml
 repomix-*.md
 
-tickets
+/tickets

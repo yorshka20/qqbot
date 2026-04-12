@@ -1,20 +1,20 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-@variant dark (&:where(.dark, .dark *));
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* ── Global scrollbars (Firefox + WebKit) — thin, rounded, dark-mode friendly ── */
 :root {
   --sb-size: 9px;
-  --sb-thumb: color-mix(in srgb, theme(colors.zinc.400) 50%, transparent);
-  --sb-thumb-hover: color-mix(in srgb, theme(colors.zinc.500) 72%, transparent);
+  --sb-thumb: color-mix(in srgb, #a1a1aa 50%, transparent);
+  --sb-thumb-hover: color-mix(in srgb, #71717a 72%, transparent);
   --sb-track: transparent;
 }
 
 html.dark {
   /* Slightly brighter thumb on dark surfaces; transparent track avoids a gray “rail” */
-  --sb-thumb: color-mix(in srgb, theme(colors.zinc.500) 58%, transparent);
-  --sb-thumb-hover: color-mix(in srgb, theme(colors.zinc.400) 55%, transparent);
+  --sb-thumb: color-mix(in srgb, #71717a 58%, transparent);
+  --sb-thumb-hover: color-mix(in srgb, #a1a1aa 55%, transparent);
   --sb-track: transparent;
 }
 
