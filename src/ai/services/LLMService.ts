@@ -99,13 +99,51 @@ export class LLMService {
   /**
    * Check if provider is available and healthy.
    * If the resolved provider is unhealthy, attempts to find a healthy fallback.
+   *
+   * Note: this method preserves legacy behavior for non-generation callers
+   * (feature probes, external services). Generation entry points should use
+   * {@link resolveProviderForGeneration} instead, which honors explicit caller
+   * intent and strips stale `options.model` when a health-based swap occurs.
    */
   async getAvailableProvider(providerName?: string, sessionId?: string): Promise<LLMCapability | null> {
+    const resolved = await this.resolveProviderForGeneration(providerName, sessionId);
+    if (!resolved) return null;
+    // Legacy callers expect health-based swap for both explicit and implicit requests.
+    if (resolved.swapped || !resolved.isUnhealthy) return resolved.provider;
+    const healthyFallback = await this.getFirstHealthyProvider(sessionId, resolved.resolvedName);
+    return healthyFallback ?? resolved.provider;
+  }
+
+  /**
+   * Resolve the provider for a generation call.
+   *
+   * Rules:
+   * - If the caller passes an explicit `providerName`, honor it. Do NOT silently swap
+   *   to a healthy fallback even if it's marked unhealthy — attempt it once and let
+   *   the caller's catch path trigger the fallback chain. This preserves explicit
+   *   user intent (e.g. `claude,` prefix routing).
+   * - If the caller does NOT pass a provider (session/default path) and the resolved
+   *   provider is unhealthy, swap to the first healthy fallback AND strip the caller's
+   *   `options.model`, since that model was meant for the originally-resolved provider.
+   *
+   * Returns `resolvedName`, the (possibly swapped) provider, and `options` with
+   * `model` stripped when a swap occurred.
+   */
+  private async resolveProviderForGeneration(
+    providerName?: string,
+    sessionId?: string,
+  ): Promise<{
+    provider: LLMCapability;
+    resolvedName: string;
+    requestedName?: string;
+    swapped: boolean;
+    isUnhealthy: boolean;
+  } | null> {
+    const explicit = !!providerName;
     let provider: LLMCapability | null = null;
     let resolvedName: string | undefined;
 
     if (providerName) {
-      // Use specified provider
       const p = this.aiManager.getProviderForCapability('llm', providerName);
       if (p && isLLMCapability(p) && p.isAvailable()) {
         provider = p;
@@ -120,7 +158,6 @@ export class LLMService {
         );
       }
     } else if (sessionId && this.providerSelector) {
-      // Use session-specific provider
       const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'llm');
       if (sessionProviderName) {
         const p = this.aiManager.getProviderForCapability('llm', sessionProviderName);
@@ -131,7 +168,6 @@ export class LLMService {
       }
     }
 
-    // Fall back to default provider
     if (!provider) {
       const defaultProvider = this.aiManager.getDefaultProvider('llm');
       if (defaultProvider && isLLMCapability(defaultProvider) && defaultProvider.isAvailable()) {
@@ -140,20 +176,52 @@ export class LLMService {
       }
     }
 
-    // Check health status and try fallback if unhealthy.
-    if (provider && resolvedName && this.healthCheckManager) {
-      if (!this.healthCheckManager.isServiceHealthySync(resolvedName)) {
-        logger.warn(`[LLMService] Provider "${resolvedName}" is unhealthy, trying healthy fallback`);
-        const healthyFallback = await this.getFirstHealthyProvider(sessionId, resolvedName);
-        if (healthyFallback) {
-          return healthyFallback;
-        }
-        // No healthy fallback available, still return the unhealthy provider (let it try)
-        logger.warn(`[LLMService] No healthy fallback available, proceeding with "${resolvedName}"`);
+    if (!provider || !resolvedName) return null;
+
+    const isUnhealthy = this.healthCheckManager
+      ? !this.healthCheckManager.isServiceHealthySync(resolvedName)
+      : false;
+
+    // Only swap for non-explicit requests. Explicit caller intent (prefix routing,
+    // taskProviders.convert etc.) must actually attempt the requested provider so
+    // the catch path can correctly strip model and fall back on real failure.
+    if (!explicit && isUnhealthy) {
+      logger.warn(`[LLMService] Provider "${resolvedName}" is unhealthy, trying healthy fallback`);
+      const healthyFallback = await this.getFirstHealthyProvider(sessionId, resolvedName);
+      if (healthyFallback) {
+        const swappedName =
+          'name' in healthyFallback ? (healthyFallback as { name: string }).name : resolvedName;
+        return {
+          provider: healthyFallback,
+          resolvedName: swappedName,
+          requestedName: resolvedName,
+          swapped: true,
+          isUnhealthy: false,
+        };
       }
+      logger.warn(`[LLMService] No healthy fallback available, proceeding with "${resolvedName}"`);
+    } else if (explicit && isUnhealthy) {
+      logger.warn(
+        `[LLMService] Explicit provider "${resolvedName}" is marked unhealthy; attempting anyway (honoring caller intent)`,
+      );
     }
 
-    return provider;
+    return {
+      provider,
+      resolvedName,
+      requestedName: providerName,
+      swapped: false,
+      isUnhealthy,
+    };
+  }
+
+  /**
+   * Strip caller-supplied `model` when the provider was swapped — the model name
+   * belonged to the originally requested provider and won't resolve on the swapped one.
+   */
+  private stripModelIfSwapped<T extends AIGenerateOptions | undefined>(options: T, swapped: boolean): T {
+    if (!swapped || !options) return options;
+    return { ...options, model: undefined } as T;
   }
 
   /**
@@ -287,29 +355,30 @@ export class LLMService {
    */
   async generate(prompt: string, options?: AIGenerateOptions, providerName?: string): Promise<AIGenerateResponse> {
     const sessionId = options?.sessionId;
-    const provider = await this.getAvailableProvider(providerName, sessionId);
+    const resolved = await this.resolveProviderForGeneration(providerName, sessionId);
 
     // If no available provider, return fallback response
-    if (!provider) {
+    if (!resolved) {
       logger.warn('[LLMService] No available LLM provider, returning fallback response');
       return this.getFallbackResponse(prompt);
     }
 
-    const resolvedName = this.resolveProviderName(provider, providerName);
+    const { provider, resolvedName, swapped } = resolved;
+    const effectiveOptions = this.stripModelIfSwapped(options, swapped);
 
     // Rate limit: wait for token capacity before calling the provider.
     // Estimate prompt tokens from content length (rough: 1 token ≈ 3 chars for CJK, 4 for latin).
-    const estimatedTokens = this.estimatePromptTokens(prompt, options);
+    const estimatedTokens = this.estimatePromptTokens(prompt, effectiveOptions);
     await this.rateLimiter.waitForCapacity(estimatedTokens, resolvedName);
-    this.logLLMPrompt(resolvedName, prompt, options);
+    this.logLLMPrompt(resolvedName, prompt, effectiveOptions);
 
     try {
-      const result = await provider.generate(prompt, options);
+      const result = await provider.generate(prompt, effectiveOptions);
       // Record actual token usage for rate limiting
       if (result.usage) {
         this.rateLimiter.recordUsage(result.usage.totalTokens, resolvedName);
       }
-      this.logLLMUsage(resolvedName, prompt, options, result);
+      this.logLLMUsage(resolvedName, prompt, effectiveOptions, result);
       // Mark provider as healthy on success
       this.healthCheckManager?.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
@@ -331,24 +400,25 @@ export class LLMService {
    */
   async generateLite(prompt: string, options?: AIGenerateOptions, providerName?: string): Promise<AIGenerateResponse> {
     const sessionId = options?.sessionId;
-    const provider = await this.getAvailableProvider(providerName, sessionId);
+    const resolved = await this.resolveProviderForGeneration(providerName, sessionId);
 
-    if (!provider) {
+    if (!resolved) {
       logger.warn('[LLMService] No available LLM provider for generateLite, returning fallback response');
       return this.getFallbackResponse(prompt);
     }
 
+    const { provider, resolvedName, swapped } = resolved;
     const liteDefaults: AIGenerateOptions = {
       temperature: 0.1,
       maxTokens: 256,
       reasoningEffort: 'minimal',
     };
+    const incomingOptions = this.stripModelIfSwapped(options, swapped);
     const mergedOptions: AIGenerateOptions = {
       ...liteDefaults,
-      ...options,
+      ...incomingOptions,
     };
 
-    const resolvedName = this.resolveProviderName(provider, providerName);
     this.logLLMPrompt(resolvedName, prompt, mergedOptions);
 
     try {
@@ -410,21 +480,22 @@ export class LLMService {
     providerName?: string,
   ): Promise<AIGenerateResponse> {
     const sessionId = options?.sessionId;
-    const provider = await this.getAvailableProvider(providerName, sessionId);
+    const resolved = await this.resolveProviderForGeneration(providerName, sessionId);
 
     // If no available provider, return fallback response
-    if (!provider) {
+    if (!resolved) {
       logger.warn('[LLMService] No available LLM provider, returning fallback response');
       const fallbackResponse = this.getFallbackResponse(prompt);
       handler(fallbackResponse.text);
       return fallbackResponse;
     }
 
-    const resolvedName = this.resolveProviderName(provider, providerName);
-    this.logLLMPrompt(resolvedName, prompt, options);
+    const { provider, resolvedName, swapped } = resolved;
+    const effectiveOptions = this.stripModelIfSwapped(options, swapped);
+    this.logLLMPrompt(resolvedName, prompt, effectiveOptions);
 
     try {
-      const result = await provider.generateStream(prompt, handler, options);
+      const result = await provider.generateStream(prompt, handler, effectiveOptions);
       // Mark provider as healthy on success
       this.healthCheckManager?.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
@@ -776,14 +847,6 @@ export class LLMService {
    */
   async triggerHealthCheck(): Promise<void> {
     await this.aiManager.triggerHealthCheck();
-  }
-
-  /**
-   * Extract the provider name from a resolved provider instance.
-   */
-  private resolveProviderName(provider: LLMCapability, hint?: string): string {
-    if ('name' in provider) return (provider as { name: string }).name;
-    return hint ?? 'unknown';
   }
 
   /**
