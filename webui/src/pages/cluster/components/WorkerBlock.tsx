@@ -36,7 +36,7 @@ export function WorkerBlock({
   const taskSummary = w.boundTaskSummary ? stripFrontmatter(w.boundTaskSummary) : '';
 
   return (
-    <div className="w-full min-w-0 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white/60 dark:bg-zinc-900/30">
+    <div className="w-full min-w-0 shrink-0 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white/60 dark:bg-zinc-900/30">
       {/* ── Row 1: Header — full width ── */}
       <div className="px-3 py-2 flex items-center gap-2 flex-wrap bg-zinc-50/80 dark:bg-zinc-800/40">
         <span className="font-mono text-xs font-semibold text-zinc-800 dark:text-zinc-100">

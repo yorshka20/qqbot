@@ -1,9 +1,14 @@
 /**
  * Default scroll area for Cluster page list cards — keeps blocks from growing
  * with content; scroll inside the card instead.
+ *
+ * `[&>*]:shrink-0` applies `flex-shrink: 0` to every direct child so flex-col
+ * list containers don't squash rows when content exceeds max-h (flex items
+ * default to shrink:1, which visually collapses long lists into 2-3px rows
+ * instead of scrolling — we want scroll, not shrink).
  */
 export const CLUSTER_CARD_BODY_SCROLL =
-  'max-h-[min(42vh,24rem)] overflow-y-auto overflow-x-hidden overscroll-contain px-0.5';
+  'max-h-[min(42vh,24rem)] overflow-y-auto overflow-x-hidden overscroll-contain px-0.5 [&>*]:shrink-0';
 
 export function formatMs(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '-';

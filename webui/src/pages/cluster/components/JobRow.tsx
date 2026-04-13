@@ -7,6 +7,22 @@ import { CLUSTER_CARD_BODY_SCROLL, formatTimestamp } from '../utils';
 import { ClusterStatusBadge } from './ClusterStatusBadge';
 import { orderTasksAsTree, TaskTreeRow } from './TaskTree';
 
+/**
+ * Produce a single-line preview of the job description for the collapsed row.
+ * Strips leading YAML frontmatter (--- ... ---) and markdown heading hashes so
+ * the visible line is the first real sentence of the user's ask instead of
+ * `--- estimatedComplexity: high --- ## Goal`.
+ */
+function previewDescription(raw: string | undefined): string {
+  if (!raw) return '';
+  const stripped = raw.replace(/^---[\s\S]*?---\s*/, '').trim();
+  const firstLine = stripped
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^#+\s*/, '').trim())
+    .find((l) => l.length > 0);
+  return firstLine ?? stripped;
+}
+
 export function JobRow({
   job,
   onTaskClick,
@@ -43,24 +59,32 @@ export function JobRow({
     setDetail(null);
   }, [job.tasksCompleted, job.tasksFailed, job.status]);
 
+  const idShort = (job.id ?? '').slice(0, 8) || '(unknown)';
+  const preview = previewDescription(job.description) || '(no description)';
+  const completed = job.tasksCompleted ?? 0;
+  const failed = job.tasksFailed ?? 0;
+  const total = job.taskCount ?? 0;
+
   return (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white/60 dark:bg-zinc-900/30 overflow-hidden">
+    <div className="shrink-0 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white/60 dark:bg-zinc-900/30 overflow-hidden">
       <button
         type="button"
         onClick={toggle}
-        className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+        className="w-full min-h-10 px-3 py-2 flex items-center gap-2 text-left text-zinc-800 dark:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
       >
         {expanded ? (
           <ChevronDown className="w-4 h-4 text-zinc-500 shrink-0" />
         ) : (
           <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
         )}
-        <div className="font-mono text-xs text-zinc-700 dark:text-zinc-200">{job.id.slice(0, 8)}</div>
-        <ClusterStatusBadge status={job.status} />
-        <div className="text-sm text-zinc-800 dark:text-zinc-100 truncate min-w-0 flex-1">{job.description}</div>
-        <div className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0 font-mono">
-          {job.tasksCompleted}✓ {job.tasksFailed}✗ /{job.taskCount}
-        </div>
+        <span className="font-mono text-xs text-zinc-700 dark:text-zinc-200 shrink-0">{idShort}</span>
+        <ClusterStatusBadge status={job.status ?? 'unknown'} />
+        <span className="text-sm truncate min-w-0 flex-1" title={job.description}>
+          {preview}
+        </span>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0 font-mono tabular-nums">
+          {completed}✓ {failed}✗ /{total}
+        </span>
       </button>
       {expanded && (
         <div

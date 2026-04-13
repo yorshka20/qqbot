@@ -411,20 +411,102 @@ export class WorkerPool {
   // ── Private ──
 
   /**
-   * Send a kill signal to a worker subprocess. The actual cleanup
-   * (status update, hub notification, recordExited, callback) is handled
-   * by `monitorProcess` once `proc.exited` resolves — this method only
-   * triggers the exit, it does NOT clean up state itself, to avoid
-   * doubled-up `hub.workerExited` calls and race conditions with the
-   * monitor loop.
+   * Kill a worker subprocess with escalation + force-cleanup.
+   *
+   * Normal path: SIGTERM → monitorProcess sees `proc.exited` resolve →
+   * cleanup (status update, hub notification, recordExited, callback).
+   *
+   * Failure modes we defend against:
+   *   1. CLI ignores SIGTERM (node apps stuck in fetch/stdin read) → after
+   *      3s we escalate to SIGKILL, both via Bun's proc handle and a raw
+   *      `process.kill(pid, ...)` fallback in case the handle is stale.
+   *   2. Bun subprocess handle is broken (PPID=1 orphan from a prior bot
+   *      crash — `proc.exited` never resolves) → after 8s we run
+   *      `forceCleanup` which performs the same teardown as monitorProcess,
+   *      relying on existing idempotency (`recordExited`, `markTaskCompleted`)
+   *      to stay safe if monitorProcess does eventually fire later.
+   *
+   * Idempotent: re-entering on a worker already being killed is a no-op.
    */
   private async killWorkerInstance(worker: WorkerInstance): Promise<void> {
+    if (worker.status === 'stopping' || worker.status === 'exited') return;
     worker.status = 'stopping';
-    if (worker.process) {
+
+    const proc = worker.process;
+    const pid = proc?.pid;
+
+    const sendSignal = (signal: 'SIGTERM' | 'SIGKILL'): void => {
       try {
-        worker.process.kill();
+        proc?.kill(signal);
       } catch {
-        // Process may have already exited.
+        // Handle may already be invalid; fall through to raw pid kill.
+      }
+      if (pid) {
+        try {
+          process.kill(pid, signal);
+        } catch {
+          // Process already dead.
+        }
+      }
+    };
+
+    sendSignal('SIGTERM');
+
+    const sigkillTimer = setTimeout(() => {
+      if (!this.workers.has(worker.id)) return;
+      logger.warn(`[WorkerPool] Worker ${worker.id} did not exit on SIGTERM; escalating to SIGKILL`);
+      sendSignal('SIGKILL');
+    }, 3000);
+
+    const forceCleanupTimer = setTimeout(() => {
+      if (!this.workers.has(worker.id)) return;
+      logger.warn(
+        `[WorkerPool] Worker ${worker.id} monitor did not finalize after kill; force-cleaning state (process handle likely stale)`,
+      );
+      void this.forceCleanup(worker, 'Worker killed by user (force-cleaned after timeout)');
+    }, 8000);
+
+    if (proc) {
+      void (proc.exited as unknown as Promise<unknown>)
+        .catch(() => undefined)
+        .finally(() => {
+          clearTimeout(sigkillTimer);
+          clearTimeout(forceCleanupTimer);
+        });
+    }
+  }
+
+  /**
+   * Tear down a worker's state when `monitorProcess` can't (stale Bun
+   * subprocess handle, proc.exited never resolves). Mirrors the
+   * teardown sequence in monitorProcess and relies on the same
+   * idempotency guarantees — if monitorProcess later fires for this
+   * same worker, recordExited/markTaskCompleted both no-op.
+   */
+  private async forceCleanup(worker: WorkerInstance, reason: string): Promise<void> {
+    if (!this.workers.has(worker.id)) return;
+
+    worker.status = 'exited';
+    worker.process = null;
+    this.hub.workerExited(worker.id);
+
+    if (worker.currentTask) {
+      const task = worker.currentTask;
+      const alreadyTerminal = task.status === 'completed' || task.status === 'failed';
+      if (!alreadyTerminal) {
+        task.status = 'failed';
+        task.error = reason;
+        task.completedAt = new Date().toISOString();
+      }
+    }
+
+    this.recordExited(worker);
+
+    if (worker.currentTask && this.taskCompletedCallback) {
+      try {
+        await this.taskCompletedCallback(worker.currentTask);
+      } catch (err) {
+        logger.error(`[WorkerPool] taskCompletedCallback threw during forceCleanup for ${worker.id}:`, err);
       }
     }
   }
