@@ -1,5 +1,6 @@
 // Message Pipeline - processes messages through the complete flow
 
+import type { ProviderRouter } from '@/ai/routing/ProviderRouter';
 import type { ContextManager, ConversationContext } from '@/context';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { getReply, getReplyContent } from '@/context/HookContextHelpers';
@@ -27,7 +28,29 @@ export class MessagePipeline {
     private hookManager: HookManager,
     private contextManager: ContextManager,
     private conversationConfigService: ConversationConfigService,
+    private providerRouter: ProviderRouter,
   ) {}
+
+  /**
+   * Resolve an explicit provider prefix (e.g. `claude, ...`) from the incoming message
+   * and stash it on the hook context so ProviderSelectionStage uses the fast path.
+   *
+   * Full pipeline runs this inside MessageTriggerPlugin during PREPROCESS. Reply-only
+   * paths (reaction triggers, direct replies) skip PREPROCESS, so we do the same
+   * resolution here — otherwise a message like `[Reply:xxx]claude，...` silently falls
+   * through to the default provider.
+   */
+  private applyProviderPrefix(hookContext: HookContext, event: NormalizedMessageEvent): void {
+    const messageText = event.message ?? '';
+    if (!messageText) return;
+    const result = this.providerRouter.route(messageText);
+    if (result.isExplicitPrefix && result.providerName) {
+      hookContext.metadata.set('resolvedProviderPrefix', {
+        providerName: result.providerName,
+        strippedMessage: result.strippedMessage,
+      });
+    }
+  }
 
   /**
    * Process message through the complete pipeline
@@ -73,6 +96,7 @@ export class MessagePipeline {
     const hookContext = await this.createHookContext(event, context);
     const messageId = String(event.id ?? event.messageId ?? 'unknown');
     hookContext.metadata.set('replyOnly', true);
+    this.applyProviderPrefix(hookContext, event);
     const contextKey = `${context.sessionId}_${messageId}`;
     const logTag = getLogTag(messageId);
     const logColor = getLogColorForKey(messageId);

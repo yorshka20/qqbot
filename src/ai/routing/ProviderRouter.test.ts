@@ -96,6 +96,40 @@ describe('ProviderRouter', () => {
     expect(r.isExplicitPrefix).toBe(false);
   });
 
+  it('skips leading segment placeholders before matching prefix (reaction-triggered reply)', () => {
+    const aiManager = createMockAIManager(['anthropic', 'openai', 'gemini']);
+    const router = new ProviderRouter(aiManager);
+
+    // Reaction trigger on a [Reply:xxx]-prefixed message — main bug from 2026-04-14.
+    const r1 = router.route('[Reply:93769]claude，你来分析一下这个问题');
+    expect(r1.providerName).toBe('anthropic');
+    expect(r1.isExplicitPrefix).toBe(true);
+    // Placeholder retained in stripped output so AI still sees reply context.
+    expect(r1.strippedMessage).toBe('[Reply:93769]你来分析一下这个问题');
+
+    // Multiple placeholders.
+    const r2 = router.route('[Reply:1][Image:abc] gpt: 这是什么');
+    expect(r2.providerName).toBe('openai');
+    expect(r2.isExplicitPrefix).toBe(true);
+    expect(r2.strippedMessage).toBe('[Reply:1][Image:abc] 这是什么');
+
+    // Placeholders with surrounding whitespace.
+    const r3 = router.route('  [Reply:42]  gemini 翻译一下');
+    expect(r3.providerName).toBe('gemini');
+    expect(r3.isExplicitPrefix).toBe(true);
+
+    // Placeholders only, no prefix after → no match.
+    const r4 = router.route('[Reply:1] just normal text');
+    expect(r4.providerName).toBeNull();
+    expect(r4.isExplicitPrefix).toBe(false);
+
+    // routeReplyInput surfaces the same behavior for the pipeline fallback path.
+    const reply = router.routeReplyInput('[Reply:93769]claude，analyze');
+    expect(reply.providerName).toBe('anthropic');
+    expect(reply.userMessage).toBe('[Reply:93769]analyze');
+    expect(reply.usedExplicitPrefix).toBe(true);
+  });
+
   it('getProviderTriggerPrefixes returns alias keys', () => {
     const prefixes = ProviderRouter.getProviderTriggerPrefixes();
     expect(prefixes).toContain('claude');

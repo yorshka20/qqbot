@@ -571,6 +571,7 @@ export class ConversationInitializer {
       services.hookManager,
       services.contextManager,
       services.conversationConfigService,
+      container.resolve<ProviderRouter>(DITokens.PROVIDER_ROUTER),
     );
     const conversationManager = new ConversationManager(pipeline);
     container.registerInstance(DITokens.CONVERSATION_MANAGER, conversationManager);

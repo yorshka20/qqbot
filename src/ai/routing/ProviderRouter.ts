@@ -78,12 +78,37 @@ export class ProviderRouter {
   }
 
   /**
+   * Leading segment-placeholder prefix (e.g. `[Reply:93769]`, `[Image:xxx]`).
+   * These are semantic markers inserted by normalizers; they sit before the user's
+   * actual text and must be transparent to prefix matching.
+   */
+  private static readonly LEADING_PLACEHOLDERS_RE = /^(?:\s*\[[^\]]+\]\s*)+/;
+
+  /**
    * Explicit prefix: message starts with a known provider alias followed by a separator.
    * Separator: space, comma (EN , / CN ，), or colon (EN : / CN ：).
    * E.g. "claude xxx", "claude: xxx", "claude，xxx", "claude, xxx", "claude：xxx".
+   *
+   * Leading `[Reply:xxx]` / `[Image:xxx]` placeholders are skipped during match
+   * (reaction-triggered flows and referenced replies include them before the user text),
+   * but retained in `strippedMessage` so downstream stages still see the full context.
    */
   private routeByExplicitPrefix(message: string): ProviderRouteResult {
-    const trimmed = message.trimStart();
+    const trimmedWithPlaceholders = message.trimStart();
+    if (!trimmedWithPlaceholders) {
+      return {
+        providerName: null,
+        confidence: 'low',
+        reason: 'prefix_not_matched',
+        isExplicitPrefix: false,
+        strippedMessage: message,
+      };
+    }
+    const placeholderMatch = trimmedWithPlaceholders.match(ProviderRouter.LEADING_PLACEHOLDERS_RE);
+    const leadingPlaceholders = placeholderMatch ? placeholderMatch[0] : '';
+    const trimmed = leadingPlaceholders
+      ? trimmedWithPlaceholders.slice(leadingPlaceholders.length)
+      : trimmedWithPlaceholders;
     if (!trimmed) {
       return {
         providerName: null,
@@ -106,7 +131,7 @@ export class ProviderRouter {
       if (!ProviderRouter.PREFIX_SEPARATORS.test(afterPrefix[0])) {
         continue;
       }
-      const strippedMessage = afterPrefix.replace(/^[\s,，:：]+\s*/, '');
+      const strippedMessage = leadingPlaceholders + afterPrefix.replace(/^[\s,，:：]+\s*/, '');
       const normalized = this.normalizeProviderName(prefix);
       if (!normalized || !this.isLlmProviderAvailable(normalized)) {
         return {

@@ -109,6 +109,37 @@ export class MilkyAPIConverter {
   }
 
   /**
+   * Fields that Milky validates as numeric. Callers may pass numeric strings
+   * (config values, upstream protocol payloads, context objects), but Milky's
+   * Zod schemas reject string-typed IDs. Coerce them at the final boundary so
+   * call sites don't each need to sprinkle `Number(...)`.
+   */
+  private static readonly NUMERIC_ID_FIELDS = new Set<string>([
+    'group_id',
+    'user_id',
+    'peer_id',
+    'target_user_id',
+    'operator_id',
+    'friend_user_id',
+    'message_seq',
+    'message_id',
+    'sequence',
+    'forward_seq',
+  ]);
+
+  /** Final-exit guard: coerce numeric-string IDs to numbers before hitting Milky API. */
+  private static coerceNumericIds(obj: Record<string, unknown>): Record<string, unknown> {
+    for (const key of Object.keys(obj)) {
+      if (!MilkyAPIConverter.NUMERIC_ID_FIELDS.has(key)) continue;
+      const v = obj[key];
+      if (typeof v === 'string' && /^-?\d+$/.test(v)) {
+        obj[key] = Number(v);
+      }
+    }
+    return obj;
+  }
+
+  /**
    * Convert API parameters to Milky protocol format
    * Uses official types from @saltify/milky-types
    *
@@ -117,6 +148,13 @@ export class MilkyAPIConverter {
    * @returns Milky format parameters
    */
   static convertParamsToMilky(action: string, params: Record<string, unknown>): Record<string, unknown> {
+    return MilkyAPIConverter.coerceNumericIds(MilkyAPIConverter.convertParamsToMilkyInternal(action, params));
+  }
+
+  private static convertParamsToMilkyInternal(
+    action: string,
+    params: Record<string, unknown>,
+  ): Record<string, unknown> {
     switch (action) {
       // ==================== Message APIs ====================
 
