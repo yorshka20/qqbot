@@ -1,7 +1,17 @@
 ---
-maxChildren: 3
-priority: normal
-estimatedComplexity: medium
+# ── 必填字段（生成 ticket 时务必填写，缺失会导致 WebUI 显示 (untitled)）──
+id: YYYY-MM-DD-<slug>           # 与 tickets/ 下目录名完全一致（kebab-case，ASCII）
+title: <一句话标题>              # 展示在 WebUI 列表，必须是人类可读的中/英文标题，不能留空
+status: draft                   # draft | ready | dispatched | done | abandoned
+project: <项目名>                # 如 qqbot / video-knowledge-backend / video-knowledge-client
+created: 2026-01-01T00:00:00.000Z   # ISO-8601；生成时填当前时间
+updated: 2026-01-01T00:00:00.000Z   # ISO-8601；生成时与 created 相同
+# ── 可选字段 ─────────────────────────────────────────────
+# template: claude-planner       # 指定 worker 模板；不确定就不要写
+# usePlanner: true               # 需要 planner 拆解时填 true；单纯 executor 任务留空
+maxChildren: 3                   # planner 最多 spawn 几个子任务（默认 5）
+estimatedComplexity: medium      # trivial | low | medium | high —— 影响 executor 选型
+# 注意：priority / tag 等字段**不被解析**，不要写进来
 ---
 
 ## 目标
