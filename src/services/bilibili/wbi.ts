@@ -27,6 +27,12 @@ interface WbiCache {
 let wbiCache: WbiCache | null = null;
 const WBI_CACHE_TTL = 12 * 60 * 60 * 1000; // 12 hours
 
+const WBI_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  Referer: 'https://www.bilibili.com',
+};
+
 /**
  * Generate the mixin key from img_key + sub_key using the permutation table.
  */
@@ -53,11 +59,7 @@ function extractKeyFromUrl(url: string): string {
  */
 async function fetchWbiKeys(): Promise<{ imgKey: string; subKey: string }> {
   const response = await fetch('https://api.bilibili.com/x/web-interface/nav', {
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      Referer: 'https://www.bilibili.com',
-    },
+    headers: WBI_HEADERS,
   });
 
   const json = (await response.json()) as { code: number; data: { wbi_img: { img_url: string; sub_url: string } } };
@@ -125,4 +127,10 @@ export async function signWbiParams(params: Record<string, string | number>): Pr
     .digest('hex');
 
   return `${queryString}&w_rid=${wRid}`;
+}
+
+/** Exported for callers that need to bust the WBI cache on 412 errors. */
+export function clearWbiCache(): void {
+  wbiCache = null;
+  logger.debug('[WBI] Cache cleared');
 }
