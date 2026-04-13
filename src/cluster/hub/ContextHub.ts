@@ -230,12 +230,16 @@ export class ContextHub {
 
   /**
    * Notify hub that a worker process has exited (called by WorkerPool).
+   * Cleans up MCP session so the next worker can connect without hitting
+   * "Server already initialized".
    */
   workerExited(workerId: string): void {
     this.lockManager.releaseAll(workerId);
     this.workerRegistry.markExited(workerId);
     this.eventLog.append('worker_left', workerId, {});
     this.broadcastSSE('worker_status', { workerId, status: 'exited' });
+    // Clean up the worker's MCP session (fire-and-forget).
+    void this.mcpServer.closeWorkerSession(workerId);
   }
 
   // ── MCP Tool implementations ──

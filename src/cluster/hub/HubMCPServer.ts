@@ -1,41 +1,27 @@
 /**
  * HubMCPServer — exposes ContextHub methods as MCP tools over HTTP.
  *
- * Wraps `@modelcontextprotocol/sdk`'s high-level `McpServer` and the
- * Bun-compatible `WebStandardStreamableHTTPServerTransport` to give cluster
- * workers a real MCP endpoint at `/mcp` on the same Bun.serve instance the
- * REST API uses.
+ * ## Multi-session architecture
  *
- * ## Why this exists
+ * The MCP SDK's `WebStandardStreamableHTTPServerTransport` is a
+ * **single-session** transport — one transport instance supports exactly one
+ * client connection. Sending a second `initialize` request to the same
+ * transport returns 400 "Server already initialized".
  *
- * Pre-Phase-2 the `ContextHub` had a set of custom `/hub/*` REST stubs
- * (sync / claim / report / ask / message / dispatch / directive) that no
- * worker actually called — `WorkerPool.generateMCPConfig()` was writing
- * an MCP config file but the spawned worker binaries never received the
- * `--mcp-config` flag, and even if they had, the hub didn't speak MCP at
- * the URL they would have connected to.
- *
- * Phase 2 closed both gaps:
- *
- *   1. Hub speaks MCP Streamable HTTP at `/mcp`
- *   2. Workers' MCP config points to `http://hub-host:hub-port/mcp`
- *   3. Each backend (claude/codex/gemini/minimax) wires that config into
- *      its native CLI invocation
- *
- * Batch 15 deleted the dead `/hub/*` REST stubs entirely. ContextHub now
- * only speaks `/mcp`.
+ * Since the Agent Cluster needs multiple concurrent workers (and workers
+ * get killed + respawned), we manage a **per-session** transport+server
+ * pair. Each incoming `initialize` request creates a fresh `McpServer` +
+ * `WebStandardStreamableHTTPServerTransport` pair with all 10 hub tools
+ * registered. Subsequent requests are routed to the correct session via
+ * the `Mcp-Session-Id` header.
  *
  * ## Worker identification
  *
  * Every MCP HTTP request from a worker carries the static header
- * `X-Worker-Id: <workerId>`, which we set in
- * `WorkerPool.generateMCPConfig()`. The MCP SDK exposes the original HTTP
- * request via `RequestHandlerExtra.requestInfo.headers`, so each tool
- * handler can read the workerId directly with no session-table bookkeeping.
- *
- * If the header is missing (e.g. someone curls `/mcp` manually), the tool
- * returns an `isError: true` payload instead of crashing — the worker can
- * surface this to the LLM as a tool error.
+ * `X-Worker-Id: <workerId>`, set in `WorkerPool.generateMCPConfig()`.
+ * On session initialization we record the workerId→sessionId mapping so
+ * `ContextHub.workerExited()` can clean up the session when the worker
+ * process terminates.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -78,10 +64,9 @@ interface ToolExtra {
 const HUB_MCP_INSTRUCTIONS_PATH = 'prompts/cluster/hub-mcp-instructions.md';
 
 /**
- * Sync-load the MCP server instructions text. Called exactly once at
- * HubMCPServer construction. Falls back to a minimal one-line hint if the
- * file is missing so cluster start doesn't break — same degradation policy
- * as the role prompt loaders in WorkerPool.
+ * Sync-load the MCP server instructions text. Called once at construction
+ * and cached. Falls back to a minimal one-line hint if the file is missing
+ * so cluster start doesn't break.
  */
 function loadHubMcpInstructions(): string {
   const path = resolvePath(process.cwd(), HUB_MCP_INSTRUCTIONS_PATH);
@@ -117,86 +102,169 @@ type RegisterToolFn = (
   handler: (args: Record<string, unknown>, extra: ToolExtra) => Promise<CallToolResult>,
 ) => void;
 
+/** State tracked per active MCP session (one per connected worker). */
+interface SessionEntry {
+  transport: WebStandardStreamableHTTPServerTransport;
+  server: McpServer;
+  workerId: string | null;
+}
+
 export class HubMCPServer {
-  private readonly mcpServer: McpServer;
-  private readonly transport: WebStandardStreamableHTTPServerTransport;
-  private connected = false;
+  /** Active sessions keyed by MCP session ID. */
+  private sessions = new Map<string, SessionEntry>();
+  /** Reverse map: workerId → sessionId, for cleanup on worker exit. */
+  private workerToSession = new Map<string, string>();
+  /** Cached MCP server instructions text (loaded once). */
+  private readonly instructions: string;
 
   constructor(private readonly hub: ContextHub) {
-    this.mcpServer = new McpServer(
+    this.instructions = loadHubMcpInstructions();
+  }
+
+  /**
+   * Start the MCP server. For the multi-session architecture this is a
+   * no-op — sessions are created on-demand when workers connect. Kept for
+   * API compatibility with ContextHub.start().
+   */
+  async start(): Promise<void> {
+    logger.info('[HubMCPServer] Ready — multi-session mode, sessions created on demand at /mcp');
+  }
+
+  /**
+   * Tear down all sessions. Called from `ContextHub.stop()`.
+   */
+  async stop(): Promise<void> {
+    for (const [sessionId, entry] of this.sessions) {
+      try {
+        await entry.server.close();
+      } catch (err) {
+        logger.warn(`[HubMCPServer] Error closing session ${sessionId} (non-fatal):`, err);
+      }
+    }
+    this.sessions.clear();
+    this.workerToSession.clear();
+    logger.info('[HubMCPServer] Stopped — all sessions closed');
+  }
+
+  /**
+   * Clean up the session associated with a worker. Called when the worker
+   * process exits so the next spawn of that worker slot can initialize a
+   * fresh session without hitting "Server already initialized".
+   */
+  async closeWorkerSession(workerId: string): Promise<void> {
+    const sessionId = this.workerToSession.get(workerId);
+    if (!sessionId) return;
+
+    const entry = this.sessions.get(sessionId);
+    if (entry) {
+      try {
+        await entry.server.close();
+      } catch {
+        // Non-fatal — session might already be half-closed.
+      }
+      this.sessions.delete(sessionId);
+    }
+    this.workerToSession.delete(workerId);
+    logger.debug(`[HubMCPServer] Cleaned up session ${sessionId} for worker ${workerId}`);
+  }
+
+  /**
+   * Delegate an HTTP request to the correct session's transport, or create
+   * a new session if this is an `initialize` request.
+   *
+   * Routing logic:
+   * 1. If the request carries an `Mcp-Session-Id` header and we have a
+   *    matching session → forward to that session's transport.
+   * 2. If no session ID (or unknown) → assume `initialize` request,
+   *    create a new session (transport + server + tools), forward.
+   * 3. The transport itself validates whether the JSON-RPC payload is
+   *    actually an `initialize` — if a non-init request arrives without
+   *    a valid session the transport returns 400, which is correct.
+   */
+  async handleRequest(req: Request): Promise<Response> {
+    const sessionId = req.headers.get('mcp-session-id');
+
+    // Existing session — route directly.
+    if (sessionId && this.sessions.has(sessionId)) {
+      return this.sessions.get(sessionId)!.transport.handleRequest(req);
+    }
+
+    // New connection — create a fresh session.
+    return this.createSessionAndHandle(req);
+  }
+
+  // ── Session lifecycle ──
+
+  /**
+   * Create a new McpServer + Transport pair, register all tools, connect
+   * them, and forward the initial request.
+   */
+  private async createSessionAndHandle(req: Request): Promise<Response> {
+    // Extract workerId from the request so we can map session→worker.
+    const workerId = this.extractWorkerIdFromRequest(req);
+
+    // If this worker already has an old session (e.g. reconnecting after
+    // a crash), clean it up first.
+    if (workerId) {
+      await this.closeWorkerSession(workerId);
+    }
+
+    let capturedSessionId: string | null = null;
+
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: () => {
+        capturedSessionId = randomUUID();
+        return capturedSessionId;
+      },
+      enableJsonResponse: true,
+      onsessioninitialized: (sid: string) => {
+        capturedSessionId = sid;
+      },
+    });
+
+    const server = new McpServer(
       { name: 'cluster-context-hub', version: '1.0.0' },
       {
         capabilities: { tools: {} },
-        // Loaded from prompts/cluster/hub-mcp-instructions.md so the
-        // worker-facing description of the cluster MCP toolbox stays
-        // editable as content rather than buried in TS string literals.
-        // Sync read because the constructor itself is sync; happens once
-        // per cluster start. Falls back to a minimal hardcoded line if
-        // the file is missing — better than refusing to construct.
-        instructions: loadHubMcpInstructions(),
+        instructions: this.instructions,
       },
     );
 
-    this.transport = new WebStandardStreamableHTTPServerTransport({
-      // Stateful: each worker MCP client gets its own session ID. We don't
-      // actually need the session table for routing (we use X-Worker-Id from
-      // request headers), but stateful mode is required by the SDK to support
-      // long-lived MCP clients that send multiple tool calls per session.
-      sessionIdGenerator: () => randomUUID(),
-      // JSON response mode keeps wire protocol simple — no SSE, request goes
-      // in, response comes back. Avoids the complexity of streaming for
-      // tool calls that are inherently request/response anyway.
-      enableJsonResponse: true,
-    });
+    // Register all 10 hub tools on this session's server.
+    this.registerTools(server);
 
-    this.registerTools();
-  }
+    // Connect server↔transport (required before handling any request).
+    await server.connect(transport);
 
-  /**
-   * Start the MCP server. Idempotent. Must be called after construction
-   * but before the hub Bun.serve starts accepting requests, so by the time
-   * a worker connects the transport is ready.
-   */
-  async start(): Promise<void> {
-    if (this.connected) return;
-    await this.mcpServer.connect(this.transport);
-    this.connected = true;
-    logger.info('[HubMCPServer] Connected — 10 tools registered, ready at /mcp');
-  }
+    // Forward the initialize request to the new transport.
+    const response = await transport.handleRequest(req);
 
-  /**
-   * Tear down the server (closes the underlying transport, ending any
-   * in-flight sessions). Called from `ContextHub.stop()`.
-   */
-  async stop(): Promise<void> {
-    if (!this.connected) return;
-    try {
-      await this.mcpServer.close();
-    } catch (err) {
-      logger.warn('[HubMCPServer] Error closing MCP server (non-fatal):', err);
+    // After the initialize round-trip, the transport has assigned a
+    // session ID. Record the mapping.
+    if (capturedSessionId) {
+      this.sessions.set(capturedSessionId, {
+        transport,
+        server,
+        workerId: workerId ?? null,
+      });
+      if (workerId) {
+        this.workerToSession.set(workerId, capturedSessionId);
+      }
+      logger.debug(
+        `[HubMCPServer] New session ${capturedSessionId} for worker ${workerId ?? '(unknown)'}` +
+          ` (${this.sessions.size} active sessions)`,
+      );
     }
-    this.connected = false;
-  }
 
-  /**
-   * Delegate an HTTP request to the underlying transport. Called from
-   * `ContextHub.handleRequest()` for any URL under `/mcp`.
-   */
-  async handleRequest(req: Request): Promise<Response> {
-    return this.transport.handleRequest(req);
+    return response;
   }
 
   // ── Tool registration ──
 
-  private registerTools(): void {
-    // Bind registerTool through the non-generic `RegisterToolFn` shape so
-    // tsc instantiates the SDK's recursive `ToolCallback<Args>` exactly
-    // once for the whole file instead of seven times — see RegisterToolFn
-    // doc comment for the full story.
-    const register = this.mcpServer.registerTool.bind(this.mcpServer) as unknown as RegisterToolFn;
+  private registerTools(mcpServer: McpServer): void {
+    const register = mcpServer.registerTool.bind(mcpServer) as unknown as RegisterToolFn;
 
-    // hub_sync — no input. Pulls events / messages / directives since the
-    // worker's last cursor and renews the worker's locks as a side effect.
+    // hub_sync
     register(
       'hub_sync',
       {
@@ -209,7 +277,7 @@ export class HubMCPServer {
       async (_args, extra) => this.runTool('hub_sync', extra, (workerId) => this.hub.handleSync(workerId)),
     );
 
-    // hub_claim — acquire file locks before editing.
+    // hub_claim
     register(
       'hub_claim',
       {
@@ -229,7 +297,7 @@ export class HubMCPServer {
         ),
     );
 
-    // hub_report — progress / completion / failure / blocked status.
+    // hub_report
     register(
       'hub_report',
       {
@@ -274,7 +342,7 @@ export class HubMCPServer {
       },
     );
 
-    // hub_ask — escalate to a human via the planner / WebUI.
+    // hub_ask
     register(
       'hub_ask',
       {
@@ -296,7 +364,7 @@ export class HubMCPServer {
         this.runTool('hub_ask', extra, (workerId) => this.hub.handleAsk(workerId, args as unknown as HubAskInput)),
     );
 
-    // hub_message — send a message to another worker (or "all").
+    // hub_message
     register(
       'hub_message',
       {
@@ -316,7 +384,7 @@ export class HubMCPServer {
         ),
     );
 
-    // hub_dispatch — planner-only: queue a new task for a coder worker.
+    // hub_dispatch — planner-only (legacy Phase 2)
     register(
       'hub_dispatch',
       {
@@ -337,8 +405,7 @@ export class HubMCPServer {
         ),
     );
 
-    // hub_directive — planner-only: push an instruction into a worker's
-    // message box, delivered as a directive on its next hub_sync.
+    // hub_directive — planner-only (legacy Phase 2)
     register(
       'hub_directive',
       {
@@ -357,14 +424,8 @@ export class HubMCPServer {
     );
 
     // ── Phase 3 multi-agent: planner-only spawn / query / wait ──
-    //
-    // These three tools let a planner worker create executor children, poll
-    // their status, and block on completion. The role gate (planner-only)
-    // is enforced inside ContextHub — calling them as an executor will throw
-    // and the runTool wrapper turns the throw into an `isError: true`
-    // tool result that the LLM sees as a tool error.
 
-    // hub_spawn — planner creates a child executor task.
+    // hub_spawn
     register(
       'hub_spawn',
       {
@@ -391,7 +452,7 @@ export class HubMCPServer {
         ),
     );
 
-    // hub_query_task — planner non-blocking status check on a child.
+    // hub_query_task
     register(
       'hub_query_task',
       {
@@ -409,7 +470,7 @@ export class HubMCPServer {
         ),
     );
 
-    // hub_wait_task — planner blocking wait, polls handleQueryTask internally.
+    // hub_wait_task
     register(
       'hub_wait_task',
       {
@@ -433,8 +494,7 @@ export class HubMCPServer {
 
   /**
    * Common wrapper for tool handlers: extract workerId, run the body
-   * (which may be sync or async), serialize the result. Centralized so
-   * every tool handles missing-header / thrown-error cases the same way.
+   * (which may be sync or async), serialize the result.
    */
   private async runTool(
     toolName: string,
@@ -471,6 +531,15 @@ export class HubMCPServer {
       return raw[0].trim();
     }
     return null;
+  }
+
+  /**
+   * Read workerId from a raw HTTP Request (used during session creation
+   * before the MCP SDK has parsed the request).
+   */
+  private extractWorkerIdFromRequest(req: Request): string | null {
+    const raw = req.headers.get('x-worker-id');
+    return raw?.trim() || null;
   }
 
   private jsonResult(data: unknown): CallToolResult {
