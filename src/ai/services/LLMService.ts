@@ -178,9 +178,7 @@ export class LLMService {
 
     if (!provider || !resolvedName) return null;
 
-    const isUnhealthy = this.healthCheckManager
-      ? !this.healthCheckManager.isServiceHealthySync(resolvedName)
-      : false;
+    const isUnhealthy = this.healthCheckManager ? !this.healthCheckManager.isServiceHealthySync(resolvedName) : false;
 
     // Only swap for non-explicit requests. Explicit caller intent (prefix routing,
     // taskProviders.convert etc.) must actually attempt the requested provider so
@@ -189,8 +187,7 @@ export class LLMService {
       logger.warn(`[LLMService] Provider "${resolvedName}" is unhealthy, trying healthy fallback`);
       const healthyFallback = await this.getFirstHealthyProvider(sessionId, resolvedName);
       if (healthyFallback) {
-        const swappedName =
-          'name' in healthyFallback ? (healthyFallback as { name: string }).name : resolvedName;
+        const swappedName = 'name' in healthyFallback ? (healthyFallback as { name: string }).name : resolvedName;
         return {
           provider: healthyFallback,
           resolvedName: swappedName,

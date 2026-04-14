@@ -31,15 +31,22 @@
 //   bun run cluster:e2e [--project <alias>] [--template <name>] \
 //                       [--task "<prompt>"] [--timeout-sec 300] \
 //                       [--hub-port 3201] [--sentinel STR] \
-//                       [--mcp-tool hub_claim|hub_report|hub_ask]
+//                       [--mcp-tool hub_claim|hub_report|hub_ask] \
+//                       [--planner-template <name>] \
+//                       [--suite claude|gemini|codex]
 //
 // Examples:
 //   bun run cluster:e2e                                # sentinel mode, default template
-//   bun run cluster:e2e --template gemini-pro          # sentinel mode, force gemini-pro
+//   bun run cluster:e2e --template gemini-flash        # sentinel mode, force gemini executor
+//   bun run cluster:e2e --template codex-executor      # sentinel mode, force codex executor
 //   bun run cluster:e2e --mcp-tool hub_claim           # hub_claim wiring
 //   bun run cluster:e2e --mcp-tool hub_report          # hub_report + reportCallback wiring
 //   bun run cluster:e2e --mcp-tool hub_ask             # hub_ask + escalation callback wiring
 //   bun run cluster:e2e --template minimax-m2 --timeout-sec 240
+//   bun run cluster:e2e --suite claude                 # claude planner + claude/minimax executors
+//   bun run cluster:e2e --planner --planner-template codex-planner --planner-executor codex-executor
+//   bun run cluster:e2e --suite gemini                 # gemini executor + MCP + planner matrix
+//   bun run cluster:e2e --suite codex                  # codex executor + MCP + planner matrix
 //
 // The --template flag overrides `projects[<project>].workerPreference` for
 // this run only — useful when you want to e2e-test a specific provider
@@ -52,13 +59,14 @@
 // Requires:
 //   - cluster.enabled === true in config
 //   - The chosen template's CLI binary is on PATH and authed
-//     (e.g. `claude` for claude-sonnet/minimax-m2, `gemini` for gemini-pro,
-//     `codex` for codex-gpt5)
+//     (e.g. `claude` for claude-sonnet/minimax-m2, `gemini` for gemini-flash,
+//     `codex` for codex-executor)
 //   - For provider-specific templates, the matching API key in template.env
 //     (ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, etc.)
 
 import 'reflect-metadata';
 
+import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import type { ClusterManager } from '@/cluster/ClusterManager';
 import type { EventEntry, TaskRecord } from '@/cluster/types';
@@ -70,11 +78,14 @@ import { logger } from '@/utils/logger';
 
 /** Supported values for --mcp-tool. Empty string = sentinel mode. */
 type McpTool = '' | 'hub_claim' | 'hub_report' | 'hub_ask';
+type SuiteName = '' | 'claude' | 'gemini' | 'codex';
 
 interface E2EArgs {
   project: string;
   /** Optional override for the project's workerPreference template name. */
   template: string | null;
+  /** Optional named provider matrix. Runs child e2e processes sequentially. */
+  suite: SuiteName;
   task: string;
   timeoutSec: number;
   sentinel: string;
@@ -108,6 +119,8 @@ interface E2EArgs {
   plannerMode: boolean;
   /** Planner mode: per-run UUIDs the children must echo (one per child). */
   plannerChildSentinels: string[];
+  /** Planner mode: use this real planner-role template instead of a synthetic clone. */
+  plannerTemplate: string | null;
   /** Planner mode: name of the executor template the children use. */
   plannerExecutorTemplate: string;
 }
@@ -121,6 +134,11 @@ function parseArgs(): E2EArgs {
   };
   const sentinel = get('--sentinel', 'CLUSTER_E2E_OK_42');
   const templateRaw = get('--template', '');
+  const suiteRaw = get('--suite', '');
+  if (suiteRaw && suiteRaw !== 'claude' && suiteRaw !== 'gemini' && suiteRaw !== 'codex') {
+    throw new Error(`Unsupported --suite "${suiteRaw}". Supported: claude, gemini, codex`);
+  }
+  const suite = suiteRaw as SuiteName;
 
   const mcpToolRaw = get('--mcp-tool', '');
   if (mcpToolRaw && mcpToolRaw !== 'hub_claim' && mcpToolRaw !== 'hub_report' && mcpToolRaw !== 'hub_ask') {
@@ -181,11 +199,18 @@ function parseArgs(): E2EArgs {
   if (plannerMode && mcpTool) {
     throw new Error('--planner cannot be combined with --mcp-tool (different e2e modes)');
   }
+  if (
+    suite &&
+    (plannerMode || mcpTool || templateRaw || argv.includes('--task') || argv.includes('--planner-template'))
+  ) {
+    throw new Error('--suite cannot be combined with --planner, --mcp-tool, --template, --planner-template, or --task');
+  }
   const plannerChildCount = 3;
   const plannerChildSentinels = Array.from(
     { length: plannerChildCount },
     () => `CLUSTER_E2E_PLANNER_CHILD_${randomUUID()}`,
   );
+  const plannerTemplateRaw = get('--planner-template', '');
   const plannerExecutorTemplate = get('--planner-executor', 'claude-sonnet');
 
   // hub_ask mode: ask the agent to escalate via hub_ask. We force
@@ -250,6 +275,7 @@ function parseArgs(): E2EArgs {
   return {
     project: get('--project', process.env.CLUSTER_E2E_PROJECT || 'qqbot'),
     template: templateRaw || null,
+    suite,
     task: get('--task', defaultTask),
     // Planner mode runs ~4 LLM round trips serially (1 planner + 3 children),
     // so it needs a bigger timeout than the single-shot modes.
@@ -264,8 +290,146 @@ function parseArgs(): E2EArgs {
     mcpAskQuestion,
     plannerMode,
     plannerChildSentinels,
+    plannerTemplate: plannerTemplateRaw || null,
     plannerExecutorTemplate,
   };
+}
+
+interface ClusterConfigLike {
+  hub: { port: number };
+  projects: Record<string, { workerPreference: string }>;
+  workerTemplates: Record<string, { type?: string; role?: string; [key: string]: unknown }>;
+  defaultPlannerTemplate?: string;
+}
+
+interface ProviderSuiteMatrix {
+  plannerTemplate: string;
+  plannerExecutorTemplate: string;
+  executorTemplates: string[];
+}
+
+function resolveTemplateByTypeAndRole(
+  clusterConfig: ClusterConfigLike,
+  backendType: 'codex-cli' | 'gemini-cli',
+  role: 'executor' | 'planner',
+): string | null {
+  const matches = Object.entries(clusterConfig.workerTemplates)
+    .filter(([, template]) => (template.type || 'claude-cli') === backendType && (template.role || 'executor') === role)
+    .map(([name]) => name)
+    .sort((a, b) => a.localeCompare(b, 'en'));
+  return matches[0] || null;
+}
+
+function runChildE2E(label: string, baseArgs: string[]): void {
+  logger.info(`[ClusterE2E] Suite step: ${label}`);
+  const child = spawnSync(process.execPath, ['run', 'src/cli/cluster-e2e.ts', ...baseArgs], {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: 'inherit',
+  });
+  if (child.status !== 0) {
+    throw new Error(`[ClusterE2E] Suite step failed: ${label} (exit=${child.status ?? 'null'})`);
+  }
+}
+
+function assertTemplateExists(
+  clusterConfig: ClusterConfigLike,
+  templateName: string,
+  expectedRole?: 'executor' | 'planner',
+): void {
+  const template = clusterConfig.workerTemplates[templateName];
+  if (!template) {
+    throw new Error(
+      `[ClusterE2E] Suite requires template "${templateName}" but it is missing. Available: ${Object.keys(
+        clusterConfig.workerTemplates,
+      ).join(', ')}`,
+    );
+  }
+  if (expectedRole && (template.role || 'executor') !== expectedRole) {
+    throw new Error(
+      `[ClusterE2E] Template "${templateName}" exists but role="${template.role || 'executor'}". Expected role="${expectedRole}"`,
+    );
+  }
+}
+
+function resolveSuiteMatrix(args: E2EArgs, clusterConfig: ClusterConfigLike): ProviderSuiteMatrix {
+  if (args.suite === 'claude') {
+    const plannerTemplate = 'claude-planner';
+    const plannerExecutorTemplate = 'claude-sonnet';
+    const executorTemplates = ['claude-sonnet', 'minimax-m2'];
+    assertTemplateExists(clusterConfig, plannerTemplate, 'planner');
+    for (const executorTemplate of executorTemplates) {
+      assertTemplateExists(clusterConfig, executorTemplate, 'executor');
+    }
+    return {
+      plannerTemplate,
+      plannerExecutorTemplate,
+      executorTemplates,
+    };
+  }
+
+  const backendType = args.suite === 'codex' ? 'codex-cli' : 'gemini-cli';
+  const executorTemplate = resolveTemplateByTypeAndRole(clusterConfig, backendType, 'executor');
+  const plannerTemplate = resolveTemplateByTypeAndRole(clusterConfig, backendType, 'planner');
+  if (!executorTemplate) {
+    throw new Error(
+      `[ClusterE2E] --suite ${args.suite} requires an executor template with type="${backendType}" in cluster.workerTemplates`,
+    );
+  }
+  if (!plannerTemplate) {
+    throw new Error(
+      `[ClusterE2E] --suite ${args.suite} requires a planner template with type="${backendType}" and role="planner"`,
+    );
+  }
+
+  return {
+    plannerTemplate,
+    plannerExecutorTemplate: executorTemplate,
+    executorTemplates: [executorTemplate],
+  };
+}
+
+function runProviderSuite(args: E2EArgs, clusterConfig: ClusterConfigLike): void {
+  const suiteMatrix = resolveSuiteMatrix(args, clusterConfig);
+
+  logger.info(
+    `[ClusterE2E] Provider suite "${args.suite}" resolved templates: executors=${suiteMatrix.executorTemplates.join(', ')}, ` +
+      `planner=${suiteMatrix.plannerTemplate}`,
+  );
+
+  const sharedArgs = ['--project', args.project, '--timeout-sec', String(args.timeoutSec)];
+
+  suiteMatrix.executorTemplates.forEach((executorTemplate, index) => {
+    const basePort = args.hubPort + index * 2;
+    runChildE2E(`${args.suite} ${executorTemplate} sentinel`, [
+      ...sharedArgs,
+      '--template',
+      executorTemplate,
+      '--hub-port',
+      String(basePort),
+    ]);
+
+    runChildE2E(`${args.suite} ${executorTemplate} MCP hub_claim`, [
+      ...sharedArgs,
+      '--template',
+      executorTemplate,
+      '--mcp-tool',
+      'hub_claim',
+      '--hub-port',
+      String(basePort + 1),
+    ]);
+  });
+
+  runChildE2E(`${args.suite} planner`, [
+    ...sharedArgs,
+    '--planner',
+    '--planner-template',
+    suiteMatrix.plannerTemplate,
+    '--planner-executor',
+    suiteMatrix.plannerExecutorTemplate,
+    '--hub-port',
+    String(args.hubPort + suiteMatrix.executorTemplates.length * 2),
+  ]);
 }
 
 /**
@@ -316,14 +480,22 @@ async function main() {
   // mutating the parsed ClusterConfig object after construction is safe.
   const clusterConfig = (
     cluster as unknown as {
-      config: {
-        hub: { port: number };
-        projects: Record<string, { workerPreference: string }>;
-        workerTemplates: Record<string, Record<string, unknown>>;
-        defaultPlannerTemplate?: string;
-      };
+      config: ClusterConfigLike;
     }
   ).config;
+
+  if (args.suite) {
+    try {
+      runProviderSuite(args, clusterConfig);
+      await teardown(conversationComponents);
+      logger.info(`[ClusterE2E] ✅ PASS (suite mode) — all ${args.suite} provider checks passed`);
+      process.exit(0);
+    } catch (err) {
+      logger.error('[ClusterE2E] ✗ Provider suite failed:', err);
+      await teardown(conversationComponents);
+      process.exit(1);
+    }
+  }
 
   if (clusterConfig?.hub) {
     logger.info(`[ClusterE2E] Overriding hub port: ${clusterConfig.hub.port} → ${args.hubPort}`);
@@ -340,33 +512,56 @@ async function main() {
   // The synthetic template's name is 'cluster-e2e-planner', deliberately
   // namespaced so it can't collide with anything in real configs.
   const PLANNER_TEMPLATE_NAME = 'cluster-e2e-planner';
+  const resolvedPlannerTemplateName = args.plannerTemplate || PLANNER_TEMPLATE_NAME;
   if (args.plannerMode) {
     if (!clusterConfig?.workerTemplates) {
       logger.error('[ClusterE2E] ✗ planner mode: cluster has no workerTemplates configured');
       await teardown(conversationComponents);
       process.exit(1);
     }
-    const baseExecutor = clusterConfig.workerTemplates[args.plannerExecutorTemplate];
-    if (!baseExecutor) {
-      logger.error(
-        `[ClusterE2E] ✗ planner mode: --planner-executor "${args.plannerExecutorTemplate}" not found in workerTemplates. ` +
-          `Available: ${Object.keys(clusterConfig.workerTemplates).join(', ')}`,
+    if (args.plannerTemplate) {
+      const plannerTemplate = clusterConfig.workerTemplates[args.plannerTemplate];
+      if (!plannerTemplate) {
+        logger.error(
+          `[ClusterE2E] ✗ planner mode: --planner-template "${args.plannerTemplate}" not found in workerTemplates. ` +
+            `Available: ${Object.keys(clusterConfig.workerTemplates).join(', ')}`,
+        );
+        await teardown(conversationComponents);
+        process.exit(1);
+      }
+      if ((plannerTemplate.role || 'executor') !== 'planner') {
+        logger.error(
+          `[ClusterE2E] ✗ planner mode: --planner-template "${args.plannerTemplate}" exists but role="${
+            plannerTemplate.role || 'executor'
+          }". Expected role="planner".`,
+        );
+        await teardown(conversationComponents);
+        process.exit(1);
+      }
+      logger.info(`[ClusterE2E] Planner mode: using configured planner template "${args.plannerTemplate}"`);
+    } else {
+      const baseExecutor = clusterConfig.workerTemplates[args.plannerExecutorTemplate];
+      if (!baseExecutor) {
+        logger.error(
+          `[ClusterE2E] ✗ planner mode: --planner-executor "${args.plannerExecutorTemplate}" not found in workerTemplates. ` +
+            `Available: ${Object.keys(clusterConfig.workerTemplates).join(', ')}`,
+        );
+        await teardown(conversationComponents);
+        process.exit(1);
+      }
+      // Shallow clone — same backend type / args / env / timeout, just role flipped.
+      clusterConfig.workerTemplates[PLANNER_TEMPLATE_NAME] = {
+        ...baseExecutor,
+        role: 'planner',
+        // Bump timeout: planner waits on 3 children sequentially; default
+        // executor timeout (e.g. 20m) might be cut close.
+        timeout: 30 * 60_000,
+      };
+      clusterConfig.defaultPlannerTemplate = PLANNER_TEMPLATE_NAME;
+      logger.info(
+        `[ClusterE2E] Planner mode: synthesized template "${PLANNER_TEMPLATE_NAME}" cloned from "${args.plannerExecutorTemplate}" with role=planner`,
       );
-      await teardown(conversationComponents);
-      process.exit(1);
     }
-    // Shallow clone — same backend type / args / env / timeout, just role flipped.
-    clusterConfig.workerTemplates[PLANNER_TEMPLATE_NAME] = {
-      ...baseExecutor,
-      role: 'planner',
-      // Bump timeout: planner waits on 3 children sequentially; default
-      // executor timeout (e.g. 20m) might be cut close.
-      timeout: 30 * 60_000,
-    };
-    clusterConfig.defaultPlannerTemplate = PLANNER_TEMPLATE_NAME;
-    logger.info(
-      `[ClusterE2E] Planner mode: synthesized template "${PLANNER_TEMPLATE_NAME}" cloned from "${args.plannerExecutorTemplate}" with role=planner`,
-    );
   }
 
   // Optional --template override: rewrite the project's workerPreference
@@ -423,7 +618,7 @@ async function main() {
     logger.info('[ClusterE2E] Cluster started; submitting task');
 
     const submitOptions = args.plannerMode
-      ? { workerTemplate: PLANNER_TEMPLATE_NAME, requirePlannerRole: true }
+      ? { workerTemplate: resolvedPlannerTemplateName, requirePlannerRole: true }
       : undefined;
     const task = await cluster.submitTask(args.project, args.task, submitOptions);
     if (!task) {
@@ -450,18 +645,19 @@ async function main() {
       process.exit(1);
     }
 
-    // In hub_report mode the reportCallback fast-path can mark the task
-    // terminal **before** the worker process has flushed its final stdout
-    // (the agent typically calls hub_report, then prints the sentinel
-    // afterwards). If we proceed straight to cluster.stop() now, SIGTERM
-    // would kill the worker mid-flush, parseOutput would see truncated
-    // output, and the sentinel assertion would falsely fail.
+    // In hub_report mode, and also in planner mode when the planner follows
+    // the instructed "hub_report first, final sentinel second" flow, the
+    // reportCallback fast-path can mark the task terminal **before** the
+    // worker process has flushed its final stdout. If we proceed straight to
+    // cluster.stop() now, SIGTERM would kill the worker mid-flush,
+    // parseOutput would see truncated output, and the sentinel assertion
+    // would falsely fail.
     //
     // Wait for `task.output` to become non-empty (capped at 30s) so the
     // exit-code path has a chance to populate it. For sentinel/hub_claim
     // modes the output is set by the same code path that flips status, so
     // this is a no-op (output is already populated when status is terminal).
-    if (args.mcpTool === 'hub_report' && !task.output) {
+    if ((args.mcpTool === 'hub_report' || args.plannerMode) && !task.output) {
       const graceMs = 30_000;
       const start = Date.now();
       while (Date.now() - start < graceMs && !task.output) {
@@ -469,7 +665,7 @@ async function main() {
       }
       if (!task.output) {
         logger.warn(
-          `[ClusterE2E] hub_report mode: waited ${graceMs}ms after terminal status but task.output ` +
+          `[ClusterE2E] ${args.plannerMode ? 'planner' : 'hub_report'} mode: waited ${graceMs}ms after terminal status but task.output ` +
             `is still empty. Worker may have crashed or never printed anything after hub_report.`,
         );
       }
