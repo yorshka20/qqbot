@@ -324,6 +324,7 @@
         "config": {
           "analysisProvider": "ollama", // optional: LLM for analysis/reply (default "ollama")
           "cooldownDefaultMinutes": 30, // default cooldown duration for /proactive cooldown (minutes)
+          "minSendIntervalMinutes": 5, // minimum interval between consecutive proactive sends per group (minutes, default 5)
           "groups": [
             {
               "groupId": "9999",

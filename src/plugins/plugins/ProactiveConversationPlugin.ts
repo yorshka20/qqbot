@@ -30,6 +30,8 @@ export interface ProactiveConversationPluginConfig {
   analysisProvider?: string;
   /** Default cooldown duration in minutes when /proactive cooldown is used without explicit duration. Default: 30. */
   cooldownDefaultMinutes?: number;
+  /** Minimum interval in minutes between consecutive proactive sends to the same group. Default: 5. */
+  minSendIntervalMinutes?: number;
 }
 
 @RegisterPlugin({
@@ -154,6 +156,11 @@ export class ProactiveConversationPlugin extends PluginBase {
     // Cooldown config
     if (pluginConfig?.cooldownDefaultMinutes != null && pluginConfig.cooldownDefaultMinutes > 0) {
       this.cooldownDefaultMinutes = pluginConfig.cooldownDefaultMinutes;
+    }
+
+    // Minimum send interval config
+    if (pluginConfig?.minSendIntervalMinutes != null && pluginConfig.minSendIntervalMinutes > 0) {
+      this.proactiveConversationService.setMinSendIntervalMinutes(pluginConfig.minSendIntervalMinutes);
     }
 
     // Register /proactive command
