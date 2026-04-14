@@ -79,8 +79,14 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
         parentContext,
       })
       .then(async (result) => {
-        const r = result as { text?: string; error?: string } | null;
-        const replyText = r?.text ?? r?.error ?? '视频分析完成，但未返回有效结果。';
+        // runSubAgent returns a plain string (from SubAgentExecutor.parseResult), not { text, error }
+        const r = result as string | { text?: string; error?: string } | null;
+        const replyText =
+          typeof r === 'string' && r.trim().length > 0
+            ? r
+            : (r as { text?: string; error?: string } | null)?.text ??
+              (r as { text?: string; error?: string } | null)?.error ??
+              '视频分析完成，但未返回有效结果。';
         await this.messageAPI.sendFromContext(replyText, context);
       })
       .catch(async (err) => {

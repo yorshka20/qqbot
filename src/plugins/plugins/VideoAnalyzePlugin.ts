@@ -205,10 +205,16 @@ export class VideoAnalyzePlugin extends PluginBase {
           protocol,
           messageId: payload.messageId,
         },
-      })) as { text?: string; error?: string } | null;
+      })) as string | { text?: string; error?: string } | null;
 
       // Send the result (or fallback text) back to the original session
-      const replyText = result?.text ?? result?.error ?? '视频分析完成，但未返回有效结果。';
+      // runSubAgent returns a plain string (from SubAgentExecutor.parseResult), not { text, error }
+      const replyText =
+        typeof result === 'string' && result.trim().length > 0
+          ? result
+          : (result as { text?: string; error?: string } | null)?.text ??
+            (result as { text?: string; error?: string } | null)?.error ??
+            '视频分析完成，但未返回有效结果。';
       await this.sendResultMessage(replyText, payload);
 
       logger.info(`[VideoAnalyzePlugin] Video analysis completed | sessionKey=${sessionKey} | url=${url}`);
