@@ -1,6 +1,7 @@
 // Capability type definitions
 
 import type { AIProviderCapability } from '@/core/config/types/ai';
+import type { AIGenerateResponse } from '../types';
 
 /**
  * Vision image input type
@@ -59,6 +60,23 @@ export interface Image2VideoOptions {
   durationSeconds?: number;
   negativePrompt?: string;
   [key: string]: unknown;
+}
+
+/**
+ * Video analysis options
+ */
+export interface VideoAnalysisOptions {
+  temperature?: number;
+  maxTokens?: number;
+  systemPrompt?: string;
+}
+
+/**
+ * Video analysis result
+ */
+export interface VideoAnalysisResult {
+  text: string;
+  usage?: AIGenerateResponse['usage'];
 }
 
 /**

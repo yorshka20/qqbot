@@ -2,11 +2,13 @@
 // IMPORTANT: reflect-metadata must be imported FIRST before any other imports
 import 'reflect-metadata';
 
+import type { AIManager } from './ai/AIManager';
 import type { MessageAPI } from './api/methods/MessageAPI';
 import { bootstrapApp } from './core/bootstrap';
 import { getContainer } from './core/DIContainer';
 import { DITokens } from './core/DITokens';
 import { initLanRelay } from './lan';
+import type { ResourceCleanupService } from './services/video';
 import { ClaudeCodeInitializer } from './services/claudeCode';
 import { MCPInitializer } from './services/mcp/MCPInitializer';
 import { stopStaticServer } from './services/staticServer';
@@ -24,6 +26,30 @@ async function main() {
     const config = bot.getConfig();
     const container = getContainer();
     const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+    let resourceCleanupService: ResourceCleanupService | null = null;
+    try {
+      resourceCleanupService = container.resolve<ResourceCleanupService>(DITokens.RESOURCE_CLEANUP_SERVICE);
+    } catch (error) {
+      logger.warn('[Main] ResourceCleanupService is unavailable during shutdown setup:', error);
+    }
+    const deleteRemoteFile = (() => {
+      try {
+        const aiManager = container.resolve<AIManager>(DITokens.AI_MANAGER);
+        const geminiProvider = aiManager.getProvider('gemini') as unknown as
+          | { deleteUploadedFile(fileName: string): Promise<void> }
+          | undefined;
+
+        if (!geminiProvider) {
+          return undefined;
+        }
+
+        return async (fileName: string) => {
+          await geminiProvider.deleteUploadedFile(fileName);
+        };
+      } catch {
+        return undefined;
+      }
+    })();
 
     // ── Live connections (the ONLY things not covered by bootstrapApp) ──
 
@@ -79,6 +105,9 @@ async function main() {
     const shutdown = async (signal: string) => {
       logger.info(`[Main] Received ${signal}, shutting down...`);
       stopStaticServer();
+      if (resourceCleanupService) {
+        await resourceCleanupService.cleanupAll(deleteRemoteFile);
+      }
       if (clusterManager) {
         await clusterManager.stop();
       }

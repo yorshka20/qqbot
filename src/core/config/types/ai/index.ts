@@ -2,7 +2,7 @@
 
 import type { AIProviderConfig, AIProviderType } from './providers';
 
-export type AIProviderCapability = 'llm' | 'vision' | 'text2img' | 'img2img' | 'i2v';
+export type AIProviderCapability = 'llm' | 'vision' | 'video_analysis' | 'text2img' | 'img2img' | 'i2v';
 
 /**
  * Default providers configuration (by capability)
@@ -10,6 +10,7 @@ export type AIProviderCapability = 'llm' | 'vision' | 'text2img' | 'img2img' | '
 export interface DefaultProvidersConfig {
   llm?: AIProviderType; // Default LLM provider name
   vision?: AIProviderType; // Default vision/multimodal provider name
+  video_analysis?: AIProviderType; // Default video analysis provider name
   text2img?: AIProviderType; // Default text-to-image provider name
   img2img?: AIProviderType; // Default image-to-image provider name
   i2v?: AIProviderType; // Default image-to-video provider name
@@ -21,9 +22,16 @@ export interface DefaultProvidersConfig {
 export interface SessionProviderConfig {
   llm?: AIProviderType;
   vision?: AIProviderType;
+  video_analysis?: AIProviderType;
   text2img?: AIProviderType;
   img2img?: AIProviderType;
   i2v?: AIProviderType;
+}
+
+declare module '@/database/models/types' {
+  interface ProviderSelection {
+    video_analysis?: string;
+  }
 }
 
 /**

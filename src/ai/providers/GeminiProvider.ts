@@ -1,6 +1,5 @@
 // Gemini Provider implementation
 
-import type { File } from '@google/genai';
 import { FileState, GoogleGenAI } from '@google/genai';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
@@ -9,6 +8,7 @@ import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
 import type { LLMCapability } from '../capabilities/LLMCapability';
+import type { VideoAnalysisCapability, VideoAnalysisUploadedFile } from '../capabilities/VideoAnalysisCapability';
 import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';
 import type {
   CapabilityType,
@@ -16,6 +16,8 @@ import type {
   ProviderImageGenerationResponse,
   Text2ImageOptions,
   VisionImage,
+  VideoAnalysisOptions,
+  VideoAnalysisResult,
 } from '../capabilities/types';
 import type { VisionCapability } from '../capabilities/VisionCapability';
 import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, StreamingHandler, ToolDefinition } from '../types';
@@ -34,30 +36,14 @@ export type GeminiKeyMode = 'free' | 'paid';
 
 /**
  * Gemini Provider implementation
- * LLM, vision, text2img and img2img via Google Gemini API.
+ * LLM, vision, video analysis, text2img and img2img via Google Gemini API.
  * Capabilities are enabled by config: llm, vision, text2img each optional and independent.
  * Supports free/paid key modes: set apiKeyFree and apiKeyPaid, then switch at runtime via GeminiProvider.setKeyMode().
  */
-/**
- * Video analysis result returned by generateWithVideo.
- */
-export interface VideoAnalysisResult {
-  text: string;
-  usage?: AIGenerateResponse['usage'];
-}
-
-/**
- * Options for video analysis.
- */
-export interface VideoAnalysisOptions {
-  temperature?: number;
-  maxTokens?: number;
-  systemPrompt?: string;
-}
 
 export class GeminiProvider
   extends AIProvider
-  implements Text2ImageCapability, Image2ImageCapability, LLMCapability, VisionCapability
+  implements Text2ImageCapability, Image2ImageCapability, LLMCapability, VisionCapability, VideoAnalysisCapability
 {
   readonly name = 'gemini';
   override readonly supportsToolUse = true;
@@ -87,7 +73,7 @@ export class GeminiProvider
     super();
     this.config = config;
 
-    // Build capabilities from structured config: llm, vision, text2img (+ img2img)
+    // Build capabilities from structured config: llm, vision, video_analysis, text2img (+ img2img)
     this._capabilities = [];
     if (config.llm) {
       this._capabilities.push('llm');
@@ -96,6 +82,7 @@ export class GeminiProvider
     if (config.vision) {
       this._capabilities.push('vision');
     }
+    this._capabilities.push('video_analysis');
     if (config.text2img) {
       this._capabilities.push('text2img', 'img2img');
     }
@@ -176,7 +163,7 @@ export class GeminiProvider
     }
     try {
       const client = this.getClient();
-      const model = this.config.llm?.model ?? this.config.vision?.model ?? 'gemini-2.5-flash';
+      const model = this.config.llm?.model ?? this.config.videoAnalysisModel ?? this.config.vision?.model ?? 'gemini-2.5-flash';
       await client.models.get({ model });
       return true;
     } catch (error) {
@@ -193,6 +180,7 @@ export class GeminiProvider
     return {
       llm: this.config.llm ?? undefined,
       vision: this.config.vision ?? undefined,
+      videoAnalysisModel: this.config.videoAnalysisModel ?? undefined,
       text2img: this.config.text2img ?? undefined,
     };
   }
@@ -926,12 +914,12 @@ export class GeminiProvider
    * @param mimeType MIME type of the video (auto-detected from extension if omitted)
    * @returns Uploaded File object (may still be PROCESSING)
    */
-  async uploadVideoFile(videoBuffer: Buffer, mimeType = 'video/mp4'): Promise<File> {
+  async uploadVideoFile(videoBuffer: Buffer, mimeType = 'video/mp4'): Promise<VideoAnalysisUploadedFile> {
     return this.withPaidFallback((_isPaidFallback) =>
       this.getClient().files.upload({
         file: new Blob([new Uint8Array(videoBuffer)], { type: mimeType }),
         config: { mimeType },
-      }),
+      }) as Promise<VideoAnalysisUploadedFile>,
     );
   }
 
@@ -942,10 +930,14 @@ export class GeminiProvider
    * @param pollIntervalMs Polling interval (default 10 seconds)
    * @throws Error if file stays PROCESSING beyond timeout or enters FAILED state
    */
-  async waitForFileProcessing(fileName: string, timeoutMs = 300_000, pollIntervalMs = 10_000): Promise<File> {
+  async waitForFileProcessing(
+    fileName: string,
+    timeoutMs = 300_000,
+    pollIntervalMs = 10_000,
+  ): Promise<VideoAnalysisUploadedFile> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const file = await this.getClient().files.get({ name: fileName });
+      const file = (await this.getClient().files.get({ name: fileName })) as VideoAnalysisUploadedFile;
       if (file.state === FileState.ACTIVE) {
         return file;
       }
@@ -987,7 +979,7 @@ export class GeminiProvider
 
     const response = await this.withPaidFallback((_isPaidFallback) =>
       this.getClient().models.generateContent({
-        model: this.config.vision?.model ?? 'gemini-2.5-flash',
+        model: this.config.videoAnalysisModel ?? 'gemini-2.5-flash',
         contents: [
           {
             role: 'user',
@@ -1033,7 +1025,7 @@ export class GeminiProvider
 
     const response = await this.withPaidFallback((_isPaidFallback) =>
       this.getClient().models.generateContent({
-        model: this.config.vision?.model ?? 'gemini-2.5-flash',
+        model: this.config.videoAnalysisModel ?? 'gemini-2.5-flash',
         contents: [
           {
             role: 'user',
@@ -1061,3 +1053,5 @@ export class GeminiProvider
     logger.debug(`[GeminiProvider] Deleted uploaded file: ${fileName}`);
   }
 }
+
+export type { VideoAnalysisOptions, VideoAnalysisResult } from '../capabilities/types';

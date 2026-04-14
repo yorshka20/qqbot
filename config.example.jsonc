@@ -666,6 +666,7 @@
       //     "model": "gemini-2.5-flash",
       //     "paidModel": "gemini-3.1-pro-preview" // Optional: upgraded model for paid-key fallback
       //   },
+      //   "videoAnalysisModel": "gemini-2.5-flash", // Optional: model used for Gemini video analysis
       //   "text2img": {
       //     "model": "gemini-2.5-flash-image",
       //     "defaultWidth": 1024,

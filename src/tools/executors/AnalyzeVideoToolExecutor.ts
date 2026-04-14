@@ -8,8 +8,7 @@
 //   5. Generate analysis text using the uploaded fileUri (avoids double-upload)
 //   6. Return structured analysis result
 //   finally:
-//     - Delete the uploaded file from Gemini (best-effort)
-//     - Call ResourceCleanupService.cleanup(sessionId) to remove local temp files
+//     - Call ResourceCleanupService.cleanup(sessionId, deleteRemoteFile) to remove local temp files and Gemini files
 
 import { inject, injectable } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
@@ -103,9 +102,10 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
         return this.error(`视频下载失败，请检查链接是否有效：${msg}`, `Video download failed: ${msg}`);
       }
 
-      sessionId = downloadResult.sessionId;
+      const cleanupSessionId = downloadResult.sessionId;
+      sessionId = cleanupSessionId;
       // Register temp file for cleanup in finally
-      this.resourceCleanupService.register(sessionId, downloadResult.tempPath);
+      this.resourceCleanupService.register(cleanupSessionId, downloadResult.tempPath);
 
       // Step 2: Upload to Gemini File API
       const mimeType = this.inferVideoMimeType(url);
@@ -114,8 +114,14 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
       let uploadedFile: Awaited<ReturnType<GeminiProvider['uploadVideoFile']>>;
       try {
         uploadedFile = await gemini.uploadVideoFile(downloadResult.buffer, mimeType);
-        uploadedFileName = uploadedFile.name;
-        logger.info(`[AnalyzeVideoToolExecutor] Uploaded file: ${uploadedFileName}`);
+        const remoteFileName = uploadedFile.name;
+        if (!remoteFileName) {
+          logger.error('[AnalyzeVideoToolExecutor] Gemini upload returned no file name');
+          return this.error('视频上传失败：Gemini 未返回文件名', 'Gemini upload returned no file name');
+        }
+        uploadedFileName = remoteFileName;
+        logger.info(`[AnalyzeVideoToolExecutor] Uploaded file: ${remoteFileName}`);
+        this.resourceCleanupService.registerRemoteFile(cleanupSessionId, remoteFileName);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error(`[AnalyzeVideoToolExecutor] Gemini upload failed: ${msg}`);
@@ -169,18 +175,12 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
       logger.error(`[AnalyzeVideoToolExecutor] Unexpected error: ${msg}`);
       return this.error(`视频分析异常：${msg}`, `Unexpected error: ${msg}`);
     } finally {
-      // Delete the uploaded file from Gemini (best-effort)
-      if (uploadedFileName) {
-        try {
-          await this.getGeminiProvider().deleteUploadedFile(uploadedFileName);
-          logger.debug(`[AnalyzeVideoToolExecutor] Deleted Gemini file: ${uploadedFileName}`);
-        } catch {
-          logger.warn(`[AnalyzeVideoToolExecutor] Failed to delete Gemini file: ${uploadedFileName}`);
-        }
-      }
-      // Cleanup local session resources (temp files registered above)
+      // Cleanup session resources (temp files and Gemini uploads registered above)
       if (sessionId) {
-        await this.resourceCleanupService.cleanup(sessionId);
+        await this.resourceCleanupService.cleanup(sessionId, async (fileName) => {
+          await this.getGeminiProvider().deleteUploadedFile(fileName);
+          logger.debug(`[AnalyzeVideoToolExecutor] Deleted Gemini file: ${fileName}`);
+        });
       }
     }
   }

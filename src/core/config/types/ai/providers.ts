@@ -137,6 +137,8 @@ export interface GeminiProviderConfig {
   llm?: GeminiLLmConfig;
   /** When set, enables vision capability (image understanding). */
   vision?: GeminiVisionConfig;
+  /** Optional model override for video analysis. Defaults to gemini-2.5-flash. */
+  videoAnalysisModel?: string;
   /** When set, enables text2img and img2img. If omitted, gemini only provides llm/vision when those are set. */
   text2img?: GeminiText2ImgConfig;
 }
