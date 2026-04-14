@@ -11,7 +11,7 @@ import { logger } from '@/utils/logger';
 import type { ClusterConfig } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import type { TaskSource } from './sources/TaskSource';
-import type { JobRecord, TaskCandidate, TaskRecord } from './types';
+import type { JobRecord, TaskCandidate, TaskRecord, WorkerRegistration, WorkerRole } from './types';
 import type { WorkerPool } from './WorkerPool';
 
 export class ClusterScheduler {
@@ -109,7 +109,12 @@ export class ClusterScheduler {
     }
 
     const job = this.jobs.get(task.jobId);
-    if (job) {
+    // Only the root task (no parentTaskId) advances job-level counters.
+    // A planner + its hub_spawn children share one jobId with taskCount=1;
+    // counting every child completion would mark the job done as soon as
+    // the first child finishes, which then cascade-kills its siblings.
+    // Children's terminal state is still persisted via persistTask above.
+    if (job && !task.parentTaskId) {
       if (task.status === 'completed') {
         job.tasksCompleted += 1;
       } else if (task.status === 'failed') {
@@ -816,6 +821,78 @@ export class ClusterScheduler {
     } catch (err) {
       logger.warn(`[ClusterScheduler] findLatestTaskForWorker failed for ${workerId}:`, err);
       return undefined;
+    }
+  }
+
+  /**
+   * Reconstruct historical (exited) worker registrations from `cluster_tasks`.
+   * Used by the `/api/cluster/workers` endpoint to surface workers that ran
+   * before the current process — `WorkerRegistry` is purely in-memory and
+   * is wiped on every cluster restart, while task rows persist in SQLite.
+   * Without this fallback, the WebUI shows "No workers" right after a
+   * restart even though Recent Jobs (hydrated by `restoreRecentFromDb`)
+   * still has entries.
+   *
+   * Returns one entry per workerId, populated from that worker's most
+   * recent task row. Caller should prefer the live `workerRegistry.getAll()`
+   * results and only use these to fill in workerIds the live registry is
+   * missing, since live entries carry richer state (lastReportSummary,
+   * stats counters, syncCursor) that the DB doesn't record.
+   *
+   * Limited to the last 7 days to match `restoreRecentFromDb`'s window.
+   */
+  getHistoricalWorkers(): WorkerRegistration[] {
+    try {
+      const cutoff = new Date(Date.now() - 7 * 24 * 3600_000).toISOString();
+      // Pick the latest task per workerId via a self-join on MAX(coalesce(startedAt, createdAt)).
+      const rows = this.db
+        .query(
+          `SELECT t.workerId, t.workerTemplate, t.project, t.id AS taskId,
+                  t.startedAt, t.completedAt, t.createdAt
+             FROM cluster_tasks t
+             INNER JOIN (
+               SELECT workerId, MAX(COALESCE(startedAt, createdAt)) AS latestAt
+                 FROM cluster_tasks
+                WHERE workerId IS NOT NULL AND createdAt >= ?
+                GROUP BY workerId
+             ) latest
+               ON t.workerId = latest.workerId
+              AND COALESCE(t.startedAt, t.createdAt) = latest.latestAt
+            ORDER BY latest.latestAt DESC
+            LIMIT 200`,
+        )
+        .all(cutoff) as Array<Record<string, unknown>>;
+
+      return rows.map((row) => {
+        const workerId = row.workerId as string;
+        const templateName = (row.workerTemplate as string | null) ?? '';
+        const tpl = templateName ? this.config.workerTemplates[templateName] : undefined;
+        const role: WorkerRole = tpl?.role === 'planner' ? 'planner' : 'coder';
+        const startedIso = (row.startedAt as string | null) ?? (row.createdAt as string);
+        const completedIso = (row.completedAt as string | null) ?? null;
+        const startedMs = startedIso ? new Date(startedIso).getTime() : Date.now();
+        const completedMs = completedIso ? new Date(completedIso).getTime() : startedMs;
+        return {
+          workerId,
+          role,
+          project: (row.project as string) ?? '',
+          templateName,
+          status: 'exited',
+          lastBoundTaskId: (row.taskId as string) ?? undefined,
+          exitedAt: completedMs,
+          lastSeen: completedMs,
+          syncCursor: 0,
+          stats: {
+            tasksCompleted: 0,
+            tasksFailed: 0,
+            totalReports: 0,
+            registeredAt: startedMs,
+          },
+        };
+      });
+    } catch (err) {
+      logger.warn('[ClusterScheduler] getHistoricalWorkers DB scan failed:', err);
+      return [];
     }
   }
 

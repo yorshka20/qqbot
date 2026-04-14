@@ -203,8 +203,21 @@ export class ClusterAPIBackend {
     const live = gated;
 
     switch (subPath) {
-      case '/workers':
-        return jsonResponse(this.enrichWorkerRegistrations(live, live.getHub().workerRegistry.getAll()));
+      case '/workers': {
+        // WorkerRegistry is in-memory only and gets wiped on cluster
+        // restart. To keep the WebUI's Workers list useful across
+        // restarts we union it with workers reconstructed from
+        // cluster_tasks (last 7 days), preferring live registry entries
+        // since they carry richer state (lastReportSummary, syncCursor,
+        // live stats counters) that the DB doesn't record.
+        const liveWorkers = live.getHub().workerRegistry.getAll();
+        const liveIds = new Set(liveWorkers.map((w) => w.workerId));
+        const historical = live
+          .getScheduler()
+          .getHistoricalWorkers()
+          .filter((w) => !liveIds.has(w.workerId));
+        return jsonResponse(this.enrichWorkerRegistrations(live, [...liveWorkers, ...historical]));
+      }
 
       case '/jobs': {
         const limit = parseInt(url.searchParams.get('limit') || '50', 10);

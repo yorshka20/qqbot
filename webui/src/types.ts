@@ -388,7 +388,7 @@ export interface ClusterJob {
   taskCount: number;
   tasksCompleted: number;
   tasksFailed: number;
-  metadata?: unknown;
+  ticketId: string;
 }
 
 export interface ClusterTask {

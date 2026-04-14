@@ -64,7 +64,7 @@ export function JobRow({
   }, [job.tasksCompleted, job.tasksFailed, job.status]);
 
   const idShort = (job.id ?? "").slice(0, 8) || "(unknown)";
-  const preview = previewDescription(job.description) || "(no description)";
+  const preview = job.ticketId || previewDescription(job.description);
   const completed = job.tasksCompleted ?? 0;
   const failed = job.tasksFailed ?? 0;
   const total = job.taskCount ?? 0;
