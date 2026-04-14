@@ -627,8 +627,8 @@ export class ContextHub {
    * the timeout elapses. Returns the same shape as `hub_query_task`.
    *
    * Implementation note: this blocks the MCP request handler (which is
-   * fine — MCP tool calls are inherently long-running and we use
-   * `enableJsonResponse: true` so there's no streaming overhead). The hub
+   * fine — MCP tool calls are inherently long-running and the SSE
+   * framing overhead per response is negligible). The hub
    * itself is single-process; other workers' tool calls run in parallel
    * because Bun.serve fetch handlers are independent async closures.
    *

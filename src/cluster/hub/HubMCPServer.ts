@@ -216,7 +216,6 @@ export class HubMCPServer {
         capturedSessionId = randomUUID();
         return capturedSessionId;
       },
-      enableJsonResponse: true,
       onsessioninitialized: (sid: string) => {
         capturedSessionId = sid;
       },
