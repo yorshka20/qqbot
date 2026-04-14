@@ -52,8 +52,6 @@ const MESSAGES_PER_COMPRESSION_TRIGGER = 10;
 const THREAD_IDLE_TIMEOUT_MS = 10 * 60 * 1_000;
 /** Do not end the current thread if it had activity within this window (avoids ending the thread we just replied in). */
 const RECENT_ACTIVITY_GRACE_MS = 2 * 60 * 1_000;
-/** Minimum interval between consecutive proactive sends to the same group (prevents rapid-fire messaging). Default 5 minutes. */
-const DEFAULT_MIN_SEND_INTERVAL_MS = 5 * 60 * 1_000;
 
 /**
  * Proactive Conversation Service (Phase 1)
@@ -83,10 +81,6 @@ export class ProactiveConversationService {
    * messages arrived after this boundary; if none, blocks to prevent duplicate cross-thread replies.
    */
   private lastNewThreadBoundaryByGroup = new Map<string, string>();
-  /** Per-group timestamp of last proactive send; used to enforce minimum interval between sends. */
-  private lastSendTimeByGroup = new Map<string, number>();
-  /** Minimum interval (ms) between consecutive proactive sends to the same group. */
-  private minSendIntervalMs = DEFAULT_MIN_SEND_INTERVAL_MS;
   /** Builds inject context (thread, preference, RAG, memory) for proactive reply at the context layer. */
   private replyContextBuilder: ProactiveReplyContextBuilder;
 
@@ -159,16 +153,6 @@ export class ProactiveConversationService {
    */
   setAnalysisProvider(providerName: string): void {
     this.analysisProviderName = providerName;
-  }
-
-  /**
-   * Set minimum interval (in minutes) between consecutive proactive sends to the same group.
-   * Called by plugin from config. Default: 5 minutes.
-   */
-  setMinSendIntervalMinutes(minutes: number): void {
-    if (minutes > 0) {
-      this.minSendIntervalMs = minutes * 60_000;
-    }
   }
 
   /**
@@ -259,18 +243,6 @@ export class ProactiveConversationService {
         `[ProactiveConversationService] Group not allowed for proactive (whitelist/capability), skipping analysis | groupId=${groupId}`,
       );
       return;
-    }
-
-    // Step 1c: Enforce minimum send interval — skip analysis entirely if last send was too recent (saves LLM tokens).
-    const lastSend = this.lastSendTimeByGroup.get(groupId);
-    if (lastSend) {
-      const elapsed = Date.now() - lastSend;
-      if (elapsed < this.minSendIntervalMs) {
-        logger.debug(
-          `[ProactiveConversationService] Skipping analysis (send interval not reached) | groupId=${groupId} | elapsed=${Math.round(elapsed / 1000)}s | min=${Math.round(this.minSendIntervalMs / 1000)}s`,
-        );
-        return;
-      }
     }
 
     // Step 2: Phase 5 – end threads that have been idle longer than threshold (timeout-based end).
@@ -827,8 +799,6 @@ export class ProactiveConversationService {
     }
     const syntheticContext = this.buildSyntheticGroupContext(groupId);
     const result = await this.messageAPI.sendFromContext(message, syntheticContext, 10000);
-    // Record send time for minimum-interval enforcement.
-    this.lastSendTimeByGroup.set(groupIdStr, Date.now());
     logger.info(`[ProactiveConversationService] Sent proactive message | groupId=${groupId}`);
     return result;
   }
