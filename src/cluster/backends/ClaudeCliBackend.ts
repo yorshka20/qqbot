@@ -46,9 +46,16 @@ export class ClaudeCliBackend implements WorkerBackend {
     // for health checks. parseOutput() already handles stream-json → clean
     // final message. Without this, `--output-format text` stays silent until
     // the task completes, making the worker appear stuck.
+    //
+    // Claude CLI requires `--verbose` when combining `--print` with
+    // `--output-format stream-json`. Without it the CLI errors out
+    // immediately with exit code 1.
     const fmtIdx = args.indexOf('--output-format');
     if (fmtIdx !== -1 && args[fmtIdx + 1] === 'text') {
       args[fmtIdx + 1] = 'stream-json';
+      if (args.includes('--print') && !args.includes('--verbose')) {
+        args.push('--verbose');
+      }
     }
     const cmd = [config.command, ...args, config.taskPrompt];
 

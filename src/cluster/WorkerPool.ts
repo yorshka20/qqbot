@@ -559,6 +559,26 @@ export class WorkerPool {
     let rawOutput = '';
     const progressIntervalMs = 2000;
     let lastProgressFlush = 0;
+
+    // Drain stderr in parallel so we can log it when the process fails.
+    // Without this, stderr errors (e.g. invalid CLI flags) are silently
+    // lost and exit code 1 gives no diagnostic information.
+    let stderrOutput = '';
+    const stderrPromise = (async () => {
+      if (!proc.stderr) return;
+      const reader = (proc.stderr as ReadableStream<Uint8Array>).getReader();
+      const decoder = new TextDecoder();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          stderrOutput += decoder.decode(value, { stream: true });
+        }
+      } catch {
+        // Stream closed
+      }
+    })();
+
     if (proc.stdout) {
       const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
       const decoder = new TextDecoder();
@@ -589,10 +609,14 @@ export class WorkerPool {
       }
     }
 
-    // Wait for exit.
+    // Wait for both stderr drain and process exit.
+    await stderrPromise;
     const exitCode = await proc.exited;
 
     logger.info(`[WorkerPool] Worker ${worker.id} exited with code ${exitCode}`);
+    if (exitCode !== 0 && stderrOutput.trim()) {
+      logger.warn(`[WorkerPool] Worker ${worker.id} stderr: ${stderrOutput.trim().slice(0, 2000)}`);
+    }
 
     // Update worker state.
     worker.status = 'exited';
@@ -636,7 +660,8 @@ export class WorkerPool {
         worker.currentTask.status = exitCode === 0 ? 'completed' : 'failed';
         worker.currentTask.completedAt = new Date().toISOString();
         if (exitCode !== 0) {
-          worker.currentTask.error = `Process exited with code ${exitCode}`;
+          const stderrSuffix = stderrOutput.trim() ? `: ${stderrOutput.trim().slice(0, 1000)}` : '';
+          worker.currentTask.error = `Process exited with code ${exitCode}${stderrSuffix}`;
         }
       }
       if (rawEvents !== undefined) {
