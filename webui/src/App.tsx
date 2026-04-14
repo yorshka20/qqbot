@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Moon,
   Network,
+  ScrollText,
   Sun,
   Ticket as TicketIcon,
 } from "lucide-react";
@@ -28,6 +29,7 @@ import {
   FilesPage,
   InsightsPage,
   LanPage,
+  LogsPage,
   MemoryStatusPage,
   MomentsPage,
   QdrantExplorerPage,
@@ -199,6 +201,18 @@ export default function App() {
               <Network className="w-4 h-4" />
               LAN
             </button>
+            <button
+              type="button"
+              onClick={() => navigate({ page: "logs" })}
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+                isActivePage(route, "logs")
+                  ? "bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100"
+                  : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+              }`}
+            >
+              <ScrollText className="w-4 h-4" />
+              Logs
+            </button>
           </nav>
 
           <div className="flex-1" />
@@ -237,6 +251,7 @@ export default function App() {
       {route.page === "cluster" && <ClusterPage />}
       {route.page === "tickets" && <TicketsPage />}
       {route.page === "lan" && <LanPage />}
+      {route.page === "logs" && <LogsPage />}
     </div>
   );
 }

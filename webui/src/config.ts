@@ -159,6 +159,12 @@ export function getTicketsApiBase(): string {
   return serverBase ? `${serverBase}/api/tickets` : '/api/tickets';
 }
 
+/** Base URL for Logs API requests (pm2 log streaming). */
+export function getLogsApiBase(): string {
+  const serverBase = getLocalApiBase();
+  return serverBase ? `${serverBase}/api/logs` : '/api/logs';
+}
+
 /** Base URL for Projects API requests (ProjectRegistry). */
 export function getProjectsApiBase(): string {
   const serverBase = getLocalApiBase();

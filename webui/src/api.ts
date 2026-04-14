@@ -781,6 +781,17 @@ export function getLanStreamUrl(): string {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Logs API
+// ────────────────────────────────────────────────────────────────────────────
+
+import { getLogsApiBase } from './config';
+
+/** SSE stream URL for real-time pm2 log output (streams from now, no history). */
+export function getLogsStreamUrl(): string {
+  return `${getLogsApiBase()}/stream`;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Cluster Ticket API
 // ────────────────────────────────────────────────────────────────────────────
 

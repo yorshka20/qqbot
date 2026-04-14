@@ -13,4 +13,5 @@ export { MomentsPage } from './moments';
 export { QdrantExplorerPage } from './qdrant';
 export { ReportsPage } from './reports';
 export { TicketsPage } from './tickets';
+export { LogsPage } from './log';
 export { ZhihuPage } from './zhihu';

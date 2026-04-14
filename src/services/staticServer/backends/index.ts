@@ -11,6 +11,7 @@ import { DailyStatsBackend } from './DailyStatsBackend';
 import { FileManagerBackend } from './FileManagerBackend';
 import { InsightsBackend } from './InsightsBackend';
 import { LanAPIBackend } from './LanAPIBackend';
+import { LogsBackend } from './LogsBackend';
 import { MemoryStatusBackend } from './MemoryStatusBackend';
 import { MomentsBackend } from './MomentsBackend';
 import { OutputStaticHost } from './OutputStaticHost';
@@ -38,6 +39,7 @@ function buildBackendRegistry(): BackendFactory[] {
     { id: 'qdrant', create: () => new QdrantExplorerBackend() },
     { id: 'stats', create: () => new DailyStatsBackend() },
     { id: 'memory', create: () => new MemoryStatusBackend() },
+    { id: 'logs', create: () => new LogsBackend() },
     { id: 'output', create: (d) => new OutputStaticHost(d) },
   ];
 }
