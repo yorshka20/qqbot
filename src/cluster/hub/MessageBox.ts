@@ -5,8 +5,8 @@
  * Messages are consumed via hub_sync (merged into updates).
  */
 
-import { randomUUID } from '@/utils/randomUUID';
 import { logger } from '@/utils/logger';
+import { randomUUID } from '@/utils/randomUUID';
 import type { HubUpdate } from '../types';
 
 export interface PendingMessage {

@@ -16,7 +16,6 @@
 // Independent of Agent Cluster (ContextHub) — runs its own Bun.serve.
 
 import type { Database } from 'bun:sqlite';
-import { randomUUID } from '@/utils/randomUUID';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { SendMessageResult } from '@/api/types';
 import type { Config } from '@/core/config';
@@ -24,6 +23,7 @@ import type { LanRelayConfig } from '@/core/config/types/lanRelay';
 import type { EventRouter } from '@/events/EventRouter';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
+import { randomUUID } from '@/utils/randomUUID';
 import type { ILanRelayRuntime } from '../types/runtime';
 import type {
   LanRelayActionPayload,

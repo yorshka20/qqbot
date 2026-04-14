@@ -1,7 +1,7 @@
-import { mkdtemp, rm, writeFile, access } from 'node:fs/promises';
+import { afterEach, describe, expect, it, vi } from 'bun:test';
+import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'bun:test';
 import { ResourceCleanupService } from '../ResourceCleanupService';
 
 const tempDirs: string[] = [];

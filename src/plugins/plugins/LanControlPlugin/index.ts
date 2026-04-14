@@ -18,7 +18,6 @@
 // `lanRelay.client.disabledPlugins: ["lanControl"]`, but it also no-ops if
 // the runtime singleton is not in host mode.
 
-import { randomUUID } from '@/utils/randomUUID';
 import type { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
 import type { Config } from '@/core/config';
@@ -30,6 +29,7 @@ import type { LanRelayDispatchPayload, LanRelayOriginContext } from '@/lan/types
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { MessageUtils } from '@/message/MessageUtils';
 import { logger } from '@/utils/logger';
+import { randomUUID } from '@/utils/randomUUID';
 import { RegisterPlugin } from '../../decorators';
 import { PluginBase } from '../../PluginBase';
 import { PluginCommandHandler } from '../../PluginCommandHandler';

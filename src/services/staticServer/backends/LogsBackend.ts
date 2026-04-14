@@ -74,10 +74,10 @@ export class LogsBackend {
         };
 
         // Spawn pm2 log with --raw --lines 0: only stream new output, no history
-        const proc = Bun.spawn(
-          ['pm2', 'log', PM2_PROCESS_NAME, '--raw', '--lines', '0'],
-          { stdout: 'pipe', stderr: 'pipe' },
-        );
+        const proc = Bun.spawn(['pm2', 'log', PM2_PROCESS_NAME, '--raw', '--lines', '0'], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
 
         signal.addEventListener('abort', close);
 
@@ -85,10 +85,7 @@ export class LogsBackend {
         send('connected', { ts: Date.now() });
 
         // Read stdout
-        const readStream = async (
-          readable: ReadableStream<Uint8Array>,
-          source: 'stdout' | 'stderr',
-        ) => {
+        const readStream = async (readable: ReadableStream<Uint8Array>, source: 'stdout' | 'stderr') => {
           const reader = readable.getReader();
           const decoder = new TextDecoder();
           let buffer = '';

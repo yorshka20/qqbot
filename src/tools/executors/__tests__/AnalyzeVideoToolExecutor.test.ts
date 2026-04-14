@@ -249,11 +249,13 @@ describe('AnalyzeVideoToolExecutor', () => {
     });
 
     it('deletes the Gemini file through the cleanup callback path', async () => {
-      const cleanup = vi.fn().mockImplementation(async (_sessionId: string, deleteRemoteFile?: (fileName: string) => Promise<void>) => {
-        if (deleteRemoteFile) {
-          await deleteRemoteFile('files/test-video-id');
-        }
-      });
+      const cleanup = vi
+        .fn()
+        .mockImplementation(async (_sessionId: string, deleteRemoteFile?: (fileName: string) => Promise<void>) => {
+          if (deleteRemoteFile) {
+            await deleteRemoteFile('files/test-video-id');
+          }
+        });
       const { executor, gemini } = makeExecutor({}, {}, { cleanup });
       await executor.execute(defaultToolCall, defaultContext);
       expect(cleanup).toHaveBeenCalledWith('test-session-123', expect.any(Function));

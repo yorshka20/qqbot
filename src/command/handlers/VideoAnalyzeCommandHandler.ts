@@ -74,7 +74,8 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
       protocol: context.metadata.protocol,
     };
 
-    const prompt = customPrompt || '请分析这个视频，提供内容摘要、关键看点、以及你认为有价值的见解。回复需要简洁有条理。';
+    const prompt =
+      customPrompt || '请分析这个视频，提供内容摘要、关键看点、以及你认为有价值的见解。回复需要简洁有条理。';
 
     this.aiService
       .runSubAgent(VIDEO_AGENT_TYPE as any, {
@@ -108,18 +109,12 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
     const botSelfId = this.config.getBotUserId();
     const segments = new MessageBuilder().text(text).build();
 
-    const useForward =
-      context.messageType === 'group' &&
-      protocol === 'milky' &&
-      botSelfId > 0;
+    const useForward = context.messageType === 'group' && protocol === 'milky' && botSelfId > 0;
 
     if (useForward) {
-      await this.messageAPI.sendForwardFromContext(
-        [{ segments, senderName: 'Bot' }],
-        context,
-        60_000,
-        { botUserId: botSelfId },
-      );
+      await this.messageAPI.sendForwardFromContext([{ segments, senderName: 'Bot' }], context, 60_000, {
+        botUserId: botSelfId,
+      });
     } else {
       await this.messageAPI.sendFromContext(segments, context, 60_000);
     }
@@ -172,10 +167,7 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
   }
 
   /** Remove the extracted URL from the args text and return { url, customPrompt }. */
-  private splitUrlAndPrompt(
-    argsText: string,
-    url: string,
-  ): { url: string; customPrompt: string | null } {
+  private splitUrlAndPrompt(argsText: string, url: string): { url: string; customPrompt: string | null } {
     // Find and remove the raw matched text from the original args (before normalization may have changed it)
     // We search for common URL-like substrings to remove
     let remaining = argsText;
@@ -189,7 +181,10 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
       // Remove bare BV number
       remaining = remaining.replace(/\bBV[a-zA-Z0-9]{10,}\b/, '');
       // Remove bare domain patterns
-      remaining = remaining.replace(/(?:www\.)?(?:bilibili\.com\/video\/[^\s]+|b23\.tv\/[^\s]+|youtube\.com\/(?:watch\?[^\s]+|shorts\/[^\s]+)|youtu\.be\/[^\s]+)/, '');
+      remaining = remaining.replace(
+        /(?:www\.)?(?:bilibili\.com\/video\/[^\s]+|b23\.tv\/[^\s]+|youtube\.com\/(?:watch\?[^\s]+|shorts\/[^\s]+)|youtu\.be\/[^\s]+)/,
+        '',
+      );
     }
     const customPrompt = remaining.trim() || null;
     return { url, customPrompt };
@@ -238,8 +233,7 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
           // Parse light_app (小程序) segment: extract jump link URLs, keep only video platform URLs
           if (seg.type === 'light_app' && seg.data) {
             const jsonPayload =
-              (seg.data as Record<string, unknown>).json_payload ??
-              (seg.data as Record<string, unknown>).jsonPayload;
+              (seg.data as Record<string, unknown>).json_payload ?? (seg.data as Record<string, unknown>).jsonPayload;
             if (typeof jsonPayload === 'string') {
               const jumpUrls = extractUrlsFromLightAppPayload(jsonPayload);
               for (const jumpUrl of jumpUrls) {

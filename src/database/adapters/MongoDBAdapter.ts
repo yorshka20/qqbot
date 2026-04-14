@@ -1,8 +1,8 @@
 // MongoDB database adapter implementation
 
-import { randomUUID } from '@/utils/randomUUID';
 import { type Collection, type Db, MongoClient } from 'mongodb';
 import { logger } from '@/utils/logger';
+import { randomUUID } from '@/utils/randomUUID';
 import type { DatabaseAdapter } from '../base/DatabaseAdapter';
 import type {
   AgendaItem,

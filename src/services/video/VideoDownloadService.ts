@@ -235,10 +235,11 @@ export class VideoDownloadService {
     logger.warn(`[VideoDownloadService] yt-dlp is unavailable (${reason}); platform video URLs will use HTTP fallback`);
   }
 
-
-
   private formatMaxFileSize(maxSizeBytes: number): string {
-    const boundedSize = Math.min(maxSizeBytes > 0 ? maxSizeBytes : YT_DLP_MAX_FILESIZE_BYTES, YT_DLP_MAX_FILESIZE_BYTES);
+    const boundedSize = Math.min(
+      maxSizeBytes > 0 ? maxSizeBytes : YT_DLP_MAX_FILESIZE_BYTES,
+      YT_DLP_MAX_FILESIZE_BYTES,
+    );
     if (boundedSize % (1024 * 1024) === 0) {
       return `${boundedSize / (1024 * 1024)}M`;
     }

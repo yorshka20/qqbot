@@ -6,9 +6,9 @@
  */
 
 import { type Subprocess, spawn } from 'bun';
-import { randomUUID } from '@/utils/randomUUID';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { logger } from '@/utils/logger';
+import { randomUUID } from '@/utils/randomUUID';
 import type { ClaudeTask, ClaudeTaskType, MCPServerConfig, ProjectContext, TaskNotification } from '../mcpServer/types';
 
 type TaskUpdateCallback = (task: ClaudeTask) => void;

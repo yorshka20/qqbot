@@ -8,17 +8,17 @@ import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
 import type { LLMCapability } from '../capabilities/LLMCapability';
-import type { VideoAnalysisCapability, VideoAnalysisUploadedFile } from '../capabilities/VideoAnalysisCapability';
 import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';
 import type {
   CapabilityType,
   Image2ImageOptions,
   ProviderImageGenerationResponse,
   Text2ImageOptions,
-  VisionImage,
   VideoAnalysisOptions,
   VideoAnalysisResult,
+  VisionImage,
 } from '../capabilities/types';
+import type { VideoAnalysisCapability, VideoAnalysisUploadedFile } from '../capabilities/VideoAnalysisCapability';
 import type { VisionCapability } from '../capabilities/VisionCapability';
 import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, StreamingHandler, ToolDefinition } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
@@ -163,7 +163,8 @@ export class GeminiProvider
     }
     try {
       const client = this.getClient();
-      const model = this.config.llm?.model ?? this.config.videoAnalysisModel ?? this.config.vision?.model ?? 'gemini-2.5-flash';
+      const model =
+        this.config.llm?.model ?? this.config.videoAnalysisModel ?? this.config.vision?.model ?? 'gemini-2.5-flash';
       await client.models.get({ model });
       return true;
     } catch (error) {

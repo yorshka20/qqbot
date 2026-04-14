@@ -76,7 +76,12 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
       });
       const exitCode = await Promise.race([
         proc.exited,
-        new Promise<number>((_, reject) => setTimeout(() => { proc.kill(); reject(new Error('ffprobe timeout')); }, 10_000)),
+        new Promise<number>((_, reject) =>
+          setTimeout(() => {
+            proc.kill();
+            reject(new Error('ffprobe timeout'));
+          }, 10_000),
+        ),
       ]);
       if (exitCode !== 0) return null;
       const stdout = await new Response(proc.stdout).text();
@@ -137,7 +142,9 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
       // Step 1.5: Validate file size and duration before uploading
       const fileSizeMB = (downloadResult.buffer.length / (1024 * 1024)).toFixed(1);
       if (downloadResult.buffer.length > MAX_VIDEO_SIZE_BYTES) {
-        logger.warn(`[AnalyzeVideoToolExecutor] Video too large: ${fileSizeMB}MB (max ${MAX_VIDEO_SIZE_BYTES / 1024 / 1024}MB)`);
+        logger.warn(
+          `[AnalyzeVideoToolExecutor] Video too large: ${fileSizeMB}MB (max ${MAX_VIDEO_SIZE_BYTES / 1024 / 1024}MB)`,
+        );
         return this.error(
           `视频文件过大（${fileSizeMB}MB），最大支持 ${MAX_VIDEO_SIZE_BYTES / 1024 / 1024}MB。请尝试较短的视频。`,
           `Video too large: ${fileSizeMB}MB`,
@@ -147,13 +154,17 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
       const duration = await this.probeVideoDuration(downloadResult.tempPath);
       if (duration !== null && duration > MAX_VIDEO_DURATION_SECONDS) {
         const durationMin = (duration / 60).toFixed(1);
-        logger.warn(`[AnalyzeVideoToolExecutor] Video too long: ${durationMin}min (max ${MAX_VIDEO_DURATION_SECONDS / 60}min)`);
+        logger.warn(
+          `[AnalyzeVideoToolExecutor] Video too long: ${durationMin}min (max ${MAX_VIDEO_DURATION_SECONDS / 60}min)`,
+        );
         return this.error(
           `视频时长过长（${durationMin}分钟），最大支持 ${MAX_VIDEO_DURATION_SECONDS / 60} 分钟。请尝试较短的视频。`,
           `Video too long: ${durationMin}min`,
         );
       }
-      logger.info(`[AnalyzeVideoToolExecutor] Video validated | size=${fileSizeMB}MB | duration=${duration !== null ? `${(duration / 60).toFixed(1)}min` : 'unknown'}`);
+      logger.info(
+        `[AnalyzeVideoToolExecutor] Video validated | size=${fileSizeMB}MB | duration=${duration !== null ? `${(duration / 60).toFixed(1)}min` : 'unknown'}`,
+      );
 
       // Step 2: Upload to Gemini File API
       const mimeType = this.inferVideoMimeType(url);
@@ -194,12 +205,10 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
       );
       let analysisText: string;
       try {
-        const result = await gemini.generateWithFileUri(
-          prompt,
-          fileUri,
-          fileMime,
-          { maxTokens: 2000, temperature: 0.7 },
-        );
+        const result = await gemini.generateWithFileUri(prompt, fileUri, fileMime, {
+          maxTokens: 2000,
+          temperature: 0.7,
+        });
         analysisText = result.text;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

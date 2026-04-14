@@ -1,10 +1,10 @@
 // SQLite database adapter implementation
 
 import { Database } from 'bun:sqlite';
-import { randomUUID } from '@/utils/randomUUID';
 import { mkdir, stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { logger } from '@/utils/logger';
+import { randomUUID } from '@/utils/randomUUID';
 import type { DatabaseAdapter } from '../base/DatabaseAdapter';
 import type {
   AgendaItem,

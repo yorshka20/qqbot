@@ -8,10 +8,10 @@ import { bootstrapApp } from './core/bootstrap';
 import { getContainer } from './core/DIContainer';
 import { DITokens } from './core/DITokens';
 import { initLanRelay } from './lan';
-import type { ResourceCleanupService } from './services/video';
 import { ClaudeCodeInitializer } from './services/claudeCode';
 import { MCPInitializer } from './services/mcp/MCPInitializer';
 import { stopStaticServer } from './services/staticServer';
+import type { ResourceCleanupService } from './services/video';
 import { logger } from './utils/logger';
 
 async function main() {

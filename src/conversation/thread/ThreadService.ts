@@ -1,9 +1,9 @@
 // Thread Service - in-memory threads per group (Phase 1 single; Phase 3 multiple per group)
 
-import { randomUUID } from '@/utils/randomUUID';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { formatTimeOnly } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
+import { randomUUID } from '@/utils/randomUUID';
 
 /**
  * Whether content is readable text for thread/analysis context.

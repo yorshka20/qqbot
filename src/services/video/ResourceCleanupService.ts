@@ -48,10 +48,7 @@ export class ResourceCleanupService {
    * Delete all files registered under sessionId, then remove the session entry.
    * Individual deletion failures are logged as warnings (best-effort).
    */
-  async cleanup(
-    sessionId: string,
-    deleteRemoteFile?: (fileName: string) => Promise<void>,
-  ): Promise<void> {
+  async cleanup(sessionId: string, deleteRemoteFile?: (fileName: string) => Promise<void>): Promise<void> {
     const resources = this.sessions.get(sessionId);
     this.sessions.delete(sessionId);
 

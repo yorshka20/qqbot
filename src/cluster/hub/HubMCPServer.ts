@@ -24,7 +24,6 @@
  * process terminates.
  */
 
-import { randomUUID } from '@/utils/randomUUID';
 import { readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -32,6 +31,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { logger } from '@/utils/logger';
+import { randomUUID } from '@/utils/randomUUID';
 import type {
   HubAskInput,
   HubClaimInput,
