@@ -3,6 +3,7 @@
 // Service-specific tool executors
 export { BilibiliToolExecutor } from '@/services/bilibili/executors';
 export { ZhihuDigestToolExecutor } from '@/services/zhihu/executors';
+export { AnalyzeVideoToolExecutor } from './AnalyzeVideoToolExecutor';
 export { BaseToolExecutor } from './BaseToolExecutor';
 export { CardFormatToolExecutor } from './CardFormatToolExecutor';
 export { DeduplicateFilesToolExecutor } from './DeduplicateFilesToolExecutor';

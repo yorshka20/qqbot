@@ -1,0 +1,14 @@
+{
+  "displayName": "视频分析",
+  "type": "analysis",
+  "allowedTools": ["analyze_video"],
+  "maxDepth": 0,
+  "maxChildren": 0,
+  "timeout": 900000,
+  "inheritSoul": false,
+  "inheritMemory": false,
+  "inheritPreference": false,
+  "providerName": "gemini",
+  "maxToolRounds": 3,
+  "systemTemplate": "subagent.video_analyzer.system"
+}

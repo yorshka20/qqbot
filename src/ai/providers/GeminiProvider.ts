@@ -1,6 +1,7 @@
 // Gemini Provider implementation
 
-import { GoogleGenAI } from '@google/genai';
+import type { File } from '@google/genai';
+import { FileState, GoogleGenAI } from '@google/genai';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import type { GeminiProviderConfig } from '@/core/config/types/ai';
@@ -37,6 +38,23 @@ export type GeminiKeyMode = 'free' | 'paid';
  * Capabilities are enabled by config: llm, vision, text2img each optional and independent.
  * Supports free/paid key modes: set apiKeyFree and apiKeyPaid, then switch at runtime via GeminiProvider.setKeyMode().
  */
+/**
+ * Video analysis result returned by generateWithVideo.
+ */
+export interface VideoAnalysisResult {
+  text: string;
+  usage?: AIGenerateResponse['usage'];
+}
+
+/**
+ * Options for video analysis.
+ */
+export interface VideoAnalysisOptions {
+  temperature?: number;
+  maxTokens?: number;
+  systemPrompt?: string;
+}
+
 export class GeminiProvider
   extends AIProvider
   implements Text2ImageCapability, Image2ImageCapability, LLMCapability, VisionCapability
@@ -898,5 +916,148 @@ export class GeminiProvider
     } catch (error) {
       return handleGeneralError(error, prompt);
     }
+  }
+
+  // ---------- Video File API ----------
+
+  /**
+   * Upload a video buffer to Gemini File API.
+   * @param videoBuffer Raw video bytes
+   * @param mimeType MIME type of the video (auto-detected from extension if omitted)
+   * @returns Uploaded File object (may still be PROCESSING)
+   */
+  async uploadVideoFile(videoBuffer: Buffer, mimeType = 'video/mp4'): Promise<File> {
+    return this.withPaidFallback((_isPaidFallback) =>
+      this.getClient().files.upload({
+        file: new Blob([new Uint8Array(videoBuffer)], { type: mimeType }),
+        config: { mimeType },
+      }),
+    );
+  }
+
+  /**
+   * Poll Gemini File API until the file is ACTIVE or FAILED.
+   * @param fileName The "files/..." resource name returned by uploadVideoFile
+   * @param timeoutMs Max wait time (default 5 minutes)
+   * @param pollIntervalMs Polling interval (default 10 seconds)
+   * @throws Error if file stays PROCESSING beyond timeout or enters FAILED state
+   */
+  async waitForFileProcessing(fileName: string, timeoutMs = 300_000, pollIntervalMs = 10_000): Promise<File> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const file = await this.getClient().files.get({ name: fileName });
+      if (file.state === FileState.ACTIVE) {
+        return file;
+      }
+      if (file.state === FileState.FAILED) {
+        throw new Error(`Gemini file processing failed: ${file.error?.message ?? 'unknown error'}`);
+      }
+      // Still PROCESSING — wait before next poll
+      await Bun.sleep(Math.min(pollIntervalMs, deadline - Date.now()));
+    }
+    throw new Error(`Gemini file processing timed out after ${timeoutMs / 1000}s: ${fileName}`);
+  }
+
+  /**
+   * Generate a text response from a video using Gemini.
+   * Combines upload → wait → generate into one call.
+   *
+   * @param prompt Question or instruction for the video
+   * @param videoBuffer Raw video bytes
+   * @param options Generation options
+   * @returns Text response from the model
+   */
+  async generateWithVideo(
+    prompt: string,
+    videoBuffer: Buffer,
+    options?: VideoAnalysisOptions,
+  ): Promise<VideoAnalysisResult> {
+    // 1. Upload video
+    logger.info('[GeminiProvider] Uploading video to Gemini File API...');
+    const file = await this.uploadVideoFile(videoBuffer);
+
+    // 2. Wait for processing
+    logger.info(`[GeminiProvider] Waiting for video processing: ${file.name}`);
+    const processedFile = await this.waitForFileProcessing(file.name ?? '');
+
+    // 3. Generate with video
+    logger.info('[GeminiProvider] Generating analysis with video...');
+    const temperature = options?.temperature ?? 0.7;
+    const maxTokens = options?.maxTokens ?? 2000;
+
+    const response = await this.withPaidFallback((_isPaidFallback) =>
+      this.getClient().models.generateContent({
+        model: this.config.vision?.model ?? 'gemini-2.5-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: prompt },
+              { fileData: { mimeType: processedFile.mimeType ?? 'video/mp4', fileUri: processedFile.uri ?? '' } },
+            ],
+          },
+        ],
+        config: {
+          temperature,
+          maxOutputTokens: maxTokens,
+          systemInstruction: options?.systemPrompt,
+        },
+      }),
+    );
+
+    const text = (response as { text?: string }).text ?? '';
+    return { text };
+  }
+
+  /**
+   * Generate a text response using an already-uploaded Gemini File URI.
+   * Unlike generateWithVideo(), this method skips the upload and wait steps,
+   * so callers that have already called uploadVideoFile + waitForFileProcessing
+   * can pass the resulting fileUri directly and avoid a double-upload.
+   *
+   * @param prompt User question or instruction
+   * @param fileUri The "fileUri" field from the ACTIVE File object returned by waitForFileProcessing
+   * @param mimeType MIME type of the video (e.g. "video/mp4")
+   * @param options Optional generation parameters
+   */
+  async generateWithFileUri(
+    prompt: string,
+    fileUri: string,
+    mimeType: string,
+    options?: VideoAnalysisOptions,
+  ): Promise<VideoAnalysisResult> {
+    const temperature = options?.temperature ?? 0.7;
+    const maxTokens = options?.maxTokens ?? 2000;
+
+    logger.info('[GeminiProvider] Generating analysis from file URI...');
+
+    const response = await this.withPaidFallback((_isPaidFallback) =>
+      this.getClient().models.generateContent({
+        model: this.config.vision?.model ?? 'gemini-2.5-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: prompt }, { fileData: { mimeType, fileUri } }],
+          },
+        ],
+        config: {
+          temperature,
+          maxOutputTokens: maxTokens,
+          systemInstruction: options?.systemPrompt,
+        },
+      }),
+    );
+
+    const text = (response as { text?: string }).text ?? '';
+    return { text };
+  }
+
+  /**
+   * Delete an uploaded file from Gemini File API.
+   * @param fileName The "files/..." resource name
+   */
+  async deleteUploadedFile(fileName: string): Promise<void> {
+    await this.getClient().files.delete({ name: fileName });
+    logger.debug(`[GeminiProvider] Deleted uploaded file: ${fileName}`);
   }
 }

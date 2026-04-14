@@ -40,6 +40,16 @@ export class ClaudeCliBackend implements WorkerBackend {
     if (!hasMcpConfig) {
       args.push(`--mcp-config=${config.mcpConfigPath}`);
     }
+
+    // Force stream-json output so intermediate tool calls stream to stdout,
+    // giving live progress visibility and keeping lastStdoutActivity alive
+    // for health checks. parseOutput() already handles stream-json → clean
+    // final message. Without this, `--output-format text` stays silent until
+    // the task completes, making the worker appear stuck.
+    const fmtIdx = args.indexOf('--output-format');
+    if (fmtIdx !== -1 && args[fmtIdx + 1] === 'text') {
+      args[fmtIdx + 1] = 'stream-json';
+    }
     const cmd = [config.command, ...args, config.taskPrompt];
 
     logger.info(

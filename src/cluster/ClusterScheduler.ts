@@ -31,7 +31,7 @@ export class ClusterScheduler {
 
   constructor(
     private config: ClusterConfig,
-    private hub: ContextHub,
+    _hub: ContextHub,
     private workerPool: WorkerPool,
     private db: Database,
     private projectRegistry: ProjectRegistry,
@@ -221,18 +221,16 @@ export class ClusterScheduler {
   }
 
   /**
-   * Persist partial stdout while a worker is still running so the WebUI can
-   * show live task output instead of an empty field until the process exits.
+   * Called periodically while a worker is running. Previously persisted
+   * partial stdout to DB every 2s — now a no-op on the DB side.
+   * Intermediate output lives only in memory (worker.currentTask.output)
+   * and is broadcast to WebUI via SSE by ClusterManager. The DB only
+   * receives the final parsed summary on task completion.
    */
-  flushRunningTaskOutput(task: TaskRecord): void {
-    const live = this.activeTasks.get(task.id);
-    if (!live || live !== task) {
-      return;
-    }
-    if (live.status !== 'running') {
-      return;
-    }
-    this.persistTask(live);
+  flushRunningTaskOutput(_task: TaskRecord): void {
+    // Intentional no-op: intermediate output is memory-only + SSE.
+    // DB persistence happens in markTaskCompleted / persistTask after
+    // parseOutput extracts the clean final message.
   }
 
   /**

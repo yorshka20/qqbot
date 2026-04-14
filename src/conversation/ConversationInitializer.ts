@@ -35,6 +35,7 @@ import { BilibiliService } from '@/services/bilibili';
 import { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
 import { FileReadService } from '@/services/file';
 import type { RetrievalService } from '@/services/retrieval';
+import { ResourceCleanupService, VideoDownloadService } from '@/services/video';
 import { ToolInitializer, ToolManager } from '@/tools';
 import { logger } from '@/utils/logger';
 import { SummarizeService } from '../ai/services/SummarizeService';
@@ -227,6 +228,10 @@ export class ConversationInitializer {
     // File reading service is used by file-related task executors.
     const fileReadService = new FileReadService(config.getFileReadServiceConfig());
     serviceRegistry.registerFileReadService(fileReadService);
+
+    // Video pipeline services used by AnalyzeVideoToolExecutor.
+    container.registerInstance(DITokens.VIDEO_DOWNLOAD_SERVICE, new VideoDownloadService());
+    container.registerInstance(DITokens.RESOURCE_CLEANUP_SERVICE, new ResourceCleanupService());
 
     // AIService is the facade used by systems/hooks for generation and analysis.
     const messageAPI = new MessageAPI(apiClient);

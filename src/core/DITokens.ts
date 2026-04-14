@@ -48,6 +48,9 @@ export const DITokens = {
   LIFECYCLE: 'Lifecycle',
   MEMORY_FACT_META_SERVICE: 'MemoryFactMetaService',
   CLUSTER_MANAGER: 'ClusterManager',
+  // Video pipeline services
+  VIDEO_DOWNLOAD_SERVICE: 'VideoDownloadService',
+  RESOURCE_CLEANUP_SERVICE: 'ResourceCleanupService',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];
