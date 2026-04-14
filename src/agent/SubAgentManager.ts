@@ -1,6 +1,7 @@
 // SubAgent Manager - manages sub-agent lifecycle
 
 import { logger } from '@/utils/logger';
+import { randomUUID } from '@/utils/randomUUID';
 import type { SubAgentExecutor } from './SubAgentExecutor';
 import type { AggregatedResult, SubAgentConfig, SubAgentSession, SubAgentType } from './types';
 
@@ -135,7 +136,7 @@ export class SubAgentManager {
   /**
    * Execute sub-agent using SubAgentExecutor
    */
-  async execute(sessionId: string): Promise<unknown> {
+  async execute(sessionId: string): Promise<string> {
     if (!this.executor) {
       throw new Error('SubAgentExecutor not set on SubAgentManager');
     }
@@ -152,7 +153,7 @@ export class SubAgentManager {
   /**
    * Wait for sub-agent to complete
    */
-  async wait(sessionId: string, timeout?: number): Promise<unknown> {
+  async wait(sessionId: string, timeout?: number): Promise<string> {
     const session = this.sessions.get(sessionId);
     if (!session) {
       throw new Error(`Sub-agent session not found: ${sessionId}`);
@@ -176,13 +177,13 @@ export class SubAgentManager {
       throw session.error || new Error(`Sub-agent failed: ${sessionId}`);
     }
 
-    return session.task.output;
+    return session.task.output ?? '';
   }
 
   /**
    * Wait for all sub-agents to complete
    */
-  async waitAll(sessionIds: string[]): Promise<unknown[]> {
+  async waitAll(sessionIds: string[]): Promise<string[]> {
     return await Promise.all(sessionIds.map((id) => this.wait(id)));
   }
 
@@ -268,7 +269,7 @@ export class SubAgentManager {
         .map((s) => ({
           type: s.type,
           description: s.task.description,
-          output: s.task.output,
+          output: s.task.output ?? '',
         })),
       errors: sessions
         .filter((s) => s.status === 'failed')
@@ -284,7 +285,7 @@ export class SubAgentManager {
    * Generate session ID with depth encoding
    */
   private generateSessionId(parentId: string | undefined, depth: number): string {
-    const uuid = this.randomUUID();
+    const uuid = randomUUID();
     if (!parentId) {
       return `agent:${uuid}`;
     }
@@ -292,21 +293,10 @@ export class SubAgentManager {
   }
 
   /**
-   * Generate a simple UUID (v4-like)
-   */
-  private randomUUID(): string {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === 'x' ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
-  }
-
-  /**
    * Update session status
    * This is called by SubAgentExecutor
    */
-  updateSessionStatus(sessionId: string, status: SubAgentSession['status'], output?: unknown, error?: Error): void {
+  updateSessionStatus(sessionId: string, status: SubAgentSession['status'], output?: string, error?: Error): void {
     const session = this.sessions.get(sessionId);
     if (!session) {
       return;

@@ -37,8 +37,8 @@ function createMockMessageAPI(): { api: MessageAPI; sentMessages: SentMessage[] 
 }
 
 type MockAIServiceOpts = {
-  /** Value returned by runSubAgent on success. */
-  result?: unknown;
+  /** Value returned by runSubAgent on success (string, as per SubAgent contract). */
+  result?: string;
   /** If set, runSubAgent will throw this error. */
   throws?: Error;
   /** Optional callback invoked at the start of each runSubAgent call (before result/throw). */
@@ -154,11 +154,15 @@ describe('VideoAnalyzePlugin URL extraction', () => {
       expect(extractVideoUrl('https://www.youtube.com/watch?v=')).toBeNull();
     });
 
-    it('returns null for bare-domain URLs without protocol', () => {
-      expect(extractVideoUrl('bilibili.com/video/BV1GJ411x7h7')).toBeNull();
-      expect(extractVideoUrl('b23.tv/abc123')).toBeNull();
-      expect(extractVideoUrl('youtube.com/watch?v=dQw4w9WgXcQ')).toBeNull();
-      expect(extractVideoUrl('youtu.be/dQw4w9WgXcQ')).toBeNull();
+    it('normalizes bare-domain URLs by prepending https://', () => {
+      expect(extractVideoUrl('bilibili.com/video/BV1GJ411x7h7')).toBe('https://bilibili.com/video/BV1GJ411x7h7');
+      expect(extractVideoUrl('b23.tv/abc123')).toBe('https://b23.tv/abc123');
+      expect(extractVideoUrl('youtube.com/watch?v=dQw4w9WgXcQ')).toBe('https://youtube.com/watch?v=dQw4w9WgXcQ');
+      expect(extractVideoUrl('youtu.be/dQw4w9WgXcQ')).toBe('https://youtu.be/dQw4w9WgXcQ');
+    });
+
+    it('matches bare BV number and constructs bilibili URL', () => {
+      expect(extractVideoUrl('帮我看看 BV1GJ411x7h7 这个视频')).toBe('https://www.bilibili.com/video/BV1GJ411x7h7');
     });
 
     it('returns the first match when multiple video URLs are present', () => {
@@ -203,7 +207,7 @@ describe('VideoAnalyzePlugin concurrency lock', () => {
     const callOrder: string[] = [];
 
     const mockAIService = createMockAIService({
-      result: { text: 'analysis result' },
+      result: 'analysis result',
       onRun: () => callOrder.push('first-run'),
     });
 
@@ -239,7 +243,7 @@ describe('VideoAnalyzePlugin concurrency lock', () => {
   it('lock is released after SubAgent completes successfully', async () => {
     const { api: mockAPI } = createMockMessageAPI();
     const eventRouter = createMockEventRouter();
-    const mockAIService = createMockAIService({ result: { text: 'result' } });
+    const mockAIService = createMockAIService({ result: 'result' });
 
     const plugin = await initPlugin({
       messageAPI: mockAPI as any,
@@ -295,7 +299,7 @@ describe('VideoAnalyzePlugin result messaging', () => {
   it('sends analysis result to group when messageType is group', async () => {
     const { api: mockAPI, sentMessages } = createMockMessageAPI();
     const eventRouter = createMockEventRouter();
-    const mockAIService = createMockAIService({ result: { text: '这是视频分析结果：主要内容是...' } });
+    const mockAIService = createMockAIService({ result: '这是视频分析结果：主要内容是...' });
 
     const plugin = await initPlugin({
       messageAPI: mockAPI as any,
@@ -321,7 +325,7 @@ describe('VideoAnalyzePlugin result messaging', () => {
   it('sends analysis result to private chat when messageType is private', async () => {
     const { api: mockAPI, sentMessages } = createMockMessageAPI();
     const eventRouter = createMockEventRouter();
-    const mockAIService = createMockAIService({ result: { text: 'private result' } });
+    const mockAIService = createMockAIService({ result: 'private result' });
 
     const plugin = await initPlugin({
       messageAPI: mockAPI as any,

@@ -41,7 +41,7 @@ describe('SubAgentManager', () => {
       input: {},
     });
 
-    const mockResult = { summary: 'done' };
+    const mockResult = 'analysis complete';
     const executor = {
       execute: async (session: SubAgentSession) => {
         manager.updateSessionStatus(session.id, 'completed', mockResult);
@@ -52,11 +52,11 @@ describe('SubAgentManager', () => {
     manager.setExecutor(executor);
 
     const result = await manager.execute(sessionId);
-    expect(result).toEqual(mockResult);
+    expect(result).toBe(mockResult);
 
     const session = manager.getStatus(sessionId);
     expect(session?.status).toBe('completed');
-    expect(session?.task.output).toEqual(mockResult);
+    expect(session?.task.output).toBe(mockResult);
   });
 
   it('wait returns task.output after session is completed', async () => {
@@ -184,7 +184,7 @@ describe.skipIf(!getIntegrationProvider('doubao'))('SubAgentManager integration 
       const result = await manager.execute(sessionId);
       expect(result).toBeDefined();
       expect(typeof result).toBe('string');
-      expect((result as string).trim()).toContain('42');
+      expect(result.trim()).toContain('42');
 
       const session = manager.getStatus(sessionId);
       expect(session?.status).toBe('completed');
@@ -204,7 +204,7 @@ describe.skipIf(!getIntegrationProvider('doubao'))('SubAgentManager integration 
       const result = await manager.execute(sessionId);
       expect(result).toBeDefined();
       expect(typeof result).toBe('string');
-      expect((result as string).length).toBeGreaterThan(0);
+      expect(result.length).toBeGreaterThan(0);
 
       const output = await manager.wait(sessionId);
       expect(output).toBe(result);

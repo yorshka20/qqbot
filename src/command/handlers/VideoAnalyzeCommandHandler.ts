@@ -13,17 +13,21 @@ import type { AIService } from '@/ai';
 import { getReplyMessageIdFromMessage } from '@/ai/utils/imageUtils';
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
+import type { Config } from '@/core/config';
+import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { NormalizedMessageEvent } from '@/events/types';
+import { MessageBuilder } from '@/message/MessageBuilder';
 import { extractVideoUrl } from '@/plugins/plugins/VideoAnalyzePlugin';
+import { extractUrlsFromLightAppPayload } from '@/protocol/milky/utils/lightAppParser';
 import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 
 /** SubAgent type key matching prompts/subagent/video_analyzer preset. */
 const VIDEO_AGENT_TYPE = 'video_analyzer';
-const TASK_DESCRIPTION = 'Analyze the given video URL and provide a comprehensive summary.';
+const TASK_DESCRIPTION = '分析给定的视频 URL，提供完整的内容摘要和关键看点。使用中文回答。';
 
 @Command({
   name: 'video',
@@ -42,6 +46,8 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
     @inject(DITokens.AI_SERVICE) private aiService: AIService,
     @inject(DITokens.API_CLIENT) apiClient: APIClient,
     @inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager,
+    @inject(DITokens.CONFIG) private config: Config,
+    @inject(DITokens.CONVERSATION_CONFIG_SERVICE) private conversationConfigService: ConversationConfigService,
   ) {
     this.messageAPI = new MessageAPI(apiClient);
   }
@@ -79,15 +85,8 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
         parentContext,
       })
       .then(async (result) => {
-        // runSubAgent returns a plain string (from SubAgentExecutor.parseResult), not { text, error }
-        const r = result as string | { text?: string; error?: string } | null;
-        const replyText =
-          typeof r === 'string' && r.trim().length > 0
-            ? r
-            : (r as { text?: string; error?: string } | null)?.text ??
-              (r as { text?: string; error?: string } | null)?.error ??
-              '视频分析完成，但未返回有效结果。';
-        await this.messageAPI.sendFromContext(replyText, context);
+        const replyText = result.trim() || '视频分析完成，但未返回有效结果。';
+        await this.sendAnalysisResult(replyText, context);
       })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -103,26 +102,68 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
   }
 
   /**
+   * Deliver the analysis result using the same pattern as SubAgentTriggerHandler:
+   *   1. Try card rendering (long content → image)
+   *   2. Fall back to forward message (合并转发) if group config enables it
+   *   3. Otherwise send as plain text
+   */
+  private async sendAnalysisResult(text: string, context: CommandContext): Promise<void> {
+    const groupIdStr = context.groupId?.toString();
+    const protocol = context.metadata.protocol;
+    const botSelfId = this.config.getBotUserId();
+
+    // Try card rendering for long content
+    const cardResult = await this.aiService.processReplyMaybeCard(text, groupIdStr ?? 'private');
+    const isCard = cardResult !== null;
+    const segments = cardResult ? cardResult.segments : new MessageBuilder().text(text).build();
+
+    // Forward message: only for non-card, group chats, Milky protocol with useForwardMsg enabled
+    const useForward =
+      !isCard &&
+      context.messageType === 'group' &&
+      protocol === 'milky' &&
+      botSelfId > 0 &&
+      groupIdStr != null &&
+      (await this.conversationConfigService.getUseForwardMsg(groupIdStr, 'group'));
+
+    if (useForward) {
+      await this.messageAPI.sendForwardFromContext(
+        [{ segments, senderName: 'Bot' }],
+        context,
+        60_000,
+        { botUserId: botSelfId },
+      );
+    } else {
+      await this.messageAPI.sendFromContext(segments, context, 60_000);
+    }
+  }
+
+  /**
    * Resolve the video URL from command args, quoted message, or inline video segment.
    * Returns { url, customPrompt } where customPrompt is any non-URL text in args.
+   *
+   * Extraction priority:
+   *   1. Platform-specific pattern match from args text (bilibili, youtube, b23.tv, bare BV)
+   *   2. Generic https?:// URL from args text
+   *   3. Quoted/reply message: video segments → text URL extraction
+   *   4. Current message video segments
    */
   private async resolveVideoSource(
     args: string[],
     context: CommandContext,
   ): Promise<{ url: string | null; customPrompt: string | null }> {
-    // 1. Check args for a direct URL
-    const urlArg = args.find((a) => /^https?:\/\//.test(a));
-    if (urlArg) {
-      const nonUrlArgs = args.filter((a) => a !== urlArg).join(' ').trim();
-      return { url: urlArg, customPrompt: nonUrlArgs || null };
+    const argsText = args.join(' ');
+
+    // 1. Try platform-specific video URL extraction from combined args text
+    const platformUrl = extractVideoUrl(argsText);
+    if (platformUrl) {
+      return this.splitUrlAndPrompt(argsText, platformUrl);
     }
 
-    // 2. Check for a video URL pattern in the full args text (e.g. bilibili.com/video/BVxxx without https)
-    const argsText = args.join(' ');
-    const urlFromArgs = extractVideoUrl(argsText);
-    if (urlFromArgs) {
-      const nonUrlArgs = argsText.replace(urlFromArgs, '').trim();
-      return { url: urlFromArgs, customPrompt: nonUrlArgs || null };
+    // 2. Try generic URL extraction (any https?:// URL) from combined args text
+    const genericUrl = argsText.match(/https?:\/\/[^\s<>"')\]]+/)?.[0];
+    if (genericUrl) {
+      return this.splitUrlAndPrompt(argsText, genericUrl);
     }
 
     // 3. Check quoted/reply message for video content
@@ -130,19 +171,41 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
     if (originalMessage) {
       const resolvedFromReply = await this.resolveFromReplyMessage(originalMessage);
       if (resolvedFromReply) {
-        const customPrompt = argsText.trim() || null;
-        return { url: resolvedFromReply, customPrompt };
+        return { url: resolvedFromReply, customPrompt: argsText.trim() || null };
       }
 
       // 4. Check current message segments for inline video file
       const videoUrl = await this.extractVideoFromSegments(originalMessage.segments, originalMessage);
       if (videoUrl) {
-        const customPrompt = argsText.trim() || null;
-        return { url: videoUrl, customPrompt };
+        return { url: videoUrl, customPrompt: argsText.trim() || null };
       }
     }
 
     return { url: null, customPrompt: null };
+  }
+
+  /** Remove the extracted URL from the args text and return { url, customPrompt }. */
+  private splitUrlAndPrompt(
+    argsText: string,
+    url: string,
+  ): { url: string; customPrompt: string | null } {
+    // Find and remove the raw matched text from the original args (before normalization may have changed it)
+    // We search for common URL-like substrings to remove
+    let remaining = argsText;
+    // Try removing the exact URL first
+    if (remaining.includes(url)) {
+      remaining = remaining.replace(url, '');
+    } else {
+      // URL may have been normalized (e.g., bare BV → full URL), remove original pattern
+      // Remove any https?:// URL
+      remaining = remaining.replace(/https?:\/\/[^\s<>"')\]]+/, '');
+      // Remove bare BV number
+      remaining = remaining.replace(/\bBV[a-zA-Z0-9]{10,}\b/, '');
+      // Remove bare domain patterns
+      remaining = remaining.replace(/(?:www\.)?(?:bilibili\.com\/video\/[^\s]+|b23\.tv\/[^\s]+|youtube\.com\/(?:watch\?[^\s]+|shorts\/[^\s]+)|youtu\.be\/[^\s]+)/, '');
+    }
+    const customPrompt = remaining.trim() || null;
+    return { url, customPrompt };
   }
 
   /**
@@ -176,13 +239,28 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
         return urlFromText;
       }
 
-      // Also check raw segments for text containing URLs
+      // Check raw segments for text containing URLs, and light_app segments for video URLs
       if (referencedMessage.segments) {
         for (const seg of referencedMessage.segments) {
           if (seg.type === 'text' && typeof seg.data?.text === 'string') {
             const found = extractVideoUrl(seg.data.text as string);
             if (found) {
               return found;
+            }
+          }
+          // Parse light_app (小程序) segment: extract jump link URLs, keep only video platform URLs
+          if (seg.type === 'light_app' && seg.data) {
+            const jsonPayload =
+              (seg.data as Record<string, unknown>).json_payload ??
+              (seg.data as Record<string, unknown>).jsonPayload;
+            if (typeof jsonPayload === 'string') {
+              const jumpUrls = extractUrlsFromLightAppPayload(jsonPayload);
+              for (const jumpUrl of jumpUrls) {
+                const videoUrl = extractVideoUrl(jumpUrl);
+                if (videoUrl) {
+                  return videoUrl;
+                }
+              }
             }
           }
         }

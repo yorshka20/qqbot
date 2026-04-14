@@ -75,7 +75,7 @@ export interface SubAgentSession {
   task: {
     description: string; // Task description
     input: unknown; // Input data
-    output?: unknown; // Output result
+    output?: string; // Output result (LLM text response)
   };
 
   // Lifecycle
@@ -109,7 +109,7 @@ export interface AggregatedResult {
   results: Array<{
     type: SubAgentType;
     description: string;
-    output: unknown;
+    output: string;
   }>;
   errors: Array<{
     type: SubAgentType;

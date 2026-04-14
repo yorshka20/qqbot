@@ -11,10 +11,13 @@
 
 import type { SubAgentType } from '@/agent/types';
 import type { AIService } from '@/ai/AIService';
+import type { Config } from '@/core/config';
 import type { ProtocolName } from '@/core/config/types/protocol';
+import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { EventHandler, NormalizedEvent } from '@/events/types';
+import { MessageBuilder } from '@/message/MessageBuilder';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { logger } from '@/utils/logger';
@@ -23,7 +26,7 @@ import { logger } from '@/utils/logger';
 const VIDEO_AGENT_TYPE = 'video_analyzer';
 
 /** Prompt sent to the LLM describing the analysis task (used as task.description). */
-const TASK_DESCRIPTION = 'Analyze the given video URL and provide a comprehensive summary, key points, and insights.';
+const TASK_DESCRIPTION = '分析给定的视频 URL，提供完整的内容摘要和关键看点。使用中文回答。';
 
 /** Lock TTL in ms before auto-release (safety valve). */
 const LOCK_TTL_MS = 5 * 60 * 1000;
@@ -31,42 +34,67 @@ const LOCK_TTL_MS = 5 * 60 * 1000;
 /**
  * Video URL patterns for supported platforms.
  * Matches: Bilibili (long video), b23.tv short link, YouTube, youtu.be short link.
- * All patterns require https?:// prefix — bare-domain URLs are not matched.
- * Does NOT match generic "watch" pages without video IDs or non-video URLs.
+ * Patterns with protocol prefix are tried first, then bare-domain patterns.
  */
 const VIDEO_URL_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
+  // --- With protocol ---
   // Bilibili long video: bilibili.com/video/BVxxxx or bilibili.com/video/AVxxxx
-  { pattern: /https?:\/\/(www\.)?bilibili\.com\/video\/[a-zA-Z0-9]+/, label: 'bilibili' },
+  { pattern: /https?:\/\/(www\.)?bilibili\.com\/video\/[a-zA-Z0-9]+[a-zA-Z0-9?&=_-]*/, label: 'bilibili' },
   // Bilibili short link: b23.tv/xxxxx
   { pattern: /https?:\/\/b23\.tv\/[a-zA-Z0-9]+/, label: 'b23' },
-  // YouTube watch: youtube.com/watch?v=xxxx
-  { pattern: /https?:\/\/(www\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]+/, label: 'youtube' },
+  // YouTube watch: youtube.com/watch?v=xxxx (require v= with at least 1 char ID, capture extra params)
+  { pattern: /https?:\/\/(www\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]+[a-zA-Z0-9&=_%.-]*/, label: 'youtube' },
+  // YouTube shorts: youtube.com/shorts/xxxx
+  { pattern: /https?:\/\/(www\.)?youtube\.com\/shorts\/[a-zA-Z0-9_-]+/, label: 'youtube' },
   // YouTube short link: youtu.be/xxxx
   { pattern: /https?:\/\/youtu\.be\/[a-zA-Z0-9_-]+/, label: 'youtube' },
+  // --- Bare domain (no protocol) ---
+  { pattern: /(?:www\.)?bilibili\.com\/video\/[a-zA-Z0-9]+[a-zA-Z0-9?&=_-]*/, label: 'bilibili-bare' },
+  { pattern: /b23\.tv\/[a-zA-Z0-9]+/, label: 'b23-bare' },
+  { pattern: /(?:www\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]+[a-zA-Z0-9&=_%.-]*/, label: 'youtube-bare' },
+  { pattern: /(?:www\.)?youtube\.com\/shorts\/[a-zA-Z0-9_-]+/, label: 'youtube-bare' },
+  { pattern: /youtu\.be\/[a-zA-Z0-9_-]+/, label: 'youtube-bare' },
+  // --- Bare BV number (Bilibili) ---
+  { pattern: /\bBV[a-zA-Z0-9]{10,}\b/, label: 'bilibili-bv' },
 ];
 
-/** Extracts the first video URL from a message string, or null if none found. */
+/**
+ * Extracts the first video URL from a message string, or null if none found.
+ * Bare-domain matches and BV numbers are normalized to full URLs with https:// prefix.
+ */
 export function extractVideoUrl(message: string): string | null {
-  for (const { pattern } of VIDEO_URL_PATTERNS) {
+  for (const { pattern, label } of VIDEO_URL_PATTERNS) {
     const match = message.match(pattern);
     if (match) {
-      return match[0];
+      return normalizeVideoUrl(match[0], label);
     }
   }
   return null;
 }
 
+/** Normalize extracted URL: add https:// for bare domains, construct bilibili URL for BV numbers. */
+function normalizeVideoUrl(raw: string, label: string): string {
+  if (label === 'bilibili-bv') {
+    return `https://www.bilibili.com/video/${raw}`;
+  }
+  if (label.endsWith('-bare') && !/^https?:\/\//i.test(raw)) {
+    return `https://${raw}`;
+  }
+  return raw;
+}
+
 /**
  * Extracts all video URLs from a message string.
- * Returns unique URLs in order of appearance.
+ * Returns unique normalized URLs in order of appearance.
  */
 export function extractAllVideoUrls(message: string): string[] {
   const urls: string[] = [];
-  for (const { pattern } of VIDEO_URL_PATTERNS) {
+  for (const { pattern, label } of VIDEO_URL_PATTERNS) {
     const matches = message.matchAll(new RegExp(pattern, 'g'));
     for (const match of matches) {
-      if (!urls.includes(match[0])) {
-        urls.push(match[0]);
+      const normalized = normalizeVideoUrl(match[0], label);
+      if (!urls.includes(normalized)) {
+        urls.push(normalized);
       }
     }
   }
@@ -188,7 +216,7 @@ export class VideoAnalyzePlugin extends PluginBase {
 
     try {
       // runSubAgent = spawn + execute + wait (all three steps, correct subagent lifecycle)
-      const result = (await this.aiService.runSubAgent(VIDEO_AGENT_TYPE as SubAgentType, {
+      const result = await this.aiService.runSubAgent(VIDEO_AGENT_TYPE as SubAgentType, {
         description: TASK_DESCRIPTION,
         input: {
           url,
@@ -205,16 +233,9 @@ export class VideoAnalyzePlugin extends PluginBase {
           protocol,
           messageId: payload.messageId,
         },
-      })) as string | { text?: string; error?: string } | null;
+      });
 
-      // Send the result (or fallback text) back to the original session
-      // runSubAgent returns a plain string (from SubAgentExecutor.parseResult), not { text, error }
-      const replyText =
-        typeof result === 'string' && result.trim().length > 0
-          ? result
-          : (result as { text?: string; error?: string } | null)?.text ??
-            (result as { text?: string; error?: string } | null)?.error ??
-            '视频分析完成，但未返回有效结果。';
+      const replyText = result.trim() || '视频分析完成，但未返回有效结果。';
       await this.sendResultMessage(replyText, payload);
 
       logger.info(`[VideoAnalyzePlugin] Video analysis completed | sessionKey=${sessionKey} | url=${url}`);
@@ -237,17 +258,48 @@ export class VideoAnalyzePlugin extends PluginBase {
 
   /**
    * Send the analysis result (or error text) back to the original chat session.
+   *
+   * Delivery order (same as SubAgentTriggerHandler):
+   *   1. Card rendering — long content → image
+   *   2. Forward message — group with useForwardMsg enabled (Milky protocol)
+   *   3. Plain text — fallback
+   *
+   * Short error messages bypass card/forward and are sent as plain text.
    */
   private async sendResultMessage(text: string, payload: VideoAnalyzePayload): Promise<void> {
     const { userId, groupId, messageType, protocol } = payload;
 
     try {
-      const messageAPI = getContainer().resolve<import('@/api/methods/MessageAPI').MessageAPI>(DITokens.MESSAGE_API);
+      const container = getContainer();
+      const messageAPI = container.resolve<import('@/api/methods/MessageAPI').MessageAPI>(DITokens.MESSAGE_API);
+      const config = container.resolve<Config>(DITokens.CONFIG);
+      const botSelfId = config.getBotUserId();
+
+      // Try card rendering for long analysis results (skip for short error messages)
+      const cardResult = text.length > 100 ? await this.aiService.processReplyMaybeCard(text, groupId?.toString() ?? 'private') : null;
+      const isCard = cardResult !== null;
+      const segments = cardResult ? cardResult.segments : new MessageBuilder().text(text).build();
+
+      // Forward message: only for non-card, group chats, Milky protocol with useForwardMsg
+      let useForward = false;
+      if (!isCard && messageType === 'group' && groupId != null && protocol === 'milky' && botSelfId > 0) {
+        const convConfigService = container.resolve<ConversationConfigService>(DITokens.CONVERSATION_CONFIG_SERVICE);
+        useForward = await convConfigService.getUseForwardMsg(String(groupId), 'group');
+      }
 
       if (messageType === 'group' && groupId != null) {
-        await messageAPI.sendGroupMessage(groupId, text, protocol as ProtocolName);
+        if (useForward) {
+          await messageAPI.sendForwardMessage(
+            { type: 'group', id: groupId },
+            [{ segments, senderName: 'Bot' }],
+            protocol as ProtocolName,
+            { botUserId: botSelfId },
+          );
+        } else {
+          await messageAPI.sendGroupMessage(groupId, segments, protocol as ProtocolName);
+        }
       } else {
-        await messageAPI.sendPrivateMessage(userId, text, protocol as ProtocolName);
+        await messageAPI.sendPrivateMessage(userId, segments, protocol as ProtocolName);
       }
     } catch (err) {
       logger.error('[VideoAnalyzePlugin] Failed to send result message', err as Error);

@@ -2,6 +2,7 @@
 // Can be reused by other parts of the system that need to parse Milky segments
 
 import type { IncomingSegment } from '@saltify/milky-types';
+import { extractUrlsFromLightAppPayload } from './utils/lightAppParser';
 
 /**
  * Utility class for parsing Milky message segments
@@ -39,8 +40,14 @@ export class MilkyMessageSegmentParser {
             return `[Forward:${segment.data.title}]`;
           case 'market_face':
             return `[MarketFace:${segment.data.summary}]`;
-          case 'light_app':
-            return `[LightApp:${segment.data.app_name}]`;
+          case 'light_app': {
+            const jumpUrls = extractUrlsFromLightAppPayload(
+              (segment.data as Record<string, unknown>).json_payload as string,
+            );
+            return jumpUrls.length > 0
+              ? `[LightApp:${segment.data.app_name}] ${jumpUrls.join(' ')}`
+              : `[LightApp:${segment.data.app_name}]`;
+          }
           case 'xml':
             return `[XML]`;
           default:

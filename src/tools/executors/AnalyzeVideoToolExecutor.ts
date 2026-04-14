@@ -20,6 +20,11 @@ import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
 
+/** Max video file size allowed for analysis. */
+const MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB
+/** Max video duration allowed for analysis (seconds). */
+const MAX_VIDEO_DURATION_SECONDS = 10 * 60; // 10 minutes
+
 @Tool({
   name: 'analyze_video',
   description: '下载并分析视频内容。使用视频URL调用此工具，获取视频的主题、内容概要和关键亮点等分析结果。',
@@ -59,6 +64,28 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
       throw new Error('Gemini provider is not available — please configure gemini in config.json');
     }
     return provider as GeminiProvider;
+  }
+
+  /** Probe video duration in seconds using ffprobe. Returns null if ffprobe is unavailable or fails. */
+  private async probeVideoDuration(filePath: string): Promise<number | null> {
+    try {
+      const proc = Bun.spawn({
+        cmd: ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath],
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const exitCode = await Promise.race([
+        proc.exited,
+        new Promise<number>((_, reject) => setTimeout(() => { proc.kill(); reject(new Error('ffprobe timeout')); }, 10_000)),
+      ]);
+      if (exitCode !== 0) return null;
+      const stdout = await new Response(proc.stdout).text();
+      const seconds = parseFloat(stdout.trim());
+      return Number.isFinite(seconds) ? seconds : null;
+    } catch {
+      logger.debug('[AnalyzeVideoToolExecutor] ffprobe not available or failed, skipping duration check');
+      return null;
+    }
   }
 
   /** Infer video MIME type from URL pattern. Falls back to video/mp4. */
@@ -107,6 +134,27 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
       // Register temp file for cleanup in finally
       this.resourceCleanupService.register(cleanupSessionId, downloadResult.tempPath);
 
+      // Step 1.5: Validate file size and duration before uploading
+      const fileSizeMB = (downloadResult.buffer.length / (1024 * 1024)).toFixed(1);
+      if (downloadResult.buffer.length > MAX_VIDEO_SIZE_BYTES) {
+        logger.warn(`[AnalyzeVideoToolExecutor] Video too large: ${fileSizeMB}MB (max ${MAX_VIDEO_SIZE_BYTES / 1024 / 1024}MB)`);
+        return this.error(
+          `视频文件过大（${fileSizeMB}MB），最大支持 ${MAX_VIDEO_SIZE_BYTES / 1024 / 1024}MB。请尝试较短的视频。`,
+          `Video too large: ${fileSizeMB}MB`,
+        );
+      }
+
+      const duration = await this.probeVideoDuration(downloadResult.tempPath);
+      if (duration !== null && duration > MAX_VIDEO_DURATION_SECONDS) {
+        const durationMin = (duration / 60).toFixed(1);
+        logger.warn(`[AnalyzeVideoToolExecutor] Video too long: ${durationMin}min (max ${MAX_VIDEO_DURATION_SECONDS / 60}min)`);
+        return this.error(
+          `视频时长过长（${durationMin}分钟），最大支持 ${MAX_VIDEO_DURATION_SECONDS / 60} 分钟。请尝试较短的视频。`,
+          `Video too long: ${durationMin}min`,
+        );
+      }
+      logger.info(`[AnalyzeVideoToolExecutor] Video validated | size=${fileSizeMB}MB | duration=${duration !== null ? `${(duration / 60).toFixed(1)}min` : 'unknown'}`);
+
       // Step 2: Upload to Gemini File API
       const mimeType = this.inferVideoMimeType(url);
       const gemini = this.getGeminiProvider();
@@ -139,13 +187,17 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
       }
 
       // Step 4: Generate analysis via fileUri (skips re-upload that generateWithVideo would cause)
-      logger.info('[AnalyzeVideoToolExecutor] Generating video analysis...');
+      const fileUri = processedFile.uri ?? '';
+      const fileMime = processedFile.mimeType ?? mimeType;
+      logger.info(
+        `[AnalyzeVideoToolExecutor] Generating video analysis... | fileUri=${fileUri} | mimeType=${fileMime} | prompt=${prompt.substring(0, 80)}`,
+      );
       let analysisText: string;
       try {
         const result = await gemini.generateWithFileUri(
           prompt,
-          processedFile.uri ?? '',
-          processedFile.mimeType ?? mimeType,
+          fileUri,
+          fileMime,
           { maxTokens: 2000, temperature: 0.7 },
         );
         analysisText = result.text;

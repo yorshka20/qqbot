@@ -909,18 +909,38 @@ export class GeminiProvider
   // ---------- Video File API ----------
 
   /**
+   * Return a single consistent GoogleGenAI client for the entire video file lifecycle
+   * (upload → wait → generate → delete). All operations MUST use the same API key
+   * because Gemini File API files are scoped to the key that uploaded them.
+   *
+   * Prefers paid key (higher rate limits, more reliable for heavy workloads).
+   * Falls back to free key only when paid key is not configured.
+   */
+  private getVideoClient(): GoogleGenAI {
+    if (this.config.apiKeyPaid) {
+      if (!this.clientPaid) {
+        this.clientPaid = new GoogleGenAI({ apiKey: this.config.apiKeyPaid });
+      }
+      return this.clientPaid;
+    }
+    // No paid key — use free key
+    if (!this.clientFree) {
+      this.clientFree = new GoogleGenAI({ apiKey: this.config.apiKeyFree });
+    }
+    return this.clientFree;
+  }
+
+  /**
    * Upload a video buffer to Gemini File API.
    * @param videoBuffer Raw video bytes
    * @param mimeType MIME type of the video (auto-detected from extension if omitted)
    * @returns Uploaded File object (may still be PROCESSING)
    */
   async uploadVideoFile(videoBuffer: Buffer, mimeType = 'video/mp4'): Promise<VideoAnalysisUploadedFile> {
-    return this.withPaidFallback((_isPaidFallback) =>
-      this.getClient().files.upload({
-        file: new Blob([new Uint8Array(videoBuffer)], { type: mimeType }),
-        config: { mimeType },
-      }) as Promise<VideoAnalysisUploadedFile>,
-    );
+    return this.getVideoClient().files.upload({
+      file: new Blob([new Uint8Array(videoBuffer)], { type: mimeType }),
+      config: { mimeType },
+    }) as Promise<VideoAnalysisUploadedFile>;
   }
 
   /**
@@ -935,9 +955,10 @@ export class GeminiProvider
     timeoutMs = 300_000,
     pollIntervalMs = 10_000,
   ): Promise<VideoAnalysisUploadedFile> {
+    const client = this.getVideoClient();
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const file = (await this.getClient().files.get({ name: fileName })) as VideoAnalysisUploadedFile;
+      const file = (await client.files.get({ name: fileName })) as VideoAnalysisUploadedFile;
       if (file.state === FileState.ACTIVE) {
         return file;
       }
@@ -964,6 +985,8 @@ export class GeminiProvider
     videoBuffer: Buffer,
     options?: VideoAnalysisOptions,
   ): Promise<VideoAnalysisResult> {
+    const client = this.getVideoClient();
+
     // 1. Upload video
     logger.info('[GeminiProvider] Uploading video to Gemini File API...');
     const file = await this.uploadVideoFile(videoBuffer);
@@ -977,25 +1000,23 @@ export class GeminiProvider
     const temperature = options?.temperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? 2000;
 
-    const response = await this.withPaidFallback((_isPaidFallback) =>
-      this.getClient().models.generateContent({
-        model: this.config.videoAnalysisModel ?? 'gemini-2.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { text: prompt },
-              { fileData: { mimeType: processedFile.mimeType ?? 'video/mp4', fileUri: processedFile.uri ?? '' } },
-            ],
-          },
-        ],
-        config: {
-          temperature,
-          maxOutputTokens: maxTokens,
-          systemInstruction: options?.systemPrompt,
+    const response = await client.models.generateContent({
+      model: this.config.videoAnalysisModel ?? 'gemini-2.5-flash',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: prompt },
+            { fileData: { mimeType: processedFile.mimeType ?? 'video/mp4', fileUri: processedFile.uri ?? '' } },
+          ],
         },
-      }),
-    );
+      ],
+      config: {
+        temperature,
+        maxOutputTokens: maxTokens,
+        systemInstruction: options?.systemPrompt,
+      },
+    });
 
     const text = (response as { text?: string }).text ?? '';
     return { text };
@@ -1023,22 +1044,20 @@ export class GeminiProvider
 
     logger.info('[GeminiProvider] Generating analysis from file URI...');
 
-    const response = await this.withPaidFallback((_isPaidFallback) =>
-      this.getClient().models.generateContent({
-        model: this.config.videoAnalysisModel ?? 'gemini-2.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }, { fileData: { mimeType, fileUri } }],
-          },
-        ],
-        config: {
-          temperature,
-          maxOutputTokens: maxTokens,
-          systemInstruction: options?.systemPrompt,
+    const response = await this.getVideoClient().models.generateContent({
+      model: this.config.videoAnalysisModel ?? 'gemini-2.5-flash',
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: prompt }, { fileData: { mimeType, fileUri } }],
         },
-      }),
-    );
+      ],
+      config: {
+        temperature,
+        maxOutputTokens: maxTokens,
+        systemInstruction: options?.systemPrompt,
+      },
+    });
 
     const text = (response as { text?: string }).text ?? '';
     return { text };
@@ -1049,7 +1068,7 @@ export class GeminiProvider
    * @param fileName The "files/..." resource name
    */
   async deleteUploadedFile(fileName: string): Promise<void> {
-    await this.getClient().files.delete({ name: fileName });
+    await this.getVideoClient().files.delete({ name: fileName });
     logger.debug(`[GeminiProvider] Deleted uploaded file: ${fileName}`);
   }
 }

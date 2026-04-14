@@ -325,7 +325,7 @@ export class SubAgentTriggerHandler {
           return;
         }
 
-        const resultText = typeof result === 'string' ? result : JSON.stringify(result);
+        const resultText = result;
         if (!resultText.trim()) {
           logger.warn(`[SubAgentTriggerHandler] Rule ${ruleIndex} ("${rule.presetKey}") returned empty result`);
           return;

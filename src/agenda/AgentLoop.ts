@@ -127,7 +127,7 @@ export class AgentLoop {
         configOverrides,
       );
 
-      const resultText = typeof result === 'string' ? result : result ? JSON.stringify(result) : '';
+      const resultText = result;
       if (!resultText.trim()) {
         logger.warn(`[AgentLoop] Item "${item.name}": subagent returned empty result`);
         return;

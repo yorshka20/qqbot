@@ -61,7 +61,7 @@ export class SubAgentExecutor {
   /**
    * Execute sub-agent
    */
-  async execute(session: SubAgentSession): Promise<unknown> {
+  async execute(session: SubAgentSession): Promise<string> {
     this.subAgentManager.updateSessionStatus(session.id, 'running');
 
     try {
@@ -206,11 +206,9 @@ export class SubAgentExecutor {
   }
 
   /**
-   * Parse result from LLM
+   * Parse result from LLM — always returns the final text answer.
    */
-  private parseResult(result: ToolUseGenerateResponse): unknown {
-    // For now, just return the text (final answer after tool rounds if any)
-    // TODO: Parse structured output if needed
+  private parseResult(result: ToolUseGenerateResponse): string {
     return result.text;
   }
 }

@@ -182,7 +182,7 @@ export class AIService {
     },
     configOverrides?: Partial<SubAgentConfig>,
     parentId?: string,
-  ): Promise<unknown> {
+  ): Promise<string> {
     const sessionId = await this.subAgentManager.spawn(parentId, type, task, configOverrides);
     await this.subAgentManager.execute(sessionId);
     return this.subAgentManager.wait(sessionId);
