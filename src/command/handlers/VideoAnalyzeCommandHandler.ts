@@ -14,7 +14,6 @@ import { getReplyMessageIdFromMessage } from '@/ai/utils/imageUtils';
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
-import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { NormalizedMessageEvent } from '@/events/types';
@@ -47,7 +46,6 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
     @inject(DITokens.API_CLIENT) apiClient: APIClient,
     @inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager,
     @inject(DITokens.CONFIG) private config: Config,
-    @inject(DITokens.CONVERSATION_CONFIG_SERVICE) private conversationConfigService: ConversationConfigService,
   ) {
     this.messageAPI = new MessageAPI(apiClient);
   }
@@ -102,29 +100,18 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
   }
 
   /**
-   * Deliver the analysis result using the same pattern as SubAgentTriggerHandler:
-   *   1. Try card rendering (long content → image)
-   *   2. Fall back to forward message (合并转发) if group config enables it
-   *   3. Otherwise send as plain text
+   * Deliver the analysis result as forward message (合并转发) when possible,
+   * otherwise fall back to plain text.
    */
   private async sendAnalysisResult(text: string, context: CommandContext): Promise<void> {
-    const groupIdStr = context.groupId?.toString();
     const protocol = context.metadata.protocol;
     const botSelfId = this.config.getBotUserId();
+    const segments = new MessageBuilder().text(text).build();
 
-    // Try card rendering for long content
-    const cardResult = await this.aiService.processReplyMaybeCard(text, groupIdStr ?? 'private');
-    const isCard = cardResult !== null;
-    const segments = cardResult ? cardResult.segments : new MessageBuilder().text(text).build();
-
-    // Forward message: only for non-card, group chats, Milky protocol with useForwardMsg enabled
     const useForward =
-      !isCard &&
       context.messageType === 'group' &&
       protocol === 'milky' &&
-      botSelfId > 0 &&
-      groupIdStr != null &&
-      (await this.conversationConfigService.getUseForwardMsg(groupIdStr, 'group'));
+      botSelfId > 0;
 
     if (useForward) {
       await this.messageAPI.sendForwardFromContext(

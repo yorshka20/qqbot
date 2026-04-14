@@ -13,7 +13,6 @@ import type { SubAgentType } from '@/agent/types';
 import type { AIService } from '@/ai/AIService';
 import type { Config } from '@/core/config';
 import type { ProtocolName } from '@/core/config/types/protocol';
-import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { EventHandler, NormalizedEvent } from '@/events/types';
@@ -275,17 +274,10 @@ export class VideoAnalyzePlugin extends PluginBase {
       const config = container.resolve<Config>(DITokens.CONFIG);
       const botSelfId = config.getBotUserId();
 
-      // Try card rendering for long analysis results (skip for short error messages)
-      const cardResult = text.length > 100 ? await this.aiService.processReplyMaybeCard(text, groupId?.toString() ?? 'private') : null;
-      const isCard = cardResult !== null;
-      const segments = cardResult ? cardResult.segments : new MessageBuilder().text(text).build();
+      const segments = new MessageBuilder().text(text).build();
 
-      // Forward message: only for non-card, group chats, Milky protocol with useForwardMsg
-      let useForward = false;
-      if (!isCard && messageType === 'group' && groupId != null && protocol === 'milky' && botSelfId > 0) {
-        const convConfigService = container.resolve<ConversationConfigService>(DITokens.CONVERSATION_CONFIG_SERVICE);
-        useForward = await convConfigService.getUseForwardMsg(String(groupId), 'group');
-      }
+      // Forward message: group chats on Milky protocol
+      const useForward = messageType === 'group' && groupId != null && protocol === 'milky' && botSelfId > 0;
 
       if (messageType === 'group' && groupId != null) {
         if (useForward) {
