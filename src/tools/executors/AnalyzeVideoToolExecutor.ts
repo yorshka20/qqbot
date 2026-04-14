@@ -24,7 +24,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
   name: 'analyze_video',
   description: '下载并分析视频内容。使用视频URL调用此工具，获取视频的主题、内容概要和关键亮点等分析结果。',
   executor: 'analyze_video',
-  visibility: ['subagent'],
+  visibility: ['reply', 'subagent'],
   parameters: {
     url: {
       type: 'string',
