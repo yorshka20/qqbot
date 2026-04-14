@@ -641,7 +641,13 @@ export class ContextHub {
     const requestedTimeout = typeof input.timeoutMs === 'number' && input.timeoutMs > 0 ? input.timeoutMs : 600_000;
     const timeoutMs = Math.min(requestedTimeout, HARD_MAX_MS);
     const deadline = Date.now() + timeoutMs;
-    const POLL_INTERVAL_MS = 500;
+    const POLL_INTERVAL_MS = 5_000;
+
+    // Keep the planner's heartbeat alive while we block here. Without this
+    // the planner has no chance to call hub_report (its MCP call is in
+    // flight) and no stdout activity, so healthCheck would kill it.
+    const HEARTBEAT_INTERVAL_MS = 60_000;
+    let lastHeartbeat = Date.now();
 
     // Use handleQueryTask for consistency: same auth checks, same shape.
     while (true) {
@@ -656,6 +662,17 @@ export class ContextHub {
         return snapshot;
       }
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+
+      // Refresh heartbeat every minute so the planner isn't killed for being "stuck".
+      const now = Date.now();
+      if (this.heartbeatCallback && now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
+        lastHeartbeat = now;
+        try {
+          this.heartbeatCallback(workerId);
+        } catch {
+          // Non-fatal — heartbeat callback shouldn't throw, but don't let it break the wait loop.
+        }
+      }
     }
   }
 

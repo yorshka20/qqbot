@@ -79,6 +79,10 @@ export interface WorkerInstance {
   currentTask: TaskRecord | null;
   startedAt: number;
   lastReport: number;
+  /** Updated when stdout produces output — used by healthCheck as secondary liveness signal. */
+  lastStdoutActivity: number;
+  /** Set when healthCheck sends a nudge directive; reset on any activity. null = not nudged. */
+  nudgedAt: number | null;
 }
 
 // ── Task / Job types ──

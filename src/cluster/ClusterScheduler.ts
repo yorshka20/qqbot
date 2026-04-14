@@ -579,10 +579,13 @@ export class ClusterScheduler {
       await this.tryDispatch(task, projectInfo);
     }
 
-    // 6. Health check
-    const stuckWorkers = this.workerPool.healthCheck();
-    for (const workerId of stuckWorkers) {
-      logger.warn(`[ClusterScheduler] Killing stuck worker: ${workerId}`);
+    // 6. Health check — two-phase: nudge first, kill only after grace period
+    const { nudge, kill } = this.workerPool.healthCheck();
+    for (const workerId of nudge) {
+      this.workerPool.nudgeWorker(workerId);
+    }
+    for (const workerId of kill) {
+      logger.warn(`[ClusterScheduler] Killing unresponsive worker (nudge ignored): ${workerId}`);
       await this.workerPool.killWorker(workerId);
     }
   }

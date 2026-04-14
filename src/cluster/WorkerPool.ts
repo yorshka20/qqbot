@@ -224,6 +224,8 @@ export class WorkerPool {
       currentTask: task,
       startedAt: Date.now(),
       lastReport: Date.now(),
+      lastStdoutActivity: Date.now(),
+      nudgedAt: null,
     };
 
     this.workers.set(workerId, workerInstance);
@@ -378,22 +380,62 @@ export class WorkerPool {
   }
 
   /**
-   * Health check — detect stuck or exited workers.
+   * Health check — two-phase stuck detection.
+   *
+   * Phase 1 (nudge): worker inactive for > timeoutMs but not yet nudged
+   *   → scheduler should send a directive asking it to report.
+   * Phase 2 (kill): worker was nudged but still inactive after graceMs
+   *   → scheduler should kill it.
    */
-  healthCheck(timeoutMs: number = 600_000): string[] {
+  healthCheck(timeoutMs: number = 600_000, graceMs: number = 60_000): { nudge: string[]; kill: string[] } {
     const now = Date.now();
-    const stuckWorkers: string[] = [];
+    const nudge: string[] = [];
+    const kill: string[] = [];
 
     for (const worker of this.workers.values()) {
-      if (worker.status === 'running' && now - worker.lastReport > timeoutMs) {
+      if (worker.status !== 'running') continue;
+      const lastActivity = Math.max(worker.lastReport, worker.lastStdoutActivity);
+      if (now - lastActivity <= timeoutMs) continue;
+
+      if (worker.nudgedAt === null) {
+        // Phase 1: first time exceeding timeout → nudge
         logger.warn(
-          `[WorkerPool] Worker ${worker.id} appears stuck (no hub_report for ${Math.round((now - worker.lastReport) / 1000)}s)`,
+          `[WorkerPool] Worker ${worker.id} inactive — nudging (no hub_report for ${Math.round((now - worker.lastReport) / 1000)}s, no stdout for ${Math.round((now - worker.lastStdoutActivity) / 1000)}s)`,
         );
-        stuckWorkers.push(worker.id);
+        nudge.push(worker.id);
+      } else if (now - worker.nudgedAt > graceMs) {
+        // Phase 2: nudged but still no response after grace period → kill
+        logger.warn(
+          `[WorkerPool] Worker ${worker.id} unresponsive after nudge ${Math.round((now - worker.nudgedAt) / 1000)}s ago — marking for kill`,
+        );
+        kill.push(worker.id);
       }
     }
 
-    return stuckWorkers;
+    return { nudge, kill };
+  }
+
+  /**
+   * Send a nudge directive to a stale worker, asking it to confirm it's
+   * still operational by calling hub_report. Sets nudgedAt so healthCheck
+   * can track the grace period.
+   */
+  nudgeWorker(workerId: string): void {
+    const worker = this.workers.get(workerId);
+    if (!worker) return;
+
+    worker.nudgedAt = Date.now();
+    const inactiveSec = Math.round((Date.now() - Math.max(worker.lastReport, worker.lastStdoutActivity)) / 1000);
+    this.hub.messageBox.send(
+      workerId,
+      'hub',
+      `⚠️ HEALTH CHECK: You have been inactive for ${inactiveSec}s with no hub_report or output. ` +
+        'Please call hub_report(status="working", summary="<what you are doing>", nextSteps="<next step>") ' +
+        'immediately to confirm you are still operational. Failure to respond will result in termination.',
+      'directive',
+      'warning',
+    );
+    logger.info(`[WorkerPool] Nudge directive sent to worker ${workerId}`);
   }
 
   /**
@@ -405,6 +447,7 @@ export class WorkerPool {
     const worker = this.workers.get(workerId);
     if (worker) {
       worker.lastReport = Date.now();
+      worker.nudgedAt = null;
     }
   }
 
@@ -526,6 +569,8 @@ export class WorkerPool {
             break;
           }
           rawOutput += decoder.decode(value, { stream: true });
+          worker.lastStdoutActivity = Date.now();
+          worker.nudgedAt = null;
           if (worker.currentTask) {
             worker.currentTask.output = rawOutput;
             const now = Date.now();
