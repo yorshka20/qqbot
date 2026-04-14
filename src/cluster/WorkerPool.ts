@@ -4,11 +4,11 @@
  * Spawns, tracks, and terminates worker processes.
  */
 
-import { randomUUID } from '@/utils/randomUUID';
 import { readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve as resolvePath } from 'node:path';
 import { logger } from '@/utils/logger';
+import { randomUUID } from '@/utils/randomUUID';
 import type { ClusterConfig } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import type { ClusterStatus, TaskRecord, WorkerBackend, WorkerInstance } from './types';
@@ -235,6 +235,7 @@ export class WorkerPool {
       role,
       project,
       templateName,
+      jobId: task.jobId,
     });
     // Stamp the taskId onto the registration so hub_report can look it up
     // without requiring a prior hub_claim call. Pre-Phase-2-round-2 this

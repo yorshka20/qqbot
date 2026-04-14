@@ -203,21 +203,8 @@ export class ClusterAPIBackend {
     const live = gated;
 
     switch (subPath) {
-      case '/workers': {
-        // WorkerRegistry is in-memory only and gets wiped on cluster
-        // restart. To keep the WebUI's Workers list useful across
-        // restarts we union it with workers reconstructed from
-        // cluster_tasks (last 7 days), preferring live registry entries
-        // since they carry richer state (lastReportSummary, syncCursor,
-        // live stats counters) that the DB doesn't record.
-        const liveWorkers = live.getHub().workerRegistry.getAll();
-        const liveIds = new Set(liveWorkers.map((w) => w.workerId));
-        const historical = live
-          .getScheduler()
-          .getHistoricalWorkers()
-          .filter((w) => !liveIds.has(w.workerId));
-        return jsonResponse(this.enrichWorkerRegistrations(live, [...liveWorkers, ...historical]));
-      }
+      case '/workers':
+        return jsonResponse(this.enrichWorkerRegistrations(live, live.getHub().workerRegistry.getAll()));
 
       case '/jobs': {
         const limit = parseInt(url.searchParams.get('limit') || '50', 10);
@@ -248,13 +235,41 @@ export class ClusterAPIBackend {
         return this.handleSSEStream(live);
 
       default: {
+        // /history/jobs — paginated job history from DB
+        if (subPath === '/history/jobs') {
+          const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+          const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+          const status = url.searchParams.get('status') || undefined;
+          const result = live.getScheduler().getJobsFromDb({ limit, offset, status });
+          return jsonResponse(result);
+        }
+
+        // /history/workers — paginated worker history from DB
+        if (subPath === '/history/workers') {
+          const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+          const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+          const jobId = url.searchParams.get('jobId') || undefined;
+          const project = url.searchParams.get('project') || undefined;
+          const result = live.getHub().workerRegistry.getWorkersFromDb({ limit, offset, jobId, project });
+          return jsonResponse(result);
+        }
+
+        // /jobs/:id/workers — workers for a specific job
+        const jobWorkersMatch = subPath.match(/^\/jobs\/([^/]+)\/workers$/);
+        if (jobWorkersMatch) {
+          const jobId = jobWorkersMatch[1];
+          const workers = live.getHub().workerRegistry.getWorkersByJobId(jobId);
+          return jsonResponse(this.enrichWorkerRegistrations(live, workers));
+        }
+
         // /jobs/:id
         const jobMatch = subPath.match(/^\/jobs\/([^/]+)$/);
         if (jobMatch) {
           const job = live.getScheduler().getJob(jobMatch[1]);
           if (!job) return errorResponse('Job not found', 404);
           const tasks = live.getScheduler().getJobTasks(jobMatch[1]);
-          return jsonResponse({ ...job, tasks });
+          const workers = live.getHub().workerRegistry.getWorkersByJobId(jobMatch[1]);
+          return jsonResponse({ ...job, tasks, workers: this.enrichWorkerRegistrations(live, workers) });
         }
 
         // /tasks/:id — single task detail (includes full description, output, metadata)

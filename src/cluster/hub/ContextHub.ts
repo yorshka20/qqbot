@@ -27,8 +27,8 @@
  */
 
 import type { Database } from 'bun:sqlite';
-import { randomUUID } from '@/utils/randomUUID';
 import { logger } from '@/utils/logger';
+import { randomUUID } from '@/utils/randomUUID';
 import type { ClusterConfig } from '../config';
 import type {
   ClusterEventType,
@@ -140,7 +140,7 @@ export class ContextHub {
     this.eventLog = new EventLog(db, config.hub.eventLogMaxSize);
     this.lockManager = new LockManager(db, this.eventLog, config.hub.lockTTL);
     this.messageBox = new MessageBox();
-    this.workerRegistry = new WorkerRegistry();
+    this.workerRegistry = new WorkerRegistry(db);
     this.mcpServer = new HubMCPServer(this);
 
     this.loadHelpRequests();

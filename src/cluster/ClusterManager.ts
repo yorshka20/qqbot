@@ -152,6 +152,9 @@ export class ClusterManager {
     // Start scheduler
     await this.scheduler.start();
 
+    // Hydrate WorkerRegistry from DB so WebUI shows recent workers on restart.
+    this.hub.workerRegistry.hydrateFromDb();
+
     // Up-front project alias validation. Done after scheduler.start() so
     // we have a single error log surfacing misconfigured aliases instead
     // of silent skips on every scheduling tick. Non-fatal — cluster keeps
@@ -432,6 +435,28 @@ export class ClusterManager {
         createdAt TEXT NOT NULL,
         answeredAt TEXT
       )`,
+      `CREATE TABLE IF NOT EXISTS cluster_workers (
+        workerId TEXT PRIMARY KEY,
+        jobId TEXT NOT NULL,
+        taskId TEXT,
+        role TEXT NOT NULL,
+        project TEXT NOT NULL,
+        templateName TEXT NOT NULL,
+        status TEXT NOT NULL,
+        registeredAt TEXT NOT NULL,
+        lastSeen TEXT NOT NULL,
+        exitedAt TEXT,
+        syncCursor INTEGER NOT NULL DEFAULT 0,
+        lastHubReportAt TEXT,
+        lastReportSummary TEXT,
+        lastReportNextSteps TEXT,
+        lastReportStatus TEXT,
+        tasksCompleted INTEGER NOT NULL DEFAULT 0,
+        tasksFailed INTEGER NOT NULL DEFAULT 0,
+        totalReports INTEGER NOT NULL DEFAULT 0
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_cluster_workers_jobId ON cluster_workers(jobId)`,
+      `CREATE INDEX IF NOT EXISTS idx_cluster_workers_registeredAt ON cluster_workers(registeredAt)`,
     ];
 
     for (const stmt of statements) {

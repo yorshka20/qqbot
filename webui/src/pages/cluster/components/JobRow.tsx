@@ -1,15 +1,11 @@
-import { ChevronDown, ChevronRight, Dot } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { ChevronDown, ChevronRight, Dot } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 
-import { getClusterJob } from "../../../api";
-import type {
-  ClusterJob,
-  ClusterJobWithTasks,
-  ClusterTask,
-} from "../../../types";
-import { CLUSTER_CARD_BODY_SCROLL, formatTimestamp } from "../utils";
-import { ClusterStatusBadge } from "./ClusterStatusBadge";
-import { orderTasksAsTree, TaskTreeRow } from "./TaskTree";
+import { getClusterJob } from '../../../api';
+import type { ClusterJob, ClusterJobWithDetail, ClusterTask, EnrichedWorkerRegistration } from '../../../types';
+import { CLUSTER_CARD_BODY_SCROLL, formatEpoch, formatTimestamp } from '../utils';
+import { ClusterStatusBadge } from './ClusterStatusBadge';
+import { orderTasksAsTree, TaskTreeRow } from './TaskTree';
 
 /**
  * Produce a single-line preview of the job description for the collapsed row.
@@ -18,24 +14,18 @@ import { orderTasksAsTree, TaskTreeRow } from "./TaskTree";
  * `--- estimatedComplexity: high --- ## Goal`.
  */
 function previewDescription(raw: string | undefined): string {
-  if (!raw) return "";
-  const stripped = raw.replace(/^---[\s\S]*?---\s*/, "").trim();
+  if (!raw) return '';
+  const stripped = raw.replace(/^---[\s\S]*?---\s*/, '').trim();
   const firstLine = stripped
     .split(/\r?\n/)
-    .map((l) => l.replace(/^#+\s*/, "").trim())
+    .map((l) => l.replace(/^#+\s*/, '').trim())
     .find((l) => l.length > 0);
   return firstLine ?? stripped;
 }
 
-export function JobRow({
-  job,
-  onTaskClick,
-}: {
-  job: ClusterJob;
-  onTaskClick: (task: ClusterTask) => void;
-}) {
+export function JobRow({ job, onTaskClick }: { job: ClusterJob; onTaskClick: (task: ClusterTask) => void }) {
   const [expanded, setExpanded] = useState(false);
-  const [detail, setDetail] = useState<ClusterJobWithTasks | null>(null);
+  const [detail, setDetail] = useState<ClusterJobWithDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
@@ -63,7 +53,7 @@ export function JobRow({
     setDetail(null);
   }, [job.tasksCompleted, job.tasksFailed, job.status]);
 
-  const idShort = (job.id ?? "").slice(0, 8) || "(unknown)";
+  const idShort = (job.id ?? '').slice(0, 8) || '(unknown)';
   const preview = job.ticketId || previewDescription(job.description);
   const completed = job.tasksCompleted ?? 0;
   const failed = job.tasksFailed ?? 0;
@@ -81,18 +71,13 @@ export function JobRow({
         ) : (
           <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
         )}
-        <span className="font-mono text-xs text-zinc-700 dark:text-zinc-200 shrink-0">
-          {idShort}
-        </span>
-        <ClusterStatusBadge status={job.status ?? "unknown"} />
-        <span
-          className="text-sm truncate min-w-0 flex-1"
-          title={job.description}
-        >
+        <span className="font-mono text-xs text-zinc-700 dark:text-zinc-200 shrink-0">{idShort}</span>
+        <ClusterStatusBadge status={job.status ?? 'unknown'} />
+        <span className="text-sm truncate min-w-0 flex-1" title={job.description}>
           {preview}
         </span>
         <span className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0 font-mono tabular-nums">
-          {job.completedAt ? formatTimestamp(job.completedAt) : ""}
+          {job.completedAt ? formatTimestamp(job.completedAt) : ''}
         </span>
         <Dot />
         <span className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0 font-mono tabular-nums">
@@ -109,16 +94,8 @@ export function JobRow({
             </div>
             <div>created: {formatTimestamp(job.createdAt)}</div>
           </div>
-          {loadingDetail && (
-            <div className="text-xs text-zinc-500 dark:text-zinc-400">
-              Loading tasks...
-            </div>
-          )}
-          {detailError && (
-            <div className="text-xs text-red-600 dark:text-red-400">
-              {detailError}
-            </div>
-          )}
+          {loadingDetail && <div className="text-xs text-zinc-500 dark:text-zinc-400">Loading tasks...</div>}
+          {detailError && <div className="text-xs text-red-600 dark:text-red-400">{detailError}</div>}
           {detail && detail.tasks.length === 0 && (
             <div className="text-xs text-zinc-500 dark:text-zinc-400">
               No tasks (job completed and tasks were drained from activeTasks)
@@ -127,13 +104,44 @@ export function JobRow({
           {detail && detail.tasks.length > 0 && (
             <div className="flex flex-col gap-1">
               {orderTasksAsTree(detail.tasks).map(({ task, depth }) => (
-                <TaskTreeRow
-                  key={task.id}
-                  task={task}
-                  depth={depth}
-                  onClick={onTaskClick}
-                />
+                <TaskTreeRow key={task.id} task={task} depth={depth} onClick={onTaskClick} />
               ))}
+            </div>
+          )}
+          {detail?.workers && detail.workers.length > 0 && (
+            <div className="mt-3 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+              <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">
+                Workers ({detail.workers.length})
+              </div>
+              <div className="flex flex-col gap-1">
+                {detail.workers.map((w: EnrichedWorkerRegistration) => (
+                  <div
+                    key={w.workerId}
+                    className="flex items-center gap-2 text-xs px-2 py-1.5 rounded border border-zinc-100 dark:border-zinc-800 bg-white/60 dark:bg-zinc-900/30"
+                  >
+                    <span className="font-mono text-zinc-500 dark:text-zinc-400 shrink-0 max-w-[7rem] truncate">
+                      {(w.workerId ?? '').slice(0, 12)}
+                    </span>
+                    {w.role && (
+                      <span className="shrink-0 px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 text-[10px] font-mono">
+                        {w.role}
+                      </span>
+                    )}
+                    {w.templateName && (
+                      <span className="shrink-0 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 font-mono text-[10px]">
+                        {w.templateName}
+                      </span>
+                    )}
+                    <ClusterStatusBadge status={w.status ?? 'unknown'} />
+                    <span className="flex-1 min-w-0 truncate text-zinc-600 dark:text-zinc-300">
+                      {w.lastReportSummary ?? ''}
+                    </span>
+                    <span className="shrink-0 text-zinc-400 dark:text-zinc-500 tabular-nums">
+                      {formatEpoch(w.exitedAt)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

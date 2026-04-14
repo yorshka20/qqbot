@@ -5,13 +5,13 @@
  */
 
 import type { Database } from 'bun:sqlite';
-import { randomUUID } from '@/utils/randomUUID';
 import type { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
 import { logger } from '@/utils/logger';
+import { randomUUID } from '@/utils/randomUUID';
 import type { ClusterConfig } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import type { TaskSource } from './sources/TaskSource';
-import type { JobRecord, TaskCandidate, TaskRecord, WorkerRegistration, WorkerRole } from './types';
+import type { JobRecord, TaskCandidate, TaskRecord } from './types';
 import type { WorkerPool } from './WorkerPool';
 
 export class ClusterScheduler {
@@ -448,6 +448,39 @@ export class ClusterScheduler {
   }
 
   /**
+   * Paginated job history directly from DB (includes all historical jobs,
+   * not just those in the recent in-memory window).
+   */
+  getJobsFromDb(opts: { limit: number; offset: number; status?: string }): {
+    items: JobRecord[];
+    total: number;
+    hasMore: boolean;
+  } {
+    try {
+      const conditions: string[] = [];
+      const params: any[] = [];
+      if (opts.status) {
+        conditions.push('status = ?');
+        params.push(opts.status);
+      }
+      const where = conditions.length > 0 ? conditions.join(' AND ') : '1=1';
+
+      const countRow = this.db.query(`SELECT COUNT(*) as cnt FROM cluster_jobs WHERE ${where}`).get(...params) as any;
+      const total = countRow?.cnt ?? 0;
+
+      const rows = this.db
+        .query(`SELECT * FROM cluster_jobs WHERE ${where} ORDER BY createdAt DESC LIMIT ? OFFSET ?`)
+        .all(...params, opts.limit, opts.offset) as Array<Record<string, unknown>>;
+
+      const items = rows.map((row) => this.rowToJob(row));
+      return { items, total, hasMore: opts.offset + rows.length < total };
+    } catch (err) {
+      logger.error('[ClusterScheduler] getJobsFromDb failed:', err);
+      return { items: [], total: 0, hasMore: false };
+    }
+  }
+
+  /**
    * Job by id — in-memory first, then `cluster_jobs` (for ticketId after the
    * job row aged out of the live map or across hub-only lookups).
    */
@@ -825,78 +858,6 @@ export class ClusterScheduler {
   }
 
   /**
-   * Reconstruct historical (exited) worker registrations from `cluster_tasks`.
-   * Used by the `/api/cluster/workers` endpoint to surface workers that ran
-   * before the current process — `WorkerRegistry` is purely in-memory and
-   * is wiped on every cluster restart, while task rows persist in SQLite.
-   * Without this fallback, the WebUI shows "No workers" right after a
-   * restart even though Recent Jobs (hydrated by `restoreRecentFromDb`)
-   * still has entries.
-   *
-   * Returns one entry per workerId, populated from that worker's most
-   * recent task row. Caller should prefer the live `workerRegistry.getAll()`
-   * results and only use these to fill in workerIds the live registry is
-   * missing, since live entries carry richer state (lastReportSummary,
-   * stats counters, syncCursor) that the DB doesn't record.
-   *
-   * Limited to the last 7 days to match `restoreRecentFromDb`'s window.
-   */
-  getHistoricalWorkers(): WorkerRegistration[] {
-    try {
-      const cutoff = new Date(Date.now() - 7 * 24 * 3600_000).toISOString();
-      // Pick the latest task per workerId via a self-join on MAX(coalesce(startedAt, createdAt)).
-      const rows = this.db
-        .query(
-          `SELECT t.workerId, t.workerTemplate, t.project, t.id AS taskId,
-                  t.startedAt, t.completedAt, t.createdAt
-             FROM cluster_tasks t
-             INNER JOIN (
-               SELECT workerId, MAX(COALESCE(startedAt, createdAt)) AS latestAt
-                 FROM cluster_tasks
-                WHERE workerId IS NOT NULL AND createdAt >= ?
-                GROUP BY workerId
-             ) latest
-               ON t.workerId = latest.workerId
-              AND COALESCE(t.startedAt, t.createdAt) = latest.latestAt
-            ORDER BY latest.latestAt DESC
-            LIMIT 200`,
-        )
-        .all(cutoff) as Array<Record<string, unknown>>;
-
-      return rows.map((row) => {
-        const workerId = row.workerId as string;
-        const templateName = (row.workerTemplate as string | null) ?? '';
-        const tpl = templateName ? this.config.workerTemplates[templateName] : undefined;
-        const role: WorkerRole = tpl?.role === 'planner' ? 'planner' : 'coder';
-        const startedIso = (row.startedAt as string | null) ?? (row.createdAt as string);
-        const completedIso = (row.completedAt as string | null) ?? null;
-        const startedMs = startedIso ? new Date(startedIso).getTime() : Date.now();
-        const completedMs = completedIso ? new Date(completedIso).getTime() : startedMs;
-        return {
-          workerId,
-          role,
-          project: (row.project as string) ?? '',
-          templateName,
-          status: 'exited',
-          lastBoundTaskId: (row.taskId as string) ?? undefined,
-          exitedAt: completedMs,
-          lastSeen: completedMs,
-          syncCursor: 0,
-          stats: {
-            tasksCompleted: 0,
-            tasksFailed: 0,
-            totalReports: 0,
-            registeredAt: startedMs,
-          },
-        };
-      });
-    } catch (err) {
-      logger.warn('[ClusterScheduler] getHistoricalWorkers DB scan failed:', err);
-      return [];
-    }
-  }
-
-  /**
    * Hydrate in-memory `jobs` map from the DB so WebUI can show recent
    * history after a cluster restart. Only loads jobs from the last 7 days.
    * Tasks are NOT loaded into `activeTasks` (they are fetched on-demand
@@ -937,6 +898,23 @@ export class ClusterScheduler {
     } catch (err) {
       logger.warn('[ClusterScheduler] restoreRecentFromDb failed (non-fatal):', err);
     }
+  }
+
+  private rowToJob(row: Record<string, unknown>): JobRecord {
+    return {
+      id: row.id as string,
+      project: row.project as string,
+      description: row.description as string,
+      status: row.status as JobRecord['status'],
+      createdAt: row.createdAt as string,
+      startedAt: (row.startedAt as string | null) ?? undefined,
+      completedAt: (row.completedAt as string | null) ?? undefined,
+      taskCount: Number(row.taskCount),
+      tasksCompleted: Number(row.tasksCompleted),
+      tasksFailed: Number(row.tasksFailed),
+      metadata: (row.metadata as string | null) ?? undefined,
+      ticketId: (row.ticketId as string | null) ?? undefined,
+    };
   }
 
   private rowToTask(row: Record<string, unknown>): TaskRecord {

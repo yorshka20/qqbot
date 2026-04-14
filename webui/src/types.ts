@@ -444,6 +444,32 @@ export interface ClusterJobWithTasks extends ClusterJob {
   tasks: ClusterTask[];
 }
 
+/** Paginated response shape for history endpoints. */
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  hasMore: boolean;
+}
+
+/** Worker registration with jobId included (from DB history queries). */
+export interface ClusterWorkerHistoryEntry extends ClusterWorkerRegistration {
+  jobId?: string;
+}
+
+/** Extended job detail with both tasks and workers. */
+export interface ClusterJobWithDetail extends ClusterJobWithTasks {
+  workers?: EnrichedWorkerRegistration[];
+}
+
+/** Enriched worker registration from the backend (GET /workers, GET /jobs/:id/workers). */
+export interface EnrichedWorkerRegistration extends ClusterWorkerRegistration {
+  spawnedAt: number;
+  boundJobId?: string;
+  boundTicketId?: string;
+  boundTaskSummary?: string;
+  resolvedTaskId?: string;
+}
+
 /**
  * One entry in the WorkerTemplates dictionary — mirrors the server's
  * snapshot response from `GET /api/cluster/templates`.

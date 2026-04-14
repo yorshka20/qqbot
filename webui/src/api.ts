@@ -17,14 +17,16 @@ import type {
   ClusterEventListResponse,
   ClusterHelpRequest,
   ClusterJob,
-  ClusterJobWithTasks,
+  ClusterJobWithDetail,
   ClusterLock,
   ClusterStatus,
   ClustersResponse,
   ClusterTask,
   ClusterTemplatesResponse,
+  ClusterWorkerHistoryEntry,
   ClusterWorkerRegistration,
   DailyStatsResponse,
+  EnrichedWorkerRegistration,
   EntitiesResponse,
   InsightDetailResponse,
   InsightListResponse,
@@ -40,6 +42,7 @@ import type {
   MomentsListResponse,
   MomentsSearchResponse,
   MomentsStatsResponse,
+  PaginatedResponse,
   ProjectsResponse,
   QdrantCollectionsResponse,
   QdrantScrollResponse,
@@ -553,13 +556,13 @@ export async function getClusterTemplates(): Promise<ClusterTemplatesResponse> {
  * Fetch a single job along with its tasks. Used by the WebUI to expand a
  * job row and show its task breakdown (status / output / error).
  */
-export async function getClusterJob(jobId: string): Promise<ClusterJobWithTasks> {
+export async function getClusterJob(jobId: string): Promise<ClusterJobWithDetail> {
   const res = await fetch(`${clusterApiBase()}/jobs/${encodeURIComponent(jobId)}`);
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Get cluster job failed: ${res.status}`);
   }
-  return res.json() as Promise<ClusterJobWithTasks>;
+  return res.json() as Promise<ClusterJobWithDetail>;
 }
 
 export async function listClusterTasks(): Promise<ClusterTask[]> {
@@ -686,6 +689,54 @@ export async function answerClusterHelpRequest(
     throw new Error(err.error ?? `Answer help request failed: ${res.status}`);
   }
   return res.json() as Promise<{ answered: boolean }>;
+}
+
+/** Paginated job history from DB (not limited to in-memory window). */
+export async function listClusterHistoryJobs(opts?: {
+  limit?: number;
+  offset?: number;
+  status?: string;
+}): Promise<PaginatedResponse<ClusterJob>> {
+  const params = new URLSearchParams();
+  if (opts?.limit) params.set('limit', String(opts.limit));
+  if (opts?.offset) params.set('offset', String(opts.offset));
+  if (opts?.status) params.set('status', opts.status);
+  const res = await fetch(`${clusterApiBase()}/history/jobs?${params}`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List cluster history jobs failed: ${res.status}`);
+  }
+  return res.json() as Promise<PaginatedResponse<ClusterJob>>;
+}
+
+/** Paginated worker history from DB (full history, no time window). */
+export async function listClusterHistoryWorkers(opts?: {
+  limit?: number;
+  offset?: number;
+  jobId?: string;
+  project?: string;
+}): Promise<PaginatedResponse<ClusterWorkerHistoryEntry>> {
+  const params = new URLSearchParams();
+  if (opts?.limit) params.set('limit', String(opts.limit));
+  if (opts?.offset) params.set('offset', String(opts.offset));
+  if (opts?.jobId) params.set('jobId', opts.jobId);
+  if (opts?.project) params.set('project', opts.project);
+  const res = await fetch(`${clusterApiBase()}/history/workers?${params}`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List cluster history workers failed: ${res.status}`);
+  }
+  return res.json() as Promise<PaginatedResponse<ClusterWorkerHistoryEntry>>;
+}
+
+/** Get all workers for a specific job (from DB, no time window limit). */
+export async function getClusterJobWorkers(jobId: string): Promise<EnrichedWorkerRegistration[]> {
+  const res = await fetch(`${clusterApiBase()}/jobs/${encodeURIComponent(jobId)}/workers`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get cluster job workers failed: ${res.status}`);
+  }
+  return res.json() as Promise<EnrichedWorkerRegistration[]>;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
