@@ -57,25 +57,62 @@ export class VideoDownloadService {
     const timeout = options?.timeout ?? 120_000;
     const maxSize = options?.maxSize ?? 100 * 1024 * 1024; // 100 MB
 
-    logger.info(`[VideoDownloadService] Downloading video | session=${sessionId} | url=${url}`);
+    // Resolve short links (b23.tv) to canonical URLs before processing
+    const resolvedUrl = await this.resolveShortLink(url);
+    if (resolvedUrl !== url) {
+      logger.info(`[VideoDownloadService] Resolved short link | ${url} → ${resolvedUrl}`);
+    }
 
-    if (this.shouldPreferYtDlp(url)) {
+    logger.info(`[VideoDownloadService] Downloading video | session=${sessionId} | url=${resolvedUrl}`);
+
+    const isPlatformUrl = this.shouldPreferYtDlp(resolvedUrl);
+
+    if (isPlatformUrl) {
       const ytDlpAvailable = await this.ensureYtDlpAvailability();
       if (ytDlpAvailable) {
         try {
-          return await this.downloadWithYtDlp(url, { sessionId, timeout, maxSize });
+          return await this.downloadWithYtDlp(resolvedUrl, { sessionId, timeout, maxSize });
         } catch (error) {
           const err = error instanceof Error ? error : new Error(String(error));
           logger.warn(
-            `[VideoDownloadService] yt-dlp failed for ${url}; falling back to HTTP download | session=${sessionId} | error=${err.message}`,
+            `[VideoDownloadService] yt-dlp failed for ${resolvedUrl}; falling back to HTTP download | session=${sessionId} | error=${err.message}`,
           );
         }
       } else {
-        this.logYtDlpFallbackOnce(url);
+        // Platform URLs (bilibili, youtube, etc.) CANNOT be downloaded via plain HTTP — they serve HTML pages, not video files
+        throw new Error(
+          `yt-dlp 未安装或不可用，无法下载平台视频（${new URL(resolvedUrl).hostname}）。请安装 yt-dlp: brew install yt-dlp`,
+        );
       }
     }
 
-    return this.downloadViaHttp(url, { sessionId, timeout, maxSize });
+    return this.downloadViaHttp(resolvedUrl, { sessionId, timeout, maxSize });
+  }
+
+  /**
+   * Resolve short link URLs (e.g. b23.tv) by following HTTP redirects.
+   * Returns the final URL after all redirects, or the original URL if resolution fails.
+   */
+  private async resolveShortLink(url: string): Promise<string> {
+    try {
+      const hostname = new URL(url).hostname.toLowerCase();
+      // Only resolve known short link domains
+      if (hostname !== 'b23.tv') {
+        return url;
+      }
+      const response = await fetch(url, { method: 'HEAD', redirect: 'follow' });
+      const finalUrl = response.url;
+      // Strip tracking query params for cleaner URLs
+      if (finalUrl.includes('bilibili.com')) {
+        const parsed = new URL(finalUrl);
+        // Keep only the path (e.g., /video/BVxxx)
+        return `${parsed.origin}${parsed.pathname}`;
+      }
+      return finalUrl;
+    } catch {
+      logger.debug(`[VideoDownloadService] Short link resolution failed for ${url}, using original`);
+      return url;
+    }
   }
 
   private async downloadViaHttp(
@@ -198,9 +235,7 @@ export class VideoDownloadService {
     logger.warn(`[VideoDownloadService] yt-dlp is unavailable (${reason}); platform video URLs will use HTTP fallback`);
   }
 
-  private logYtDlpFallbackOnce(url: string): void {
-    logger.warn(`[VideoDownloadService] yt-dlp is unavailable for ${url}; falling back to HTTP download`);
-  }
+
 
   private formatMaxFileSize(maxSizeBytes: number): string {
     const boundedSize = Math.min(maxSizeBytes > 0 ? maxSizeBytes : YT_DLP_MAX_FILESIZE_BYTES, YT_DLP_MAX_FILESIZE_BYTES);
