@@ -4,6 +4,7 @@
 import type { Database } from 'bun:sqlite';
 import { createHash } from 'node:crypto';
 import { logger } from '@/utils/logger';
+import { randomUUID } from '@/utils/randomUUID';
 
 export interface FactMeta {
   factHash: string;
@@ -79,7 +80,7 @@ export class MemoryFactMetaService {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'active', ?, ?)`,
       )
       .run(
-        crypto.randomUUID(),
+        randomUUID(),
         meta.factHash,
         meta.groupId,
         meta.userId,
@@ -298,7 +299,7 @@ export class MemoryFactMetaService {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
       )
       .run(
-        crypto.randomUUID(),
+        randomUUID(),
         newHash,
         old.groupId,
         old.userId,

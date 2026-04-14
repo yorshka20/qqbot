@@ -5,7 +5,7 @@
  * Messages are consumed via hub_sync (merged into updates).
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID } from '@/utils/randomUUID';
 import { logger } from '@/utils/logger';
 import type { HubUpdate } from '../types';
 

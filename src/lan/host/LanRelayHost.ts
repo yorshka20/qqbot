@@ -16,7 +16,7 @@
 // Independent of Agent Cluster (ContextHub) — runs its own Bun.serve.
 
 import type { Database } from 'bun:sqlite';
-import { randomUUID } from 'node:crypto';
+import { randomUUID } from '@/utils/randomUUID';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { SendMessageResult } from '@/api/types';
 import type { Config } from '@/core/config';

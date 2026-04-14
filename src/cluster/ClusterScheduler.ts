@@ -5,7 +5,7 @@
  */
 
 import type { Database } from 'bun:sqlite';
-import { randomUUID } from 'node:crypto';
+import { randomUUID } from '@/utils/randomUUID';
 import type { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
 import { logger } from '@/utils/logger';
 import type { ClusterConfig } from './config';

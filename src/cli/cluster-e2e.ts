@@ -67,7 +67,7 @@
 import 'reflect-metadata';
 
 import { spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { randomUUID } from '@/utils/randomUUID';
 import type { ClusterManager } from '@/cluster/ClusterManager';
 import type { EventEntry, TaskRecord } from '@/cluster/types';
 import { bootstrapApp } from '@/core/bootstrap';

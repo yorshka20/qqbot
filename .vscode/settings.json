@@ -31,6 +31,8 @@
     "searxng",
     "Streamable",
     "tombstoned",
+    "tsyringe",
+    "uuidv",
     "wechat"
   ],
   "editor.defaultFormatter": "biomejs.biome",

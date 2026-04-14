@@ -27,7 +27,7 @@
  */
 
 import type { Database } from 'bun:sqlite';
-import { randomUUID } from 'node:crypto';
+import { randomUUID } from '@/utils/randomUUID';
 import { logger } from '@/utils/logger';
 import type { ClusterConfig } from '../config';
 import type {

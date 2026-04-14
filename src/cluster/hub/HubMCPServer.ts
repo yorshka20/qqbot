@@ -24,7 +24,7 @@
  * process terminates.
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID } from '@/utils/randomUUID';
 import { readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';

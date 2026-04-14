@@ -18,7 +18,7 @@
 // `lanRelay.client.disabledPlugins: ["lanControl"]`, but it also no-ops if
 // the runtime singleton is not in host mode.
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID } from '@/utils/randomUUID';
 import type { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
 import type { Config } from '@/core/config';

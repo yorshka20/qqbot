@@ -17,7 +17,7 @@
 // Phase 1's `inbound_message` (broadcast every IM event from host) is gone:
 // the client is silent unless the host explicitly dispatches.
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID } from '@/utils/randomUUID';
 import type { SendMessageResult } from '@/api/types';
 import type { Config } from '@/core/config';
 import type { LanRelayConfig } from '@/core/config/types/lanRelay';

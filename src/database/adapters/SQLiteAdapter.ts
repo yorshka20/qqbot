@@ -1,7 +1,7 @@
 // SQLite database adapter implementation
 
 import { Database } from 'bun:sqlite';
-import { randomUUID } from 'node:crypto';
+import { randomUUID } from '@/utils/randomUUID';
 import { mkdir, stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { logger } from '@/utils/logger';
