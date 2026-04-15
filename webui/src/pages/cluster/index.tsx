@@ -40,6 +40,7 @@ import {
   stopCluster,
 } from '../../api';
 import { RegistryProjectSelect } from '../../components/RegistryProjectSelect';
+import { TemplateSelect } from '../../components/TemplateSelect';
 import { getClusterApiBase } from '../../config';
 import type {
   ClusterEventEntry,
@@ -352,22 +353,15 @@ export function ClusterPage() {
                 </div>
                 <div className="md:col-span-4">
                   <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Template</div>
-                  <select
+                  <TemplateSelect
                     value={selectedTemplate}
-                    onChange={(e) => setSelectedTemplate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
+                    onChange={setSelectedTemplate}
+                    templates={templates?.templates ?? []}
                     disabled={!templates}
-                  >
-                    <option value="">
-                      (default
-                      {templates?.projectDefaults?.[project] ? `: ${templates.projectDefaults[project]}` : ''})
-                    </option>
-                    {templates?.templates.map((t) => (
-                      <option key={t.name} value={t.name}>
-                        {t.name} · {t.type} · {t.costTier}
-                      </option>
-                    ))}
-                  </select>
+                    defaultLabel={`(default${
+                      templates?.projectDefaults?.[project] ? `: ${templates.projectDefaults[project]}` : ''
+                    })`}
+                  />
                 </div>
                 <div className="md:col-span-12">
                   <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Description</div>

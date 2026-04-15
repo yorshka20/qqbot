@@ -2,17 +2,26 @@ import { Save, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RegistryProjectSelect } from '../../../components/RegistryProjectSelect';
+import { StatusSelect } from '../../../components/StatusSelect';
+import { TemplateSelect } from '../../../components/TemplateSelect';
 import type { ClusterTemplatesResponse, ProjectRegistryEntry, TicketStatus } from '../../../types';
+import { extractFrontmatter } from '../frontmatter';
 
-/** Map raw frontmatter / local state to a registry alias when the snapshot is available. */
+/**
+ * Resolve the displayed project: respect a non-empty current value
+ * verbatim (even if unknown — RegistryProjectSelect shows it as a
+ * warning option and `canSave` gates it). Only fall back to
+ * initial/default when current is empty.
+ */
 function resolveRegistryProject(
   current: string,
   registryProjects: ProjectRegistryEntry[],
   initialProject: string,
 ): string {
-  if (registryProjects.length === 0) return current;
+  const trimmed = current.trim();
+  if (trimmed) return trimmed;
+  if (registryProjects.length === 0) return '';
   const aliases = new Set(registryProjects.map((p) => p.alias));
-  if (aliases.has(current)) return current;
   const fromFm = initialProject.trim() && aliases.has(initialProject.trim()) ? initialProject.trim() : '';
   return fromFm || registryProjects.find((p) => p.isDefault)?.alias || registryProjects[0]?.alias || '';
 }
@@ -87,6 +96,60 @@ export function TicketEditor({
   // input. We coerce to number on save (empty → null = unset).
   const [maxChildrenStr, setMaxChildrenStr] = useState(initial.maxChildren !== null ? String(initial.maxChildren) : '');
   const [estimatedComplexity, setEstimatedComplexity] = useState(initial.estimatedComplexity);
+  /**
+   * Brief banner shown when a paste lifted frontmatter into the form —
+   * gives the user feedback that the header was absorbed instead of
+   * silently stripped.
+   */
+  const [liftedFields, setLiftedFields] = useState<string[] | null>(null);
+
+  /**
+   * Body change handler that transparently absorbs any leading YAML
+   * frontmatter block into the form fields. This handles the common
+   * case where a ticket was generated/pasted with its `---` header
+   * inline — the header fields go to form controls, the body textarea
+   * keeps only the markdown body. Supports round-trip with the backend
+   * serializer (which reassembles the header on save).
+   */
+  const handleBodyChange = (nextBody: string) => {
+    const extracted = extractFrontmatter(nextBody);
+    if (!extracted) {
+      setBody(nextBody);
+      return;
+    }
+    const fm = extracted.frontmatter;
+    const lifted: string[] = [];
+    if (fm.title !== undefined) {
+      setTitle(fm.title);
+      lifted.push('title');
+    }
+    if (fm.status !== undefined) {
+      setStatus(fm.status);
+      lifted.push('status');
+    }
+    if (fm.template !== undefined) {
+      setTemplate(fm.template);
+      lifted.push('template');
+    }
+    if (fm.project !== undefined) {
+      setProject(fm.project);
+      lifted.push('project');
+    }
+    if (fm.usePlanner !== undefined) {
+      setUsePlanner(fm.usePlanner);
+      lifted.push('usePlanner');
+    }
+    if (fm.maxChildren !== undefined) {
+      setMaxChildrenStr(String(fm.maxChildren));
+      lifted.push('maxChildren');
+    }
+    if (fm.estimatedComplexity !== undefined) {
+      setEstimatedComplexity(fm.estimatedComplexity);
+      lifted.push('estimatedComplexity');
+    }
+    setBody(extracted.body);
+    if (lifted.length > 0) setLiftedFields(lifted);
+  };
 
   const effectiveProject = useMemo(
     () => resolveRegistryProject(project, registryProjects, initial.project),
@@ -161,34 +224,16 @@ export function TicketEditor({
             </div>
             <div className="md:col-span-3">
               <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">status</div>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as TicketStatus)}
-                className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
-                disabled={saving}
-              >
-                <option value="draft">draft</option>
-                <option value="ready">ready</option>
-                <option value="dispatched">dispatched</option>
-                <option value="done">done</option>
-                <option value="abandoned">abandoned</option>
-              </select>
+              <StatusSelect value={status} onChange={setStatus} disabled={saving} />
             </div>
             <div className="md:col-span-5">
               <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">template</div>
-              <select
+              <TemplateSelect
                 value={template}
-                onChange={(e) => setTemplate(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
+                onChange={setTemplate}
+                templates={templates?.templates ?? []}
                 disabled={saving}
-              >
-                <option value="">(use project default)</option>
-                {templates?.templates.map((t) => (
-                  <option key={t.name} value={t.name}>
-                    {t.name} · {t.type} · {t.costTier}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <div className="md:col-span-4">
               <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">project</div>
@@ -250,9 +295,24 @@ export function TicketEditor({
             <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1 flex items-center gap-2">
               <span>body (markdown — this is what the worker will see verbatim)</span>
             </div>
+            {liftedFields && (
+              <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 px-3 py-2 text-xs text-blue-800 dark:text-blue-200">
+                <div>
+                  粘贴的 frontmatter 已提取到表单字段：
+                  <span className="font-mono ml-1">{liftedFields.join(', ')}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLiftedFields(null)}
+                  className="text-blue-600 dark:text-blue-300 hover:underline shrink-0"
+                >
+                  dismiss
+                </button>
+              </div>
+            )}
             <textarea
               value={body}
-              onChange={(e) => setBody(e.target.value)}
+              onChange={(e) => handleBodyChange(e.target.value)}
               className="w-full min-h-[400px] px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-mono leading-relaxed"
               placeholder="## Goal&#10;&#10;..."
               disabled={saving}
