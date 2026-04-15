@@ -131,14 +131,14 @@ export class CatCommand implements CommandHandler {
  */
 @Command({
   name: 'fetch',
-  description: 'Send a file from project root via QQ (Milky protocol upload API)',
+  description: 'Send a file via QQ (Milky protocol upload API). Admins can use absolute paths.',
   usage: '/fetch <path>',
   permissions: ['admin'],
 })
 @injectable()
 export class FetchCommand implements CommandHandler {
   name = 'fetch';
-  description = 'Send a file from project root via QQ (Milky protocol upload API)';
+  description = 'Send a file via QQ (Milky protocol upload API). Admins can use absolute paths.';
   usage = '/fetch <path>';
 
   constructor(

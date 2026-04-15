@@ -75,11 +75,11 @@ export class FileReadService {
    * When noCheck is true, only traversal is checked; filterPaths are skipped (caller must restrict who uses noCheck).
    */
   isPathSafe(resolvedPath: string, rootPath: string = this.projectRoot, noCheck = false): boolean {
+    if (noCheck) {
+      return true;
+    }
     const rel = relative(rootPath, resolvedPath);
     const withinRoot = (!rel || !rel.startsWith('..')) && !isAbsolute(rel);
-    if (noCheck) {
-      return withinRoot;
-    }
     return withinRoot && this.filterPaths.every((filter) => !rel.includes(filter));
   }
 
@@ -90,7 +90,7 @@ export class FileReadService {
    */
   resolvePath(userPath: string, noCheck = false): { resolved: string; error?: string } {
     const normalized = normalize(userPath).replace(/^(\.\/)+/, '');
-    const resolved = resolve(this.projectRoot, normalized);
+    const resolved = noCheck && isAbsolute(normalized) ? resolve(normalized) : resolve(this.projectRoot, normalized);
     const relFromRoot = relative(this.projectRoot, resolved);
 
     // Check for unavailable path per filters (skip when noCheck)
