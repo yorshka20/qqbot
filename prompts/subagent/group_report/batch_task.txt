@@ -1,4 +1,4 @@
-请分析以下群聊记录片段，提取语义信息。
+请分析以下群聊记录片段，提取语义信息，并以 JSON 格式输出。
 
 **群名称**: {{groupName}}
 **日期**: {{date}}
@@ -29,3 +29,16 @@
 
 ### 4. batchSummary
 - 用 1-2 句话概括本批次的整体氛围和亮点
+
+## 输出格式
+
+必须输出一个合法的 JSON 对象，严格遵循以下 JSON schema（不要输出 markdown 代码块包裹）：
+
+```json
+{
+  "topics": [{"title": "string", "summary": "string"}],
+  "memberHighlights": [{"userId": "string", "nickname": "string", "comment": "string"}],
+  "featuredMessages": [{"userId": "string", "nickname": "string", "content": "string", "comment": "string"}],
+  "batchSummary": "string"
+}
+```
