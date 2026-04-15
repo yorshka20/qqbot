@@ -599,7 +599,7 @@ export function ClusterPage() {
 
       {openTask && <TaskOutputModal task={openTask} onClose={() => setOpenTask(null)} />}
 
-      <HistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} onTaskClick={openTaskOutput} />
+      <HistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} onTaskClick={setOpenTask} />
 
       {killConfirmId && (
         <KillWorkerDialog

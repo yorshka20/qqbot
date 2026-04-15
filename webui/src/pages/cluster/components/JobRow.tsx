@@ -1,10 +1,11 @@
-import { ChevronDown, ChevronRight, Dot } from 'lucide-react';
+import { ChevronDown, ChevronRight, Dot, Users } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { getClusterJob } from '../../../api';
-import type { ClusterJob, ClusterJobWithDetail, ClusterTask, EnrichedWorkerRegistration } from '../../../types';
-import { CLUSTER_CARD_BODY_SCROLL, formatEpoch, formatTimestamp } from '../utils';
+import type { ClusterJob, ClusterJobWithDetail, ClusterTask } from '../../../types';
+import { formatTimestamp } from '../utils';
 import { ClusterStatusBadge } from './ClusterStatusBadge';
+import { JobWorkersModal } from './JobWorkersModal';
 import { orderTasksAsTree, TaskTreeRow } from './TaskTree';
 
 /**
@@ -28,6 +29,7 @@ export function JobRow({ job, onTaskClick }: { job: ClusterJob; onTaskClick: (ta
   const [detail, setDetail] = useState<ClusterJobWithDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [workersModalOpen, setWorkersModalOpen] = useState(false);
 
   const toggle = useCallback(async () => {
     if (expanded) {
@@ -58,6 +60,7 @@ export function JobRow({ job, onTaskClick }: { job: ClusterJob; onTaskClick: (ta
   const completed = job.tasksCompleted ?? 0;
   const failed = job.tasksFailed ?? 0;
   const total = job.taskCount ?? 0;
+  const workers = detail?.workers ?? [];
 
   return (
     <div className="shrink-0 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white/60 dark:bg-zinc-900/30 overflow-hidden">
@@ -85,14 +88,27 @@ export function JobRow({ job, onTaskClick }: { job: ClusterJob; onTaskClick: (ta
         </span>
       </button>
       {expanded && (
-        <div
-          className={`border-t border-zinc-200 dark:border-zinc-700 px-3 py-2 bg-zinc-50/50 dark:bg-zinc-900/50 ${CLUSTER_CARD_BODY_SCROLL}`}
-        >
-          <div className="grid grid-cols-2 gap-2 text-xs text-zinc-500 dark:text-zinc-400 mb-2">
-            <div>
-              project: <span className="font-mono">{job.project}</span>
+        <div className="border-t border-zinc-200 dark:border-zinc-700 px-3 py-2 bg-zinc-50/50 dark:bg-zinc-900/50">
+          <div className="flex items-center justify-between gap-2 text-xs text-zinc-500 dark:text-zinc-400 mb-2">
+            <div className="flex items-center gap-3">
+              <span>
+                project: <span className="font-mono">{job.project}</span>
+              </span>
+              <span>created: {formatTimestamp(job.createdAt)}</span>
             </div>
-            <div>created: {formatTimestamp(job.createdAt)}</div>
+            {workers.length > 0 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setWorkersModalOpen(true);
+                }}
+                className="shrink-0 inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 transition-colors"
+              >
+                <Users className="w-3 h-3" />
+                <span>Workers ({workers.length})</span>
+              </button>
+            )}
           </div>
           {loadingDetail && <div className="text-xs text-zinc-500 dark:text-zinc-400">Loading tasks...</div>}
           {detailError && <div className="text-xs text-red-600 dark:text-red-400">{detailError}</div>}
@@ -108,43 +124,15 @@ export function JobRow({ job, onTaskClick }: { job: ClusterJob; onTaskClick: (ta
               ))}
             </div>
           )}
-          {detail?.workers && detail.workers.length > 0 && (
-            <div className="mt-3 pt-2 border-t border-zinc-200 dark:border-zinc-700">
-              <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">
-                Workers ({detail.workers.length})
-              </div>
-              <div className="flex flex-col gap-1">
-                {detail.workers.map((w: EnrichedWorkerRegistration) => (
-                  <div
-                    key={w.workerId}
-                    className="flex items-center gap-2 text-xs px-2 py-1.5 rounded border border-zinc-100 dark:border-zinc-800 bg-white/60 dark:bg-zinc-900/30"
-                  >
-                    <span className="font-mono text-zinc-500 dark:text-zinc-400 shrink-0 max-w-[7rem] truncate">
-                      {(w.workerId ?? '').slice(0, 12)}
-                    </span>
-                    {w.role && (
-                      <span className="shrink-0 px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 text-[10px] font-mono">
-                        {w.role}
-                      </span>
-                    )}
-                    {w.templateName && (
-                      <span className="shrink-0 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 font-mono text-[10px]">
-                        {w.templateName}
-                      </span>
-                    )}
-                    <ClusterStatusBadge status={w.status ?? 'unknown'} />
-                    <span className="flex-1 min-w-0 truncate text-zinc-600 dark:text-zinc-300">
-                      {w.lastReportSummary ?? ''}
-                    </span>
-                    <span className="shrink-0 text-zinc-400 dark:text-zinc-500 tabular-nums">
-                      {formatEpoch(w.exitedAt)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
+      )}
+      {workersModalOpen && (
+        <JobWorkersModal
+          jobId={job.id}
+          jobPreview={preview}
+          workers={workers}
+          onClose={() => setWorkersModalOpen(false)}
+        />
       )}
     </div>
   );

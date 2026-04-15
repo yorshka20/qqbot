@@ -1,16 +1,18 @@
-import { History, Loader2, X } from 'lucide-react';
+import { History, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { listClusterHistoryJobs, listClusterHistoryWorkers } from '../../../api';
 import type { ClusterJob, ClusterTask, ClusterWorkerHistoryEntry } from '../../../types';
-import { formatEpoch, formatTimestamp } from '../utils';
+import { formatEpoch } from '../utils';
 import { ClusterStatusBadge } from './ClusterStatusBadge';
+import { JobRow } from './JobRow';
+import { Modal } from './Modal';
 import { WorkerDetailModal } from './WorkerDetailModal';
 
 interface HistoryModalProps {
   open: boolean;
   onClose: () => void;
-  onTaskClick: (taskId: string) => void;
+  onTaskClick: (task: ClusterTask) => void;
 }
 
 type Tab = 'jobs' | 'workers';
@@ -29,16 +31,6 @@ function initialPageState<T>(): PageState<T> {
 }
 
 const PAGE_LIMIT = 50;
-
-function previewDescription(raw: string | undefined): string {
-  if (!raw) return '';
-  const stripped = raw.replace(/^---[\s\S]*?---\s*/, '').trim();
-  const firstLine = stripped
-    .split(/\r?\n/)
-    .map((l) => l.replace(/^#+\s*/, '').trim())
-    .find((l) => l.length > 0);
-  return firstLine ?? stripped;
-}
 
 export function HistoryModal({ open, onClose, onTaskClick }: HistoryModalProps) {
   const [tab, setTab] = useState<Tab>('jobs');
@@ -157,29 +149,21 @@ export function HistoryModal({ open, onClose, onTaskClick }: HistoryModalProps) 
 
   const currentState = tab === 'jobs' ? jobsState : workersState;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl flex flex-col w-[min(95vw,72rem)] max-h-[90vh]">
-        {/* Header */}
-        <div className="shrink-0 px-5 py-4 border-b border-zinc-200 dark:border-zinc-700 flex items-center gap-3">
-          <History className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
-          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">历史审计</h2>
-          {currentState.total > 0 && (
-            <span className="text-xs text-zinc-500 dark:text-zinc-400">
-              {currentState.items.length} / {currentState.total}
-            </span>
-          )}
-          <div className="flex-1" />
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
-            aria-label="Close"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+  const header = (
+    <>
+      <History className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">历史审计</h2>
+      {currentState.total > 0 && (
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+          {currentState.items.length} / {currentState.total}
+        </span>
+      )}
+    </>
+  );
 
+  return (
+    <Modal onClose={onClose} header={header} size="xl">
+      <div className="flex-1 min-h-0 flex flex-col">
         {/* Tabs */}
         <div className="shrink-0 px-5 pt-3 flex items-center gap-1 border-b border-zinc-200 dark:border-zinc-700">
           <button
@@ -213,9 +197,9 @@ export function HistoryModal({ open, onClose, onTaskClick }: HistoryModalProps) 
           )}
 
           {tab === 'jobs' && (
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               {jobsState.items.map((job) => (
-                <JobHistoryRow key={job.id} job={job} onTaskClick={onTaskClick} />
+                <JobRow key={job.id} job={job} onTaskClick={onTaskClick} />
               ))}
             </div>
           )}
@@ -248,42 +232,8 @@ export function HistoryModal({ open, onClose, onTaskClick }: HistoryModalProps) 
           <div ref={sentinelRef} className="h-1" />
         </div>
       </div>
-
       {selectedWorker && <WorkerDetailModal worker={selectedWorker} onClose={() => setSelectedWorker(null)} />}
-    </div>
-  );
-}
-
-function JobHistoryRow({ job, onTaskClick }: { job: ClusterJob; onTaskClick: (taskId: string) => void }) {
-  void onTaskClick; // available for future: click row to view a task
-  const idShort = (job.id ?? '').slice(0, 8) || '(unknown)';
-  const preview = job.ticketId || previewDescription(job.description);
-  const completed = job.tasksCompleted ?? 0;
-  const failed = job.tasksFailed ?? 0;
-  const total = job.taskCount ?? 0;
-
-  return (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white/60 dark:bg-zinc-800/30 px-3 py-2 flex items-center gap-2 text-xs hover:bg-zinc-50 dark:hover:bg-zinc-800/60 transition-colors">
-      <span className="font-mono text-zinc-500 dark:text-zinc-400 shrink-0 w-16 truncate">{idShort}</span>
-      <ClusterStatusBadge status={job.status ?? 'unknown'} />
-      {job.project && (
-        <span className="shrink-0 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 font-mono text-[10px]">
-          {job.project}
-        </span>
-      )}
-      <span className="flex-1 min-w-0 truncate text-zinc-800 dark:text-zinc-100" title={job.description}>
-        {preview}
-      </span>
-      <span className="shrink-0 text-zinc-400 dark:text-zinc-500 font-mono tabular-nums">
-        {completed}✓ {failed}✗ /{total}
-      </span>
-      <span className="shrink-0 text-zinc-400 dark:text-zinc-500 tabular-nums">{formatTimestamp(job.createdAt)}</span>
-      {job.completedAt && (
-        <span className="shrink-0 text-zinc-400 dark:text-zinc-500 tabular-nums">
-          → {formatTimestamp(job.completedAt)}
-        </span>
-      )}
-    </div>
+    </Modal>
   );
 }
 

@@ -429,6 +429,24 @@ export interface ClusterEventEntry {
   taskId?: string;
 }
 
+/** Structured shape of data attached to worker_progress / task_* events. */
+export interface ReportEventDetail {
+  error?: string;
+  blockReason?: string;
+  linesAdded?: number;
+  linesRemoved?: number;
+  testsRan?: number;
+  testsPassed?: number;
+}
+
+export interface ReportEventData {
+  status?: 'completed' | 'failed' | 'blocked' | 'working' | string;
+  summary?: string;
+  nextSteps?: string;
+  filesModified?: string[];
+  detail?: ReportEventDetail;
+}
+
 /**
  * `/api/cluster/events` returns a bare array of events.
  * (Older versions of this type wrapped them in {events, total, limit, offset}
