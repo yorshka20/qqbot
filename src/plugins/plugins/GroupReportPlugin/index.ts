@@ -263,23 +263,34 @@ export class GroupReportPlugin extends PluginBase {
         `[GroupReportPlugin] Analyzing batch ${i + 1}/${batches.length} (${batch.length} msgs, ${timeRange})`,
       );
 
-      try {
-        const response = await this.llmService.generate(
-          prompt,
-          {
-            temperature: 0.7,
-            maxTokens: 4000,
-            jsonMode: true,
-          },
-          providerName,
-        );
-
-        const parsed = this.parseBatchResult(response.text);
-        if (parsed) {
-          batchResults.push(parsed);
+      const MAX_ATTEMPTS = 3;
+      let parsed: BatchAnalysisResult | null = null;
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+          const response = await this.llmService.generate(
+            prompt,
+            { temperature: 0.7, maxTokens: 4000, jsonMode: true },
+            providerName,
+          );
+          parsed = this.parseBatchResult(response.text);
+          if (parsed) break;
+          logger.warn(
+            `[GroupReportPlugin] Batch ${i + 1} attempt ${attempt}/${MAX_ATTEMPTS}: parse failed, retrying`,
+          );
+        } catch (err) {
+          logger.error(
+            `[GroupReportPlugin] Batch ${i + 1} attempt ${attempt}/${MAX_ATTEMPTS} failed:`,
+            err,
+          );
         }
-      } catch (err) {
-        logger.error(`[GroupReportPlugin] Batch ${i + 1} analysis failed:`, err);
+        if (attempt < MAX_ATTEMPTS) {
+          await new Promise((r) => setTimeout(r, 1000 * 2 ** (attempt - 1)));
+        }
+      }
+      if (parsed) {
+        batchResults.push(parsed);
+      } else {
+        logger.error(`[GroupReportPlugin] Batch ${i + 1} exhausted all ${MAX_ATTEMPTS} attempts`);
       }
     }
 
