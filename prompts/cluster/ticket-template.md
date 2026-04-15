@@ -44,7 +44,14 @@ estimatedComplexity: medium      # trivial | low | medium | high —— 影响 e
 ## 验收标准
 <!-- 每条标准必须能被 executor 独立验证。
      尽量标注作用域提示，方便 planner 分配到对应子任务。
-     写明具体的验证命令（如 bun run typecheck、bun test 等）。 -->
+     写明具体的验证命令（如 bun run typecheck、bun test 等）。
+
+     ⚠️ Go 项目注意：`go build ./...` **不编译 _test.go 文件**。
+     扩展 interface 或改 struct 签名时，test 文件里的 stub 违反 interface
+     不会在 `go build` 报错，但会在 `go vet` / `go test` 报错。
+     Go 项目的验收**必须包含** `go vet ./...` 和 `go test ./...`（从 repo root），
+     不能只跑 `go build ./...`。若本 ticket 涉及 interface 变更，
+     单独加一条"更新所有实现该 interface 的 struct（含 _test.go 里的 stub）"。 -->
 - [ ] （标准 — 验证方式：`bun run typecheck`、`bun test` 等）
 - [ ] （标准 — 验证方式）
 
@@ -64,6 +71,19 @@ estimatedComplexity: medium      # trivial | low | medium | high —— 影响 e
 ### 非功能性要求
 <!-- 性能预算、向后兼容、不得引入新依赖 等。 -->
 -
+
+## 交付与文档维护（必做）
+
+<!-- 这一段是**所有 ticket 必须包含**的收尾动作。agent 完成代码后容易忘记这些，
+     把它们作为 ticket 的一部分强制执行。跳过任何一项视为 ticket 未完成。 -->
+
+- [ ] **Workbook 日报**：在 `.claude-workbook/YYYY-MM-DD.md` 追加新 session (`## SN: <topic>`)，格式：Problem / Solution / 涉及文件 / 验证。若当天文件不存在则新建
+- [ ] **Workbook 索引**：在 `.claude-workbook/index.md` 对应日期行摘要末尾追加本次工作的一句话描述
+- [ ] **Learnings**：把本次确立的设计决策 / interface 变更 / 新暴露的 API / 需要记住的坑 更新到 `.claude-learnings/<scope>.md`（按涉及模块选 scope；没有合适 scope 就新建）；同步更新 `.claude-learnings/index.md`
+- [ ] **ROADMAP**：若本 ticket 对应 ROADMAP 的某条任务，状态改 ✅，链接从原 todo 文件改成本次 workbook 日报条目
+- [ ] **模块 TODO**：若涉及 `internal/**/todo*.md` 等模块级 TODO 文件，勾选对应 `[x]` 或补充新发现的 `[ ]`
+- [ ] **Git commit**：按项目惯例拆 commit（重构和新功能分开；前后端分开），commit message 结尾带 `Co-Authored-By:` trailer（参考最近的 git log）
+- [ ] **Git push**：最后 `git push` 到远端同分支，让用户 pull 时拿到完整历史
 
 ## 备注
 <!-- 其他任何信息：已确定的设计决策、已失败需要避开的方案、
