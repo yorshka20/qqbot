@@ -169,11 +169,10 @@ export function TicketDetailPanel({
           <div className="text-zinc-500 dark:text-zinc-400 mb-0.5">updated</div>
           <div className="font-mono text-zinc-700 dark:text-zinc-200">{formatTicketTimestamp(fm.updated)}</div>
         </div>
-        {fm.usePlanner && (
+        {fm.maxChildren !== undefined && (
           <div className="col-span-2 md:col-span-4">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] uppercase font-medium bg-purple-100 dark:bg-purple-950/50 text-purple-800 dark:text-purple-300">
-              planner mode
-              {fm.maxChildren ? ` · maxChildren=${fm.maxChildren}` : ''}
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] uppercase font-medium bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-mono">
+              maxChildren={fm.maxChildren}
             </span>
           </div>
         )}

@@ -42,38 +42,25 @@ import type {
   TicketStatus,
 } from '../../types';
 import { DispatchConfirmDialog } from './components/DispatchConfirmDialog';
-import { TicketCard } from './components/TicketCard';
 import { TicketDetailPanel } from './components/TicketDetailPanel';
 import { TicketEditor } from './components/TicketEditor';
+import { TicketProjectFilter } from './components/TicketProjectFilter';
 import { TicketsList } from './components/TicketsList';
 
 /**
- * When `usePlanner` is true, the root cluster task must use a planner-role
- * template. Tickets often pin `template: claude-sonnet` for executor work;
- * forwarding that with requirePlannerRole causes the scheduler to reject.
- * Omit workerTemplate so the server uses cluster.defaultPlannerTemplate,
- * unless the ticket explicitly names a planner template.
+ * Resolve the role of a named template from a templates snapshot. Returns
+ * 'planner' only when the template exists AND its role is explicitly
+ * 'planner'. Unknown names (template not in the snapshot) resolve to
+ * 'executor' — the scheduler will validate at dispatch time.
  */
-function workerTemplateForPlannerDispatch(
-  usePlanner: boolean,
+function resolveTemplateRole(
   templateName: string | undefined,
   clusterTemplates: ClusterTemplatesResponse | null,
-): string | undefined {
-  const raw = templateName?.trim() || undefined;
-  if (!usePlanner) {
-    return raw;
-  }
-  if (!raw) {
-    return undefined;
-  }
+): 'planner' | 'executor' {
+  const raw = templateName?.trim();
+  if (!raw) return 'executor';
   const entry = clusterTemplates?.templates.find((t) => t.name === raw);
-  if (!entry) {
-    return raw;
-  }
-  if (entry.role === 'planner') {
-    return raw;
-  }
-  return undefined;
+  return entry?.role === 'planner' ? 'planner' : 'executor';
 }
 
 interface EditorState {
@@ -84,8 +71,6 @@ interface EditorState {
   template: string;
   project: string;
   body: string;
-  /** Phase 3: planner-mode toggle. */
-  usePlanner: boolean;
   /** Phase 3: optional max-children cap. null = unset (planner uses default 5). */
   maxChildren: number | null;
   /** Hints for planner executor selection: trivial | low | medium | high. */
@@ -121,6 +106,8 @@ export function TicketsPage() {
   const [dispatching, setDispatching] = useState(false);
   /** Defers opening the create editor until the template fetch completes. */
   const [pendingCreate, setPendingCreate] = useState(false);
+  /** null = show all projects; string = filter to tickets whose project === this. */
+  const [projectFilter, setProjectFilter] = useState<string | null>(null);
 
   // ── Polling / refresh ──────────────────────────────────────────────────
 
@@ -235,7 +222,6 @@ export function TicketsPage() {
         template: '',
         project: lastOk || fallback,
         body: ticketTemplateBody,
-        usePlanner: false,
         maxChildren: null,
         estimatedComplexity: '',
       });
@@ -282,7 +268,6 @@ export function TicketsPage() {
       template: '',
       project: lastOk || fallback,
       body: ticketTemplateBody,
-      usePlanner: false,
       maxChildren: null,
       estimatedComplexity: '',
     });
@@ -292,6 +277,7 @@ export function TicketsPage() {
     setError(null);
     try {
       const ticket = await getTicket(id);
+      setSelectedId(id);
       setEditor({
         id: ticket.id,
         title: ticket.frontmatter.title,
@@ -299,7 +285,6 @@ export function TicketsPage() {
         template: ticket.frontmatter.template ?? '',
         project: ticket.frontmatter.project ?? '',
         body: ticket.body,
-        usePlanner: ticket.frontmatter.usePlanner === true,
         maxChildren: typeof ticket.frontmatter.maxChildren === 'number' ? ticket.frontmatter.maxChildren : null,
         estimatedComplexity: ticket.frontmatter.estimatedComplexity ?? '',
       });
@@ -316,7 +301,6 @@ export function TicketsPage() {
     template: string;
     project: string;
     body: string;
-    usePlanner: boolean;
     maxChildren: number | null;
     estimatedComplexity: 'trivial' | 'low' | 'medium' | 'high' | '';
   }) => {
@@ -332,7 +316,6 @@ export function TicketsPage() {
           template: next.template || undefined,
           project: next.project,
           body: next.body,
-          usePlanner: next.usePlanner || undefined,
           maxChildren: next.maxChildren ?? undefined,
           estimatedComplexity: next.estimatedComplexity || undefined,
         });
@@ -348,8 +331,6 @@ export function TicketsPage() {
           template: next.template ? next.template : null,
           project: next.project ? next.project : null,
           body: next.body,
-          // false = clear (turn off planner mode); true = set
-          usePlanner: next.usePlanner ? true : null,
           maxChildren: next.maxChildren,
           estimatedComplexity: next.estimatedComplexity ? next.estimatedComplexity : null,
         });
@@ -419,25 +400,26 @@ export function TicketsPage() {
     setError(null);
     try {
       // 1. Create the cluster job — body becomes the worker prompt verbatim.
-      // Phase 3: tickets with usePlanner=true forward requirePlannerRole so
-      // the scheduler refuses to dispatch unless the resolved template is
-      // a planner-role template (or falls back to defaultPlannerTemplate
-      // when no explicit template is pinned).
-      const usePlanner = dispatchTicket.frontmatter.usePlanner === true;
+      // Planner vs executor is derived from the selected template's role:
+      // picking a planner-role template sets requirePlannerRole so the
+      // scheduler validates it and the job runs in planner mode. No
+      // separate usePlanner flag on the ticket anymore.
       let tplSnapshot = templates;
-      if (usePlanner && !tplSnapshot) {
+      const pickedTemplate = dispatchTicket.frontmatter.template?.trim();
+      if (pickedTemplate && !tplSnapshot) {
         try {
           tplSnapshot = await getClusterTemplates();
           setTemplates(tplSnapshot);
         } catch {
-          // workerTemplateForPlannerDispatch passes through unknown names; server validates.
+          // Unknown role — pass the template through; server validates.
         }
       }
+      const role = resolveTemplateRole(pickedTemplate, tplSnapshot);
       const job = await createClusterJob({
         project: trimmed,
         description: buildClusterDescription(dispatchTicket),
-        workerTemplate: workerTemplateForPlannerDispatch(usePlanner, dispatchTicket.frontmatter.template, tplSnapshot),
-        requirePlannerRole: usePlanner ? true : undefined,
+        workerTemplate: pickedTemplate || undefined,
+        requirePlannerRole: role === 'planner' ? true : undefined,
         ticketId: dispatchTicket.id,
       });
 
@@ -463,7 +445,24 @@ export function TicketsPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────
 
-  const summary = `${tickets.length} ticket${tickets.length === 1 ? '' : 's'}`;
+  // Unique project aliases from the current tickets, used to populate the
+  // filter dropdown. Sorted for stable ordering; tickets with no project are
+  // grouped under a synthetic "(no project)" sentinel so they're filterable.
+  const projectOptions = Array.from(
+    new Set(tickets.map((t) => (t.project?.trim() ? t.project.trim() : '__none__'))),
+  ).sort();
+
+  const filteredTickets =
+    projectFilter === null
+      ? tickets
+      : projectFilter === '__none__'
+        ? tickets.filter((t) => !t.project?.trim())
+        : tickets.filter((t) => t.project?.trim() === projectFilter);
+
+  const summary =
+    projectFilter === null
+      ? `${tickets.length} ticket${tickets.length === 1 ? '' : 's'}`
+      : `${filteredTickets.length} / ${tickets.length} ticket${tickets.length === 1 ? '' : 's'}`;
 
   return (
     <div className="flex-1 min-h-0 overflow-hidden">
@@ -476,6 +475,14 @@ export function TicketsPage() {
               <div className="font-semibold">Cluster Tickets</div>
             </div>
             <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">{summary}</div>
+            {/* Project filter — null = all; "__none__" sentinel surfaces
+                tickets with no project set. Badge-click in the list also
+                writes to this state for quick focus on one project. */}
+            <TicketProjectFilter
+              value={projectFilter}
+              onChange={setProjectFilter}
+              options={projectOptions}
+            />
             <div className="flex-1" />
             <button
               type="button"
@@ -498,50 +505,54 @@ export function TicketsPage() {
           {error && <div className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</div>}
         </div>
 
-        {/* Body */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-zinc-100 dark:bg-zinc-900 space-y-4">
-          <TicketCard title="All tickets" count={tickets.length}>
+        {/* Body — split pane: list (left) + detail/editor (right), 1:1. */}
+        <div className="flex-1 min-h-0 flex bg-zinc-100 dark:bg-zinc-900">
+          {/* Left: ticket list (compact cards, scrolls independently). */}
+          <div className="flex-1 min-w-0 basis-1/2 border-r border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 overflow-y-auto">
             <TicketsList
-              tickets={tickets}
+              tickets={filteredTickets}
+              templates={templates}
               selectedId={selectedId}
               onSelect={setSelectedId}
               onEdit={openEdit}
               onDispatch={openDispatch}
               onDelete={handleDelete}
+              onProjectClick={setProjectFilter}
             />
-          </TicketCard>
+          </div>
 
-          {/* Detail panel: appears below the list when a row is selected.
-              Shows the ticket frontmatter / body / cluster job task tree
-              (if dispatched) so the user can read the original prompt and
-              live execution side by side without bouncing to the cluster
-              page. Polling lives inside TicketDetailPanel itself. */}
-          {selectedId && selectedTicket && (
-            <TicketDetailPanel ticket={selectedTicket} onClose={() => setSelectedId(null)} />
-          )}
-          {selectedId && !selectedTicket && loadingSelected && (
-            <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-3 text-xs text-zinc-500 dark:text-zinc-400">
-              Loading ticket {selectedId}…
-            </div>
-          )}
+          {/* Right: editor if open, else detail for selection, else placeholder.
+              Editor takes precedence so the user keeps typing even if they
+              click a different ticket row mid-edit — parent ignores row
+              selection changes while editor is mounted. */}
+          <div className="flex-1 min-w-0 basis-1/2 overflow-y-auto p-4">
+            {editor ? (
+              <TicketEditor
+                key={editor.id || 'new'}
+                initial={editor}
+                templates={templates}
+                registryProjects={registryProjects}
+                registryError={registryError}
+                onCancel={() => {
+                  if (!savingEditor) setEditor(null);
+                }}
+                onSave={saveEditor}
+                saving={savingEditor}
+              />
+            ) : selectedId && selectedTicket ? (
+              <TicketDetailPanel ticket={selectedTicket} onClose={() => setSelectedId(null)} />
+            ) : selectedId && loadingSelected ? (
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-3 text-xs text-zinc-500 dark:text-zinc-400">
+                Loading ticket {selectedId}…
+              </div>
+            ) : (
+              <div className="h-full flex items-center justify-center text-sm text-zinc-500 dark:text-zinc-400">
+                Select a ticket from the list, or click "New" to create one.
+              </div>
+            )}
+          </div>
         </div>
       </div>
-
-      {/* Editor modal */}
-      {editor && (
-        <TicketEditor
-          key={editor.id || 'new'}
-          initial={editor}
-          templates={templates}
-          registryProjects={registryProjects}
-          registryError={registryError}
-          onCancel={() => {
-            if (!savingEditor) setEditor(null);
-          }}
-          onSave={saveEditor}
-          saving={savingEditor}
-        />
-      )}
 
       {/* Dispatch confirm modal */}
       {dispatchTicket && (
@@ -549,6 +560,7 @@ export function TicketsPage() {
           key={dispatchTicket.id}
           ticket={dispatchTicket}
           resolvedTemplate={dispatchTicket.frontmatter.template ?? ''}
+          isPlannerTemplate={resolveTemplateRole(dispatchTicket.frontmatter.template, templates) === 'planner'}
           registryProjects={registryProjects}
           registryError={registryError}
           submitting={dispatching}

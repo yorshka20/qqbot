@@ -17,6 +17,7 @@ import type { ProjectRegistryEntry, Ticket } from '../../../types';
 export function DispatchConfirmDialog({
   ticket,
   resolvedTemplate,
+  isPlannerTemplate,
   registryProjects,
   registryError,
   submitting,
@@ -26,6 +27,8 @@ export function DispatchConfirmDialog({
   ticket: Ticket;
   /** Effective template after applying project default. May still be empty. */
   resolvedTemplate: string;
+  /** Derived from the resolved template's role in the cluster templates snapshot. */
+  isPlannerTemplate: boolean;
   /** ProjectRegistry snapshot — dispatch target must be one of these aliases. */
   registryProjects: ProjectRegistryEntry[];
   registryError?: string | null;
@@ -85,7 +88,7 @@ export function DispatchConfirmDialog({
             <div className="font-semibold text-zinc-900 dark:text-zinc-100">{ticket.frontmatter.title}</div>
             <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
               template: <span className="font-mono">{resolvedTemplate || '(project default)'}</span>
-              {ticket.frontmatter.usePlanner && (
+              {isPlannerTemplate && (
                 <>
                   {' · '}
                   <span className="font-mono text-purple-700 dark:text-purple-300">planner mode</span>
@@ -111,12 +114,12 @@ export function DispatchConfirmDialog({
             {registryError && <div className="mt-1 text-xs text-red-600 dark:text-red-400">{registryError}</div>}
           </div>
 
-          {ticket.frontmatter.usePlanner && (
+          {isPlannerTemplate && (
             <div className="rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/30 p-3 text-xs text-purple-800 dark:text-purple-300">
-              <strong>Planner mode</strong>: dispatch will pick a planner-role worker template (or
-              <code className="mx-1">cluster.defaultPlannerTemplate</code> if none is pinned). The planner is expected
-              to decompose this ticket and spawn child executor workers via
-              <code className="mx-1">hub_spawn</code>. If no planner-role template exists, dispatch will fail.
+              <strong>Planner mode</strong>: template <code className="mx-1">{resolvedTemplate}</code> has
+              <code className="mx-1">role: planner</code>, so this ticket will run as a planner. The planner is
+              expected to decompose it and spawn child executor workers via
+              <code className="mx-1">hub_spawn</code>.
             </div>
           )}
 

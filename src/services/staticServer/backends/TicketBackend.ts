@@ -66,19 +66,11 @@ interface TicketFrontmatter {
   updated: string;
   dispatchedJobId?: string;
   /**
-   * Phase 3 multi-agent: when `true`, dispatching this ticket forces the
-   * scheduler to pick a planner-role worker template instead of a regular
-   * executor. The selected template must have `role: 'planner'` in cluster
-   * config — see `cluster.defaultPlannerTemplate` for the fallback used
-   * when this ticket doesn't pin its own `template`.
-   */
-  usePlanner?: boolean;
-  /**
    * Phase 3 multi-agent: optional cap on how many child workers the planner
-   * is allowed to spawn. Currently only surfaced to the planner via the
-   * prompt — the hub does NOT hard-enforce this number (would require
-   * tracking spawn counts per planner). Default is 5 (mirrored in the
-   * planner system prompt).
+   * is allowed to spawn. Only meaningful when the selected `template` has
+   * `role: 'planner'` — otherwise ignored. Surfaced to the planner via the
+   * prompt; the hub does NOT hard-enforce this number. Default is 5
+   * (mirrored in the planner system prompt).
    */
   maxChildren?: number;
   /**
@@ -122,7 +114,6 @@ interface TicketSummary {
   created: string;
   updated: string;
   dispatchedJobId?: string;
-  usePlanner?: boolean;
   maxChildren?: number;
   estimatedComplexity?: 'trivial' | 'low' | 'medium' | 'high';
 }
@@ -358,7 +349,6 @@ export class TicketBackend {
       template?: string;
       project?: string;
       body?: string;
-      usePlanner?: boolean;
       maxChildren?: number;
       estimatedComplexity?: 'trivial' | 'low' | 'medium' | 'high';
     };
@@ -389,7 +379,6 @@ export class TicketBackend {
         project: body.project?.trim() || undefined,
         created: now,
         updated: now,
-        usePlanner: body.usePlanner === true ? true : undefined,
         maxChildren: typeof body.maxChildren === 'number' && body.maxChildren > 0 ? body.maxChildren : undefined,
         estimatedComplexity: body.estimatedComplexity || undefined,
       },
@@ -435,7 +424,6 @@ export class TicketBackend {
       project?: string | null;
       body?: string;
       dispatchedJobId?: string | null;
-      usePlanner?: boolean | null;
       maxChildren?: number | null;
       estimatedComplexity?: 'trivial' | 'low' | 'medium' | 'high' | null;
     };
@@ -456,7 +444,6 @@ export class TicketBackend {
     //               trimming, range checks, etc. — sanitize returns
     //               undefined if the value collapses to "no value")
     const trimmedString = (v: string): string | undefined => v.trim() || undefined;
-    const trueOrUndefined = (v: boolean): boolean | undefined => (v === true ? true : undefined);
     const positiveInt = (v: number): number | undefined =>
       typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : undefined;
 
@@ -477,7 +464,6 @@ export class TicketBackend {
         created: existing.frontmatter.created,
         updated: new Date().toISOString(),
         dispatchedJobId: patchField(patch.dispatchedJobId, existing.frontmatter.dispatchedJobId, trimmedString),
-        usePlanner: patchField(patch.usePlanner, existing.frontmatter.usePlanner, trueOrUndefined),
         maxChildren: patchField(patch.maxChildren, existing.frontmatter.maxChildren, positiveInt),
         estimatedComplexity: validComplexity(patch.estimatedComplexity ?? null),
       },
@@ -638,13 +624,13 @@ export function parseMarkdownTicket(raw: string): {
 
   const body = lines.slice(bodyStartLine).join('\n').replace(/^\n+/, '');
 
-  // Phase 3: parse usePlanner and maxChildren if present. usePlanner is a
-  // bool: case-insensitive "true" only — anything else is treated as false
-  // (we don't want a malformed value to silently switch dispatch semantics).
-  // maxChildren parses as a positive integer; non-numeric / zero / negative
-  // values fall back to undefined.
-  const rawUsePlanner = fm.usePlanner?.toLowerCase();
-  const usePlanner = rawUsePlanner === 'true' ? true : undefined;
+  // Phase 3: maxChildren parses as a positive integer; non-numeric / zero /
+  // negative values fall back to undefined. Only meaningful when the ticket's
+  // template is planner-role; otherwise ignored at dispatch time.
+  //
+  // `usePlanner` is an obsolete field — planner vs executor is now derived
+  // from the selected template's `role`. Any leftover value on disk is
+  // silently dropped on the next save.
   const rawMaxChildren = fm.maxChildren ? Number.parseInt(fm.maxChildren, 10) : NaN;
   const maxChildren = Number.isFinite(rawMaxChildren) && rawMaxChildren > 0 ? rawMaxChildren : undefined;
 
@@ -666,7 +652,6 @@ export function parseMarkdownTicket(raw: string): {
     created: fm.created || new Date().toISOString(),
     updated: fm.updated || fm.created || new Date().toISOString(),
     dispatchedJobId: fm.dispatchedJobId || undefined,
-    usePlanner,
     maxChildren,
     estimatedComplexity,
   };
@@ -689,7 +674,6 @@ export function serializeTicket(ticket: Ticket): string {
   lines.push(`created: ${fm.created}`);
   lines.push(`updated: ${fm.updated}`);
   if (fm.dispatchedJobId) lines.push(`dispatchedJobId: ${fm.dispatchedJobId}`);
-  if (fm.usePlanner) lines.push(`usePlanner: true`);
   if (fm.maxChildren) lines.push(`maxChildren: ${fm.maxChildren}`);
   if (fm.estimatedComplexity) lines.push(`estimatedComplexity: ${fm.estimatedComplexity}`);
   lines.push('---');

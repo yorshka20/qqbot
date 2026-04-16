@@ -47,3 +47,40 @@ export function formatTicketTimestamp(iso: string): string {
 
 // Ticket body templates are now loaded from the file `tickets/_template.md`
 // via `GET /api/tickets/template`. There is no hardcoded fallback body.
+
+/**
+ * Tailwind classes for a project badge — stable color derived from the
+ * alias hash so the same project always renders with the same tone,
+ * making cross-row project membership visually obvious. Palette picked
+ * to avoid colliding with status (amber/blue/emerald) and template role
+ * (violet/sky) tones.
+ */
+const PROJECT_TONES = [
+  'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300',
+  'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300',
+  'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300',
+  'bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-900/40 dark:text-fuchsia-300',
+  'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
+  'bg-lime-100 text-lime-800 dark:bg-lime-900/40 dark:text-lime-300',
+  'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300',
+  'bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300',
+];
+
+export function projectBadgeClass(alias: string): string {
+  let hash = 0;
+  for (let i = 0; i < alias.length; i++) {
+    hash = (hash * 31 + alias.charCodeAt(i)) | 0;
+  }
+  return PROJECT_TONES[Math.abs(hash) % PROJECT_TONES.length];
+}
+
+/**
+ * Tailwind classes for a template role badge. Mirrors the tones used by
+ * `TemplateSelect` so the planner/executor distinction is visually
+ * consistent across the editor dropdown and the ticket list.
+ */
+export function templateRoleBadgeClass(role: 'planner' | 'executor'): string {
+  return role === 'planner'
+    ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'
+    : 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300';
+}

@@ -8,7 +8,6 @@ export interface ExtractedFrontmatter {
   status?: TicketStatus;
   template?: string;
   project?: string;
-  usePlanner?: boolean;
   maxChildren?: number;
   estimatedComplexity?: (typeof ALLOWED_COMPLEXITY)[number];
 }
@@ -60,7 +59,8 @@ export function extractFrontmatter(raw: string): ExtractResult | null {
   }
   if (fm.template) out.template = fm.template;
   if (fm.project) out.project = fm.project;
-  if (fm.usePlanner?.toLowerCase() === 'true') out.usePlanner = true;
+  // Note: `usePlanner` on pasted frontmatter is intentionally ignored —
+  // planner vs executor is derived from the selected template's role now.
   const n = fm.maxChildren ? Number.parseInt(fm.maxChildren, 10) : NaN;
   if (Number.isFinite(n) && n > 0) out.maxChildren = n;
   const c = fm.estimatedComplexity?.toLowerCase();

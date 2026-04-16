@@ -1,6 +1,5 @@
 import { Save, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { RegistryProjectSelect } from '../../../components/RegistryProjectSelect';
 import { StatusSelect } from '../../../components/StatusSelect';
 import { TemplateSelect } from '../../../components/TemplateSelect';
@@ -27,24 +26,21 @@ function resolveRegistryProject(
 }
 
 /**
- * Modal editor for a single ticket. Used both for "create new" (the
- * `initial` prop has empty id) and "edit existing" — the parent decides
- * which by passing different `initial` shapes.
+ * Inline editor panel for a single ticket. Used both for "create new"
+ * (the `initial` prop has empty id) and "edit existing" — the parent
+ * decides which by passing different `initial` shapes.
+ *
+ * Rendered directly in the right-hand pane of the tickets page (not a
+ * modal). Parent controls visibility by conditionally mounting.
  *
  * Markdown body is a plain textarea — no live preview, no syntax
  * highlighting. The body IS the prompt that the worker will receive,
- * and we want what-you-see-is-what-the-agent-gets fidelity. If you
- * want preview, edit the file directly with VSCode + open it in any
- * markdown viewer.
+ * and we want what-you-see-is-what-the-agent-gets fidelity.
  *
  * `frontmatter` form fields (title / status / template / project) are
  * lifted out of the body because they have stable schema (dropdowns /
  * lifecycle gates) and need to round-trip through the REST API as
  * structured fields. Everything else is freeform markdown.
- *
- * Cancel discards changes silently. Save calls onSave with the patch.
- * Click-outside / Escape both close — but only when not currently
- * saving (avoid losing the user's work mid-flight).
  */
 export function TicketEditor({
   initial,
@@ -62,7 +58,6 @@ export function TicketEditor({
     template: string; // empty string when unset
     project: string; // empty string when unset
     body: string;
-    usePlanner: boolean;
     maxChildren: number | null;
     estimatedComplexity: 'trivial' | 'low' | 'medium' | 'high' | '';
   };
@@ -78,7 +73,6 @@ export function TicketEditor({
     template: string;
     project: string;
     body: string;
-    usePlanner: boolean;
     maxChildren: number | null;
     estimatedComplexity: 'trivial' | 'low' | 'medium' | 'high' | '';
   }) => Promise<void> | void;
@@ -91,7 +85,6 @@ export function TicketEditor({
   const [template, setTemplate] = useState(initial.template);
   const [project, setProject] = useState(initial.project);
   const [body, setBody] = useState(initial.body);
-  const [usePlanner, setUsePlanner] = useState(initial.usePlanner);
   // maxChildren stays as a string in form state so the user can clear the
   // input. We coerce to number on save (empty → null = unset).
   const [maxChildrenStr, setMaxChildrenStr] = useState(initial.maxChildren !== null ? String(initial.maxChildren) : '');
@@ -135,10 +128,6 @@ export function TicketEditor({
       setProject(fm.project);
       lifted.push('project');
     }
-    if (fm.usePlanner !== undefined) {
-      setUsePlanner(fm.usePlanner);
-      lifted.push('usePlanner');
-    }
     if (fm.maxChildren !== undefined) {
       setMaxChildrenStr(String(fm.maxChildren));
       lifted.push('maxChildren');
@@ -156,6 +145,18 @@ export function TicketEditor({
     [project, registryProjects, initial.project],
   );
 
+  /**
+   * Whether the selected template is planner-role. Planner mode (spawning
+   * child executors, maxChildren cap) is derived from this — there's no
+   * separate "use planner" toggle.
+   */
+  const isPlannerTemplate = useMemo(() => {
+    const t = template.trim();
+    if (!t) return false;
+    const entry = templates?.templates.find((x) => x.name === t);
+    return entry?.role === 'planner';
+  }, [template, templates]);
+
   const isCreate = initial.id === '';
   const projectListed = registryProjects.some((p) => p.alias === effectiveProject);
   const canSave = !saving && title.trim().length > 0 && projectListed && !registryError;
@@ -169,30 +170,14 @@ export function TicketEditor({
       template: template.trim(),
       project: effectiveProject.trim(),
       body,
-      usePlanner,
       maxChildren: Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : null,
       estimatedComplexity: estimatedComplexity || '',
     });
   };
 
-  return createPortal(
-    // biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop pattern, keyboard escape handler attached
-    <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 text-zinc-900 dark:text-zinc-100"
-      onClick={() => {
-        if (!saving) onCancel();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape' && !saving) onCancel();
-      }}
-    >
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper inside modal backdrop */}
-      <div
-        className="bg-white dark:bg-zinc-800 rounded-xl shadow-xl w-[min(100%,900px)] max-h-[90vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
+  return (
+    <div className="h-full flex flex-col rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 overflow-hidden text-zinc-900 dark:text-zinc-100">
+      {/* Header */}
         <div className="shrink-0 px-5 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center gap-3">
           <div className="font-semibold">{isCreate ? 'New ticket' : 'Edit ticket'}</div>
           {!isCreate && <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">{initial.id}</div>}
@@ -245,23 +230,11 @@ export function TicketEditor({
               />
               {registryError && <div className="mt-1 text-xs text-red-600 dark:text-red-400">{registryError}</div>}
             </div>
-            {/* Phase 3: planner mode toggle. usePlanner forces dispatch to
-                pick a planner-role worker template. maxChildren is a soft
-                cap surfaced to the planner via prompt — empty/0 = no cap. */}
-            <div className="md:col-span-4 flex items-center gap-2 pt-5">
-              <input
-                id="ticket-use-planner"
-                type="checkbox"
-                checked={usePlanner}
-                onChange={(e) => setUsePlanner(e.target.checked)}
-                disabled={saving}
-                className="w-4 h-4"
-              />
-              <label htmlFor="ticket-use-planner" className="text-xs text-zinc-700 dark:text-zinc-300 select-none">
-                use planner (multi-agent decomposition)
-              </label>
-            </div>
-            <div className="md:col-span-3">
+            {/* estimatedComplexity + maxChildren. Planner vs executor mode
+                is derived from the selected template's role; maxChildren is
+                only meaningful for planner templates so it's disabled when
+                a non-planner (or no) template is picked. */}
+            <div className="md:col-span-6">
               <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">estimatedComplexity</div>
               <select
                 value={estimatedComplexity}
@@ -276,8 +249,13 @@ export function TicketEditor({
                 <option value="high">high — consider claude-sonnet</option>
               </select>
             </div>
-            <div className="md:col-span-3">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">maxChildren (planner only)</div>
+            <div className="md:col-span-6">
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                maxChildren{' '}
+                <span className="text-zinc-400 dark:text-zinc-500">
+                  {isPlannerTemplate ? '(planner only)' : '(pick a planner template to enable)'}
+                </span>
+              </div>
               <input
                 type="number"
                 min={1}
@@ -285,7 +263,7 @@ export function TicketEditor({
                 onChange={(e) => setMaxChildrenStr(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm disabled:opacity-50"
                 placeholder="(default 3)"
-                disabled={saving || !usePlanner}
+                disabled={saving || !isPlannerTemplate}
               />
             </div>
           </div>
@@ -340,8 +318,6 @@ export function TicketEditor({
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
-      </div>
-    </div>,
-    document.body,
+    </div>
   );
 }

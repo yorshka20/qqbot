@@ -287,11 +287,12 @@ export class ClusterScheduler {
       return null;
     }
 
-    // Phase 3: ticket dispatched with usePlanner=true sets requirePlannerRole.
-    // We must select a planner-role template; if the explicit override is an
-    // executor template, fail loudly rather than silently downgrade the
-    // ticket to a single-worker run (the user explicitly asked for planner
-    // semantics).
+    // Phase 3: requirePlannerRole is set by the dispatch caller when a
+    // planner-role template is wanted (derived from the selected template's
+    // role in the WebUI, or the --plannerMode flag in the CLI e2e tool).
+    // We must select a planner-role template; if the explicit override is
+    // an executor template, fail loudly rather than silently downgrade to a
+    // single-worker run.
     if (options?.requirePlannerRole) {
       const explicit = options.workerTemplate ? this.config.workerTemplates[options.workerTemplate] : undefined;
       if (explicit && explicit.role !== 'planner') {
