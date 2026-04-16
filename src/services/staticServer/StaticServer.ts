@@ -17,6 +17,12 @@ import { type Backend, createBackends } from './backends';
 export interface StaticServerInitOptions {
   /** Backend module ids to exclude — must match `lanRelay.*.disabledStaticBackends` / `createBackends` registry. */
   disabledBackendIds?: string[];
+  /**
+   * Absolute path to the tickets storage directory (see `TicketsConfig`).
+   * Forwarded to `TicketBackend`. Required when the `tickets` backend is
+   * enabled — bootstrap resolves this from `Config.getTicketsDir()`.
+   */
+  ticketsDir?: string;
 }
 
 export type StaticServerInstance = {
@@ -56,7 +62,10 @@ export class StaticServer implements StaticServerInstance {
     this.baseDir = resolve(config.root);
     this.hostIP = config.host;
     const disabled = new Set(options?.disabledBackendIds ?? []);
-    this.backends = createBackends(this.baseDir, { disabledIds: disabled });
+    this.backends = createBackends(this.baseDir, {
+      disabledIds: disabled,
+      ticketsDir: options?.ticketsDir,
+    });
     if (disabled.size > 0) {
       logger.info(`[StaticServer] Excluded backend module(s): ${[...disabled].sort().join(', ')}`);
     }

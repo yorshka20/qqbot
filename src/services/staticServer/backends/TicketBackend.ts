@@ -1,21 +1,27 @@
 /**
  * TicketBackend — REST API for cluster task tickets.
  *
- * Storage: each ticket is a **directory** under `tickets/` at the project
- * root (NOT under `data/` because data/ is gitignored — tickets are project
- * knowledge and meant to be committed). Directory name is the ticket id;
- * id format is `YYYY-MM-DD-<slug>` so the filesystem-sorted listing
- * matches creation order.
+ * Storage: each ticket is a **directory** under the configured tickets
+ * directory (see `TicketsConfig` / `Config.getTicketsDir()`). By default
+ * this is `<cwd>/tickets`; typical production setup points it at an
+ * external `cluster-tickets` repo so cross-project work items can live in
+ * their own git history and be shared across bot instances.
  *
- * Directory layout:
- *   tickets/<id>/
+ * Directory name is the ticket id; id format is `YYYY-MM-DD-<slug>` so
+ * filesystem-sorted listing matches creation order.
+ *
+ * Directory layout under `ticketsDir`:
+ *   .templates/ticket.md     — default body skeleton rendered by WebUI
+ *   <id>/
  *     ticket.md              — frontmatter + markdown body (the "ticket")
+ *     plan.md                — planner's decomposition plan (optional)
+ *     plan-v<N>.md           — archived plan revisions (optional)
  *     results/               — auto-generated execution artifacts
  *       summary.md           — job completion summary
  *       task-<taskId>.md     — per-task input (description) + output
  *
- * Backward compat: if `tickets/<id>.md` exists (pre-directory era), it is
- * auto-migrated into `tickets/<id>/ticket.md` on first read.
+ * Backward compat: if `<ticketsDir>/<id>.md` exists (pre-directory era),
+ * it is auto-migrated into `<ticketsDir>/<id>/ticket.md` on first read.
  *
  * The dispatch action is NOT in this backend — the WebUI calls the
  * existing `POST /api/cluster/jobs` with the full ticket markdown as
@@ -33,14 +39,18 @@
  *   DELETE /api/tickets/:id           delete directory
  */
 
-import { existsSync, mkdirSync, renameSync, statSync } from 'node:fs';
-import { readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import type { PromptManager } from '@/ai/prompt/PromptManager';
-import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync } from 'node:fs';
+import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { logger } from '@/utils/logger';
-import { resolveSafe } from './pathSafety';
+import {
+  bucketForProject,
+  findTicketDir,
+  idTaken,
+  isValidTicketId,
+  iterateAllTickets,
+  ticketDirForCreate,
+} from './ticketStorage';
 import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/tickets';
@@ -122,11 +132,17 @@ export class TicketBackend {
   readonly prefix = API_PREFIX;
   private readonly ticketsDir: string;
 
-  constructor() {
-    // tickets/ at project root (not under data/, which is gitignored).
-    // process.cwd() is the bot project directory because src/index.ts is
-    // launched from the project root by `bun run start` / `bun run dev`.
-    this.ticketsDir = join(process.cwd(), 'tickets');
+  /**
+   * @param ticketsDir Absolute path to the tickets root. Provided by
+   *   `createBackends()` from `Config.getTicketsDir()`. This path may live
+   *   outside the bot repo (e.g. a dedicated `cluster-tickets` repo).
+   *
+   * On construction we run a one-shot migration that moves any tickets
+   * sitting at the root (legacy flat layout) into their `<project>/`
+   * bucket. See `migrateFlatLayoutToBuckets`.
+   */
+  constructor(ticketsDir: string) {
+    this.ticketsDir = ticketsDir;
     if (!existsSync(this.ticketsDir)) {
       try {
         mkdirSync(this.ticketsDir, { recursive: true });
@@ -134,6 +150,90 @@ export class TicketBackend {
       } catch (err) {
         logger.warn(`[TicketBackend] Failed to create tickets dir (will retry on first write):`, err);
       }
+    } else {
+      logger.info(`[TicketBackend] Using tickets directory: ${this.ticketsDir}`);
+    }
+    this.migrateFlatLayoutToBuckets();
+  }
+
+  /**
+   * Move any tickets still sitting at `<ticketsDir>/<id>/` (legacy flat
+   * layout, pre 2026-04-16 batch4) into their project bucket
+   * `<ticketsDir>/<project>/<id>/`. Tickets without a `project` field
+   * land in `_unassigned/`.
+   *
+   * Skipped:
+   *   - Hidden entries (`.templates`, `.git`, `.DS_Store`)
+   *   - Directories without `ticket.md` (user-created notes folders)
+   *   - Plain files (e.g. README.md)
+   *   - Directories that are themselves project buckets (no ticket.md
+   *     direct child but contains nested `<id>/ticket.md` — those have
+   *     already been migrated)
+   *
+   * Runs synchronously in the constructor so any subsequent read uses the
+   * post-migration layout. Failures are warnings, not fatals — a partial
+   * migration is preferable to refusing to boot.
+   */
+  private migrateFlatLayoutToBuckets(): void {
+    let entries: string[];
+    try {
+      entries = readdirSync(this.ticketsDir);
+    } catch {
+      return;
+    }
+
+    let moved = 0;
+    for (const entry of entries) {
+      if (entry.startsWith('.')) continue;
+      const fullPath = join(this.ticketsDir, entry);
+      let stat;
+      try {
+        stat = statSync(fullPath);
+      } catch {
+        continue;
+      }
+      if (!stat.isDirectory()) continue;
+      const ticketMdPath = join(fullPath, 'ticket.md');
+      // Only migrate if ticket.md is a direct child — otherwise this is
+      // either a project bucket (no ticket.md at this level, just nested
+      // <id>/ dirs) or a user-created notes folder.
+      if (!existsSync(ticketMdPath)) continue;
+
+      // Read frontmatter to determine project bucket. If we can't parse,
+      // bail on this one and warn — leave the dir where it is rather than
+      // shove it into _unassigned and lose its identity.
+      let project: string | undefined;
+      try {
+        const raw = readFileSync(ticketMdPath, 'utf-8');
+        const { frontmatter } = parseMarkdownTicket(raw);
+        project = frontmatter.project;
+      } catch (err) {
+        logger.warn(`[TicketBackend] Migration: failed to parse ${ticketMdPath}, leaving in place:`, err);
+        continue;
+      }
+
+      const bucket = bucketForProject(project);
+      const bucketDir = join(this.ticketsDir, bucket);
+      const targetDir = join(bucketDir, entry);
+      if (existsSync(targetDir)) {
+        logger.warn(
+          `[TicketBackend] Migration: target ${targetDir} already exists, skipping ${entry} (manual cleanup needed)`,
+        );
+        continue;
+      }
+
+      try {
+        if (!existsSync(bucketDir)) mkdirSync(bucketDir, { recursive: true });
+        renameSync(fullPath, targetDir);
+        moved += 1;
+        logger.info(`[TicketBackend] Migrated ${entry} → ${bucket}/${entry}`);
+      } catch (err) {
+        logger.warn(`[TicketBackend] Migration: failed to move ${entry} → ${bucket}/:`, err);
+      }
+    }
+
+    if (moved > 0) {
+      logger.info(`[TicketBackend] Bucket migration complete: ${moved} ticket(s) moved into project subfolders`);
     }
   }
 
@@ -163,16 +263,24 @@ export class TicketBackend {
 
   // ── GET ────────────────────────────────────────────────────────────────
 
+  /**
+   * Serve the default ticket body skeleton. Reads `.templates/ticket.md`
+   * from inside the tickets directory so the template ships with (and is
+   * version-controlled alongside) the tickets themselves. Returns 404 if
+   * the file is missing — the WebUI falls back to an empty textarea, and
+   * the fix is to commit a template into `<ticketsDir>/.templates/`.
+   *
+   * The `.templates/` prefix is hidden from the ticket listing in
+   * `listAll()` so this directory doesn't masquerade as a ticket.
+   */
   private async handleGetTemplate(): Promise<Response> {
+    const templatePath = join(this.ticketsDir, '.templates', 'ticket.md');
     try {
-      const container = getContainer();
-      const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
-      // Template is stored under prompts/cluster/ so the key is 'cluster.ticket-template'.
-      const content = promptManager.render('cluster.ticket-template');
+      const content = await readFile(templatePath, 'utf-8');
       return jsonResponse({ content });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('not found') || msg.includes('Template')) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.warn(`[TicketBackend] Ticket template not found at ${templatePath}`);
         return errorResponse('Ticket template not found', 404);
       }
       throw err;
@@ -214,8 +322,8 @@ export class TicketBackend {
   }
 
   private async handleListResults(id: string): Promise<Response> {
-    const dir = this.ticketDir(id);
-    if (!dir) return errorResponse('Invalid ticket id', 400);
+    const dir = findTicketDir(this.ticketsDir, id);
+    if (!dir) return errorResponse('Ticket not found', 404);
     const resultsDir = join(dir, 'results');
     try {
       const files = await readdir(resultsDir);
@@ -227,8 +335,8 @@ export class TicketBackend {
   }
 
   private async handleGetResultFile(id: string, filename: string): Promise<Response> {
-    const dir = this.ticketDir(id);
-    if (!dir) return errorResponse('Invalid ticket id', 400);
+    const dir = findTicketDir(this.ticketsDir, id);
+    if (!dir) return errorResponse('Ticket not found', 404);
     // Prevent path traversal
     if (filename.includes('/') || filename.includes('\\') || filename.startsWith('.')) {
       return errorResponse('Invalid filename', 400);
@@ -245,61 +353,25 @@ export class TicketBackend {
 
   /** List frontmatter-only summaries, sorted by `created` desc. */
   private async listAll(): Promise<TicketSummary[]> {
-    let entries: string[];
-    try {
-      entries = await readdir(this.ticketsDir);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
-      throw err;
-    }
-
     const summaries: TicketSummary[] = [];
-    for (const entry of entries) {
-      // New format: directory with ticket.md inside
-      // Legacy format: <id>.md file (auto-migrated on read)
-      let id: string;
-      const fullPath = join(this.ticketsDir, entry);
+    for (const { id, ticketDir } of iterateAllTickets(this.ticketsDir)) {
       try {
-        const stat = statSync(fullPath);
-        if (stat.isDirectory()) {
-          id = entry;
-        } else if (entry.endsWith('.md')) {
-          id = entry.slice(0, -3);
-        } else {
-          continue;
-        }
-      } catch {
-        continue;
+        const raw = await readFile(join(ticketDir, 'ticket.md'), 'utf-8');
+        const { frontmatter } = parseMarkdownTicket(raw);
+        summaries.push({ ...frontmatter, id });
+      } catch (err) {
+        logger.warn(`[TicketBackend] Failed to parse ${ticketDir}/ticket.md:`, err);
       }
-
-      const ticket = await this.readTicket(id).catch((err) => {
-        logger.warn(`[TicketBackend] Failed to parse ${entry}:`, err);
-        return null;
-      });
-      if (ticket) summaries.push(ticket.frontmatter);
     }
-
     // Newest first. `created` is ISO-8601 so lexicographic sort works.
     summaries.sort((a, b) => (b.created || '').localeCompare(a.created || ''));
     return summaries;
   }
 
   private async readTicket(id: string): Promise<Ticket | null> {
-    const dir = this.ticketDir(id);
+    if (!isValidTicketId(id)) return null;
+    const dir = findTicketDir(this.ticketsDir, id);
     if (!dir) return null;
-
-    // Auto-migrate legacy single-file format → directory format
-    const legacyPath = join(this.ticketsDir, `${id}.md`);
-    if (!existsSync(dir) && existsSync(legacyPath)) {
-      try {
-        mkdirSync(dir, { recursive: true });
-        renameSync(legacyPath, join(dir, 'ticket.md'));
-        logger.info(`[TicketBackend] Migrated legacy ticket ${id}.md → ${id}/ticket.md`);
-      } catch (err) {
-        logger.warn(`[TicketBackend] Failed to migrate legacy ticket ${id}:`, err);
-        // Fall through — try to read from whichever location exists
-      }
-    }
 
     const filePath = join(dir, 'ticket.md');
     try {
@@ -391,7 +463,9 @@ export class TicketBackend {
 
   /**
    * Allocate a unique ticket id from a title. Format: `YYYY-MM-DD-<slug>`,
-   * with `-2` / `-3` / ... suffix on collision.
+   * with `-2` / `-3` / ... suffix on collision. Uniqueness is checked
+   * **across all project buckets** so an id can move between buckets later
+   * (PUT changing project) without colliding.
    */
   private async allocateId(title: string): Promise<string> {
     const datePrefix = new Date().toISOString().slice(0, 10);
@@ -399,8 +473,7 @@ export class TicketBackend {
     const base = `${datePrefix}-${slug}`;
     let candidate = base;
     let n = 1;
-    // Check both directory (new format) and file (legacy) to avoid collisions
-    while (existsSync(join(this.ticketsDir, candidate)) || existsSync(join(this.ticketsDir, `${candidate}.md`))) {
+    while (idTaken(this.ticketsDir, candidate)) {
       n += 1;
       candidate = `${base}-${n}`;
     }
@@ -479,9 +552,11 @@ export class TicketBackend {
   private async handleDelete(subPath: string): Promise<Response> {
     const idMatch = subPath.match(/^\/([^/]+)$/);
     if (!idMatch) return errorResponse('Not found', 404);
+    const id = idMatch[1];
+    if (!isValidTicketId(id)) return errorResponse('Invalid ticket id', 400);
 
-    const dir = this.ticketDir(idMatch[1]);
-    if (!dir) return errorResponse('Invalid ticket id', 400);
+    const dir = findTicketDir(this.ticketsDir, id);
+    if (!dir) return errorResponse('Ticket not found', 404);
 
     try {
       await rm(dir, { recursive: true });
@@ -497,54 +572,37 @@ export class TicketBackend {
   // ── Storage helpers ────────────────────────────────────────────────────
 
   /**
-   * Resolve `tickets/<id>/` directory, refusing path traversal.
+   * Persist a ticket. Path is derived from `frontmatter.project` →
+   * `<ticketsDir>/<bucket>/<id>/ticket.md`.
+   *
+   * If the ticket already exists in a different bucket (PUT changed
+   * `project`), the entire `<id>/` directory is renamed across buckets so
+   * sibling artifacts (`plan.md`, `plan-v*.md`, `results/`) move with the
+   * ticket. Renaming a directory is atomic on POSIX, so a crash mid-move
+   * leaves the ticket either fully at the old or fully at the new path —
+   * never split.
    */
-  private ticketDir(id: string): string | null {
-    if (!id || id.includes('/') || id.includes('\\') || id.startsWith('.') || id.endsWith('.md')) {
-      return null;
-    }
-    return resolveSafe(this.ticketsDir, id);
-  }
-
-  /**
-   * Get the results directory for a ticket. Creates it if needed.
-   */
-  getResultsDir(id: string): string | null {
-    const dir = this.ticketDir(id);
-    if (!dir) return null;
-    const resultsDir = join(dir, 'results');
-    if (!existsSync(resultsDir)) {
-      mkdirSync(resultsDir, { recursive: true });
-    }
-    return resultsDir;
-  }
-
-  /**
-   * Write a result file into the ticket's results/ directory.
-   * Used by the cluster writeback mechanism.
-   */
-  async writeResult(ticketId: string, filename: string, content: string): Promise<boolean> {
-    const resultsDir = this.getResultsDir(ticketId);
-    if (!resultsDir) return false;
-    try {
-      await writeFile(join(resultsDir, filename), content, 'utf-8');
-      return true;
-    } catch (err) {
-      logger.warn(`[TicketBackend] Failed to write result ${filename} for ticket ${ticketId}:`, err);
-      return false;
-    }
-  }
-
   private async writeTicket(ticket: Ticket): Promise<void> {
-    const dir = this.ticketDir(ticket.id);
-    if (!dir) {
+    if (!isValidTicketId(ticket.id)) {
       throw new Error(`Invalid ticket id: ${ticket.id}`);
     }
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
+    const targetDir = ticketDirForCreate(this.ticketsDir, ticket.frontmatter.project, ticket.id);
+    const existingDir = findTicketDir(this.ticketsDir, ticket.id);
+
+    if (existingDir && existingDir !== targetDir) {
+      // Bucket change — move the directory before rewriting ticket.md so
+      // a concurrent reader never sees the file at neither location.
+      mkdirSync(dirname(targetDir), { recursive: true });
+      await rename(existingDir, targetDir);
+      logger.info(
+        `[TicketBackend] Moved ${ticket.id} → ${bucketForProject(ticket.frontmatter.project)}/ (project changed)`,
+      );
+    } else if (!existsSync(targetDir)) {
+      mkdirSync(targetDir, { recursive: true });
     }
+
     const content = serializeTicket(ticket);
-    await writeFile(join(dir, 'ticket.md'), content, 'utf-8');
+    await writeFile(join(targetDir, 'ticket.md'), content, 'utf-8');
   }
 }
 

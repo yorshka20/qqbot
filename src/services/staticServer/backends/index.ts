@@ -24,14 +24,29 @@ import { ZhihuBackend } from './ZhihuBackend';
 export type { Backend } from './types';
 export { errorResponse, jsonResponse } from './types';
 
-type BackendFactory = { id: string; create: (baseDir: string) => Backend };
+/**
+ * Context passed to each backend factory. Extend this (rather than each
+ * factory's signature) when a new backend needs injected paths/config.
+ */
+interface BackendFactoryContext {
+  baseDir: string;
+  /**
+   * Absolute tickets directory (see `TicketsConfig`). Required when the
+   * `tickets` backend is enabled. `createBackends` falls back to
+   * `<cwd>/tickets` when the caller omits it, preserving pre-externalized
+   * behavior for CLI entrypoints that don't load a full Config.
+   */
+  ticketsDir: string;
+}
+
+type BackendFactory = { id: string; create: (ctx: BackendFactoryContext) => Backend };
 
 function buildBackendRegistry(): BackendFactory[] {
   return [
-    { id: 'files', create: (d) => new FileManagerBackend(d) },
+    { id: 'files', create: (ctx) => new FileManagerBackend(ctx.baseDir) },
     { id: 'cluster', create: () => new ClusterAPIBackend() },
     { id: 'lan', create: () => new LanAPIBackend() },
-    { id: 'tickets', create: () => new TicketBackend() },
+    { id: 'tickets', create: (ctx) => new TicketBackend(ctx.ticketsDir) },
     { id: 'reports', create: () => new ReportBackend() },
     { id: 'insights', create: () => new InsightsBackend() },
     { id: 'moments', create: () => new MomentsBackend() },
@@ -40,7 +55,7 @@ function buildBackendRegistry(): BackendFactory[] {
     { id: 'stats', create: () => new DailyStatsBackend() },
     { id: 'memory', create: () => new MemoryStatusBackend() },
     { id: 'logs', create: () => new LogsBackend() },
-    { id: 'output', create: (d) => new OutputStaticHost(d) },
+    { id: 'output', create: (ctx) => new OutputStaticHost(ctx.baseDir) },
   ];
 }
 
@@ -50,15 +65,24 @@ const registry = buildBackendRegistry();
  * Create backends for **StaticServer**. Order matches registration order (prefix dispatch).
  * @param baseDir - Base directory for file-serving backends.
  * @param options.disabledIds - Backend ids to omit (from `lanRelay.*.disabledStaticBackends`).
+ * @param options.ticketsDir - Absolute path for `TicketBackend` storage;
+ *   defaults to `<cwd>/tickets` when unset.
  */
-export function createBackends(baseDir: string, options?: { disabledIds?: ReadonlySet<string> }): Backend[] {
+export function createBackends(
+  baseDir: string,
+  options?: { disabledIds?: ReadonlySet<string>; ticketsDir?: string },
+): Backend[] {
   const disabled = options?.disabledIds ?? new Set<string>();
+  const ctx: BackendFactoryContext = {
+    baseDir,
+    ticketsDir: options?.ticketsDir ?? `${process.cwd()}/tickets`,
+  };
   const out: Backend[] = [];
   for (const entry of registry) {
     if (disabled.has(entry.id)) {
       continue;
     }
-    out.push(entry.create(baseDir));
+    out.push(entry.create(ctx));
   }
   return out;
 }

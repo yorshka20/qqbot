@@ -30,6 +30,11 @@ import type { Database } from 'bun:sqlite';
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
+import {
+  bucketForProject,
+  findTicketDir,
+  ticketDirForCreate,
+} from '@/services/staticServer/backends/ticketStorage';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
 import type { ClusterConfig } from '../config';
@@ -59,15 +64,6 @@ import type {
   TaskCandidate,
   TaskRecord,
 } from '../types';
-
-/**
- * Filesystem root for ticket artifacts. Mirrors the path used by
- * `TicketBackend` (src/services/staticServer/backends/TicketBackend.ts) and
- * `ClusterTicketWriteback` (src/cluster/ClusterTicketWriteback.ts). Tickets
- * live under `tickets/<id>/` relative to the bot's cwd (which is the project
- * root under `bun run start` / `bun run dev`).
- */
-const TICKETS_DIR = join(process.cwd(), 'tickets');
 
 import { EventLog } from './EventLog';
 import { HubMCPServer } from './HubMCPServer';
@@ -149,9 +145,17 @@ export class ContextHub {
   private sseSubscribers = new Set<SSESubscriber>();
   private helpRequests = new Map<string, HelpRequest>();
 
+  /**
+   * @param config   Cluster config.
+   * @param db       Raw SQLite handle (ContextHub owns its tables).
+   * @param ticketsDir Absolute path to the tickets root — same directory
+   *   `TicketBackend` and `ClusterTicketWriteback` use. The hub's
+   *   `hub_write_plan` / `hub_read_plan` write into `<ticketsDir>/<id>/`.
+   */
   constructor(
     private config: ClusterConfig,
     private db: Database,
+    private ticketsDir: string,
   ) {
     this.eventLog = new EventLog(db, config.hub.eventLogMaxSize);
     this.lockManager = new LockManager(db, this.eventLog, config.hub.lockTTL);
@@ -734,13 +738,18 @@ export class ContextHub {
       );
     }
 
-    const ticketDir = join(TICKETS_DIR, ticketId);
-    if (!existsSync(ticketDir)) {
-      // Shouldn't normally happen — the ticket directory is created by
-      // TicketBackend when the user saves the ticket. If we're dispatching
-      // a job with ticketId set, the directory must exist. Create it as a
-      // safety net so we don't blow up the planner over a filesystem quirk.
+    // Locate the ticket dir across project buckets. If the ticket has
+    // never been written (planner racing the user's first save), fall
+    // back to the bucket implied by the cluster job's project alias —
+    // this mirrors how TicketBackend would bucket a freshly created
+    // ticket with the same project field.
+    let ticketDir = findTicketDir(this.ticketsDir, ticketId);
+    if (!ticketDir) {
+      ticketDir = ticketDirForCreate(this.ticketsDir, task.project, ticketId);
       await mkdir(ticketDir, { recursive: true });
+      logger.warn(
+        `[ContextHub] hub_write_plan: ticket dir missing, created safety-net dir ${bucketForProject(task.project)}/${ticketId}`,
+      );
     }
 
     const planPath = join(ticketDir, 'plan.md');
@@ -815,7 +824,9 @@ export class ContextHub {
       );
     }
 
-    const planPath = join(TICKETS_DIR, ticketId, 'plan.md');
+    const ticketDir = findTicketDir(this.ticketsDir, ticketId);
+    if (!ticketDir) return { exists: false };
+    const planPath = join(ticketDir, 'plan.md');
     if (!existsSync(planPath)) {
       return { exists: false };
     }

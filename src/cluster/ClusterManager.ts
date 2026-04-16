@@ -30,12 +30,19 @@ export class ClusterManager {
   private queueSources = new Map<string, QueueSource>();
   private started = false;
 
+  /**
+   * @param ticketsDir Absolute path to the tickets root — forwarded to
+   *   `ContextHub` so `hub_write_plan` / `hub_read_plan` write into the
+   *   same directory `TicketBackend` reads from. Also exposed via
+   *   `getTicketsDir()` so `ClusterTicketWriteback` can use it.
+   */
   constructor(
     private config: ClusterConfig,
     private db: Database,
     projectRegistry: ProjectRegistry,
+    private readonly ticketsDir: string,
   ) {
-    this.hub = new ContextHub(config, db);
+    this.hub = new ContextHub(config, db, ticketsDir);
     this.workerPool = new WorkerPool(config, this.hub);
     this.scheduler = new ClusterScheduler(config, this.hub, this.workerPool, db, projectRegistry);
     this.plannerService = new PlannerService(config, this.hub, this.workerPool);
@@ -247,6 +254,16 @@ export class ClusterManager {
    */
   getConfig(): ClusterConfig {
     return this.config;
+  }
+
+  /**
+   * Absolute tickets directory — matches the path wired into `ContextHub`
+   * and the one `TicketBackend` reads from. Consumed by
+   * `wireClusterTicketWriteback` so results land in the same place the
+   * ticket itself lives.
+   */
+  getTicketsDir(): string {
+    return this.ticketsDir;
   }
 
   /**

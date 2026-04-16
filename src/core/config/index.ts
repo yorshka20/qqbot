@@ -22,6 +22,7 @@ import type { PluginsConfig } from './types/plugins';
 import type { PromptsConfig } from './types/prompts';
 import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './types/protocol';
 import type { RAGConfig } from './types/rag';
+import type { TicketsConfig } from './types/tickets';
 import type { TTSConfig } from './types/tts';
 import type { VideoKnowledgeConfig } from './types/videoKnowledge';
 
@@ -73,6 +74,7 @@ export type {
   ReconnectConfig,
 } from './types/protocol';
 export type { RAGConfig } from './types/rag';
+export type { TicketsConfig } from './types/tickets';
 export type { TTSConfig } from './types/tts';
 export type { VideoKnowledgeConfig } from './types/videoKnowledge';
 
@@ -96,6 +98,11 @@ export interface BotConfig {
   videoKnowledge?: VideoKnowledgeConfig;
   projectRegistry?: ProjectRegistryConfig;
   cluster?: Record<string, unknown>;
+  /**
+   * Tickets storage (file-based). When absent, falls back to `<cwd>/tickets`
+   * for backwards compatibility. See `TicketsConfig` for the full rationale.
+   */
+  tickets?: TicketsConfig;
   /** LAN WebSocket relay (host/client); optional. */
   lanRelay?: LanRelayConfig;
 }
@@ -455,5 +462,16 @@ export class Config {
 
   getProjectRegistryConfig(): ProjectRegistryConfig | undefined {
     return this.config.projectRegistry;
+  }
+
+  /**
+   * Resolve the absolute path to the tickets directory. Relative paths in
+   * `tickets.dir` are resolved against `process.cwd()`. Missing config →
+   * `<cwd>/tickets` (legacy default).
+   */
+  getTicketsDir(): string {
+    const raw = this.config.tickets?.dir?.trim();
+    if (!raw) return resolve(process.cwd(), 'tickets');
+    return resolve(process.cwd(), raw);
   }
 }

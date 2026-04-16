@@ -979,5 +979,19 @@
         "workerPreference": "claude-sonnet"
       }
     }
+  },
+
+  // Tickets storage (optional) — externalize ticket markdown out of the bot
+  // repo so cross-project work items can live in their own git history.
+  // Absolute path recommended. Relative resolves against process.cwd().
+  // Omit this block to fall back to `<cwd>/tickets`.
+  //
+  // Expected layout under the configured directory:
+  //   .templates/ticket.md   — default body skeleton rendered by WebUI
+  //   <id>/ticket.md         — the ticket
+  //   <id>/plan.md           — planner's decomposition (cluster only)
+  //   <id>/results/          — auto-generated execution artifacts
+  "tickets": {
+    "dir": "/absolute/path/to/cluster-tickets"
   }
 }

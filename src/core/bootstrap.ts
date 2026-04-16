@@ -100,10 +100,14 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
 
   // ── StaticServer (local HTTP + backends; must precede ConversationInitializer — ImageGenerationService needs it) ──
   // Optional: `lanRelay.*.disabledStaticBackends` omits specific backend modules (see createBackends registry).
+  // `ticketsDir` is resolved once here and shared with the Agent Cluster below
+  // so `TicketBackend`, `ContextHub` (plan artifacts) and `ClusterTicketWriteback`
+  // all point at the same filesystem root.
+  const ticketsDir = config.getTicketsDir();
   const staticServerConfig = config.getStaticServerConfig();
   if (staticServerConfig) {
     const disabledBackendIds = config.getDisabledStaticBackendIds();
-    await initStaticServer(staticServerConfig, { disabledBackendIds });
+    await initStaticServer(staticServerConfig, { disabledBackendIds, ticketsDir });
   }
 
   // ── ProjectRegistry (independent, before ClaudeCode so it can be resolved by both) ──
@@ -139,7 +143,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
       const projectRegistry = container.resolve<
         InstanceType<typeof import('@/services/claudeCode/ProjectRegistry').ProjectRegistry>
       >(DITokens.PROJECT_REGISTRY);
-      clusterManager = new ClusterManager(clusterConfig, rawDb, projectRegistry);
+      clusterManager = new ClusterManager(clusterConfig, rawDb, projectRegistry, ticketsDir);
       container.registerInstance(DITokens.CLUSTER_MANAGER, clusterManager);
 
       await wireClusterEscalation(clusterManager, config);

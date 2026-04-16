@@ -3,8 +3,8 @@
  * task results back into the ticket directory so the full execution
  * history is preserved alongside the original ticket.
  *
- * Output structure (per ticket):
- *   tickets/<ticketId>/results/
+ * Output structure (per ticket, under the configured tickets directory):
+ *   <ticketsDir>/<ticketId>/results/
  *     summary.md             — job completion summary
  *     task-<taskId>.md       — per-task description + output
  */
@@ -12,26 +12,32 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { findTicketDir } from '@/services/staticServer/backends/ticketStorage';
 import { logger } from '@/utils/logger';
 import type { ClusterManager } from './ClusterManager';
 import type { JobRecord, TaskRecord } from './types';
 
-const TICKETS_DIR = join(process.cwd(), 'tickets');
-
+/**
+ * Tickets directory is taken from `ClusterManager.getTicketsDir()`, which
+ * in turn was resolved from `Config.getTicketsDir()` during bootstrap.
+ * Captured in closure so the job-completed callback doesn't re-read config.
+ */
 export function wireClusterTicketWriteback(clusterManager: ClusterManager): void {
+  const ticketsDir = clusterManager.getTicketsDir();
   clusterManager.setJobCompletedCallback((job, tasks) => {
     if (!job.ticketId) return;
-    void writeResults(job, tasks).catch((err) => {
+    void writeResults(ticketsDir, job, tasks).catch((err) => {
       logger.error(`[ClusterTicketWriteback] Failed to write results for ticket ${job.ticketId}:`, err);
     });
   });
-  logger.info('[ClusterTicketWriteback] Wired to cluster job completion');
+  logger.info(`[ClusterTicketWriteback] Wired to cluster job completion (tickets dir: ${ticketsDir})`);
 }
 
-async function writeResults(job: JobRecord, tasks: TaskRecord[]): Promise<void> {
-  const ticketDir = join(TICKETS_DIR, job.ticketId!);
-  if (!existsSync(ticketDir)) {
-    logger.warn(`[ClusterTicketWriteback] Ticket directory not found: ${ticketDir}`);
+async function writeResults(ticketsDir: string, job: JobRecord, tasks: TaskRecord[]): Promise<void> {
+  // Resolve the ticket dir across project buckets — `<ticketsDir>/<bucket>/<id>/`.
+  const ticketDir = findTicketDir(ticketsDir, job.ticketId!);
+  if (!ticketDir) {
+    logger.warn(`[ClusterTicketWriteback] Ticket dir not found for ${job.ticketId} under ${ticketsDir}`);
     return;
   }
 
