@@ -316,6 +316,39 @@ export interface HubWaitTaskInput {
   timeoutMs?: number;
 }
 
+// ── Plan artifact: planner-only persistence of decomposition plans ──
+
+export interface HubWritePlanInput {
+  /**
+   * Full plan.md content (frontmatter + body) as the planner has decided it.
+   * Orchestrator writes this verbatim — it does not parse or rewrite
+   * frontmatter; `plan_version` and other metadata are the planner's
+   * responsibility.
+   */
+  content: string;
+}
+
+export interface HubWritePlanOutput {
+  written: true;
+  /** Repo-relative path actually written to (always `tickets/<id>/plan.md`). */
+  path: string;
+  /** True if an existing plan.md was archived before this write. */
+  archived: boolean;
+  /**
+   * If `archived` is true, the repo-relative path the old file was moved to
+   * (e.g. `tickets/<id>/plan-v2.md`). N is `max(existing plan-v*.md suffix) + 1`.
+   */
+  archivedAs?: string;
+}
+
+export interface HubReadPlanOutput {
+  /** False if no `plan.md` exists yet for this ticket. */
+  exists: boolean;
+  content?: string;
+  /** Repo-relative path that was read (present only when `exists` is true). */
+  path?: string;
+}
+
 // ── Worker Backend types ──
 
 export interface WorkerSpawnConfig {

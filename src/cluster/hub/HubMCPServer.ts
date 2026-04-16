@@ -42,6 +42,7 @@ import type {
   HubReportInput,
   HubSpawnInput,
   HubWaitTaskInput,
+  HubWritePlanInput,
 } from '../types';
 import type { ContextHub } from './ContextHub';
 
@@ -486,6 +487,45 @@ export class HubMCPServer {
         this.runTool('hub_wait_task', extra, (workerId) =>
           this.hub.handleWaitTask(workerId, args as unknown as HubWaitTaskInput),
         ),
+    );
+
+    // ── Plan artifact: planner-only ──
+
+    // hub_write_plan
+    register(
+      'hub_write_plan',
+      {
+        description:
+          'PLANNER ONLY. Persist your decomposition plan as `tickets/<ticketId>/plan.md` (the orchestrator ' +
+          "derives the ticket directory from your current task's job). If a plan already exists, the old file " +
+          'is archived to `tickets/<ticketId>/plan-v<N>.md` (next available N) before the new content is ' +
+          'written. The orchestrator writes `content` verbatim — you own the frontmatter (including ' +
+          '`plan_version`). Call this BEFORE hub_spawn for any non-trivial ticket so the plan is reviewable ' +
+          'and re-runnable.',
+        inputSchema: {
+          content: z
+            .string()
+            .describe('Full plan.md content (frontmatter + body). The orchestrator writes it verbatim.'),
+        },
+      },
+      async (args, extra) =>
+        this.runTool('hub_write_plan', extra, (workerId) =>
+          this.hub.handleWritePlan(workerId, args as unknown as HubWritePlanInput),
+        ),
+    );
+
+    // hub_read_plan
+    register(
+      'hub_read_plan',
+      {
+        description:
+          'PLANNER ONLY. Read the current `tickets/<ticketId>/plan.md` for your current task, if one exists. ' +
+          'Returns `{ exists: false }` if no plan has been written yet. Use this on planner startup to check ' +
+          'whether a previous planner run (or a human edit) already produced a plan you can reuse, instead of ' +
+          'redoing decomposition from scratch.',
+        inputSchema: {},
+      },
+      async (_args, extra) => this.runTool('hub_read_plan', extra, (workerId) => this.hub.handleReadPlan(workerId)),
     );
   }
 

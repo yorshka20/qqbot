@@ -27,6 +27,9 @@
  */
 
 import type { Database } from 'bun:sqlite';
+import { existsSync } from 'node:fs';
+import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { join, relative } from 'node:path';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
 import type { ClusterConfig } from '../config';
@@ -43,6 +46,7 @@ import type {
   HubMessageOutput,
   HubQueryTaskInput,
   HubQueryTaskOutput,
+  HubReadPlanOutput,
   HubReportInput,
   HubReportOutput,
   HubSpawnInput,
@@ -50,9 +54,21 @@ import type {
   HubSyncOutput,
   HubUpdate,
   HubWaitTaskInput,
+  HubWritePlanInput,
+  HubWritePlanOutput,
   TaskCandidate,
   TaskRecord,
 } from '../types';
+
+/**
+ * Filesystem root for ticket artifacts. Mirrors the path used by
+ * `TicketBackend` (src/services/staticServer/backends/TicketBackend.ts) and
+ * `ClusterTicketWriteback` (src/cluster/ClusterTicketWriteback.ts). Tickets
+ * live under `tickets/<id>/` relative to the bot's cwd (which is the project
+ * root under `bun run start` / `bun run dev`).
+ */
+const TICKETS_DIR = join(process.cwd(), 'tickets');
+
 import { EventLog } from './EventLog';
 import { HubMCPServer } from './HubMCPServer';
 import { LockManager } from './LockManager';
@@ -674,6 +690,176 @@ export class ContextHub {
         }
       }
     }
+  }
+
+  // ── Plan artifact: planner-only persistence of decomposition plans ──
+
+  /**
+   * Hub side of `hub_write_plan`. Planner-only. Persists the full plan
+   * content as `tickets/<ticketId>/plan.md`. If a plan already exists,
+   * archives the old file to `tickets/<ticketId>/plan-v<N>.md` (N =
+   * max(existing plan-v*.md suffix) + 1, or 1 if none exist) before writing.
+   *
+   * The orchestrator does NOT parse or rewrite frontmatter — `plan_version`
+   * and other metadata fields are the planner's responsibility. Archive
+   * naming is filename-based, not frontmatter-based, so a planner that
+   * forgets to bump `plan_version` will still get clean archive numbering.
+   *
+   * Concurrency: two planners writing the same ticket's plan concurrently
+   * could race on the archive step (both compute the same N). Not guarded
+   * in Phase 1 because the realistic single-planner-per-ticket case doesn't
+   * hit it. See plan artifact §5 Q5 for deferred mutex discussion.
+   */
+  async handleWritePlan(workerId: string, input: HubWritePlanInput): Promise<HubWritePlanOutput> {
+    this.workerRegistry.touch(workerId);
+    const reg = this.workerRegistry.get(workerId);
+    if (!reg || reg.role !== 'planner') {
+      throw new Error('hub_write_plan is only available to planner-role workers');
+    }
+    const taskId = reg.currentTaskId;
+    if (!taskId) {
+      throw new Error('hub_write_plan: planner has no current task');
+    }
+    if (!this.schedulerBridge) {
+      throw new Error('hub_write_plan: scheduler bridge not wired (cluster misconfiguration)');
+    }
+    const task = this.schedulerBridge.findTask(taskId);
+    if (!task) {
+      throw new Error(`hub_write_plan: task ${taskId} not found in scheduler`);
+    }
+    const ticketId = this.getTicketIdForJob(task.jobId);
+    if (!ticketId) {
+      throw new Error(
+        `hub_write_plan: job ${task.jobId} has no ticketId — was this ticket dispatched from WebUI? Direct cluster jobs without a ticket cannot use hub_write_plan.`,
+      );
+    }
+
+    const ticketDir = join(TICKETS_DIR, ticketId);
+    if (!existsSync(ticketDir)) {
+      // Shouldn't normally happen — the ticket directory is created by
+      // TicketBackend when the user saves the ticket. If we're dispatching
+      // a job with ticketId set, the directory must exist. Create it as a
+      // safety net so we don't blow up the planner over a filesystem quirk.
+      await mkdir(ticketDir, { recursive: true });
+    }
+
+    const planPath = join(ticketDir, 'plan.md');
+    let archived = false;
+    let archivedAs: string | undefined;
+
+    if (existsSync(planPath)) {
+      const nextN = await this.computeNextPlanArchiveVersion(ticketDir);
+      const archivePath = join(ticketDir, `plan-v${nextN}.md`);
+      await rename(planPath, archivePath);
+      archived = true;
+      archivedAs = relative(process.cwd(), archivePath);
+    }
+
+    await writeFile(planPath, input.content, 'utf-8');
+
+    const relPath = relative(process.cwd(), planPath);
+    logger.info(
+      `[ContextHub] hub_write_plan: planner=${workerId} ticket=${ticketId} wrote ${relPath}` +
+        (archived ? ` (archived old → ${archivedAs})` : ''),
+    );
+    this.eventLog.append(
+      'message',
+      workerId,
+      {
+        kind: 'plan_written',
+        ticketId,
+        path: relPath,
+        archived,
+        archivedAs,
+      },
+      { taskId },
+    );
+
+    return {
+      written: true,
+      path: relPath,
+      archived,
+      archivedAs,
+    };
+  }
+
+  /**
+   * Hub side of `hub_read_plan`. Planner-only. Returns the current
+   * `tickets/<ticketId>/plan.md` content if it exists, or `{ exists: false }`
+   * if the planner hasn't written one yet (or the file was manually
+   * deleted). Used for resume scenarios: when a planner is respawned
+   * after crashing, it should check for an existing plan before redoing
+   * the whole decomposition.
+   */
+  async handleReadPlan(workerId: string): Promise<HubReadPlanOutput> {
+    this.workerRegistry.touch(workerId);
+    const reg = this.workerRegistry.get(workerId);
+    if (!reg || reg.role !== 'planner') {
+      throw new Error('hub_read_plan is only available to planner-role workers');
+    }
+    const taskId = reg.currentTaskId;
+    if (!taskId) {
+      throw new Error('hub_read_plan: planner has no current task');
+    }
+    if (!this.schedulerBridge) {
+      throw new Error('hub_read_plan: scheduler bridge not wired (cluster misconfiguration)');
+    }
+    const task = this.schedulerBridge.findTask(taskId);
+    if (!task) {
+      throw new Error(`hub_read_plan: task ${taskId} not found in scheduler`);
+    }
+    const ticketId = this.getTicketIdForJob(task.jobId);
+    if (!ticketId) {
+      throw new Error(
+        `hub_read_plan: job ${task.jobId} has no ticketId — this cluster job was not dispatched from a ticket.`,
+      );
+    }
+
+    const planPath = join(TICKETS_DIR, ticketId, 'plan.md');
+    if (!existsSync(planPath)) {
+      return { exists: false };
+    }
+    const content = await readFile(planPath, 'utf-8');
+    return {
+      exists: true,
+      content,
+      path: relative(process.cwd(), planPath),
+    };
+  }
+
+  /**
+   * Look up `cluster_jobs.ticketId` by job id. Returns null if the job
+   * doesn't exist or has no associated ticket (direct cluster jobs without
+   * a ticket — legacy path).
+   */
+  private getTicketIdForJob(jobId: string): string | null {
+    const row = this.db.query('SELECT ticketId FROM cluster_jobs WHERE id = ?').get(jobId) as
+      | { ticketId: string | null }
+      | undefined;
+    return row?.ticketId?.trim() || null;
+  }
+
+  /**
+   * Scan a ticket directory for existing `plan-v<N>.md` files and return
+   * the next version number. Returns `max(existing N) + 1`, or `1` if no
+   * archive exists. Filename-based to survive manual edits/deletions
+   * without ever colliding with an existing archive.
+   */
+  private async computeNextPlanArchiveVersion(ticketDir: string): Promise<number> {
+    let entries: string[];
+    try {
+      entries = await readdir(ticketDir);
+    } catch {
+      return 1;
+    }
+    let maxN = 0;
+    for (const entry of entries) {
+      const match = entry.match(/^plan-v(\d+)\.md$/);
+      if (!match) continue;
+      const n = Number.parseInt(match[1], 10);
+      if (Number.isFinite(n) && n > maxN) maxN = n;
+    }
+    return maxN + 1;
   }
 
   // ── Help request management ──
