@@ -161,12 +161,13 @@ export class AgentLoop {
     }
 
     const { groupId, userId, isPrivate, target, contextId } = this.resolveTarget(item, eventContext);
-    if (!groupId && !userId) {
-      logger.warn(`[AgentLoop] Item "${item.name}" has no groupId or userId; skipping`);
-      return;
-    }
+    const hasChatTarget = !!(groupId || userId);
 
-    logger.info(`[AgentLoop] Running action "${handlerName}" for item "${item.name}" → ${target}`);
+    if (hasChatTarget) {
+      logger.info(`[AgentLoop] Running action "${handlerName}" for item "${item.name}" → ${target}`);
+    } else {
+      logger.info(`[AgentLoop] Running action "${handlerName}" for item "${item.name}" (no chat target)`);
+    }
 
     try {
       const result = await handler.execute({
@@ -177,8 +178,10 @@ export class AgentLoop {
         protocol: this.preferredProtocol,
       });
 
-      if (result) {
+      if (result && hasChatTarget) {
         await this.deliverReply(result, item.name, groupId, userId, isPrivate, contextId);
+      } else if (result && !hasChatTarget) {
+        logger.info(`[AgentLoop] Action "${handlerName}" (${item.name}): ${result}`);
       }
     } catch (err) {
       logger.error(`[AgentLoop] Action handler "${handlerName}" failed for item "${item.name}":`, err);
