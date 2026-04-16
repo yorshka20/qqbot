@@ -825,6 +825,21 @@ export interface Ticket {
   id: string;
   frontmatter: TicketFrontmatter;
   body: string;
+  /**
+   * Plan artifact written by the cluster planner via `hub_write_plan`.
+   * Null when no plan exists for this ticket (non-planner tickets always
+   * have `null`). Archives (`plan-v<N>.md`) are not included in this
+   * response.
+   */
+  plan?: TicketPlan | null;
+}
+
+/** Plan artifact payload attached to a ticket detail response. */
+export interface TicketPlan {
+  /** Full `plan.md` content (frontmatter + body markdown). */
+  content: string;
+  /** Version number from the plan frontmatter's `plan_version` field, if parseable. */
+  version?: number;
 }
 
 /** Listing endpoint shape. Frontmatter only — no body. */

@@ -189,6 +189,26 @@ export function TicketDetailPanel({
         </pre>
       </div>
 
+      {/* Plan — written by the cluster planner via hub_write_plan. Only
+          rendered when the planner actually produced one; non-planner
+          tickets (and pre-plan tickets) skip this section entirely. */}
+      {ticket.plan && (
+        <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">
+          <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1 flex items-center gap-2">
+            <span className="font-medium text-zinc-600 dark:text-zinc-300">plan</span>
+            {ticket.plan.version !== undefined && (
+              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300">
+                v{ticket.plan.version}
+              </span>
+            )}
+            <span className="italic">— planner decomposition (tickets/{ticket.id}/plan.md)</span>
+          </div>
+          <pre className="text-xs font-mono bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded p-2 max-h-[360px] overflow-y-auto whitespace-pre-wrap break-words text-zinc-700 dark:text-zinc-200">
+            {ticket.plan.content}
+          </pre>
+        </div>
+      )}
+
       {/* Cluster job task tree (only if dispatched) */}
       <div className="px-4 py-3">
         <div className="flex items-center gap-2 mb-2">

@@ -94,6 +94,21 @@ interface Ticket {
   id: string;
   frontmatter: TicketFrontmatter;
   body: string;
+  /**
+   * Plan artifact attached to this ticket, if the cluster planner wrote one
+   * via `hub_write_plan`. Lives at `tickets/<id>/plan.md`. `null` when no
+   * plan has been written yet (non-planner tickets always have `null`).
+   * Archives (`plan-v<N>.md`) live next to `plan.md`; not included here to
+   * keep the detail response small — the WebUI can list them separately if
+   * it needs to surface history.
+   */
+  plan?: TicketPlan | null;
+}
+
+interface TicketPlan {
+  content: string;
+  /** Parsed from `plan_version` field in the plan.md frontmatter, if present. */
+  version?: number;
 }
 
 interface TicketSummary {
@@ -299,10 +314,34 @@ export class TicketBackend {
     try {
       const raw = await readFile(filePath, 'utf-8');
       const { frontmatter, body } = parseMarkdownTicket(raw);
-      return { id, frontmatter: { ...frontmatter, id }, body };
+      const plan = await this.readPlan(dir);
+      return { id, frontmatter: { ...frontmatter, id }, body, plan };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw err;
+    }
+  }
+
+  /**
+   * Read `<ticketDir>/plan.md` if it exists and attach a lightweight
+   * `TicketPlan` payload (content + parsed version). Returns `null` if
+   * the file isn't there or can't be read — plan is optional.
+   *
+   * Version parsing scans only the YAML-like frontmatter block; it does
+   * NOT reuse `parseMarkdownTicket` because plan.md uses a different
+   * frontmatter schema (see `prompts/cluster/plan-schema.md`) and we only
+   * care about one field. A tiny inline regex is more honest than
+   * coercing the result of a ticket parser into a plan parser.
+   */
+  private async readPlan(ticketDir: string): Promise<TicketPlan | null> {
+    const planPath = join(ticketDir, 'plan.md');
+    try {
+      const content = await readFile(planPath, 'utf-8');
+      return { content, version: parsePlanVersion(content) };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      logger.warn(`[TicketBackend] Failed to read plan.md at ${planPath}:`, err);
+      return null;
     }
   }
 
@@ -661,6 +700,26 @@ export function serializeTicket(ticket: Ticket): string {
     lines.push('');
   }
   return lines.join('\n');
+}
+
+/**
+ * Pull the `plan_version` integer out of a plan.md frontmatter block, if
+ * present. Returns undefined when there's no frontmatter, the field is
+ * missing, or the value isn't a positive integer. Only scans the first
+ * `---`-fenced block, so arbitrary body content can't inject a version.
+ *
+ * This parser is deliberately tiny (no YAML dep, no reuse of
+ * `parseMarkdownTicket` which is ticket-specific). Plan frontmatter
+ * follows a different schema (see `prompts/cluster/plan-schema.md`) and
+ * we only need this one field right now — the rest stays as prose.
+ */
+function parsePlanVersion(content: string): number | undefined {
+  const match = content.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) return undefined;
+  const vMatch = match[1].match(/^plan_version:\s*(\d+)\s*$/m);
+  if (!vMatch) return undefined;
+  const v = Number.parseInt(vMatch[1], 10);
+  return Number.isFinite(v) && v > 0 ? v : undefined;
 }
 
 /**
