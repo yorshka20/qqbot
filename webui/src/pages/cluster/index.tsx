@@ -142,20 +142,36 @@ export function ClusterPage() {
     if (!workers) {
       return [];
     }
+    const joinMs = (w: ClusterWorkerRegistration) =>
+      w.spawnedAt ?? w.stats?.registeredAt ?? w.lastSeen ?? w.lastHubReportAt ?? 0;
     return workers
       .filter((w) => w.status !== 'exited')
       .slice()
-      .sort((a, b) => (a.workerId || '').localeCompare(b.workerId || ''));
+      .sort((a, b) => {
+        const d = joinMs(b) - joinMs(a);
+        if (d !== 0) {
+          return d;
+        }
+        return (a.workerId || '').localeCompare(b.workerId || '');
+      });
   }, [workers]);
 
   const oldWorkers = useMemo(() => {
     if (!workers) {
       return [];
     }
+    const recencyMs = (w: ClusterWorkerRegistration) =>
+      w.exitedAt ?? w.spawnedAt ?? w.stats?.registeredAt ?? w.lastSeen ?? 0;
     return workers
       .filter((w) => w.status === 'exited')
       .slice()
-      .sort((a, b) => (a.workerId || '').localeCompare(b.workerId || ''));
+      .sort((a, b) => {
+        const d = recencyMs(b) - recencyMs(a);
+        if (d !== 0) {
+          return d;
+        }
+        return (a.workerId || '').localeCompare(b.workerId || '');
+      });
   }, [workers]);
 
   const openTaskOutput = useCallback(async (taskId: string) => {
