@@ -17,6 +17,8 @@
 | `hub_spawn` | 创建 executor 子 worker | **必须指定 `template`**（匹配 `cluster.workerTemplates` 的 key）；返回 `childTaskId` |
 | `hub_query_task` | 非阻塞查询子任务状态 | 只能查询自己 spawn 的 children |
 | `hub_wait_task` | 阻塞等待子任务终态 | 默认 10 分钟超时，硬上限 30 分钟；**调用前必须先 `hub_report(working)`** |
+| `hub_write_plan` | 把拆分方案（plan）落盘到 `tickets/<id>/plan.md` | **`hub_spawn` 前必须调用**；旧 plan 自动归档到 `plan-v<N>.md`；schema 见 `prompts/cluster/plan-schema.md` |
+| `hub_read_plan` | 读当前 ticket 的 plan.md | **启动时第一件事** —— 有 plan 就复用（你可能是被重启的 planner） |
 
 每个工具的 `description` 字段中包含完整的参数 schema 及行为说明。
 
