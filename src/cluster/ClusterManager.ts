@@ -103,16 +103,12 @@ export class ClusterManager {
       }
       task.status = input.status === 'completed' ? 'completed' : 'failed';
       task.completedAt = new Date().toISOString();
-      // **Do NOT overwrite `task.output` here.** parseOutput on process
-      // exit is the sole authoritative source for `output`. report.summary
-      // is a short LLM-authored one-liner ("completed unit tests, 12
-      // passed") that often arrives BEFORE the agent finishes printing the
-      // actual answer to stdout — clobbering output now would lose that.
+      // **Do NOT overwrite `task.output` here.** parseOutput on process exit
+      // fills `task.output` in memory for live WebUI streaming; that stdout
+      // is never persisted to SQLite (only hub_report summary is stored).
       //
-      // Instead, persist the terminal summary into `diffSummary` (a DB
-      // column that was reserved but never populated). The WebUI reads
-      // this field to show a clean markdown-rendered report alongside
-      // the raw CLI stdout in `output`.
+      // Persist the terminal hub_report summary into `diffSummary` for DB
+      // and ticket writeback. The WebUI reads this for the completed-task view.
       if (input.summary) {
         task.diffSummary = input.summary;
       }
@@ -430,14 +426,6 @@ export class ClusterManager {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_cluster_events_worker ON cluster_events(sourceWorkerId, seq)`,
       `CREATE INDEX IF NOT EXISTS idx_cluster_events_type ON cluster_events(type, seq)`,
-      `CREATE TABLE IF NOT EXISTS cluster_locks (
-        filePath TEXT PRIMARY KEY,
-        workerId TEXT NOT NULL,
-        taskId TEXT,
-        claimedAt INTEGER NOT NULL,
-        lastRenewed INTEGER NOT NULL,
-        ttl INTEGER NOT NULL
-      )`,
       `CREATE TABLE IF NOT EXISTS cluster_help_requests (
         id TEXT PRIMARY KEY,
         workerId TEXT NOT NULL,

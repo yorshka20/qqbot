@@ -5,9 +5,9 @@
 // Two modes:
 //
 //   1. Sentinel mode (default) — Phase 1 pipeline check. Prompts the agent
-//      to echo a literal string and asserts it appears in task.output.
-//      Validates: spawn → stdout capture → parseOutput → markTaskCompleted
-//      → persistTask → poll readback.
+//      to echo a literal string and asserts it appears in task.output (in-memory
+//      TaskRecord; stdout is not persisted to SQLite).
+//      Validates: spawn → stdout capture → parseOutput → markTaskCompleted.
 //
 //   2. MCP mode (--mcp-tool hub_claim | hub_report | hub_ask) — Phase 2
 //      wiring check. Prompts the agent to call a hub_xxx MCP tool with a
@@ -192,7 +192,8 @@ function parseArgs(): E2EArgs {
   // Planner mode is mutually exclusive with --mcp-tool. We generate three
   // per-run UUID sentinels up front and embed them in the planner prompt
   // so the planner can hand each child its own unique string. The asserts
-  // below scan cluster_tasks for matching child outputs, which proves that
+  // below scan cluster_tasks for matching child hub_report summaries (`diffSummary`),
+  // which proves that
   // (a) hub_spawn → submitChildTask → tryDispatch worked, (b) the child
   // executors actually ran, and (c) parentTaskId was stamped correctly.
   const plannerMode = argv.includes('--planner');
@@ -243,21 +244,23 @@ function parseArgs(): E2EArgs {
   const defaultPlannerTask =
     `This is an end-to-end test of the cluster's planner mode. You are running as a planner worker. ` +
     `You must spawn EXACTLY ${plannerChildCount} executor child workers via hub_spawn. ` +
-    `For each child, use template "${plannerExecutorTemplate}". Each child should be given a tiny task ` +
-    `that asks it to print exactly one sentinel string. The three sentinels are:\n` +
+    `For each child, use template "${plannerExecutorTemplate}". Each child must call hub_report when done ` +
+    `with status="completed" and summary set to EXACTLY its assigned sentinel (so the hub persists it). ` +
+    `The three sentinels are:\n` +
     plannerChildSentinels.map((s, i) => `  ${i + 1}. ${s}`).join('\n') +
     `\n\nProcedure:\n` +
     `1. Call hub_spawn three times. For each call:\n` +
     `   - template: "${plannerExecutorTemplate}"\n` +
-    `   - description: "This is an end-to-end test. Reply with EXACTLY the literal string <SENTINEL_N> ` +
-    `on a single line, with no additional commentary." (substitute <SENTINEL_N> with the matching sentinel above)\n` +
+    `   - description: "End-to-end child test. When finished, call hub_report with status=completed and ` +
+    `summary set EXACTLY to this string (copy-paste, no quotes): <SENTINEL_N>. You may also print that ` +
+    `same string on stdout." (substitute <SENTINEL_N> with the matching sentinel above)\n` +
     `   - Save the returned childTaskId.\n` +
     `2. Call hub_wait_task on each childTaskId in turn (so they run and complete).\n` +
     `3. After all 3 children are completed, call hub_report with status="completed" and a one-line summary.\n` +
     `4. Reply with EXACTLY the literal string ${sentinel} on a single line and nothing else.\n\n` +
-    `Do NOT do the work yourself. Do NOT print the child sentinels in your own output. ` +
+    `Do NOT do the work yourself. Do NOT paste the child sentinels into your own hub_report summary. ` +
     `Do NOT spawn nested planners. Do NOT modify files. The whole point of this test is that the children ` +
-    `print their sentinels via separate worker processes.`;
+    `complete in separate worker processes and report via hub_report.`;
 
   let defaultTask: string;
   if (plannerMode) {
@@ -726,7 +729,10 @@ async function main() {
         // care about ordering — the planner is free to spawn in any order.
         const unmatched: string[] = [];
         for (const sentinelStr of args.plannerChildSentinels) {
-          const matchingChild = children.find((c) => (c.output ?? '').includes(sentinelStr));
+          const matchingChild = children.find(
+            (c) =>
+              (c.diffSummary ?? '').includes(sentinelStr) || (c.output ?? '').includes(sentinelStr),
+          );
           if (!matchingChild) {
             unmatched.push(sentinelStr);
           }
@@ -734,8 +740,8 @@ async function main() {
         if (unmatched.length > 0) {
           plannerPass = false;
           plannerDiagnostics =
-            `${unmatched.length} sentinel(s) not echoed by any child: ${unmatched.join(', ')}. ` +
-            `Child outputs: ${children.map((c) => `${c.id.slice(0, 8)}=${(c.output ?? '').slice(0, 60)}`).join(' | ')}`;
+            `${unmatched.length} sentinel(s) not found in any child's hub_report summary: ${unmatched.join(', ')}. ` +
+            `Child summaries: ${children.map((c) => `${c.id.slice(0, 8)}=${(c.diffSummary ?? '').slice(0, 80)}`).join(' | ')}`;
         }
         // Also assert children are all completed (cascade-killed children
         // would be 'failed' with error mentioning parent termination).
@@ -749,7 +755,7 @@ async function main() {
       }
       if (plannerPass) {
         logger.info(
-          `[ClusterE2E] Planner mode assertion: ✓ all ${args.plannerChildSentinels.length} children completed and echoed their sentinels`,
+          `[ClusterE2E] Planner mode assertion: ✓ all ${args.plannerChildSentinels.length} children completed and reported sentinels (hub_report summary)`,
         );
       } else {
         logger.error(`[ClusterE2E] Planner mode assertion failed: ${plannerDiagnostics}`);
@@ -832,7 +838,7 @@ async function main() {
       if (args.plannerMode) {
         logger.info(
           `[ClusterE2E] ✅ PASS (planner mode) — root planner completed, ${args.plannerChildSentinels.length} child executors ` +
-            `completed with parentTaskId stamped, and all per-run sentinels were echoed`,
+            `completed with parentTaskId stamped, and all per-run sentinels appear in hub_report summaries`,
         );
         process.exit(0);
       }

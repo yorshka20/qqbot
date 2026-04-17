@@ -44,7 +44,7 @@ export function TaskTreeRow({
   depth: number;
   onClick: (task: ClusterTask) => void;
 }) {
-  const preview = task.diffSummary || task.output || task.error || '';
+  const preview = task.diffSummary || task.error || '';
 
   return (
     <button

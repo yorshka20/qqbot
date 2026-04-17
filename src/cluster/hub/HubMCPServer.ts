@@ -457,9 +457,10 @@ export class HubMCPServer {
       'hub_query_task',
       {
         description:
-          'PLANNER ONLY. Non-blocking snapshot of a child task you previously spawned. Returns status / output / ' +
-          'error / timestamps. You can only query tasks that are direct children of your current task — querying ' +
-          "another worker's tasks is rejected. Use hub_wait_task if you want to block until the child terminates.",
+          'PLANNER ONLY. Non-blocking snapshot of a child task you previously spawned. Returns status, live stdout ' +
+          '(output) while running, hub_report summary (diffSummary) after completion, error, timestamps. You can ' +
+          'only query tasks that are direct children of your current task — querying another worker\'s tasks is ' +
+          'rejected. Use hub_wait_task if you want to block until the child terminates.',
         inputSchema: {
           taskId: z.string().describe('childTaskId returned by hub_spawn.'),
         },

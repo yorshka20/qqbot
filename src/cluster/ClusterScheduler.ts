@@ -86,19 +86,19 @@ export class ClusterScheduler {
    * process actually exits. The second caller would otherwise double-count
    * job.tasksCompleted / tasksFailed. So we use `activeTasks.has(task.id)`
    * as the "first time through" gate for counter updates — but we still
-   * `persistTask()` on every call so the second caller can refresh DB rows
-   * with the fuller output captured after process exit.
+   * `persistTask()` on every call so the exit path can refresh DB rows
+   * (e.g. error text) after hub_report. Worker stdout is never persisted.
    *
    * Idempotency model:
-   *   - persistTask: runs every call (SQLite UPSERT, latest-write-wins)
+   *   - persistTask: runs every call (SQLite UPSERT; stores summary/error only)
    *   - job counter update + activeTasks.delete: runs exactly once
    *
    * See docs/local/agent-cluster.md Issue D (original Phase 1 bug) and
    * §2.3 (hub_report wiring) for the full story.
    */
   markTaskCompleted(task: TaskRecord): void {
-    // Always persist — allows the post-exit code path to overwrite the
-    // row with richer `task.output` even when hub_report fired first.
+    // Always persist — allows the post-exit code path to refresh error/diffSummary
+    // after hub_report fired first. Stdout is never written to SQLite.
     this.persistTask(task);
 
     // Job counter updates must happen exactly once per task. If the task
@@ -747,6 +747,10 @@ export class ClusterScheduler {
 
   private persistTask(task: TaskRecord): void {
     try {
+      // Never persist worker stdout / metadata — only full hub_report summary (`diffSummary`) and error.
+      const diffSummaryForDb = task.diffSummary ?? null;
+      const errorForDb = task.error ?? null;
+
       this.db
         .query(
           `INSERT OR REPLACE INTO cluster_tasks
@@ -767,11 +771,11 @@ export class ClusterScheduler {
           task.claimedAt ?? null,
           task.startedAt ?? null,
           task.completedAt ?? null,
-          task.output ?? null,
-          task.error ?? null,
+          null,
+          errorForDb,
           task.filesModified ?? null,
-          task.diffSummary ?? null,
-          task.metadata ?? null,
+          diffSummaryForDb,
+          null,
           task.parentTaskId ?? null,
         );
     } catch (err) {

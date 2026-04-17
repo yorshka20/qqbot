@@ -1,12 +1,14 @@
 /**
  * Wire ticket result writeback — when a cluster job completes, write
- * task results back into the ticket directory so the full execution
- * history is preserved alongside the original ticket.
+ * compact task metadata into the ticket directory (no worker stdout).
  *
  * Output structure (per ticket, under the configured tickets directory):
  *   <ticketsDir>/<ticketId>/results/
- *     summary.md             — job completion summary
- *     task-<taskId>.md       — per-task description + output
+ *     summary.md             — job completion summary (full hub_report summaries / errors)
+ *     task-<taskId>.md       — per-task description + report summary + errors
+ *
+ * Live worker output is shown only in the WebUI during execution (polling
+ * active tasks); it is not written here or to SQLite.
  */
 
 import { existsSync, mkdirSync } from 'node:fs';
@@ -34,10 +36,12 @@ export function wireClusterTicketWriteback(clusterManager: ClusterManager): void
 }
 
 async function writeResults(ticketsDir: string, job: JobRecord, tasks: TaskRecord[]): Promise<void> {
-  // Resolve the ticket dir across project buckets — `<ticketsDir>/<bucket>/<id>/`.
-  const ticketDir = findTicketDir(ticketsDir, job.ticketId!);
+  const ticketId = job.ticketId;
+  if (!ticketId) return;
+
+  const ticketDir = findTicketDir(ticketsDir, ticketId);
   if (!ticketDir) {
-    logger.warn(`[ClusterTicketWriteback] Ticket dir not found for ${job.ticketId} under ${ticketsDir}`);
+    logger.warn(`[ClusterTicketWriteback] Ticket dir not found for ${ticketId} under ${ticketsDir}`);
     return;
   }
 
@@ -46,7 +50,6 @@ async function writeResults(ticketsDir: string, job: JobRecord, tasks: TaskRecor
     mkdirSync(resultsDir, { recursive: true });
   }
 
-  // Write per-task result files
   for (const task of tasks) {
     const filename = `task-${task.id.slice(0, 8)}.md`;
     const lines: string[] = [
@@ -68,17 +71,25 @@ async function writeResults(ticketsDir: string, job: JobRecord, tasks: TaskRecor
       '',
     ].filter((l): l is string => l !== null);
 
-    if (task.output) {
-      lines.push('## Output', '', task.output, '');
+    if (task.diffSummary) {
+      lines.push('## Report summary (hub_report)', '', task.diffSummary, '');
+    }
+    if (task.filesModified) {
+      lines.push('## Files modified', '', task.filesModified, '');
     }
     if (task.error) {
       lines.push('## Error', '', task.error, '');
     }
 
+    lines.push(
+      '',
+      '_Worker CLI output is not written to disk; it was visible in the WebUI while the task was running._',
+      '',
+    );
+
     await writeFile(join(resultsDir, filename), lines.join('\n'), 'utf-8');
   }
 
-  // Write summary
   const plannerTask = tasks.find((t) => t.source !== 'planner' && !t.parentTaskId);
   const childTasks = tasks.filter((t) => t.parentTaskId);
 
@@ -92,9 +103,12 @@ async function writeResults(ticketsDir: string, job: JobRecord, tasks: TaskRecor
     `- **Completed**: ${job.completedAt ?? 'N/A'}`,
     `- **Tasks**: ${job.tasksCompleted} completed, ${job.tasksFailed} failed / ${job.taskCount} total`,
     '',
+    '_Live worker output is not persisted; this file lists hub_report summaries and errors only._',
+    '',
   ];
 
   if (plannerTask) {
+    const plannerResultFile = `task-${plannerTask.id.slice(0, 8)}.md`;
     summaryLines.push(
       '## Planner',
       '',
@@ -103,9 +117,10 @@ async function writeResults(ticketsDir: string, job: JobRecord, tasks: TaskRecor
       `- **Status**: ${plannerTask.status}`,
       '',
     );
-    if (plannerTask.output) {
-      summaryLines.push('### Planner Output', '', plannerTask.output, '');
+    if (plannerTask.diffSummary) {
+      summaryLines.push('### Report summary', '', plannerTask.diffSummary, '');
     }
+    summaryLines.push(`_Per-task file: \`results/${plannerResultFile}\`._`, '');
   }
 
   if (childTasks.length > 0) {
@@ -115,19 +130,21 @@ async function writeResults(ticketsDir: string, job: JobRecord, tasks: TaskRecor
       summaryLines.push(
         `### ${statusIcon} task-${child.id.slice(0, 8)} (${child.workerTemplate ?? 'unknown'})`,
         '',
-        `**Description**: ${child.description.slice(0, 200)}${child.description.length > 200 ? '...' : ''}`,
+        `**Description**:`,
+        '',
+        child.description,
         '',
       );
-      if (child.output) {
-        summaryLines.push(`**Output**: ${child.output.slice(0, 500)}${child.output.length > 500 ? '...' : ''}`, '');
+      if (child.diffSummary) {
+        summaryLines.push('**Report summary**:', '', child.diffSummary, '');
       }
       if (child.error) {
-        summaryLines.push(`**Error**: ${child.error}`, '');
+        summaryLines.push('**Error**:', '', child.error, '');
       }
     }
   }
 
   await writeFile(join(resultsDir, 'summary.md'), summaryLines.join('\n'), 'utf-8');
 
-  logger.info(`[ClusterTicketWriteback] Wrote ${tasks.length} task result(s) + summary for ticket ${job.ticketId}`);
+  logger.info(`[ClusterTicketWriteback] Wrote ${tasks.length} task result(s) + summary for ticket ${ticketId}`);
 }

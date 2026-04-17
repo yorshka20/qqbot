@@ -120,10 +120,13 @@ export interface TaskRecord {
   claimedAt?: string;
   startedAt?: string;
   completedAt?: string;
+  /** Parsed / streamed stdout — in-memory only for live WebUI; not persisted to `cluster_tasks`. */
   output?: string;
   error?: string;
   filesModified?: string;
+  /** Terminal `hub_report.summary` (markdown); persisted to SQLite and ticket results. */
   diffSummary?: string;
+  /** Optional debug payload (e.g. stream-json raw events); in-memory only, not persisted. */
   metadata?: string;
   /**
    * Phase 3 multi-agent: parent task that spawned this one via `hub_spawn`.
@@ -304,7 +307,10 @@ export interface HubQueryTaskOutput {
   taskId: string;
   status: TaskStatus;
   workerId?: string;
+  /** Live stdout only while the worker is running; empty once persisted (stdout is not stored). */
   output?: string;
+  /** hub_report summary — persisted and returned for completed tasks. */
+  diffSummary?: string;
   error?: string;
   startedAt?: string;
   completedAt?: string;
@@ -378,14 +384,14 @@ export interface WorkerSpawnConfig {
  * Backends that emit JSONL streaming output (claude `--output-format stream-json`,
  * codex `--json`, gemini `--output-format stream-json`) can implement
  * `parseOutput` to extract just the final assistant message and surface
- * raw events on `task.metadata` for debugging.
+ * raw events on `task.metadata` for debugging (memory-only; not persisted).
  */
 export interface ParsedWorkerOutput {
-  /** Final user-facing message — what to store in `task.output`. */
+  /** Final user-facing message — held in `task.output` for live WebUI only. */
   finalMessage: string;
   /**
    * Optional structured representation of all events for debug/replay.
-   * If present, WorkerPool serializes it into `task.metadata`.
+   * If present, WorkerPool serializes it into in-memory `task.metadata` only.
    */
   rawEvents?: unknown;
 }

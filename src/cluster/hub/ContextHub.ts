@@ -30,11 +30,7 @@ import type { Database } from 'bun:sqlite';
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
-import {
-  bucketForProject,
-  findTicketDir,
-  ticketDirForCreate,
-} from '@/services/staticServer/backends/ticketStorage';
+import { bucketForProject, findTicketDir, ticketDirForCreate } from '@/services/staticServer/backends/ticketStorage';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
 import type { ClusterConfig } from '../config';
@@ -158,7 +154,7 @@ export class ContextHub {
     private ticketsDir: string,
   ) {
     this.eventLog = new EventLog(db, config.hub.eventLogMaxSize);
-    this.lockManager = new LockManager(db, this.eventLog, config.hub.lockTTL);
+    this.lockManager = new LockManager(this.eventLog, config.hub.lockTTL);
     this.messageBox = new MessageBox();
     this.workerRegistry = new WorkerRegistry(db);
     this.mcpServer = new HubMCPServer(this);
@@ -635,6 +631,7 @@ export class ContextHub {
       status: target.status,
       workerId: target.workerId,
       output: target.output,
+      diffSummary: target.diffSummary,
       error: target.error,
       startedAt: target.startedAt,
       completedAt: target.completedAt,

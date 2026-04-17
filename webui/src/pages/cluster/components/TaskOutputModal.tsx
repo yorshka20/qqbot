@@ -167,8 +167,8 @@ export function TaskOutputModal({ task, onClose }: { task: ClusterTask; onClose:
               </div>
             )}
 
-            {/* ── CLI Output (collapsible) ── */}
-            {task.output && (
+            {/* ── Live worker output: only while the scheduler still holds stdout in memory; never persisted to DB ── */}
+            {task.output ? (
               <div>
                 <button
                   type="button"
@@ -176,9 +176,9 @@ export function TaskOutputModal({ task, onClose }: { task: ClusterTask; onClose:
                   className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 font-medium hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
                 >
                   {outputExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                  Worker CLI Output
+                  Live worker output
                   <span className="normal-case tracking-normal font-normal text-zinc-400 dark:text-zinc-500">
-                    ({(task.output.length / 1024).toFixed(1)}KB)
+                    ({(task.output.length / 1024).toFixed(1)}KB, not saved)
                   </span>
                 </button>
                 {outputExpanded && (
@@ -187,6 +187,13 @@ export function TaskOutputModal({ task, onClose }: { task: ClusterTask; onClose:
                   </pre>
                 )}
               </div>
+            ) : (
+              (task.status === 'completed' || task.status === 'failed') && (
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-900/60 rounded-lg p-3 border border-zinc-200 dark:border-zinc-700">
+                  Worker stdout is not stored after the task finishes. Use the report summary above and the timeline; live
+                  output was only shown while the task was active.
+                </div>
+              )
             )}
 
             {/* ── Description (collapsible) ── */}
@@ -208,17 +215,6 @@ export function TaskOutputModal({ task, onClose }: { task: ClusterTask; onClose:
               </div>
             )}
 
-            {/* ── Raw metadata ── */}
-            {task.metadata != null && (
-              <details className="text-xs">
-                <summary className="cursor-pointer text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">
-                  Raw metadata
-                </summary>
-                <pre className="mt-2 whitespace-pre-wrap break-words bg-zinc-100 dark:bg-zinc-900 p-3 rounded-lg text-zinc-700 dark:text-zinc-200 max-h-[30vh] overflow-y-auto border border-zinc-200 dark:border-zinc-700">
-                  {typeof task.metadata === 'string' ? task.metadata : JSON.stringify(task.metadata, null, 2)}
-                </pre>
-              </details>
-            )}
           </div>
         </Dialog.Content>
       </Dialog.Portal>

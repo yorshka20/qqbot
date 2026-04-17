@@ -170,7 +170,7 @@ export function WorkerDetailModal({ worker, onClose }: WorkerDetailModalProps) {
                   </div>
                 )}
 
-                {task.output && (
+                {task.output ? (
                   <div>
                     <button
                       type="button"
@@ -178,7 +178,7 @@ export function WorkerDetailModal({ worker, onClose }: WorkerDetailModalProps) {
                       className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
                     >
                       {outputExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                      Worker CLI Output ({(task.output.length / 1024).toFixed(1)}KB)
+                      Live output ({(task.output.length / 1024).toFixed(1)}KB, not saved)
                     </button>
                     {outputExpanded && (
                       <pre className="mt-1 text-xs whitespace-pre-wrap break-words bg-zinc-100 dark:bg-zinc-900 p-3 rounded-lg text-zinc-800 dark:text-zinc-100 max-h-[40vh] overflow-y-auto border border-zinc-200 dark:border-zinc-700">
@@ -186,6 +186,12 @@ export function WorkerDetailModal({ worker, onClose }: WorkerDetailModalProps) {
                       </pre>
                     )}
                   </div>
+                ) : (
+                  (task.status === 'completed' || task.status === 'failed') && (
+                    <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Stdout is not stored after the task finishes (only hub_report summary is kept).
+                    </div>
+                  )
                 )}
 
                 {task.description && (

@@ -1,11 +1,10 @@
 /**
- * LockManager — file-level exclusive locks for worker coordination.
+ * LockManager — file-level exclusive locks for worker coordination (in-memory only).
  *
  * Lifecycle: hub_claim creates → hub_report(working) renews → hub_report(terminal) releases.
- * TTL-based expiry as fallback.
+ * TTL-based expiry as fallback. Locks are not persisted: restart clears all locks.
  */
 
-import type { Database } from 'bun:sqlite';
 import { logger } from '@/utils/logger';
 import type { FileLock, LockConflict } from '../types';
 import type { EventLog } from './EventLog';
@@ -15,40 +14,10 @@ export class LockManager {
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
-    private db: Database,
     private eventLog: EventLog,
     private defaultTTL: number = 600_000, // 10 minutes
   ) {
-    this.loadFromDB();
     this.startCleanup();
-  }
-
-  private loadFromDB(): void {
-    try {
-      const rows = this.db.query('SELECT * FROM cluster_locks').all() as Array<Record<string, unknown>>;
-      const now = Date.now();
-      for (const row of rows) {
-        const lock: FileLock = {
-          filePath: row.filePath as string,
-          workerId: row.workerId as string,
-          taskId: row.taskId as string | undefined,
-          claimedAt: row.claimedAt as number,
-          lastRenewed: row.lastRenewed as number,
-          ttl: row.ttl as number,
-        };
-        // Skip expired locks
-        if (now - lock.lastRenewed < lock.ttl) {
-          this.locks.set(lock.filePath, lock);
-        } else {
-          this.db.query('DELETE FROM cluster_locks WHERE filePath = ?').run(lock.filePath);
-        }
-      }
-      if (this.locks.size > 0) {
-        logger.info(`[LockManager] Loaded ${this.locks.size} active locks from DB`);
-      }
-    } catch {
-      // Table may not exist yet
-    }
   }
 
   /**
@@ -91,7 +60,6 @@ export class LockManager {
         ttl: this.defaultTTL,
       };
       this.locks.set(file, lock);
-      this.persistLock(lock);
 
       this.eventLog.append('lock_acquired', workerId, { file }, { taskId });
     }
@@ -107,7 +75,6 @@ export class LockManager {
     for (const lock of this.locks.values()) {
       if (lock.workerId === workerId) {
         lock.lastRenewed = now;
-        this.persistLock(lock);
       }
     }
   }
@@ -159,26 +126,12 @@ export class LockManager {
     if (!lock) return;
 
     this.locks.delete(file);
-    this.db.query('DELETE FROM cluster_locks WHERE filePath = ?').run(file);
 
     this.eventLog.append('lock_released', lock.workerId, {
       file,
       releasedBy,
       heldForMs: Date.now() - lock.claimedAt,
     });
-  }
-
-  private persistLock(lock: FileLock): void {
-    try {
-      this.db
-        .query(
-          `INSERT OR REPLACE INTO cluster_locks (filePath, workerId, taskId, claimedAt, lastRenewed, ttl)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        )
-        .run(lock.filePath, lock.workerId, lock.taskId ?? null, lock.claimedAt, lock.lastRenewed, lock.ttl);
-    } catch (err) {
-      logger.error('[LockManager] Failed to persist lock:', err);
-    }
   }
 
   private startCleanup(): void {
