@@ -34,7 +34,55 @@ function isGitRepo(dir: string): boolean {
   return existsSync(join(dir, '.git'));
 }
 
-/** Hourly `git pull` in tickets dir. */
+function combineOut(r: { stdout: string; stderr: string }): string {
+  return `${r.stdout}${r.stderr}`.trim();
+}
+
+/**
+ * Stages all changes (including untracked) and commits if the working tree is dirty.
+ * Used by pull (checkpoint before integrating remote) and by commit_push.
+ */
+async function commitAllIfDirty(
+  dir: string,
+  message: string,
+): Promise<{ ok: true; committed: boolean } | { ok: false; error: string }> {
+  const status = await runGit(dir, ['status', '--porcelain']);
+  if (status.code !== 0) {
+    return { ok: false, error: `git status failed: ${status.stderr}` };
+  }
+  if (!status.stdout.trim()) {
+    return { ok: true, committed: false };
+  }
+
+  const add = await runGit(dir, ['add', '-A']);
+  if (add.code !== 0) {
+    return { ok: false, error: `git add failed: ${add.stderr}` };
+  }
+
+  const commit = await runGit(dir, ['commit', '-m', message]);
+  if (commit.code !== 0) {
+    return { ok: false, error: `git commit failed: ${commit.stderr || commit.stdout}` };
+  }
+
+  return { ok: true, committed: true };
+}
+
+/** Best-effort: leave repo out of a half-finished rebase/merge after a failed pull. */
+async function abortIntegrationIfNeeded(dir: string): Promise<void> {
+  const rebase = await runGit(dir, ['rebase', '--abort']);
+  if (rebase.code === 0) {
+    logger.warn(`${TAG} aborted in-progress rebase after failed pull`);
+  }
+  const merge = await runGit(dir, ['merge', '--abort']);
+  if (merge.code === 0) {
+    logger.warn(`${TAG} aborted in-progress merge after failed pull`);
+  }
+}
+
+/**
+ * Pull: checkpoint local WIP (commit if dirty), then integrate remote via rebase.
+ * Avoids --ff-only failing when tracked files are modified or untracked paths would be overwritten.
+ */
 export class ClusterTicketsPullHandler implements ActionHandler {
   readonly name = 'cluster_tickets_pull';
 
@@ -46,19 +94,31 @@ export class ClusterTicketsPullHandler implements ActionHandler {
       return `❌ ${msg}`;
     }
 
-    const { code, stdout, stderr } = await runGit(dir, ['pull', '--ff-only']);
-    const out = `${stdout}${stderr}`.trim();
-
-    if (code !== 0) {
-      const msg = `${TAG} git pull failed (exit ${code}): ${out || stderr}`;
-      logger.error(msg);
-      return `❌ cluster_tickets_pull: ${out || stderr}`;
+    const checkpointMsg = `[bot] checkpoint before pull ${new Date().toISOString()}`;
+    const checkpoint = await commitAllIfDirty(dir, checkpointMsg);
+    if (!checkpoint.ok) {
+      const err = `❌ cluster_tickets_pull: ${checkpoint.error}`;
+      logger.error(`${TAG} ${checkpoint.error}`);
+      return err;
+    }
+    if (checkpoint.committed) {
+      logger.info(`${TAG} committed local changes before pull: ${checkpointMsg}`);
     }
 
-    if (out) {
-      logger.info(`${TAG} git pull: ${out}`);
+    const pull = await runGit(dir, ['pull', '--rebase']);
+    const pullOut = combineOut(pull);
+
+    if (pull.code !== 0) {
+      await abortIntegrationIfNeeded(dir);
+      const msg = `${TAG} git pull --rebase failed (exit ${pull.code}), integration aborted: ${pullOut || pull.stderr}`;
+      logger.error(msg);
+      return `❌ cluster_tickets_pull: rebase/merge could not complete; repo left consistent (rebase/merge aborted if needed). Output:\n${pullOut || pull.stderr}`;
+    }
+
+    if (pullOut) {
+      logger.info(`${TAG} git pull --rebase: ${pullOut}`);
     } else {
-      logger.debug(`${TAG} git pull: ok (no output)`);
+      logger.debug(`${TAG} git pull --rebase: ok (no output)`);
     }
   }
 }
@@ -75,25 +135,14 @@ export class ClusterTicketsCommitPushHandler implements ActionHandler {
       return `❌ ${msg}`;
     }
 
-    const status = await runGit(dir, ['status', '--porcelain']);
-    if (status.code !== 0) {
-      return `❌ cluster_tickets_commit_push: git status failed: ${status.stderr}`;
+    const msg = `[bot] auto-sync tickets ${new Date().toISOString()}`;
+    const result = await commitAllIfDirty(dir, msg);
+    if (!result.ok) {
+      return `❌ cluster_tickets_commit_push: ${result.error}`;
     }
-
-    if (!status.stdout.trim()) {
+    if (!result.committed) {
       logger.debug(`${TAG} working tree clean, skip commit/push`);
       return;
-    }
-
-    const add = await runGit(dir, ['add', '-A']);
-    if (add.code !== 0) {
-      return `❌ cluster_tickets_commit_push: git add failed: ${add.stderr}`;
-    }
-
-    const msg = `[bot] auto-sync tickets ${new Date().toISOString()}`;
-    const commit = await runGit(dir, ['commit', '-m', msg]);
-    if (commit.code !== 0) {
-      return `❌ cluster_tickets_commit_push: git commit failed: ${commit.stderr || commit.stdout}`;
     }
 
     const push = await runGit(dir, ['push']);
