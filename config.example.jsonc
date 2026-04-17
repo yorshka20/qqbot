@@ -799,6 +799,7 @@
       "triggerStrategy": "llm", // "llm" (use LLM to judge) | "keywords" | "none"
       "maxResults": 5, // Maximum number of search results
       "language": "all", // Default language for search results
+      "engines": "bing,duckduckgo,google,baidu", // Default search engines (SearXNG only uses wikipedia by default)
       // Optional: full-page fetch after filter-refine (fetch HTML for top 2-3 results, extract article/video description)
       "fetch": {
         "fetchFullPage": false, // Set true to fetch full page content for top results
