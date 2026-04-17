@@ -16,7 +16,7 @@ import { ActionHandlerRegistry } from './ActionHandlerRegistry';
 import { AgendaReporter } from './AgendaReporter';
 import { AgendaService } from './AgendaService';
 import { AgentLoop } from './AgentLoop';
-import { ClusterTicketsCommitPushHandler, ClusterTicketsPullHandler } from './handlers/ClusterTicketsGitHandlers';
+import { ClusterTicketsSyncHandler } from './handlers/ClusterTicketsGitHandlers';
 import { GroupReportHandler } from './handlers/GroupReportHandler';
 import { RepeatingTodoWorkerHandler } from './handlers/RepeatingTodoWorkerHandler';
 import { TodoWorkerHandler } from './handlers/TodoWorkerHandler';
@@ -82,8 +82,7 @@ export class AgendaInitializer {
     actionHandlerRegistry.register(new TodoWorkerHandler());
     actionHandlerRegistry.register(new RepeatingTodoWorkerHandler());
     actionHandlerRegistry.register(new GroupReportHandler());
-    actionHandlerRegistry.register(new ClusterTicketsPullHandler());
-    actionHandlerRegistry.register(new ClusterTicketsCommitPushHandler());
+    actionHandlerRegistry.register(new ClusterTicketsSyncHandler());
 
     const agendaService = new AgendaService(
       deps.databaseManager,
