@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Avatar Preview</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #1a1a2e; color: #eee; min-height: 100vh; padding: 1rem; }
+    h1 { font-size: 1.2rem; margin-bottom: 0.5rem; color: #79c0ff; }
+
+    .conn-state { padding: 0.3rem 0.6rem; border-radius: 4px; font-weight: bold; display: inline-block; margin-bottom: 1rem; }
+    .conn-state.connected { background: #238636; color: #fff; }
+    .conn-state.disconnected { background: #6e7681; color: #fff; }
+    .conn-state.reconnecting { background: #9e6a03; color: #fff; }
+
+    .section { background: #161b22; border-radius: 6px; padding: 0.8rem; margin-bottom: 0.8rem; }
+    .section-title { font-size: 0.85rem; color: #8b949e; margin-bottom: 0.5rem; text-transform: uppercase; }
+
+    .status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.5rem; }
+    .status-item { background: #21262d; border-radius: 4px; padding: 0.5rem; }
+    .status-label { font-size: 0.7rem; color: #8b949e; }
+    .status-value { font-size: 1.1rem; font-weight: bold; color: #c9d1d9; }
+
+    .param-table { width: 100%; border-collapse: collapse; }
+    .param-table th, .param-table td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid #30363d; }
+    .param-table th { font-size: 0.7rem; color: #8b949e; text-transform: uppercase; }
+    .param-name { color: #79c0ff; }
+    .param-value { color: #c9d1d9; font-weight: bold; }
+    .param-bar-wrap { background: #21262d; border-radius: 3px; height: 6px; width: 100%; overflow: hidden; }
+    .param-bar { height: 100%; background: #58a6ff; transition: width 0.1s; }
+  </style>
+</head>
+<body>
+  <h1>Avatar Preview</h1>
+  <div id="conn-state" class="conn-state disconnected">Disconnected</div>
+
+  <div class="section">
+    <div class="section-title">Status</div>
+    <div class="status-grid">
+      <div class="status-item">
+        <div class="status-label">State</div>
+        <div class="status-value" id="val-state">—</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">FPS</div>
+        <div class="status-value" id="val-fps">—</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Animations</div>
+        <div class="status-value" id="val-anim">—</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Queue</div>
+        <div class="status-value" id="val-queue">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Parameters</div>
+    <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Value</th>
+          <th style="width: 40%">Visual</th>
+        </tr>
+      </thead>
+      <tbody id="param-body">
+        <tr><td colspan="3" style="color:#8b949e;text-align:center;padding:1rem;">No data</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    (() => {
+      // ── State ────────────────────────────────────────────────────────────────
+      let ws = null;
+      let reconnectDelay = 1000;
+      let reconnectTimer = null;
+      let latestParams = {};
+
+      // ── DOM helpers ──────────────────────────────────────────────────────────
+      const $ = (id) => document.getElementById(id);
+      const connState = $('conn-state');
+      const valState = $('val-state');
+      const valFps = $('val-fps');
+      const valAnim = $('val-anim');
+      const valQueue = $('val-queue');
+      const paramBody = $('param-body');
+
+      function setConnState(state) {
+        connState.className = `conn-state ${state}`;
+        connState.textContent = state.charAt(0).toUpperCase() + state.slice(1);
+      }
+
+      function renderStatus(data) {
+        valState.textContent = data.state || '—';
+        valFps.textContent = data.fps != null ? data.fps : '—';
+        valAnim.textContent = data.activeAnimations != null ? data.activeAnimations : '—';
+        valQueue.textContent = data.queueLength != null ? data.queueLength : '—';
+      }
+
+      // Clamp a value to a symmetric display range around zero.
+      // Uses a pragmatic default of [-30, 30] for typical Live2D params.
+      function normalizeParam(val) {
+        const min = -30, max = 30;
+        return Math.max(min, Math.min(max, val));
+      }
+
+      function renderParams(params) {
+        if (!params || Object.keys(params).length === 0) {
+          paramBody.innerHTML = '<tr><td colspan="3" style="color:#8b949e;text-align:center;padding:1rem;">No data</td></tr>';
+          return;
+        }
+
+        const entries = Object.entries(params).sort(([a], [b]) => a.localeCompare(b));
+        paramBody.innerHTML = entries.map(([name, val]) => {
+          const norm = normalizeParam(val);
+          const pct = ((norm + 30) / 60) * 100;
+          return `<tr>
+            <td class="param-name">${escHtml(name)}</td>
+            <td class="param-value">${Number(val).toFixed(3)}</td>
+            <td>
+              <div class="param-bar-wrap">
+                <div class="param-bar" style="width:${pct.toFixed(1)}%"></div>
+              </div>
+            </td>
+          </tr>`;
+        }).join('');
+      }
+
+      function escHtml(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      // ── WebSocket ─────────────────────────────────────────────────────────────
+      function getWsUrl() {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        return `${proto}//${location.hostname}:${location.port}/`;
+      }
+
+      function connect() {
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
+        setConnState('reconnecting');
+
+        try {
+          ws = new WebSocket(getWsUrl());
+        } catch (_e) {
+          scheduleReconnect();
+          return;
+        }
+
+        ws.onopen = () => {
+          setConnState('connected');
+          reconnectDelay = 1000;
+        };
+
+        ws.onmessage = (evt) => {
+          let msg;
+          try { msg = JSON.parse(evt.data); } catch { return; }
+          if (msg.type === 'status' && msg.data) {
+            renderStatus(msg.data);
+          } else if (msg.type === 'frame' && msg.data && msg.data.params) {
+            latestParams = msg.data.params;
+            renderParams(latestParams);
+          }
+        };
+
+        ws.onclose = () => {
+          setConnState('disconnected');
+          scheduleReconnect();
+        };
+
+        ws.onerror = () => {
+          setConnState('disconnected');
+          try { ws.close(); } catch { /* ignore */ }
+        };
+      }
+
+      function scheduleReconnect() {
+        if (reconnectTimer) return;
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          reconnectDelay = Math.min(reconnectDelay * 2, 15000);
+          connect();
+        }, reconnectDelay);
+      }
+
+      // ── Boot ─────────────────────────────────────────────────────────────────
+      connect();
+    })();
+  </script>
+</body>
+</html>
