@@ -1,0 +1,75 @@
+{
+  "smile": {
+    "params": [
+      { "paramId": "ParamMouthForm", "targetValue": 1.0, "weight": 1.0 },
+      { "paramId": "ParamEyeLSmile", "targetValue": 1.0, "weight": 0.8 },
+      { "paramId": "ParamEyeRSmile", "targetValue": 1.0, "weight": 0.8 },
+      { "paramId": "ParamBrowLY", "targetValue": 0.3, "weight": 0.5 },
+      { "paramId": "ParamBrowRY", "targetValue": 0.3, "weight": 0.5 }
+    ],
+    "defaultDuration": 2000
+  },
+  "nod": {
+    "params": [
+      { "paramId": "ParamAngleY", "targetValue": -15.0, "weight": 1.0 },
+      { "paramId": "ParamBodyAngleY", "targetValue": -5.0, "weight": 0.6 }
+    ],
+    "defaultDuration": 800
+  },
+  "wave": {
+    "params": [
+      { "paramId": "ParamArmLA", "targetValue": 1.0, "weight": 1.0 },
+      { "paramId": "ParamAngleZ", "targetValue": 5.0, "weight": 0.3 }
+    ],
+    "defaultDuration": 1500
+  },
+  "thinking": {
+    "params": [
+      { "paramId": "ParamAngleX", "targetValue": 10.0, "weight": 0.7 },
+      { "paramId": "ParamAngleZ", "targetValue": -8.0, "weight": 0.5 },
+      { "paramId": "ParamEyeLOpen", "targetValue": 0.6, "weight": 0.8 },
+      { "paramId": "ParamEyeROpen", "targetValue": 0.6, "weight": 0.8 },
+      { "paramId": "ParamBrowLY", "targetValue": -0.3, "weight": 0.6 },
+      { "paramId": "ParamBrowRY", "targetValue": -0.3, "weight": 0.6 }
+    ],
+    "defaultDuration": 3000
+  },
+  "sad": {
+    "params": [
+      { "paramId": "ParamMouthForm", "targetValue": -0.8, "weight": 1.0 },
+      { "paramId": "ParamBrowLY", "targetValue": -0.5, "weight": 0.8 },
+      { "paramId": "ParamBrowRY", "targetValue": -0.5, "weight": 0.8 },
+      { "paramId": "ParamAngleY", "targetValue": -8.0, "weight": 0.6 },
+      { "paramId": "ParamBodyAngleY", "targetValue": -3.0, "weight": 0.5 }
+    ],
+    "defaultDuration": 2500
+  },
+  "angry": {
+    "params": [
+      { "paramId": "ParamBrowLY", "targetValue": -0.8, "weight": 1.0 },
+      { "paramId": "ParamBrowRY", "targetValue": -0.8, "weight": 1.0 },
+      { "paramId": "ParamMouthForm", "targetValue": -0.5, "weight": 0.7 },
+      { "paramId": "ParamEyeLOpen", "targetValue": 0.4, "weight": 0.6 },
+      { "paramId": "ParamEyeROpen", "targetValue": 0.4, "weight": 0.6 }
+    ],
+    "defaultDuration": 1800
+  },
+  "surprised": {
+    "params": [
+      { "paramId": "ParamMouthOpenY", "targetValue": 0.8, "weight": 1.0 },
+      { "paramId": "ParamEyeLOpen", "targetValue": 1.0, "weight": 1.0 },
+      { "paramId": "ParamEyeROpen", "targetValue": 1.0, "weight": 1.0 },
+      { "paramId": "ParamBrowLY", "targetValue": 0.6, "weight": 0.8 },
+      { "paramId": "ParamBrowRY", "targetValue": 0.6, "weight": 0.8 },
+      { "paramId": "ParamAngleZ", "targetValue": 3.0, "weight": 0.3 }
+    ],
+    "defaultDuration": 1200
+  },
+  "idle_blink": {
+    "params": [
+      { "paramId": "ParamEyeLOpen", "targetValue": 0.0, "weight": 1.0 },
+      { "paramId": "ParamEyeROpen", "targetValue": 0.0, "weight": 1.0 }
+    ],
+    "defaultDuration": 150
+  }
+}
