@@ -50,19 +50,25 @@ export class PromptAssemblyStage implements ReplyStage {
       toolInstruct,
     });
 
+    // Avatar emotion-system prompt is only injected for private (DM) messages,
+    // matching the gate in Live2DAvatarPlugin so the LLM doesn't produce
+    // [LIVE2D: ...] tags in group replies where they would just be noise.
     let avatarPromptFragment = '';
-    try {
-      const { getContainer } = await import('@/core/DIContainer');
-      const { DITokens } = await import('@/core/DITokens');
-      const container = getContainer();
-      if (container.isRegistered(DITokens.AVATAR_SERVICE)) {
-        const avatar = container.resolve<import('@qqbot/avatar').AvatarService>(DITokens.AVATAR_SERVICE);
-        if (avatar.isActive()) {
-          avatarPromptFragment = (this.promptManager.render('avatar.emotion-system') ?? '').trim();
+    const isPrivateMessage = hookContext.message?.messageType === 'private';
+    if (isPrivateMessage) {
+      try {
+        const { getContainer } = await import('@/core/DIContainer');
+        const { DITokens } = await import('@/core/DITokens');
+        const container = getContainer();
+        if (container.isRegistered(DITokens.AVATAR_SERVICE)) {
+          const avatar = container.resolve<import('@qqbot/avatar').AvatarService>(DITokens.AVATAR_SERVICE);
+          if (avatar.isActive()) {
+            avatarPromptFragment = (this.promptManager.render('avatar.emotion-system') ?? '').trim();
+          }
         }
+      } catch {
+        // Avatar not available — skip silently
       }
-    } catch {
-      // Avatar not available — skip silently
     }
     const sceneSystemPrompt = avatarPromptFragment
       ? `${sceneSystemPromptRaw}\n\n${avatarPromptFragment}`

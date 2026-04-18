@@ -98,10 +98,14 @@ export class Live2DAvatarPlugin extends PluginBase {
 
   @Hook({ stage: 'onMessageBeforeSend', priority: 'NORMAL', order: 10 })
   async onMessageBeforeSend(context: HookContext): Promise<boolean> {
-    if (!this.active || !this.isPrivate(context)) return true;
+    if (!this.active) return true;
     try {
       const aiResponse = context.aiResponse;
-      if (aiResponse) {
+      const isPrivate = this.isPrivate(context);
+
+      // Tag → transition / enqueue is gated on private messages (avatar only
+      // reacts to DMs; group chatter doesn't drive the streaming avatar).
+      if (aiResponse && isPrivate) {
         const tags = parseLive2DTags(aiResponse);
         for (const tag of tags) {
           const state = this.tagToBotState(tag);
@@ -110,6 +114,10 @@ export class Live2DAvatarPlugin extends PluginBase {
         }
       }
 
+      // Tag stripping runs unconditionally as defense-in-depth: even when the
+      // prompt-injection gate is on, LLMs can still occasionally emit the tag
+      // format from training memory / shared context. Strip before send so
+      // bare `[LIVE2D: ...]` never leaks to users.
       if (context.reply?.source === 'ai' && Array.isArray(context.reply.segments)) {
         for (const seg of context.reply.segments) {
           if (seg.type === 'text' && typeof seg.data?.text === 'string') {
