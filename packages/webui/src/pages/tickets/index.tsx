@@ -63,6 +63,15 @@ function resolveTemplateRole(
   return entry?.role === 'planner' ? 'planner' : 'executor';
 }
 
+/** Newest-first for the list; matches the timestamp shown per row (`updated`). */
+function compareTicketsNewestFirst(a: TicketFrontmatter, b: TicketFrontmatter): number {
+  const byUpdated = b.updated.localeCompare(a.updated);
+  if (byUpdated !== 0) return byUpdated;
+  const byCreated = b.created.localeCompare(a.created);
+  if (byCreated !== 0) return byCreated;
+  return b.id.localeCompare(a.id);
+}
+
 interface EditorState {
   // The full Ticket-like shape passed into TicketEditor. id === '' on create.
   id: string;
@@ -121,7 +130,7 @@ export function TicketsPage() {
     setError(null);
     try {
       const list = await listTickets();
-      const sorted = [...list].sort((a, b) => b.created.localeCompare(a.created));
+      const sorted = [...list].sort(compareTicketsNewestFirst);
       setTickets(sorted);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
