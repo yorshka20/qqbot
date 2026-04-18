@@ -83,16 +83,12 @@ export class PreviewServer {
         },
         message(_ws, message) {
           // Expect only string messages containing a JSON object with type:'trigger'
+          const rawMessage = typeof message === 'string' ? message : Buffer.from(message).toString('utf-8');
           let msg: PreviewClientMessage;
-          if (typeof message === 'string') {
-            try {
-              msg = JSON.parse(message) as PreviewClientMessage;
-            } catch {
-              // JSON parse failure — silent drop
-              return;
-            }
-          } else {
-            // Binary — silent drop
+          try {
+            msg = JSON.parse(rawMessage) as PreviewClientMessage;
+          } catch {
+            // JSON parse failure — silent drop
             return;
           }
 
