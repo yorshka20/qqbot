@@ -4,4 +4,4 @@ set -e
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 git pull
-exec bun run src/index.ts
+exec bun run packages/bot/src/index.ts

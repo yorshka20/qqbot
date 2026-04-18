@@ -75,6 +75,8 @@ data/
 output/
 docs/local
 scripts/local
+packages/bot/scripts/local/
+dist-types/
 
 .git.backup.*
 
