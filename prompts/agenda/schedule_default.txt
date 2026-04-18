@@ -16,6 +16,7 @@
   - 执行: `subagent group_report`    (直接触发 group_report 子代理)
   子代理预设名称对应 prompts/subagent/{presetKey}/ 目录
   - 执行: `action todo_worker`       (直接执行代码，无 LLM 参与)
+  - 执行: `action repeating_ticket_dispatch` (凌晨多轮：每隔 N 分钟派发一个 ready ticket，最后私聊汇报 job 结果)
   action 处理器在 AgendaInitializer 中注册，跳过 LLM 直接运行业务逻辑
 
 参数（可选，JSON 格式，传递给子代理的任务输入）:
@@ -25,3 +26,13 @@
 
 冷却时间: `30s` / `5min` / `2h` / `86400000`（毫秒）
 ─────────────────────────────────────────────── -->
+
+## 凌晨 ticket 自动派发（owner 私聊结果）
+
+- 触发: `cron 0 2 * * *`
+- 用户: `YOUR_OWNER_USER_ID`
+- 执行: `action repeating_ticket_dispatch`
+- 参数: `{"repeat":5,"intervalMinutes":30}`
+- 冷却: `1min`
+
+每天 02:00 触发：共 5 轮，每轮间隔 30 分钟；每轮若存在 `status=ready` 且已填写 `project` 的 ticket，则按 id 升序派发 1 个（与 WebUI 派发一致）。结束后将本批次各轮 job 状态及 **job 为 completed** 的 ticket 列表私聊发给 owner。请把 `YOUR_OWNER_USER_ID` 换成你的 QQ 号。
