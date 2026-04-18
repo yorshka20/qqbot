@@ -5,9 +5,9 @@ import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext, HookResult } from '@/hooks/types';
 import type { NormalizedMilkyMessageEvent } from '@/protocol/milky/types';
 import { logger } from '@/utils/logger';
+import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
-import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 
 interface ReactionPluginConfig {
   /**

@@ -30,7 +30,7 @@ export const VTS_CHANNEL_MAP: Record<string, string> = {
 
   // Brows — VTS only exposes a single "Brows" input; both .left and .right
   // map to the same tracking param (the model config decides how to split).
-  'brow': 'Brows',
+  brow: 'Brows',
   'brow.left': 'Brows',
   'brow.right': 'Brows',
 
@@ -42,9 +42,7 @@ export const VTS_CHANNEL_MAP: Record<string, string> = {
  * Translate a channel-keyed param bag into a VTS tracking param bag.
  * Drops channels without a VTS mapping (logged by caller if desired).
  */
-export function translateChannelsToVTS(
-  channels: Record<string, number>,
-): Record<string, number> {
+export function translateChannelsToVTS(channels: Record<string, number>): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [ch, val] of Object.entries(channels)) {
     const vtsId = VTS_CHANNEL_MAP[ch];

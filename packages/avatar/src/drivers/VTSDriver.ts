@@ -160,9 +160,7 @@ export class VTSDriver extends DriverAdapter {
       // which we fire-and-forget. Surface APIErrors so silent rejections are
       // visible during debugging (e.g. unknown parameter IDs).
       if (resp.messageType === 'APIError') {
-        logger.warn(
-          `[VTSDriver] VTS rejected an untracked request: ${JSON.stringify(resp.data)}`,
-        );
+        logger.warn(`[VTSDriver] VTS rejected an untracked request: ${JSON.stringify(resp.data)}`);
       }
       return;
     }
