@@ -51,10 +51,20 @@ export class AvatarService {
     }
 
     if (config.preview.enabled) {
-      this.previewServer = new PreviewServer({
-        host: config.preview.host,
-        port: config.preview.port,
-      });
+      this.previewServer = new PreviewServer(
+        {
+          host: config.preview.host,
+          port: config.preview.port,
+        },
+        {
+          onTrigger: (data) =>
+            this.enqueueTagAnimation({
+              action: data.action,
+              emotion: data.emotion ?? 'neutral',
+              intensity: data.intensity ?? 1.0,
+            }),
+        },
+      );
     }
 
     logger.debug('[AvatarService] Initialized', { enabled: config.enabled });
