@@ -9,3 +9,4 @@
 | 2026-04-15 | 审计 Modal 与 Recent Jobs 统一用 JobRow；workers 从内联列表改为 `Workers (N)` 按钮 → 新增 JobWorkersModal（按 role 分组 + reportStatus 图标，点 worker 打开 WorkerDetailModal） | webui/src/pages/cluster/components/JobRow.tsx, JobWorkersModal.tsx, HistoryModal.tsx, index.tsx |
 | 2026-04-16 | WebUI ticket editor paste-lift frontmatter + Select 组件化（TemplateSelect role 分组、StatusSelect 色点、RegistryProjectSelect Radix 改写）+ Radix Portal 暗色模式字色修复；ClusterPage template select 复用 | webui/src/pages/tickets/frontmatter.ts, webui/src/components/{TemplateSelect,StatusSelect,RegistryProjectSelect}.tsx, TicketEditor.tsx, cluster/index.tsx |
 | 2026-04-18 | Avatar Preview Server：本地 + LAN WebSocket 实时预览 Live2D 参数与动画状态，Bun.serve 同一端口提供 HTTP 页面和 WS 广播，0.0.0.0:8002 绑定支持多机访问 | src/avatar/preview/ |
+| 2026-04-18 (2) | Avatar Idle State Machine：5 态 BotState 状态机 + idle 随机待机动画（setTimeout 链 3-8s）+ 过渡动画输出（thinking duration=0 持续），StateNodeOutput 类型独立于 compiler | src/avatar/state/ |
