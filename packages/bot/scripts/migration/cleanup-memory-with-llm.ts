@@ -25,7 +25,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadConfig, resolveLLMConnection } from '../lib/moments-common';
+import { loadConfig, resolveLLMConnection } from '../../../scripts/lib/moments-common';
 
 const MEMORY_DIR = process.env.MEMORY_DIR || 'data/memory';
 const PREVIEW_DIR = 'data/memory_cleanup_preview';

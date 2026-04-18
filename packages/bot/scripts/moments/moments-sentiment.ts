@@ -36,7 +36,7 @@ import {
   resolveLLMConnection,
   runBatchLoop,
   writeSummaryJson,
-} from '../lib/moments-common';
+} from '../../../scripts/lib/moments-common';
 
 const DEFAULT_MODEL = 'qwen3:14b';
 const DEFAULT_BATCH_SIZE = 20;
