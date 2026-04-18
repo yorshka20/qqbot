@@ -1,7 +1,13 @@
-import { ExternalLink, FileText, RefreshCw, X } from 'lucide-react';
+import { ExternalLink, FileText, RefreshCw, Server, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { getClusterJob, getTicketResult, listTicketResults } from '../../../api';
+import {
+  getClusterJob,
+  getTicketJobSnapshot,
+  getTicketResult,
+  listTicketResults,
+  type TicketJobSnapshot,
+} from '../../../api';
 import { getClusterApiBase } from '../../../config';
 import type { ClusterJobWithTasks, ClusterTask, Ticket } from '../../../types';
 import { TaskOutputModal } from '../../cluster/components/TaskOutputModal';
@@ -44,6 +50,7 @@ export function TicketDetailPanel({
   const [taskModal, setTaskModal] = useState<ClusterTask | null>(null);
   const [resultFiles, setResultFiles] = useState<string[]>([]);
   const [resultContent, setResultContent] = useState<{ filename: string; content: string } | null>(null);
+  const [jobSnapshot, setJobSnapshot] = useState<TicketJobSnapshot | null>(null);
 
   // Capture the dispatchedJobId once per ticket. Used by the polling
   // effect; gating both the fetch trigger and the polling teardown on
@@ -134,6 +141,25 @@ export function TicketDetailPanel({
       .catch(() => {});
   }, [jobStatus, ticket.id]);
 
+  // Fetch job.json snapshot for cross-LAN viewing. Unlike the live cluster
+  // job API, this file is shipped inside the git-synced cluster-tickets repo,
+  // so any LAN instance can read it regardless of which machine actually ran
+  // the dispatch. Skip the refetch while a live job is running — writeback
+  // hasn't happened yet, so the snapshot on disk is stale. Fetch on mount
+  // (jobStatus undefined) and after terminal transition.
+  useEffect(() => {
+    if (jobStatus === 'running' || jobStatus === 'pending') return;
+    let cancelled = false;
+    getTicketJobSnapshot(ticket.id)
+      .then((snap) => {
+        if (!cancelled) setJobSnapshot(snap);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [ticket.id, jobStatus]);
+
   const fm = ticket.frontmatter;
   const treeRows = job ? orderTasksAsTree(job.tasks) : [];
 
@@ -212,6 +238,94 @@ export function TicketDetailPanel({
         </div>
       )}
 
+      {/* Cross-LAN job snapshot (from cluster-tickets/<id>/results/job.json).
+          Written by ClusterTicketWriteback on job completion; visible on any
+          LAN instance that has pulled the repo. The block above this relies
+          on the live cluster DB which is per-machine; this block is the
+          cross-machine read path. */}
+      {jobSnapshot && (
+        <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">
+          <div className="flex items-center gap-2 mb-2">
+            <Server className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
+            <div className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">last job snapshot</div>
+            <span
+              className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-medium ${
+                jobSnapshot.job.status === 'completed'
+                  ? 'bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-300'
+                  : jobSnapshot.job.status === 'failed'
+                    ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300'
+                    : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300'
+              }`}
+            >
+              {jobSnapshot.job.status}
+            </span>
+            <span className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400">
+              ran on <span className="text-zinc-700 dark:text-zinc-300">{jobSnapshot.clusterId}</span>
+            </span>
+            <div className="flex-1" />
+            <span className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">
+              {jobSnapshot.job.tasksCompleted}✓ {jobSnapshot.job.tasksFailed}✗ /{jobSnapshot.job.taskCount}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-xs">
+            <div>
+              <span className="text-zinc-500 dark:text-zinc-400">job id: </span>
+              <span className="font-mono text-zinc-700 dark:text-zinc-300">{jobSnapshot.job.id.slice(0, 8)}</span>
+            </div>
+            <div>
+              <span className="text-zinc-500 dark:text-zinc-400">project: </span>
+              <span className="font-mono text-zinc-700 dark:text-zinc-300">{jobSnapshot.job.project}</span>
+            </div>
+            <div>
+              <span className="text-zinc-500 dark:text-zinc-400">completed: </span>
+              <span className="font-mono text-zinc-700 dark:text-zinc-300">
+                {jobSnapshot.job.completedAt ? formatTicketTimestamp(jobSnapshot.job.completedAt) : '-'}
+              </span>
+            </div>
+            <div>
+              <span className="text-zinc-500 dark:text-zinc-400">workers: </span>
+              <span className="font-mono text-zinc-700 dark:text-zinc-300">{jobSnapshot.workers.length}</span>
+            </div>
+          </div>
+          {jobSnapshot.tasks.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1">
+              {jobSnapshot.tasks.map((t) => (
+                <button
+                  type="button"
+                  key={t.id}
+                  onClick={() => {
+                    void getTicketResult(ticket.id, t.resultFile)
+                      .then((content) => setResultContent({ filename: t.resultFile, content }))
+                      .catch(() => {});
+                  }}
+                  className="text-left text-xs px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-2"
+                  style={{ marginLeft: t.parentTaskId ? 16 : 0 }}
+                >
+                  <span
+                    className={`px-1 rounded text-[10px] font-medium ${
+                      t.status === 'completed'
+                        ? 'bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-300'
+                        : t.status === 'failed'
+                          ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300'
+                          : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300'
+                    }`}
+                  >
+                    {t.status}
+                  </span>
+                  <span className="font-mono text-zinc-700 dark:text-zinc-300">task-{t.shortId}</span>
+                  <span className="text-zinc-500 dark:text-zinc-400">{t.workerTemplate ?? '-'}</span>
+                  {t.diffSummary && (
+                    <span className="text-zinc-600 dark:text-zinc-400 truncate italic">
+                      {t.diffSummary.split('\n')[0]}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Cluster job task tree (only if dispatched) */}
       <div className="px-4 py-3">
         <div className="flex items-center gap-2 mb-2">
@@ -249,10 +363,15 @@ export function TicketDetailPanel({
           )}
         </div>
 
-        {dispatchedJobId && error && (
+        {dispatchedJobId && error && !jobSnapshot && (
           <div className="text-xs text-red-600 dark:text-red-400 mb-2">
-            Failed to load cluster job: {error}. The job may have been dropped from memory after a cluster restart, or
-            the cluster might be stopped.
+            Failed to load cluster job: {error}. The job may have been dropped from memory after a cluster restart, the
+            cluster might be stopped, or it was dispatched on a different LAN machine (no local snapshot found either).
+          </div>
+        )}
+        {dispatchedJobId && error && jobSnapshot && (
+          <div className="text-xs text-zinc-500 dark:text-zinc-400 italic mb-2">
+            Live cluster data unavailable on this machine — showing the snapshot from cluster-tickets above.
           </div>
         )}
 

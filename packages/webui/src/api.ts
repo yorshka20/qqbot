@@ -968,3 +968,68 @@ export async function getTicketResult(id: string, filename: string): Promise<str
   const body = (await res.json()) as { filename: string; content: string };
   return body.content;
 }
+
+/**
+ * Structured snapshot of the last cluster job that ran for a ticket. Written
+ * by ClusterTicketWriteback at job terminal time. Absent until the first
+ * dispatch completes. Available on any LAN machine that shares the
+ * cluster-tickets repo (via git sync) — unlike the live /api/cluster/jobs/:id
+ * endpoint which only returns data for the local cluster instance.
+ */
+export interface TicketJobSnapshot {
+  schemaVersion: number;
+  clusterId: string;
+  job: {
+    id: string;
+    ticketId?: string;
+    project: string;
+    status: string;
+    createdAt: string;
+    startedAt?: string;
+    completedAt?: string;
+    taskCount: number;
+    tasksCompleted: number;
+    tasksFailed: number;
+  };
+  tasks: Array<{
+    id: string;
+    shortId: string;
+    parentTaskId?: string;
+    workerId?: string;
+    workerTemplate?: string;
+    source: string;
+    status: string;
+    createdAt: string;
+    startedAt?: string;
+    completedAt?: string;
+    diffSummary?: string;
+    filesModified?: string;
+    error?: string;
+    resultFile: string;
+  }>;
+  workers: Array<{
+    workerId: string;
+    role: string;
+    templateName: string;
+    project: string;
+    status: string;
+    lastBoundTaskId?: string;
+    lastReportStatus?: string;
+    lastReportSummary?: string;
+    registeredAt: number;
+    exitedAt?: number;
+    stats: { tasksCompleted: number; tasksFailed: number; totalReports: number };
+  }>;
+}
+
+export async function getTicketJobSnapshot(id: string): Promise<TicketJobSnapshot | null> {
+  const res = await fetch(`${ticketsApiBase()}/${encodeURIComponent(id)}/results/job.json`);
+  if (res.status === 404) return null;
+  if (!res.ok) return null;
+  const body = (await res.json()) as { filename: string; content: string };
+  try {
+    return JSON.parse(body.content) as TicketJobSnapshot;
+  } catch {
+    return null;
+  }
+}

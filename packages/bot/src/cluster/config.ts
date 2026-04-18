@@ -2,8 +2,16 @@
  * Agent Cluster configuration schema and parsing.
  */
 
+import { hostname } from 'node:os';
+
 export interface ClusterConfig {
   enabled: boolean;
+  /**
+   * Identifier for this cluster instance. Written into `job.json` so
+   * cross-LAN ticket result viewers can tell which machine produced a
+   * given result. Defaults to `os.hostname()` when unset in config.
+   */
+  clusterId: string;
   schedulingInterval: number; // ms
   maxConcurrentWorkers: number;
 
@@ -195,8 +203,12 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
     };
   }
 
+  const clusterIdRaw = typeof r.clusterId === 'string' ? r.clusterId.trim() : '';
+  const clusterId = clusterIdRaw || hostname() || 'cluster';
+
   return {
     enabled: true,
+    clusterId,
     schedulingInterval:
       typeof r.schedulingInterval === 'string'
         ? parseDuration(r.schedulingInterval)

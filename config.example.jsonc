@@ -942,6 +942,12 @@
   // so you can ship per-template API keys / model overrides.
   "cluster": {
     "enabled": false,
+    // Identifier for this cluster instance. Written into
+    // tickets/<id>/results/job.json so cross-LAN WebUI viewers can tell
+    // which machine produced a given result (cluster-tickets is a shared
+    // git-synced repo; each LAN machine runs its own independent cluster).
+    // Optional — defaults to the machine's hostname.
+    // "clusterId": "mac-mini",
     "schedulingInterval": "30s",
     "maxConcurrentWorkers": 4,
     "hub": {
