@@ -41,6 +41,12 @@ export class PreviewServer {
       hostname: host,
       idleTimeout: 255,
       fetch(req, srv) {
+        // Try WebSocket upgrade first — upgrade requests hit "/" too, so
+        // pathname routing would otherwise shadow them with the HTML response.
+        if (srv.upgrade(req, { data: undefined })) {
+          return undefined;
+        }
+
         const url = new URL(req.url);
 
         if (url.pathname === '/') {
@@ -57,12 +63,7 @@ export class PreviewServer {
           });
         }
 
-        // WebSocket upgrade
-        const upgraded = srv.upgrade(req, { data: undefined });
-        if (upgraded) {
-          return undefined;
-        }
-        return new Response('Upgrade failed', { status: 500 });
+        return new Response('Not found', { status: 404 });
       },
       websocket: {
         open(ws) {

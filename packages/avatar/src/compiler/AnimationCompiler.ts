@@ -52,6 +52,18 @@ export class AnimationCompiler extends EventEmitter {
     return { ...this.currentParams };
   }
 
+  getActiveAnimationCount(): number {
+    return this.activeAnimations.length;
+  }
+
+  getQueueLength(): number {
+    return this.pendingQueue.length;
+  }
+
+  getActionDuration(action: string): number | undefined {
+    return this.actionMap.getDuration(action);
+  }
+
   private processQueue(): void {
     if (this.pendingQueue.length === 0) return;
     const now = Date.now();
@@ -77,26 +89,31 @@ export class AnimationCompiler extends EventEmitter {
     // Prune finished animations
     this.activeAnimations = this.activeAnimations.filter((a) => now < a.endTime);
 
-    // Layer active animations on top of current params baseline
-    const frameParams: Record<string, number> = { ...this.currentParams };
+    // Sum contributions from active animations.
+    // Each contribution is (targetValue * eased * weight); intensity is
+    // already baked into targetValue by ActionMap.resolveAction. Multiple
+    // animations targeting the same param are additively mixed.
+    const contributions: Record<string, number> = {};
     for (const anim of this.activeAnimations) {
       if (now < anim.startTime) continue;
       const progress = this.calculateProgress(anim, now);
       const eased = applyEasing(progress, anim.node.easing ?? this.config.defaultEasing);
       for (const target of anim.targetParams) {
-        const baseValue = frameParams[target.paramId] ?? 0;
-        const delta = (target.targetValue - baseValue) * eased * target.weight;
-        frameParams[target.paramId] = baseValue + delta;
+        const c = target.targetValue * eased * target.weight;
+        contributions[target.channel] = (contributions[target.channel] ?? 0) + c;
       }
     }
 
-    // Low-pass filter for smoothing
+    // Low-pass toward contributions. Params not driven this tick are
+    // dropped entirely so downstream (VTS / preview) knows we've released
+    // control — VTS then falls back to its own idle/physics animation.
     const alpha = this.config.smoothingFactor;
-    for (const paramId of Object.keys(frameParams)) {
-      const targetValue = frameParams[paramId] ?? 0;
-      const current = this.currentParams[paramId] ?? 0;
-      this.currentParams[paramId] = current + (targetValue - current) * alpha;
+    const next: Record<string, number> = {};
+    for (const id of Object.keys(contributions)) {
+      const prev = this.currentParams[id] ?? 0;
+      next[id] = prev + (contributions[id] - prev) * alpha;
     }
+    this.currentParams = next;
 
     // Downsample and emit frame events at outputFps
     this.tickCount += 1;

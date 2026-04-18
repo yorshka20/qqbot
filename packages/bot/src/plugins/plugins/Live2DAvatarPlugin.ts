@@ -28,6 +28,16 @@ export class Live2DAvatarPlugin extends PluginBase {
     return this.enabled && this.avatar?.isActive() === true;
   }
 
+  /**
+   * Avatar transitions are gated to private (DM) messages only.
+   * Group chatter is still processed normally by the pipeline, but the
+   * avatar stays in idle so streaming viewers don't see it twitch for every
+   * group message the bot reads.
+   */
+  private isPrivate(context: HookContext): boolean {
+    return context.message?.messageType === 'private';
+  }
+
   private tagToBotState(tag: ParsedTag): BotState {
     switch (tag.emotion) {
       case 'happy':
@@ -46,8 +56,8 @@ export class Live2DAvatarPlugin extends PluginBase {
   }
 
   @Hook({ stage: 'onMessageReceived', priority: 'NORMAL', order: 10 })
-  async onMessageReceived(_context: HookContext): Promise<boolean> {
-    if (!this.active) return true;
+  async onMessageReceived(context: HookContext): Promise<boolean> {
+    if (!this.active || !this.isPrivate(context)) return true;
     try {
       this.avatar?.transition('listening');
     } catch (err) {
@@ -57,8 +67,8 @@ export class Live2DAvatarPlugin extends PluginBase {
   }
 
   @Hook({ stage: 'onAIGenerationStart', priority: 'NORMAL', order: 10 })
-  async onAIGenerationStart(_context: HookContext): Promise<boolean> {
-    if (!this.active) return true;
+  async onAIGenerationStart(context: HookContext): Promise<boolean> {
+    if (!this.active || !this.isPrivate(context)) return true;
     try {
       this.avatar?.transition('thinking');
     } catch (err) {
@@ -69,7 +79,7 @@ export class Live2DAvatarPlugin extends PluginBase {
 
   @Hook({ stage: 'onAIGenerationComplete', priority: 'NORMAL', order: 10 })
   async onAIGenerationComplete(context: HookContext): Promise<boolean> {
-    if (!this.active) return true;
+    if (!this.active || !this.isPrivate(context)) return true;
     try {
       const text = context.aiResponse;
       if (text) {
@@ -88,7 +98,7 @@ export class Live2DAvatarPlugin extends PluginBase {
 
   @Hook({ stage: 'onMessageBeforeSend', priority: 'NORMAL', order: 10 })
   async onMessageBeforeSend(context: HookContext): Promise<boolean> {
-    if (!this.active) return true;
+    if (!this.active || !this.isPrivate(context)) return true;
     try {
       const aiResponse = context.aiResponse;
       if (aiResponse) {
@@ -96,6 +106,7 @@ export class Live2DAvatarPlugin extends PluginBase {
         for (const tag of tags) {
           const state = this.tagToBotState(tag);
           this.avatar?.transition(state);
+          this.avatar?.enqueueTagAnimation(tag);
         }
       }
 
@@ -113,8 +124,8 @@ export class Live2DAvatarPlugin extends PluginBase {
   }
 
   @Hook({ stage: 'onMessageSent', priority: 'NORMAL', order: 10 })
-  async onMessageSent(_context: HookContext): Promise<boolean> {
-    if (!this.active) return true;
+  async onMessageSent(context: HookContext): Promise<boolean> {
+    if (!this.active || !this.isPrivate(context)) return true;
     try {
       this.avatar?.transition('speaking');
     } catch (err) {
@@ -124,8 +135,8 @@ export class Live2DAvatarPlugin extends PluginBase {
   }
 
   @Hook({ stage: 'onMessageComplete', priority: 'NORMAL', order: 10 })
-  async onMessageComplete(_context: HookContext): Promise<boolean> {
-    if (!this.active) return true;
+  async onMessageComplete(context: HookContext): Promise<boolean> {
+    if (!this.active || !this.isPrivate(context)) return true;
     try {
       this.avatar?.transition('idle');
     } catch (err) {

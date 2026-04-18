@@ -1,7 +1,9 @@
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { logger } from '../utils/logger';
 import { DriverAdapter } from './DriverAdapter';
 import { DEFAULT_VTS_CONFIG, type VTSConfig, type VTSParameterValue, type VTSRequest, type VTSResponse } from './types';
+import { translateChannelsToVTS } from './vts-channel-map';
 
 type PendingEntry = {
   resolve: (r: VTSResponse) => void;
@@ -98,10 +100,27 @@ export class VTSDriver extends DriverAdapter {
     this.authenticated = true;
     this.reconnectAttempts = 0;
     this.emit('connected');
+    logger.info(`[VTSDriver] Authenticated with VTS at ${this.config.host}:${this.config.port}`);
     if (this.connectResolve) {
       this.connectResolve(undefined);
       this.connectResolve = null;
     }
+
+    // One-shot: query VTS for the model's actual parameter IDs and log a
+    // sample so users can spot ID mismatches (e.g. ParamAngleX vs PARAM_ANGLE_X).
+    this.logModelParameters().catch((err) => {
+      logger.warn('[VTSDriver] Failed to fetch parameter list:', err);
+    });
+  }
+
+  private async logModelParameters(): Promise<void> {
+    const resp = await this.sendRequest('InputParameterListRequest', {});
+    const params = (resp.data.defaultParameters ?? []) as Array<{ name: string }>;
+    const custom = (resp.data.customParameters ?? []) as Array<{ name: string }>;
+    const allNames = [...params, ...custom].map((p) => p.name);
+    logger.info(
+      `[VTSDriver] Model exposes ${allNames.length} parameters. Sample: ${allNames.slice(0, 15).join(', ')}${allNames.length > 15 ? ' ...' : ''}`,
+    );
   }
 
   private sendRequest(messageType: string, data: Record<string, unknown>): Promise<VTSResponse> {
@@ -136,7 +155,17 @@ export class VTSDriver extends DriverAdapter {
     }
 
     const entry = this.pendingRequests.get(resp.requestID);
-    if (!entry) return;
+    if (!entry) {
+      // Untracked response — typically a VTS reply to InjectParameterDataRequest,
+      // which we fire-and-forget. Surface APIErrors so silent rejections are
+      // visible during debugging (e.g. unknown parameter IDs).
+      if (resp.messageType === 'APIError') {
+        logger.warn(
+          `[VTSDriver] VTS rejected an untracked request: ${JSON.stringify(resp.data)}`,
+        );
+      }
+      return;
+    }
 
     clearTimeout(entry.timer);
     this.pendingRequests.delete(resp.requestID);
@@ -151,17 +180,26 @@ export class VTSDriver extends DriverAdapter {
   override async sendFrame(params: Record<string, number>): Promise<void> {
     if (!this.authenticated || !this.ws) return;
 
+    // Translate semantic channels (e.g. "head.yaw") to VTS tracking param
+    // IDs (e.g. "FaceAngleX"). Unmapped channels are dropped — VTS won't
+    // accept arbitrary Live2D param IDs, only tracking params.
+    const translated = translateChannelsToVTS(params);
+
+    // VTS rejects empty payloads (errorID 450). Skip if no params to inject —
+    // happens in idle gaps between animations, or when every channel in the
+    // frame is unmapped.
+    const parameterValues: VTSParameterValue[] = Object.entries(translated).map(([id, value]) => ({
+      id,
+      value,
+      weight: 1.0,
+    }));
+    if (parameterValues.length === 0) return;
+
     const fps = this.config.throttleFps ?? 30;
     const minInterval = 1000 / fps;
     const now = Date.now();
     if (now - this.lastFrameTs < minInterval) return;
     this.lastFrameTs = now;
-
-    const parameterValues: VTSParameterValue[] = Object.entries(params).map(([id, value]) => ({
-      id,
-      value,
-      weight: 1.0,
-    }));
 
     const req: VTSRequest = {
       apiName: 'VTubeStudioPublicAPI',

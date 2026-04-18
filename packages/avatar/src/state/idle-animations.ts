@@ -3,8 +3,8 @@ import type { BotState, StateNodeOutput } from './types';
 /** Micro-actions randomly selected and played during idle state (at least 3 types) */
 export const IDLE_ANIMATIONS: StateNodeOutput[] = [
   { action: 'blink', emotion: 'neutral', intensity: 1.0, duration: 300, easing: 'easeInOutCubic' },
-  { action: 'head_sway', emotion: 'neutral', intensity: 0.3, duration: 3000, easing: 'linear' },
-  { action: 'breathe', emotion: 'neutral', intensity: 0.2, duration: 4000, easing: 'easeInOutCubic' },
+  { action: 'head_sway', emotion: 'neutral', intensity: 0.8, duration: 3000, easing: 'easeInOutCubic' },
+  { action: 'breathe', emotion: 'neutral', intensity: 0.5, duration: 4000, easing: 'easeInOutCubic' },
 ];
 
 /**

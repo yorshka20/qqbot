@@ -17,6 +17,10 @@ export class AvatarService {
   private driver: VTSDriver | null = null;
   private previewServer: PreviewServer | null = null;
   private started = false;
+  private frameCount = 0;
+  private lastFpsSampleAt = 0;
+  private measuredFps = 0;
+  private statusTimer: ReturnType<typeof setInterval> | null = null;
 
   /**
    * Initialize all avatar subsystems with the given config.
@@ -69,6 +73,7 @@ export class AvatarService {
     this.compiler.on('frame', (frame) => {
       this.driver?.sendFrame(frame.params).catch(() => {});
       this.previewServer?.broadcastFrame({ timestamp: frame.timestamp, params: frame.params });
+      this.frameCount += 1;
     });
 
     // Start the animation engine and idle timer
@@ -78,6 +83,7 @@ export class AvatarService {
     if (this.previewServer) {
       await this.previewServer.start();
       logger.info(`[AvatarService] Preview server started on ${this.config.preview.host}:${this.config.preview.port}`);
+      this.startStatusBroadcast();
     }
 
     // Connect to VTubeStudio (non-fatal: bot works without avatar driver)
@@ -100,6 +106,11 @@ export class AvatarService {
   async stop(): Promise<void> {
     if (!this.started) return;
 
+    if (this.statusTimer) {
+      clearInterval(this.statusTimer);
+      this.statusTimer = null;
+    }
+
     this.stateMachine?.stop();
     this.compiler?.stop();
 
@@ -116,6 +127,31 @@ export class AvatarService {
   }
 
   /**
+   * Broadcast status to preview clients every 1s. FPS is computed by
+   * counting emitted frames within the sample window; state and counters
+   * come from the state machine and compiler respectively.
+   */
+  private startStatusBroadcast(): void {
+    if (!this.previewServer || !this.stateMachine || !this.compiler) return;
+    this.lastFpsSampleAt = Date.now();
+    this.frameCount = 0;
+    this.statusTimer = setInterval(() => {
+      if (!this.previewServer || !this.stateMachine || !this.compiler) return;
+      const now = Date.now();
+      const elapsed = (now - this.lastFpsSampleAt) / 1000;
+      this.measuredFps = elapsed > 0 ? Math.round(this.frameCount / elapsed) : 0;
+      this.frameCount = 0;
+      this.lastFpsSampleAt = now;
+      this.previewServer.updateStatus({
+        state: this.stateMachine.currentState,
+        fps: this.measuredFps,
+        activeAnimations: this.compiler.getActiveAnimationCount(),
+        queueLength: this.compiler.getQueueLength(),
+      });
+    }, 1000);
+  }
+
+  /**
    * Transition the avatar to a new bot state.
    * Emits the matching transition animations to the compiler queue.
    */
@@ -125,6 +161,26 @@ export class AvatarService {
     if (nodes.length > 0) {
       this.compiler.enqueue(toStateNodes(nodes));
     }
+  }
+
+  /**
+   * Queue a single LLM-authored action animation onto the compiler.
+   * Duration defaults to the action-map's registered value, or 1500ms if
+   * the action is unknown (the compiler will silently drop it in that case).
+   */
+  enqueueTagAnimation(tag: { emotion: string; action: string; intensity: number }): void {
+    if (!this.compiler) return;
+    const duration = this.compiler.getActionDuration(tag.action) ?? 1500;
+    this.compiler.enqueue([
+      {
+        action: tag.action,
+        emotion: tag.emotion,
+        intensity: tag.intensity,
+        duration,
+        easing: 'easeInOutCubic',
+        timestamp: Date.now(),
+      },
+    ]);
   }
 
   isActive(): boolean {

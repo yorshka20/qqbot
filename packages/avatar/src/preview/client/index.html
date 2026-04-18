@@ -150,6 +150,16 @@
           clearTimeout(reconnectTimer);
           reconnectTimer = null;
         }
+
+        // Explicitly tear down any stale ws before creating a new one.
+        // Detach handlers first so the old onclose does not trigger
+        // another scheduleReconnect after we already started a new connect.
+        if (ws) {
+          ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
+          try { ws.close(); } catch (_e) { /* ignore */ }
+          ws = null;
+        }
+
         setConnState('reconnecting');
 
         try {
