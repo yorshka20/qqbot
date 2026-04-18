@@ -14,7 +14,8 @@ export type AIProviderType =
   | 'doubao'
   | 'laozhang'
   | 'groq'
-  | 'minimax';
+  | 'minimax'
+  | 'siliconflow';
 
 export interface OpenAIProviderConfig {
   type: 'openai';
@@ -234,6 +235,17 @@ export interface MinimaxProviderConfig {
   reasoningSplit?: boolean;
 }
 
+export interface SiliconFlowProviderConfig {
+  type: 'siliconflow';
+  apiKey: string;
+  model?: string;
+  baseURL?: string; // Default: 'https://api.siliconflow.com/v1'
+  temperature?: number;
+  maxTokens?: number;
+  enableContext?: boolean;
+  contextMessageCount?: number;
+}
+
 export type AIProviderConfig =
   | OpenAIProviderConfig
   | AnthropicProviderConfig
@@ -248,4 +260,5 @@ export type AIProviderConfig =
   | RunPodProviderConfig
   | GoogleCloudRunProviderConfig
   | GroqProviderConfig
-  | MinimaxProviderConfig;
+  | MinimaxProviderConfig
+  | SiliconFlowProviderConfig;

@@ -747,6 +747,17 @@
       //   "enableContext": true,
       //   "contextMessageCount": 10,
       //   "reasoningSplit": true
+      // },
+      // SiliconFlow provider (OpenAI-compatible proxy). Base URL: https://api.siliconflow.com/v1
+      // "siliconflow": {
+      //   "type": "siliconflow",
+      //   "apiKey": "your_siliconflow_api_key_here",
+      //   "model": "Qwen/Qwen2.5-7B-Instruct",
+      //   "baseURL": "https://api.siliconflow.com/v1",
+      //   "temperature": 0.7,
+      //   "maxTokens": 2000,
+      //   "enableContext": true,
+      //   "contextMessageCount": 10
       // }
     }
   },

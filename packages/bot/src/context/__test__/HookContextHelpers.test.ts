@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
-import { hasWhitelistCapability, isNoReplyPath } from './HookContextHelpers';
+import { hasWhitelistCapability, isNoReplyPath } from '../HookContextHelpers';
 
 function makeContext(metadataOverrides: {
   postProcessOnly?: boolean;

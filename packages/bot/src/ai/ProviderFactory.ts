@@ -17,6 +17,7 @@ import { OllamaProvider } from './providers/OllamaProvider';
 import { OpenAIProvider } from './providers/OpenAIProvider';
 import { OpenRouterProvider } from './providers/OpenRouterProvider';
 import { RunPodProvider } from './providers/RunPodProvider';
+import { SiliconFlowProvider } from './providers/SiliconFlowProvider';
 
 /**
  * Provider Factory
@@ -194,6 +195,17 @@ export class ProviderFactory {
             enableContext: minimaxConfig.enableContext,
             contextMessageCount: minimaxConfig.contextMessageCount,
             reasoningSplit: minimaxConfig.reasoningSplit,
+          });
+        }
+        case 'siliconflow': {
+          return new SiliconFlowProvider({
+            apiKey: config.apiKey,
+            model: config.model,
+            baseURL: config.baseURL,
+            defaultTemperature: config.temperature,
+            defaultMaxTokens: config.maxTokens,
+            enableContext: config.enableContext,
+            contextMessageCount: config.contextMessageCount,
           });
         }
         default: {
