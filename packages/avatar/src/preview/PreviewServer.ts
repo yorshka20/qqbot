@@ -7,7 +7,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve } from 'bun';
-import type { PreviewConfig, PreviewFrame, PreviewMessage, PreviewStatus } from './types';
+import { logger } from '../utils/logger';
+import type { PreviewClientMessage, PreviewConfig, PreviewFrame, PreviewMessage, PreviewStatus } from './types';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -17,14 +18,20 @@ const DEFAULT_CONFIG: PreviewConfig = {
   host: '0.0.0.0',
 };
 
+export interface PreviewServerHandlers {
+  onTrigger?: (data: { action: string; emotion?: string; intensity?: number }) => void;
+}
+
 export class PreviewServer {
   private readonly config: PreviewConfig;
+  private readonly handlers: PreviewServerHandlers;
   private server: ReturnType<typeof serve> | null = null;
   private clients = new Set<import('bun').ServerWebSocket<unknown>>();
   private latestStatus: PreviewStatus | null = null;
 
-  constructor(config?: Partial<PreviewConfig>) {
+  constructor(config?: Partial<PreviewConfig>, handlers: PreviewServerHandlers = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.handlers = handlers;
   }
 
   async start(): Promise<void> {
@@ -74,8 +81,42 @@ export class PreviewServer {
             ws.send(JSON.stringify(msg));
           }
         },
-        message(_ws, _message) {
-          // Client messages are not expected in this server; ignore them.
+        message(_ws, message) {
+          // Expect only string messages containing a JSON object with type:'trigger'
+          let msg: PreviewClientMessage;
+          if (typeof message === 'string') {
+            try {
+              msg = JSON.parse(message) as PreviewClientMessage;
+            } catch {
+              // JSON parse failure — silent drop
+              return;
+            }
+          } else {
+            // Binary — silent drop
+            return;
+          }
+
+          if (msg.type !== 'trigger') return;
+          if (!msg.data) return;
+          if (typeof msg.data.action !== 'string' || msg.data.action === '') return;
+
+          const data = msg.data;
+          const sanitized: { action: string; emotion?: string; intensity?: number } = {
+            action: data.action,
+          };
+          if (typeof data.emotion === 'string') {
+            sanitized.emotion = data.emotion;
+          }
+          if (typeof data.intensity === 'number' && Number.isFinite(data.intensity)) {
+            sanitized.intensity = data.intensity;
+          }
+
+          server.handlers.onTrigger?.(sanitized);
+          logger.debug('[PreviewServer] Trigger received', {
+            action: sanitized.action,
+            emotion: sanitized.emotion,
+            intensity: sanitized.intensity,
+          });
         },
         close(ws) {
           clients.delete(ws);

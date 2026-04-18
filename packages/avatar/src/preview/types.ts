@@ -29,4 +29,15 @@ export interface StatusMessage {
   data: PreviewStatus;
 }
 
+export interface TriggerMessage {
+  type: 'trigger';
+  data: {
+    action: string;
+    emotion?: string;
+    intensity?: number;
+  };
+}
+
+export type PreviewClientMessage = TriggerMessage;
+
 export type PreviewMessage = FrameMessage | StatusMessage;
