@@ -29,9 +29,7 @@ export function ReportsPanel({
   }
 
   if (loading && reports.length === 0) {
-    return (
-      <div className="text-sm text-zinc-500 dark:text-zinc-400 py-4 text-center">Loading…</div>
-    );
+    return <div className="text-sm text-zinc-500 dark:text-zinc-400 py-4 text-center">Loading…</div>;
   }
 
   if (error) {
@@ -59,11 +57,7 @@ export function ReportsPanel({
                 redundant since these are all "recent" */}
             {formatTimestamp(r.ts).slice(11, 19)}
           </span>
-          <span
-            className={`shrink-0 px-1.5 rounded text-[10px] uppercase ${levelBadgeClass(r.level)}`}
-          >
-            {r.level}
-          </span>
+          <span className={`shrink-0 px-1.5 rounded text-[10px] uppercase ${levelBadgeClass(r.level)}`}>{r.level}</span>
           <span className="text-zinc-700 dark:text-zinc-200 break-all">{r.text}</span>
         </div>
       ))}

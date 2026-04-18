@@ -9,8 +9,8 @@
  *  - Content-Length for efficient connection reuse
  */
 
-import { stat } from 'fs/promises';
-import { extname, resolve } from 'path';
+import { stat } from 'node:fs/promises';
+import { extname, resolve } from 'node:path';
 import { logger } from '@/utils/logger';
 import { resolveSafe } from './pathSafety';
 import type { Backend } from './types';

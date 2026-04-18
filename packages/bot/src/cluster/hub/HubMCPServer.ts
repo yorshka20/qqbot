@@ -187,6 +187,7 @@ export class HubMCPServer {
 
     // Existing session — route directly.
     if (sessionId && this.sessions.has(sessionId)) {
+      // biome-ignore lint/style/noNonNullAssertion: sessionId presence checked in enclosing if
       return this.sessions.get(sessionId)!.transport.handleRequest(req);
     }
 
@@ -459,7 +460,7 @@ export class HubMCPServer {
         description:
           'PLANNER ONLY. Non-blocking snapshot of a child task you previously spawned. Returns status, live stdout ' +
           '(output) while running, hub_report summary (diffSummary) after completion, error, timestamps. You can ' +
-          'only query tasks that are direct children of your current task — querying another worker\'s tasks is ' +
+          "only query tasks that are direct children of your current task — querying another worker's tasks is " +
           'rejected. Use hub_wait_task if you want to block until the child terminates.',
         inputSchema: {
           taskId: z.string().describe('childTaskId returned by hub_spawn.'),

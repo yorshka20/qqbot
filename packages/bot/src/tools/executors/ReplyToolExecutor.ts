@@ -26,7 +26,7 @@ export class ReplyToolExecutor implements ToolExecutor {
 
   constructor(@inject(DITokens.AI_SERVICE) private aiService: AIService) {}
 
-  async execute(task: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
+  async execute(_task: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     logger.debug('[ReplyToolExecutor] Executing reply task');
 
     // Get HookContext from context (first-class field, type-safe)

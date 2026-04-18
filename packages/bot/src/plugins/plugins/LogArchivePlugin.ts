@@ -1,9 +1,9 @@
 // LogArchivePlugin - archives old log directories every N days into compressed tar.gz files
 
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ScheduledTask } from 'node-cron';
 import { schedule } from 'node-cron';
-import { join } from 'path';
 import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';

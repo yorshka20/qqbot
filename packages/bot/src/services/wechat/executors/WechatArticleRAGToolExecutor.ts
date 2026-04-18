@@ -100,7 +100,7 @@ export class WechatArticleRAGToolExecutor extends BaseToolExecutor {
           const url = (p.url as string) || '';
           const content = typeof hit.content === 'string' ? hit.content : '';
           const truncated =
-            content.length > MAX_CHUNK_DISPLAY_LEN ? content.slice(0, MAX_CHUNK_DISPLAY_LEN) + '…' : content;
+            content.length > MAX_CHUNK_DISPLAY_LEN ? `${content.slice(0, MAX_CHUNK_DISPLAY_LEN)}…` : content;
 
           const header = [
             `${index + 1}. 「${title}」`,

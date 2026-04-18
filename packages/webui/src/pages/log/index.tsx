@@ -5,15 +5,7 @@
  * Features: auto-scroll, pause/resume, clear, text filter, line limit.
  */
 
-import {
-  ArrowDown,
-  Circle,
-  Pause,
-  Play,
-  RotateCcw,
-  Search,
-  Trash2,
-} from 'lucide-react';
+import { ArrowDown, Circle, Pause, Play, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getLogsStreamUrl } from '../../api';
 
@@ -108,7 +100,7 @@ export function LogsPage() {
     if (autoScroll && !paused && containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
-  }, [lines, autoScroll, paused]);
+  }, [autoScroll, paused]);
 
   // Detect manual scroll
   const handleScroll = useCallback(() => {
@@ -152,9 +144,7 @@ export function LogsPage() {
           <Circle
             className={`w-2.5 h-2.5 ${connected ? 'fill-green-500 text-green-500' : 'fill-red-500 text-red-500'}`}
           />
-          <span className="text-zinc-500 dark:text-zinc-400">
-            {connected ? '已连接' : '未连接'}
-          </span>
+          <span className="text-zinc-500 dark:text-zinc-400">{connected ? '已连接' : '未连接'}</span>
         </div>
 
         {/* Line count */}
@@ -225,7 +215,6 @@ export function LogsPage() {
             onChange={(e) => setFilter(e.target.value)}
             placeholder="输入关键字过滤日志..."
             className="w-full max-w-md px-3 py-1 text-sm rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            autoFocus
           />
         </div>
       )}
@@ -237,16 +226,12 @@ export function LogsPage() {
         className="flex-1 overflow-auto bg-zinc-950 text-zinc-200 font-mono text-[13px] leading-5 p-3 selection:bg-blue-800/50"
       >
         {filteredLines.length === 0 ? (
-          <div className="text-zinc-500 text-center py-12">
-            {connected ? '等待日志...' : '正在连接...'}
-          </div>
+          <div className="text-zinc-500 text-center py-12">{connected ? '等待日志...' : '正在连接...'}</div>
         ) : (
           filteredLines.map((line) => (
             <div
               key={line.id}
-              className={`whitespace-pre-wrap break-all ${
-                line.source === 'stderr' ? 'text-red-400' : ''
-              }`}
+              className={`whitespace-pre-wrap break-all ${line.source === 'stderr' ? 'text-red-400' : ''}`}
             >
               {line.text}
             </div>

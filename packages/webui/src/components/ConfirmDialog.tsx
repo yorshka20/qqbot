@@ -20,7 +20,12 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   return (
-    <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onCancel();
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-5 shadow-xl">
@@ -39,7 +44,9 @@ export function ConfirmDialog({
               type="button"
               onClick={onConfirm}
               className={`px-4 py-2 rounded-lg font-medium text-sm text-white ${
-                danger ? 'bg-red-600 hover:bg-red-700' : 'bg-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 hover:bg-zinc-900 dark:hover:bg-white'
+                danger
+                  ? 'bg-red-600 hover:bg-red-700'
+                  : 'bg-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 hover:bg-zinc-900 dark:hover:bg-white'
               }`}
             >
               {confirmLabel}

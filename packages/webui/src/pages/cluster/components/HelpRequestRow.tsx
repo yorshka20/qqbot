@@ -4,13 +4,7 @@ import { useCallback, useState } from 'react';
 import { answerClusterHelpRequest } from '../../../api';
 import type { ClusterHelpRequest } from '../../../types';
 
-export function HelpRequestRow({
-  request,
-  onAnswered,
-}: {
-  request: ClusterHelpRequest;
-  onAnswered: () => void;
-}) {
+export function HelpRequestRow({ request, onAnswered }: { request: ClusterHelpRequest; onAnswered: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [answer, setAnswer] = useState('');
   const [submitting, setSubmitting] = useState(false);

@@ -489,7 +489,9 @@ function GroupCard({ group, onImageClick }: { group: GroupSummary; onImageClick:
               {/* Sender + content */}
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-1.5 flex-wrap">
-                  <span className="text-[13px] font-medium text-zinc-800 dark:text-zinc-200 shrink-0">{msg.sender}</span>
+                  <span className="text-[13px] font-medium text-zinc-800 dark:text-zinc-200 shrink-0">
+                    {msg.sender}
+                  </span>
                   {tag && (
                     <span
                       className={`inline-flex px-1.5 py-px text-[10px] font-semibold rounded ${getTagStyle(tag).bg} ${getTagStyle(tag).text}`}

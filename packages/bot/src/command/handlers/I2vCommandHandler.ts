@@ -1,7 +1,7 @@
 // I2V command - image-to-video via RunPod provider (ComfyUI Wan2.2 I2V)
 
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { inject, injectable } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
 import type { AIService } from '@/ai/AIService';

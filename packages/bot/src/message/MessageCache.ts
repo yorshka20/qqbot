@@ -2,7 +2,6 @@
 
 import type { ProtocolName } from '@/core/config/types/protocol';
 import type { NormalizedMessageEvent } from '@/events/types';
-import { logger } from '@/utils/logger';
 
 /**
  * Simple in-memory message cache
@@ -24,7 +23,7 @@ class MessageCache {
     protocol: ProtocolName,
     messageId: number | string,
     message: NormalizedMessageEvent,
-    groupId?: number | string,
+    _groupId?: number | string,
   ): void {
     const key = `${protocol}:${messageId}`;
 

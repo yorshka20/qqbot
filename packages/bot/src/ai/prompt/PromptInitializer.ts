@@ -1,6 +1,6 @@
 // Prompt Initializer - initializes PromptManager and registers it to DI container
 
-import { resolve } from 'path';
+import { resolve } from 'node:path';
 import { initRolePresets } from '@/agent/SubAgentRolePresets';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';

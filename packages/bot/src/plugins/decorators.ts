@@ -43,7 +43,7 @@ export interface HookMetadata {
 const PLUGIN_METADATA_KEY = Symbol('plugin:metadata');
 
 // Symbol for storing hook metadata on class
-const HOOK_METADATA_KEY = Symbol('plugin:hooks');
+const _HOOK_METADATA_KEY = Symbol('plugin:hooks');
 
 // Static registry for all decorated plugins
 const pluginRegistry: PluginMetadata[] = [];

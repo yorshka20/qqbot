@@ -3,7 +3,18 @@
  * Uses lucide-react for icons.
  */
 
-import { ArrowDownUp, Calendar, CalendarRange, FileText, Folder, HardDrive, Image, Layers, Music, Video } from 'lucide-react';
+import {
+  ArrowDownUp,
+  Calendar,
+  CalendarRange,
+  FileText,
+  Folder,
+  HardDrive,
+  Image,
+  Layers,
+  Music,
+  Video,
+} from 'lucide-react';
 import type { FilterType, GroupBy, SortOrder } from '../utils/fileType';
 
 interface SidebarProps {
@@ -48,7 +59,17 @@ function SidebarSection({ title, children }: { title: string; children: React.Re
   );
 }
 
-function SidebarButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+function SidebarButton({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
   return (
     <button
       type="button"
@@ -103,7 +124,9 @@ export function Sidebar({
         ))}
       </SidebarSection>
       <div className="p-3">
-        <h2 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Group by</h2>
+        <h2 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">
+          Group by
+        </h2>
         <div className="flex flex-col gap-0.5">
           {GROUP_OPTIONS.map((opt) => (
             <SidebarButton

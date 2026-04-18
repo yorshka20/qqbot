@@ -1,7 +1,7 @@
 // Plugin loading and lifecycle management
 
-import { existsSync, readdirSync, statSync } from 'fs';
-import { extname, join } from 'path';
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import { extname, join } from 'node:path';
 import type { APIClient } from '@/api/APIClient';
 import type { CommandContext } from '@/command/types';
 import type { ConversationConfigService } from '@/conversation/ConversationConfigService';

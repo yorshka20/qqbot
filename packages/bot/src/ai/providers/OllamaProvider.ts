@@ -304,7 +304,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
       reader.releaseLock();
     }
 
-    const preview = fullText.length > 120 ? fullText.slice(0, 120) + '...' : fullText;
+    const preview = fullText.length > 120 ? `${fullText.slice(0, 120)}...` : fullText;
     logger.debug(`[OllamaProvider] Stream finished: totalLen=${fullText.length} preview=${JSON.stringify(preview)}`);
     return { text: fullText, usage };
   }

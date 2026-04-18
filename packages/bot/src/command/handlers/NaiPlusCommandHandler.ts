@@ -172,8 +172,8 @@ export class NaiPlusCommand implements CommandHandler {
 
         // First call: LLM preprocessing to get processed prompt
         // Check if plugin forces LLM processing (for SFW filter)
-        const forceLLMProcess = context.conversationContext.metadata?.get('text2imgForceLLMProcess') === true;
-        const skipLLMProcess = forceLLMProcess ? false : false; // Always false for first call in batch mode
+        const _forceLLMProcess = context.conversationContext.metadata?.get('text2imgForceLLMProcess') === true;
+        const skipLLMProcess = false; // Always false for first call in batch mode
         const firstResponse = await this.aiService.generateImg(
           hookContext,
           baseOptions,

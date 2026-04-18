@@ -2,45 +2,45 @@
  * Browse View — search, filter, and browse moments with tags and timeline chart.
  */
 
-import { Calendar, Clock, Hash, Loader2, Search, Tag, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Calendar, Clock, Hash, Loader2, Search, Tag, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
-import { listMoments, searchMoments } from '../api'
-import { type DateFilterValue, MomentsDateFilter } from './MomentsDateFilter'
-import { useChartTooltipStyle } from './MomentsShared'
-import { getOutputBase } from '../config'
-import type { MomentItem, MomentsStats } from '../types'
+import { listMoments, searchMoments } from '../api';
+import { getOutputBase } from '../config';
+import type { MomentItem, MomentsStats } from '../types';
+import { type DateFilterValue, MomentsDateFilter } from './MomentsDateFilter';
+import { useChartTooltipStyle } from './MomentsShared';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
 
 function formatTime(ct: string): string {
-  if (!ct) return '未知时间'
-  return ct.slice(0, 16)
+  if (!ct) return '未知时间';
+  return ct.slice(0, 16);
 }
 
 function toDateLabel(ct: string): string {
-  if (!ct) return '未知'
-  const d = new Date(ct.replace(' ', 'T'))
-  const today = new Date()
-  const yesterday = new Date()
-  yesterday.setDate(today.getDate() - 1)
+  if (!ct) return '未知';
+  const d = new Date(ct.replace(' ', 'T'));
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
 
-  const key = d.toDateString()
-  if (key === today.toDateString()) return '今天'
-  if (key === yesterday.toDateString()) return '昨天'
-  return d.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' })
+  const key = d.toDateString();
+  if (key === today.toDateString()) return '今天';
+  if (key === yesterday.toDateString()) return '昨天';
+  return d.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
 }
 
 function groupByDate(items: MomentItem[]): Array<{ dateKey: string; label: string; items: MomentItem[] }> {
-  const map = new Map<string, MomentItem[]>()
+  const map = new Map<string, MomentItem[]>();
   for (const item of items) {
-    const key = item.createTime.slice(0, 10)
-    const arr = map.get(key)
-    if (arr) arr.push(item)
-    else map.set(key, [item])
+    const key = item.createTime.slice(0, 10);
+    const arr = map.get(key);
+    if (arr) arr.push(item);
+    else map.set(key, [item]);
   }
   return [...map.entries()]
     .sort((a, b) => b[0].localeCompare(a[0]))
@@ -48,7 +48,7 @@ function groupByDate(items: MomentItem[]): Array<{ dateKey: string; label: strin
       dateKey,
       label: toDateLabel(groupItems[0].createTime),
       items: groupItems,
-    }))
+    }));
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -56,92 +56,92 @@ function groupByDate(items: MomentItem[]): Array<{ dateKey: string; label: strin
 // ────────────────────────────────────────────────────────────────────────────
 
 export function BrowseView({ stats, isDark }: { stats: MomentsStats | null; isDark: boolean }) {
-  const [moments, setMoments] = useState<MomentItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [nextOffset, setNextOffset] = useState<string | number | null>(null)
-  const [tagFilter, setTagFilter] = useState('')
-  const [dateFilter, setDateFilter] = useState<DateFilterValue>({ mode: 'day', value: '' })
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchInput, setSearchInput] = useState('')
-  const [searchResults, setSearchResults] = useState<MomentItem[] | null>(null)
-  const [searching, setSearching] = useState(false)
-  const searchInputRef = useRef<HTMLInputElement>(null)
-  const [expandedId, setExpandedId] = useState<string | number | null>(null)
-  const tooltipStyle = useChartTooltipStyle(isDark)
+  const [moments, setMoments] = useState<MomentItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [nextOffset, setNextOffset] = useState<string | number | null>(null);
+  const [tagFilter, setTagFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState<DateFilterValue>({ mode: 'day', value: '' });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [searchResults, setSearchResults] = useState<MomentItem[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [expandedId, setExpandedId] = useState<string | number | null>(null);
+  const tooltipStyle = useChartTooltipStyle(isDark);
 
   const loadMoments = useCallback(
     async (append = false) => {
       if (!append) {
-        setLoading(true)
-        setError(null)
+        setLoading(true);
+        setError(null);
       } else {
-        setLoadingMore(true)
+        setLoadingMore(true);
       }
       try {
-        const dateOpts: Record<string, string> = {}
+        const dateOpts: Record<string, string> = {};
         if (dateFilter.value) {
-          if (dateFilter.mode === 'day') dateOpts.date = dateFilter.value
-          else if (dateFilter.mode === 'month') dateOpts.month = dateFilter.value
-          else if (dateFilter.mode === 'year') dateOpts.year = dateFilter.value
+          if (dateFilter.mode === 'day') dateOpts.date = dateFilter.value;
+          else if (dateFilter.mode === 'month') dateOpts.month = dateFilter.value;
+          else if (dateFilter.mode === 'year') dateOpts.year = dateFilter.value;
         }
         const res = await listMoments({
           tag: tagFilter || undefined,
           ...dateOpts,
           offset: append ? (nextOffset as string | undefined) : undefined,
           limit: 50,
-        })
+        });
         if (append) {
-          setMoments((prev) => [...prev, ...res.moments])
+          setMoments((prev) => [...prev, ...res.moments]);
         } else {
-          setMoments(res.moments)
+          setMoments(res.moments);
         }
-        setNextOffset(res.nextOffset)
+        setNextOffset(res.nextOffset);
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err))
+        setError(err instanceof Error ? err.message : String(err));
       } finally {
-        setLoading(false)
-        setLoadingMore(false)
+        setLoading(false);
+        setLoadingMore(false);
       }
     },
     [tagFilter, dateFilter.mode, dateFilter.value, nextOffset],
-  )
+  );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional - reload on filter change
   useEffect(() => {
-    loadMoments(false)
-  }, [tagFilter, dateFilter.mode, dateFilter.value])
+    loadMoments(false);
+  }, [tagFilter, dateFilter.mode, dateFilter.value]);
 
   const doSearch = useCallback(async () => {
-    const q = searchInput.trim()
+    const q = searchInput.trim();
     if (!q) {
-      setSearchResults(null)
-      setSearchQuery('')
-      return
+      setSearchResults(null);
+      setSearchQuery('');
+      return;
     }
-    setSearching(true)
-    setSearchQuery(q)
+    setSearching(true);
+    setSearchQuery(q);
     try {
-      const res = await searchMoments({ q, limit: 30 })
-      setSearchResults(res.moments)
+      const res = await searchMoments({ q, limit: 30 });
+      setSearchResults(res.moments);
     } catch {
-      setSearchResults([])
+      setSearchResults([]);
     } finally {
-      setSearching(false)
+      setSearching(false);
     }
-  }, [searchInput])
+  }, [searchInput]);
 
   const clearSearch = useCallback(() => {
-    setSearchInput('')
-    setSearchQuery('')
-    setSearchResults(null)
-    searchInputRef.current?.focus()
-  }, [])
+    setSearchInput('');
+    setSearchQuery('');
+    setSearchResults(null);
+    searchInputRef.current?.focus();
+  }, []);
 
-  const displayItems = searchResults ?? moments
-  const isSearchMode = searchResults != null
-  const groups = useMemo(() => groupByDate(displayItems), [displayItems])
+  const displayItems = searchResults ?? moments;
+  const isSearchMode = searchResults != null;
+  const groups = useMemo(() => groupByDate(displayItems), [displayItems]);
 
   return (
     <>
@@ -183,7 +183,11 @@ export function BrowseView({ stats, isDark }: { stats: MomentsStats | null; isDa
           <span className="text-zinc-500 dark:text-zinc-400">
             搜索「{searchQuery}」找到 {searchResults?.length ?? 0} 条结果
           </span>
-          <button type="button" onClick={clearSearch} className="text-blue-600 dark:text-blue-400 hover:underline text-sm">
+          <button
+            type="button"
+            onClick={clearSearch}
+            className="text-blue-600 dark:text-blue-400 hover:underline text-sm"
+          >
             清除搜索
           </button>
         </div>
@@ -199,7 +203,11 @@ export function BrowseView({ stats, isDark }: { stats: MomentsStats | null; isDa
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={stats.monthlyCount}>
               <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#3f3f46' : '#e4e4e7'} />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: isDark ? '#a1a1aa' : '#71717a' }} interval="preserveStartEnd" />
+              <XAxis
+                dataKey="month"
+                tick={{ fontSize: 11, fill: isDark ? '#a1a1aa' : '#71717a' }}
+                interval="preserveStartEnd"
+              />
               <YAxis tick={{ fontSize: 11, fill: isDark ? '#a1a1aa' : '#71717a' }} width={35} />
               <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${value} 条`, '发布量']} />
               <Bar dataKey="count" fill={isDark ? '#3b82f6' : '#2563eb'} radius={[2, 2, 0, 0]} />
@@ -233,7 +241,9 @@ export function BrowseView({ stats, isDark }: { stats: MomentsStats | null; isDa
             >
               <Tag className="w-3 h-3" />
               {t.tag}
-              <span className={tagFilter === t.tag ? 'text-blue-200' : 'text-zinc-400 dark:text-zinc-500'}>({t.count})</span>
+              <span className={tagFilter === t.tag ? 'text-blue-200' : 'text-zinc-400 dark:text-zinc-500'}>
+                ({t.count})
+              </span>
             </button>
           ))}
         </div>
@@ -301,7 +311,7 @@ export function BrowseView({ stats, isDark }: { stats: MomentsStats | null; isDa
         </div>
       )}
     </>
-  )
+  );
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -314,13 +324,13 @@ function MomentRow({
   onToggle,
   onTagClick,
 }: {
-  item: MomentItem
-  expanded: boolean
-  onToggle: () => void
-  onTagClick: (tag: string) => void
+  item: MomentItem;
+  expanded: boolean;
+  onToggle: () => void;
+  onTagClick: (tag: string) => void;
 }) {
-  const contentPreview = expanded ? item.content : item.content.slice(0, 200)
-  const needsTruncation = !expanded && item.content.length > 200
+  const contentPreview = expanded ? item.content : item.content.slice(0, 200);
+  const needsTruncation = !expanded && item.content.length > 200;
 
   return (
     <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden bg-white dark:bg-zinc-800/50">
@@ -360,7 +370,7 @@ function MomentRow({
             className={`mt-2 grid gap-1.5 ${item.imagePaths.length === 1 ? 'grid-cols-1 max-w-xs' : item.imagePaths.length <= 4 ? 'grid-cols-2 max-w-md' : 'grid-cols-3 max-w-lg'}`}
           >
             {item.imagePaths.map((p) => {
-              const url = `${getOutputBase()}/${p.replace(/^output\//, '')}`
+              const url = `${getOutputBase()}/${p.replace(/^output\//, '')}`;
               return (
                 <a key={p} href={url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
                   <img
@@ -370,7 +380,7 @@ function MomentRow({
                     className="w-full aspect-square object-cover rounded border border-zinc-200 dark:border-zinc-700 hover:opacity-90 transition-opacity"
                   />
                 </a>
-              )
+              );
             })}
           </div>
         )}
@@ -383,8 +393,8 @@ function MomentRow({
               key={tag}
               type="button"
               onClick={(e) => {
-                e.stopPropagation()
-                onTagClick(tag)
+                e.stopPropagation();
+                onTagClick(tag);
               }}
               className="px-2 py-0.5 text-xs rounded bg-zinc-100 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-700 dark:hover:text-blue-400 transition-colors"
             >
@@ -394,5 +404,5 @@ function MomentRow({
         </div>
       )}
     </div>
-  )
+  );
 }

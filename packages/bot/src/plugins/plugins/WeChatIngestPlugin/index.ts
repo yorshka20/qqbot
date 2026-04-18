@@ -154,7 +154,7 @@ export class WeChatIngestPlugin extends PluginBase {
       this.eventBridge = new WechatEventBridge(internalEventBus);
       container.registerInstance(WechatDITokens.EVENT_BRIDGE, this.eventBridge);
       logger.info('[WeChatIngestPlugin] WechatEventBridge registered');
-    } catch (err) {
+    } catch (_err) {
       logger.warn('[WeChatIngestPlugin] InternalEventBus not available — event bridge disabled');
     }
 

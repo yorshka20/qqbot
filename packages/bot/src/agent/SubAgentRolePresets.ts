@@ -6,8 +6,8 @@
 //   task.txt       — task description template (supports {{message}})
 //   system.txt     — (optional) system prompt override
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
-import { join, resolve } from 'path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { logger } from '@/utils/logger';
 import type { SubAgentConfig } from './types';
 import { SubAgentType } from './types';

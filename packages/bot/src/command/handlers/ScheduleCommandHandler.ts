@@ -16,7 +16,7 @@ import type { ScheduleFileService } from '@/agenda/ScheduleFileService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import { JSON_ONLY_STRATEGIES, parseLlmJson } from '@/ai/utils/llmJsonExtract';
-import { AIConfig, type Config } from '@/core/config';
+import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';

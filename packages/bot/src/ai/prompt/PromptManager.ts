@@ -1,8 +1,8 @@
 // Prompt Manager - manages prompt templates
 // Part of AI module - prompt management is integrated into AI scope
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
-import { basename, extname, join, resolve } from 'path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { basename, extname, join, resolve } from 'node:path';
 import { getCurrentDateTimeForPrompt } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
 

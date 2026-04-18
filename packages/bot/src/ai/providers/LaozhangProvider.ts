@@ -1,7 +1,7 @@
 // Laozhang AI Provider implementation
 
-import { mkdir, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { HttpClient } from '@/api/http/HttpClient';
 import type { LaozhangProviderConfig } from '@/core/config/types/ai';
 import { logger } from '@/utils/logger';

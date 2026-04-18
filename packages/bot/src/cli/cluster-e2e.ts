@@ -730,8 +730,7 @@ async function main() {
         const unmatched: string[] = [];
         for (const sentinelStr of args.plannerChildSentinels) {
           const matchingChild = children.find(
-            (c) =>
-              (c.diffSummary ?? '').includes(sentinelStr) || (c.output ?? '').includes(sentinelStr),
+            (c) => (c.diffSummary ?? '').includes(sentinelStr) || (c.output ?? '').includes(sentinelStr),
           );
           if (!matchingChild) {
             unmatched.push(sentinelStr);

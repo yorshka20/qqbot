@@ -438,7 +438,7 @@ export class ShellCommand implements CommandHandler {
         child.on('close', (code) => {
           clearTimeout(timer);
           const raw = Buffer.concat(chunks).toString('utf8').trimEnd();
-          const text = raw.length > SHELL_MAX_OUTPUT ? raw.slice(0, SHELL_MAX_OUTPUT) + '\n…(truncated)' : raw;
+          const text = raw.length > SHELL_MAX_OUTPUT ? `${raw.slice(0, SHELL_MAX_OUTPUT)}\n…(truncated)` : raw;
           resolve(`$ ${cmd}\n[exit ${code}]\n${text}`);
         });
 

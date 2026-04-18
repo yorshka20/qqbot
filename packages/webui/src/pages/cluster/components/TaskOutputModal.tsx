@@ -190,8 +190,8 @@ export function TaskOutputModal({ task, onClose }: { task: ClusterTask; onClose:
             ) : (
               (task.status === 'completed' || task.status === 'failed') && (
                 <div className="text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-900/60 rounded-lg p-3 border border-zinc-200 dark:border-zinc-700">
-                  Worker stdout is not stored after the task finishes. Use the report summary above and the timeline; live
-                  output was only shown while the task was active.
+                  Worker stdout is not stored after the task finishes. Use the report summary above and the timeline;
+                  live output was only shown while the task was active.
                 </div>
               )
             )}
@@ -214,7 +214,6 @@ export function TaskOutputModal({ task, onClose }: { task: ClusterTask; onClose:
                 )}
               </div>
             )}
-
           </div>
         </Dialog.Content>
       </Dialog.Portal>

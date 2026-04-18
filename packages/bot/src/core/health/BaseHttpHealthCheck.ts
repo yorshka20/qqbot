@@ -82,20 +82,16 @@ export abstract class BaseHttpHealthCheck implements HealthCheckable {
    * Perform the actual health check (to be implemented by subclasses)
    */
   protected async performCheck(timeout: number): Promise<{ ok: boolean; status?: number; statusText?: string }> {
-    try {
-      const response = await fetch(this.healthCheckUrl, {
-        method: 'GET',
-        signal: AbortSignal.timeout(timeout),
-      });
+    const response = await fetch(this.healthCheckUrl, {
+      method: 'GET',
+      signal: AbortSignal.timeout(timeout),
+    });
 
-      return {
-        ok: response.ok,
-        status: response.status,
-        statusText: response.statusText,
-      };
-    } catch (error) {
-      throw error;
-    }
+    return {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+    };
   }
 
   /**

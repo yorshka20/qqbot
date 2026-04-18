@@ -1,15 +1,15 @@
 interface PreviewPaneProps {
-  selectedPath: string | null
-  selectedName: string | null
+  selectedPath: string | null;
+  selectedName: string | null;
 }
 
-const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'])
-const VIDEO_EXT = new Set(['.mp4', '.webm', '.ogg', '.mov'])
-const AUDIO_EXT = new Set(['.mp3', '.wav', '.ogg', '.m4a'])
+const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
+const VIDEO_EXT = new Set(['.mp4', '.webm', '.ogg', '.mov']);
+const AUDIO_EXT = new Set(['.mp3', '.wav', '.ogg', '.m4a']);
 
 function ext(name: string): string {
-  const i = name.lastIndexOf('.')
-  return i >= 0 ? name.slice(i).toLowerCase() : ''
+  const i = name.lastIndexOf('.');
+  return i >= 0 ? name.slice(i).toLowerCase() : '';
 }
 
 export function PreviewPane({ selectedPath, selectedName }: PreviewPaneProps) {
@@ -18,11 +18,11 @@ export function PreviewPane({ selectedPath, selectedName }: PreviewPaneProps) {
       <aside className="flex flex-col items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50/50 p-8 text-zinc-500 text-sm">
         Select a file to preview.
       </aside>
-    )
+    );
   }
 
-  const url = `/output/${selectedPath}`
-  const e = ext(selectedName)
+  const url = `/output/${selectedPath}`;
+  const e = ext(selectedName);
 
   if (IMAGE_EXT.has(e)) {
     return (
@@ -34,7 +34,7 @@ export function PreviewPane({ selectedPath, selectedName }: PreviewPaneProps) {
           <img src={url} alt={selectedName} className="max-w-full max-h-full object-contain" />
         </div>
       </aside>
-    )
+    );
   }
 
   if (VIDEO_EXT.has(e)) {
@@ -44,10 +44,11 @@ export function PreviewPane({ selectedPath, selectedName }: PreviewPaneProps) {
           {selectedName}
         </div>
         <div className="p-4 bg-zinc-100">
+          {/* biome-ignore lint/a11y/useMediaCaption: internal preview tool, captions not applicable */}
           <video src={url} controls className="w-full rounded" />
         </div>
       </aside>
-    )
+    );
   }
 
   if (AUDIO_EXT.has(e)) {
@@ -57,10 +58,11 @@ export function PreviewPane({ selectedPath, selectedName }: PreviewPaneProps) {
           {selectedName}
         </div>
         <div className="p-4 bg-zinc-100">
+          {/* biome-ignore lint/a11y/useMediaCaption: internal preview tool, captions not applicable */}
           <audio src={url} controls className="w-full" />
         </div>
       </aside>
-    )
+    );
   }
 
   return (
@@ -80,5 +82,5 @@ export function PreviewPane({ selectedPath, selectedName }: PreviewPaneProps) {
         </a>
       </div>
     </aside>
-  )
+  );
 }

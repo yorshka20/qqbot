@@ -291,11 +291,7 @@ export function FilesPage() {
       )}
 
       {previewFile && (
-        <PreviewModal
-          path={previewFile.path}
-          name={previewFile.name}
-          onClose={() => setPreviewFile(null)}
-        />
+        <PreviewModal path={previewFile.path} name={previewFile.name} onClose={() => setPreviewFile(null)} />
       )}
 
       <ConfirmDialog

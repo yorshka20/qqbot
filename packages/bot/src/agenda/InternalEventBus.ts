@@ -1,7 +1,7 @@
 // Internal event bus for system events (group member join, keyword match, nudge, etc.)
 // Lightweight typed EventEmitter; any module can publish, AgendaService subscribes.
 
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import type { AgendaSystemEvent } from './types';
 
 /**

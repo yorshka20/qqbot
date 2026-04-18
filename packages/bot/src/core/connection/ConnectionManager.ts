@@ -1,6 +1,6 @@
 // Multi-protocol connection management
 
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import { logger } from '@/utils/logger';
 import type { Config, ProtocolConfig } from '../config';
 import type { Connection } from './base';

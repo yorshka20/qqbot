@@ -7,7 +7,6 @@
  * - GET  /api/reports/:id/markdown  -> raw markdown text
  */
 
-import { resolve } from 'node:path';
 import { getContainer } from '@/core/DIContainer';
 import { type ReportFile, type ReportMetadata, WechatDITokens, type WechatReportService } from '@/services/wechat';
 import { logger } from '@/utils/logger';
@@ -62,10 +61,6 @@ function textResponse(text: string, status = 200): Response {
 export class ReportBackend implements Backend {
   readonly prefix = API_PREFIX;
   private reportService: WechatReportService | null = null;
-
-  constructor() {
-    // Lazy init - service may not be available at construction time
-  }
 
   private getReportService(): WechatReportService | null {
     if (this.reportService) return this.reportService;

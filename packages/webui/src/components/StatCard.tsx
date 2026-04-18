@@ -20,9 +20,7 @@ export function StatCard({
         <div className="min-w-0">
           <p className="text-sm text-zinc-500 dark:text-zinc-400">{label}</p>
           <p className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">{value}</p>
-          {subValue && (
-            <p className="text-xs text-zinc-400 dark:text-zinc-500 truncate">{subValue}</p>
-          )}
+          {subValue && <p className="text-xs text-zinc-400 dark:text-zinc-500 truncate">{subValue}</p>}
         </div>
       </div>
     </div>

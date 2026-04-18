@@ -124,7 +124,7 @@ export class WechatMomentsSearchToolExecutor extends BaseToolExecutor {
           const createTime = (hit.payload?.create_time as string) || '未知时间';
           const content = typeof hit.content === 'string' ? hit.content : '';
           const truncated =
-            content.length > MAX_CONTENT_DISPLAY_LEN ? content.slice(0, MAX_CONTENT_DISPLAY_LEN) + '…' : content;
+            content.length > MAX_CONTENT_DISPLAY_LEN ? `${content.slice(0, MAX_CONTENT_DISPLAY_LEN)}…` : content;
 
           return `[${index + 1}] 时间: ${createTime}  相似度: ${hit.score.toFixed(3)}\n${truncated}`;
         })

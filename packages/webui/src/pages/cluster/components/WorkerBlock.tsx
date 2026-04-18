@@ -39,9 +39,7 @@ export function WorkerBlock({
     <div className="w-full min-w-0 shrink-0 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white/60 dark:bg-zinc-900/30">
       {/* ── Row 1: Header — full width ── */}
       <div className="px-3 py-2 flex items-center gap-2 flex-wrap bg-zinc-50/80 dark:bg-zinc-800/40">
-        <span className="font-mono text-xs font-semibold text-zinc-800 dark:text-zinc-100">
-          {w.workerId}
-        </span>
+        <span className="font-mono text-xs font-semibold text-zinc-800 dark:text-zinc-100">{w.workerId}</span>
         {w.role && (
           <span
             className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
@@ -135,17 +133,13 @@ export function WorkerBlock({
         <div className="px-3 py-2.5 space-y-2">
           {/* Report status bar */}
           <div className="flex items-center gap-2 text-[10px]">
-            <span className="uppercase tracking-wider font-semibold text-zinc-400 dark:text-zinc-500">
-              HUB_REPORT
-            </span>
+            <span className="uppercase tracking-wider font-semibold text-zinc-400 dark:text-zinc-500">HUB_REPORT</span>
             {w.lastReportStatus && <ClusterStatusBadge status={w.lastReportStatus} />}
             <span className="text-zinc-400 dark:text-zinc-500 tabular-nums">
               {w.lastHubReportAt != null ? `${formatMs(now - w.lastHubReportAt)} ago` : ''}
             </span>
             {w.stats?.totalReports != null && (
-              <span className="text-zinc-400 dark:text-zinc-500">
-                · {w.stats.totalReports} reports
-              </span>
+              <span className="text-zinc-400 dark:text-zinc-500">· {w.stats.totalReports} reports</span>
             )}
           </div>
 

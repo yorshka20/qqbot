@@ -1,8 +1,8 @@
 // Resource downloader utility - handles downloading and converting media resources to base64
 
-import { createHash } from 'crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { basename, extname, join } from 'path';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, extname, join } from 'node:path';
 import { HttpClient } from '@/api/http/HttpClient';
 import { logger } from '@/utils/logger';
 

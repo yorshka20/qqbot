@@ -178,146 +178,146 @@ export function TicketEditor({
   return (
     <div className="h-full flex flex-col rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 overflow-hidden text-zinc-900 dark:text-zinc-100">
       {/* Header */}
-        <div className="shrink-0 px-5 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center gap-3">
-          <div className="font-semibold">{isCreate ? 'New ticket' : 'Edit ticket'}</div>
-          {!isCreate && <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">{initial.id}</div>}
-          <div className="flex-1" />
-          <button
-            type="button"
-            onClick={onCancel}
-            className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700"
-            disabled={saving}
-            title="Close"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+      <div className="shrink-0 px-5 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center gap-3">
+        <div className="font-semibold">{isCreate ? 'New ticket' : 'Edit ticket'}</div>
+        {!isCreate && <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">{initial.id}</div>}
+        <div className="flex-1" />
+        <button
+          type="button"
+          onClick={onCancel}
+          className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700"
+          disabled={saving}
+          title="Close"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
 
-        {/* Body — scrollable */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-3">
-          {/* Frontmatter form */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-            <div className="md:col-span-12">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">title</div>
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
-                placeholder='e.g. "Fix Discord emoji rendering"'
-                disabled={saving}
-              />
-            </div>
-            <div className="md:col-span-3">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">status</div>
-              <StatusSelect value={status} onChange={setStatus} disabled={saving} />
-            </div>
-            <div className="md:col-span-5">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">template</div>
-              <TemplateSelect
-                value={template}
-                onChange={setTemplate}
-                templates={templates?.templates ?? []}
-                disabled={saving}
-              />
-            </div>
-            <div className="md:col-span-4">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">project</div>
-              <RegistryProjectSelect
-                value={effectiveProject}
-                onChange={setProject}
-                projects={registryProjects}
-                disabled={saving}
-              />
-              {registryError && <div className="mt-1 text-xs text-red-600 dark:text-red-400">{registryError}</div>}
-            </div>
-            {/* estimatedComplexity + maxChildren. Planner vs executor mode
+      {/* Body — scrollable */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-3">
+        {/* Frontmatter form */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+          <div className="md:col-span-12">
+            <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">title</div>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
+              placeholder='e.g. "Fix Discord emoji rendering"'
+              disabled={saving}
+            />
+          </div>
+          <div className="md:col-span-3">
+            <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">status</div>
+            <StatusSelect value={status} onChange={setStatus} disabled={saving} />
+          </div>
+          <div className="md:col-span-5">
+            <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">template</div>
+            <TemplateSelect
+              value={template}
+              onChange={setTemplate}
+              templates={templates?.templates ?? []}
+              disabled={saving}
+            />
+          </div>
+          <div className="md:col-span-4">
+            <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">project</div>
+            <RegistryProjectSelect
+              value={effectiveProject}
+              onChange={setProject}
+              projects={registryProjects}
+              disabled={saving}
+            />
+            {registryError && <div className="mt-1 text-xs text-red-600 dark:text-red-400">{registryError}</div>}
+          </div>
+          {/* estimatedComplexity + maxChildren. Planner vs executor mode
                 is derived from the selected template's role; maxChildren is
                 only meaningful for planner templates so it's disabled when
                 a non-planner (or no) template is picked. */}
-            <div className="md:col-span-6">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">estimatedComplexity</div>
-              <select
-                value={estimatedComplexity}
-                onChange={(e) => setEstimatedComplexity(e.target.value as 'trivial' | 'low' | 'medium' | 'high' | '')}
-                className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
-                disabled={saving}
-              >
-                <option value="">(not set)</option>
-                <option value="trivial">trivial — single executor task</option>
-                <option value="low">low — minimax sufficient</option>
-                <option value="medium">medium — normal executor</option>
-                <option value="high">high — consider claude-sonnet</option>
-              </select>
-            </div>
-            <div className="md:col-span-6">
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                maxChildren{' '}
-                <span className="text-zinc-400 dark:text-zinc-500">
-                  {isPlannerTemplate ? '(planner only)' : '(pick a planner template to enable)'}
-                </span>
-              </div>
-              <input
-                type="number"
-                min={1}
-                value={maxChildrenStr}
-                onChange={(e) => setMaxChildrenStr(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm disabled:opacity-50"
-                placeholder="(default 3)"
-                disabled={saving || !isPlannerTemplate}
-              />
-            </div>
-          </div>
-
-          {/* Markdown body */}
-          <div>
-            <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1 flex items-center gap-2">
-              <span>body (markdown — this is what the worker will see verbatim)</span>
-            </div>
-            {liftedFields && (
-              <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 px-3 py-2 text-xs text-blue-800 dark:text-blue-200">
-                <div>
-                  粘贴的 frontmatter 已提取到表单字段：
-                  <span className="font-mono ml-1">{liftedFields.join(', ')}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setLiftedFields(null)}
-                  className="text-blue-600 dark:text-blue-300 hover:underline shrink-0"
-                >
-                  dismiss
-                </button>
-              </div>
-            )}
-            <textarea
-              value={body}
-              onChange={(e) => handleBodyChange(e.target.value)}
-              className="w-full min-h-[400px] px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-mono leading-relaxed"
-              placeholder="## Goal&#10;&#10;..."
+          <div className="md:col-span-6">
+            <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">estimatedComplexity</div>
+            <select
+              value={estimatedComplexity}
+              onChange={(e) => setEstimatedComplexity(e.target.value as 'trivial' | 'low' | 'medium' | 'high' | '')}
+              className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
               disabled={saving}
+            >
+              <option value="">(not set)</option>
+              <option value="trivial">trivial — single executor task</option>
+              <option value="low">low — minimax sufficient</option>
+              <option value="medium">medium — normal executor</option>
+              <option value="high">high — consider claude-sonnet</option>
+            </select>
+          </div>
+          <div className="md:col-span-6">
+            <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+              maxChildren{' '}
+              <span className="text-zinc-400 dark:text-zinc-500">
+                {isPlannerTemplate ? '(planner only)' : '(pick a planner template to enable)'}
+              </span>
+            </div>
+            <input
+              type="number"
+              min={1}
+              value={maxChildrenStr}
+              onChange={(e) => setMaxChildrenStr(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm disabled:opacity-50"
+              placeholder="(default 3)"
+              disabled={saving || !isPlannerTemplate}
             />
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="shrink-0 px-5 py-3 border-t border-zinc-200 dark:border-zinc-700 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+        {/* Markdown body */}
+        <div>
+          <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1 flex items-center gap-2">
+            <span>body (markdown — this is what the worker will see verbatim)</span>
+          </div>
+          {liftedFields && (
+            <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 px-3 py-2 text-xs text-blue-800 dark:text-blue-200">
+              <div>
+                粘贴的 frontmatter 已提取到表单字段：
+                <span className="font-mono ml-1">{liftedFields.join(', ')}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLiftedFields(null)}
+                className="text-blue-600 dark:text-blue-300 hover:underline shrink-0"
+              >
+                dismiss
+              </button>
+            </div>
+          )}
+          <textarea
+            value={body}
+            onChange={(e) => handleBodyChange(e.target.value)}
+            className="w-full min-h-[400px] px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-mono leading-relaxed"
+            placeholder="## Goal&#10;&#10;..."
             disabled={saving}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!canSave}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
-          >
-            <Save className="w-4 h-4" />
-            {saving ? 'Saving…' : 'Save'}
-          </button>
+          />
         </div>
+      </div>
+
+      {/* Footer */}
+      <div className="shrink-0 px-5 py-3 border-t border-zinc-200 dark:border-zinc-700 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-3 py-1.5 rounded-lg text-sm font-medium border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+          disabled={saving}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!canSave}
+          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+        >
+          <Save className="w-4 h-4" />
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
     </div>
   );
 }

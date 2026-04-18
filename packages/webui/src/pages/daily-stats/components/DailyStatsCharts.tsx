@@ -25,7 +25,10 @@ export function DailyStatsCharts({ stats }: { stats: DailyStats }) {
             <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
             <XAxis dataKey="hour" tickFormatter={(h: number) => `${h}:00`} tick={{ fontSize: 11 }} interval={2} />
             <YAxis tick={{ fontSize: 11 }} />
-            <Tooltip labelFormatter={(h) => `${h}:00 - ${Number(h)}:59`} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+            <Tooltip
+              labelFormatter={(h) => `${h}:00 - ${Number(h)}:59`}
+              contentStyle={{ fontSize: 12, borderRadius: 8 }}
+            />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Bar dataKey="messagesReceived" name="收到消息" fill="#3b82f6" radius={[2, 2, 0, 0]} />
             <Bar dataKey="messagesSent" name="发送消息" fill="#10b981" radius={[2, 2, 0, 0]} />

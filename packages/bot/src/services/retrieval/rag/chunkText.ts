@@ -54,7 +54,7 @@ export function chunkText(text: string, options?: ChunkOptions): TextChunk[] {
     // If this chunk is too small and there's a previous chunk, merge it
     if (chunkContent.length < minChunkSize && chunks.length > 0) {
       const prev = chunks[chunks.length - 1]!;
-      prev.text = prev.text + '\n\n' + chunkContent;
+      prev.text = `${prev.text}\n\n${chunkContent}`;
       return;
     }
 

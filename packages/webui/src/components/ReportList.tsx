@@ -1,12 +1,12 @@
-import { format } from 'date-fns'
-import { zhCN } from 'date-fns/locale'
-import { FileText, Loader2, MessageSquare, Newspaper, Users } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
-import { listReports } from '../api'
-import type { ReportListItem } from '../types'
+import { format } from 'date-fns';
+import { zhCN } from 'date-fns/locale';
+import { FileText, Loader2, MessageSquare, Newspaper, Users } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { listReports } from '../api';
+import type { ReportListItem } from '../types';
 
 interface ReportListProps {
-  onSelectReport: (id: string) => void
+  onSelectReport: (id: string) => void;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -14,37 +14,37 @@ const TYPE_LABELS: Record<string, string> = {
   weekly: '周报',
   monthly: '月报',
   custom: '报告',
-}
+};
 
 const TYPE_COLORS: Record<string, string> = {
   daily: 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300',
   weekly: 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300',
   monthly: 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300',
   custom: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',
-}
+};
 
 export function ReportList({ onSelectReport }: ReportListProps) {
-  const [reports, setReports] = useState<ReportListItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [reports, setReports] = useState<ReportListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
     try {
-      const data = await listReports()
-      setReports(data.reports)
+      const data = await listReports();
+      setReports(data.reports);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load reports')
-      setReports([])
+      setError(e instanceof Error ? e.message : 'Failed to load reports');
+      setReports([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    load()
-  }, [load])
+    load();
+  }, [load]);
 
   if (loading) {
     return (
@@ -54,7 +54,7 @@ export function ReportList({ onSelectReport }: ReportListProps) {
           <span className="text-sm font-medium">加载报告列表...</span>
         </div>
       </div>
-    )
+    );
   }
 
   if (error) {
@@ -62,7 +62,7 @@ export function ReportList({ onSelectReport }: ReportListProps) {
       <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/40 dark:border-red-900 p-6 text-red-800 dark:text-red-300 text-sm">
         {error}
       </div>
-    )
+    );
   }
 
   if (reports.length === 0) {
@@ -72,7 +72,7 @@ export function ReportList({ onSelectReport }: ReportListProps) {
         <p className="text-lg font-medium">暂无报告</p>
         <p className="text-sm mt-1">当生成微信日报后，报告将显示在这里</p>
       </div>
-    )
+    );
   }
 
   return (
@@ -122,5 +122,5 @@ export function ReportList({ onSelectReport }: ReportListProps) {
         </button>
       ))}
     </div>
-  )
+  );
 }

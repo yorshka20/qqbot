@@ -18,7 +18,6 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
-import type { NormalizedMessageEvent } from '@/events/types';
 import { HookManager } from '@/hooks/HookManager';
 import { getHookPriority } from '@/hooks/HookPriority';
 import { HookMetadataMap } from '@/hooks/metadata';

@@ -1,12 +1,4 @@
-import {
-  AlertTriangle,
-  Cpu,
-  FileText,
-  MessageSquare,
-  Send,
-  Users,
-  Zap,
-} from 'lucide-react';
+import { AlertTriangle, Cpu, FileText, MessageSquare, Send, Users, Zap } from 'lucide-react';
 
 import { StatCard } from '../../../components/StatCard';
 import type { DailyStats } from '../../../types';

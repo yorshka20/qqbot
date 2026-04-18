@@ -3,57 +3,57 @@
  * Layout: months as rows (vertical), tags as columns (horizontal), tag labels sticky at top.
  */
 
-import { TrendingUp } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { TrendingUp } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
-import { getMomentsInterestEvolution } from '../api'
-import type { InterestEvolutionResponse } from '../types'
-import { EmptyState, LoadingSpinner } from './MomentsShared'
+import { getMomentsInterestEvolution } from '../api';
+import type { InterestEvolutionResponse } from '../types';
+import { EmptyState, LoadingSpinner } from './MomentsShared';
 
-const HEATMAP_COLORS = ['#f4f4f5', '#dbeafe', '#93c5fd', '#3b82f6', '#1d4ed8', '#1e3a8a']
-const HEATMAP_COLORS_DARK = ['#27272a', '#1e3a5f', '#1e40af', '#2563eb', '#3b82f6', '#60a5fa']
+const HEATMAP_COLORS = ['#f4f4f5', '#dbeafe', '#93c5fd', '#3b82f6', '#1d4ed8', '#1e3a8a'];
+const HEATMAP_COLORS_DARK = ['#27272a', '#1e3a5f', '#1e40af', '#2563eb', '#3b82f6', '#60a5fa'];
 
 export function InterestEvolutionView({ isDark }: { isDark: boolean }) {
-  const [data, setData] = useState<InterestEvolutionResponse | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<InterestEvolutionResponse | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true)
+    setLoading(true);
     getMomentsInterestEvolution()
       .then(setData)
       .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+      .finally(() => setLoading(false));
+  }, []);
 
   const { countMap, maxCount, sortedTags, colors } = useMemo(() => {
-    if (!data) return { countMap: new Map(), maxCount: 0, sortedTags: [] as string[], colors: HEATMAP_COLORS }
-    const cm = new Map<string, number>()
-    let mc = 0
+    if (!data) return { countMap: new Map(), maxCount: 0, sortedTags: [] as string[], colors: HEATMAP_COLORS };
+    const cm = new Map<string, number>();
+    let mc = 0;
     for (const h of data.heatmap) {
-      cm.set(`${h.tag}:${h.month}`, h.count)
-      if (h.count > mc) mc = h.count
+      cm.set(`${h.tag}:${h.month}`, h.count);
+      if (h.count > mc) mc = h.count;
     }
-    const tagTotals = new Map<string, number>()
+    const tagTotals = new Map<string, number>();
     for (const h of data.heatmap) {
-      tagTotals.set(h.tag, (tagTotals.get(h.tag) ?? 0) + h.count)
+      tagTotals.set(h.tag, (tagTotals.get(h.tag) ?? 0) + h.count);
     }
     return {
       countMap: cm,
       maxCount: mc,
       sortedTags: [...tagTotals.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t),
       colors: isDark ? HEATMAP_COLORS_DARK : HEATMAP_COLORS,
-    }
-  }, [data, isDark])
+    };
+  }, [data, isDark]);
 
-  if (loading) return <LoadingSpinner />
-  if (!data || data.heatmap.length === 0) return <EmptyState text="暂无标签数据，请先运行标签批处理脚本" />
+  if (loading) return <LoadingSpinner />;
+  if (!data || data.heatmap.length === 0) return <EmptyState text="暂无标签数据，请先运行标签批处理脚本" />;
 
-  const displayTags = sortedTags.slice(0, 25)
+  const displayTags = sortedTags.slice(0, 25);
 
   function getColor(count: number): string {
-    if (count === 0) return colors[0]
-    const level = Math.min(Math.ceil((count / maxCount) * (colors.length - 1)), colors.length - 1)
-    return colors[level]
+    if (count === 0) return colors[0];
+    const level = Math.min(Math.ceil((count / maxCount) * (colors.length - 1)), colors.length - 1);
+    return colors[level];
   }
 
   return (
@@ -89,7 +89,16 @@ export function InterestEvolutionView({ isDark }: { isDark: boolean }) {
                     key={tag}
                     className="text-center text-xs text-zinc-600 dark:text-zinc-400 px-0.5 py-1.5 bg-white dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700"
                   >
-                    <span className="writing-vertical" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', display: 'inline-block', maxHeight: 56, overflow: 'hidden' }}>
+                    <span
+                      className="writing-vertical"
+                      style={{
+                        writingMode: 'vertical-rl',
+                        textOrientation: 'mixed',
+                        display: 'inline-block',
+                        maxHeight: 56,
+                        overflow: 'hidden',
+                      }}
+                    >
                       {tag}
                     </span>
                   </th>
@@ -100,11 +109,9 @@ export function InterestEvolutionView({ isDark }: { isDark: boolean }) {
             <tbody>
               {data.months.map((month) => (
                 <tr key={month} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/80">
-                  <td className="text-xs text-zinc-500 dark:text-zinc-400 px-2 py-0 whitespace-nowrap">
-                    {month}
-                  </td>
+                  <td className="text-xs text-zinc-500 dark:text-zinc-400 px-2 py-0 whitespace-nowrap">{month}</td>
                   {displayTags.map((tag) => {
-                    const count = countMap.get(`${tag}:${month}`) ?? 0
+                    const count = countMap.get(`${tag}:${month}`) ?? 0;
                     return (
                       <td key={tag} className="p-0.5">
                         <div
@@ -113,7 +120,7 @@ export function InterestEvolutionView({ isDark }: { isDark: boolean }) {
                           title={`${tag} ${month}: ${count} 条`}
                         />
                       </td>
-                    )
+                    );
                   })}
                 </tr>
               ))}
@@ -122,5 +129,5 @@ export function InterestEvolutionView({ isDark }: { isDark: boolean }) {
         </div>
       </div>
     </div>
-  )
+  );
 }

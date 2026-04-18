@@ -9,8 +9,8 @@
  * - POST /api/files/rename       -> 204 or { error }  (body: { path, newName })
  */
 
-import { readdir, rename, rmdir, stat, unlink } from 'fs/promises';
-import { dirname, join, relative, resolve } from 'path';
+import { readdir, rename, rmdir, stat, unlink } from 'node:fs/promises';
+import { dirname, join, relative, resolve } from 'node:path';
 import { logger } from '@/utils/logger';
 import { resolveSafe } from './pathSafety';
 import type { Backend } from './types';

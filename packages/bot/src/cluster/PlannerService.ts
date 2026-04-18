@@ -46,9 +46,9 @@ export class PlannerService {
   private notifiedAskIds = new Set<string>();
 
   constructor(
-    private config: ClusterConfig,
+    _config: ClusterConfig,
     private hub: ContextHub,
-    private workerPool: WorkerPool,
+    _workerPool: WorkerPool,
   ) {}
 
   /**

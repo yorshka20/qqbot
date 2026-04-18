@@ -148,7 +148,7 @@ export class CommandManager {
     // Use Proxy for complete delegation
     // This handles all properties and methods, even if CommandHandler interface extends
     return new Proxy({} as CommandHandler, {
-      get(target, prop) {
+      get(_target, prop) {
         // For known metadata properties, return from metadata first to avoid instantiation
         const propKey = prop as keyof typeof metadata;
         if (propKey === 'name' || propKey === 'description' || propKey === 'usage') {
@@ -168,19 +168,19 @@ export class CommandManager {
       },
 
       // Support 'in' operator
-      has(target, prop) {
+      has(_target, prop) {
         const instance = getInstance();
         return prop in instance;
       },
 
       // Support Object.keys() and similar operations
-      ownKeys(target) {
+      ownKeys(_target) {
         const instance = getInstance();
         return Reflect.ownKeys(instance);
       },
 
       // Support property descriptor access
-      getOwnPropertyDescriptor(target, prop) {
+      getOwnPropertyDescriptor(_target, prop) {
         const instance = getInstance();
         return Reflect.getOwnPropertyDescriptor(instance, prop);
       },

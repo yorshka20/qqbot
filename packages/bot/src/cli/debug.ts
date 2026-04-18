@@ -2,7 +2,7 @@
 // IMPORTANT: reflect-metadata must be imported FIRST before any other imports
 import 'reflect-metadata';
 
-import readline from 'readline';
+import readline from 'node:readline';
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import type { CommandManager } from '@/command/CommandManager';
 import type { ConversationManager } from '@/conversation/ConversationManager';

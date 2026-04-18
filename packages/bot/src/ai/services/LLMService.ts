@@ -224,7 +224,7 @@ export class LLMService {
   /**
    * Get the first healthy provider from fallback order.
    */
-  private async getFirstHealthyProvider(sessionId?: string, excludeProvider?: string): Promise<LLMCapability | null> {
+  private async getFirstHealthyProvider(_sessionId?: string, excludeProvider?: string): Promise<LLMCapability | null> {
     const healthyProviders = this.getHealthyFallbackProviders(this.config.fallback.fallbackOrder, excludeProvider);
 
     for (const name of healthyProviders) {

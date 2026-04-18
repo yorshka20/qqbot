@@ -45,6 +45,7 @@ export class ReplyPrepareSystem implements System {
    * Safety net for all reply sources — catches anything PROCESS didn't clean.
    */
   private cleanupTextSegments(context: HookContext): void {
+    // biome-ignore lint/style/noNonNullAssertion: cleanupTextSegments is only called when reply is set by upstream system
     const segments = context.reply!.segments;
     let cleaned = false;
 

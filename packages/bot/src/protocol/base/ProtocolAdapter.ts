@@ -1,7 +1,7 @@
 // Abstract base class for protocol adapters
 // Transport-agnostic — only holds connection reference, config, and abstract declarations.
 
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import type { APIContext, ForwardMessageInput, SendMessageResult, SendTarget } from '@/api/types';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import type { Connection } from '@/core/connection';

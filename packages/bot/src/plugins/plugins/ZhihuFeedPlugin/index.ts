@@ -9,7 +9,6 @@ import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { ZhihuDITokens } from '@/services/zhihu/tokens';
-import type { ZhihuConfig } from '@/services/zhihu/types';
 import { DEFAULT_ZHIHU_CONFIG } from '@/services/zhihu/types';
 import { ZhihuClient } from '@/services/zhihu/ZhihuClient';
 import { ZhihuContentParser } from '@/services/zhihu/ZhihuContentParser';

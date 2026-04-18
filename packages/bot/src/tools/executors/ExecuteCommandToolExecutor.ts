@@ -96,7 +96,7 @@ export class ExecuteCommandToolExecutor extends BaseToolExecutor {
       prefix: '/',
     };
 
-    const cmdDisplay = `/${commandName}${argsStr ? ' ' + argsStr : ''}`;
+    const cmdDisplay = `/${commandName}${argsStr ? ` ${argsStr}` : ''}`;
     logger.info(`[ExecuteCommandToolExecutor] AI proxy-executing command: ${cmdDisplay} (sender: ${context.userId})`);
 
     // Clone hookContext with the command set, then run through normal pipeline.

@@ -1,6 +1,6 @@
 // Main bot orchestrator class
 
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import { logger } from '@/utils/logger';
 import { Config } from './config';
 import { ConnectionManager } from './connection/ConnectionManager';

@@ -38,7 +38,7 @@ export class SearchToolExecutor extends BaseToolExecutor {
     super();
   }
 
-  async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
+  async execute(call: ToolCall, _context: ToolExecutionContext): Promise<ToolResult> {
     const query = call.parameters?.query as string | undefined;
 
     if (!query) {

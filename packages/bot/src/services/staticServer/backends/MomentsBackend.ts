@@ -451,7 +451,7 @@ export class MomentsBackend implements Backend {
 
         const month = ct.slice(0, 7);
         if (!monthMap.has(month)) monthMap.set(month, []);
-        monthMap.get(month)!.push(ts);
+        monthMap.get(month)?.push(ts);
       }
 
       // Hour distribution

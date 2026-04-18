@@ -12,6 +12,8 @@ export function MemorySourceBadge({ source }: { source: string }) {
       ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
       : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300';
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{source === 'manual' ? 'manual' : 'auto'}</span>
+    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>
+      {source === 'manual' ? 'manual' : 'auto'}
+    </span>
   );
 }

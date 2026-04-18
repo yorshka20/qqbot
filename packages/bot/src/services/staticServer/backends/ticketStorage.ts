@@ -103,9 +103,7 @@ export function findTicketDir(ticketsDir: string, id: string): string | null {
  * root. Used by `listAll()` and the startup migration. Skips reserved /
  * hidden entries at the root and entries that don't contain `ticket.md`.
  */
-export function* iterateAllTickets(
-  ticketsDir: string,
-): Generator<{ bucket: string; id: string; ticketDir: string }> {
+export function* iterateAllTickets(ticketsDir: string): Generator<{ bucket: string; id: string; ticketDir: string }> {
   let buckets: string[];
   try {
     buckets = readdirSync(ticketsDir);
@@ -116,7 +114,7 @@ export function* iterateAllTickets(
     if (bucket.startsWith('.')) continue;
     if (RESERVED_ENTRIES.has(bucket)) continue;
     const bucketPath = join(ticketsDir, bucket);
-    let bucketStat;
+    let bucketStat: ReturnType<typeof statSync>;
     try {
       bucketStat = statSync(bucketPath);
     } catch {

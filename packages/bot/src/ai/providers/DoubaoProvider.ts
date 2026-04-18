@@ -503,7 +503,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       if (includeReasoning && result.fullReasoningContent) {
         finalText = result.fullReasoningContent;
         if (result.fullText) {
-          finalText += '\n' + result.fullText;
+          finalText += `\n${result.fullText}`;
         }
         logger.debug(
           `[DoubaoProvider] Including reasoning content in stream response | reasoningLength=${result.fullReasoningContent.length} | contentLength=${result.fullText.length}`,

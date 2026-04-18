@@ -45,7 +45,7 @@ const PROJECT_ROOT = process.cwd();
 export class SearchCodeToolExecutor extends BaseToolExecutor {
   name = 'search_code';
 
-  constructor(@inject(DITokens.FILE_READ_SERVICE) private fileService: FileReadService) {
+  constructor(@inject(DITokens.FILE_READ_SERVICE) _fileService: FileReadService) {
     super();
   }
 

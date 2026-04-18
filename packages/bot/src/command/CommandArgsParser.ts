@@ -57,7 +57,6 @@ export class CommandArgsParser {
         return parseFloat(value);
       case 'boolean':
         return value.toLowerCase() === 'true' || value === '1';
-      case 'string':
       default:
         return value;
     }
@@ -137,7 +136,10 @@ export class CommandArgsParser {
             const convertedValue = CommandArgsParser.convertValue(optionValue, definition.type);
 
             // Validate number types
-            if ((definition.type === 'number' || definition.type === 'float') && isNaN(convertedValue as number)) {
+            if (
+              (definition.type === 'number' || definition.type === 'float') &&
+              Number.isNaN(convertedValue as number)
+            ) {
               // Invalid number, skip
               continue;
             }

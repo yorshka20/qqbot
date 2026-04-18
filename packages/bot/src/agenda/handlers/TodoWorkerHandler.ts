@@ -12,7 +12,7 @@ import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegist
 export class TodoWorkerHandler implements ActionHandler {
   readonly name = 'todo_worker';
 
-  async execute(ctx: ActionHandlerContext): Promise<string | void> {
+  async execute(ctx: ActionHandlerContext): Promise<string | undefined> {
     const params = this.parseParams(ctx.item.actionParams);
     const projectAlias = params.project as string | undefined;
 

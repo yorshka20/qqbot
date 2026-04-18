@@ -2,19 +2,19 @@
  * Shared hooks and small components for Moments views.
  */
 
-import { Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 export function useDarkMode() {
-  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'))
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'));
   useEffect(() => {
     const observer = new MutationObserver(() => {
-      setIsDark(document.documentElement.classList.contains('dark'))
-    })
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
-    return () => observer.disconnect()
-  }, [])
-  return isDark
+      setIsDark(document.documentElement.classList.contains('dark'));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+  return isDark;
 }
 
 export function useChartTooltipStyle(isDark: boolean) {
@@ -24,7 +24,7 @@ export function useChartTooltipStyle(isDark: boolean) {
     borderRadius: '8px',
     color: isDark ? '#fafafa' : '#18181b',
     fontSize: 13,
-  }
+  };
 }
 
 export function LoadingSpinner() {
@@ -33,9 +33,9 @@ export function LoadingSpinner() {
       <Loader2 className="w-4 h-4 animate-spin" />
       加载中...
     </div>
-  )
+  );
 }
 
 export function EmptyState({ text }: { text: string }) {
-  return <div className="text-center py-12 text-zinc-400 text-sm">{text}</div>
+  return <div className="text-center py-12 text-zinc-400 text-sm">{text}</div>;
 }

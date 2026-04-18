@@ -1,10 +1,10 @@
 interface BreadcrumbProps {
-  path: string
-  onNavigate: (path: string) => void
+  path: string;
+  onNavigate: (path: string) => void;
 }
 
 export function Breadcrumb({ path, onNavigate }: BreadcrumbProps) {
-  const segments = path ? path.split('/').filter(Boolean) : []
+  const segments = path ? path.split('/').filter(Boolean) : [];
 
   return (
     <nav className="flex items-center gap-1 text-sm text-zinc-600 dark:text-zinc-400" aria-label="Breadcrumb">
@@ -16,8 +16,8 @@ export function Breadcrumb({ path, onNavigate }: BreadcrumbProps) {
         output
       </button>
       {segments.map((segment, i) => {
-        const fullPath = segments.slice(0, i + 1).join('/')
-        const isLast = i === segments.length - 1
+        const fullPath = segments.slice(0, i + 1).join('/');
+        const isLast = i === segments.length - 1;
         return (
           <span key={fullPath} className="flex items-center gap-1">
             <span className="text-zinc-400 dark:text-zinc-600">/</span>
@@ -33,8 +33,8 @@ export function Breadcrumb({ path, onNavigate }: BreadcrumbProps) {
               </button>
             )}
           </span>
-        )
+        );
       })}
     </nav>
-  )
+  );
 }

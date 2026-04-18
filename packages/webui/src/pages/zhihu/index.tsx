@@ -6,8 +6,8 @@ import { Calendar, FileText, Search } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { getZhihuStats, listZhihuContents } from '../../api';
-import { groupByZhLocaleDate } from '../../utils/zhLocaleDateGroups';
 import type { ZhihuContentListItem, ZhihuPageStats } from '../../types';
+import { groupByZhLocaleDate } from '../../utils/zhLocaleDateGroups';
 import { ZhihuContentRow } from './components/ZhihuContentRow';
 import { getZhihuPresetSinceTs, ZHIHU_DATE_PRESETS, type ZhihuDatePreset } from './utils';
 
@@ -44,10 +44,7 @@ export function ZhihuPage() {
     load();
   }, [load]);
 
-  const groups = useMemo(
-    () => groupByZhLocaleDate(allContents, (i) => new Date(i.createdTime * 1000)),
-    [allContents],
-  );
+  const groups = useMemo(() => groupByZhLocaleDate(allContents, (i) => new Date(i.createdTime * 1000)), [allContents]);
 
   const handleSearch = useCallback(() => {
     setKeyword(searchInput.trim());

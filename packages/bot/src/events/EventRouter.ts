@@ -1,6 +1,6 @@
 // Routes protocol events to appropriate handlers
 
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import { logger } from '@/utils/logger';
 import type { DeduplicationConfig } from './EventDeduplicator';
 import { EventDeduplicator } from './EventDeduplicator';
@@ -19,6 +19,7 @@ export declare interface EventRouter {
   emit<U extends keyof EventRouterEvents>(event: U, ...args: Parameters<EventRouterEvents[U]>): boolean;
 }
 
+// biome-ignore lint/suspicious/noUnsafeDeclarationMerging: intentional — typed EventEmitter pattern (class + declare interface) for type-safe event names/args
 export class EventRouter extends EventEmitter {
   private deduplicator: EventDeduplicator;
   private handlers = new Map<string, Set<EventHandler>>();

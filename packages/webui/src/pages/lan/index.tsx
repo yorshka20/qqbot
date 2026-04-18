@@ -188,9 +188,7 @@ export function LanPage() {
   const summary = status
     ? [
         `role=${status.role ?? '-'}`,
-        status.role === 'host' && status.listen
-          ? `listen=${status.listen.host}:${status.listen.port ?? '?'}`
-          : null,
+        status.role === 'host' && status.listen ? `listen=${status.listen.host}:${status.listen.port ?? '?'}` : null,
         `clients=${status.clientCount}`,
       ]
         .filter(Boolean)
@@ -251,9 +249,7 @@ export function LanPage() {
                 count={reports.length}
                 right={
                   selectedClientId && (
-                    <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">
-                      {selectedClientId}
-                    </div>
+                    <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">{selectedClientId}</div>
                   )
                 }
               >

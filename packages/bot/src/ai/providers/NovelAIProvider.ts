@@ -1,8 +1,8 @@
 // NovelAI Provider implementation
 
+import { mkdir, writeFile } from 'node:fs/promises';
+import { extname, join } from 'node:path';
 import AdmZip from 'adm-zip';
-import { mkdir, writeFile } from 'fs/promises';
-import { extname, join } from 'path';
 import type { NovelAIProviderConfig } from '@/core/config';
 import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';

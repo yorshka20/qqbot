@@ -44,9 +44,7 @@ export function DispatchDialog({
         </div>
         <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
           The text below is fed into the client's command/AI pipeline as if you'd typed
-          <code className="mx-1 px-1 py-0.5 rounded bg-zinc-100 dark:bg-zinc-700 font-mono">
-            /lan @{clientId} ...
-          </code>
+          <code className="mx-1 px-1 py-0.5 rounded bg-zinc-100 dark:bg-zinc-700 font-mono">/lan @{clientId} ...</code>
           on the host's IM.
         </div>
         <textarea
@@ -55,7 +53,6 @@ export function DispatchDialog({
           placeholder="e.g. /status, or any natural-language prompt"
           className="w-full h-32 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-mono"
           disabled={submitting}
-          autoFocus
         />
         <div className="flex items-center justify-end gap-2 mt-3">
           <button

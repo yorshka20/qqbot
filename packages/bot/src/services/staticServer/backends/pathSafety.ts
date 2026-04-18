@@ -3,7 +3,7 @@
  * Ensures resolved paths stay within a base directory (no .. traversal).
  */
 
-import { relative, resolve } from 'path';
+import { relative, resolve } from 'node:path';
 
 /**
  * Resolve a path relative to baseDir.

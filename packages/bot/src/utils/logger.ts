@@ -1,7 +1,7 @@
 // Logging utility
 
-import { existsSync, mkdirSync, unlinkSync } from 'fs';
-import { join } from 'path';
+import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
 import winston from 'winston';
 import { getCurrentMessageContext } from '@/context/MessageContextStorage';
 
@@ -38,7 +38,7 @@ function formatMeta(meta: Record<string, unknown>): string {
       }
     }
   }
-  return parts.length > 0 ? '\n' + parts.join('\n') : '';
+  return parts.length > 0 ? `\n${parts.join('\n')}` : '';
 }
 
 // Get local date string in YYYY-MM-DD format
@@ -180,7 +180,7 @@ class FileLogger implements Logger {
           const plainPrefix = ctx.logTag ? `[${ctx.logTag}] ` : '';
           const plainLine = `${timestamp} ${levelUpper.padEnd(5)} ${plainPrefix}${message}${metaStrPlain}`;
           // Background + white text for whole line (readable on dark terminal)
-          const bgAndFg = ctx.logColor.endsWith('m') ? ctx.logColor.slice(0, -1) + ';37m' : `${ctx.logColor}\x1b[37m`;
+          const bgAndFg = ctx.logColor.endsWith('m') ? `${ctx.logColor.slice(0, -1)};37m` : `${ctx.logColor}\x1b[37m`;
           return `${bgAndFg}${plainLine}${reset}`;
         }
 

@@ -1,7 +1,7 @@
 // Configuration management - main entry point
 
-import { existsSync, statSync } from 'fs';
-import { resolve } from 'path';
+import { existsSync, statSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { ConfigError } from '@/utils/errors';
 import { logger } from '@/utils/logger';
 import { loadConfigAuto } from './loadConfigDir';

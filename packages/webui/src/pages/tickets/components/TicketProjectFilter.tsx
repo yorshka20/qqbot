@@ -85,7 +85,9 @@ export function TicketProjectFilter({
                     </Select.ItemText>
                   ) : (
                     <Select.ItemText>
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-medium ${projectBadgeClass(p)}`}>
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-medium ${projectBadgeClass(p)}`}
+                      >
                         {p}
                       </span>
                     </Select.ItemText>

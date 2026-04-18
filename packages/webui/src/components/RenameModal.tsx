@@ -33,7 +33,10 @@ export function RenameModal({ open, path, currentName, onRename, onCancel }: Ren
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-5 shadow-xl">
           <Dialog.Title className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-2">Rename</Dialog.Title>
           <Dialog.Description asChild>
-            <p className="text-zinc-600 dark:text-zinc-400 text-sm mb-2 truncate font-mono text-zinc-800 dark:text-zinc-200" title={path}>
+            <p
+              className="text-zinc-600 dark:text-zinc-400 text-sm mb-2 truncate font-mono text-zinc-800 dark:text-zinc-200"
+              title={path}
+            >
               {path}
             </p>
           </Dialog.Description>

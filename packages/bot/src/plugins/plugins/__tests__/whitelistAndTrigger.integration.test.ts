@@ -352,7 +352,7 @@ describe('Whitelist + MessageTrigger integration', () => {
     });
 
     it('proactive can schedule (proactive capability)', async () => {
-      const whitelist = await initWhitelist({
+      const _whitelist = await initWhitelist({
         groups: [{ id: '123456', capabilities: ['reply', 'proactive'] }],
       });
       const scheduleForGroup = mock(() => {});

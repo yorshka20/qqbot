@@ -1,7 +1,7 @@
 // Abstract base class for protocol connections
 // Provides state management and event declarations only — no transport details.
 
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import type { ProtocolConfig } from '../config';
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';

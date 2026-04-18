@@ -52,7 +52,6 @@ export function DispatchConfirmDialog({
   const canDispatch = !submitting && projectOk && !registryError && registryProjects.length > 0;
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop pattern, keyboard escape handler attached
     <div
       className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
       onClick={() => {
@@ -62,7 +61,6 @@ export function DispatchConfirmDialog({
         if (e.key === 'Escape' && !submitting) onCancel();
       }}
     >
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper inside modal backdrop */}
       <div
         className="bg-white dark:bg-zinc-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -117,8 +115,8 @@ export function DispatchConfirmDialog({
           {isPlannerTemplate && (
             <div className="rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/30 p-3 text-xs text-purple-800 dark:text-purple-300">
               <strong>Planner mode</strong>: template <code className="mx-1">{resolvedTemplate}</code> has
-              <code className="mx-1">role: planner</code>, so this ticket will run as a planner. The planner is
-              expected to decompose it and spawn child executor workers via
+              <code className="mx-1">role: planner</code>, so this ticket will run as a planner. The planner is expected
+              to decompose it and spawn child executor workers via
               <code className="mx-1">hub_spawn</code>.
             </div>
           )}

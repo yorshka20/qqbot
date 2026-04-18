@@ -2,8 +2,8 @@
  * Sentiment View — emotion analysis with trend charts and distribution.
  */
 
-import { Smile } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Smile } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -15,45 +15,45 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-} from 'recharts'
+} from 'recharts';
 
-import { getMomentsSentimentTrend } from '../api'
-import { EmptyState, LoadingSpinner, useChartTooltipStyle } from './MomentsShared'
-import type { SentimentTrendResponse } from '../types'
+import { getMomentsSentimentTrend } from '../api';
+import type { SentimentTrendResponse } from '../types';
+import { EmptyState, LoadingSpinner, useChartTooltipStyle } from './MomentsShared';
 
 const SENTIMENT_COLORS: Record<string, string> = {
   positive: '#22c55e',
   neutral: '#a1a1aa',
   negative: '#ef4444',
   mixed: '#f59e0b',
-}
+};
 
 const SENTIMENT_LABELS: Record<string, string> = {
   positive: '积极',
   neutral: '中性',
   negative: '消极',
   mixed: '混合',
-}
+};
 
 export function SentimentView({ isDark }: { isDark: boolean }) {
-  const [data, setData] = useState<SentimentTrendResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const tooltipStyle = useChartTooltipStyle(isDark)
+  const [data, setData] = useState<SentimentTrendResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const tooltipStyle = useChartTooltipStyle(isDark);
 
   useEffect(() => {
-    setLoading(true)
+    setLoading(true);
     getMomentsSentimentTrend()
       .then(setData)
       .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+      .finally(() => setLoading(false));
+  }, []);
 
-  if (loading) return <LoadingSpinner />
+  if (loading) return <LoadingSpinner />;
   if (!data || data.analyzedCount === 0) {
-    return <EmptyState text="暂无情绪分析数据，请先运行: bun scripts/moments/moments-sentiment.ts" />
+    return <EmptyState text="暂无情绪分析数据，请先运行: bun scripts/moments/moments-sentiment.ts" />;
   }
 
-  const { overall } = data
+  const { overall } = data;
 
   return (
     <div className="space-y-6">
@@ -66,8 +66,8 @@ export function SentimentView({ isDark }: { isDark: boolean }) {
       {/* Overall distribution */}
       <div className="grid grid-cols-4 gap-3">
         {(['positive', 'neutral', 'negative', 'mixed'] as const).map((s) => {
-          const count = overall[s]
-          const pct = overall.total > 0 ? ((count / overall.total) * 100).toFixed(1) : '0'
+          const count = overall[s];
+          const pct = overall.total > 0 ? ((count / overall.total) * 100).toFixed(1) : '0';
           return (
             <div
               key={s}
@@ -80,7 +80,7 @@ export function SentimentView({ isDark }: { isDark: boolean }) {
                 {SENTIMENT_LABELS[s]} ({pct}%)
               </div>
             </div>
-          )
+          );
         })}
       </div>
 
@@ -91,7 +91,11 @@ export function SentimentView({ isDark }: { isDark: boolean }) {
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={data.trend}>
               <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#3f3f46' : '#e4e4e7'} />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: isDark ? '#a1a1aa' : '#71717a' }} interval="preserveStartEnd" />
+              <XAxis
+                dataKey="month"
+                tick={{ fontSize: 11, fill: isDark ? '#a1a1aa' : '#71717a' }}
+                interval="preserveStartEnd"
+              />
               <YAxis domain={[-1, 1]} tick={{ fontSize: 11, fill: isDark ? '#a1a1aa' : '#71717a' }} width={35} />
               <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${Number(value).toFixed(2)}`, '平均得分']} />
               <Line type="monotone" dataKey="avgScore" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
@@ -107,7 +111,11 @@ export function SentimentView({ isDark }: { isDark: boolean }) {
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={data.trend}>
               <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#3f3f46' : '#e4e4e7'} />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: isDark ? '#a1a1aa' : '#71717a' }} interval="preserveStartEnd" />
+              <XAxis
+                dataKey="month"
+                tick={{ fontSize: 11, fill: isDark ? '#a1a1aa' : '#71717a' }}
+                interval="preserveStartEnd"
+              />
               <YAxis tick={{ fontSize: 11, fill: isDark ? '#a1a1aa' : '#71717a' }} width={35} />
               <Tooltip contentStyle={tooltipStyle} />
               <Legend formatter={(value) => SENTIMENT_LABELS[value] ?? value} />
@@ -120,5 +128,5 @@ export function SentimentView({ isDark }: { isDark: boolean }) {
         </div>
       )}
     </div>
-  )
+  );
 }

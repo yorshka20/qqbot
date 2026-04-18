@@ -28,7 +28,7 @@ interface RepeatingParams {
 export class RepeatingTodoWorkerHandler implements ActionHandler {
   readonly name = 'repeating_todo_worker';
 
-  async execute(ctx: ActionHandlerContext): Promise<string | void> {
+  async execute(ctx: ActionHandlerContext): Promise<string | undefined> {
     const params = this.parseParams(ctx.item.actionParams);
 
     if (!params.project) {

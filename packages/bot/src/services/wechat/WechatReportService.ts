@@ -435,7 +435,7 @@ export class WechatReportService {
   private truncate(str: string, maxLen: number): string {
     if (!str) return '';
     if (str.length <= maxLen) return str;
-    return str.substring(0, maxLen - 3) + '...';
+    return `${str.substring(0, maxLen - 3)}...`;
   }
 
   private ensureDir(dir: string): void {

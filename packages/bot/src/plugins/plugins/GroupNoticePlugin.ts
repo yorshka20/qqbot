@@ -1,9 +1,6 @@
 // GroupNotice Plugin - notifies group member changes (join/leave)
 
 import { MessageAPI } from '@/api/methods/MessageAPI';
-import type { Config } from '@/core/config';
-import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';

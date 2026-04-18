@@ -1,28 +1,28 @@
-import type { FileItem } from '../types'
+import type { FileItem } from '../types';
 
 interface FileListProps {
-  items: FileItem[]
-  selectedPath: string | null
-  onSelect: (item: FileItem) => void
-  onOpenDir: (path: string) => void
-  onDelete: (path: string) => void
-  onMove: (path: string) => void
-  loading: boolean
-  error: string | null
+  items: FileItem[];
+  selectedPath: string | null;
+  onSelect: (item: FileItem) => void;
+  onOpenDir: (path: string) => void;
+  onDelete: (path: string) => void;
+  onMove: (path: string) => void;
+  loading: boolean;
+  error: string | null;
 }
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) {
-    return `${bytes} B`
+    return `${bytes} B`;
   }
   if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / 1024).toFixed(1)} KB`;
   }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function formatMtime(ms: number): string {
-  return new Date(ms).toLocaleString()
+  return new Date(ms).toLocaleString();
 }
 
 export function FileList({
@@ -36,19 +36,11 @@ export function FileList({
   error,
 }: FileListProps) {
   if (error) {
-    return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-800 text-sm">
-        {error}
-      </div>
-    )
+    return <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-800 text-sm">{error}</div>;
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12 text-zinc-500">
-        Loading…
-      </div>
-    )
+    return <div className="flex items-center justify-center py-12 text-zinc-500">Loading…</div>;
   }
 
   if (items.length === 0) {
@@ -56,7 +48,7 @@ export function FileList({
       <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-8 text-center text-zinc-500 text-sm">
         This folder is empty.
       </div>
-    )
+    );
   }
 
   return (
@@ -73,19 +65,21 @@ export function FileList({
         </thead>
         <tbody>
           {items.map((item) => {
-            const isSelected = selectedPath === item.path
+            const isSelected = selectedPath === item.path;
             return (
               <tr
                 key={item.path}
-                className={`border-b border-zinc-100 last:border-0 ${
-                  isSelected ? 'bg-blue-50' : 'hover:bg-zinc-50'
-                }`}
+                className={`border-b border-zinc-100 last:border-0 ${isSelected ? 'bg-blue-50' : 'hover:bg-zinc-50'}`}
               >
                 <td className="py-2 px-4">
                   {item.isDir ? (
-                    <span className="text-amber-600" aria-hidden>📁</span>
+                    <span className="text-amber-600" aria-hidden>
+                      📁
+                    </span>
                   ) : (
-                    <span className="text-zinc-400" aria-hidden>📄</span>
+                    <span className="text-zinc-400" aria-hidden>
+                      📄
+                    </span>
                   )}
                 </td>
                 <td className="py-2 px-4">
@@ -108,11 +102,9 @@ export function FileList({
                   )}
                 </td>
                 <td className="py-2 px-4 text-zinc-500">
-                  {item.isDir ? '—' : (item.size != null ? formatSize(item.size) : '—')}
+                  {item.isDir ? '—' : item.size != null ? formatSize(item.size) : '—'}
                 </td>
-                <td className="py-2 px-4 text-zinc-500">
-                  {item.mtime != null ? formatMtime(item.mtime) : '—'}
-                </td>
+                <td className="py-2 px-4 text-zinc-500">{item.mtime != null ? formatMtime(item.mtime) : '—'}</td>
                 <td className="py-2 px-4 text-right">
                   {!item.isDir && (
                     <>
@@ -141,10 +133,10 @@ export function FileList({
                   )}
                 </td>
               </tr>
-            )
+            );
           })}
         </tbody>
       </table>
     </div>
-  )
+  );
 }

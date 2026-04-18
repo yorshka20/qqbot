@@ -17,7 +17,7 @@ export interface ActionHandlerContext {
 /** Action handler interface — implement this to register a direct action */
 export interface ActionHandler {
   readonly name: string;
-  execute(ctx: ActionHandlerContext): Promise<string | void>;
+  execute(ctx: ActionHandlerContext): Promise<string | undefined>;
 }
 
 /**

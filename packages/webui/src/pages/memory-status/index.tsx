@@ -4,14 +4,9 @@
 
 import { ArrowLeft, Brain, ChevronRight, Database, Eye, RefreshCw, Shield, Zap } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { getMemoryStats, getMemoryGroups, getMemoryGroupDetail, getMemoryUserFacts } from '../../api';
+import { getMemoryGroupDetail, getMemoryGroups, getMemoryStats, getMemoryUserFacts } from '../../api';
 import { StatCard } from '../../components/StatCard';
-import type {
-  MemoryGlobalStats,
-  MemoryGroupStats,
-  MemoryGroupDetail,
-  MemoryUserFactDetail,
-} from '../../types';
+import type { MemoryGlobalStats, MemoryGroupDetail, MemoryGroupStats, MemoryUserFactDetail } from '../../types';
 import { MemorySourceBadge, MemoryStatusBadge } from './components/MemoryBadges';
 import { formatMemoryAge, formatMemoryDate } from './utils';
 

@@ -1,11 +1,6 @@
 import { Pencil, Send, Trash2 } from 'lucide-react';
 import type { ClusterTemplatesResponse, TicketFrontmatter } from '../../../types';
-import {
-  formatTicketTimestamp,
-  projectBadgeClass,
-  templateRoleBadgeClass,
-  ticketStatusBadgeClass,
-} from '../utils';
+import { formatTicketTimestamp, projectBadgeClass, templateRoleBadgeClass, ticketStatusBadgeClass } from '../utils';
 
 /**
  * Compact card-style list used in the left pane. Clicking a card selects
@@ -64,7 +59,7 @@ export function TicketsList({
         const canDispatch = t.status === 'ready';
         const templateRole = t.template ? templateIndex.get(t.template) : undefined;
         return (
-          // biome-ignore lint/a11y/noStaticElementInteractions: row is a clickable card; action buttons inside stop propagation
+          // biome-ignore lint/a11y/useSemanticElements: <button> would nest action buttons inside it (invalid HTML); div+role=button is the intentional workaround
           <div
             key={t.id}
             onClick={() => onSelect(t.id)}
@@ -77,9 +72,7 @@ export function TicketsList({
             role="button"
             tabIndex={0}
             className={`cursor-pointer border-b border-zinc-100 dark:border-zinc-700/50 transition-colors ${
-              isSelected
-                ? 'bg-blue-50 dark:bg-blue-950/30'
-                : 'hover:bg-zinc-50 dark:hover:bg-zinc-700/30'
+              isSelected ? 'bg-blue-50 dark:bg-blue-950/30' : 'hover:bg-zinc-50 dark:hover:bg-zinc-700/30'
             }`}
           >
             <div className="px-3 pt-2.5 pb-1 min-w-0">
@@ -93,12 +86,9 @@ export function TicketsList({
                   {t.status}
                 </span>
               </div>
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate">
-                {t.id}
-              </div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate">{t.id}</div>
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 {t.project ? (
-                  // biome-ignore lint/a11y/noStaticElementInteractions: project badge is a button-like filter trigger
                   <span
                     role={onProjectClick ? 'button' : undefined}
                     tabIndex={onProjectClick ? 0 : undefined}
@@ -145,7 +135,6 @@ export function TicketsList({
                 </span>
               </div>
             </div>
-            {/* biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper so action button clicks don't double-fire row selection */}
             <div
               className="px-2 pb-1.5 flex items-center justify-end gap-0.5"
               onClick={(e) => e.stopPropagation()}

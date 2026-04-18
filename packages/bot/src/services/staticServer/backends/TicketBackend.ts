@@ -186,7 +186,7 @@ export class TicketBackend {
     for (const entry of entries) {
       if (entry.startsWith('.')) continue;
       const fullPath = join(this.ticketsDir, entry);
-      let stat;
+      let stat: ReturnType<typeof statSync>;
       try {
         stat = statSync(fullPath);
       } catch {

@@ -274,14 +274,9 @@ export class GroupReportPlugin extends PluginBase {
           );
           parsed = this.parseBatchResult(response.text);
           if (parsed) break;
-          logger.warn(
-            `[GroupReportPlugin] Batch ${i + 1} attempt ${attempt}/${MAX_ATTEMPTS}: parse failed, retrying`,
-          );
+          logger.warn(`[GroupReportPlugin] Batch ${i + 1} attempt ${attempt}/${MAX_ATTEMPTS}: parse failed, retrying`);
         } catch (err) {
-          logger.error(
-            `[GroupReportPlugin] Batch ${i + 1} attempt ${attempt}/${MAX_ATTEMPTS} failed:`,
-            err,
-          );
+          logger.error(`[GroupReportPlugin] Batch ${i + 1} attempt ${attempt}/${MAX_ATTEMPTS} failed:`, err);
         }
         if (attempt < MAX_ATTEMPTS) {
           await new Promise((r) => setTimeout(r, 1000 * 2 ** (attempt - 1)));

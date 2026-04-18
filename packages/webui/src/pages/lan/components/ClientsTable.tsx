@@ -28,11 +28,7 @@ export function ClientsTable({
   now: number;
 }) {
   if (clients.length === 0) {
-    return (
-      <div className="text-sm text-zinc-500 dark:text-zinc-400 py-4 text-center">
-        No clients connected.
-      </div>
-    );
+    return <div className="text-sm text-zinc-500 dark:text-zinc-400 py-4 text-center">No clients connected.</div>;
   }
 
   return (
@@ -54,23 +50,15 @@ export function ClientsTable({
               <tr
                 key={c.clientId}
                 className={`border-b border-zinc-100 dark:border-zinc-700/50 cursor-pointer transition-colors ${
-                  isSelected
-                    ? 'bg-blue-50 dark:bg-blue-950/30'
-                    : 'hover:bg-zinc-50 dark:hover:bg-zinc-700/30'
+                  isSelected ? 'bg-blue-50 dark:bg-blue-950/30' : 'hover:bg-zinc-50 dark:hover:bg-zinc-700/30'
                 }`}
                 onClick={() => onSelect(c.clientId)}
               >
                 <td className="py-2 px-2 font-mono text-xs">
-                  <div className="font-semibold text-zinc-900 dark:text-zinc-100">
-                    {c.clientId}
-                  </div>
-                  {c.label && (
-                    <div className="text-zinc-500 dark:text-zinc-400">{c.label}</div>
-                  )}
+                  <div className="font-semibold text-zinc-900 dark:text-zinc-100">{c.clientId}</div>
+                  {c.label && <div className="text-zinc-500 dark:text-zinc-400">{c.label}</div>}
                 </td>
-                <td className="py-2 px-2 font-mono text-xs text-zinc-600 dark:text-zinc-300">
-                  {c.lanAddress}
-                </td>
+                <td className="py-2 px-2 font-mono text-xs text-zinc-600 dark:text-zinc-300">{c.lanAddress}</td>
                 <td className="py-2 px-2 font-mono text-xs text-zinc-600 dark:text-zinc-300">
                   {formatDuration(now - c.startedAt)}
                 </td>

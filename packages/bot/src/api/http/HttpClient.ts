@@ -363,7 +363,7 @@ export class HttpClient {
             errorMessage = text.length > 500 ? `${text.substring(0, 500)}...` : text;
           }
         }
-      } catch (parseError) {
+      } catch (_parseError) {
         // Try to get error text even if JSON parsing fails
         try {
           const text = await response.clone().text();
@@ -490,22 +490,6 @@ export class HttpClient {
 
     // JSON stringify objects
     return JSON.stringify(body);
-  }
-
-  /**
-   * Sanitize headers for logging (remove sensitive data)
-   */
-  private sanitizeHeaders(headers: Record<string, string>): Record<string, string> {
-    const sanitized = { ...headers };
-    const sensitiveKeys = ['authorization', 'api-key', 'x-api-key', 'access-token', 'token'];
-
-    for (const key of Object.keys(sanitized)) {
-      if (sensitiveKeys.some((sensitive) => key.toLowerCase().includes(sensitive))) {
-        sanitized[key] = '***';
-      }
-    }
-
-    return sanitized;
   }
 
   /**

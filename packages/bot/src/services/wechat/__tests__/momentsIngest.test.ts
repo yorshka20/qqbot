@@ -282,8 +282,8 @@ describe('WechatMomentsIngestService', () => {
     }
 
     expect(error).not.toBeNull();
-    expect(error!.message).toContain('RAG is not enabled');
-    console.log('[test] RAG disabled error:', error!.message);
+    expect(error?.message).toContain('RAG is not enabled');
+    console.log('[test] RAG disabled error:', error?.message);
   });
 
   test('handles empty first page gracefully', async () => {

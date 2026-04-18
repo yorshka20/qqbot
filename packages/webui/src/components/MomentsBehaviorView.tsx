@@ -2,29 +2,29 @@
  * Behavior View — posting patterns: hour/day distribution, gap stats, monthly frequency.
  */
 
-import { Activity } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Activity } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
-import { getMomentsBehavior } from '../api'
-import { EmptyState, LoadingSpinner, useChartTooltipStyle } from './MomentsShared'
-import type { BehaviorResponse } from '../types'
+import { getMomentsBehavior } from '../api';
+import type { BehaviorResponse } from '../types';
+import { EmptyState, LoadingSpinner, useChartTooltipStyle } from './MomentsShared';
 
 export function BehaviorView({ isDark }: { isDark: boolean }) {
-  const [data, setData] = useState<BehaviorResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const tooltipStyle = useChartTooltipStyle(isDark)
+  const [data, setData] = useState<BehaviorResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const tooltipStyle = useChartTooltipStyle(isDark);
 
   useEffect(() => {
-    setLoading(true)
+    setLoading(true);
     getMomentsBehavior()
       .then(setData)
       .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+      .finally(() => setLoading(false));
+  }, []);
 
-  if (loading) return <LoadingSpinner />
-  if (!data) return <EmptyState text="无法加载行为数据" />
+  if (loading) return <LoadingSpinner />;
+  if (!data) return <EmptyState text="无法加载行为数据" />;
 
   return (
     <div className="space-y-6">
@@ -74,8 +74,12 @@ export function BehaviorView({ isDark }: { isDark: boolean }) {
                   key={entry.hour}
                   fill={
                     entry.hour >= 22 || entry.hour < 6
-                      ? isDark ? '#8b5cf6' : '#7c3aed'
-                      : isDark ? '#3b82f6' : '#2563eb'
+                      ? isDark
+                        ? '#8b5cf6'
+                        : '#7c3aed'
+                      : isDark
+                        ? '#3b82f6'
+                        : '#2563eb'
                   }
                 />
               ))}
@@ -99,8 +103,12 @@ export function BehaviorView({ isDark }: { isDark: boolean }) {
                   key={entry.day}
                   fill={
                     entry.day === 0 || entry.day === 6
-                      ? isDark ? '#f59e0b' : '#d97706'
-                      : isDark ? '#3b82f6' : '#2563eb'
+                      ? isDark
+                        ? '#f59e0b'
+                        : '#d97706'
+                      : isDark
+                        ? '#3b82f6'
+                        : '#2563eb'
                   }
                 />
               ))}
@@ -124,8 +132,8 @@ export function BehaviorView({ isDark }: { isDark: boolean }) {
             <Tooltip
               contentStyle={tooltipStyle}
               formatter={(value, name) => {
-                if (name === 'count') return [`${value} 条`, '发布量']
-                return [`${value} 天`, '平均间隔']
+                if (name === 'count') return [`${value} 条`, '发布量'];
+                return [`${value} 天`, '平均间隔'];
               }}
             />
             <Bar dataKey="count" fill={isDark ? '#3b82f6' : '#2563eb'} radius={[2, 2, 0, 0]} />
@@ -133,5 +141,5 @@ export function BehaviorView({ isDark }: { isDark: boolean }) {
         </ResponsiveContainer>
       </div>
     </div>
-  )
+  );
 }

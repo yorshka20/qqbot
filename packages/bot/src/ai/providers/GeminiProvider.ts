@@ -1,8 +1,8 @@
 // Gemini Provider implementation
 
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { FileState, GoogleGenAI } from '@google/genai';
-import { mkdir, writeFile } from 'fs/promises';
-import { join } from 'path';
 import type { GeminiProviderConfig } from '@/core/config/types/ai';
 import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';

@@ -484,11 +484,7 @@ export function TicketsPage() {
             {/* Project filter — null = all; "__none__" sentinel surfaces
                 tickets with no project set. Badge-click in the list also
                 writes to this state for quick focus on one project. */}
-            <TicketProjectFilter
-              value={projectFilter}
-              onChange={setProjectFilter}
-              options={projectOptions}
-            />
+            <TicketProjectFilter value={projectFilter} onChange={setProjectFilter} options={projectOptions} />
             <div className="flex-1" />
             <button
               type="button"
