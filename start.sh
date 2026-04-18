@@ -10,7 +10,6 @@ pm2 delete qq-bot-ui 2>/dev/null || true
 
 git pull
 bun install
-(cd webui && bun install)
 
 pm2 start "$(pwd)/ecosystem.config.cjs"
 

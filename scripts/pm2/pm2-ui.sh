@@ -4,4 +4,4 @@ set -e
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 git pull
-cd webui && exec bun run dev
+cd packages/webui && exec bun run dev

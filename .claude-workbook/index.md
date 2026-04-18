@@ -11,3 +11,4 @@
 | 2026-04-18 | Avatar Preview Server：本地 + LAN WebSocket 实时预览 Live2D 参数与动画状态，Bun.serve 同一端口提供 HTTP 页面和 WS 广播，0.0.0.0:8002 绑定支持多机访问 | src/avatar/preview/ |
 | 2026-04-18 (2) | Avatar Idle State Machine：5 态 BotState 状态机 + idle 随机待机动画（setTimeout 链 3-8s）+ 过渡动画输出（thinking duration=0 持续），StateNodeOutput 类型独立于 compiler | src/avatar/state/ |
 | 2026-04-18 (3) | Avatar Driver Adapter：抽象 `DriverAdapter` (EventEmitter) + VTSDriver（VTS WebSocket API 认证握手 + token 持久化 + InjectParameterDataRequest + 指数退避重连 + 30fps 节流）；Avatar Animation Compiler 核心模块 | src/avatar/drivers/ |
+| 2026-04-18 (4) | T1: webui 迁移到 packages/webui，启用 bun workspaces，更新 dev/web/build:admin/pm2-ui.sh/start.sh | package.json, packages/webui/, scripts/pm2/pm2-ui.sh, start.sh |
