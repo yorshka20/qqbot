@@ -76,6 +76,18 @@ export class AvatarService {
       this.frameCount += 1;
     });
 
+    // Driver emits 'error' events on transport failures (VTS not reachable,
+    // WS drop, auth fail). EventEmitter crashes the process if no listener,
+    // so we attach a non-fatal log sink. The try/catch around connect()
+    // only catches the connect() promise rejection, not async 'error'
+    // emissions that happen later during the session.
+    this.driver.on('error', (err: Error) => {
+      logger.warn('[AvatarService] Driver error (non-fatal):', err.message || err);
+    });
+    this.driver.on('disconnected', () => {
+      logger.warn('[AvatarService] Driver disconnected; will attempt reconnect');
+    });
+
     // Start the animation engine and idle timer
     this.compiler.start();
     this.stateMachine.start();
