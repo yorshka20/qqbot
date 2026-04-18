@@ -9,8 +9,8 @@
 
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import { APIClient } from '@/api/APIClient';
-import type { AvatarConfig } from '@/avatar';
-import { AvatarService, DEFAULT_AVATAR_CONFIG } from '@/avatar';
+import type { AvatarConfig } from '@qqbot/avatar';
+import { AvatarService, DEFAULT_AVATAR_CONFIG } from '@qqbot/avatar';
 import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
 import { ConversationInitializer } from '@/conversation/ConversationInitializer';

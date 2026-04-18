@@ -1,8 +1,8 @@
 // Live2D Avatar Plugin — drives a VTubeStudio-connected Live2D avatar based on bot state and LLM emotion tags
 
-import type { AvatarService } from '@/avatar';
-import type { BotState } from '@/avatar/state/types';
-import { type ParsedTag, parseLive2DTags, stripLive2DTags } from '@/avatar/tags';
+import type { AvatarService } from '@qqbot/avatar';
+import type { BotState } from '@qqbot/avatar';
+import { type ParsedTag, parseLive2DTags, stripLive2DTags } from '@qqbot/avatar';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';

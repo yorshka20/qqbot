@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { getRepoRoot } from '@/utils/repoRoot';
+import { getRepoRoot } from '../utils/repoRoot';
 import type { ActionMapEntry, ParamTarget } from './types';
 
 export class ActionMap {

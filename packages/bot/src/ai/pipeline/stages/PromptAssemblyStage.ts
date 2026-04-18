@@ -56,7 +56,7 @@ export class PromptAssemblyStage implements ReplyStage {
       const { DITokens } = await import('@/core/DITokens');
       const container = getContainer();
       if (container.isRegistered(DITokens.AVATAR_SERVICE)) {
-        const avatar = container.resolve<import('@/avatar').AvatarService>(DITokens.AVATAR_SERVICE);
+        const avatar = container.resolve<import('@qqbot/avatar').AvatarService>(DITokens.AVATAR_SERVICE);
         if (avatar.isActive()) {
           avatarPromptFragment = (this.promptManager.render('avatar.emotion-system') ?? '').trim();
         }

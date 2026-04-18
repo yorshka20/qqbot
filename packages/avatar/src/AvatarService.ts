@@ -1,5 +1,5 @@
 import { singleton } from 'tsyringe';
-import { logger } from '@/utils/logger';
+import { logger } from './utils/logger';
 import { AnimationCompiler } from './compiler/AnimationCompiler';
 import type { StateNode } from './compiler/types';
 import { VTSDriver } from './drivers/VTSDriver';

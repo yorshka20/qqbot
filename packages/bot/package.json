@@ -23,6 +23,7 @@
     "@google/genai": "^1.44.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@mozilla/readability": "^0.6.0",
+    "@qqbot/avatar": "workspace:*",
     "@saltify/milky-types": "^1.1.0",
     "@types/jsdom": "^28.0.0",
     "adm-zip": "^0.5.16",
