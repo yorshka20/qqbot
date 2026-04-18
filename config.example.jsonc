@@ -1016,7 +1016,7 @@
   //     "port": 8001,
   //     "pluginName": "qqbot-avatar",
   //     "pluginDeveloper": "qqbot",
-  //     "tokenFilePath": "config/avatar/.vts-token",
+  //     "tokenFilePath": "data/avatar/.vts-token",
   //     "throttleFps": 30
   //   },
   //
@@ -1041,6 +1041,12 @@
   //     "enabled": false,
   //     "port": 8002,
   //     "host": "0.0.0.0"
+  //   },
+  //
+  //   // 动作→Live2D 参数映射表。缺省使用 @qqbot/avatar 包内置映射。
+  //   // 若要自定义，提供相对仓库根或绝对路径的 JSON 文件。
+  //   "actionMap": {
+  //     // "path": "config/my-action-map.json"
   //   }
   // },
 

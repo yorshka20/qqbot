@@ -222,6 +222,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     compiler: { ...DEFAULT_AVATAR_CONFIG.compiler, ...((rawAvatarConfig?.compiler as object | undefined) ?? {}) },
     idle: { ...DEFAULT_AVATAR_CONFIG.idle, ...((rawAvatarConfig?.idle as object | undefined) ?? {}) },
     preview: { ...DEFAULT_AVATAR_CONFIG.preview, ...((rawAvatarConfig?.preview as object | undefined) ?? {}) },
+    actionMap: { ...DEFAULT_AVATAR_CONFIG.actionMap, ...((rawAvatarConfig?.actionMap as object | undefined) ?? {}) },
   };
   if (avatarConfig.enabled) {
     try {

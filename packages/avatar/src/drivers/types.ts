@@ -39,6 +39,6 @@ export const DEFAULT_VTS_CONFIG: VTSConfig = {
   port: 8001,
   pluginName: 'qqbot-avatar',
   pluginDeveloper: 'qqbot',
-  tokenFilePath: 'config/avatar/.vts-token',
+  tokenFilePath: 'data/avatar/.vts-token',
   throttleFps: 30,
 };

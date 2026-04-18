@@ -30,7 +30,7 @@ export class AvatarService {
       return;
     }
 
-    this.compiler = new AnimationCompiler(config.compiler);
+    this.compiler = new AnimationCompiler(config.compiler, config.actionMap?.path);
     this.stateMachine = new IdleStateMachine(config.idle);
     this.driver = new VTSDriver(config.vts);
 
