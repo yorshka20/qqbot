@@ -1010,8 +1010,11 @@
   // "avatar": {
   //   "enabled": false,
   //
-  //   // VTubeStudio WebSocket API connection
+  //   // VTubeStudio WebSocket API connection. Set enabled=false to skip
+  //   // the driver entirely (use with the self-hosted Cubism renderer that
+  //   // consumes preview WS directly).
   //   "vts": {
+  //     "enabled": true,
   //     "host": "localhost",
   //     "port": 8001,
   //     "pluginName": "qqbot-avatar",

@@ -36,7 +36,16 @@ export class AvatarService {
 
     this.compiler = new AnimationCompiler(config.compiler, config.actionMap?.path);
     this.stateMachine = new IdleStateMachine(config.idle);
-    this.driver = new VTSDriver(config.vts);
+
+    // VTSDriver is optional: when vts.enabled=false, we run with only the
+    // compiler + preview server. Frames are still broadcast to preview WS
+    // clients (e.g. the self-hosted Cubism renderer), just not injected
+    // into VTube Studio.
+    if (config.vts.enabled) {
+      this.driver = new VTSDriver(config.vts);
+    } else {
+      logger.info('[AvatarService] VTS driver disabled (config.vts.enabled=false); frames will only reach preview clients');
+    }
 
     if (config.preview.enabled) {
       this.previewServer = new PreviewServer({
@@ -59,7 +68,7 @@ export class AvatarService {
       logger.debug('[AvatarService] Disabled, skipping start');
       return;
     }
-    if (!this.compiler || !this.stateMachine || !this.driver) {
+    if (!this.compiler || !this.stateMachine) {
       logger.warn('[AvatarService] start() called before initialize() — skipping');
       return;
     }
@@ -81,12 +90,14 @@ export class AvatarService {
     // so we attach a non-fatal log sink. The try/catch around connect()
     // only catches the connect() promise rejection, not async 'error'
     // emissions that happen later during the session.
-    this.driver.on('error', (err: Error) => {
-      logger.warn('[AvatarService] Driver error (non-fatal):', err.message || err);
-    });
-    this.driver.on('disconnected', () => {
-      logger.warn('[AvatarService] Driver disconnected; will attempt reconnect');
-    });
+    if (this.driver) {
+      this.driver.on('error', (err: Error) => {
+        logger.warn('[AvatarService] Driver error (non-fatal):', err.message || err);
+      });
+      this.driver.on('disconnected', () => {
+        logger.warn('[AvatarService] Driver disconnected; will attempt reconnect');
+      });
+    }
 
     // Start the animation engine and idle timer
     this.compiler.start();
@@ -99,10 +110,12 @@ export class AvatarService {
     }
 
     // Connect to VTubeStudio (non-fatal: bot works without avatar driver)
-    try {
-      await this.driver.connect();
-    } catch (err) {
-      logger.warn('[AvatarService] Driver failed to connect (non-fatal):', err);
+    if (this.driver) {
+      try {
+        await this.driver.connect();
+      } catch (err) {
+        logger.warn('[AvatarService] Driver failed to connect (non-fatal):', err);
+      }
     }
 
     // Enter idle state to kick off the idle animation timer

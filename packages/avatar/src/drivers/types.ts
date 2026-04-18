@@ -3,6 +3,13 @@ export interface DriverConfig {
 }
 
 export interface VTSConfig {
+  /**
+   * When false, VTSDriver is not instantiated and no WS connection is
+   * attempted. Compiler + preview server still run — frames are broadcast
+   * to preview WS clients only (e.g., Cubism renderer consumes the same
+   * stream). Default true for back-compat with the VTS-era setup.
+   */
+  enabled: boolean;
   host: string;
   port: number;
   pluginName: string;
@@ -35,6 +42,7 @@ export interface VTSParameterValue {
 }
 
 export const DEFAULT_VTS_CONFIG: VTSConfig = {
+  enabled: true,
   host: 'localhost',
   port: 8001,
   pluginName: 'qqbot-avatar',

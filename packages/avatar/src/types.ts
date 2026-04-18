@@ -36,6 +36,7 @@ export interface PreviewServerConfig {
 export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
   enabled: false,
   vts: {
+    enabled: true,
     host: 'localhost',
     port: 8001,
     pluginName: 'qqbot-avatar',
