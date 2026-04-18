@@ -108,4 +108,8 @@ export interface CompilerConfig {
   attackRatio: number;
   /** Release phase ratio of the ADSR envelope (0.0–1.0) */
   releaseRatio: number;
+  /** Enable the default continuous ambient drivers (breath-like motion). */
+  ambientDrivers?: {
+    enabled: boolean;
+  };
 }

@@ -51,6 +51,7 @@ export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
     smoothingFactor: 0.5,
     attackRatio: 0.1,
     releaseRatio: 0.3,
+    ambientDrivers: { enabled: false },
   },
   idle: {
     idleIntervalMin: 3000,
