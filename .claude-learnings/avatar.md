@@ -59,3 +59,37 @@ Emitted on state changes and periodically (e.g., every second).
 - **类型独立**：`StateNodeOutput` 在本模块内定义，结构与
   `src/avatar/compiler/` 的 `StateNode` 一致，**不**跨模块 import，
   由集成 ticket 统一。
+
+
+## Driver Adapter Layer (`src/avatar/drivers/`)
+
+### Contract: `DriverAdapter`
+
+`DriverAdapter extends EventEmitter`. 事件：
+- `'connected'`：认证成功
+- `'disconnected' (error?: Error)`：连接断开
+- `'error' (error: Error)`：通信错误
+
+方法：`connect()` / `disconnect()` / `sendFrame(params)` / `isConnected()`
+
+### VTS Auth Flow
+
+1. **首次**：发送 `AuthenticationTokenRequest` → 用户在 VTS UI 批准插件 → 返回 `authenticationToken` → 持久化到 `config/avatar/.vts-token`（`Bun.write`，目录用 `mkdir(..., {recursive: true})`）
+2. **后续**：加载缓存 token → 发送 `AuthenticationRequest` + `authenticationToken` → `data.authenticated === true` 则成功
+3. `reconnectAttempts` 重置为 0
+
+### Throttle Strategy
+
+Drop-frame，不排队。`sendFrame` 在 `1000/throttleFps` ms 内被再次调用时直接 return。VTS 推荐 ≤30 writes/sec，默认 `throttleFps=30`。
+
+### Reconnect
+
+指数退避：`delay = min(30000, 3000 * 2^attempts)`。连接断开时 schedule 重连。`disconnect()` 设置 `destroyed=true` 抑制重连。
+
+### Request/Response Correlation
+
+`requestID = crypto.randomUUID()` + `pendingRequests` Map。每请求 10s 超时，超时删除 entry 并 reject。`resp.messageType === 'APIError'` 也 reject。
+
+### `sendFrame` Fire-and-Forget
+
+`InjectParameterDataRequest` 发送后**不 await**，不 track requestID。延迟预算 <5ms。`ws.send` 包在 try/catch 中，emit `'error'` 但不 throw。
