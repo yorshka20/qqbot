@@ -1,5 +1,4 @@
 import { singleton } from 'tsyringe';
-import { logger } from './utils/logger';
 import { AnimationCompiler } from './compiler/AnimationCompiler';
 import type { StateNode } from './compiler/types';
 import { VTSDriver } from './drivers/VTSDriver';
@@ -8,6 +7,7 @@ import { IdleStateMachine } from './state/IdleStateMachine';
 import type { BotState, StateNodeOutput } from './state/types';
 import type { AvatarConfig } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './types';
+import { logger } from './utils/logger';
 
 @singleton()
 export class AvatarService {

@@ -7,10 +7,10 @@
 //   bot.start(), MCPInitializer.connectServers(), ClaudeCodeInitializer.start(),
 //   and process signal handlers.
 
-import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
-import { APIClient } from '@/api/APIClient';
 import type { AvatarConfig } from '@qqbot/avatar';
 import { AvatarService, DEFAULT_AVATAR_CONFIG } from '@qqbot/avatar';
+import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
+import { APIClient } from '@/api/APIClient';
 import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
 import { ConversationInitializer } from '@/conversation/ConversationInitializer';
