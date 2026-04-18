@@ -21,7 +21,7 @@
  */
 
 import { FileText, Plus, RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   createClusterJob,
@@ -104,8 +104,13 @@ export function TicketsPage() {
 
   const [dispatchTicket, setDispatchTicket] = useState<Ticket | null>(null);
   const [dispatching, setDispatching] = useState(false);
-  /** Defers opening the create editor until the template fetch completes. */
-  const [pendingCreate, setPendingCreate] = useState(false);
+  /**
+   * Defers opening the create editor until the template fetch completes.
+   * Ref (not state) so setting/clearing it doesn't trigger a render cascade —
+   * the effect below already rerenders when `ticketTemplateBody` changes,
+   * which is the real trigger we care about.
+   */
+  const pendingCreateRef = useRef(false);
   /** null = show all projects; string = filter to tickets whose project === this. */
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
 
@@ -116,7 +121,8 @@ export function TicketsPage() {
     setError(null);
     try {
       const list = await listTickets();
-      setTickets(list);
+      const sorted = [...list].sort((a, b) => b.created.localeCompare(a.created));
+      setTickets(sorted);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -205,8 +211,8 @@ export function TicketsPage() {
 
   // Flush deferred create once the template arrives.
   useEffect(() => {
-    if (pendingCreate && ticketTemplateBody !== null) {
-      setPendingCreate(false);
+    if (pendingCreateRef.current && ticketTemplateBody !== null) {
+      pendingCreateRef.current = false;
       const aliases = new Set(registryProjects.map((p) => p.alias));
       const last = tickets[0]?.project?.trim() ?? '';
       const lastOk = last && aliases.has(last) ? last : '';
@@ -226,7 +232,7 @@ export function TicketsPage() {
         estimatedComplexity: '',
       });
     }
-  }, [pendingCreate, ticketTemplateBody, registryProjects, registryDefaultAlias, tickets]);
+  }, [ticketTemplateBody, registryProjects, registryDefaultAlias, tickets]);
 
   // ProjectRegistry snapshot (always-on route — same source as Cluster page).
   useEffect(() => {
@@ -250,7 +256,7 @@ export function TicketsPage() {
   const openCreate = () => {
     // If the template hasn't loaded yet, defer until it does.
     if (ticketTemplateBody === null) {
-      setPendingCreate(true);
+      pendingCreateRef.current = true;
       return;
     }
     const aliases = new Set(registryProjects.map((p) => p.alias));
