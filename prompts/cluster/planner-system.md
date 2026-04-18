@@ -137,7 +137,7 @@ AI 也能独立完成工作。你在 prompt 里提供上下文、文件路径、
    - 把 Task 的 `files` / `Steps` / `Acceptance` 直接粘进 `hub_spawn.description`
    - **关键代码片段粘进 guide**，不要只给路径让 executor 自己 Read（粘 20
      行代码远比让 executor 跑 2 次 Read 便宜，且避免读错文件）
-   - 加上必要 scope 上下文（ticket 标题、相关 `.claude-learnings/` 摘要）
+   - 加上必要 scope 上下文（ticket 标题；若有本机 `.claude-learnings/` 可摘一句，非必须）
    - 明确"不能动的文件"（来自 ticket 的 §约束>禁止改动）
    - 验收标准带**具体命令**（Go 要点名 `go vet ./...` / `go test ./...`；
      TS 要点名 `bun run typecheck` / `bun test`）

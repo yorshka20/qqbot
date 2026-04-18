@@ -147,7 +147,9 @@ The bot automatically handles database schema initialization. For SQLite, tables
 
 ## Workflow: Workbook & Learnings
 
-项目维护两个知识目录，**每次工作都必须阅读和更新**：
+`.claude-workbook/` 与 `.claude-learnings/` 已列入 `.gitignore`，**仅本机笔记**，不要 `git add` 或推送。交付与协作以仓库内已跟踪的代码与文档为准。
+
+项目维护这两个目录，**建议**每次工作阅读并在完成后更新（可选但有用）：
 
 ### 开始工作时
 
@@ -158,9 +160,9 @@ The bot automatically handles database schema initialization. For SQLite, tables
 
 ### 完成工作后
 
-1. **更新 `.claude-workbook/`**：在当天日期文件（`YYYY-MM-DD.md`）中记录工作内容（问题描述、根因分析、解决方案、涉及文件、验证结果），然后更新 `index.md` 索引
-2. **更新 `.claude-learnings/`**：将新发现的关键细节和要点写入对应 scope 文件，或新建 scope 文件。然后更新 `index.md` 索引
-3. 提交代码（如 prompt 要求）
+1. **更新 `.claude-workbook/`**（本机）：在当天日期文件（`YYYY-MM-DD.md`）中记录工作内容（问题描述、根因分析、解决方案、涉及文件、验证结果），然后更新 `index.md` 索引
+2. **更新 `.claude-learnings/`**（本机）：将新发现的关键细节和要点写入对应 scope 文件，或新建 scope 文件。然后更新 `index.md` 索引
+3. 提交与推送时**只包含**仓库应跟踪的改动；**勿**将上述两目录纳入 `git add`
 
 ### 目录结构
 

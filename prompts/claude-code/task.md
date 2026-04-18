@@ -33,6 +33,8 @@
 
 ## Step 4: Verify & Commit — 验证与提交
 
+**勿**将 `.claude-workbook/`、`.claude-learnings/` 加入提交（已 gitignore，仅本机）。
+
 提交前必须通过质量检查：
 
 ```bash
@@ -52,8 +54,8 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ## Step 5: Wrap Up — 收尾
 
-- 将新发现的架构知识、代码模式、踩坑经验写入 `.claude-learnings/` 对应 scope 文件（或新建 scope），然后更新 `index.md` 索引
-- 工作日志输出到 `.claude-workbook/YYYY-MM-DD.md`，然后更新 `index.md` 索引
+- 将新发现的架构知识、代码模式、踩坑经验写入 `.claude-learnings/` 对应 scope 文件（或新建 scope），然后更新 `index.md` 索引（本机，不提交）
+- 工作日志输出到 `.claude-workbook/YYYY-MM-DD.md`，然后更新 `index.md` 索引（本机，不提交）
 - 将修复内容总结一下，返回给用户
 
 ---

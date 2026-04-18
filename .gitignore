@@ -81,8 +81,9 @@ dist-types/
 
 .git.backup.*
 
-.claude-workbook/*
-.claude-learnings/*
+# Local-only notes (gitignore applies to untracked files; remove from index if ever committed)
+.claude-workbook/
+.claude-learnings/
 
 repomix-*.xml
 repomix-*.md
