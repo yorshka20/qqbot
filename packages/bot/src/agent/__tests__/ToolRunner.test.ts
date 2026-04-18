@@ -85,11 +85,11 @@ describe('ToolRunner', () => {
     const session = createMockSession();
 
     const result = (await runner.run(
-      { name: 'read_file', arguments: '{"path":"src/agent","action":"list"}' },
+      { name: 'read_file', arguments: '{"path":"packages/bot/src/agent","action":"list"}' },
       session,
     )) as { action: string; path: string; content: string };
 
-    expect(result).toMatchObject({ action: 'list', path: 'src/agent' });
+    expect(result).toMatchObject({ action: 'list', path: 'packages/bot/src/agent' });
     expect(typeof result.content).toBe('string');
     expect(result.content.length).toBeGreaterThan(0);
     // Actual tool output: directory listing (e.g. contains ToolRunner.ts, SubAgentManager.ts, ...)
