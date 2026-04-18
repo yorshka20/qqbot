@@ -45,6 +45,7 @@ import { DispatchConfirmDialog } from './components/DispatchConfirmDialog';
 import { TicketDetailPanel } from './components/TicketDetailPanel';
 import { TicketEditor } from './components/TicketEditor';
 import { TicketProjectFilter } from './components/TicketProjectFilter';
+import { TicketStatusFilter } from './components/TicketStatusFilter';
 import { TicketsList } from './components/TicketsList';
 
 /**
@@ -122,6 +123,8 @@ export function TicketsPage() {
   const pendingCreateRef = useRef(false);
   /** null = show all projects; string = filter to tickets whose project === this. */
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
+  /** null = all statuses */
+  const [statusFilter, setStatusFilter] = useState<TicketStatus | null>(null);
 
   // ── Polling / refresh ──────────────────────────────────────────────────
 
@@ -467,17 +470,22 @@ export function TicketsPage() {
     new Set(tickets.map((t) => (t.project?.trim() ? t.project.trim() : '__none__'))),
   ).sort();
 
-  const filteredTickets =
-    projectFilter === null
-      ? tickets
-      : projectFilter === '__none__'
-        ? tickets.filter((t) => !t.project?.trim())
-        : tickets.filter((t) => t.project?.trim() === projectFilter);
+  const filteredTickets = tickets.filter((t) => {
+    if (projectFilter !== null) {
+      if (projectFilter === '__none__') {
+        if (t.project?.trim()) return false;
+      } else if (t.project?.trim() !== projectFilter) {
+        return false;
+      }
+    }
+    if (statusFilter !== null && t.status !== statusFilter) return false;
+    return true;
+  });
 
-  const summary =
-    projectFilter === null
-      ? `${tickets.length} ticket${tickets.length === 1 ? '' : 's'}`
-      : `${filteredTickets.length} / ${tickets.length} ticket${tickets.length === 1 ? '' : 's'}`;
+  const hasActiveFilter = projectFilter !== null || statusFilter !== null;
+  const summary = hasActiveFilter
+    ? `${filteredTickets.length} / ${tickets.length} ticket${tickets.length === 1 ? '' : 's'}`
+    : `${tickets.length} ticket${tickets.length === 1 ? '' : 's'}`;
 
   return (
     <div className="flex-1 min-h-0 overflow-hidden">
@@ -494,6 +502,7 @@ export function TicketsPage() {
                 tickets with no project set. Badge-click in the list also
                 writes to this state for quick focus on one project. */}
             <TicketProjectFilter value={projectFilter} onChange={setProjectFilter} options={projectOptions} />
+            <TicketStatusFilter value={statusFilter} onChange={setStatusFilter} />
             <div className="flex-1" />
             <button
               type="button"
