@@ -24,7 +24,7 @@ export class ActionMap {
     const entry = this.entries[action];
     if (!entry) return [];
     return entry.params.map((p) => ({
-      paramId: p.paramId,
+      channel: p.channel,
       targetValue: p.targetValue * intensity,
       weight: p.weight,
     }));

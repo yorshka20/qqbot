@@ -37,11 +37,16 @@ export interface StateNode {
 /**
  * A parameter target with a weighted influence.
  * Used to build blended animation states.
+ *
+ * `channel` is a semantic, renderer-agnostic identifier (e.g. "head.yaw",
+ * "mouth.smile", "eye.open.left"). Driver adapters translate channels to
+ * their renderer's native parameter IDs (VTS tracking params / Cubism
+ * Live2D params / WebGPU shader uniforms).
  */
 export interface ParamTarget {
-  /** Live2D/VRM parameter identifier */
-  paramId: string;
-  /** Target value to interpolate toward */
+  /** Semantic channel identifier (e.g. "head.yaw", "mouth.smile"). */
+  channel: string;
+  /** Target value to interpolate toward, in the channel's natural range */
   targetValue: number;
   /** Blend weight for this parameter (0.0–1.0) */
   weight: number;
