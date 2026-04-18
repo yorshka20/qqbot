@@ -17,7 +17,7 @@ import { getRepoRoot } from '@/utils/repoRoot';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 import { PluginCommandHandler } from '../PluginCommandHandler';
-import { WHITELIST_CAPABILITY } from './whitelistCapabilities';
+import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 
 /** Template name pattern for trigger words: prompts/preference/{preferenceKey}/trigger.txt (one word per line). */
 const TRIGGER_TEMPLATE_SUFFIX = '.trigger';

@@ -20,7 +20,7 @@ import type { MemoryService } from '@/memory/MemoryService';
 import type { MessageSegment } from '@/message/types';
 import type { PluginManager } from '@/plugins/PluginManager';
 import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
-import { WHITELIST_CAPABILITY } from '@/plugins/plugins/whitelistCapabilities';
+import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 import type { RetrievalService } from '@/services/retrieval';
 import { logger } from '@/utils/logger';
 import { type FetchProgressNotifier, MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';

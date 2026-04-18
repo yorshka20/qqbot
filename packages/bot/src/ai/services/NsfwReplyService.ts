@@ -5,7 +5,7 @@ import { hasWhitelistCapability, replaceReply } from '@/context/HookContextHelpe
 import type { ConversationHistoryService } from '@/conversation/history';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
-import { WHITELIST_CAPABILITY } from '@/plugins/plugins/whitelistCapabilities';
+import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 import { logger } from '@/utils/logger';
 import type { ContextEnrichmentStage } from '../pipeline/stages/ContextEnrichmentStage';
 import type { PromptManager } from '../prompt/PromptManager';

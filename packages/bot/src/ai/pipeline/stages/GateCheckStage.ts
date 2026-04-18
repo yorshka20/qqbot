@@ -2,7 +2,7 @@
 
 import { hasWhitelistCapability } from '@/context/HookContextHelpers';
 import type { HookManager } from '@/hooks/HookManager';
-import { WHITELIST_CAPABILITY } from '@/plugins/plugins/whitelistCapabilities';
+import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';
 import type { ReplyStage } from '../types';
 
