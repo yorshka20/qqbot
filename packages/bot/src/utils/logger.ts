@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import winston from 'winston';
 import { getCurrentMessageContext } from '@/context/MessageContextStorage';
+import { getRepoRoot } from '@/utils/repoRoot';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -106,7 +107,7 @@ class FileLogger implements Logger {
 
   constructor(level: LogLevel = 'info') {
     // Ensure logs directory exists
-    this.logsDir = join(process.cwd(), 'logs');
+    this.logsDir = join(getRepoRoot(), 'logs');
     if (!existsSync(this.logsDir)) {
       mkdirSync(this.logsDir, { recursive: true });
     }

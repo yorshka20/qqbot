@@ -4,6 +4,7 @@ import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ConfigError } from '@/utils/errors';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 import { loadConfigAuto } from './loadConfigDir';
 // Import all config types
 import type { AIConfig, AIProviderCapability, ContextMemoryConfig, SessionProviderConfig } from './types/ai';
@@ -136,8 +137,8 @@ export class Config {
     const candidates = [
       configPath,
       process.env.CONFIG_PATH,
-      resolve(process.cwd(), 'config.d'),
-      resolve(process.cwd(), 'config.jsonc'),
+      resolve(getRepoRoot(), 'config.d'),
+      resolve(getRepoRoot(), 'config.jsonc'),
     ];
 
     for (const candidate of candidates) {
@@ -466,12 +467,12 @@ export class Config {
 
   /**
    * Resolve the absolute path to the tickets directory. Relative paths in
-   * `tickets.dir` are resolved against `process.cwd()`. Missing config →
-   * `<cwd>/tickets` (legacy default).
+   * `tickets.dir` are resolved against the repo root. Missing config →
+   * `<repoRoot>/tickets` (legacy default).
    */
   getTicketsDir(): string {
     const raw = this.config.tickets?.dir?.trim();
-    if (!raw) return resolve(process.cwd(), 'tickets');
-    return resolve(process.cwd(), raw);
+    if (!raw) return resolve(getRepoRoot(), 'tickets');
+    return resolve(getRepoRoot(), raw);
   }
 }

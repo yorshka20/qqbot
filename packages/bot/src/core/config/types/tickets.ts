@@ -22,9 +22,9 @@
 export interface TicketsConfig {
   /**
    * Filesystem directory where ticket markdown lives. Absolute path
-   * recommended. Relative paths resolve against `process.cwd()` (the bot
-   * project root under `bun run start`/`bun run dev`). Defaults to
-   * `tickets` (i.e. `<cwd>/tickets`) when the whole `tickets` block is
+   * recommended. Relative paths resolve against the repo root (resolved via
+   * `getRepoRoot()`, independent of launch cwd). Defaults to
+   * `tickets` (i.e. `<repoRoot>/tickets`) when the whole `tickets` block is
    * absent, preserving the pre-externalization behavior.
    */
   dir: string;

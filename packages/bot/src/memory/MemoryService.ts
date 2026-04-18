@@ -32,7 +32,7 @@ export type MemoryLayer = 'manual' | 'auto';
 export type MemorySource = 'manual' | 'llm_extract';
 
 export interface MemoryServiceOptions {
-  /** Base directory for memory files (resolved with process.cwd()). Default "data/memory". */
+  /** Base directory for memory files (resolved from repo root). Default "data/memory". */
   memoryDir?: string;
   /** Max length for memory content (truncate if exceeded). */
   maxContentLength?: number;
