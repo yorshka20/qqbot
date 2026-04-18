@@ -7,6 +7,7 @@ import type { InfoCardData } from '@/services/card';
 import type { FileReadService } from '@/services/file';
 import { formatBytes, runDeduplication } from '@/utils/fileDedup';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 
@@ -42,8 +43,8 @@ export class GroupDedupCommandHandler implements CommandHandler {
     }
 
     logger.info(`[GroupDedupCommandHandler] Starting manual dedup | groupId=${groupId}`);
-    // Use same path resolution as DeduplicateFilesToolExecutor and GroupDownloadPlugin (cwd + DOWNLOAD_ROOT)
-    const targetDirAbsolute = join(process.cwd(), DOWNLOAD_ROOT, groupId);
+    // Use same path resolution as DeduplicateFilesToolExecutor and GroupDownloadPlugin (repoRoot + DOWNLOAD_ROOT)
+    const targetDirAbsolute = join(getRepoRoot(), DOWNLOAD_ROOT, groupId);
     const targetDirRelative = `${DOWNLOAD_ROOT}/${groupId}`;
     // noCheck for resolvePath so message does not show "unavailable path" for the same path we scan (admin-only command)
     const resolvedTarget = this.fileService.resolvePath(targetDirRelative, true);

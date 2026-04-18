@@ -7,6 +7,7 @@ import { DITokens } from '@/core/DITokens';
 import type { FileReadService } from '@/services/file';
 import { formatBytes, resolveGroupDirs, runDeduplication } from '@/utils/fileDedup';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
@@ -59,7 +60,7 @@ export class DeduplicateFilesToolExecutor extends BaseToolExecutor {
 
     logger.info(`[DeduplicateFilesToolExecutor] Starting dedup | groupId=${groupIdParam ?? 'all'} | dryRun=${dryRun}`);
 
-    const dirs = resolveGroupDirs(join(process.cwd(), DOWNLOAD_ROOT), groupIdParam);
+    const dirs = resolveGroupDirs(join(getRepoRoot(), DOWNLOAD_ROOT), groupIdParam);
     if (dirs.length === 0) {
       return this.success(`未找到任何群下载目录（${DOWNLOAD_ROOT}）。`, {
         totalFiles: 0,

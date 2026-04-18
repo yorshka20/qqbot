@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve as resolvePath } from 'node:path';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
+import { getRepoRoot } from '@/utils/repoRoot';
 import type { ClusterConfig } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import type { ClusterStatus, TaskRecord, WorkerBackend, WorkerInstance } from './types';
@@ -714,7 +715,7 @@ export class WorkerPool {
    * Resolution order (per role):
    *   1. `<projectPath>/prompts/cluster/<role>-system.md` — per-project
    *      override (rare; for projects that want to customize role behavior)
-   *   2. `process.cwd()/prompts/cluster/<role>-system.md` — repo default
+   *   2. `<repoRoot>/prompts/cluster/<role>-system.md` — repo default
    *
    * If neither exists, returns empty string and logs once. The worker
    * still runs but without the role preamble — degraded behavior but the
@@ -726,7 +727,7 @@ export class WorkerPool {
     if (cached !== null) return cached;
 
     const relativePath = ROLE_SYSTEM_PROMPT_PATHS[role];
-    const candidates = [resolvePath(projectPath, relativePath), resolvePath(process.cwd(), relativePath)];
+    const candidates = [resolvePath(projectPath, relativePath), resolvePath(getRepoRoot(), relativePath)];
     for (const path of candidates) {
       try {
         const content = await readFile(path, 'utf-8');

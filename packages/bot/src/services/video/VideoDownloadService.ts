@@ -11,9 +11,10 @@ import { join } from 'node:path';
 import { injectable, singleton } from 'tsyringe';
 import { ResourceDownloader } from '@/ai/utils/ResourceDownloader';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 
 /** Directory where temp video files are written. */
-const VIDEO_TEMP_DIR = join(process.cwd(), 'output', 'video-analysis');
+const VIDEO_TEMP_DIR = join(getRepoRoot(), 'output', 'video-analysis');
 const YT_DLP_TIMEOUT_MS = 10 * 60 * 1000;
 const YT_DLP_MAX_FILESIZE_BYTES = 500 * 1024 * 1024;
 

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { HttpClient } from '@/api/http/HttpClient';
 import type { LaozhangProviderConfig } from '@/core/config/types/ai';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 import { AIProvider } from '../base/AIProvider';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
 import type { LLMCapability } from '../capabilities/LLMCapability';
@@ -66,7 +67,7 @@ export class LaozhangProvider
   private _capabilities: CapabilityType[];
   private httpClient: HttpClient;
 
-  private outputPath = join(process.cwd(), 'output', 'laozhang');
+  private outputPath = join(getRepoRoot(), 'output', 'laozhang');
 
   // Default values
   private static readonly DEFAULT_MODEL = 'gemini-3-pro-image-preview';

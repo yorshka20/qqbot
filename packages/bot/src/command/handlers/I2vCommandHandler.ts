@@ -17,12 +17,13 @@ import type { DatabaseManager } from '@/database/DatabaseManager';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { uploadFileBuffer } from '@/utils/fileUpload';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 
-/** Local output directory for saved videos (relative to cwd) */
-const OUTPUT_DIR = join(process.cwd(), 'output', 'runpod');
+/** Local output directory for saved videos (relative to repo root) */
+const OUTPUT_DIR = join(getRepoRoot(), 'output', 'runpod');
 
 @Command({
   name: 'i2v',

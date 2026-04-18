@@ -13,6 +13,7 @@ import { MessageBuilder } from '@/message/MessageBuilder';
 import type { PluginManager } from '@/plugins/PluginManager';
 import type { InfoCardData, ListCardData } from '@/services/card';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 import type { CommandManager } from '../CommandManager';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult, PermissionLevel } from '../types';
@@ -361,7 +362,7 @@ export class RestartCommand implements CommandHandler {
     messageBuilder.text(`正在拉取代码并重启...`);
 
     setTimeout(() => {
-      const helperPath = path.join(process.cwd(), 'scripts', 'pm2', 'pm2-restart-helper.cjs');
+      const helperPath = path.join(getRepoRoot(), 'scripts', 'pm2', 'pm2-restart-helper.cjs');
       const restartAppNames = `${PM2_APP_BOT},${PM2_APP_UI}`;
       const child = spawn(process.execPath, [helperPath], {
         env: { ...process.env, RESTART_APP_NAMES: restartAppNames },

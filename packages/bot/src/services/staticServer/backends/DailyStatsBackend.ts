@@ -16,6 +16,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';
 
@@ -269,7 +270,7 @@ export class DailyStatsBackend implements Backend {
   private readonly logsDir: string;
 
   constructor() {
-    this.logsDir = join(process.cwd(), 'logs');
+    this.logsDir = join(getRepoRoot(), 'logs');
   }
 
   async handle(pathname: string, req: Request): Promise<Response | null> {

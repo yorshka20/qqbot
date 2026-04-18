@@ -33,6 +33,7 @@ import { join, relative } from 'node:path';
 import { bucketForProject, findTicketDir, ticketDirForCreate } from '@/services/staticServer/backends/ticketStorage';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
+import { getRepoRoot } from '@/utils/repoRoot';
 import type { ClusterConfig } from '../config';
 import type {
   ClusterEventType,
@@ -758,12 +759,12 @@ export class ContextHub {
       const archivePath = join(ticketDir, `plan-v${nextN}.md`);
       await rename(planPath, archivePath);
       archived = true;
-      archivedAs = relative(process.cwd(), archivePath);
+      archivedAs = relative(getRepoRoot(), archivePath);
     }
 
     await writeFile(planPath, input.content, 'utf-8');
 
-    const relPath = relative(process.cwd(), planPath);
+    const relPath = relative(getRepoRoot(), planPath);
     logger.info(
       `[ContextHub] hub_write_plan: planner=${workerId} ticket=${ticketId} wrote ${relPath}` +
         (archived ? ` (archived old → ${archivedAs})` : ''),
@@ -831,7 +832,7 @@ export class ContextHub {
     return {
       exists: true,
       content,
-      path: relative(process.cwd(), planPath),
+      path: relative(getRepoRoot(), planPath),
     };
   }
 

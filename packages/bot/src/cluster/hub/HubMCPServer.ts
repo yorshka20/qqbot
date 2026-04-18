@@ -32,6 +32,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
+import { getRepoRoot } from '@/utils/repoRoot';
 import type {
   HubAskInput,
   HubClaimInput,
@@ -70,7 +71,7 @@ const HUB_MCP_INSTRUCTIONS_PATH = 'prompts/cluster/hub-mcp-instructions.md';
  * so cluster start doesn't break.
  */
 function loadHubMcpInstructions(): string {
-  const path = resolvePath(process.cwd(), HUB_MCP_INSTRUCTIONS_PATH);
+  const path = resolvePath(getRepoRoot(), HUB_MCP_INSTRUCTIONS_PATH);
   try {
     return readFileSync(path, 'utf-8');
   } catch (err) {

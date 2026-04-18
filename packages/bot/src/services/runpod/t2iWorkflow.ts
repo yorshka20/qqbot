@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 
 /** Workflow node shape (same as RunPod input.workflow entries). */
 export type T2IWorkflowNode = { inputs: Record<string, unknown>; class_type: string };
@@ -39,7 +40,7 @@ let cachedT2ITemplate: Record<string, T2IWorkflowNode> | null = null;
 function loadT2ITemplate(): Record<string, T2IWorkflowNode> {
   if (cachedT2ITemplate) return cachedT2ITemplate;
 
-  const workflowPath = join(process.cwd(), 'comfyu', 'workflow', 't2i', 'sdxl-txt2img-api.json');
+  const workflowPath = join(getRepoRoot(), 'comfyu', 'workflow', 't2i', 'sdxl-txt2img-api.json');
   try {
     const raw = readFileSync(workflowPath, 'utf-8');
     cachedT2ITemplate = JSON.parse(raw) as Record<string, T2IWorkflowNode>;

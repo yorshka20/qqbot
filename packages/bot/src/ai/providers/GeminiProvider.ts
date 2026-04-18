@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { FileState, GoogleGenAI } from '@google/genai';
 import type { GeminiProviderConfig } from '@/core/config/types/ai';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 import { AIProvider } from '../base/AIProvider';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
 import type { LLMCapability } from '../capabilities/LLMCapability';
@@ -53,7 +54,7 @@ export class GeminiProvider
   private clientFree: GoogleGenAI | null = null;
   private clientPaid: GoogleGenAI | null = null;
 
-  private outputPath = join(process.cwd(), 'output', 'gemini');
+  private outputPath = join(getRepoRoot(), 'output', 'gemini');
 
   // Default values for text2img when not overridden by config
   private static readonly DEFAULT_T2I_MODEL = 'gemini-2.5-flash-image';

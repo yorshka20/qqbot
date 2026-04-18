@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 
 /** Default negative prompt (shared). */
 export const DEFAULT_NEGATIVE_PROMPT =
@@ -28,7 +29,7 @@ let cachedRemixOptimizedApiWorkflow: Record<string, Wan22WorkflowNode> | null = 
 function loadRemixOptimizedTemplate(): Record<string, Wan22WorkflowNode> {
   if (cachedRemixOptimizedApiWorkflow) return cachedRemixOptimizedApiWorkflow;
 
-  const workflowPath = join(process.cwd(), 'comfyu', 'workflow', 'opt', 'wan22-i2v-remix-nsfw-optimized-api.json');
+  const workflowPath = join(getRepoRoot(), 'comfyu', 'workflow', 'opt', 'wan22-i2v-remix-nsfw-optimized-api.json');
   try {
     const raw = readFileSync(workflowPath, 'utf-8');
     cachedRemixOptimizedApiWorkflow = JSON.parse(raw) as Record<string, Wan22WorkflowNode>;
@@ -100,7 +101,7 @@ let cachedDasiwaApiWorkflow: Record<string, Wan22WorkflowNode> | null = null;
 function loadDasiwaTemplate(): Record<string, Wan22WorkflowNode> {
   if (cachedDasiwaApiWorkflow) return cachedDasiwaApiWorkflow;
 
-  const workflowPath = join(process.cwd(), 'comfyu', 'workflow', 'dasiwa', 'workflow-api.json');
+  const workflowPath = join(getRepoRoot(), 'comfyu', 'workflow', 'dasiwa', 'workflow-api.json');
   try {
     const raw = readFileSync(workflowPath, 'utf-8');
     cachedDasiwaApiWorkflow = JSON.parse(raw) as Record<string, Wan22WorkflowNode>;
@@ -173,7 +174,7 @@ function loadAdaptiveTemplate(): Record<string, Wan22WorkflowNode> {
   if (cachedAdaptiveApiWorkflow) return cachedAdaptiveApiWorkflow;
 
   const workflowPath = join(
-    process.cwd(),
+    getRepoRoot(),
     'comfyu',
     'workflow',
     'origin',

@@ -11,6 +11,7 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 
 export interface ProjectEntry {
   /** Unique alias for referencing in commands */
@@ -62,7 +63,7 @@ export class ProjectRegistry {
     const opts = options ?? {};
     this.allowedBasePaths = (opts.allowedBasePaths ?? [process.cwd()]).map((p) => resolve(p));
     this.defaultProject = opts.defaultProject ?? 'default';
-    this.persistPath = opts.persistPath || resolve(process.cwd(), 'data/projects.json');
+    this.persistPath = opts.persistPath || resolve(getRepoRoot(), 'data/projects.json');
 
     // 1. Register config projects (immutable via commands)
     for (const proj of options.projects ?? []) {

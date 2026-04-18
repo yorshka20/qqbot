@@ -6,6 +6,7 @@
  *   files, cluster, lan, tickets, reports, insights, moments, zhihu, qdrant, stats, memory, output
  */
 
+import { getRepoRoot } from '@/utils/repoRoot';
 import { ClusterAPIBackend } from './ClusterAPIBackend';
 import { DailyStatsBackend } from './DailyStatsBackend';
 import { FileManagerBackend } from './FileManagerBackend';
@@ -33,7 +34,7 @@ interface BackendFactoryContext {
   /**
    * Absolute tickets directory (see `TicketsConfig`). Required when the
    * `tickets` backend is enabled. `createBackends` falls back to
-   * `<cwd>/tickets` when the caller omits it, preserving pre-externalized
+   * `<repoRoot>/tickets` when the caller omits it, preserving pre-externalized
    * behavior for CLI entrypoints that don't load a full Config.
    */
   ticketsDir: string;
@@ -66,7 +67,7 @@ const registry = buildBackendRegistry();
  * @param baseDir - Base directory for file-serving backends.
  * @param options.disabledIds - Backend ids to omit (from `lanRelay.*.disabledStaticBackends`).
  * @param options.ticketsDir - Absolute path for `TicketBackend` storage;
- *   defaults to `<cwd>/tickets` when unset.
+ *   defaults to `<repoRoot>/tickets` when unset.
  */
 export function createBackends(
   baseDir: string,
@@ -75,7 +76,7 @@ export function createBackends(
   const disabled = options?.disabledIds ?? new Set<string>();
   const ctx: BackendFactoryContext = {
     baseDir,
-    ticketsDir: options?.ticketsDir ?? `${process.cwd()}/tickets`,
+    ticketsDir: options?.ticketsDir ?? `${getRepoRoot()}/tickets`,
   };
   const out: Backend[] = [];
   for (const entry of registry) {
