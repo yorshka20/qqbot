@@ -1,4 +1,7 @@
 import { EventEmitter } from 'node:events';
+import type { BotState } from '../state/types';
+import type { AmbientDriver } from './AmbientDriver';
+import { sampleDriver } from './AmbientDriver';
 import { ActionMap } from './action-map';
 import { applyEasing } from './easing';
 import type { ActiveAnimation, CompilerConfig, FrameOutput, StateNode } from './types';
@@ -20,6 +23,8 @@ export class AnimationCompiler extends EventEmitter {
   private currentParams: Record<string, number> = {};
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private tickCount = 0;
+  private drivers: Map<string, AmbientDriver> = new Map();
+  private currentState: BotState = 'idle';
 
   constructor(config: Partial<CompilerConfig> = {}, actionMapPath?: string) {
     super();
@@ -64,6 +69,18 @@ export class AnimationCompiler extends EventEmitter {
     return this.actionMap.getDuration(action);
   }
 
+  registerDriver(driver: AmbientDriver): void {
+    this.drivers.set(driver.id, driver);
+  }
+
+  unregisterDriver(id: string): void {
+    this.drivers.delete(id);
+  }
+
+  setGateState(state: BotState): void {
+    this.currentState = state;
+  }
+
   private processQueue(): void {
     if (this.pendingQueue.length === 0) return;
     const now = Date.now();
@@ -94,6 +111,18 @@ export class AnimationCompiler extends EventEmitter {
     // already baked into targetValue by ActionMap.resolveAction. Multiple
     // animations targeting the same param are additively mixed.
     const contributions: Record<string, number> = {};
+
+    // 1. Driver (continuous) contributions
+    for (const driver of this.drivers.values()) {
+      for (const channel of Object.keys(driver.channels)) {
+        const v = sampleDriver(driver, channel, now, this.currentState);
+        if (v !== undefined) {
+          contributions[channel] = (contributions[channel] ?? 0) + v;
+        }
+      }
+    }
+
+    // 2. Action (discrete) contributions
     for (const anim of this.activeAnimations) {
       if (now < anim.startTime) continue;
       const progress = this.calculateProgress(anim, now);

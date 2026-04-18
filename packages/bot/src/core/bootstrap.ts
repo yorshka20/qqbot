@@ -219,7 +219,14 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   const avatarConfig: AvatarConfig = {
     enabled: (rawAvatarConfig?.enabled as boolean | undefined) ?? DEFAULT_AVATAR_CONFIG.enabled,
     vts: { ...DEFAULT_AVATAR_CONFIG.vts, ...((rawAvatarConfig?.vts as object | undefined) ?? {}) },
-    compiler: { ...DEFAULT_AVATAR_CONFIG.compiler, ...((rawAvatarConfig?.compiler as object | undefined) ?? {}) },
+    compiler: {
+      ...DEFAULT_AVATAR_CONFIG.compiler,
+      ...((rawAvatarConfig?.compiler as object | undefined) ?? {}),
+      ambientDrivers: {
+        ...(DEFAULT_AVATAR_CONFIG.compiler.ambientDrivers ?? { enabled: false }),
+        ...((rawAvatarConfig?.compiler as { ambientDrivers?: object } | undefined)?.ambientDrivers ?? {}),
+      },
+    },
     idle: { ...DEFAULT_AVATAR_CONFIG.idle, ...((rawAvatarConfig?.idle as object | undefined) ?? {}) },
     preview: { ...DEFAULT_AVATAR_CONFIG.preview, ...((rawAvatarConfig?.preview as object | undefined) ?? {}) },
     actionMap: { ...DEFAULT_AVATAR_CONFIG.actionMap, ...((rawAvatarConfig?.actionMap as object | undefined) ?? {}) },

@@ -1,5 +1,6 @@
 import { singleton } from 'tsyringe';
 import { AnimationCompiler } from './compiler/AnimationCompiler';
+import { DEFAULT_AMBIENT_DRIVERS } from './compiler/default-drivers';
 import type { StateNode } from './compiler/types';
 import { VTSDriver } from './drivers/VTSDriver';
 import { PreviewServer } from './preview/PreviewServer';
@@ -44,7 +45,9 @@ export class AvatarService {
     if (config.vts.enabled) {
       this.driver = new VTSDriver(config.vts);
     } else {
-      logger.info('[AvatarService] VTS driver disabled (config.vts.enabled=false); frames will only reach preview clients');
+      logger.info(
+        '[AvatarService] VTS driver disabled (config.vts.enabled=false); frames will only reach preview clients',
+      );
     }
 
     if (config.preview.enabled) {
@@ -101,6 +104,17 @@ export class AvatarService {
 
     // Start the animation engine and idle timer
     this.compiler.start();
+
+    if (this.config.compiler.ambientDrivers?.enabled && this.compiler) {
+      for (const d of DEFAULT_AMBIENT_DRIVERS) {
+        this.compiler.registerDriver(d);
+      }
+      logger.info(
+        '[AvatarService] Ambient drivers enabled:',
+        DEFAULT_AMBIENT_DRIVERS.map((d) => d.id),
+      );
+    }
+
     this.stateMachine.start();
 
     if (this.previewServer) {
@@ -182,6 +196,7 @@ export class AvatarService {
    */
   transition(state: BotState): void {
     if (!this.stateMachine || !this.compiler) return;
+    this.compiler.setGateState(state);
     const nodes = this.stateMachine.transition(state);
     if (nodes.length > 0) {
       this.compiler.enqueue(toStateNodes(nodes));
