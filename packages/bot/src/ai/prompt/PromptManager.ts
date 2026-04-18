@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
 import { getCurrentDateTimeForPrompt } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 
 export interface PromptTemplate {
   name: string;
@@ -32,7 +33,7 @@ export class PromptManager {
   readonly adminUserId: string;
 
   constructor(templateDirectory?: string, adminUserId?: string) {
-    this.templateDirectory = templateDirectory || resolve(process.cwd(), 'prompts');
+    this.templateDirectory = templateDirectory || resolve(getRepoRoot(), 'prompts');
     this.adminUserId = adminUserId ?? '';
 
     this.loadTemplatesFromDirectory();

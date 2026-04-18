@@ -19,6 +19,7 @@ import type { RetrievalService } from '@/services/retrieval';
 import { QdrantClient } from '@/services/retrieval';
 import type { RAGDocument } from '@/services/retrieval/rag/types';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
@@ -115,7 +116,7 @@ export class MemoryTriggerPlugin extends PluginBase {
   }
 
   private getColdStartProgressPath(): string {
-    return join(process.cwd(), this.coldStartProgressFile);
+    return join(getRepoRoot(), this.coldStartProgressFile);
   }
 
   /** Load set of groupIds that have already completed RAG cold start (persisted to file). */
@@ -150,7 +151,7 @@ export class MemoryTriggerPlugin extends PluginBase {
   /** Load checkpoint: groupId -> number of window docs already upserted. Version 2 = windowed; old format ignored. */
   private async loadColdStartCheckpoint(): Promise<Record<string, number>> {
     try {
-      const path = join(process.cwd(), this.coldStartCheckpointFile);
+      const path = join(getRepoRoot(), this.coldStartCheckpointFile);
       const content = await readFile(path, 'utf-8');
       const data = JSON.parse(content) as Record<string, unknown>;
       if (typeof data !== 'object' || data === null) {
@@ -175,7 +176,7 @@ export class MemoryTriggerPlugin extends PluginBase {
   /** Write checkpoint so we can resume after restart (version 2 = windowed). */
   private async saveColdStartCheckpoint(checkpoint: Record<string, number>): Promise<void> {
     try {
-      const path = join(process.cwd(), this.coldStartCheckpointFile);
+      const path = join(getRepoRoot(), this.coldStartCheckpointFile);
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, JSON.stringify(checkpoint, null, 0), 'utf-8');
     } catch (err) {

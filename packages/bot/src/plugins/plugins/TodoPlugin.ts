@@ -26,11 +26,12 @@ import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import type { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 
 const USAGE = `/todo <content> - 添加 TODO 到默认项目
 /todo @<alias> <content> - 添加 TODO 到指定项目`;
 
-const TEMPLATE_PATH = resolve(process.cwd(), 'template/ToDo.md');
+const TEMPLATE_PATH = resolve(getRepoRoot(), 'template/ToDo.md');
 
 @RegisterPlugin({
   name: 'todo',

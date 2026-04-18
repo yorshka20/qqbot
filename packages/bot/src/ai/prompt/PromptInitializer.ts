@@ -6,6 +6,7 @@ import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 import { PromptManager } from './PromptManager';
 
 /**
@@ -27,7 +28,7 @@ export class PromptInitializer {
       throw new Error('Prompts configuration is required. Please set "prompts.directory" in config file.');
     }
 
-    const promptDirectory = resolve(process.cwd(), promptsConfig.directory);
+    const promptDirectory = resolve(getRepoRoot(), promptsConfig.directory);
     const adminUserId = config.getConfig().bot.owner;
     const promptManager = new PromptManager(promptDirectory, adminUserId);
 

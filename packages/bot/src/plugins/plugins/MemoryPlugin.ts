@@ -12,6 +12,7 @@ import type { MemoryExtractUserCursor } from '@/database/models/types';
 import type { HookContext, HookResult } from '@/hooks/types';
 import type { MemoryExtractService } from '@/memory';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
@@ -158,9 +159,9 @@ export class MemoryPlugin extends PluginBase {
     }
   }
 
-  /** Resolve full-history progress file path relative to cwd. */
+  /** Resolve full-history progress file path relative to repo root. */
   private getFullHistoryProgressPath(): string {
-    return join(process.cwd(), this.fullHistoryProgressFile);
+    return join(getRepoRoot(), this.fullHistoryProgressFile);
   }
 
   /** Load set of "groupId:userId" from full-history progress file. */
@@ -507,13 +508,13 @@ export class MemoryPlugin extends PluginBase {
    * Copies data/memory/ → data/backup/memory/YYYY-MM-DD/
    */
   private async backupMemoryFiles(): Promise<void> {
-    const srcDir = join(process.cwd(), MEMORY_DIR);
+    const srcDir = join(getRepoRoot(), MEMORY_DIR);
     if (!existsSync(srcDir)) {
       logger.debug('[MemoryPlugin] No memory directory to backup');
       return;
     }
     const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    const destDir = join(process.cwd(), this.backupDir, date);
+    const destDir = join(getRepoRoot(), this.backupDir, date);
     try {
       await mkdir(destDir, { recursive: true });
       await cp(srcDir, destDir, { recursive: true });

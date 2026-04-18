@@ -13,6 +13,7 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext, HookResult } from '@/hooks/types';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 import { PluginCommandHandler } from '../PluginCommandHandler';
@@ -191,7 +192,7 @@ export class ProactiveConversationPlugin extends PluginBase {
   /** Load cooldown state from disk, pruning expired entries. */
   private async loadCooldownState(): Promise<void> {
     try {
-      const path = join(process.cwd(), COOLDOWN_STATE_FILE);
+      const path = join(getRepoRoot(), COOLDOWN_STATE_FILE);
       const raw = await readFile(path, 'utf-8');
       const data = JSON.parse(raw) as Record<string, number>;
       const now = Date.now();
@@ -211,7 +212,7 @@ export class ProactiveConversationPlugin extends PluginBase {
   /** Persist current cooldown state to disk. */
   private async saveCooldownState(): Promise<void> {
     try {
-      const path = join(process.cwd(), COOLDOWN_STATE_FILE);
+      const path = join(getRepoRoot(), COOLDOWN_STATE_FILE);
       await mkdir(dirname(path), { recursive: true });
       const data: Record<string, number> = {};
       for (const [groupId, until] of this.cooldownUntil) {

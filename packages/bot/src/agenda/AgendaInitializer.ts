@@ -12,6 +12,7 @@ import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 import { ActionHandlerRegistry } from './ActionHandlerRegistry';
 import { AgendaReporter } from './AgendaReporter';
 import { AgendaService } from './AgendaService';
@@ -57,7 +58,7 @@ export class AgendaInitializer {
   }): Promise<AgendaComponents> {
     logger.info('[AgendaInitializer] Initializing agenda framework...');
 
-    const dataDir = deps.dataDir ?? join(process.cwd(), 'data', 'agenda');
+    const dataDir = deps.dataDir ?? join(getRepoRoot(), 'data', 'agenda');
     const scheduleFilePath = join(dataDir, 'schedule.md');
     const reportsDir = join(dataDir, 'reports');
 

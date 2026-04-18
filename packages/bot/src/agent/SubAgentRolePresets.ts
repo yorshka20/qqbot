@@ -9,6 +9,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 import type { SubAgentConfig } from './types';
 import { SubAgentType } from './types';
 
@@ -97,7 +98,7 @@ let presetCache: Map<string, RolePreset> | null = null;
 let promptsBaseDir: string | null = null;
 
 function getSubagentDir(): string {
-  const base = promptsBaseDir ?? resolve(process.cwd(), 'prompts');
+  const base = promptsBaseDir ?? resolve(getRepoRoot(), 'prompts');
   return join(base, 'subagent');
 }
 

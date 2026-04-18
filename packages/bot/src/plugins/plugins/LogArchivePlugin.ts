@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { ScheduledTask } from 'node-cron';
 import { schedule } from 'node-cron';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
@@ -26,8 +27,8 @@ export interface LogArchivePluginConfig {
 })
 export class LogArchivePlugin extends PluginBase {
   private cronJob: ScheduledTask | null = null;
-  private logsDir = join(process.cwd(), 'logs');
-  private archiveDir = join(process.cwd(), 'logs', 'archive');
+  private logsDir = join(getRepoRoot(), 'logs');
+  private archiveDir = join(getRepoRoot(), 'logs', 'archive');
   private intervalDays = 3;
   private deleteAfterArchive = true;
 
