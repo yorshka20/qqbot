@@ -74,10 +74,10 @@ export class AnimationCompiler extends EventEmitter {
   private tick(): void {
     const now = Date.now();
 
-    // 淘汰结束的动画
+    // Prune finished animations
     this.activeAnimations = this.activeAnimations.filter((a) => now < a.endTime);
 
-    // 以当前参数为基线，叠加活跃动画
+    // Layer active animations on top of current params baseline
     const frameParams: Record<string, number> = { ...this.currentParams };
     for (const anim of this.activeAnimations) {
       if (now < anim.startTime) continue;
@@ -90,7 +90,7 @@ export class AnimationCompiler extends EventEmitter {
       }
     }
 
-    // 低通滤波平滑
+    // Low-pass filter for smoothing
     const alpha = this.config.smoothingFactor;
     for (const paramId of Object.keys(frameParams)) {
       const targetValue = frameParams[paramId] ?? 0;
@@ -98,7 +98,7 @@ export class AnimationCompiler extends EventEmitter {
       this.currentParams[paramId] = current + (targetValue - current) * alpha;
     }
 
-    // 按 outputFps 降采样发射 frame 事件
+    // Downsample and emit frame events at outputFps
     this.tickCount += 1;
     const emitEvery = Math.max(1, Math.round(this.config.fps / this.config.outputFps));
     if (this.tickCount % emitEvery === 0) {

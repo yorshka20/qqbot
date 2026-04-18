@@ -3,11 +3,12 @@ import { IDLE_ANIMATIONS, TRANSITION_ANIMATIONS } from './idle-animations';
 import { type BotState, DEFAULT_IDLE_CONFIG, type IdleConfig, type StateNodeOutput } from './types';
 
 /**
- * 管理 Bot 5 种表现状态。在 idle 状态时按随机间隔
- * (idleIntervalMin..idleIntervalMax) 发射 `idle-animation` 事件，
- * 在状态转换时通过 transition() 返回对应的 StateNode 列表。
+ * Manages the bot's 5 display states. Emits `idle-animation` events
+ * at random intervals (idleIntervalMin..idleIntervalMax) while in idle,
+ * and returns the corresponding StateNode list via transition() during
+ * state transitions.
  *
- * 事件：
+ * Events:
  *   - `'idle-animation'`: (nodes: StateNodeOutput[])
  *   - `'state-change'`  : (from: BotState, to: BotState)
  */
@@ -27,9 +28,10 @@ export class IdleStateMachine extends EventEmitter {
   }
 
   /**
-   * 触发状态转换，返回该状态对应的过渡动画节点列表。
-   * - 转到 idle：重启随机待机定时器
-   * - 离开 idle：停掉待机定时器
+   * Triggers state transition, returns the list of transition animation nodes
+   * for the new state.
+   * - Entering idle: restarts the random idle timer
+   * - Leaving idle: cancels the idle timer
    */
   transition(newState: BotState): StateNodeOutput[] {
     const prev = this.state;
@@ -45,19 +47,19 @@ export class IdleStateMachine extends EventEmitter {
       this.clearIdleTimer();
     }
 
-    // 深拷贝（加 timestamp）避免外部修改 shared 对象
+    // Deep copy (with timestamp) to prevent external modification of shared object
     const now = Date.now();
     return TRANSITION_ANIMATIONS[newState].map((n) => ({ ...n, timestamp: now }));
   }
 
-  /** 启动随机待机动画定时器（仅 idle 状态时实际 schedule） */
+  /** Starts the random idle animation timer (only actually schedules when in idle state) */
   start(): void {
     if (this.started) return;
     this.started = true;
     if (this.state === 'idle') this.scheduleNextIdle();
   }
 
-  /** 停止待机动画定时器 */
+  /** Stops the idle animation timer */
   stop(): void {
     this.started = false;
     this.clearIdleTimer();
@@ -71,12 +73,12 @@ export class IdleStateMachine extends EventEmitter {
     const delay = lo + Math.random() * Math.max(0, hi - lo);
     this.idleTimer = setTimeout(() => {
       this.idleTimer = null;
-      // 定时器到期时可能已经离开 idle；再检查一次
+      // Timer may have expired after leaving idle; check again
       if (!this.started || this.state !== 'idle') return;
       const pick = IDLE_ANIMATIONS[Math.floor(Math.random() * IDLE_ANIMATIONS.length)];
       const node: StateNodeOutput = { ...pick, timestamp: Date.now() };
       this.emit('idle-animation', [node]);
-      // 动画结束后重新随机下一次（ticket 要求 setTimeout 而非 setInterval）
+      // After animation ends, randomly schedule the next one (setTimeout, not setInterval)
       this.scheduleNextIdle();
     }, delay);
   }

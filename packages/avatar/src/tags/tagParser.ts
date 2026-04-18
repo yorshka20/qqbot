@@ -4,9 +4,9 @@ const DEFAULT_EMOTION = 'neutral';
 const DEFAULT_ACTION = 'idle';
 const DEFAULT_INTENSITY = 0.5;
 
-// 整体标签：[LIVE2D: ...]，大小写不敏感、宽松空白
+// Overall tag: [LIVE2D: ...], case-insensitive, lenient whitespace
 const TAG_RE = /\[LIVE2D:\s*([^\]]*)\]/gi;
-// 内部 key=value 对：逐对扫描以支持字段乱序
+// Internal key=value pairs: scan pair by pair to support field reordering
 const FIELD_RE = /(\w+)\s*=\s*([^,\]\s]+)/g;
 
 export function parseLive2DTags(text: string): ParsedTag[] {
@@ -25,7 +25,7 @@ export function parseLive2DTags(text: string): ParsedTag[] {
         const n = Number.parseFloat(val);
         if (Number.isFinite(n)) intensity = Math.min(1, Math.max(0, n));
       }
-      // 未知 key 静默跳过
+      // Unknown key, silently skip
     }
     out.push({ emotion, action, intensity });
   }
