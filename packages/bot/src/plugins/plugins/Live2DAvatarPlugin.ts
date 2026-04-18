@@ -98,26 +98,27 @@ export class Live2DAvatarPlugin extends PluginBase {
 
   @Hook({ stage: 'onMessageBeforeSend', priority: 'NORMAL', order: 10 })
   async onMessageBeforeSend(context: HookContext): Promise<boolean> {
-    if (!this.active) return true;
     try {
-      const aiResponse = context.aiResponse;
-      const isPrivate = this.isPrivate(context);
-
-      // Tag → transition / enqueue is gated on private messages (avatar only
-      // reacts to DMs; group chatter doesn't drive the streaming avatar).
-      if (aiResponse && isPrivate) {
-        const tags = parseLive2DTags(aiResponse);
-        for (const tag of tags) {
-          const state = this.tagToBotState(tag);
-          this.avatar?.transition(state);
-          this.avatar?.enqueueTagAnimation(tag);
+      // Tag → transition / enqueue requires the plugin to be active AND the
+      // message to be private (avatar only reacts to DMs; group chatter
+      // doesn't drive the streaming avatar).
+      if (this.active && this.isPrivate(context)) {
+        const aiResponse = context.aiResponse;
+        if (aiResponse) {
+          const tags = parseLive2DTags(aiResponse);
+          for (const tag of tags) {
+            const state = this.tagToBotState(tag);
+            this.avatar?.transition(state);
+            this.avatar?.enqueueTagAnimation(tag);
+          }
         }
       }
 
-      // Tag stripping runs unconditionally as defense-in-depth: even when the
-      // prompt-injection gate is on, LLMs can still occasionally emit the tag
-      // format from training memory / shared context. Strip before send so
-      // bare `[LIVE2D: ...]` never leaks to users.
+      // Strip runs unconditionally (not gated on this.active). Prompt injection
+      // happens based on AvatarService.isActive() in PromptAssemblyStage — that
+      // gate is independent of whether this plugin is enabled in plugins.jsonc.
+      // So even with the plugin disabled we must still scrub tags that the LLM
+      // was instructed to emit, or they leak raw to users.
       if (context.reply?.source === 'ai' && Array.isArray(context.reply.segments)) {
         for (const seg of context.reply.segments) {
           if (seg.type === 'text' && typeof seg.data?.text === 'string') {
