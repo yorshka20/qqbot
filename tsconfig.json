@@ -1,42 +1,7 @@
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "lib": [
-      "ESNext"
-    ],
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
-    "strict": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@/types/*": [
-        "./types/*"
-      ]
-    },
-    "types": [
-      "bun-types"
-    ],
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
-  },
-  "include": [
-    "src/**/*",
-    "types/**/*",
-    "scripts/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
+  "files": [],
+  "references": [
+    { "path": "./packages/bot" },
+    { "path": "./packages/webui" }
   ]
 }

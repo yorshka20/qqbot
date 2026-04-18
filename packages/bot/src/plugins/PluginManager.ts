@@ -31,8 +31,8 @@ export interface PluginManagerDeps {
 export class PluginManager {
   private plugins = new Map<string, Plugin>();
   private enabledPlugins = new Set<string>();
-  // Plugin directory is fixed to src/plugins/plugins
-  private readonly pluginDirectory = join(process.cwd(), 'src', 'plugins', 'plugins');
+  // Plugin directory is relative to this file's location
+  private readonly pluginDirectory = join(import.meta.dir, 'plugins');
 
   private readonly apiClient: APIClient;
   private readonly eventRouter: EventRouter;
