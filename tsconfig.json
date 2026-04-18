@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
+    { "path": "./packages/avatar" },
     { "path": "./packages/bot" },
     { "path": "./packages/webui" }
   ]
