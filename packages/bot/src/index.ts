@@ -20,8 +20,16 @@ async function main() {
   try {
     // ── Shared initialization (config, DI, tools, plugins, adapters, etc.) ──
     const configPath = process.env.CONFIG_PATH;
-    const { bot, mcpSystem, claudeCodeService, clusterManager, conversationComponents, eventRouter, retrievalService } =
-      await bootstrapApp(configPath);
+    const {
+      bot,
+      mcpSystem,
+      claudeCodeService,
+      clusterManager,
+      conversationComponents,
+      eventRouter,
+      retrievalService,
+      avatarService,
+    } = await bootstrapApp(configPath);
 
     const config = bot.getConfig();
     const container = getContainer();
@@ -55,6 +63,15 @@ async function main() {
 
     // Start bot (opens WebSocket connections)
     await bot.start();
+
+    // Start avatar system (connects to VTubeStudio driver, non-fatal)
+    if (avatarService) {
+      try {
+        await avatarService.start();
+      } catch (error) {
+        logger.warn('[Main] Avatar service failed to start (non-fatal):', error);
+      }
+    }
 
     // Pull rawDb (sqlite only) so the host can persist client internal_report
     // envelopes into `lan_internal_reports`. Non-sqlite deployments pass null
@@ -107,6 +124,9 @@ async function main() {
       stopStaticServer();
       if (resourceCleanupService) {
         await resourceCleanupService.cleanupAll(deleteRemoteFile);
+      }
+      if (avatarService) {
+        await avatarService.stop();
       }
       if (clusterManager) {
         await clusterManager.stop();

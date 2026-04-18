@@ -46,9 +46,28 @@ export class PromptAssemblyStage implements ReplyStage {
       toolUsageInstructions: ctx.toolUsageInstructions,
     });
 
-    const sceneSystemPrompt = this.promptManager.render('llm.reply.system', {
+    const sceneSystemPromptRaw = this.promptManager.render('llm.reply.system', {
       toolInstruct,
     });
+
+    let avatarPromptFragment = '';
+    try {
+      const { getContainer } = await import('@/core/DIContainer');
+      const { DITokens } = await import('@/core/DITokens');
+      const container = getContainer();
+      if (container.isRegistered(DITokens.AVATAR_SERVICE)) {
+        const avatar = container.resolve<import('@/avatar').AvatarService>(DITokens.AVATAR_SERVICE);
+        if (avatar.isActive()) {
+          avatarPromptFragment = (this.promptManager.render('avatar.emotion-system') ?? '').trim();
+        }
+      }
+    } catch {
+      // Avatar not available — skip silently
+    }
+    const sceneSystemPrompt = avatarPromptFragment
+      ? `${sceneSystemPromptRaw}\n\n${avatarPromptFragment}`
+      : sceneSystemPromptRaw;
+
     const sender = hookContext.message?.sender;
     const senderNickname = sender?.nickname ?? sender?.card ?? '';
     const senderUserId = hookContext.message?.userId ?? '';

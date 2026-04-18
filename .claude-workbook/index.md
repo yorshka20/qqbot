@@ -14,3 +14,5 @@
 | 2026-04-18 (4) | T1: webui 迁移到 packages/webui，启用 bun workspaces，更新 dev/web/build:admin/pm2-ui.sh/start.sh | package.json, packages/webui/, scripts/pm2/pm2-ui.sh, start.sh |
 | 2026-04-18 (5) | T2: src/ 迁移到 packages/bot/，TypeScript project references，PluginManager hardcoded path 修复，smoke-test/test cwd 约束 | packages/bot/, tsconfig.base.json, PluginManager.ts |
 | 2026-04-18 (6) | Avatar LLM 情感标签系统（prompt + 解析器） | prompts/avatar/, packages/bot/src/avatar/tags/ |
+| 2026-04-18 (7) | Avatar Foundation REDO: AvatarService 重写（完整子系统连线 compiler/stateMachine/driver/previewServer）+ config wiring（BotConfig avatar 字段 + getAvatarConfig() + bootstrap + index.ts + config.example.jsonc） | packages/bot/src/avatar/AvatarService.ts, core/config/index.ts, core/bootstrap.ts, src/index.ts, config.example.jsonc |
+| 2026-04-18 (8) | Live2D Avatar Plugin（6 hooks 把 bot 生命周期映射到 AvatarService.transition + tag strip）+ PromptAssemblyStage 注入 avatar emotion-system prompt（运行时 DI 检查） | packages/bot/src/plugins/plugins/Live2DAvatarPlugin.ts, ai/pipeline/stages/PromptAssemblyStage.ts, config.example.jsonc |

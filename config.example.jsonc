@@ -225,6 +225,12 @@
         "name": "nudge",
         "enabled": true
       },
+      // Live2D Avatar Plugin — drives a VTubeStudio-connected Live2D avatar based on bot state and LLM emotion tags
+      // Requires the top-level "avatar" config block to be set with enabled=true
+      // {
+      //   "name": "live2d-avatar",
+      //   "enabled": false
+      // },
       // Todo Plugin - manages project ToDo items via /todo command
       {
         "name": "todo",
@@ -981,6 +987,45 @@
       }
     }
   },
+
+  // Avatar system — Live2D / VTubeStudio integration (optional).
+  // Set enabled=true and configure the sub-sections to activate.
+  // "avatar": {
+  //   "enabled": false,
+  //
+  //   // VTubeStudio WebSocket API connection
+  //   "vts": {
+  //     "host": "localhost",
+  //     "port": 8001,
+  //     "pluginName": "qqbot-avatar",
+  //     "pluginDeveloper": "qqbot",
+  //     "tokenFilePath": "config/avatar/.vts-token",
+  //     "throttleFps": 30
+  //   },
+  //
+  //   // Animation compiler settings
+  //   "compiler": {
+  //     "fps": 60,
+  //     "outputFps": 30,
+  //     "defaultEasing": "easeInOutCubic",
+  //     "smoothingFactor": 0.3,
+  //     "attackRatio": 0.2,
+  //     "releaseRatio": 0.3
+  //   },
+  //
+  //   // Idle state machine intervals (milliseconds)
+  //   "idle": {
+  //     "idleIntervalMin": 3000,
+  //     "idleIntervalMax": 8000
+  //   },
+  //
+  //   // Live preview server — streams parameter frames via WebSocket
+  //   "preview": {
+  //     "enabled": false,
+  //     "port": 8002,
+  //     "host": "0.0.0.0"
+  //   }
+  // },
 
   // Tickets storage (optional) — externalize ticket markdown out of the bot
   // repo so cross-project work items can live in their own git history.

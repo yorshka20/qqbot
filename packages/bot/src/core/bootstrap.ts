@@ -9,6 +9,8 @@
 
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import { APIClient } from '@/api/APIClient';
+import type { AvatarConfig } from '@/avatar';
+import { AvatarService, DEFAULT_AVATAR_CONFIG } from '@/avatar';
 import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
 import { ConversationInitializer } from '@/conversation/ConversationInitializer';
@@ -43,6 +45,7 @@ export interface BootstrapResult {
   conversationComponents: ConversationComponents;
   eventRouter: EventRouter;
   retrievalService: RetrievalService;
+  avatarService: AvatarService | null;
 }
 
 /**
@@ -210,6 +213,28 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
       logger.warn('[Bootstrap] Startup health check failed:', err);
     });
 
+  // ── Avatar system (sync init, no driver connections) ──
+  let avatarService: AvatarService | null = null;
+  const rawAvatarConfig = config.getAvatarConfig();
+  const avatarConfig: AvatarConfig = {
+    enabled: (rawAvatarConfig?.enabled as boolean | undefined) ?? DEFAULT_AVATAR_CONFIG.enabled,
+    vts: { ...DEFAULT_AVATAR_CONFIG.vts, ...((rawAvatarConfig?.vts as object | undefined) ?? {}) },
+    compiler: { ...DEFAULT_AVATAR_CONFIG.compiler, ...((rawAvatarConfig?.compiler as object | undefined) ?? {}) },
+    idle: { ...DEFAULT_AVATAR_CONFIG.idle, ...((rawAvatarConfig?.idle as object | undefined) ?? {}) },
+    preview: { ...DEFAULT_AVATAR_CONFIG.preview, ...((rawAvatarConfig?.preview as object | undefined) ?? {}) },
+  };
+  if (avatarConfig.enabled) {
+    try {
+      avatarService = new AvatarService();
+      await avatarService.initialize(avatarConfig);
+      container.registerInstance(DITokens.AVATAR_SERVICE, avatarService);
+      logger.info('[Bootstrap] Avatar service initialized');
+    } catch (err) {
+      logger.warn('[Bootstrap] Avatar service failed to initialize (non-fatal):', err);
+      avatarService = null;
+    }
+  }
+
   logger.info('[Bootstrap] All initialization stages completed');
 
   return {
@@ -220,5 +245,6 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     conversationComponents,
     eventRouter,
     retrievalService,
+    avatarService,
   };
 }

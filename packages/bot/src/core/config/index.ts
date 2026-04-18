@@ -100,12 +100,15 @@ export interface BotConfig {
   projectRegistry?: ProjectRegistryConfig;
   cluster?: Record<string, unknown>;
   /**
-   * Tickets storage (file-based). When absent, falls back to `<cwd>/tickets`
-   * for backwards compatibility. See `TicketsConfig` for the full rationale.
+   * Tickets storage (file-based). When absent, falls back to
+   * `<repoRoot>/tickets` for backwards compatibility. See `TicketsConfig`
+   * for the full rationale.
    */
   tickets?: TicketsConfig;
   /** LAN WebSocket relay (host/client); optional. */
   lanRelay?: LanRelayConfig;
+  /** Avatar system (VTubeStudio driver, animation compiler, preview server). */
+  avatar?: Record<string, unknown>;
 }
 
 export class Config {
@@ -459,6 +462,10 @@ export class Config {
 
   getClusterConfig(): Record<string, unknown> | undefined {
     return this.config.cluster;
+  }
+
+  getAvatarConfig(): Record<string, unknown> | undefined {
+    return this.config.avatar;
   }
 
   getProjectRegistryConfig(): ProjectRegistryConfig | undefined {

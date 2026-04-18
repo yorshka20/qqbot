@@ -51,6 +51,8 @@ export const DITokens = {
   // Video pipeline services
   VIDEO_DOWNLOAD_SERVICE: 'VideoDownloadService',
   RESOURCE_CLEANUP_SERVICE: 'ResourceCleanupService',
+  // Avatar system
+  AVATAR_SERVICE: 'AvatarService',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];
