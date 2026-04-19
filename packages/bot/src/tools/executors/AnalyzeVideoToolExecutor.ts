@@ -136,8 +136,6 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
 
       const cleanupSessionId = downloadResult.sessionId;
       sessionId = cleanupSessionId;
-      // Register temp file for cleanup in finally
-      this.resourceCleanupService.register(cleanupSessionId, downloadResult.tempPath);
 
       // Step 1.5: Validate file size and duration before uploading
       const fileSizeMB = (downloadResult.buffer.length / (1024 * 1024)).toFixed(1);
@@ -180,7 +178,8 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
         }
         uploadedFileName = remoteFileName;
         logger.info(`[AnalyzeVideoToolExecutor] Uploaded file: ${remoteFileName}`);
-        this.resourceCleanupService.registerRemoteFile(cleanupSessionId, remoteFileName);
+        this.resourceCleanupService.registerLocalFile(cleanupSessionId, downloadResult.tempPath);
+        this.resourceCleanupService.registerRemoteFile(cleanupSessionId, remoteFileName, 'gemini');
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error(`[AnalyzeVideoToolExecutor] Gemini upload failed: ${msg}`);
@@ -207,7 +206,7 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
       try {
         const result = await gemini.generateWithFileUri(prompt, fileUri, fileMime, {
           maxTokens: 2000,
-          temperature: 0.7,
+          temperature: 0.5,
         });
         analysisText = result.text;
       } catch (err) {
@@ -223,7 +222,7 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
       logger.info(`[AnalyzeVideoToolExecutor] Analysis complete (${analysisText.length} chars)`);
       return {
         success: true,
-        reply: `视频分析完成：${analysisText.substring(0, 100)}...`,
+        reply: `视频分析完成`,
         data: {
           url,
           prompt,
@@ -238,10 +237,7 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
     } finally {
       // Cleanup session resources (temp files and Gemini uploads registered above)
       if (sessionId) {
-        await this.resourceCleanupService.cleanup(sessionId, async (fileName) => {
-          await this.getGeminiProvider().deleteUploadedFile(fileName);
-          logger.debug(`[AnalyzeVideoToolExecutor] Deleted Gemini file: ${fileName}`);
-        });
+        await this.resourceCleanupService.cleanup(sessionId);
       }
     }
   }

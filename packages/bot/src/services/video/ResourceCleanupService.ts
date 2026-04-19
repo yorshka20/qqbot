@@ -11,9 +11,14 @@ import { unlink } from 'node:fs/promises';
 import { injectable, singleton } from 'tsyringe';
 import { logger } from '@/utils/logger';
 
+interface FileResource {
+  fileName: string;
+  providerName: string;
+}
+
 interface SessionResources {
-  localFiles: string[];
-  remoteFiles: string[];
+  localFiles: FileResource[];
+  remoteFiles: FileResource[];
 }
 
 @injectable()
@@ -21,34 +26,45 @@ interface SessionResources {
 export class ResourceCleanupService {
   /** Maps sessionId → files to delete on cleanup. */
   private readonly sessions = new Map<string, SessionResources>();
+  /** Maps providerName → cleanup function. */
+  private readonly cleanupFunctions = new Map<string, (fileName: string) => Promise<void>>();
 
   /**
-   * Register a file path under the given session.
-   * Calling this multiple times with the same session accumulates paths.
+   * Register a local file under the given session.
+   * Calling this multiple times with the same session accumulates file names.
    */
-  register(sessionId: string, filePath: string): void {
+  registerLocalFile(sessionId: string, filePath: string): void {
     const resources = this.sessions.get(sessionId) ?? { localFiles: [], remoteFiles: [] };
-    resources.localFiles.push(filePath);
+    resources.localFiles.push({ fileName: filePath, providerName: 'local' });
     this.sessions.set(sessionId, resources);
-    logger.debug(`[ResourceCleanupService] Registered | session=${sessionId} | path=${filePath}`);
+    logger.debug(`[ResourceCleanupService] Registered local file | session=${sessionId} | file=${filePath}`);
   }
 
   /**
    * Register a Gemini file under the given session.
    * Calling this multiple times with the same session accumulates file names.
    */
-  registerRemoteFile(sessionId: string, fileName: string): void {
+  registerRemoteFile(sessionId: string, fileName: string, providerName: string): void {
     const resources = this.sessions.get(sessionId) ?? { localFiles: [], remoteFiles: [] };
-    resources.remoteFiles.push(fileName);
+    resources.remoteFiles.push({ fileName, providerName });
     this.sessions.set(sessionId, resources);
     logger.debug(`[ResourceCleanupService] Registered remote file | session=${sessionId} | file=${fileName}`);
+  }
+
+  /**
+   * Register a cleanup function for a provider.
+   * Calling this multiple times with the same provider accumulates cleanup functions.
+   */
+  registerFileCleanup(providerName: string, cleanupFunction: (fileName: string) => Promise<void>): void {
+    this.cleanupFunctions.set(providerName, cleanupFunction);
+    logger.debug(`[ResourceCleanupService] Registered file cleanup | provider=${providerName}`);
   }
 
   /**
    * Delete all files registered under sessionId, then remove the session entry.
    * Individual deletion failures are logged as warnings (best-effort).
    */
-  async cleanup(sessionId: string, deleteRemoteFile?: (fileName: string) => Promise<void>): Promise<void> {
+  async cleanup(sessionId: string): Promise<void> {
     const resources = this.sessions.get(sessionId);
     this.sessions.delete(sessionId);
 
@@ -58,28 +74,30 @@ export class ResourceCleanupService {
 
     for (const filePath of resources.localFiles) {
       try {
-        await unlink(filePath);
+        await unlink(filePath.fileName);
         logger.debug(`[ResourceCleanupService] Deleted | session=${sessionId} | path=${filePath}`);
       } catch {
         logger.warn(`[ResourceCleanupService] Failed to delete | session=${sessionId} | path=${filePath}`);
       }
     }
 
-    if (resources.remoteFiles.length > 0 && !deleteRemoteFile) {
-      logger.warn(`[ResourceCleanupService] Skipped remote cleanup | session=${sessionId} | reason=no callback`);
-      return;
-    }
-
-    for (const fileName of resources.remoteFiles) {
-      if (!deleteRemoteFile) {
+    for (const fileResource of resources.remoteFiles) {
+      const cleanupFunction = this.cleanupFunctions.get(fileResource.providerName);
+      if (!cleanupFunction) {
+        logger.warn(
+          `[ResourceCleanupService] No cleanup function found for provider | session=${sessionId} | provider=${fileResource.providerName}`,
+        );
         continue;
       }
-
       try {
-        await deleteRemoteFile(fileName);
-        logger.debug(`[ResourceCleanupService] Deleted remote file | session=${sessionId} | file=${fileName}`);
+        await cleanupFunction(fileResource.fileName);
+        logger.debug(
+          `[ResourceCleanupService] Deleted remote file | session=${sessionId} | file=${fileResource.fileName}`,
+        );
       } catch {
-        logger.warn(`[ResourceCleanupService] Failed to delete remote file | session=${sessionId} | file=${fileName}`);
+        logger.warn(
+          `[ResourceCleanupService] Failed to delete remote file | session=${sessionId} | file=${fileResource.fileName}`,
+        );
       }
     }
   }
@@ -88,13 +106,9 @@ export class ResourceCleanupService {
    * Delete all tracked resources across every session.
    * Individual session failures are logged and ignored so cleanup stays best-effort.
    */
-  async cleanupAll(deleteRemoteFile?: (fileName: string) => Promise<void>): Promise<void> {
+  async cleanupAll(): Promise<void> {
     for (const sessionId of Array.from(this.sessions.keys())) {
-      try {
-        await this.cleanup(sessionId, deleteRemoteFile);
-      } catch {
-        logger.warn(`[ResourceCleanupService] Failed to cleanup session | session=${sessionId}`);
-      }
+      await this.cleanup(sessionId);
     }
   }
 }

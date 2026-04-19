@@ -3,7 +3,10 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { FileState, GoogleGenAI } from '@google/genai';
+import { container } from 'tsyringe';
 import type { GeminiProviderConfig } from '@/core/config/types/ai';
+import { DITokens } from '@/core/DITokens';
+import type { ResourceCleanupService } from '@/services/video';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import { AIProvider } from '../base/AIProvider';
@@ -88,6 +91,9 @@ export class GeminiProvider
       this._capabilities.push('text2img', 'img2img');
     }
 
+    // register cleanup function for uploaded temp files.
+    this.registryResourceCleanup();
+
     // Clients are created lazily in getClient() using the key for current mode
     logger.info('[GeminiProvider] Initialized (free/paid key mode supported)');
   }
@@ -111,6 +117,14 @@ export class GeminiProvider
       this.clientPaid = new GoogleGenAI({ apiKey: this.config.apiKeyPaid });
     }
     return this.clientPaid;
+  }
+
+  /**
+   * Register the cleanup function for the Gemini provider.
+   */
+  private registryResourceCleanup(): void {
+    const resourceCleanupService = container.resolve<ResourceCleanupService>(DITokens.RESOURCE_CLEANUP_SERVICE);
+    resourceCleanupService.registerFileCleanup(this.name, this.deleteUploadedFile);
   }
 
   /**

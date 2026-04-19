@@ -2,7 +2,6 @@
 // IMPORTANT: reflect-metadata must be imported FIRST before any other imports
 import 'reflect-metadata';
 
-import type { AIManager } from './ai/AIManager';
 import type { MessageAPI } from './api/methods/MessageAPI';
 import { bootstrapApp } from './core/bootstrap';
 import { getContainer } from './core/DIContainer';
@@ -40,24 +39,6 @@ async function main() {
     } catch (error) {
       logger.warn('[Main] ResourceCleanupService is unavailable during shutdown setup:', error);
     }
-    const deleteRemoteFile = (() => {
-      try {
-        const aiManager = container.resolve<AIManager>(DITokens.AI_MANAGER);
-        const geminiProvider = aiManager.getProvider('gemini') as unknown as
-          | { deleteUploadedFile(fileName: string): Promise<void> }
-          | undefined;
-
-        if (!geminiProvider) {
-          return undefined;
-        }
-
-        return async (fileName: string) => {
-          await geminiProvider.deleteUploadedFile(fileName);
-        };
-      } catch {
-        return undefined;
-      }
-    })();
 
     // ── Live connections (the ONLY things not covered by bootstrapApp) ──
 
@@ -123,7 +104,7 @@ async function main() {
       logger.info(`[Main] Received ${signal}, shutting down...`);
       stopStaticServer();
       if (resourceCleanupService) {
-        await resourceCleanupService.cleanupAll(deleteRemoteFile);
+        await resourceCleanupService.cleanupAll();
       }
       if (avatarService) {
         await avatarService.stop();
