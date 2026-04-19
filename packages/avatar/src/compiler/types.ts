@@ -108,8 +108,12 @@ export interface CompilerConfig {
   attackRatio: number;
   /** Release phase ratio of the ADSR envelope (0.0–1.0) */
   releaseRatio: number;
-  /** Enable the default continuous ambient drivers (breath-like motion). */
-  ambientDrivers?: {
+  /**
+   * Enable the default continuous animation layer stack (breath, auto-blink,
+   * eye gaze, idle motion). Each layer can be individually disabled via
+   * `AnimationCompiler.getLayer(id).setEnabled(false)` at runtime.
+   */
+  layers?: {
     enabled: boolean;
   };
 }

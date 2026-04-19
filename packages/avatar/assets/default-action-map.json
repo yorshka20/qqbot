@@ -24,8 +24,8 @@
     "params": [
       { "channel": "head.yaw", "targetValue": 10.0, "weight": 0.7 },
       { "channel": "head.roll", "targetValue": -8.0, "weight": 0.5 },
-      { "channel": "eye.open.left", "targetValue": 0.6, "weight": 0.8 },
-      { "channel": "eye.open.right", "targetValue": 0.6, "weight": 0.8 },
+      { "channel": "eye.open.left", "targetValue": -0.4, "weight": 0.8 },
+      { "channel": "eye.open.right", "targetValue": -0.4, "weight": 0.8 },
       { "channel": "brow", "targetValue": -0.3, "weight": 0.6 }
     ],
     "defaultDuration": 3000
@@ -43,34 +43,18 @@
     "params": [
       { "channel": "brow", "targetValue": -0.8, "weight": 1.0 },
       { "channel": "mouth.smile", "targetValue": 0.0, "weight": 0.7 },
-      { "channel": "eye.open.left", "targetValue": 0.4, "weight": 0.6 },
-      { "channel": "eye.open.right", "targetValue": 0.4, "weight": 0.6 }
+      { "channel": "eye.open.left", "targetValue": -0.6, "weight": 0.6 },
+      { "channel": "eye.open.right", "targetValue": -0.6, "weight": 0.6 }
     ],
     "defaultDuration": 1800
   },
   "surprised": {
     "params": [
       { "channel": "mouth.open", "targetValue": 0.8, "weight": 1.0 },
-      { "channel": "eye.open.left", "targetValue": 1.0, "weight": 1.0 },
-      { "channel": "eye.open.right", "targetValue": 1.0, "weight": 1.0 },
       { "channel": "brow", "targetValue": 0.6, "weight": 0.8 },
       { "channel": "head.roll", "targetValue": 3.0, "weight": 0.3 }
     ],
     "defaultDuration": 1200
-  },
-  "idle_blink": {
-    "params": [
-      { "channel": "eye.open.left", "targetValue": 0.0, "weight": 1.0 },
-      { "channel": "eye.open.right", "targetValue": 0.0, "weight": 1.0 }
-    ],
-    "defaultDuration": 150
-  },
-  "blink": {
-    "params": [
-      { "channel": "eye.open.left", "targetValue": 0.0, "weight": 1.0 },
-      { "channel": "eye.open.right", "targetValue": 0.0, "weight": 1.0 }
-    ],
-    "defaultDuration": 300
   },
   "head_sway": {
     "params": [

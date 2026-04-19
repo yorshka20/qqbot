@@ -20,6 +20,12 @@ const DEFAULT_CONFIG: PreviewConfig = {
 
 export interface PreviewServerHandlers {
   onTrigger?: (data: { action: string; emotion?: string; intensity?: number }) => void;
+  /**
+   * Called after every WS client open/close with the new total client count.
+   * Lets callers gate expensive downstream work (frame computation, layer
+   * sampling) on the presence of actual consumers.
+   */
+  onClientCountChange?: (count: number) => void;
 }
 
 export class PreviewServer {
@@ -75,6 +81,7 @@ export class PreviewServer {
       websocket: {
         open(ws) {
           clients.add(ws);
+          server.handlers.onClientCountChange?.(clients.size);
           // Send latest cached status to new client
           if (server.latestStatus !== null) {
             const msg: PreviewMessage = { type: 'status', data: server.latestStatus };
@@ -116,6 +123,7 @@ export class PreviewServer {
         },
         close(ws) {
           clients.delete(ws);
+          server.handlers.onClientCountChange?.(clients.size);
         },
       },
     });

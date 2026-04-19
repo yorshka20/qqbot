@@ -1,9 +1,9 @@
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { translateChannelsToVTS } from '../channels';
 import { logger } from '../utils/logger';
 import { DriverAdapter } from './DriverAdapter';
 import { DEFAULT_VTS_CONFIG, type VTSConfig, type VTSParameterValue, type VTSRequest, type VTSResponse } from './types';
-import { translateChannelsToVTS } from './vts-channel-map';
 
 type PendingEntry = {
   resolve: (r: VTSResponse) => void;

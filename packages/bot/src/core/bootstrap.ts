@@ -7,8 +7,7 @@
 //   bot.start(), MCPInitializer.connectServers(), ClaudeCodeInitializer.start(),
 //   and process signal handlers.
 
-import type { AvatarConfig } from '@qqbot/avatar';
-import { AvatarService, DEFAULT_AVATAR_CONFIG } from '@qqbot/avatar';
+import { AvatarService } from '@qqbot/avatar';
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import { APIClient } from '@/api/APIClient';
 import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
@@ -214,33 +213,22 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     });
 
   // ── Avatar system (sync init, no driver connections) ──
+  // Config schema & defaults live in the avatar package; we just forward the
+  // raw JSONC blob. `initialize()` is a no-op when the avatar section is
+  // absent or `enabled: false`.
   let avatarService: AvatarService | null = null;
-  const rawAvatarConfig = config.getAvatarConfig();
-  const avatarConfig: AvatarConfig = {
-    enabled: (rawAvatarConfig?.enabled as boolean | undefined) ?? DEFAULT_AVATAR_CONFIG.enabled,
-    vts: { ...DEFAULT_AVATAR_CONFIG.vts, ...((rawAvatarConfig?.vts as object | undefined) ?? {}) },
-    compiler: {
-      ...DEFAULT_AVATAR_CONFIG.compiler,
-      ...((rawAvatarConfig?.compiler as object | undefined) ?? {}),
-      ambientDrivers: {
-        ...(DEFAULT_AVATAR_CONFIG.compiler.ambientDrivers ?? { enabled: false }),
-        ...((rawAvatarConfig?.compiler as { ambientDrivers?: object } | undefined)?.ambientDrivers ?? {}),
-      },
-    },
-    idle: { ...DEFAULT_AVATAR_CONFIG.idle, ...((rawAvatarConfig?.idle as object | undefined) ?? {}) },
-    preview: { ...DEFAULT_AVATAR_CONFIG.preview, ...((rawAvatarConfig?.preview as object | undefined) ?? {}) },
-    actionMap: { ...DEFAULT_AVATAR_CONFIG.actionMap, ...((rawAvatarConfig?.actionMap as object | undefined) ?? {}) },
-  };
-  if (avatarConfig.enabled) {
-    try {
-      avatarService = new AvatarService();
-      await avatarService.initialize(avatarConfig);
+  try {
+    avatarService = new AvatarService();
+    await avatarService.initialize(config.getAvatarConfig());
+    if (avatarService.isEnabled()) {
       container.registerInstance(DITokens.AVATAR_SERVICE, avatarService);
       logger.info('[Bootstrap] Avatar service initialized');
-    } catch (err) {
-      logger.warn('[Bootstrap] Avatar service failed to initialize (non-fatal):', err);
+    } else {
       avatarService = null;
     }
+  } catch (err) {
+    logger.warn('[Bootstrap] Avatar service failed to initialize (non-fatal):', err);
+    avatarService = null;
   }
 
   logger.info('[Bootstrap] All initialization stages completed');

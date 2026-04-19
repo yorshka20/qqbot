@@ -1,9 +1,9 @@
 import { EventEmitter } from 'node:events';
 import type { BotState } from '../state/types';
-import type { AmbientDriver } from './AmbientDriver';
-import { sampleDriver } from './AmbientDriver';
 import { ActionMap } from './action-map';
 import { applyEasing } from './easing';
+import { LayerManager } from './layers/LayerManager';
+import type { AnimationLayer } from './layers/types';
 import type { ActiveAnimation, CompilerConfig, FrameOutput, StateNode } from './types';
 
 const DEFAULT_CONFIG: CompilerConfig = {
@@ -18,12 +18,12 @@ const DEFAULT_CONFIG: CompilerConfig = {
 export class AnimationCompiler extends EventEmitter {
   private readonly config: CompilerConfig;
   private readonly actionMap: ActionMap;
+  private readonly layerManager: LayerManager = new LayerManager();
   private pendingQueue: StateNode[] = [];
   private activeAnimations: ActiveAnimation[] = [];
   private currentParams: Record<string, number> = {};
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private tickCount = 0;
-  private drivers: Map<string, AmbientDriver> = new Map();
   private currentState: BotState = 'idle';
 
   constructor(config: Partial<CompilerConfig> = {}, actionMapPath?: string) {
@@ -48,6 +48,32 @@ export class AnimationCompiler extends EventEmitter {
     this.tickCount = 0;
   }
 
+  /**
+   * Pause the tick loop without dropping queued / active animation state.
+   * Intended for consumer-presence gating — when no one is reading frames
+   * (no VTS, no preview clients), pause to save CPU; call `resume()` when
+   * a consumer reconnects.
+   *
+   * Layers keep their internal state intact; time-based layers re-align to
+   * wall-clock on the next tick. `EyeGazeLayer` clamps its dt to prevent a
+   * huge OU step after a long pause.
+   */
+  pause(): void {
+    if (this.tickInterval === null) return;
+    clearInterval(this.tickInterval);
+    this.tickInterval = null;
+  }
+
+  /** Resume the tick loop. No-op if already running. Identical to `start()`. */
+  resume(): void {
+    this.start();
+  }
+
+  /** True iff the tick loop is currently running. */
+  isTicking(): boolean {
+    return this.tickInterval !== null;
+  }
+
   enqueue(nodes: StateNode[]): void {
     this.pendingQueue.push(...nodes);
     this.processQueue();
@@ -69,12 +95,21 @@ export class AnimationCompiler extends EventEmitter {
     return this.actionMap.getDuration(action);
   }
 
-  registerDriver(driver: AmbientDriver): void {
-    this.drivers.set(driver.id, driver);
+  /** Register a continuous animation layer (breath, blink, gaze, idle clip…). */
+  registerLayer(layer: AnimationLayer): void {
+    this.layerManager.register(layer);
   }
 
-  unregisterDriver(id: string): void {
-    this.drivers.delete(id);
+  unregisterLayer(id: string): boolean {
+    return this.layerManager.unregister(id);
+  }
+
+  getLayer(id: string): AnimationLayer | undefined {
+    return this.layerManager.get(id);
+  }
+
+  listLayers(): AnimationLayer[] {
+    return this.layerManager.list();
   }
 
   setGateState(state: BotState): void {
@@ -106,23 +141,10 @@ export class AnimationCompiler extends EventEmitter {
     // Prune finished animations
     this.activeAnimations = this.activeAnimations.filter((a) => now < a.endTime);
 
-    // Sum contributions from active animations.
-    // Each contribution is (targetValue * eased * weight); intensity is
-    // already baked into targetValue by ActionMap.resolveAction. Multiple
-    // animations targeting the same param are additively mixed.
-    const contributions: Record<string, number> = {};
+    // Sum contributions from layers (continuous) + active animations (discrete ADSR).
+    // Multiple sources targeting the same channel are additively mixed.
+    const contributions: Record<string, number> = this.layerManager.sample(now, this.currentState);
 
-    // 1. Driver (continuous) contributions
-    for (const driver of this.drivers.values()) {
-      for (const channel of Object.keys(driver.channels)) {
-        const v = sampleDriver(driver, channel, now, this.currentState);
-        if (v !== undefined) {
-          contributions[channel] = (contributions[channel] ?? 0) + v;
-        }
-      }
-    }
-
-    // 2. Action (discrete) contributions
     for (const anim of this.activeAnimations) {
       if (now < anim.startTime) continue;
       const progress = this.calculateProgress(anim, now);

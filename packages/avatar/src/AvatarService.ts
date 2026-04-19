@@ -1,7 +1,8 @@
 import { singleton } from 'tsyringe';
 import { AnimationCompiler } from './compiler/AnimationCompiler';
-import { DEFAULT_AMBIENT_DRIVERS } from './compiler/default-drivers';
+import { createDefaultLayers } from './compiler/layers';
 import type { StateNode } from './compiler/types';
+import { mergeAvatarConfig } from './config';
 import { VTSDriver } from './drivers/VTSDriver';
 import { PreviewServer } from './preview/PreviewServer';
 import { IdleStateMachine } from './state/IdleStateMachine';
@@ -22,12 +23,25 @@ export class AvatarService {
   private lastFpsSampleAt = 0;
   private measuredFps = 0;
   private statusTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * Running count of downstream frame consumers — `1` for VTS-connected +
+   * `N` for active preview WebSocket clients. The compiler tick is paused
+   * whenever this hits zero so we don't burn CPU sampling layers with
+   * nothing to render.
+   */
+  private consumerCount = 0;
 
   /**
-   * Initialize all avatar subsystems with the given config.
-   * Must be called before start(). No network I/O occurs here.
+   * Merge + apply the raw (JSONC-parsed) avatar config and initialize all
+   * subsystems. Must be called before `start()`. No network I/O occurs here.
+   *
+   * Accepts the raw blob from `ConfigManager.getAvatarConfig()` so hosts
+   * don't have to know the schema — the merge happens in `mergeAvatarConfig`
+   * next door. `undefined` is treated as "no avatar section" and leaves the
+   * service disabled.
    */
-  async initialize(config: AvatarConfig): Promise<void> {
+  async initialize(rawConfig: Record<string, unknown> | undefined): Promise<void> {
+    const config = mergeAvatarConfig(rawConfig);
     this.config = config;
 
     if (!config.enabled) {
@@ -36,7 +50,7 @@ export class AvatarService {
     }
 
     this.compiler = new AnimationCompiler(config.compiler, config.actionMap?.path);
-    this.stateMachine = new IdleStateMachine(config.idle);
+    this.stateMachine = new IdleStateMachine();
 
     // VTSDriver is optional: when vts.enabled=false, we run with only the
     // compiler + preview server. Frames are still broadcast to preview WS
@@ -63,11 +77,17 @@ export class AvatarService {
               emotion: data.emotion ?? 'neutral',
               intensity: data.intensity ?? 1.0,
             }),
+          onClientCountChange: (count) => this.handlePreviewClientCount(count),
         },
       );
     }
 
     logger.debug('[AvatarService] Initialized', { enabled: config.enabled });
+  }
+
+  /** True if the avatar system is configured to run (post-initialize). */
+  isEnabled(): boolean {
+    return this.config.enabled;
   }
 
   /**
@@ -86,11 +106,6 @@ export class AvatarService {
       return;
     }
 
-    // Wire idle animations from state machine → compiler queue
-    this.stateMachine.on('idle-animation', (nodes: StateNodeOutput[]) => {
-      this.compiler?.enqueue(toStateNodes(nodes));
-    });
-
     // Wire compiled frames → driver (fire-and-forget) + preview broadcast
     this.compiler.on('frame', (frame) => {
       this.driver?.sendFrame(frame.params).catch(() => {});
@@ -107,24 +122,30 @@ export class AvatarService {
       this.driver.on('error', (err: Error) => {
         logger.warn('[AvatarService] Driver error (non-fatal):', err.message || err);
       });
+      this.driver.on('connected', () => this.addConsumer('vts'));
       this.driver.on('disconnected', () => {
         logger.warn('[AvatarService] Driver disconnected; will attempt reconnect');
+        this.removeConsumer('vts');
       });
     }
 
-    // Start the animation engine and idle timer
-    this.compiler.start();
-
-    if (this.config.compiler.ambientDrivers?.enabled && this.compiler) {
-      for (const d of DEFAULT_AMBIENT_DRIVERS) {
-        this.compiler.registerDriver(d);
+    // Register the continuous layer stack before the compiler starts ticking
+    // so the first tick already has breath/blink/gaze available.
+    if (this.config.compiler.layers?.enabled !== false) {
+      const layers = createDefaultLayers();
+      for (const layer of layers) {
+        this.compiler.registerLayer(layer);
       }
       logger.info(
-        '[AvatarService] Ambient drivers enabled:',
-        DEFAULT_AMBIENT_DRIVERS.map((d) => d.id),
+        '[AvatarService] Animation layers registered:',
+        layers.map((l) => l.id),
       );
     }
 
+    // NOTE: we deliberately do NOT call `compiler.start()` here. The tick
+    // loop is gated on `consumerCount > 0` — an active VTS connection or at
+    // least one preview WebSocket client. `addConsumer()` resumes it;
+    // `removeConsumer()` pauses when the last consumer leaves.
     this.stateMachine.start();
 
     if (this.previewServer) {
@@ -133,7 +154,9 @@ export class AvatarService {
       this.startStatusBroadcast();
     }
 
-    // Connect to VTubeStudio (non-fatal: bot works without avatar driver)
+    // Connect to VTubeStudio (non-fatal: bot works without avatar driver).
+    // The driver's `connected` event (wired above) will bump the consumer
+    // count and resume the compiler if this connect succeeds.
     if (this.driver) {
       try {
         await this.driver.connect();
@@ -142,11 +165,50 @@ export class AvatarService {
       }
     }
 
-    // Enter idle state to kick off the idle animation timer
+    // Enter idle state for gate policy. If no consumer has arrived yet the
+    // compiler stays paused; the transition nodes sit in the queue and will
+    // play cleanly once the tick resumes.
     this.transition('idle');
 
     this.started = true;
-    logger.info('[AvatarService] Started');
+    logger.info('[AvatarService] Started (compiler paused until first consumer)');
+  }
+
+  /**
+   * Register a frame consumer (VTS driver connection, preview WS client).
+   * Resumes the compiler tick on the 0→1 transition. Tagged for debug
+   * logging — `vts` vs `preview` makes the lifecycle trace readable.
+   */
+  private addConsumer(source: 'vts' | 'preview'): void {
+    this.consumerCount += 1;
+    if (this.consumerCount === 1) {
+      this.compiler?.resume();
+      logger.info(`[AvatarService] Frame pipeline resumed (first consumer: ${source})`);
+    }
+  }
+
+  /** Pair of `addConsumer`. Pauses the compiler when the count hits 0. */
+  private removeConsumer(source: 'vts' | 'preview'): void {
+    this.consumerCount = Math.max(0, this.consumerCount - 1);
+    if (this.consumerCount === 0) {
+      this.compiler?.pause();
+      logger.info(`[AvatarService] Frame pipeline paused (last consumer left: ${source})`);
+    }
+  }
+
+  /**
+   * PreviewServer's WS open/close callback. Translates absolute client
+   * counts into the delta-based `(in|de)crementConsumers` calls.
+   */
+  private handlePreviewClientCount(count: number): void {
+    // Reconcile against our tracked preview-consumer portion. The driver
+    // portion is handled separately by VTS events.
+    const current = Math.max(0, this.consumerCount - (this.driver?.isConnected() ? 1 : 0));
+    if (count > current) {
+      for (let i = 0; i < count - current; i++) this.addConsumer('preview');
+    } else if (count < current) {
+      for (let i = 0; i < current - count; i++) this.removeConsumer('preview');
+    }
   }
 
   /**
