@@ -389,6 +389,89 @@ export class MessageAPI {
   }
 
   /**
+   * Get HTTP download URL for a group file attachment by file_id (Milky only).
+   * Chat file segments do not include temp_url; use get_group_file_download_url instead of get_resource_temp_url.
+   */
+  async getGroupFileDownloadUrl(
+    fileId: string,
+    context: CommandContext | NormalizedMessageEvent,
+  ): Promise<string | null> {
+    const protocol = this.extractProtocol(context);
+    if (protocol !== 'milky') {
+      return null;
+    }
+    const groupId = 'groupId' in context ? context.groupId : undefined;
+    if (groupId === undefined || groupId === null || groupId === '') {
+      return null;
+    }
+    const gid = typeof groupId === 'number' ? groupId : Number(groupId);
+    if (Number.isNaN(gid)) {
+      return null;
+    }
+    try {
+      const response = await this.apiClient.call<{ download_url: string }>(
+        'get_group_file_download_url',
+        { group_id: gid, file_id: fileId },
+        protocol,
+        30000,
+      );
+      const url = response?.download_url;
+      if (typeof url === 'string' && url && (url.startsWith('http://') || url.startsWith('https://'))) {
+        logger.debug(`[MessageAPI] Got group file download URL for file_id=${fileId.substring(0, 24)}...`);
+        return url;
+      }
+      return null;
+    } catch (error) {
+      logger.warn(
+        `[MessageAPI] get_group_file_download_url failed | fileId=${fileId.substring(0, 30)}... | error=${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Get HTTP download URL for a private-chat file attachment (Milky only).
+   * Requires file_hash from the file segment when temp_url is absent.
+   */
+  async getPrivateFileDownloadUrl(
+    fileId: string,
+    fileHash: string,
+    context: CommandContext | NormalizedMessageEvent,
+  ): Promise<string | null> {
+    const protocol = this.extractProtocol(context);
+    if (protocol !== 'milky') {
+      return null;
+    }
+    const userId = 'userId' in context ? context.userId : undefined;
+    if (userId === undefined || userId === null || userId === '') {
+      return null;
+    }
+    const uid = typeof userId === 'number' ? userId : Number(userId);
+    if (Number.isNaN(uid)) {
+      return null;
+    }
+    try {
+      const response = await this.apiClient.call<{ download_url: string }>(
+        'get_private_file_download_url',
+        { user_id: uid, file_id: fileId, file_hash: fileHash },
+        protocol,
+        30000,
+      );
+      const url = response?.download_url;
+      if (typeof url === 'string' && url && (url.startsWith('http://') || url.startsWith('https://'))) {
+        logger.debug(`[MessageAPI] Got private file download URL for file_id=${fileId.substring(0, 24)}...`);
+        return url;
+      }
+      return null;
+    } catch (error) {
+      logger.warn(
+        `[MessageAPI] get_private_file_download_url failed | fileId=${fileId.substring(0, 30)}... | error=${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      return null;
+    }
+  }
+
+  /**
    * Upload a file to a group or private chat via Milky protocol file upload API.
    * @param fileUri - File URI (file://, http(s)://, base64://)
    * @param fileName - Display name for the uploaded file

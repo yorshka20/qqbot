@@ -165,8 +165,10 @@ export class GroupDownloadPlugin extends PluginBase {
 
   /**
    * Resolve download URL for a segment (image/file/video/sticker/market_face).
-   * Prefers temp_url / uri; falls back to getResourceTempUrl(resource_id or file_id) for Milky.
-   * For image/sticker, also tries image_id in case protocol uses it for 表情.
+   * Prefers temp_url / uri.
+   * For file segments: Milky does not put temp_url on file elements; group attachments must use
+   * get_group_file_download_url (file_id + group_id), not get_resource_temp_url.
+   * Falls back to getResourceTempUrl for image/video/resource_id-style IDs.
    */
   private async resolveUrl(
     event: NormalizedMessageEvent,
@@ -176,6 +178,27 @@ export class GroupDownloadPlugin extends PluginBase {
     const url = getDataValue(data, 'temp_url', 'uri', 'url');
     if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
       return url;
+    }
+
+    if (isFile && this.messageAPI) {
+      const fileId = getDataValue(data, 'file_id');
+      if (fileId) {
+        if (event.messageType === 'group' && event.groupId != null) {
+          const groupUrl = await this.messageAPI.getGroupFileDownloadUrl(fileId, event);
+          if (groupUrl) {
+            return groupUrl;
+          }
+        }
+        if (event.messageType === 'private') {
+          const fileHash = getDataValue(data, 'file_hash');
+          if (fileHash) {
+            const privateUrl = await this.messageAPI.getPrivateFileDownloadUrl(fileId, fileHash, event);
+            if (privateUrl) {
+              return privateUrl;
+            }
+          }
+        }
+      }
     }
 
     const resourceId =
