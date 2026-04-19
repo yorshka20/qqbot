@@ -96,6 +96,70 @@ export interface AmbientAudioMessage {
   };
 }
 
-export type PreviewClientMessage = TriggerMessage | SpeakMessage | AmbientAudioMessage;
+/**
+ * Describes a single tunable numeric parameter exposed by a layer or the
+ * compiler itself. Rendered as a slider on the HUD tuning panel.
+ *
+ * Contract source: qqbot ticket 2026-04-20-avatar-tunable-params-api.
+ * Consumer: qqbot-avatar-renderer ticket 2026-04-20-renderer-tuning-panel.
+ */
+export interface TunableParam {
+  /** Unique within its section. e.g. 'silenceFloor', 'body.z.omega'. */
+  id: string;
+  /** Human-readable label for the slider. */
+  label: string;
+  /** Slider min bound. */
+  min: number;
+  /** Slider max bound. */
+  max: number;
+  /** Slider step size. */
+  step: number;
+  /** Current runtime value. */
+  value: number;
+  /** Default value (for 'Reset' button). */
+  default: number;
+}
 
-export type PreviewMessage = FrameMessage | StatusMessage | AudioMessage;
+/** A group of tunable params sharing a source — one layer or the compiler. */
+export interface TunableSection {
+  /**
+   * Conventions:
+   * - `layer:<layerId>` — e.g. 'layer:ambient-audio'
+   * - `compiler:<subsystem>` — e.g. 'compiler:spring-damper'
+   */
+  id: string;
+  label: string;
+  params: TunableParam[];
+}
+
+/** Renderer → bot: request the current list of tunables. */
+export interface TunableParamsRequestMessage {
+  type: 'tunable-params-request';
+}
+
+/** Bot → renderer: response to request, or pushed on layer-set change. */
+export interface TunableParamsMessage {
+  type: 'tunable-params';
+  data: {
+    sections: TunableSection[];
+  };
+}
+
+/** Renderer → bot: set one param. No ack; renderer is optimistic. */
+export interface TunableParamSetMessage {
+  type: 'tunable-param-set';
+  data: {
+    sectionId: string;
+    paramId: string;
+    value: number;
+  };
+}
+
+export type PreviewClientMessage =
+  | TriggerMessage
+  | SpeakMessage
+  | AmbientAudioMessage
+  | TunableParamsRequestMessage
+  | TunableParamSetMessage;
+
+export type PreviewMessage = FrameMessage | StatusMessage | AudioMessage | TunableParamsMessage;

@@ -1,3 +1,4 @@
+import type { TunableParam } from '../../preview/types';
 import type { AvatarActivity } from '../../state/types';
 
 /**
@@ -50,4 +51,16 @@ export interface AnimationLayer {
 
   /** Reset any internal state (phase, timers, RNG seeds). Called on layer register or explicit reset. */
   reset?(): void;
+
+  /**
+   * Optional: expose a set of runtime-tunable parameters for the tuning HUD.
+   * Called on-demand when the HUD requests the current param list.
+   */
+  getTunableParams?(): TunableParam[];
+
+  /**
+   * Optional: set a single tunable by id. Must take effect immediately
+   * (or by the next sample() at latest). Silently drop unknown paramIds.
+   */
+  setTunableParam?(paramId: string, value: number): void;
 }
