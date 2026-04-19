@@ -8,6 +8,7 @@ dist/
 build/
 *.tsbuildinfo
 .cursor/
+.gemini/
 
 # Environment variables
 .env
