@@ -99,6 +99,10 @@ export class AvatarService {
           provider,
           (msg) => this.previewServer?.broadcastAudio(msg),
           () => this.hasConsumer(),
+          (layer) => this.compiler?.registerLayer(layer),
+          (id) => {
+            this.compiler?.unregisterLayer(id);
+          },
           undefined,
           config.speech.utteranceGapMs,
         );
