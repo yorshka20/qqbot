@@ -1,6 +1,8 @@
 import type { SynthesisResult, TTSProvider, TTSSynthesizeOptions } from '../TTSProvider';
 
 export interface FishAudioProviderOptions {
+  /** Registry name. Defaults to `'fish-audio'`; override when registering multiple fish-audio configs. */
+  name?: string;
   apiKey: string;
   voiceMap: Record<string, string>;
   defaultVoice: string;
@@ -10,7 +12,7 @@ export interface FishAudioProviderOptions {
 }
 
 export class FishAudioProvider implements TTSProvider {
-  readonly name = 'fish-audio';
+  readonly name: string;
 
   private readonly apiKey: string;
   private readonly voiceMap: Record<string, string>;
@@ -20,6 +22,7 @@ export class FishAudioProvider implements TTSProvider {
   private readonly endpoint: string;
 
   constructor(options: FishAudioProviderOptions) {
+    this.name = options.name ?? 'fish-audio';
     this.apiKey = options.apiKey;
     this.voiceMap = options.voiceMap;
     this.defaultVoice = options.defaultVoice;
@@ -30,6 +33,11 @@ export class FishAudioProvider implements TTSProvider {
 
   isAvailable(): boolean {
     return typeof this.apiKey === 'string' && this.apiKey.length > 0;
+  }
+
+  /** Names registered in this provider's voiceMap, in declaration order. */
+  listVoices(): string[] {
+    return Object.keys(this.voiceMap);
   }
 
   async synthesize(text: string, opts?: TTSSynthesizeOptions): Promise<SynthesisResult> {

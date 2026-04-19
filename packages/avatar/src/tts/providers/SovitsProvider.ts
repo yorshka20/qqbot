@@ -1,6 +1,8 @@
 import type { SynthesisResult, TTSProvider, TTSSynthesizeOptions } from '../TTSProvider';
 
 export interface SovitsProviderOptions {
+  /** Registry name. Defaults to `'sovits'`; override when registering multiple SoVITS instances. */
+  name?: string;
   endpoint: string;
   /** JSON body template; use `{text}` and `{voice}` as placeholders. */
   bodyTemplate: Record<string, unknown>;
@@ -44,7 +46,7 @@ function substituteValue(value: unknown, replacements: { text: string; voice?: s
 }
 
 export class SovitsProvider implements TTSProvider {
-  readonly name = 'sovits';
+  readonly name: string;
 
   private readonly endpoint: string;
   private readonly bodyTemplate: Record<string, unknown>;
@@ -54,6 +56,7 @@ export class SovitsProvider implements TTSProvider {
   private readonly defaultVoice: string | undefined;
 
   constructor(options: SovitsProviderOptions) {
+    this.name = options.name ?? 'sovits';
     this.endpoint = options.endpoint;
     this.bodyTemplate = options.bodyTemplate;
     this.method = options.method ?? 'POST';

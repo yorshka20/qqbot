@@ -53,6 +53,7 @@ export const DITokens = {
   RESOURCE_CLEANUP_SERVICE: 'ResourceCleanupService',
   // Avatar system
   AVATAR_SERVICE: 'AvatarService',
+  TTS_MANAGER: 'TTSManager',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];

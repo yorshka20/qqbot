@@ -7,7 +7,7 @@
 //   bot.start(), MCPInitializer.connectServers(), ClaudeCodeInitializer.start(),
 //   and process signal handlers.
 
-import { AvatarService } from '@qqbot/avatar';
+import { AvatarService, FishAudioProvider, SovitsProvider, TTSManager, type TTSProvider } from '@qqbot/avatar';
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import { APIClient } from '@/api/APIClient';
 import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
@@ -212,6 +212,47 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
       logger.warn('[Bootstrap] Startup health check failed:', err);
     });
 
+  // ── TTS providers / registry ──
+  // Build the TTSManager from `tts.providers[]`. If the user still has the
+  // legacy single-provider shape (top-level `apiKey`/`model`), synthesize a
+  // one-element providers array inline so existing configs keep working
+  // without a config migration pass. The resulting manager is registered in
+  // DI so both TTSCommandHandler (QQ voice path) and AvatarService (renderer
+  // speech path) consume the same provider set.
+  const ttsManager = new TTSManager();
+  try {
+    const rawTTS = config.getTTSConfig() as Record<string, unknown> | undefined;
+    const providerEntries = collectTTSProviderEntries(rawTTS);
+    for (const entry of providerEntries) {
+      const provider = instantiateTTSProvider(entry);
+      if (provider) {
+        ttsManager.register(provider);
+      } else {
+        logger.warn(`[Bootstrap] Unknown TTS provider type: ${String(entry.type)} (skipped)`);
+      }
+    }
+    const desiredDefault = typeof rawTTS?.defaultProvider === 'string' ? rawTTS.defaultProvider : null;
+    if (desiredDefault) {
+      try {
+        ttsManager.setDefault(desiredDefault);
+      } catch (err) {
+        logger.warn(
+          `[Bootstrap] tts.defaultProvider="${desiredDefault}" is not a registered provider; falling back to first registered`,
+          err,
+        );
+      }
+    }
+    container.registerInstance(DITokens.TTS_MANAGER, ttsManager);
+    const summary = ttsManager.listAll().map((p) => `${p.name}${p.isAvailable() ? '' : ' (unavailable)'}`);
+    if (summary.length > 0) {
+      logger.info(`[Bootstrap] TTS providers registered: ${summary.join(', ')}`);
+    } else {
+      logger.debug('[Bootstrap] No TTS providers configured');
+    }
+  } catch (err) {
+    logger.warn('[Bootstrap] TTS provider registry init failed (non-fatal):', err);
+  }
+
   // ── Avatar system (sync init, no driver connections) ──
   // Config schema & defaults live in the avatar package; we just forward the
   // raw JSONC blob. `initialize()` is a no-op when the avatar section is
@@ -219,10 +260,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   let avatarService: AvatarService | null = null;
   try {
     avatarService = new AvatarService();
-    await avatarService.initialize(
-      config.getAvatarConfig(),
-      config.getTTSConfig() as Record<string, unknown> | undefined,
-    );
+    await avatarService.initialize(config.getAvatarConfig(), ttsManager);
     if (avatarService.isEnabled()) {
       container.registerInstance(DITokens.AVATAR_SERVICE, avatarService);
       logger.info('[Bootstrap] Avatar service initialized');
@@ -246,4 +284,86 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     retrievalService,
     avatarService,
   };
+}
+
+interface TTSProviderEntry {
+  type: string;
+  name?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Gather provider entries from the raw `tts` config blob.
+ *
+ * - If `tts.providers` is an array, return it as-is.
+ * - Otherwise fall back to the legacy single-provider shape: top-level
+ *   `apiKey` + optional `model`/`format`/`voiceMap`/`defaultVoice`/`referenceId`
+ *   are synthesized into a single `{ type: 'fish-audio', name: 'fish-audio', … }`
+ *   entry. This lets existing configs keep working without migration.
+ * - Empty / missing `tts` returns `[]`.
+ */
+function collectTTSProviderEntries(raw: Record<string, unknown> | undefined): TTSProviderEntry[] {
+  if (!raw) return [];
+  if (Array.isArray(raw.providers)) {
+    return raw.providers.filter((p): p is TTSProviderEntry => typeof p === 'object' && p !== null);
+  }
+  if (typeof raw.apiKey === 'string' && raw.apiKey.length > 0) {
+    return [
+      {
+        type: 'fish-audio',
+        name: 'fish-audio',
+        apiKey: raw.apiKey,
+        model: raw.model,
+        format: raw.format,
+        voiceMap: raw.voiceMap,
+        defaultVoice: raw.defaultVoice ?? raw.referenceId,
+      },
+    ];
+  }
+  return [];
+}
+
+/**
+ * Instantiate a TTSProvider from a config entry. `type` discriminates which
+ * concrete provider class to construct. Unknown types return null (caller
+ * logs and skips so one bad entry doesn't block the rest).
+ */
+function instantiateTTSProvider(entry: TTSProviderEntry): TTSProvider | null {
+  const name = typeof entry.name === 'string' && entry.name.length > 0 ? entry.name : undefined;
+  switch (entry.type) {
+    case 'fish-audio':
+      return new FishAudioProvider({
+        name,
+        apiKey: typeof entry.apiKey === 'string' ? entry.apiKey : '',
+        voiceMap:
+          entry.voiceMap && typeof entry.voiceMap === 'object' && !Array.isArray(entry.voiceMap)
+            ? (entry.voiceMap as Record<string, string>)
+            : {},
+        defaultVoice: typeof entry.defaultVoice === 'string' ? entry.defaultVoice : '',
+        model: typeof entry.model === 'string' ? entry.model : undefined,
+        format: entry.format === 'mp3' || entry.format === 'wav' ? (entry.format as 'mp3' | 'wav') : undefined,
+        endpoint: typeof entry.endpoint === 'string' ? entry.endpoint : undefined,
+      });
+    case 'sovits':
+      return new SovitsProvider({
+        name,
+        endpoint: typeof entry.endpoint === 'string' ? entry.endpoint : '',
+        bodyTemplate:
+          entry.bodyTemplate && typeof entry.bodyTemplate === 'object' && !Array.isArray(entry.bodyTemplate)
+            ? (entry.bodyTemplate as Record<string, unknown>)
+            : {},
+        method: entry.method === 'GET' || entry.method === 'POST' ? entry.method : undefined,
+        headers:
+          entry.headers && typeof entry.headers === 'object' && !Array.isArray(entry.headers)
+            ? (entry.headers as Record<string, string>)
+            : undefined,
+        responseFormat:
+          entry.responseFormat === 'audio/wav' || entry.responseFormat === 'audio/mpeg'
+            ? entry.responseFormat
+            : undefined,
+        defaultVoice: typeof entry.defaultVoice === 'string' ? entry.defaultVoice : undefined,
+      });
+    default:
+      return null;
+  }
 }

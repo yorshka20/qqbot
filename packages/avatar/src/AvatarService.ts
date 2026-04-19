@@ -8,7 +8,7 @@ import { PreviewServer } from './preview/PreviewServer';
 import { SpeechService } from './SpeechService';
 import { IdleStateMachine } from './state/IdleStateMachine';
 import type { BotState, StateNodeOutput } from './state/types';
-import { FishAudioProvider } from './tts/providers/FishAudioProvider';
+import type { TTSManager } from './tts/TTSManager';
 import type { AvatarConfig } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './types';
 import { logger } from './utils/logger';
@@ -43,7 +43,7 @@ export class AvatarService {
    * next door. `undefined` is treated as "no avatar section" and leaves the
    * service disabled.
    */
-  async initialize(rawConfig: Record<string, unknown> | undefined, ttsConfig?: Record<string, unknown>): Promise<void> {
+  async initialize(rawConfig: Record<string, unknown> | undefined, ttsManager?: TTSManager): Promise<void> {
     const config = mergeAvatarConfig(rawConfig);
     this.config = config;
 
@@ -86,21 +86,24 @@ export class AvatarService {
       );
     }
 
-    if (config.speech.enabled && ttsConfig && Object.keys(ttsConfig).length > 0) {
-      const provider = new FishAudioProvider({
-        apiKey: (ttsConfig.apiKey as string | undefined) ?? '',
-        voiceMap: (ttsConfig.voiceMap as Record<string, string> | undefined) ?? {},
-        defaultVoice: (ttsConfig.referenceId as string | undefined) ?? '',
-        model: ttsConfig.model as string | undefined,
-      });
-      this.speechService = new SpeechService(
-        provider,
-        (msg) => this.previewServer?.broadcastAudio(msg),
-        () => this.hasConsumer(),
-        undefined,
-        config.speech.utteranceGapMs,
-      );
-      logger.debug('[AvatarService] SpeechService initialized');
+    // SpeechService hooks into the bot-wide TTSManager built in bootstrap —
+    // we don't construct providers here. `getDefault()` returns null if the
+    // default is missing or unavailable (e.g. apiKey empty, endpoint blank),
+    // so we refuse to enable speech without logging a reason.
+    if (config.speech.enabled) {
+      const provider = ttsManager?.getDefault();
+      if (!provider) {
+        logger.info('[AvatarService] speech.enabled=true but no usable TTS provider registered; SpeechService skipped');
+      } else {
+        this.speechService = new SpeechService(
+          provider,
+          (msg) => this.previewServer?.broadcastAudio(msg),
+          () => this.hasConsumer(),
+          undefined,
+          config.speech.utteranceGapMs,
+        );
+        logger.debug(`[AvatarService] SpeechService initialized with provider="${provider.name}"`);
+      }
     }
 
     logger.debug('[AvatarService] Initialized', { enabled: config.enabled });

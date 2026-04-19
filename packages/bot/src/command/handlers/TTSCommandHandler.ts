@@ -1,8 +1,7 @@
+import type { TTSManager, TTSProvider } from '@qqbot/avatar';
 import { inject, injectable } from 'tsyringe';
 import type { APIClient } from '@/api/APIClient';
-import { HttpClient } from '@/api/http/HttpClient';
 import { FileAPI } from '@/api/methods/FileAPI';
-import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { MessageUtils } from '@/message/MessageUtils';
@@ -13,13 +12,21 @@ import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 
 /**
- * TTS command - converts text to speech using Fish Audio API
+ * TTS command — converts text to speech via the bot-wide `TTSManager`.
+ *
+ * Provider selection (highest priority first):
+ *   1. `--provider=<name>` flag
+ *   2. `TTSManager.getDefault()` (driven by `tts.defaultProvider` in config)
+ *
+ * The handler no longer owns any voice map or API URL — all of that lives
+ * inside the provider config. This keeps the command renderer-agnostic and
+ * lets new providers (SoVITS, future RVC, etc.) work without handler edits.
  */
 @Command({
   name: 'tts',
   description:
-    'Convert text to speech. Example: /tts 你好世界 --voice=丁真. Use /tts list to see all available voices.',
-  usage: '/tts <text> [--voice=<voice>] [--file] | /tts list',
+    'Convert text to speech. Example: /tts 你好世界 --voice=丁真 --provider=fish-audio. Use /tts list to see providers and voices.',
+  usage: '/tts <text> [--voice=<voice>] [--provider=<name>] [--file] | /tts list',
   permissions: ['user'], // All users can use TTS
   aliases: ['say', 'speak'],
 })
@@ -27,32 +34,8 @@ import type { CommandContext, CommandHandler, CommandResult } from '../types';
 export class TTSCommandHandler implements CommandHandler {
   name = 'tts';
   description =
-    'Convert text to speech. Example: /tts 你好世界 --voice=丁真. Use /tts list to see all available voices.';
-  usage = '/tts <text> [--voice=<voice>] [--file] | /tts list';
-
-  // Fish Audio API URL
-  private readonly FISH_API_URL = 'https://api.fish.audio/v1/tts';
-  private readonly httpClient: HttpClient;
-
-  // Voice map: voice name -> reference_id
-  private readonly VOICE_MAP: Record<string, string> = {
-    蔡徐坤: 'e4642e5edccd4d9ab61a69e82d4f8a14',
-    丁真: '54a5170264694bfc8e9ad98df7bd89c3',
-    赛马娘: '561fcedfdf0e4e1399d1bc4930d50c0e',
-    孙笑川: 'e80ea225770f42f79d50aa98be3cedfc',
-    丰川祥子: 'f544cd9b956740c4a1bdee2e93a23d20',
-    雷军: 'aebaa2305aa2452fbdc8f41eec852a79',
-    特朗普: '5196af35f6ff4a0dbf541793fc9f2157',
-    日语: 'fbea303b64374bffb8843569404b095e',
-    高松灯: 'b4f70fdef5f943c2bf43db00e80ad680',
-    卢本伟: 'e5c5bebffac04f858878e21f8598deb1',
-    永雏塔菲: '55b28b196e1c4fff9a55cd32a46eff25',
-    派蒙: 'eacc56f8ab48443fa84421c547d3b60e',
-    嘉然: 'e11b0496fc9f4cb180db1dd238f67833',
-    东雪莲: 'eaa47f801d914afe93ea453cc42729f3',
-  };
-
-  private readonly DEFAULT_VOICE = '高松灯';
+    'Convert text to speech. Example: /tts 你好世界 --voice=丁真 --provider=fish-audio. Use /tts list to see providers and voices.';
+  usage = '/tts <text> [--voice=<voice>] [--provider=<name>] [--file] | /tts list';
 
   // Maximum text length (in characters)
   private readonly MAX_TEXT_LENGTH = 1000;
@@ -61,6 +44,7 @@ export class TTSCommandHandler implements CommandHandler {
   private readonly argsConfig: ParserConfig = {
     options: {
       voice: { property: 'voice', type: 'string' },
+      provider: { property: 'provider', type: 'string' },
       rate: { property: 'rate', type: 'string' },
       pitch: { property: 'pitch', type: 'string' },
       file: { property: 'file', type: 'boolean' },
@@ -71,26 +55,20 @@ export class TTSCommandHandler implements CommandHandler {
   private fileAPI: FileAPI;
 
   constructor(
-    @inject(DITokens.CONFIG) private config: Config,
+    @inject(DITokens.TTS_MANAGER) private ttsManager: TTSManager,
     @inject(DITokens.API_CLIENT) private apiClient: APIClient,
   ) {
-    // Configure HttpClient for Fish Audio API
-    this.httpClient = new HttpClient({
-      baseURL: this.FISH_API_URL,
-      defaultTimeout: 30000, // 30 seconds default timeout
-    });
-    // Initialize FileAPI for uploading files
     this.fileAPI = new FileAPI(this.apiClient);
   }
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
-    // Check if user wants to list available voices
+    // Check if user wants to list available providers / voices
     if (
       args.length === 0 ||
       (args.length === 1 && (args[0] === 'list' || args[0] === '--list' || args[0] === '-list'))
     ) {
       const messageBuilder = new MessageBuilder();
-      messageBuilder.text(this.getVoiceList());
+      messageBuilder.text(this.getProviderList());
       return {
         success: true,
         segments: messageBuilder.build(),
@@ -98,16 +76,16 @@ export class TTSCommandHandler implements CommandHandler {
     }
 
     try {
-      // Parse arguments using unified parser with command-specific config
+      // Parse arguments
       const { text, options } = CommandArgsParser.parse<{
         voice?: string;
+        provider?: string;
         rate?: string;
         pitch?: string;
         file?: boolean;
         random?: boolean;
       }>(args, this.argsConfig);
 
-      // Validate text length
       if (text.length > this.MAX_TEXT_LENGTH) {
         return {
           success: false,
@@ -115,7 +93,6 @@ export class TTSCommandHandler implements CommandHandler {
         };
       }
 
-      // Check if text is empty after parsing
       if (!text || text.trim().length === 0) {
         return {
           success: false,
@@ -132,127 +109,96 @@ export class TTSCommandHandler implements CommandHandler {
         };
       }
 
-      logger.info(`[TTSCommandHandler] Synthesizing speech for text: ${text.substring(0, 50)}...`);
-
-      // Get TTS configuration from config
-      const ttsConfig = this.config.getTTSConfig();
-      if (!ttsConfig || !ttsConfig.apiKey) {
-        return {
-          success: false,
-          error: 'TTS configuration is missing. Please configure TTS in config file.',
-        };
-      }
-
-      // Base model for header (s1, speech-1.6, speech-1.5)
-      const baseModel = ttsConfig.model || 's1';
-      // Audio format
-      const format = ttsConfig.format || 'mp3';
-
-      // Determine reference_id: use voice from options, or default voice
-      let referenceId: string | undefined;
-      if (options.voice) {
-        // Check if voice is a key in the voice map
-        const voiceKey = options.voice;
-        if (this.VOICE_MAP[voiceKey]) {
-          referenceId = this.VOICE_MAP[voiceKey];
-          logger.info(`[TTSCommandHandler] Using voice: ${voiceKey} (${referenceId})`);
-        } else {
-          // Voice not found in map, return error with available voices
-          const availableVoices = Object.keys(this.VOICE_MAP).join('、');
+      // ── Select provider ──
+      let provider: TTSProvider | null;
+      if (options.provider) {
+        provider = this.ttsManager.get(options.provider);
+        if (!provider) {
+          const available =
+            this.ttsManager
+              .listAll()
+              .map((p) => p.name)
+              .join(', ') || '(none)';
           return {
             success: false,
-            error: `Voice "${voiceKey}" not found. Available voices: ${availableVoices}`,
+            error: `TTS provider "${options.provider}" is not registered. Available: ${available}`,
+          };
+        }
+        if (!provider.isAvailable()) {
+          return {
+            success: false,
+            error: `TTS provider "${options.provider}" is registered but not available (missing API key / endpoint).`,
           };
         }
       } else {
-        if (options.random) {
-          referenceId =
-            this.VOICE_MAP[Object.keys(this.VOICE_MAP)[Math.floor(Math.random() * Object.keys(this.VOICE_MAP).length)]];
-        } else {
-          // Use default voice (丁真)
-          referenceId = this.VOICE_MAP[this.DEFAULT_VOICE];
+        provider = this.ttsManager.getDefault();
+        if (!provider) {
+          return {
+            success: false,
+            error:
+              'No TTS provider is configured. Add an entry to `tts.providers[]` and set `tts.defaultProvider` in config.',
+          };
         }
-        logger.info(`[TTSCommandHandler] Using default voice: ${this.DEFAULT_VOICE} (${referenceId})`);
       }
 
-      // Build request body
-      const requestBody: {
-        text: string;
-        format: string;
-        reference_id?: string;
-      } = {
-        text: text,
-        format: format,
-      };
-
-      // Add reference_id
-      if (referenceId) {
-        requestBody.reference_id = referenceId;
+      // ── Resolve voice (optional) ──
+      let voice: string | undefined = options.voice;
+      if (!voice && options.random && provider.listVoices) {
+        const list = provider.listVoices();
+        if (list.length > 0) {
+          voice = list[Math.floor(Math.random() * list.length)];
+        }
+      }
+      if (voice && provider.listVoices) {
+        const list = provider.listVoices();
+        if (list.length > 0 && !list.includes(voice)) {
+          return {
+            success: false,
+            error: `Voice "${voice}" not available on provider "${provider.name}". Available: ${list.join('、')}`,
+          };
+        }
       }
 
-      // Generate speech using Fish Audio API
-      const audioArrayBuffer = await this.httpClient.post<ArrayBuffer>('', requestBody, {
-        headers: {
-          Authorization: `Bearer ${ttsConfig.apiKey}`,
-          model: baseModel,
-          'Content-Type': 'application/json',
-        },
-        timeout: 30000, // 30 seconds timeout
-      });
-      // Convert ArrayBuffer to Buffer
-      const audioBuffer = Buffer.from(audioArrayBuffer);
+      logger.info(
+        `[TTSCommandHandler] Synthesizing via provider="${provider.name}" voice="${voice ?? '(default)'}" text="${text.substring(0, 50)}..."`,
+      );
 
-      // Build message with audio record
+      // ── Synthesize ──
+      const result = await provider.synthesize(text, { voice });
+      const audioBuffer = Buffer.from(result.bytes);
+      const format = result.mime === 'audio/wav' ? 'wav' : 'mp3';
+
       const messageBuilder = new MessageBuilder();
-
-      // If --file option is provided, upload file and send as file attachment
       if (options.file) {
         try {
-          // Generate filename with timestamp
-          const timestamp = Date.now();
-          const filename = `tts_${timestamp}.${format}`;
-
-          // Upload file using generic upload utility
-          // This will upload the file to Milky protocol and return file_id
+          const filename = `tts_${Date.now()}.${format}`;
           const fileId = await uploadFileBuffer(this.fileAPI, audioBuffer, filename, context, 30000);
-
-          // Send as file attachment using file_id (Milky protocol format)
           messageBuilder.file({ file_id: fileId, file_name: filename });
-          logger.debug(`[TTSCommandHandler] Built file segment with file_id=${fileId}, file_name=${filename}`);
+          logger.debug(`[TTSCommandHandler] Built file segment file_id=${fileId} file_name=${filename}`);
         } catch (fileError) {
-          logger.error('[TTSCommandHandler] Failed to upload file:', fileError);
-          // Fallback to sending as base64 audio data if file upload fails
-          const base64Audio = audioBuffer.toString('base64');
-          messageBuilder.record({ data: base64Audio });
+          logger.error('[TTSCommandHandler] Failed to upload file, falling back to record segment:', fileError);
+          messageBuilder.record({ data: audioBuffer.toString('base64') });
         }
       } else {
-        // Default behavior: send as base64 audio data (voice message)
-        const base64Audio = audioBuffer.toString('base64');
-        messageBuilder.record({ data: base64Audio });
+        messageBuilder.record({ data: audioBuffer.toString('base64') });
       }
 
-      const messageSegments = messageBuilder.build();
-
-      // Record (voice) and file segments must be sent directly; do not use forward message.
       return {
         success: true,
-        segments: messageSegments,
+        segments: messageBuilder.build(),
         sentAsForward: false,
       };
     } catch (error) {
-      // Handle different error types (Error, ErrorEvent, etc.)
       let errorMessage = 'Unknown error';
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (error && typeof error === 'object' && 'message' in error) {
-        errorMessage = String(error.message);
+        errorMessage = String((error as { message: unknown }).message);
       } else {
         errorMessage = String(error);
       }
 
       logger.error('[TTSCommandHandler] Failed to synthesize speech:', error);
-      logger.error('[TTSCommandHandler] Error message:', errorMessage);
-
       return {
         success: false,
         error: `Failed to synthesize speech: ${errorMessage}`,
@@ -260,27 +206,34 @@ export class TTSCommandHandler implements CommandHandler {
     }
   }
 
-  /**
-   * Get formatted list of available voices
-   * @returns Formatted string listing all available voices
-   */
-  private getVoiceList(): string {
-    const voices = Object.keys(this.VOICE_MAP);
-    const defaultVoice = this.DEFAULT_VOICE;
-
-    let list = '📢 可用的TTS声音列表：\n\n';
-
-    for (const voice of voices) {
-      const isDefault = voice === defaultVoice ? ' (默认)' : '';
-      list += `• ${voice}${isDefault}\n`;
+  /** Render a human-readable summary of registered providers + their voices. */
+  private getProviderList(): string {
+    const defaultProvider = this.ttsManager.getDefault();
+    const all = this.ttsManager.listAll();
+    if (all.length === 0) {
+      return '❌ 当前没有配置任何 TTS provider。请在 config 的 `tts.providers[]` 里添加一项。';
     }
 
-    list += `\n使用示例：\n`;
-    list += `/tts 你好世界                    # 使用默认声音（${defaultVoice}）\n`;
-    list += `/tts 你好世界 --voice=${voices[0]}      # 指定声音\n`;
-    list += `/tts 你好世界 --file              # 发送为mp3文件\n`;
-    list += `/tts list                      # 查看此列表\n`;
-
-    return list;
+    const lines: string[] = ['📢 TTS providers:'];
+    for (const p of all) {
+      const marks: string[] = [];
+      if (p.name === defaultProvider?.name) marks.push('默认');
+      if (!p.isAvailable()) marks.push('不可用');
+      const suffix = marks.length > 0 ? ` (${marks.join(', ')})` : '';
+      lines.push(`• ${p.name}${suffix}`);
+      const voices = p.listVoices?.();
+      if (voices && voices.length > 0) {
+        lines.push(`   voices: ${voices.join('、')}`);
+      }
+    }
+    lines.push('');
+    lines.push('用法示例：');
+    lines.push('/tts 你好世界                          # 默认 provider + 默认 voice');
+    lines.push('/tts 你好 --provider=fish-audio        # 指定 provider');
+    lines.push('/tts 你好 --voice=丁真                  # 指定 voice');
+    lines.push('/tts 你好 --random                      # 当前 provider 随机 voice');
+    lines.push('/tts 你好 --file                        # 发送为文件而非语音段');
+    lines.push('/tts list                              # 查看此列表');
+    return lines.join('\n');
   }
 }

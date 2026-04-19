@@ -3,5 +3,10 @@ export { AvatarService } from './AvatarService';
 export type { BotState } from './state/types';
 export type { ParsedTag } from './tags';
 export { parseLive2DTags, stripLive2DTags } from './tags';
+// TTS subsystem — consumed by bot commands and the avatar speech pipeline.
+export { FishAudioProvider, type FishAudioProviderOptions } from './tts/providers/FishAudioProvider';
+export { SovitsProvider, type SovitsProviderOptions } from './tts/providers/SovitsProvider';
+export { TTSManager } from './tts/TTSManager';
+export type { SynthesisResult, TTSProvider, TTSSynthesizeOptions } from './tts/TTSProvider';
 export type { AvatarConfig, PreviewServerConfig } from './types';
 export { DEFAULT_AVATAR_CONFIG } from './types';

@@ -39,4 +39,12 @@ export interface TTSProvider {
    * @returns A `SynthesisResult` with raw audio bytes and metadata.
    */
   synthesize(text: string, opts?: TTSSynthesizeOptions): Promise<SynthesisResult>;
+
+  /**
+   * Optional: enumerate voice names the provider exposes. Used by UIs / the
+   * `/tts list` command to render a pickable voice menu. Providers without a
+   * discrete voice catalog (free-form endpoints, single-voice models) can
+   * omit this method.
+   */
+  listVoices?(): string[];
 }

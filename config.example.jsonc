@@ -780,12 +780,65 @@
   "prompts": {
     "directory": "prompts"
   },
-  // TTS configuration (optional)
-  // Fish Audio API configuration for text-to-speech
+  // TTS configuration (optional).
+  //
+  // Multi-provider schema. Each entry in `providers[]` has a `type`
+  // discriminator (`fish-audio` | `sovits`) that picks the implementation.
+  // `defaultProvider` matches one of the `name` fields and is used when
+  // callers omit `--provider`. Registered providers are shared between
+  // `/tts` (QQ voice message path) and the avatar SpeechService (renderer
+  // playback path) — synthesize once, consume twice is not wired; the two
+  // pipelines are independent.
+  //
+  // Legacy single-provider shape (`"tts": { "apiKey": "...", "model": "s1" }`)
+  // is still accepted — bootstrap synthesizes an equivalent single-entry
+  // fish-audio providers array. No migration required for existing configs.
   "tts": {
-    "apiKey": "your_fish_audio_api_key_here",
-    "model": "s1",
-    "format": "mp3"
+    "defaultProvider": "fish-audio",
+    "providers": [
+      {
+        "type": "fish-audio",
+        "name": "fish-audio",
+        "apiKey": "your_fish_audio_api_key_here",
+        "model": "s1",
+        "format": "mp3",
+        // Optional: name → reference_id map. `/tts --voice=<name>` picks
+        // entries from this map. If empty, only `defaultVoice` is usable.
+        "voiceMap": {
+          "蔡徐坤": "e4642e5edccd4d9ab61a69e82d4f8a14",
+          "丁真":   "54a5170264694bfc8e9ad98df7bd89c3",
+          "赛马娘": "561fcedfdf0e4e1399d1bc4930d50c0e",
+          "孙笑川": "e80ea225770f42f79d50aa98be3cedfc",
+          "丰川祥子": "f544cd9b956740c4a1bdee2e93a23d20",
+          "雷军":   "aebaa2305aa2452fbdc8f41eec852a79",
+          "特朗普": "5196af35f6ff4a0dbf541793fc9f2157",
+          "日语":   "fbea303b64374bffb8843569404b095e",
+          "高松灯": "b4f70fdef5f943c2bf43db00e80ad680",
+          "卢本伟": "e5c5bebffac04f858878e21f8598deb1",
+          "永雏塔菲": "55b28b196e1c4fff9a55cd32a46eff25",
+          "派蒙":   "eacc56f8ab48443fa84421c547d3b60e",
+          "嘉然":   "e11b0496fc9f4cb180db1dd238f67833",
+          "东雪莲": "eaa47f801d914afe93ea453cc42729f3"
+        },
+        "defaultVoice": "高松灯"
+      }
+      // Example SoVITS provider (local GPT-SoVITS api.py). Uncomment + fill in
+      // to enable. `bodyTemplate` supports `{text}` and `{voice}` placeholders
+      // so you can match whatever fork / schema your SoVITS server expects.
+      // ,{
+      //   "type": "sovits",
+      //   "name": "sovits-local",
+      //   "endpoint": "http://192.168.1.50:9880/tts",
+      //   "bodyTemplate": {
+      //     "text":            "{text}",
+      //     "text_language":   "zh",
+      //     "refer_wav_path":  "/path/to/reference.wav",
+      //     "prompt_text":     "参考音频文案",
+      //     "prompt_language": "zh"
+      //   },
+      //   "defaultVoice": "main"
+      // }
+    ]
   },
   // MCP configuration (optional)
   // MCP (Model Context Protocol) configuration for RAG search functionality
