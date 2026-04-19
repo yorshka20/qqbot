@@ -82,6 +82,11 @@ export class AvatarService {
             }),
           onClientCountChange: (count) => this.handlePreviewClientCount(count),
           getActionList: () => this.compiler?.listActions() ?? [],
+          // HUD's debug "speak this text" input bypasses the LLM path and
+          // invokes SpeechService directly — same entry point as the
+          // Live2DAvatarPlugin, so whatever gate logic SpeechService applies
+          // (hasConsumer, provider availability) still runs.
+          onSpeak: (data) => this.speak(data.text),
         },
       );
     }
@@ -232,6 +237,9 @@ export class AvatarService {
     // Reconcile against our tracked preview-consumer portion. The driver
     // portion is handled separately by VTS events.
     const current = Math.max(0, this.consumerCount - (this.driver?.isConnected() ? 1 : 0));
+    logger.info(
+      `[AvatarService] preview client count changed — ws=${count} currentPreviewConsumers=${current} totalConsumers=${this.consumerCount} ticking=${this.compiler?.isTicking() ?? false}`,
+    );
     if (count > current) {
       for (let i = 0; i < count - current; i++) this.addConsumer('preview');
     } else if (count < current) {

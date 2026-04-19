@@ -40,6 +40,12 @@ export interface PreviewServerHandlers {
    * dynamically instead of hardcoding names. Absent handler → 404.
    */
   getActionList?: () => ActionSummary[];
+  /**
+   * Called when the HUD sends a `{type:'speak'}` debug message. Bypasses
+   * the LLM reply path — bot synthesizes + broadcasts the provided text
+   * exactly as if it came from `Live2DAvatarPlugin.onMessageBeforeSend`.
+   */
+  onSpeak?: (data: { text: string }) => void;
 }
 
 export class PreviewServer {
@@ -130,27 +136,39 @@ export class PreviewServer {
             return;
           }
 
-          if (msg.type !== 'trigger') return;
-          if (!msg.data) return;
-          if (typeof msg.data.action !== 'string' || msg.data.action === '') return;
+          if (msg.type === 'trigger') {
+            if (!msg.data) return;
+            if (typeof msg.data.action !== 'string' || msg.data.action === '') return;
 
-          const data = msg.data;
-          const sanitized: { action: string; emotion?: string; intensity?: number } = {
-            action: data.action,
-          };
-          if (typeof data.emotion === 'string') {
-            sanitized.emotion = data.emotion;
-          }
-          if (typeof data.intensity === 'number' && Number.isFinite(data.intensity)) {
-            sanitized.intensity = data.intensity;
+            const data = msg.data;
+            const sanitized: { action: string; emotion?: string; intensity?: number } = {
+              action: data.action,
+            };
+            if (typeof data.emotion === 'string') {
+              sanitized.emotion = data.emotion;
+            }
+            if (typeof data.intensity === 'number' && Number.isFinite(data.intensity)) {
+              sanitized.intensity = data.intensity;
+            }
+
+            server.handlers.onTrigger?.(sanitized);
+            logger.debug('[PreviewServer] Trigger received', {
+              action: sanitized.action,
+              emotion: sanitized.emotion,
+              intensity: sanitized.intensity,
+            });
+            return;
           }
 
-          server.handlers.onTrigger?.(sanitized);
-          logger.debug('[PreviewServer] Trigger received', {
-            action: sanitized.action,
-            emotion: sanitized.emotion,
-            intensity: sanitized.intensity,
-          });
+          if (msg.type === 'speak') {
+            if (!msg.data) return;
+            const text = typeof msg.data.text === 'string' ? msg.data.text.trim() : '';
+            if (text.length === 0) return;
+            server.handlers.onSpeak?.({ text });
+            logger.info(`[PreviewServer] Speak received (debug) — len=${text.length}`);
+            return;
+          }
+          // Unknown type — silent drop
         },
         close(ws) {
           clients.delete(ws);

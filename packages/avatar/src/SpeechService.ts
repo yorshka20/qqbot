@@ -4,6 +4,7 @@ import { type AnimationLayer, AudioEnvelopeLayer } from './compiler/layers';
 import type { AudioMessage } from './preview/types';
 import { splitIntoUtterances } from './tts/splitIntoUtterances';
 import type { TTSProvider } from './tts/TTSProvider';
+import { logger } from './utils/logger';
 
 const DEFAULT_GAP_MS = 200;
 /** RMS hop matches the one applied inside AudioEnvelopeLayer; keep them in sync. */
@@ -30,8 +31,16 @@ export class SpeechService {
   ) {}
 
   speak(text: string, opts?: { maxCharsPerUtterance?: number }): void {
-    if (!this.hasConsumer()) return;
+    const consumer = this.hasConsumer();
+    logger.info(
+      `[SpeechService] speak() called — textLen=${text.length} consumer=${consumer} queueLen=${this.queue.length} draining=${this.draining}`,
+    );
+    if (!consumer) {
+      logger.info('[SpeechService] skipped: no frame consumer connected (renderer not open?)');
+      return;
+    }
     const utterances = splitIntoUtterances(text, opts?.maxCharsPerUtterance);
+    logger.info(`[SpeechService] split into ${utterances.length} utterance(s)`);
     this.queue.push(...utterances);
     if (!this.draining) {
       this.draining = true;
@@ -49,12 +58,16 @@ export class SpeechService {
   private async drain(): Promise<void> {
     while (this.queue.length > 0) {
       if (!this.hasConsumer()) {
+        logger.info(`[SpeechService] consumer left mid-queue; dropping ${this.queue.length} pending utterance(s)`);
         this.queue = [];
         break;
       }
 
       const utterance = this.queue.shift()!;
       const utteranceId = crypto.randomUUID();
+      logger.info(
+        `[SpeechService] synthesize start — id=${utteranceId} provider="${this.provider.name}" len=${utterance.length}`,
+      );
 
       let bytes: Uint8Array;
       let mime: string;
@@ -65,8 +78,11 @@ export class SpeechService {
         bytes = result.bytes;
         mime = result.mime;
         estimatedDurationMs = result.durationMs;
+        logger.info(
+          `[SpeechService] synthesize ok — id=${utteranceId} bytes=${bytes.length} mime=${mime} est=${Math.round(estimatedDurationMs)}ms`,
+        );
       } catch (err) {
-        console.warn('[SpeechService] synthesize failed, skipping utterance:', err);
+        logger.warn(`[SpeechService] synthesize failed — id=${utteranceId} err=${err instanceof Error ? err.message : String(err)}`);
         continue;
       }
 
@@ -78,8 +94,13 @@ export class SpeechService {
         const decoded = await decodeToMonoPcm(bytes, mime);
         envelope = computeRmsEnvelope(decoded.pcm, decoded.sampleRate, { hopMs: ENVELOPE_HOP_MS });
         accurateDurationMs = (decoded.pcm.length / decoded.sampleRate) * 1000;
+        logger.debug(
+          `[SpeechService] decode+rms ok — id=${utteranceId} pcmSamples=${decoded.pcm.length} sr=${decoded.sampleRate} envFrames=${envelope.length} dur=${Math.round(accurateDurationMs)}ms`,
+        );
       } catch (err) {
-        console.warn('[SpeechService] failed to decode audio for lip-sync; broadcasting audio without envelope:', err);
+        logger.warn(
+          `[SpeechService] decode/envelope failed (lip-sync skipped, still broadcasting audio) — id=${utteranceId} err=${err instanceof Error ? err.message : String(err)}`,
+        );
       }
 
       const now = this.clock();
@@ -111,6 +132,9 @@ export class SpeechService {
           utteranceId,
         },
       });
+      logger.info(
+        `[SpeechService] broadcast audio — id=${utteranceId} startAt=${startAtEpochMs} dur=${Math.round(accurateDurationMs)}ms lipSync=${envelope !== null}`,
+      );
 
       const waitMs = this.lastEndTime - this.clock();
       if (waitMs > 0) {

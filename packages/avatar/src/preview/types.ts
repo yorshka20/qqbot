@@ -55,6 +55,20 @@ export interface TriggerMessage {
   };
 }
 
-export type PreviewClientMessage = TriggerMessage;
+/**
+ * Client → server: manually speak a phrase through SpeechService,
+ * bypassing the LLM reply path. Used by the HUD's debug text input so we
+ * can verify the end-to-end TTS → lip-sync pipeline without generating a
+ * real private-chat reply.
+ */
+export interface SpeakMessage {
+  type: 'speak';
+  data: {
+    /** Arbitrary text; goes through the same sentence-split + queue as LLM replies. */
+    text: string;
+  };
+}
+
+export type PreviewClientMessage = TriggerMessage | SpeakMessage;
 
 export type PreviewMessage = FrameMessage | StatusMessage | AudioMessage;
