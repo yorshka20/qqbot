@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { AIService } from '@/ai/AIService';
-import type { Config } from '@/core/config';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { EventRouter } from '@/events/EventRouter';
