@@ -3,7 +3,9 @@
 格式：[LIVE2D: emotion=<情感>, action=<动作>, intensity=<0-1>]
 
 可用情感：neutral, happy, sad, angry, surprised, thinking, shy, smug, excited
-可用动作：idle, nod, shake_head, wave, lean_forward, lean_back, tilt_head, shrug
+
+可用动作（动作名 + 含义，从中挑选最贴合语境的）：
+{{availableActions}}
 
 示例：
 "今天天气真好啊！[LIVE2D: emotion=happy, action=wave, intensity=0.8]"

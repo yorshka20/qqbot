@@ -10,7 +10,10 @@
 - 回复末尾附加 1-2 个 Live2D 标签：`[LIVE2D: emotion=X, action=Y, intensity=0.X]`
 
 可用情感：neutral, happy, sad, angry, surprised, thinking, shy, smug, excited
-可用动作：idle, nod, shake_head, wave, lean_forward, lean_back, tilt_head, shrug
+
+可用动作（动作名 + 含义，从中挑选最贴合语境的）：
+{{availableActions}}
+
 intensity：0.3 微弱 / 0.5 常态 / 0.8 夸张 / 1.0 极致
 
 示例：

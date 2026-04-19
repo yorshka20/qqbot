@@ -1,6 +1,7 @@
 {
   "smile": {
     "category": "emotion",
+    "description": "露出笑容,嘴角上扬,眼睛微眯——开心或友好的表情",
     "params": [
       { "channel": "mouth.smile", "targetValue": 1.0, "weight": 1.0 },
       { "channel": "eye.smile.left", "targetValue": 0.7, "weight": 0.9 },
@@ -11,6 +12,7 @@
   },
   "nod": {
     "category": "movement",
+    "description": "点头两次,表示同意、赞同或肯定",
     "params": [
       { "channel": "head.pitch", "targetValue": -18.0, "weight": 1.0, "oscillate": 2 },
       { "channel": "body.y", "targetValue": -0.25, "weight": 0.6, "oscillate": 2 }
@@ -19,6 +21,7 @@
   },
   "wave": {
     "category": "movement",
+    "description": "右手挥动,伴随身体轻晃——打招呼或告别",
     "params": [
       { "channel": "arm.right", "targetValue": 7.0, "weight": 1.0, "oscillate": 2.5 },
       { "channel": "head.roll", "targetValue": 6.0, "weight": 0.5, "oscillate": 2.5 },
@@ -28,6 +31,7 @@
   },
   "raise_hand": {
     "category": "movement",
+    "description": "举起右手,像在示意或强调某个观点",
     "params": [
       { "channel": "arm.right", "targetValue": 8.0, "weight": 1.0 },
       { "channel": "head.pitch", "targetValue": 4.0, "weight": 0.4 }
@@ -36,6 +40,7 @@
   },
   "thinking": {
     "category": "emotion",
+    "description": "微微歪头眯眼,皱眉思索——表达在思考或权衡",
     "params": [
       { "channel": "head.yaw", "targetValue": 10.0, "weight": 0.7 },
       { "channel": "head.roll", "targetValue": -8.0, "weight": 0.5 },
@@ -47,6 +52,7 @@
   },
   "sad": {
     "category": "emotion",
+    "description": "眉头下垂、低头,面露沮丧——失落或难过",
     "params": [
       { "channel": "mouth.smile", "targetValue": 0.0, "weight": 1.0 },
       { "channel": "brow", "targetValue": -0.5, "weight": 0.8 },
@@ -57,6 +63,7 @@
   },
   "angry": {
     "category": "emotion",
+    "description": "皱眉瞪眼、嘴角紧绷——生气或不满",
     "params": [
       { "channel": "brow", "targetValue": -0.8, "weight": 1.0 },
       { "channel": "mouth.smile", "targetValue": 0.0, "weight": 0.7 },
@@ -67,6 +74,7 @@
   },
   "surprised": {
     "category": "emotion",
+    "description": "张嘴挑眉、头轻仰——吃惊或出乎意料",
     "params": [
       { "channel": "mouth.open", "targetValue": 0.8, "weight": 1.0 },
       { "channel": "brow", "targetValue": 0.6, "weight": 0.8 },
@@ -76,6 +84,7 @@
   },
   "head_sway": {
     "category": "movement",
+    "description": "头部缓慢左右摆动——放松、有节奏感的待机动作",
     "params": [
       { "channel": "head.yaw", "targetValue": 15.0, "weight": 1.0 },
       { "channel": "body.x", "targetValue": 0.1, "weight": 0.5 }
@@ -84,11 +93,13 @@
   },
   "breathe": {
     "category": "micro",
+    "description": "一次明显的深呼吸——叹气、放松或感叹",
     "params": [{ "channel": "body.y", "targetValue": 0.05, "weight": 1.0 }],
     "defaultDuration": 4000
   },
   "lean_forward": {
     "category": "movement",
+    "description": "身体前倾、低头靠近——表达关注、倾听或好奇",
     "params": [
       { "channel": "body.z", "targetValue": 0.2, "weight": 1.0 },
       { "channel": "head.pitch", "targetValue": -5.0, "weight": 0.7 }
@@ -97,6 +108,7 @@
   },
   "lean_back": {
     "category": "movement",
+    "description": "身体后仰、头微抬——放松、从容或故作高深",
     "params": [
       { "channel": "body.z", "targetValue": -0.2, "weight": 1.0 },
       { "channel": "head.pitch", "targetValue": 3.0, "weight": 0.7 }
@@ -105,11 +117,13 @@
   },
   "tilt_head": {
     "category": "movement",
+    "description": "歪头——表示困惑、好奇或俏皮",
     "params": [{ "channel": "head.roll", "targetValue": 15.0, "weight": 1.0 }],
     "defaultDuration": 1200
   },
   "shake_head": {
     "category": "movement",
+    "description": "摇头两次——否定、拒绝或无奈",
     "params": [
       { "channel": "head.yaw", "targetValue": 22.0, "weight": 1.0, "oscillate": 2 },
       { "channel": "body.x", "targetValue": -0.08, "weight": 0.4, "oscillate": 2 }
@@ -118,6 +132,7 @@
   },
   "blink": {
     "category": "micro",
+    "description": "一次明显的眨眼——俏皮的眨眼或强调(区别于自动眨眼)",
     "params": [
       { "channel": "eye.open.left", "targetValue": -1.0, "weight": 1.0 },
       { "channel": "eye.open.right", "targetValue": -1.0, "weight": 1.0 }
@@ -126,6 +141,7 @@
   },
   "shrug": {
     "category": "movement",
+    "description": "双手微张、耸肩——表示不知道、无可奈何",
     "params": [
       { "channel": "arm.left", "targetValue": 5.0, "weight": 0.8 },
       { "channel": "arm.right", "targetValue": 5.0, "weight": 0.8 },

@@ -73,9 +73,19 @@ export class AvatarCommandHandler implements CommandHandler {
       };
     }
 
+    // Inject the live action-map into the prompt so the LLM picks from actions
+    // that actually exist. Falls back to an empty list if the avatar is
+    // disabled — the template still renders cleanly, the LLM just won't know
+    // about any specific actions beyond the built-in emotion names.
+    let availableActions = '';
+    if (this.avatar?.isActive()) {
+      const { formatActionsForPrompt } = await import('@qqbot/avatar');
+      availableActions = formatActionsForPrompt(this.avatar.listActions());
+    }
+
     let systemPrompt: string;
     try {
-      systemPrompt = this.promptManager.render('avatar.speak-system', {});
+      systemPrompt = this.promptManager.render('avatar.speak-system', { availableActions });
     } catch (err) {
       logger.error('[AvatarCommandHandler] failed to render system prompt', err);
       return {

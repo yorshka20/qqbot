@@ -59,11 +59,20 @@ export class PromptAssemblyStage implements ReplyStage {
       try {
         const { getContainer } = await import('@/core/DIContainer');
         const { DITokens } = await import('@/core/DITokens');
+        const { formatActionsForPrompt } = await import('@qqbot/avatar');
         const container = getContainer();
         if (container.isRegistered(DITokens.AVATAR_SERVICE)) {
           const avatar = container.resolve<import('@qqbot/avatar').AvatarService>(DITokens.AVATAR_SERVICE);
           if (avatar.isActive()) {
-            avatarPromptFragment = (this.promptManager.render('avatar.emotion-system') ?? '').trim();
+            // Inject the runtime action-map so the LLM's action vocabulary
+            // always matches what the compiler can actually play. Previously
+            // the template hard-coded an 8-action list that drifted behind
+            // the 16-action action-map; LLM never picked names it hadn't been
+            // told about.
+            const availableActions = formatActionsForPrompt(avatar.listActions());
+            avatarPromptFragment = (
+              this.promptManager.render('avatar.emotion-system', { availableActions }) ?? ''
+            ).trim();
           }
         }
       } catch {
