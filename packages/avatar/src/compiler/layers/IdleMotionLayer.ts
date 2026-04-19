@@ -1,4 +1,4 @@
-import type { BotState } from '../../state/types';
+import type { AvatarActivity } from '../../state/types';
 import { applyEasing } from '../easing';
 import type { EasingType } from '../types';
 import { BaseLayer } from './BaseLayer';
@@ -11,10 +11,11 @@ import { DEFAULT_IDLE_CLIPS, type IdleClip } from './clips';
  * stack forms a rich, non-repeating idle motion analogous to Cubism's Idle
  * motion group playback.
  *
- * Only plays while `state === 'idle'`. In any other state the layer emits
- * nothing and lets the active discrete action / transition animation own the
- * channels that clip would have touched. The LayerManager's gate policy
- * still applies on top.
+ * Only plays when the bot is **truly idle** — i.e. `pose === 'neutral'` AND
+ * `ambientGain >= 1.0`. Any deviation (pose change or gain suppression while
+ * speaking / thinking) abandons the running clip and emits nothing, letting
+ * active discrete / transition animations own the channels without fighting
+ * the clip for dominance.
  */
 interface IdleMotionConfig {
   /** Clip pool to pick from. Defaults to DEFAULT_IDLE_CLIPS. */
@@ -39,14 +40,19 @@ interface ActiveClip {
   startMs: number;
 }
 
+function isTrulyIdle(activity: AvatarActivity): boolean {
+  return activity.pose === 'neutral' && activity.ambientGain >= 1.0;
+}
+
 export class IdleMotionLayer extends BaseLayer {
   readonly id = 'idle-motion';
 
   private readonly config: IdleMotionConfig;
   private active: ActiveClip | null = null;
   private nextClipAt = 0;
-  /** Bot-state observed on the previous tick — used to cancel on exit-idle. */
-  private lastState: BotState = 'idle';
+  /** Whether the previous tick observed a truly-idle activity. Flips back to
+   *  `false` on exit so re-entry reseeds the next-clip timer cleanly. */
+  private wasIdle = true;
 
   constructor(config: Partial<IdleMotionConfig> = {}) {
     super();
@@ -56,23 +62,23 @@ export class IdleMotionLayer extends BaseLayer {
   override reset(): void {
     this.active = null;
     this.nextClipAt = 0;
-    this.lastState = 'idle';
+    this.wasIdle = true;
   }
 
-  sample(nowMs: number, state: BotState): Record<string, number> {
-    // Exited idle? Abandon any running clip; rely on the compiler's low-pass
+  sample(nowMs: number, activity: AvatarActivity): Record<string, number> {
+    // Not truly idle? Abandon any running clip; rely on the compiler's low-pass
     // to smoothly release channels back to baseline.
-    if (state !== 'idle') {
+    if (!isTrulyIdle(activity)) {
       if (this.active) this.active = null;
-      this.lastState = state;
+      this.wasIdle = false;
       return {};
     }
 
     // First tick in idle, or after re-entering idle — (re)seed the next clip timer.
-    if (this.lastState !== 'idle' || this.nextClipAt === 0) {
+    if (!this.wasIdle || this.nextClipAt === 0) {
       this.nextClipAt = nowMs + this.randomGap();
     }
-    this.lastState = state;
+    this.wasIdle = true;
 
     // No clip active: wait for next clip time to fire.
     if (!this.active) {

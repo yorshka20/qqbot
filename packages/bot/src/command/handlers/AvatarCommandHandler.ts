@@ -120,12 +120,20 @@ export class AvatarCommandHandler implements CommandHandler {
       };
     }
 
-    // Parse Live2D tags → drive animation + speak; then strip tags for delivery.
+    // Parse Live2D tags → enqueue animations only.
+    //
+    // State transitions (listening/speaking/idle) are managed by
+    // Live2DAvatarPlugin's lifecycle hooks (onMessageReceived/Sent/Complete).
+    // Earlier we also called `transition(tagToBotState(tag))` here, but that
+    // raced with the lifecycle hooks: the command set state to 'reacting'
+    // while onMessageSent→'speaking' and onMessageComplete→'idle' fired after
+    // — and on some paths the 'reacting' wins visually, leaving the preview
+    // HUD stuck. By only enqueueing the action animation (not touching state),
+    // the discrete animation plays over whatever state the lifecycle set.
     if (this.avatar?.isActive()) {
       try {
         const tags = parseLive2DTags(replyText);
         for (const tag of tags) {
-          this.avatar.transition(this.tagToBotState(tag));
           this.avatar.enqueueTagAnimation(tag);
         }
       } catch (err) {
@@ -153,22 +161,5 @@ export class AvatarCommandHandler implements CommandHandler {
       segments: messageBuilder.build(),
       sentAsForward: false,
     };
-  }
-
-  /** Mirrors Live2DAvatarPlugin.tagToBotState — keep in sync if one changes. */
-  private tagToBotState(tag: { emotion: string }): 'reacting' | 'thinking' | 'speaking' {
-    switch (tag.emotion) {
-      case 'happy':
-      case 'excited':
-      case 'surprised':
-      case 'sad':
-      case 'angry':
-      case 'shy':
-        return 'reacting';
-      case 'thinking':
-        return 'thinking';
-      default:
-        return 'speaking';
-    }
   }
 }

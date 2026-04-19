@@ -13,7 +13,10 @@ export interface PreviewFrame {
 }
 
 export interface PreviewStatus {
-  state: string;
+  /** Current discrete pose ('neutral' | 'listening' | 'thinking'). */
+  pose: string;
+  /** Current global ambient-layer gain — 1.0 = full ambient, lower = suppressed. */
+  ambientGain: number;
   fps: number;
   activeAnimations: number;
   queueLength: number;
@@ -43,6 +46,9 @@ export interface AudioMessage {
     startAtEpochMs: number; // wall-clock epoch ms; past-due = play immediately
     durationMs: number; // informational; real duration from decoder
     utteranceId: string; // stable id, e.g. crypto.randomUUID()
+    /** Original utterance text (post sentence-split), surfaced so the renderer
+     *  can display subtitles / toasts alongside playback. */
+    text: string;
   };
 }
 

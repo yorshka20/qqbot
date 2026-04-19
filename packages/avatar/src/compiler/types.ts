@@ -104,6 +104,14 @@ export interface ActionMapEntry {
    * but free-form — unknown values are grouped under a fallback bucket.
    */
   category?: string;
+  /**
+   * Optional one-line natural-language description of what the action
+   * expresses. Injected into avatar prompt templates so the LLM knows when
+   * to pick this action (e.g. `nod: 点头表示同意`). Short + specific —
+   * prompt budget is tight and every action description ships in every
+   * avatar reply.
+   */
+  description?: string;
 }
 
 /**
@@ -120,6 +128,8 @@ export interface ActionSummary {
   category?: string;
   /** Unique list of semantic channels this action writes (deduped). */
   channels: string[];
+  /** Optional one-line description forwarded verbatim from `ActionMapEntry.description`. */
+  description?: string;
 }
 
 /**

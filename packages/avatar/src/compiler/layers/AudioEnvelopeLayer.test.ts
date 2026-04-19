@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import type { BotState } from '../../state/types';
+import { DEFAULT_ACTIVITY } from '../../state/types';
 import { AudioEnvelopeLayer } from './AudioEnvelopeLayer';
 
-// Minimal BotState stub — tests don't use state values
-const IDLE = 'idle' as unknown as BotState;
+// Activity stub — AudioEnvelopeLayer ignores it, just pass the default.
+const IDLE = DEFAULT_ACTIVITY;
 
 describe('AudioEnvelopeLayer', () => {
   const makeLayer = () =>

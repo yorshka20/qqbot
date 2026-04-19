@@ -1,13 +1,30 @@
-// Live2D Avatar Plugin — drives a VTubeStudio-connected Live2D avatar based on bot state and LLM emotion tags
+// Live2D Avatar Plugin — drives a VTubeStudio-connected Live2D avatar based on
+// pipeline lifecycle events and LLM emotion tags.
 
-import type { AvatarService, BotState } from '@qqbot/avatar';
-import { type ParsedTag, parseLive2DTags, stripLive2DTags } from '@qqbot/avatar';
+import type { AvatarService } from '@qqbot/avatar';
+import { parseLive2DTags, stripLive2DTags } from '@qqbot/avatar';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
+
+/**
+ * Ambient-gain presets keyed to pipeline phase. Lower values suppress the
+ * continuous layer stack (breath / blink / gaze / idle-motion) so discrete
+ * pose + tag animations dominate visually. 1.0 = full ambient life.
+ *
+ * These replace the old `DEFAULT_LAYER_GATE` lookup table. Numbers preserve
+ * the earlier calibration — `speaking` at 0.3 so lip-sync and tag animations
+ * read clearly, `thinking` at 0.5 for a calmer pose.
+ */
+const AMBIENT = {
+  FULL: 1.0,
+  LISTENING: 0.8,
+  THINKING: 0.5,
+  SPEAKING: 0.3,
+} as const;
 
 @RegisterPlugin({
   name: 'live2d-avatar',
@@ -29,39 +46,22 @@ export class Live2DAvatarPlugin extends PluginBase {
   }
 
   /**
-   * Avatar transitions are gated to private (DM) messages only.
+   * Avatar activity changes are gated to private (DM) messages only.
    * Group chatter is still processed normally by the pipeline, but the
-   * avatar stays in idle so streaming viewers don't see it twitch for every
-   * group message the bot reads.
+   * avatar stays in neutral/full-ambient so streaming viewers don't see it
+   * twitch for every group message the bot reads.
    */
   private isPrivate(context: HookContext): boolean {
     return context.message?.messageType === 'private';
-  }
-
-  private tagToBotState(tag: ParsedTag): BotState {
-    switch (tag.emotion) {
-      case 'happy':
-      case 'excited':
-      case 'surprised':
-        return 'reacting';
-      case 'thinking':
-        return 'thinking';
-      case 'sad':
-      case 'angry':
-      case 'shy':
-        return 'reacting';
-      default:
-        return 'speaking';
-    }
   }
 
   @Hook({ stage: 'onMessageReceived', priority: 'NORMAL', order: 10 })
   async onMessageReceived(context: HookContext): Promise<boolean> {
     if (!this.active || !this.isPrivate(context)) return true;
     try {
-      this.avatar?.transition('listening');
+      this.avatar?.setActivity({ pose: 'listening', ambientGain: AMBIENT.LISTENING });
     } catch (err) {
-      logger.warn('[Live2DAvatarPlugin] onMessageReceived transition failed:', err);
+      logger.warn('[Live2DAvatarPlugin] onMessageReceived setActivity failed:', err);
     }
     return true;
   }
@@ -70,9 +70,9 @@ export class Live2DAvatarPlugin extends PluginBase {
   async onAIGenerationStart(context: HookContext): Promise<boolean> {
     if (!this.active || !this.isPrivate(context)) return true;
     try {
-      this.avatar?.transition('thinking');
+      this.avatar?.setActivity({ pose: 'thinking', ambientGain: AMBIENT.THINKING });
     } catch (err) {
-      logger.warn('[Live2DAvatarPlugin] onAIGenerationStart transition failed:', err);
+      logger.warn('[Live2DAvatarPlugin] onAIGenerationStart setActivity failed:', err);
     }
     return true;
   }
@@ -99,16 +99,19 @@ export class Live2DAvatarPlugin extends PluginBase {
   @Hook({ stage: 'onMessageBeforeSend', priority: 'NORMAL', order: 10 })
   async onMessageBeforeSend(context: HookContext): Promise<boolean> {
     try {
-      // Tag → transition / enqueue requires the plugin to be active AND the
-      // message to be private (avatar only reacts to DMs; group chatter
-      // doesn't drive the streaming avatar).
+      // Tag → enqueue requires the plugin to be active AND the message to be
+      // private (avatar only reacts to DMs; group chatter doesn't drive the
+      // streaming avatar). Pose stays at 'neutral' here — the enqueued tag
+      // animation itself is the visible effect, we just drop ambient gain to
+      // SPEAKING so the discrete animation reads clearly.
       if (this.active && this.isPrivate(context)) {
         const aiResponse = context.aiResponse;
         if (aiResponse) {
           const tags = parseLive2DTags(aiResponse);
+          if (tags.length > 0) {
+            this.avatar?.setActivity({ pose: 'neutral', ambientGain: AMBIENT.SPEAKING });
+          }
           for (const tag of tags) {
-            const state = this.tagToBotState(tag);
-            this.avatar?.transition(state);
             this.avatar?.enqueueTagAnimation(tag);
           }
         }
@@ -142,9 +145,9 @@ export class Live2DAvatarPlugin extends PluginBase {
   async onMessageSent(context: HookContext): Promise<boolean> {
     if (!this.active || !this.isPrivate(context)) return true;
     try {
-      this.avatar?.transition('speaking');
+      this.avatar?.setActivity({ pose: 'neutral', ambientGain: AMBIENT.SPEAKING });
     } catch (err) {
-      logger.warn('[Live2DAvatarPlugin] onMessageSent transition failed:', err);
+      logger.warn('[Live2DAvatarPlugin] onMessageSent setActivity failed:', err);
     }
     return true;
   }
@@ -153,9 +156,9 @@ export class Live2DAvatarPlugin extends PluginBase {
   async onMessageComplete(context: HookContext): Promise<boolean> {
     if (!this.active || !this.isPrivate(context)) return true;
     try {
-      this.avatar?.transition('idle');
+      this.avatar?.setActivity({ pose: 'neutral', ambientGain: AMBIENT.FULL });
     } catch (err) {
-      logger.warn('[Live2DAvatarPlugin] onMessageComplete transition failed:', err);
+      logger.warn('[Live2DAvatarPlugin] onMessageComplete setActivity failed:', err);
     }
     return true;
   }

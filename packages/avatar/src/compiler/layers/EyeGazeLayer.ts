@@ -1,4 +1,4 @@
-import type { BotState } from '../../state/types';
+import type { AvatarActivity } from '../../state/types';
 import { BaseLayer } from './BaseLayer';
 
 /**
@@ -66,8 +66,8 @@ export class EyeGazeLayer extends BaseLayer {
     this.lastSampleAt = 0;
   }
 
-  sample(nowMs: number, _state: BotState): Record<string, number> {
-    void _state;
+  sample(nowMs: number, _activity: AvatarActivity): Record<string, number> {
+    void _activity;
     if (this.nextSaccadeAt === 0) this.nextSaccadeAt = nowMs + this.randomSaccadeInterval();
 
     // Saccade: pick a new target on the unit disk, biased toward center.

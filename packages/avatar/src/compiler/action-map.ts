@@ -52,6 +52,7 @@ export class ActionMap {
         defaultDuration: entry.defaultDuration,
         category: entry.category,
         channels,
+        description: entry.description,
       });
     }
     return out;

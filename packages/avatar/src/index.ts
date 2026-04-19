@@ -1,6 +1,7 @@
 // Avatar system — public API
-export { AvatarService } from './AvatarService';
-export type { BotState } from './state/types';
+export { AvatarService, formatActionsForPrompt } from './AvatarService';
+export type { ActionSummary } from './compiler/types';
+export type { AvatarActivity, AvatarActivityPatch, AvatarPose } from './state/types';
 export type { ParsedTag } from './tags';
 export { parseLive2DTags, stripLive2DTags } from './tags';
 // TTS subsystem — consumed by bot commands and the avatar speech pipeline.

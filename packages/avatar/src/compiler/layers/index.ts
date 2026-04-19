@@ -8,4 +8,4 @@ export { createDefaultLayers } from './default-layers';
 export { EyeGazeLayer } from './EyeGazeLayer';
 export { IdleMotionLayer } from './IdleMotionLayer';
 export { LayerManager } from './LayerManager';
-export { type AnimationLayer, DEFAULT_LAYER_GATE, type LayerGate } from './types';
+export type { AnimationLayer } from './types';

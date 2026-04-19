@@ -1,4 +1,4 @@
-import type { BotState } from '../../state/types';
+import type { AvatarActivity } from '../../state/types';
 import { BaseLayer } from './BaseLayer';
 
 export interface AudioEnvelopeLayerOptions {
@@ -38,8 +38,8 @@ export class AudioEnvelopeLayer extends BaseLayer {
     if (opts.weight !== undefined) this.setWeight(opts.weight);
   }
 
-  sample(nowMs: number, _state: BotState): Record<string, number> {
-    void _state;
+  sample(nowMs: number, _activity: AvatarActivity): Record<string, number> {
+    void _activity;
     const t = nowMs - this.startAtMs;
     if (t < 0 || t > this.durationMs) return {};
     if (this.envelope.length === 0) return {};

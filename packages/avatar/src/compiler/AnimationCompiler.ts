@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import type { BotState } from '../state/types';
+import { type AvatarActivity, DEFAULT_ACTIVITY } from '../state/types';
 import { ActionMap } from './action-map';
 import { applyEasing } from './easing';
 import { LayerManager } from './layers/LayerManager';
@@ -24,7 +24,7 @@ export class AnimationCompiler extends EventEmitter {
   private currentParams: Record<string, number> = {};
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private tickCount = 0;
-  private currentState: BotState = 'idle';
+  private currentActivity: AvatarActivity = { ...DEFAULT_ACTIVITY };
 
   constructor(config: Partial<CompilerConfig> = {}, actionMapPath?: string) {
     super();
@@ -117,8 +117,15 @@ export class AnimationCompiler extends EventEmitter {
     return this.layerManager.list();
   }
 
-  setGateState(state: BotState): void {
-    this.currentState = state;
+  /**
+   * Update the activity the compiler uses for the next tick. `ambientGain`
+   * multiplies all layer contributions; `pose` is forwarded to layers that
+   * care (currently only `IdleMotionLayer`). Replaces the old `setGateState`
+   * — callers now own the scalar directly rather than routing through a
+   * state-indexed lookup table.
+   */
+  setActivity(activity: AvatarActivity): void {
+    this.currentActivity = { ...activity };
   }
 
   private processQueue(): void {
@@ -148,7 +155,7 @@ export class AnimationCompiler extends EventEmitter {
 
     // Sum contributions from layers (continuous) + active animations (discrete ADSR).
     // Multiple sources targeting the same channel are additively mixed.
-    const contributions: Record<string, number> = this.layerManager.sample(now, this.currentState);
+    const contributions: Record<string, number> = this.layerManager.sample(now, this.currentActivity);
 
     for (const anim of this.activeAnimations) {
       if (now < anim.startTime) continue;

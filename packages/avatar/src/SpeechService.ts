@@ -130,6 +130,7 @@ export class SpeechService {
           startAtEpochMs,
           durationMs: accurateDurationMs,
           utteranceId,
+          text: utterance,
         },
       });
       logger.info(

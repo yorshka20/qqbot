@@ -1,25 +1,23 @@
-import type { BotState } from '../../state/types';
-import { type AnimationLayer, DEFAULT_LAYER_GATE, type LayerGate } from './types';
+import type { AvatarActivity } from '../../state/types';
+import type { AnimationLayer } from './types';
 
 /**
  * Registry + sampler for `AnimationLayer` instances.
  *
- * `sample(nowMs, state)` walks every registered layer, asks it for its current
- * channel contributions, applies the per-layer weight and the global gate, and
- * additively merges the results. The result is a single channel map the
- * compiler folds into its per-tick contributions.
+ * `sample(nowMs, activity)` walks every registered layer, asks it for its
+ * current channel contributions, applies the per-layer weight and the global
+ * ambient gain (read directly from `activity.ambientGain`), and additively
+ * merges the results. The result is a single channel map the compiler folds
+ * into its per-tick contributions.
  *
- * One global gate (`LayerGate`) governs all layers; per-layer weight is
- * available on the `AnimationLayer` itself for finer control.
+ * The old configurable `LayerGate` / `DEFAULT_LAYER_GATE` indirection is gone:
+ * `activity.ambientGain` IS the gate — pipeline / plugin code writes whatever
+ * scalar they want (0..1) and LayerManager just reads it. This keeps the
+ * "ambient vs. discrete-action split" a single number, matching the intent
+ * stated in the design note in `state/types.ts`.
  */
 export class LayerManager {
   private readonly layers: Map<string, AnimationLayer> = new Map();
-  private gate: LayerGate = DEFAULT_LAYER_GATE;
-
-  /** Replace the global gate policy. */
-  setGate(gate: LayerGate): void {
-    this.gate = gate;
-  }
 
   /** Register or replace a layer by id. */
   register(layer: AnimationLayer): void {
@@ -48,8 +46,8 @@ export class LayerManager {
    * `nowMs`. The returned map is mutable and owned by the caller; the
    * manager does not retain a reference.
    */
-  sample(nowMs: number, state: BotState): Record<string, number> {
-    const gateValue = this.gate(state);
+  sample(nowMs: number, activity: AvatarActivity): Record<string, number> {
+    const gateValue = activity.ambientGain;
     const out: Record<string, number> = {};
     if (gateValue === 0) return out;
 
@@ -59,7 +57,7 @@ export class LayerManager {
       const effective = gateValue * weight;
       if (effective === 0) continue;
 
-      const contribs = layer.sample(nowMs, state);
+      const contribs = layer.sample(nowMs, activity);
       for (const [channel, value] of Object.entries(contribs)) {
         out[channel] = (out[channel] ?? 0) + value * effective;
       }

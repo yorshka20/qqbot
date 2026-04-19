@@ -1,4 +1,4 @@
-import type { BotState } from '../../state/types';
+import type { AvatarActivity } from '../../state/types';
 import { BaseLayer } from './BaseLayer';
 
 /** Per-channel multi-harmonic oscillator config. */
@@ -98,8 +98,8 @@ export class BreathLayer extends BaseLayer {
     breath: { amplitude: 0.5, periodSec: 3.5, phase: 0, center: 0.5 },
   };
 
-  sample(nowMs: number, _state: BotState): Record<string, number> {
-    void _state;
+  sample(nowMs: number, _activity: AvatarActivity): Record<string, number> {
+    void _activity;
     const t = nowMs / 1000;
     const out: Record<string, number> = {};
     for (const [ch, osc] of Object.entries(this.channels)) {

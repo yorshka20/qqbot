@@ -1,4 +1,4 @@
-import type { BotState } from '../../state/types';
+import type { AvatarActivity } from '../../state/types';
 import type { AnimationLayer } from './types';
 
 /**
@@ -27,7 +27,7 @@ export abstract class BaseLayer implements AnimationLayer {
     this.weight = weight;
   }
 
-  abstract sample(nowMs: number, state: BotState): Record<string, number>;
+  abstract sample(nowMs: number, activity: AvatarActivity): Record<string, number>;
 
   reset?(): void;
 }

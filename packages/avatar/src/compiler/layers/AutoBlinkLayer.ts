@@ -1,4 +1,4 @@
-import type { BotState } from '../../state/types';
+import type { AvatarActivity } from '../../state/types';
 import { BaseLayer } from './BaseLayer';
 
 /**
@@ -69,8 +69,8 @@ export class AutoBlinkLayer extends BaseLayer {
     this.nextBlinkAt = 0;
   }
 
-  sample(nowMs: number, _state: BotState): Record<string, number> {
-    void _state;
+  sample(nowMs: number, _activity: AvatarActivity): Record<string, number> {
+    void _activity;
     // First-run: schedule the first blink lazily so we don't depend on a
     // constructor `now` reference (tests/mocks can move the clock).
     if (this.nextBlinkAt === 0) this.nextBlinkAt = nowMs + this.randomInterval();

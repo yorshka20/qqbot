@@ -1,13 +1,13 @@
 import { singleton } from 'tsyringe';
 import { AnimationCompiler } from './compiler/AnimationCompiler';
 import { createDefaultLayers } from './compiler/layers';
-import type { StateNode } from './compiler/types';
+import type { ActionSummary, StateNode } from './compiler/types';
 import { mergeAvatarConfig } from './config';
 import { VTSDriver } from './drivers/VTSDriver';
 import { PreviewServer } from './preview/PreviewServer';
 import { SpeechService } from './SpeechService';
-import { IdleStateMachine } from './state/IdleStateMachine';
-import type { BotState, StateNodeOutput } from './state/types';
+import { ActivityTracker } from './state/IdleStateMachine';
+import { type AvatarActivityPatch, DEFAULT_ACTIVITY, type StateNodeOutput } from './state/types';
 import type { TTSManager } from './tts/TTSManager';
 import type { AvatarConfig } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './types';
@@ -17,7 +17,7 @@ import { logger } from './utils/logger';
 export class AvatarService {
   private config: AvatarConfig = DEFAULT_AVATAR_CONFIG;
   private compiler: AnimationCompiler | null = null;
-  private stateMachine: IdleStateMachine | null = null;
+  private stateMachine: ActivityTracker | null = null;
   private driver: VTSDriver | null = null;
   private previewServer: PreviewServer | null = null;
   private started = false;
@@ -53,7 +53,7 @@ export class AvatarService {
     }
 
     this.compiler = new AnimationCompiler(config.compiler, config.actionMap?.path);
-    this.stateMachine = new IdleStateMachine();
+    this.stateMachine = new ActivityTracker();
 
     // VTSDriver is optional: when vts.enabled=false, we run with only the
     // compiler + preview server. Frames are still broadcast to preview WS
@@ -198,10 +198,10 @@ export class AvatarService {
       }
     }
 
-    // Enter idle state for gate policy. If no consumer has arrived yet the
-    // compiler stays paused; the transition nodes sit in the queue and will
+    // Enter neutral pose + full ambient. If no consumer has arrived yet the
+    // compiler stays paused; any transition nodes sit in the queue and will
     // play cleanly once the tick resumes.
-    this.transition('idle');
+    this.setActivity(DEFAULT_ACTIVITY);
 
     this.started = true;
     logger.info('[AvatarService] Started (compiler paused until first consumer)');
@@ -289,8 +289,10 @@ export class AvatarService {
       this.measuredFps = elapsed > 0 ? Math.round(this.frameCount / elapsed) : 0;
       this.frameCount = 0;
       this.lastFpsSampleAt = now;
+      const activity = this.stateMachine.current;
       this.previewServer.updateStatus({
-        state: this.stateMachine.currentState,
+        pose: activity.pose,
+        ambientGain: activity.ambientGain,
         fps: this.measuredFps,
         activeAnimations: this.compiler.getActiveAnimationCount(),
         queueLength: this.compiler.getQueueLength(),
@@ -299,13 +301,20 @@ export class AvatarService {
   }
 
   /**
-   * Transition the avatar to a new bot state.
-   * Emits the matching transition animations to the compiler queue.
+   * Apply a partial activity update — `{ ambientGain?, pose? }`. Fields
+   * omitted from the patch keep their previous value. Propagates to:
+   *   - `compiler.setActivity` so the next tick uses the new activity
+   *   - `stateMachine.update` which returns transition nodes for any pose
+   *     edge (neutral→listening→thinking etc.); those are enqueued onto the
+   *     compiler so the authored pose animation plays.
+   *
+   * Replaces the old `transition(state)` API — callers now express which
+   * axis they're moving, not a single conflated enum.
    */
-  transition(state: BotState): void {
+  setActivity(patch: AvatarActivityPatch): void {
     if (!this.stateMachine || !this.compiler) return;
-    this.compiler.setGateState(state);
-    const nodes = this.stateMachine.transition(state);
+    const nodes = this.stateMachine.update(patch);
+    this.compiler.setActivity(this.stateMachine.current);
     if (nodes.length > 0) {
       this.compiler.enqueue(toStateNodes(nodes));
     }
@@ -346,6 +355,49 @@ export class AvatarService {
   getConfig(): AvatarConfig {
     return this.config;
   }
+
+  /**
+   * Enumerate the currently loaded action-map entries. Used by:
+   *  - PreviewServer `/action-map` HTTP route (HUD button list)
+   *  - Prompt assembly (injects `{{availableActions}}` into avatar templates so
+   *    the LLM's tag vocabulary stays in sync with the action-map JSON)
+   * Returns `[]` if the compiler hasn't been initialized yet.
+   */
+  listActions(): ActionSummary[] {
+    return this.compiler?.listActions() ?? [];
+  }
+}
+
+/**
+ * Format an action list as a Markdown-style bulleted list for injection into
+ * avatar LLM prompts. Each line reads:
+ *
+ *   - `nod`: 点头两次,表示同意、赞同或肯定
+ *
+ * Actions without a description fall back to just their name so the LLM at
+ * least knows the action exists. The output is stable/sorted by category order
+ * (emotion → movement → micro → other) then by appearance in the action-map
+ * so prompt-cache hits survive action-map reorderings within a bucket.
+ */
+export function formatActionsForPrompt(actions: ActionSummary[]): string {
+  const CATEGORY_ORDER: readonly string[] = ['emotion', 'movement', 'micro'];
+  const byCategory = new Map<string, ActionSummary[]>();
+  for (const a of actions) {
+    const key = a.category && CATEGORY_ORDER.includes(a.category) ? a.category : '_other';
+    const bucket = byCategory.get(key) ?? [];
+    bucket.push(a);
+    byCategory.set(key, bucket);
+  }
+  const lines: string[] = [];
+  const emit = (bucket: ActionSummary[] | undefined): void => {
+    if (!bucket) return;
+    for (const a of bucket) {
+      lines.push(a.description ? `- \`${a.name}\`: ${a.description}` : `- \`${a.name}\``);
+    }
+  };
+  for (const cat of CATEGORY_ORDER) emit(byCategory.get(cat));
+  emit(byCategory.get('_other'));
+  return lines.join('\n');
 }
 
 function toStateNodes(nodes: StateNodeOutput[]): StateNode[] {
