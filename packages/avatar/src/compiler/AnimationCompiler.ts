@@ -1,7 +1,14 @@
 import { EventEmitter } from 'node:events';
+import type { TunableParam, TunableSection } from '../preview/types';
 import { type AvatarActivity, DEFAULT_ACTIVITY } from '../state/types';
 import { ActionMap } from './action-map';
 import { applyEasing } from './easing';
+import {
+  type AudioEnvelopeConfig,
+  DEFAULT_AUDIO_ENVELOPE_CONFIG,
+  getAudioEnvelopeConfig,
+  setAudioEnvelopeConfig,
+} from './layers/audio-envelope-config';
 import { LayerManager } from './layers/LayerManager';
 import type { AnimationLayer } from './layers/types';
 import type { ActionSummary, ActiveAnimation, CompilerConfig, FrameOutput, SpringParams, StateNode } from './types';
@@ -45,6 +52,7 @@ export class AnimationCompiler extends EventEmitter {
   private activeAnimations: ActiveAnimation[] = [];
   private currentParams: Record<string, number> = {};
   private springStates: Map<string, { position: number; velocity: number }> = new Map();
+  private springOverrides: Map<string, Partial<SpringParams>> = new Map();
   private lastTickMs = 0;
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private tickCount = 0;
@@ -154,6 +162,151 @@ export class AnimationCompiler extends EventEmitter {
     this.currentActivity = { ...activity };
   }
 
+  /**
+   * Enumerate all tunable params visible to the HUD tuning panel. Includes
+   * compiler-owned sections (spring damper, audio envelope singleton) plus
+   * every registered layer that implements getTunableParams.
+   */
+  listTunableParams(): TunableSection[] {
+    const sections: TunableSection[] = [];
+
+    // Section 1: any registered layer that opts in via getTunableParams.
+    // Skip audio-envelope-* layers — they share one singleton exposed
+    // separately below.
+    for (const layer of this.layerManager.list()) {
+      if (layer.id.startsWith('audio-envelope')) continue;
+      const params = layer.getTunableParams?.();
+      if (!params || params.length === 0) continue;
+      sections.push({
+        id: `layer:${layer.id}`,
+        label: humanizeLayerId(layer.id),
+        params,
+      });
+    }
+
+    // Section 2: layer:audio-envelope (compiler owns the singleton).
+    const aec = getAudioEnvelopeConfig();
+    sections.push({
+      id: 'layer:audio-envelope',
+      label: 'Audio Envelope Layer',
+      params: [
+        {
+          id: 'threshold',
+          label: 'Excite Threshold',
+          min: 0,
+          max: 1,
+          step: 0.01,
+          value: aec.threshold,
+          default: DEFAULT_AUDIO_ENVELOPE_CONFIG.threshold,
+        },
+        {
+          id: 'power',
+          label: 'Excite Power',
+          min: 0.3,
+          max: 4,
+          step: 0.05,
+          value: aec.power,
+          default: DEFAULT_AUDIO_ENVELOPE_CONFIG.power,
+        },
+        {
+          id: 'bodyZMax',
+          label: 'body.z Max',
+          min: 0,
+          max: 2,
+          step: 0.05,
+          value: aec.bodyZMax,
+          default: DEFAULT_AUDIO_ENVELOPE_CONFIG.bodyZMax,
+        },
+        {
+          id: 'eyeOpenMax',
+          label: 'eye.open Max',
+          min: 0,
+          max: 1,
+          step: 0.01,
+          value: aec.eyeOpenMax,
+          default: DEFAULT_AUDIO_ENVELOPE_CONFIG.eyeOpenMax,
+        },
+        {
+          id: 'browMax',
+          label: 'brow Max',
+          min: 0,
+          max: 2,
+          step: 0.05,
+          value: aec.browMax,
+          default: DEFAULT_AUDIO_ENVELOPE_CONFIG.browMax,
+        },
+      ],
+    });
+
+    // Section 3: compiler:spring-damper — 6 channels × 2 params = 12
+    const EXPOSED_CHANNELS = ['body.x', 'body.y', 'body.z', 'head.yaw', 'head.pitch', 'head.roll'];
+    const springParams: TunableParam[] = [];
+    for (const ch of EXPOSED_CHANNELS) {
+      const defaults = DEFAULT_SPRING_BY_CHANNEL[ch] ?? DEFAULT_SPRING;
+      const current = this.resolveSpringParams(ch);
+      springParams.push(
+        {
+          id: `${ch}.omega`,
+          label: `${ch} ω`,
+          min: 1,
+          max: 30,
+          step: 0.5,
+          value: current.omega,
+          default: defaults.omega,
+        },
+        {
+          id: `${ch}.zeta`,
+          label: `${ch} ζ`,
+          min: 0.3,
+          max: 1.5,
+          step: 0.05,
+          value: current.zeta,
+          default: defaults.zeta,
+        },
+      );
+    }
+    sections.push({
+      id: 'compiler:spring-damper',
+      label: 'Spring Damper',
+      params: springParams,
+    });
+
+    return sections;
+  }
+
+  /**
+   * Apply one tunable update. Routes by sectionId prefix. Unknown IDs are
+   * silently dropped so older clients stay forward-compatible.
+   */
+  setTunableParam(sectionId: string, paramId: string, value: number): void {
+    if (!Number.isFinite(value)) return;
+
+    if (sectionId === 'compiler:spring-damper') {
+      const lastDot = paramId.lastIndexOf('.');
+      if (lastDot <= 0) return;
+      const channel = paramId.slice(0, lastDot);
+      const attr = paramId.slice(lastDot + 1);
+      if (attr !== 'omega' && attr !== 'zeta') return;
+      const existing = this.springOverrides.get(channel) ?? {};
+      existing[attr] = value;
+      this.springOverrides.set(channel, existing);
+      return;
+    }
+
+    if (sectionId === 'layer:audio-envelope') {
+      setAudioEnvelopeConfig({ [paramId]: value } as Partial<AudioEnvelopeConfig>);
+      return;
+    }
+
+    if (sectionId.startsWith('layer:')) {
+      const layerId = sectionId.slice('layer:'.length);
+      const layer = this.layerManager.get(layerId);
+      layer?.setTunableParam?.(paramId, value);
+      return;
+    }
+    // unknown: silent drop
+  }
+
   private processQueue(): void {
     if (this.pendingQueue.length === 0) return;
     const now = Date.now();
@@ -247,11 +400,15 @@ export class AnimationCompiler extends EventEmitter {
   }
 
   private resolveSpringParams(channelId: string): SpringParams {
+    const override = this.springOverrides.get(channelId);
     const fromConfig = this.config.springByChannel?.[channelId];
-    if (fromConfig) return fromConfig;
     const builtin = DEFAULT_SPRING_BY_CHANNEL[channelId];
-    if (builtin) return builtin;
-    return this.config.springDefaults ?? DEFAULT_SPRING;
+    const base = fromConfig ?? builtin ?? this.config.springDefaults ?? DEFAULT_SPRING;
+    if (!override) return base;
+    return {
+      omega: override.omega ?? base.omega,
+      zeta: override.zeta ?? base.zeta,
+    };
   }
 
   private calculateProgress(anim: ActiveAnimation, now: number): number {
@@ -272,4 +429,12 @@ export class AnimationCompiler extends EventEmitter {
     anim.phase = 'release';
     return releaseTime === 0 ? 0 : 1 - (elapsed - sustainEnd) / releaseTime;
   }
+}
+
+function humanizeLayerId(id: string): string {
+  const title = id
+    .split('-')
+    .map((s) => (s.length === 0 ? s : s[0].toUpperCase() + s.slice(1)))
+    .join(' ');
+  return `${title} Layer`;
 }

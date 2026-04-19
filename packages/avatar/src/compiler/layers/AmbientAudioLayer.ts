@@ -1,3 +1,4 @@
+import type { TunableParam } from '../../preview/types';
 import type { AvatarActivity } from '../../state/types';
 import { BaseLayer } from './BaseLayer';
 
@@ -87,6 +88,61 @@ export class AmbientAudioLayer extends BaseLayer {
       'body.z': this.opts.bodyZMax * excite,
       brow: this.opts.browMax * excite,
     };
+  }
+
+  getTunableParams(): TunableParam[] {
+    return [
+      {
+        id: 'silenceFloor',
+        label: 'Silence Floor',
+        min: 0,
+        max: 0.2,
+        step: 0.005,
+        value: this.opts.silenceFloor,
+        default: 0.02,
+      },
+      {
+        id: 'powerExponent',
+        label: 'Power Exponent',
+        min: 0.3,
+        max: 3,
+        step: 0.05,
+        value: this.opts.powerExponent,
+        default: 1,
+      },
+      { id: 'bodyZMax', label: 'body.z Max', min: 0, max: 3, step: 0.05, value: this.opts.bodyZMax, default: 0.8 },
+      { id: 'browMax', label: 'brow Max', min: 0, max: 2, step: 0.05, value: this.opts.browMax, default: 0.5 },
+      {
+        id: 'smoothingAlpha',
+        label: 'Smoothing α',
+        min: 0.02,
+        max: 1,
+        step: 0.01,
+        value: this.opts.smoothingAlpha,
+        default: 0.15,
+      },
+    ];
+  }
+
+  setTunableParam(paramId: string, value: number): void {
+    switch (paramId) {
+      case 'silenceFloor':
+        this.opts.silenceFloor = value;
+        break;
+      case 'powerExponent':
+        this.opts.powerExponent = value;
+        break;
+      case 'bodyZMax':
+        this.opts.bodyZMax = value;
+        break;
+      case 'browMax':
+        this.opts.browMax = value;
+        break;
+      case 'smoothingAlpha':
+        this.opts.smoothingAlpha = value;
+        break;
+      // unknown: silent drop
+    }
   }
 
   override reset(): void {

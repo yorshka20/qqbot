@@ -1,29 +1,6 @@
 import type { AvatarActivity } from '../../state/types';
+import { getAudioEnvelopeConfig } from './audio-envelope-config';
 import { BaseLayer } from './BaseLayer';
-
-/**
- * Soft-threshold below which audio energy contributes zero "excite" to
- * body/eye/brow. Avoids twitchy animation during quiet phonemes. RMS
- * envelope is peak-normalized so values live roughly in [0, 0.95];
- * 0.3 keeps unstressed syllables below the activation line.
- */
-const EXCITE_THRESHOLD = 0.3;
-
-/**
- * Power-law exponent applied to the above-threshold audio energy.
- * 2 = quadratic: layer is insensitive to mid-volume speech and clearly
- * reacts only when the speaker emphasizes / raises volume.
- */
-const EXCITE_POWER = 2;
-
-/** Max additive contribution to `body.z` (normalized forward-lean units). */
-const BODY_Z_MAX = 0.4;
-
-/** Max additive contribution to `eye.open.left` / `eye.open.right` ([0,1] units). */
-const EYE_OPEN_MAX = 0.15;
-
-/** Max additive contribution to `brow` ([-1, 1] units). */
-const BROW_MAX = 0.3;
 
 export interface AudioEnvelopeLayerOptions {
   /** Layer id; typically 'audio-envelope-<utteranceId>'. */
@@ -74,6 +51,7 @@ export class AudioEnvelopeLayer extends BaseLayer {
 
   sample(nowMs: number, _activity: AvatarActivity): Record<string, number> {
     void _activity;
+    const cfg = getAudioEnvelopeConfig();
     const t = nowMs - this.startAtMs;
     if (t < 0 || t > this.durationMs) return {};
     if (this.envelope.length === 0) return {};
@@ -86,13 +64,13 @@ export class AudioEnvelopeLayer extends BaseLayer {
 
     const out: Record<string, number> = { 'mouth.open': v };
 
-    const excite = v <= EXCITE_THRESHOLD ? 0 : ((v - EXCITE_THRESHOLD) / (1 - EXCITE_THRESHOLD)) ** EXCITE_POWER;
+    const excite = v <= cfg.threshold ? 0 : ((v - cfg.threshold) / (1 - cfg.threshold)) ** cfg.power;
 
     if (excite > 0) {
-      out['body.z'] = BODY_Z_MAX * excite;
-      out['eye.open.left'] = EYE_OPEN_MAX * excite;
-      out['eye.open.right'] = EYE_OPEN_MAX * excite;
-      out.brow = BROW_MAX * excite;
+      out['body.z'] = cfg.bodyZMax * excite;
+      out['eye.open.left'] = cfg.eyeOpenMax * excite;
+      out['eye.open.right'] = cfg.eyeOpenMax * excite;
+      out.brow = cfg.browMax * excite;
     }
 
     return out;
