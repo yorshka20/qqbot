@@ -5,12 +5,12 @@
 
 import 'reflect-metadata';
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { createContext, type Live2DContext } from '../Live2DStage';
 import { GateStage } from '../stages/GateStage';
 import { LLMStage } from '../stages/LLMStage';
 import { PromptAssemblyStage } from '../stages/PromptAssemblyStage';
 import { SpeakStage } from '../stages/SpeakStage';
 import { TagAnimationStage } from '../stages/TagAnimationStage';
-import { createContext, type Live2DContext } from '../Live2DStage';
 import type { Live2DInput } from '../types';
 
 function sampleInput(overrides?: Partial<Live2DInput>): Live2DInput {
@@ -157,10 +157,7 @@ describe('LLMStage', () => {
   };
 
   it('skips with prompt-render-failed when systemPrompt is missing', async () => {
-    const stage = new LLMStage(
-      { generate: mock(() => Promise.resolve({ text: '' })) } as never,
-      fakeConfig as never,
-    );
+    const stage = new LLMStage({ generate: mock(() => Promise.resolve({ text: '' })) } as never, fakeConfig as never);
     const ctx = createContext(sampleInput());
     await stage.execute(ctx);
     expect(ctx.skipped).toBe(true);
@@ -208,10 +205,7 @@ describe('LLMStage', () => {
       capturedProvider = provider;
       return Promise.resolve({ text: 'ok' });
     });
-    const stage = new LLMStage(
-      { generate } as never,
-      { getAIConfig: () => undefined } as never,
-    );
+    const stage = new LLMStage({ generate } as never, { getAIConfig: () => undefined } as never);
     const ctx = createContext(sampleInput());
     ctx.systemPrompt = 'sys';
     await stage.execute(ctx);

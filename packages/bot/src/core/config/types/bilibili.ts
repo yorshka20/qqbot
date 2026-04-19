@@ -17,8 +17,17 @@ export interface BilibiliLiveSendConfig {
 }
 
 export interface BilibiliLiveConfig {
-  /** Master switch for the live listener. */
+  /**
+   * Master switch. When false, the bridge is not constructed at all.
+   * When true, the bridge exists but connection is gated on `autoConnect`.
+   */
   enabled: boolean;
+  /**
+   * Auto-connect to the live room on bot start. Default `false` — connect
+   * on demand via `/live2d connect` so the bot doesn't hammer bilibili
+   * with retries while the room is offline or risk-controlled.
+   */
+  autoConnect?: boolean;
   /** Live room ID (the numeric one, not the short URL id). */
   roomId: number;
   /** Optional SESSDATA cookie for authenticated viewing and higher rate limits. */

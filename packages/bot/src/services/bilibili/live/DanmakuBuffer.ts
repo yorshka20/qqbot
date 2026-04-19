@@ -17,8 +17,8 @@
 // Both concerns are owned by the Bridge, which subscribes to `flush` events.
 
 import { EventEmitter } from 'node:events';
-import { randomUUID } from '@/utils/randomUUID';
 import { logger } from '@/utils/logger';
+import { randomUUID } from '@/utils/randomUUID';
 import type { DanmakuEvent } from './BilibiliLiveClient';
 
 export interface DanmakuBufferOptions {
@@ -110,7 +110,10 @@ export function detectMention(raw: string, aliases: string[] | undefined): boole
  *   - 路人A x3: 666
  *   - 你好Ava（@你）: 看这里
  */
-export function formatSummary(payload: Pick<FlushPayload, 'entries' | 'totalDanmaku' | 'distinctSenders' | 'flushedAt'>, windowMs: number): string {
+export function formatSummary(
+  payload: Pick<FlushPayload, 'entries' | 'totalDanmaku' | 'distinctSenders' | 'flushedAt'>,
+  windowMs: number,
+): string {
   const windowSec = Math.round(windowMs / 1000);
   const header = `[直播间弹幕 · 过去${windowSec}秒 · ${payload.totalDanmaku}条 · ${payload.distinctSenders}人]`;
   const lines = payload.entries.map((e) => {

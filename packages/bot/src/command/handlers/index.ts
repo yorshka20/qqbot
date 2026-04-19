@@ -9,6 +9,7 @@ export * from './FileCommandHandler';
 export * from './GeminiKeyModeCommandHandler';
 export * from './GroupDedupCommandHandler';
 export * from './I2vCommandHandler';
+export * from './Live2DCommandHandler';
 export * from './MemoryCommandHandler';
 export * from './MemorySyncCommandHandler';
 export * from './NaiPlusCommandHandler';

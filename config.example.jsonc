@@ -1141,13 +1141,17 @@
   //     no auto-reply wiring yet.
   //
   // Cookies:
-  //   - `sessdata`: SESSDATA cookie value. Omit for anonymous viewer mode.
-  //     Authenticated improves rate-limit headroom.
+  //   - `sessdata`: SESSDATA cookie value. Used ONLY by sendDanmaku() (the
+  //     REST POST path). The WS receive path runs anonymously with
+  //     `platform=danmuji` because mixing SESSDATA + danmuji triggers
+  //     bilibili's risk control ("third-party client claims web login").
+  //     Leave empty if you don't plan to send.
   //   - `biliJct`: bili_jct (CSRF) cookie value. Required only for sending.
   //
   // "bilibili": {
   //   "live": {
   //     "enabled": false,
+  //     "autoConnect": false,     // use /live2d connect on demand; default false
   //     "roomId": 12345,
   //     "sessdata": "",
   //     "biliJct": "",

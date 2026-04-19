@@ -58,10 +58,7 @@ export class LLMStage implements Live2DStage {
       );
       ctx.replyText = (response.text ?? '').trim();
     } catch (err) {
-      logger.warn(
-        `[Live2D/llm] generation failed (source=${ctx.input.source} provider=${ctx.providerName}):`,
-        err,
-      );
+      logger.warn(`[Live2D/llm] generation failed (source=${ctx.input.source} provider=${ctx.providerName}):`, err);
       ctx.skipped = true;
       ctx.skipReason = 'llm-failed';
       return;

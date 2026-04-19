@@ -57,6 +57,7 @@ export const DITokens = {
   LIVE2D_PIPELINE: 'Live2DPipeline',
   // Bilibili live
   BILIBILI_LIVE_CLIENT: 'BilibiliLiveClient',
+  BILIBILI_LIVE_BRIDGE: 'BilibiliLiveBridge',
   BILIBILI_DANMAKU_STORE: 'BilibiliDanmakuStore',
 } as const;
 

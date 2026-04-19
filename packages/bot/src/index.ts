@@ -55,14 +55,19 @@ async function main() {
       }
     }
 
-    // Start bilibili live bridge (opens the danmaku WebSocket; non-fatal on
-    // failure — the bot keeps working without it).
-    if (bilibiliLiveBridge) {
+    // Start bilibili live bridge only when `bilibili.live.autoConnect=true`.
+    // Default is false — the operator is expected to trigger `/live2d
+    // connect` after the stream goes live to avoid hammering bilibili's
+    // getDanmuInfo with retries while the room is offline / risk-controlled.
+    const bilibiliLiveCfg = config.getBilibiliLiveConfig();
+    if (bilibiliLiveBridge && bilibiliLiveCfg?.autoConnect === true) {
       try {
         await bilibiliLiveBridge.start();
       } catch (error) {
         logger.warn('[Main] Bilibili live bridge failed to start (non-fatal):', error);
       }
+    } else if (bilibiliLiveBridge) {
+      logger.info('[Main] Bilibili live bridge is configured but autoConnect=false; use /live2d connect to start it');
     }
 
     // Pull rawDb (sqlite only) so the host can persist client internal_report

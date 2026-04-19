@@ -313,9 +313,10 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
         streamerAliases: aliases,
       });
       container.registerInstance(DITokens.BILIBILI_LIVE_CLIENT, client);
+      container.registerInstance(DITokens.BILIBILI_LIVE_BRIDGE, bilibiliLiveBridge);
       container.registerInstance(DITokens.BILIBILI_DANMAKU_STORE, store);
       logger.info(
-        `[Bootstrap] Bilibili live bridge configured (room=${liveCfg.roomId}, pipeToLive2D=${liveCfg.pipeToLive2D !== false})`,
+        `[Bootstrap] Bilibili live bridge configured (room=${liveCfg.roomId}, pipeToLive2D=${liveCfg.pipeToLive2D !== false}, autoConnect=${liveCfg.autoConnect === true})`,
       );
     }
   } catch (err) {

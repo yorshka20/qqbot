@@ -82,7 +82,9 @@ export class SpeechService {
           `[SpeechService] synthesize ok — id=${utteranceId} bytes=${bytes.length} mime=${mime} est=${Math.round(estimatedDurationMs)}ms`,
         );
       } catch (err) {
-        logger.warn(`[SpeechService] synthesize failed — id=${utteranceId} err=${err instanceof Error ? err.message : String(err)}`);
+        logger.warn(
+          `[SpeechService] synthesize failed — id=${utteranceId} err=${err instanceof Error ? err.message : String(err)}`,
+        );
         continue;
       }
 
