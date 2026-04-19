@@ -8,6 +8,7 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "audio-decode": "^3.9.3",
     "tsyringe": "^4.10.0"
   },
   "devDependencies": {

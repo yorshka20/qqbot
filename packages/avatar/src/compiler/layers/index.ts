@@ -1,3 +1,5 @@
+export type { AudioEnvelopeLayerOptions } from './AudioEnvelopeLayer';
+export { AudioEnvelopeLayer } from './AudioEnvelopeLayer';
 export { AutoBlinkLayer } from './AutoBlinkLayer';
 export { BaseLayer } from './BaseLayer';
 export { BreathLayer } from './BreathLayer';
