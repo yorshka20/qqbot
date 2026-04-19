@@ -4,7 +4,7 @@ import { ActionMap } from './action-map';
 import { applyEasing } from './easing';
 import { LayerManager } from './layers/LayerManager';
 import type { AnimationLayer } from './layers/types';
-import type { ActiveAnimation, CompilerConfig, FrameOutput, StateNode } from './types';
+import type { ActionSummary, ActiveAnimation, CompilerConfig, FrameOutput, StateNode } from './types';
 
 const DEFAULT_CONFIG: CompilerConfig = {
   fps: 60,
@@ -95,6 +95,11 @@ export class AnimationCompiler extends EventEmitter {
     return this.actionMap.getDuration(action);
   }
 
+  /** Public summary of every loaded action — see `ActionMap.listActions()`. */
+  listActions(): ActionSummary[] {
+    return this.actionMap.listActions();
+  }
+
   /** Register a continuous animation layer (breath, blink, gaze, idle clip…). */
   registerLayer(layer: AnimationLayer): void {
     this.layerManager.register(layer);
@@ -149,8 +154,14 @@ export class AnimationCompiler extends EventEmitter {
       if (now < anim.startTime) continue;
       const progress = this.calculateProgress(anim, now);
       const eased = applyEasing(progress, anim.node.easing ?? this.config.defaultEasing);
+      // Raw linear progress [0,1] — used to drive `oscillate` sinusoidal shape
+      // separately from the ADSR envelope (which fades the oscillation in/out).
+      const rawProgress = Math.min(1, (now - anim.startTime) / Math.max(1, anim.node.duration));
       for (const target of anim.targetParams) {
-        const c = target.targetValue * eased * target.weight;
+        const shape = target.oscillate
+          ? Math.sin(2 * Math.PI * target.oscillate * rawProgress)
+          : 1;
+        const c = target.targetValue * eased * shape * target.weight;
         contributions[target.channel] = (contributions[target.channel] ?? 0) + c;
       }
     }

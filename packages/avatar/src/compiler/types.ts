@@ -50,6 +50,15 @@ export interface ParamTarget {
   targetValue: number;
   /** Blend weight for this parameter (0.0–1.0) */
   weight: number;
+  /**
+   * Optional oscillation cycle count across the animation duration. When set,
+   * the per-tick contribution is multiplied by `sin(2π * oscillate * rawProgress)`
+   * on top of the ADSR envelope — used for actions that are semantically periodic
+   * (shake_head, nod, wave) rather than a one-shot pose. `targetValue` then
+   * represents the **peak amplitude** of the oscillation. Integer or half-integer
+   * values end the cycle at zero crossing (no final jump).
+   */
+  oscillate?: number;
 }
 
 /**
@@ -89,6 +98,28 @@ export interface ActionMapEntry {
   params: ParamTarget[];
   /** Default duration for this action in milliseconds */
   defaultDuration: number;
+  /**
+   * Optional semantic category tag used by consumers (e.g. preview HUD) to
+   * group actions visually. Convention: `'emotion' | 'movement' | 'micro'`,
+   * but free-form — unknown values are grouped under a fallback bucket.
+   */
+  category?: string;
+}
+
+/**
+ * Public summary of a single action. Emitted by `ActionMap.listActions()` and
+ * served over the PreviewServer `/action-map` endpoint so UIs can build their
+ * trigger lists dynamically instead of hardcoding action names.
+ */
+export interface ActionSummary {
+  /** Action name (dict key in action-map.json). */
+  name: string;
+  /** Default ADSR duration in milliseconds. */
+  defaultDuration: number;
+  /** Optional semantic category. See `ActionMapEntry.category`. */
+  category?: string;
+  /** Unique list of semantic channels this action writes (deduped). */
+  channels: string[];
 }
 
 /**

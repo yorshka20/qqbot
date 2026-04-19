@@ -94,6 +94,21 @@ export const CHANNELS: ChannelInfo[] = [
     cubismParam: 'ParamEyeBallY',
     vtsParam: 'EyeRightY',
   },
+  // Eye-smile ("crescent eyes") — squints the eye upward like a smile. Pairs
+  // naturally with mouth.smile for a "genuine" smile read. No VTS equivalent
+  // (VTS has no dedicated eye-smile tracking).
+  {
+    id: 'eye.smile.left',
+    range: [0, 1],
+    description: 'Left eye smile / crescent shape (0 = neutral, 1 = full crescent)',
+    cubismParam: 'ParamEyeLSmile',
+  },
+  {
+    id: 'eye.smile.right',
+    range: [0, 1],
+    description: 'Right eye smile / crescent shape (0 = neutral, 1 = full crescent)',
+    cubismParam: 'ParamEyeRSmile',
+  },
 
   // ── Mouth ──
   {
@@ -154,6 +169,25 @@ export const CHANNELS: ChannelInfo[] = [
     description: 'Chest-rise / breath shape (0 = exhaled, 1 = inhaled)',
     cubismParam: 'ParamBreath',
     // vtsParam intentionally omitted.
+  },
+
+  // ── Arms — single-axis "A" parameter per arm on Cubism (Hiyori-style
+  //    convention: -10 = resting/down, +10 = raised). Bot emits raw values in
+  //    that same degree-like unit; the renderer's channel-map passes through
+  //    without scale. Models that expose a second axis (e.g. ParamArmLB for
+  //    elbow) are not covered here — add dedicated channels when a target
+  //    model actually has them. No VTS equivalent.
+  {
+    id: 'arm.left',
+    range: [-10, 10],
+    description: 'Left arm raise (-10 = down at rest, 0 = neutral, +10 = raised)',
+    cubismParam: 'ParamArmLA',
+  },
+  {
+    id: 'arm.right',
+    range: [-10, 10],
+    description: 'Right arm raise (-10 = down at rest, 0 = neutral, +10 = raised)',
+    cubismParam: 'ParamArmRA',
   },
 ];
 

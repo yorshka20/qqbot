@@ -78,6 +78,7 @@ export class AvatarService {
               intensity: data.intensity ?? 1.0,
             }),
           onClientCountChange: (count) => this.handlePreviewClientCount(count),
+          getActionList: () => this.compiler?.listActions() ?? [],
         },
       );
     }

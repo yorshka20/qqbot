@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { ActionMapEntry, ParamTarget } from './types';
+import type { ActionMapEntry, ActionSummary, ParamTarget } from './types';
 
 export class ActionMap {
   private readonly entries: Record<string, ActionMapEntry>;
@@ -27,6 +27,33 @@ export class ActionMap {
       channel: p.channel,
       targetValue: p.targetValue * intensity,
       weight: p.weight,
+      oscillate: p.oscillate,
     }));
+  }
+
+  /**
+   * Public summary of every loaded action, used by consumers (PreviewServer
+   * `/action-map` route, future prompt generation, etc.) to discover what
+   * triggers are currently available without hardcoding names. Channel list
+   * is deduplicated in original order.
+   */
+  listActions(): ActionSummary[] {
+    const out: ActionSummary[] = [];
+    for (const [name, entry] of Object.entries(this.entries)) {
+      const channels: string[] = [];
+      const seen = new Set<string>();
+      for (const p of entry.params) {
+        if (seen.has(p.channel)) continue;
+        seen.add(p.channel);
+        channels.push(p.channel);
+      }
+      out.push({
+        name,
+        defaultDuration: entry.defaultDuration,
+        category: entry.category,
+        channels,
+      });
+    }
+    return out;
   }
 }

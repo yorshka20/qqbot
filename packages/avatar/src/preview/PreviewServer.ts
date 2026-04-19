@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve } from 'bun';
+import type { ActionSummary } from '../compiler/types';
 import { logger } from '../utils/logger';
 import type { PreviewClientMessage, PreviewConfig, PreviewFrame, PreviewMessage, PreviewStatus } from './types';
 
@@ -26,6 +27,12 @@ export interface PreviewServerHandlers {
    * sampling) on the presence of actual consumers.
    */
   onClientCountChange?: (count: number) => void;
+  /**
+   * Pulled by the HTTP `/action-map` endpoint to enumerate the currently
+   * loaded action set — so UIs (HUD, future tooling) can render triggers
+   * dynamically instead of hardcoding names. Absent handler → 404.
+   */
+  getActionList?: () => ActionSummary[];
 }
 
 export class PreviewServer {
@@ -73,6 +80,23 @@ export class PreviewServer {
         if (url.pathname === '/health') {
           return new Response(JSON.stringify({ status: 'ok', clients: clients.size }), {
             headers: { 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (url.pathname === '/action-map') {
+          const list = server.handlers.getActionList?.();
+          if (!list) return new Response('action-list unavailable', { status: 404 });
+          return new Response(JSON.stringify(list), {
+            headers: {
+              'Content-Type': 'application/json',
+              // HUD fetches on mount; allow a short cache so quick reloads
+              // during local dev don't re-hit the bot. No revalidation — a
+              // full page refresh is fine to pick up changes.
+              'Cache-Control': 'public, max-age=5',
+              // Renderer runs on a different origin during `vite dev`
+              // (localhost:5173) so allow simple GETs from anywhere.
+              'Access-Control-Allow-Origin': '*',
+            },
           });
         }
 
