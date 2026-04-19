@@ -12,6 +12,14 @@ export interface AmbientAudioLayerOptions {
   bodyZMax?: number;
   /** Max brow contribution at full excitement. Default 0.5. */
   browMax?: number;
+  /**
+   * EMA coefficient applied to incoming RMS. `smoothed = smoothed + (rms - smoothed) * α`.
+   * Tuned so per-beat transients (snare hits, kicks) don't jitter body.z while
+   * the overall music envelope still gets through.
+   * Default 0.15 at 30Hz → τ≈200ms (63% response at 200ms, 95% at 600ms).
+   * Set to 1 to disable smoothing; smaller values = slower response.
+   */
+  smoothingAlpha?: number;
 }
 
 // Tuned for Windows WASAPI loopback RMS of typical BGM (0.05–0.3 range).
@@ -24,6 +32,7 @@ const DEFAULTS: Required<AmbientAudioLayerOptions> = {
   powerExponent: 1,
   bodyZMax: 0.8,
   browMax: 0.5,
+  smoothingAlpha: 0.15,
 };
 
 /**
@@ -51,9 +60,10 @@ export class AmbientAudioLayer extends BaseLayer {
 
   /** Called by the PreviewServer → AvatarService bridge each time WS emits. */
   updateRms(rms: number, tMsFromRenderer: number): void {
-    // Store as-is; use wall-clock `Date.now()` for staleness check since
-    // clocks may drift (renderer tMs is informational only).
-    this.lastRms = rms;
+    // Apply EMA so per-beat transients don't cause body.z to snap.
+    // `lastRms` represents the temporally-smoothed value, not the raw input.
+    // Staleness check uses wall-clock `Date.now()` since renderer clock may drift.
+    this.lastRms = this.lastRms + (rms - this.lastRms) * this.opts.smoothingAlpha;
     this.lastSeenMs = Date.now();
     void tMsFromRenderer; // reserved for future jitter tracking
   }
