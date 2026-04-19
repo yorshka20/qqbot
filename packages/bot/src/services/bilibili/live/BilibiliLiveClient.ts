@@ -24,14 +24,7 @@
 import { EventEmitter } from 'node:events';
 import { logger } from '@/utils/logger';
 import { clearWbiCache, signWbiParams } from '../wbi';
-import {
-  decodeAll,
-  decodeBodyJson,
-  decodeOnlineCount,
-  encodePacket,
-  Op,
-  Protover,
-} from './protocol';
+import { decodeAll, decodeBodyJson, decodeOnlineCount, encodePacket, Op, Protover } from './protocol';
 
 export interface BilibiliLiveClientOptions {
   roomId: number;
@@ -145,7 +138,12 @@ export class BilibiliLiveClient extends EventEmitter {
   private readonly opts: Required<
     Pick<
       BilibiliLiveClientOptions,
-      'roomId' | 'heartbeatIntervalMs' | 'reconnectInitialMs' | 'reconnectMaxMs' | 'maxReconnectAttempts' | 'sendEnabled'
+      | 'roomId'
+      | 'heartbeatIntervalMs'
+      | 'reconnectInitialMs'
+      | 'reconnectMaxMs'
+      | 'maxReconnectAttempts'
+      | 'sendEnabled'
     >
   > &
     Pick<BilibiliLiveClientOptions, 'sessdata' | 'biliJct'>;

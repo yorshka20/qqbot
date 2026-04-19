@@ -15,8 +15,8 @@ import {
   encodePacket,
   HEADER_LEN,
   Op,
-  parseOne,
   Protover,
+  parseOne,
 } from '../protocol';
 
 describe('protocol.encodePacket / parseOne', () => {
