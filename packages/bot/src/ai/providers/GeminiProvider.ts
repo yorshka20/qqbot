@@ -83,7 +83,9 @@ export class GeminiProvider
       this._capabilities.push('llm');
       this.setContextConfig(config.llm.enableContext ?? false, config.llm.contextMessageCount ?? 10);
     }
-    if (config.vision) {
+    // Vision uses the same generateContent path as LLM; when llm is set, multimodal input is supported
+    // without a separate vision block (model falls back to llm.model in generateWithVision).
+    if (config.vision || config.llm) {
       this._capabilities.push('vision');
     }
     this._capabilities.push('video_analysis');
@@ -666,11 +668,11 @@ export class GeminiProvider
     images: VisionImage[],
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
-    if (!this.config.vision) {
-      throw new Error('GeminiProvider: vision not configured');
+    const model = this.config.vision?.model ?? this.config.llm?.model;
+    const paidModel = this.config.vision?.paidModel ?? this.config.llm?.paidModel;
+    if (!model) {
+      throw new Error('GeminiProvider: vision not configured (set vision or llm with model)');
     }
-    const model = this.config.vision.model;
-    const paidModel = this.config.vision.paidModel;
     const imageParts = await this.visionImagesToInlineParts(images);
     const contentsParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
     if (options?.systemPrompt) {

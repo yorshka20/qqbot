@@ -154,6 +154,11 @@ export class ConversationInitializer {
       container,
     );
 
+    // Video pipeline + Gemini file cleanup: must exist before ProviderFactory constructs
+    // GeminiProvider (constructor resolves ResourceCleanupService via DI).
+    container.registerInstance(DITokens.VIDEO_DOWNLOAD_SERVICE, new VideoDownloadService());
+    container.registerInstance(DITokens.RESOURCE_CLEANUP_SERVICE, new ResourceCleanupService());
+
     // Phase 3: Service Configuration
     await ConversationInitializer.configureServices(services, config);
 
@@ -228,10 +233,6 @@ export class ConversationInitializer {
     // File reading service is used by file-related task executors.
     const fileReadService = new FileReadService(config.getFileReadServiceConfig());
     serviceRegistry.registerFileReadService(fileReadService);
-
-    // Video pipeline services used by AnalyzeVideoToolExecutor.
-    container.registerInstance(DITokens.VIDEO_DOWNLOAD_SERVICE, new VideoDownloadService());
-    container.registerInstance(DITokens.RESOURCE_CLEANUP_SERVICE, new ResourceCleanupService());
 
     // AIService is the facade used by systems/hooks for generation and analysis.
     const messageAPI = new MessageAPI(apiClient);

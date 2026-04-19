@@ -104,7 +104,7 @@ export class LaozhangProvider
       this._capabilities.push('llm');
       this.setContextConfig(config.llm.enableContext ?? false, config.llm.contextMessageCount ?? 10);
     }
-    if (config.vision) {
+    if (config.vision || config.llm) {
       this._capabilities.push('vision');
     }
     if (config.text2img) {
@@ -420,10 +420,10 @@ export class LaozhangProvider
     images: VisionImage[],
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
-    if (!this.config.vision) {
-      throw new Error('LaozhangProvider: vision not configured');
+    const model = this.config.vision?.model ?? this.config.llm?.model;
+    if (!model) {
+      throw new Error('LaozhangProvider: vision not configured (set vision or llm with model)');
     }
-    const model = this.config.vision.model;
     const imageParts = await this.visionImagesToInlineParts(images);
     const systemPrompt = [];
     if (options?.systemPrompt) {
