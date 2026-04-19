@@ -2,6 +2,7 @@ import { AutoBlinkLayer } from './AutoBlinkLayer';
 import { BreathLayer } from './BreathLayer';
 import { EyeGazeLayer } from './EyeGazeLayer';
 import { IdleMotionLayer } from './IdleMotionLayer';
+import { PerlinNoiseLayer } from './PerlinNoiseLayer';
 import type { AnimationLayer } from './types';
 
 /**
@@ -11,5 +12,13 @@ import type { AnimationLayer } from './types';
  * layers directly from this module's exports.
  */
 export function createDefaultLayers(): AnimationLayer[] {
-  return [new BreathLayer(), new AutoBlinkLayer(), new EyeGazeLayer(), new IdleMotionLayer()];
+  const layers: AnimationLayer[] = [
+    new BreathLayer(),
+    new AutoBlinkLayer(),
+    new EyeGazeLayer(),
+    new IdleMotionLayer(),
+    new PerlinNoiseLayer(),
+  ];
+  layers[layers.length - 1].setWeight(0.2);
+  return layers;
 }

@@ -8,4 +8,6 @@ export { createDefaultLayers } from './default-layers';
 export { EyeGazeLayer } from './EyeGazeLayer';
 export { IdleMotionLayer } from './IdleMotionLayer';
 export { LayerManager } from './LayerManager';
+export type { PerlinChannelConfig, PerlinNoiseLayerOptions } from './PerlinNoiseLayer';
+export { PerlinNoiseLayer } from './PerlinNoiseLayer';
 export type { AnimationLayer } from './types';
