@@ -127,34 +127,11 @@ export class Live2DAvatarPlugin extends PluginBase {
         }
       }
 
-      // Speak gate diagnostics: we log once per call so it's obvious when
-      // TTS "does nothing" whether it's the plugin gating (active/private/
-      // source) or downstream SpeechService (consumer count, provider).
-      const active = this.active;
-      const priv = this.isPrivate(context);
-      const reply = context.reply;
-      const src = reply?.source;
-      if (!(active && priv && reply && src === 'ai')) {
-        logger.debug(
-          `[Live2DAvatarPlugin] speak skipped: active=${active} private=${priv} replySource=${src ?? 'none'}`,
-        );
-      } else {
-        const parts: string[] = [];
-        for (const seg of reply.segments ?? []) {
-          if (seg.type === 'text' && typeof seg.data?.text === 'string') {
-            parts.push(seg.data.text);
-          }
-        }
-        const strippedText = parts.join('');
-        if (strippedText.length === 0) {
-          logger.debug('[Live2DAvatarPlugin] speak skipped: stripped reply text is empty');
-        } else if (!this.avatar) {
-          logger.debug('[Live2DAvatarPlugin] speak skipped: avatar service not resolved');
-        } else {
-          logger.info(`[Live2DAvatarPlugin] → avatar.speak(len=${strippedText.length})`);
-          this.avatar.speak(strippedText);
-        }
-      }
+      // NOTE: auto-speak on every private AI reply was removed — it triggered
+      // the full reply pipeline (including CardRenderingService for long
+      // replies, which sent the text as an image). Speech is now opt-in via
+      // the `/avatar <text>` command, which handles its own LLM call +
+      // plain-text delivery + speak() without going through cardrender.
     } catch (err) {
       logger.warn('[Live2DAvatarPlugin] onMessageBeforeSend failed:', err);
     }

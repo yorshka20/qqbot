@@ -1,5 +1,6 @@
 export * from './AgendaCommandHandler';
 export * from './AIProviderSwitchCommandHandler';
+export * from './AvatarCommandHandler';
 export * from './BananaCommandHandler';
 export * from './BilibiliCommandHandler';
 export * from './BuiltinCommandHandler';
