@@ -19,6 +19,12 @@ export interface AvatarConfig {
   preview: PreviewServerConfig;
   /** Optional action-map override. If path is unset, the package default is used. */
   actionMap: { path?: string };
+  /** Text-to-speech configuration */
+  speech: {
+    enabled: boolean;
+    maxCharsPerUtterance: number;
+    utteranceGapMs: number;
+  };
 }
 
 /**
@@ -63,4 +69,9 @@ export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
     host: 'localhost',
   },
   actionMap: {},
+  speech: {
+    enabled: false,
+    maxCharsPerUtterance: 80,
+    utteranceGapMs: 200,
+  },
 };

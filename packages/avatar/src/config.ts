@@ -24,5 +24,6 @@ export function mergeAvatarConfig(raw: Record<string, unknown> | undefined): Ava
     idle: { ...DEFAULT_AVATAR_CONFIG.idle, ...((raw?.idle as object | undefined) ?? {}) },
     preview: { ...DEFAULT_AVATAR_CONFIG.preview, ...((raw?.preview as object | undefined) ?? {}) },
     actionMap: { ...DEFAULT_AVATAR_CONFIG.actionMap, ...((raw?.actionMap as object | undefined) ?? {}) },
+    speech: { ...DEFAULT_AVATAR_CONFIG.speech, ...((raw?.speech as object | undefined) ?? {}) },
   };
 }

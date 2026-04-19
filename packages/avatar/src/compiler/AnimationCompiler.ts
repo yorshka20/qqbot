@@ -158,9 +158,7 @@ export class AnimationCompiler extends EventEmitter {
       // separately from the ADSR envelope (which fades the oscillation in/out).
       const rawProgress = Math.min(1, (now - anim.startTime) / Math.max(1, anim.node.duration));
       for (const target of anim.targetParams) {
-        const shape = target.oscillate
-          ? Math.sin(2 * Math.PI * target.oscillate * rawProgress)
-          : 1;
+        const shape = target.oscillate ? Math.sin(2 * Math.PI * target.oscillate * rawProgress) : 1;
         const c = target.targetValue * eased * shape * target.weight;
         contributions[target.channel] = (contributions[target.channel] ?? 0) + c;
       }

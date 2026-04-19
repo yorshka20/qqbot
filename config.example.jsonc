@@ -1050,6 +1050,13 @@
   //   // 若要自定义，提供相对仓库根或绝对路径的 JSON 文件。
   //   "actionMap": {
   //     // "path": "config/my-action-map.json"
+  //   },
+  //
+  //   // Text-to-speech settings. Requires top-level "tts" block with apiKey.
+  //   "speech": {
+  //     "enabled": true,
+  //     "maxCharsPerUtterance": 80,
+  //     "utteranceGapMs": 200
   //   }
   // },
 

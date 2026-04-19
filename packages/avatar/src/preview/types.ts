@@ -29,6 +29,23 @@ export interface StatusMessage {
   data: PreviewStatus;
 }
 
+/**
+ * Audio utterance pushed from bot's SpeechService for PC-side playback.
+ * Renderer plays via a single <audio> element at startAtEpochMs wall-clock.
+ * Bot queues server-side; renderer does not. utteranceId correlates with
+ * lip-sync tracks.
+ */
+export interface AudioMessage {
+  type: 'audio';
+  data: {
+    base64: string; // base64-encoded audio bytes
+    mime: string; // 'audio/mpeg' | 'audio/wav' | ...
+    startAtEpochMs: number; // wall-clock epoch ms; past-due = play immediately
+    durationMs: number; // informational; real duration from decoder
+    utteranceId: string; // stable id, e.g. crypto.randomUUID()
+  };
+}
+
 export interface TriggerMessage {
   type: 'trigger';
   data: {
@@ -40,4 +57,4 @@ export interface TriggerMessage {
 
 export type PreviewClientMessage = TriggerMessage;
 
-export type PreviewMessage = FrameMessage | StatusMessage;
+export type PreviewMessage = FrameMessage | StatusMessage | AudioMessage;

@@ -5,8 +5,10 @@ import type { StateNode } from './compiler/types';
 import { mergeAvatarConfig } from './config';
 import { VTSDriver } from './drivers/VTSDriver';
 import { PreviewServer } from './preview/PreviewServer';
+import { SpeechService } from './SpeechService';
 import { IdleStateMachine } from './state/IdleStateMachine';
 import type { BotState, StateNodeOutput } from './state/types';
+import { FishAudioStubProvider } from './tts/FishAudioStubProvider';
 import type { AvatarConfig } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './types';
 import { logger } from './utils/logger';
@@ -30,6 +32,7 @@ export class AvatarService {
    * nothing to render.
    */
   private consumerCount = 0;
+  private speechService?: SpeechService;
 
   /**
    * Merge + apply the raw (JSONC-parsed) avatar config and initialize all
@@ -40,7 +43,7 @@ export class AvatarService {
    * next door. `undefined` is treated as "no avatar section" and leaves the
    * service disabled.
    */
-  async initialize(rawConfig: Record<string, unknown> | undefined): Promise<void> {
+  async initialize(rawConfig: Record<string, unknown> | undefined, ttsConfig?: Record<string, unknown>): Promise<void> {
     const config = mergeAvatarConfig(rawConfig);
     this.config = config;
 
@@ -81,6 +84,22 @@ export class AvatarService {
           getActionList: () => this.compiler?.listActions() ?? [],
         },
       );
+    }
+
+    if (config.speech.enabled && ttsConfig && Object.keys(ttsConfig).length > 0) {
+      const provider = new FishAudioStubProvider({
+        apiKey: ttsConfig.apiKey as string | undefined,
+        model: ttsConfig.model as string | undefined,
+        defaultVoice: ttsConfig.referenceId as string | undefined,
+      });
+      this.speechService = new SpeechService(
+        provider,
+        (msg) => this.previewServer?.broadcastAudio(msg),
+        () => this.hasConsumer(),
+        undefined,
+        config.speech.utteranceGapMs,
+      );
+      logger.debug('[AvatarService] SpeechService initialized');
     }
 
     logger.debug('[AvatarService] Initialized', { enabled: config.enabled });
@@ -294,6 +313,14 @@ export class AvatarService {
         timestamp: Date.now(),
       },
     ]);
+  }
+
+  hasConsumer(): boolean {
+    return this.consumerCount > 0;
+  }
+
+  speak(text: string): void {
+    this.speechService?.speak(text, { maxCharsPerUtterance: this.config.speech.maxCharsPerUtterance });
   }
 
   isActive(): boolean {

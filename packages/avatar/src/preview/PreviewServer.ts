@@ -9,7 +9,14 @@ import { fileURLToPath } from 'node:url';
 import { serve } from 'bun';
 import type { ActionSummary } from '../compiler/types';
 import { logger } from '../utils/logger';
-import type { PreviewClientMessage, PreviewConfig, PreviewFrame, PreviewMessage, PreviewStatus } from './types';
+import type {
+  AudioMessage,
+  PreviewClientMessage,
+  PreviewConfig,
+  PreviewFrame,
+  PreviewMessage,
+  PreviewStatus,
+} from './types';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -168,6 +175,17 @@ export class PreviewServer {
     this.clients.clear();
     this.server.stop();
     this.server = null;
+  }
+
+  broadcastAudio(msg: AudioMessage): void {
+    const text = JSON.stringify(msg);
+    for (const client of this.clients) {
+      try {
+        client.send(text);
+      } catch {
+        this.clients.delete(client);
+      }
+    }
   }
 
   broadcastFrame(frame: PreviewFrame): void {

@@ -84,9 +84,7 @@
   },
   "breathe": {
     "category": "micro",
-    "params": [
-      { "channel": "body.y", "targetValue": 0.05, "weight": 1.0 }
-    ],
+    "params": [{ "channel": "body.y", "targetValue": 0.05, "weight": 1.0 }],
     "defaultDuration": 4000
   },
   "lean_forward": {
@@ -107,9 +105,7 @@
   },
   "tilt_head": {
     "category": "movement",
-    "params": [
-      { "channel": "head.roll", "targetValue": 15.0, "weight": 1.0 }
-    ],
+    "params": [{ "channel": "head.roll", "targetValue": 15.0, "weight": 1.0 }],
     "defaultDuration": 1200
   },
   "shake_head": {

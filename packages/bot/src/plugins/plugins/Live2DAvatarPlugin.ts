@@ -126,6 +126,19 @@ export class Live2DAvatarPlugin extends PluginBase {
           }
         }
       }
+
+      if (this.active && this.isPrivate(context) && context.reply?.source === 'ai') {
+        const parts: string[] = [];
+        for (const seg of context.reply.segments ?? []) {
+          if (seg.type === 'text' && typeof seg.data?.text === 'string') {
+            parts.push(seg.data.text);
+          }
+        }
+        const strippedText = parts.join('');
+        if (strippedText.length > 0) {
+          this.avatar?.speak(strippedText);
+        }
+      }
     } catch (err) {
       logger.warn('[Live2DAvatarPlugin] onMessageBeforeSend failed:', err);
     }

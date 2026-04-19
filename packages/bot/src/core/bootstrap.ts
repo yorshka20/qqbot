@@ -219,7 +219,10 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   let avatarService: AvatarService | null = null;
   try {
     avatarService = new AvatarService();
-    await avatarService.initialize(config.getAvatarConfig());
+    await avatarService.initialize(
+      config.getAvatarConfig(),
+      config.getTTSConfig() as Record<string, unknown> | undefined,
+    );
     if (avatarService.isEnabled()) {
       container.registerInstance(DITokens.AVATAR_SERVICE, avatarService);
       logger.info('[Bootstrap] Avatar service initialized');
