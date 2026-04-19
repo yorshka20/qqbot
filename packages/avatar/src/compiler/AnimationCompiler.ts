@@ -4,7 +4,29 @@ import { ActionMap } from './action-map';
 import { applyEasing } from './easing';
 import { LayerManager } from './layers/LayerManager';
 import type { AnimationLayer } from './layers/types';
-import type { ActionSummary, ActiveAnimation, CompilerConfig, FrameOutput, StateNode } from './types';
+import type { ActionSummary, ActiveAnimation, CompilerConfig, FrameOutput, SpringParams, StateNode } from './types';
+
+const DEFAULT_SPRING: SpringParams = { omega: 12, zeta: 1 };
+
+const DEFAULT_SPRING_BY_CHANNEL: Record<string, SpringParams> = {
+  'mouth.open': { omega: 25, zeta: 1 },
+  'mouth.smile': { omega: 20, zeta: 1 },
+  'eye.open.left': { omega: 20, zeta: 1 },
+  'eye.open.right': { omega: 20, zeta: 1 },
+  'eye.smile.left': { omega: 15, zeta: 1 },
+  'eye.smile.right': { omega: 15, zeta: 1 },
+  'eye.ball.x': { omega: 18, zeta: 1 },
+  'eye.ball.y': { omega: 18, zeta: 1 },
+  'head.yaw': { omega: 12, zeta: 1 },
+  'head.pitch': { omega: 12, zeta: 1 },
+  'head.roll': { omega: 12, zeta: 1 },
+  'body.x': { omega: 7, zeta: 0.85 },
+  'body.y': { omega: 7, zeta: 0.85 },
+  'body.z': { omega: 7, zeta: 0.85 },
+  brow: { omega: 15, zeta: 1 },
+  breath: { omega: 10, zeta: 1 },
+  'arm.right': { omega: 8, zeta: 0.9 },
+};
 
 const DEFAULT_CONFIG: CompilerConfig = {
   fps: 60,
@@ -22,6 +44,8 @@ export class AnimationCompiler extends EventEmitter {
   private pendingQueue: StateNode[] = [];
   private activeAnimations: ActiveAnimation[] = [];
   private currentParams: Record<string, number> = {};
+  private springStates: Map<string, { position: number; velocity: number }> = new Map();
+  private lastTickMs = 0;
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private tickCount = 0;
   private currentActivity: AvatarActivity = { ...DEFAULT_ACTIVITY };
@@ -46,6 +70,8 @@ export class AnimationCompiler extends EventEmitter {
     this.pendingQueue = [];
     this.activeAnimations = [];
     this.tickCount = 0;
+    this.springStates.clear();
+    this.lastTickMs = 0;
   }
 
   /**
@@ -171,15 +197,41 @@ export class AnimationCompiler extends EventEmitter {
       }
     }
 
-    // Low-pass toward contributions. Params not driven this tick are
-    // dropped entirely so downstream (VTS / preview) knows we've released
-    // control — VTS then falls back to its own idle/physics animation.
-    const alpha = this.config.smoothingFactor;
+    // Advance spring-damper per driven channel (semi-implicit Euler —
+    // symplectic, stable on spring systems where explicit Euler diverges).
+    // dt clamped to 100ms to defend against pause/resume wall-clock gaps
+    // (same reason as EyeGazeLayer's dt clamp).
+    const rawDtMs = this.lastTickMs === 0 ? 1000 / this.config.fps : now - this.lastTickMs;
+    const dt = Math.min(rawDtMs, 100) / 1000;
+    this.lastTickMs = now;
+
     const next: Record<string, number> = {};
     for (const id of Object.keys(contributions)) {
-      const prev = this.currentParams[id] ?? 0;
-      next[id] = prev + (contributions[id] - prev) * alpha;
+      const target = contributions[id];
+      const params = this.resolveSpringParams(id);
+      let state = this.springStates.get(id);
+      if (!state) {
+        // First time seen — snap to target (do not spring-in from 0),
+        // so e.g. lip-sync first frame matches the audio immediately
+        // rather than crawling from 0 → target over ~50ms.
+        state = { position: target, velocity: 0 };
+        this.springStates.set(id, state);
+      } else {
+        const dx = target - state.position;
+        const a = params.omega * params.omega * dx - 2 * params.zeta * params.omega * state.velocity;
+        state.velocity += a * dt;
+        state.position += state.velocity * dt;
+      }
+      next[id] = state.position;
     }
+
+    // Drop spring state for channels not driven this tick — preserves the
+    // existing drop-on-release contract (downstream VTS falls back to its
+    // own idle physics when a key disappears from the emitted frame).
+    for (const id of this.springStates.keys()) {
+      if (!(id in contributions)) this.springStates.delete(id);
+    }
+
     this.currentParams = next;
 
     // Downsample and emit frame events at outputFps
@@ -192,6 +244,14 @@ export class AnimationCompiler extends EventEmitter {
       };
       this.emit('frame', frame);
     }
+  }
+
+  private resolveSpringParams(channelId: string): SpringParams {
+    const fromConfig = this.config.springByChannel?.[channelId];
+    if (fromConfig) return fromConfig;
+    const builtin = DEFAULT_SPRING_BY_CHANNEL[channelId];
+    if (builtin) return builtin;
+    return this.config.springDefaults ?? DEFAULT_SPRING;
   }
 
   private calculateProgress(anim: ActiveAnimation, now: number): number {

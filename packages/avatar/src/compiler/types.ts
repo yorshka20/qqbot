@@ -133,6 +133,16 @@ export interface ActionSummary {
 }
 
 /**
+ * Spring-damper parameters for a single animation channel.
+ */
+export interface SpringParams {
+  /** Natural frequency in rad/s. Higher = faster response. */
+  omega: number;
+  /** Damping ratio. 1 = critical (fastest no-overshoot); <1 under-damped (overshoot); >1 over-damped (slow). */
+  zeta: number;
+}
+
+/**
  * Configuration for the animation compiler.
  * Controls frame timing, smoothing, and ADSR ratio defaults.
  */
@@ -143,7 +153,12 @@ export interface CompilerConfig {
   outputFps: number;
   /** Default easing when none specified on a node */
   defaultEasing: EasingType;
-  /** Smoothing factor for parameter blending (0.0–1.0) */
+  /**
+   * @deprecated since 2026-04-19. Replaced by spring-damper smoothing
+   * (`springDefaults` / `springByChannel`). Value is ignored by
+   * `AnimationCompiler.tick()`; kept only so existing config.jsonc
+   * files with `smoothingFactor` still type-check.
+   */
   smoothingFactor: number;
   /** Attack phase ratio of the ADSR envelope (0.0–1.0) */
   attackRatio: number;
@@ -157,4 +172,8 @@ export interface CompilerConfig {
   layers?: {
     enabled: boolean;
   };
+  /** Fallback spring params for channels not in `springByChannel`. */
+  springDefaults?: SpringParams;
+  /** Per-channel spring params. Overrides the built-in DEFAULT_SPRING_BY_CHANNEL table. */
+  springByChannel?: Record<string, SpringParams>;
 }
