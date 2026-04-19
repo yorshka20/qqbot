@@ -119,6 +119,30 @@ export interface MemoryExtractUserCursor extends BaseModel {
 }
 
 /**
+ * Bilibili live-room danmaku record. One row per incoming danmaku; repeated
+ * spam is stored as-is (DanmakuBuffer does the dedup before LLM dispatch, but
+ * raw history is preserved here for later RAG / analytics).
+ *
+ * `batchId` groups danmaku that were flushed into the same Live2DPipeline
+ * batch, so downstream jobs can reconstruct what the avatar was reacting to.
+ * `mentionsStreamer` is B-station-specific (platform has no structured @) —
+ * matched against the configured `streamerAliases` keyword list.
+ */
+export interface BilibiliDanmakuRecord extends BaseModel {
+  roomId: string;
+  uid: string;
+  username: string;
+  text: string;
+  normalizedText: string;
+  medalName?: string;
+  medalLevel?: number;
+  guardLevel?: number;
+  mentionsStreamer: boolean;
+  batchId?: string;
+  receivedAt: Date;
+}
+
+/**
  * AgendaItem - persisted scheduled intent for the proactive action framework.
  * Trigger types: 'cron' (node-cron expr), 'once' (fire once at triggerAt), 'onEvent' (internal event bus).
  */
@@ -197,4 +221,5 @@ export interface DatabaseModel {
   proactiveThreads: ModelAccessor<ProactiveThreadRecord>;
   memoryExtractUserCursors: ModelAccessor<MemoryExtractUserCursor>;
   agendaItems: ModelAccessor<AgendaItem>;
+  bilibiliDanmaku: ModelAccessor<BilibiliDanmakuRecord>;
 }

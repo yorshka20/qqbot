@@ -54,6 +54,10 @@ export const DITokens = {
   // Avatar system
   AVATAR_SERVICE: 'AvatarService',
   TTS_MANAGER: 'TTSManager',
+  LIVE2D_PIPELINE: 'Live2DPipeline',
+  // Bilibili live
+  BILIBILI_LIVE_CLIENT: 'BilibiliLiveClient',
+  BILIBILI_DANMAKU_STORE: 'BilibiliDanmakuStore',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];

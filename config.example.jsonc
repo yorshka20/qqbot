@@ -55,7 +55,13 @@
         "accessToken": "YOUR_DISCORD_BOT_TOKEN"
       },
       "discord": {
-        "intents": ["Guilds", "GuildMessages", "MessageContent", "DirectMessages", "GuildMembers"],
+        "intents": [
+          "Guilds",
+          "GuildMessages",
+          "MessageContent",
+          "DirectMessages",
+          "GuildMembers"
+        ],
         "guildId": ""
       },
       // Per-protocol owner/admin overrides (Discord user IDs differ from QQ IDs)
@@ -103,7 +109,6 @@
     "enabled": false,
     "instanceRole": "host", // 'host' | 'client'
     "token": "change_me_lan_relay_token", // shared secret — generate with: openssl rand -hex 24
-
     // ── Host-only fields ──────────────────────────────────────────────
     "listenHost": "0.0.0.0",
     "listenPort": 47123,
@@ -115,13 +120,11 @@
       "chatType": "private",
       "userId": "123456789"
     },
-
     // ── Client-only fields (required when instanceRole=client) ────────
     "connectUrl": "ws://192.168.50.209:47123/lan-relay",
-    "clientId": "workstation-A",      // unique across connected clients; duplicates rejected
-    "clientLabel": "MacBook Pro M3",  // optional human-readable label for /lan list
+    "clientId": "workstation-A", // unique across connected clients; duplicates rejected
+    "clientLabel": "MacBook Pro M3", // optional human-readable label for /lan list
     "publicAddress": "192.168.50.42", // LAN-reachable IP of THIS client (no auto-detection)
-
     // ── Role-scoped service/plugin filter ─────────────────────────────
     // The same config.d/ runs on host and client. The matching role's
     // disable lists are applied at PluginInitializer / bootstrap time.
@@ -132,10 +135,16 @@
     "client": {
       // zhihu / wechat are data-collection plugins that should only run on
       // the host (single-source-of-truth). Add others as needed.
-      "disabledPlugins": ["zhihuFeed", "wechatIngest"],
+      "disabledPlugins": [
+        "zhihuFeed",
+        "wechatIngest"
+      ],
       "disabledServices": [],
       // Optional: omit disk file routes on this client (host holds shared files). See createBackends registry for ids.
-      "disabledStaticBackends": ["files", "output"]
+      "disabledStaticBackends": [
+        "files",
+        "output"
+      ]
     }
   },
   // Bot configuration
@@ -600,7 +609,7 @@
       // "convert": "deepseek",
       // "convertModel": "deepseek-chat",
       // Provider for article analysis (no fallback, retry-only — cost-sensitive batch task)
-      "articleAnalysis": "doubao",
+      "articleAnalysis": "doubao"
       // "articleAnalysisModel": "",
       // Provider for todo optimization (TodoPlugin — optimizes task description before inserting)
       // "todoOptimize": "deepseek",
@@ -806,18 +815,18 @@
         // entries from this map. If empty, only `defaultVoice` is usable.
         "voiceMap": {
           "蔡徐坤": "e4642e5edccd4d9ab61a69e82d4f8a14",
-          "丁真":   "54a5170264694bfc8e9ad98df7bd89c3",
+          "丁真": "54a5170264694bfc8e9ad98df7bd89c3",
           "赛马娘": "561fcedfdf0e4e1399d1bc4930d50c0e",
           "孙笑川": "e80ea225770f42f79d50aa98be3cedfc",
           "丰川祥子": "f544cd9b956740c4a1bdee2e93a23d20",
-          "雷军":   "aebaa2305aa2452fbdc8f41eec852a79",
+          "雷军": "aebaa2305aa2452fbdc8f41eec852a79",
           "特朗普": "5196af35f6ff4a0dbf541793fc9f2157",
-          "日语":   "fbea303b64374bffb8843569404b095e",
+          "日语": "fbea303b64374bffb8843569404b095e",
           "高松灯": "b4f70fdef5f943c2bf43db00e80ad680",
           "卢本伟": "e5c5bebffac04f858878e21f8598deb1",
           "永雏塔菲": "55b28b196e1c4fff9a55cd32a46eff25",
-          "派蒙":   "eacc56f8ab48443fa84421c547d3b60e",
-          "嘉然":   "e11b0496fc9f4cb180db1dd238f67833",
+          "派蒙": "eacc56f8ab48443fa84421c547d3b60e",
+          "嘉然": "e11b0496fc9f4cb180db1dd238f67833",
           "东雪莲": "eaa47f801d914afe93ea453cc42729f3"
         },
         "defaultVoice": "高松灯"
@@ -958,7 +967,6 @@
     // Polling timeout in milliseconds (default: 300000 = 5 minutes)
     "pollTimeoutMs": 300000
   },
-
   // Project registry — shared across ClaudeCode and Cluster workers.
   // Defines allowed project directories and pre-registered projects.
   "projectRegistry": {
@@ -978,7 +986,6 @@
       // }
     ]
   },
-
   // Agent Cluster — local multi-agent task execution.
   // Spawns coding agent workers (Claude Code / Codex / Gemini / MiniMax)
   // to process tasks autonomously. Disabled by default. The full template
@@ -1017,10 +1024,17 @@
         // make it eligible for planner-mode ticket dispatch (see
         // `defaultPlannerTemplate` and ticket `usePlanner: true` below).
         "command": "claude",
-        "args": ["--print", "--dangerously-skip-permissions", "--output-format", "text"],
+        "args": [
+          "--print",
+          "--dangerously-skip-permissions",
+          "--output-format",
+          "text"
+        ],
         "maxConcurrent": 2,
         "timeout": "20m",
-        "capabilities": ["code"],
+        "capabilities": [
+          "code"
+        ],
         "costTier": "medium"
       }
       // Example planner template (uncomment + customize):
@@ -1052,12 +1066,15 @@
     "projects": {
       "qqbot": {
         "maxWorkers": 2,
-        "taskSources": [{ "type": "queue" }],
+        "taskSources": [
+          {
+            "type": "queue"
+          }
+        ],
         "workerPreference": "claude-sonnet"
       }
     }
   },
-
   // Avatar system — Live2D / VTubeStudio integration (optional).
   // Set enabled=true and configure the sub-sections to activate.
   // "avatar": {
@@ -1112,7 +1129,39 @@
   //     "utteranceGapMs": 200
   //   }
   // },
-
+  // Bilibili integration.
+  //
+  // `bilibili.live` turns on the live-room danmaku listener. When enabled:
+  //   - Danmaku are written to the `bilibili_danmaku` table (async; no impact
+  //     on the hot receive path) for later RAG / analytics.
+  //   - The buffer aggregates/dedups over `flushIntervalMs` and forwards the
+  //     batched summary to Live2DPipeline, which drives the avatar reaction.
+  //   - `send.enabled=true` (default false) unlocks the BilibiliLiveClient
+  //     .sendDanmaku() capability — currently only exposed programmatically;
+  //     no auto-reply wiring yet.
+  //
+  // Cookies:
+  //   - `sessdata`: SESSDATA cookie value. Omit for anonymous viewer mode.
+  //     Authenticated improves rate-limit headroom.
+  //   - `biliJct`: bili_jct (CSRF) cookie value. Required only for sending.
+  //
+  // "bilibili": {
+  //   "live": {
+  //     "enabled": false,
+  //     "roomId": 12345,
+  //     "sessdata": "",
+  //     "biliJct": "",
+  //     "pipeToLive2D": true,
+  //     "streamerAliases": ["Ava", "阿娃"],
+  //     "buffer": {
+  //       "flushIntervalMs": 3000,
+  //       "maxTextLen": 500
+  //     },
+  //     "send": {
+  //       "enabled": false
+  //     }
+  //   }
+  // },
   // Tickets storage (optional) — externalize ticket markdown out of the bot
   // repo so cross-project work items can live in their own git history.
   // Absolute path recommended. Relative resolves against process.cwd().

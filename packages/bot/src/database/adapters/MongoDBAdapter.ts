@@ -7,6 +7,7 @@ import type { DatabaseAdapter } from '../base/DatabaseAdapter';
 import type {
   AgendaItem,
   BaseModel,
+  BilibiliDanmakuRecord,
   Conversation,
   ConversationConfig,
   DatabaseModel,
@@ -138,6 +139,9 @@ class MongoModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
     if (result.endedAt && !(result.endedAt instanceof Date)) {
       result.endedAt = new Date(result.endedAt as string);
     }
+    if (result.receivedAt && !(result.receivedAt instanceof Date)) {
+      result.receivedAt = new Date(result.receivedAt as string);
+    }
 
     return result as T;
   }
@@ -209,6 +213,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
       tasks: this.db.collection('tasks'),
       commands: this.db.collection('commands'),
       proactiveThreads: this.db.collection('proactive_threads'),
+      bilibiliDanmaku: this.db.collection('bilibili_danmaku'),
     };
 
     // Create indexes
@@ -221,6 +226,10 @@ export class MongoDBAdapter implements DatabaseAdapter {
 
     await collections.proactiveThreads.createIndex({ groupId: 1 });
     await collections.proactiveThreads.createIndex({ threadId: 1 });
+
+    await collections.bilibiliDanmaku.createIndex({ roomId: 1, receivedAt: -1 });
+    await collections.bilibiliDanmaku.createIndex({ mentionsStreamer: 1, receivedAt: -1 });
+    await collections.bilibiliDanmaku.createIndex({ batchId: 1 });
 
     logger.info('[MongoDBAdapter] Migrations completed');
   }
@@ -261,6 +270,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
         this.db.collection('memory_extract_user_cursors'),
       ),
       agendaItems: new MongoModelAccessor<AgendaItem>(this.db.collection('agenda_items')),
+      bilibiliDanmaku: new MongoModelAccessor<BilibiliDanmakuRecord>(this.db.collection('bilibili_danmaku')),
     };
   }
 }

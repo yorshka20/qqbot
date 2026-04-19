@@ -8,6 +8,7 @@ import { getRepoRoot } from '@/utils/repoRoot';
 import { loadConfigAuto } from './loadConfigDir';
 // Import all config types
 import type { AIConfig, AIProviderCapability, ContextMemoryConfig, SessionProviderConfig } from './types/ai';
+import type { BilibiliConfig, BilibiliLiveConfig } from './types/bilibili';
 import type {
   BotSelfConfig,
   ClaudeCodeServiceConfig,
@@ -49,6 +50,7 @@ export type {
   OpenRouterProviderConfig,
   SessionProviderConfig,
 } from './types/ai';
+export type { BilibiliConfig, BilibiliLiveConfig } from './types/bilibili';
 export type { BotSelfConfig, ClaudeCodeServiceConfig, ProjectRegistryConfig, StaticServerConfig } from './types/bot';
 export type { LogLevel } from './types/const';
 export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './types/database';
@@ -109,6 +111,8 @@ export interface BotConfig {
   lanRelay?: LanRelayConfig;
   /** Avatar system (VTubeStudio driver, animation compiler, preview server). */
   avatar?: Record<string, unknown>;
+  /** Bilibili integration — currently `live` (danmaku listener → avatar bridge). */
+  bilibili?: BilibiliConfig;
 }
 
 export class Config {
@@ -466,6 +470,17 @@ export class Config {
 
   getAvatarConfig(): Record<string, unknown> | undefined {
     return this.config.avatar;
+  }
+
+  /**
+   * Access the bilibili live config block. Returns `undefined` when the
+   * section is absent or `live.enabled=false`, so callers can gate without
+   * re-reading the flag.
+   */
+  getBilibiliLiveConfig(): BilibiliLiveConfig | undefined {
+    const live = this.config.bilibili?.live;
+    if (!live || !live.enabled) return undefined;
+    return live;
   }
 
   getProjectRegistryConfig(): ProjectRegistryConfig | undefined {

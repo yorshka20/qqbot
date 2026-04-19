@@ -28,6 +28,7 @@ async function main() {
       eventRouter,
       retrievalService,
       avatarService,
+      bilibiliLiveBridge,
     } = await bootstrapApp(configPath);
 
     const config = bot.getConfig();
@@ -51,6 +52,16 @@ async function main() {
         await avatarService.start();
       } catch (error) {
         logger.warn('[Main] Avatar service failed to start (non-fatal):', error);
+      }
+    }
+
+    // Start bilibili live bridge (opens the danmaku WebSocket; non-fatal on
+    // failure — the bot keeps working without it).
+    if (bilibiliLiveBridge) {
+      try {
+        await bilibiliLiveBridge.start();
+      } catch (error) {
+        logger.warn('[Main] Bilibili live bridge failed to start (non-fatal):', error);
       }
     }
 
@@ -105,6 +116,9 @@ async function main() {
       stopStaticServer();
       if (resourceCleanupService) {
         await resourceCleanupService.cleanupAll();
+      }
+      if (bilibiliLiveBridge) {
+        await bilibiliLiveBridge.stop();
       }
       if (avatarService) {
         await avatarService.stop();

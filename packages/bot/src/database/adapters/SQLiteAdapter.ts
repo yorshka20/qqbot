@@ -9,6 +9,7 @@ import type { DatabaseAdapter } from '../base/DatabaseAdapter';
 import type {
   AgendaItem,
   BaseModel,
+  BilibiliDanmakuRecord,
   Conversation,
   ConversationConfig,
   DatabaseModel,
@@ -224,6 +225,9 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
     if (result.endedAt) {
       result.endedAt = new Date(result.endedAt as string);
     }
+    if (result.receivedAt) {
+      result.receivedAt = new Date(result.receivedAt as string);
+    }
 
     // Parse JSON fields
     const jsonFields = ['metadata', 'context', 'parameters', 'result', 'args', 'rawContent', 'config'];
@@ -391,6 +395,22 @@ export class SQLiteAdapter implements DatabaseAdapter {
         text TEXT NOT NULL,
         ts INTEGER NOT NULL
       )`,
+      `CREATE TABLE IF NOT EXISTS bilibili_danmaku (
+        id TEXT PRIMARY KEY,
+        roomId TEXT NOT NULL,
+        uid TEXT NOT NULL,
+        username TEXT NOT NULL,
+        text TEXT NOT NULL,
+        normalizedText TEXT NOT NULL,
+        medalName TEXT,
+        medalLevel INTEGER,
+        guardLevel INTEGER,
+        mentionsStreamer INTEGER NOT NULL DEFAULT 0,
+        batchId TEXT,
+        receivedAt TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`,
       `CREATE TABLE IF NOT EXISTS memory_fact_meta (
         id TEXT PRIMARY KEY,
         factHash TEXT NOT NULL UNIQUE,
@@ -502,6 +522,9 @@ export class SQLiteAdapter implements DatabaseAdapter {
       `CREATE INDEX IF NOT EXISTS idx_memory_fact_meta_source ON memory_fact_meta(source)`,
       `CREATE INDEX IF NOT EXISTS idx_messages_createdAt ON messages(createdAt)`,
       `CREATE INDEX IF NOT EXISTS idx_messages_conversationId_createdAt ON messages(conversationId, createdAt)`,
+      `CREATE INDEX IF NOT EXISTS idx_bilibili_danmaku_room_received ON bilibili_danmaku(roomId, receivedAt)`,
+      `CREATE INDEX IF NOT EXISTS idx_bilibili_danmaku_mentions ON bilibili_danmaku(mentionsStreamer, receivedAt)`,
+      `CREATE INDEX IF NOT EXISTS idx_bilibili_danmaku_batch ON bilibili_danmaku(batchId)`,
     ];
 
     for (const statement of indexStatements) {
@@ -566,6 +589,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
         'memory_extract_user_cursors',
       ),
       agendaItems: new SQLiteModelAccessor<AgendaItem>(this.db, 'agenda_items'),
+      bilibiliDanmaku: new SQLiteModelAccessor<BilibiliDanmakuRecord>(this.db, 'bilibili_danmaku'),
     };
   }
 }

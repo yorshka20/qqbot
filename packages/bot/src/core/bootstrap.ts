@@ -26,9 +26,14 @@ import type { EventRouter } from '@/events/EventRouter';
 import { PluginInitializer } from '@/plugins/PluginInitializer';
 import { DiscordConnection } from '@/protocol/discord/DiscordConnection';
 import { ProtocolAdapterInitializer } from '@/protocol/ProtocolAdapterInitializer';
+import { BilibiliLiveBridge } from '@/services/bilibili/live/BilibiliLiveBridge';
+import { BilibiliLiveClient } from '@/services/bilibili/live/BilibiliLiveClient';
+import { DanmakuBuffer } from '@/services/bilibili/live/DanmakuBuffer';
+import { DanmakuStore } from '@/services/bilibili/live/DanmakuStore';
 import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
+import { Live2DPipeline } from '@/services/live2d/Live2DPipeline';
 import type { MCPSystem } from '@/services/mcp/MCPInitializer';
 import { MCPInitializer } from '@/services/mcp/MCPInitializer';
 import { RetrievalService } from '@/services/retrieval';
@@ -45,6 +50,7 @@ export interface BootstrapResult {
   eventRouter: EventRouter;
   retrievalService: RetrievalService;
   avatarService: AvatarService | null;
+  bilibiliLiveBridge: BilibiliLiveBridge | null;
 }
 
 /**
@@ -272,6 +278,51 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     avatarService = null;
   }
 
+  // ── Live2DPipeline (shared by /avatar command + bilibili bridge) ──
+  // Depends on LLM_SERVICE / PROMPT_MANAGER / CONFIG — all registered above.
+  // AvatarService is resolved lazily inside the pipeline, so registration
+  // order against `avatarService` above doesn't matter.
+  const live2dPipeline = container.resolve(Live2DPipeline);
+  container.registerInstance(DITokens.LIVE2D_PIPELINE, live2dPipeline);
+
+  // ── Bilibili live listener (optional) ──
+  // Fully gated on `bilibili.live.enabled` — no side effects when absent.
+  // The bridge is started later (alongside other network-I/O services) by
+  // the caller, matching the existing `bot.start()` / `avatarService.start()`
+  // pattern.
+  let bilibiliLiveBridge: BilibiliLiveBridge | null = null;
+  try {
+    const liveCfg = config.getBilibiliLiveConfig();
+    if (liveCfg) {
+      const aliases = liveCfg.streamerAliases ?? [];
+      const client = new BilibiliLiveClient({
+        roomId: liveCfg.roomId,
+        sessdata: liveCfg.sessdata,
+        biliJct: liveCfg.biliJct,
+        sendEnabled: liveCfg.send?.enabled ?? false,
+      });
+      const buffer = new DanmakuBuffer({
+        flushIntervalMs: liveCfg.buffer?.flushIntervalMs,
+        maxTextLen: liveCfg.buffer?.maxTextLen,
+        streamerAliases: aliases,
+      });
+      const store = container.resolve(DanmakuStore);
+      bilibiliLiveBridge = new BilibiliLiveBridge(client, buffer, store, live2dPipeline, {
+        roomId: String(liveCfg.roomId),
+        pipeToLive2D: liveCfg.pipeToLive2D !== false,
+        streamerAliases: aliases,
+      });
+      container.registerInstance(DITokens.BILIBILI_LIVE_CLIENT, client);
+      container.registerInstance(DITokens.BILIBILI_DANMAKU_STORE, store);
+      logger.info(
+        `[Bootstrap] Bilibili live bridge configured (room=${liveCfg.roomId}, pipeToLive2D=${liveCfg.pipeToLive2D !== false})`,
+      );
+    }
+  } catch (err) {
+    logger.warn('[Bootstrap] Bilibili live bridge init failed (non-fatal):', err);
+    bilibiliLiveBridge = null;
+  }
+
   logger.info('[Bootstrap] All initialization stages completed');
 
   return {
@@ -283,6 +334,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     eventRouter,
     retrievalService,
     avatarService,
+    bilibiliLiveBridge,
   };
 }
 
