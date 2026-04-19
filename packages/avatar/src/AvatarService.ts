@@ -8,7 +8,7 @@ import { PreviewServer } from './preview/PreviewServer';
 import { SpeechService } from './SpeechService';
 import { IdleStateMachine } from './state/IdleStateMachine';
 import type { BotState, StateNodeOutput } from './state/types';
-import { FishAudioStubProvider } from './tts/FishAudioStubProvider';
+import { FishAudioProvider } from './tts/providers/FishAudioProvider';
 import type { AvatarConfig } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './types';
 import { logger } from './utils/logger';
@@ -87,10 +87,11 @@ export class AvatarService {
     }
 
     if (config.speech.enabled && ttsConfig && Object.keys(ttsConfig).length > 0) {
-      const provider = new FishAudioStubProvider({
-        apiKey: ttsConfig.apiKey as string | undefined,
+      const provider = new FishAudioProvider({
+        apiKey: (ttsConfig.apiKey as string | undefined) ?? '',
+        voiceMap: (ttsConfig.voiceMap as Record<string, string> | undefined) ?? {},
+        defaultVoice: (ttsConfig.referenceId as string | undefined) ?? '',
         model: ttsConfig.model as string | undefined,
-        defaultVoice: ttsConfig.referenceId as string | undefined,
       });
       this.speechService = new SpeechService(
         provider,
