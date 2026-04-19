@@ -29,6 +29,7 @@ export function WorkerBlock({
 }) {
   const now = useNow();
   const isRunning = w.status === 'running' || w.status === 'active';
+  const canKill = w.status !== 'exited';
   const spawnedMs = w.spawnedAt ?? w.stats?.registeredAt;
   const taskId = w.resolvedTaskId ?? w.currentTaskId ?? w.lastBoundTaskId;
   const durationMs = spawnedMs != null ? (w.exitedAt ?? now) - spawnedMs : null;
@@ -70,13 +71,13 @@ export function WorkerBlock({
             Output
           </button>
         )}
-        {isRunning && (
+        {canKill && (
           <button
             type="button"
             onClick={() => onRequestKill(w.workerId)}
             className="p-1 rounded text-red-500/70 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
             aria-label={`Kill worker ${w.workerId}`}
-            title="Kill worker"
+            title={isRunning ? 'Kill worker' : 'Mark worker exited (orphan cleanup)'}
           >
             <Skull className="w-3.5 h-3.5" />
           </button>

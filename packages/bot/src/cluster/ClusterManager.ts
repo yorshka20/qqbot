@@ -224,9 +224,25 @@ export class ClusterManager {
 
   /**
    * Kill a specific worker.
+   *
+   * Two cleanup paths:
+   *  1. Live worker in the pool → SIGTERM/SIGKILL via WorkerPool.
+   *  2. Orphan in the registry (process gone but registration stuck — happens
+   *     when a prior bot crash left the subprocess handle desynced, or when
+   *     a worker exited without going through the normal monitor path).
+   *     Fall back to `markExited` so the WebUI reflects reality and the
+   *     periodic `cleanup()` can eventually prune the row.
    */
   async killWorker(workerId: string): Promise<boolean> {
-    return this.workerPool.killWorker(workerId);
+    const live = await this.workerPool.killWorker(workerId);
+    if (live) return true;
+
+    const reg = this.hub.workerRegistry.get(workerId);
+    if (reg && reg.status !== 'exited') {
+      this.hub.workerRegistry.markExited(workerId);
+      return true;
+    }
+    return false;
   }
 
   /**

@@ -614,6 +614,10 @@ export function ClusterPage() {
       {killConfirmId && (
         <KillWorkerDialog
           workerId={killConfirmId}
+          isOrphan={(() => {
+            const w = workers?.find((x) => x.workerId === killConfirmId);
+            return !!w && w.status !== 'running' && w.status !== 'active' && w.status !== 'exited';
+          })()}
           onCancel={() => setKillConfirmId(null)}
           onConfirm={async () => {
             const id = killConfirmId;
