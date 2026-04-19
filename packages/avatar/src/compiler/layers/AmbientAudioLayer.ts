@@ -4,22 +4,26 @@ import { BaseLayer } from './BaseLayer';
 export interface AmbientAudioLayerOptions {
   /** Max wall-clock gap since last update before layer fades out. Default 500ms. */
   staleThresholdMs?: number;
-  /** Silence floor — RMS at or below this contributes 0. Default 0.05. */
+  /** Silence floor — RMS at or below this contributes 0. Default 0.02. */
   silenceFloor?: number;
-  /** Power-law exponent applied to normalized excitement. Default 2. */
+  /** Power-law exponent applied to normalized excitement. Default 1 (linear). */
   powerExponent?: number;
-  /** Max body.z contribution at full excitement. Default 0.2. */
+  /** Max body.z contribution at full excitement. Default 0.8. */
   bodyZMax?: number;
-  /** Max brow contribution at full excitement. Default 0.15. */
+  /** Max brow contribution at full excitement. Default 0.5. */
   browMax?: number;
 }
 
+// Tuned for Windows WASAPI loopback RMS of typical BGM (0.05–0.3 range).
+// Original (silenceFloor=0.05, powerExp=2, body/brow 0.2/0.15) produced
+// body.z ≈ 0.0006 at RMS 0.10 — imperceptible. Linear mapping with
+// expanded max values gives a clear lean at moderate music volumes.
 const DEFAULTS: Required<AmbientAudioLayerOptions> = {
   staleThresholdMs: 500,
-  silenceFloor: 0.05,
-  powerExponent: 2,
-  bodyZMax: 0.2,
-  browMax: 0.15,
+  silenceFloor: 0.02,
+  powerExponent: 1,
+  bodyZMax: 0.8,
+  browMax: 0.5,
 };
 
 /**
