@@ -16,6 +16,7 @@ import type {
   PreviewFrame,
   PreviewMessage,
   PreviewStatus,
+  TunableSection,
 } from './types';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -47,6 +48,17 @@ export interface PreviewServerHandlers {
    */
   onSpeak?: (data: { text: string }) => void;
   onAmbientAudio?: (data: { rms: number; tMs: number }) => void;
+  /**
+   * HUD requested the current list of tunable params. Return value is
+   * serialized into a `tunable-params` response and sent to the requesting
+   * socket only (not broadcast).
+   */
+  onTunableParamsRequest?: () => TunableSection[];
+  /**
+   * HUD dragged a slider. Fire-and-forget (no ack). Implementations are
+   * expected to be cheap — this runs per slider tick (~50ms).
+   */
+  onTunableParamSet?: (data: { sectionId: string; paramId: string; value: number }) => void;
 }
 
 export class PreviewServer {
@@ -178,6 +190,23 @@ export class PreviewServer {
             // Clamp rms to [0, 10] as a sanity guard; normal range is [0, ~1]
             const rmsClamped = Math.max(0, Math.min(10, rms));
             server.handlers.onAmbientAudio?.({ rms: rmsClamped, tMs });
+            return;
+          }
+
+          if (msg.type === 'tunable-params-request') {
+            const sections = server.handlers.onTunableParamsRequest?.();
+            if (!sections) return;
+            const response: PreviewMessage = { type: 'tunable-params', data: { sections } };
+            _ws.send(JSON.stringify(response));
+            return;
+          }
+
+          if (msg.type === 'tunable-param-set') {
+            if (!msg.data) return;
+            const { sectionId, paramId, value } = msg.data;
+            if (typeof sectionId !== 'string' || typeof paramId !== 'string') return;
+            if (typeof value !== 'number' || !Number.isFinite(value)) return;
+            server.handlers.onTunableParamSet?.({ sectionId, paramId, value });
             return;
           }
           // Unknown type — silent drop

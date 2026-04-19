@@ -96,6 +96,10 @@ export class AvatarService {
           onSpeak: (data) => this.speak(data.text),
           // BGM reactivity: renderer WS → this handler → AmbientAudioLayer.updateRms
           onAmbientAudio: (data) => ambientAudioLayer?.updateRms(data.rms, data.tMs),
+          onTunableParamsRequest: () => this.compiler?.listTunableParams() ?? [],
+          onTunableParamSet: ({ sectionId, paramId, value }) => {
+            this.compiler?.setTunableParam(sectionId, paramId, value);
+          },
         },
       );
     }
