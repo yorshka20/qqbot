@@ -25,8 +25,9 @@ function makeVideoDownloadService(overrides: Partial<VideoDownloadService> = {})
 
 function makeResourceCleanupService(overrides: Partial<ResourceCleanupService> = {}): ResourceCleanupService {
   return {
-    register: vi.fn(),
+    registerLocalFile: vi.fn(),
     registerRemoteFile: vi.fn(),
+    registerFileCleanup: vi.fn(),
     cleanup: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   } as unknown as ResourceCleanupService;
@@ -208,19 +209,19 @@ describe('AnalyzeVideoToolExecutor', () => {
     it('registers temp path with ResourceCleanupService before processing', async () => {
       const { executor, rcs } = makeExecutor();
       await executor.execute(defaultToolCall, defaultContext);
-      expect(rcs.register).toHaveBeenCalledWith('test-session-123', '/tmp/video_test-session-123.tmp');
+      expect(rcs.registerLocalFile).toHaveBeenCalledWith('test-session-123', '/tmp/video_test-session-123.tmp');
     });
 
     it('registers the Gemini file with ResourceCleanupService after upload', async () => {
       const { executor, rcs } = makeExecutor();
       await executor.execute(defaultToolCall, defaultContext);
-      expect(rcs.registerRemoteFile).toHaveBeenCalledWith('test-session-123', 'files/test-video-id');
+      expect(rcs.registerRemoteFile).toHaveBeenCalledWith('test-session-123', 'files/test-video-id', 'gemini');
     });
 
-    it('calls ResourceCleanupService.cleanup with a delete callback on success', async () => {
+    it('calls ResourceCleanupService.cleanup on success', async () => {
       const { executor, rcs } = makeExecutor();
       await executor.execute(defaultToolCall, defaultContext);
-      expect(rcs.cleanup).toHaveBeenCalledWith('test-session-123', expect.any(Function));
+      expect(rcs.cleanup).toHaveBeenCalledWith('test-session-123');
     });
 
     it('calls ResourceCleanupService.cleanup even when analysis throws', async () => {
@@ -228,7 +229,7 @@ describe('AnalyzeVideoToolExecutor', () => {
         generateWithFileUri: vi.fn().mockRejectedValue(new Error('analysis crash')),
       });
       await executor.execute(defaultToolCall, defaultContext);
-      expect(rcs.cleanup).toHaveBeenCalledWith('test-session-123', expect.any(Function));
+      expect(rcs.cleanup).toHaveBeenCalledWith('test-session-123');
     });
 
     it('calls ResourceCleanupService.cleanup even when upload fails', async () => {
@@ -236,30 +237,13 @@ describe('AnalyzeVideoToolExecutor', () => {
         uploadVideoFile: vi.fn().mockRejectedValue(new Error('upload error')),
       });
       await executor.execute(defaultToolCall, defaultContext);
-      // sessionId is set before upload, so cleanup is still called
-      expect(rcs.cleanup).toHaveBeenCalledWith('test-session-123', expect.any(Function));
+      expect(rcs.cleanup).toHaveBeenCalledWith('test-session-123');
     });
 
     it('does not delete the Gemini file directly before cleanup runs', async () => {
-      const cleanup = vi.fn().mockResolvedValue(undefined);
-      const { executor, gemini } = makeExecutor({}, {}, { cleanup });
+      const { executor, gemini } = makeExecutor();
       await executor.execute(defaultToolCall, defaultContext);
-      expect(cleanup).toHaveBeenCalledWith('test-session-123', expect.any(Function));
       expect(gemini.deleteUploadedFile).not.toHaveBeenCalled();
-    });
-
-    it('deletes the Gemini file through the cleanup callback path', async () => {
-      const cleanup = vi
-        .fn()
-        .mockImplementation(async (_sessionId: string, deleteRemoteFile?: (fileName: string) => Promise<void>) => {
-          if (deleteRemoteFile) {
-            await deleteRemoteFile('files/test-video-id');
-          }
-        });
-      const { executor, gemini } = makeExecutor({}, {}, { cleanup });
-      await executor.execute(defaultToolCall, defaultContext);
-      expect(cleanup).toHaveBeenCalledWith('test-session-123', expect.any(Function));
-      expect(gemini.deleteUploadedFile).toHaveBeenCalledWith('files/test-video-id');
     });
   });
 

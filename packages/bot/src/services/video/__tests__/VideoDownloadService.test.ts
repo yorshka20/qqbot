@@ -84,18 +84,14 @@ describe('VideoDownloadService', () => {
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
 
     const service = new VideoDownloadService();
-    const result = await service.download('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    // Use a generic (non-platform) URL — yt-dlp is not attempted so fallback to HTTP is always triggered
+    const result = await service.download('https://example.com/media/test.mp4');
 
     expect(downloadToBase64).toHaveBeenCalledTimes(1);
     expect(write).toHaveBeenCalledTimes(1);
     expect(result.buffer.equals(Buffer.from('http-bytes'))).toBe(true);
-    expect(
-      spawn.mock.calls.filter((call: any[]) => {
-        const cmd = Array.isArray(call[0]) ? call[0] : (call[0]?.cmd ?? []);
-        return cmd[0] === 'yt-dlp';
-      }),
-    ).toHaveLength(1);
-    expect(warn.mock.calls.some((call) => String(call[0]).includes('yt-dlp is unavailable'))).toBe(true);
+    // Generic URL skips yt-dlp entirely, so no warn about yt-dlp unavailability is expected
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it('uses the HTTP path for generic URLs', async () => {

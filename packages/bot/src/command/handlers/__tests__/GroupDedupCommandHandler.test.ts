@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, vi } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,6 +7,10 @@ import type { AIService } from '@/ai';
 import { GroupDedupCommandHandler } from '@/command/handlers/GroupDedupCommandHandler';
 import type { CommandContext } from '@/command/types';
 import { FileReadService } from '@/services/file';
+
+vi.mock('@/utils/repoRoot', () => ({
+  getRepoRoot: () => process.env.__TEST_REPO_ROOT__,
+}));
 
 function createContext(): CommandContext {
   return {
@@ -37,12 +41,11 @@ function createAiServiceMock(): AIService {
 
 describe('GroupDedupCommandHandler', () => {
   it('reads and deduplicates from current project output/downloads/{groupId}', async () => {
-    const oldCwd = process.cwd();
     const tempRoot = join(tmpdir(), `qqbot-dedup-${Date.now()}-1`);
 
     try {
       mkdirSync(join(tempRoot, 'output/downloads/123456'), { recursive: true });
-      process.chdir(tempRoot);
+      process.env.__TEST_REPO_ROOT__ = tempRoot;
 
       const groupDir = join(tempRoot, 'output/downloads/123456');
       const oldestFile = join(groupDir, 'a.txt');
@@ -69,18 +72,17 @@ describe('GroupDedupCommandHandler', () => {
       expect(text).toContain('扫描文件：3 个');
       expect(text).toContain('发现重复：1 个');
     } finally {
-      process.chdir(oldCwd);
+      delete process.env.__TEST_REPO_ROOT__;
       rmSync(tempRoot, { recursive: true, force: true });
     }
   });
 
   it('returns friendly output when output/downloads/{groupId} does not exist', async () => {
-    const oldCwd = process.cwd();
     const tempRoot = join(tmpdir(), `qqbot-dedup-${Date.now()}-2`);
 
     try {
       mkdirSync(tempRoot, { recursive: true });
-      process.chdir(tempRoot);
+      process.env.__TEST_REPO_ROOT__ = tempRoot;
 
       const handler = new GroupDedupCommandHandler(new FileReadService(), createAiServiceMock());
       const result = await handler.execute(['123456'], createContext());
@@ -91,7 +93,7 @@ describe('GroupDedupCommandHandler', () => {
       expect(text).toContain('扫描文件：0 个');
       expect(text).toContain('目录状态：未找到 output/downloads/123456');
     } finally {
-      process.chdir(oldCwd);
+      delete process.env.__TEST_REPO_ROOT__;
       rmSync(tempRoot, { recursive: true, force: true });
     }
   });

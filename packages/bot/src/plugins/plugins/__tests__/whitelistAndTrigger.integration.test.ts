@@ -246,6 +246,7 @@ describe('Whitelist + MessageTrigger integration', () => {
         { allowOverride: true },
       );
       container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
+      container.registerInstance(DITokens.COMMAND_MANAGER, { register: () => {} } as never, { allowOverride: true });
 
       const proactive = new ProactiveConversationPlugin({
         name: 'proactiveConversation',
@@ -367,6 +368,7 @@ describe('Whitelist + MessageTrigger integration', () => {
       );
       container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
       container.registerInstance(DITokens.CONFIG, { getAIConfig: () => ({}) }, { allowOverride: true });
+      container.registerInstance(DITokens.COMMAND_MANAGER, { register: () => {} } as never, { allowOverride: true });
       const proactive = new ProactiveConversationPlugin({
         name: 'proactiveConversation',
         version: 'test',

@@ -243,6 +243,7 @@ describe('Whitelist functional: whitelist group can trigger proactive, messageTr
       new ProviderRouter({ getProviderForCapability: () => ({ isAvailable: () => true }) } as never),
       { allowOverride: true },
     );
+    container.registerInstance(DITokens.COMMAND_MANAGER, { register: () => {} } as never, { allowOverride: true });
 
     const trigger = new MessageTriggerPlugin({ name: 'messageTrigger', version: 'test', description: 'test' });
     trigger.loadConfig(

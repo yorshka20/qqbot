@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { AIService } from '@/ai/AIService';
+import type { Config } from '@/core/config';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -32,8 +33,24 @@ function createMockMessageAPI(): { api: MessageAPI; sentMessages: SentMessage[] 
       sentMessages.push({ target: `user:${userId}`, message });
       return { message_seq: 1 };
     },
+    sendForwardMessage: async (
+      target: { type: string; id: unknown },
+      segments: Array<{ segments: Array<{ type: string; data: { text?: string } }>; senderName?: string }>,
+      _protocol: string,
+      _opts?: unknown,
+    ) => {
+      const text = segments?.[0]?.segments?.[0]?.data?.text ?? '[forward]';
+      sentMessages.push({ target: `${target.type}:${target.id}`, message: text });
+      return { message_seq: 1 };
+    },
   } as unknown as MessageAPI;
   return { api, sentMessages };
+}
+
+function createMockConfig(): Config {
+  return {
+    getBotUserId: () => 12345,
+  } as unknown as Config;
 }
 
 type MockAIServiceOpts = {
@@ -89,16 +106,18 @@ function createMockEventRouter(): EventRouter {
 // ---------------------------------------------------------------------------
 
 async function initPlugin(
-  overrides: { aiService?: AIService; messageAPI?: MessageAPI; eventRouter?: EventRouter } = {},
+  overrides: { aiService?: AIService; messageAPI?: MessageAPI; eventRouter?: EventRouter; config?: Config } = {},
 ): Promise<VideoAnalyzePlugin> {
   const container = getContainer();
   const mockEventRouter = overrides.eventRouter ?? createMockEventRouter();
   const msgApi = overrides.messageAPI ?? createMockMessageAPI().api;
   const mockAIService = overrides.aiService ?? createMockAIService();
+  const mockConfig = overrides.config ?? createMockConfig();
 
   container.registerInstance(DITokens.AI_SERVICE, mockAIService, { allowOverride: true });
   container.registerInstance(DITokens.MESSAGE_API, msgApi as any, { allowOverride: true });
   container.registerInstance(DITokens.EVENT_ROUTER, mockEventRouter, { allowOverride: true });
+  container.registerInstance(DITokens.CONFIG, mockConfig, { allowOverride: true });
 
   const plugin = new VideoAnalyzePlugin({ name: 'video-analyze', version: '1.0.0', description: '' });
   plugin.loadConfig({ api: {} as any, events: mockEventRouter }, { name: 'video-analyze', enabled: true });
