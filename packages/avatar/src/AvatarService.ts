@@ -1,6 +1,7 @@
 import { singleton } from 'tsyringe';
 import { AnimationCompiler } from './compiler/AnimationCompiler';
 import { createDefaultLayers } from './compiler/layers';
+import type { AmbientAudioLayer } from './compiler/layers/AmbientAudioLayer';
 import type { ActionSummary, StateNode } from './compiler/types';
 import { mergeAvatarConfig } from './config';
 import { VTSDriver } from './drivers/VTSDriver';
@@ -33,6 +34,7 @@ export class AvatarService {
    */
   private consumerCount = 0;
   private speechService?: SpeechService;
+  private defaultLayers: ReturnType<typeof createDefaultLayers> = [];
 
   /**
    * Merge + apply the raw (JSONC-parsed) avatar config and initialize all
@@ -67,6 +69,11 @@ export class AvatarService {
       );
     }
 
+    // Create default layers early so AmbientAudioLayer is available to wire
+    // the onAmbientAudio handler before PreviewServer construction.
+    this.defaultLayers = createDefaultLayers();
+    const ambientAudioLayer = this.defaultLayers.find((l) => l.id === 'ambient-audio') as AmbientAudioLayer | undefined;
+
     if (config.preview.enabled) {
       this.previewServer = new PreviewServer(
         {
@@ -87,6 +94,8 @@ export class AvatarService {
           // Live2DAvatarPlugin, so whatever gate logic SpeechService applies
           // (hasConsumer, provider availability) still runs.
           onSpeak: (data) => this.speak(data.text),
+          // BGM reactivity: renderer WS → this handler → AmbientAudioLayer.updateRms
+          onAmbientAudio: (data) => ambientAudioLayer?.updateRms(data.rms, data.tMs),
         },
       );
     }
@@ -165,13 +174,12 @@ export class AvatarService {
     // Register the continuous layer stack before the compiler starts ticking
     // so the first tick already has breath/blink/gaze available.
     if (this.config.compiler.layers?.enabled !== false) {
-      const layers = createDefaultLayers();
-      for (const layer of layers) {
+      for (const layer of this.defaultLayers) {
         this.compiler.registerLayer(layer);
       }
       logger.info(
         '[AvatarService] Animation layers registered:',
-        layers.map((l) => l.id),
+        this.defaultLayers.map((l) => l.id),
       );
     }
 

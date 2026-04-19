@@ -46,6 +46,7 @@ export interface PreviewServerHandlers {
    * exactly as if it came from `Live2DAvatarPlugin.onMessageBeforeSend`.
    */
   onSpeak?: (data: { text: string }) => void;
+  onAmbientAudio?: (data: { rms: number; tMs: number }) => void;
 }
 
 export class PreviewServer {
@@ -166,6 +167,17 @@ export class PreviewServer {
             if (text.length === 0) return;
             server.handlers.onSpeak?.({ text });
             logger.info(`[PreviewServer] Speak received (debug) — len=${text.length}`);
+            return;
+          }
+
+          if (msg.type === 'ambient-audio') {
+            if (!msg.data) return;
+            const rms = typeof msg.data.rms === 'number' && Number.isFinite(msg.data.rms) ? msg.data.rms : null;
+            const tMs = typeof msg.data.tMs === 'number' && Number.isFinite(msg.data.tMs) ? msg.data.tMs : null;
+            if (rms === null || tMs === null) return;
+            // Clamp rms to [0, 10] as a sanity guard; normal range is [0, ~1]
+            const rmsClamped = Math.max(0, Math.min(10, rms));
+            server.handlers.onAmbientAudio?.({ rms: rmsClamped, tMs });
             return;
           }
           // Unknown type — silent drop
