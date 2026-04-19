@@ -88,3 +88,64 @@ describe('AudioEnvelopeLayer', () => {
     expect(layer.getWeight()).toBeCloseTo(0.42, 5);
   });
 });
+
+describe('energy-driven channels', () => {
+  test('envelope below threshold emits only mouth.open', () => {
+    const layer = new AudioEnvelopeLayer({
+      id: 'quiet',
+      envelope: new Float32Array([0.2, 0.2, 0.2]),
+      hopMs: 100,
+      startAtMs: 0,
+      durationMs: 300,
+    });
+    const result = layer.sample(100, IDLE);
+    expect(Object.keys(result).sort()).toEqual(['mouth.open']);
+    expect(result['mouth.open']).toBeCloseTo(0.2, 5);
+  });
+
+  test('envelope above threshold emits all five channels with correct ratios', () => {
+    const layer = new AudioEnvelopeLayer({
+      id: 'loud',
+      envelope: new Float32Array([0.95, 0.95, 0.95]),
+      hopMs: 100,
+      startAtMs: 0,
+      durationMs: 300,
+    });
+    const result = layer.sample(100, IDLE);
+    const expectedExcite = ((0.95 - 0.3) / 0.7) ** 2;
+    expect(Object.keys(result).sort()).toEqual(
+      ['body.z', 'brow', 'eye.open.left', 'eye.open.right', 'mouth.open'].sort(),
+    );
+    expect(result['mouth.open']).toBeCloseTo(0.95, 5);
+    expect(result['body.z']).toBeCloseTo(0.4 * expectedExcite, 5);
+    expect(result['eye.open.left']).toBeCloseTo(0.15 * expectedExcite, 5);
+    expect(result['eye.open.right']).toBeCloseTo(0.15 * expectedExcite, 5);
+    expect(result['eye.open.left']).toBe(result['eye.open.right']);
+    expect(result.brow).toBeCloseTo(0.3 * expectedExcite, 5);
+  });
+
+  test('time-boundary behavior preserved after channel extension', () => {
+    const layer = new AudioEnvelopeLayer({
+      id: 'boundary',
+      envelope: new Float32Array([0, 0.5, 1.0]),
+      hopMs: 100,
+      startAtMs: 1000,
+      durationMs: 300,
+    });
+    expect(layer.sample(999, IDLE)).toEqual({});
+    expect(layer.sample(1301, IDLE)).toEqual({});
+  });
+
+  test('mouth.open linear mapping is bit-exact after extension', () => {
+    const layer = new AudioEnvelopeLayer({
+      id: 'parity',
+      envelope: new Float32Array([0, 0.5, 1.0]),
+      hopMs: 100,
+      startAtMs: 0,
+      durationMs: 300,
+    });
+    // t=150 → idxF=1.5 → interpolate 0.5 and 1.0 with frac=0.5 → 0.75
+    const result = layer.sample(150, IDLE);
+    expect(result['mouth.open']).toBeCloseTo(0.75, 9);
+  });
+});
