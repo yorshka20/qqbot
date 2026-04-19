@@ -75,6 +75,27 @@ export interface SpeakMessage {
   };
 }
 
-export type PreviewClientMessage = TriggerMessage | SpeakMessage;
+/**
+ * Client → server: 30Hz burst of the renderer-machine system audio's
+ * instantaneous RMS. Consumed by AmbientAudioLayer on the compiler side to
+ * drive body.z / brow in response to BGM.
+ *
+ * Only sent when user has explicitly enabled BGM Reactivity in the HUD.
+ * Renderer drops on closed socket (same as TriggerMessage).
+ *
+ * Contract source: qqbot-avatar-renderer ticket
+ * 2026-04-20-renderer-system-audio-capture. Bot-side schema MUST stay in sync.
+ */
+export interface AmbientAudioMessage {
+  type: 'ambient-audio';
+  data: {
+    /** Instantaneous RMS over the renderer's last analyser frame, linear [0, ~1]. */
+    rms: number;
+    /** Wall-clock ms when the sample was taken on renderer (Date.now()). */
+    tMs: number;
+  };
+}
+
+export type PreviewClientMessage = TriggerMessage | SpeakMessage | AmbientAudioMessage;
 
 export type PreviewMessage = FrameMessage | StatusMessage | AudioMessage;

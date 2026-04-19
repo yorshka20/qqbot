@@ -1,3 +1,4 @@
+import { AmbientAudioLayer } from './AmbientAudioLayer';
 import { AutoBlinkLayer } from './AutoBlinkLayer';
 import { BreathLayer } from './BreathLayer';
 import { EyeGazeLayer } from './EyeGazeLayer';
@@ -17,6 +18,7 @@ export function createDefaultLayers(): AnimationLayer[] {
     new AutoBlinkLayer(),
     new EyeGazeLayer(),
     new IdleMotionLayer(),
+    new AmbientAudioLayer(),
     new PerlinNoiseLayer(),
   ];
   layers[layers.length - 1].setWeight(0.2);

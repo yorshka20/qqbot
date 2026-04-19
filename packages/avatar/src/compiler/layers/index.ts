@@ -1,3 +1,5 @@
+export type { AmbientAudioLayerOptions } from './AmbientAudioLayer';
+export { AmbientAudioLayer } from './AmbientAudioLayer';
 export type { AudioEnvelopeLayerOptions } from './AudioEnvelopeLayer';
 export { AudioEnvelopeLayer } from './AudioEnvelopeLayer';
 export { AutoBlinkLayer } from './AutoBlinkLayer';
