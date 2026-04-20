@@ -213,7 +213,7 @@ export function TicketDetailPanel({
       {/* Body — the prompt the worker actually receives */}
       <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">
         <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">body (worker prompt — markdown verbatim)</div>
-        <pre className="text-xs font-mono bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded p-2 max-h-[240px] overflow-y-auto whitespace-pre-wrap break-words text-zinc-700 dark:text-zinc-200">
+        <pre className="text-xs font-mono bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded p-2 max-h-[400px] overflow-y-auto whitespace-pre-wrap break-words text-zinc-700 dark:text-zinc-200">
           {ticket.body || <span className="italic text-zinc-400">(empty body)</span>}
         </pre>
       </div>
