@@ -697,3 +697,368 @@ describe('AnimationCompiler — compiler:jitter tunable section', () => {
     expect(compiler.getEffectiveJitter().duration).toBeCloseTo(0.4);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Clip execution path tests (B 2/3 Task 2)
+// ---------------------------------------------------------------------------
+describe('AnimationCompiler — clip execution path', () => {
+  let nowRef: { t: number };
+  let dateSpy: ReturnType<typeof spyOn>;
+
+  // Clip fixture: vrm.head.y 0→1→0 over 2s (easeInOutCubic)
+  const STD_CLIP = {
+    id: 'test',
+    duration: 2,
+    tracks: [
+      {
+        channel: 'vrm.head.y',
+        keyframes: [
+          { time: 0, value: 0 },
+          { time: 1, value: 1 },
+          { time: 2, value: 0 },
+        ],
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    nowRef = { t: 10_000 };
+    dateSpy = spyOn(Date, 'now').mockImplementation(() => nowRef.t);
+  });
+  afterEach(() => {
+    dateSpy.mockRestore();
+  });
+
+  // Helper: write temp action-map + clip JSON, return cleanup fn.
+  async function mkClipEnv(
+    clipDef: object,
+    actionMapEntries: object,
+    prefix = 'clip-test-',
+  ): Promise<{ mapPath: string; cleanup: () => void }> {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    writeFileSync(join(dir, 'test-clip.json'), JSON.stringify(clipDef));
+    const mapPath = join(dir, 'map.json');
+    writeFileSync(mapPath, JSON.stringify(actionMapEntries));
+    return { mapPath, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+  }
+
+  // -------------------------------------------------------------------------
+  // Test A — clip enqueue + mid-clip sample
+  // -------------------------------------------------------------------------
+  test('Test A: clip contributes vrm.head.y ≈ 0.5 at peak (intensity=0.5)', async () => {
+    const { mapPath, cleanup } = await mkClipEnv(STD_CLIP, {
+      test_clip: { kind: 'clip', clip: 'test-clip.json' },
+    });
+    try {
+      const compiler = new AnimationCompiler(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+        mapPath,
+      );
+      compiler.enqueue([
+        {
+          action: 'test_clip',
+          emotion: 'neutral',
+          intensity: 0.5,
+          timestamp: nowRef.t,
+          duration: 2000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
+
+      // Run 62 ticks (~1033ms) — past the clip midpoint at 1000ms where value=1.0.
+      // Spring with omega=12 tracks a slow ramp closely; contribution ≈ 0.5 at peak.
+      for (let i = 0; i < 62; i++) {
+        nowRef.t += 16.67;
+        (compiler as any).tick();
+      }
+
+      const params = compiler.getCurrentParams();
+      expect(params['vrm.head.y']).toBeDefined();
+      expect(Math.abs((params['vrm.head.y'] ?? 0) - 0.5)).toBeLessThan(0.05);
+    } finally {
+      cleanup();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Test B — clip expiry removes from activeAnimations
+  // -------------------------------------------------------------------------
+  test('Test B: clip expiry — activeAnimationCount drops to 0 after clip duration + slack', async () => {
+    const { mapPath, cleanup } = await mkClipEnv(STD_CLIP, {
+      test_clip: { kind: 'clip', clip: 'test-clip.json' },
+    });
+    try {
+      const compiler = new AnimationCompiler(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+        mapPath,
+      );
+      compiler.enqueue([
+        {
+          action: 'test_clip',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 2000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
+
+      // Advance to startTime + 2100ms (>2000ms clip duration + 100ms slack)
+      nowRef.t += 2100;
+      (compiler as any).tick();
+
+      expect(compiler.getActiveAnimationCount()).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Test C — two-clip crossfade on same channel
+  // -------------------------------------------------------------------------
+  test('Test C: two-clip crossfade — both present at mid-window, old removed after', async () => {
+    const { mapPath, cleanup } = await mkClipEnv(STD_CLIP, {
+      clip_a: { kind: 'clip', clip: 'test-clip.json' },
+      clip_b: { kind: 'clip', clip: 'test-clip.json' },
+    });
+    try {
+      const compiler = new AnimationCompiler(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+        mapPath,
+      );
+      // Set short crossfadeMs for testability
+      compiler.setTunableParam('compiler:envelope', 'crossfadeMs', 100);
+
+      // Enqueue clip A
+      compiler.enqueue([
+        {
+          action: 'clip_a',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 2000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
+
+      // Advance 100ms (6 ticks) then enqueue clip B
+      for (let i = 0; i < 6; i++) {
+        nowRef.t += 16.67;
+        (compiler as any).tick();
+      }
+
+      const crossfadeStart = nowRef.t;
+      compiler.enqueue([
+        {
+          action: 'clip_b',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 2000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
+
+      // Mid-crossfade: 50ms after clip B start — clip A still fading, not yet removed
+      nowRef.t = crossfadeStart + 50;
+      (compiler as any).tick();
+      expect(compiler.getActiveAnimationCount()).toBe(2);
+
+      // After crossfade: 101ms after clip B start — clip A fully faded out and removed
+      nowRef.t = crossfadeStart + 101;
+      (compiler as any).tick();
+      expect(compiler.getActiveAnimationCount()).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Test D — clip + envelope on different channels don't interfere
+  // -------------------------------------------------------------------------
+  test('Test D: clip on vrm.head.y and envelope on mouth.smile both contribute independently', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'clip-mix-'));
+    writeFileSync(join(dir, 'test-clip.json'), JSON.stringify(STD_CLIP));
+    writeFileSync(
+      join(dir, 'map.json'),
+      JSON.stringify({
+        test_clip: { kind: 'clip', clip: 'test-clip.json' },
+        test_envelope: {
+          params: [{ channel: 'mouth.smile', targetValue: 1, weight: 1 }],
+          defaultDuration: 2000,
+        },
+      }),
+    );
+    try {
+      const compiler = new AnimationCompiler(
+        {
+          fps: 60,
+          outputFps: 60,
+          defaultEasing: 'easeInOutCubic',
+          smoothingFactor: 0,
+          attackRatio: 0.1,
+          releaseRatio: 0.1,
+        },
+        join(dir, 'map.json'),
+      );
+      compiler.enqueue([
+        {
+          action: 'test_clip',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 2000,
+          easing: 'easeInOutCubic',
+        },
+        {
+          action: 'test_envelope',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 2000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
+
+      // Run 30 ticks (~500ms) — both animations in sustain phase
+      for (let i = 0; i < 30; i++) {
+        nowRef.t += 16.67;
+        (compiler as any).tick();
+      }
+
+      const params = compiler.getCurrentParams();
+      expect(params['vrm.head.y'] ?? 0).toBeGreaterThan(0);
+      expect(params['mouth.smile'] ?? 0).toBeGreaterThan(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Test E — intensity scales clip output proportionally
+  // -------------------------------------------------------------------------
+  test('Test E: intensity=0.5 yields ~half the currentParam value of intensity=1.0', async () => {
+    const { mapPath, cleanup } = await mkClipEnv(STD_CLIP, {
+      test_clip: { kind: 'clip', clip: 'test-clip.json' },
+    });
+    try {
+      const savedT = nowRef.t;
+
+      // Run 1: intensity=1.0
+      const compiler1 = new AnimationCompiler(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+        mapPath,
+      );
+      compiler1.enqueue([
+        {
+          action: 'test_clip',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 2000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
+      for (let i = 0; i < 48; i++) {
+        nowRef.t += 16.67;
+        (compiler1 as any).tick();
+      }
+      const val1 = compiler1.getCurrentParams()['vrm.head.y'] ?? 0;
+
+      // Reset time for run 2
+      nowRef.t = savedT;
+      const compiler2 = new AnimationCompiler(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+        mapPath,
+      );
+      compiler2.enqueue([
+        {
+          action: 'test_clip',
+          emotion: 'neutral',
+          intensity: 0.5,
+          timestamp: nowRef.t,
+          duration: 2000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
+      for (let i = 0; i < 48; i++) {
+        nowRef.t += 16.67;
+        (compiler2 as any).tick();
+      }
+      const val05 = compiler2.getCurrentParams()['vrm.head.y'] ?? 0;
+
+      expect(val1).toBeGreaterThan(0.05);
+      expect(Math.abs(val05 - val1 * 0.5)).toBeLessThan(0.05);
+    } finally {
+      cleanup();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Test F — getActiveAnimationDetails includes kind for both clip and envelope
+  // -------------------------------------------------------------------------
+  test('Test F: getActiveAnimationDetails returns kind=clip and kind=envelope entries', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'clip-details-'));
+    writeFileSync(join(dir, 'test-clip.json'), JSON.stringify(STD_CLIP));
+    writeFileSync(
+      join(dir, 'map.json'),
+      JSON.stringify({
+        test_clip: { kind: 'clip', clip: 'test-clip.json' },
+        test_envelope: {
+          params: [{ channel: 'mouth.smile', targetValue: 1, weight: 1 }],
+          defaultDuration: 2000,
+        },
+      }),
+    );
+    try {
+      const compiler = new AnimationCompiler(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+        join(dir, 'map.json'),
+      );
+      compiler.enqueue([
+        {
+          action: 'test_clip',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 2000,
+          easing: 'easeInOutCubic',
+        },
+        {
+          action: 'test_envelope',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 2000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
+
+      // One tick to seed phase values
+      nowRef.t += 16.67;
+      (compiler as any).tick();
+
+      const details = compiler.getActiveAnimationDetails();
+      expect(details).toHaveLength(2);
+      const clipEntry = details.find((d) => d.name === 'test_clip');
+      const envEntry = details.find((d) => d.name === 'test_envelope');
+      expect(clipEntry).toBeDefined();
+      expect(envEntry).toBeDefined();
+      expect(clipEntry!.kind).toBe('clip');
+      expect(envEntry!.kind).toBe('envelope');
+      expect(['attack', 'sustain', 'release']).toContain(clipEntry!.phase);
+      expect(['attack', 'sustain', 'release']).toContain(envEntry!.phase);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

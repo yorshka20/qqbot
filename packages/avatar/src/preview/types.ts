@@ -23,7 +23,13 @@ export interface PreviewStatus {
   /** Snapshot of per-channel baseline values (from endPose harvesting). Optional — populated when compiler has state. */
   channelBaseline?: Record<string, number>;
   /** Summary of currently active animations with phase and optional fade-out timestamp. */
-  activeAnimationDetails?: Array<{ name: string; phase: 'attack' | 'sustain' | 'release'; fadeOut?: number }>;
+  activeAnimationDetails?: Array<{
+    name: string;
+    phase: 'attack' | 'sustain' | 'release';
+    fadeOut?: number;
+    /** Added in B 2/3: whether the action plays as ADSR envelope or as a sampled clip. Optional for forward-compat with older snapshots. */
+    kind?: 'envelope' | 'clip';
+  }>;
 }
 
 export interface FrameMessage {

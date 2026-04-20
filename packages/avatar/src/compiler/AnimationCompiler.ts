@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import type { TunableParam, TunableSection } from '../preview/types';
 import { type AvatarActivity, DEFAULT_ACTIVITY } from '../state/types';
 import { ActionMap } from './action-map';
+import { sampleClip } from './clips/sampleClip';
 import { applyEasing } from './easing';
 import {
   type AudioEnvelopeConfig,
@@ -55,6 +56,10 @@ const DEFAULT_CONFIG: CompilerConfig = {
 
 /** Default crossfade duration in ms for overlapping animation channels. */
 const DEFAULT_CROSSFADE_MS = 250;
+/** Default attack ramp duration in ms for clip-kind animations. */
+const DEFAULT_CLIP_ATTACK_MS = 200;
+/** Default release ramp duration in ms for clip-kind animations. */
+const DEFAULT_CLIP_RELEASE_MS = 300;
 /** Default half-life in ms for exponential baseline decay. */
 const DEFAULT_BASELINE_HALF_LIFE_MS = 45_000;
 /** Default ± relative jitter applied to enqueued tag-animation duration (15%). */
@@ -161,6 +166,11 @@ export class AnimationCompiler extends EventEmitter {
     return this.actionMap.listActions();
   }
 
+  /** Return the first preloaded IdleClip for a clip-kind action, or null. */
+  getClipByActionName(name: string) {
+    return this.actionMap.getClipByActionName(name);
+  }
+
   /** Register a continuous animation layer (breath, blink, gaze, idle clip…). */
   registerLayer(layer: AnimationLayer): void {
     this.layerManager.register(layer);
@@ -205,11 +215,17 @@ export class AnimationCompiler extends EventEmitter {
    * Returns a summary of all currently active animations with their phase
    * and optional fade-out start timestamp for PreviewStatus snapshots.
    */
-  getActiveAnimationDetails(): Array<{ name: string; phase: 'attack' | 'sustain' | 'release'; fadeOut?: number }> {
+  getActiveAnimationDetails(): Array<{
+    name: string;
+    phase: 'attack' | 'sustain' | 'release';
+    fadeOut?: number;
+    kind: 'envelope' | 'clip';
+  }> {
     return this.activeAnimations.map((a) => ({
       name: a.node.action,
       phase: a.phase,
       fadeOut: a.fadeOutStartMs,
+      kind: a.kind,
     }));
   }
 
@@ -449,30 +465,53 @@ export class AnimationCompiler extends EventEmitter {
       const resolved = this.actionMap.resolveAction(node.action, node.emotion, node.intensity);
       // Unknown action — skip silently
       if (!resolved) continue;
+
       const startTime = (node.timestamp || now) + (node.delay ?? 0);
       const endTime = startTime + node.duration + (resolved.holdMs ?? 0);
 
-      // Gather channels driven by the incoming animation for crossfade conflict detection
-      const newChannels = new Set(resolved.targets.map((t) => t.channel));
+      // Channels the new animation will drive — for crossfade conflict detection.
+      const newChannels =
+        resolved.kind === 'clip'
+          ? new Set(resolved.clip.tracks.map((t) => t.channel))
+          : new Set(resolved.targets.map((t) => t.channel));
 
-      // Mark any existing active animation that shares channels as fading out
+      // Mark any existing active animation that shares channels as fading out.
       for (const existing of this.activeAnimations) {
-        if (existing.fadeOutStartMs !== undefined) continue; // already fading
-        const hasConflict = existing.targetParams.some((t) => newChannels.has(t.channel));
+        if (existing.fadeOutStartMs !== undefined) continue;
+        const existingChannels =
+          existing.kind === 'clip'
+            ? existing.clip.tracks.map((t) => t.channel)
+            : existing.targetParams.map((t) => t.channel);
+        const hasConflict = existingChannels.some((ch) => newChannels.has(ch));
         if (hasConflict) {
           existing.fadeOutStartMs = startTime;
         }
       }
 
-      this.activeAnimations.push({
-        node,
-        startTime,
-        endTime,
-        targetParams: resolved.targets,
-        endPose: resolved.endPose,
-        phase: 'attack',
-        fadeOutStartMs: undefined,
-      });
+      if (resolved.kind === 'clip') {
+        this.activeAnimations.push({
+          kind: 'clip',
+          node,
+          startTime,
+          endTime,
+          clip: resolved.clip,
+          intensity: Math.max(0, Math.min(2, resolved.intensity)),
+          phase: 'attack',
+          endPose: resolved.endPose,
+          fadeOutStartMs: undefined,
+        });
+      } else {
+        this.activeAnimations.push({
+          kind: 'envelope',
+          node,
+          startTime,
+          endTime,
+          targetParams: resolved.targets,
+          endPose: resolved.endPose,
+          phase: 'attack',
+          fadeOutStartMs: undefined,
+        });
+      }
     }
   }
 
@@ -534,59 +573,109 @@ export class AnimationCompiler extends EventEmitter {
     const fadingChannels = new Set<string>();
     for (const anim of this.activeAnimations) {
       if (anim.fadeOutStartMs !== undefined) {
-        for (const t of anim.targetParams) fadingChannels.add(t.channel);
+        if (anim.kind === 'envelope') {
+          for (const t of anim.targetParams) fadingChannels.add(t.channel);
+        } else {
+          for (const t of anim.clip.tracks) fadingChannels.add(t.channel);
+        }
       }
     }
 
     // 6. Add active animation contributions with crossfade and endPose math.
-    //    Per-target progress (leadMs/lagMs) lets each target have its own envelope
-    //    window — skip targets whose window has not opened yet.
+    //    Clip-kind animations are sampled directly; envelope-kind use the
+    //    per-target ADSR + leadMs/lagMs path below.
     for (const anim of this.activeAnimations) {
-      // Per-target envelope may start BEFORE anim.startTime (leadMs<0); outer
-      // short-circuit removed so anticipation can land.
-      const targetPhases: AnimationPhase[] = [];
-      for (const target of anim.targetParams) {
-        const tp = this.calculateTargetProgress(anim, target, now);
-        if (tp === null) continue;
-        targetPhases.push(tp.phase);
+      if (anim.kind === 'clip') {
+        if (now < anim.startTime) continue;
+        const elapsedMs = now - anim.startTime;
+        const clipDurMs = anim.clip.duration * 1000;
+        const elapsedSec = Math.min(anim.clip.duration, elapsedMs / 1000);
+        const sampled = sampleClip(anim.clip, elapsedSec, this.config.defaultEasing);
 
-        const eased = applyEasing(tp.progress, anim.node.easing ?? this.config.defaultEasing);
-        const easedClamped = Math.max(0, Math.min(1, eased));
+        const attackMs = this.config.clipEnvelope?.attackMs ?? DEFAULT_CLIP_ATTACK_MS;
+        const releaseMs = this.config.clipEnvelope?.releaseMs ?? DEFAULT_CLIP_RELEASE_MS;
+        // Clamp envelope windows to at most half the clip duration so short clips still get a proper ramp.
+        const eA = Math.min(attackMs, clipDurMs * 0.5);
+        const eR = Math.min(releaseMs, clipDurMs * 0.5);
 
-        // Raw linear progress for oscillate uses the target's effective window.
-        const effStart = anim.startTime + (target.leadMs ?? 0);
-        const effEnd = anim.endTime + (target.lagMs ?? 0);
-        const rawProgress = Math.min(1, (now - effStart) / Math.max(1, effEnd - effStart));
-
-        let c: number;
-        const endPoseEntry = anim.endPose?.find((e) => e.channel === target.channel);
-
-        if (tp.phase === 'release' && endPoseEntry) {
-          const peak = target.targetValue * target.weight;
-          const settled = endPoseEntry.value * (endPoseEntry.weight ?? 1);
-          const releaseProgress = 1 - easedClamped;
-          c = peak + (settled - peak) * releaseProgress;
-        } else {
-          const shape = target.oscillate ? Math.sin(2 * Math.PI * target.oscillate * rawProgress) : 1;
-          c = target.targetValue * easedClamped * shape * target.weight;
+        let envelopeScale = 1;
+        let clipPhase: AnimationPhase = 'sustain';
+        if (elapsedMs < eA) {
+          envelopeScale = eA === 0 ? 1 : elapsedMs / eA;
+          clipPhase = 'attack';
+        } else if (elapsedMs > clipDurMs - eR) {
+          envelopeScale = eR === 0 ? 0 : Math.max(0, (clipDurMs - elapsedMs) / eR);
+          clipPhase = 'release';
         }
+        anim.phase = clipPhase;
 
-        // Crossfade math — unchanged: operates at anim level, orthogonal to leadMs/lagMs.
+        // Crossfade: if clip is being faded out (conflict from later-enqueued anim),
+        // fade-out scale drops 1→0 over crossfadeMs. Otherwise if ANY channel in
+        // the clip is marked fadingChannels, fade-in scale climbs 0→1 over crossfadeMs.
+        let fadeScale = 1;
         if (anim.fadeOutStartMs !== undefined) {
           const fp = crossfadeMs === 0 ? 1 : Math.min(1, Math.max(0, (now - anim.fadeOutStartMs) / crossfadeMs));
-          c *= 1 - fp;
-        } else if (fadingChannels.has(target.channel)) {
-          const crossfadeIn = crossfadeMs === 0 ? 1 : Math.min(1, Math.max(0, (now - anim.startTime) / crossfadeMs));
-          c *= crossfadeIn;
+          fadeScale = 1 - fp;
+        } else {
+          const hasConflict = anim.clip.tracks.some((t) => fadingChannels.has(t.channel));
+          if (hasConflict) {
+            fadeScale = crossfadeMs === 0 ? 1 : Math.min(1, Math.max(0, (now - anim.startTime) / crossfadeMs));
+          }
         }
 
-        contributions[target.channel] = (contributions[target.channel] ?? 0) + c;
+        for (const [ch, v] of Object.entries(sampled)) {
+          contributions[ch] = (contributions[ch] ?? 0) + v * anim.intensity * envelopeScale * fadeScale;
+        }
+        continue;
       }
 
-      // Update anim.phase for PreviewStatus observability — take the first active
-      // target's phase as the representative (nothing downstream relies on it
-      // being a specific aggregation; HUD displays it as a hint).
-      if (targetPhases.length > 0) anim.phase = targetPhases[0];
+      if (anim.kind === 'envelope') {
+        // Per-target envelope may start BEFORE anim.startTime (leadMs<0); outer
+        // short-circuit removed so anticipation can land.
+        const targetPhases: AnimationPhase[] = [];
+        for (const target of anim.targetParams) {
+          const tp = this.calculateTargetProgress(anim, target, now);
+          if (tp === null) continue;
+          targetPhases.push(tp.phase);
+
+          const eased = applyEasing(tp.progress, anim.node.easing ?? this.config.defaultEasing);
+          const easedClamped = Math.max(0, Math.min(1, eased));
+
+          // Raw linear progress for oscillate uses the target's effective window.
+          const effStart = anim.startTime + (target.leadMs ?? 0);
+          const effEnd = anim.endTime + (target.lagMs ?? 0);
+          const rawProgress = Math.min(1, (now - effStart) / Math.max(1, effEnd - effStart));
+
+          let c: number;
+          const endPoseEntry = anim.endPose?.find((e) => e.channel === target.channel);
+
+          if (tp.phase === 'release' && endPoseEntry) {
+            const peak = target.targetValue * target.weight;
+            const settled = endPoseEntry.value * (endPoseEntry.weight ?? 1);
+            const releaseProgress = 1 - easedClamped;
+            c = peak + (settled - peak) * releaseProgress;
+          } else {
+            const shape = target.oscillate ? Math.sin(2 * Math.PI * target.oscillate * rawProgress) : 1;
+            c = target.targetValue * easedClamped * shape * target.weight;
+          }
+
+          // Crossfade math — unchanged: operates at anim level, orthogonal to leadMs/lagMs.
+          if (anim.fadeOutStartMs !== undefined) {
+            const fp = crossfadeMs === 0 ? 1 : Math.min(1, Math.max(0, (now - anim.fadeOutStartMs) / crossfadeMs));
+            c *= 1 - fp;
+          } else if (fadingChannels.has(target.channel)) {
+            const crossfadeIn = crossfadeMs === 0 ? 1 : Math.min(1, Math.max(0, (now - anim.startTime) / crossfadeMs));
+            c *= crossfadeIn;
+          }
+
+          contributions[target.channel] = (contributions[target.channel] ?? 0) + c;
+        }
+
+        // Update anim.phase for PreviewStatus observability — take the first active
+        // target's phase as the representative (nothing downstream relies on it
+        // being a specific aggregation; HUD displays it as a hint).
+        if (targetPhases.length > 0) anim.phase = targetPhases[0];
+      }
     }
 
     // 7. Add baseline contributions so channels with endPose persist after
