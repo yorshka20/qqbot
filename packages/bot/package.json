@@ -16,6 +16,7 @@
     "cluster:e2e:claude": "NO_FILE_LOG=1 bun run src/cli/cluster-e2e.ts --suite claude",
     "cluster:e2e:gemini": "NO_FILE_LOG=1 bun run src/cli/cluster-e2e.ts --suite gemini",
     "cluster:e2e:codex": "NO_FILE_LOG=1 bun run src/cli/cluster-e2e.ts --suite codex",
+    "cluster-tickets:sync": "bun run src/cli/cluster-tickets-sync.ts",
     "test": "bun test",
     "test:network": "NETWORK_TESTS=1 bun test"
   },

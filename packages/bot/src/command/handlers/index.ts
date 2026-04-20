@@ -5,6 +5,7 @@ export * from './BananaCommandHandler';
 export * from './BilibiliCommandHandler';
 export * from './BuiltinCommandHandler';
 export * from './ClusterCommandHandler';
+export * from './ClusterTicketsSyncCommandHandler';
 export * from './FileCommandHandler';
 export * from './GeminiKeyModeCommandHandler';
 export * from './GroupDedupCommandHandler';

@@ -25,6 +25,7 @@
     "cluster:e2e:claude": "bun run --filter @qqbot/bot cluster:e2e:claude",
     "cluster:e2e:gemini": "bun run --filter @qqbot/bot cluster:e2e:gemini",
     "cluster:e2e:codex": "bun run --filter @qqbot/bot cluster:e2e:codex",
+    "cluster-tickets:sync": "bun run --filter @qqbot/bot cluster-tickets:sync",
     "test": "bun test packages/bot",
     "test:network": "NETWORK_TESTS=1 bun test packages/bot",
     "prepare": "husky"
