@@ -119,6 +119,12 @@ export function getMemoryApiBase(): string {
   return serverBase ? `${serverBase}/api/memory` : '/api/memory';
 }
 
+/** Base URL for read-only docs preview (repo docs + ~/.claude/*). Uses shared host when `VITE_STATIC_SERVER_BASE` is set. */
+export function getDocsApiBase(): string {
+  const serverBase = getStaticServerBase();
+  return serverBase ? `${serverBase}/api/docs` : '/api/docs';
+}
+
 // ── Per-machine backends (use VITE_LOCAL_API_BASE / same-origin) ──
 //
 // The four helpers below intentionally use `getLocalApiBase()` instead

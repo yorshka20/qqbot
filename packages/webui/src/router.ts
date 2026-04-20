@@ -24,7 +24,8 @@ export type Route =
   | { page: 'cluster' }
   | { page: 'lan' }
   | { page: 'tickets' }
-  | { page: 'logs' };
+  | { page: 'logs' }
+  | { page: 'docs' };
 
 export type PageName = Route['page'];
 
@@ -86,6 +87,10 @@ export function parseHash(): Route {
     return { page: 'logs' };
   }
 
+  if (hash === '/docs') {
+    return { page: 'docs' };
+  }
+
   const reportMatch = hash.match(/^\/report\/(.+)$/);
   if (reportMatch?.[1]) {
     return { page: 'report', id: reportMatch[1] };
@@ -137,6 +142,9 @@ export function setHash(route: Route): void {
       break;
     case 'logs':
       window.location.hash = '/logs';
+      break;
+    case 'docs':
+      window.location.hash = '/docs';
       break;
   }
 }

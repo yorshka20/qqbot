@@ -8,6 +8,7 @@
 
 import {
   BarChart3,
+  BookMarked,
   BookOpen,
   Brain,
   Database,
@@ -26,6 +27,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ClusterPage,
   DailyStatsPage,
+  DocsPage,
   FilesPage,
   InsightsPage,
   LanPage,
@@ -78,6 +80,18 @@ export default function App() {
               }`}
             >
               Output 资源
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate({ page: 'docs' })}
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+                isActivePage(route, 'docs')
+                  ? 'bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+              }`}
+            >
+              <BookMarked className="w-4 h-4" />
+              文档
             </button>
             <button
               type="button"
@@ -246,6 +260,7 @@ export default function App() {
       {route.page === 'tickets' && <TicketsPage />}
       {route.page === 'lan' && <LanPage />}
       {route.page === 'logs' && <LogsPage />}
+      {route.page === 'docs' && <DocsPage />}
     </div>
   );
 }

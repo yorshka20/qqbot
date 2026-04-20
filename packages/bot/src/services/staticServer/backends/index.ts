@@ -3,12 +3,13 @@
  * To add a backend: register in `buildBackendRegistry()` with a stable `id` string.
  *
  * Valid `id` values (for `lanRelay.*.disabledStaticBackends` in config.d):
- *   files, cluster, lan, tickets, reports, insights, moments, zhihu, qdrant, stats, memory, output
+ *   files, cluster, lan, tickets, reports, insights, moments, zhihu, qdrant, stats, memory, output, docs, logs
  */
 
 import { getRepoRoot } from '@/utils/repoRoot';
 import { ClusterAPIBackend } from './ClusterAPIBackend';
 import { DailyStatsBackend } from './DailyStatsBackend';
+import { DocsPreviewBackend } from './DocsPreviewBackend';
 import { FileManagerBackend } from './FileManagerBackend';
 import { InsightsBackend } from './InsightsBackend';
 import { LanAPIBackend } from './LanAPIBackend';
@@ -56,6 +57,7 @@ function buildBackendRegistry(): BackendFactory[] {
     { id: 'stats', create: () => new DailyStatsBackend() },
     { id: 'memory', create: () => new MemoryStatusBackend() },
     { id: 'logs', create: () => new LogsBackend() },
+    { id: 'docs', create: () => new DocsPreviewBackend() },
     { id: 'output', create: (ctx) => new OutputStaticHost(ctx.baseDir) },
   ];
 }

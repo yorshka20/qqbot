@@ -10,6 +10,17 @@ export interface ListResponse {
   items: FileItem[];
 }
 
+export interface DocsRootInfo {
+  id: string;
+  label: string;
+  absPath: string;
+  exists: boolean;
+}
+
+export interface DocsRootsResponse {
+  roots: DocsRootInfo[];
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Report Types
 // ────────────────────────────────────────────────────────────────────────────

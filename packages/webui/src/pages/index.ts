@@ -5,6 +5,7 @@
 
 export { ClusterPage } from './cluster';
 export { DailyStatsPage } from './daily-stats';
+export { DocsPage } from './docs';
 export { FilesPage } from './files';
 export { InsightsPage } from './insights';
 export { LanPage } from './lan';

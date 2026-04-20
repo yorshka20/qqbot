@@ -1,5 +1,6 @@
 import {
   getClusterApiBase,
+  getDocsApiBase,
   getFileApiBase,
   getInsightsApiBase,
   getLanApiBase,
@@ -26,6 +27,7 @@ import type {
   ClusterWorkerHistoryEntry,
   ClusterWorkerRegistration,
   DailyStatsResponse,
+  DocsRootsResponse,
   EnrichedWorkerRegistration,
   EntitiesResponse,
   InsightDetailResponse,
@@ -62,6 +64,10 @@ import type {
 
 function apiBase(): string {
   return getFileApiBase();
+}
+
+function docsApiBase(): string {
+  return getDocsApiBase();
 }
 
 function reportApiBase(): string {
@@ -121,6 +127,41 @@ export async function renameFile(path: string, newName: string): Promise<void> {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Rename failed: ${res.status}`);
   }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Docs preview API (read-only; roots: docs, claude-learnings, claude-workbook)
+// ────────────────────────────────────────────────────────────────────────────
+
+export async function listDocsRoots(): Promise<DocsRootsResponse> {
+  const res = await fetch(`${docsApiBase()}/roots`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List docs roots failed: ${res.status}`);
+  }
+  return res.json() as Promise<DocsRootsResponse>;
+}
+
+export async function listDocs(root: string, path: string): Promise<ListResponse> {
+  const params = new URLSearchParams();
+  params.set('root', root);
+  if (path) {
+    params.set('path', path);
+  }
+  const res = await fetch(`${docsApiBase()}/list?${params}`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List docs failed: ${res.status}`);
+  }
+  return res.json() as Promise<ListResponse>;
+}
+
+/** GET /api/docs/raw — returns Response (caller inspects Content-Type / body). */
+export function docsRawUrl(root: string, path: string): string {
+  const params = new URLSearchParams();
+  params.set('root', root);
+  params.set('path', path);
+  return `${docsApiBase()}/raw?${params}`;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
