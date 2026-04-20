@@ -1109,6 +1109,13 @@
   //     // baseline values written by endPose harvesting. A value of 45000 means
   //     // the settled deviation halves roughly every 45 seconds. Default: 45000.
   //     // "baselineHalfLifeMs": 45000
+  //     // clipEnvelope: attack/release ramp for clip-kind actions (ms).
+  //     // attackMs: linear fade-in duration (default 200, clamped to duration*0.5).
+  //     // releaseMs: linear fade-out duration (default 300, clamped to duration*0.5).
+  //     // "clipEnvelope": {
+  //     //   "attackMs": 200,
+  //     //   "releaseMs": 300
+  //     // },
   //     // jitter: randomization applied to `enqueueTagAnimation` calls
   //     // (LLM-authored tags). duration default ±0.15 (=±15%), intensity
   //     // default ±0.10 (=±10%), intensityFloor clamps post-jitter intensity

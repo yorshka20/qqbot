@@ -200,3 +200,99 @@ Semantic channel names (e.g. `head.yaw`, `mouth.smile`, `arm.right`) are rendere
 ```
 
 See `config.example.jsonc` for the full annotated avatar config block.
+
+---
+
+## Clip Action Path
+
+The avatar compiler supports two parallel action kinds: **envelope** (the ADSR
+param-target path described above) and **clip** (keyframe-based VRM/channel
+animation driven by a JSON file).
+
+### ActionMapEntry with `kind: 'clip'`
+
+```json
+"formal_bow": {
+  "kind": "clip",
+  "category": "movement",
+  "description": "正式鞠躬——表示尊敬或郑重问候",
+  "clip": "clips/formal-bow.json",
+  "defaultDuration": 1800,
+  "endPose": [
+    { "channel": "vrm.hips.x", "value": 0.0, "weight": 0.5 }
+  ]
+}
+```
+
+The `clip` field is a path relative to the action-map JSON file. At startup
+`ActionMap.preloadClips()` loads and caches all clip files referenced by
+`kind: 'clip'` entries.
+
+### Clip schema
+
+```json
+{
+  "id": "formal-bow",
+  "duration": 1.8,
+  "tracks": [
+    {
+      "channel": "vrm.hips.x",
+      "easing": "easeInOutQuad",
+      "keyframes": [
+        { "time": 0.0, "value": 0.0 },
+        { "time": 0.6, "value": 0.4 },
+        { "time": 1.8, "value": 0.0 }
+      ]
+    }
+  ]
+}
+```
+
+- `duration`: clip length in seconds.
+- `tracks[].channel`: semantic channel id (e.g. `vrm.hips.x`).
+- `tracks[].easing`: optional easing type (defaults to `easeInOutCubic`).
+- `tracks[].keyframes`: ascending-time `{ time, value }` pairs.
+
+### Clip envelope semantics
+
+When a clip action starts the compiler applies a linear fade-in (`attackMs`,
+default **200 ms**) and fade-out (`releaseMs`, default **300 ms**). Both are
+clamped to at most `duration * 0.5` so short clips never clip-envelope past the
+midpoint. Intensity is a linear multiplier applied per-tick to the sampled
+value.
+
+Configure via `compiler.clipEnvelope` in `config.jsonc`:
+
+```jsonc
+"clipEnvelope": {
+  "attackMs": 200,
+  "releaseMs": 300
+}
+```
+
+### Crossfade
+
+Crossfade rules for clip actions are identical to envelope actions: when a new
+animation starts on channels already driven by an active clip, the old clip
+fades out over `crossfadeMs` while the new one fades in.
+
+### Channel registries
+
+Two separate channel registries exist:
+- `CHANNELS` — Live2D/Cubism semantic channels (e.g. `head.yaw`, `arm.right`).
+  Used by envelope-kind actions and the VTSDriver.
+- `VRM_CHANNELS` — VRM humanoid bone rotation channels (e.g. `vrm.hips.x`,
+  `vrm.rightUpperArm.z`). Used by clip-kind actions targeting the VRM renderer.
+
+Both are exported from `packages/avatar/src/channels/index.ts`.
+
+### Debug: `/clip/:name` preview route
+
+The preview server exposes a debug endpoint:
+
+```
+GET http://localhost:8002/clip/<action-name>
+```
+
+Returns the first preloaded `IdleClip` JSON for the named action (404 if not a
+clip action or unknown).
