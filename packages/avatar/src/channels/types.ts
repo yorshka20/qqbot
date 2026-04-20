@@ -24,12 +24,12 @@ export interface ChannelInfo {
   /** One-line human-readable description. */
   description: string;
   /**
-   * Cubism SDK parameter id the channel represents. This is the *reason* the
-   * channel exists — our model of "what channels there are" is defined by
-   * "what Cubism params we want to drive". Keep in sync with the renderer's
-   * `cubism-channel-map.ts` (separate repo, manually mirrored).
+   * Cubism SDK parameter id the channel represents. Required for Cubism-domain
+   * channels (head.*, body.*, eye.*, mouth.*, brow, cheek.puff, breath, arm.*).
+   * Absent for namespaces that only exist in non-Cubism renderers — e.g.
+   * `vrm.*` channels that target VRM humanoid bones / expressions.
    */
-  cubismParam: string;
+  cubismParam?: string;
   /**
    * Optional scale applied when translating to the Cubism domain. Used for
    * channels whose natural unit differs from Cubism's (e.g. body offsets

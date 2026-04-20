@@ -75,11 +75,16 @@ export interface ParamTarget {
   lagMs?: number;
 }
 
+import type { IdleClip } from './layers/clips/types';
+
 /**
- * An actively playing animation instance.
- * Tracks the runtime state of an animation as it progresses.
+ * Runtime state for an envelope-kind animation — legacy ADSR + ParamTarget
+ * path. The compiler applies attack/sustain/release per target (with optional
+ * leadMs/lagMs windows) and multiplies `targetParams[i].targetValue` (already
+ * × intensity at resolve time) by the envelope shape each tick.
  */
-export interface ActiveAnimation {
+export interface ActiveEnvelopeAnimation {
+  kind: 'envelope';
   /** The source state node for this animation */
   node: StateNode;
   /** Wall-clock time when this animation started (ms) */
@@ -90,18 +95,40 @@ export interface ActiveAnimation {
   targetParams: ParamTarget[];
   /** Current lifecycle phase of this animation */
   phase: AnimationPhase;
-  /**
-   * Optional end-pose to crossfade into once the main animation completes.
-   * Populated from `ResolvedAction.endPose` when the action map entry has one.
-   */
+  /** Optional end-pose to crossfade into once the main animation completes. */
   endPose?: ActionEndPoseEntry[];
-  /**
-   * Wall-clock time (ms) at which the fade-out crossfade should begin.
-   * Set by the compiler when transitioning from the sustain to release phase
-   * with an active end pose.
-   */
+  /** Wall-clock time (ms) at which the fade-out crossfade should begin. */
   fadeOutStartMs?: number;
 }
+
+/**
+ * Runtime state for a clip-kind animation — samples a preloaded IdleClip per
+ * tick and multiplies by intensity × envelope (attack/release constants) ×
+ * crossfade. Intensity is NOT pre-applied to clip samples — it is multiplied
+ * per-frame in the compiler's tick loop, mirroring the slerp(bind, clip,
+ * intensity) semantic in linear approximation.
+ */
+export interface ActiveClipAnimation {
+  kind: 'clip';
+  /** The source state node for this animation */
+  node: StateNode;
+  /** Wall-clock time when this animation started (ms) */
+  startTime: number;
+  /** Wall-clock time when this animation ends (ms) */
+  endTime: number;
+  /** Preloaded IdleClip — sampled directly per tick. */
+  clip: IdleClip;
+  /** Per-frame multiplier. NOT pre-applied; tick multiplies every frame. */
+  intensity: number;
+  /** Current lifecycle phase — attack at start, release near end, sustain in between. */
+  phase: AnimationPhase;
+  /** Optional end-pose to persist selected channels after clip finishes. */
+  endPose?: ActionEndPoseEntry[];
+  /** Wall-clock time (ms) at which the fade-out crossfade should begin. */
+  fadeOutStartMs?: number;
+}
+
+export type ActiveAnimation = ActiveEnvelopeAnimation | ActiveClipAnimation;
 
 /**
  * Output frame data containing computed parameter values
@@ -133,32 +160,44 @@ export interface ActionEndPoseEntry {
   weight?: number;
 }
 
-/**
- * The resolved output of `ActionMap.resolveAction()`.
- * Bundles the scaled per-frame targets together with the optional end-pose
- * and hold duration so callers can drive both the main animation and the
- * subsequent crossfade in one return value.
- */
-export interface ResolvedAction {
-  /** Scaled parameter targets for the main animation phase. */
-  targets: ParamTarget[];
-  /**
-   * Optional end-pose entries to crossfade into after the main animation
-   * completes. Values are NOT scaled by intensity.
-   */
-  endPose?: ActionEndPoseEntry[];
-  /**
-   * Optional duration in ms to hold the end pose before releasing back to
-   * the baseline. Copied through from the action-map entry unchanged.
-   */
-  holdMs?: number;
-}
+/** Discriminator for action execution strategy. */
+export type ActionKind = 'envelope' | 'clip';
 
 /**
- * A single entry in the action map describing which parameters
- * are affected by a named action.
+ * The resolved output of `ActionMap.resolveAction()`.
+ * Bundles either the scaled per-frame targets (envelope path) or a preloaded
+ * IdleClip (clip path) together with the optional end-pose / hold duration.
  */
-export interface ActionMapEntry {
+export type ResolvedAction =
+  | {
+      kind: 'envelope';
+      /** Scaled (× intensity) parameter targets for the main animation phase. */
+      targets: ParamTarget[];
+      endPose?: ActionEndPoseEntry[];
+      holdMs?: number;
+      /** Default duration in ms — informational; caller uses StateNode.duration as authoritative. */
+      duration: number;
+      /** Original intensity carried through (envelope already applied it to targetValue). */
+      intensity: number;
+    }
+  | {
+      kind: 'clip';
+      /** Preloaded IdleClip — AnimationCompiler samples directly, no re-read. */
+      clip: IdleClip;
+      endPose?: ActionEndPoseEntry[];
+      holdMs?: number;
+      duration: number;
+      /** NOT pre-applied to clip samples — caller multiplies per tick for slerp-like scaling. */
+      intensity: number;
+    };
+
+/**
+ * Envelope-path action map entry — the legacy ADSR + ParamTarget format.
+ * This is what every current `default-action-map.json` entry uses.
+ */
+export interface ActionMapEntryEnvelope {
+  /** Discriminator. Absent defaults to 'envelope' for back-compat with existing action-map.json files. */
+  kind?: 'envelope';
   /** List of parameters and their default target values + weights */
   params: ParamTarget[];
   /** Default duration for this action in milliseconds */
@@ -197,6 +236,25 @@ export interface ActionMapEntry {
    */
   accompaniment?: ParamTarget[];
 }
+
+/**
+ * Clip-path action map entry — samples a pre-converted IdleClip JSON. Path
+ * is relative to the action-map JSON's directory (typically
+ * `packages/avatar/assets/`). A string array denotes a variant pool —
+ * `resolveAction` picks one at random, same semantics as envelope variants.
+ */
+export interface ActionMapEntryClip {
+  kind: 'clip';
+  clip: string | string[];
+  /** Override default duration; else derived from clip.duration * 1000 at load time. */
+  defaultDuration?: number;
+  category?: string;
+  description?: string;
+  endPose?: ActionEndPoseEntry[];
+  holdMs?: number;
+}
+
+export type ActionMapEntry = ActionMapEntryEnvelope | ActionMapEntryClip;
 
 /**
  * Public summary of a single action. Emitted by `ActionMap.listActions()` and
@@ -285,5 +343,15 @@ export interface CompilerConfig {
     intensity?: number;
     /** Minimum floor for jittered intensity (post-clamp). Default 0.1. */
     intensityFloor?: number;
+  };
+  /**
+   * Clip action-path envelope tunables. `attackMs` ramps the clip contribution
+   * from 0 to 1 at start so the posture doesn't snap to the first frame;
+   * `releaseMs` ramps back to 0 before the clip ends. Both clamped to half
+   * the clip duration. Defaults: attackMs=200, releaseMs=300.
+   */
+  clipEnvelope?: {
+    attackMs?: number;
+    releaseMs?: number;
   };
 }
