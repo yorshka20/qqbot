@@ -17,18 +17,46 @@
       { "channel": "head.pitch", "targetValue": -18.0, "weight": 1.0, "oscillate": 2 },
       { "channel": "body.y", "targetValue": -0.25, "weight": 0.6, "oscillate": 2 }
     ],
+    "accompaniment": [
+      { "channel": "body.y", "targetValue": -0.05, "weight": 0.4, "leadMs": -50 }
+    ],
     "defaultDuration": 1200
   },
-  "wave": {
-    "category": "movement",
-    "description": "右手挥动,伴随身体轻晃——打招呼或告别",
-    "params": [
-      { "channel": "arm.right", "targetValue": 7.0, "weight": 1.0, "oscillate": 2.5 },
-      { "channel": "head.roll", "targetValue": 6.0, "weight": 0.5, "oscillate": 2.5 },
-      { "channel": "body.x", "targetValue": 0.1, "weight": 0.3, "oscillate": 2.5 }
-    ],
-    "defaultDuration": 1800
-  },
+  "wave": [
+    {
+      "category": "movement",
+      "description": "右手挥动,伴随身体轻晃——打招呼或告别",
+      "params": [
+        { "channel": "arm.right", "targetValue": 7.0, "weight": 1.0, "oscillate": 2.5 },
+        { "channel": "head.roll", "targetValue": 6.0, "weight": 0.5, "oscillate": 2.5 },
+        { "channel": "body.x", "targetValue": 0.1, "weight": 0.3, "oscillate": 2.5 }
+      ],
+      "accompaniment": [
+        { "channel": "head.roll", "targetValue": 3.0, "weight": 0.3, "leadMs": -80 }
+      ],
+      "defaultDuration": 1800
+    },
+    {
+      "category": "movement",
+      "description": "右手挥动,伴随身体轻晃——打招呼或告别",
+      "params": [
+        { "channel": "arm.right", "targetValue": 8.0, "weight": 1.0, "oscillate": 3 },
+        { "channel": "head.roll", "targetValue": 5.0, "weight": 0.5, "oscillate": 3 },
+        { "channel": "body.x", "targetValue": 0.08, "weight": 0.3, "oscillate": 3 }
+      ],
+      "defaultDuration": 2100
+    },
+    {
+      "category": "movement",
+      "description": "右手挥动,伴随身体轻晃——打招呼或告别",
+      "params": [
+        { "channel": "arm.right", "targetValue": 6.5, "weight": 1.0, "oscillate": 2 },
+        { "channel": "head.roll", "targetValue": 7.0, "weight": 0.5, "oscillate": 2 },
+        { "channel": "body.x", "targetValue": 0.12, "weight": 0.3, "oscillate": 2 }
+      ],
+      "defaultDuration": 1600
+    }
+  ],
   "raise_hand": {
     "category": "movement",
     "description": "举起右手,像在示意或强调某个观点",
@@ -184,6 +212,10 @@
       { "channel": "arm.right", "targetValue": 9.0, "weight": 1.0 },
       { "channel": "head.pitch", "targetValue": 3.0, "weight": 0.5 },
       { "channel": "body.z", "targetValue": 0.1, "weight": 0.4 }
+    ],
+    "accompaniment": [
+      { "channel": "head.yaw", "targetValue": 5.0, "weight": 0.4, "leadMs": -100 },
+      { "channel": "body.x", "targetValue": 0.08, "weight": 0.3, "leadMs": -120 }
     ],
     "endPose": [
       { "channel": "arm.right", "value": 5.5, "weight": 0.9 }
