@@ -11,7 +11,16 @@ import {
 } from './layers/audio-envelope-config';
 import { LayerManager } from './layers/LayerManager';
 import type { AnimationLayer } from './layers/types';
-import type { ActionSummary, ActiveAnimation, CompilerConfig, FrameOutput, SpringParams, StateNode } from './types';
+import type {
+  ActionSummary,
+  ActiveAnimation,
+  AnimationPhase,
+  CompilerConfig,
+  FrameOutput,
+  ParamTarget,
+  SpringParams,
+  StateNode,
+} from './types';
 
 const DEFAULT_SPRING: SpringParams = { omega: 12, zeta: 1 };
 
@@ -48,6 +57,12 @@ const DEFAULT_CONFIG: CompilerConfig = {
 const DEFAULT_CROSSFADE_MS = 250;
 /** Default half-life in ms for exponential baseline decay. */
 const DEFAULT_BASELINE_HALF_LIFE_MS = 45_000;
+/** Default ± relative jitter applied to enqueued tag-animation duration (15%). */
+const DEFAULT_DURATION_JITTER = 0.15;
+/** Default ± relative jitter applied to enqueued tag-animation intensity (10%). */
+const DEFAULT_INTENSITY_JITTER = 0.1;
+/** Default minimum intensity after jitter clamping. */
+const DEFAULT_INTENSITY_FLOOR = 0.1;
 
 export class AnimationCompiler extends EventEmitter {
   private readonly config: CompilerConfig;
@@ -62,6 +77,8 @@ export class AnimationCompiler extends EventEmitter {
   private channelBaseline: Map<string, number> = new Map();
   /** Runtime overrides for envelope/crossfade tunables — take effect next tick. */
   private envelopeOverrides: { crossfadeMs?: number; baselineHalfLifeMs?: number } = {};
+  /** Runtime overrides for jitter tunables — take effect on next enqueueTagAnimation call. */
+  private jitterOverrides: { duration?: number; intensity?: number; intensityFloor?: number } = {};
   private lastTickMs = 0;
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private tickCount = 0;
@@ -331,6 +348,42 @@ export class AnimationCompiler extends EventEmitter {
       ],
     });
 
+    // Section 5: compiler:jitter — duration + intensity randomization
+    const jitter = this.resolveJitter();
+    sections.push({
+      id: 'compiler:jitter',
+      label: 'Randomization',
+      params: [
+        {
+          id: 'durationJitter',
+          label: 'Duration Jitter',
+          min: 0,
+          max: 0.5,
+          step: 0.01,
+          value: jitter.duration,
+          default: DEFAULT_DURATION_JITTER,
+        },
+        {
+          id: 'intensityJitter',
+          label: 'Intensity Jitter',
+          min: 0,
+          max: 0.5,
+          step: 0.01,
+          value: jitter.intensity,
+          default: DEFAULT_INTENSITY_JITTER,
+        },
+        {
+          id: 'intensityFloor',
+          label: 'Intensity Floor',
+          min: 0,
+          max: 0.5,
+          step: 0.01,
+          value: jitter.intensityFloor,
+          default: DEFAULT_INTENSITY_FLOOR,
+        },
+      ],
+    });
+
     return sections;
   }
 
@@ -358,6 +411,17 @@ export class AnimationCompiler extends EventEmitter {
         this.envelopeOverrides.crossfadeMs = value;
       } else if (paramId === 'baselineHalfLifeMs') {
         this.envelopeOverrides.baselineHalfLifeMs = value;
+      }
+      return;
+    }
+
+    if (sectionId === 'compiler:jitter') {
+      if (paramId === 'durationJitter') {
+        this.jitterOverrides.duration = value;
+      } else if (paramId === 'intensityJitter') {
+        this.jitterOverrides.intensity = value;
+      } else if (paramId === 'intensityFloor') {
+        this.jitterOverrides.intensityFloor = value;
       }
       return;
     }
@@ -475,48 +539,54 @@ export class AnimationCompiler extends EventEmitter {
     }
 
     // 6. Add active animation contributions with crossfade and endPose math.
+    //    Per-target progress (leadMs/lagMs) lets each target have its own envelope
+    //    window — skip targets whose window has not opened yet.
     for (const anim of this.activeAnimations) {
-      if (now < anim.startTime) continue;
-      const progress = this.calculateProgress(anim, now);
-      const eased = applyEasing(progress, anim.node.easing ?? this.config.defaultEasing);
-      // Clamp eased to [0,1] to handle holdMs overshoot where calculateProgress
-      // may return slightly negative values (elapsed > node.duration).
-      const easedClamped = Math.max(0, Math.min(1, eased));
-      // Raw linear progress [0,1] — drives oscillate sinusoidal shape independently
-      // of the ADSR envelope.
-      const rawProgress = Math.min(1, (now - anim.startTime) / Math.max(1, anim.node.duration));
-
+      // Per-target envelope may start BEFORE anim.startTime (leadMs<0); outer
+      // short-circuit removed so anticipation can land.
+      const targetPhases: AnimationPhase[] = [];
       for (const target of anim.targetParams) {
+        const tp = this.calculateTargetProgress(anim, target, now);
+        if (tp === null) continue;
+        targetPhases.push(tp.phase);
+
+        const eased = applyEasing(tp.progress, anim.node.easing ?? this.config.defaultEasing);
+        const easedClamped = Math.max(0, Math.min(1, eased));
+
+        // Raw linear progress for oscillate uses the target's effective window.
+        const effStart = anim.startTime + (target.leadMs ?? 0);
+        const effEnd = anim.endTime + (target.lagMs ?? 0);
+        const rawProgress = Math.min(1, (now - effStart) / Math.max(1, effEnd - effStart));
+
         let c: number;
         const endPoseEntry = anim.endPose?.find((e) => e.channel === target.channel);
 
-        if (anim.phase === 'release' && endPoseEntry) {
-          // Monotonic interpolation from peak toward settled end-pose.
-          // Oscillation is intentionally suppressed here so the settle path
-          // doesn't get corrupted by a residual sinusoidal term.
+        if (tp.phase === 'release' && endPoseEntry) {
           const peak = target.targetValue * target.weight;
           const settled = endPoseEntry.value * (endPoseEntry.weight ?? 1);
-          const releaseProgress = 1 - easedClamped; // 0 at release start, 1 at end
+          const releaseProgress = 1 - easedClamped;
           c = peak + (settled - peak) * releaseProgress;
         } else {
-          // Normal ADSR path: oscillation * eased envelope.
           const shape = target.oscillate ? Math.sin(2 * Math.PI * target.oscillate * rawProgress) : 1;
           c = target.targetValue * easedClamped * shape * target.weight;
         }
 
-        // Apply crossfade scaling.
+        // Crossfade math — unchanged: operates at anim level, orthogonal to leadMs/lagMs.
         if (anim.fadeOutStartMs !== undefined) {
-          // Old animation: fade out over crossfadeMs
           const fp = crossfadeMs === 0 ? 1 : Math.min(1, Math.max(0, (now - anim.fadeOutStartMs) / crossfadeMs));
           c *= 1 - fp;
         } else if (fadingChannels.has(target.channel)) {
-          // New animation replacing a fading-out one: fade in conflicting channels
           const crossfadeIn = crossfadeMs === 0 ? 1 : Math.min(1, Math.max(0, (now - anim.startTime) / crossfadeMs));
           c *= crossfadeIn;
         }
 
         contributions[target.channel] = (contributions[target.channel] ?? 0) + c;
       }
+
+      // Update anim.phase for PreviewStatus observability — take the first active
+      // target's phase as the representative (nothing downstream relies on it
+      // being a specific aggregation; HUD displays it as a hint).
+      if (targetPhases.length > 0) anim.phase = targetPhases[0];
     }
 
     // 7. Add baseline contributions so channels with endPose persist after
@@ -588,23 +658,60 @@ export class AnimationCompiler extends EventEmitter {
     return this.envelopeOverrides.baselineHalfLifeMs ?? this.config.baselineHalfLifeMs ?? DEFAULT_BASELINE_HALF_LIFE_MS;
   }
 
-  private calculateProgress(anim: ActiveAnimation, now: number): number {
-    const elapsed = now - anim.startTime;
-    const totalDuration = anim.node.duration;
-    const attackTime = totalDuration * this.config.attackRatio;
-    const releaseTime = totalDuration * this.config.releaseRatio;
-    const sustainEnd = totalDuration - releaseTime;
+  private resolveJitter(): { duration: number; intensity: number; intensityFloor: number } {
+    const cfg = this.config.jitter;
+    return {
+      duration: this.jitterOverrides.duration ?? cfg?.duration ?? DEFAULT_DURATION_JITTER,
+      intensity: this.jitterOverrides.intensity ?? cfg?.intensity ?? DEFAULT_INTENSITY_JITTER,
+      intensityFloor: this.jitterOverrides.intensityFloor ?? cfg?.intensityFloor ?? DEFAULT_INTENSITY_FLOOR,
+    };
+  }
 
+  /**
+   * Public read-through for consumers (AvatarService.enqueueTagAnimation)
+   * that need to apply the currently-effective jitter. Accounts for HUD
+   * tunable overrides.
+   */
+  getEffectiveJitter(): { duration: number; intensity: number; intensityFloor: number } {
+    return this.resolveJitter();
+  }
+
+  /**
+   * Per-target envelope progress. Replaces the old per-animation calculateProgress
+   * so each ParamTarget can have its own leadMs/lagMs offset — supports
+   * anticipation / secondary motion / follow-through at the authoring layer.
+   *
+   * Returns null when `now` is outside this target's effective window (either
+   * before `anim.startTime + leadMs` or after `anim.endTime + lagMs`); callers
+   * skip such targets this tick so they contribute 0.
+   */
+  private calculateTargetProgress(
+    anim: ActiveAnimation,
+    target: ParamTarget,
+    now: number,
+  ): { progress: number; phase: AnimationPhase } | null {
+    const effStart = anim.startTime + (target.leadMs ?? 0);
+    const effEnd = anim.endTime + (target.lagMs ?? 0);
+    if (now < effStart) return null;
+    const elapsed = now - effStart;
+    const duration = effEnd - effStart;
+    if (duration <= 0) return { progress: 0, phase: 'release' };
+    const attackTime = duration * this.config.attackRatio;
+    const releaseTime = duration * this.config.releaseRatio;
+    const sustainEnd = duration - releaseTime;
     if (elapsed < attackTime) {
-      anim.phase = 'attack';
-      return attackTime === 0 ? 1 : elapsed / attackTime;
+      return { progress: attackTime === 0 ? 1 : elapsed / attackTime, phase: 'attack' };
     }
     if (elapsed < sustainEnd) {
-      anim.phase = 'sustain';
-      return 1;
+      return { progress: 1, phase: 'sustain' };
     }
-    anim.phase = 'release';
-    return releaseTime === 0 ? 0 : 1 - (elapsed - sustainEnd) / releaseTime;
+    if (elapsed < duration) {
+      return {
+        progress: releaseTime === 0 ? 0 : 1 - (elapsed - sustainEnd) / releaseTime,
+        phase: 'release',
+      };
+    }
+    return null;
   }
 }
 

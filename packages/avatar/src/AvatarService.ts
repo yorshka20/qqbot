@@ -345,20 +345,23 @@ export class AvatarService {
       return;
     }
     const registered = this.compiler.getActionDuration(tag.action);
-    const duration = registered ?? 1500;
-    // Log the dispatch so operators can trace LLM-emitted actions through to
-    // the compiler. `registered=null` means the compiler has no definition
-    // for this action name (likely a typo or missing config entry) — the
-    // animation will still enqueue but play the fallback 1500ms hold, which
-    // is usually why "the LLM said X but the avatar didn't X".
+    const baseDuration = registered ?? 1500;
+
+    // Apply jitter via the compiler's effective override so HUD tunable changes
+    // flow through immediately. NOT applied in toStateNodes() — state-transition
+    // animations are orchestration-layer and stay deterministic.
+    const { duration: dJ, intensity: iJ, intensityFloor } = this.compiler.getEffectiveJitter();
+    const duration = Math.max(1, Math.round(baseDuration * (1 + (Math.random() * 2 - 1) * dJ)));
+    const intensity = Math.max(intensityFloor, Math.min(1, tag.intensity * (1 + (Math.random() * 2 - 1) * iJ)));
+
     logger.info(
-      `[AvatarService] enqueueTagAnimation | action=${tag.action} emotion=${tag.emotion} intensity=${tag.intensity.toFixed(2)} duration=${duration}ms registered=${registered != null}`,
+      `[AvatarService] enqueueTagAnimation | action=${tag.action} emotion=${tag.emotion} intensity=${intensity.toFixed(2)} (base=${tag.intensity.toFixed(2)}) duration=${duration}ms (base=${baseDuration}ms) registered=${registered != null}`,
     );
     this.compiler.enqueue([
       {
         action: tag.action,
         emotion: tag.emotion,
-        intensity: tag.intensity,
+        intensity,
         duration,
         easing: 'easeInOutCubic',
         timestamp: Date.now(),

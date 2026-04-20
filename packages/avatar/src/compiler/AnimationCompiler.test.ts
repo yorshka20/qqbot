@@ -573,3 +573,127 @@ describe('AnimationCompiler endPose baseline persistence', () => {
     expect('head.yaw' in compiler.getCurrentParams()).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Per-target leadMs/lagMs timing tests (Task 2 additions)
+// ---------------------------------------------------------------------------
+describe('AnimationCompiler — per-target leadMs timing', () => {
+  let nowRef: { t: number };
+  let dateSpy: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    nowRef = { t: 10_000 };
+    dateSpy = spyOn(Date, 'now').mockImplementation(() => nowRef.t);
+  });
+  afterEach(() => {
+    dateSpy.mockRestore();
+  });
+
+  test('target with leadMs<0 starts contributing before anim.startTime', async () => {
+    // Write a temp action map file with a leadMs-anticipated accompaniment target.
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'lead-'));
+    const mapPath = join(dir, 'map.json');
+    writeFileSync(
+      mapPath,
+      JSON.stringify({
+        test_action: {
+          params: [{ channel: 'main', targetValue: 1, weight: 1 }],
+          accompaniment: [{ channel: 'lead', targetValue: 1, weight: 1, leadMs: -200 }],
+          defaultDuration: 1000,
+        },
+      }),
+    );
+
+    try {
+      const compiler = new AnimationCompiler(
+        { fps: 60, outputFps: 60, attackRatio: 0.2, releaseRatio: 0.3, defaultEasing: 'linear', smoothingFactor: 0 },
+        mapPath,
+      );
+
+      // Schedule anim to start at nowRef.t + 500 (i.e. 500ms in the future so we
+      // can observe the anticipation window before the "main" target opens).
+      const startAt = nowRef.t + 500;
+      compiler.enqueue([
+        {
+          action: 'test_action',
+          emotion: 'neutral',
+          intensity: 1,
+          duration: 1000,
+          easing: 'linear',
+          timestamp: startAt,
+        },
+      ]);
+
+      // Advance to 350ms wall-clock time — anim hasn't started (500ms away) but
+      // the lead target should already be active (leadMs=-200, so effStart = startAt - 200 = t+300).
+      nowRef.t += 350;
+      (compiler as any).tick();
+      const p1 = compiler.getCurrentParams();
+      // Lead target effStart was 350ms ago ... wait recalc:
+      // We advanced t by 350, so now = 10_000 + 350 = 10_350.
+      // startAt = 10_500; effStart of 'lead' = 10_500 - 200 = 10_300.
+      // elapsed = 10_350 - 10_300 = 50ms into a 1000ms envelope -> attack phase.
+      expect(p1.lead).toBeGreaterThan(0);
+      expect(p1.main ?? 0).toBe(0); // main hasn't started yet (startAt=10_500 > now=10_350)
+
+      // Advance past startAt — main target kicks in.
+      nowRef.t = 10_600; // 100ms past startAt
+      (compiler as any).tick();
+      const p2 = compiler.getCurrentParams();
+      expect(p2.main).toBeGreaterThan(0);
+      expect(p2.lead).toBeGreaterThan(0);
+
+      compiler.stop();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// compiler:jitter tunable section tests
+// ---------------------------------------------------------------------------
+describe('AnimationCompiler — compiler:jitter tunable section', () => {
+  test('listTunableParams includes compiler:jitter section with 3 params', () => {
+    const compiler = new AnimationCompiler();
+    const sections = compiler.listTunableParams();
+    const jitter = sections.find((s) => s.id === 'compiler:jitter');
+    expect(jitter).toBeDefined();
+    const ids = jitter!.params.map((p) => p.id).sort();
+    expect(ids).toEqual(['durationJitter', 'intensityFloor', 'intensityJitter']);
+    expect(jitter!.params.find((p) => p.id === 'durationJitter')!.default).toBeCloseTo(0.15);
+    expect(jitter!.params.find((p) => p.id === 'intensityJitter')!.default).toBeCloseTo(0.1);
+    expect(jitter!.params.find((p) => p.id === 'intensityFloor')!.default).toBeCloseTo(0.1);
+  });
+
+  test('setTunableParam(compiler:jitter, durationJitter, 0.3) overrides effective jitter', () => {
+    const compiler = new AnimationCompiler();
+    expect(compiler.getEffectiveJitter().duration).toBeCloseTo(0.15);
+    compiler.setTunableParam('compiler:jitter', 'durationJitter', 0.3);
+    expect(compiler.getEffectiveJitter().duration).toBeCloseTo(0.3);
+  });
+
+  test('setTunableParam(compiler:jitter, intensityJitter, 0.25) overrides intensity axis only', () => {
+    const compiler = new AnimationCompiler();
+    compiler.setTunableParam('compiler:jitter', 'intensityJitter', 0.25);
+    const eff = compiler.getEffectiveJitter();
+    expect(eff.intensity).toBeCloseTo(0.25);
+    expect(eff.duration).toBeCloseTo(0.15); // untouched
+  });
+
+  test('setTunableParam(compiler:jitter, intensityFloor, 0.2) overrides floor', () => {
+    const compiler = new AnimationCompiler();
+    compiler.setTunableParam('compiler:jitter', 'intensityFloor', 0.2);
+    expect(compiler.getEffectiveJitter().intensityFloor).toBeCloseTo(0.2);
+  });
+
+  test('config.compiler.jitter is the middle precedence layer (overrides defaults; overridden by tunable)', () => {
+    const compiler = new AnimationCompiler({ jitter: { duration: 0.2 } });
+    expect(compiler.getEffectiveJitter().duration).toBeCloseTo(0.2);
+    compiler.setTunableParam('compiler:jitter', 'durationJitter', 0.4);
+    expect(compiler.getEffectiveJitter().duration).toBeCloseTo(0.4);
+  });
+});
