@@ -9,6 +9,7 @@
 // class without touching the orchestrator.
 
 import type { AvatarService } from '@qqbot/avatar';
+import type { ChatMessage } from '@/ai/types';
 import type { Live2DInput, Live2DResult } from './types';
 
 export interface Live2DContext {
@@ -27,6 +28,18 @@ export interface Live2DContext {
   availableActions?: string;
   /** Rendered system prompt. Populated by PromptAssemblyStage. */
   systemPrompt?: string;
+  /**
+   * Final LLM-ready message list (base system + scene system + history +
+   * final user block). Populated by PromptAssemblyStage; LLMStage prefers
+   * this over the legacy `[system, user]` pair when present.
+   */
+  messages?: ChatMessage[];
+  /**
+   * Thread id owning this pipeline run's session history. Populated by
+   * PromptAssemblyStage via Live2DSessionService. LLMStage appends the
+   * user input + assistant reply to it on success.
+   */
+  threadId?: string;
   /** LLM provider name chosen for this input. Populated by LLMStage. */
   providerName?: string;
   /** Raw LLM reply — tags still embedded. Populated by LLMStage. */
@@ -35,6 +48,15 @@ export interface Live2DContext {
   spoken?: string;
   /** Count of Live2D tags actually enqueued onto the compiler. */
   tagCount?: number;
+
+  /**
+   * Set by LLMStage when it streamed the reply and already dispatched
+   * chunks to avatar.speak / avatar.enqueueTagAnimation. Later stages
+   * (SpeakStage, TagAnimationStage) short-circuit instead of re-doing the
+   * work. The orchestrator also uses this to stop re-applying the thinking
+   * pose once streaming has transitioned to neutral.
+   */
+  streamingHandled?: boolean;
 
   /** Terminal: when true, remaining stages are skipped. */
   skipped: boolean;

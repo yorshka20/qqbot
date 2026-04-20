@@ -4,10 +4,12 @@
 // `./stages/` (gate → prompt-assembly → llm → tag-animation → speak).
 // The pipeline's only concerns are:
 //
-//   1. Queue admission — a serial (concurrency=1) queue with a bounded
-//      backlog, so bursty input (multiple danmaku within a window) doesn't
-//      stack overlapping LLM calls or TTS utterances. Over-backlog entries
-//      are dropped oldest-first and resolve with `skipped=true`.
+//   1. Queue admission — a serial (concurrency=1) queue. We intentionally
+//      do NOT drop entries: input dedup happens upstream (DanmakuBuffer
+//      window-merges identical text; private-chat/livemode routes also
+//      aggregate before enqueue), so by the time anything reaches this
+//      queue it deserves to be processed. A soft warn threshold logs when
+//      the backlog grows abnormally so a wedged stream doesn't go unnoticed.
 //
 //   2. Stage execution — run the ordered stage list; halt on `ctx.skipped`;
 //      collapse the final context into a Live2DResult for the caller.
@@ -41,7 +43,11 @@ import type { Live2DInput, Live2DResult } from './types';
 // keep working after the types moved into `./types`.
 export type { Live2DInput, Live2DResult, Live2DSource } from './types';
 
-const DEFAULT_MAX_BACKLOG = 3;
+/**
+ * Soft threshold: when the backlog crosses this, emit a warn so a wedged
+ * stream doesn't silently grow the queue. Not a hard cap — we never drop.
+ */
+const BACKLOG_WARN_THRESHOLD = 16;
 
 interface QueueEntry {
   input: Live2DInput;
@@ -94,20 +100,13 @@ export class Live2DPipeline {
   enqueue(input: Live2DInput): Promise<Live2DResult> {
     return new Promise<Live2DResult>((resolve, reject) => {
       this.queue.push({ input, resolve, reject });
-      // Drop oldest when over the backlog cap. Resolve dropped entries
-      // with `skipped=true` so the caller's awaited promise settles cleanly
-      // instead of hanging.
-      while (this.queue.length > DEFAULT_MAX_BACKLOG) {
-        const dropped = this.queue.shift();
-        if (dropped) {
-          dropped.resolve({
-            replyText: '',
-            spoken: '',
-            tagCount: 0,
-            skipped: true,
-            skipReason: 'backlog-overflow',
-          });
-        }
+      // Soft backlog warn — surface wedged streams without dropping work.
+      // Threshold is only checked on transitions so one long run doesn't
+      // spam the log on every enqueue.
+      if (this.queue.length === BACKLOG_WARN_THRESHOLD) {
+        logger.warn(
+          `[Live2DPipeline] backlog reached ${BACKLOG_WARN_THRESHOLD} entries; pipeline may be wedged (running=${this.running})`,
+        );
       }
       this.drain();
     });
@@ -144,10 +143,11 @@ export class Live2DPipeline {
       // Gate runs first and populates `ctx.avatar`; once we have a live
       // avatar handle, enter the thinking pose before subsequent stages
       // (prompt assembly is cheap but LLM is the user-visible latency).
-      if (stage.name !== 'gate' && ctx.avatar && !ctx.skipped) {
-        // Apply thinking once per run, right before the first post-gate
-        // stage. Cheap enough to idempotently call per iteration — avatar
-        // setActivity is a no-op if the pose didn't change.
+      //
+      // Once LLMStage has started streaming, it transitions to `neutral`
+      // on first flush — don't overwrite that back to `thinking` on the
+      // remaining iterations.
+      if (stage.name !== 'gate' && ctx.avatar && !ctx.skipped && !ctx.streamingHandled) {
         ctx.avatar.setActivity({ pose: 'thinking' });
       }
 

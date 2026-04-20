@@ -34,6 +34,7 @@ import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
 import { Live2DPipeline } from '@/services/live2d/Live2DPipeline';
+import { Live2DSessionService } from '@/services/live2d/Live2DSessionService';
 import type { MCPSystem } from '@/services/mcp/MCPInitializer';
 import { MCPInitializer } from '@/services/mcp/MCPInitializer';
 import { RetrievalService } from '@/services/retrieval';
@@ -277,6 +278,11 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     logger.warn('[Bootstrap] Avatar service failed to initialize (non-fatal):', err);
     avatarService = null;
   }
+
+  // ── Live2DSessionService (rolling thread history for Live2D runs) ──
+  // Must register BEFORE Live2DPipeline resolves — stages inject it by token.
+  const live2dSessionService = container.resolve(Live2DSessionService);
+  container.registerInstance(DITokens.LIVE2D_SESSION_SERVICE, live2dSessionService);
 
   // ── Live2DPipeline (shared by /avatar command + bilibili bridge) ──
   // Depends on LLM_SERVICE / PROMPT_MANAGER / CONFIG — all registered above.

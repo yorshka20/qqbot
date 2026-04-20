@@ -110,19 +110,32 @@ describe('PromptAssemblyStage', () => {
 
   beforeEach(() => fakeRender.mockClear());
 
+  function fakeSession() {
+    let i = 0;
+    return {
+      ensureThread: mock(() => `t-${++i}`),
+      getHistoryEntries: mock(() => []),
+      appendUserMessage: mock(() => undefined),
+      appendAssistantMessage: mock(() => undefined),
+      scheduleCompression: mock(() => undefined),
+    };
+  }
+
   it('populates availableActions + systemPrompt on the happy path', async () => {
-    const stage = new PromptAssemblyStage({ render: fakeRender } as never);
+    const stage = new PromptAssemblyStage({ render: fakeRender } as never, fakeSession() as never);
     const ctx = createContext(sampleInput());
     ctx.avatar = makeAvatar() as unknown as Live2DContext['avatar'];
     await stage.execute(ctx);
     expect(ctx.availableActions).toBeDefined();
     expect(ctx.availableActions).toContain('wave');
     expect(ctx.systemPrompt).toContain('SYSTEM[avatar.speak-system]');
+    expect(ctx.messages?.length).toBeGreaterThanOrEqual(2);
+    expect(ctx.threadId).toBeDefined();
     expect(ctx.skipped).toBe(false);
   });
 
   it('picks the bilibili template when source is bilibili-danmaku-batch', async () => {
-    const stage = new PromptAssemblyStage({ render: fakeRender } as never);
+    const stage = new PromptAssemblyStage({ render: fakeRender } as never, fakeSession() as never);
     const ctx = createContext(sampleInput({ source: 'bilibili-danmaku-batch' }));
     ctx.avatar = makeAvatar() as unknown as Live2DContext['avatar'];
     await stage.execute(ctx);
@@ -133,7 +146,7 @@ describe('PromptAssemblyStage', () => {
     const throwing = mock(() => {
       throw new Error('template missing');
     });
-    const stage = new PromptAssemblyStage({ render: throwing } as never);
+    const stage = new PromptAssemblyStage({ render: throwing } as never, fakeSession() as never);
     const ctx = createContext(sampleInput());
     ctx.avatar = makeAvatar() as unknown as Live2DContext['avatar'];
     await stage.execute(ctx);
@@ -142,7 +155,7 @@ describe('PromptAssemblyStage', () => {
   });
 
   it('is a no-op when avatar is missing (defensive)', async () => {
-    const stage = new PromptAssemblyStage({ render: fakeRender } as never);
+    const stage = new PromptAssemblyStage({ render: fakeRender } as never, fakeSession() as never);
     const ctx = createContext(sampleInput());
     ctx.avatar = null;
     await stage.execute(ctx);
@@ -156,29 +169,60 @@ describe('LLMStage', () => {
     getAIConfig: () => ({ defaultProviders: { llm: 'deepseek' } }),
   };
 
+  function fakeSession() {
+    let i = 0;
+    return {
+      ensureThread: mock(() => `t-${++i}`),
+      getHistoryEntries: mock(() => []),
+      appendUserMessage: mock(() => undefined),
+      appendAssistantMessage: mock(() => undefined),
+      scheduleCompression: mock(() => undefined),
+    };
+  }
+
+  /**
+   * Builds a fake generateStream that emits the given text as a single chunk
+   * (tests don't need true chunking — SentenceFlusher is tested elsewhere via
+   * its own unit tests). Signature matches LLMService.generateStream.
+   */
+  function fakeStream(text: string) {
+    return mock(async (_prompt: string, handler: (chunk: string) => void) => {
+      handler(text);
+      return { text };
+    });
+  }
+
   it('skips with prompt-render-failed when systemPrompt is missing', async () => {
-    const stage = new LLMStage({ generate: mock(() => Promise.resolve({ text: '' })) } as never, fakeConfig as never);
+    const stage = new LLMStage(
+      { generateStream: fakeStream('') } as never,
+      fakeConfig as never,
+      fakeSession() as never,
+    );
     const ctx = createContext(sampleInput());
     await stage.execute(ctx);
     expect(ctx.skipped).toBe(true);
     expect(ctx.skipReason).toBe('prompt-render-failed');
   });
 
-  it('populates replyText on success', async () => {
-    const generate = mock(() => Promise.resolve({ text: '你好 [LIVE2D: emotion=happy, action=wave, intensity=0.8]' }));
-    const stage = new LLMStage({ generate } as never, fakeConfig as never);
+  it('populates replyText on success and marks streamingHandled', async () => {
+    const generateStream = fakeStream('你好 [LIVE2D: emotion=happy, action=wave, intensity=0.8]');
+    const stage = new LLMStage({ generateStream } as never, fakeConfig as never, fakeSession() as never);
+    const avatar = makeAvatar();
     const ctx = createContext(sampleInput());
+    ctx.avatar = avatar as unknown as Live2DContext['avatar'];
     ctx.systemPrompt = 'sys';
     await stage.execute(ctx);
     expect(ctx.replyText).toContain('你好');
     expect(ctx.skipped).toBe(false);
-    expect(generate).toHaveBeenCalledTimes(1);
+    expect(ctx.streamingHandled).toBe(true);
+    expect(generateStream).toHaveBeenCalledTimes(1);
   });
 
-  it('skips with llm-failed when generate throws', async () => {
+  it('skips with llm-failed when generateStream throws', async () => {
     const stage = new LLMStage(
-      { generate: mock(() => Promise.reject(new Error('network'))) } as never,
+      { generateStream: mock(() => Promise.reject(new Error('network'))) } as never,
       fakeConfig as never,
+      fakeSession() as never,
     );
     const ctx = createContext(sampleInput());
     ctx.systemPrompt = 'sys';
@@ -187,10 +231,11 @@ describe('LLMStage', () => {
     expect(ctx.skipReason).toBe('llm-failed');
   });
 
-  it('skips with empty-reply when generate returns empty text', async () => {
+  it('skips with empty-reply when stream yields empty text', async () => {
     const stage = new LLMStage(
-      { generate: mock(() => Promise.resolve({ text: '   ' })) } as never,
+      { generateStream: fakeStream('   ') } as never,
       fakeConfig as never,
+      fakeSession() as never,
     );
     const ctx = createContext(sampleInput());
     ctx.systemPrompt = 'sys';
@@ -201,15 +246,39 @@ describe('LLMStage', () => {
 
   it('falls back to deepseek when no default provider configured', async () => {
     let capturedProvider: string | undefined;
-    const generate = mock((_text: string, _opts: unknown, provider: string) => {
-      capturedProvider = provider;
-      return Promise.resolve({ text: 'ok' });
-    });
-    const stage = new LLMStage({ generate } as never, { getAIConfig: () => undefined } as never);
+    const generateStream = mock(
+      async (_prompt: string, handler: (chunk: string) => void, _opts: unknown, provider: string) => {
+        capturedProvider = provider;
+        handler('ok');
+        return { text: 'ok' };
+      },
+    );
+    const stage = new LLMStage(
+      { generateStream } as never,
+      { getAIConfig: () => undefined } as never,
+      fakeSession() as never,
+    );
     const ctx = createContext(sampleInput());
     ctx.systemPrompt = 'sys';
     await stage.execute(ctx);
     expect(capturedProvider).toBe('deepseek');
+  });
+
+  it('dispatches speak + tag animations while streaming (avatar-path)', async () => {
+    const avatar = makeAvatar();
+    const generateStream = fakeStream('你好啊。[LIVE2D: emotion=happy, action=wave, intensity=0.8]再见。');
+    const stage = new LLMStage({ generateStream } as never, fakeConfig as never, fakeSession() as never);
+    const ctx = createContext(sampleInput());
+    ctx.avatar = avatar as unknown as Live2DContext['avatar'];
+    ctx.systemPrompt = 'sys';
+    await stage.execute(ctx);
+    // One tag expected, enqueued during the flush that contained it.
+    expect(avatar.enqueued.length).toBe(1);
+    expect(avatar.enqueued[0].action).toBe('wave');
+    expect(ctx.tagCount).toBe(1);
+    // Tag-stripped text reached speak at least once.
+    expect(avatar.spoken.join('')).toContain('你好啊');
+    expect(avatar.spoken.join('')).toContain('再见');
   });
 });
 

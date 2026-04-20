@@ -29,6 +29,8 @@ export class SpeakStage implements Live2DStage {
 
   async execute(ctx: Live2DContext): Promise<void> {
     if (!ctx.avatar || !ctx.replyText) return;
+    // Streaming path already dispatched speak() chunk-by-chunk; don't re-speak.
+    if (ctx.streamingHandled) return;
 
     ctx.spoken = stripLive2DTags(ctx.replyText).trim();
     if (ctx.spoken.length === 0) return;

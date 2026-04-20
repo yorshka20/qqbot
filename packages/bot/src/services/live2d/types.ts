@@ -34,5 +34,4 @@ export type Live2DSkipReason =
   | 'no-consumer'
   | 'prompt-render-failed'
   | 'llm-failed'
-  | 'empty-reply'
-  | 'backlog-overflow';
+  | 'empty-reply';

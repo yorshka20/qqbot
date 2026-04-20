@@ -82,6 +82,18 @@ export class ThreadContextCompressionService {
   }
 
   /**
+   * Public compression-only entry: summarize the earliest segment if over limit,
+   * WITHOUT the topic-cleaning pass. Used by subsystems (e.g. Live2D) that
+   * don't carry a `${preferenceKey}.summary` template so topic cleaning would
+   * just error out. Runs async, non-blocking.
+   */
+  scheduleCompressOnly(threadId: string): void {
+    setImmediate(() => {
+      void this.compressThreadIfNeeded(threadId);
+    });
+  }
+
+  /**
    * If thread has more than MAX_CONTEXT_MESSAGES, summarize the earliest SEGMENT_SIZE and replace.
    * One compression per thread at a time; on failure leaves thread unchanged and logs.
    */

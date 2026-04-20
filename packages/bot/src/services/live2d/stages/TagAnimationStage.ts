@@ -24,6 +24,8 @@ export class TagAnimationStage implements Live2DStage {
 
   async execute(ctx: Live2DContext): Promise<void> {
     if (!ctx.avatar || !ctx.replyText) return;
+    // Streaming path already enqueued tags chunk-by-chunk; don't re-enqueue.
+    if (ctx.streamingHandled) return;
 
     try {
       const tags = parseLive2DTags(ctx.replyText);
