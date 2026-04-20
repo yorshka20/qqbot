@@ -148,5 +148,46 @@
       { "channel": "head.roll", "targetValue": 3.0, "weight": 0.3 }
     ],
     "defaultDuration": 1400
+  },
+  "cross_arms": {
+    "category": "movement",
+    "description": "双臂交叉抱胸——防御、思考或自我保护的姿态",
+    "params": [
+      { "channel": "arm.left", "targetValue": 4.5, "weight": 0.9 },
+      { "channel": "arm.right", "targetValue": 4.5, "weight": 0.9 },
+      { "channel": "body.z", "targetValue": 0.05, "weight": 0.3 },
+      { "channel": "brow", "targetValue": -0.15, "weight": 0.4 }
+    ],
+    "endPose": [
+      { "channel": "arm.left", "value": 2.8, "weight": 0.8 },
+      { "channel": "arm.right", "value": 2.8, "weight": 0.8 }
+    ],
+    "defaultDuration": 2000
+  },
+  "hand_on_hip": {
+    "category": "movement",
+    "description": "右手叉腰——自信、随意或稍带不满的姿势",
+    "params": [
+      { "channel": "arm.right", "targetValue": 5.5, "weight": 0.9 },
+      { "channel": "body.x", "targetValue": 0.06, "weight": 0.5 }
+    ],
+    "endPose": [
+      { "channel": "arm.right", "value": 3.2, "weight": 0.8 },
+      { "channel": "body.x", "value": 0.03, "weight": 0.4 }
+    ],
+    "defaultDuration": 2000
+  },
+  "point_forward": {
+    "category": "movement",
+    "description": "伸手向前指——强调、指向或发出指令",
+    "params": [
+      { "channel": "arm.right", "targetValue": 9.0, "weight": 1.0 },
+      { "channel": "head.pitch", "targetValue": 3.0, "weight": 0.5 },
+      { "channel": "body.z", "targetValue": 0.1, "weight": 0.4 }
+    ],
+    "endPose": [
+      { "channel": "arm.right", "value": 5.5, "weight": 0.9 }
+    ],
+    "defaultDuration": 1800
   }
 }
