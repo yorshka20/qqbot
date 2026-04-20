@@ -308,6 +308,8 @@ export class AvatarService {
         fps: this.measuredFps,
         activeAnimations: this.compiler.getActiveAnimationCount(),
         queueLength: this.compiler.getQueueLength(),
+        channelBaseline: this.compiler.getChannelBaselineSnapshot(),
+        activeAnimationDetails: this.compiler.getActiveAnimationDetails(),
       });
     }, 1000);
   }

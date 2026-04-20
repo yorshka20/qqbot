@@ -20,6 +20,10 @@ export interface PreviewStatus {
   fps: number;
   activeAnimations: number;
   queueLength: number;
+  /** Snapshot of per-channel baseline values (from endPose harvesting). Optional — populated when compiler has state. */
+  channelBaseline?: Record<string, number>;
+  /** Summary of currently active animations with phase and optional fade-out timestamp. */
+  activeAnimationDetails?: Array<{ name: string; phase: 'attack' | 'sustain' | 'release'; fadeOut?: number }>;
 }
 
 export interface FrameMessage {

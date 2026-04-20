@@ -1100,7 +1100,15 @@
   //     "defaultEasing": "easeInOutCubic",
   //     "smoothingFactor": 0.3,
   //     "attackRatio": 0.2,
-  //     "releaseRatio": 0.3
+  //     "releaseRatio": 0.3,
+  //     // crossfadeMs: duration in ms for the fade-out of an old animation when
+  //     // a new animation starts on overlapping channels. Also controls the
+  //     // fade-in of the new animation on those channels. Default: 250.
+  //     // "crossfadeMs": 250,
+  //     // baselineHalfLifeMs: exponential decay half-life in ms for per-channel
+  //     // baseline values written by endPose harvesting. A value of 45000 means
+  //     // the settled deviation halves roughly every 45 seconds. Default: 45000.
+  //     // "baselineHalfLifeMs": 45000
   //   },
   //
   //   // Idle state machine intervals (milliseconds)
