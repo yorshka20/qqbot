@@ -1,8 +1,29 @@
 import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ActionMap } from './action-map';
+import type { ResolvedAction } from './types';
+
+type EnvelopeAction = Extract<ResolvedAction, { kind: 'envelope' }>;
+
+/** Narrow a ResolvedAction to the envelope branch; throws if it isn't. */
+function asEnv(r: ResolvedAction | null): EnvelopeAction {
+  if (!r || r.kind !== 'envelope') throw new Error('expected envelope ResolvedAction');
+  return r;
+}
+
+function writeMapAndFixtures(entries: Record<string, unknown>, fixtures: Record<string, unknown>): string {
+  const dir = mkdtempSync(join(tmpdir(), 'am-'));
+  for (const [relPath, content] of Object.entries(fixtures)) {
+    const fullPath = join(dir, relPath);
+    mkdirSync(join(fullPath, '..'), { recursive: true });
+    writeFileSync(fullPath, JSON.stringify(content));
+  }
+  const mapPath = join(dir, 'action-map.json');
+  writeFileSync(mapPath, JSON.stringify(entries));
+  return mapPath;
+}
 
 describe('ActionMap.resolveAction', () => {
   const map = new ActionMap();
@@ -10,8 +31,8 @@ describe('ActionMap.resolveAction', () => {
   it('returns a ResolvedAction with targets for a known action', () => {
     const result = map.resolveAction('smile', 'happy', 1.0);
     expect(result).not.toBeNull();
-    expect(result!.targets).toBeDefined();
-    expect(result!.targets.length).toBeGreaterThan(0);
+    expect(asEnv(result).targets).toBeDefined();
+    expect(asEnv(result).targets.length).toBeGreaterThan(0);
   });
 
   it('returns null for an unknown action', () => {
@@ -24,8 +45,10 @@ describe('ActionMap.resolveAction', () => {
     const half = map.resolveAction('smile', 'happy', 0.5);
     expect(full).not.toBeNull();
     expect(half).not.toBeNull();
-    for (let i = 0; i < full!.targets.length; i++) {
-      expect(half!.targets[i].targetValue).toBeCloseTo(full!.targets[i].targetValue * 0.5);
+    const fullEnv = asEnv(full);
+    const halfEnv = asEnv(half);
+    for (let i = 0; i < fullEnv.targets.length; i++) {
+      expect(halfEnv.targets[i].targetValue).toBeCloseTo(fullEnv.targets[i].targetValue * 0.5);
     }
   });
 
@@ -79,8 +102,9 @@ describe('ActionMap.resolveAction', () => {
     // For point_forward, arm.right endPose.value should be less than params targetValue
     const result = map.resolveAction('point_forward', 'neutral', 1.0);
     expect(result).not.toBeNull();
-    const armTarget = result!.targets.find((t) => t.channel === 'arm.right');
-    const armEnd = result!.endPose!.find((e) => e.channel === 'arm.right');
+    const env = asEnv(result);
+    const armTarget = env.targets.find((t) => t.channel === 'arm.right');
+    const armEnd = env.endPose!.find((e) => e.channel === 'arm.right');
     expect(armTarget).toBeDefined();
     expect(armEnd).toBeDefined();
     expect(armEnd!.value).toBeLessThan(armTarget!.targetValue);
@@ -159,9 +183,9 @@ describe('ActionMap — variants', () => {
     const r2 = map.resolveAction('foo', 'n', 1);
     const r3 = map.resolveAction('foo', 'n', 1);
     randSpy.mockRestore();
-    expect(r1!.targets[0].channel).toBe('a');
-    expect(r2!.targets[0].channel).toBe('b');
-    expect(r3!.targets[0].channel).toBe('c');
+    expect(asEnv(r1).targets[0].channel).toBe('a');
+    expect(asEnv(r2).targets[0].channel).toBe('b');
+    expect(asEnv(r3).targets[0].channel).toBe('c');
   });
 
   it('getDuration on variants returns rounded average', () => {
@@ -233,8 +257,9 @@ describe('ActionMap — accompaniment', () => {
     const map = new ActionMap(tmpPath);
     const r = map.resolveAction('a', 'neutral', 0.5);
     expect(r).not.toBeNull();
-    expect(r!.targets).toHaveLength(2);
-    expect(r!.targets[0]).toEqual({
+    const env = asEnv(r);
+    expect(env.targets).toHaveLength(2);
+    expect(env.targets[0]).toEqual({
       channel: 'x',
       targetValue: 0.5,
       weight: 1,
@@ -242,7 +267,7 @@ describe('ActionMap — accompaniment', () => {
       leadMs: undefined,
       lagMs: undefined,
     });
-    expect(r!.targets[1]).toEqual({
+    expect(env.targets[1]).toEqual({
       channel: 'y',
       targetValue: 1.0, // 2 * 0.5 intensity
       weight: 0.5,
@@ -311,8 +336,8 @@ describe('ActionMap — per-target leadMs/lagMs clamping', () => {
     );
     const map = new ActionMap(tmpPath);
     const r = map.resolveAction('a', 'neutral', 1);
-    expect(r!.targets[0].leadMs).toBe(-1000);
-    expect(r!.targets[0].lagMs).toBe(1000);
+    expect(asEnv(r).targets[0].leadMs).toBe(-1000);
+    expect(asEnv(r).targets[0].lagMs).toBe(1000);
   });
 
   it('passes through undefined leadMs/lagMs as undefined', () => {
@@ -327,7 +352,149 @@ describe('ActionMap — per-target leadMs/lagMs clamping', () => {
     );
     const map = new ActionMap(tmpPath);
     const r = map.resolveAction('a', 'neutral', 1);
-    expect(r!.targets[0].leadMs).toBeUndefined();
-    expect(r!.targets[0].lagMs).toBeUndefined();
+    expect(asEnv(r).targets[0].leadMs).toBeUndefined();
+    expect(asEnv(r).targets[0].lagMs).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Clip kind tests (Task 1 additions)
+// ---------------------------------------------------------------------------
+
+const clipFixture = {
+  id: 'bow',
+  duration: 2,
+  tracks: [
+    {
+      channel: 'vrm.spine.x',
+      keyframes: [
+        { time: 0, value: 0 },
+        { time: 2, value: 0.5 },
+      ],
+    },
+  ],
+};
+
+describe('ActionMap — clip kind', () => {
+  it('resolves a clip action', () => {
+    const mapPath = writeMapAndFixtures(
+      { bow: { kind: 'clip', clip: 'clips/vrm/bow.json' } },
+      { 'clips/vrm/bow.json': clipFixture },
+    );
+    const map = new ActionMap(mapPath);
+    const r = map.resolveAction('bow', 'neutral', 1.0);
+    expect(r).not.toBeNull();
+    expect(r!.kind).toBe('clip');
+    if (r !== null && r.kind === 'clip') {
+      expect(r.clip.id).toBe('bow');
+      expect(r.duration).toBe(2000);
+      expect(r.intensity).toBe(1.0);
+    }
+  });
+
+  it('culls action with missing clip file', () => {
+    const mapPath = writeMapAndFixtures({ broken: { kind: 'clip', clip: 'clips/vrm/missing.json' } }, {});
+    const map = new ActionMap(mapPath);
+    expect(map.has('broken')).toBe(false);
+    expect(map.resolveAction('broken', 'neutral', 1.0)).toBeNull();
+  });
+
+  it('resolves clip variant pool — both variants reachable', () => {
+    const fixtureA = { id: 'a', duration: 1, tracks: [] };
+    const fixtureB = { id: 'b', duration: 1, tracks: [] };
+    const mapPath = writeMapAndFixtures(
+      {
+        multi: [
+          { kind: 'clip', clip: 'clips/vrm/a.json' },
+          { kind: 'clip', clip: 'clips/vrm/b.json' },
+        ],
+      },
+      { 'clips/vrm/a.json': fixtureA, 'clips/vrm/b.json': fixtureB },
+    );
+    const map = new ActionMap(mapPath);
+    const ids = new Set<string>();
+    for (let i = 0; i < 20; i++) {
+      const r = map.resolveAction('multi', 'neutral', 1.0);
+      if (r && r.kind === 'clip') ids.add(r.clip.id);
+    }
+    expect(ids.has('a')).toBe(true);
+    expect(ids.has('b')).toBe(true);
+  });
+
+  it('resolves envelope backwards-compat (kind returns envelope)', () => {
+    const mapPath = writeMapAndFixtures(
+      { smile: { params: [{ channel: 'mouth.smile', targetValue: 1, weight: 1 }], defaultDuration: 1000 } },
+      {},
+    );
+    const map = new ActionMap(mapPath);
+    const r = map.resolveAction('smile', 'neutral', 0.5);
+    expect(r).not.toBeNull();
+    expect(r!.kind).toBe('envelope');
+    const env = asEnv(r);
+    expect(env.targets[0].channel).toBe('mouth.smile');
+    expect(env.targets[0].targetValue).toBe(0.5);
+    expect(env.duration).toBe(1000);
+    expect(env.intensity).toBe(0.5);
+  });
+
+  it('getClipByActionName returns clip for clip action, null for envelope/unknown', () => {
+    const mapPath = writeMapAndFixtures(
+      {
+        bow: { kind: 'clip', clip: 'clips/vrm/bow.json' },
+        smile: { params: [{ channel: 'mouth.smile', targetValue: 1, weight: 1 }], defaultDuration: 1000 },
+      },
+      { 'clips/vrm/bow.json': clipFixture },
+    );
+    const map = new ActionMap(mapPath);
+    expect(map.getClipByActionName('bow')).not.toBeNull();
+    expect(map.getClipByActionName('bow')!.id).toBe('bow');
+    expect(map.getClipByActionName('smile')).toBeNull();
+    expect(map.getClipByActionName('unknown')).toBeNull();
+  });
+
+  it('listActions on clip entry: channels from tracks, duration from clip', () => {
+    const mapPath = writeMapAndFixtures(
+      { bow: { kind: 'clip', clip: 'clips/vrm/bow.json', category: 'movement', description: 'bow' } },
+      { 'clips/vrm/bow.json': clipFixture },
+    );
+    const map = new ActionMap(mapPath);
+    const list = map.listActions();
+    const entry = list.find((a) => a.name === 'bow');
+    expect(entry).toBeDefined();
+    expect(entry!.channels).toContain('vrm.spine.x');
+    expect(entry!.category).toBe('movement');
+    expect(entry!.defaultDuration).toBe(2000);
+  });
+
+  it('getDuration on clip entry returns clip.duration*1000 when defaultDuration absent', () => {
+    const mapPath = writeMapAndFixtures(
+      { bow: { kind: 'clip', clip: 'clips/vrm/bow.json' } },
+      { 'clips/vrm/bow.json': clipFixture },
+    );
+    const map = new ActionMap(mapPath);
+    expect(map.getDuration('bow')).toBe(2000);
+  });
+
+  it('getDuration on clip entry uses variant.defaultDuration when set', () => {
+    const mapPath = writeMapAndFixtures(
+      { bow: { kind: 'clip', clip: 'clips/vrm/bow.json', defaultDuration: 1500 } },
+      { 'clips/vrm/bow.json': clipFixture },
+    );
+    const map = new ActionMap(mapPath);
+    expect(map.getDuration('bow')).toBe(1500);
+  });
+
+  it('rejects mixed kind in variant array', () => {
+    const mapPath = writeMapAndFixtures(
+      {
+        mix: [
+          { params: [{ channel: 'x', targetValue: 1, weight: 1 }], defaultDuration: 1000 },
+          { kind: 'clip', clip: 'clips/vrm/a.json' },
+        ],
+      },
+      { 'clips/vrm/a.json': { id: 'a', duration: 1, tracks: [] } },
+    );
+    const map = new ActionMap(mapPath);
+    expect(map.has('mix')).toBe(false);
   });
 });

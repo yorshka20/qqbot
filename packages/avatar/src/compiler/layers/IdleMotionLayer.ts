@@ -1,5 +1,5 @@
 import type { AvatarActivity } from '../../state/types';
-import { applyEasing } from '../easing';
+import { sampleClip } from '../clips/sampleClip';
 import type { EasingType } from '../types';
 import { BaseLayer } from './BaseLayer';
 import { DEFAULT_IDLE_CLIPS, type IdleClip } from './clips';
@@ -93,38 +93,7 @@ export class IdleMotionLayer extends BaseLayer {
       this.nextClipAt = nowMs + this.randomGap();
       return {};
     }
-    return this.sampleClip(this.active.clip, elapsedSec);
-  }
-
-  private sampleClip(clip: IdleClip, tSec: number): Record<string, number> {
-    const out: Record<string, number> = {};
-    for (const track of clip.tracks) {
-      const kfs = track.keyframes;
-      if (kfs.length === 0) continue;
-
-      // Before first keyframe — hold the first value.
-      if (tSec <= kfs[0].time) {
-        out[track.channel] = (out[track.channel] ?? 0) + kfs[0].value;
-        continue;
-      }
-      // After last keyframe — hold the last value.
-      const last = kfs[kfs.length - 1];
-      if (tSec >= last.time) {
-        out[track.channel] = (out[track.channel] ?? 0) + last.value;
-        continue;
-      }
-      // Interpolate between the bracketing keyframes.
-      let i = 0;
-      while (i < kfs.length - 1 && kfs[i + 1].time < tSec) i++;
-      const a = kfs[i];
-      const b = kfs[i + 1];
-      const span = b.time - a.time;
-      const progress = span <= 0 ? 1 : (tSec - a.time) / span;
-      const eased = applyEasing(progress, track.easing ?? this.config.defaultEasing);
-      const value = a.value + (b.value - a.value) * eased;
-      out[track.channel] = (out[track.channel] ?? 0) + value;
-    }
-    return out;
+    return sampleClip(this.active.clip, elapsedSec, this.config.defaultEasing);
   }
 
   private pickClip(): IdleClip {
