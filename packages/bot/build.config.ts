@@ -53,7 +53,7 @@ export const buildConfigs: Record<string, BuildConfig> = {
       'adm-zip',
       'async_hooks',
       'better-sqlite3',
-      "discord.js",
+      'discord.js',
       'jsdom',
       'jsonc-parser',
       'mongodb',
@@ -67,6 +67,7 @@ export const buildConfigs: Record<string, BuildConfig> = {
       'winston',
       'winston-daily-rotate-file',
       'zod',
+      'audio-decode',
     ],
   },
 
