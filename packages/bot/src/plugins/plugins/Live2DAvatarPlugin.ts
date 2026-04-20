@@ -2,7 +2,9 @@
 // pipeline lifecycle events and LLM emotion tags.
 
 import type { AvatarService } from '@qqbot/avatar';
-import { parseLive2DTags, stripLive2DTags } from '@qqbot/avatar';
+import { formatActionsForPrompt, parseLive2DTags, stripLive2DTags } from '@qqbot/avatar';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
+import { renderAvatarPartials } from '@/ai/prompt/renderAvatarPartials';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
@@ -33,11 +35,15 @@ const AMBIENT = {
 })
 export class Live2DAvatarPlugin extends PluginBase {
   private avatar: AvatarService | null = null;
+  private promptManager: PromptManager | null = null;
 
   async onInit(): Promise<void> {
     const container = getContainer();
     if (container.isRegistered(DITokens.AVATAR_SERVICE)) {
       this.avatar = container.resolve<AvatarService>(DITokens.AVATAR_SERVICE);
+    }
+    if (container.isRegistered(DITokens.PROMPT_MANAGER)) {
+      this.promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
     }
   }
 
@@ -62,6 +68,38 @@ export class Live2DAvatarPlugin extends PluginBase {
       this.avatar?.setActivity({ pose: 'listening', ambientGain: AMBIENT.LISTENING });
     } catch (err) {
       logger.warn('[Live2DAvatarPlugin] onMessageReceived setActivity failed:', err);
+    }
+    return true;
+  }
+
+  /**
+   * Contribute the `avatar.emotion-system` fragment into the reply
+   * pipeline's scene system prompt. Runs during PREPROCESS so the main
+   * `PromptAssemblyStage` just reads `metadata.systemPromptFragments`
+   * without knowing anything about avatars.
+   *
+   * Gated identically to the other hooks in this plugin: private-only,
+   * plugin enabled, avatar active. Group chat never gets `[LIVE2D: ...]`
+   * tags — the bot isn't driving a visual there.
+   */
+  @Hook({ stage: 'onMessagePreprocess', priority: 'NORMAL', order: 10 })
+  async onMessagePreprocess(context: HookContext): Promise<boolean> {
+    if (!this.active || !this.isPrivate(context)) return true;
+    if (!this.avatar || !this.promptManager) return true;
+    try {
+      const availableActions = formatActionsForPrompt(this.avatar.listActions());
+      const partials = renderAvatarPartials(this.promptManager, availableActions);
+      const fragment = (
+        this.promptManager.render('avatar.emotion-system', {
+          availableActions,
+          ...partials,
+        }) ?? ''
+      ).trim();
+      if (!fragment) return true;
+      const existing = context.metadata.get('systemPromptFragments') ?? [];
+      context.metadata.set('systemPromptFragments', [...existing, fragment]);
+    } catch (err) {
+      logger.warn('[Live2DAvatarPlugin] emotion-system fragment assembly failed:', err);
     }
     return true;
   }
