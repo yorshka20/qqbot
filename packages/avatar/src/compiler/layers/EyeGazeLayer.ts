@@ -1,4 +1,5 @@
 import type { AvatarActivity } from '../../state/types';
+import type { GazeTarget } from '../../tags';
 import { BaseLayer } from './BaseLayer';
 
 /**
@@ -51,6 +52,7 @@ export class EyeGazeLayer extends BaseLayer {
   private targetY = 0;
   private nextSaccadeAt = 0;
   private lastSampleAt = 0;
+  private override: { x: number; y: number } | null = null;
 
   constructor(config: Partial<GazeConfig> = {}) {
     super();
@@ -64,10 +66,38 @@ export class EyeGazeLayer extends BaseLayer {
     this.targetY = 0;
     this.nextSaccadeAt = 0;
     this.lastSampleAt = 0;
+    this.override = null;
+  }
+
+  setGazeTarget(target: GazeTarget | null): void {
+    if (target === null || target.type === 'clear') {
+      this.override = null;
+      return;
+    }
+    if (target.type === 'named') {
+      const map: Record<typeof target.name, [number, number]> = {
+        camera: [0, 0],
+        center: [0, 0],
+        left: [-0.7, 0],
+        right: [0.7, 0],
+        up: [0, -0.7],
+        down: [0, 0.7],
+      };
+      const xy = map[target.name];
+      this.override = { x: xy[0], y: xy[1] };
+      return;
+    }
+    // point
+    const clamp = (v: number) => Math.max(-1, Math.min(1, v));
+    this.override = { x: clamp(target.x), y: clamp(target.y) };
   }
 
   sample(nowMs: number, _activity: AvatarActivity): Record<string, number> {
     void _activity;
+    if (this.override) {
+      this.lastSampleAt = nowMs;
+      return { 'eye.ball.x': this.override.x, 'eye.ball.y': this.override.y };
+    }
     if (this.nextSaccadeAt === 0) this.nextSaccadeAt = nowMs + this.randomSaccadeInterval();
 
     // Saccade: pick a new target on the unit disk, biased toward center.

@@ -1,5 +1,6 @@
 import { singleton } from 'tsyringe';
 import { AnimationCompiler } from './compiler/AnimationCompiler';
+import { isEmotionChannel } from './compiler/emotion-channels';
 import { createDefaultLayers } from './compiler/layers';
 import type { AmbientAudioLayer } from './compiler/layers/AmbientAudioLayer';
 import type { ActionSummary, StateNode } from './compiler/types';
@@ -9,6 +10,7 @@ import { PreviewServer } from './preview/PreviewServer';
 import { SpeechService } from './SpeechService';
 import { ActivityTracker } from './state/IdleStateMachine';
 import { type AvatarActivityPatch, DEFAULT_ACTIVITY, type StateNodeOutput } from './state/types';
+import type { GazeTarget } from './tags';
 import type { TTSManager } from './tts/TTSManager';
 import type { AvatarConfig } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './types';
@@ -340,13 +342,15 @@ export class AvatarService {
    * Duration defaults to the action-map's registered value, or 1500ms if
    * the action is unknown (the compiler will silently drop it in that case).
    */
-  enqueueTagAnimation(tag: { emotion: string; action: string; intensity: number }): void {
+  enqueueTagAnimation(tag: { emotion: string; action: string; intensity: number; durationOverrideMs?: number }): void {
     if (!this.compiler) {
       logger.warn(`[AvatarService] enqueueTagAnimation dropped (no compiler) | action=${tag.action}`);
       return;
     }
     const registered = this.compiler.getActionDuration(tag.action);
-    const baseDuration = registered ?? 1500;
+    // When durationOverrideMs is provided (e.g. from a [H:...] hold tag),
+    // it replaces the action-map's registered duration as the jitter base.
+    const baseDuration = tag.durationOverrideMs ?? registered ?? 1500;
 
     // Apply jitter via the compiler's effective override so HUD tunable changes
     // flow through immediately. NOT applied in toStateNodes() — state-transition
@@ -356,7 +360,7 @@ export class AvatarService {
     const intensity = Math.max(intensityFloor, Math.min(1, tag.intensity * (1 + (Math.random() * 2 - 1) * iJ)));
 
     logger.info(
-      `[AvatarService] enqueueTagAnimation | action=${tag.action} emotion=${tag.emotion} intensity=${intensity.toFixed(2)} (base=${tag.intensity.toFixed(2)}) duration=${duration}ms (base=${baseDuration}ms) registered=${registered != null}`,
+      `[AvatarService] enqueueTagAnimation | action=${tag.action} emotion=${tag.emotion} intensity=${intensity.toFixed(2)} (base=${tag.intensity.toFixed(2)}) duration=${duration}ms (base=${baseDuration}ms) registered=${registered != null} override=${tag.durationOverrideMs ?? 'none'}`,
     );
     this.compiler.enqueue([
       {
@@ -368,6 +372,56 @@ export class AvatarService {
         timestamp: Date.now(),
       },
     ]);
+  }
+
+  /**
+   * Persist an emotion pose on emotion-category channels
+   * (mouth / eye.smile / brow / cheek). Reuses the action-map entry that
+   * shares the emotion name (e.g. `happy`, `sad`, `thinking`), filters
+   * down to facial channels, and seeds them directly into the compiler's
+   * channelBaseline so the pose sticks until the next enqueueEmotion call
+   * overwrites it. Unknown emotion → warn + no-op.
+   */
+  enqueueEmotion(name: string, intensity: number): void {
+    if (!this.compiler) {
+      logger.warn(`[AvatarService] enqueueEmotion dropped (no compiler) | emotion=${name}`);
+      return;
+    }
+    const clamped = Math.max(0, Math.min(1, intensity));
+    const resolved = this.compiler.resolveAction(name, name, clamped);
+    if (!resolved) {
+      logger.warn(`[AvatarService] enqueueEmotion unknown emotion | name=${name}`);
+      return;
+    }
+    if (resolved.kind !== 'envelope') {
+      logger.warn(`[AvatarService] enqueueEmotion non-envelope action | name=${name} kind=${resolved.kind}`);
+      return;
+    }
+    const filtered = resolved.targets.filter((t) => isEmotionChannel(t.channel));
+    if (filtered.length === 0) {
+      logger.warn(`[AvatarService] enqueueEmotion produced no emotion channels | name=${name}`);
+      return;
+    }
+    // Seed baseline directly — skips ADSR attack but the baseline decay
+    // curve still produces a soft arrival. Values are already
+    // intensity-scaled by resolveAction.
+    const entries = filtered.map((t) => ({ channel: t.channel, value: t.targetValue }));
+    this.compiler.seedChannelBaseline(entries);
+    logger.info(
+      `[AvatarService] enqueueEmotion | name=${name} intensity=${clamped.toFixed(2)} channels=${filtered.length}`,
+    );
+  }
+
+  /**
+   * Override the eye-gaze layer's target. `null` or `{type:'clear'}`
+   * restores natural OU wandering.
+   */
+  setGazeTarget(target: GazeTarget | null): void {
+    const layer = this.compiler?.getLayer('eye-gaze');
+    // EyeGazeLayer has the method; cast via a narrow interface to avoid
+    // importing the concrete class (prevents potential circular imports).
+    const gazeCapable = layer as { setGazeTarget?: (t: GazeTarget | null) => void } | undefined;
+    gazeCapable?.setGazeTarget?.(target);
   }
 
   hasConsumer(): boolean {
@@ -395,6 +449,12 @@ export class AvatarService {
    */
   listActions(): ActionSummary[] {
     return this.compiler?.listActions() ?? [];
+  }
+
+  /** Proxy to AnimationCompiler.getActionDuration for callers outside the
+   * compiler (e.g. TagAnimationStage pre-computing hold-adjusted duration). */
+  getActionDuration(action: string): number | undefined {
+    return this.compiler?.getActionDuration(action);
   }
 }
 

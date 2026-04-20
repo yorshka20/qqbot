@@ -19,6 +19,7 @@ import type {
   CompilerConfig,
   FrameOutput,
   ParamTarget,
+  ResolvedAction,
   SpringParams,
   StateNode,
 } from './types';
@@ -209,6 +210,21 @@ export class AnimationCompiler extends EventEmitter {
       out[k] = Math.round(v * 1e4) / 1e4;
     }
     return out;
+  }
+
+  /** Public read-through for pre-resolving an action by name. Used by
+   * AvatarService.enqueueEmotion to get the envelope targets without
+   * re-enqueueing the full action. */
+  resolveAction(action: string, emotion: string, intensity: number): ResolvedAction | null {
+    return this.actionMap.resolveAction(action, emotion, intensity);
+  }
+
+  /** Seed emotion baseline directly. The next tick's baseline decay + mix
+   * will carry these values until overwritten. Used by
+   * AvatarService.enqueueEmotion so emotions persist past their ADSR
+   * attack/release without modifying the core enqueue pathway. */
+  seedChannelBaseline(entries: Array<{ channel: string; value: number }>): void {
+    for (const e of entries) this.channelBaseline.set(e.channel, e.value);
   }
 
   /**
