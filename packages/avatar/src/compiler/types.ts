@@ -59,6 +59,20 @@ export interface ParamTarget {
    * values end the cycle at zero crossing (no final jump).
    */
   oscillate?: number;
+  /**
+   * Time offset for this target's envelope start, relative to anim.startTime.
+   * Negative = target starts EARLIER than the animation (anticipation /
+   * secondary motion). Positive = starts later. Only affects target-local
+   * envelope timing; does NOT change anim.startTime or anim.endTime.
+   * Clamped silently to [-1000, +1000] ms at resolve time.
+   */
+  leadMs?: number;
+  /**
+   * Time offset for this target's envelope end, relative to anim.endTime.
+   * Negative = target finishes before the animation ends; positive = lingers
+   * afterward. Clamped silently to [-1000, +1000] ms at resolve time.
+   */
+  lagMs?: number;
 }
 
 /**
@@ -174,6 +188,14 @@ export interface ActionMapEntry {
    * the baseline. Passed through to `ResolvedAction.holdMs` unchanged.
    */
   holdMs?: number;
+  /**
+   * Correlated secondary-motion targets that play alongside the main `params`.
+   * Same shape as `params` (ParamTarget), authored separately for readability
+   * and to express the "every time X happens, also nudge Y" semantic. Merged
+   * with `params` at resolve time; participates in crossfade exactly like
+   * primary targets. Does NOT appear in endPose.
+   */
+  accompaniment?: ParamTarget[];
 }
 
 /**
@@ -251,4 +273,17 @@ export interface CompilerConfig {
    * Runtime implementation lives in a later task.
    */
   baselineHalfLifeMs?: number;
+  /**
+   * Randomization controls applied by `AvatarService.enqueueTagAnimation`.
+   * Does NOT affect state-transition nodes routed via `setActivity` /
+   * `toStateNodes` — those paths stay deterministic.
+   */
+  jitter?: {
+    /** Duration relative jitter ± amount. Default 0.15 = ±15%. 0 disables. */
+    duration?: number;
+    /** Intensity relative jitter ± amount. Default 0.10 = ±10%. 0 disables. */
+    intensity?: number;
+    /** Minimum floor for jittered intensity (post-clamp). Default 0.1. */
+    intensityFloor?: number;
+  };
 }
