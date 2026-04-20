@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { ActionMapEntry, ActionSummary, ParamTarget } from './types';
+import type { ActionMapEntry, ActionSummary, ResolvedAction } from './types';
 
 export class ActionMap {
   private readonly entries: Record<string, ActionMapEntry>;
@@ -19,16 +19,20 @@ export class ActionMap {
     return this.entries[name]?.defaultDuration;
   }
 
-  resolveAction(action: string, emotion: string, intensity: number): ParamTarget[] {
+  resolveAction(action: string, emotion: string, intensity: number): ResolvedAction | null {
     void emotion;
     const entry = this.entries[action];
-    if (!entry) return [];
-    return entry.params.map((p) => ({
-      channel: p.channel,
-      targetValue: p.targetValue * intensity,
-      weight: p.weight,
-      oscillate: p.oscillate,
-    }));
+    if (!entry) return null;
+    return {
+      targets: entry.params.map((p) => ({
+        channel: p.channel,
+        targetValue: p.targetValue * intensity,
+        weight: p.weight,
+        oscillate: p.oscillate,
+      })),
+      endPose: entry.endPose,
+      holdMs: entry.holdMs,
+    };
   }
 
   /**

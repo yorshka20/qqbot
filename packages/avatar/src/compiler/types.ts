@@ -76,6 +76,17 @@ export interface ActiveAnimation {
   targetParams: ParamTarget[];
   /** Current lifecycle phase of this animation */
   phase: AnimationPhase;
+  /**
+   * Optional end-pose to crossfade into once the main animation completes.
+   * Populated from `ResolvedAction.endPose` when the action map entry has one.
+   */
+  endPose?: ActionEndPoseEntry[];
+  /**
+   * Wall-clock time (ms) at which the fade-out crossfade should begin.
+   * Set by the compiler when transitioning from the sustain to release phase
+   * with an active end pose.
+   */
+  fadeOutStartMs?: number;
 }
 
 /**
@@ -87,6 +98,46 @@ export interface FrameOutput {
   timestamp: number;
   /** Map of parameter IDs to their computed values */
   params: Record<string, number>;
+}
+
+/**
+ * A single channel entry describing the resting/end pose value after
+ * an action completes its main motion. Used by the crossfade system to
+ * smoothly settle the avatar into a held pose instead of snapping back
+ * to neutral at animation end.
+ */
+export interface ActionEndPoseEntry {
+  /** Semantic channel identifier (e.g. "arm.right", "body.x"). */
+  channel: string;
+  /**
+   * Target value for this channel in the end pose. Unlike the main
+   * `params[].targetValue`, this value is NOT scaled by intensity —
+   * it represents an absolute visual settling point.
+   */
+  value: number;
+  /** Optional blend weight for this channel in the end pose (0.0–1.0). */
+  weight?: number;
+}
+
+/**
+ * The resolved output of `ActionMap.resolveAction()`.
+ * Bundles the scaled per-frame targets together with the optional end-pose
+ * and hold duration so callers can drive both the main animation and the
+ * subsequent crossfade in one return value.
+ */
+export interface ResolvedAction {
+  /** Scaled parameter targets for the main animation phase. */
+  targets: ParamTarget[];
+  /**
+   * Optional end-pose entries to crossfade into after the main animation
+   * completes. Values are NOT scaled by intensity.
+   */
+  endPose?: ActionEndPoseEntry[];
+  /**
+   * Optional duration in ms to hold the end pose before releasing back to
+   * the baseline. Copied through from the action-map entry unchanged.
+   */
+  holdMs?: number;
 }
 
 /**
@@ -112,6 +163,17 @@ export interface ActionMapEntry {
    * avatar reply.
    */
   description?: string;
+  /**
+   * Optional end-pose definition. When present, the compiler will crossfade
+   * into this pose after the main animation completes instead of releasing
+   * fully to neutral. Values are NOT scaled by intensity.
+   */
+  endPose?: ActionEndPoseEntry[];
+  /**
+   * Optional duration in ms to hold the end pose before crossfading back to
+   * the baseline. Passed through to `ResolvedAction.holdMs` unchanged.
+   */
+  holdMs?: number;
 }
 
 /**
@@ -176,4 +238,17 @@ export interface CompilerConfig {
   springDefaults?: SpringParams;
   /** Per-channel spring params. Overrides the built-in DEFAULT_SPRING_BY_CHANNEL table. */
   springByChannel?: Record<string, SpringParams>;
+  /**
+   * Duration in ms for the crossfade transition from main animation into the
+   * end pose (and later from end pose back to baseline). Defaults to 250 ms
+   * when unset. Runtime implementation lives in a later task.
+   */
+  crossfadeMs?: number;
+  /**
+   * Half-life in ms for the exponential decay used to return each channel to
+   * its baseline value when no animation is actively driving it. A value of
+   * 45000 ms means the deviation halves roughly every 45 seconds.
+   * Runtime implementation lives in a later task.
+   */
+  baselineHalfLifeMs?: number;
 }

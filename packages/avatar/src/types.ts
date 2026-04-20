@@ -58,6 +58,8 @@ export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
     attackRatio: 0.1,
     releaseRatio: 0.3,
     layers: { enabled: true },
+    crossfadeMs: 250,
+    baselineHalfLifeMs: 45000,
   },
   idle: {
     idleIntervalMin: 3000,
