@@ -221,5 +221,15 @@
       { "channel": "arm.right", "value": 5.5, "weight": 0.9 }
     ],
     "defaultDuration": 1800
+  },
+  "formal_bow": {
+    "kind": "clip",
+    "category": "movement",
+    "description": "正式鞠躬——表示尊敬或郑重问候",
+    "clip": "clips/formal-bow.json",
+    "defaultDuration": 1800,
+    "endPose": [
+      { "channel": "vrm.hips.x", "value": 0.0, "weight": 0.5 }
+    ]
   }
 }

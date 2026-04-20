@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve } from 'bun';
+import type { IdleClip } from '../compiler/layers/clips/types';
 import type { ActionSummary } from '../compiler/types';
 import { logger } from '../utils/logger';
 import type {
@@ -59,6 +60,11 @@ export interface PreviewServerHandlers {
    * expected to be cheap — this runs per slider tick (~50ms).
    */
   onTunableParamSet?: (data: { sectionId: string; paramId: string; value: number }) => void;
+  /**
+   * Returns the first preloaded IdleClip for a clip-kind action, or null if
+   * the action is non-clip or unknown. Drives the `/clip/:name` debug route.
+   */
+  getClipByActionName?: (name: string) => IdleClip | null;
 }
 
 export class PreviewServer {
@@ -107,6 +113,18 @@ export class PreviewServer {
           return new Response(JSON.stringify({ status: 'ok', clients: clients.size }), {
             headers: { 'Content-Type': 'application/json' },
           });
+        }
+
+        const clipMatch = url.pathname.match(/^\/clip\/([^/]+)$/);
+        if (clipMatch) {
+          const name = decodeURIComponent(clipMatch[1]);
+          const clip = server.handlers.getClipByActionName?.(name) ?? null;
+          if (!clip)
+            return new Response(JSON.stringify({ error: 'not_found', name }), {
+              status: 404,
+              headers: { 'content-type': 'application/json' },
+            });
+          return new Response(JSON.stringify(clip), { headers: { 'content-type': 'application/json' } });
         }
 
         if (url.pathname === '/action-map') {

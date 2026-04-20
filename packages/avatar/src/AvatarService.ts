@@ -100,6 +100,7 @@ export class AvatarService {
           onTunableParamSet: ({ sectionId, paramId, value }) => {
             this.compiler?.setTunableParam(sectionId, paramId, value);
           },
+          getClipByActionName: (name) => this.compiler?.getClipByActionName(name) ?? null,
         },
       );
     }

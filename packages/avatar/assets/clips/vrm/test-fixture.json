@@ -1,0 +1,21 @@
+{
+  "id": "test-fixture",
+  "duration": 2,
+  "tracks": [
+    {
+      "channel": "vrm.head.y",
+      "keyframes": [
+        { "time": 0, "value": 0 },
+        { "time": 1, "value": 0.3 },
+        { "time": 2, "value": 0 }
+      ]
+    },
+    {
+      "channel": "vrm.spine.x",
+      "keyframes": [
+        { "time": 0, "value": 0 },
+        { "time": 2, "value": 0.1 }
+      ]
+    }
+  ]
+}
