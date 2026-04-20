@@ -1109,6 +1109,16 @@
   //     // baseline values written by endPose harvesting. A value of 45000 means
   //     // the settled deviation halves roughly every 45 seconds. Default: 45000.
   //     // "baselineHalfLifeMs": 45000
+  //     // jitter: randomization applied to `enqueueTagAnimation` calls
+  //     // (LLM-authored tags). duration default ±0.15 (=±15%), intensity
+  //     // default ±0.10 (=±10%), intensityFloor clamps post-jitter intensity
+  //     // to at least 0.1. Set any field to 0 to disable that axis. NOT
+  //     // applied to state-transition nodes (setActivity path).
+  //     // "jitter": {
+  //     //   "duration": 0.15,
+  //     //   "intensity": 0.10,
+  //     //   "intensityFloor": 0.1
+  //     // }
   //   },
   //
   //   // Idle state machine intervals (milliseconds)

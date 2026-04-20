@@ -71,6 +71,99 @@ Both `crossfadeMs` and `baselineHalfLifeMs` are exposed as live sliders in the H
 
 ---
 
+## Anticipation, Accompaniment, and Variants
+
+These features layer on top of the ADSR + endPose + crossfade machinery from
+[A 1/3] to add the "animation principles" that push the avatar away from a
+mechanical feel: secondary motion leading the primary, correlated background
+nudges, and variation between otherwise-identical repeats.
+
+### Per-target timing (`leadMs` / `lagMs`)
+
+Each `ParamTarget` can independently declare its envelope offset relative to
+the enclosing animation's start/end:
+
+- `leadMs: -100` means this channel begins its ADSR 100 ms **earlier** than
+  the animation's nominal start (anticipation).
+- `lagMs: +200` means this channel finishes its release 200 ms **after** the
+  animation's nominal end (follow-through).
+
+Offsets only affect this target's envelope window; they do NOT change
+`anim.startTime` or `anim.endTime`. Both fields are silently clamped to
+`[-1000, +1000]` ms when the action is resolved.
+
+Example (inside `point_forward`, so the head starts turning 100 ms before the
+arm extends):
+
+```json
+"point_forward": {
+  "params": [
+    { "channel": "arm.right", "targetValue": 9.0, "weight": 1.0 }
+  ],
+  "accompaniment": [
+    { "channel": "head.yaw", "targetValue": 5.0, "weight": 0.4, "leadMs": -100 }
+  ]
+}
+```
+
+### Accompaniment
+
+`accompaniment` is an optional array of `ParamTarget`s authored alongside
+`params`. Semantically it reads as "every time this action fires, also nudge
+these channels" — typical uses are micro head/body follow-through. It is
+merged into the main `targets[]` after `params` at `resolveAction` time, so
+it participates in intensity scaling and crossfade identically to primary
+params.
+
+`accompaniment` does **not** contribute to `endPose`: it is a transient
+flourish, not a settled pose.
+
+See `wave`, `nod`, and `point_forward` in
+`packages/avatar/assets/default-action-map.json` for live examples.
+
+### Variants
+
+An action name may map to **either** a single `ActionMapEntry` (object) **or**
+a non-empty `ActionMapEntry[]` array. When an array is present, each call to
+`ActionMap.resolveAction()` picks one variant uniformly at random. Use this
+for actions that repeat often (wave, nod, blink) to avoid uncanny-valley
+identical repeats.
+
+```json
+"wave": [
+  { "params": [...], "defaultDuration": 1800, "category": "movement" },
+  { "params": [...], "defaultDuration": 2100 },
+  { "params": [...], "defaultDuration": 1600 }
+]
+```
+
+`listActions()` summarises a variant set by aggregating: channels are the
+union across all variants (including accompaniment channels), `defaultDuration`
+is the rounded average, and `category` / `description` come from the first
+variant as the representative.
+
+### Jitter
+
+`AvatarService.enqueueTagAnimation()` applies per-call randomization to the
+LLM-authored tag's duration and intensity before queueing it onto the
+compiler:
+
+- Duration: default ±15% (`durationJitter = 0.15`).
+- Intensity: default ±10% (`intensityJitter = 0.10`), clamped to `[floor, 1]`
+  where `intensityFloor = 0.1` by default.
+
+Jitter is read from the compiler's effective override via
+`compiler.getEffectiveJitter()` — runtime-tunable through the
+`compiler:jitter` section (HUD Randomization panel). Set any axis to `0` to
+disable jitter on that axis and get deterministic playback for the tuning
+session.
+
+Jitter is **not** applied to state-transition nodes routed through
+`AvatarService.setActivity()` / `toStateNodes()` — those remain deterministic
+so pose transitions stay predictable.
+
+---
+
 ## Action Map Format
 
 Action maps are plain JSON files with the following shape per entry:
