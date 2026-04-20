@@ -44,6 +44,11 @@ const DEFAULT_CONFIG: CompilerConfig = {
   releaseRatio: 0.3,
 };
 
+/** Default crossfade duration in ms for overlapping animation channels. */
+const DEFAULT_CROSSFADE_MS = 250;
+/** Default half-life in ms for exponential baseline decay. */
+const DEFAULT_BASELINE_HALF_LIFE_MS = 45_000;
+
 export class AnimationCompiler extends EventEmitter {
   private readonly config: CompilerConfig;
   private readonly actionMap: ActionMap;
@@ -53,6 +58,10 @@ export class AnimationCompiler extends EventEmitter {
   private currentParams: Record<string, number> = {};
   private springStates: Map<string, { position: number; velocity: number }> = new Map();
   private springOverrides: Map<string, Partial<SpringParams>> = new Map();
+  /** Per-channel resting values written by endPose harvesting; decay over time. */
+  private channelBaseline: Map<string, number> = new Map();
+  /** Runtime overrides for envelope/crossfade tunables — take effect next tick. */
+  private envelopeOverrides: { crossfadeMs?: number; baselineHalfLifeMs?: number } = {};
   private lastTickMs = 0;
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private tickCount = 0;
@@ -79,6 +88,7 @@ export class AnimationCompiler extends EventEmitter {
     this.activeAnimations = [];
     this.tickCount = 0;
     this.springStates.clear();
+    this.channelBaseline.clear();
     this.lastTickMs = 0;
   }
 
@@ -160,6 +170,30 @@ export class AnimationCompiler extends EventEmitter {
    */
   setActivity(activity: AvatarActivity): void {
     this.currentActivity = { ...activity };
+  }
+
+  /**
+   * Shallow copy of all non-zero baseline values, rounded to 4 decimal places
+   * to reduce WS bandwidth. Intended for PreviewStatus snapshots.
+   */
+  getChannelBaselineSnapshot(): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const [k, v] of this.channelBaseline) {
+      out[k] = Math.round(v * 1e4) / 1e4;
+    }
+    return out;
+  }
+
+  /**
+   * Returns a summary of all currently active animations with their phase
+   * and optional fade-out start timestamp for PreviewStatus snapshots.
+   */
+  getActiveAnimationDetails(): Array<{ name: string; phase: 'attack' | 'sustain' | 'release'; fadeOut?: number }> {
+    return this.activeAnimations.map((a) => ({
+      name: a.node.action,
+      phase: a.phase,
+      fadeOut: a.fadeOutStartMs,
+    }));
   }
 
   /**
@@ -271,6 +305,32 @@ export class AnimationCompiler extends EventEmitter {
       params: springParams,
     });
 
+    // Section 4: compiler:envelope — crossfade + baseline half-life tunables
+    sections.push({
+      id: 'compiler:envelope',
+      label: 'Envelope & Crossfade',
+      params: [
+        {
+          id: 'crossfadeMs',
+          label: 'Crossfade Duration',
+          min: 0,
+          max: 1000,
+          step: 10,
+          value: this.resolveCrossfadeMs(),
+          default: DEFAULT_CROSSFADE_MS,
+        },
+        {
+          id: 'baselineHalfLifeMs',
+          label: 'Baseline Half-Life',
+          min: 1000,
+          max: 120000,
+          step: 500,
+          value: this.resolveBaselineHalfLifeMs(),
+          default: DEFAULT_BASELINE_HALF_LIFE_MS,
+        },
+      ],
+    });
+
     return sections;
   }
 
@@ -290,6 +350,15 @@ export class AnimationCompiler extends EventEmitter {
       const existing = this.springOverrides.get(channel) ?? {};
       existing[attr] = value;
       this.springOverrides.set(channel, existing);
+      return;
+    }
+
+    if (sectionId === 'compiler:envelope') {
+      if (paramId === 'crossfadeMs') {
+        this.envelopeOverrides.crossfadeMs = value;
+      } else if (paramId === 'baselineHalfLifeMs') {
+        this.envelopeOverrides.baselineHalfLifeMs = value;
+      }
       return;
     }
 
@@ -313,15 +382,32 @@ export class AnimationCompiler extends EventEmitter {
     while (this.pendingQueue.length > 0) {
       const node = this.pendingQueue.shift();
       if (!node) continue;
-      const targets = this.actionMap.resolveAction(node.action, node.emotion, node.intensity);
-      if (targets.length === 0) continue;
+      const resolved = this.actionMap.resolveAction(node.action, node.emotion, node.intensity);
+      // Unknown action — skip silently
+      if (!resolved) continue;
       const startTime = (node.timestamp || now) + (node.delay ?? 0);
+      const endTime = startTime + node.duration + (resolved.holdMs ?? 0);
+
+      // Gather channels driven by the incoming animation for crossfade conflict detection
+      const newChannels = new Set(resolved.targets.map((t) => t.channel));
+
+      // Mark any existing active animation that shares channels as fading out
+      for (const existing of this.activeAnimations) {
+        if (existing.fadeOutStartMs !== undefined) continue; // already fading
+        const hasConflict = existing.targetParams.some((t) => newChannels.has(t.channel));
+        if (hasConflict) {
+          existing.fadeOutStartMs = startTime;
+        }
+      }
+
       this.activeAnimations.push({
         node,
         startTime,
-        endTime: startTime + node.duration,
-        targetParams: targets,
+        endTime,
+        targetParams: resolved.targets,
+        endPose: resolved.endPose,
         phase: 'attack',
+        fadeOutStartMs: undefined,
       });
     }
   }
@@ -329,35 +415,118 @@ export class AnimationCompiler extends EventEmitter {
   private tick(): void {
     const now = Date.now();
 
-    // Prune finished animations
-    this.activeAnimations = this.activeAnimations.filter((a) => now < a.endTime);
+    // 1. Compute dt first so downstream steps share a consistent dt this tick.
+    //    Clamp to 100ms to defend against pause/resume wall-clock gaps.
+    const rawDtMs = this.lastTickMs === 0 ? 1000 / this.config.fps : now - this.lastTickMs;
+    const dtMs = Math.min(rawDtMs, 100);
+    const dt = dtMs / 1000;
+    this.lastTickMs = now;
 
-    // Sum contributions from layers (continuous) + active animations (discrete ADSR).
-    // Multiple sources targeting the same channel are additively mixed.
+    // 2. Decay channelBaseline BEFORE harvesting newly finished animations.
+    //    This prevents a one-tick "double count" where the same settle value
+    //    would appear both from the baseline written last tick and the
+    //    harvested animation this tick.
+    const halfLife = this.resolveBaselineHalfLifeMs();
+    const decayFactor = Math.exp((-dtMs * Math.LN2) / halfLife);
+    for (const [ch, v] of this.channelBaseline) {
+      const newV = v * decayFactor;
+      if (Math.abs(newV) < 1e-4) {
+        this.channelBaseline.delete(ch);
+      } else {
+        this.channelBaseline.set(ch, newV);
+      }
+    }
+
+    // 3. Harvest finished or fully crossfaded-out animations.
+    //    Write endPose values into channelBaseline and snap the spring to the
+    //    settled position so the channel never blinks off between harvest and
+    //    the spring pass below.
+    const crossfadeMs = this.resolveCrossfadeMs();
+    const toRemove = new Set<ActiveAnimation>();
+    for (const anim of this.activeAnimations) {
+      const isExpired = now >= anim.endTime;
+      const isCrossfadeDone =
+        anim.fadeOutStartMs !== undefined && (crossfadeMs === 0 || now - anim.fadeOutStartMs >= crossfadeMs);
+      if (isExpired || isCrossfadeDone) {
+        if (anim.endPose) {
+          for (const entry of anim.endPose) {
+            const settled = entry.value * (entry.weight ?? 1);
+            this.channelBaseline.set(entry.channel, settled);
+            // Snap spring to the settled value so the channel doesn't
+            // flicker to zero before the spring stabilises.
+            this.springStates.set(entry.channel, { position: settled, velocity: 0 });
+          }
+        }
+        toRemove.add(anim);
+      }
+    }
+    this.activeAnimations = this.activeAnimations.filter((a) => !toRemove.has(a));
+
+    // 4. Gather layer (continuous) contributions.
     const contributions: Record<string, number> = this.layerManager.sample(now, this.currentActivity);
 
+    // 5. Identify channels currently being faded out so new animations can
+    //    fade their conflicting channels in symmetrically.
+    const fadingChannels = new Set<string>();
+    for (const anim of this.activeAnimations) {
+      if (anim.fadeOutStartMs !== undefined) {
+        for (const t of anim.targetParams) fadingChannels.add(t.channel);
+      }
+    }
+
+    // 6. Add active animation contributions with crossfade and endPose math.
     for (const anim of this.activeAnimations) {
       if (now < anim.startTime) continue;
       const progress = this.calculateProgress(anim, now);
       const eased = applyEasing(progress, anim.node.easing ?? this.config.defaultEasing);
-      // Raw linear progress [0,1] — used to drive `oscillate` sinusoidal shape
-      // separately from the ADSR envelope (which fades the oscillation in/out).
+      // Clamp eased to [0,1] to handle holdMs overshoot where calculateProgress
+      // may return slightly negative values (elapsed > node.duration).
+      const easedClamped = Math.max(0, Math.min(1, eased));
+      // Raw linear progress [0,1] — drives oscillate sinusoidal shape independently
+      // of the ADSR envelope.
       const rawProgress = Math.min(1, (now - anim.startTime) / Math.max(1, anim.node.duration));
+
       for (const target of anim.targetParams) {
-        const shape = target.oscillate ? Math.sin(2 * Math.PI * target.oscillate * rawProgress) : 1;
-        const c = target.targetValue * eased * shape * target.weight;
+        let c: number;
+        const endPoseEntry = anim.endPose?.find((e) => e.channel === target.channel);
+
+        if (anim.phase === 'release' && endPoseEntry) {
+          // Monotonic interpolation from peak toward settled end-pose.
+          // Oscillation is intentionally suppressed here so the settle path
+          // doesn't get corrupted by a residual sinusoidal term.
+          const peak = target.targetValue * target.weight;
+          const settled = endPoseEntry.value * (endPoseEntry.weight ?? 1);
+          const releaseProgress = 1 - easedClamped; // 0 at release start, 1 at end
+          c = peak + (settled - peak) * releaseProgress;
+        } else {
+          // Normal ADSR path: oscillation * eased envelope.
+          const shape = target.oscillate ? Math.sin(2 * Math.PI * target.oscillate * rawProgress) : 1;
+          c = target.targetValue * easedClamped * shape * target.weight;
+        }
+
+        // Apply crossfade scaling.
+        if (anim.fadeOutStartMs !== undefined) {
+          // Old animation: fade out over crossfadeMs
+          const fp = crossfadeMs === 0 ? 1 : Math.min(1, Math.max(0, (now - anim.fadeOutStartMs) / crossfadeMs));
+          c *= 1 - fp;
+        } else if (fadingChannels.has(target.channel)) {
+          // New animation replacing a fading-out one: fade in conflicting channels
+          const crossfadeIn = crossfadeMs === 0 ? 1 : Math.min(1, Math.max(0, (now - anim.startTime) / crossfadeMs));
+          c *= crossfadeIn;
+        }
+
         contributions[target.channel] = (contributions[target.channel] ?? 0) + c;
       }
     }
 
-    // Advance spring-damper per driven channel (semi-implicit Euler —
-    // symplectic, stable on spring systems where explicit Euler diverges).
-    // dt clamped to 100ms to defend against pause/resume wall-clock gaps
-    // (same reason as EyeGazeLayer's dt clamp).
-    const rawDtMs = this.lastTickMs === 0 ? 1000 / this.config.fps : now - this.lastTickMs;
-    const dt = Math.min(rawDtMs, 100) / 1000;
-    this.lastTickMs = now;
+    // 7. Add baseline contributions so channels with endPose persist after
+    //    their driving animation is gone.
+    for (const [ch, v] of this.channelBaseline) {
+      contributions[ch] = (contributions[ch] ?? 0) + v;
+    }
 
+    // 8. Advance spring-damper per driven channel (semi-implicit Euler —
+    //    symplectic, stable on spring systems where explicit Euler diverges).
     const next: Record<string, number> = {};
     for (const id of Object.keys(contributions)) {
       const target = contributions[id];
@@ -378,9 +547,9 @@ export class AnimationCompiler extends EventEmitter {
       next[id] = state.position;
     }
 
-    // Drop spring state for channels not driven this tick — preserves the
-    // existing drop-on-release contract (downstream VTS falls back to its
-    // own idle physics when a key disappears from the emitted frame).
+    // 9. Drop spring state for channels not driven this tick — preserves the
+    //    existing drop-on-release contract (downstream VTS falls back to its
+    //    own idle physics when a key disappears from the emitted frame).
     for (const id of this.springStates.keys()) {
       if (!(id in contributions)) this.springStates.delete(id);
     }
@@ -409,6 +578,14 @@ export class AnimationCompiler extends EventEmitter {
       omega: override.omega ?? base.omega,
       zeta: override.zeta ?? base.zeta,
     };
+  }
+
+  private resolveCrossfadeMs(): number {
+    return this.envelopeOverrides.crossfadeMs ?? this.config.crossfadeMs ?? DEFAULT_CROSSFADE_MS;
+  }
+
+  private resolveBaselineHalfLifeMs(): number {
+    return this.envelopeOverrides.baselineHalfLifeMs ?? this.config.baselineHalfLifeMs ?? DEFAULT_BASELINE_HALF_LIFE_MS;
   }
 
   private calculateProgress(anim: ActiveAnimation, now: number): number {
