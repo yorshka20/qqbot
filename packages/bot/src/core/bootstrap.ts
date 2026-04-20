@@ -13,6 +13,7 @@ import { APIClient } from '@/api/APIClient';
 import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
 import { ConversationInitializer } from '@/conversation/ConversationInitializer';
+import type { ProcessStageInterceptorRegistry } from '@/conversation/ProcessStageInterceptor';
 import { Bot } from '@/core/Bot';
 import type { ProtocolConfig } from '@/core/config';
 import type { Connection } from '@/core/connection';
@@ -33,8 +34,11 @@ import { DanmakuStore } from '@/services/bilibili/live/DanmakuStore';
 import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
+import { Live2DIdleTrigger } from '@/services/live2d/Live2DIdleTrigger';
 import { Live2DPipeline } from '@/services/live2d/Live2DPipeline';
 import { Live2DSessionService } from '@/services/live2d/Live2DSessionService';
+import { LivemodeInterceptor } from '@/services/live2d/LivemodeInterceptor';
+import { LivemodeState } from '@/services/live2d/LivemodeState';
 import type { MCPSystem } from '@/services/mcp/MCPInitializer';
 import { MCPInitializer } from '@/services/mcp/MCPInitializer';
 import { RetrievalService } from '@/services/retrieval';
@@ -284,12 +288,48 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   const live2dSessionService = container.resolve(Live2DSessionService);
   container.registerInstance(DITokens.LIVE2D_SESSION_SERVICE, live2dSessionService);
 
+  // ── LivemodeState (per-user mock-livestream buffers) ──
+  // Registered here so both the /livemode command and the PROCESS-stage
+  // interceptor can resolve the same singleton. Its flush handler is wired
+  // below once live2dPipeline exists (avoids a construction-order cycle).
+  const livemodeState = container.resolve(LivemodeState);
+  container.registerInstance(DITokens.LIVEMODE_STATE, livemodeState);
+
   // ── Live2DPipeline (shared by /avatar command + bilibili bridge) ──
   // Depends on LLM_SERVICE / PROMPT_MANAGER / CONFIG — all registered above.
   // AvatarService is resolved lazily inside the pipeline, so registration
   // order against `avatarService` above doesn't matter.
   const live2dPipeline = container.resolve(Live2DPipeline);
   container.registerInstance(DITokens.LIVE2D_PIPELINE, live2dPipeline);
+
+  // ── Livemode wiring ──
+  // Resolve idle trigger before wiring the flush handler so the handler can
+  // call `markActivity()` to reset the per-user idle clock on every flush.
+  const live2dIdleTrigger = container.resolve(Live2DIdleTrigger);
+  livemodeState.setFlushHandler((userId, payload) => {
+    live2dIdleTrigger.markActivity(userId);
+    void live2dPipeline.enqueue({
+      text: payload.summaryText,
+      source: 'livemode-private-batch',
+      sender: { uid: userId },
+      meta: {
+        scope: userId,
+        batchId: payload.batchId,
+        totalDanmaku: payload.totalDanmaku,
+        distinctSenders: payload.distinctSenders,
+      },
+    });
+  });
+  live2dIdleTrigger.start();
+  try {
+    const interceptorRegistry = container.resolve<ProcessStageInterceptorRegistry>(
+      DITokens.PROCESS_STAGE_INTERCEPTOR_REGISTRY,
+    );
+    interceptorRegistry.register(new LivemodeInterceptor(livemodeState));
+    logger.info('[Bootstrap] Livemode interceptor + idle trigger registered');
+  } catch (err) {
+    logger.warn('[Bootstrap] Livemode interceptor registration failed (non-fatal):', err);
+  }
 
   // ── Bilibili live listener (optional) ──
   // Fully gated on `bilibili.live.enabled` — no side effects when absent.

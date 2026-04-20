@@ -131,7 +131,14 @@ export class LLMStage implements Live2DStage {
     // Persist this turn into the rolling session history. The session may
     // not exist when tests construct a bare context without the assembler —
     // guard on `ctx.threadId` so those tests keep passing.
-    if (ctx.threadId) {
+    //
+    // `meta.ephemeral === true` means this run was machine-initiated (e.g.
+    // the idle-trigger proactive prompt) — we don't want the synthetic user
+    // prompt OR the reply to anchor future context, since the real viewers
+    // never saw them as dialogue turns. The avatar already spoke the reply
+    // over TTS; that's the entire point.
+    const ephemeral = ctx.input.meta?.ephemeral === true;
+    if (ctx.threadId && !ephemeral) {
       const userId = ctx.input.sender?.uid ?? 'live2d';
       this.sessionService.appendUserMessage(ctx.threadId, userId, ctx.input.text);
       this.sessionService.appendAssistantMessage(ctx.threadId, trimmed);

@@ -2,7 +2,7 @@
 // stages or the pipeline itself) so stage files can import them without
 // creating import cycles with the orchestrator.
 
-export type Live2DSource = 'avatar-cmd' | 'bilibili-danmaku-batch';
+export type Live2DSource = 'avatar-cmd' | 'bilibili-danmaku-batch' | 'livemode-private-batch';
 
 export interface Live2DInput {
   /** Raw text to feed the LLM. Batch sources should pre-format (see DanmakuBuffer). */

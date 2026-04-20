@@ -31,6 +31,9 @@ import type { Live2DSource } from '../types';
 const TEMPLATE_BY_SOURCE: Record<Live2DSource, string> = {
   'avatar-cmd': 'avatar.speak-system',
   'bilibili-danmaku-batch': 'avatar.bilibili-batch-system',
+  // Livemode mocks bilibili — reuse the same "react to a batch of danmaku"
+  // prompt. If we later want livemode-specific phrasing, branch the template.
+  'livemode-private-batch': 'avatar.bilibili-batch-system',
 };
 
 @injectable()

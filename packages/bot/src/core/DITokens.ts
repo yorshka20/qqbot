@@ -56,6 +56,7 @@ export const DITokens = {
   TTS_MANAGER: 'TTSManager',
   LIVE2D_PIPELINE: 'Live2DPipeline',
   LIVE2D_SESSION_SERVICE: 'Live2DSessionService',
+  LIVEMODE_STATE: 'LivemodeState',
   // Bilibili live
   BILIBILI_LIVE_CLIENT: 'BilibiliLiveClient',
   BILIBILI_LIVE_BRIDGE: 'BilibiliLiveBridge',

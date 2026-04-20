@@ -11,6 +11,7 @@ export * from './GeminiKeyModeCommandHandler';
 export * from './GroupDedupCommandHandler';
 export * from './I2vCommandHandler';
 export * from './Live2DCommandHandler';
+export * from './LivemodeCommandHandler';
 export * from './MemoryCommandHandler';
 export * from './MemorySyncCommandHandler';
 export * from './NaiPlusCommandHandler';
