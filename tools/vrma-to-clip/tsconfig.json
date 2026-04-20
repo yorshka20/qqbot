@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "types": ["bun"]
+  },
+  "include": ["index.ts", "src/**/*.ts", "index.test.ts", "fixtures/build-synthetic.ts"]
+}
