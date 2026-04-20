@@ -75,9 +75,7 @@ export class LLMStage implements Live2DStage {
         }
         ctx.tagCount = (ctx.tagCount ?? 0) + tags.length;
         if (tags.length > 0) {
-          tagDescs = tags
-            .map((t) => `${t.emotion}/${t.action}@${t.intensity.toFixed(2)}`)
-            .join(', ');
+          tagDescs = tags.map((t) => `${t.emotion}/${t.action}@${t.intensity.toFixed(2)}`).join(', ');
         }
       } catch (err) {
         logger.warn('[Live2D/llm] tag parse/enqueue failed (non-fatal):', err);
@@ -98,9 +96,7 @@ export class LLMStage implements Live2DStage {
       // without flipping to debug level (matches the prompt-logging style
       // used by LLMService).
       logger.info(
-        `[Live2D/llm] flush | chunk=${JSON.stringify(chunk)} | spoken=${JSON.stringify(
-          stripped,
-        )} | tags=[${tagDescs}]`,
+        `[Live2D/llm] flush | chunk=${JSON.stringify(chunk)} | spoken=${JSON.stringify(stripped)} | tags=[${tagDescs}]`,
       );
     });
 
