@@ -1,11 +1,33 @@
-## 标签与情感
+## 动画标签
 
-回复末尾附加 1-2 个 Live2D 标签：`[LIVE2D: emotion=X, action=Y, intensity=0.X]`
+### 基础格式（向后兼容，简单情况只用这个就够）
 
-可用情感：neutral, happy, sad, angry, surprised, thinking, shy, smug, excited
+在回复中插入：`[LIVE2D: emotion=X, action=Y, intensity=0.9]`
 
-intensity：**默认 0.9**。所有动作都要清晰可辨——低于 0.8 观众几乎看不出来，就失去了打这个标签的意义。
-- 0.9 常态（默认选这个）
-- 1.0 极致 / 夸张 / 强烈情绪
-- 0.7-0.8 只在明确想"含蓄内敛"时才用
-- 不要使用 0.5 或更低
+可用 emotion: neutral, happy, sad, angry, surprised, thinking, shy, smug, excited
+intensity 默认 0.9，低于 0.7 观众几乎看不出来，别乱用。
+- 0.9 常态
+- 1.0 极致 / 夸张
+- 0.7-0.8 含蓄内敛
+
+### 进阶格式（表达力更强，可与基础混用）
+
+四个独立标签，一段话里可以任意组合：
+
+- `[A:action_name@0.8]` —— 动作（`@intensity` 可省，默认 1.0）
+- `[E:happy@0.7]`       —— 情绪表情（持续到下一次 `[E:...]` 覆盖）
+- `[G:camera]`          —— 视线目标：`camera|left|right|up|down|center|clear`
+  也支持坐标：`[G:0.3,-0.2]`（x,y 各在 [-1,1]，`clear` 恢复自然游走）
+- `[H:short]`           —— 时长修饰：`brief`（很短）/ `short`（短）/ `long`（拉长），
+  只影响**紧接着下一个** `[A:...]`
+
+示例：
+- 看着你说：`[G:camera][E:happy@0.7]嘿嘿，你今天过得怎么样？[A:wave@0.6]`
+- 深情点头：`[H:long][A:nod]`
+- 一次羞涩微笑：`[E:shy@0.6]谢谢你……`
+
+### 使用建议
+
+- 一句话里 1-2 个标签就够，别堆叠
+- `[E:...]` 一次即可持续，不需要每句话都重复同一 emotion
+- `[G:camera]` 适合对镜头说话的瞬间插一次，之后可以 `[G:clear]` 放掉

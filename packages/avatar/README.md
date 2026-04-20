@@ -296,3 +296,24 @@ GET http://localhost:8002/clip/<action-name>
 
 Returns the first preloaded `IdleClip` JSON for the named action (404 if not a
 clip action or unknown).
+
+---
+
+## Rich Tag Vocabulary
+
+On top of the legacy `[LIVE2D: action=X, emotion=Y, intensity=Z]` tag,
+the parser recognizes four orthogonal slot tags routed by
+`TagAnimationStage` into distinct `AvatarService` entries:
+
+| Tag | Example | Routes to | Notes |
+|---|---|---|---|
+| `[A:name@intensity]` | `[A:wave@0.8]` | `enqueueTagAnimation` | `@intensity` optional (default 1.0) |
+| `[E:name@intensity]` | `[E:happy@0.7]` | `enqueueEmotion` | persists via `channelBaseline` until overridden |
+| `[G:target]` | `[G:camera]`, `[G:0.3,-0.2]`, `[G:clear]` | `setGazeTarget` | named direction, point, or clear (natural gaze) |
+| `[H:dur]` | `[H:short]` | (ctx-local) | `brief` / `short` / `long` scale the next `[A:...]` duration |
+
+Legacy `[LIVE2D:]` tags remain fully supported; the parser also derives
+a persistent `[E:emotion]` from any non-neutral emotion field so old
+prompts get the new baseline-persistence behavior automatically.
+
+See `prompts/avatar/partials/tag-spec.txt` for the LLM-facing spec.
