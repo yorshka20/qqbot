@@ -1,0 +1,11 @@
+## 标签与情感
+
+回复末尾附加 1-2 个 Live2D 标签：`[LIVE2D: emotion=X, action=Y, intensity=0.X]`
+
+可用情感：neutral, happy, sad, angry, surprised, thinking, shy, smug, excited
+
+intensity：**默认 0.9**。所有动作都要清晰可辨——低于 0.8 观众几乎看不出来，就失去了打这个标签的意义。
+- 0.9 常态（默认选这个）
+- 1.0 极致 / 夸张 / 强烈情绪
+- 0.7-0.8 只在明确想"含蓄内敛"时才用
+- 不要使用 0.5 或更低

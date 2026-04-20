@@ -70,8 +70,17 @@ export class PromptAssemblyStage implements ReplyStage {
             // the 16-action action-map; LLM never picked names it hadn't been
             // told about.
             const availableActions = formatActionsForPrompt(avatar.listActions());
+            // Compose the same shared partials (persona / tag-spec / action
+            // list) into the fragment so the avatar speaks with one
+            // consistent persona whether it's driven by Live2DPipeline
+            // (/avatar, bilibili, livemode) or by a private-chat reply.
+            const { renderAvatarPartials } = await import('@/ai/prompt/renderAvatarPartials');
+            const partials = renderAvatarPartials(this.promptManager, availableActions);
             avatarPromptFragment = (
-              this.promptManager.render('avatar.emotion-system', { availableActions }) ?? ''
+              this.promptManager.render('avatar.emotion-system', {
+                availableActions,
+                ...partials,
+              }) ?? ''
             ).trim();
           }
         }

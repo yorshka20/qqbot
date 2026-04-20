@@ -1,26 +1,21 @@
-// Live2DIdleTrigger — fires a synthetic "there's no danmaku right now"
-// prompt at the LLM when a livemode user's buffer has been quiet for a
-// while, so the avatar occasionally opens its own mouth instead of only
-// replying to inbound text.
+// Live2DIdleTrigger — keeps the livemode conversation alive when viewers
+// go quiet by enqueuing a "no danmaku right now" run through the normal
+// Live2DPipeline. The run is NOT treated as a separate flow: it goes
+// through the same prompt template and appends to the same session
+// history as real-danmaku runs, so the LLM's next reply stays contextual.
 //
-// Scope: livemode only (for now). Bilibili-live could adopt the same
-// pattern later — the trigger would just need to watch that user/room's
-// activity too.
+// Anti-repetition strategy is layered:
+//   - Rotate the synthetic kickoff text so the user-side surface varies
+//     even when the underlying signal ("nobody's talking") is constant.
+//   - Bump temperature for these runs (prompt + history converge across
+//     back-to-back idle moments, so 0.8 produces deterministic echoes).
+//   - Cap consecutive idle fires — if the chat is truly dead, the avatar
+//     stops talking to itself after a couple tries. The cap resets when
+//     real user input arrives (markActivity).
 //
-// Inputs:
-//   - `markActivity(userId)` — bootstrap's flush handler calls this on
-//     every buffer flush so the clock resets per user.
-//   - `start()` / `stop()` — interval timer lifecycle. Called from
-//     bootstrap.
-//
-// Output: on each tick, iterate the currently-enabled proactive users;
-// for any user idle for >= `IDLE_THRESHOLD_MS`, enqueue a pipeline run
-// with `meta.ephemeral=true` so the synthetic prompt is NOT appended to
-// session history (its reply still gets spoken over TTS — the avatar
-// "initiates" without polluting the rolling context).
-//
-// After firing, we update the user's activity clock to "now" so the next
-// idle window starts fresh instead of firing back-to-back on every tick.
+// `markActivity(userId)` is called from bootstrap's flush handler on
+// every real buffer flush, so viewer-generated input both resets the
+// idle clock and the consecutive-fire counter.
 
 import { inject, injectable, singleton } from 'tsyringe';
 import { DITokens } from '@/core/DITokens';
@@ -30,13 +25,42 @@ import type { LivemodeState } from './LivemodeState';
 
 const CHECK_INTERVAL_MS = 15_000;
 const IDLE_THRESHOLD_MS = 90_000;
-const IDLE_PROMPT_TEXT = '(暂无新弹幕) 请基于最近对话主动聊点轻松的话题，不要重复已经说过的内容，保持直播氛围。';
+/**
+ * Higher-than-default temperature for idle fires. The prompt + recent
+ * history look near-identical across back-to-back idle moments, so the
+ * standard 0.8 tends to produce deterministic echoes. 1.1 adds enough
+ * spread to nudge the model into different directions without losing
+ * coherence.
+ */
+const IDLE_TEMPERATURE = 1.1;
+/**
+ * Pool of neutral stage-direction kickoff strings. The prompt template
+ * handles the "how to behave when no one's talking" framing; these
+ * strings only vary the literal tokens the LLM sees on the user side,
+ * breaking the exact-match prompt that drives repeat outputs.
+ */
+const IDLE_KICKOFFS = [
+  '(直播间暂时安静，没有新弹幕)',
+  '(一段时间过去了，观众没说话)',
+  '(弹幕区静悄悄的)',
+  '(暂时冷场)',
+  '(观众看着你，但没人发言)',
+];
+/**
+ * Cap how many times idle fires without any real user input. Real
+ * streamers don't talk to dead chat forever; after this many tries we
+ * stay silent until viewers come back.
+ */
+const MAX_CONSECUTIVE_IDLE_FIRES = 2;
 
 @injectable()
 @singleton()
 export class Live2DIdleTrigger {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastActivityByUser = new Map<string, number>();
+  private consecutiveIdleByUser = new Map<string, number>();
+  /** Round-robin cursor per user into IDLE_KICKOFFS. */
+  private kickoffCursorByUser = new Map<string, number>();
 
   constructor(
     @inject(DITokens.LIVEMODE_STATE) private state: LivemodeState,
@@ -48,7 +72,9 @@ export class Live2DIdleTrigger {
     this.timer = setInterval(() => {
       void this.tick();
     }, CHECK_INTERVAL_MS);
-    logger.info(`[Live2DIdleTrigger] started (checkInterval=${CHECK_INTERVAL_MS}ms threshold=${IDLE_THRESHOLD_MS}ms)`);
+    logger.info(
+      `[Live2DIdleTrigger] started (checkInterval=${CHECK_INTERVAL_MS}ms threshold=${IDLE_THRESHOLD_MS}ms maxConsecutive=${MAX_CONSECUTIVE_IDLE_FIRES})`,
+    );
   }
 
   stop(): void {
@@ -57,11 +83,19 @@ export class Live2DIdleTrigger {
       this.timer = null;
     }
     this.lastActivityByUser.clear();
+    this.consecutiveIdleByUser.clear();
+    this.kickoffCursorByUser.clear();
   }
 
-  /** Called by the livemode flush handler — resets the idle clock for this user. */
+  /**
+   * Real viewer activity: resets both the idle clock and the
+   * consecutive-fire counter so the avatar can speak proactively again
+   * once silence returns.
+   */
   markActivity(userId: string | number): void {
-    this.lastActivityByUser.set(String(userId), Date.now());
+    const key = String(userId);
+    this.lastActivityByUser.set(key, Date.now());
+    this.consecutiveIdleByUser.set(key, 0);
   }
 
   private async tick(): Promise<void> {
@@ -71,20 +105,34 @@ export class Live2DIdleTrigger {
       const last = this.lastActivityByUser.get(userId) ?? this.state.getEnabledAt(userId) ?? now;
       if (now - last < IDLE_THRESHOLD_MS) continue;
 
+      const consecutive = this.consecutiveIdleByUser.get(userId) ?? 0;
+      if (consecutive >= MAX_CONSECUTIVE_IDLE_FIRES) {
+        // Dead chat — stay silent until markActivity() resets the counter.
+        continue;
+      }
+
       // Reset clock BEFORE enqueueing so a slow LLM round doesn't cause
       // overlapping idle fires on the next tick.
       this.lastActivityByUser.set(userId, now);
+      this.consecutiveIdleByUser.set(userId, consecutive + 1);
 
+      const kickoff = this.nextKickoff(userId);
       try {
         await this.pipeline.enqueue({
-          text: IDLE_PROMPT_TEXT,
+          text: kickoff,
           source: 'livemode-private-batch',
           sender: { uid: userId },
-          meta: { scope: userId, idle: true, ephemeral: true },
+          meta: { scope: userId, idle: true, temperature: IDLE_TEMPERATURE },
         });
       } catch (err) {
         logger.warn(`[Live2DIdleTrigger] enqueue failed | userId=${userId}:`, err);
       }
     }
+  }
+
+  private nextKickoff(userId: string): string {
+    const cursor = this.kickoffCursorByUser.get(userId) ?? 0;
+    this.kickoffCursorByUser.set(userId, (cursor + 1) % IDLE_KICKOFFS.length);
+    return IDLE_KICKOFFS[cursor];
   }
 }

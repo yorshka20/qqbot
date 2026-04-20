@@ -338,8 +338,20 @@ export class AvatarService {
    * the action is unknown (the compiler will silently drop it in that case).
    */
   enqueueTagAnimation(tag: { emotion: string; action: string; intensity: number }): void {
-    if (!this.compiler) return;
-    const duration = this.compiler.getActionDuration(tag.action) ?? 1500;
+    if (!this.compiler) {
+      logger.warn(`[AvatarService] enqueueTagAnimation dropped (no compiler) | action=${tag.action}`);
+      return;
+    }
+    const registered = this.compiler.getActionDuration(tag.action);
+    const duration = registered ?? 1500;
+    // Log the dispatch so operators can trace LLM-emitted actions through to
+    // the compiler. `registered=null` means the compiler has no definition
+    // for this action name (likely a typo or missing config entry) — the
+    // animation will still enqueue but play the fallback 1500ms hold, which
+    // is usually why "the LLM said X but the avatar didn't X".
+    logger.info(
+      `[AvatarService] enqueueTagAnimation | action=${tag.action} emotion=${tag.emotion} intensity=${tag.intensity.toFixed(2)} duration=${duration}ms registered=${registered != null}`,
+    );
     this.compiler.enqueue([
       {
         action: tag.action,

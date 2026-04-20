@@ -19,6 +19,7 @@ import { formatActionsForPrompt } from '@qqbot/avatar';
 import { inject, injectable } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { PromptMessageAssembler } from '@/ai/prompt/PromptMessageAssembler';
+import { renderAvatarPartials } from '@/ai/prompt/renderAvatarPartials';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { MemoryService } from '@/memory/MemoryService';
@@ -32,7 +33,8 @@ const TEMPLATE_BY_SOURCE: Record<Live2DSource, string> = {
   'avatar-cmd': 'avatar.speak-system',
   'bilibili-danmaku-batch': 'avatar.bilibili-batch-system',
   // Livemode mocks bilibili — reuse the same "react to a batch of danmaku"
-  // prompt. If we later want livemode-specific phrasing, branch the template.
+  // prompt so idle-triggered runs stay in the same conversational frame as
+  // real-danmaku runs (history continuity > idle-specific framing).
   'livemode-private-batch': 'avatar.bilibili-batch-system',
 };
 
@@ -51,11 +53,18 @@ export class PromptAssemblyStage implements Live2DStage {
 
     ctx.availableActions = formatActionsForPrompt(ctx.avatar.listActions());
 
+    // Resolve the shared avatar fragments (persona, tag-spec, action list,
+    // anti-repeat) once so the main template can compose them in. Partials
+    // that fail to render are returned as empty strings — the main template
+    // still renders with blank slots rather than aborting the whole run.
+    const partials = renderAvatarPartials(this.promptManager, ctx.availableActions);
+
     const templateName = TEMPLATE_BY_SOURCE[ctx.input.source];
     let sceneSystem: string;
     try {
       sceneSystem = this.promptManager.render(templateName, {
         availableActions: ctx.availableActions,
+        ...partials,
       });
     } catch (err) {
       logger.error(`[Live2D/prompt-assembly] template "${templateName}" render failed:`, err);

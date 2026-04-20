@@ -67,12 +67,18 @@ export class LLMStage implements Live2DStage {
         }
       }
 
+      let tagDescs = '';
       try {
         const tags = parseLive2DTags(chunk);
         for (const tag of tags) {
           ctx.avatar?.enqueueTagAnimation(tag);
         }
         ctx.tagCount = (ctx.tagCount ?? 0) + tags.length;
+        if (tags.length > 0) {
+          tagDescs = tags
+            .map((t) => `${t.emotion}/${t.action}@${t.intensity.toFixed(2)}`)
+            .join(', ');
+        }
       } catch (err) {
         logger.warn('[Live2D/llm] tag parse/enqueue failed (non-fatal):', err);
       }
@@ -86,6 +92,16 @@ export class LLMStage implements Live2DStage {
         }
         ctx.spoken = (ctx.spoken ?? '') + (ctx.spoken ? ' ' : '') + stripped;
       }
+
+      // Per-flush visibility: raw chunk, spoken-after-strip, tags enqueued.
+      // Kept at info so operators can eyeball what the LLM actually emitted
+      // without flipping to debug level (matches the prompt-logging style
+      // used by LLMService).
+      logger.info(
+        `[Live2D/llm] flush | chunk=${JSON.stringify(chunk)} | spoken=${JSON.stringify(
+          stripped,
+        )} | tags=[${tagDescs}]`,
+      );
     });
 
     // Prefer the fully-assembled message list from PromptAssemblyStage (scene
@@ -97,6 +113,12 @@ export class LLMStage implements Live2DStage {
       { role: 'user' as const, content: ctx.input.text },
     ];
 
+    // Allow callers (e.g. Live2DIdleTrigger) to raise the temperature for
+    // runs that would otherwise converge — same prompt + similar history
+    // back-to-back produces deterministic echoes at the default.
+    const metaTemp = ctx.input.meta?.temperature;
+    const temperature = typeof metaTemp === 'number' && Number.isFinite(metaTemp) ? metaTemp : TEMPERATURE;
+
     try {
       await this.llmService.generateStream(
         ctx.input.text,
@@ -106,7 +128,7 @@ export class LLMStage implements Live2DStage {
         },
         {
           maxTokens: MAX_TOKENS,
-          temperature: TEMPERATURE,
+          temperature,
           messages,
         },
         ctx.providerName,
@@ -128,17 +150,22 @@ export class LLMStage implements Live2DStage {
       return;
     }
 
-    // Persist this turn into the rolling session history. The session may
-    // not exist when tests construct a bare context without the assembler —
-    // guard on `ctx.threadId` so those tests keep passing.
-    //
-    // `meta.ephemeral === true` means this run was machine-initiated (e.g.
-    // the idle-trigger proactive prompt) — we don't want the synthetic user
-    // prompt OR the reply to anchor future context, since the real viewers
-    // never saw them as dialogue turns. The avatar already spoke the reply
-    // over TTS; that's the entire point.
-    const ephemeral = ctx.input.meta?.ephemeral === true;
-    if (ctx.threadId && !ephemeral) {
+    // End-of-stream summary: the full raw reply (tags intact) so operators
+    // can grep for a specific action (e.g. `shake_head`) and confirm what
+    // the LLM actually emitted vs. what the avatar ended up rendering.
+    logger.info(
+      `[Live2D/llm] reply complete | source=${ctx.input.source} tags=${ctx.tagCount ?? 0} text=${JSON.stringify(trimmed)}`,
+    );
+
+    // Persist this turn into the rolling session history. Both sides
+    // (user + assistant) always append — including for idle-trigger runs
+    // where the "user" side is a synthetic stage-direction like
+    // "(直播间暂时安静)". Keeping the alternation intact matters for two
+    // reasons: (1) providers with strict user/assistant alternation stay
+    // happy, (2) the LLM sees a normal dialogue rhythm instead of a
+    // growing chain of back-to-back assistant turns that encourages
+    // self-imitation and repetition.
+    if (ctx.threadId) {
       const userId = ctx.input.sender?.uid ?? 'live2d';
       this.sessionService.appendUserMessage(ctx.threadId, userId, ctx.input.text);
       this.sessionService.appendAssistantMessage(ctx.threadId, trimmed);
