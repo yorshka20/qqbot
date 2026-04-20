@@ -27,23 +27,32 @@ interface FakeAvatar {
   active: boolean;
   consumer: boolean;
   actions: ActionSummary[];
-  enqueued: Array<{ emotion: string; action: string; intensity: number }>;
+  enqueued: Array<{ emotion: string; action: string; intensity: number; durationOverrideMs?: number }>;
+  emotioned: Array<{ name: string; intensity: number }>;
+  gazed: unknown[];
   spoken: string[];
   poses: string[];
   isActive(): boolean;
   hasConsumer(): boolean;
   listActions(): ActionSummary[];
-  enqueueTagAnimation(t: { emotion: string; action: string; intensity: number }): void;
+  enqueueTagAnimation(t: { emotion: string; action: string; intensity: number; durationOverrideMs?: number }): void;
+  enqueueEmotion(name: string, intensity: number): void;
+  setGazeTarget(target: unknown): void;
+  getActionDuration(action: string): number | undefined;
   speak(text: string): void;
   setActivity(p: { pose?: string }): void;
 }
 
-function makeAvatar(overrides: Partial<Pick<FakeAvatar, 'active' | 'consumer' | 'actions'>> = {}): FakeAvatar {
+function makeAvatar(
+  overrides: Partial<Pick<FakeAvatar, 'active' | 'consumer' | 'actions'>> & { actionDuration?: number } = {},
+): FakeAvatar {
   return {
     active: overrides.active ?? true,
     consumer: overrides.consumer ?? true,
     actions: overrides.actions ?? [{ name: 'wave', category: 'movement' }],
     enqueued: [],
+    emotioned: [],
+    gazed: [],
     spoken: [],
     poses: [],
     isActive() {
@@ -57,6 +66,15 @@ function makeAvatar(overrides: Partial<Pick<FakeAvatar, 'active' | 'consumer' | 
     },
     enqueueTagAnimation(t) {
       this.enqueued.push(t);
+    },
+    enqueueEmotion(name, intensity) {
+      this.emotioned.push({ name, intensity });
+    },
+    setGazeTarget(target) {
+      this.gazed.push(target);
+    },
+    getActionDuration(_action) {
+      return overrides.actionDuration;
     },
     speak(text) {
       this.spoken.push(text);
@@ -283,16 +301,19 @@ describe('LLMStage', () => {
 });
 
 describe('TagAnimationStage', () => {
-  it('parses and enqueues each tag from replyText', async () => {
+  it('parses and enqueues each tag from replyText (legacy format)', async () => {
     const avatar = makeAvatar();
     const stage = new TagAnimationStage();
     const ctx = createContext(sampleInput());
     ctx.avatar = avatar as unknown as Live2DContext['avatar'];
     ctx.replyText = '你好 [LIVE2D: emotion=happy, action=wave, intensity=0.8]';
     await stage.execute(ctx);
+    // Legacy tag produces 2 ParsedTags: action + derived emotion.
     expect(avatar.enqueued.length).toBe(1);
     expect(avatar.enqueued[0].action).toBe('wave');
-    expect(ctx.tagCount).toBe(1);
+    expect(avatar.emotioned.length).toBe(1);
+    expect(avatar.emotioned[0].name).toBe('happy');
+    expect(ctx.tagCount).toBe(2);
   });
 
   it('is a no-op when replyText is missing', async () => {
@@ -314,6 +335,86 @@ describe('TagAnimationStage', () => {
     await stage.execute(ctx);
     expect(ctx.skipped).toBe(false);
     expect(ctx.tagCount).toBe(0);
+  });
+});
+
+describe('TagAnimationStage — rich tag routing', () => {
+  it('routes [E:], [G:], [H:]+[A:] to the correct AvatarService methods', async () => {
+    // getActionDuration returns 1000 so hold multiplier 0.8 → override 800ms.
+    const avatar = makeAvatar({ actionDuration: 1000 });
+    const stage = new TagAnimationStage();
+    const ctx = createContext(sampleInput());
+    ctx.avatar = avatar as unknown as Live2DContext['avatar'];
+    ctx.replyText = '[E:happy@0.7] hi [G:camera] [H:short][A:nod]';
+    await stage.execute(ctx);
+
+    expect(avatar.emotioned).toHaveLength(1);
+    expect(avatar.emotioned[0].name).toBe('happy');
+    expect(avatar.emotioned[0].intensity).toBeCloseTo(0.7);
+
+    expect(avatar.gazed).toHaveLength(1);
+    expect((avatar.gazed[0] as { type: string; name: string }).type).toBe('named');
+    expect((avatar.gazed[0] as { type: string; name: string }).name).toBe('camera');
+
+    expect(avatar.enqueued).toHaveLength(1);
+    expect(avatar.enqueued[0].action).toBe('nod');
+    expect(avatar.enqueued[0].emotion).toBe('neutral');
+    expect(avatar.enqueued[0].intensity).toBeCloseTo(1.0);
+    // 1000ms * 0.8 (short) = 800ms
+    expect(avatar.enqueued[0].durationOverrideMs).toBe(800);
+
+    expect(ctx.tagCount).toBe(4);
+    expect(ctx.pendingHoldMultiplier).toBeUndefined();
+  });
+
+  it('drops an unconsumed hold when no following action tag', async () => {
+    const avatar = makeAvatar();
+    const stage = new TagAnimationStage();
+    const ctx = createContext(sampleInput());
+    ctx.avatar = avatar as unknown as Live2DContext['avatar'];
+    ctx.replyText = '[H:long]';
+    await stage.execute(ctx);
+
+    expect(avatar.enqueued).toHaveLength(0);
+    expect(avatar.emotioned).toHaveLength(0);
+    expect(avatar.gazed).toHaveLength(0);
+    expect(ctx.tagCount).toBe(1);
+    expect(ctx.pendingHoldMultiplier).toBeUndefined();
+  });
+
+  it('legacy regression: [LIVE2D:] produces action + derived emotion baseline', async () => {
+    const avatar = makeAvatar();
+    const stage = new TagAnimationStage();
+    const ctx = createContext(sampleInput());
+    ctx.avatar = avatar as unknown as Live2DContext['avatar'];
+    ctx.replyText = '[LIVE2D: action=wave, emotion=happy, intensity=0.8]';
+    await stage.execute(ctx);
+
+    expect(avatar.enqueued).toHaveLength(1);
+    expect(avatar.enqueued[0].action).toBe('wave');
+    expect(avatar.enqueued[0].emotion).toBe('happy');
+    expect(avatar.enqueued[0].intensity).toBeCloseTo(0.8);
+    expect(avatar.enqueued[0].durationOverrideMs).toBeUndefined();
+
+    expect(avatar.emotioned).toHaveLength(1);
+    expect(avatar.emotioned[0].name).toBe('happy');
+
+    expect(ctx.tagCount).toBe(2);
+  });
+
+  it('short-circuits when streamingHandled is true', async () => {
+    const avatar = makeAvatar({ actionDuration: 1000 });
+    const stage = new TagAnimationStage();
+    const ctx = createContext(sampleInput());
+    ctx.avatar = avatar as unknown as Live2DContext['avatar'];
+    ctx.replyText = '[E:happy@0.9][A:wave]';
+    ctx.streamingHandled = true;
+    await stage.execute(ctx);
+
+    expect(avatar.enqueued).toHaveLength(0);
+    expect(avatar.emotioned).toHaveLength(0);
+    expect(avatar.gazed).toHaveLength(0);
+    expect(ctx.tagCount).toBeUndefined();
   });
 });
 

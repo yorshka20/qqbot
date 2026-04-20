@@ -50,6 +50,14 @@ export interface Live2DContext {
   tagCount?: number;
 
   /**
+   * Hold-tag ctx-local state. A `[H:brief|short|long]` tag parsed by
+   * TagAnimationStage sets this to a duration multiplier; the NEXT
+   * `[A:...]` tag in the same reply consumes and clears it. If the reply
+   * has no following action tag, the multiplier is dropped at stage end.
+   */
+  pendingHoldMultiplier?: number;
+
+  /**
    * Set by LLMStage when it streamed the reply and already dispatched
    * chunks to avatar.speak / avatar.enqueueTagAnimation. Later stages
    * (SpeakStage, TagAnimationStage) short-circuit instead of re-doing the
