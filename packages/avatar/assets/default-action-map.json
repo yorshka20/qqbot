@@ -1,6 +1,7 @@
 {
   "smile": {
     "category": "emotion",
+    "modelSupport": "both",
     "description": "露出笑容,嘴角上扬,眼睛微眯——开心或友好的表情",
     "params": [
       { "channel": "mouth.smile", "targetValue": 1.0, "weight": 1.0 },
@@ -12,6 +13,7 @@
   },
   "nod": {
     "category": "movement",
+    "modelSupport": "cubism",
     "description": "点头两次,表示同意、赞同或肯定",
     "params": [
       { "channel": "head.pitch", "targetValue": -18.0, "weight": 1.0, "oscillate": 2 },
@@ -25,6 +27,7 @@
   "wave": [
     {
       "category": "movement",
+      "modelSupport": "cubism",
       "description": "右手挥动,伴随身体轻晃——打招呼或告别",
       "params": [
         { "channel": "arm.right", "targetValue": 7.0, "weight": 1.0, "oscillate": 2.5 },
@@ -38,6 +41,7 @@
     },
     {
       "category": "movement",
+      "modelSupport": "cubism",
       "description": "右手挥动,伴随身体轻晃——打招呼或告别",
       "params": [
         { "channel": "arm.right", "targetValue": 8.0, "weight": 1.0, "oscillate": 3 },
@@ -48,6 +52,7 @@
     },
     {
       "category": "movement",
+      "modelSupport": "cubism",
       "description": "右手挥动,伴随身体轻晃——打招呼或告别",
       "params": [
         { "channel": "arm.right", "targetValue": 6.5, "weight": 1.0, "oscillate": 2 },
@@ -59,6 +64,7 @@
   ],
   "raise_hand": {
     "category": "movement",
+    "modelSupport": "cubism",
     "description": "举起右手,像在示意或强调某个观点",
     "params": [
       { "channel": "arm.right", "targetValue": 8.0, "weight": 1.0 },
@@ -68,6 +74,7 @@
   },
   "thinking": {
     "category": "emotion",
+    "modelSupport": "both",
     "description": "微微歪头眯眼,皱眉思索——表达在思考或权衡",
     "params": [
       { "channel": "head.yaw", "targetValue": 10.0, "weight": 0.7 },
@@ -80,6 +87,7 @@
   },
   "sad": {
     "category": "emotion",
+    "modelSupport": "both",
     "description": "眉头下垂、低头,面露沮丧——失落或难过",
     "params": [
       { "channel": "mouth.smile", "targetValue": 0.0, "weight": 1.0 },
@@ -91,6 +99,7 @@
   },
   "angry": {
     "category": "emotion",
+    "modelSupport": "both",
     "description": "皱眉瞪眼、嘴角紧绷——生气或不满",
     "params": [
       { "channel": "brow", "targetValue": -0.8, "weight": 1.0 },
@@ -102,6 +111,7 @@
   },
   "surprised": {
     "category": "emotion",
+    "modelSupport": "both",
     "description": "张嘴挑眉、头轻仰——吃惊或出乎意料",
     "params": [
       { "channel": "mouth.open", "targetValue": 0.8, "weight": 1.0 },
@@ -112,6 +122,7 @@
   },
   "head_sway": {
     "category": "movement",
+    "modelSupport": "cubism",
     "description": "头部缓慢左右摆动——放松、有节奏感的待机动作",
     "params": [
       { "channel": "head.yaw", "targetValue": 15.0, "weight": 1.0 },
@@ -121,12 +132,14 @@
   },
   "breathe": {
     "category": "micro",
+    "modelSupport": "cubism",
     "description": "一次明显的深呼吸——叹气、放松或感叹",
     "params": [{ "channel": "body.y", "targetValue": 0.05, "weight": 1.0 }],
     "defaultDuration": 4000
   },
   "lean_forward": {
     "category": "movement",
+    "modelSupport": "cubism",
     "description": "身体前倾、低头靠近——表达关注、倾听或好奇",
     "params": [
       { "channel": "body.z", "targetValue": 0.2, "weight": 1.0 },
@@ -136,6 +149,7 @@
   },
   "lean_back": {
     "category": "movement",
+    "modelSupport": "cubism",
     "description": "身体后仰、头微抬——放松、从容或故作高深",
     "params": [
       { "channel": "body.z", "targetValue": -0.2, "weight": 1.0 },
@@ -145,12 +159,14 @@
   },
   "tilt_head": {
     "category": "movement",
+    "modelSupport": "cubism",
     "description": "歪头——表示困惑、好奇或俏皮",
     "params": [{ "channel": "head.roll", "targetValue": 15.0, "weight": 1.0 }],
     "defaultDuration": 1200
   },
   "shake_head": {
     "category": "movement",
+    "modelSupport": "cubism",
     "description": "摇头两次——否定、拒绝或无奈",
     "params": [
       { "channel": "head.yaw", "targetValue": 22.0, "weight": 1.0, "oscillate": 2 },
@@ -160,6 +176,7 @@
   },
   "blink": {
     "category": "micro",
+    "modelSupport": "cubism",
     "description": "一次明显的眨眼——俏皮的眨眼或强调(区别于自动眨眼)",
     "params": [
       { "channel": "eye.open.left", "targetValue": -1.0, "weight": 1.0 },
@@ -169,6 +186,7 @@
   },
   "shrug": {
     "category": "movement",
+    "modelSupport": "cubism",
     "description": "双手微张、耸肩——表示不知道、无可奈何",
     "params": [
       { "channel": "arm.left", "targetValue": 5.0, "weight": 0.8 },
@@ -179,6 +197,7 @@
   },
   "cross_arms": {
     "category": "movement",
+    "modelSupport": "cubism",
     "description": "双臂交叉抱胸——防御、思考或自我保护的姿态",
     "params": [
       { "channel": "arm.left", "targetValue": 4.5, "weight": 0.9 },
@@ -194,6 +213,7 @@
   },
   "hand_on_hip": {
     "category": "movement",
+    "modelSupport": "cubism",
     "description": "右手叉腰——自信、随意或稍带不满的姿势",
     "params": [
       { "channel": "arm.right", "targetValue": 5.5, "weight": 0.9 },
@@ -207,6 +227,7 @@
   },
   "point_forward": {
     "category": "movement",
+    "modelSupport": "cubism",
     "description": "伸手向前指——强调、指向或发出指令",
     "params": [
       { "channel": "arm.right", "targetValue": 9.0, "weight": 1.0 },
@@ -225,6 +246,7 @@
   "formal_bow": {
     "kind": "clip",
     "category": "movement",
+    "modelSupport": "vrm",
     "description": "正式鞠躬——表示尊敬或郑重问候",
     "clip": "clips/formal-bow.json",
     "defaultDuration": 1800,
@@ -235,6 +257,7 @@
   "show_body": {
     "kind": "clip",
     "category": "movement",
+    "modelSupport": "vrm",
     "description": "全身展示——转身展示整体身形",
     "clip": "clips/vrm/VRMA_01.json",
     "defaultDuration": 11800
@@ -242,6 +265,7 @@
   "greet": {
     "kind": "clip",
     "category": "movement",
+    "modelSupport": "vrm",
     "description": "打招呼——抬手鞠躬的问候动作",
     "clip": "clips/vrm/VRMA_02.json",
     "defaultDuration": 7267
@@ -249,6 +273,7 @@
   "peace_sign": {
     "kind": "clip",
     "category": "movement",
+    "modelSupport": "vrm",
     "description": "比 V 字胜利手势",
     "clip": "clips/vrm/VRMA_03.json",
     "defaultDuration": 11684
@@ -256,6 +281,7 @@
   "shoot": {
     "kind": "clip",
     "category": "movement",
+    "modelSupport": "vrm",
     "description": "做出开枪姿势",
     "clip": "clips/vrm/VRMA_04.json",
     "defaultDuration": 9600
@@ -263,6 +289,7 @@
   "spin": {
     "kind": "clip",
     "category": "movement",
+    "modelSupport": "vrm",
     "description": "原地旋转一周",
     "clip": "clips/vrm/VRMA_05.json",
     "defaultDuration": 9317
@@ -270,6 +297,7 @@
   "model_pose": {
     "kind": "clip",
     "category": "movement",
+    "modelSupport": "vrm",
     "description": "时装模特定型 pose",
     "clip": "clips/vrm/VRMA_06.json",
     "defaultDuration": 7517
@@ -277,6 +305,7 @@
   "squat_stretch": {
     "kind": "clip",
     "category": "movement",
+    "modelSupport": "vrm",
     "description": "屈膝伸展——热身式蹲起",
     "clip": "clips/vrm/VRMA_07.json",
     "defaultDuration": 11517
@@ -284,6 +313,7 @@
   "motion_pose_001": {
     "kind": "clip",
     "category": "movement",
+    "modelSupport": "vrm",
     "description": "001 motion_pose（待识别）",
     "clip": "clips/vrm/001_motion_pose.json",
     "defaultDuration": 19967
@@ -291,6 +321,7 @@
   "dogeza_002": {
     "kind": "clip",
     "category": "movement",
+    "modelSupport": "vrm",
     "description": "002 dogeza 土下座（郑重致歉下跪）",
     "clip": "clips/vrm/002_dogeza.json",
     "defaultDuration": 7300
@@ -298,6 +329,7 @@
   "humidai_003": {
     "kind": "clip",
     "category": "movement",
+    "modelSupport": "vrm",
     "description": "003 humidai 踏み台（短动作，待识别）",
     "clip": "clips/vrm/003_humidai.json",
     "defaultDuration": 2267
@@ -305,6 +337,7 @@
   "hello_004": {
     "kind": "clip",
     "category": "movement",
+    "modelSupport": "vrm",
     "description": "004 hello_1 问候变体",
     "clip": "clips/vrm/004_hello_1.json",
     "defaultDuration": 15767
@@ -312,6 +345,7 @@
   "smartphone_005": {
     "kind": "clip",
     "category": "movement",
+    "modelSupport": "vrm",
     "description": "005 smartphone 看手机",
     "clip": "clips/vrm/005_smartphone.json",
     "defaultDuration": 10367
@@ -319,6 +353,7 @@
   "drinkwater_006": {
     "kind": "clip",
     "category": "movement",
+    "modelSupport": "vrm",
     "description": "006 drinkwater 喝水",
     "clip": "clips/vrm/006_drinkwater.json",
     "defaultDuration": 23667
@@ -326,6 +361,7 @@
   "gekirei_007": {
     "kind": "clip",
     "category": "movement",
+    "modelSupport": "vrm",
     "description": "007 gekirei 激励/加油",
     "clip": "clips/vrm/007_gekirei.json",
     "defaultDuration": 21500
@@ -333,6 +369,7 @@
   "gatan_008": {
     "kind": "clip",
     "category": "movement",
+    "modelSupport": "vrm",
     "description": "008 gatan がたん 突然坐倒",
     "clip": "clips/vrm/008_gatan.json",
     "defaultDuration": 11400

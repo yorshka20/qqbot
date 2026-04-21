@@ -8,6 +8,7 @@ import type {
   ActionMapEntryClip,
   ActionMapEntryEnvelope,
   ActionSummary,
+  ModelKind,
   ParamTarget,
   ResolvedAction,
 } from './types';
@@ -18,6 +19,18 @@ function clamp(v: number, lo: number, hi: number): number {
 
 function isClipEntry(e: ActionMapEntry): e is ActionMapEntryClip {
   return e.kind === 'clip';
+}
+
+/**
+ * Returns true when the entry is compatible with the given model kind.
+ * Absent modelSupport (undefined) and 'both' are compatible with everything.
+ * When modelKind is null, all entries are compatible (no filtering).
+ */
+function isEntryCompatible(entry: ActionMapEntry, modelKind: ModelKind | null | undefined): boolean {
+  if (modelKind == null) return true;
+  const ms = entry.modelSupport;
+  if (ms == null || ms === 'both') return true;
+  return ms === modelKind;
 }
 
 export class ActionMap {
@@ -95,19 +108,34 @@ export class ActionMap {
     return Math.round(envDurations.reduce((s, d) => s + d, 0) / envDurations.length);
   }
 
-  resolveAction(action: string, emotion: string, intensity: number): ResolvedAction | null {
+  resolveAction(
+    action: string,
+    emotion: string,
+    intensity: number,
+    modelKind?: ModelKind | null,
+  ): ResolvedAction | null {
     void emotion;
     const raw = this.entries[action];
     if (!raw) return null;
-    const variants = Array.isArray(raw) ? raw : [raw];
+    const allVariants = Array.isArray(raw) ? raw : [raw];
+    if (allVariants.length === 0) return null;
+
+    // Filter to compatible variants first, then pick randomly among them.
+    // This ensures an incompatible variant is never accidentally picked and
+    // then returned as null — the whole action correctly returns null when
+    // no compatible variant exists.
+    const variants = modelKind != null ? allVariants.filter((v) => isEntryCompatible(v, modelKind)) : allVariants;
     if (variants.length === 0) return null;
+
     const idx = Math.floor(Math.random() * variants.length);
     const variant = variants[idx];
 
     if (isClipEntry(variant)) {
       const clips = this.clipsByName.get(action);
       if (!clips || clips.length === 0) return null;
-      const clip = clips[Math.min(idx, clips.length - 1)];
+      // Use the original (unfiltered) index so the clip matches its variant entry.
+      const allIdx = allVariants.indexOf(variant);
+      const clip = clips[Math.min(allIdx < 0 ? idx : allIdx, clips.length - 1)];
       const duration = variant.defaultDuration ?? Math.round(clip.duration * 1000);
       return {
         kind: 'clip',
@@ -139,15 +167,17 @@ export class ActionMap {
   }
 
   /**
-   * Public summary of every loaded action, used by consumers (PreviewServer
-   * `/action-map` route, future prompt generation, etc.) to discover what
-   * triggers are currently available without hardcoding names. Channel list
-   * is deduplicated in original order.
+   * Public summary of loaded actions compatible with the given model kind.
+   * When modelKind is null or undefined, all actions are returned.
+   * Channel list is deduplicated in original order.
    */
-  listActions(): ActionSummary[] {
+  listActions(modelKind?: ModelKind | null): ActionSummary[] {
     const out: ActionSummary[] = [];
     for (const [name, raw] of Object.entries(this.entries)) {
-      const variants = Array.isArray(raw) ? raw : [raw];
+      const allVariants = Array.isArray(raw) ? raw : [raw];
+      // Filter to compatible variants; skip action entirely if none are compatible.
+      const variants = modelKind != null ? allVariants.filter((v) => isEntryCompatible(v, modelKind)) : allVariants;
+      if (variants.length === 0) continue;
       const channels: string[] = [];
       const seen = new Set<string>();
       const clips = this.clipsByName.get(name);

@@ -63,6 +63,8 @@ interface PendingWalk {
  */
 export class WalkingLayer extends BaseLayer {
   readonly id = 'walking';
+  // WalkingLayer drives VRM root motion (vrm.* quat tracks); not applicable to cubism.
+  readonly modelSupport = ['vrm'] as const;
 
   private readonly config: WalkingLayerConfig;
 
@@ -151,11 +153,7 @@ export class WalkingLayer extends BaseLayer {
    * Returns `{}` when idle so the renderer keeps the last pose.
    * Ignores `activeChannels` (MVP — no filtering).
    */
-  sample(
-    nowMs: number,
-    _activity: AvatarActivity,
-    _activeChannels?: ReadonlySet<string>,
-  ): Record<string, number> {
+  sample(nowMs: number, _activity: AvatarActivity, _activeChannels?: ReadonlySet<string>): Record<string, number> {
     void _activity;
     void _activeChannels;
 
@@ -164,10 +162,7 @@ export class WalkingLayer extends BaseLayer {
       return {};
     }
 
-    const dtMs =
-      this.lastTickMs === null
-        ? 16.67
-        : Math.min(Math.max(nowMs - this.lastTickMs, 0), 100);
+    const dtMs = this.lastTickMs === null ? 16.67 : Math.min(Math.max(nowMs - this.lastTickMs, 0), 100);
 
     this.lastTickMs = nowMs;
 
@@ -213,10 +208,7 @@ export class WalkingLayer extends BaseLayer {
       ),
     );
 
-    if (
-      this.lastOnWalkingEmitMs === null ||
-      nowMs - this.lastOnWalkingEmitMs >= this.config.onWalkingThrottleMs
-    ) {
+    if (this.lastOnWalkingEmitMs === null || nowMs - this.lastOnWalkingEmitMs >= this.config.onWalkingThrottleMs) {
       this.lastOnWalkingEmitMs = nowMs;
       this.emitter.emit('walking', {
         currentPos: { x: this.currentX, z: this.currentZ },

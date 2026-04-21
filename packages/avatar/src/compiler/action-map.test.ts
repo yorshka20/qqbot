@@ -498,3 +498,98 @@ describe('ActionMap — clip kind', () => {
     expect(map.has('mix')).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Model-kind filtering tests (Task 2)
+// ---------------------------------------------------------------------------
+describe('ActionMap — modelSupport filtering (resolveAction)', () => {
+  const map = new ActionMap();
+
+  it('formal_bow resolves null for cubism (modelSupport=vrm)', () => {
+    // formal_bow has modelSupport: 'vrm' — must be filtered out for cubism
+    const result = map.resolveAction('formal_bow', 'neutral', 1.0, 'cubism');
+    expect(result).toBeNull();
+  });
+
+  it('formal_bow resolves a clip for vrm', () => {
+    const result = map.resolveAction('formal_bow', 'neutral', 1.0, 'vrm');
+    expect(result).not.toBeNull();
+    expect(result!.kind).toBe('clip');
+  });
+
+  it('formal_bow resolves without filtering when modelKind=null', () => {
+    const result = map.resolveAction('formal_bow', 'neutral', 1.0, null);
+    expect(result).not.toBeNull();
+    expect(result!.kind).toBe('clip');
+  });
+});
+
+describe('ActionMap — modelSupport filtering (listActions)', () => {
+  const map = new ActionMap();
+
+  it('listActions("vrm") excludes nod (cubism-only) but includes smile (both) and formal_bow (vrm)', () => {
+    const actions = map.listActions('vrm');
+    const names = actions.map((a) => a.name);
+    expect(names).not.toContain('nod');
+    expect(names).toContain('smile');
+    expect(names).toContain('formal_bow');
+  });
+
+  it('listActions("cubism") excludes formal_bow (vrm-only) but includes nod and smile', () => {
+    const actions = map.listActions('cubism');
+    const names = actions.map((a) => a.name);
+    expect(names).not.toContain('formal_bow');
+    expect(names).toContain('nod');
+    expect(names).toContain('smile');
+  });
+
+  it('listActions(null) returns all actions including both nod and formal_bow', () => {
+    const all = map.listActions(null);
+    const names = all.map((a) => a.name);
+    expect(names).toContain('nod');
+    expect(names).toContain('formal_bow');
+    expect(names).toContain('smile');
+  });
+});
+
+describe('ActionMap — modelSupport defaults to both when absent', () => {
+  let tmpDir: string;
+  let tmpPath: string;
+
+  beforeAll(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'actionmap-ms-'));
+    tmpPath = join(tmpDir, 'map.json');
+  });
+  afterAll(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('entry without modelSupport resolves for cubism, vrm, and null', () => {
+    writeFileSync(
+      tmpPath,
+      JSON.stringify({
+        a: { params: [{ channel: 'x', targetValue: 1, weight: 1 }], defaultDuration: 1000 },
+      }),
+    );
+    const m = new ActionMap(tmpPath);
+    expect(m.resolveAction('a', 'n', 1, null)).not.toBeNull();
+    expect(m.resolveAction('a', 'n', 1, 'cubism')).not.toBeNull();
+    expect(m.resolveAction('a', 'n', 1, 'vrm')).not.toBeNull();
+  });
+
+  it('entry with modelSupport="both" resolves for both cubism and vrm', () => {
+    writeFileSync(
+      tmpPath,
+      JSON.stringify({
+        b: {
+          modelSupport: 'both',
+          params: [{ channel: 'x', targetValue: 1, weight: 1 }],
+          defaultDuration: 1000,
+        },
+      }),
+    );
+    const m = new ActionMap(tmpPath);
+    expect(m.resolveAction('b', 'n', 1, 'cubism')).not.toBeNull();
+    expect(m.resolveAction('b', 'n', 1, 'vrm')).not.toBeNull();
+  });
+});

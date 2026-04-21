@@ -1,4 +1,5 @@
 import type { AvatarActivity } from '../../state/types';
+import type { ModelKind } from '../types';
 import type { AnimationLayer } from './types';
 
 /** Aggregated per-tick layer output — scalar (weighted, ambient-gated) and
@@ -59,11 +60,16 @@ export class LayerManager {
    * holding absolute values (VRM idle clips) can skip colliding channels.
    * The returned map is mutable and owned by the caller; the manager does
    * not retain a reference.
+   *
+   * `modelKind` — when non-null, layers whose `modelSupport` is defined but
+   * does not include this kind are skipped entirely (both scalar and quat).
+   * When null, no filtering is applied (backward-compatible).
    */
   sample(
     nowMs: number,
     activity: AvatarActivity,
     activeChannels?: ReadonlySet<string>,
+    modelKind?: ModelKind | null,
   ): LayerFrame {
     const gateValue = activity.ambientGain;
     const scalar: Record<string, number> = {};
@@ -71,6 +77,13 @@ export class LayerManager {
 
     for (const layer of this.layers.values()) {
       if (!layer.isEnabled()) continue;
+
+      // Model-kind filtering: skip layers incompatible with the current model.
+      // Only filter when modelKind is non-null and layer declares modelSupport.
+      if (modelKind != null && layer.modelSupport !== undefined) {
+        if (!layer.modelSupport.includes(modelKind)) continue;
+      }
+
       const weight = layer.getWeight();
       const effective = gateValue * weight;
 

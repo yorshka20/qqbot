@@ -1,4 +1,10 @@
 /**
+ * Discriminator for the renderer model format.
+ * 'cubism' = Live2D Cubism; 'vrm' = VRM/three-vrm.
+ */
+export type ModelKind = 'cubism' | 'vrm';
+
+/**
  * Easing function type identifiers for animation curves.
  * Each easing type defines how intermediate animation values are calculated
  * over the course of an animation phase.
@@ -198,6 +204,12 @@ export type ResolvedAction =
 export interface ActionMapEntryEnvelope {
   /** Discriminator. Absent defaults to 'envelope' for back-compat with existing action-map.json files. */
   kind?: 'envelope';
+  /**
+   * Optional renderer model compatibility declaration. Absent (undefined) means
+   * compatible with both cubism and vrm — same as 'both'. Used by
+   * `ActionMap.resolveAction()` and `listActions()` to filter by current model.
+   */
+  modelSupport?: 'cubism' | 'vrm' | 'both';
   /** List of parameters and their default target values + weights */
   params: ParamTarget[];
   /** Default duration for this action in milliseconds */
@@ -252,6 +264,12 @@ export interface ActionMapEntryClip {
   description?: string;
   endPose?: ActionEndPoseEntry[];
   holdMs?: number;
+  /**
+   * Optional renderer model compatibility declaration. Absent (undefined) means
+   * compatible with both cubism and vrm — same as 'both'. Used by
+   * `ActionMap.resolveAction()` and `listActions()` to filter by current model.
+   */
+  modelSupport?: 'cubism' | 'vrm' | 'both';
 }
 
 export type ActionMapEntry = ActionMapEntryEnvelope | ActionMapEntryClip;

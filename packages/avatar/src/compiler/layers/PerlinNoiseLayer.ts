@@ -67,6 +67,8 @@ const DEFAULT_CHANNELS: Record<string, PerlinChannelConfig> = {
 
 export class PerlinNoiseLayer extends BaseLayer {
   readonly id = 'perlin-noise';
+  // PerlinNoiseLayer drives generic head/body channels available in both cubism and vrm.
+  readonly modelSupport = ['cubism', 'vrm'] as const;
 
   private readonly permutations: Map<string, Uint8Array> = new Map();
   private readonly channelConfigs: Record<string, PerlinChannelConfig>;

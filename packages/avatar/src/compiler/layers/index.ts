@@ -12,6 +12,6 @@ export { IdleMotionLayer } from './IdleMotionLayer';
 export { LayerManager } from './LayerManager';
 export type { PerlinChannelConfig, PerlinNoiseLayerOptions } from './PerlinNoiseLayer';
 export { PerlinNoiseLayer } from './PerlinNoiseLayer';
-export type { WalkingLayerConfig, WalkProgress } from './WalkingLayer';
-export { WalkingLayer, WalkInterruptedError } from './WalkingLayer';
 export type { AnimationLayer } from './types';
+export type { WalkingLayerConfig, WalkProgress } from './WalkingLayer';
+export { WalkInterruptedError, WalkingLayer } from './WalkingLayer';

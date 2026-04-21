@@ -51,6 +51,8 @@ type BlinkPhase = 'open' | 'closing' | 'closed' | 'opening';
 
 export class AutoBlinkLayer extends BaseLayer {
   readonly id = 'auto-blink';
+  // AutoBlinkLayer drives Cubism eye.open.left/right channels; VRM blink uses morph targets.
+  readonly modelSupport = ['cubism', 'vrm'] as const;
 
   private readonly config: BlinkConfig;
   private phase: BlinkPhase = 'open';

@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import type { AvatarActivity } from '../state/types';
 import { AnimationCompiler } from './AnimationCompiler';
 import type { AnimationLayer } from './layers/types';
+import type { ModelKind } from './types';
 
 // ---------------------------------------------------------------------------
 // Helper: a layer that emits a fixed, mutable contribution map each tick.
@@ -1079,14 +1080,16 @@ describe('AnimationCompiler — quat clip path', () => {
   const QUAT_CLIP = {
     id: 'quat-hips',
     duration: 2,
-    tracks: [{
-      kind: 'quat',
-      channel: 'vrm.hips',
-      keyframes: [
-        { time: 0, x: 0, y: 0, z: 0, w: 1 },
-        { time: 2, x: 0, y: sin45, z: 0, w: cos45 },
-      ],
-    }],
+    tracks: [
+      {
+        kind: 'quat',
+        channel: 'vrm.hips',
+        keyframes: [
+          { time: 0, x: 0, y: 0, z: 0, w: 1 },
+          { time: 2, x: 0, y: sin45, z: 0, w: cos45 },
+        ],
+      },
+    ],
   };
 
   beforeEach(() => {
@@ -1124,14 +1127,16 @@ describe('AnimationCompiler — quat clip path', () => {
         { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
         mapPath,
       );
-      compiler.enqueue([{
-        action: 'quat_clip',
-        emotion: 'neutral',
-        intensity: 1.0,
-        timestamp: nowRef.t,
-        duration: 2000,
-        easing: 'easeInOutCubic',
-      }]);
+      compiler.enqueue([
+        {
+          action: 'quat_clip',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 2000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
 
       // Advance 60 ticks (~1000ms) — past attack (200ms), into sustain
       for (let i = 0; i < 60; i++) {
@@ -1167,14 +1172,16 @@ describe('AnimationCompiler — quat clip path', () => {
         { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
         mapPath,
       );
-      compiler1.enqueue([{
-        action: 'quat_clip',
-        emotion: 'neutral',
-        intensity: 1.0,
-        timestamp: nowRef.t,
-        duration: 2000,
-        easing: 'easeInOutCubic',
-      }]);
+      compiler1.enqueue([
+        {
+          action: 'quat_clip',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 2000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
       for (let i = 0; i < 60; i++) {
         nowRef.t += 16.67;
         (compiler1 as any).tick();
@@ -1190,14 +1197,16 @@ describe('AnimationCompiler — quat clip path', () => {
         { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
         mapPath,
       );
-      compiler2.enqueue([{
-        action: 'quat_clip',
-        emotion: 'neutral',
-        intensity: 0.3,
-        timestamp: nowRef.t,
-        duration: 2000,
-        easing: 'easeInOutCubic',
-      }]);
+      compiler2.enqueue([
+        {
+          action: 'quat_clip',
+          emotion: 'neutral',
+          intensity: 0.3,
+          timestamp: nowRef.t,
+          duration: 2000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
       for (let i = 0; i < 60; i++) {
         nowRef.t += 16.67;
         (compiler2 as any).tick();
@@ -1223,14 +1232,16 @@ describe('AnimationCompiler — quat clip path', () => {
         { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0, crossfadeMs: 0 },
         mapPath,
       );
-      compiler.enqueue([{
-        action: 'quat_clip',
-        emotion: 'neutral',
-        intensity: 1.0,
-        timestamp: nowRef.t,
-        duration: 2000,
-        easing: 'easeInOutCubic',
-      }]);
+      compiler.enqueue([
+        {
+          action: 'quat_clip',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 2000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
 
       // Drive to mid-clip (30 ticks ≈ 500ms, past attack window)
       for (let i = 0; i < 30; i++) {
@@ -1273,14 +1284,16 @@ describe('AnimationCompiler — quat clip path', () => {
         mapPath,
       );
 
-      compiler.enqueue([{
-        action: 'quat_a',
-        emotion: 'neutral',
-        intensity: 1.0,
-        timestamp: nowRef.t,
-        duration: 2000,
-        easing: 'easeInOutCubic',
-      }]);
+      compiler.enqueue([
+        {
+          action: 'quat_a',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 2000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
 
       // Advance 6 ticks ≈ 100ms
       for (let i = 0; i < 6; i++) {
@@ -1289,14 +1302,16 @@ describe('AnimationCompiler — quat clip path', () => {
       }
 
       const crossfadeStart = nowRef.t;
-      compiler.enqueue([{
-        action: 'quat_b',
-        emotion: 'neutral',
-        intensity: 1.0,
-        timestamp: nowRef.t,
-        duration: 2000,
-        easing: 'easeInOutCubic',
-      }]);
+      compiler.enqueue([
+        {
+          action: 'quat_b',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 2000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
 
       // Mid-crossfade: both still active
       nowRef.t = crossfadeStart + 50;
@@ -1310,5 +1325,121 @@ describe('AnimationCompiler — quat clip path', () => {
     } finally {
       cleanup();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ModelKind getter / setter
+// ---------------------------------------------------------------------------
+describe('AnimationCompiler currentModelKind', () => {
+  test('defaults to null before any hello is received', () => {
+    const compiler = new AnimationCompiler();
+    expect(compiler.getCurrentModelKind()).toBeNull();
+  });
+
+  test('setCurrentModelKind stores the value and getCurrentModelKind returns it', () => {
+    const compiler = new AnimationCompiler();
+    const kinds: (ModelKind | null)[] = ['cubism', 'vrm', null];
+    for (const kind of kinds) {
+      compiler.setCurrentModelKind(kind);
+      expect(compiler.getCurrentModelKind()).toBe(kind);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Model-aware listActions / resolveAction paths (Task 2)
+// ---------------------------------------------------------------------------
+describe('AnimationCompiler — model-aware listActions and resolveAction', () => {
+  test('listActions filters by current model kind (cubism excludes vrm-only)', () => {
+    const compiler = new AnimationCompiler();
+    compiler.setCurrentModelKind('cubism');
+    const actions = compiler.listActions();
+    const names = actions.map((a) => a.name);
+    // formal_bow is vrm-only in the default map — must be absent for cubism
+    expect(names).not.toContain('formal_bow');
+    // nod is cubism — must be present
+    expect(names).toContain('nod');
+  });
+
+  test('listActions includes vrm-only actions when model is vrm', () => {
+    const compiler = new AnimationCompiler();
+    compiler.setCurrentModelKind('vrm');
+    const actions = compiler.listActions();
+    const names = actions.map((a) => a.name);
+    expect(names).toContain('formal_bow');
+    // nod is cubism-only — must not appear for vrm
+    expect(names).not.toContain('nod');
+  });
+
+  test('resolveAction returns null for vrm-only action when model is cubism', () => {
+    const compiler = new AnimationCompiler();
+    compiler.setCurrentModelKind('cubism');
+    const result = compiler.resolveAction('formal_bow', 'neutral', 1.0);
+    expect(result).toBeNull();
+  });
+
+  test('resolveAction resolves for vrm-only action when model is vrm', () => {
+    const compiler = new AnimationCompiler();
+    compiler.setCurrentModelKind('vrm');
+    const result = compiler.resolveAction('formal_bow', 'neutral', 1.0);
+    expect(result).not.toBeNull();
+    expect(result!.kind).toBe('clip');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression: cubism path must not synthesize vrm.* params when no compatible
+// layers or actions contribute quat tracks. (Task 2 requirement req 5)
+// ---------------------------------------------------------------------------
+describe('AnimationCompiler — cubism path does not emit vrm.* params (regression)', () => {
+  let nowRef: { t: number };
+  let dateSpy: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    nowRef = { t: 1000 };
+    dateSpy = spyOn(Date, 'now').mockImplementation(() => nowRef.t);
+  });
+
+  afterEach(() => {
+    dateSpy.mockRestore();
+  });
+
+  test('no vrm.*.q[xyzw] channels appear on cubism path with no layers', () => {
+    const compiler = new AnimationCompiler();
+    compiler.setCurrentModelKind('cubism');
+
+    // Tick without any registered layers
+    nowRef.t += 16;
+    (compiler as any).tick();
+
+    const params = compiler.getCurrentParams();
+    const quatKeys = Object.keys(params).filter((k) => /^vrm\..+\.q[xyzw]$/.test(k));
+    expect(quatKeys).toHaveLength(0);
+  });
+
+  test('vrm-only layer registered on cubism compiler emits no vrm.* params', () => {
+    const compiler = new AnimationCompiler();
+    compiler.setCurrentModelKind('cubism');
+
+    // Register a fake layer that declares modelSupport: ['vrm'] and would emit quat
+    const vrmLayer: AnimationLayer = {
+      id: 'fake-vrm',
+      modelSupport: ['vrm'] as const,
+      sample: () => ({}),
+      sampleQuat: () => ({ 'vrm.hips': { x: 0.1, y: 0, z: 0, w: 0.995 } }),
+      setEnabled: () => {},
+      isEnabled: () => true,
+      getWeight: () => 1.0,
+      setWeight: () => {},
+    };
+    compiler.registerLayer(vrmLayer);
+
+    nowRef.t += 16;
+    (compiler as any).tick();
+
+    const params = compiler.getCurrentParams();
+    const quatKeys = Object.keys(params).filter((k) => /^vrm\..+\.q[xyzw]$/.test(k));
+    expect(quatKeys).toHaveLength(0);
   });
 });

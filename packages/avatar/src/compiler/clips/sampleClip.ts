@@ -129,15 +129,24 @@ export function sampleClip(
  * Ensures shortest-path interpolation by flipping b if dot product is negative.
  */
 function slerpQuat(
-  ax: number, ay: number, az: number, aw: number,
-  bx: number, by: number, bz: number, bw: number,
+  ax: number,
+  ay: number,
+  az: number,
+  aw: number,
+  bx: number,
+  by: number,
+  bz: number,
+  bw: number,
   t: number,
 ): { x: number; y: number; z: number; w: number } {
   let dot = ax * bx + ay * by + az * bz + aw * bw;
 
   // Ensure shortest arc
   if (dot < 0) {
-    bx = -bx; by = -by; bz = -bz; bw = -bw;
+    bx = -bx;
+    by = -by;
+    bz = -bz;
+    bw = -bw;
     dot = -dot;
   }
 

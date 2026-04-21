@@ -44,6 +44,8 @@ const DEFAULT_GAZE_CONFIG: GazeConfig = {
 
 export class EyeGazeLayer extends BaseLayer {
   readonly id = 'eye-gaze';
+  // EyeGazeLayer drives eye.ball.x/y channels supported by both cubism and vrm renderers.
+  readonly modelSupport = ['cubism', 'vrm'] as const;
 
   private readonly config: GazeConfig;
   private posX = 0;

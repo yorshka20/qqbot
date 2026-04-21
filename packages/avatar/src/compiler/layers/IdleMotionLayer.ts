@@ -63,6 +63,8 @@ function isTrulyIdle(activity: AvatarActivity): boolean {
 
 export class IdleMotionLayer extends BaseLayer {
   readonly id = 'idle-motion';
+  // IdleMotionLayer supports both cubism (scalar idle clips) and vrm (quat idle clips).
+  readonly modelSupport = ['cubism', 'vrm'] as const;
 
   private readonly config: IdleMotionConfig;
   private active: ActiveClip | null = null;
@@ -73,7 +75,11 @@ export class IdleMotionLayer extends BaseLayer {
    *  LayerManager always calls `sample()` first, so a stale `nowMs` means
    *  `sampleQuat()` was called without a preceding `sample()` — we return
    *  empty rather than re-running state logic. */
-  private cached: { nowMs: number; scalar: Record<string, number>; quat: Record<string, { x: number; y: number; z: number; w: number }> } | null = null;
+  private cached: {
+    nowMs: number;
+    scalar: Record<string, number>;
+    quat: Record<string, { x: number; y: number; z: number; w: number }>;
+  } | null = null;
   /** Loop-mode timeline anchor: the `nowMs` corresponding to `t=0` of the
    *  current loop cycle. When the gate re-opens after a freeze, this is
    *  rebased to `nowMs - frozenElapsedSec * 1000` so the clip continues
@@ -116,11 +122,7 @@ export class IdleMotionLayer extends BaseLayer {
     this.cached = null;
   }
 
-  sample(
-    nowMs: number,
-    activity: AvatarActivity,
-    activeChannels?: ReadonlySet<string>,
-  ): Record<string, number> {
+  sample(nowMs: number, activity: AvatarActivity, activeChannels?: ReadonlySet<string>): Record<string, number> {
     const frame = this.advanceAndSample(nowMs, activity);
     if (!frame) {
       this.cached = { nowMs, scalar: {}, quat: {} };
@@ -225,10 +227,7 @@ export class IdleMotionLayer extends BaseLayer {
   }
 }
 
-function filterActiveChannels<V>(
-  raw: Record<string, V>,
-  activeChannels?: ReadonlySet<string>,
-): Record<string, V> {
+function filterActiveChannels<V>(raw: Record<string, V>, activeChannels?: ReadonlySet<string>): Record<string, V> {
   if (!activeChannels || activeChannels.size === 0) return raw;
   const out: Record<string, V> = {};
   for (const [ch, v] of Object.entries(raw)) {

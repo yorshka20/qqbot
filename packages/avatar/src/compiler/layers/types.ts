@@ -1,5 +1,6 @@
 import type { TunableParam } from '../../preview/types';
 import type { AvatarActivity } from '../../state/types';
+import type { ModelKind } from '../types';
 
 /**
  * Continuous, independently-ticking animation source that contributes
@@ -19,6 +20,14 @@ export interface AnimationLayer {
   readonly id: string;
 
   /**
+   * Optional: declare which model kinds this layer is compatible with.
+   * Absent (undefined) means compatible with both cubism and vrm.
+   * When modelKind is non-null in LayerManager.sample(), layers whose
+   * modelSupport does not include that kind are skipped entirely.
+   */
+  readonly modelSupport?: readonly ModelKind[];
+
+  /**
    * Sample the layer at wall-clock time `nowMs`. Returns a partial channel map
    * — channels absent from the return value contribute nothing this tick.
    *
@@ -34,11 +43,7 @@ export interface AnimationLayer {
    * collision with the action's target. Layers holding delta-style
    * contributions around 0 (e.g. breath, gaze wander) can ignore it.
    */
-  sample(
-    nowMs: number,
-    activity: AvatarActivity,
-    activeChannels?: ReadonlySet<string>,
-  ): Record<string, number>;
+  sample(nowMs: number, activity: AvatarActivity, activeChannels?: ReadonlySet<string>): Record<string, number>;
 
   /**
    * Optional: sample quaternion tracks. Called in the same tick as

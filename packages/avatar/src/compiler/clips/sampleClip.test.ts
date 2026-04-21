@@ -75,14 +75,16 @@ describe('sampleClip', () => {
     const quatClip: IdleClip = {
       id: 'qtest',
       duration: 2,
-      tracks: [{
-        kind: 'quat',
-        channel: 'vrm.hips',
-        keyframes: [
-          { time: 0, x: 0, y: 0, z: 0, w: 1 },
-          { time: 2, x: 0, y: sin45, z: 0, w: cos45 },
-        ],
-      }],
+      tracks: [
+        {
+          kind: 'quat',
+          channel: 'vrm.hips',
+          keyframes: [
+            { time: 0, x: 0, y: 0, z: 0, w: 1 },
+            { time: 2, x: 0, y: sin45, z: 0, w: cos45 },
+          ],
+        },
+      ],
     };
     const result = sampleClip(quatClip, 1.0);
     // scalar must be empty for a quat-only clip

@@ -50,6 +50,8 @@ const DEFAULTS: Required<AmbientAudioLayerOptions> = {
  */
 export class AmbientAudioLayer extends BaseLayer {
   readonly id = 'ambient-audio';
+  // AmbientAudioLayer drives generic body channels available in both cubism and vrm.
+  readonly modelSupport = ['cubism', 'vrm'] as const;
   private readonly opts: Required<AmbientAudioLayerOptions>;
   private lastRms = 0;
   private lastSeenMs = 0;

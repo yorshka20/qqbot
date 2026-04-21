@@ -12,6 +12,7 @@ import type { ActionSummary } from '../compiler/types';
 import { logger } from '../utils/logger';
 import type {
   AudioMessage,
+  ModelKind,
   PreviewClientMessage,
   PreviewConfig,
   PreviewFrame,
@@ -65,6 +66,13 @@ export interface PreviewServerHandlers {
    * the action is non-clip or unknown. Drives the `/clip/:name` debug route.
    */
   getClipByActionName?: (name: string) => IdleClip | null;
+  /**
+   * Called when the renderer sends a valid `hello` message declaring its
+   * model format. `kind` is null when the renderer has no model loaded.
+   * Old renderers that never send hello leave the compiler state as null
+   * (backward compatible default).
+   */
+  onModelKindChange?: (kind: ModelKind | null) => void;
 }
 
 export class PreviewServer {
@@ -225,6 +233,18 @@ export class PreviewServer {
             if (typeof sectionId !== 'string' || typeof paramId !== 'string') return;
             if (typeof value !== 'number' || !Number.isFinite(value)) return;
             server.handlers.onTunableParamSet?.({ sectionId, paramId, value });
+            return;
+          }
+
+          if (msg.type === 'hello') {
+            const { modelKind } = msg;
+            // Validate modelKind: must be 'cubism', 'vrm', or null.
+            if (modelKind !== 'cubism' && modelKind !== 'vrm' && modelKind !== null) {
+              logger.warn(`[PreviewServer] hello received with invalid modelKind="${modelKind}" — ignored`);
+              return;
+            }
+            server.handlers.onModelKindChange?.(modelKind);
+            logger.info(`[PreviewServer] hello received — modelKind=${modelKind ?? 'null'}`);
             return;
           }
           // Unknown type — silent drop

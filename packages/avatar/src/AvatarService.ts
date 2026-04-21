@@ -105,6 +105,10 @@ export class AvatarService {
             this.compiler?.setTunableParam(sectionId, paramId, value);
           },
           getClipByActionName: (name) => this.compiler?.getClipByActionName(name) ?? null,
+          onModelKindChange: (kind) => {
+            this.compiler?.setCurrentModelKind(kind);
+            logger.info(`[AvatarService] currentModelKind -> ${kind}`);
+          },
         },
       );
     }

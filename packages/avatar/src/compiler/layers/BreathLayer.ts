@@ -46,6 +46,8 @@ interface ChannelOsc {
  */
 export class BreathLayer extends BaseLayer {
   readonly id = 'breath';
+  // BreathLayer drives Cubism-specific breath params (ParamAngle*, ParamBreath).
+  readonly modelSupport = ['cubism'] as const;
 
   private readonly channels: Record<string, ChannelOsc> = {
     // Head rotation — degrees. Amplitudes match Cubism's default breath config;

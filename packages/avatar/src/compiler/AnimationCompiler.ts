@@ -18,6 +18,7 @@ import type {
   AnimationPhase,
   CompilerConfig,
   FrameOutput,
+  ModelKind,
   ParamTarget,
   ResolvedAction,
   SpringParams,
@@ -89,6 +90,8 @@ export class AnimationCompiler extends EventEmitter {
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private tickCount = 0;
   private currentActivity: AvatarActivity = { ...DEFAULT_ACTIVITY };
+  /** Renderer model format last declared via hello handshake. Null = unknown (no hello received). */
+  private currentModelKind: ModelKind | null = null;
   /**
    * Channels emitted by quat tracks this tick (e.g. `vrm.hips.qx`).
    * Cleared at the start of each tick. Channels in this set bypass spring-damper
@@ -172,9 +175,9 @@ export class AnimationCompiler extends EventEmitter {
     return this.actionMap.getDuration(action);
   }
 
-  /** Public summary of every loaded action — see `ActionMap.listActions()`. */
+  /** Public summary of actions compatible with the current model kind. See `ActionMap.listActions()`. */
   listActions(): ActionSummary[] {
-    return this.actionMap.listActions();
+    return this.actionMap.listActions(this.currentModelKind);
   }
 
   /** Return the first preloaded IdleClip for a clip-kind action, or null. */
@@ -211,6 +214,20 @@ export class AnimationCompiler extends EventEmitter {
   }
 
   /**
+   * Record the renderer model format declared by the latest hello handshake.
+   * Null means the renderer has not yet loaded a model (or no hello received).
+   * Filtering logic is not yet implemented — this is the contract/source step.
+   */
+  setCurrentModelKind(kind: ModelKind | null): void {
+    this.currentModelKind = kind;
+  }
+
+  /** Return the model format last declared by hello handshake, or null if none. */
+  getCurrentModelKind(): ModelKind | null {
+    return this.currentModelKind;
+  }
+
+  /**
    * Shallow copy of all non-zero baseline values, rounded to 4 decimal places
    * to reduce WS bandwidth. Intended for PreviewStatus snapshots.
    */
@@ -224,9 +241,9 @@ export class AnimationCompiler extends EventEmitter {
 
   /** Public read-through for pre-resolving an action by name. Used by
    * AvatarService.enqueueEmotion to get the envelope targets without
-   * re-enqueueing the full action. */
+   * re-enqueueing the full action. Filtered by the current model kind. */
   resolveAction(action: string, emotion: string, intensity: number): ResolvedAction | null {
-    return this.actionMap.resolveAction(action, emotion, intensity);
+    return this.actionMap.resolveAction(action, emotion, intensity, this.currentModelKind);
   }
 
   /** Seed emotion baseline directly. The next tick's baseline decay + mix
@@ -488,7 +505,7 @@ export class AnimationCompiler extends EventEmitter {
     while (this.pendingQueue.length > 0) {
       const node = this.pendingQueue.shift();
       if (!node) continue;
-      const resolved = this.actionMap.resolveAction(node.action, node.emotion, node.intensity);
+      const resolved = this.actionMap.resolveAction(node.action, node.emotion, node.intensity, this.currentModelKind);
       // Unknown action — skip silently
       if (!resolved) continue;
 
@@ -588,9 +605,7 @@ export class AnimationCompiler extends EventEmitter {
             // Ignore endPose entries that target quat output channels; they use
             // slerp-with-identity and bypass the baseline/spring system.
             if (/\.q[xyzw]$/.test(entry.channel)) {
-              console.warn(
-                `[AnimationCompiler] endPose targets quat channel "${entry.channel}" — ignored`,
-              );
+              console.warn(`[AnimationCompiler] endPose targets quat channel "${entry.channel}" — ignored`);
               continue;
             }
             const settled = entry.value * (entry.weight ?? 1);
@@ -624,11 +639,7 @@ export class AnimationCompiler extends EventEmitter {
     //     `vrm.<bone>.q[xyzw]` channels as the discrete clip-path and mark
     //     them as quat frame channels so downstream steps (baseline,
     //     spring-damper) bypass them.
-    const layerFrame = this.layerManager.sample(
-      now,
-      this.currentActivity,
-      activeAnimChannels,
-    );
+    const layerFrame = this.layerManager.sample(now, this.currentActivity, activeAnimChannels, this.currentModelKind);
     const contributions: Record<string, number> = layerFrame.scalar;
     for (const [bone, q] of Object.entries(layerFrame.quat)) {
       contributions[`${bone}.qx`] = q.x;
@@ -925,7 +936,10 @@ function slerpWithIdentity(
   let dot = bw; // dot(identity, b) = bw
   // Ensure shortest arc: if dot < 0, flip b so we always rotate the short way.
   if (dot < 0) {
-    bx = -bx; by = -by; bz = -bz; bw = -bw;
+    bx = -bx;
+    by = -by;
+    bz = -bz;
+    bw = -bw;
     dot = -dot;
   }
 
@@ -942,7 +956,7 @@ function slerpWithIdentity(
   const theta0 = Math.acos(dot); // angle between identity and b
   const sinTheta0 = Math.sin(theta0);
   const sinA = Math.sin((1 - t) * theta0) / sinTheta0; // weight for identity
-  const sinB = Math.sin(t * theta0) / sinTheta0;        // weight for b
+  const sinB = Math.sin(t * theta0) / sinTheta0; // weight for b
 
   // identity = (0, 0, 0, 1)
   return {

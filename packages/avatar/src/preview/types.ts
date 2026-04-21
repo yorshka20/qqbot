@@ -2,6 +2,9 @@
  * Types for the Avatar Preview Server.
  */
 
+import type { ModelKind } from '../compiler/types';
+export type { ModelKind };
+
 export interface PreviewConfig {
   port: number;
   host: string;
@@ -165,11 +168,27 @@ export interface TunableParamSetMessage {
   };
 }
 
+/**
+ * Renderer → bot: renderer handshake sent on WS open (or model hot-swap).
+ * Declares which model format the renderer has loaded so the bot can
+ * route model-specific layer/action filtering.
+ *
+ * Contract source: qqbot ticket 2026-04-21-avatar-model-aware-handshake.
+ * `protocolVersion` is always 1 for this revision.
+ * `modelKind` is null when the renderer has not yet loaded any model.
+ */
+export interface HelloMessage {
+  type: 'hello';
+  modelKind: ModelKind | null;
+  protocolVersion: 1;
+}
+
 export type PreviewClientMessage =
   | TriggerMessage
   | SpeakMessage
   | AmbientAudioMessage
   | TunableParamsRequestMessage
-  | TunableParamSetMessage;
+  | TunableParamSetMessage
+  | HelloMessage;
 
 export type PreviewMessage = FrameMessage | StatusMessage | AudioMessage | TunableParamsMessage;
