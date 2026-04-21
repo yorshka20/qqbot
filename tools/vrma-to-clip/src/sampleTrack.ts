@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { IdleClipKeyframe } from './validateSchema.js';
+import type { IdleClipKeyframe, IdleClipQuatKeyframe } from './validateSchema.js';
 
 export interface Keyframe {
   time: number;
@@ -23,6 +23,7 @@ export interface QuaternionKeyframeData {
 
 /**
  * Sample a quaternion keyframe track at 30Hz and decompose into 3 Euler XYZ tracks.
+ * Used for bones whose max rotation angle is ≤ π/2 (small-angle path).
  */
 export function sampleBoneEulerXYZ(
   quaternionTrack: QuaternionKeyframeData,
@@ -45,6 +46,47 @@ export function sampleBoneEulerXYZ(
   }
 
   return { xTrack, yTrack, zTrack };
+}
+
+/**
+ * Sample a quaternion keyframe track at 30Hz, returning raw unit quaternion
+ * frames. Used for bones whose max rotation angle is > π/2 (large-angle path)
+ * where Euler XYZ decomposition would fold or flip.
+ *
+ * Returns `Math.floor(duration / dt) + 1` frames.
+ */
+export function sampleBoneQuaternion(
+  quaternionTrack: QuaternionKeyframeData,
+  duration: number,
+  dt = 1 / 30,
+): IdleClipQuatKeyframe[] {
+  const count = Math.floor(duration / dt) + 1;
+  const frames: IdleClipQuatKeyframe[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const t = Math.min(i * dt, duration);
+    const q = interpolateQuaternion(quaternionTrack, t);
+    frames.push({ time: t, x: q.x, y: q.y, z: q.z, w: q.w });
+  }
+
+  return frames;
+}
+
+/**
+ * Compute the maximum rotation angle (in radians) across a set of sampled
+ * quaternion frames. Uses `2 * acos(|w|)` per frame as the rotation angle.
+ *
+ * Returns 0 for identity-only sequences and approximately π for a 0→π sweep.
+ */
+export function maxRotationAngle(quatFrames: IdleClipQuatKeyframe[]): number {
+  let maxAngle = 0;
+  for (const frame of quatFrames) {
+    const angle = 2 * Math.acos(Math.min(1, Math.abs(frame.w)));
+    if (angle > maxAngle) {
+      maxAngle = angle;
+    }
+  }
+  return maxAngle;
 }
 
 /**

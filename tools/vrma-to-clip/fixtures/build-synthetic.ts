@@ -3,8 +3,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 export interface SyntheticOpts {
-  /** Y-axis rotation in radians. Default: Math.PI / 2 */
+  /** Y-axis rotation in radians for the head bone. Default: Math.PI / 2 */
   headRotationRadians?: number;
+  /** Y-axis rotation in radians for the hips bone. When set, adds a hips rotation channel. */
+  hipsRotationRadians?: number;
   /** Hips X translation in meters. If set, adds a hips translation animation channel. */
   hipsTranslationMeters?: number;
   /** If true, adds a happy expression ramp 0→1→0 over 1 second. */
@@ -20,19 +22,21 @@ export interface SyntheticOpts {
  *  - head bone (node 1) — with configurable Y rotation
  *
  * Optional:
+ *  - hips rotation animation channel (if hipsRotationRadians set)
  *  - hips translation animation channel (if hipsTranslationMeters set)
  *  - happy expression proxy node + animation channel (if happyExpression true)
  */
 export function buildSynthetic(opts: SyntheticOpts = {}): Uint8Array {
   const headAngle = opts.headRotationRadians ?? Math.PI / 2;
+  const hipsAngle = opts.hipsRotationRadians;
   const hipsTranslation = opts.hipsTranslationMeters;
   const happy = opts.happyExpression ?? false;
 
   // --- Compute quaternion for head rotation ---
   // Rotation of headAngle around Y axis: q = [0, sin(angle/2), 0, cos(angle/2)]
-  const halfAngle = headAngle / 2;
-  const sinH = Math.sin(halfAngle);
-  const cosH = Math.cos(halfAngle);
+  const headHalf = headAngle / 2;
+  const headSinH = Math.sin(headHalf);
+  const headCosH = Math.cos(headHalf);
 
   const parts: number[] = [];
   const bufferViews: object[] = [];
@@ -73,10 +77,10 @@ export function buildSynthetic(opts: SyntheticOpts = {}): Uint8Array {
   offset += 8;
   const headTimesAcc = accessorIdx++;
 
-  // Head quaternion values: identity → rotated
+  // Head quaternion values: identity → rotated around Y
   const headQuatData = [
-    0, 0, 0, 1,       // t=0: identity
-    0, sinH, 0, cosH, // t=1: rotated around Y
+    0, 0, 0, 1,             // t=0: identity
+    0, headSinH, 0, headCosH, // t=1: rotated around Y
   ];
   bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: 32 });
   accessors.push({
@@ -92,6 +96,47 @@ export function buildSynthetic(opts: SyntheticOpts = {}): Uint8Array {
   samplers.push({ input: headTimesAcc, interpolation: 'LINEAR', output: headQuatAcc });
   channels.push({ sampler: channelIdx, target: { node: 1, path: 'rotation' } });
   channelIdx++;
+
+  // --- Hips rotation channel (optional) ---
+  if (hipsAngle !== undefined) {
+    const hipsHalf = hipsAngle / 2;
+    const hipsSinH = Math.sin(hipsHalf);
+    const hipsCosH = Math.cos(hipsHalf);
+
+    // Hips times: [0.0, 1.0]
+    bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: 8 });
+    accessors.push({
+      bufferView: accessors.length,
+      componentType: 5126,
+      count: 2,
+      type: 'SCALAR',
+      min: [0.0],
+      max: [1.0],
+    });
+    parts.push(0.0, 1.0);
+    offset += 8;
+    const hipsRotTimesAcc = accessorIdx++;
+
+    // Hips rotation: identity → rotated around Y
+    const hipsRotData = [
+      0, 0, 0, 1,              // t=0: identity
+      0, hipsSinH, 0, hipsCosH, // t=1: rotated around Y
+    ];
+    bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: 32 });
+    accessors.push({
+      bufferView: accessors.length,
+      componentType: 5126,
+      count: 2,
+      type: 'VEC4',
+    });
+    parts.push(...hipsRotData);
+    offset += 32;
+    const hipsRotValAcc = accessorIdx++;
+
+    samplers.push({ input: hipsRotTimesAcc, interpolation: 'LINEAR', output: hipsRotValAcc });
+    channels.push({ sampler: channelIdx, target: { node: 0, path: 'rotation' } });
+    channelIdx++;
+  }
 
   // --- Hips translation channel (optional) ---
   if (hipsTranslation !== undefined) {
