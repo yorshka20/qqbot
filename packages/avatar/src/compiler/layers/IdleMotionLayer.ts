@@ -119,8 +119,8 @@ export class IdleMotionLayer extends BaseLayer {
       this.wasIdle = true;
       const loopClip = this.config.loopClip;
       const elapsedSec = ((nowMs - this.loopStartMs) / 1000) % loopClip.duration;
-      const raw = sampleClip(loopClip, elapsedSec, this.config.defaultEasing);
-      return filterActiveChannels(raw, activeChannels);
+      const sampled = sampleClip(loopClip, elapsedSec, this.config.defaultEasing);
+      return filterActiveChannels(sampled.scalar, activeChannels);
     }
 
     // Gap mode (legacy).
@@ -143,8 +143,8 @@ export class IdleMotionLayer extends BaseLayer {
       this.nextClipAt = nowMs + this.randomGap();
       return {};
     }
-    const raw = sampleClip(this.active.clip, elapsedSec, this.config.defaultEasing);
-    return filterActiveChannels(raw, activeChannels);
+    const sampled = sampleClip(this.active.clip, elapsedSec, this.config.defaultEasing);
+    return filterActiveChannels(sampled.scalar, activeChannels);
   }
 
   private pickClip(): IdleClip {

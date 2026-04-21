@@ -90,6 +90,13 @@ export class AnimationCompiler extends EventEmitter {
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private tickCount = 0;
   private currentActivity: AvatarActivity = { ...DEFAULT_ACTIVITY };
+  /**
+   * Channels emitted by quat tracks this tick (e.g. `vrm.hips.qx`).
+   * Cleared at the start of each tick. Channels in this set bypass spring-damper
+   * smoothing and channel-baseline addition; they disappear from `currentParams`
+   * on the first tick they are not contributed.
+   */
+  private quatFrameChannels: Set<string> = new Set();
 
   constructor(config: Partial<CompilerConfig> = {}, actionMapPath?: string) {
     super();
@@ -493,6 +500,9 @@ export class AnimationCompiler extends EventEmitter {
       const endTime = startTime + node.duration + (resolved.holdMs ?? 0);
 
       // Channels the new animation will drive — for crossfade conflict detection.
+      // For quat tracks, track.channel is the base bone channel (e.g. `vrm.hips`);
+      // for scalar tracks it is the axis channel (e.g. `vrm.hips.y`). Compare at
+      // track-channel granularity so quat vs quat conflicts are detected correctly.
       const newChannels =
         resolved.kind === 'clip'
           ? new Set(resolved.clip.tracks.map((t) => t.channel))
@@ -541,6 +551,9 @@ export class AnimationCompiler extends EventEmitter {
   private tick(): void {
     const now = Date.now();
 
+    // 0. Clear quat frame channel set from the previous tick.
+    this.quatFrameChannels.clear();
+
     // 1. Compute dt first so downstream steps share a consistent dt this tick.
     //    Clamp to 100ms to defend against pause/resume wall-clock gaps.
     const rawDtMs = this.lastTickMs === 0 ? 1000 / this.config.fps : now - this.lastTickMs;
@@ -576,6 +589,14 @@ export class AnimationCompiler extends EventEmitter {
       if (isExpired || isCrossfadeDone) {
         if (anim.endPose) {
           for (const entry of anim.endPose) {
+            // Ignore endPose entries that target quat output channels; they use
+            // slerp-with-identity and bypass the baseline/spring system.
+            if (/\.q[xyzw]$/.test(entry.channel)) {
+              console.warn(
+                `[AnimationCompiler] endPose targets quat channel "${entry.channel}" — ignored`,
+              );
+              continue;
+            }
             const settled = entry.value * (entry.weight ?? 1);
             this.channelBaseline.set(entry.channel, settled);
             // Snap spring to the settled value so the channel doesn't
@@ -610,6 +631,9 @@ export class AnimationCompiler extends EventEmitter {
 
     // 5. Identify channels currently being faded out so new animations can
     //    fade their conflicting channels in symmetrically.
+    //    For clip animations, track.channel is used directly (base channel for
+    //    quat tracks, axis channel for scalar tracks) — matching the conflict
+    //    detection key in processQueue.
     const fadingChannels = new Set<string>();
     for (const anim of this.activeAnimations) {
       if (anim.fadeOutStartMs !== undefined) {
@@ -663,9 +687,27 @@ export class AnimationCompiler extends EventEmitter {
           }
         }
 
-        for (const [ch, v] of Object.entries(sampled)) {
+        // Scalar tracks: additive accumulation with intensity/envelope/fade scaling.
+        for (const [ch, v] of Object.entries(sampled.scalar)) {
           contributions[ch] = (contributions[ch] ?? 0) + v * anim.intensity * envelopeScale * fadeScale;
         }
+
+        // Quat tracks: slerp-with-identity approximation.
+        // k = clamp(intensity * envelopeScale * fadeScale, 0, 1)
+        // emits vrm.<bone>.q[xyzw] and marks channels as quat frame channels.
+        for (const [bone, q] of Object.entries(sampled.quat)) {
+          const k = Math.max(0, Math.min(1, anim.intensity * envelopeScale * fadeScale));
+          const sq = slerpWithIdentity(q.x, q.y, q.z, q.w, k);
+          contributions[`${bone}.qx`] = sq.x;
+          contributions[`${bone}.qy`] = sq.y;
+          contributions[`${bone}.qz`] = sq.z;
+          contributions[`${bone}.qw`] = sq.w;
+          this.quatFrameChannels.add(`${bone}.qx`);
+          this.quatFrameChannels.add(`${bone}.qy`);
+          this.quatFrameChannels.add(`${bone}.qz`);
+          this.quatFrameChannels.add(`${bone}.qw`);
+        }
+
         continue;
       }
 
@@ -719,8 +761,10 @@ export class AnimationCompiler extends EventEmitter {
     }
 
     // 7. Add baseline contributions so channels with endPose persist after
-    //    their driving animation is gone.
+    //    their driving animation is gone. Quat frame channels bypass baseline —
+    //    they are driven directly from the slerp path above.
     for (const [ch, v] of this.channelBaseline) {
+      if (this.quatFrameChannels.has(ch)) continue;
       contributions[ch] = (contributions[ch] ?? 0) + v;
     }
 
@@ -737,8 +781,16 @@ export class AnimationCompiler extends EventEmitter {
 
     // 8. Advance spring-damper per driven channel (semi-implicit Euler —
     //    symplectic, stable on spring systems where explicit Euler diverges).
+    //    Quat frame channels bypass spring-damper: their contribution value
+    //    enters currentParams directly and disappears the next tick they are
+    //    not contributed (no spring state is created for them).
     const next: Record<string, number> = {};
     for (const id of Object.keys(contributions)) {
+      if (this.quatFrameChannels.has(id)) {
+        // Bypass spring for quat output channels — use raw contribution value.
+        next[id] = contributions[id];
+        continue;
+      }
       const target = contributions[id];
       const params = this.resolveSpringParams(id);
       let state = this.springStates.get(id);
@@ -853,6 +905,51 @@ export class AnimationCompiler extends EventEmitter {
     }
     return null;
   }
+}
+
+/**
+ * Slerp from the identity quaternion (0,0,0,1) to (bx,by,bz,bw) at t∈[0,1].
+ * Used to scale clip quaternion contributions by intensity/envelope/fade.
+ */
+function slerpWithIdentity(
+  bx: number,
+  by: number,
+  bz: number,
+  bw: number,
+  t: number,
+): { x: number; y: number; z: number; w: number } {
+  if (t <= 0) return { x: 0, y: 0, z: 0, w: 1 };
+  if (t >= 1) return { x: bx, y: by, z: bz, w: bw };
+
+  let dot = bw; // dot(identity, b) = bw
+  // Ensure shortest arc: if dot < 0, flip b so we always rotate the short way.
+  if (dot < 0) {
+    bx = -bx; by = -by; bz = -bz; bw = -bw;
+    dot = -dot;
+  }
+
+  if (dot > 0.9995) {
+    // Nearly identity — linear interpolation and normalise.
+    const rx = t * bx;
+    const ry = t * by;
+    const rz = t * bz;
+    const rw = 1 + t * (bw - 1);
+    const len = Math.sqrt(rx * rx + ry * ry + rz * rz + rw * rw);
+    return { x: rx / len, y: ry / len, z: rz / len, w: rw / len };
+  }
+
+  const theta0 = Math.acos(dot); // angle between identity and b
+  const sinTheta0 = Math.sin(theta0);
+  const sinA = Math.sin((1 - t) * theta0) / sinTheta0; // weight for identity
+  const sinB = Math.sin(t * theta0) / sinTheta0;        // weight for b
+
+  // identity = (0, 0, 0, 1)
+  return {
+    x: sinB * bx,
+    y: sinB * by,
+    z: sinB * bz,
+    w: sinA + sinB * bw,
+  };
 }
 
 function humanizeLayerId(id: string): string {
