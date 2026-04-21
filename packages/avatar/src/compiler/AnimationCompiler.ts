@@ -12,6 +12,7 @@ import {
 } from './layers/audio-envelope-config';
 import { LayerManager } from './layers/LayerManager';
 import type { AnimationLayer } from './layers/types';
+import { mergeRestPose } from './rest-pose';
 import type {
   ActionSummary,
   ActiveAnimation,
@@ -92,7 +93,13 @@ export class AnimationCompiler extends EventEmitter {
 
   constructor(config: Partial<CompilerConfig> = {}, actionMapPath?: string) {
     super();
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+      // Always merge user restPose entries with DEFAULT_VRM_REST_POSE so that
+      // a config.jsonc overriding one channel keeps the other defaults.
+      restPose: mergeRestPose(config.restPose),
+    };
     this.actionMap = new ActionMap(actionMapPath);
   }
 
@@ -581,8 +588,25 @@ export class AnimationCompiler extends EventEmitter {
     }
     this.activeAnimations = this.activeAnimations.filter((a) => !toRemove.has(a));
 
-    // 4. Gather layer (continuous) contributions.
-    const contributions: Record<string, number> = this.layerManager.sample(now, this.currentActivity);
+    // 4a. Compute the set of channels active animations will write this tick.
+    //     Layers holding absolute (A-pose) values must skip these to avoid
+    //     additive collision with the animation's target; delta-style layers
+    //     ignore it. This set includes both in-progress and fading animations.
+    const activeAnimChannels = new Set<string>();
+    for (const anim of this.activeAnimations) {
+      if (anim.kind === 'envelope') {
+        for (const t of anim.targetParams) activeAnimChannels.add(t.channel);
+      } else {
+        for (const t of anim.clip.tracks) activeAnimChannels.add(t.channel);
+      }
+    }
+
+    // 4b. Gather layer (continuous) contributions.
+    const contributions: Record<string, number> = this.layerManager.sample(
+      now,
+      this.currentActivity,
+      activeAnimChannels,
+    );
 
     // 5. Identify channels currently being faded out so new animations can
     //    fade their conflicting channels in symmetrically.
@@ -698,6 +722,17 @@ export class AnimationCompiler extends EventEmitter {
     //    their driving animation is gone.
     for (const [ch, v] of this.channelBaseline) {
       contributions[ch] = (contributions[ch] ?? 0) + v;
+    }
+
+    // 7.5 Rest pose floor: fill channels no one else drove this tick. Gives
+    //     VRM models a natural A-pose instead of reverting to humanoid-identity
+    //     T-pose when idle. Override semantic — never combines additively.
+    const restPose = this.config.restPose;
+    if (restPose) {
+      for (const ch of Object.keys(restPose)) {
+        if (ch in contributions) continue;
+        contributions[ch] = restPose[ch];
+      }
     }
 
     // 8. Advance spring-damper per driven channel (semi-implicit Euler —

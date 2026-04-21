@@ -27,8 +27,18 @@ export interface AnimationLayer {
    * output by `activity.ambientGain` — but layers whose behavior should
    * change with pose (e.g. IdleMotionLayer gating on truly-idle) read it
    * here. Layers must be cheap: called every compiler tick.
+   *
+   * `activeChannels` is the set of channel ids that active discrete
+   * animations will write this tick. Layers holding absolute (A-pose) values
+   * (e.g. VRM idle clips) MUST skip channels in this set to avoid additive
+   * collision with the action's target. Layers holding delta-style
+   * contributions around 0 (e.g. breath, gaze wander) can ignore it.
    */
-  sample(nowMs: number, activity: AvatarActivity): Record<string, number>;
+  sample(
+    nowMs: number,
+    activity: AvatarActivity,
+    activeChannels?: ReadonlySet<string>,
+  ): Record<string, number>;
 
   /**
    * Enable / disable the layer at runtime. A disabled layer returns `{}` from

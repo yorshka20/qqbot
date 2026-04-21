@@ -3,6 +3,7 @@ import { AnimationCompiler } from './compiler/AnimationCompiler';
 import { isEmotionChannel } from './compiler/emotion-channels';
 import { createDefaultLayers } from './compiler/layers';
 import type { AmbientAudioLayer } from './compiler/layers/AmbientAudioLayer';
+import type { IdleMotionLayer } from './compiler/layers/IdleMotionLayer';
 import type { ActionSummary, StateNode } from './compiler/types';
 import { mergeAvatarConfig } from './config';
 import { VTSDriver } from './drivers/VTSDriver';
@@ -188,6 +189,26 @@ export class AvatarService {
         '[AvatarService] Animation layers registered:',
         this.defaultLayers.map((l) => l.id),
       );
+
+      // Resolve the configured idle loop clip (if any) through the compiler's
+      // action-map and push it into IdleMotionLayer. This switches the layer
+      // from gap-based one-shot mode to continuous loop mode, so VRM models
+      // get a real looping idle on top of `compiler.restPose`.
+      const idleActionName = this.config.compiler.idle?.loopClipActionName;
+      if (idleActionName) {
+        const idleLayer = this.defaultLayers.find((l) => l.id === 'idle-motion') as IdleMotionLayer | undefined;
+        const clip = this.compiler.getClipByActionName(idleActionName);
+        if (idleLayer && clip) {
+          idleLayer.setLoopClip(clip);
+          logger.info(
+            `[AvatarService] IdleMotionLayer loop mode enabled with clip "${idleActionName}" (${clip.duration.toFixed(2)}s)`,
+          );
+        } else if (idleActionName) {
+          logger.warn(
+            `[AvatarService] idle.loopClipActionName="${idleActionName}" did not resolve to a clip; idle layer stays in gap mode`,
+          );
+        }
+      }
     }
 
     // NOTE: we deliberately do NOT call `compiler.start()` here. The tick

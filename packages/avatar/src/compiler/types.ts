@@ -354,4 +354,26 @@ export interface CompilerConfig {
     attackMs?: number;
     releaseMs?: number;
   };
+  /**
+   * Constant per-channel values contributed each tick for channels NOT driven
+   * by any layer / active animation this frame. Lets VRM models hold a
+   * natural A-pose instead of reverting to the humanoid identity T-pose when
+   * idle. Override semantic (not additive): a channel in `restPose` is
+   * emitted only when nothing else touches that channel, so active animations
+   * replace rather than combine with the rest value.
+   *
+   * Values are in the channel's natural unit (radians for `vrm.<bone>.*`).
+   * Merged with `DEFAULT_VRM_REST_POSE`; user entries override per-key.
+   */
+  restPose?: Record<string, number>;
+  /**
+   * Idle motion layer tuning. When `loopClipActionName` is set, the idle
+   * layer continuously loops that action's clip (wrap to t=0 on reach of
+   * duration) instead of the gap-based one-shot pool. Intended for VRM
+   * models where a real skeletal idle VRMA provides the "alive" motion on
+   * top of `restPose`.
+   */
+  idle?: {
+    loopClipActionName?: string;
+  };
 }
