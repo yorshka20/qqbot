@@ -1,20 +1,31 @@
 import type { AvatarActivity } from '../../state/types';
 import type { AnimationLayer } from './types';
 
+/** Aggregated per-tick layer output — scalar (weighted, ambient-gated) and
+ *  quat (absolute, neither weighted nor ambient-gated). */
+export interface LayerFrame {
+  scalar: Record<string, number>;
+  quat: Record<string, { x: number; y: number; z: number; w: number }>;
+}
+
 /**
  * Registry + sampler for `AnimationLayer` instances.
  *
- * `sample(nowMs, activity)` walks every registered layer, asks it for its
- * current channel contributions, applies the per-layer weight and the global
- * ambient gain (read directly from `activity.ambientGain`), and additively
- * merges the results. The result is a single channel map the compiler folds
- * into its per-tick contributions.
+ * `sample(nowMs, activity)` walks every registered layer and returns a
+ * `LayerFrame` with two maps:
  *
- * The old configurable `LayerGate` / `DEFAULT_LAYER_GATE` indirection is gone:
- * `activity.ambientGain` IS the gate — pipeline / plugin code writes whatever
- * scalar they want (0..1) and LayerManager just reads it. This keeps the
- * "ambient vs. discrete-action split" a single number, matching the intent
- * stated in the design note in `state/types.ts`.
+ * - `scalar` — additively merged across layers, each contribution multiplied
+ *   by the layer's weight and the activity's `ambientGain`. Delta-style
+ *   layers (breath / blink / perlin / gaze) fade to silence when the gate
+ *   closes.
+ * - `quat` — absolute quaternion poses, last-writer-wins, NOT scaled by
+ *   weight or ambientGain. An idle loop's elbow bend stays structurally
+ *   correct while the bot is speaking (a 0.3× quaternion is not a 0.3×
+ *   bend — it's a partial slerp toward identity, which is a different pose,
+ *   not a dimmed one).
+ *
+ * `activity.ambientGain` is the gate directly — pipeline / plugin code
+ * writes whatever scalar they want (0..1) and LayerManager reads it.
  */
 export class LayerManager {
   private readonly layers: Map<string, AnimationLayer> = new Map();
@@ -53,22 +64,37 @@ export class LayerManager {
     nowMs: number,
     activity: AvatarActivity,
     activeChannels?: ReadonlySet<string>,
-  ): Record<string, number> {
+  ): LayerFrame {
     const gateValue = activity.ambientGain;
-    const out: Record<string, number> = {};
-    if (gateValue === 0) return out;
+    const scalar: Record<string, number> = {};
+    const quat: Record<string, { x: number; y: number; z: number; w: number }> = {};
 
     for (const layer of this.layers.values()) {
       if (!layer.isEnabled()) continue;
       const weight = layer.getWeight();
       const effective = gateValue * weight;
-      if (effective === 0) continue;
 
-      const contribs = layer.sample(nowMs, activity, activeChannels);
-      for (const [channel, value] of Object.entries(contribs)) {
-        out[channel] = (out[channel] ?? 0) + value * effective;
+      // Scalar path — ambient-gated and weight-scaled. Skipped entirely when
+      // the gate is closed so delta-style layers (breath/blink/perlin) go
+      // silent during non-idle states.
+      if (effective !== 0) {
+        const contribs = layer.sample(nowMs, activity, activeChannels);
+        for (const [channel, value] of Object.entries(contribs)) {
+          scalar[channel] = (scalar[channel] ?? 0) + value * effective;
+        }
+      }
+
+      // Quat path — absolute poses. Neither weight nor ambientGain applies,
+      // so an idle loop's elbow bend stays structurally correct even while
+      // the bot is speaking. Last-writer-wins on key collision; layers
+      // targeting the same bone should not coexist.
+      if (layer.sampleQuat) {
+        const qContribs = layer.sampleQuat(nowMs, activity, activeChannels);
+        for (const [bone, q] of Object.entries(qContribs)) {
+          quat[bone] = q;
+        }
       }
     }
-    return out;
+    return { scalar, quat };
   }
 }

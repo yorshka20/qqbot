@@ -12,7 +12,6 @@ import {
 } from './layers/audio-envelope-config';
 import { LayerManager } from './layers/LayerManager';
 import type { AnimationLayer } from './layers/types';
-import { mergeRestPose } from './rest-pose';
 import type {
   ActionSummary,
   ActiveAnimation,
@@ -103,9 +102,6 @@ export class AnimationCompiler extends EventEmitter {
     this.config = {
       ...DEFAULT_CONFIG,
       ...config,
-      // Always merge user restPose entries with DEFAULT_VRM_REST_POSE so that
-      // a config.jsonc overriding one channel keeps the other defaults.
-      restPose: mergeRestPose(config.restPose),
     };
     this.actionMap = new ActionMap(actionMapPath);
   }
@@ -622,12 +618,28 @@ export class AnimationCompiler extends EventEmitter {
       }
     }
 
-    // 4b. Gather layer (continuous) contributions.
-    const contributions: Record<string, number> = this.layerManager.sample(
+    // 4b. Gather layer (continuous) contributions. Scalar is additively
+    //     merged, weighted, and ambient-gated by LayerManager; quat is
+    //     absolute-pose and arrives unscaled — we expand it into the same
+    //     `vrm.<bone>.q[xyzw]` channels as the discrete clip-path and mark
+    //     them as quat frame channels so downstream steps (baseline,
+    //     spring-damper) bypass them.
+    const layerFrame = this.layerManager.sample(
       now,
       this.currentActivity,
       activeAnimChannels,
     );
+    const contributions: Record<string, number> = layerFrame.scalar;
+    for (const [bone, q] of Object.entries(layerFrame.quat)) {
+      contributions[`${bone}.qx`] = q.x;
+      contributions[`${bone}.qy`] = q.y;
+      contributions[`${bone}.qz`] = q.z;
+      contributions[`${bone}.qw`] = q.w;
+      this.quatFrameChannels.add(`${bone}.qx`);
+      this.quatFrameChannels.add(`${bone}.qy`);
+      this.quatFrameChannels.add(`${bone}.qz`);
+      this.quatFrameChannels.add(`${bone}.qw`);
+    }
 
     // 5. Identify channels currently being faded out so new animations can
     //    fade their conflicting channels in symmetrically.
@@ -766,17 +778,6 @@ export class AnimationCompiler extends EventEmitter {
     for (const [ch, v] of this.channelBaseline) {
       if (this.quatFrameChannels.has(ch)) continue;
       contributions[ch] = (contributions[ch] ?? 0) + v;
-    }
-
-    // 7.5 Rest pose floor: fill channels no one else drove this tick. Gives
-    //     VRM models a natural A-pose instead of reverting to humanoid-identity
-    //     T-pose when idle. Override semantic — never combines additively.
-    const restPose = this.config.restPose;
-    if (restPose) {
-      for (const ch of Object.keys(restPose)) {
-        if (ch in contributions) continue;
-        contributions[ch] = restPose[ch];
-      }
     }
 
     // 8. Advance spring-damper per driven channel (semi-implicit Euler —

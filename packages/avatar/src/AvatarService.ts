@@ -193,8 +193,8 @@ export class AvatarService {
 
       // Resolve the configured idle loop clip (if any) through the compiler's
       // action-map and push it into IdleMotionLayer. This switches the layer
-      // from gap-based one-shot mode to continuous loop mode, so VRM models
-      // get a real looping idle on top of `compiler.restPose`.
+      // from gap-based one-shot mode to continuous loop mode; the loop clip
+      // is the sole source of truth for the character's resting pose.
       const idleActionName = this.config.compiler.idle?.loopClipActionName;
       if (idleActionName) {
         const idleLayer = this.defaultLayers.find((l) => l.id === 'idle-motion') as IdleMotionLayer | undefined;

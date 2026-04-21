@@ -1,8 +1,8 @@
 /**
- * IdleMotionLayer tests — focus on the loop-mode behavior and per-channel
- * exclusion introduced alongside the VRM restPose work. Gap-mode behavior
- * is exercised indirectly through the existing AnimationCompiler test suite
- * and is not re-asserted here.
+ * IdleMotionLayer tests — focus on loop-mode behavior (including the
+ * freeze-on-gate-exit + resume-from-frozen-frame semantics) and per-channel
+ * exclusion. Gap-mode behavior is exercised indirectly through the existing
+ * AnimationCompiler test suite and is not re-asserted here.
  */
 import { describe, expect, test } from 'bun:test';
 import type { AvatarActivity } from '../../state/types';
@@ -23,6 +23,27 @@ function makeTestLoopClip(): IdleClip {
     tracks: [
       { channel: 'vrm.spine.x', keyframes: [{ time: 0, value: 0.1 }] },
       { channel: 'vrm.leftUpperArm.z', keyframes: [{ time: 0, value: -1.2 }] },
+    ],
+  };
+}
+
+// A 2-second clip whose single track interpolates linearly from 0 → 1 over
+// the full duration. `sampleClip` default easing is `easeInOutCubic`, so the
+// emitted value is a non-linear but monotonically increasing function of
+// elapsed time — good enough to distinguish "frozen at t=0.5" from "fresh at
+// t=0" without pinning exact easing output.
+function makeRampLoopClip(): IdleClip {
+  return {
+    id: 'test-ramp',
+    duration: 2.0,
+    tracks: [
+      {
+        channel: 'vrm.leftUpperArm.z',
+        keyframes: [
+          { time: 0, value: 0 },
+          { time: 2, value: 1 },
+        ],
+      },
     ],
   };
 }
@@ -48,17 +69,46 @@ describe('IdleMotionLayer loop mode', () => {
     expect(Number.isFinite(out['vrm.leftUpperArm.z'])).toBe(true);
   });
 
-  test('leaving idle stops emission; re-entering restarts at t=0 of loop', () => {
+  test('leaving idle freezes the loop at the current frame (emission continues)', () => {
     const layer = new IdleMotionLayer();
-    layer.setLoopClip(makeTestLoopClip());
+    layer.setLoopClip(makeRampLoopClip());
 
+    // Seed loopStartMs at t=1000, then advance to t=2000 while idle so the
+    // clip has progressed to elapsedSec=1.0.
     layer.sample(1000, IDLE_ACTIVITY);
-    const busy = layer.sample(1100, BUSY_ACTIVITY);
-    expect(Object.keys(busy)).toHaveLength(0);
+    const midIdle = layer.sample(2000, IDLE_ACTIVITY);
+    const frozenValue = midIdle['vrm.leftUpperArm.z'];
+    expect(frozenValue).toBeGreaterThan(0);
+    expect(frozenValue).toBeLessThan(1);
 
-    // Re-enter idle much later — the layer should treat it as a fresh loop start.
-    const resumed = layer.sample(10_000, IDLE_ACTIVITY);
-    expect(resumed['vrm.spine.x']).toBeCloseTo(0.1, 6);
+    // Gate closes — layer must keep emitting, and the value must match the
+    // frame captured when the gate closed, regardless of real-time drift.
+    const busy1 = layer.sample(2100, BUSY_ACTIVITY);
+    expect(busy1['vrm.leftUpperArm.z']).toBeCloseTo(frozenValue, 6);
+
+    const busy2 = layer.sample(5000, BUSY_ACTIVITY);
+    expect(busy2['vrm.leftUpperArm.z']).toBeCloseTo(frozenValue, 6);
+  });
+
+  test('re-entering idle resumes from the frozen frame, not from t=0', () => {
+    const layer = new IdleMotionLayer();
+    layer.setLoopClip(makeRampLoopClip());
+
+    // Progress to elapsedSec=1.0, then gate off for a long real-time interval.
+    layer.sample(1000, IDLE_ACTIVITY);
+    const midIdle = layer.sample(2000, IDLE_ACTIVITY);
+    const frozenValue = midIdle['vrm.leftUpperArm.z'];
+    layer.sample(2100, BUSY_ACTIVITY);
+
+    // Re-enter idle 10 s later. The first post-resume tick emits the frozen
+    // frame exactly (no jump at the boundary) — i.e. NOT 0 (which is what a
+    // t=0 restart would produce for this ramp clip).
+    const firstResume = layer.sample(12_100, IDLE_ACTIVITY);
+    expect(firstResume['vrm.leftUpperArm.z']).toBeCloseTo(frozenValue, 6);
+
+    // Subsequent ticks advance forward from the resumed frame.
+    const laterResume = layer.sample(12_500, IDLE_ACTIVITY);
+    expect(laterResume['vrm.leftUpperArm.z']).toBeGreaterThan(frozenValue);
   });
 
   test('setLoopClip(null) returns the layer to gap-mode silence (no clip active)', () => {
@@ -70,6 +120,61 @@ describe('IdleMotionLayer loop mode', () => {
     // Gap mode with no active clip and un-elapsed nextClipAt timer emits nothing.
     const out = layer.sample(1100, IDLE_ACTIVITY);
     expect(Object.keys(out)).toHaveLength(0);
+  });
+});
+
+describe('IdleMotionLayer quat output', () => {
+  function makeQuatLoopClip(): IdleClip {
+    // Single-keyframe quat + scalar in one clip so we can assert both maps
+    // are populated and that quat flows through sampleQuat(), not sample().
+    return {
+      id: 'test-quat',
+      duration: 2.0,
+      tracks: [
+        { channel: 'vrm.spine.x', keyframes: [{ time: 0, value: 0.1 }] },
+        {
+          kind: 'quat',
+          channel: 'vrm.rightLowerArm',
+          keyframes: [{ time: 0, x: 0.3, y: 0, z: 0, w: 0.9539392 }],
+        },
+      ],
+    };
+  }
+
+  test('loop clip quat tracks surface via sampleQuat(), not sample()', () => {
+    const layer = new IdleMotionLayer();
+    layer.setLoopClip(makeQuatLoopClip());
+
+    const scalar = layer.sample(1000, IDLE_ACTIVITY);
+    const quat = layer.sampleQuat(1000, IDLE_ACTIVITY);
+
+    // Scalar track flows through sample(); quat track does NOT appear there.
+    expect(scalar['vrm.spine.x']).toBeCloseTo(0.1, 6);
+    expect(scalar['vrm.rightLowerArm']).toBeUndefined();
+
+    // Quat bone surfaces through sampleQuat() at full amplitude.
+    const q = quat['vrm.rightLowerArm'];
+    expect(q).toBeDefined();
+    expect(q.x).toBeCloseTo(0.3, 6);
+    expect(q.w).toBeCloseTo(0.9539392, 6);
+  });
+
+  test('sampleQuat() without a preceding sample() returns empty (cache miss)', () => {
+    const layer = new IdleMotionLayer();
+    layer.setLoopClip(makeQuatLoopClip());
+
+    const quat = layer.sampleQuat(1000, IDLE_ACTIVITY);
+    expect(Object.keys(quat)).toHaveLength(0);
+  });
+
+  test('activeChannels set drops matching quat bones', () => {
+    const layer = new IdleMotionLayer();
+    layer.setLoopClip(makeQuatLoopClip());
+
+    const active = new Set(['vrm.rightLowerArm']);
+    layer.sample(1000, IDLE_ACTIVITY, active);
+    const quat = layer.sampleQuat(1000, IDLE_ACTIVITY, active);
+    expect(quat['vrm.rightLowerArm']).toBeUndefined();
   });
 });
 

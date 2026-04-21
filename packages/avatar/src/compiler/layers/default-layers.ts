@@ -16,6 +16,8 @@ import { WalkingLayer } from './WalkingLayer';
  */
 export function createDefaultLayers(compilerConfig?: Partial<CompilerConfig>): AnimationLayer[] {
   const walkConfig = compilerConfig?.walk ?? {};
+
+  const perlinNoiseLayer = new PerlinNoiseLayer();
   const layers: AnimationLayer[] = [
     new BreathLayer(),
     new AutoBlinkLayer(),
@@ -26,9 +28,8 @@ export function createDefaultLayers(compilerConfig?: Partial<CompilerConfig>): A
       arrivalThresholdM: walkConfig.arrivalThresholdM,
     }),
     new AmbientAudioLayer(),
-    new PerlinNoiseLayer(),
+    perlinNoiseLayer,
   ];
-  const perlinNoiseLayer = layers.find((layer) => layer.id === 'perlin-noise');
-  perlinNoiseLayer?.setWeight(0.2);
+  perlinNoiseLayer.setWeight(0.2);
   return layers;
 }

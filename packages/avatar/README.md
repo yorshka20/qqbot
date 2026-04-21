@@ -195,12 +195,8 @@ Semantic channel names (e.g. `head.yaw`, `mouth.smile`, `arm.right`) are rendere
     "outputFps": 30,
     "crossfadeMs": 250,         // ms; crossfade duration for overlapping channels
     "baselineHalfLifeMs": 45000, // ms; half-life for endPose baseline decay
-    "restPose": {                // VRM-only; merged with DEFAULT_VRM_REST_POSE
-      "vrm.leftUpperArm.z": -1.2,
-      "vrm.rightUpperArm.z": 1.2
-    },
     "idle": {
-      "loopClipActionName": "idle_standing" // optional VRM idle clip
+      "loopClipActionName": "idle_standing" // VRM idle clip (sole source of rest pose)
     }
   }
 }
@@ -306,39 +302,22 @@ clip action or unknown).
 
 ---
 
-## VRM Rest Pose & Idle Loop
+## VRM Idle Loop
 
-VRM 1.0's normalized humanoid defines T-pose as identity on every bone, which
-looks mechanical with arms held horizontally. Two orthogonal mechanisms let a
-VRM model hold a natural A-pose and breathe continuously while idle:
-
-### `restPose`: per-channel "floor" (override semantic)
-
-`CompilerConfig.restPose` is a `Record<string, number>` contributed **every
-tick for channels no layer or active animation drove this frame**. The
-semantic is **override, not additive**: if another contribution touches the
-same channel, `restPose` is skipped — so playing a `wave` action replaces
-(rather than combines with) the rest value cleanly.
-
-```ts
-// DEFAULT_VRM_REST_POSE (packages/avatar/src/compiler/rest-pose.ts)
-{
-  'vrm.leftUpperArm.z':  -1.2,   // ≈ -69°, arm from T-pose +X toward -Y (down)
-  'vrm.rightUpperArm.z':  1.2,
-}
-```
-
-User config merges per-key with the defaults — setting one channel keeps the
-others intact. Setting a key to `0` disables that default's built-in offset
-(emits 0 rather than the rest value) for that channel.
+VRM 1.0's normalized humanoid defines T-pose as identity on every bone. Any
+non-T-pose standing posture (A-pose + breathing, a held gesture, etc.) must
+come from the `IdleMotionLayer` loop clip — the compiler has no separate
+"rest pose" fallback. A VRM avatar setup therefore **requires a loop clip**
+configured via `idle.loopClipActionName`; without one, idle channels simply
+stop being emitted and the renderer falls back to the last observed value
+(or T-pose on a fresh connection).
 
 ### `idle.loopClipActionName`: continuous VRM idle clip
 
 When `CompilerConfig.idle.loopClipActionName` names a clip action, the
 `IdleMotionLayer` switches from its legacy gap-based one-shot pool into
 **loop mode**: it plays the named clip continuously, wrapping time back to
-`t=0` when `elapsed >= clip.duration`. Intended for VRM idle VRMAs whose
-keyframes already encode the character's rest pose (A-pose + breathing).
+`t=0` when `elapsed >= clip.duration`.
 
 ```jsonc
 "compiler": {
@@ -348,37 +327,38 @@ keyframes already encode the character's rest pose (A-pose + breathing).
 
 The clip is resolved through the bot's action-map at `AvatarService`
 initialization, so the referenced action must exist as a `kind: 'clip'`
-entry. If resolution fails, the layer logs a warning and stays in gap mode
-— no crash.
+entry. If resolution fails, the layer logs a warning and stays in gap mode.
+
+### Freeze-on-gate-exit semantics
+
+Loop mode is **not** gated by `isTrulyIdle`. When the bot leaves the truly-
+idle state (speaking / listening / thinking), the layer does not stop
+emitting — it freezes the clip at the current elapsed time and re-emits that
+same frame every tick. When the gate re-opens, the timeline is rebased so
+the clip continues forward from the frozen frame rather than jumping back
+to `t=0`. This keeps the posture visually continuous across state
+transitions: a hand held up at the V-sign peak stays up through speaking,
+rather than being pulled down to humanoid identity.
+
+This is a deliberate asymmetry with other ambient layers (breath, blink,
+perlin, gaze), which ARE scaled by `ambientGain` because they emit deltas /
+micro-motions. The loop clip emits **absolute** posture values, and scaling
+those by 0.3 would produce an unintended T-pose blend rather than a subtle
+dimming — so the clip is exempt from `ambientGain` modulation and bypasses
+the `isTrulyIdle` gate entirely.
 
 ### Per-channel exclusion for idle clip
 
-The idle clip holds **absolute** channel values (e.g. `vrm.leftUpperArm.z =
--1.2` matching the rest pose). If an active action also targets a clip
-channel, naive additive mixing would produce garbage (`rest + action` on a
-shared bone). To prevent this, every layer's `sample(nowMs, activity,
-activeChannels?)` now receives the set of channels active discrete
-animations will write this tick — `IdleMotionLayer` drops contributions
-for channels in that set.
+The idle clip holds **absolute** channel values. If an active action also
+targets a clip channel, naive additive mixing would produce garbage
+(`idle + action` on a shared bone). To prevent this, every layer's
+`sample(nowMs, activity, activeChannels?)` receives the set of channels
+active discrete animations will write this tick — `IdleMotionLayer` drops
+contributions for channels in that set.
 
 Result: a `wave` action can play on `vrm.rightUpperArm.z` while the idle
 clip continues driving spine breathing, left arm, legs, etc. —
 simultaneously, no collision.
-
-### Configuration
-
-```jsonc
-"avatar": {
-  "compiler": {
-    "restPose": {
-      "vrm.leftUpperArm.z": -1.3   // override one channel; other defaults preserved
-    },
-    "idle": {
-      "loopClipActionName": "idle_standing"
-    }
-  }
-}
-```
 
 ---
 

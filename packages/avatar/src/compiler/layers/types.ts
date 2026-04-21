@@ -41,6 +41,26 @@ export interface AnimationLayer {
   ): Record<string, number>;
 
   /**
+   * Optional: sample quaternion tracks. Called in the same tick as
+   * `sample()`. Keys are base bone channels (e.g. `vrm.rightLowerArm`);
+   * values are unit quaternions. The compiler emits four scalar output
+   * channels `vrm.<bone>.q[xyzw]` per quat contribution via
+   * slerp-with-identity, bypassing spring-damper and channelBaseline — see
+   * `AnimationCompiler.tick` quat-path for the full contract.
+   *
+   * Unlike `sample()`, quat output is NOT multiplied by the layer's weight
+   * or the activity's `ambientGain`: absolute-pose values do not dim
+   * meaningfully, and a half-intensity quaternion is not a half-intensity
+   * pose. A layer wanting to fade its quat contribution must do so by
+   * slerp-toward-identity internally before returning.
+   */
+  sampleQuat?(
+    nowMs: number,
+    activity: AvatarActivity,
+    activeChannels?: ReadonlySet<string>,
+  ): Record<string, { x: number; y: number; z: number; w: number }>;
+
+  /**
    * Enable / disable the layer at runtime. A disabled layer returns `{}` from
    * `sample()`. Defaults to enabled on construction.
    */

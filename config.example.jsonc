@@ -1126,20 +1126,13 @@
   //     //   "intensity": 0.10,
   //     //   "intensityFloor": 0.1
   //     // }
-  //     // restPose: VRM-only per-channel fallback, contributed every tick for
-  //     // channels no layer / action drove this frame. Gives the model an
-  //     // A-pose floor instead of humanoid-identity T-pose when idle.
-  //     // Merged per-key with DEFAULT_VRM_REST_POSE — setting one channel
-  //     // preserves other defaults; setting a key to 0 disables that default.
-  //     // Override semantic (NOT additive): action writes always win.
-  //     // "restPose": {
-  //     //   "vrm.leftUpperArm.z": -1.2,
-  //     //   "vrm.rightUpperArm.z": 1.2
-  //     // },
   //     // idle: compiler-side idle motion config. `loopClipActionName` names
-  //     // a `kind:'clip'` action to loop continuously while truly-idle; pairs
-  //     // with restPose for natural VRM standing. Unset = legacy gap-based
-  //     // one-shot clip pool (Cubism idle style).
+  //     // a `kind:'clip'` action to loop continuously — the loop clip is the
+  //     // sole source of truth for the character's resting pose on VRM. On
+  //     // gate exit (speaking / listening / thinking) the layer freezes the
+  //     // clip at the current frame and resumes from that frame on re-entry,
+  //     // keeping posture continuous across state transitions. Unset = legacy
+  //     // gap-based one-shot clip pool (Cubism idle style).
   //     // "idle": {
   //     //   "loopClipActionName": "idle_standing"
   //     // }
