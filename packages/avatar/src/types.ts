@@ -59,7 +59,7 @@ export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
     releaseRatio: 0.3,
     layers: { enabled: true },
     crossfadeMs: 250,
-    baselineHalfLifeMs: 45000,
+    baselineHalfLifeMs: 3000,
     idle: { loopClipActionName: 'peace_sign' },
   },
   idle: {

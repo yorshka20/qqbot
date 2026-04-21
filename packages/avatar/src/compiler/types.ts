@@ -325,10 +325,12 @@ export interface CompilerConfig {
    */
   crossfadeMs?: number;
   /**
-   * Half-life in ms for the exponential decay used to return each channel to
-   * its baseline value when no animation is actively driving it. A value of
-   * 45000 ms means the deviation halves roughly every 45 seconds.
-   * Runtime implementation lives in a later task.
+   * Half-life in ms for the exponential decay of `endPose` baseline values
+   * (set when envelope-kind animations release). Shorter = pose fades back
+   * to idle-clip posture more quickly, reducing the window where a settled
+   * envelope endPose competes with the idle loop for the same channel.
+   * Default: 3000 ms (≈ one conversational turn). Older designs used 45 s
+   * because there was no competing idle-clip pose layer.
    */
   baselineHalfLifeMs?: number;
   /**

@@ -313,10 +313,13 @@ describe('AnimationCompiler endPose baseline persistence', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Test 9 — half-life decay: after 45s baseline is near half original
+  // Test 9 — half-life decay: after one half-life, baseline is near 50% of
+  // original. Uses an explicit halfLife rather than the default so the test
+  // survives future default changes.
   // -------------------------------------------------------------------------
-  test('Test 9: after 45s (default half-life) baseline decays to ~50% of original', () => {
-    const compiler = new AnimationCompiler({ crossfadeMs: 0 });
+  test('Test 9: after one half-life, baseline decays to ~50% of original', () => {
+    const halfLifeMs = 3000;
+    const compiler = new AnimationCompiler({ crossfadeMs: 0, baselineHalfLifeMs: halfLifeMs });
     (compiler as any).actionMap = mockActionMap({
       targets: [{ channel: 'arm.right', targetValue: 10, weight: 1.0 }],
       endPose: [{ channel: 'arm.right', value: 10 }],
@@ -342,19 +345,18 @@ describe('AnimationCompiler endPose baseline persistence', () => {
     const initialBaseline = snapshotInitial['arm.right'] ?? 0;
     expect(initialBaseline).toBeGreaterThan(9.9); // should be ~10
 
-    // Advance 45 seconds (45000ms) in large ticks
-    // Use large ticks but clamp is 100ms, so use many small ticks
-    // 45000ms / 100ms = 450 ticks of 100ms each
-    for (let i = 0; i < 450; i++) {
+    // Advance one half-life in 100 ms ticks (dt is clamped to 100ms internally).
+    const ticks = Math.round(halfLifeMs / 100);
+    for (let i = 0; i < ticks; i++) {
       nowRef.t += 100;
       (compiler as any).tick();
     }
 
-    const snapshot45s = compiler.getChannelBaselineSnapshot();
-    const baseline45s = snapshot45s['arm.right'] ?? 0;
+    const snapshotHalfLife = compiler.getChannelBaselineSnapshot();
+    const baselineHalfLife = snapshotHalfLife['arm.right'] ?? 0;
     // After one half-life, should be near 50% of initial
-    expect(baseline45s).toBeGreaterThan(initialBaseline * 0.4);
-    expect(baseline45s).toBeLessThan(initialBaseline * 0.6);
+    expect(baselineHalfLife).toBeGreaterThan(initialBaseline * 0.4);
+    expect(baselineHalfLife).toBeLessThan(initialBaseline * 0.6);
   });
 
   // -------------------------------------------------------------------------

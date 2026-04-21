@@ -29,6 +29,14 @@ export interface SampledClipFrame {
  *
  * Additive accumulation across same-channel scalar tracks for IdleClip compat;
  * in practice tracks are unique per channel.
+ *
+ * **Root-channel contract**: tracks targeting `vrm.root.*` are ignored
+ * unconditionally. Character translation/rotation is owned exclusively by
+ * `WalkingLayer`; VRMA authoring tools commonly bake non-zero root offsets
+ * into exported clips as authoring artifacts, and applying them would yank
+ * the character around every time a gesture plays. If a future animation
+ * legitimately needs to move the character, route it through the walking
+ * facade rather than re-enabling clip-path root emission.
  */
 export function sampleClip(
   clip: IdleClip,
@@ -42,6 +50,7 @@ export function sampleClip(
   for (const track of clip.tracks) {
     const kfs = track.keyframes;
     if (kfs.length === 0) continue;
+    if (track.channel.startsWith('vrm.root.') || track.channel === 'vrm.root') continue;
 
     if (track.kind === 'quat') {
       // Quat track: binary-search and slerp between adjacent keyframes.
@@ -89,11 +98,21 @@ export function sampleClip(
         scalar[track.channel] = (scalar[track.channel] ?? 0) + last.value;
         continue;
       }
-      // Interpolate between the bracketing keyframes.
-      let i = 0;
-      while (i < scalarKfs.length - 1 && scalarKfs[i + 1].time < clamped) i++;
-      const a = scalarKfs[i];
-      const b = scalarKfs[i + 1];
+      // Binary-search for bracketing keyframes. VRMA clips at 30Hz produce
+      // 300+ keyframes per track; linear scan multiplied by ~100 tracks was
+      // the dominant per-tick CPU cost.
+      let lo = 0;
+      let hi = scalarKfs.length - 1;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (scalarKfs[mid].time <= clamped) {
+          lo = mid;
+        } else {
+          hi = mid;
+        }
+      }
+      const a = scalarKfs[lo];
+      const b = scalarKfs[hi];
       const span = b.time - a.time;
       const progress = span <= 0 ? 1 : (clamped - a.time) / span;
       const eased = applyEasing(progress, track.easing ?? defaultEasing);

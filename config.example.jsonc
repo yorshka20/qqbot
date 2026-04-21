@@ -1105,10 +1105,12 @@
   //     // a new animation starts on overlapping channels. Also controls the
   //     // fade-in of the new animation on those channels. Default: 250.
   //     // "crossfadeMs": 250,
-  //     // baselineHalfLifeMs: exponential decay half-life in ms for per-channel
-  //     // baseline values written by endPose harvesting. A value of 45000 means
-  //     // the settled deviation halves roughly every 45 seconds. Default: 45000.
-  //     // "baselineHalfLifeMs": 45000
+  //     // baselineHalfLifeMs: exponential decay half-life in ms for the
+  //     // endPose baseline written by envelope-kind animations on release.
+  //     // Shorter = envelope endPose hands off back to the idle-clip posture
+  //     // sooner, reducing cross-namespace contention on shared bones.
+  //     // Default: 3000 ms (≈ one conversational turn).
+  //     // "baselineHalfLifeMs": 3000
   //     // clipEnvelope: attack/release ramp for clip-kind actions (ms).
   //     // attackMs: linear fade-in duration (default 200, clamped to duration*0.5).
   //     // releaseMs: linear fade-out duration (default 300, clamped to duration*0.5).

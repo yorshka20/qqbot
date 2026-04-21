@@ -50,7 +50,7 @@ When an animation with an `endPose` is harvested, the compiler writes the settle
 
 - Its baseline contribution is added to the spring-damper input every tick, keeping the avatar in the settled pose even when no active animation is driving that channel.
 - The spring state is **snapped** to the settled value on harvest so the channel never blinks back to zero between harvest and the next spring update.
-- Baseline values **exponentially decay** back to zero over time (half-life controlled by `compiler.baselineHalfLifeMs`, default 45 s). This means a pose naturally fades out if no new animation reinforces it.
+- Baseline values **exponentially decay** back to zero over time (half-life controlled by `compiler.baselineHalfLifeMs`, default **3 s**). This means an envelope-kind gesture's endPose lingers briefly after release and then hands off back to the idle-clip posture. The earlier 45 s default was left over from a design without a competing absolute-pose idle layer; with the current loop-clip-owns-rest-pose model, shorter decays reduce cross-namespace contention.
 
 > The decay step runs **before** harvesting new animations each tick to avoid a one-tick double-count where the same settled value would come from both the old baseline and the newly harvested animation simultaneously.
 
@@ -194,7 +194,7 @@ Semantic channel names (e.g. `head.yaw`, `mouth.smile`, `arm.right`) are rendere
     "fps": 60,
     "outputFps": 30,
     "crossfadeMs": 250,         // ms; crossfade duration for overlapping channels
-    "baselineHalfLifeMs": 45000, // ms; half-life for endPose baseline decay
+    "baselineHalfLifeMs": 3000,  // ms; half-life for endPose baseline decay (handoff to idle-clip posture)
     "idle": {
       "loopClipActionName": "idle_standing" // VRM idle clip (sole source of rest pose)
     }

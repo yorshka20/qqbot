@@ -120,7 +120,7 @@ describe('AnimationCompiler compiler:envelope tunable section', () => {
 
     const halfLifeParam = envelopeSection.params.find((p) => p.id === 'baselineHalfLifeMs');
     expect(halfLifeParam).toBeDefined();
-    expect(halfLifeParam!.default).toBe(45000);
+    expect(halfLifeParam!.default).toBe(3000);
     expect(halfLifeParam!.min).toBe(1000);
     expect(halfLifeParam!.max).toBe(120000);
   });
@@ -192,6 +192,6 @@ describe('AnimationCompiler compiler:envelope tunable section', () => {
 
     // Values should remain at defaults (overrides were rejected)
     expect(crossfadeParam.value).toBe(250);
-    expect(halfLifeParam.value).toBe(45000);
+    expect(halfLifeParam.value).toBe(3000);
   });
 });

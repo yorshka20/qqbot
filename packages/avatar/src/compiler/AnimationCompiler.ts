@@ -62,7 +62,7 @@ const DEFAULT_CLIP_ATTACK_MS = 200;
 /** Default release ramp duration in ms for clip-kind animations. */
 const DEFAULT_CLIP_RELEASE_MS = 300;
 /** Default half-life in ms for exponential baseline decay. */
-const DEFAULT_BASELINE_HALF_LIFE_MS = 45_000;
+const DEFAULT_BASELINE_HALF_LIFE_MS = 3_000;
 /** Default ± relative jitter applied to enqueued tag-animation duration (15%). */
 const DEFAULT_DURATION_JITTER = 0.15;
 /** Default ± relative jitter applied to enqueued tag-animation intensity (10%). */
