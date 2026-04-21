@@ -6,14 +6,13 @@
  * - GET /api/docs/list?root=&path=  -> { items: FileItem[] } (paths relative to that root)
  * - GET /api/docs/raw?root=&path=   -> file bytes (path must be a file)
  *
- * Roots:
+ * Roots (all under monorepo root):
  * - docs: <repo>/docs
- * - claude-learnings: ~/.claude/learnings
- * - claude-workbook: ~/.claude/workbook
+ * - claude-learnings: <repo>/claude-learnings
+ * - claude-workbook: <repo>/claude-workbook
  */
 
 import { access, readdir, readFile, stat } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { basename, join, relative } from 'node:path';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
@@ -45,14 +44,8 @@ function buildRootMap(): Map<string, { label: string; absPath: string }> {
   const repo = getRepoRoot();
   return new Map([
     ['docs', { label: 'docs/', absPath: join(repo, 'docs') }],
-    [
-      'claude-learnings',
-      { label: 'claude-learnings (~/.claude/learnings)', absPath: join(homedir(), '.claude', 'learnings') },
-    ],
-    [
-      'claude-workbook',
-      { label: 'claude-workbook (~/.claude/workbook)', absPath: join(homedir(), '.claude', 'workbook') },
-    ],
+    ['claude-learnings', { label: 'claude-learnings/', absPath: join(repo, 'claude-learnings') }],
+    ['claude-workbook', { label: 'claude-workbook/', absPath: join(repo, 'claude-workbook') }],
   ]);
 }
 

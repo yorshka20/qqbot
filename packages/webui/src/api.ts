@@ -130,7 +130,7 @@ export async function renameFile(path: string, newName: string): Promise<void> {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Docs preview API (read-only; roots: docs, claude-learnings, claude-workbook)
+// Docs preview API (read-only; roots under repo: docs/, claude-learnings/, claude-workbook/)
 // ────────────────────────────────────────────────────────────────────────────
 
 export async function listDocsRoots(): Promise<DocsRootsResponse> {

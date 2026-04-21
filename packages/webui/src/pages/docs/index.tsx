@@ -1,5 +1,5 @@
 /**
- * Docs preview — read-only browse of repo `docs/`, `~/.claude/learnings`, and `~/.claude/workbook`.
+ * Docs preview — read-only browse of repo `docs/`, `claude-learnings/`, and `claude-workbook/` (monorepo root).
  * Uses shared StaticServer (`VITE_STATIC_SERVER_BASE`) so you can read host docs from a remote machine.
  */
 
