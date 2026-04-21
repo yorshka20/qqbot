@@ -231,5 +231,110 @@
     "endPose": [
       { "channel": "vrm.hips.x", "value": 0.0, "weight": 0.5 }
     ]
+  },
+  "show_body": {
+    "kind": "clip",
+    "category": "movement",
+    "description": "全身展示——转身展示整体身形",
+    "clip": "clips/vrm/VRMA_01.json",
+    "defaultDuration": 11800
+  },
+  "greet": {
+    "kind": "clip",
+    "category": "movement",
+    "description": "打招呼——抬手鞠躬的问候动作",
+    "clip": "clips/vrm/VRMA_02.json",
+    "defaultDuration": 7267
+  },
+  "peace_sign": {
+    "kind": "clip",
+    "category": "movement",
+    "description": "比 V 字胜利手势",
+    "clip": "clips/vrm/VRMA_03.json",
+    "defaultDuration": 11684
+  },
+  "shoot": {
+    "kind": "clip",
+    "category": "movement",
+    "description": "做出开枪姿势",
+    "clip": "clips/vrm/VRMA_04.json",
+    "defaultDuration": 9600
+  },
+  "spin": {
+    "kind": "clip",
+    "category": "movement",
+    "description": "原地旋转一周",
+    "clip": "clips/vrm/VRMA_05.json",
+    "defaultDuration": 9317
+  },
+  "model_pose": {
+    "kind": "clip",
+    "category": "movement",
+    "description": "时装模特定型 pose",
+    "clip": "clips/vrm/VRMA_06.json",
+    "defaultDuration": 7517
+  },
+  "squat_stretch": {
+    "kind": "clip",
+    "category": "movement",
+    "description": "屈膝伸展——热身式蹲起",
+    "clip": "clips/vrm/VRMA_07.json",
+    "defaultDuration": 11517
+  },
+  "motion_pose_001": {
+    "kind": "clip",
+    "category": "movement",
+    "description": "001 motion_pose（待识别）",
+    "clip": "clips/vrm/001_motion_pose.json",
+    "defaultDuration": 19967
+  },
+  "dogeza_002": {
+    "kind": "clip",
+    "category": "movement",
+    "description": "002 dogeza 土下座（郑重致歉下跪）",
+    "clip": "clips/vrm/002_dogeza.json",
+    "defaultDuration": 7300
+  },
+  "humidai_003": {
+    "kind": "clip",
+    "category": "movement",
+    "description": "003 humidai 踏み台（短动作，待识别）",
+    "clip": "clips/vrm/003_humidai.json",
+    "defaultDuration": 2267
+  },
+  "hello_004": {
+    "kind": "clip",
+    "category": "movement",
+    "description": "004 hello_1 问候变体",
+    "clip": "clips/vrm/004_hello_1.json",
+    "defaultDuration": 15767
+  },
+  "smartphone_005": {
+    "kind": "clip",
+    "category": "movement",
+    "description": "005 smartphone 看手机",
+    "clip": "clips/vrm/005_smartphone.json",
+    "defaultDuration": 10367
+  },
+  "drinkwater_006": {
+    "kind": "clip",
+    "category": "movement",
+    "description": "006 drinkwater 喝水",
+    "clip": "clips/vrm/006_drinkwater.json",
+    "defaultDuration": 23667
+  },
+  "gekirei_007": {
+    "kind": "clip",
+    "category": "movement",
+    "description": "007 gekirei 激励/加油",
+    "clip": "clips/vrm/007_gekirei.json",
+    "defaultDuration": 21500
+  },
+  "gatan_008": {
+    "kind": "clip",
+    "category": "movement",
+    "description": "008 gatan がたん 突然坐倒",
+    "clip": "clips/vrm/008_gatan.json",
+    "defaultDuration": 11400
   }
 }

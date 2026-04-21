@@ -37,6 +37,7 @@
     "tombstoned",
     "tsyringe",
     "uuidv",
+    "VRMA",
     "wechat"
   ],
   "editor.defaultFormatter": "biomejs.biome",
