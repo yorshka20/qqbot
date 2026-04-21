@@ -44,8 +44,8 @@ function buildRootMap(): Map<string, { label: string; absPath: string }> {
   const repo = getRepoRoot();
   return new Map([
     ['docs', { label: 'docs/', absPath: join(repo, 'docs') }],
-    ['claude-learnings', { label: 'claude-learnings/', absPath: join(repo, 'claude-learnings') }],
-    ['claude-workbook', { label: 'claude-workbook/', absPath: join(repo, 'claude-workbook') }],
+    ['claude-learnings', { label: 'claude-learnings/', absPath: join(repo, '.claude-learnings') }],
+    ['claude-workbook', { label: 'claude-workbook/', absPath: join(repo, '.claude-workbook') }],
   ]);
 }
 
