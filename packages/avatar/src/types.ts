@@ -60,6 +60,9 @@ export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
     layers: { enabled: true },
     crossfadeMs: 250,
     baselineHalfLifeMs: 45000,
+    idle: { loopClipActionName: 'peace_sign' },
+    // restPose intentionally absent here — AnimationCompiler merges user entries
+    // with DEFAULT_VRM_REST_POSE so a user tweaking one key keeps other defaults.
   },
   idle: {
     idleIntervalMin: 3000,

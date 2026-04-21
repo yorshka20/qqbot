@@ -1062,3 +1062,251 @@ describe('AnimationCompiler — clip execution path', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Quat clip path tests
+// ---------------------------------------------------------------------------
+describe('AnimationCompiler — quat clip path', () => {
+  let nowRef: { t: number };
+  let dateSpy: ReturnType<typeof spyOn>;
+
+  // Quat clip fixture: vrm.hips rotates 0→90° around Y over 2s.
+  // At t=1s (mid-clip), alpha=0.5, sampled quat ≈ 45° rotation.
+  const sin45 = Math.sin(Math.PI / 4);
+  const cos45 = Math.cos(Math.PI / 4);
+  const QUAT_CLIP = {
+    id: 'quat-hips',
+    duration: 2,
+    tracks: [{
+      kind: 'quat',
+      channel: 'vrm.hips',
+      keyframes: [
+        { time: 0, x: 0, y: 0, z: 0, w: 1 },
+        { time: 2, x: 0, y: sin45, z: 0, w: cos45 },
+      ],
+    }],
+  };
+
+  beforeEach(() => {
+    nowRef = { t: 10_000 };
+    dateSpy = spyOn(Date, 'now').mockImplementation(() => nowRef.t);
+  });
+  afterEach(() => {
+    dateSpy.mockRestore();
+  });
+
+  // Helper: write temp action-map + quat clip JSON for quat path tests.
+  async function mkQClipEnv(
+    clipDef: object,
+    actionMapEntries: object,
+  ): Promise<{ mapPath: string; cleanup: () => void }> {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'qclip-test-'));
+    writeFileSync(join(dir, 'quat-clip.json'), JSON.stringify(clipDef));
+    const mapPath = join(dir, 'map.json');
+    writeFileSync(mapPath, JSON.stringify(actionMapEntries));
+    return { mapPath, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+  }
+
+  // -------------------------------------------------------------------------
+  // Test Q1 — quat clip emits vrm.hips.q[xyzw] and not vrm.hips.x/y/z
+  // -------------------------------------------------------------------------
+  test('Test Q1: quat clip emits vrm.hips.qx/qy/qz/qw and not vrm.hips.x/y/z', async () => {
+    const { mapPath, cleanup } = await mkQClipEnv(QUAT_CLIP, {
+      quat_clip: { kind: 'clip', clip: 'quat-clip.json' },
+    });
+    try {
+      const compiler = new AnimationCompiler(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+        mapPath,
+      );
+      compiler.enqueue([{
+        action: 'quat_clip',
+        emotion: 'neutral',
+        intensity: 1.0,
+        timestamp: nowRef.t,
+        duration: 2000,
+        easing: 'easeInOutCubic',
+      }]);
+
+      // Advance 60 ticks (~1000ms) — past attack (200ms), into sustain
+      for (let i = 0; i < 60; i++) {
+        nowRef.t += 16.67;
+        (compiler as any).tick();
+      }
+
+      const params = compiler.getCurrentParams();
+      expect(params['vrm.hips.qx']).toBeDefined();
+      expect(params['vrm.hips.qy']).toBeDefined();
+      expect(params['vrm.hips.qz']).toBeDefined();
+      expect(params['vrm.hips.qw']).toBeDefined();
+      expect(params['vrm.hips.x']).toBeUndefined();
+      expect(params['vrm.hips.y']).toBeUndefined();
+      expect(params['vrm.hips.z']).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Test Q2 — intensity=1 gives ≈45° at mid-clip; intensity=0.3 gives ≈13.5°
+  // -------------------------------------------------------------------------
+  test('Test Q2: intensity=1 gives ≈45° at mid-clip; intensity=0.3 gives ≈13.5°', async () => {
+    const { mapPath, cleanup } = await mkQClipEnv(QUAT_CLIP, {
+      quat_clip: { kind: 'clip', clip: 'quat-clip.json' },
+    });
+    try {
+      const savedT = nowRef.t;
+
+      // Run 1: intensity=1.0
+      const compiler1 = new AnimationCompiler(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+        mapPath,
+      );
+      compiler1.enqueue([{
+        action: 'quat_clip',
+        emotion: 'neutral',
+        intensity: 1.0,
+        timestamp: nowRef.t,
+        duration: 2000,
+        easing: 'easeInOutCubic',
+      }]);
+      for (let i = 0; i < 60; i++) {
+        nowRef.t += 16.67;
+        (compiler1 as any).tick();
+      }
+      const p1 = compiler1.getCurrentParams();
+      const qw1 = p1['vrm.hips.qw'] ?? 0;
+      const angle1 = 2 * Math.acos(Math.min(1, Math.abs(qw1)));
+      expect(angle1).toBeCloseTo(Math.PI / 4, 1); // ≈45° within 0.05 rad
+
+      // Run 2: intensity=0.3
+      nowRef.t = savedT;
+      const compiler2 = new AnimationCompiler(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+        mapPath,
+      );
+      compiler2.enqueue([{
+        action: 'quat_clip',
+        emotion: 'neutral',
+        intensity: 0.3,
+        timestamp: nowRef.t,
+        duration: 2000,
+        easing: 'easeInOutCubic',
+      }]);
+      for (let i = 0; i < 60; i++) {
+        nowRef.t += 16.67;
+        (compiler2 as any).tick();
+      }
+      const p2 = compiler2.getCurrentParams();
+      const qw2 = p2['vrm.hips.qw'] ?? 0;
+      const angle2 = 2 * Math.acos(Math.min(1, Math.abs(qw2)));
+      expect(angle2).toBeCloseTo((Math.PI / 4) * 0.3, 1); // ≈13.5° within 0.05 rad
+    } finally {
+      cleanup();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Test Q3 — quat channels bypass baseline and disappear one tick after clip ends
+  // -------------------------------------------------------------------------
+  test('Test Q3: quat channels bypass baseline; absent one tick after clip ends', async () => {
+    const { mapPath, cleanup } = await mkQClipEnv(QUAT_CLIP, {
+      quat_clip: { kind: 'clip', clip: 'quat-clip.json' },
+    });
+    try {
+      const compiler = new AnimationCompiler(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0, crossfadeMs: 0 },
+        mapPath,
+      );
+      compiler.enqueue([{
+        action: 'quat_clip',
+        emotion: 'neutral',
+        intensity: 1.0,
+        timestamp: nowRef.t,
+        duration: 2000,
+        easing: 'easeInOutCubic',
+      }]);
+
+      // Drive to mid-clip (30 ticks ≈ 500ms, past attack window)
+      for (let i = 0; i < 30; i++) {
+        nowRef.t += 16.67;
+        (compiler as any).tick();
+      }
+      // Quat channels must be present mid-clip
+      expect(compiler.getCurrentParams()['vrm.hips.qw']).toBeDefined();
+      const qwMid = compiler.getCurrentParams()['vrm.hips.qw'] ?? 0;
+      // Must be a valid quaternion component: |qw| ≤ 1 (spring not applied)
+      expect(Math.abs(qwMid)).toBeLessThanOrEqual(1.0 + 1e-6);
+
+      // Confirm quat channels have no spring state (they bypass spring-damper)
+      expect((compiler as any).springStates.has('vrm.hips.qw')).toBe(false);
+
+      // Advance past clip end (duration=2000ms, started at t=10000)
+      nowRef.t = 10_000 + 2200;
+      (compiler as any).tick();
+      // Quat channels must disappear one tick after clip ends (no spring carry-over)
+      expect(compiler.getCurrentParams()['vrm.hips.qx']).toBeUndefined();
+      expect(compiler.getCurrentParams()['vrm.hips.qy']).toBeUndefined();
+      expect(compiler.getCurrentParams()['vrm.hips.qz']).toBeUndefined();
+      expect(compiler.getCurrentParams()['vrm.hips.qw']).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Test Q4 — two sequential quat clips crossfade via base-channel conflict
+  // -------------------------------------------------------------------------
+  test('Test Q4: two quat clips on vrm.hips crossfade; only 1 active after crossfade', async () => {
+    const { mapPath, cleanup } = await mkQClipEnv(QUAT_CLIP, {
+      quat_a: { kind: 'clip', clip: 'quat-clip.json' },
+      quat_b: { kind: 'clip', clip: 'quat-clip.json' },
+    });
+    try {
+      const compiler = new AnimationCompiler(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0, crossfadeMs: 100 },
+        mapPath,
+      );
+
+      compiler.enqueue([{
+        action: 'quat_a',
+        emotion: 'neutral',
+        intensity: 1.0,
+        timestamp: nowRef.t,
+        duration: 2000,
+        easing: 'easeInOutCubic',
+      }]);
+
+      // Advance 6 ticks ≈ 100ms
+      for (let i = 0; i < 6; i++) {
+        nowRef.t += 16.67;
+        (compiler as any).tick();
+      }
+
+      const crossfadeStart = nowRef.t;
+      compiler.enqueue([{
+        action: 'quat_b',
+        emotion: 'neutral',
+        intensity: 1.0,
+        timestamp: nowRef.t,
+        duration: 2000,
+        easing: 'easeInOutCubic',
+      }]);
+
+      // Mid-crossfade: both still active
+      nowRef.t = crossfadeStart + 50;
+      (compiler as any).tick();
+      expect(compiler.getActiveAnimationCount()).toBe(2);
+
+      // Post-crossfade: first clip removed
+      nowRef.t = crossfadeStart + 101;
+      (compiler as any).tick();
+      expect(compiler.getActiveAnimationCount()).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+});

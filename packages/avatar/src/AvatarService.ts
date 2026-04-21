@@ -3,6 +3,8 @@ import { AnimationCompiler } from './compiler/AnimationCompiler';
 import { isEmotionChannel } from './compiler/emotion-channels';
 import { createDefaultLayers } from './compiler/layers';
 import type { AmbientAudioLayer } from './compiler/layers/AmbientAudioLayer';
+import type { IdleMotionLayer } from './compiler/layers/IdleMotionLayer';
+import type { WalkingLayer } from './compiler/layers/WalkingLayer';
 import type { ActionSummary, StateNode } from './compiler/types';
 import { mergeAvatarConfig } from './config';
 import { VTSDriver } from './drivers/VTSDriver';
@@ -73,7 +75,7 @@ export class AvatarService {
 
     // Create default layers early so AmbientAudioLayer is available to wire
     // the onAmbientAudio handler before PreviewServer construction.
-    this.defaultLayers = createDefaultLayers();
+    this.defaultLayers = createDefaultLayers(config.compiler);
     const ambientAudioLayer = this.defaultLayers.find((l) => l.id === 'ambient-audio') as AmbientAudioLayer | undefined;
 
     if (config.preview.enabled) {
@@ -188,6 +190,26 @@ export class AvatarService {
         '[AvatarService] Animation layers registered:',
         this.defaultLayers.map((l) => l.id),
       );
+
+      // Resolve the configured idle loop clip (if any) through the compiler's
+      // action-map and push it into IdleMotionLayer. This switches the layer
+      // from gap-based one-shot mode to continuous loop mode, so VRM models
+      // get a real looping idle on top of `compiler.restPose`.
+      const idleActionName = this.config.compiler.idle?.loopClipActionName;
+      if (idleActionName) {
+        const idleLayer = this.defaultLayers.find((l) => l.id === 'idle-motion') as IdleMotionLayer | undefined;
+        const clip = this.compiler.getClipByActionName(idleActionName);
+        if (idleLayer && clip) {
+          idleLayer.setLoopClip(clip);
+          logger.info(
+            `[AvatarService] IdleMotionLayer loop mode enabled with clip "${idleActionName}" (${clip.duration.toFixed(2)}s)`,
+          );
+        } else if (idleActionName) {
+          logger.warn(
+            `[AvatarService] idle.loopClipActionName="${idleActionName}" did not resolve to a clip; idle layer stays in gap mode`,
+          );
+        }
+      }
     }
 
     // NOTE: we deliberately do NOT call `compiler.start()` here. The tick
@@ -424,6 +446,22 @@ export class AvatarService {
     gazeCapable?.setGazeTarget?.(target);
   }
 
+  walkTo(x: number, z: number, face?: number): Promise<void> {
+    const layer = this.getWalkingLayer();
+    if (!layer) {
+      return Promise.reject(new Error('[AvatarService] WalkingLayer is not available'));
+    }
+    return layer.walkTo(x, z, face);
+  }
+
+  stopWalk(): void {
+    this.getWalkingLayer()?.stop();
+  }
+
+  getCurrentPosition(): { x: number; z: number; facing: number } {
+    return this.getWalkingLayer()?.getPosition() ?? { x: 0, z: 0, facing: 0 };
+  }
+
   hasConsumer(): boolean {
     return this.consumerCount > 0;
   }
@@ -455,6 +493,10 @@ export class AvatarService {
    * compiler (e.g. TagAnimationStage pre-computing hold-adjusted duration). */
   getActionDuration(action: string): number | undefined {
     return this.compiler?.getActionDuration(action);
+  }
+
+  private getWalkingLayer(): WalkingLayer | undefined {
+    return this.defaultLayers.find((layer): layer is WalkingLayer => layer.id === 'walking');
   }
 }
 

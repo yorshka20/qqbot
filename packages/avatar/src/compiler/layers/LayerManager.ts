@@ -43,10 +43,17 @@ export class LayerManager {
 
   /**
    * Collect additive per-channel contributions from all enabled layers at
-   * `nowMs`. The returned map is mutable and owned by the caller; the
-   * manager does not retain a reference.
+   * `nowMs`. `activeChannels` is the set of channel ids that active discrete
+   * animations will drive this tick — forwarded to each layer so that layers
+   * holding absolute values (VRM idle clips) can skip colliding channels.
+   * The returned map is mutable and owned by the caller; the manager does
+   * not retain a reference.
    */
-  sample(nowMs: number, activity: AvatarActivity): Record<string, number> {
+  sample(
+    nowMs: number,
+    activity: AvatarActivity,
+    activeChannels?: ReadonlySet<string>,
+  ): Record<string, number> {
     const gateValue = activity.ambientGain;
     const out: Record<string, number> = {};
     if (gateValue === 0) return out;
@@ -57,7 +64,7 @@ export class LayerManager {
       const effective = gateValue * weight;
       if (effective === 0) continue;
 
-      const contribs = layer.sample(nowMs, activity);
+      const contribs = layer.sample(nowMs, activity, activeChannels);
       for (const [channel, value] of Object.entries(contribs)) {
         out[channel] = (out[channel] ?? 0) + value * effective;
       }

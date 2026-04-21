@@ -27,7 +27,11 @@ export abstract class BaseLayer implements AnimationLayer {
     this.weight = weight;
   }
 
-  abstract sample(nowMs: number, activity: AvatarActivity): Record<string, number>;
+  abstract sample(
+    nowMs: number,
+    activity: AvatarActivity,
+    activeChannels?: ReadonlySet<string>,
+  ): Record<string, number>;
 
   reset?(): void;
 }

@@ -41,6 +41,10 @@ try {
   const totalKeyframes = clip.tracks.reduce((sum, t) => sum + t.keyframes.length, 0);
   const outputSizeKB = (json.length / 1024).toFixed(1);
 
+  // Count quat vs scalar-axis bone tracks for the summary line
+  const quatBoneTracks = boneTracks.filter((t) => t.kind === 'quat');
+  const scalarAxisTracks = boneTracks.filter((t) => t.kind !== 'quat');
+
   const boneNames = boneTracks
     .map((t) => t.channel)
     .slice(0, 8)
@@ -56,7 +60,7 @@ try {
   } else {
     process.stdout.write(`  duration: ${clip.duration.toFixed(3)}s\n`);
     process.stdout.write(
-      `  bone tracks: ${boneTracks.length} (${boneNames}${boneEllipsis})\n`,
+      `  bone tracks: ${boneTracks.length} (${boneNames}${boneEllipsis}) — ${quatBoneTracks.length} quat, ${scalarAxisTracks.length} scalar-axes\n`,
     );
     process.stdout.write(
       `  expression tracks: ${exprTracks.length}${exprNames ? ` (${exprNames})` : ''}\n`,
