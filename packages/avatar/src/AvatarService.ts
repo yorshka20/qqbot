@@ -4,6 +4,7 @@ import { isEmotionChannel } from './compiler/emotion-channels';
 import { createDefaultLayers } from './compiler/layers';
 import type { AmbientAudioLayer } from './compiler/layers/AmbientAudioLayer';
 import type { IdleMotionLayer } from './compiler/layers/IdleMotionLayer';
+import type { WalkingLayer } from './compiler/layers/WalkingLayer';
 import type { ActionSummary, StateNode } from './compiler/types';
 import { mergeAvatarConfig } from './config';
 import { VTSDriver } from './drivers/VTSDriver';
@@ -74,7 +75,7 @@ export class AvatarService {
 
     // Create default layers early so AmbientAudioLayer is available to wire
     // the onAmbientAudio handler before PreviewServer construction.
-    this.defaultLayers = createDefaultLayers();
+    this.defaultLayers = createDefaultLayers(config.compiler);
     const ambientAudioLayer = this.defaultLayers.find((l) => l.id === 'ambient-audio') as AmbientAudioLayer | undefined;
 
     if (config.preview.enabled) {
@@ -445,6 +446,22 @@ export class AvatarService {
     gazeCapable?.setGazeTarget?.(target);
   }
 
+  walkTo(x: number, z: number, face?: number): Promise<void> {
+    const layer = this.getWalkingLayer();
+    if (!layer) {
+      return Promise.reject(new Error('[AvatarService] WalkingLayer is not available'));
+    }
+    return layer.walkTo(x, z, face);
+  }
+
+  stopWalk(): void {
+    this.getWalkingLayer()?.stop();
+  }
+
+  getCurrentPosition(): { x: number; z: number; facing: number } {
+    return this.getWalkingLayer()?.getPosition() ?? { x: 0, z: 0, facing: 0 };
+  }
+
   hasConsumer(): boolean {
     return this.consumerCount > 0;
   }
@@ -476,6 +493,10 @@ export class AvatarService {
    * compiler (e.g. TagAnimationStage pre-computing hold-adjusted duration). */
   getActionDuration(action: string): number | undefined {
     return this.compiler?.getActionDuration(action);
+  }
+
+  private getWalkingLayer(): WalkingLayer | undefined {
+    return this.defaultLayers.find((layer): layer is WalkingLayer => layer.id === 'walking');
   }
 }
 
