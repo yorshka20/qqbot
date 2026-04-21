@@ -286,6 +286,9 @@ Semantic channel names (e.g. `head.yaw`, `mouth.smile`, `arm.right`) are rendere
     "baselineHalfLifeMs": 3000,  // ms; half-life for endPose baseline decay (handoff to idle-clip posture)
     "idle": {
       "loopClipActionName": "idle_standing" // VRM idle clip (sole source of rest pose)
+    },
+    "walk": {
+      "cycleClipActionName": "walk_forward" // optional; kind:'clip' action for leg-bone overlay while walking
     }
   }
 }
@@ -448,6 +451,55 @@ contributions for channels in that set.
 Result: a `wave` action can play on `vrm.rightUpperArm.z` while the idle
 clip continues driving spine breathing, left arm, legs, etc. —
 simultaneously, no collision.
+
+---
+
+## WalkingLayer — Walk-Cycle Clip
+
+`WalkingLayer` owns `vrm.root.x`, `vrm.root.z`, and `vrm.root.rotY` while a
+walk is pending. Without a walk-cycle clip the layer emits root motion only —
+the avatar "slides" to the destination with no leg animation. An optional clip
+can be injected to add bone-channel leg cycling on top.
+
+### `compiler.walk.cycleClipActionName`
+
+```jsonc
+"compiler": {
+  "walk": {
+    "cycleClipActionName": "walk_forward"   // must be a kind:'clip' action in the action-map
+  }
+}
+```
+
+At `AvatarService.start()` the named action is resolved through the compiler's
+action-map. If it resolves to a clip, `WalkingLayer.setWalkCycleClip(clip,
+authoredSpeedMps)` is called once. If the name is absent or unresolved, the
+layer stays in slide mode and a warning is logged — no exception is thrown.
+
+### Clip contribution semantics
+
+- **Active only while walking**: the clip is sampled only when `WalkingLayer`
+  has a pending walk target. When idle the layer emits `{}` (renderer keeps the
+  last pose).
+- **Bone channels only**: `vrm.root.*` tracks in the clip are filtered out by
+  `sampleClip`. `WalkingLayer` is the sole owner of root motion; the clip
+  contributes leg/arm bones additively.
+- **Playback rate follows actual speed**: the clip's timeline advances at
+  `dtMs × rateFactor` where
+  `rateFactor = clamp(actualStepMps / authoredSpeedMps, 0.2, 2.0)`. When the
+  avatar moves slower than the authored speed the cycle slows down
+  proportionally; faster walking speeds it up. The `[0.2, 2.0]` clamp prevents
+  extreme stretching during start/stop ramps.
+- **Continuous loop**: elapsed time wraps at `clip.duration`, producing a
+  seamless gait cycle for any walk distance. The timeline resets to zero when a
+  new `walkTo()` call begins.
+
+### Degradation to slide mode
+
+When `cycleClipActionName` is omitted or the named action is not found in the
+action-map, `WalkingLayer` operates in slide mode: root channels are still
+emitted and arrival/progress callbacks still fire, but no bone overlay is
+produced. This lets the system function before walk-cycle assets are available.
 
 ---
 
