@@ -1,6 +1,8 @@
 import { EventEmitter } from 'node:events';
 import type { AvatarActivity } from '../../state/types';
+import { sampleClip } from '../clips/sampleClip';
 import { BaseLayer } from './BaseLayer';
+import type { IdleClip } from './clips/types';
 
 /**
  * Error thrown when a pending walk is interrupted by a new walk or by stop().
@@ -79,6 +81,13 @@ export class WalkingLayer extends BaseLayer {
   /** Last `nowMs` at which the `walking` callback was emitted. */
   private lastOnWalkingEmitMs: number | null = null;
 
+  /** Walk-cycle clip to sample while walking, or null for slide-only motion. */
+  private walkCycleClip: IdleClip | null = null;
+  /** Elapsed playback time (ms) within the current walk-cycle clip. */
+  private cycleElapsedMs = 0;
+  /** Authored walking speed (m/s) for the injected clip; used to scale playback rate. */
+  private authoredSpeedMps = 1.0;
+
   private readonly emitter = new EventEmitter();
 
   constructor(config: Partial<WalkingLayerConfig> = {}) {
@@ -105,6 +114,8 @@ export class WalkingLayer extends BaseLayer {
 
       this.lastTickMs = null;
       this.lastOnWalkingEmitMs = null;
+      // Reset clip timeline so each walk starts from the beginning of the cycle.
+      this.cycleElapsedMs = 0;
       this.emitter.emit('startWalk', this.pending.target);
     });
   }
@@ -138,6 +149,20 @@ export class WalkingLayer extends BaseLayer {
     this.emitter.on('arrive', fn);
   }
 
+  /**
+   * Inject a walk-cycle clip for additive bone animation while walking.
+   * Pass null to revert to slide-only (root motion without bone cycles).
+   * Resets the clip playback timeline when called.
+   * @param clip - The IdleClip to sample, or null to disable.
+   * @param authoredSpeedMps - The walking speed (m/s) the clip was authored for.
+   *   Playback rate scales as (actualSpeed / authoredSpeed) clamped to [0.2, 2.0].
+   */
+  setWalkCycleClip(clip: IdleClip | null, authoredSpeedMps = 1.0): void {
+    this.walkCycleClip = clip;
+    this.authoredSpeedMps = authoredSpeedMps;
+    this.cycleElapsedMs = 0;
+  }
+
   /** Reset all state to initial values and reject any pending walk. */
   reset(): void {
     this.interruptPending();
@@ -146,6 +171,7 @@ export class WalkingLayer extends BaseLayer {
     this.currentFacing = 0;
     this.lastTickMs = null;
     this.lastOnWalkingEmitMs = null;
+    this.cycleElapsedMs = 0;
   }
 
   /**
@@ -218,11 +244,50 @@ export class WalkingLayer extends BaseLayer {
       } satisfies WalkProgress);
     }
 
-    return {
+    const out: Record<string, number> = {
       'vrm.root.x': this.currentX,
       'vrm.root.z': this.currentZ,
       'vrm.root.rotY': target.facing,
     };
+
+    // Walk-cycle clip contribution: additively mix bone channels while walking.
+    if (this.walkCycleClip !== null) {
+      // Compute actual speed this tick; fall back to configured speed when dtSec is zero.
+      const actualStepMps = dtSec > 0 ? step / dtSec : this.config.speedMps;
+      // Guard against zero/negative authoredSpeedMps to avoid NaN from division.
+      const safeAuthoredSpeed = this.authoredSpeedMps > 0 ? this.authoredSpeedMps : 1.0;
+      // Scale clip playback rate by actual-vs-authored speed, clamped to avoid
+      // extremely slow or fast cycling (e.g. during start/stop ramps).
+      const rateFactor = Math.max(0.2, Math.min(2.0, actualStepMps / safeAuthoredSpeed));
+      this.cycleElapsedMs += dtMs * rateFactor;
+      // Wrap elapsed time within clip duration to loop continuously.
+      const clipDurationMs = this.walkCycleClip.duration * 1000;
+      if (clipDurationMs > 0) {
+        this.cycleElapsedMs = this.cycleElapsedMs % clipDurationMs;
+      }
+      const frame = sampleClip(this.walkCycleClip, this.cycleElapsedMs / 1000);
+      // Additively merge scalar bone channels; defensively skip any root channels
+      // the clip may contain (sampleClip already filters them, but guard here too).
+      for (const [ch, val] of Object.entries(frame.scalar)) {
+        if (ch.startsWith('vrm.root.') || ch === 'vrm.root') {
+          continue;
+        }
+        out[ch] = (out[ch] ?? 0) + val;
+      }
+      // Flatten quaternion bone channels into qx/qy/qz/qw scalar output channels.
+      // Use additive style for consistency with contribution semantics.
+      for (const [ch, q] of Object.entries(frame.quat)) {
+        if (ch.startsWith('vrm.root.') || ch === 'vrm.root') {
+          continue;
+        }
+        out[`${ch}.qx`] = (out[`${ch}.qx`] ?? 0) + q.x;
+        out[`${ch}.qy`] = (out[`${ch}.qy`] ?? 0) + q.y;
+        out[`${ch}.qz`] = (out[`${ch}.qz`] ?? 0) + q.z;
+        out[`${ch}.qw`] = (out[`${ch}.qw`] ?? 0) + q.w;
+      }
+    }
+
+    return out;
   }
 
   private interruptPending(): void {

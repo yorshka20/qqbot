@@ -1,7 +1,8 @@
 import 'reflect-metadata';
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { AvatarService } from './AvatarService';
+import type { IdleClip } from './compiler/layers/clips/types';
 
 type WalkingLayerStub = {
   id: 'walking';
@@ -72,5 +73,87 @@ describe('AvatarService walking facade', () => {
     const result = service.stop();
     expect(result).toBeInstanceOf(Promise);
     await expect(result).resolves.toBeUndefined();
+  });
+});
+
+describe('AvatarService walk-cycle clip wiring', () => {
+  let service: AvatarService;
+
+  afterEach(async () => {
+    await service.stop();
+  });
+
+  test('cycleClipActionName absent — setWalkCycleClip not called during start()', async () => {
+    service = new AvatarService();
+    await service.initialize({
+      enabled: true,
+      vts: { enabled: false },
+      preview: { enabled: false },
+      speech: { enabled: false },
+      compiler: { fps: 30, outputFps: 30 },
+    });
+
+    const svc = service as any;
+    const walkingLayer = svc.defaultLayers.find((l: any) => l.id === 'walking');
+    expect(walkingLayer).toBeDefined();
+    const setCycleSpy = spyOn(walkingLayer, 'setWalkCycleClip');
+
+    await service.start();
+
+    expect(setCycleSpy).not.toHaveBeenCalled();
+  });
+
+  test('cycleClipActionName configured + clip resolves — setWalkCycleClip called once with clip', async () => {
+    service = new AvatarService();
+    await service.initialize({
+      enabled: true,
+      vts: { enabled: false },
+      preview: { enabled: false },
+      speech: { enabled: false },
+      compiler: { fps: 30, outputFps: 30, walk: { cycleClipActionName: 'test_walk_clip' } },
+    });
+
+    const svc = service as any;
+    const mockClip: IdleClip = { id: 'test_walk_clip', duration: 1.2, tracks: [] };
+
+    // Return the mock clip only for the walk cycle action name; delegate others to real implementation.
+    const compiler = svc.compiler;
+    const realGetClip = compiler.getClipByActionName.bind(compiler);
+    spyOn(compiler, 'getClipByActionName').mockImplementation((name: string) =>
+      name === 'test_walk_clip' ? mockClip : realGetClip(name),
+    );
+
+    const walkingLayer = svc.defaultLayers.find((l: any) => l.id === 'walking');
+    expect(walkingLayer).toBeDefined();
+    const setCycleSpy = spyOn(walkingLayer, 'setWalkCycleClip');
+
+    await service.start();
+
+    expect(setCycleSpy).toHaveBeenCalledTimes(1);
+    expect(setCycleSpy).toHaveBeenCalledWith(mockClip);
+  });
+
+  test('cycleClipActionName configured but unresolved — no throw, setWalkCycleClip not called', async () => {
+    service = new AvatarService();
+    await service.initialize({
+      enabled: true,
+      vts: { enabled: false },
+      preview: { enabled: false },
+      speech: { enabled: false },
+      compiler: { fps: 30, outputFps: 30, walk: { cycleClipActionName: 'missing_clip' } },
+    });
+
+    const svc = service as any;
+    const realGetClip = svc.compiler.getClipByActionName.bind(svc.compiler);
+    spyOn(svc.compiler, 'getClipByActionName').mockImplementation((name: string) =>
+      name === 'missing_clip' ? null : realGetClip(name),
+    );
+
+    const walkingLayer = svc.defaultLayers.find((l: any) => l.id === 'walking');
+    expect(walkingLayer).toBeDefined();
+    const setCycleSpy = spyOn(walkingLayer, 'setWalkCycleClip');
+
+    await expect(service.start()).resolves.toBeUndefined();
+    expect(setCycleSpy).not.toHaveBeenCalled();
   });
 });

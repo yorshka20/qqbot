@@ -394,5 +394,11 @@ export interface CompilerConfig {
   walk?: {
     speedMps?: number;
     arrivalThresholdM?: number;
+    /**
+     * Action name (key in default-action-map.json) whose clip should loop on
+     * WalkingLayer bone channels while a walk is pending. Omit / unresolved →
+     * falls back to pure slide behavior (still emits vrm.root.* but no legs).
+     */
+    cycleClipActionName?: string;
   };
 }

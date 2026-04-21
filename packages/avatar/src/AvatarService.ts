@@ -214,6 +214,25 @@ export class AvatarService {
           );
         }
       }
+
+      // Resolve the configured walk-cycle clip (if any) and push it into
+      // WalkingLayer. When unset or unresolvable, the layer stays in slide-only
+      // mode (still emits vrm.root.* channels but no leg-bone animation).
+      const walkCycleName = this.config.compiler.walk?.cycleClipActionName;
+      if (walkCycleName) {
+        const walkingLayer = this.defaultLayers.find((l) => l.id === 'walking') as WalkingLayer | undefined;
+        const walkClip = this.compiler.getClipByActionName(walkCycleName);
+        if (walkingLayer && walkClip) {
+          walkingLayer.setWalkCycleClip(walkClip);
+          logger.info(
+            `[AvatarService] WalkingLayer cycle clip enabled with "${walkCycleName}" (${walkClip.duration.toFixed(2)}s)`,
+          );
+        } else {
+          logger.warn(
+            `[AvatarService] walk.cycleClipActionName="${walkCycleName}" did not resolve to a clip; walking layer stays in slide mode`,
+          );
+        }
+      }
     }
 
     // NOTE: we deliberately do NOT call `compiler.start()` here. The tick
