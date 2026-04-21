@@ -376,4 +376,13 @@ export interface CompilerConfig {
   idle?: {
     loopClipActionName?: string;
   };
+  /**
+   * Walking layer tuning. The layer owns VRM root motion while a walk is
+   * pending; these values only affect the walking facade and do not change
+   * idle/rest pose behavior.
+   */
+  walk?: {
+    speedMps?: number;
+    arrivalThresholdM?: number;
+  };
 }
