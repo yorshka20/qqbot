@@ -164,6 +164,95 @@ so pose transitions stay predictable.
 
 ---
 
+## Model-Aware Handshake
+
+The preview WebSocket supports an inbound `hello` message that lets the renderer
+declare which model format it has loaded. The bot uses this to filter layers and
+actions that are only meaningful for a specific renderer.
+
+### `hello` message contract
+
+```jsonc
+// Renderer → bot, sent on WS open (or after a model hot-swap).
+{ "type": "hello", "modelKind": "cubism" | "vrm" | null, "protocolVersion": 1 }
+```
+
+- `modelKind: "cubism"` — renderer has a Live2D Cubism model loaded.
+- `modelKind: "vrm"` — renderer has a VRM/three-vrm model loaded.
+- `modelKind: null` — renderer is connected but has not loaded any model yet.
+- `protocolVersion` must be `1` for this revision.
+
+Old renderers that never send `hello` leave the compiler in the default state
+(`currentModelKind = null`), which disables filtering — fully backward-compatible.
+
+### `currentModelKind` — last hello wins
+
+The compiler tracks a **single global** `currentModelKind` value. Every time a
+`hello` message arrives the value is overwritten. There is no per-client state:
+if multiple WS clients connect and send different `hello` declarations, the last
+one wins. In practice only one renderer connects at a time.
+
+### Layer filtering: `AnimationLayer.modelSupport`
+
+Each layer may declare which model kinds it is compatible with via the optional
+`modelSupport` readonly array:
+
+```ts
+readonly modelSupport?: readonly ModelKind[];
+// e.g. ['vrm'] — only runs when modelKind === 'vrm'
+//      ['cubism', 'vrm'] — runs for either
+//      absent (undefined) — runs for both (backward-compat default)
+```
+
+Filtering is applied by `LayerManager.sample()` each tick:
+- If `currentModelKind` is **null**: no filtering, all layers run.
+- If `currentModelKind` is non-null: layers where `modelSupport` is defined
+  and **does not include** `currentModelKind` are skipped entirely (both scalar
+  and quat outputs). Layers that do not declare `modelSupport` always run.
+
+### Action-map filtering: `ActionMapEntry.modelSupport`
+
+Action-map entries (both `kind:'envelope'` and `kind:'clip'`) accept an optional
+`modelSupport` field:
+
+```jsonc
+"formal_bow_vrm": {
+  "kind": "clip",
+  "modelSupport": "vrm",   // "cubism" | "vrm" | "both"
+  ...
+}
+```
+
+- `"cubism"` / `"vrm"` — entry is only resolved when `currentModelKind` matches.
+- `"both"` / absent — entry is compatible with any model kind.
+
+Filtering applies in `ActionMap.resolveAction()` (action queue resolution) and
+`ActionMap.listActions()` (the `/action-map` HTTP endpoint and `[A:]` tag
+vocabulary). When `currentModelKind` is null, all entries are returned.
+
+### HUD `/action-map` narrowing
+
+The `GET /action-map` endpoint calls `AnimationCompiler.listActions()` which
+internally calls `ActionMap.listActions(currentModelKind)`. When the renderer
+has sent a `hello` with a non-null `modelKind`, the endpoint returns only the
+actions compatible with that model. The HUD trigger list therefore narrows
+automatically to the renderer's actual capabilities without any manual
+configuration.
+
+### Deviation from ticket §D — `restPose` not reimplemented
+
+The original ticket §D described a `CompilerConfig.restPose` field. **This field
+was removed in a prior session** (2026-04-22, idle-loop-as-rest-pose refactor)
+because it is architecturally superseded: the `IdleMotionLayer` loop clip is the
+single source of truth for the avatar's resting posture (VRM idle = T-pose by
+spec; any non-T-pose must come from the loop clip). Reintroducing a static
+`restPose` alongside an absolute-pose loop clip would cause channel contention.
+
+§D is therefore documented as **superseded, not reimplemented**. Idle posture is
+configured via `compiler.idle.loopClipActionName` (see "VRM Idle Loop" section).
+
+---
+
 ## Action Map Format
 
 Action maps are plain JSON files with the following shape per entry:
