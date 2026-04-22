@@ -12,15 +12,18 @@ import type { ActionSummary } from '../compiler/types';
 import { logger } from '../utils/logger';
 import type {
   AudioMessage,
+  CanonicalExpressionName,
   ModelKind,
   PreviewClientMessage,
   PreviewConfig,
   PreviewFrame,
   PreviewMessage,
   PreviewStatus,
+  RendererCapabilities,
   TunableSection,
   WalkCommandData,
 } from './types';
+import { CANONICAL_EXPRESSIONS } from './types';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -81,6 +84,24 @@ export interface PreviewServerHandlers {
    * motion. Absent handler → message is silently dropped.
    */
   onWalkCommand?: (data: import('./types').WalkCommandData) => void;
+  /**
+   * Called when the renderer sends a valid `capabilities` message after model
+   * load or hot-swap. `caps` is already cleaned (unknown expressions filtered
+   * to the canonical set, non-string array entries stripped). `ws` is the
+   * WebSocket that sent the report — callers can use it as a per-connection key.
+   */
+  onCapabilities?: (caps: RendererCapabilities, ws: WebSocket) => void;
+  /**
+   * Called when a WebSocket client disconnects (after client count is updated).
+   * Lets callers clear any per-connection state they keyed by `ws` reference.
+   */
+  onConnectionClosed?: (ws: WebSocket) => void;
+  /**
+   * Pulled by the HTTP `GET /capabilities` endpoint. Return value is a
+   * snapshot of all currently-connected renderers and their latest capability
+   * reports. Absent handler → 404.
+   */
+  getConnectedCapabilities?: () => Array<{ remoteAddr: string; caps: RendererCapabilities; receivedAt: string }>;
 }
 
 export class PreviewServer {
@@ -155,6 +176,20 @@ export class PreviewServer {
               'Cache-Control': 'public, max-age=5',
               // Renderer runs on a different origin during `vite dev`
               // (localhost:5173) so allow simple GETs from anywhere.
+              'Access-Control-Allow-Origin': '*',
+            },
+          });
+        }
+
+        if (url.pathname === '/capabilities') {
+          // Returns a snapshot of all connected renderers and their latest
+          // capability reports. Absent handler → 404 (no capability tracking
+          // in this deployment).
+          const snapshot = server.handlers.getConnectedCapabilities?.();
+          if (!snapshot) return new Response('capabilities unavailable', { status: 404 });
+          return new Response(JSON.stringify(snapshot), {
+            headers: {
+              'Content-Type': 'application/json',
               'Access-Control-Allow-Origin': '*',
             },
           });
@@ -252,6 +287,32 @@ export class PreviewServer {
             return;
           }
 
+          if (msg.type === 'capabilities') {
+            // Validate shape defensively; any invalid field → silent drop.
+            const caps = msg.data;
+            if (!caps || typeof caps !== 'object') return;
+            if (!Array.isArray(caps.expressions)) return;
+            if (!Array.isArray(caps.supportedChannels)) return;
+            if (!Array.isArray(caps.customExpressions)) return;
+            if (!caps.modelId || typeof caps.modelId !== 'object') return;
+            if (caps.modelId.kind !== 'cubism' && caps.modelId.kind !== 'vrm') return;
+            if (typeof caps.modelId.slug !== 'string') return;
+            // Filter expressions to the known canonical set; drop unknown strings.
+            const canonicalSet = new Set(CANONICAL_EXPRESSIONS);
+            const cleaned: RendererCapabilities = {
+              expressions: caps.expressions.filter((e): e is CanonicalExpressionName => canonicalSet.has(e)),
+              supportedChannels: caps.supportedChannels.filter((c) => typeof c === 'string'),
+              customExpressions: caps.customExpressions.filter((c) => typeof c === 'string'),
+              modelId: {
+                kind: caps.modelId.kind,
+                slug: caps.modelId.slug,
+                title: typeof caps.modelId.title === 'string' ? caps.modelId.title : undefined,
+              },
+            };
+            server.handlers.onCapabilities?.(cleaned, _ws as unknown as WebSocket);
+            return;
+          }
+
           if (msg.type === 'hello') {
             // TODO(protocol-ext): `hello` currently carries `{modelKind,
             // protocolVersion}`. Future extensions to consider once warranted:
@@ -276,6 +337,9 @@ export class PreviewServer {
         close(ws) {
           clients.delete(ws);
           server.handlers.onClientCountChange?.(clients.size);
+          // Notify upper layers so they can clear any per-connection state
+          // (e.g. capability maps keyed by ws reference).
+          server.handlers.onConnectionClosed?.(ws as unknown as WebSocket);
         },
       },
     });

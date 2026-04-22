@@ -9,6 +9,7 @@ import type { ActionSummary, StateNode } from './compiler/types';
 import { mergeAvatarConfig } from './config';
 import { VTSDriver } from './drivers/VTSDriver';
 import { PreviewServer } from './preview/PreviewServer';
+import type { RendererCapabilities } from './preview/types';
 import { SpeechService } from './SpeechService';
 import { ActivityTracker } from './state/IdleStateMachine';
 import { type AvatarActivityPatch, DEFAULT_ACTIVITY, type StateNodeOutput } from './state/types';
@@ -39,6 +40,18 @@ export class AvatarService {
   private consumerCount = 0;
   private speechService?: SpeechService;
   private defaultLayers: ReturnType<typeof createDefaultLayers> = [];
+
+  // TODO(capability-gating): use connectedCapabilities to gate compiler channel
+  // emission per connection — e.g. skip unsupported channels or custom morph
+  // targets that the loaded model does not expose. Requires routing frame output
+  // per-socket rather than broadcasting the same frame to all clients.
+  private readonly connectedCapabilities = new Map<
+    WebSocket,
+    {
+      caps: RendererCapabilities;
+      receivedAt: Date;
+    }
+  >();
 
   /**
    * Merge + apply the raw (JSONC-parsed) avatar config and initialize all
@@ -114,6 +127,16 @@ export class AvatarService {
           // WalkInterruptedError when superseded by a newer command — we
           // swallow it here so fire-and-forget WS delivery never yields an
           // unhandled rejection.
+          onCapabilities: (caps, ws) => {
+            this.connectedCapabilities.set(ws, { caps, receivedAt: new Date() });
+            logger.info(
+              `[AvatarService] renderer capabilities received — kind=${caps.modelId.kind} slug=${caps.modelId.slug} presets=${caps.expressions.length} custom=${caps.customExpressions.length} channels=${caps.supportedChannels.length}`,
+            );
+          },
+          onConnectionClosed: (ws) => {
+            this.connectedCapabilities.delete(ws);
+          },
+          getConnectedCapabilities: () => this.listConnectedCapabilities(),
           onWalkCommand: (data) => {
             const swallow = (p: Promise<void>, label: string): void => {
               p.catch((err: unknown) => {
@@ -562,6 +585,32 @@ export class AvatarService {
 
   hasConsumer(): boolean {
     return this.consumerCount > 0;
+  }
+
+  /**
+   * Returns a JSON-safe snapshot of all currently-connected renderers and their
+   * latest capability reports. Each entry includes the ISO-string timestamp of
+   * when the report was received and a best-effort remote address derived from
+   * the Bun WebSocket object; falls back to `'unknown'` when no usable address
+   * field is present (e.g. in tests using mock sockets).
+   */
+  listConnectedCapabilities(): Array<{
+    remoteAddr: string;
+    caps: RendererCapabilities;
+    receivedAt: string;
+  }> {
+    const result: Array<{ remoteAddr: string; caps: RendererCapabilities; receivedAt: string }> = [];
+    for (const [ws, entry] of this.connectedCapabilities) {
+      // Bun's ServerWebSocket exposes `remoteAddress` at runtime; plain WebSocket
+      // (browser / test) does not. Fall back to 'unknown' without throwing.
+      const remoteAddr = (ws as unknown as { remoteAddress?: string }).remoteAddress ?? 'unknown';
+      result.push({
+        remoteAddr,
+        caps: entry.caps,
+        receivedAt: entry.receivedAt.toISOString(),
+      });
+    }
+    return result;
   }
 
   speak(text: string): void {

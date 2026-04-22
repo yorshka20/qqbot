@@ -452,7 +452,7 @@ describe('WalkingLayer – semantic primitives', () => {
     expect(pos.facing).toBeCloseTo(0, 6);
   });
 
-  test("strafe is character-local: same +m gives mirrored world motion when facing=π", async () => {
+  test('strafe is character-local: same +m gives mirrored world motion when facing=π', async () => {
     // facing=+π → character faces -Z. Their own right is now -X in world. So strafe(+1)
     // should move character to -X.
     const layer = new WalkingLayer();
@@ -518,10 +518,7 @@ describe('WalkingLayer – orbit', () => {
 
   test('orbit with keepFacingTangent=false preserves start facing when no targetFacing given', async () => {
     const layer = new WalkingLayer({ speedMps: 2.0 });
-    await runUntilDone(
-      layer,
-      layer.orbit({ sweepRad: Math.PI, radius: 1.0, keepFacingTangent: false }),
-    );
+    await runUntilDone(layer, layer.orbit({ sweepRad: Math.PI, radius: 1.0, keepFacingTangent: false }));
     expect(layer.getPosition().facing).toBeCloseTo(0, 3);
   });
 

@@ -179,13 +179,10 @@ export class WalkingLayer extends BaseLayer {
     // which serialise as JSON null and leave the avatar visibly stuck.
     this.config = {
       speedMps: config.speedMps ?? DEFAULT_WALKING_CONFIG.speedMps,
-      angularSpeedRadPerSec:
-        config.angularSpeedRadPerSec ?? DEFAULT_WALKING_CONFIG.angularSpeedRadPerSec,
+      angularSpeedRadPerSec: config.angularSpeedRadPerSec ?? DEFAULT_WALKING_CONFIG.angularSpeedRadPerSec,
       arrivalThresholdM: config.arrivalThresholdM ?? DEFAULT_WALKING_CONFIG.arrivalThresholdM,
-      arrivalThresholdRad:
-        config.arrivalThresholdRad ?? DEFAULT_WALKING_CONFIG.arrivalThresholdRad,
-      onWalkingThrottleMs:
-        config.onWalkingThrottleMs ?? DEFAULT_WALKING_CONFIG.onWalkingThrottleMs,
+      arrivalThresholdRad: config.arrivalThresholdRad ?? DEFAULT_WALKING_CONFIG.arrivalThresholdRad,
+      onWalkingThrottleMs: config.onWalkingThrottleMs ?? DEFAULT_WALKING_CONFIG.onWalkingThrottleMs,
     };
   }
 
@@ -359,10 +356,7 @@ export class WalkingLayer extends BaseLayer {
     const dtSec = dtMs / 1000;
 
     const motion = this.motion;
-    const advance =
-      motion.kind === 'linear'
-        ? this.advanceLinear(motion, dtSec)
-        : this.advanceOrbit(motion, dtSec);
+    const advance = motion.kind === 'linear' ? this.advanceLinear(motion, dtSec) : this.advanceOrbit(motion, dtSec);
 
     // Emit throttled progress event while the motion is still active.
     if (!advance.done) {
@@ -568,10 +562,7 @@ export class WalkingLayer extends BaseLayer {
   }
 
   private emitProgressEvent(nowMs: number, motion: Motion): void {
-    if (
-      this.lastOnWalkingEmitMs !== null &&
-      nowMs - this.lastOnWalkingEmitMs < this.config.onWalkingThrottleMs
-    ) {
+    if (this.lastOnWalkingEmitMs !== null && nowMs - this.lastOnWalkingEmitMs < this.config.onWalkingThrottleMs) {
       return;
     }
     this.lastOnWalkingEmitMs = nowMs;
@@ -579,9 +570,7 @@ export class WalkingLayer extends BaseLayer {
     let remainingM: number;
     if (motion.kind === 'linear') {
       target = motion.target;
-      remainingM = Math.sqrt(
-        (motion.target.x - this.currentX) ** 2 + (motion.target.z - this.currentZ) ** 2,
-      );
+      remainingM = Math.sqrt((motion.target.x - this.currentX) ** 2 + (motion.target.z - this.currentZ) ** 2);
     } else {
       const endAngle = motion.startAngle + motion.totalSweepRad;
       target = {
