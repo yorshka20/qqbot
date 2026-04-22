@@ -1,3 +1,4 @@
+import type { CompilerConfig } from './compiler/types';
 import type { AvatarConfig } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './types';
 
@@ -10,20 +11,50 @@ import { DEFAULT_AVATAR_CONFIG } from './types';
  * keys are ignored; unknown sub-keys pass through via the per-section spread.
  */
 export function mergeAvatarConfig(raw: Record<string, unknown> | undefined): AvatarConfig {
+  const r = isRecord(raw) ? raw : {};
+
   return {
-    enabled: (raw?.enabled as boolean | undefined) ?? DEFAULT_AVATAR_CONFIG.enabled,
-    vts: { ...DEFAULT_AVATAR_CONFIG.vts, ...((raw?.vts as object | undefined) ?? {}) },
-    compiler: {
-      ...DEFAULT_AVATAR_CONFIG.compiler,
-      ...((raw?.compiler as object | undefined) ?? {}),
-      layers: {
-        ...(DEFAULT_AVATAR_CONFIG.compiler.layers ?? { enabled: true }),
-        ...((raw?.compiler as { layers?: object } | undefined)?.layers ?? {}),
-      },
-    },
-    idle: { ...DEFAULT_AVATAR_CONFIG.idle, ...((raw?.idle as object | undefined) ?? {}) },
-    preview: { ...DEFAULT_AVATAR_CONFIG.preview, ...((raw?.preview as object | undefined) ?? {}) },
-    actionMap: { ...DEFAULT_AVATAR_CONFIG.actionMap, ...((raw?.actionMap as object | undefined) ?? {}) },
-    speech: { ...DEFAULT_AVATAR_CONFIG.speech, ...((raw?.speech as object | undefined) ?? {}) },
+    enabled: typeof r.enabled === 'boolean' ? r.enabled : DEFAULT_AVATAR_CONFIG.enabled,
+    vts: mergeObject(DEFAULT_AVATAR_CONFIG.vts, r.vts),
+    compiler: mergeCompilerConfig(r),
+    idle: mergeObject(DEFAULT_AVATAR_CONFIG.idle, r.idle),
+    preview: mergeObject(DEFAULT_AVATAR_CONFIG.preview, r.preview),
+    actionMap: mergeObject(DEFAULT_AVATAR_CONFIG.actionMap, r.actionMap),
+    speech: mergeObject(DEFAULT_AVATAR_CONFIG.speech, r.speech),
+    llmProvider: optionalNonEmptyString(r.llmProvider),
+    llmStream: r.llmStream === true,
   };
+}
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return x !== null && typeof x === 'object' && !Array.isArray(x);
+}
+
+/** Shallow merge: defaults plus optional patch when patch is a plain object. */
+function mergeObject<T extends object>(base: T, patch: unknown): T {
+  if (!isRecord(patch)) {
+    return { ...base };
+  }
+  return { ...base, ...patch } as T;
+}
+
+function mergeCompilerConfig(raw: Record<string, unknown>): CompilerConfig {
+  const base = DEFAULT_AVATAR_CONFIG.compiler;
+  const patch = isRecord(raw.compiler) ? raw.compiler : {};
+  const baseLayers = base.layers ?? { enabled: true };
+  const layerPatch = isRecord(patch.layers) ? patch.layers : {};
+
+  return {
+    ...base,
+    ...patch,
+    layers: { ...baseLayers, ...layerPatch },
+  } as CompilerConfig;
+}
+
+function optionalNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const t = value.trim();
+  return t.length > 0 ? t : undefined;
 }

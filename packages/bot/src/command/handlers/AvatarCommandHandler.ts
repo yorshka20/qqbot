@@ -63,6 +63,7 @@ export class AvatarCommandHandler implements CommandHandler {
         'prompt-render-failed': 'Avatar prompt 模板渲染失败。',
         'llm-failed': 'Avatar LLM 调用失败。',
         'empty-reply': 'Avatar LLM 返回空回复。',
+        'bad-llm-reply': 'Avatar LLM 返回了无效内容（已拒绝，请重试）。',
       };
       const reason = (result.skipReason && reasonText[result.skipReason]) || 'Avatar 流水线未执行。';
       logger.warn(`[AvatarCommandHandler] pipeline skipped: ${result.skipReason}`);

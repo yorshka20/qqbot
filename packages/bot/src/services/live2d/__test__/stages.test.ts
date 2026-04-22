@@ -125,7 +125,6 @@ describe('PromptAssemblyStage', () => {
   const fakeRender = mock((name: string, vars: Record<string, string>) => {
     return `SYSTEM[${name}]:\n${vars.availableActions}`;
   });
-
   beforeEach(() => fakeRender.mockClear());
 
   function fakeSession() {
@@ -185,6 +184,8 @@ describe('PromptAssemblyStage', () => {
 describe('LLMStage', () => {
   const fakeConfig = {
     getAIConfig: () => ({ defaultProviders: { llm: 'deepseek' } }),
+    /** Default non-stream in production; tests use streaming unless overridden. */
+    getAvatarConfig: () => ({ llmStream: true }),
   };
 
   function fakeSession() {
@@ -273,7 +274,7 @@ describe('LLMStage', () => {
     );
     const stage = new LLMStage(
       { generateStream } as never,
-      { getAIConfig: () => undefined } as never,
+      { getAIConfig: () => undefined, getAvatarConfig: () => ({ llmStream: true }) } as never,
       fakeSession() as never,
     );
     const ctx = createContext(sampleInput());
@@ -293,10 +294,34 @@ describe('LLMStage', () => {
     // One tag expected, enqueued during the flush that contained it.
     expect(avatar.enqueued.length).toBe(1);
     expect(avatar.enqueued[0].action).toBe('wave');
-    expect(ctx.tagCount).toBe(1);
+    expect(ctx.tagCount).toBe(2);
     // Tag-stripped text reached speak at least once.
     expect(avatar.spoken.join('')).toContain('你好啊');
     expect(avatar.spoken.join('')).toContain('再见');
+  });
+
+  it('uses generate (non-stream) when avatar.llmStream is false and meta does not override', async () => {
+    const text = '你好 [LIVE2D: emotion=happy, action=wave, intensity=0.8]';
+    const generate = mock(async () => ({ text }));
+    const generateStream = mock(async () => {
+      throw new Error('should not be called');
+    });
+    const stage = new LLMStage(
+      { generate, generateStream } as never,
+      {
+        getAIConfig: () => ({ defaultProviders: { llm: 'deepseek' } }),
+        getAvatarConfig: () => ({ llmStream: false }),
+      } as never,
+      fakeSession() as never,
+    );
+    const ctx = createContext(sampleInput());
+    ctx.systemPrompt = 'sys';
+    ctx.avatar = makeAvatar() as unknown as Live2DContext['avatar'];
+    await stage.execute(ctx);
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generateStream).not.toHaveBeenCalled();
+    expect(ctx.replyText).toContain('你好');
+    expect(ctx.streamingHandled).toBe(true);
   });
 });
 

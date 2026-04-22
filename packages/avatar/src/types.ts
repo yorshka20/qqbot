@@ -24,7 +24,20 @@ export interface AvatarConfig {
     enabled: boolean;
     maxCharsPerUtterance: number;
     utteranceGapMs: number;
+    /** If set, each synthesized utterance is also written under this path relative to the repo root (e.g. `output/tts`). */
+    exportTtsWavDir?: string;
   };
+  /**
+   * When set, the Live2D pipeline (`/avatar`, Bilibili danmaku → avatar, livemode) uses
+   * this `ai.providers` name instead of `ai.defaultProviders.llm`.
+   * Does not affect normal chat reply generation.
+   */
+  llmProvider?: string;
+  /**
+   * Live2D LLM mode: `true` = `generateStream` (API streaming); `false` = one-shot `generate`.
+   * Per-enqueue override: `Live2DInput.meta.llmStream` (boolean) wins. Default: `false`.
+   */
+  llmStream: boolean;
 }
 
 /**
@@ -77,4 +90,5 @@ export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
     maxCharsPerUtterance: 80,
     utteranceGapMs: 200,
   },
+  llmStream: false,
 };

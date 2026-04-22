@@ -1,8 +1,9 @@
-// LLMStage — streaming round-trip.
+// LLMStage — LLM round-trip for the Live2D path.
 //
-// Uses `llmService.generateStream` so downstream TTS can start synthesizing
-// the first sentence while the rest of the reply is still being generated.
-// Each flushed sentence-sized chunk is:
+// Default: `llmService.generate` (one request/response, no API streaming) — see
+// `avatar.llmStream` and `Live2DInput.meta.llmStream` to use `generateStream` instead.
+// For streaming mode, downstream TTS can start on the first sentence while the
+// model is still producing tokens. Each flushed sentence-sized chunk is:
 //   - parsed for `[LIVE2D: ...]` tags → `avatar.enqueueTagAnimation(tag)`
 //   - stripped and forwarded to `avatar.speak(text)` for TTS
 //
@@ -18,7 +19,7 @@
 // Downstream stages check `ctx.streamingHandled` and no-op to avoid
 // re-speaking or re-animating the same content.
 
-import { type ParsedTag, parseRichTags, stripLive2DTags } from '@qqbot/avatar';
+import { mergeAvatarConfig, type ParsedTag, parseRichTags, stripLive2DTags } from '@qqbot/avatar';
 import { inject, injectable } from 'tsyringe';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { Config } from '@/core/config';
@@ -30,8 +31,27 @@ import type { Live2DContext, Live2DStage } from '../Live2DStage';
 import { SentenceFlusher } from './SentenceFlusher';
 
 const DEFAULT_PROVIDER = 'deepseek';
-const MAX_TOKENS = 256;
+/**
+ * High enough for `deepseek-reasoner` (and similar APIs): they spend output budget
+ * on `reasoning_content` first; a tiny cap leaves `content` empty — no TTS, empty reply.
+ */
+const MAX_TOKENS = 2048;
 const TEMPERATURE = 0.8;
+
+/** Reject instruction/meta leaks from the model (e.g. Gemini under load). */
+function isUnusableLive2dReplyText(s: string): boolean {
+  const t = s.trim();
+  if (t.length === 0) {
+    return true;
+  }
+  if (/^Action tags\b/i.test(t)) {
+    return true;
+  }
+  if (/^Here (is|are) the (action )?tags\b/i.test(t)) {
+    return true;
+  }
+  return false;
+}
 
 function describeTag(t: ParsedTag): string {
   switch (t.kind) {
@@ -133,24 +153,49 @@ export class LLMStage implements Live2DStage {
     const metaTemp = ctx.input.meta?.temperature;
     const temperature = typeof metaTemp === 'number' && Number.isFinite(metaTemp) ? metaTemp : TEMPERATURE;
 
+    const streamOpts = {
+      maxTokens: MAX_TOKENS,
+      temperature,
+      messages,
+    };
+
     try {
-      await this.llmService.generateStream(
-        ctx.input.text,
-        (delta: string) => {
-          ctx.replyText = (ctx.replyText ?? '') + delta;
-          flusher.push(delta);
-        },
-        {
-          maxTokens: MAX_TOKENS,
-          temperature,
-          messages,
-        },
-        ctx.providerName,
-      );
-      flusher.end();
-      ctx.streamingHandled = true;
+      if (this.useApiStreaming(ctx)) {
+        await this.llmService.generateStream(
+          ctx.input.text,
+          (delta: string) => {
+            ctx.replyText = (ctx.replyText ?? '') + delta;
+            flusher.push(delta);
+          },
+          streamOpts,
+          ctx.providerName,
+        );
+        flusher.end();
+        ctx.streamingHandled = true;
+      } else {
+        const result = await this.llmService.generate(ctx.input.text, streamOpts, ctx.providerName);
+        const full = result.text ?? '';
+        const te = full.trim();
+        if (te.length === 0) {
+          ctx.skipped = true;
+          ctx.skipReason = 'empty-reply';
+          return;
+        }
+        if (isUnusableLive2dReplyText(te)) {
+          logger.warn(
+            `[Live2D/llm] rejected bad model output (not sending to TTS): ${JSON.stringify(te.slice(0, 200))}`,
+          );
+          ctx.skipped = true;
+          ctx.skipReason = 'bad-llm-reply';
+          return;
+        }
+        ctx.replyText = full;
+        flusher.push(full);
+        flusher.end();
+        ctx.streamingHandled = true;
+      }
     } catch (err) {
-      logger.warn(`[Live2D/llm] stream failed (source=${ctx.input.source} provider=${ctx.providerName}):`, err);
+      logger.warn(`[Live2D/llm] llm failed (source=${ctx.input.source} provider=${ctx.providerName}):`, err);
       ctx.skipped = true;
       ctx.skipReason = 'llm-failed';
       return;
@@ -161,6 +206,14 @@ export class LLMStage implements Live2DStage {
     if (trimmed.length === 0) {
       ctx.skipped = true;
       ctx.skipReason = 'empty-reply';
+      return;
+    }
+    if (this.useApiStreaming(ctx) && isUnusableLive2dReplyText(trimmed)) {
+      logger.warn(
+        `[Live2D/llm] stream produced unusable text (TTS may have started); skipping history+QQ echo: ${JSON.stringify(trimmed.slice(0, 200))}`,
+      );
+      ctx.skipped = true;
+      ctx.skipReason = 'bad-llm-reply';
       return;
     }
 
@@ -188,6 +241,22 @@ export class LLMStage implements Live2DStage {
   }
 
   private resolveProvider(): string {
+    const raw = this.config.getAvatarConfig();
+    if (raw && typeof raw === 'object') {
+      const p = (raw as Record<string, unknown>).llmProvider;
+      if (typeof p === 'string' && p.trim().length > 0) {
+        return p.trim();
+      }
+    }
     return this.config.getAIConfig()?.defaultProviders?.llm ?? DEFAULT_PROVIDER;
+  }
+
+  /** `meta.llmStream` overrides `avatar.llmStream`. */
+  private useApiStreaming(ctx: Live2DContext): boolean {
+    const meta = ctx.input.meta?.llmStream;
+    if (typeof meta === 'boolean') {
+      return meta;
+    }
+    return mergeAvatarConfig(this.config.getAvatarConfig() as Record<string, unknown> | undefined).llmStream ?? false;
   }
 }

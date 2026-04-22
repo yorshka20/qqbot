@@ -189,6 +189,7 @@ export class AvatarService {
           },
           undefined,
           config.speech.utteranceGapMs,
+          config.speech.exportTtsWavDir,
         );
         logger.debug(`[AvatarService] SpeechService initialized with provider="${provider.name}"`);
       }

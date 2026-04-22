@@ -10,7 +10,11 @@ export interface Live2DInput {
   source: Live2DSource;
   /** Optional sender tag for logging / future routing. */
   sender?: { name?: string; uid?: string };
-  /** Free-form metadata attached to logs. Not sent to the LLM. */
+  /**
+   * Free-form metadata. Not sent to the LLM as user text.
+   * - `temperature` (number): LLM temperature for this run.
+   * - `llmStream` (boolean): if set, overrides `avatar.llmStream` for API stream vs one-shot `generate`.
+   */
   meta?: Record<string, unknown>;
 }
 
@@ -34,4 +38,5 @@ export type Live2DSkipReason =
   | 'no-consumer'
   | 'prompt-render-failed'
   | 'llm-failed'
-  | 'empty-reply';
+  | 'empty-reply'
+  | 'bad-llm-reply';
