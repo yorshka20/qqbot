@@ -191,6 +191,71 @@ export interface HelloMessage {
 }
 
 /**
+ * Canonical expression names supported by the avatar renderer protocol.
+ * Order is intentional and must not be alphabetized — it reflects grouping
+ * by expression category (emotion → viseme → eyelid → gaze).
+ *
+ * Contract source: qqbot ticket 2026-04-22-avatar-renderer-capabilities-api.
+ */
+export const CANONICAL_EXPRESSIONS = [
+  'happy',
+  'sad',
+  'angry',
+  'surprised',
+  'relaxed',
+  'neutral',
+  'aa',
+  'ih',
+  'ee',
+  'oh',
+  'ou',
+  'blink',
+  'blinkLeft',
+  'blinkRight',
+  'lookUp',
+  'lookDown',
+  'lookLeft',
+  'lookRight',
+] as const;
+
+/** Union type of all canonical expression name literals. */
+export type CanonicalExpressionName = (typeof CANONICAL_EXPRESSIONS)[number];
+
+/**
+ * Renderer capability report sent from renderer → bot after model load (or
+ * model hot-swap). Declares what the loaded model supports so the bot can
+ * route expressions, channels, and custom morph targets appropriately.
+ *
+ * Contract source: qqbot ticket 2026-04-22-avatar-renderer-capabilities-api.
+ */
+export interface RendererCapabilities {
+  /** Subset of CANONICAL_EXPRESSIONS that the loaded model actually has morphs for. */
+  expressions: CanonicalExpressionName[];
+  /** Channel names (e.g. 'head.x', 'body.z') the renderer processes. */
+  supportedChannels: string[];
+  /** Non-canonical morph target names exposed by the model (vendor / artist-defined). */
+  customExpressions: string[];
+  /** Identifies which model is currently loaded. */
+  modelId: {
+    kind: 'cubism' | 'vrm';
+    /** URL slug or filename stem used to address the model in /assets. */
+    slug: string;
+    /** Human-readable model title, if provided by the renderer. */
+    title?: string;
+  };
+}
+
+/**
+ * Renderer → bot: capability report sent after model load or hot-swap.
+ * Tells the bot what expressions, channels, and morph targets are available
+ * for the currently loaded model so routing decisions can be made server-side.
+ */
+export interface CapabilitiesMessage {
+  type: 'capabilities';
+  data: RendererCapabilities;
+}
+
+/**
  * Client → server: semantic locomotion command. All avatar movement intents
  * flow through this single discriminated union so the HUD (and eventually the
  * LLM) never touches world coordinates. The bot's `WalkingLayer` resolves
@@ -239,6 +304,7 @@ export type PreviewClientMessage =
   | TunableParamsRequestMessage
   | TunableParamSetMessage
   | HelloMessage
-  | WalkCommandMessage;
+  | WalkCommandMessage
+  | CapabilitiesMessage;
 
 export type PreviewMessage = FrameMessage | StatusMessage | AudioMessage | TunableParamsMessage;
