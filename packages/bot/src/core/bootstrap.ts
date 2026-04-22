@@ -260,6 +260,25 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     } else {
       logger.debug('[Bootstrap] No TTS providers configured');
     }
+
+    // Fire-and-forget warmup for providers that support it (Sovits mainly —
+    // forces model weights + reference audio into memory so the first real
+    // user utterance doesn't pay cold-start latency).
+    for (const provider of ttsManager.listAll()) {
+      if (typeof provider.warmup === 'function' && provider.isAvailable()) {
+        const started = Date.now();
+        provider
+          .warmup()
+          .then(() => {
+            logger.info(`[Bootstrap] TTS warmup ok — provider="${provider.name}" took=${Date.now() - started}ms`);
+          })
+          .catch((err) => {
+            logger.debug(
+              `[Bootstrap] TTS warmup failed (non-fatal) — provider="${provider.name}" err=${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+      }
+    }
   } catch (err) {
     logger.warn('[Bootstrap] TTS provider registry init failed (non-fatal):', err);
   }

@@ -47,4 +47,13 @@ export interface TTSProvider {
    * omit this method.
    */
   listVoices?(): string[];
+
+  /**
+   * Optional: perform a cheap synthesis request to pre-load model weights
+   * into the remote/local engine's memory. Called once during bot bootstrap.
+   * Fire-and-forget; failures are swallowed by the caller. Providers whose
+   * first-synth is already warm (e.g. hosted APIs with global caches) can
+   * omit this method.
+   */
+  warmup?(): Promise<void>;
 }

@@ -138,4 +138,23 @@ export class SovitsProvider implements TTSProvider {
       durationMs: bytes.length / 4000,
     };
   }
+
+  /**
+   * Tiny dummy synthesize to force the GPT-SoVITS engine to load the
+   * currently-configured reference audio + model weights into memory before
+   * the first real user utterance arrives. Without this, the first real
+   * synth pays ~1–3s of cold-start overhead on top of normal inference.
+   *
+   * We intentionally use a single Chinese character so the request is valid
+   * under almost any `text_split_method` + language combination. Errors are
+   * swallowed — the caller already treats warmup as fire-and-forget, and we
+   * don't want a flaky warmup to crash bootstrap.
+   */
+  async warmup(): Promise<void> {
+    try {
+      await this.synthesize('你');
+    } catch {
+      /* swallow — warmup is best-effort */
+    }
+  }
 }
