@@ -13,7 +13,7 @@ import type { RendererCapabilities } from './preview/types';
 import { SpeechService } from './SpeechService';
 import { ActivityTracker } from './state/IdleStateMachine';
 import { type AvatarActivityPatch, DEFAULT_ACTIVITY, type StateNodeOutput } from './state/types';
-import type { GazeTarget } from './tags';
+import type { FaceTarget, GazeTarget, WalkToTarget } from './tags';
 import type { TTSManager } from './tts/TTSManager';
 import type { AvatarConfig } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './types';
@@ -567,6 +567,41 @@ export class AvatarService {
     const layer = this.getWalkingLayer();
     if (!layer) return Promise.reject(new Error('[AvatarService] WalkingLayer is not available'));
     return layer.orbit(opts);
+  }
+
+  /**
+   * Semantic walk targets. Coordinates are convention-driven (stage front
+   * sits on +Z near camera, `facing=0` looks toward +Z); no dependency on the
+   * renderer's actual camera pose, so LLM-driven commands like `[W:to:camera]`
+   * resolve deterministically without exchanging positions.
+   */
+  private static readonly STAGE_POSITIONS: Record<WalkToTarget, { x: number; z: number; face: number }> = {
+    camera: { x: 0, z: 0.5, face: 0 },
+    center: { x: 0, z: 0, face: 0 },
+    back: { x: 0, z: -0.5, face: 0 },
+  };
+  private static readonly FACE_ANGLES: Record<FaceTarget, number> = {
+    camera: 0,
+    back: Math.PI,
+    left: -Math.PI / 2,
+    right: Math.PI / 2,
+  };
+
+  /** Walk to a named stage position. Resolves on cubism models as a no-op. */
+  walkToSemantic(target: WalkToTarget): Promise<void> {
+    const layer = this.getWalkingLayer();
+    if (!layer) return Promise.resolve();
+    const pos = AvatarService.STAGE_POSITIONS[target];
+    return layer.walkTo(pos.x, pos.z, pos.face);
+  }
+
+  /** Turn in place to a named facing direction (no translation). */
+  faceSemantic(direction: FaceTarget): Promise<void> {
+    const layer = this.getWalkingLayer();
+    if (!layer) return Promise.resolve();
+    const face = AvatarService.FACE_ANGLES[direction];
+    const cur = layer.getPosition();
+    return layer.walkTo(cur.x, cur.z, face);
   }
 
   /** Interrupt any pending motion. Legacy alias is `stopWalk` (kept for now). */

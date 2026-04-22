@@ -15,13 +15,8 @@
 import { parseRichTags } from '@qqbot/avatar';
 import { injectable } from 'tsyringe';
 import { logger } from '@/utils/logger';
+import { dispatchParsedTag } from '../dispatchParsedTag';
 import type { Live2DContext, Live2DStage } from '../Live2DStage';
-
-const HOLD_MULTIPLIERS: Record<'brief' | 'short' | 'long', number> = {
-  brief: 0.5,
-  short: 0.8,
-  long: 1.4,
-};
 
 @injectable()
 export class TagAnimationStage implements Live2DStage {
@@ -35,42 +30,7 @@ export class TagAnimationStage implements Live2DStage {
     try {
       const tags = parseRichTags(ctx.replyText);
       for (const tag of tags) {
-        switch (tag.kind) {
-          case 'action': {
-            const mult = ctx.pendingHoldMultiplier;
-            ctx.pendingHoldMultiplier = undefined;
-            const payload: {
-              action: string;
-              emotion: string;
-              intensity: number;
-              durationOverrideMs?: number;
-            } = {
-              action: tag.action,
-              emotion: tag.emotion,
-              intensity: tag.intensity,
-            };
-            if (mult !== undefined) {
-              // Pre-compute hold-adjusted base duration so enqueueTagAnimation
-              // applies jitter on top of the scaled value, not the raw registered
-              // duration. Falls back to 1500ms matching enqueueTagAnimation's own
-              // fallback so the multiplier is never lost.
-              const registered = ctx.avatar.getActionDuration?.(tag.action);
-              const base = registered ?? 1500;
-              payload.durationOverrideMs = Math.max(1, Math.round(base * mult));
-            }
-            ctx.avatar.enqueueTagAnimation(payload);
-            break;
-          }
-          case 'emotion':
-            ctx.avatar.enqueueEmotion(tag.emotion, tag.intensity);
-            break;
-          case 'gaze':
-            ctx.avatar.setGazeTarget(tag.target);
-            break;
-          case 'hold':
-            ctx.pendingHoldMultiplier = HOLD_MULTIPLIERS[tag.dur];
-            break;
-        }
+        dispatchParsedTag(tag, ctx, ctx.avatar);
       }
       // Drop any unconsumed hold — stage boundary is per-reply.
       ctx.pendingHoldMultiplier = undefined;

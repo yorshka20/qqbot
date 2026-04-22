@@ -1,17 +1,19 @@
-import type { GazeTarget, LegacyLive2DTag, ParsedTag } from './types';
+import type { FaceTarget, GazeTarget, LegacyLive2DTag, ParsedTag, WalkMotion, WalkToTarget } from './types';
 
 const DEFAULT_EMOTION = 'neutral';
 const DEFAULT_ACTION = 'idle';
 const DEFAULT_INTENSITY = 0.5;
 
 const LEGACY_TAG_RE = /\[LIVE2D:\s*([^\]]*)\]/gi;
-const RICH_TAG_RE = /\[([AEGHaegh]):\s*([^\]]+?)\s*\]/g;
+const RICH_TAG_RE = /\[([AEGHWaeghw]):\s*([^\]]+?)\s*\]/g;
 const LEGACY_FIELD_RE = /(\w+)\s*=\s*([^,\]\s]+)/g;
 const NAME_RE = /^([a-z][a-z0-9_]*)$/i;
 const NAME_AT_INTENSITY_RE = /^([a-z][a-z0-9_]*)@([0-9]*\.?[0-9]+)$/i;
 const GAZE_POINT_RE = /^(-?[0-9]*\.?[0-9]+)\s*,\s*(-?[0-9]*\.?[0-9]+)$/;
 
 const NAMED_GAZE_TARGETS = new Set(['camera', 'left', 'right', 'up', 'down', 'center']);
+const WALK_TO_TARGETS = new Set<WalkToTarget>(['camera', 'center', 'back']);
+const WALK_FACE_TARGETS = new Set<FaceTarget>(['camera', 'back', 'left', 'right']);
 
 function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
@@ -51,6 +53,57 @@ function parseGazeTarget(payload: string): GazeTarget | null {
   return null;
 }
 
+function parseWalkPayload(payload: string): WalkMotion | null {
+  const parts = payload.trim().split(':').map((p) => p.trim());
+  if (parts.length === 0 || parts[0] === '') return null;
+  const name = parts[0].toLowerCase();
+  switch (name) {
+    case 'forward':
+    case 'back':
+    case 'strafe': {
+      if (parts.length !== 2) return null;
+      const m = Number.parseFloat(parts[1]);
+      if (!Number.isFinite(m)) return null;
+      if (name === 'back') return { type: 'forward', meters: -m };
+      if (name === 'strafe') return { type: 'strafe', meters: m };
+      return { type: 'forward', meters: m };
+    }
+    case 'turn': {
+      if (parts.length !== 2) return null;
+      const deg = Number.parseFloat(parts[1]);
+      if (!Number.isFinite(deg)) return null;
+      return { type: 'turn', degrees: deg };
+    }
+    case 'orbit': {
+      if (parts.length < 2 || parts.length > 3) return null;
+      const deg = Number.parseFloat(parts[1]);
+      if (!Number.isFinite(deg)) return null;
+      let radius: number | undefined;
+      if (parts.length === 3) {
+        radius = Number.parseFloat(parts[2]);
+        if (!Number.isFinite(radius)) return null;
+      }
+      return radius === undefined ? { type: 'orbit', degrees: deg } : { type: 'orbit', degrees: deg, radius };
+    }
+    case 'to': {
+      if (parts.length !== 2) return null;
+      const target = parts[1].toLowerCase() as WalkToTarget;
+      if (!WALK_TO_TARGETS.has(target)) return null;
+      return { type: 'to', target };
+    }
+    case 'face': {
+      if (parts.length !== 2) return null;
+      const target = parts[1].toLowerCase() as FaceTarget;
+      if (!WALK_FACE_TARGETS.has(target)) return null;
+      return { type: 'face', target };
+    }
+    case 'stop':
+      return parts.length === 1 ? { type: 'stop' } : null;
+    default:
+      return null;
+  }
+}
+
 function isValidRichTagPayload(letter: string, payload: string): boolean {
   const l = letter.toLowerCase();
   if (l === 'a' || l === 'e') {
@@ -62,6 +115,9 @@ function isValidRichTagPayload(letter: string, payload: string): boolean {
   if (l === 'h') {
     const lower = payload.toLowerCase().trim();
     return lower === 'brief' || lower === 'short' || lower === 'long';
+  }
+  if (l === 'w') {
+    return parseWalkPayload(payload) !== null;
   }
   return false;
 }
@@ -122,6 +178,11 @@ export function parseRichTags(text: string): ParsedTag[] {
         const lower = entry.payload.toLowerCase().trim();
         if (lower === 'brief' || lower === 'short' || lower === 'long') {
           out.push({ kind: 'hold', dur: lower });
+        }
+      } else if (l === 'w') {
+        const motion = parseWalkPayload(entry.payload);
+        if (motion) {
+          out.push({ kind: 'walk', motion });
         }
       }
     } else {

@@ -18,12 +18,13 @@
 // Downstream stages check `ctx.streamingHandled` and no-op to avoid
 // re-speaking or re-animating the same content.
 
-import { parseLive2DTags, stripLive2DTags } from '@qqbot/avatar';
+import { type ParsedTag, parseRichTags, stripLive2DTags } from '@qqbot/avatar';
 import { inject, injectable } from 'tsyringe';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
+import { dispatchParsedTag } from '../dispatchParsedTag';
 import type { Live2DSessionService } from '../Live2DSessionService';
 import type { Live2DContext, Live2DStage } from '../Live2DStage';
 import { SentenceFlusher } from './SentenceFlusher';
@@ -31,6 +32,21 @@ import { SentenceFlusher } from './SentenceFlusher';
 const DEFAULT_PROVIDER = 'deepseek';
 const MAX_TOKENS = 256;
 const TEMPERATURE = 0.8;
+
+function describeTag(t: ParsedTag): string {
+  switch (t.kind) {
+    case 'action':
+      return `A:${t.emotion}/${t.action}@${t.intensity.toFixed(2)}`;
+    case 'emotion':
+      return `E:${t.emotion}@${t.intensity.toFixed(2)}`;
+    case 'gaze':
+      return `G:${t.target.type}`;
+    case 'hold':
+      return `H:${t.dur}`;
+    case 'walk':
+      return `W:${t.motion.type}`;
+  }
+}
 
 @injectable()
 export class LLMStage implements Live2DStage {
@@ -69,13 +85,15 @@ export class LLMStage implements Live2DStage {
 
       let tagDescs = '';
       try {
-        const tags = parseLive2DTags(chunk);
-        for (const tag of tags) {
-          ctx.avatar?.enqueueTagAnimation(tag);
+        const tags = parseRichTags(chunk);
+        if (ctx.avatar) {
+          for (const tag of tags) {
+            dispatchParsedTag(tag, ctx, ctx.avatar);
+          }
         }
         ctx.tagCount = (ctx.tagCount ?? 0) + tags.length;
         if (tags.length > 0) {
-          tagDescs = tags.map((t) => `${t.emotion}/${t.action}@${t.intensity.toFixed(2)}`).join(', ');
+          tagDescs = tags.map(describeTag).join(', ');
         }
       } catch (err) {
         logger.warn('[Live2D/llm] tag parse/enqueue failed (non-fatal):', err);
