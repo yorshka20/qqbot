@@ -22,11 +22,13 @@ export class SpeechService {
   private draining = false;
   private lastEndTime = 0;
   /**
-   * Next queue[0] synthesis started early so it can overlap decode/broadcast
-   * of the previous utterance and wall-clock playback (we no longer block the
-   * pump until audio finishes on the client).
+   * Synthesis promise for `queue[1]` fired in parallel with `queue[0]`'s
+   * synth/decode/broadcast. One-deep pipeline — by the time we finish
+   * broadcasting queue[0], queue[1]'s audio is usually already back from
+   * the provider, so the gap between utterances shrinks to decode+broadcast
+   * time instead of a full network+inference round-trip.
    */
-  private prefetch: { text: string; promise: Promise<SynthesisResult> } | null = null;
+  private inflightNext: { text: string; promise: Promise<SynthesisResult> } | null = null;
 
   constructor(
     private provider: TTSProvider,
@@ -38,6 +40,24 @@ export class SpeechService {
     private gapMs: number = DEFAULT_GAP_MS,
     private exportTtsWavDir?: string,
   ) {}
+
+  /**
+   * Kick off synthesis for `queue[1]` if not already in flight. Called twice
+   * per drain iteration: once at the top so it runs in parallel with the
+   * current utterance's synth+decode+broadcast, once after the queue shift
+   * to catch any utterance enqueued mid-iteration.
+   */
+  private primeNext(): void {
+    if (this.inflightNext) return;
+    if (this.queue.length < 2) return;
+    const peek = this.queue[1];
+    const promise = this.provider.synthesize(peek);
+    // Attach a no-op catch so an early rejection isn't surfaced as an
+    // unhandled rejection before we reach the `await` site. The real `await`
+    // in `drain()` still observes the error.
+    promise.catch(() => {});
+    this.inflightNext = { text: peek, promise };
+  }
 
   speak(text: string, opts?: { maxCharsPerUtterance?: number }): void {
     const consumer = this.hasConsumer();
@@ -69,7 +89,7 @@ export class SpeechService {
       if (!this.hasConsumer()) {
         logger.info(`[SpeechService] consumer left mid-queue; dropping ${this.queue.length} pending utterance(s)`);
         this.queue = [];
-        this.prefetch = null;
+        this.inflightNext = null;
         break;
       }
 
@@ -79,22 +99,25 @@ export class SpeechService {
         `[SpeechService] synthesize start — id=${utteranceId} provider="${this.provider.name}" len=${utterance.length}`,
       );
 
+      // Start or reuse synthesis for the head utterance.
+      let headPromise: Promise<SynthesisResult>;
+      if (this.inflightNext && this.inflightNext.text === utterance) {
+        headPromise = this.inflightNext.promise;
+        this.inflightNext = null;
+      } else {
+        headPromise = this.provider.synthesize(utterance);
+      }
+
+      // Fire queue[1] synthesis NOW so it runs concurrently with queue[0]'s
+      // await + decode + broadcast. This is the key change vs. the old
+      // "prefetch after broadcast" behavior.
+      this.primeNext();
+
       let result: SynthesisResult;
       try {
-        if (this.prefetch && this.prefetch.text === utterance) {
-          const saved = this.prefetch;
-          this.prefetch = null;
-          try {
-            result = await saved.promise;
-          } catch {
-            result = await this.provider.synthesize(utterance);
-          }
-        } else {
-          result = await this.provider.synthesize(utterance);
-        }
+        result = await headPromise;
       } catch (err) {
         this.queue.shift();
-        this.prefetch = null;
         logger.warn(
           `[SpeechService] synthesize failed — id=${utteranceId} err=${err instanceof Error ? err.message : String(err)}`,
         );
@@ -172,17 +195,12 @@ export class SpeechService {
         `[SpeechService] broadcast audio — id=${utteranceId} startAt=${startAtEpochMs} dur=${Math.round(accurateDurationMs)}ms lipSync=${envelope !== null}`,
       );
 
-      if (this.queue.length > 0) {
-        const next = this.queue[0];
-        if (next) {
-          this.prefetch = { text: next, promise: this.provider.synthesize(next) };
-        }
-      } else {
-        this.prefetch = null;
-      }
+      // Re-check in case new utterances were enqueued during decode/broadcast:
+      // queue[0] (the new head) may not have a prefetch yet.
+      this.primeNext();
     }
 
     this.draining = false;
-    this.prefetch = null;
+    this.inflightNext = null;
   }
 }
