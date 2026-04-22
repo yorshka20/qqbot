@@ -54,7 +54,10 @@ function parseGazeTarget(payload: string): GazeTarget | null {
 }
 
 function parseWalkPayload(payload: string): WalkMotion | null {
-  const parts = payload.trim().split(':').map((p) => p.trim());
+  const parts = payload
+    .trim()
+    .split(':')
+    .map((p) => p.trim());
   if (parts.length === 0 || parts[0] === '') return null;
   const name = parts[0].toLowerCase();
   switch (name) {

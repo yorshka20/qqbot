@@ -1,8 +1,9 @@
 // Resource downloader utility - handles downloading and converting media resources to base64
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, extname, join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { basename, extname } from 'node:path';
+import { writeFileUnderDirectory } from '@qqbot/avatar';
 import { HttpClient } from '@/api/http/HttpClient';
 import { logger } from '@/utils/logger';
 
@@ -276,12 +277,6 @@ export class ResourceDownloader {
     mimeType?: string,
   ): string {
     try {
-      // Ensure directory exists
-      if (!existsSync(savePath)) {
-        mkdirSync(savePath, { recursive: true });
-        logger.debug(`[ResourceDownloader] Created directory: ${savePath}`);
-      }
-
       // Generate filename
       let filename: string;
       if (customFilename) {
@@ -313,8 +308,7 @@ export class ResourceDownloader {
         filename = `${filename}${extension}`;
       }
 
-      const filePath = join(savePath, filename);
-      writeFileSync(filePath, buffer);
+      const filePath = writeFileUnderDirectory(savePath, filename, buffer);
       logger.debug(`[ResourceDownloader] Saved file: ${filePath} (${buffer.length} bytes)`);
       return filePath;
     } catch (error) {

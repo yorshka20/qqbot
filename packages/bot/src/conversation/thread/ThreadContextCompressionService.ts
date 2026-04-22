@@ -5,10 +5,15 @@ import { logger } from '@/utils/logger';
 import type { SummarizeService } from '../../ai/services/SummarizeService';
 import type { ThreadMessage, ThreadService } from './ThreadService';
 
-/** When thread message count exceeds this, we may compress the earliest segment. */
-const MAX_CONTEXT_MESSAGES = 30;
-/** Number of earliest messages to summarize and replace with one summary message. */
-const SEGMENT_SIZE = 10;
+/**
+ * When thread message count exceeds this, `compressThreadIfNeeded` may replace the
+ * earliest segment with a summary.
+ */
+export const THREAD_CONTEXT_MAX_MESSAGES_BEFORE_COMPRESS = 30;
+/**
+ * Number of earliest messages to merge into one summary message per compression pass.
+ */
+export const THREAD_CONTEXT_COMPRESS_SEGMENT_SIZE = 10;
 /** Min messages before we run LLM topic cleaning (remove off-topic content). */
 const MIN_MESSAGES_FOR_TOPIC_CLEAN = 8;
 
@@ -94,7 +99,8 @@ export class ThreadContextCompressionService {
   }
 
   /**
-   * If thread has more than MAX_CONTEXT_MESSAGES, summarize the earliest SEGMENT_SIZE and replace.
+   * If thread is longer than `THREAD_CONTEXT_MAX_MESSAGES_BEFORE_COMPRESS`, summarize
+   * the earliest `THREAD_CONTEXT_COMPRESS_SEGMENT_SIZE` messages and replace.
    * One compression per thread at a time; on failure leaves thread unchanged and logs.
    */
   private async compressThreadIfNeeded(threadId: string): Promise<void> {
@@ -102,13 +108,13 @@ export class ThreadContextCompressionService {
       return;
     }
     const thread = this.threadService.getThread(threadId);
-    if (!thread || thread.messages.length <= MAX_CONTEXT_MESSAGES) {
+    if (!thread || thread.messages.length <= THREAD_CONTEXT_MAX_MESSAGES_BEFORE_COMPRESS) {
       return;
     }
 
     this.compressingThreadIds.add(threadId);
     try {
-      const segmentLength = Math.min(SEGMENT_SIZE, thread.messages.length - 1);
+      const segmentLength = Math.min(THREAD_CONTEXT_COMPRESS_SEGMENT_SIZE, thread.messages.length - 1);
       if (segmentLength <= 0) {
         return;
       }

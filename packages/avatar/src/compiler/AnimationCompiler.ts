@@ -5,6 +5,7 @@ import { logger } from '../utils/logger';
 /** Per-second tick/emit rollup log. Off by default (non-zero I/O cost at 60Hz);
  *  enable with `AVATAR_PERF_LOG=1` when diagnosing frame-rate or event-loop issues. */
 const PERF_LOG_ENABLED = process.env.AVATAR_PERF_LOG === '1';
+
 import { type AvatarActivity, DEFAULT_ACTIVITY } from '../state/types';
 import { ActionMap } from './action-map';
 import { sampleClip } from './clips/sampleClip';
