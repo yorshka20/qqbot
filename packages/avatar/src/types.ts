@@ -51,8 +51,8 @@ export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
     throttleFps: 30,
   },
   compiler: {
-    fps: 30,
-    outputFps: 30,
+    fps: 60,
+    outputFps: 60,
     defaultEasing: 'easeInOutCubic',
     smoothingFactor: 0.5,
     attackRatio: 0.1,

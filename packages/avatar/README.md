@@ -281,7 +281,7 @@ Semantic channel names (e.g. `head.yaw`, `mouth.smile`, `arm.right`) are rendere
   "enabled": true,
   "compiler": {
     "fps": 60,
-    "outputFps": 30,
+    "outputFps": 60,
     "crossfadeMs": 250,         // ms; crossfade duration for overlapping channels
     "baselineHalfLifeMs": 3000,  // ms; half-life for endPose baseline decay (handoff to idle-clip posture)
     "idle": {

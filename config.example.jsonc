@@ -1096,7 +1096,7 @@
   //   // Animation compiler settings
   //   "compiler": {
   //     "fps": 60,
-  //     "outputFps": 30,
+  //     "outputFps": 60,
   //     "defaultEasing": "easeInOutCubic",
   //     "smoothingFactor": 0.3,
   //     "attackRatio": 0.2,

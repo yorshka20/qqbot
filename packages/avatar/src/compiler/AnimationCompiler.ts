@@ -1,5 +1,10 @@
 import { EventEmitter } from 'node:events';
 import type { TunableParam, TunableSection } from '../preview/types';
+import { logger } from '../utils/logger';
+
+/** Per-second tick/emit rollup log. Off by default (non-zero I/O cost at 60Hz);
+ *  enable with `AVATAR_PERF_LOG=1` when diagnosing frame-rate or event-loop issues. */
+const PERF_LOG_ENABLED = process.env.AVATAR_PERF_LOG === '1';
 import { type AvatarActivity, DEFAULT_ACTIVITY } from '../state/types';
 import { ActionMap } from './action-map';
 import { sampleClip } from './clips/sampleClip';
@@ -49,7 +54,7 @@ const DEFAULT_SPRING_BY_CHANNEL: Record<string, SpringParams> = {
 
 const DEFAULT_CONFIG: CompilerConfig = {
   fps: 60,
-  outputFps: 30,
+  outputFps: 60,
   defaultEasing: 'easeInOutCubic',
   smoothingFactor: 0.3,
   attackRatio: 0.2,
@@ -89,6 +94,14 @@ export class AnimationCompiler extends EventEmitter {
   private lastTickMs = 0;
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private tickCount = 0;
+  // --- Perf instrumentation (per-second rollup, gated by AVATAR_PERF_LOG=1) ---
+  private perfTickCount = 0;
+  private perfEmitCount = 0;
+  private perfMaxGapMs = 0;
+  private perfMaxHandlerMs = 0;
+  private perfHandlerSumMs = 0;
+  private perfLastTickStartMs = 0;
+  private perfLastLogEpochMs = 0;
   private currentActivity: AvatarActivity = { ...DEFAULT_ACTIVITY };
   /** Renderer model format last declared via hello handshake. Null = unknown (no hello received). */
   private currentModelKind: ModelKind | null = null;
@@ -570,6 +583,17 @@ export class AnimationCompiler extends EventEmitter {
   }
 
   private tick(): void {
+    let handlerStart = 0;
+    if (PERF_LOG_ENABLED) {
+      handlerStart = performance.now();
+      if (this.perfLastTickStartMs > 0) {
+        const gap = handlerStart - this.perfLastTickStartMs;
+        if (gap > this.perfMaxGapMs) this.perfMaxGapMs = gap;
+      }
+      this.perfLastTickStartMs = handlerStart;
+      this.perfTickCount += 1;
+    }
+
     const now = Date.now();
 
     // 0. Clear quat frame channel set from the previous tick.
@@ -854,6 +878,35 @@ export class AnimationCompiler extends EventEmitter {
         params: { ...this.currentParams },
       };
       this.emit('frame', frame);
+      if (PERF_LOG_ENABLED) this.perfEmitCount += 1;
+    }
+
+    if (PERF_LOG_ENABLED) {
+      const handlerDur = performance.now() - handlerStart;
+      this.perfHandlerSumMs += handlerDur;
+      if (handlerDur > this.perfMaxHandlerMs) this.perfMaxHandlerMs = handlerDur;
+
+      const nowEpoch = Date.now();
+      if (this.perfLastLogEpochMs === 0) {
+        this.perfLastLogEpochMs = nowEpoch;
+      } else if (nowEpoch - this.perfLastLogEpochMs >= 1000) {
+        const elapsedSec = (nowEpoch - this.perfLastLogEpochMs) / 1000;
+        const avgHandler = this.perfTickCount > 0 ? this.perfHandlerSumMs / this.perfTickCount : 0;
+        logger.info(
+          `[compiler] tick/s=${(this.perfTickCount / elapsedSec).toFixed(1)} ` +
+            `emit/s=${(this.perfEmitCount / elapsedSec).toFixed(1)} ` +
+            `gapMax=${this.perfMaxGapMs.toFixed(1)}ms ` +
+            `handlerAvg=${avgHandler.toFixed(2)}ms ` +
+            `handlerMax=${this.perfMaxHandlerMs.toFixed(1)}ms ` +
+            `active=${this.activeAnimations.length}`,
+        );
+        this.perfTickCount = 0;
+        this.perfEmitCount = 0;
+        this.perfMaxGapMs = 0;
+        this.perfMaxHandlerMs = 0;
+        this.perfHandlerSumMs = 0;
+        this.perfLastLogEpochMs = nowEpoch;
+      }
     }
   }
 

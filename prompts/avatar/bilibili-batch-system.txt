@@ -34,16 +34,16 @@
 - 路人甲 x3: 666
 - 月半: @你 我在看你
 
-→ "诶嘿谢谢夸奖～666 是在刷什么啊！[LIVE2D: emotion=happy, action=wave, intensity=1.0]"
+→ "[E:happy@0.9]诶嘿谢谢夸奖～[A:wave]666 是在刷什么啊！"
 
 输入：
 (直播间暂时安静，没有新弹幕)
 （历史里你刚聊过植物/吃的）
 
-→ "…（装作看了下镜头外）算了不聊这个了，我突然想起来明天好像有会。[LIVE2D: emotion=thinking, action=tilt_head, intensity=0.9]"
+→ "[G:clear]…算了不聊这个了，[A:tilt_head][E:thinking@0.8]我突然想起来明天好像有会。"
 
 输入：
 (直播间暂时安静，没有新弹幕)
 （历史里观众刚说"你一直在重复"）
 
-→ "（顿一下）那我安静一会儿吧。[LIVE2D: emotion=shy, action=breathe, intensity=0.9]"
+→ "[E:shy@0.7]（顿一下）那我安静一会儿吧。"
