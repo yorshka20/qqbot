@@ -831,21 +831,21 @@
         },
         "defaultVoice": "高松灯"
       }
-      // Example SoVITS provider (local GPT-SoVITS api.py). Uncomment + fill in
-      // to enable. `bodyTemplate` supports `{text}` and `{voice}` placeholders
-      // so you can match whatever fork / schema your SoVITS server expects.
+      // Example: GPT-SoVITS `api_v2.py` (POST /tts). Field names follow that API;
+      // `ref_audio_path` is a path on the host that runs the API. Docs:
+      // docs/local/GPT-SoVITS-API-v2-integration.md
       // ,{
       //   "type": "sovits",
-      //   "name": "sovits-local",
+      //   "name": "sovits-lan",
       //   "endpoint": "http://192.168.1.50:9880/tts",
       //   "bodyTemplate": {
-      //     "text":            "{text}",
-      //     "text_language":   "zh",
-      //     "refer_wav_path":  "/path/to/reference.wav",
-      //     "prompt_text":     "参考音频文案",
-      //     "prompt_language": "zh"
-      //   },
-      //   "defaultVoice": "main"
+      //     "text": "{text}",
+      //     "text_lang": "zh",
+      //     "ref_audio_path": "D:/path/to/reference.wav",
+      //     "prompt_text": "参考音频对应文本",
+      //     "prompt_lang": "zh",
+      //     "media_type": "wav"
+      //   }
       // }
     ]
   },
@@ -1153,18 +1153,23 @@
   //     "host": "0.0.0.0"
   //   },
   //
-  //   // 动作→Live2D 参数映射表。缺省使用 @qqbot/avatar 包内置映射。
-  //   // 若要自定义，提供相对仓库根或绝对路径的 JSON 文件。
+  //   // Action → Live2D parameter map. Omitted = package default; set "path" for a JSON file.
   //   "actionMap": {
   //     // "path": "config/my-action-map.json"
   //   },
   //
-  //   // Text-to-speech settings. Requires top-level "tts" block with apiKey.
+  //   // Text-to-speech settings. Requires a usable `tts` provider.
   //   "speech": {
   //     "enabled": true,
   //     "maxCharsPerUtterance": 80,
   //     "utteranceGapMs": 200
-  //   }
+  //   },
+  //
+  //   // LLM for Live2D only (`/avatar`, Bilibili live → avatar, livemode). Must
+  //   // match a name under `ai.providers`. Unset = `ai.defaultProviders.llm` (e.g. deepseek).
+  //   "llmProvider": "doubao",
+  //   // `llmStream` true = API streaming; false = one-shot `generate` (default). Override per run: `meta.llmStream`.
+  //   "llmStream": false
   // },
   // Bilibili integration.
   //

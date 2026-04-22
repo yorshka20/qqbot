@@ -144,4 +144,37 @@ describe('SovitsProvider', () => {
     const p = new SovitsProvider({ endpoint: 'http://sovits/tts', bodyTemplate: {} });
     await expect(p.synthesize('hi')).rejects.toThrow('500');
   });
+
+  it('includes API JSON error body on non-ok response', async () => {
+    const errBody = new TextEncoder().encode(JSON.stringify({ message: 'ref_audio_path not found' }));
+    globalThis.fetch = makeMockFetch({ ok: false, status: 400, statusText: 'Bad Request', body: errBody });
+    const p = new SovitsProvider({ endpoint: 'http://sovits/tts', bodyTemplate: { text: '{text}' } });
+    await expect(p.synthesize('x')).rejects.toThrow(/ref_audio_path not found/);
+  });
+
+  it('appends Exception when message is generic (GPT-SoVITS style)', async () => {
+    const errBody = new TextEncoder().encode(
+      JSON.stringify({ message: 'tts failed', Exception: 'FileNotFoundError: H:/x.wav' }),
+    );
+    globalThis.fetch = makeMockFetch({ ok: false, status: 400, body: errBody });
+    const p = new SovitsProvider({ endpoint: 'http://sovits/tts', bodyTemplate: { text: '{text}' } });
+    const err = await p.synthesize('x').then(
+      () => {
+        throw new Error('expected throw');
+      },
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/tts failed/);
+    expect((err as Error).message).toMatch(/FileNotFoundError/);
+  });
+
+  it('trims text before building the request body', async () => {
+    const fetchMock = makeMockFetch({ contentType: 'audio/wav' });
+    globalThis.fetch = fetchMock;
+    const p = new SovitsProvider({ endpoint: 'http://sovits/tts', bodyTemplate: { text: '{text}' } });
+    await p.synthesize('  hello  ');
+    const [, init] = (fetchMock as unknown as ReturnType<typeof mock>).mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ text: 'hello' });
+  });
 });

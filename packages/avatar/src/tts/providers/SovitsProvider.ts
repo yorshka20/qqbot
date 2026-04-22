@@ -45,6 +45,41 @@ function substituteValue(value: unknown, replacements: { text: string; voice?: s
   return value;
 }
 
+/** GPT-SoVITS api_v2 often returns { message, Exception }; `message` may be the generic "tts failed". */
+function formatProviderJsonError(j: Record<string, unknown>): string {
+  const parts: string[] = [];
+  const msg = j.message;
+  if (typeof msg === 'string' && msg.length > 0) {
+    parts.push(msg);
+  }
+  const ex = j.Exception;
+  if (typeof ex === 'string' && ex.length > 0 && ex !== msg) {
+    const short = ex.length > 1200 ? `${ex.slice(0, 1200)}…` : ex;
+    parts.push(short);
+  }
+  if (parts.length > 0) {
+    return parts.join(' | ');
+  }
+  return JSON.stringify(j).slice(0, 800);
+}
+
+async function readHttpErrorDetail(response: Response): Promise<string> {
+  const raw = new TextDecoder().decode(await response.arrayBuffer());
+  if (raw.length === 0) {
+    return response.statusText;
+  }
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('{')) {
+    try {
+      const j = JSON.parse(trimmed) as Record<string, unknown>;
+      return formatProviderJsonError(j);
+    } catch {
+      return trimmed.slice(0, 500);
+    }
+  }
+  return trimmed.slice(0, 500);
+}
+
 export class SovitsProvider implements TTSProvider {
   readonly name: string;
 
@@ -71,16 +106,24 @@ export class SovitsProvider implements TTSProvider {
 
   async synthesize(text: string, opts?: TTSSynthesizeOptions): Promise<SynthesisResult> {
     const voice = opts?.voice ?? this.defaultVoice;
-    const body = substitutePlaceholders(this.bodyTemplate, { text, voice });
+    const trimmedText = text.trim();
+    const body = substitutePlaceholders(this.bodyTemplate, { text: trimmedText, voice });
 
-    const response = await globalThis.fetch(this.endpoint, {
+    const init: RequestInit = {
       method: this.method,
       headers: this.headers,
-      body: JSON.stringify(body),
-    });
+    };
+    if (this.method !== 'GET') {
+      init.body = JSON.stringify(body);
+    }
+
+    const response = await globalThis.fetch(this.endpoint, init);
 
     if (!response.ok) {
-      throw new Error(`Sovits TTS request failed: ${response.status} ${response.statusText}`);
+      const detail = await readHttpErrorDetail(response);
+      throw new Error(
+        `Sovits TTS request failed: ${response.status} ${response.statusText}${detail ? ` — ${detail}` : ''}`,
+      );
     }
 
     const contentType = response.headers.get('Content-Type') ?? '';
