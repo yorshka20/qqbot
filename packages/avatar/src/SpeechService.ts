@@ -3,8 +3,10 @@ import { computeRmsEnvelope } from './compiler/audio/rms';
 import { type AnimationLayer, AudioEnvelopeLayer } from './compiler/layers';
 import type { AudioMessage } from './preview/types';
 import { splitIntoUtterances } from './tts/splitIntoUtterances';
-import type { TTSProvider } from './tts/TTSProvider';
+import type { SynthesisResult, TTSProvider } from './tts/TTSProvider';
 import { logger } from './utils/logger';
+import { fromRepoRoot } from './utils/repoRoot';
+import { writeFileUnderDirectory } from './utils/writeFileUnderDirectory';
 
 const DEFAULT_GAP_MS = 200;
 /** RMS hop matches the one applied inside AudioEnvelopeLayer; keep them in sync. */
@@ -19,6 +21,12 @@ export class SpeechService {
   private queue: string[] = [];
   private draining = false;
   private lastEndTime = 0;
+  /**
+   * Next queue[0] synthesis started early so it can overlap decode/broadcast
+   * of the previous utterance and wall-clock playback (we no longer block the
+   * pump until audio finishes on the client).
+   */
+  private prefetch: { text: string; promise: Promise<SynthesisResult> } | null = null;
 
   constructor(
     private provider: TTSProvider,
@@ -28,6 +36,7 @@ export class SpeechService {
     private unregisterLayer: (id: string) => void,
     private clock: () => number = Date.now,
     private gapMs: number = DEFAULT_GAP_MS,
+    private exportTtsWavDir?: string,
   ) {}
 
   speak(text: string, opts?: { maxCharsPerUtterance?: number }): void {
@@ -60,32 +69,56 @@ export class SpeechService {
       if (!this.hasConsumer()) {
         logger.info(`[SpeechService] consumer left mid-queue; dropping ${this.queue.length} pending utterance(s)`);
         this.queue = [];
+        this.prefetch = null;
         break;
       }
 
-      const utterance = this.queue.shift()!;
+      const utterance = this.queue[0];
       const utteranceId = crypto.randomUUID();
       logger.info(
         `[SpeechService] synthesize start — id=${utteranceId} provider="${this.provider.name}" len=${utterance.length}`,
       );
 
-      let bytes: Uint8Array;
-      let mime: string;
-      let estimatedDurationMs: number;
-
+      let result: SynthesisResult;
       try {
-        const result = await this.provider.synthesize(utterance);
-        bytes = result.bytes;
-        mime = result.mime;
-        estimatedDurationMs = result.durationMs;
-        logger.info(
-          `[SpeechService] synthesize ok — id=${utteranceId} bytes=${bytes.length} mime=${mime} est=${Math.round(estimatedDurationMs)}ms`,
-        );
+        if (this.prefetch && this.prefetch.text === utterance) {
+          const saved = this.prefetch;
+          this.prefetch = null;
+          try {
+            result = await saved.promise;
+          } catch {
+            result = await this.provider.synthesize(utterance);
+          }
+        } else {
+          result = await this.provider.synthesize(utterance);
+        }
       } catch (err) {
+        this.queue.shift();
+        this.prefetch = null;
         logger.warn(
           `[SpeechService] synthesize failed — id=${utteranceId} err=${err instanceof Error ? err.message : String(err)}`,
         );
         continue;
+      }
+      this.queue.shift();
+
+      const bytes = result.bytes;
+      const mime = result.mime;
+      const estimatedDurationMs = result.durationMs;
+      logger.info(
+        `[SpeechService] synthesize ok — id=${utteranceId} bytes=${bytes.length} mime=${mime} est=${Math.round(estimatedDurationMs)}ms`,
+      );
+      if (this.exportTtsWavDir) {
+        try {
+          const ext = mime.includes('mpeg') || mime.includes('mp3') || mime.includes('MPEG') ? 'mp3' : 'wav';
+          const fname = `${Date.now()}-${utteranceId.slice(0, 8)}.${ext}`;
+          const p = writeFileUnderDirectory(fromRepoRoot(this.exportTtsWavDir), fname, bytes);
+          logger.info(`[SpeechService] wrote TTS file — ${p}`);
+        } catch (err) {
+          logger.warn(
+            `[SpeechService] export TTS to disk failed — id=${utteranceId} err=${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
       }
 
       // Decode + compute envelope. Non-fatal: if anything throws, we still
@@ -139,12 +172,17 @@ export class SpeechService {
         `[SpeechService] broadcast audio — id=${utteranceId} startAt=${startAtEpochMs} dur=${Math.round(accurateDurationMs)}ms lipSync=${envelope !== null}`,
       );
 
-      const waitMs = this.lastEndTime - this.clock();
-      if (waitMs > 0) {
-        await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+      if (this.queue.length > 0) {
+        const next = this.queue[0];
+        if (next) {
+          this.prefetch = { text: next, promise: this.provider.synthesize(next) };
+        }
+      } else {
+        this.prefetch = null;
       }
     }
 
     this.draining = false;
+    this.prefetch = null;
   }
 }
