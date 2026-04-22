@@ -64,4 +64,34 @@ describe('SentenceFlusher', () => {
     const chunks = collectChunks(['第一句。第二句！第三句？']);
     expect(chunks).toEqual(['第一句。', '第二句！', '第三句？']);
   });
+
+  it('first flush cuts at a separator much earlier than subsequent flushes', () => {
+    // Below minCharsForSeparator (20) but at/above firstFlushMinChars (default 8):
+    // the FIRST clause separator should fire a flush early so downstream TTS
+    // can start. SUBSEQUENT separators are gated back at the 20-char threshold.
+    const out: string[] = [];
+    const f = new SentenceFlusher((c) => out.push(c));
+    // Under first-flush threshold (4 chars) → no flush yet.
+    f.push('你好呀，');
+    expect(out).toEqual([]);
+    // Buffer grows past 8 chars → first separator fires.
+    f.push('我是东雪莲');
+    expect(out).toEqual(['你好呀，']);
+    // Next short clause — below 20 chars, no terminator → no flush yet
+    // (back to the strict threshold after first flush).
+    f.push('再见啊，');
+    expect(out).toEqual(['你好呀，']);
+    f.end();
+    expect(out).toEqual(['你好呀，', '我是东雪莲再见啊，']);
+  });
+
+  it('first flush threshold is configurable', () => {
+    const out: string[] = [];
+    const f = new SentenceFlusher((c) => out.push(c), { firstFlushMinChars: 100 });
+    // With firstFlushMinChars=100 a mid-length first clause still can't flush early.
+    f.push('你好呀，欢迎来到直播间，');
+    expect(out).toEqual([]);
+    f.end();
+    expect(out).toEqual(['你好呀，欢迎来到直播间，']);
+  });
 });

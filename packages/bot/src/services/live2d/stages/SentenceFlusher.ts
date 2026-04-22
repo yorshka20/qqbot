@@ -17,21 +17,37 @@
 const SENTENCE_TERMINATORS = new Set(['。', '！', '？', '.', '!', '?']);
 const CLAUSE_SEPARATORS = new Set(['，', ',', '；', ';', '、', '—']);
 const DEFAULT_MIN_CHARS_FOR_SEPARATOR = 20;
+/**
+ * Minimum chars before the FIRST flush is allowed to cut at a clause separator.
+ * Kept much lower than `minCharsForSeparator` so downstream TTS can start
+ * synthesizing as soon as the model has produced a usable phrase — this is
+ * the single biggest lever on first-utterance latency.
+ */
+const DEFAULT_FIRST_FLUSH_MIN_CHARS = 8;
 
 export interface SentenceFlusherOptions {
   /** Only flush on a clause separator once the buffer reaches this length. */
   minCharsForSeparator?: number;
+  /**
+   * Threshold used ONLY until the first flush happens. After that the flusher
+   * switches to `minCharsForSeparator`. Set equal to `minCharsForSeparator`
+   * if you want uniform behavior.
+   */
+  firstFlushMinChars?: number;
 }
 
 export class SentenceFlusher {
   private buffer = '';
   private readonly minCharsForSeparator: number;
+  private readonly firstFlushMinChars: number;
+  private firstFlushDone = false;
 
   constructor(
     private readonly onFlush: (text: string) => void,
     opts: SentenceFlusherOptions = {},
   ) {
     this.minCharsForSeparator = opts.minCharsForSeparator ?? DEFAULT_MIN_CHARS_FOR_SEPARATOR;
+    this.firstFlushMinChars = opts.firstFlushMinChars ?? DEFAULT_FIRST_FLUSH_MIN_CHARS;
   }
 
   push(chunk: string): void {
@@ -68,7 +84,8 @@ export class SentenceFlusher {
       return true;
     }
 
-    if (safe.length >= this.minCharsForSeparator) {
+    const separatorThreshold = this.firstFlushDone ? this.minCharsForSeparator : this.firstFlushMinChars;
+    if (safe.length >= separatorThreshold) {
       const sepIdx = this.findLastSeparator(safe);
       if (sepIdx !== -1) {
         this.emit(sepIdx + 1);
@@ -142,6 +159,9 @@ export class SentenceFlusher {
   private emit(upToIdx: number): void {
     const chunk = this.buffer.slice(0, upToIdx);
     this.buffer = this.buffer.slice(upToIdx);
-    if (chunk.trim().length > 0) this.onFlush(chunk);
+    if (chunk.trim().length > 0) {
+      this.firstFlushDone = true;
+      this.onFlush(chunk);
+    }
   }
 }
