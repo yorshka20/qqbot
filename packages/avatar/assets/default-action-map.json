@@ -13,7 +13,6 @@
   },
   "nod": {
     "category": "movement",
-    "modelSupport": "cubism",
     "description": "点头两次,表示同意、赞同或肯定",
     "params": [
       { "channel": "head.pitch", "targetValue": -18.0, "weight": 1.0, "oscillate": 2 },
@@ -122,7 +121,6 @@
   },
   "head_sway": {
     "category": "movement",
-    "modelSupport": "cubism",
     "description": "头部缓慢左右摆动——放松、有节奏感的待机动作",
     "params": [
       { "channel": "head.yaw", "targetValue": 15.0, "weight": 1.0 },
@@ -132,14 +130,12 @@
   },
   "breathe": {
     "category": "micro",
-    "modelSupport": "cubism",
     "description": "一次明显的深呼吸——叹气、放松或感叹",
     "params": [{ "channel": "body.y", "targetValue": 0.05, "weight": 1.0 }],
     "defaultDuration": 4000
   },
   "lean_forward": {
     "category": "movement",
-    "modelSupport": "cubism",
     "description": "身体前倾、低头靠近——表达关注、倾听或好奇",
     "params": [
       { "channel": "body.z", "targetValue": 0.2, "weight": 1.0 },
@@ -149,7 +145,6 @@
   },
   "lean_back": {
     "category": "movement",
-    "modelSupport": "cubism",
     "description": "身体后仰、头微抬——放松、从容或故作高深",
     "params": [
       { "channel": "body.z", "targetValue": -0.2, "weight": 1.0 },
@@ -159,14 +154,12 @@
   },
   "tilt_head": {
     "category": "movement",
-    "modelSupport": "cubism",
     "description": "歪头——表示困惑、好奇或俏皮",
     "params": [{ "channel": "head.roll", "targetValue": 15.0, "weight": 1.0 }],
     "defaultDuration": 1200
   },
   "shake_head": {
     "category": "movement",
-    "modelSupport": "cubism",
     "description": "摇头两次——否定、拒绝或无奈",
     "params": [
       { "channel": "head.yaw", "targetValue": 22.0, "weight": 1.0, "oscillate": 2 },
@@ -176,7 +169,6 @@
   },
   "blink": {
     "category": "micro",
-    "modelSupport": "cubism",
     "description": "一次明显的眨眼——俏皮的眨眼或强调(区别于自动眨眼)",
     "params": [
       { "channel": "eye.open.left", "targetValue": -1.0, "weight": 1.0 },

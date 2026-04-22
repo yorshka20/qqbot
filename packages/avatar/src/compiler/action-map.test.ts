@@ -527,20 +527,24 @@ describe('ActionMap — modelSupport filtering (resolveAction)', () => {
 describe('ActionMap — modelSupport filtering (listActions)', () => {
   const map = new ActionMap();
 
-  it('listActions("vrm") excludes nod (cubism-only) but includes smile (both) and formal_bow (vrm)', () => {
+  it('listActions("vrm") includes nod (auto-both), smile (both), formal_bow (vrm); excludes wave (arm-conflict cubism-only)', () => {
     const actions = map.listActions('vrm');
     const names = actions.map((a) => a.name);
-    expect(names).not.toContain('nod');
+    // nod (head.pitch + body.y) auto-derives to both; no arm channels
+    expect(names).toContain('nod');
     expect(names).toContain('smile');
     expect(names).toContain('formal_bow');
+    // wave writes arm.right which conflicts with VRM idle loop — explicit cubism-only
+    expect(names).not.toContain('wave');
   });
 
-  it('listActions("cubism") excludes formal_bow (vrm-only) but includes nod and smile', () => {
+  it('listActions("cubism") excludes formal_bow (vrm-only) but includes nod, smile, and wave', () => {
     const actions = map.listActions('cubism');
     const names = actions.map((a) => a.name);
     expect(names).not.toContain('formal_bow');
     expect(names).toContain('nod');
     expect(names).toContain('smile');
+    expect(names).toContain('wave');
   });
 
   it('listActions(null) returns all actions including both nod and formal_bow', () => {

@@ -22,15 +22,63 @@ function isClipEntry(e: ActionMapEntry): e is ActionMapEntryClip {
 }
 
 /**
+ * Collect every channel name an envelope-kind entry writes this entry
+ * (params + accompaniment + endPose). Returns empty array for clip-kind —
+ * clip channels are inspected separately after preload.
+ */
+function collectEnvelopeChannels(entry: ActionMapEntry): string[] {
+  if (isClipEntry(entry)) return [];
+  const out: string[] = [];
+  for (const p of entry.params) out.push(p.channel);
+  for (const p of entry.accompaniment ?? []) out.push(p.channel);
+  for (const p of entry.endPose ?? []) out.push(p.channel);
+  return out;
+}
+
+/**
+ * Auto-derive model compatibility from channel names when no explicit
+ * `modelSupport` is declared.
+ *
+ * Rule: a channel whose name begins with `vrm.` is only renderable on the
+ * VRM pipeline (the Cubism renderer has no such channel aliases). An entry
+ * touching ANY `vrm.*` channel is therefore VRM-only. All other entries
+ * auto-derive to `'both'` (renderer-side channel-map resolves `head.*`,
+ * `body.*`, `eye.*`, `brow`, `mouth.*` across both models).
+ *
+ * NOTE: This filter ONLY encodes "can the renderer map these channels". It
+ * does NOT encode runtime pose conflicts between actions and the currently
+ * loaded VRM idle loop clip — e.g. `arm.left` / `arm.right` aliases collide
+ * with the peace_sign idle's `vrm.leftUpperArm` / `vrm.rightUpperArm`. Those
+ * cases still use explicit `modelSupport: 'cubism'` in the action-map, and
+ * see `.claude-learnings/avatar.md` for the dynamic-conflict-set TODO.
+ */
+function deriveFromChannels(channels: readonly string[]): 'vrm' | 'both' {
+  for (const c of channels) {
+    if (c.startsWith('vrm.')) return 'vrm';
+  }
+  return 'both';
+}
+
+/**
  * Returns true when the entry is compatible with the given model kind.
- * Absent modelSupport (undefined) and 'both' are compatible with everything.
+ * Explicit `modelSupport` always wins. When absent, compatibility is
+ * auto-derived from the entry's channel names (see `deriveFromChannels`).
  * When modelKind is null, all entries are compatible (no filtering).
  */
-function isEntryCompatible(entry: ActionMapEntry, modelKind: ModelKind | null | undefined): boolean {
+function isEntryCompatible(
+  entry: ActionMapEntry,
+  modelKind: ModelKind | null | undefined,
+  clipChannels?: readonly string[],
+): boolean {
   if (modelKind == null) return true;
   const ms = entry.modelSupport;
-  if (ms == null || ms === 'both') return true;
-  return ms === modelKind;
+  if (ms === 'both') return true;
+  if (ms === 'cubism' || ms === 'vrm') return ms === modelKind;
+  // No explicit declaration — auto-derive from channels.
+  const channels = isClipEntry(entry) ? (clipChannels ?? []) : collectEnvelopeChannels(entry);
+  const derived = deriveFromChannels(channels);
+  if (derived === 'both') return true;
+  return derived === modelKind;
 }
 
 export class ActionMap {
@@ -124,7 +172,9 @@ export class ActionMap {
     // This ensures an incompatible variant is never accidentally picked and
     // then returned as null — the whole action correctly returns null when
     // no compatible variant exists.
-    const variants = modelKind != null ? allVariants.filter((v) => isEntryCompatible(v, modelKind)) : allVariants;
+    const clipChannels = this.clipChannelsFor(action);
+    const variants =
+      modelKind != null ? allVariants.filter((v) => isEntryCompatible(v, modelKind, clipChannels)) : allVariants;
     if (variants.length === 0) return null;
 
     const idx = Math.floor(Math.random() * variants.length);
@@ -176,7 +226,9 @@ export class ActionMap {
     for (const [name, raw] of Object.entries(this.entries)) {
       const allVariants = Array.isArray(raw) ? raw : [raw];
       // Filter to compatible variants; skip action entirely if none are compatible.
-      const variants = modelKind != null ? allVariants.filter((v) => isEntryCompatible(v, modelKind)) : allVariants;
+      const clipChannels = this.clipChannelsFor(name);
+      const variants =
+        modelKind != null ? allVariants.filter((v) => isEntryCompatible(v, modelKind, clipChannels)) : allVariants;
       if (variants.length === 0) continue;
       const channels: string[] = [];
       const seen = new Set<string>();
@@ -223,5 +275,21 @@ export class ActionMap {
   getClipByActionName(name: string): IdleClip | null {
     const clips = this.clipsByName.get(name);
     return clips?.[0] ?? null;
+  }
+
+  /**
+   * Return the deduplicated set of channel names written by any preloaded
+   * clip variant for this action, or undefined if no clips are loaded under
+   * this name. Used for clip-kind auto-derivation when `modelSupport` is
+   * absent.
+   */
+  private clipChannelsFor(name: string): readonly string[] | undefined {
+    const clips = this.clipsByName.get(name);
+    if (!clips || clips.length === 0) return undefined;
+    const seen = new Set<string>();
+    for (const clip of clips) {
+      for (const track of clip.tracks) seen.add(track.channel);
+    }
+    return [...seen];
   }
 }

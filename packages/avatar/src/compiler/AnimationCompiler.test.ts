@@ -1358,8 +1358,10 @@ describe('AnimationCompiler — model-aware listActions and resolveAction', () =
     const names = actions.map((a) => a.name);
     // formal_bow is vrm-only in the default map — must be absent for cubism
     expect(names).not.toContain('formal_bow');
-    // nod is cubism — must be present
+    // nod is head/body-only (no explicit modelSupport → auto-derives to both)
     expect(names).toContain('nod');
+    // wave carries arm.* which conflicts with VRM idle; explicit cubism-only
+    expect(names).toContain('wave');
   });
 
   test('listActions includes vrm-only actions when model is vrm', () => {
@@ -1368,8 +1370,11 @@ describe('AnimationCompiler — model-aware listActions and resolveAction', () =
     const actions = compiler.listActions();
     const names = actions.map((a) => a.name);
     expect(names).toContain('formal_bow');
-    // nod is cubism-only — must not appear for vrm
-    expect(names).not.toContain('nod');
+    // nod auto-derives to both (head.pitch + body.y, no vrm.* prefix, no arm conflict)
+    expect(names).toContain('nod');
+    // wave is still explicitly cubism-only due to arm.* channel conflicts
+    // with the VRM idle loop's absolute-pose bone tracks
+    expect(names).not.toContain('wave');
   });
 
   test('resolveAction returns null for vrm-only action when model is cubism', () => {
