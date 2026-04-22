@@ -28,6 +28,18 @@ export interface AnimationLayer {
   readonly modelSupport?: readonly ModelKind[];
 
   /**
+   * Optional: declare that `sample()` output represents absolute-pose scalars
+   * rather than delta/ambient contributions. Absolute layers are routed into
+   * `LayerFrame.scalarBypass` and enter the compiler's bypass pipeline
+   * (neither `ambientGain × weight` scaling, nor spring-damper smoothing,
+   * nor channelBaseline accumulation). Use this for layers whose scalar
+   * output is a world-space or absolute pose value that must not fade with
+   * activity state or lag behind via spring response — e.g. `WalkingLayer`
+   * root motion and walk-cycle bone Euler tracks. Default false.
+   */
+  readonly scalarIsAbsolute?: boolean;
+
+  /**
    * Sample the layer at wall-clock time `nowMs`. Returns a partial channel map
    * — channels absent from the return value contribute nothing this tick.
    *

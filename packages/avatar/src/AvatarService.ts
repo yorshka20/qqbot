@@ -109,6 +109,40 @@ export class AvatarService {
             this.compiler?.setCurrentModelKind(kind);
             logger.info(`[AvatarService] currentModelKind -> ${kind}`);
           },
+          // HUD / LLM locomotion intents. Each semantic kind dispatches to
+          // the matching WalkingLayer primitive. The Promise rejects with
+          // WalkInterruptedError when superseded by a newer command — we
+          // swallow it here so fire-and-forget WS delivery never yields an
+          // unhandled rejection.
+          onWalkCommand: (data) => {
+            const swallow = (p: Promise<void>, label: string): void => {
+              p.catch((err: unknown) => {
+                const interrupted = err instanceof Error && err.name === 'WalkInterruptedError';
+                if (interrupted) return;
+                logger.warn(`[AvatarService] walk-command '${label}' failed: ${(err as Error)?.message ?? err}`);
+              });
+            };
+            switch (data.kind) {
+              case 'forward':
+                swallow(this.walkForward(data.meters), 'forward');
+                return;
+              case 'strafe':
+                swallow(this.strafe(data.meters), 'strafe');
+                return;
+              case 'turn':
+                swallow(this.turn(data.radians), 'turn');
+                return;
+              case 'orbit':
+                swallow(this.orbit(data), 'orbit');
+                return;
+              case 'to':
+                swallow(this.walkTo(data.x, data.z, data.face), 'to');
+                return;
+              case 'stop':
+                this.stopMotion();
+                return;
+            }
+          },
         },
       );
     }
@@ -350,6 +384,7 @@ export class AvatarService {
       this.frameCount = 0;
       this.lastFpsSampleAt = now;
       const activity = this.stateMachine.current;
+      const walkingLayer = this.getWalkingLayer();
       this.previewServer.updateStatus({
         pose: activity.pose,
         ambientGain: activity.ambientGain,
@@ -358,6 +393,9 @@ export class AvatarService {
         queueLength: this.compiler.getQueueLength(),
         channelBaseline: this.compiler.getChannelBaselineSnapshot(),
         activeAnimationDetails: this.compiler.getActiveAnimationDetails(),
+        // Authoritative pose broadcast so HUDs can display without replicating
+        // bot state via frame params. Absent when no WalkingLayer (cubism).
+        rootPosition: walkingLayer?.getPosition(),
       });
     }, 1000);
   }
@@ -469,16 +507,53 @@ export class AvatarService {
     gazeCapable?.setGazeTarget?.(target);
   }
 
+  /**
+   * Low-level: walk to absolute scene coordinates. Kept on AvatarService for programmatic
+   * / LLM use when the caller already has world coords. HUD and semantic callers should
+   * prefer the `walkForward / strafe / turn / orbit` primitives below.
+   */
   walkTo(x: number, z: number, face?: number): Promise<void> {
     const layer = this.getWalkingLayer();
-    if (!layer) {
-      return Promise.reject(new Error('[AvatarService] WalkingLayer is not available'));
-    }
+    if (!layer) return Promise.reject(new Error('[AvatarService] WalkingLayer is not available'));
     return layer.walkTo(x, z, face);
   }
 
-  stopWalk(): void {
+  /** Translate `meters` along the character's current facing. Negative = backward. */
+  walkForward(meters: number): Promise<void> {
+    const layer = this.getWalkingLayer();
+    if (!layer) return Promise.reject(new Error('[AvatarService] WalkingLayer is not available'));
+    return layer.walkForward(meters);
+  }
+
+  /** Strafe `meters` perpendicular to facing. Positive = character's right, negative = left. */
+  strafe(meters: number): Promise<void> {
+    const layer = this.getWalkingLayer();
+    if (!layer) return Promise.reject(new Error('[AvatarService] WalkingLayer is not available'));
+    return layer.strafe(meters);
+  }
+
+  /** Turn in place by `radians`. Positive = character's right (CW from above). */
+  turn(radians: number): Promise<void> {
+    const layer = this.getWalkingLayer();
+    if (!layer) return Promise.reject(new Error('[AvatarService] WalkingLayer is not available'));
+    return layer.turn(radians);
+  }
+
+  /** Orbit around a centre (defaults to `radius` metres left of character). */
+  orbit(opts: Parameters<WalkingLayer['orbit']>[0]): Promise<void> {
+    const layer = this.getWalkingLayer();
+    if (!layer) return Promise.reject(new Error('[AvatarService] WalkingLayer is not available'));
+    return layer.orbit(opts);
+  }
+
+  /** Interrupt any pending motion. Legacy alias is `stopWalk` (kept for now). */
+  stopMotion(): void {
     this.getWalkingLayer()?.stop();
+  }
+
+  /** @deprecated — prefer `stopMotion`. */
+  stopWalk(): void {
+    this.stopMotion();
   }
 
   getCurrentPosition(): { x: number; z: number; facing: number } {

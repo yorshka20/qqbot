@@ -2,10 +2,21 @@ import type { AvatarActivity } from '../../state/types';
 import type { ModelKind } from '../types';
 import type { AnimationLayer } from './types';
 
-/** Aggregated per-tick layer output — scalar (weighted, ambient-gated) and
- *  quat (absolute, neither weighted nor ambient-gated). */
+/** Aggregated per-tick layer output.
+ *  - `scalar` — weighted, ambient-gated, additively merged. Delta-style
+ *    contributions (breath, blink, perlin, gaze) go here.
+ *  - `scalarBypass` — absolute-pose scalars from layers declaring
+ *    `scalarIsAbsolute`. Neither weight nor ambientGain applies; downstream
+ *    consumers (AnimationCompiler) route these into the bypass pipeline,
+ *    skipping spring-damper smoothing and channelBaseline accumulation.
+ *    Last-writer-wins on key collision (absolute layers targeting the same
+ *    channel should not coexist).
+ *  - `quat` — absolute quaternion poses, neither weighted nor ambient-gated,
+ *    last-writer-wins. Same bypass semantics as `scalarBypass`.
+ */
 export interface LayerFrame {
   scalar: Record<string, number>;
+  scalarBypass: Record<string, number>;
   quat: Record<string, { x: number; y: number; z: number; w: number }>;
 }
 
@@ -73,6 +84,7 @@ export class LayerManager {
   ): LayerFrame {
     const gateValue = activity.ambientGain;
     const scalar: Record<string, number> = {};
+    const scalarBypass: Record<string, number> = {};
     const quat: Record<string, { x: number; y: number; z: number; w: number }> = {};
 
     for (const layer of this.layers.values()) {
@@ -85,15 +97,25 @@ export class LayerManager {
       }
 
       const weight = layer.getWeight();
-      const effective = gateValue * weight;
+      const isAbsolute = layer.scalarIsAbsolute === true;
+      // Absolute layers always run (no ambient/weight gate). Delta layers skip
+      // if the effective gate is zero — the common "speaking" state for
+      // breath/blink/perlin.
+      const effective = isAbsolute ? 1.0 : gateValue * weight;
 
-      // Scalar path — ambient-gated and weight-scaled. Skipped entirely when
-      // the gate is closed so delta-style layers (breath/blink/perlin) go
-      // silent during non-idle states.
       if (effective !== 0) {
         const contribs = layer.sample(nowMs, activity, activeChannels);
-        for (const [channel, value] of Object.entries(contribs)) {
-          scalar[channel] = (scalar[channel] ?? 0) + value * effective;
+        if (isAbsolute) {
+          // Bypass path — raw values, last-writer-wins. Routed by
+          // AnimationCompiler into the bypass pipeline (no spring, no baseline).
+          for (const [channel, value] of Object.entries(contribs)) {
+            scalarBypass[channel] = value;
+          }
+        } else {
+          // Delta path — ambient-gated, weight-scaled, additively merged.
+          for (const [channel, value] of Object.entries(contribs)) {
+            scalar[channel] = (scalar[channel] ?? 0) + value * effective;
+          }
         }
       }
 
@@ -108,6 +130,6 @@ export class LayerManager {
         }
       }
     }
-    return { scalar, quat };
+    return { scalar, scalarBypass, quat };
   }
 }

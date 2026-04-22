@@ -33,6 +33,13 @@ export interface PreviewStatus {
     /** Added in B 2/3: whether the action plays as ADSR envelope or as a sampled clip. Optional for forward-compat with older snapshots. */
     kind?: 'envelope' | 'clip';
   }>;
+  /**
+   * Authoritative root pose from the WalkingLayer. Broadcast so HUDs can
+   * display current position without deriving it from frame params (which
+   * would be renderer-side replication of bot state). Absent when no
+   * WalkingLayer is registered (e.g. cubism model).
+   */
+  rootPosition?: { x: number; z: number; facing: number };
 }
 
 export interface FrameMessage {
@@ -183,12 +190,55 @@ export interface HelloMessage {
   protocolVersion: 1;
 }
 
+/**
+ * Client → server: semantic locomotion command. All avatar movement intents
+ * flow through this single discriminated union so the HUD (and eventually the
+ * LLM) never touches world coordinates. The bot's `WalkingLayer` resolves
+ * each `kind` into an authoritative trajectory and emits the usual
+ * `vrm.root.*` channels on the frame stream — the wire to the renderer is
+ * unchanged (always absolute x / z / rotY).
+ *
+ * Direction / sign conventions:
+ *  - `forward.meters`: positive = along current facing, negative = backward.
+ *  - `strafe.meters`: positive = character's own right, negative = own left.
+ *    Character's right is always resolved from their facing, so "left" stays
+ *    consistent regardless of camera / viewer pose.
+ *  - `turn.radians`: positive = turn to character's own right (CW from above,
+ *    matches Three.js Ry sign). Negative = left.
+ *  - `orbit.sweepRad`: positive = CCW from above (math convention). With the
+ *    default centre derived to the character's left, positive sweep arcs the
+ *    character leftward.
+ *
+ * A new command interrupts any pending motion server-side (prior Promise
+ * rejects with WalkInterruptedError, which the bot swallows internally in
+ * this WS path). Fire-and-forget; no ack.
+ */
+export type WalkCommandData =
+  | { kind: 'forward'; meters: number }
+  | { kind: 'strafe'; meters: number }
+  | { kind: 'turn'; radians: number }
+  | {
+      kind: 'orbit';
+      sweepRad: number;
+      radius?: number;
+      center?: { x: number; z: number };
+      keepFacingTangent?: boolean;
+    }
+  | { kind: 'to'; x: number; z: number; face?: number }
+  | { kind: 'stop' };
+
+export interface WalkCommandMessage {
+  type: 'walk-command';
+  data: WalkCommandData;
+}
+
 export type PreviewClientMessage =
   | TriggerMessage
   | SpeakMessage
   | AmbientAudioMessage
   | TunableParamsRequestMessage
   | TunableParamSetMessage
-  | HelloMessage;
+  | HelloMessage
+  | WalkCommandMessage;
 
 export type PreviewMessage = FrameMessage | StatusMessage | AudioMessage | TunableParamsMessage;

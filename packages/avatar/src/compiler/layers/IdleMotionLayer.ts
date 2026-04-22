@@ -185,6 +185,13 @@ export class IdleMotionLayer extends BaseLayer {
         this.wasIdle = false;
         elapsedSec = this.frozenElapsedSec;
       }
+      // TODO(perf): while gate is off `elapsedSec` is constant, so
+      // `sampleClip(loopClip, frozenElapsedSec)` returns the same frame every
+      // tick. Cache the sampled frame until `frozenElapsedSec` changes (i.e.
+      // until gate reopens) to skip ~100 binary-search track samples per
+      // off-gate tick. Deferred: no measured perf problem today, and caching
+      // here would add state that could mask bugs in the freeze/resume
+      // transition. Revisit if profiling flags this site.
       return sampleClip(loopClip, elapsedSec, this.config.defaultEasing);
     }
 

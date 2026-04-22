@@ -63,6 +63,23 @@ function sampleTick(layer: WalkingLayer, nowMs: number): Record<string, number> 
   return layer.sample(nowMs, IDLE);
 }
 
+describe('WalkingLayer – config defaults', () => {
+  // Regression: `{ ...DEFAULT, ...{speedMps: undefined} }` used to silently
+  // clobber the default to undefined, producing NaN frames on the wire —
+  // renderer saw `vrm.root.x: null` and the avatar only rotated.
+  test('undefined fields in config fall back to defaults (no NaN in frame)', () => {
+    const layer = new WalkingLayer({ speedMps: undefined, arrivalThresholdM: undefined });
+    layer.walkTo(1, 0, 0);
+    const frame = layer.sample(16.67, IDLE);
+    expect(Number.isFinite(frame['vrm.root.x'])).toBe(true);
+    expect(Number.isFinite(frame['vrm.root.z'])).toBe(true);
+    expect(Number.isFinite(frame['vrm.root.rotY'])).toBe(true);
+    // A single ~16ms tick at default 1.0 m/s should move ~16mm toward +x.
+    expect(frame['vrm.root.x']).toBeGreaterThan(0);
+    expect(frame['vrm.root.x']).toBeLessThan(0.1);
+  });
+});
+
 describe('WalkingLayer', () => {
   test('walkTo(1, 0, 0) converges within about 1.1s and resolves at the target', async () => {
     const layer = new WalkingLayer();
@@ -90,27 +107,40 @@ describe('WalkingLayer', () => {
     expect(pos.facing).toBeCloseTo(0, 3);
   });
 
-  test('walkTo(0, 0, Math.PI / 2) snaps facing immediately and emits the final root frame', async () => {
+  test('walkTo(0, 0, Math.PI / 2) interpolates facing at angularSpeed and arrives within the computed time', async () => {
+    // Default angularSpeedRadPerSec = π, so a 90° turn (π/2 rad) resolves in ~500ms.
+    // The old snap-on-arrival semantic is gone; facing now interpolates linearly at the
+    // configured angular speed just like translation interpolates at speedMps.
     const layer = new WalkingLayer();
     let arrived: { x: number; z: number; facing: number } | null = null;
-
+    let settledAt: number | null = null;
+    let currentTime = 0;
     layer.onArrive((pos) => {
       arrived = pos;
     });
 
-    const walk = layer.walkTo(0, 0, Math.PI / 2);
-    const frame = sampleTick(layer, 0);
-    await flush();
+    const walk = layer.walkTo(0, 0, Math.PI / 2).then(() => {
+      settledAt = currentTime;
+    });
+
+    // Advance at 30Hz for up to 1s; expected arrival around 500ms.
+    for (let i = 0; i < 35 && settledAt === null; i++) {
+      currentTime = i * TICK_MS;
+      sampleTick(layer, currentTime);
+      await flush();
+    }
     await walk;
 
-    expect(frame).toEqual({
-      'vrm.root.x': 0,
-      'vrm.root.z': 0,
-      'vrm.root.rotY': Math.PI / 2,
-    });
+    expect(settledAt).not.toBeNull();
+    // Allow generous slack for tick granularity + arrival threshold.
+    expect(settledAt!).toBeLessThanOrEqual(600);
+    expect(settledAt!).toBeGreaterThanOrEqual(450);
+
     expect(arrived).not.toBeNull();
-    expect(arrived!).toEqual({ x: 0, z: 0, facing: Math.PI / 2 });
-    expect(layer.getPosition()).toEqual({ x: 0, z: 0, facing: Math.PI / 2 });
+    expect(arrived!.x).toBeCloseTo(0, 6);
+    expect(arrived!.z).toBeCloseTo(0, 6);
+    expect(arrived!.facing).toBeCloseTo(Math.PI / 2, 3);
+    expect(layer.getPosition().facing).toBeCloseTo(Math.PI / 2, 3);
   });
 
   test('walkTo() interrupts the previous promise and reports the mid-walk position', async () => {
@@ -261,18 +291,23 @@ describe('WalkingLayer – walk-cycle clip', () => {
     const layer = new WalkingLayer();
     layer.setWalkCycleClip(FAKE_CLIP);
     layer.walkTo(10, 0, 0);
-    const frame = sampleTick(layer, 0);
-    // Root channels still present (use direct key access — toHaveProperty treats '.' as nested path).
+    const nowMs = 0;
+    const frame = sampleTick(layer, nowMs);
+    // Root channels still present (scalar path; use direct key access —
+    // toHaveProperty treats '.' as nested path).
     expect(frame['vrm.root.x']).toBeDefined();
     expect(frame['vrm.root.z']).toBeDefined();
     expect(frame['vrm.root.rotY']).toBeDefined();
-    // Scalar bone channel from clip
+    // Scalar bone channel from clip routes through sample() (absolute-scalar
+    // bypass pipeline in the compiler, not ambient-gated).
     expect(frame['vrm.head.y']).toBeCloseTo(0.1, 5);
-    // Quat bone channel flattened to qx/qy/qz/qw
-    expect(frame['vrm.hips.qx']).toBeDefined();
-    expect(frame['vrm.hips.qy']).toBeDefined();
-    expect(frame['vrm.hips.qz']).toBeDefined();
-    expect(frame['vrm.hips.qw']).toBeCloseTo(1, 5);
+    // Quat bone channels are returned from sampleQuat() — NOT flattened into
+    // the scalar return of sample() (would otherwise bypass the quat-path
+    // bypass and go through spring-damper with invalid unit-quat math).
+    expect(frame['vrm.hips.qx']).toBeUndefined();
+    const quatFrame = layer.sampleQuat(nowMs, IDLE);
+    expect(quatFrame['vrm.hips']).toBeDefined();
+    expect(quatFrame['vrm.hips'].w).toBeCloseTo(1, 5);
   });
 
   test('clip vrm.root.x track is suppressed; root motion is WalkingLayer-only', () => {
@@ -354,9 +389,155 @@ describe('WalkingLayer – walk-cycle clip', () => {
     const rejection = layer.walkTo(100, 0, 0).catch((e: unknown) => e);
     layer.sample(0, IDLE); // walking tick — clip channels appear
     layer.stop();
-    const frame = layer.sample(100, IDLE); // pending is null → must be {}
+    const frame = layer.sample(100, IDLE); // motion cleared → must be {}
     await flush();
     expect(frame).toEqual({});
     expect(await rejection).toBeInstanceOf(WalkInterruptedError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Semantic primitives — character-local frame resolution
+// ---------------------------------------------------------------------------
+describe('WalkingLayer – semantic primitives', () => {
+  async function runUntilDone(layer: WalkingLayer, p: Promise<void>, maxTicks = 200): Promise<number> {
+    let t = 0;
+    let settled = false;
+    void p.finally(() => {
+      settled = true;
+    });
+    for (let i = 0; i < maxTicks && !settled; i++) {
+      t = i * TICK_MS;
+      sampleTick(layer, t);
+      await flush();
+    }
+    await p;
+    return t;
+  }
+
+  test('walkForward translates along current facing (+Z when facing=0)', async () => {
+    const layer = new WalkingLayer();
+    await runUntilDone(layer, layer.walkForward(1));
+    const pos = layer.getPosition();
+    expect(pos.x).toBeCloseTo(0, 3);
+    expect(pos.z).toBeCloseTo(1, 3);
+    expect(pos.facing).toBeCloseTo(0, 6); // facing preserved
+  });
+
+  test('walkForward(negative) walks backward', async () => {
+    const layer = new WalkingLayer();
+    await runUntilDone(layer, layer.walkForward(-0.5));
+    const pos = layer.getPosition();
+    expect(pos.z).toBeCloseTo(-0.5, 3);
+  });
+
+  test('walkForward respects rotated facing (+X when facing=+π/2)', async () => {
+    // Three.js Y rotation: facing=+π/2 → forward_world = (sin π/2, cos π/2) = (1, 0) = +X.
+    // Bypass the turn() path by seeding facing through walkTo (which interpolates in a long
+    // step at maxTicks default) — simpler: directly call turn first, await it, then walkForward.
+    const layer = new WalkingLayer();
+    await runUntilDone(layer, layer.turn(Math.PI / 2));
+    await runUntilDone(layer, layer.walkForward(1));
+    const pos = layer.getPosition();
+    expect(pos.x).toBeCloseTo(1, 3);
+    expect(pos.z).toBeCloseTo(0, 3);
+  });
+
+  test('strafe(+m) moves to character-right (+X when facing=0)', async () => {
+    const layer = new WalkingLayer();
+    await runUntilDone(layer, layer.strafe(1));
+    const pos = layer.getPosition();
+    expect(pos.x).toBeCloseTo(1, 3);
+    expect(pos.z).toBeCloseTo(0, 3);
+    expect(pos.facing).toBeCloseTo(0, 6);
+  });
+
+  test("strafe is character-local: same +m gives mirrored world motion when facing=π", async () => {
+    // facing=+π → character faces -Z. Their own right is now -X in world. So strafe(+1)
+    // should move character to -X.
+    const layer = new WalkingLayer();
+    await runUntilDone(layer, layer.turn(Math.PI));
+    await runUntilDone(layer, layer.strafe(1));
+    const pos = layer.getPosition();
+    expect(pos.x).toBeCloseTo(-1, 3);
+    expect(pos.z).toBeCloseTo(0, 3);
+  });
+
+  test('turn(+rad) rotates facing by +rad (positive = character right)', async () => {
+    const layer = new WalkingLayer();
+    await runUntilDone(layer, layer.turn(Math.PI / 4));
+    expect(layer.getPosition().facing).toBeCloseTo(Math.PI / 4, 3);
+  });
+
+  test('turn does not change x/z', async () => {
+    const layer = new WalkingLayer();
+    await runUntilDone(layer, layer.turn(Math.PI / 2));
+    const pos = layer.getPosition();
+    expect(pos.x).toBeCloseTo(0, 6);
+    expect(pos.z).toBeCloseTo(0, 6);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Orbit
+// ---------------------------------------------------------------------------
+describe('WalkingLayer – orbit', () => {
+  async function runUntilDone(layer: WalkingLayer, p: Promise<void>, maxTicks = 400): Promise<void> {
+    let settled = false;
+    void p.finally(() => {
+      settled = true;
+    });
+    for (let i = 0; i < maxTicks && !settled; i++) {
+      sampleTick(layer, i * TICK_MS);
+      await flush();
+    }
+    await p;
+  }
+
+  test('orbit(sweepRad=2π) returns the character to start position', async () => {
+    const layer = new WalkingLayer({ speedMps: 2.0 }); // faster so the 2π*radius distance resolves in reasonable tick count
+    await runUntilDone(layer, layer.orbit({ sweepRad: 2 * Math.PI, radius: 1.0 }));
+    const pos = layer.getPosition();
+    // Full revolution — character returns to ~origin within thresholdM.
+    expect(pos.x).toBeCloseTo(0, 2);
+    expect(pos.z).toBeCloseTo(0, 2);
+  });
+
+  test('orbit with keepFacingTangent=true rotates facing along the arc', async () => {
+    // Start at (0,0) facing=0. Default centre is radius to the left = (-1, 0). Start polar
+    // angle around centre = atan2(0, 1) = 0. Half CCW sweep brings character to (-2, 0)
+    // with tangent direction pointing -Z (facing = π).
+    const layer = new WalkingLayer({ speedMps: 2.0 });
+    await runUntilDone(layer, layer.orbit({ sweepRad: Math.PI, radius: 1.0 }));
+    const pos = layer.getPosition();
+    expect(pos.x).toBeCloseTo(-2, 2);
+    expect(pos.z).toBeCloseTo(0, 2);
+    // Facing ≈ ±π (both represent "looking -Z"); normaliseAngle returns one in [-π, π].
+    expect(Math.abs(pos.facing)).toBeCloseTo(Math.PI, 2);
+  });
+
+  test('orbit with keepFacingTangent=false preserves start facing when no targetFacing given', async () => {
+    const layer = new WalkingLayer({ speedMps: 2.0 });
+    await runUntilDone(
+      layer,
+      layer.orbit({ sweepRad: Math.PI, radius: 1.0, keepFacingTangent: false }),
+    );
+    expect(layer.getPosition().facing).toBeCloseTo(0, 3);
+  });
+
+  test('orbit emits only vrm.root.* scalar channels (no stray body channels)', () => {
+    const layer = new WalkingLayer();
+    layer.orbit({ sweepRad: 2 * Math.PI, radius: 1.0 });
+    const frame = sampleTick(layer, 0);
+    expect(Object.keys(frame).sort()).toEqual(['vrm.root.rotY', 'vrm.root.x', 'vrm.root.z'].sort());
+  });
+
+  test('a new orbit interrupts a pending linear walk', async () => {
+    const layer = new WalkingLayer();
+    const first = layer.walkTo(100, 0, 0).catch((e: unknown) => e as WalkInterruptedError);
+    for (let i = 0; i < 5; i++) sampleTick(layer, i * TICK_MS);
+    layer.orbit({ sweepRad: Math.PI / 4, radius: 1.0 });
+    const err = await first;
+    expect(err).toBeInstanceOf(WalkInterruptedError);
   });
 });

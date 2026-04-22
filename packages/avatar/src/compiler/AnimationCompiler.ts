@@ -93,12 +93,20 @@ export class AnimationCompiler extends EventEmitter {
   /** Renderer model format last declared via hello handshake. Null = unknown (no hello received). */
   private currentModelKind: ModelKind | null = null;
   /**
-   * Channels emitted by quat tracks this tick (e.g. `vrm.hips.qx`).
-   * Cleared at the start of each tick. Channels in this set bypass spring-damper
-   * smoothing and channel-baseline addition; they disappear from `currentParams`
-   * on the first tick they are not contributed.
+   * Channels that bypass spring-damper smoothing and channel-baseline
+   * addition this tick. Populated by two routes:
+   *
+   *   1. Quat contributions (`vrm.<bone>.qx/qy/qz/qw`) — the four scalar
+   *      channels emitted per quat bone.
+   *   2. Absolute-scalar layer contributions (`LayerFrame.scalarBypass`) —
+   *      layers declaring `scalarIsAbsolute`, e.g. `WalkingLayer` root +
+   *      walk-cycle bone Euler tracks.
+   *
+   * Cleared at the start of each tick. Values in this set are written
+   * directly into `currentParams` and disappear on the first tick they are
+   * not contributed (no spring state is created for them).
    */
-  private quatFrameChannels: Set<string> = new Set();
+  private bypassFrameChannels: Set<string> = new Set();
 
   constructor(config: Partial<CompilerConfig> = {}, actionMapPath?: string) {
     super();
@@ -565,7 +573,7 @@ export class AnimationCompiler extends EventEmitter {
     const now = Date.now();
 
     // 0. Clear quat frame channel set from the previous tick.
-    this.quatFrameChannels.clear();
+    this.bypassFrameChannels.clear();
 
     // 1. Compute dt first so downstream steps share a consistent dt this tick.
     //    Clamp to 100ms to defend against pause/resume wall-clock gaps.
@@ -633,23 +641,30 @@ export class AnimationCompiler extends EventEmitter {
       }
     }
 
-    // 4b. Gather layer (continuous) contributions. Scalar is additively
-    //     merged, weighted, and ambient-gated by LayerManager; quat is
-    //     absolute-pose and arrives unscaled — we expand it into the same
-    //     `vrm.<bone>.q[xyzw]` channels as the discrete clip-path and mark
-    //     them as quat frame channels so downstream steps (baseline,
-    //     spring-damper) bypass them.
+    // 4b. Gather layer (continuous) contributions. Three routes:
+    //     - `scalar`: additively merged, weighted, ambient-gated by LayerManager.
+    //     - `scalarBypass`: absolute-pose scalars (e.g. WalkingLayer root /
+    //       walk-cycle bone Euler) — written directly, marked for bypass
+    //       (no spring-damper, no baseline). Last-writer-wins already
+    //       happened inside LayerManager.
+    //     - `quat`: absolute quaternion poses — expanded into the same
+    //       `vrm.<bone>.q[xyzw]` channels as the discrete clip-path and
+    //       marked for bypass.
     const layerFrame = this.layerManager.sample(now, this.currentActivity, activeAnimChannels, this.currentModelKind);
     const contributions: Record<string, number> = layerFrame.scalar;
+    for (const [ch, v] of Object.entries(layerFrame.scalarBypass)) {
+      contributions[ch] = v;
+      this.bypassFrameChannels.add(ch);
+    }
     for (const [bone, q] of Object.entries(layerFrame.quat)) {
       contributions[`${bone}.qx`] = q.x;
       contributions[`${bone}.qy`] = q.y;
       contributions[`${bone}.qz`] = q.z;
       contributions[`${bone}.qw`] = q.w;
-      this.quatFrameChannels.add(`${bone}.qx`);
-      this.quatFrameChannels.add(`${bone}.qy`);
-      this.quatFrameChannels.add(`${bone}.qz`);
-      this.quatFrameChannels.add(`${bone}.qw`);
+      this.bypassFrameChannels.add(`${bone}.qx`);
+      this.bypassFrameChannels.add(`${bone}.qy`);
+      this.bypassFrameChannels.add(`${bone}.qz`);
+      this.bypassFrameChannels.add(`${bone}.qw`);
     }
 
     // 5. Identify channels currently being faded out so new animations can
@@ -725,10 +740,10 @@ export class AnimationCompiler extends EventEmitter {
           contributions[`${bone}.qy`] = sq.y;
           contributions[`${bone}.qz`] = sq.z;
           contributions[`${bone}.qw`] = sq.w;
-          this.quatFrameChannels.add(`${bone}.qx`);
-          this.quatFrameChannels.add(`${bone}.qy`);
-          this.quatFrameChannels.add(`${bone}.qz`);
-          this.quatFrameChannels.add(`${bone}.qw`);
+          this.bypassFrameChannels.add(`${bone}.qx`);
+          this.bypassFrameChannels.add(`${bone}.qy`);
+          this.bypassFrameChannels.add(`${bone}.qz`);
+          this.bypassFrameChannels.add(`${bone}.qw`);
         }
 
         continue;
@@ -787,7 +802,7 @@ export class AnimationCompiler extends EventEmitter {
     //    their driving animation is gone. Quat frame channels bypass baseline —
     //    they are driven directly from the slerp path above.
     for (const [ch, v] of this.channelBaseline) {
-      if (this.quatFrameChannels.has(ch)) continue;
+      if (this.bypassFrameChannels.has(ch)) continue;
       contributions[ch] = (contributions[ch] ?? 0) + v;
     }
 
@@ -798,7 +813,7 @@ export class AnimationCompiler extends EventEmitter {
     //    not contributed (no spring state is created for them).
     const next: Record<string, number> = {};
     for (const id of Object.keys(contributions)) {
-      if (this.quatFrameChannels.has(id)) {
+      if (this.bypassFrameChannels.has(id)) {
         // Bypass spring for quat output channels — use raw contribution value.
         next[id] = contributions[id];
         continue;

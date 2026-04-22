@@ -19,6 +19,7 @@ import type {
   PreviewMessage,
   PreviewStatus,
   TunableSection,
+  WalkCommandData,
 } from './types';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -73,6 +74,13 @@ export interface PreviewServerHandlers {
    * (backward compatible default).
    */
   onModelKindChange?: (kind: ModelKind | null) => void;
+  /**
+   * HUD WalkPanel (or any other client) issued a semantic locomotion command.
+   * The `data` is a discriminated union — see `WalkCommandData` for kinds
+   * (forward / strafe / turn / orbit / to / stop). Interrupts any pending
+   * motion. Absent handler → message is silently dropped.
+   */
+  onWalkCommand?: (data: import('./types').WalkCommandData) => void;
 }
 
 export class PreviewServer {
@@ -236,7 +244,23 @@ export class PreviewServer {
             return;
           }
 
+          if (msg.type === 'walk-command') {
+            const validated = validateWalkCommand(msg.data);
+            if (!validated) return;
+            server.handlers.onWalkCommand?.(validated);
+            logger.info(`[PreviewServer] walk-command kind=${validated.kind}`);
+            return;
+          }
+
           if (msg.type === 'hello') {
+            // TODO(protocol-ext): `hello` currently carries `{modelKind,
+            // protocolVersion}`. Future extensions to consider once warranted:
+            //   - `modelSlug` — per-model identifier so bot can pick a
+            //     matching channel-map override (currently the renderer
+            //     resolves this client-side against /assets/models/<slug>/).
+            //   - `capabilities` — e.g. {supportsQuat: true, fps: 60}.
+            // Keep protocolVersion=1 until a new field becomes load-bearing;
+            // bumping the version is observable and should be deliberate.
             const { modelKind } = msg;
             // Validate modelKind: must be 'cubism', 'vrm', or null.
             if (modelKind !== 'cubism' && modelKind !== 'vrm' && modelKind !== null) {
@@ -308,5 +332,50 @@ export class PreviewServer {
         this.clients.delete(client);
       }
     }
+  }
+}
+
+/**
+ * Narrow an untrusted `walk-command` data payload to a valid `WalkCommandData`.
+ * Returns null (caller drops the message) on any shape / numeric mismatch.
+ * Finite-number checks guard against `NaN` / `Infinity` sneaking through JSON.
+ */
+function validateWalkCommand(data: unknown): WalkCommandData | null {
+  if (!data || typeof data !== 'object') return null;
+  const d = data as { kind?: unknown; [k: string]: unknown };
+  const isFiniteNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  switch (d.kind) {
+    case 'forward':
+      return isFiniteNum(d.meters) ? { kind: 'forward', meters: d.meters } : null;
+    case 'strafe':
+      return isFiniteNum(d.meters) ? { kind: 'strafe', meters: d.meters } : null;
+    case 'turn':
+      return isFiniteNum(d.radians) ? { kind: 'turn', radians: d.radians } : null;
+    case 'orbit': {
+      if (!isFiniteNum(d.sweepRad)) return null;
+      const out: Extract<WalkCommandData, { kind: 'orbit' }> = { kind: 'orbit', sweepRad: d.sweepRad };
+      if (isFiniteNum(d.radius)) out.radius = d.radius;
+      if (
+        d.center &&
+        typeof d.center === 'object' &&
+        isFiniteNum((d.center as { x: unknown }).x) &&
+        isFiniteNum((d.center as { z: unknown }).z)
+      ) {
+        const c = d.center as { x: number; z: number };
+        out.center = { x: c.x, z: c.z };
+      }
+      if (typeof d.keepFacingTangent === 'boolean') out.keepFacingTangent = d.keepFacingTangent;
+      return out;
+    }
+    case 'to': {
+      if (!isFiniteNum(d.x) || !isFiniteNum(d.z)) return null;
+      const out: Extract<WalkCommandData, { kind: 'to' }> = { kind: 'to', x: d.x, z: d.z };
+      if (isFiniteNum(d.face)) out.face = d.face;
+      return out;
+    }
+    case 'stop':
+      return { kind: 'stop' };
+    default:
+      return null;
   }
 }
