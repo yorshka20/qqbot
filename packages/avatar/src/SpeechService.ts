@@ -42,15 +42,24 @@ export class SpeechService {
   ) {}
 
   /**
-   * Kick off synthesis for `queue[1]` if not already in flight. Called twice
-   * per drain iteration: once at the top so it runs in parallel with the
-   * current utterance's synth+decode+broadcast, once after the queue shift
-   * to catch any utterance enqueued mid-iteration.
+   * Kick off synthesis for the utterance at `queue[index]` if nothing is
+   * already in flight. Called with different indices depending on where
+   * in the drain loop we are:
+   *
+   * - **Before shift** (iter top, `queue[0]` is the CURRENT head being
+   *   awaited): pass `1` — prime one ahead so the NEXT iteration can reuse.
+   * - **After shift** (iter bottom, `queue[0]` is the NEXT head because
+   *   the current head was just shifted out): pass `0` — prime the new head
+   *   directly.
+   *
+   * Passing the wrong index causes Sovits to receive synthesis requests
+   * out of sequence order, which manifests as dropped utterances on the
+   * renderer (single-track preemption: whichever chunk arrives last wins).
    */
-  private primeNext(): void {
+  private primeNext(index: number): void {
     if (this.inflightNext) return;
-    if (this.queue.length < 2) return;
-    const peek = this.queue[1];
+    if (this.queue.length <= index) return;
+    const peek = this.queue[index];
     const promise = this.provider.synthesize(peek);
     // Attach a no-op catch so an early rejection isn't surfaced as an
     // unhandled rejection before we reach the `await` site. The real `await`
@@ -109,9 +118,9 @@ export class SpeechService {
       }
 
       // Fire queue[1] synthesis NOW so it runs concurrently with queue[0]'s
-      // await + decode + broadcast. This is the key change vs. the old
-      // "prefetch after broadcast" behavior.
-      this.primeNext();
+      // await + decode + broadcast. Pre-shift: queue[0] is the current head,
+      // queue[1] is the NEXT iteration's head — that's what we want to prime.
+      this.primeNext(1);
 
       let result: SynthesisResult;
       try {
@@ -195,9 +204,13 @@ export class SpeechService {
         `[SpeechService] broadcast audio — id=${utteranceId} startAt=${startAtEpochMs} dur=${Math.round(accurateDurationMs)}ms lipSync=${envelope !== null}`,
       );
 
-      // Re-check in case new utterances were enqueued during decode/broadcast:
-      // queue[0] (the new head) may not have a prefetch yet.
-      this.primeNext();
+      // Post-shift: queue[0] is the NEW head. If TOP primeNext was skipped
+      // (because queue.length was 1 at iter start) but utterances have since
+      // been enqueued, we need to prime the new head so the next iteration
+      // can reuse it. Priming queue[1] here would leapfrog the new head and
+      // cause Sovits to receive synth requests out of order, which manifests
+      // as dropped utterances on the renderer's single-track preemption path.
+      this.primeNext(0);
     }
 
     this.draining = false;
