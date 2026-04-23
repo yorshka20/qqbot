@@ -1,5 +1,5 @@
 import type { CompilerConfig } from './compiler/types';
-import type { AvatarConfig } from './types';
+import type { AvatarConfig, AvatarMemoryExtractionConfig } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './types';
 
 /**
@@ -24,7 +24,59 @@ export function mergeAvatarConfig(raw: Record<string, unknown> | undefined): Ava
     llmProvider: optionalNonEmptyString(r.llmProvider),
     llmStream: r.llmStream === true,
     llmReasoningEffort: coerceReasoningEffort(r.llmReasoningEffort) ?? DEFAULT_AVATAR_CONFIG.llmReasoningEffort,
+    memoryExtraction: mergeMemoryExtraction(r.memoryExtraction),
   };
+}
+
+function mergeMemoryExtraction(patch: unknown): AvatarMemoryExtractionConfig {
+  const base = DEFAULT_AVATAR_CONFIG.memoryExtraction;
+  if (!isRecord(patch)) {
+    return { ...base, allowedSources: [...base.allowedSources] };
+  }
+  const debounceMs = coerceNonNegativeNumber(patch.debounceMs);
+  const maxEntries = coercePositiveInt(patch.maxEntries);
+  const minUserEntries = coercePositiveInt(patch.minUserEntries);
+  return {
+    enabled: patch.enabled === true,
+    debounceMs: debounceMs ?? base.debounceMs,
+    maxEntries: maxEntries ?? base.maxEntries,
+    minUserEntries: minUserEntries ?? base.minUserEntries,
+    // Explicitly-empty `[]` disables extraction entirely (same effect as
+    // `enabled: false`); missing/invalid falls back to the safe default
+    // so a typo in config doesn't accidentally open the allowlist.
+    allowedSources: coerceStringArray(patch.allowedSources) ?? [...base.allowedSources],
+    provider: optionalNonEmptyString(patch.provider),
+  };
+}
+
+function coerceStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item === 'string') {
+      const trimmed = item.trim();
+      if (trimmed.length > 0) {
+        out.push(trimmed);
+      }
+    }
+  }
+  return out;
+}
+
+function coerceNonNegativeNumber(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return value;
+}
+
+function coercePositiveInt(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+  return Math.floor(value);
 }
 
 const REASONING_EFFORT_VALUES = ['none', 'minimal', 'low', 'medium', 'high'] as const;

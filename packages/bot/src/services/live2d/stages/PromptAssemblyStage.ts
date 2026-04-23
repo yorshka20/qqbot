@@ -36,12 +36,13 @@ import { PromptMessageAssembler } from '@/ai/prompt/PromptMessageAssembler';
 import { renderAvatarPartials } from '@/ai/prompt/renderAvatarPartials';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { MemoryService } from '@/memory/MemoryService';
+import { formatMemoryMarkdown, type MemorySpeakerSection } from '@/memory/formatMemoryMarkdown';
+import { GROUP_MEMORY_USER_ID, type MemoryService } from '@/memory/MemoryService';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import type { Live2DSessionService } from '../Live2DSessionService';
 import type { Live2DContext, Live2DStage } from '../Live2DStage';
-import type { Live2DSource } from '../types';
+import type { Live2DBatchSender, Live2DSource } from '../types';
 
 /**
  * Template names for each source's scene + user-frame + few-shot example
@@ -239,20 +240,97 @@ export class PromptAssemblyStage implements Live2DStage {
       const memoryService = container.resolve<MemoryService>(DITokens.MEMORY_SERVICE);
       const groupId = ctx.threadId ? this.groupIdFromThread(ctx) : '';
       if (!groupId) return undefined;
-      const userId = ctx.input.sender?.uid;
-      const result = await memoryService.getFilteredMemoryForReplyAsync(groupId, userId, {
+
+      // Group memory: one lookup regardless of source. Use the batch-wide
+      // text (avatar-cmd utterance or danmaku summary) as the RAG query —
+      // group-scope facts care about the *scene*, not any single speaker.
+      const groupLookup = memoryService.getFilteredMemoryForReplyAsync(groupId, GROUP_MEMORY_USER_ID, {
         userMessage: ctx.input.text,
         alwaysIncludeScopes: ['instruction', 'rule'],
         minRelevanceScore: 0.7,
       });
-      const parts: string[] = [];
-      if (result.groupMemoryText?.trim()) parts.push(result.groupMemoryText.trim());
-      if (result.userMemoryText?.trim()) parts.push(result.userMemoryText.trim());
-      return parts.length > 0 ? parts.join('\n\n') : undefined;
+
+      // User memory: 0–N speakers depending on source.
+      // - bilibili-danmaku-batch: fan out across `meta.senders` (distinct
+      //   viewers this 3s window).
+      // - livemode / any single-sender source: one speaker from `input.sender.uid`.
+      // - avatar-cmd: no sender → empty array → no per-user lookups.
+      const candidates = this.collectMemoryCandidates(ctx);
+
+      // Filesystem pre-filter: don't fire Qdrant for uids that have no
+      // memory on disk (dominant case in live streams — most viewers are
+      // strangers). One `existsSync` per uid, cheap compared to RAG.
+      const withMemory = candidates.filter((c) => memoryService.hasUserMemory(groupId, c.uid));
+
+      const userLookups = withMemory.map(async (c) => {
+        const result = await memoryService.getFilteredMemoryForReplyAsync(groupId, c.uid, {
+          userMessage: c.queryText,
+          alwaysIncludeScopes: ['instruction', 'rule'],
+          minRelevanceScore: 0.7,
+        });
+        return { uid: c.uid, nick: c.nick, memoryText: result.userMemoryText } satisfies MemorySpeakerSection;
+      });
+
+      const [groupResult, userSections] = await Promise.all([groupLookup, Promise.all(userLookups)]);
+
+      const rendered = formatMemoryMarkdown({
+        groupMemoryText: groupResult.groupMemoryText,
+        userSections,
+      });
+      return rendered.length > 0 ? rendered : undefined;
     } catch (err) {
       logger.debug('[Live2D/prompt-assembly] memory resolve skipped (non-fatal):', err);
       return undefined;
     }
+  }
+
+  /**
+   * Flatten the candidate speaker list from whichever source populated it.
+   * `meta.senders` (bilibili batches) takes precedence over the single-
+   * valued `input.sender` so a caller that forwards both doesn't double-
+   * count a uid. Per-user `queryText` is that speaker's own utterance if
+   * available, else the batch-wide text — so RAG ranks a viewer's memory
+   * by *what they said*, not by the aggregate noise of the batch.
+   */
+  private collectMemoryCandidates(ctx: Live2DContext): Array<{ uid: string; nick: string; queryText: string }> {
+    const senders = this.readSendersMeta(ctx);
+    if (senders && senders.length > 0) {
+      return senders
+        .filter((s) => s.uid)
+        .map((s) => ({
+          uid: s.uid,
+          nick: s.name,
+          queryText: s.text?.trim() ? s.text : ctx.input.text,
+        }));
+    }
+    const singleUid = ctx.input.sender?.uid;
+    if (!singleUid) return [];
+    return [
+      {
+        uid: singleUid,
+        nick: ctx.input.sender?.name ?? '',
+        queryText: ctx.input.text,
+      },
+    ];
+  }
+
+  private readSendersMeta(ctx: Live2DContext): Live2DBatchSender[] | undefined {
+    const raw = ctx.input.meta?.senders;
+    if (!Array.isArray(raw)) return undefined;
+    const out: Live2DBatchSender[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== 'object') continue;
+      const uid = (item as { uid?: unknown }).uid;
+      const name = (item as { name?: unknown }).name;
+      const text = (item as { text?: unknown }).text;
+      if (typeof uid !== 'string' || !uid) continue;
+      out.push({
+        uid,
+        name: typeof name === 'string' ? name : '',
+        text: typeof text === 'string' ? text : undefined,
+      });
+    }
+    return out;
   }
 
   /**

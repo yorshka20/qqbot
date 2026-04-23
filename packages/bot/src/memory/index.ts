@@ -3,6 +3,8 @@
 // Re-export scope types from config for convenience
 export type { CoreScope, GroupCoreScope, ParsedScope, UserCoreScope } from '@/core/config/types/memory';
 export { ALL_CORE_SCOPES, GROUP_CORE_SCOPES, USER_CORE_SCOPES } from '@/core/config/types/memory';
+export type { FormatMemoryMarkdownInput, MemorySpeakerSection } from './formatMemoryMarkdown';
+export { buildSpeakerTag, formatMemoryMarkdown } from './formatMemoryMarkdown';
 export type { ExtractResult, MemoryExtractServiceOptions } from './MemoryExtractService';
 export { MemoryExtractService } from './MemoryExtractService';
 export type { FactMeta } from './MemoryFactMetaService';

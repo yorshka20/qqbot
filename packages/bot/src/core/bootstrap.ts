@@ -35,6 +35,7 @@ import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
 import { Live2DIdleTrigger } from '@/services/live2d/Live2DIdleTrigger';
+import { Live2DMemoryExtractionCoordinator } from '@/services/live2d/Live2DMemoryExtractionCoordinator';
 import { Live2DPipeline } from '@/services/live2d/Live2DPipeline';
 import { Live2DSessionService } from '@/services/live2d/Live2DSessionService';
 import { LivemodeInterceptor } from '@/services/live2d/LivemodeInterceptor';
@@ -306,6 +307,14 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   // Must register BEFORE Live2DPipeline resolves — stages inject it by token.
   const live2dSessionService = container.resolve(Live2DSessionService);
   container.registerInstance(DITokens.LIVE2D_SESSION_SERVICE, live2dSessionService);
+
+  // ── Live2DMemoryExtractionCoordinator (write side of <memory_context>) ──
+  // Resolves MemoryExtractService lazily, so if it isn't registered yet
+  // (edge cases / test harnesses) the coordinator degrades to a no-op
+  // instead of failing construction. Ordering against the MemoryExtract
+  // registration therefore doesn't matter.
+  const live2dMemoryExtractionCoordinator = container.resolve(Live2DMemoryExtractionCoordinator);
+  container.registerInstance(DITokens.LIVE2D_MEMORY_EXTRACTION_COORDINATOR, live2dMemoryExtractionCoordinator);
 
   // ── LivemodeState (per-user mock-livestream buffers) ──
   // Registered here so both the /livemode command and the PROCESS-stage

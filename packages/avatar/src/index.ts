@@ -11,6 +11,6 @@ export { FishAudioProvider, type FishAudioProviderOptions } from './tts/provider
 export { SovitsProvider, type SovitsProviderOptions } from './tts/providers/SovitsProvider';
 export { TTSManager } from './tts/TTSManager';
 export type { SynthesisResult, TTSProvider, TTSSynthesizeOptions } from './tts/TTSProvider';
-export type { AvatarConfig, PreviewServerConfig } from './types';
+export type { AvatarConfig, AvatarMemoryExtractionConfig, PreviewServerConfig } from './types';
 export { DEFAULT_AVATAR_CONFIG } from './types';
 export { writeFileUnderDirectory } from './utils/writeFileUnderDirectory';

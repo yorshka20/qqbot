@@ -89,6 +89,25 @@ export class Live2DSessionService {
     this.compressionService.scheduleCompressOnly(threadId);
   }
 
+  /**
+   * Return the groupId owning this thread, or `undefined` if the thread is
+   * missing. Downstream services (memory extraction, memory reads) need a
+   * consistent scope key and this is the canonical source of truth.
+   */
+  getGroupId(threadId: string): string | undefined {
+    return this.threadService.getThread(threadId)?.groupId ?? undefined;
+  }
+
+  /**
+   * Public projection of the synthetic-groupId convention used for Live2D
+   * sources. Kept here so the read path (memory lookup in PromptAssemblyStage)
+   * and the write path (memory extraction coordinator) share a single
+   * derivation rule instead of duplicating it.
+   */
+  groupIdFor(source: Live2DSource, scope?: string): string {
+    return this.resolveGroupId(source, scope);
+  }
+
   private resolveGroupId(source: Live2DSource, scope?: string): string {
     if (source === 'avatar-cmd') return `${LIVE2D_PREFERENCE_PREFIX}:avatar-cmd:global`;
     if (source === 'bilibili-danmaku-batch') {

@@ -22,9 +22,10 @@
 // synchronously, which would escape our start()'s try/catch.
 
 import type { Live2DPipeline } from '@/services/live2d/Live2DPipeline';
+import type { Live2DBatchSender } from '@/services/live2d/types';
 import { logger } from '@/utils/logger';
 import type { BilibiliLiveClient, DanmakuEvent } from './BilibiliLiveClient';
-import type { DanmakuBuffer, FlushPayload } from './DanmakuBuffer';
+import type { BufferEntry, DanmakuBuffer, FlushPayload } from './DanmakuBuffer';
 import { detectMention } from './DanmakuBuffer';
 import type { DanmakuStore } from './DanmakuStore';
 
@@ -157,6 +158,7 @@ export class BilibiliLiveBridge {
     if (!this.opts.pipeToLive2D) return;
 
     try {
+      const senders = aggregateBatchSenders(payload.entries);
       const result = await this.pipeline.enqueue({
         text: payload.summaryText,
         source: 'bilibili-danmaku-batch',
@@ -165,6 +167,10 @@ export class BilibiliLiveBridge {
           totalDanmaku: payload.totalDanmaku,
           distinctSenders: payload.distinctSenders,
           anyMention: payload.anyMention,
+          // Forwarded for per-user memory fan-out in the Live2D prompt stage.
+          // Aggregated here (not in DanmakuBuffer) so the buffer stays purely
+          // about dedup/display and doesn't grow a live2d-specific field.
+          senders,
         },
       });
       if (result.skipped) {
@@ -180,4 +186,43 @@ export class BilibiliLiveBridge {
       logger.warn('[BilibiliLiveBridge] pipeline dispatch failed:', err);
     }
   }
+}
+
+/**
+ * Collapse a flush payload's entries into one {@link Live2DBatchSender} per
+ * distinct uid. A single uid may appear across multiple `BufferEntry`s (if
+ * they said different things), so we fold by uid and join their raw lines
+ * with `\n` — that joined text becomes the per-user RAG query downstream.
+ *
+ * `name` takes the most-recent `lastUsername` seen for the uid (later
+ * entries overwrite earlier ones; acceptable because a user's display name
+ * rarely changes mid-3s-window, and the last one we saw is freshest).
+ *
+ * Exported for unit testing. Kept close to the bridge (not in DanmakuBuffer)
+ * because the buffer doesn't know about live2d / per-user memory — this is
+ * a pure integration-layer concern.
+ */
+export function aggregateBatchSenders(entries: BufferEntry[]): Live2DBatchSender[] {
+  // Insertion-order Map guarantees stable output for tests + cache stability.
+  const byUid = new Map<string, { name: string; texts: string[] }>();
+  for (const entry of entries) {
+    for (const uid of entry.senders) {
+      if (!uid) continue;
+      const existing = byUid.get(uid);
+      if (existing) {
+        existing.texts.push(entry.rawText);
+        if (entry.lastUsername) existing.name = entry.lastUsername;
+      } else {
+        byUid.set(uid, {
+          name: entry.lastUsername ?? '',
+          texts: [entry.rawText],
+        });
+      }
+    }
+  }
+  const out: Live2DBatchSender[] = [];
+  for (const [uid, agg] of byUid) {
+    out.push({ uid, name: agg.name, text: agg.texts.join('\n') });
+  }
+  return out;
 }

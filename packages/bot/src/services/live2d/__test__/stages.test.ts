@@ -203,6 +203,159 @@ describe('PromptAssemblyStage', () => {
     expect(fakeRenderBase).not.toHaveBeenCalled();
     expect(ctx.systemPrompt).toBeUndefined();
   });
+
+  // ── Memory context fan-out ──────────────────────────────────────────
+  // These tests register a fake MemoryService in the global DI container
+  // so `resolveMemoryContext` can exercise its real read path. We check
+  // both the main-pipeline-compatible single-speaker case and the
+  // multi-speaker bilibili batch case.
+  describe('memory context fan-out', () => {
+    function fakeMemoryService(overrides?: {
+      hasUserMemoryFor?: Set<string>;
+      groupText?: string;
+      userTextByUid?: Record<string, string>;
+    }) {
+      const allow = overrides?.hasUserMemoryFor;
+      const userTextByUid = overrides?.userTextByUid ?? {};
+      return {
+        hasUserMemory: mock((_groupId: string, uid: string) => {
+          if (!allow) return true;
+          return allow.has(uid);
+        }),
+        // Signature-compatible with the real getFilteredMemoryForReplyAsync.
+        // Group memory is returned on the `_global_memory_` lookup; per-user
+        // memory on any other uid.
+        getFilteredMemoryForReplyAsync: mock(
+          async (_groupId: string, userId: string | undefined, _opts?: { userMessage?: string }) => {
+            const isGroup = !userId || userId === '_global_memory_';
+            return {
+              groupMemoryText: isGroup ? (overrides?.groupText ?? '') : '',
+              userMemoryText: isGroup ? '' : (userTextByUid[userId] ?? ''),
+              stats: { groupIncluded: 0, groupTotal: 0, userIncluded: 0, userTotal: 0 },
+            };
+          },
+        ),
+      };
+    }
+
+    it('renders a single-speaker block for single-sender sources (livemode-style)', async () => {
+      const memorySvc = fakeMemoryService({
+        groupText: '[rule]\n不透剧',
+        userTextByUid: { '42': '[preference:game]\n喜欢崩铁' },
+      });
+      const { getContainer } = await import('@/core/DIContainer');
+      const { DITokens } = await import('@/core/DITokens');
+      getContainer().registerInstance(DITokens.MEMORY_SERVICE, memorySvc, { allowOverride: true });
+
+      const stage = new PromptAssemblyStage(fakePrompt() as never, fakeSession() as never);
+      const ctx = createContext(
+        sampleInput({
+          source: 'livemode-private-batch',
+          sender: { uid: '42', name: '张三' },
+        }),
+      );
+      ctx.avatar = makeAvatar() as unknown as Live2DContext['avatar'];
+      await stage.execute(ctx);
+
+      const finalTurn = ctx.messages?.[ctx.messages.length - 1]?.content as string;
+      expect(finalTurn).toContain('<memory_context>');
+      expect(finalTurn).toContain('## 关于本群的记忆');
+      expect(finalTurn).toContain('## 关于用户的记忆');
+      expect(finalTurn).toContain('### [speaker:42:张三]');
+      expect(finalTurn).toContain('[preference:game]');
+    });
+
+    it('fans out per-user lookups for bilibili batches (meta.senders) with distinct speaker sections', async () => {
+      const memorySvc = fakeMemoryService({
+        groupText: '[rule]\n不透剧',
+        userTextByUid: {
+          '111': '[preference:game]\n喜欢崩铁',
+          '222': '[history]\n第一次来',
+        },
+      });
+      const { getContainer } = await import('@/core/DIContainer');
+      const { DITokens } = await import('@/core/DITokens');
+      getContainer().registerInstance(DITokens.MEMORY_SERVICE, memorySvc, { allowOverride: true });
+
+      const stage = new PromptAssemblyStage(fakePrompt() as never, fakeSession() as never);
+      const ctx = createContext(
+        sampleInput({
+          source: 'bilibili-danmaku-batch',
+          meta: {
+            senders: [
+              { uid: '111', name: '米哈游工作室', text: '主播开播啦' },
+              { uid: '222', name: '路人A', text: '666' },
+            ],
+          },
+        }),
+      );
+      ctx.avatar = makeAvatar() as unknown as Live2DContext['avatar'];
+      await stage.execute(ctx);
+
+      const finalTurn = ctx.messages?.[ctx.messages.length - 1]?.content as string;
+      expect(finalTurn).toContain('### [speaker:111:米哈游工作室]');
+      expect(finalTurn).toContain('### [speaker:222:路人A]');
+      // Per-user queryText is each speaker's own line, not the batch-wide text.
+      const calls = memorySvc.getFilteredMemoryForReplyAsync.mock.calls;
+      const userCalls = calls.filter((c) => c[0] && c[1] && c[1] !== '_global_memory_');
+      const userMsgs = userCalls.map((c) => c[2]?.userMessage);
+      expect(userMsgs).toContain('主播开播啦');
+      expect(userMsgs).toContain('666');
+    });
+
+    it('skips per-user lookup for uids with no memory on disk (hasUserMemory gate)', async () => {
+      const memorySvc = fakeMemoryService({
+        groupText: '',
+        hasUserMemoryFor: new Set(['111']), // 222 gets filtered out
+        userTextByUid: { '111': '[p]\nA' },
+      });
+      const { getContainer } = await import('@/core/DIContainer');
+      const { DITokens } = await import('@/core/DITokens');
+      getContainer().registerInstance(DITokens.MEMORY_SERVICE, memorySvc, { allowOverride: true });
+
+      const stage = new PromptAssemblyStage(fakePrompt() as never, fakeSession() as never);
+      const ctx = createContext(
+        sampleInput({
+          source: 'bilibili-danmaku-batch',
+          meta: {
+            senders: [
+              { uid: '111', name: 'Alice', text: 'a' },
+              { uid: '222', name: 'Bob', text: 'b' },
+            ],
+          },
+        }),
+      );
+      ctx.avatar = makeAvatar() as unknown as Live2DContext['avatar'];
+      await stage.execute(ctx);
+
+      const calls = memorySvc.getFilteredMemoryForReplyAsync.mock.calls;
+      const uidsQueried = calls.map((c) => c[1]).filter((u): u is string => !!u && u !== '_global_memory_');
+      expect(uidsQueried).toContain('111');
+      expect(uidsQueried).not.toContain('222');
+      const finalTurn = ctx.messages?.[ctx.messages.length - 1]?.content as string;
+      expect(finalTurn).toContain('### [speaker:111:Alice]');
+      expect(finalTurn).not.toContain('Bob');
+    });
+
+    it('emits no <memory_context> wrapper when everything is empty (avatar-cmd, no sender, no group memory)', async () => {
+      const memorySvc = fakeMemoryService({ groupText: '', userTextByUid: {} });
+      const { getContainer } = await import('@/core/DIContainer');
+      const { DITokens } = await import('@/core/DITokens');
+      getContainer().registerInstance(DITokens.MEMORY_SERVICE, memorySvc, { allowOverride: true });
+
+      const stage = new PromptAssemblyStage(fakePrompt() as never, fakeSession() as never);
+      const ctx = createContext(sampleInput({ source: 'avatar-cmd' })); // no sender, no senders meta
+      ctx.avatar = makeAvatar() as unknown as Live2DContext['avatar'];
+      await stage.execute(ctx);
+
+      const finalTurn = ctx.messages?.[ctx.messages.length - 1]?.content as string;
+      expect(finalTurn).not.toContain('<memory_context>');
+      // Per-user lookups must not have fired — there was no sender to begin with.
+      const calls = memorySvc.getFilteredMemoryForReplyAsync.mock.calls;
+      const userCalls = calls.filter((c) => c[1] && c[1] !== '_global_memory_');
+      expect(userCalls.length).toBe(0);
+    });
+  });
 });
 
 describe('LLMStage', () => {
@@ -224,6 +377,20 @@ describe('LLMStage', () => {
   }
 
   /**
+   * Fake memory-extraction coordinator — LLMStage calls `.schedule(threadId)`
+   * on every successful reply. The real coordinator debounces; the fake just
+   * records calls so tests can assert the wiring without exercising timers.
+   */
+  function fakeMemoryCoordinator() {
+    return {
+      schedule: mock((_threadId: string) => undefined),
+      cancel: mock(() => undefined),
+      cancelAll: mock(() => undefined),
+      runNow: mock(async () => undefined),
+    };
+  }
+
+  /**
    * Builds a fake generateStream that emits the given text as a single chunk
    * (tests don't need true chunking — SentenceFlusher is tested elsewhere via
    * its own unit tests). Signature matches LLMService.generateStream.
@@ -240,6 +407,7 @@ describe('LLMStage', () => {
       { generateStream: fakeStream('') } as never,
       fakeConfig as never,
       fakeSession() as never,
+      fakeMemoryCoordinator() as never,
     );
     const ctx = createContext(sampleInput());
     await stage.execute(ctx);
@@ -249,7 +417,12 @@ describe('LLMStage', () => {
 
   it('populates replyText on success and marks streamingHandled', async () => {
     const generateStream = fakeStream('你好 [LIVE2D: emotion=happy, action=wave, intensity=0.8]');
-    const stage = new LLMStage({ generateStream } as never, fakeConfig as never, fakeSession() as never);
+    const stage = new LLMStage(
+      { generateStream } as never,
+      fakeConfig as never,
+      fakeSession() as never,
+      fakeMemoryCoordinator() as never,
+    );
     const avatar = makeAvatar();
     const ctx = createContext(sampleInput());
     ctx.avatar = avatar as unknown as Live2DContext['avatar'];
@@ -261,11 +434,69 @@ describe('LLMStage', () => {
     expect(generateStream).toHaveBeenCalledTimes(1);
   });
 
+  it('schedules a memory-extraction run after a successful reply (threadId + source)', async () => {
+    const generateStream = fakeStream('你好');
+    const memoryCoordinator = fakeMemoryCoordinator();
+    const stage = new LLMStage(
+      { generateStream } as never,
+      fakeConfig as never,
+      fakeSession() as never,
+      memoryCoordinator as never,
+    );
+    // Use a real Bilibili input so the test matches the default allowlist —
+    // the coordinator itself enforces the allowlist in its own test file; here
+    // we just verify LLMStage wires the source through.
+    const ctx = createContext(sampleInput({ source: 'bilibili-danmaku-batch' }));
+    ctx.avatar = makeAvatar() as unknown as Live2DContext['avatar'];
+    ctx.systemPrompt = 'sys';
+    ctx.threadId = 'thread-42';
+    await stage.execute(ctx);
+    expect(memoryCoordinator.schedule).toHaveBeenCalledTimes(1);
+    expect(memoryCoordinator.schedule).toHaveBeenCalledWith('thread-42', 'bilibili-danmaku-batch');
+  });
+
+  it('still forwards /avatar-cmd source to the coordinator (filtering happens there)', async () => {
+    const generateStream = fakeStream('你好');
+    const memoryCoordinator = fakeMemoryCoordinator();
+    const stage = new LLMStage(
+      { generateStream } as never,
+      fakeConfig as never,
+      fakeSession() as never,
+      memoryCoordinator as never,
+    );
+    const ctx = createContext(sampleInput({ source: 'avatar-cmd' }));
+    ctx.avatar = makeAvatar() as unknown as Live2DContext['avatar'];
+    ctx.systemPrompt = 'sys';
+    ctx.threadId = 'thread-42';
+    await stage.execute(ctx);
+    // LLMStage always forwards — source filtering is the coordinator's job.
+    // This keeps the stage's responsibility narrow + tests the wiring.
+    expect(memoryCoordinator.schedule).toHaveBeenCalledWith('thread-42', 'avatar-cmd');
+  });
+
+  it('does NOT schedule memory-extraction when the reply path is skipped', async () => {
+    const generateStream = fakeStream('   ');
+    const memoryCoordinator = fakeMemoryCoordinator();
+    const stage = new LLMStage(
+      { generateStream } as never,
+      fakeConfig as never,
+      fakeSession() as never,
+      memoryCoordinator as never,
+    );
+    const ctx = createContext(sampleInput());
+    ctx.systemPrompt = 'sys';
+    ctx.threadId = 'thread-42';
+    await stage.execute(ctx);
+    expect(ctx.skipped).toBe(true);
+    expect(memoryCoordinator.schedule).not.toHaveBeenCalled();
+  });
+
   it('skips with llm-failed when generateStream throws', async () => {
     const stage = new LLMStage(
       { generateStream: mock(() => Promise.reject(new Error('network'))) } as never,
       fakeConfig as never,
       fakeSession() as never,
+      fakeMemoryCoordinator() as never,
     );
     const ctx = createContext(sampleInput());
     ctx.systemPrompt = 'sys';
@@ -279,6 +510,7 @@ describe('LLMStage', () => {
       { generateStream: fakeStream('   ') } as never,
       fakeConfig as never,
       fakeSession() as never,
+      fakeMemoryCoordinator() as never,
     );
     const ctx = createContext(sampleInput());
     ctx.systemPrompt = 'sys';
@@ -300,6 +532,7 @@ describe('LLMStage', () => {
       { generateStream } as never,
       { getAIConfig: () => undefined, getAvatarConfig: () => ({ llmStream: true }) } as never,
       fakeSession() as never,
+      fakeMemoryCoordinator() as never,
     );
     const ctx = createContext(sampleInput());
     ctx.systemPrompt = 'sys';
@@ -310,7 +543,12 @@ describe('LLMStage', () => {
   it('dispatches speak + tag animations while streaming (avatar-path)', async () => {
     const avatar = makeAvatar();
     const generateStream = fakeStream('你好啊。[LIVE2D: emotion=happy, action=wave, intensity=0.8]再见。');
-    const stage = new LLMStage({ generateStream } as never, fakeConfig as never, fakeSession() as never);
+    const stage = new LLMStage(
+      { generateStream } as never,
+      fakeConfig as never,
+      fakeSession() as never,
+      fakeMemoryCoordinator() as never,
+    );
     const ctx = createContext(sampleInput());
     ctx.avatar = avatar as unknown as Live2DContext['avatar'];
     ctx.systemPrompt = 'sys';
@@ -337,6 +575,7 @@ describe('LLMStage', () => {
         getAvatarConfig: () => ({ llmStream: false }),
       } as never,
       fakeSession() as never,
+      fakeMemoryCoordinator() as never,
     );
     const ctx = createContext(sampleInput());
     ctx.systemPrompt = 'sys';

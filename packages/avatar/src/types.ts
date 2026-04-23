@@ -49,6 +49,68 @@ export interface AvatarConfig {
    * Anthropic extended-thinking) act on this; others ignore it.
    */
   llmReasoningEffort: 'none' | 'minimal' | 'low' | 'medium' | 'high';
+  /**
+   * Memory extraction for Live2D conversations. When enabled, after each
+   * successful reply the recent thread history is queued for a debounced
+   * MemoryExtractService.extractAndUpsert run, scoped to the synthetic
+   * Live2D groupId (`live2d:avatar-cmd:global`, `live2d:bilibili-live:<room>`, …).
+   * This is what populates the `<memory_context>` block read by the
+   * avatar PromptAssemblyStage — without it the read path is a no-op
+   * because nothing ever writes under those groupIds.
+   *
+   * Opt-in by default (`enabled: false`) because extraction fires an
+   * additional LLM call per debounce tick and the live2d scopes are less
+   * fact-dense than real group chats.
+   */
+  memoryExtraction: AvatarMemoryExtractionConfig;
+}
+
+/**
+ * Controls post-reply memory extraction for the Live2D pipeline. Mirrors
+ * `MemoryPlugin` but scoped to live2d threads only.
+ */
+export interface AvatarMemoryExtractionConfig {
+  /** Global switch. Default `false` (opt-in). */
+  enabled: boolean;
+  /**
+   * Idle time (ms) after the last reply before extract fires for a thread.
+   * Default `600000` (10 min) — matches MemoryPlugin's sane default and
+   * avoids hammering the extract LLM on every avatar utterance.
+   */
+  debounceMs: number;
+  /**
+   * Cap on how many recent thread entries (user + assistant) are fed to
+   * extract per run. Keeps the extract prompt bounded even if a live2d
+   * thread grows unexpectedly. Default `80`.
+   */
+  maxEntries: number;
+  /**
+   * Minimum number of NON-bot entries before a run is worth firing. Avoids
+   * running extract on threads that only contain synthetic idle-trigger
+   * messages (e.g. `(直播间暂时安静)`). Default `3`.
+   */
+  minUserEntries: number;
+  /**
+   * Live2D sources (the `source` field on `Live2DInput`) whose threads
+   * are eligible for memory extraction. Default `['bilibili-danmaku-batch']`
+   * — the only source that represents *real* viewer utterances. Both
+   * `avatar-cmd` (admin probe) and `livemode-private-batch` (mock
+   * livestream) are excluded by default because their content is
+   * essentially dev/test traffic and would pollute long-term memory
+   * with self-referential or rehearsal lines.
+   *
+   * Kept as `string[]` here (not the typed `Live2DSource` union) so the
+   * avatar package doesn't have to depend on the bot package's pipeline
+   * types. The coordinator does a string-equality check against
+   * `Live2DInput.source`.
+   */
+  allowedSources: string[];
+  /**
+   * LLM provider for the extract + analyze pass. Falls back to
+   * `ai.taskProviders.memoryExtract` → `avatar.llmProvider` →
+   * `ai.defaultProviders.llm` in `Live2DMemoryExtractionCoordinator`.
+   */
+  provider?: string;
 }
 
 /**
@@ -103,4 +165,14 @@ export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
   },
   llmStream: false,
   llmReasoningEffort: 'none',
+  memoryExtraction: {
+    enabled: false,
+    debounceMs: 600_000,
+    maxEntries: 80,
+    minUserEntries: 3,
+    // Only real Bilibili danmaku feeds long-term memory by default. Admin
+    // `/avatar` and mock `/livemode` are excluded so test/probe utterances
+    // don't end up in user facts.
+    allowedSources: ['bilibili-danmaku-batch'],
+  },
 };

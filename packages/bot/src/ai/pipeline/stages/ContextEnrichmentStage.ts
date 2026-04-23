@@ -4,6 +4,7 @@ import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
+import { formatMemoryMarkdown } from '@/memory/formatMemoryMarkdown';
 import type { MemoryService } from '@/memory/MemoryService';
 import type { RetrievalService } from '@/services/retrieval';
 import { QdrantClient } from '@/services/retrieval';
@@ -138,21 +139,16 @@ export class ContextEnrichmentStage implements ReplyStage {
     }
     const { groupMemoryText, userMemoryText } = await this.getMemoryVarsAsync(context);
 
-    const hasGroupMemory = groupMemoryText.trim().length > 0;
-    const hasUserMemory = userMemoryText.trim().length > 0;
-
-    if (!hasGroupMemory && !hasUserMemory) {
-      return '';
-    }
-
-    const sections: string[] = [];
-    if (hasGroupMemory) {
-      sections.push(`## 关于本群的记忆\n${groupMemoryText}`);
-    }
-    if (hasUserMemory) {
-      sections.push(`## 关于当前用户的记忆\n${userMemoryText}`);
-    }
-
-    return sections.join('\n\n');
+    // The main pipeline only ever has one active speaker per turn, so the
+    // user section is at most a single `[speaker:<uid>:<nick>]` block. The
+    // multi-speaker case lives in the Live2D pipeline (bilibili danmaku
+    // batches); both paths share `formatMemoryMarkdown` to guarantee the
+    // same header schema and keep the `<memory_context>` body stable.
+    const userId = context.message?.userId?.toString() ?? '';
+    const nickname = context.message?.sender?.nickname ?? context.message?.sender?.card ?? '';
+    return formatMemoryMarkdown({
+      groupMemoryText,
+      userSections: userId ? [{ uid: userId, nick: nickname, memoryText: userMemoryText }] : [],
+    });
   }
 }

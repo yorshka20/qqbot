@@ -276,6 +276,28 @@ export class MemoryService {
   }
 
   /**
+   * Cheap existence check for a user's memory slot. Used as a pre-filter by
+   * the Live2D pipeline before fanning out `getFilteredMemoryForReplyAsync`
+   * calls to every distinct sender in a danmaku batch — most viewers have no
+   * memory on disk and would otherwise cost a Qdrant round-trip that returns
+   * nothing.
+   *
+   * Both the new directory structure (`{groupId}/{userId}/{manual,auto}.txt`)
+   * and the legacy flat layout (`{groupId}/{userId}.txt`) count as existing.
+   * A directory with only empty `manual.txt`/`auto.txt` also counts — we
+   * don't open the files here to keep this O(stat).
+   */
+  hasUserMemory(groupId: string, userId: string): boolean {
+    if (!userId) return false;
+    const safeGroupId = this.sanitizePathSegment(groupId);
+    const safeUserId = this.sanitizePathSegment(userId);
+    const userDir = join(this.basePath, safeGroupId, safeUserId);
+    if (existsSync(userDir)) return true;
+    const legacyFile = join(this.basePath, safeGroupId, `${safeUserId}.txt`);
+    return existsSync(legacyFile);
+  }
+
+  /**
    * Search memories within one group. By default searches both group memory and all user memories.
    */
   searchMemories(

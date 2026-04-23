@@ -26,6 +26,7 @@ import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import { dispatchParsedTag } from '../dispatchParsedTag';
+import type { Live2DMemoryExtractionCoordinator } from '../Live2DMemoryExtractionCoordinator';
 import type { Live2DSessionService } from '../Live2DSessionService';
 import type { Live2DContext, Live2DStage } from '../Live2DStage';
 import { SentenceFlusher } from './SentenceFlusher';
@@ -76,6 +77,8 @@ export class LLMStage implements Live2DStage {
     @inject(DITokens.LLM_SERVICE) private llmService: LLMService,
     @inject(DITokens.CONFIG) private config: Config,
     @inject(DITokens.LIVE2D_SESSION_SERVICE) private sessionService: Live2DSessionService,
+    @inject(DITokens.LIVE2D_MEMORY_EXTRACTION_COORDINATOR)
+    private memoryExtractionCoordinator: Live2DMemoryExtractionCoordinator,
   ) {}
 
   async execute(ctx: Live2DContext): Promise<void> {
@@ -238,6 +241,12 @@ export class LLMStage implements Live2DStage {
       this.sessionService.appendUserMessage(ctx.threadId, userId, ctx.input.text);
       this.sessionService.appendAssistantMessage(ctx.threadId, trimmed);
       this.sessionService.scheduleCompression(ctx.threadId);
+      // Debounced memory extraction. No-op when disabled in config, when
+      // the source isn't in `avatar.memoryExtraction.allowedSources` (by
+      // default only real Bilibili danmaku — `avatar-cmd` / `livemode-*`
+      // are test/probe traffic), or when the thread has no groupId.
+      // Never blocks the reply path (timer-based).
+      this.memoryExtractionCoordinator.schedule(ctx.threadId, ctx.input.source);
     }
   }
 
