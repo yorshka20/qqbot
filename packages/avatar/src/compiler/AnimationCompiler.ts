@@ -10,14 +10,21 @@ import { type AvatarActivity, DEFAULT_ACTIVITY } from '../state/types';
 import { ActionMap } from './action-map';
 import { sampleClip } from './clips/sampleClip';
 import { applyEasing } from './easing';
+import { AmbientAudioLayer } from './layers/AmbientAudioLayer';
+import { AutoBlinkLayer } from './layers/AutoBlinkLayer';
 import {
   type AudioEnvelopeConfig,
   DEFAULT_AUDIO_ENVELOPE_CONFIG,
   getAudioEnvelopeConfig,
   setAudioEnvelopeConfig,
 } from './layers/audio-envelope-config';
+import { BreathLayer } from './layers/BreathLayer';
+import { EyeGazeLayer } from './layers/EyeGazeLayer';
+import { IdleMotionLayer } from './layers/IdleMotionLayer';
 import { LayerManager } from './layers/LayerManager';
+import { PerlinNoiseLayer } from './layers/PerlinNoiseLayer';
 import type { AnimationLayer } from './layers/types';
+import { WalkingLayer } from './layers/WalkingLayer';
 import type {
   ActionSummary,
   ActiveAnimation,
@@ -57,7 +64,6 @@ const DEFAULT_CONFIG: CompilerConfig = {
   fps: 60,
   outputFps: 60,
   defaultEasing: 'easeInOutCubic',
-  smoothingFactor: 0.3,
   attackRatio: 0.2,
   releaseRatio: 0.3,
 };
@@ -76,6 +82,16 @@ const DEFAULT_DURATION_JITTER = 0.15;
 const DEFAULT_INTENSITY_JITTER = 0.1;
 /** Default minimum intensity after jitter clamping. */
 const DEFAULT_INTENSITY_FLOOR = 0.1;
+
+/**
+ * @property registerContinuousStack — Defaults to `true`: register the Live2D/VRM
+ * continuous layer stack right after construction (same as production). Pass `false`
+ * if you need an empty {@link LayerManager}, or use `newAnimationCompilerTest()` in
+ * `__tests__/newAnimationCompilerTest.ts`.
+ */
+export type AnimationCompilerOptions = {
+  registerContinuousStack?: boolean;
+};
 
 export class AnimationCompiler extends EventEmitter {
   private readonly config: CompilerConfig;
@@ -122,13 +138,42 @@ export class AnimationCompiler extends EventEmitter {
    */
   private bypassFrameChannels: Set<string> = new Set();
 
-  constructor(config: Partial<CompilerConfig> = {}, actionMapPath?: string) {
+  constructor(config: Partial<CompilerConfig> = {}, actionMapPath?: string, options: AnimationCompilerOptions = {}) {
     super();
     this.config = {
       ...DEFAULT_CONFIG,
       ...config,
     };
     this.actionMap = new ActionMap(actionMapPath);
+    if (options.registerContinuousStack !== false) {
+      this.registerContinuousStack();
+    }
+  }
+
+  /**
+   * Live2D/VRM **continuous** stack: explicit list, fixed order, all stored
+   * only in {@link LayerManager} (this is the single registry). Per-utterance
+   * `AudioEnvelopeLayer` is registered later by {@link SpeechService}.
+   */
+  private registerContinuousStack(): void {
+    const stack: AnimationLayer[] = [
+      new BreathLayer(),
+      new AutoBlinkLayer(),
+      new EyeGazeLayer(),
+      new IdleMotionLayer(),
+      new WalkingLayer(this.config.walk),
+      new AmbientAudioLayer(),
+      new PerlinNoiseLayer({ weight: 0.2 }),
+    ];
+
+    for (const layer of stack) {
+      this.registerLayer(layer);
+    }
+
+    logger.info(
+      '[AnimationCompiler] continuous stack → LayerManager:',
+      this.listLayers().map((l) => l.id),
+    );
   }
 
   start(): void {

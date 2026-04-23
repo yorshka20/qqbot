@@ -1,4 +1,3 @@
-import type { CompilerConfig } from './compiler/types';
 import type { AvatarConfig, AvatarMemoryExtractionConfig } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './types';
 
@@ -16,7 +15,7 @@ export function mergeAvatarConfig(raw: Record<string, unknown> | undefined): Ava
   return {
     enabled: typeof r.enabled === 'boolean' ? r.enabled : DEFAULT_AVATAR_CONFIG.enabled,
     vts: mergeObject(DEFAULT_AVATAR_CONFIG.vts, r.vts),
-    compiler: mergeCompilerConfig(r),
+    compiler: mergeObject(DEFAULT_AVATAR_CONFIG.compiler, r.compiler),
     idle: mergeObject(DEFAULT_AVATAR_CONFIG.idle, r.idle),
     preview: mergeObject(DEFAULT_AVATAR_CONFIG.preview, r.preview),
     actionMap: mergeObject(DEFAULT_AVATAR_CONFIG.actionMap, r.actionMap),
@@ -99,19 +98,6 @@ function mergeObject<T extends object>(base: T, patch: unknown): T {
     return { ...base };
   }
   return { ...base, ...patch } as T;
-}
-
-function mergeCompilerConfig(raw: Record<string, unknown>): CompilerConfig {
-  const base = DEFAULT_AVATAR_CONFIG.compiler;
-  const patch = isRecord(raw.compiler) ? raw.compiler : {};
-  const baseLayers = base.layers ?? { enabled: true };
-  const layerPatch = isRecord(patch.layers) ? patch.layers : {};
-
-  return {
-    ...base,
-    ...patch,
-    layers: { ...baseLayers, ...layerPatch },
-  } as CompilerConfig;
 }
 
 function optionalNonEmptyString(value: unknown): string | undefined {

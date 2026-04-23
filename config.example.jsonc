@@ -1122,7 +1122,6 @@
   //     "fps": 60,
   //     "outputFps": 60,
   //     "defaultEasing": "easeInOutCubic",
-  //     "smoothingFactor": 0.3,
   //     "attackRatio": 0.2,
   //     "releaseRatio": 0.3,
   //     // crossfadeMs: duration in ms for the fade-out of an old animation when

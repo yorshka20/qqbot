@@ -12,31 +12,28 @@ describe('AmbientAudioLayer', () => {
   });
 
   test('fresh rms=0.8 emits body.z and brow with correct values', () => {
-    const layer = new AmbientAudioLayer();
+    // smoothingAlpha=1 so one updateRms applies full RMS (otherwise EMA changes expected math)
+    const layer = new AmbientAudioLayer({ smoothingAlpha: 1 });
     const t0 = Date.now();
     layer.updateRms(0.8, t0);
     const result = layer.sample(Date.now(), IDLE);
-    // normalized = (0.8 - 0.05) / (1 - 0.05) = 0.75/0.95 ≈ 0.789473...
-    const normalized = 0.75 / 0.95;
-    // excite = 0.789473² ≈ 0.623
-    const excite = normalized ** 2;
-    // body.z ≈ 0.2 * 0.623 ≈ 0.1247
-    // brow ≈ 0.15 * 0.623 ≈ 0.0935
+    const floor = 0.02;
+    const normalized = Math.min(1, (0.8 - floor) / (1 - floor));
+    const excite = normalized ** 1;
     expect(Object.keys(result).sort()).toEqual(['body.z', 'brow']);
-    expect(result['body.z']).toBeCloseTo(0.2 * excite, 3);
-    expect(result.brow).toBeCloseTo(0.15 * excite, 3);
+    expect(result['body.z']).toBeCloseTo(0.8 * excite, 3);
+    expect(result.brow).toBeCloseTo(0.5 * excite, 3);
   });
 
   test('silence floor below threshold returns {}', () => {
-    const layer = new AmbientAudioLayer();
-    layer.updateRms(0.03, Date.now());
+    const layer = new AmbientAudioLayer({ smoothingAlpha: 1 });
+    layer.updateRms(0.01, Date.now());
     expect(layer.sample(Date.now(), IDLE)).toEqual({});
   });
 
   test('silence floor exact threshold returns {}', () => {
-    const layer = new AmbientAudioLayer();
-    layer.updateRms(0.05, Date.now());
-    // exact threshold → normalized = 0 → excite = 0 → {}
+    const layer = new AmbientAudioLayer({ smoothingAlpha: 1 });
+    layer.updateRms(0.02, Date.now());
     expect(layer.sample(Date.now(), IDLE)).toEqual({});
   });
 
@@ -66,16 +63,15 @@ describe('AmbientAudioLayer', () => {
   });
 
   test('custom options override defaults', () => {
-    const layer = new AmbientAudioLayer({ bodyZMax: 0.5, staleThresholdMs: 200 });
+    const layer = new AmbientAudioLayer({ bodyZMax: 0.5, staleThresholdMs: 200, smoothingAlpha: 1 });
     const t0 = Date.now();
     layer.updateRms(0.8, t0);
-    // body.z ≈ 0.5 * 0.623 ≈ 0.3115
-    const normalized = 0.75 / 0.95;
-    const excite = normalized ** 2;
+    const floor = 0.02;
+    const normalized = Math.min(1, (0.8 - floor) / (1 - floor));
+    const excite = normalized ** 1;
     const result = layer.sample(t0 + 100, IDLE);
     expect(result['body.z']).toBeCloseTo(0.5 * excite, 3);
-    expect(result.brow).toBeCloseTo(0.15 * excite, 3);
-    // sample at +300ms > 200ms threshold
+    expect(result.brow).toBeCloseTo(0.5 * excite, 3);
     expect(layer.sample(t0 + 300, IDLE)).toEqual({});
   });
 

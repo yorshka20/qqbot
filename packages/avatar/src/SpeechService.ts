@@ -38,6 +38,26 @@ export class SpeechService {
    */
   private inflightNext: { text: string; promise: Promise<SynthesisResult> } | null = null;
 
+  /**
+   * @param provider — Registered TTS backend (synthesis + optional streaming).
+   * @param broadcastAudio — **Buffered path**: send one `AudioMessage` (full
+   *   utterance) to listeners after decode (e.g. preview WebSocket `audio`).
+   * @param hasConsumer — If false, `speak`/`drain` no-op so we do not call the
+   *   provider when nothing (VTS + preview) will play audio.
+   * @param registerLayer — Add the per-utterance `AudioEnvelopeLayer` to the
+   *   `AnimationCompiler` for lip-sync / envelope-driven params.
+   * @param unregisterLayer — Remove that layer by id when the utterance ends
+   *   (after a short safety delay).
+   * @param clock — Monotonic time source (ms) for inter-utterance gaps; default
+   *   `Date.now`. Pass `undefined` in callers to use the default.
+   * @param gapMs — Minimum ms between consecutive utterance **starts** (after
+   *   the previous one fully finishes playing).
+   * @param exportTtsWavDir — When set, write each synthesized buffer to a WAV
+   *   under that directory (debug / inspection).
+   * @param broadcastAudioChunk — **Streaming path**: if set and the provider
+   *   implements `synthesizeStream`, `drain` emits chunks via this callback
+   *   instead of `broadcastAudio` (e.g. preview `audio-chunk` messages).
+   */
   constructor(
     private provider: TTSProvider,
     private broadcastAudio: (msg: AudioMessage) => void,
@@ -47,12 +67,6 @@ export class SpeechService {
     private clock: () => number = Date.now,
     private gapMs: number = DEFAULT_GAP_MS,
     private exportTtsWavDir?: string,
-    /**
-     * Optional callback for streaming PCM utterances. When provided AND the
-     * active provider exposes `synthesizeStream`, `drain()` uses the streaming
-     * path and calls this callback per chunk instead of `broadcastAudio`.
-     * Callers that omit this parameter continue to use the legacy buffered path.
-     */
     private broadcastAudioChunk?: (msg: AudioChunkMessage) => void,
   ) {}
 
@@ -104,6 +118,7 @@ export class SpeechService {
   isSpeaking(): boolean {
     return this.draining;
   }
+
   getQueueLength(): number {
     return this.queue.length;
   }
@@ -417,24 +432,26 @@ export class SpeechService {
           );
         }
 
+        const data: AudioChunkMessage['data'] = {
+          utteranceId,
+          seq,
+          base64: chunkBase64,
+          isLast,
+        };
+        if (totalDurationMs !== undefined) {
+          data.totalDurationMs = totalDurationMs;
+        }
+        if (seq === 0) {
+          data.mime = resolvedMime;
+          data.sampleRate = resolvedSampleRate;
+          data.startAtEpochMs = startAtEpochMs;
+          data.text = utterance;
+        }
+
         // Broadcast immediately — zero-lag contract: no batching, no delay.
         broadcastChunk({
           type: 'audio-chunk',
-          data: {
-            utteranceId,
-            seq,
-            base64: chunkBase64,
-            isLast,
-            ...(totalDurationMs !== undefined ? { totalDurationMs } : {}),
-            ...(seq === 0
-              ? {
-                  mime: resolvedMime,
-                  sampleRate: resolvedSampleRate,
-                  startAtEpochMs,
-                  text: utterance,
-                }
-              : {}),
-          },
+          data,
         });
 
         logger.debug(

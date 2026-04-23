@@ -1,20 +1,20 @@
 import { singleton } from 'tsyringe';
 import { AnimationCompiler } from './compiler/AnimationCompiler';
 import { isEmotionChannel } from './compiler/emotion-channels';
-import { createDefaultLayers } from './compiler/layers';
 import type { AmbientAudioLayer } from './compiler/layers/AmbientAudioLayer';
-import type { IdleMotionLayer } from './compiler/layers/IdleMotionLayer';
-import type { WalkingLayer } from './compiler/layers/WalkingLayer';
+import { IdleMotionLayer } from './compiler/layers/IdleMotionLayer';
+import { WalkingLayer } from './compiler/layers/WalkingLayer';
 import type { ActionSummary, StateNode } from './compiler/types';
 import { mergeAvatarConfig } from './config';
 import { VTSDriver } from './drivers/VTSDriver';
 import { PreviewServer } from './preview/PreviewServer';
-import type { RendererCapabilities } from './preview/types';
+import type { RendererCapabilities, WalkCommandData } from './preview/types';
 import { SpeechService } from './SpeechService';
 import { ActivityTracker } from './state/IdleStateMachine';
 import { type AvatarActivityPatch, DEFAULT_ACTIVITY, type StateNodeOutput } from './state/types';
 import type { FaceTarget, GazeTarget, WalkToTarget } from './tags';
 import type { TTSManager } from './tts/TTSManager';
+import type { TTSProvider } from './tts/TTSProvider';
 import type { AvatarConfig } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './types';
 import { logger } from './utils/logger';
@@ -39,7 +39,6 @@ export class AvatarService {
    */
   private consumerCount = 0;
   private speechService?: SpeechService;
-  private defaultLayers: ReturnType<typeof createDefaultLayers> = [];
 
   // TODO(capability-gating): use connectedCapabilities to gate compiler channel
   // emission per connection — e.g. skip unsupported channels or custom morph
@@ -86,88 +85,9 @@ export class AvatarService {
       );
     }
 
-    // Create default layers early so AmbientAudioLayer is available to wire
-    // the onAmbientAudio handler before PreviewServer construction.
-    this.defaultLayers = createDefaultLayers(config.compiler);
-    const ambientAudioLayer = this.defaultLayers.find((l) => l.id === 'ambient-audio') as AmbientAudioLayer | undefined;
-
+    const ambientAudioLayer = this.compiler.getLayer('ambient-audio') as AmbientAudioLayer | undefined;
     if (config.preview.enabled) {
-      this.previewServer = new PreviewServer(
-        {
-          host: config.preview.host,
-          port: config.preview.port,
-        },
-        {
-          onTrigger: (data) =>
-            this.enqueueTagAnimation({
-              action: data.action,
-              emotion: data.emotion ?? 'neutral',
-              intensity: data.intensity ?? 1.0,
-            }),
-          onClientCountChange: (count) => this.handlePreviewClientCount(count),
-          getActionList: () => this.compiler?.listActions() ?? [],
-          // HUD's debug "speak this text" input bypasses the LLM path and
-          // invokes SpeechService directly — same entry point as the
-          // Live2DAvatarPlugin, so whatever gate logic SpeechService applies
-          // (hasConsumer, provider availability) still runs.
-          onSpeak: (data) => this.speak(data.text),
-          // BGM reactivity: renderer WS → this handler → AmbientAudioLayer.updateRms
-          onAmbientAudio: (data) => ambientAudioLayer?.updateRms(data.rms, data.tMs),
-          onTunableParamsRequest: () => this.compiler?.listTunableParams() ?? [],
-          onTunableParamSet: ({ sectionId, paramId, value }) => {
-            this.compiler?.setTunableParam(sectionId, paramId, value);
-          },
-          getClipByActionName: (name) => this.compiler?.getClipByActionName(name) ?? null,
-          onModelKindChange: (kind) => {
-            this.compiler?.setCurrentModelKind(kind);
-            logger.info(`[AvatarService] currentModelKind -> ${kind}`);
-          },
-          // HUD / LLM locomotion intents. Each semantic kind dispatches to
-          // the matching WalkingLayer primitive. The Promise rejects with
-          // WalkInterruptedError when superseded by a newer command — we
-          // swallow it here so fire-and-forget WS delivery never yields an
-          // unhandled rejection.
-          onCapabilities: (caps, ws) => {
-            this.connectedCapabilities.set(ws, { caps, receivedAt: new Date() });
-            logger.info(
-              `[AvatarService] renderer capabilities received — kind=${caps.modelId.kind} slug=${caps.modelId.slug} presets=${caps.expressions.length} custom=${caps.customExpressions.length} channels=${caps.supportedChannels.length}`,
-            );
-          },
-          onConnectionClosed: (ws) => {
-            this.connectedCapabilities.delete(ws);
-          },
-          getConnectedCapabilities: () => this.listConnectedCapabilities(),
-          onWalkCommand: (data) => {
-            const swallow = (p: Promise<void>, label: string): void => {
-              p.catch((err: unknown) => {
-                const interrupted = err instanceof Error && err.name === 'WalkInterruptedError';
-                if (interrupted) return;
-                logger.warn(`[AvatarService] walk-command '${label}' failed: ${(err as Error)?.message ?? err}`);
-              });
-            };
-            switch (data.kind) {
-              case 'forward':
-                swallow(this.walkForward(data.meters), 'forward');
-                return;
-              case 'strafe':
-                swallow(this.strafe(data.meters), 'strafe');
-                return;
-              case 'turn':
-                swallow(this.turn(data.radians), 'turn');
-                return;
-              case 'orbit':
-                swallow(this.orbit(data), 'orbit');
-                return;
-              case 'to':
-                swallow(this.walkTo(data.x, data.z, data.face), 'to');
-                return;
-              case 'stop':
-                this.stopMotion();
-                return;
-            }
-          },
-        },
-      );
+      this.previewServer = this.createPreviewServer(config.preview, ambientAudioLayer);
     }
 
     // SpeechService hooks into the bot-wide TTSManager built in bootstrap —
@@ -179,24 +99,108 @@ export class AvatarService {
       if (!provider) {
         logger.info('[AvatarService] speech.enabled=true but no usable TTS provider registered; SpeechService skipped');
       } else {
-        this.speechService = new SpeechService(
-          provider,
-          (msg) => this.previewServer?.broadcastAudio(msg),
-          () => this.hasConsumer(),
-          (layer) => this.compiler?.registerLayer(layer),
-          (id) => {
-            this.compiler?.unregisterLayer(id);
-          },
-          undefined,
-          config.speech.utteranceGapMs,
-          config.speech.exportTtsWavDir,
-          (msg) => this.previewServer?.broadcastAudioChunk(msg),
-        );
+        this.speechService = this.createSpeechService(provider, config.speech);
         logger.debug(`[AvatarService] SpeechService initialized with provider="${provider.name}"`);
       }
     }
 
     logger.debug('[AvatarService] Initialized', { enabled: config.enabled });
+  }
+
+  /**
+   * HTTP + WebSocket preview server; HUD / renderer callbacks below.
+   *
+   * - `onSpeak`: HUD “speak this text” bypasses the LLM; same `SpeechService`
+   *   entry as `Live2DAvatarPlugin` (hasConsumer / provider gating applies).
+   * - `onAmbientAudio`: renderer WS RMS → `AmbientAudioLayer.updateRms`.
+   * - Walk: {@link handlePreviewWalkCommand} (rejects → `WalkInterruptedError` are ignored).
+   */
+  private createPreviewServer(preview: AvatarConfig['preview'], ambient: AmbientAudioLayer | undefined): PreviewServer {
+    return new PreviewServer(preview, {
+      onTrigger: (data) =>
+        this.enqueueTagAnimation({
+          action: data.action,
+          emotion: data.emotion ?? 'neutral',
+          intensity: data.intensity ?? 1.0,
+        }),
+      onClientCountChange: (count) => this.handlePreviewClientCount(count),
+      getActionList: () => this.compiler?.listActions() ?? [],
+      onSpeak: (data) => this.speak(data.text),
+      onAmbientAudio: (data) => ambient?.updateRms(data.rms, data.tMs),
+      onTunableParamsRequest: () => this.compiler?.listTunableParams() ?? [],
+      onTunableParamSet: ({ sectionId, paramId, value }) => {
+        this.compiler?.setTunableParam(sectionId, paramId, value);
+      },
+      getClipByActionName: (name) => this.compiler?.getClipByActionName(name) ?? null,
+      onModelKindChange: (kind) => {
+        this.compiler?.setCurrentModelKind(kind);
+        logger.info(`[AvatarService] currentModelKind -> ${kind}`);
+      },
+      onCapabilities: (caps, ws) => {
+        this.connectedCapabilities.set(ws, { caps, receivedAt: new Date() });
+        logger.info(
+          `[AvatarService] renderer capabilities received — kind=${caps.modelId.kind} slug=${caps.modelId.slug} presets=${caps.expressions.length} custom=${caps.customExpressions.length} channels=${caps.supportedChannels.length}`,
+        );
+      },
+      onConnectionClosed: (ws) => {
+        this.connectedCapabilities.delete(ws);
+      },
+      getConnectedCapabilities: () => this.listConnectedCapabilities(),
+      onWalkCommand: (data) => this.handlePreviewWalkCommand(data),
+    });
+  }
+
+  /**
+   * Wire {@link SpeechService} to the bot: see that class’s constructor JSDoc
+   * for the meaning of each dependency. Here we point callbacks at
+   * `previewServer` (if any), `consumerCount`, and `AnimationCompiler` layers.
+   */
+  private createSpeechService(provider: TTSProvider, speech: AvatarConfig['speech']): SpeechService {
+    return new SpeechService(
+      provider,
+      (msg) => this.previewServer?.broadcastAudio(msg), // full utterance → preview `audio` WS
+      () => this.hasConsumer(), // gate: VTS and/or at least one preview client
+      (layer) => this.compiler?.registerLayer(layer), // per-utterance `AudioEnvelopeLayer`
+      (id) => this.compiler?.unregisterLayer(id), // drop layer after utterance
+      undefined, // clock: default `Date.now` (see `SpeechService` default)
+      speech.utteranceGapMs, // from avatar config: min gap between starts
+      speech.exportTtsWavDir, // optional debug WAV dumps
+      (msg) => this.previewServer?.broadcastAudioChunk(msg), // streaming path → `audio-chunk` WS
+    );
+  }
+
+  /**
+   * HUD walk intents → WalkingLayer. Supersedes resolve as `WalkInterruptedError`;
+   * those are ignored so fire-and-forget WebSocket delivery never becomes an
+   * unhandled rejection.
+   */
+  private handlePreviewWalkCommand(data: WalkCommandData): void {
+    const run = (p: Promise<void>, label: string): void => {
+      p.catch((err: unknown) => {
+        const interrupted = err instanceof Error && err.name === 'WalkInterruptedError';
+        if (interrupted) return;
+        logger.warn(`[AvatarService] walk-command '${label}' failed: ${(err as Error)?.message ?? err}`);
+      });
+    };
+    switch (data.kind) {
+      case 'forward':
+        run(this.walkForward(data.meters), 'forward');
+        return;
+      case 'strafe':
+        run(this.strafe(data.meters), 'strafe');
+        return;
+      case 'turn':
+        run(this.turn(data.radians), 'turn');
+        return;
+      case 'orbit':
+        run(this.orbit(data), 'orbit');
+        return;
+      case 'to':
+        run(this.walkTo(data.x, data.z, data.face), 'to');
+        return;
+      case 'stop':
+        this.stopMotion();
+    }
   }
 
   /** True if the avatar system is configured to run (post-initialize). */
@@ -243,54 +247,38 @@ export class AvatarService {
       });
     }
 
-    // Register the continuous layer stack before the compiler starts ticking
-    // so the first tick already has breath/blink/gaze available.
-    if (this.config.compiler.layers?.enabled !== false) {
-      for (const layer of this.defaultLayers) {
-        this.compiler.registerLayer(layer);
+    // Continuous stack is in {@link AnimationCompiler}'s {@link LayerManager}
+    // (see `registerContinuousStack` in the compiler constructor). Wire idle /
+    // walk cycle clips from the action-map.
+    const idleActionName = this.config.compiler.idle?.loopClipActionName;
+    if (idleActionName) {
+      const idleLayer = this.compiler.getLayer('idle-motion');
+      const clip = this.compiler.getClipByActionName(idleActionName);
+      if (idleLayer instanceof IdleMotionLayer && clip) {
+        idleLayer.setLoopClip(clip);
+        logger.info(
+          `[AvatarService] IdleMotionLayer loop mode enabled with clip "${idleActionName}" (${clip.duration.toFixed(2)}s)`,
+        );
+      } else {
+        logger.warn(
+          `[AvatarService] idle.loopClipActionName="${idleActionName}" did not resolve to a clip; idle layer stays in gap mode`,
+        );
       }
-      logger.info(
-        '[AvatarService] Animation layers registered:',
-        this.defaultLayers.map((l) => l.id),
-      );
+    }
 
-      // Resolve the configured idle loop clip (if any) through the compiler's
-      // action-map and push it into IdleMotionLayer. This switches the layer
-      // from gap-based one-shot mode to continuous loop mode; the loop clip
-      // is the sole source of truth for the character's resting pose.
-      const idleActionName = this.config.compiler.idle?.loopClipActionName;
-      if (idleActionName) {
-        const idleLayer = this.defaultLayers.find((l) => l.id === 'idle-motion') as IdleMotionLayer | undefined;
-        const clip = this.compiler.getClipByActionName(idleActionName);
-        if (idleLayer && clip) {
-          idleLayer.setLoopClip(clip);
-          logger.info(
-            `[AvatarService] IdleMotionLayer loop mode enabled with clip "${idleActionName}" (${clip.duration.toFixed(2)}s)`,
-          );
-        } else if (idleActionName) {
-          logger.warn(
-            `[AvatarService] idle.loopClipActionName="${idleActionName}" did not resolve to a clip; idle layer stays in gap mode`,
-          );
-        }
-      }
-
-      // Resolve the configured walk-cycle clip (if any) and push it into
-      // WalkingLayer. When unset or unresolvable, the layer stays in slide-only
-      // mode (still emits vrm.root.* channels but no leg-bone animation).
-      const walkCycleName = this.config.compiler.walk?.cycleClipActionName;
-      if (walkCycleName) {
-        const walkingLayer = this.defaultLayers.find((l) => l.id === 'walking') as WalkingLayer | undefined;
-        const walkClip = this.compiler.getClipByActionName(walkCycleName);
-        if (walkingLayer && walkClip) {
-          walkingLayer.setWalkCycleClip(walkClip);
-          logger.info(
-            `[AvatarService] WalkingLayer cycle clip enabled with "${walkCycleName}" (${walkClip.duration.toFixed(2)}s)`,
-          );
-        } else {
-          logger.warn(
-            `[AvatarService] walk.cycleClipActionName="${walkCycleName}" did not resolve to a clip; walking layer stays in slide mode`,
-          );
-        }
+    const walkCycleName = this.config.compiler.walk?.cycleClipActionName;
+    if (walkCycleName) {
+      const walkingLayer = this.compiler.getLayer('walking');
+      const walkClip = this.compiler.getClipByActionName(walkCycleName);
+      if (walkingLayer instanceof WalkingLayer && walkClip) {
+        walkingLayer.setWalkCycleClip(walkClip);
+        logger.info(
+          `[AvatarService] WalkingLayer cycle clip enabled with "${walkCycleName}" (${walkClip.duration.toFixed(2)}s)`,
+        );
+      } else {
+        logger.warn(
+          `[AvatarService] walk.cycleClipActionName="${walkCycleName}" did not resolve to a clip; walking layer stays in slide mode`,
+        );
       }
     }
 
@@ -679,8 +667,10 @@ export class AvatarService {
     return this.compiler?.getActionDuration(action);
   }
 
+  /** Resolves the `WalkingLayer` from the compiler’s {@link LayerManager} (registered in `initialize()`). */
   private getWalkingLayer(): WalkingLayer | undefined {
-    return this.defaultLayers.find((layer): layer is WalkingLayer => layer.id === 'walking');
+    const layer = this.compiler?.getLayer('walking');
+    return layer instanceof WalkingLayer ? layer : undefined;
   }
 }
 
@@ -688,7 +678,7 @@ export class AvatarService {
  * Format an action list as a Markdown-style bulleted list for injection into
  * avatar LLM prompts. Each line reads:
  *
- *   - `nod`: 点头两次,表示同意、赞同或肯定
+ *   - `nod`: nods twice — agreement or affirmation
  *
  * Actions without a description fall back to just their name so the LLM at
  * least knows the action exists. The output is stable/sorted by category order

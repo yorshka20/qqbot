@@ -304,7 +304,7 @@ export interface SpringParams {
 
 /**
  * Configuration for the animation compiler.
- * Controls frame timing, smoothing, and ADSR ratio defaults.
+ * Controls frame timing, ADSR ratio defaults, and spring-damper tuning.
  */
 export interface CompilerConfig {
   /** Source capture framerate (fps) */
@@ -313,25 +313,10 @@ export interface CompilerConfig {
   outputFps: number;
   /** Default easing when none specified on a node */
   defaultEasing: EasingType;
-  /**
-   * @deprecated since 2026-04-19. Replaced by spring-damper smoothing
-   * (`springDefaults` / `springByChannel`). Value is ignored by
-   * `AnimationCompiler.tick()`; kept only so existing config.jsonc
-   * files with `smoothingFactor` still type-check.
-   */
-  smoothingFactor: number;
   /** Attack phase ratio of the ADSR envelope (0.0–1.0) */
   attackRatio: number;
   /** Release phase ratio of the ADSR envelope (0.0–1.0) */
   releaseRatio: number;
-  /**
-   * Enable the default continuous animation layer stack (breath, auto-blink,
-   * eye gaze, idle motion). Each layer can be individually disabled via
-   * `AnimationCompiler.getLayer(id).setEnabled(false)` at runtime.
-   */
-  layers?: {
-    enabled: boolean;
-  };
   /** Fallback spring params for channels not in `springByChannel`. */
   springDefaults?: SpringParams;
   /** Per-channel spring params. Overrides the built-in DEFAULT_SPRING_BY_CHANNEL table. */

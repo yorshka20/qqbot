@@ -9,9 +9,10 @@
  */
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import type { AvatarActivity } from '../../state/types';
-import { AnimationCompiler } from '../AnimationCompiler';
+import type { AnimationCompiler } from '../AnimationCompiler';
 import type { AnimationLayer } from '../layers/types';
 import type { ModelKind } from '../types';
+import { newAnimationCompilerTest } from './newAnimationCompilerTest';
 
 // ---------------------------------------------------------------------------
 // Helper: a layer that emits a fixed, mutable contribution map each tick.
@@ -81,7 +82,7 @@ describe('AnimationCompiler spring-damper smoothing', () => {
   // Test 1 — step response, fast channel
   // -------------------------------------------------------------------------
   test('Test 1: mouth.open (fast, ω=25 ζ=1) reaches ≥0.95 within 200ms (12 ticks)', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     const layer = new ConstantSourceLayer({ 'mouth.open': 1.0 });
     compiler.registerLayer(layer);
 
@@ -104,7 +105,7 @@ describe('AnimationCompiler spring-damper smoothing', () => {
   // Tick 2+: emit body.z=1.0. Spring approaches from 0 → overshoots with ζ=0.85.
   // -------------------------------------------------------------------------
   test('Test 2: body.z (slow, ω=7 ζ=0.85) reaches ≥0.95 with overshoot ≤1.08 and >1.0', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     const layer = new ConstantSourceLayer({ 'body.z': 0.0 });
     compiler.registerLayer(layer);
 
@@ -134,7 +135,7 @@ describe('AnimationCompiler spring-damper smoothing', () => {
   // Test 3 — steady-state convergence
   // -------------------------------------------------------------------------
   test('Test 3: head.yaw (ω=12 ζ=1) converges to 0.5 within 1e-3 after 60 ticks', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     const layer = new ConstantSourceLayer({ 'head.yaw': 0.5 });
     compiler.registerLayer(layer);
 
@@ -151,7 +152,7 @@ describe('AnimationCompiler spring-damper smoothing', () => {
   // Test 4 — drop-on-release
   // -------------------------------------------------------------------------
   test('Test 4: mouth.open absent from contributions is dropped from emitted frame', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     const layer = new ConstantSourceLayer({ 'mouth.open': 0.7 });
     compiler.registerLayer(layer);
 
@@ -171,7 +172,7 @@ describe('AnimationCompiler spring-damper smoothing', () => {
   // Test 5 — re-acquire snap
   // -------------------------------------------------------------------------
   test('Test 5: re-acquired channel snaps to new target value after 5-tick silence', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     const layer = new ConstantSourceLayer({ 'mouth.open': 0.7 });
     compiler.registerLayer(layer);
 
@@ -194,29 +195,10 @@ describe('AnimationCompiler spring-damper smoothing', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Test 6 — deprecated smoothingFactor ignored
+  // Test 6 — dt clamp
   // -------------------------------------------------------------------------
-  test('Test 6: smoothingFactor: 0.01 does not throttle mouth.open (deprecated field)', () => {
-    const compiler = new AnimationCompiler({ smoothingFactor: 0.01 });
-    const layer = new ConstantSourceLayer({ 'mouth.open': 1.0 });
-    compiler.registerLayer(layer);
-
-    // First tick snaps, then 11 more
-    nowRef.t += 16.67;
-    (compiler as any).tick();
-    advanceTicks(compiler, nowRef, 11);
-
-    const val = compiler.getCurrentParams()['mouth.open'];
-    // If smoothingFactor=0.01 were still active, mouth.open would be ~0.11 after 12 ticks.
-    // Spring-damper ignores it, so the value should be ≥0.95.
-    expect(val).toBeGreaterThanOrEqual(0.95);
-  });
-
-  // -------------------------------------------------------------------------
-  // Test 7 — dt clamp
-  // -------------------------------------------------------------------------
-  test('Test 7: 500ms wall-clock gap is clamped; position is finite and bounded', () => {
-    const compiler = new AnimationCompiler();
+  test('Test 6: 500ms wall-clock gap is clamped; position is finite and bounded', () => {
+    const compiler = newAnimationCompilerTest();
     const layer = new ConstantSourceLayer({ 'mouth.open': 1.0 });
     compiler.registerLayer(layer);
 
@@ -273,12 +255,12 @@ describe('AnimationCompiler endPose baseline persistence', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Test 8 — endPose baseline written after animation completes
+  // Test 7 — endPose baseline written after animation completes
   // -------------------------------------------------------------------------
-  test('Test 8: endPose baseline arm.right≈5 persists after endTime and params stay near 5', () => {
+  test('Test 7: endPose baseline arm.right≈5 persists after endTime and params stay near 5', () => {
     // Use crossfadeMs=0 so we don't need to account for crossfade windows,
     // and a very long baselineHalfLifeMs so baseline doesn't decay in test.
-    const compiler = new AnimationCompiler({ crossfadeMs: 0, baselineHalfLifeMs: 1_000_000 });
+    const compiler = newAnimationCompilerTest({ crossfadeMs: 0, baselineHalfLifeMs: 1_000_000 });
     // Inject a mock action map that returns an action with endPose
     (compiler as any).actionMap = mockActionMap({
       targets: [{ channel: 'arm.right', targetValue: 5, weight: 1.0 }],
@@ -314,13 +296,13 @@ describe('AnimationCompiler endPose baseline persistence', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Test 9 — half-life decay: after one half-life, baseline is near 50% of
+  // Test 8 — half-life decay: after one half-life, baseline is near 50% of
   // original. Uses an explicit halfLife rather than the default so the test
   // survives future default changes.
   // -------------------------------------------------------------------------
-  test('Test 9: after one half-life, baseline decays to ~50% of original', () => {
+  test('Test 8: after one half-life, baseline decays to ~50% of original', () => {
     const halfLifeMs = 3000;
-    const compiler = new AnimationCompiler({ crossfadeMs: 0, baselineHalfLifeMs: halfLifeMs });
+    const compiler = newAnimationCompilerTest({ crossfadeMs: 0, baselineHalfLifeMs: halfLifeMs });
     (compiler as any).actionMap = mockActionMap({
       targets: [{ channel: 'arm.right', targetValue: 10, weight: 1.0 }],
       endPose: [{ channel: 'arm.right', value: 10 }],
@@ -361,11 +343,11 @@ describe('AnimationCompiler endPose baseline persistence', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Test 10 — crossfade no-sink: shared channel value never drops below
+  // Test 9 — crossfade no-sink: shared channel value never drops below
   // min(old, new) - epsilon during transition
   // -------------------------------------------------------------------------
-  test('Test 10: crossfade arm.right never sinks below min(old,new) - 0.1', () => {
-    const compiler = new AnimationCompiler({
+  test('Test 9: crossfade arm.right never sinks below min(old,new) - 0.1', () => {
+    const compiler = newAnimationCompilerTest({
       crossfadeMs: 250,
       attackRatio: 0.0, // immediate full value
       releaseRatio: 0.0, // no release (stays at peak)
@@ -434,10 +416,10 @@ describe('AnimationCompiler endPose baseline persistence', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Test 11 — crossfadeMs=0 immediate switch
+  // Test 10 — crossfadeMs=0 immediate switch
   // -------------------------------------------------------------------------
-  test('Test 11: crossfadeMs=0 switches immediately with no intermediate sink', () => {
-    const compiler = new AnimationCompiler({
+  test('Test 10: crossfadeMs=0 switches immediately with no intermediate sink', () => {
+    const compiler = newAnimationCompilerTest({
       crossfadeMs: 0,
       attackRatio: 0.0,
       releaseRatio: 0.0,
@@ -505,10 +487,10 @@ describe('AnimationCompiler endPose baseline persistence', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Test 12 — regression: missing endPose preserves drop-on-release behavior
+  // Test 11 — regression: missing endPose preserves drop-on-release behavior
   // -------------------------------------------------------------------------
-  test('Test 12: animation without endPose drops arm.right after expiry', () => {
-    const compiler = new AnimationCompiler({ crossfadeMs: 0 });
+  test('Test 11: animation without endPose drops arm.right after expiry', () => {
+    const compiler = newAnimationCompilerTest({ crossfadeMs: 0 });
     (compiler as any).actionMap = mockActionMap({
       targets: [{ channel: 'arm.right', targetValue: 5, weight: 1.0 }],
       // No endPose
@@ -544,10 +526,10 @@ describe('AnimationCompiler endPose baseline persistence', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Test 13 — regression: missing holdMs does not affect endTime calculation
+  // Test 12 — regression: missing holdMs does not affect endTime calculation
   // -------------------------------------------------------------------------
-  test('Test 13: animation without holdMs expires at startTime + duration', () => {
-    const compiler = new AnimationCompiler({ crossfadeMs: 0 });
+  test('Test 12: animation without holdMs expires at startTime + duration', () => {
+    const compiler = newAnimationCompilerTest({ crossfadeMs: 0 });
     (compiler as any).actionMap = mockActionMap({
       targets: [{ channel: 'head.yaw', targetValue: 10, weight: 1.0 }],
       // No holdMs
@@ -611,8 +593,8 @@ describe('AnimationCompiler — per-target leadMs timing', () => {
     );
 
     try {
-      const compiler = new AnimationCompiler(
-        { fps: 60, outputFps: 60, attackRatio: 0.2, releaseRatio: 0.3, defaultEasing: 'linear', smoothingFactor: 0 },
+      const compiler = newAnimationCompilerTest(
+        { fps: 60, outputFps: 60, attackRatio: 0.2, releaseRatio: 0.3, defaultEasing: 'linear' },
         mapPath,
       );
 
@@ -661,7 +643,7 @@ describe('AnimationCompiler — per-target leadMs timing', () => {
 // ---------------------------------------------------------------------------
 describe('AnimationCompiler — compiler:jitter tunable section', () => {
   test('listTunableParams includes compiler:jitter section with 3 params', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     const sections = compiler.listTunableParams();
     const jitter = sections.find((s) => s.id === 'compiler:jitter');
     expect(jitter).toBeDefined();
@@ -673,14 +655,14 @@ describe('AnimationCompiler — compiler:jitter tunable section', () => {
   });
 
   test('setTunableParam(compiler:jitter, durationJitter, 0.3) overrides effective jitter', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     expect(compiler.getEffectiveJitter().duration).toBeCloseTo(0.15);
     compiler.setTunableParam('compiler:jitter', 'durationJitter', 0.3);
     expect(compiler.getEffectiveJitter().duration).toBeCloseTo(0.3);
   });
 
   test('setTunableParam(compiler:jitter, intensityJitter, 0.25) overrides intensity axis only', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     compiler.setTunableParam('compiler:jitter', 'intensityJitter', 0.25);
     const eff = compiler.getEffectiveJitter();
     expect(eff.intensity).toBeCloseTo(0.25);
@@ -688,13 +670,13 @@ describe('AnimationCompiler — compiler:jitter tunable section', () => {
   });
 
   test('setTunableParam(compiler:jitter, intensityFloor, 0.2) overrides floor', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     compiler.setTunableParam('compiler:jitter', 'intensityFloor', 0.2);
     expect(compiler.getEffectiveJitter().intensityFloor).toBeCloseTo(0.2);
   });
 
   test('config.compiler.jitter is the middle precedence layer (overrides defaults; overridden by tunable)', () => {
-    const compiler = new AnimationCompiler({ jitter: { duration: 0.2 } });
+    const compiler = newAnimationCompilerTest({ jitter: { duration: 0.2 } });
     expect(compiler.getEffectiveJitter().duration).toBeCloseTo(0.2);
     compiler.setTunableParam('compiler:jitter', 'durationJitter', 0.4);
     expect(compiler.getEffectiveJitter().duration).toBeCloseTo(0.4);
@@ -756,8 +738,8 @@ describe('AnimationCompiler — clip execution path', () => {
       test_clip: { kind: 'clip', clip: 'test-clip.json' },
     });
     try {
-      const compiler = new AnimationCompiler(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+      const compiler = newAnimationCompilerTest(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
         mapPath,
       );
       compiler.enqueue([
@@ -794,8 +776,8 @@ describe('AnimationCompiler — clip execution path', () => {
       test_clip: { kind: 'clip', clip: 'test-clip.json' },
     });
     try {
-      const compiler = new AnimationCompiler(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+      const compiler = newAnimationCompilerTest(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
         mapPath,
       );
       compiler.enqueue([
@@ -828,8 +810,8 @@ describe('AnimationCompiler — clip execution path', () => {
       clip_b: { kind: 'clip', clip: 'test-clip.json' },
     });
     try {
-      const compiler = new AnimationCompiler(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+      const compiler = newAnimationCompilerTest(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
         mapPath,
       );
       // Set short crossfadeMs for testability
@@ -899,12 +881,11 @@ describe('AnimationCompiler — clip execution path', () => {
       }),
     );
     try {
-      const compiler = new AnimationCompiler(
+      const compiler = newAnimationCompilerTest(
         {
           fps: 60,
           outputFps: 60,
           defaultEasing: 'easeInOutCubic',
-          smoothingFactor: 0,
           attackRatio: 0.1,
           releaseRatio: 0.1,
         },
@@ -954,8 +935,8 @@ describe('AnimationCompiler — clip execution path', () => {
       const savedT = nowRef.t;
 
       // Run 1: intensity=1.0
-      const compiler1 = new AnimationCompiler(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+      const compiler1 = newAnimationCompilerTest(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
         mapPath,
       );
       compiler1.enqueue([
@@ -976,8 +957,8 @@ describe('AnimationCompiler — clip execution path', () => {
 
       // Reset time for run 2
       nowRef.t = savedT;
-      const compiler2 = new AnimationCompiler(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+      const compiler2 = newAnimationCompilerTest(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
         mapPath,
       );
       compiler2.enqueue([
@@ -1023,8 +1004,8 @@ describe('AnimationCompiler — clip execution path', () => {
       }),
     );
     try {
-      const compiler = new AnimationCompiler(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+      const compiler = newAnimationCompilerTest(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
         join(dir, 'map.json'),
       );
       compiler.enqueue([
@@ -1123,8 +1104,8 @@ describe('AnimationCompiler — quat clip path', () => {
       quat_clip: { kind: 'clip', clip: 'quat-clip.json' },
     });
     try {
-      const compiler = new AnimationCompiler(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+      const compiler = newAnimationCompilerTest(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
         mapPath,
       );
       compiler.enqueue([
@@ -1168,8 +1149,8 @@ describe('AnimationCompiler — quat clip path', () => {
       const savedT = nowRef.t;
 
       // Run 1: intensity=1.0
-      const compiler1 = new AnimationCompiler(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+      const compiler1 = newAnimationCompilerTest(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
         mapPath,
       );
       compiler1.enqueue([
@@ -1193,8 +1174,8 @@ describe('AnimationCompiler — quat clip path', () => {
 
       // Run 2: intensity=0.3
       nowRef.t = savedT;
-      const compiler2 = new AnimationCompiler(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0 },
+      const compiler2 = newAnimationCompilerTest(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
         mapPath,
       );
       compiler2.enqueue([
@@ -1228,8 +1209,8 @@ describe('AnimationCompiler — quat clip path', () => {
       quat_clip: { kind: 'clip', clip: 'quat-clip.json' },
     });
     try {
-      const compiler = new AnimationCompiler(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0, crossfadeMs: 0 },
+      const compiler = newAnimationCompilerTest(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', crossfadeMs: 0 },
         mapPath,
       );
       compiler.enqueue([
@@ -1279,8 +1260,8 @@ describe('AnimationCompiler — quat clip path', () => {
       quat_b: { kind: 'clip', clip: 'quat-clip.json' },
     });
     try {
-      const compiler = new AnimationCompiler(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', smoothingFactor: 0, crossfadeMs: 100 },
+      const compiler = newAnimationCompilerTest(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', crossfadeMs: 100 },
         mapPath,
       );
 
@@ -1333,12 +1314,12 @@ describe('AnimationCompiler — quat clip path', () => {
 // ---------------------------------------------------------------------------
 describe('AnimationCompiler currentModelKind', () => {
   test('defaults to null before any hello is received', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     expect(compiler.getCurrentModelKind()).toBeNull();
   });
 
   test('setCurrentModelKind stores the value and getCurrentModelKind returns it', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     const kinds: (ModelKind | null)[] = ['cubism', 'vrm', null];
     for (const kind of kinds) {
       compiler.setCurrentModelKind(kind);
@@ -1352,7 +1333,7 @@ describe('AnimationCompiler currentModelKind', () => {
 // ---------------------------------------------------------------------------
 describe('AnimationCompiler — model-aware listActions and resolveAction', () => {
   test('listActions filters by current model kind (cubism excludes vrm-only)', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     compiler.setCurrentModelKind('cubism');
     const actions = compiler.listActions();
     const names = actions.map((a) => a.name);
@@ -1365,7 +1346,7 @@ describe('AnimationCompiler — model-aware listActions and resolveAction', () =
   });
 
   test('listActions includes vrm-only actions when model is vrm', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     compiler.setCurrentModelKind('vrm');
     const actions = compiler.listActions();
     const names = actions.map((a) => a.name);
@@ -1378,14 +1359,14 @@ describe('AnimationCompiler — model-aware listActions and resolveAction', () =
   });
 
   test('resolveAction returns null for vrm-only action when model is cubism', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     compiler.setCurrentModelKind('cubism');
     const result = compiler.resolveAction('formal_bow', 'neutral', 1.0);
     expect(result).toBeNull();
   });
 
   test('resolveAction resolves for vrm-only action when model is vrm', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     compiler.setCurrentModelKind('vrm');
     const result = compiler.resolveAction('formal_bow', 'neutral', 1.0);
     expect(result).not.toBeNull();
@@ -1411,7 +1392,7 @@ describe('AnimationCompiler — cubism path does not emit vrm.* params (regressi
   });
 
   test('no vrm.*.q[xyzw] channels appear on cubism path with no layers', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     compiler.setCurrentModelKind('cubism');
 
     // Tick without any registered layers
@@ -1424,7 +1405,7 @@ describe('AnimationCompiler — cubism path does not emit vrm.* params (regressi
   });
 
   test('vrm-only layer registered on cubism compiler emits no vrm.* params', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     compiler.setCurrentModelKind('cubism');
 
     // Register a fake layer that declares modelSupport: ['vrm'] and would emit quat

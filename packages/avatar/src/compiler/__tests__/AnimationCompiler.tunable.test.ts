@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { DEFAULT_ACTIVITY } from '../../state/types';
-import { AnimationCompiler } from '../AnimationCompiler';
 import { AudioEnvelopeLayer } from '../layers/AudioEnvelopeLayer';
 import { DEFAULT_AUDIO_ENVELOPE_CONFIG, setAudioEnvelopeConfig } from '../layers/audio-envelope-config';
+import { newAnimationCompilerTest } from './newAnimationCompilerTest';
 
 // Tests B, C, D, E: AnimationCompiler spring overrides + AudioEnvelope shared config + envelope tunables
 
@@ -11,7 +11,7 @@ import { DEFAULT_AUDIO_ENVELOPE_CONFIG, setAudioEnvelopeConfig } from '../layers
 // ---------------------------------------------------------------------------
 describe('AnimationCompiler spring override', () => {
   test('setTunableParam body.z.omega=15 is reflected in listTunableParams', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     compiler.setTunableParam('compiler:spring-damper', 'body.z.omega', 15);
 
     const sections = compiler.listTunableParams();
@@ -33,7 +33,7 @@ describe('AnimationCompiler spring override', () => {
 // ---------------------------------------------------------------------------
 describe('AnimationCompiler spring list shape', () => {
   test('compiler:spring-damper section has exactly 12 params', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     const sections = compiler.listTunableParams();
     const springSection = sections.find((s) => s.id === 'compiler:spring-damper');
     expect(springSection).toBeDefined();
@@ -41,7 +41,7 @@ describe('AnimationCompiler spring list shape', () => {
   });
 
   test('each of the 6 exposed channels has exactly one omega and one zeta param', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     const sections = compiler.listTunableParams();
     const springSection = sections.find((s) => s.id === 'compiler:spring-damper')!;
     const CHANNELS = ['body.x', 'body.y', 'body.z', 'head.yaw', 'head.pitch', 'head.roll'];
@@ -100,7 +100,7 @@ describe('AudioEnvelopeLayer shared singleton config', () => {
 // ---------------------------------------------------------------------------
 describe('AnimationCompiler compiler:envelope tunable section', () => {
   test('Test E1: compiler:envelope section exists with 2 params', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     const sections = compiler.listTunableParams();
     const envelopeSection = sections.find((s) => s.id === 'compiler:envelope');
     expect(envelopeSection).toBeDefined();
@@ -108,7 +108,7 @@ describe('AnimationCompiler compiler:envelope tunable section', () => {
   });
 
   test('Test E2: compiler:envelope has crossfadeMs and baselineHalfLifeMs params', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     const sections = compiler.listTunableParams();
     const envelopeSection = sections.find((s) => s.id === 'compiler:envelope')!;
 
@@ -126,7 +126,7 @@ describe('AnimationCompiler compiler:envelope tunable section', () => {
   });
 
   test('Test E3: default crossfadeMs value is 250 when no config override', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     const sections = compiler.listTunableParams();
     const envelopeSection = sections.find((s) => s.id === 'compiler:envelope')!;
     const crossfadeParam = envelopeSection.params.find((p) => p.id === 'crossfadeMs')!;
@@ -134,7 +134,7 @@ describe('AnimationCompiler compiler:envelope tunable section', () => {
   });
 
   test('Test E4: config crossfadeMs=100 reflected as initial tunable value', () => {
-    const compiler = new AnimationCompiler({ crossfadeMs: 100 });
+    const compiler = newAnimationCompilerTest({ crossfadeMs: 100 });
     const sections = compiler.listTunableParams();
     const envelopeSection = sections.find((s) => s.id === 'compiler:envelope')!;
     const crossfadeParam = envelopeSection.params.find((p) => p.id === 'crossfadeMs')!;
@@ -142,7 +142,7 @@ describe('AnimationCompiler compiler:envelope tunable section', () => {
   });
 
   test('Test E5: setTunableParam compiler:envelope crossfadeMs=500 updates runtime value', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     compiler.setTunableParam('compiler:envelope', 'crossfadeMs', 500);
 
     const sections = compiler.listTunableParams();
@@ -153,7 +153,7 @@ describe('AnimationCompiler compiler:envelope tunable section', () => {
   });
 
   test('Test E6: setTunableParam compiler:envelope baselineHalfLifeMs=30000 updates runtime value', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     compiler.setTunableParam('compiler:envelope', 'baselineHalfLifeMs', 30000);
 
     const sections = compiler.listTunableParams();
@@ -163,7 +163,7 @@ describe('AnimationCompiler compiler:envelope tunable section', () => {
   });
 
   test('Test E7: envelope override does not break existing spring-damper section', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     compiler.setTunableParam('compiler:envelope', 'crossfadeMs', 100);
     compiler.setTunableParam('compiler:spring-damper', 'body.z.omega', 15);
 
@@ -181,7 +181,7 @@ describe('AnimationCompiler compiler:envelope tunable section', () => {
   });
 
   test('Test E8: NaN and Infinity values are silently dropped for envelope params', () => {
-    const compiler = new AnimationCompiler();
+    const compiler = newAnimationCompilerTest();
     compiler.setTunableParam('compiler:envelope', 'crossfadeMs', Number.NaN);
     compiler.setTunableParam('compiler:envelope', 'baselineHalfLifeMs', Number.POSITIVE_INFINITY);
 
