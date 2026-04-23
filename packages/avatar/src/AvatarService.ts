@@ -190,6 +190,7 @@ export class AvatarService {
           undefined,
           config.speech.utteranceGapMs,
           config.speech.exportTtsWavDir,
+          (msg) => this.previewServer?.broadcastAudioChunk(msg),
         );
         logger.debug(`[AvatarService] SpeechService initialized with provider="${provider.name}"`);
       }

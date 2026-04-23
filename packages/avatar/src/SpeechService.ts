@@ -1,9 +1,10 @@
 import { decodeToMonoPcm } from './compiler/audio/decodeToMonoPcm';
 import { computeRmsEnvelope } from './compiler/audio/rms';
+import { RmsStreamer } from './compiler/audio/rmsStreaming';
 import { type AnimationLayer, AudioEnvelopeLayer } from './compiler/layers';
-import type { AudioMessage } from './preview/types';
+import type { AudioChunkMessage, AudioMessage } from './preview/types';
 import { splitIntoUtterances } from './tts/splitIntoUtterances';
-import type { SynthesisResult, TTSProvider } from './tts/TTSProvider';
+import type { SynthesisChunk, SynthesisResult, TTSProvider } from './tts/TTSProvider';
 import { logger } from './utils/logger';
 import { fromRepoRoot } from './utils/repoRoot';
 import { writeFileUnderDirectory } from './utils/writeFileUnderDirectory';
@@ -16,6 +17,11 @@ const ENVELOPE_HOP_MS = 20;
  *  clock drift. `AudioEnvelopeLayer.sample` already returns `{}` past the end,
  *  so this timeout is purely for registry hygiene. */
 const LAYER_UNREGISTER_SAFETY_MS = 500;
+/** Generous placeholder durationMs for a streaming AudioEnvelopeLayer before
+ *  finalize() is called. AudioEnvelopeLayer.sample() returns {} when the
+ *  playhead is past this duration, so it must be large enough that real
+ *  audio never exceeds it. finalize() overwrites it with the actual value. */
+const STREAMING_PLACEHOLDER_DURATION_MS = 60_000;
 
 export class SpeechService {
   private queue: string[] = [];
@@ -27,6 +33,8 @@ export class SpeechService {
    * broadcasting queue[0], queue[1]'s audio is usually already back from
    * the provider, so the gap between utterances shrinks to decode+broadcast
    * time instead of a full network+inference round-trip.
+   *
+   * Used only in the buffered path; the streaming path does not pre-synthesize.
    */
   private inflightNext: { text: string; promise: Promise<SynthesisResult> } | null = null;
 
@@ -39,6 +47,13 @@ export class SpeechService {
     private clock: () => number = Date.now,
     private gapMs: number = DEFAULT_GAP_MS,
     private exportTtsWavDir?: string,
+    /**
+     * Optional callback for streaming PCM utterances. When provided AND the
+     * active provider exposes `synthesizeStream`, `drain()` uses the streaming
+     * path and calls this callback per chunk instead of `broadcastAudio`.
+     * Callers that omit this parameter continue to use the legacy buffered path.
+     */
+    private broadcastAudioChunk?: (msg: AudioChunkMessage) => void,
   ) {}
 
   /**
@@ -103,117 +118,330 @@ export class SpeechService {
       }
 
       const utterance = this.queue[0];
-      const utteranceId = crypto.randomUUID();
-      logger.info(
-        `[SpeechService] synthesize start — id=${utteranceId} provider="${this.provider.name}" len=${utterance.length}`,
-      );
+      const canStream =
+        this.broadcastAudioChunk !== undefined && typeof this.provider.synthesizeStream === 'function';
 
-      // Start or reuse synthesis for the head utterance.
-      let headPromise: Promise<SynthesisResult>;
-      if (this.inflightNext && this.inflightNext.text === utterance) {
-        headPromise = this.inflightNext.promise;
+      if (canStream) {
+        // Streaming path — inflightNext optimization does not apply.
+        // Clear any stale pre-synthesis promise so it doesn't confuse a future
+        // buffered iteration if we ever switch back.
         this.inflightNext = null;
+        await this.drainOneStreaming(utterance);
+        // queue.shift() is handled inside drainOneStreaming (or its buffered fallback)
       } else {
-        headPromise = this.provider.synthesize(utterance);
+        // Buffered path — preserves original behaviour bit-for-bit.
+        await this.drainOneBuffered(utterance);
+        // Post-shift: queue[0] is the NEW head. Prime it so the next iteration
+        // can reuse the promise and save a full synthesis round-trip.
+        this.primeNext(0);
       }
-
-      // Fire queue[1] synthesis NOW so it runs concurrently with queue[0]'s
-      // await + decode + broadcast. Pre-shift: queue[0] is the current head,
-      // queue[1] is the NEXT iteration's head — that's what we want to prime.
-      this.primeNext(1);
-
-      let result: SynthesisResult;
-      try {
-        result = await headPromise;
-      } catch (err) {
-        this.queue.shift();
-        logger.warn(
-          `[SpeechService] synthesize failed — id=${utteranceId} err=${err instanceof Error ? err.message : String(err)}`,
-        );
-        continue;
-      }
-      this.queue.shift();
-
-      const bytes = result.bytes;
-      const mime = result.mime;
-      const estimatedDurationMs = result.durationMs;
-      logger.info(
-        `[SpeechService] synthesize ok — id=${utteranceId} bytes=${bytes.length} mime=${mime} est=${Math.round(estimatedDurationMs)}ms`,
-      );
-      if (this.exportTtsWavDir) {
-        try {
-          const ext = mime.includes('mpeg') || mime.includes('mp3') || mime.includes('MPEG') ? 'mp3' : 'wav';
-          const fname = `${Date.now()}-${utteranceId.slice(0, 8)}.${ext}`;
-          const p = writeFileUnderDirectory(fromRepoRoot(this.exportTtsWavDir), fname, bytes);
-          logger.info(`[SpeechService] wrote TTS file — ${p}`);
-        } catch (err) {
-          logger.warn(
-            `[SpeechService] export TTS to disk failed — id=${utteranceId} err=${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      }
-
-      // Decode + compute envelope. Non-fatal: if anything throws, we still
-      // ship the audio but skip lip-sync for this utterance.
-      let envelope: Float32Array | null = null;
-      let accurateDurationMs = estimatedDurationMs;
-      try {
-        const decoded = await decodeToMonoPcm(bytes, mime);
-        envelope = computeRmsEnvelope(decoded.pcm, decoded.sampleRate, { hopMs: ENVELOPE_HOP_MS });
-        accurateDurationMs = (decoded.pcm.length / decoded.sampleRate) * 1000;
-        logger.debug(
-          `[SpeechService] decode+rms ok — id=${utteranceId} pcmSamples=${decoded.pcm.length} sr=${decoded.sampleRate} envFrames=${envelope.length} dur=${Math.round(accurateDurationMs)}ms`,
-        );
-      } catch (err) {
-        logger.warn(
-          `[SpeechService] decode/envelope failed (lip-sync skipped, still broadcasting audio) — id=${utteranceId} err=${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-
-      const now = this.clock();
-      const startAtEpochMs = Math.max(now, this.lastEndTime + this.gapMs);
-      this.lastEndTime = startAtEpochMs + accurateDurationMs;
-
-      const layerId = `audio-envelope-${utteranceId}`;
-      if (envelope) {
-        const layer = new AudioEnvelopeLayer({
-          id: layerId,
-          envelope,
-          hopMs: ENVELOPE_HOP_MS,
-          startAtMs: startAtEpochMs,
-          durationMs: accurateDurationMs,
-        });
-        this.registerLayer(layer);
-        setTimeout(() => {
-          this.unregisterLayer(layerId);
-        }, accurateDurationMs + LAYER_UNREGISTER_SAFETY_MS);
-      }
-
-      this.broadcastAudio({
-        type: 'audio',
-        data: {
-          base64: Buffer.from(bytes).toString('base64'),
-          mime,
-          startAtEpochMs,
-          durationMs: accurateDurationMs,
-          utteranceId,
-          text: utterance,
-        },
-      });
-      logger.info(
-        `[SpeechService] broadcast audio — id=${utteranceId} startAt=${startAtEpochMs} dur=${Math.round(accurateDurationMs)}ms lipSync=${envelope !== null}`,
-      );
-
-      // Post-shift: queue[0] is the NEW head. If TOP primeNext was skipped
-      // (because queue.length was 1 at iter start) but utterances have since
-      // been enqueued, we need to prime the new head so the next iteration
-      // can reuse it. Priming queue[1] here would leapfrog the new head and
-      // cause Sovits to receive synth requests out of order, which manifests
-      // as dropped utterances on the renderer's single-track preemption path.
-      this.primeNext(0);
     }
 
     this.draining = false;
     this.inflightNext = null;
+  }
+
+  /**
+   * Buffered path: await full synthesis → decode → register AudioEnvelopeLayer
+   * → broadcast AudioMessage. Preserves the original behaviour bit-for-bit,
+   * including the one-deep `inflightNext` prefetch optimisation.
+   */
+  private async drainOneBuffered(utterance: string): Promise<void> {
+    const utteranceId = crypto.randomUUID();
+    logger.info(
+      `[SpeechService] synthesize start — id=${utteranceId} provider="${this.provider.name}" len=${utterance.length}`,
+    );
+
+    // Start or reuse synthesis for the head utterance.
+    let headPromise: Promise<SynthesisResult>;
+    if (this.inflightNext && this.inflightNext.text === utterance) {
+      headPromise = this.inflightNext.promise;
+      this.inflightNext = null;
+    } else {
+      headPromise = this.provider.synthesize(utterance);
+    }
+
+    // Fire queue[1] synthesis NOW so it runs concurrently with queue[0]'s
+    // await + decode + broadcast. Pre-shift: queue[0] is the current head,
+    // queue[1] is the NEXT iteration's head — that's what we want to prime.
+    this.primeNext(1);
+
+    let result: SynthesisResult;
+    try {
+      result = await headPromise;
+    } catch (err) {
+      this.queue.shift();
+      logger.warn(
+        `[SpeechService] synthesize failed — id=${utteranceId} err=${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+    this.queue.shift();
+
+    const bytes = result.bytes;
+    const mime = result.mime;
+    const estimatedDurationMs = result.durationMs;
+    logger.info(
+      `[SpeechService] synthesize ok — id=${utteranceId} bytes=${bytes.length} mime=${mime} est=${Math.round(estimatedDurationMs)}ms`,
+    );
+    if (this.exportTtsWavDir) {
+      try {
+        const ext = mime.includes('mpeg') || mime.includes('mp3') || mime.includes('MPEG') ? 'mp3' : 'wav';
+        const fname = `${Date.now()}-${utteranceId.slice(0, 8)}.${ext}`;
+        const p = writeFileUnderDirectory(fromRepoRoot(this.exportTtsWavDir), fname, bytes);
+        logger.info(`[SpeechService] wrote TTS file — ${p}`);
+      } catch (err) {
+        logger.warn(
+          `[SpeechService] export TTS to disk failed — id=${utteranceId} err=${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    // Decode + compute envelope. Non-fatal: if anything throws, we still
+    // ship the audio but skip lip-sync for this utterance.
+    let envelope: Float32Array | null = null;
+    let accurateDurationMs = estimatedDurationMs;
+    try {
+      const decoded = await decodeToMonoPcm(bytes, mime);
+      envelope = computeRmsEnvelope(decoded.pcm, decoded.sampleRate, { hopMs: ENVELOPE_HOP_MS });
+      accurateDurationMs = (decoded.pcm.length / decoded.sampleRate) * 1000;
+      logger.debug(
+        `[SpeechService] decode+rms ok — id=${utteranceId} pcmSamples=${decoded.pcm.length} sr=${decoded.sampleRate} envFrames=${envelope.length} dur=${Math.round(accurateDurationMs)}ms`,
+      );
+    } catch (err) {
+      logger.warn(
+        `[SpeechService] decode/envelope failed (lip-sync skipped, still broadcasting audio) — id=${utteranceId} err=${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    const now = this.clock();
+    const startAtEpochMs = Math.max(now, this.lastEndTime + this.gapMs);
+    this.lastEndTime = startAtEpochMs + accurateDurationMs;
+
+    const layerId = `audio-envelope-${utteranceId}`;
+    if (envelope) {
+      const layer = new AudioEnvelopeLayer({
+        id: layerId,
+        envelope,
+        hopMs: ENVELOPE_HOP_MS,
+        startAtMs: startAtEpochMs,
+        durationMs: accurateDurationMs,
+      });
+      this.registerLayer(layer);
+      setTimeout(() => {
+        this.unregisterLayer(layerId);
+      }, accurateDurationMs + LAYER_UNREGISTER_SAFETY_MS);
+    }
+
+    this.broadcastAudio({
+      type: 'audio',
+      data: {
+        base64: Buffer.from(bytes).toString('base64'),
+        mime,
+        startAtEpochMs,
+        durationMs: accurateDurationMs,
+        utteranceId,
+        text: utterance,
+      },
+    });
+    logger.info(
+      `[SpeechService] broadcast audio — id=${utteranceId} startAt=${startAtEpochMs} dur=${Math.round(accurateDurationMs)}ms lipSync=${envelope !== null}`,
+    );
+  }
+
+  /**
+   * Streaming path: consume `provider.synthesizeStream(utterance)` chunk-by-chunk.
+   *
+   * On seq 0: allocate utteranceId, compute startAtEpochMs, register a streaming
+   * AudioEnvelopeLayer with a generous placeholder duration. For each non-empty
+   * PCM chunk: decode via decodeToMonoPcm, feed RmsStreamer, append frames.
+   * Broadcast AudioChunkMessage immediately per chunk (zero-lag contract).
+   *
+   * Fallback to buffered path if:
+   *   - synthesizeStream() throws synchronously, OR
+   *   - The async iterator throws before emitting any chunk (seq === 0).
+   *
+   * Consumer disconnect: if hasConsumer() returns false mid-stream, stop
+   * broadcasting, unregister the layer, and clear the queue entry.
+   *
+   * Mid-stream errors (seq > 0): unregister the layer and continue queue
+   * processing (same semantics as buffered error handling).
+   */
+  private async drainOneStreaming(utterance: string): Promise<void> {
+    const utteranceId = crypto.randomUUID();
+    logger.info(
+      `[SpeechService] synthesize start (streaming) — id=${utteranceId} provider="${this.provider.name}" len=${utterance.length}`,
+    );
+
+    // drain() only calls us when canStream is true (broadcastAudioChunk defined +
+    // synthesizeStream present). Capture both as local non-nullable references.
+    const broadcastChunk = this.broadcastAudioChunk;
+    const synthesizeStream = this.provider.synthesizeStream;
+    if (!broadcastChunk || !synthesizeStream) {
+      await this.drainOneBuffered(utterance);
+      return;
+    }
+
+    // Attempt to get the stream. Synchronous throws mean the provider doesn't
+    // support streaming in its current config — fall back to buffered.
+    let stream: AsyncIterable<SynthesisChunk>;
+    try {
+      stream = synthesizeStream.call(this.provider, utterance);
+    } catch (err) {
+      logger.warn(
+        `[SpeechService] synthesizeStream threw synchronously, falling back to buffered — id=${utteranceId} err=${err instanceof Error ? err.message : String(err)}`,
+      );
+      await this.drainOneBuffered(utterance);
+      return;
+    }
+
+    const now = this.clock();
+    const startAtEpochMs = Math.max(now, this.lastEndTime + this.gapMs);
+    const layerId = `audio-envelope-${utteranceId}`;
+
+    // Register the layer immediately so playback can begin as soon as the
+    // first chunk arrives. durationMs is a generous placeholder; finalize()
+    // will set the real value when the stream ends.
+    const layer = new AudioEnvelopeLayer({
+      id: layerId,
+      hopMs: ENVELOPE_HOP_MS,
+      startAtMs: startAtEpochMs,
+      durationMs: STREAMING_PLACEHOLDER_DURATION_MS,
+    });
+    this.registerLayer(layer);
+
+    const rmsStreamer = new RmsStreamer({ hopMs: ENVELOPE_HOP_MS });
+    let seq = 0;
+    let totalPcmSamples = 0;
+    let resolvedSampleRate = 0;
+    let resolvedMime = '';
+    let layerFinalized = false;
+
+    try {
+      for await (const chunk of stream) {
+        // Consumer disconnect: stop mid-stream, unregister layer, drop utterance.
+        if (!this.hasConsumer()) {
+          logger.info(
+            `[SpeechService] consumer left mid-stream — id=${utteranceId} seq=${seq}, stopping broadcast`,
+          );
+          if (!layerFinalized) {
+            this.unregisterLayer(layerId);
+            layerFinalized = true;
+          }
+          this.queue.shift();
+          return;
+        }
+
+        if (seq === 0) {
+          resolvedMime = chunk.mime;
+          resolvedSampleRate = chunk.sampleRate ?? 32000;
+        }
+
+        let chunkBase64 = '';
+
+        if (chunk.bytes.length > 0) {
+          chunkBase64 = Buffer.from(chunk.bytes).toString('base64');
+
+          // RMS computation: only supported for audio/pcm (raw samples without
+          // a container header). WAV/MP3 chunks cannot be decoded incrementally
+          // because the header is only present in the first chunk.
+          if (resolvedMime === 'audio/pcm' && resolvedSampleRate > 0) {
+            try {
+              const decoded = await decodeToMonoPcm(chunk.bytes, resolvedMime, {
+                sampleRate: resolvedSampleRate,
+              });
+              totalPcmSamples += decoded.pcm.length;
+              const frames = rmsStreamer.push(decoded.pcm, decoded.sampleRate);
+              if (frames.length > 0) {
+                layer.appendFrames(frames);
+              }
+            } catch (decodeErr) {
+              logger.warn(
+                `[SpeechService] chunk decode failed (lip-sync skipped for chunk) — id=${utteranceId} seq=${seq} err=${decodeErr instanceof Error ? decodeErr.message : String(decodeErr)}`,
+              );
+            }
+          }
+        }
+
+        const isLast = chunk.isLast;
+        let totalDurationMs: number | undefined;
+
+        if (isLast) {
+          // Prefer provider-reported duration; fall back to sample count.
+          if (chunk.totalDurationMs !== undefined) {
+            totalDurationMs = chunk.totalDurationMs;
+          } else if (resolvedSampleRate > 0 && totalPcmSamples > 0) {
+            totalDurationMs = (totalPcmSamples / resolvedSampleRate) * 1000;
+          }
+
+          // Flush any residual PCM that didn't fill a complete hop.
+          const flushFrames = rmsStreamer.flush();
+          if (flushFrames.length > 0) {
+            layer.appendFrames(flushFrames);
+          }
+
+          const finalDurationMs = totalDurationMs ?? STREAMING_PLACEHOLDER_DURATION_MS;
+          layer.finalize(finalDurationMs);
+          layerFinalized = true;
+          this.lastEndTime = startAtEpochMs + finalDurationMs;
+          setTimeout(() => {
+            this.unregisterLayer(layerId);
+          }, finalDurationMs + LAYER_UNREGISTER_SAFETY_MS);
+
+          logger.info(
+            `[SpeechService] stream complete — id=${utteranceId} dur=${Math.round(finalDurationMs)}ms chunks=${seq + 1}`,
+          );
+        }
+
+        // Broadcast immediately — zero-lag contract: no batching, no delay.
+        broadcastChunk({
+          type: 'audio-chunk',
+          data: {
+            utteranceId,
+            seq,
+            base64: chunkBase64,
+            isLast,
+            ...(totalDurationMs !== undefined ? { totalDurationMs } : {}),
+            ...(seq === 0
+              ? {
+                  mime: resolvedMime,
+                  sampleRate: resolvedSampleRate,
+                  startAtEpochMs,
+                  text: utterance,
+                }
+              : {}),
+          },
+        });
+
+        logger.debug(
+          `[SpeechService] broadcast chunk — id=${utteranceId} seq=${seq} bytes=${chunk.bytes.length} isLast=${isLast}`,
+        );
+        seq++;
+      }
+    } catch (err) {
+      if (seq === 0) {
+        // No chunks emitted yet — fall back to buffered synthesis so the
+        // utterance is not silently lost.
+        logger.warn(
+          `[SpeechService] synthesizeStream failed before first chunk, falling back to buffered — id=${utteranceId} err=${err instanceof Error ? err.message : String(err)}`,
+        );
+        if (!layerFinalized) {
+          this.unregisterLayer(layerId);
+        }
+        // drainOneBuffered handles queue.shift() internally.
+        await this.drainOneBuffered(utterance);
+        return;
+      }
+      // Mid-stream error (seq > 0): can't fall back — clean up layer and
+      // continue queue processing (consistent with buffered error semantics).
+      logger.warn(
+        `[SpeechService] stream error mid-stream — id=${utteranceId} seq=${seq} err=${err instanceof Error ? err.message : String(err)}`,
+      );
+      if (!layerFinalized) {
+        this.unregisterLayer(layerId);
+      }
+    }
+
+    this.queue.shift();
   }
 }
