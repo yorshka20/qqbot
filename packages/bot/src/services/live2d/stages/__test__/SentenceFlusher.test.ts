@@ -94,4 +94,46 @@ describe('SentenceFlusher', () => {
     f.end();
     expect(out).toEqual(['你好呀，欢迎来到直播间，']);
   });
+
+  it('drops pure-punctuation silence output instead of emitting empty TTS chunks', () => {
+    // Models sometimes reply with "。。。" to signal silence. Splitting that per
+    // terminator would send lone "。" to TTS (which errors). Expect ZERO chunks.
+    const chunks = collectChunks(['。。。']);
+    expect(chunks).toEqual([]);
+  });
+
+  it('drops punctuation-only streaming deltas across multiple pushes', () => {
+    const chunks = collectChunks(['。', '。', '。', '！', '？']);
+    expect(chunks).toEqual([]);
+  });
+
+  it('attaches consecutive trailing punctuation to the preceding sentence', () => {
+    // "你好。。" must emit as ONE chunk "你好。。" rather than "你好。" + orphan "。".
+    const chunks = collectChunks(['你好。。']);
+    expect(chunks).toEqual(['你好。。']);
+  });
+
+  it('greedy-extend absorbs mixed trailing terminators and separators', () => {
+    // "好了！，。" → the sentence plus its trailing punctuation run, one chunk.
+    const chunks = collectChunks(['好了！，。继续。']);
+    expect(chunks).toEqual(['好了！，。', '继续。']);
+  });
+
+  it('drops leading punctuation prefix before a real sentence', () => {
+    // "。。你好。" — the leading "。。" has nothing to attach to, so it's
+    // dropped, and "你好。" flushes normally.
+    const chunks = collectChunks(['。。你好。']);
+    expect(chunks).toEqual(['你好。']);
+  });
+
+  it('end() drops a punctuation-only tail buffer', () => {
+    const out: string[] = [];
+    const f = new SentenceFlusher((c) => out.push(c));
+    f.push('你好。');
+    expect(out).toEqual(['你好。']);
+    // Trailing noise that never got speakable content — must not emit.
+    f.push('。。');
+    f.end();
+    expect(out).toEqual(['你好。']);
+  });
 });
