@@ -3,6 +3,7 @@
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { NormalEpisodeService } from '@/conversation/history';
+import type { AIChatConfig, ReasoningEffort } from '@/core/config/types/ai';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../../capabilities/types';
@@ -20,15 +21,36 @@ import type { ReplyStage } from '../types';
  * instructions, and the current user query. Handles vision ContentPart injection
  * for history images and current message images.
  */
+/**
+ * Defaults for `AIChatConfig`. Both default to `'medium'` to preserve the
+ * historical behavior of the conversation pipeline (which previously
+ * hardcoded `'medium'` for all turns). The split is exposed so operators
+ * *can* tune them independently — e.g. lower non-tool reasoning if their
+ * session is pure casual chat — but we don't presume the split ourselves.
+ *
+ * NOTE: this is the GENERAL QQ conversation pipeline, not the avatar/Live2D
+ * path. The avatar path has its own knob (`avatar.llmReasoningEffort`)
+ * defaulting to `'none'`, because it's pure live roleplay where thinking
+ * is net-negative on TTFT and character coherence.
+ */
+const DEFAULT_CHAT_REASONING: ReasoningEffort = 'medium';
+const DEFAULT_TOOL_REASONING: ReasoningEffort = 'medium';
+
 export class PromptAssemblyStage implements ReplyStage {
   readonly name = 'prompt-assembly';
 
   private readonly messageAssembler = new PromptMessageAssembler();
+  private readonly chatReasoning: ReasoningEffort;
+  private readonly toolReasoning: ReasoningEffort;
 
   constructor(
     private promptManager: PromptManager,
     private messageAPI: MessageAPI,
-  ) {}
+    chatConfig?: AIChatConfig,
+  ) {
+    this.chatReasoning = chatConfig?.reasoningEffort ?? DEFAULT_CHAT_REASONING;
+    this.toolReasoning = chatConfig?.toolReasoningEffort ?? DEFAULT_TOOL_REASONING;
+  }
 
   async execute(ctx: ReplyPipelineContext): Promise<void> {
     const { hookContext } = ctx;
@@ -144,12 +166,18 @@ export class PromptAssemblyStage implements ReplyStage {
 
     ctx.messages = messages;
 
-    const maxTokens = ctx.toolDefinitions.length > 0 ? 4000 : 2000;
+    const hasTools = ctx.toolDefinitions.length > 0;
+    const maxTokens = hasTools ? 4000 : 2000;
+    // Split reasoning by tool-use: pure chat runs on persona/pattern (no thinking
+    // budget needed, and the hidden <think> block dominates TTFT for providers
+    // that support thinking). Tool-use benefits from reasoning for selection and
+    // argument construction.
+    const reasoningEffort = hasTools ? this.toolReasoning : this.chatReasoning;
     ctx.genOptions = {
       temperature: 0.7,
       maxTokens,
       sessionId: ctx.sessionId,
-      reasoningEffort: 'medium' as const,
+      reasoningEffort,
       episodeKey: ctx.episodeKey,
     };
 

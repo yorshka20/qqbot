@@ -191,13 +191,7 @@ export class GroqProvider extends AIProvider implements LLMCapability {
         stop: options?.stop,
       };
 
-      // Map reasoningEffort to Groq's reasoning_effort for thinking models (e.g. Qwen3)
-      // 'none' fully disables thinking; reasoning_format only hides output but model still thinks
-      if (options?.reasoningEffort && options.reasoningEffort !== 'none') {
-        body.reasoning_effort = options.reasoningEffort; // 'low' | 'medium' | 'high'
-      } else if (options?.reasoningEffort === 'none') {
-        body.reasoning_effort = 'none';
-      }
+      applyGroqReasoningParams(body, options);
 
       if (options?.jsonMode) {
         body.response_format = { type: 'json_object' };
@@ -314,6 +308,7 @@ export class GroqProvider extends AIProvider implements LLMCapability {
         stop: options?.stop,
         stream: true,
       };
+      applyGroqReasoningParams(streamBody, options);
       if (options?.jsonMode) {
         streamBody.response_format = { type: 'json_object' };
       }
@@ -326,6 +321,15 @@ export class GroqProvider extends AIProvider implements LLMCapability {
       const decoder = new TextDecoder();
       let fullText = '';
       let usage: AIGenerateResponse['usage'] | undefined;
+
+      // Belt-and-suspenders `<think>` stripper. Primary defense is
+      // `reasoning_format: 'hidden'` (set by applyGroqReasoningParams), which
+      // asks Groq to drop reasoning from the content delta stream entirely.
+      // This stripper is the fallback for any response that still leaks
+      // `<think>…</think>` into content — stateful because the open/close
+      // tags often span multiple SSE chunks, so a stateless regex would fail
+      // on boundaries.
+      const stripper = createThinkStripper();
 
       try {
         while (true) {
@@ -351,8 +355,11 @@ export class GroqProvider extends AIProvider implements LLMCapability {
 
               const content = data.choices?.[0]?.delta?.content || '';
               if (content) {
-                fullText += content;
-                handler(content);
+                const visible = stripper.push(content);
+                if (visible) {
+                  fullText += visible;
+                  handler(visible);
+                }
               }
 
               if (data.usage) {
@@ -366,6 +373,14 @@ export class GroqProvider extends AIProvider implements LLMCapability {
               logger.debug('[GroqProvider] Failed to parse stream chunk:', parseError);
             }
           }
+        }
+        // Flush any content trailing the last chunk that was being held back
+        // for a potential tag boundary. If the stream ended mid-`<think>`
+        // (unclosed), `end()` intentionally drops it.
+        const trailing = stripper.end();
+        if (trailing) {
+          fullText += trailing;
+          handler(trailing);
         }
       } finally {
         reader.releaseLock();
@@ -381,4 +396,105 @@ export class GroqProvider extends AIProvider implements LLMCapability {
       throw err;
     }
   }
+}
+
+/**
+ * Apply Groq reasoning controls to a request body. Called from both the
+ * streaming and non-streaming paths — previously the stream path silently
+ * dropped `reasoning_effort`, causing thinking-capable models (e.g. Qwen3-32b)
+ * to generate hidden `<think>` blocks even when the caller passed
+ * `reasoningEffort: 'none'` to cut TTFT.
+ *
+ * Behavior:
+ * - `reasoning_effort`: forwarded verbatim when the caller supplied one.
+ *   `'none'` fully disables thinking on providers that support it. No
+ *   `reasoning_effort` key is sent when the caller omitted it (preserves
+ *   the provider's own default).
+ * - `reasoning_format: 'hidden'`: set unconditionally. Groq supports
+ *   `raw` (thinking inline as `<think>` XML in content — the default),
+ *   `parsed` (separate `reasoning` field), and `hidden` (dropped). We never
+ *   surface reasoning content to callers, so `hidden` is strictly cheaper
+ *   and prevents the content stream from leaking a `<think>` block that
+ *   would otherwise reach downstream consumers (SentenceFlusher → TTS).
+ */
+function applyGroqReasoningParams(body: Record<string, unknown>, options: AIGenerateOptions | undefined): void {
+  if (options?.reasoningEffort) {
+    body.reasoning_effort = options.reasoningEffort;
+  }
+  // Never surface reasoning content — downstream TTS would otherwise speak
+  // the model's internal monologue (user-visible regression on thinking models).
+  body.reasoning_format = 'hidden';
+}
+
+/**
+ * Stateful `<think>…</think>` stripper for Groq SSE streams. Returns only
+ * the visible (non-reasoning) portion of each pushed chunk, buffering
+ * minimal context across calls so open/close tags split across chunks are
+ * detected correctly.
+ *
+ * Design notes:
+ * - While *not* inside a think block, hold back the last 6 chars of the
+ *   buffer each emit. That's the max partial prefix of `<think>` (7 chars)
+ *   minus 1 — enough to detect a tag that starts in chunk N and completes
+ *   in chunk N+1 without ever emitting a partial match.
+ * - While *inside* a think block, drop everything except the last 7 chars
+ *   (max partial prefix of `</think>`, 8 chars, minus 1).
+ * - `end()` emits any held-back content iff we're not mid-think. If the
+ *   stream ended with an unclosed `<think>` (rare but possible on error),
+ *   we intentionally drop the orphaned reasoning rather than speak it.
+ */
+export function createThinkStripper(): { push(chunk: string): string; end(): string } {
+  const OPEN = '<think>';
+  const CLOSE = '</think>';
+  // Look-behind window = max-partial-match = tag.length - 1.
+  const OPEN_TAIL = OPEN.length - 1;
+  const CLOSE_TAIL = CLOSE.length - 1;
+
+  let buf = '';
+  let inThink = false;
+
+  return {
+    push(chunk: string): string {
+      buf += chunk;
+      let out = '';
+      while (true) {
+        if (inThink) {
+          const end = buf.indexOf(CLOSE);
+          if (end === -1) {
+            if (buf.length > CLOSE_TAIL) {
+              buf = buf.slice(buf.length - CLOSE_TAIL);
+            }
+            return out;
+          }
+          buf = buf.slice(end + CLOSE.length);
+          inThink = false;
+          continue;
+        }
+        const start = buf.indexOf(OPEN);
+        if (start !== -1) {
+          out += buf.slice(0, start);
+          buf = buf.slice(start + OPEN.length);
+          inThink = true;
+          continue;
+        }
+        // No full open tag — emit everything except the last OPEN_TAIL chars
+        // that might be the prefix of a `<think>` continuing in the next chunk.
+        const safe = buf.length - OPEN_TAIL;
+        if (safe > 0) {
+          out += buf.slice(0, safe);
+          buf = buf.slice(safe);
+        }
+        return out;
+      }
+    },
+    end(): string {
+      if (inThink) {
+        buf = '';
+        return '';
+      }
+      const out = buf;
+      buf = '';
+      return out;
+    },
+  };
 }

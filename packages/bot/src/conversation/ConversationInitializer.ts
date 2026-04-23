@@ -279,6 +279,7 @@ export class ConversationInitializer {
         providerName: aiConfig.taskProviders?.subagent,
         model: aiConfig.taskProviders?.subagentModel,
       },
+      aiConfig.chat,
     );
     serviceRegistry.registerAIServiceCapabilities(aiService);
     // Expose SubAgentManager to DI so tool executors (e.g. ResearchToolExecutor) can inject it.

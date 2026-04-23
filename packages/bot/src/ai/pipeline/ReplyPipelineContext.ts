@@ -2,6 +2,7 @@
 // Each stage reads upstream fields and writes its own outputs.
 
 import type { ConversationMessageEntry } from '@/conversation/history';
+import type { ReasoningEffort } from '@/core/config/types/ai';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext } from '@/hooks/types';
 import type { ToolResult } from '@/tools/types';
@@ -49,7 +50,7 @@ export class ReplyPipelineContext {
     temperature: number;
     maxTokens: number;
     sessionId: string;
-    reasoningEffort: 'medium';
+    reasoningEffort: ReasoningEffort;
     episodeKey?: string;
   } | null = null;
 

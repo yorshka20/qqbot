@@ -38,6 +38,17 @@ export interface AvatarConfig {
    * Per-enqueue override: `Live2DInput.meta.llmStream` (boolean) wins. Default: `false`.
    */
   llmStream: boolean;
+  /**
+   * Reasoning effort forwarded to the Live2D LLM call. The avatar path is
+   * pure live roleplay — a hidden `<think>` block is a pure TTFT tax, and on
+   * thinking-capable models (e.g. Groq qwen3-32b) it also tends to pull the
+   * model out of character. Default `'none'`.
+   *
+   * Values: `'none' | 'minimal' | 'low' | 'medium' | 'high'`. Only providers
+   * that speak the reasoning_effort dialect (Groq qwen3-*, OpenAI o-series,
+   * Anthropic extended-thinking) act on this; others ignore it.
+   */
+  llmReasoningEffort: 'none' | 'minimal' | 'low' | 'medium' | 'high';
 }
 
 /**
@@ -91,4 +102,5 @@ export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
     utteranceGapMs: 200,
   },
   llmStream: false,
+  llmReasoningEffort: 'none',
 };

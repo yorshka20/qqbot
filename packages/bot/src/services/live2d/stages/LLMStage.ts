@@ -157,6 +157,7 @@ export class LLMStage implements Live2DStage {
       maxTokens: MAX_TOKENS,
       temperature,
       messages,
+      reasoningEffort: this.resolveReasoningEffort(),
     };
 
     try {
@@ -258,5 +259,15 @@ export class LLMStage implements Live2DStage {
       return meta;
     }
     return mergeAvatarConfig(this.config.getAvatarConfig() as Record<string, unknown> | undefined).llmStream ?? false;
+  }
+
+  /**
+   * Reasoning effort for the avatar/Live2D LLM call. Default `'none'` — the
+   * avatar path is pure live roleplay where any hidden `<think>` block is a
+   * TTFT tax and tends to drag the model out of character on thinking-capable
+   * providers (e.g. Groq qwen3-32b). Configurable via `avatar.llmReasoningEffort`.
+   */
+  private resolveReasoningEffort(): 'none' | 'minimal' | 'low' | 'medium' | 'high' {
+    return mergeAvatarConfig(this.config.getAvatarConfig() as Record<string, unknown> | undefined).llmReasoningEffort;
   }
 }

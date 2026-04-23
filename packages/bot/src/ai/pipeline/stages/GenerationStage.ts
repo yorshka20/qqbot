@@ -1,5 +1,6 @@
 // Generation stage — LLM call with retry/fallback + tool execution loop.
 
+import type { ReasoningEffort } from '@/core/config/types/ai';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { ToolManager } from '@/tools/ToolManager';
@@ -17,7 +18,7 @@ interface GenerationPipelineParams {
     temperature: number;
     maxTokens: number;
     sessionId: string;
-    reasoningEffort: 'medium';
+    reasoningEffort: ReasoningEffort;
     episodeKey?: string;
   };
   toolDefinitions: ToolDefinition[];

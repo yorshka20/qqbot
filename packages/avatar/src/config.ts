@@ -23,7 +23,18 @@ export function mergeAvatarConfig(raw: Record<string, unknown> | undefined): Ava
     speech: mergeObject(DEFAULT_AVATAR_CONFIG.speech, r.speech),
     llmProvider: optionalNonEmptyString(r.llmProvider),
     llmStream: r.llmStream === true,
+    llmReasoningEffort: coerceReasoningEffort(r.llmReasoningEffort) ?? DEFAULT_AVATAR_CONFIG.llmReasoningEffort,
   };
+}
+
+const REASONING_EFFORT_VALUES = ['none', 'minimal', 'low', 'medium', 'high'] as const;
+type ReasoningEffort = (typeof REASONING_EFFORT_VALUES)[number];
+
+function coerceReasoningEffort(value: unknown): ReasoningEffort | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  return (REASONING_EFFORT_VALUES as readonly string[]).includes(value) ? (value as ReasoningEffort) : undefined;
 }
 
 function isRecord(x: unknown): x is Record<string, unknown> {

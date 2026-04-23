@@ -594,6 +594,22 @@
         "anthropic"
       ]
     },
+    // Chat-pipeline reasoning effort (optional). Applies to the main QQ
+    // conversation pipeline (NOT the avatar/Live2D path — that has its own
+    // knob under `avatar.llmReasoningEffort`).
+    //
+    // Both default to "medium" to preserve historical behavior. The split
+    // is exposed so you can tune them independently for workloads that are
+    // predominantly casual chat (lower `reasoningEffort`) while keeping
+    // good tool-use quality (keep `toolReasoningEffort`).
+    //
+    // Values: "none" | "minimal" | "low" | "medium" | "high". Only providers
+    // that speak the reasoning_effort dialect (Groq qwen3-*, OpenAI o-series,
+    // Anthropic extended-thinking) act on this; others ignore it.
+    // "chat": {
+    //   "reasoningEffort": "medium",
+    //   "toolReasoningEffort": "medium"
+    // },
     // Task-specific provider overrides (optional)
     // Override provider for specific internal LLM tasks
     // Falls back to defaultProviders.llm if not specified

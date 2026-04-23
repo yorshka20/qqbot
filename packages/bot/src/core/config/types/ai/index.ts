@@ -84,6 +84,35 @@ export interface TaskProvidersConfig {
   subagentModel?: string;
 }
 
+/**
+ * Reasoning effort levels passed through to thinking-capable providers
+ * (e.g. Groq qwen3-*, OpenAI o-series, Anthropic extended-thinking). `'none'`
+ * fully disables thinking on providers that support that switch; `'minimal'`
+ * is OpenAI-specific and maps to the smallest thinking budget.
+ */
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
+
+/**
+ * Chat-pipeline reasoning configuration. Split by whether the turn involves
+ * tool invocation because the two jobs have fundamentally different reasoning
+ * needs:
+ *
+ * - Zero-tool turn (pure chat / roleplay): thinking is usually *worse* than
+ *   useless — the model wastes tokens "planning" persona/style that the
+ *   system prompt already pins down, and the full TTFT gets blocked behind
+ *   the hidden `<think>` block. Default `'none'`.
+ * - Tool-use turn: thinking improves tool selection, argument construction,
+ *   and multi-step planning. Default `'medium'`.
+ *
+ * Overridable via `ai.chat` in config. Applied in `PromptAssemblyStage`.
+ */
+export interface AIChatConfig {
+  /** Reasoning effort for chat turns with no tool definitions. Default `'none'`. */
+  reasoningEffort?: ReasoningEffort;
+  /** Reasoning effort for chat turns that have tool definitions. Default `'medium'`. */
+  toolReasoningEffort?: ReasoningEffort;
+}
+
 export interface AIConfig {
   // Default providers by capability (llm, vision, text2img, etc.)
   defaultProviders?: DefaultProvidersConfig;
@@ -93,6 +122,12 @@ export interface AIConfig {
   sessionProviders?: Record<string, SessionProviderConfig>;
   // Auto-switch configuration
   autoSwitch?: AutoSwitchConfig;
+  /**
+   * Chat-pipeline reasoning effort (split by tool-use vs zero-tool).
+   * See `AIChatConfig` for rationale. Both fields optional, both have
+   * sane defaults applied in PromptAssemblyStage.
+   */
+  chat?: AIChatConfig;
   /**
    * Use skills (native tool/function calling) for reply generation (single LLM call with tool loop).
    * When true (default), ReplySystem uses ReplyGenerationService + skills to generate replies.

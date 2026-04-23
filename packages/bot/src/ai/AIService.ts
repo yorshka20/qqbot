@@ -7,6 +7,7 @@ import type { SubAgentConfig, SubAgentType } from '@/agent/types';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { ConversationHistoryService } from '@/conversation/history';
+import type { AIChatConfig } from '@/core/config/types/ai';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
@@ -77,6 +78,7 @@ export class AIService {
     llmService: LLMService,
     providerRouter: ProviderRouter,
     subagentConfig?: { providerName?: string | string[]; model?: string },
+    chatConfig?: AIChatConfig,
   ) {
     this.visionService = new VisionService(aiManager, providerSelector);
     this.cardRenderingService = new CardRenderingService(aiManager);
@@ -112,7 +114,7 @@ export class AIService {
       new HistoryStage(episodeCacheManager),
       contextEnrichmentStage,
       new ProviderSelectionStage(providerRouter, this.visionService, llmService, toolManager, promptManager),
-      new PromptAssemblyStage(promptManager, messageAPI),
+      new PromptAssemblyStage(promptManager, messageAPI, chatConfig),
       new GenerationStage(llmService, toolManager, hookManager),
       new ResponseDispatchStage(cardHelper, hookManager),
     ];
