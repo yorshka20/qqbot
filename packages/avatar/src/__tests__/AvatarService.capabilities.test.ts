@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { AvatarService } from './AvatarService';
-import type { RendererCapabilities } from './preview/types';
+import { AvatarService } from '../AvatarService';
+import type { RendererCapabilities } from '../preview/types';
 
 // ---------------------------------------------------------------------------
 // Shared capability fixture

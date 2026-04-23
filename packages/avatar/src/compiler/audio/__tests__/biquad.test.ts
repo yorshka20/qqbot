@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { Biquad, designBandpass } from './biquad';
+import { Biquad, designBandpass } from '../biquad';
 
 /** Generate a pure sine wave at the given frequency. */
 function sine(freqHz: number, durSec: number, sampleRate: number, amp = 1): Float32Array {

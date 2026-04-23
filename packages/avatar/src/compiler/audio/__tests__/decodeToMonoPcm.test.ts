@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { decodeToMonoPcm } from './decodeToMonoPcm';
+import { decodeToMonoPcm } from '../decodeToMonoPcm';
 
 // ---------------------------------------------------------------------------
 // WAV builder helpers

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { DEFAULT_ACTIVITY } from '../../state/types';
-import { PerlinNoiseLayer } from './PerlinNoiseLayer';
+import { DEFAULT_ACTIVITY } from '../../../state/types';
+import { PerlinNoiseLayer } from '../PerlinNoiseLayer';
 
 const IDLE = DEFAULT_ACTIVITY;
 

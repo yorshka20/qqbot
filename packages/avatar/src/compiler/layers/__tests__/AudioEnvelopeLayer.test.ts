@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { DEFAULT_ACTIVITY } from '../../state/types';
-import { AudioEnvelopeLayer } from './AudioEnvelopeLayer';
+import { DEFAULT_ACTIVITY } from '../../../state/types';
+import { AudioEnvelopeLayer } from '../AudioEnvelopeLayer';
 
 // Activity stub — AudioEnvelopeLayer ignores it, just pass the default.
 const IDLE = DEFAULT_ACTIVITY;

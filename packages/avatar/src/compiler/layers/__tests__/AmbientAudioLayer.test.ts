@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { DEFAULT_ACTIVITY } from '../../state/types';
-import { AmbientAudioLayer } from './AmbientAudioLayer';
+import { DEFAULT_ACTIVITY } from '../../../state/types';
+import { AmbientAudioLayer } from '../AmbientAudioLayer';
 
 // Activity stub — AmbientAudioLayer ignores it, just pass the default.
 const IDLE = DEFAULT_ACTIVITY;

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import type { AvatarActivity } from '../../state/types';
-import { EyeGazeLayer } from './EyeGazeLayer';
+import type { AvatarActivity } from '../../../state/types';
+import { EyeGazeLayer } from '../EyeGazeLayer';
 
 const ACTIVITY: AvatarActivity = { pose: 'neutral', ambientGain: 1 };
 

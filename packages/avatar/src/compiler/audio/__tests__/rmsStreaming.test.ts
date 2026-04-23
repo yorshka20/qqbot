@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { RmsStreamer } from './rmsStreaming';
+import { RmsStreamer } from '../rmsStreaming';
 
 const SAMPLE_RATE = 16000;
 const HOP_MS = 20;

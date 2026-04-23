@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
-import { AvatarService } from './AvatarService';
-import type { ResolvedAction } from './compiler/types';
+import { AvatarService } from '../AvatarService';
+import type { ResolvedAction } from '../compiler/types';
 
 /** A minimal mock compiler that lets us control resolveAction output. */
 function makeMockCompiler(resolved: ResolvedAction | null) {

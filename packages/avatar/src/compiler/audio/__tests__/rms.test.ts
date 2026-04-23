@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { computeRmsEnvelope } from './rms';
+import { computeRmsEnvelope } from '../rms';
 
 describe('computeRmsEnvelope', () => {
   test('sine wave normalizes peak to ~0.95', () => {

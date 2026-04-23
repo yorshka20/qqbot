@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
-import { AvatarService } from './AvatarService';
-import type { IdleClip } from './compiler/layers/clips/types';
+import { AvatarService } from '../AvatarService';
+import type { IdleClip } from '../compiler/layers/clips/types';
 
 type WalkingLayerStub = {
   id: 'walking';

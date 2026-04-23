@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import { AvatarService } from './AvatarService';
+import { AvatarService } from '../AvatarService';
 
 describe('AvatarService.enqueueTagAnimation — jitter application', () => {
   let service: AvatarService;

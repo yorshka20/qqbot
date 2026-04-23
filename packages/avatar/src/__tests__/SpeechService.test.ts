@@ -1,9 +1,9 @@
 import 'reflect-metadata';
 
 import { describe, expect, test } from 'bun:test';
-import type { AudioChunkMessage } from './preview/types';
-import { SpeechService } from './SpeechService';
-import type { SynthesisChunk, SynthesisResult, TTSProvider } from './tts/TTSProvider';
+import type { AudioChunkMessage } from '../preview/types';
+import { SpeechService } from '../SpeechService';
+import type { SynthesisChunk, SynthesisResult, TTSProvider } from '../tts/TTSProvider';
 
 /**
  * Record the order in which the provider's `synthesize` is invoked. Each

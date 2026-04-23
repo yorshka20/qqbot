@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { DEFAULT_ACTIVITY } from '../state/types';
-import { AnimationCompiler } from './AnimationCompiler';
-import { AudioEnvelopeLayer } from './layers/AudioEnvelopeLayer';
-import { DEFAULT_AUDIO_ENVELOPE_CONFIG, setAudioEnvelopeConfig } from './layers/audio-envelope-config';
+import { DEFAULT_ACTIVITY } from '../../state/types';
+import { AnimationCompiler } from '../AnimationCompiler';
+import { AudioEnvelopeLayer } from '../layers/AudioEnvelopeLayer';
+import { DEFAULT_AUDIO_ENVELOPE_CONFIG, setAudioEnvelopeConfig } from '../layers/audio-envelope-config';
 
 // Tests B, C, D, E: AnimationCompiler spring overrides + AudioEnvelope shared config + envelope tunables
 

@@ -2,8 +2,8 @@ import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ActionMap } from './action-map';
-import type { ResolvedAction } from './types';
+import { ActionMap } from '../action-map';
+import type { ResolvedAction } from '../types';
 
 type EnvelopeAction = Extract<ResolvedAction, { kind: 'envelope' }>;
 

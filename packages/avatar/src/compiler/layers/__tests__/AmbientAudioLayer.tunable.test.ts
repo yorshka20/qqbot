@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { AmbientAudioLayer } from './AmbientAudioLayer';
+import { AmbientAudioLayer } from '../AmbientAudioLayer';
 
 // Test A: AmbientAudioLayer tunable params API
 

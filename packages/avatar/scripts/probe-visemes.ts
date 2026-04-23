@@ -221,7 +221,7 @@ async function main(): Promise<void> {
   console.log(
     `file: ${basename(args.path)}  —  ${sampleRate} Hz, ${durMs.toFixed(1)} ms, ${frames.length} frames (hop=${args.hopMs} ms)`,
   );
-  console.log(' t_ms │  rms  │ dom │ '.padEnd(25) + '  aa   ih   ee   oh   ou  │ dominant bar');
+  console.log(`${' t_ms │  rms  │ dom │ '.padEnd(25)}  aa   ih   ee   oh   ou  │ dominant bar`);
   console.log('─'.repeat(80));
 
   const histogram: Record<string, number> = { aa: 0, ih: 0, ee: 0, oh: 0, ou: 0, '—': 0 };

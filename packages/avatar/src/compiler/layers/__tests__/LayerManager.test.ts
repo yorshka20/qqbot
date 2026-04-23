@@ -9,10 +9,10 @@
  *   'cubism', and 'vrm' (backward-compatible behavior).
  */
 import { describe, expect, test } from 'bun:test';
-import { DEFAULT_ACTIVITY } from '../../state/types';
-import type { ModelKind } from '../types';
-import { LayerManager } from './LayerManager';
-import type { AnimationLayer } from './types';
+import { DEFAULT_ACTIVITY } from '../../../state/types';
+import type { ModelKind } from '../../types';
+import { LayerManager } from '../LayerManager';
+import type { AnimationLayer } from '../types';
 
 // ---------------------------------------------------------------------------
 // Minimal fake layer implementation

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { DEFAULT_ACTIVITY } from '../../state/types';
-import type { IdleClip } from './clips/types';
-import { WalkInterruptedError, WalkingLayer } from './WalkingLayer';
+import { DEFAULT_ACTIVITY } from '../../../state/types';
+import type { IdleClip } from '../clips/types';
+import { WalkInterruptedError, WalkingLayer } from '../WalkingLayer';
 
 const IDLE = DEFAULT_ACTIVITY;
 const TICK_MS = 16.67;

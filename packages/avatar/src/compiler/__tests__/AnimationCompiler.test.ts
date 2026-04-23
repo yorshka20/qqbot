@@ -8,10 +8,10 @@
  * real timers.
  */
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import type { AvatarActivity } from '../state/types';
-import { AnimationCompiler } from './AnimationCompiler';
-import type { AnimationLayer } from './layers/types';
-import type { ModelKind } from './types';
+import type { AvatarActivity } from '../../state/types';
+import { AnimationCompiler } from '../AnimationCompiler';
+import type { AnimationLayer } from '../layers/types';
+import type { ModelKind } from '../types';
 
 // ---------------------------------------------------------------------------
 // Helper: a layer that emits a fixed, mutable contribution map each tick.

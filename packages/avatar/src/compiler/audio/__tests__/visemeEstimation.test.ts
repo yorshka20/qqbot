@@ -5,7 +5,7 @@ import {
   type VisemeName,
   VisemeStreamer,
   type VisemeWeights,
-} from './visemeEstimation';
+} from '../visemeEstimation';
 
 const ALL_VISEMES: readonly VisemeName[] = ['aa', 'ih', 'ee', 'oh', 'ou'];
 

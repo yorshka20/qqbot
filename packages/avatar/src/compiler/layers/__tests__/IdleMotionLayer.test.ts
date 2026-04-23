@@ -5,9 +5,9 @@
  * AnimationCompiler test suite and is not re-asserted here.
  */
 import { describe, expect, test } from 'bun:test';
-import type { AvatarActivity } from '../../state/types';
-import type { IdleClip } from './clips';
-import { IdleMotionLayer } from './IdleMotionLayer';
+import type { AvatarActivity } from '../../../state/types';
+import type { IdleClip } from '../clips';
+import { IdleMotionLayer } from '../IdleMotionLayer';
 
 const IDLE_ACTIVITY: AvatarActivity = { pose: 'neutral', ambientGain: 1.0 };
 const BUSY_ACTIVITY: AvatarActivity = { pose: 'thinking', ambientGain: 0.0 };
