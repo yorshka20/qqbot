@@ -266,6 +266,48 @@ export class HealthCheckManager {
   }
 
   /**
+   * Reset a service's cached status and consecutive failure counter.
+   * The next health probe will run against the provider as if it were freshly registered.
+   * Useful for admin recovery flows when a provider was marked UNHEALTHY due to transient issues.
+   */
+  resetService(serviceName: string): boolean {
+    if (!this.services.has(serviceName)) {
+      return false;
+    }
+    this.cache.delete(serviceName);
+    logger.info(`[HealthCheckManager] Reset cached health state for ${serviceName}`);
+    return true;
+  }
+
+  /**
+   * Force re-check a service bypassing cache, and reset the consecutive failure counter
+   * before the probe runs. Unlike plain checkHealth({ force: true }), this guarantees the
+   * service is eligible to flip back to HEALTHY on a single successful probe, even if the
+   * counter was elevated by previous failures. If the probe fails, the counter becomes 1.
+   */
+  async forceRefresh(serviceName: string, options?: HealthCheckOptions): Promise<HealthCheckResult> {
+    if (!this.services.has(serviceName)) {
+      return {
+        status: HealthStatus.UNKNOWN,
+        timestamp: Date.now(),
+        message: `Service ${serviceName} not registered`,
+      };
+    }
+    this.cache.delete(serviceName);
+    logger.info(`[HealthCheckManager] Force refreshing health for ${serviceName}`);
+    return this.checkHealth(serviceName, { ...options, force: true });
+  }
+
+  /**
+   * Get the current cached health result for a service without triggering a new probe.
+   * Returns null when no entry exists (i.e., never checked or already reset).
+   * Differs from getCachedResult() in that it does NOT evict expired entries.
+   */
+  peekCachedResult(serviceName: string): HealthCheckResult | null {
+    return this.cache.get(serviceName)?.result ?? null;
+  }
+
+  /**
    * Start automatic health check for a service
    */
   private startAutoCheck(serviceName: string, interval: number): void {

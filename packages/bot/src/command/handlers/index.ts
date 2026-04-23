@@ -9,6 +9,7 @@ export * from './ClusterTicketsSyncCommandHandler';
 export * from './FileCommandHandler';
 export * from './GeminiKeyModeCommandHandler';
 export * from './GroupDedupCommandHandler';
+export * from './HealthCheckCommandHandler';
 export * from './I2vCommandHandler';
 export * from './Live2DCommandHandler';
 export * from './LivemodeCommandHandler';
