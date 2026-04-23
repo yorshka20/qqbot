@@ -1,3 +1,23 @@
+/**
+ * A single chunk emitted by `synthesizeStream`. Each chunk carries raw audio
+ * bytes and stable metadata. Exactly one chunk per stream has `isLast=true`;
+ * that terminator chunk may carry `totalDurationMs`. The terminator may have
+ * zero-length `bytes` (preferred — guarantees a final message even when the
+ * provider sends no trailing data frame).
+ */
+export interface SynthesisChunk {
+  /** Raw audio bytes for this chunk. May be empty on the terminator chunk. */
+  bytes: Uint8Array;
+  /** MIME type of the audio stream, e.g. 'audio/pcm'. Stable across chunks. */
+  mime: string;
+  /** Optional sample rate in Hz. Only meaningful for raw PCM streams. Stable across chunks. */
+  sampleRate?: number;
+  /** Whether this is the final chunk. Exactly one chunk per stream has isLast=true. */
+  isLast: boolean;
+  /** Total duration of the synthesized audio in milliseconds. Present only on the isLast chunk. */
+  totalDurationMs?: number;
+}
+
 /** Raw audio output from a TTS synthesis call. */
 export interface SynthesisResult {
   /** Raw audio bytes (PCM, MP3, WAV, etc.). */
@@ -47,6 +67,19 @@ export interface TTSProvider {
    * omit this method.
    */
   listVoices?(): string[];
+
+  /**
+   * Optional: stream audio synthesis as an `AsyncIterable` of `SynthesisChunk`
+   * objects. Allows callers to begin playback or forwarding before the full
+   * audio is available. Not all providers support streaming; callers must
+   * check for the method's presence before using it.
+   *
+   * Implementations must:
+   * - yield chunks with stable `mime` and `sampleRate` across the stream.
+   * - end the stream with exactly one chunk where `isLast=true`.
+   * - throw on HTTP or stream-read errors (do not yield error chunks).
+   */
+  synthesizeStream?(text: string, opts?: TTSSynthesizeOptions): AsyncIterable<SynthesisChunk>;
 
   /**
    * Optional: perform a cheap synthesis request to pre-load model weights
