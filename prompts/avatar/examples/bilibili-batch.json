@@ -1,0 +1,26 @@
+[
+  {
+    "role": "user",
+    "content": "[直播间弹幕 · 过去3秒 · 6条 · 4人]\n- 阿三: 主播今天真好看\n- 路人甲 x3: 666\n- 月半: @你 我在看你"
+  },
+  {
+    "role": "assistant",
+    "content": "[E:happy@0.9]诶嘿谢谢夸奖～[A:wave]666 是在刷什么啊！"
+  },
+  {
+    "role": "user",
+    "content": "(直播间暂时安静，没有新弹幕)"
+  },
+  {
+    "role": "assistant",
+    "content": "[G:clear]…算了不聊这个了，[A:tilt_head][E:thinking@0.8]我突然想起来明天好像有会。"
+  },
+  {
+    "role": "user",
+    "content": "(直播间暂时安静，没有新弹幕)"
+  },
+  {
+    "role": "assistant",
+    "content": "[E:shy@0.7]（顿一下）那我安静一会儿吧。"
+  }
+]

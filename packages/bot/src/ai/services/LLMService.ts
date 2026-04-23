@@ -901,15 +901,21 @@ export class LLMService {
   /**
    * Log the full prompt and messages sent to LLM for conversation inspection.
    * Each part is logged as a separate line to avoid PM2 line-splitting corruption.
+   *
+   * NOTE: when `options.messages` is provided, providers IGNORE the `prompt`
+   * argument and build the request body from `options.messages` alone (see
+   * e.g. DeepSeekProvider.generateStream). Logging the unused `prompt` as a
+   * pseudo-`[system]` line misrepresents what actually hits the wire, so we
+   * suppress it in that case. When messages are absent (legacy callers that
+   * rely on provider-side history loading), the `prompt` IS the user turn
+   * and we log it under its real role.
    */
   private logLLMPrompt(provider: string, prompt: string, options?: AIGenerateOptions): void {
     const msgCount = options?.messages?.length ?? 0;
     logger.info(`[LLMService] prompt | provider=${provider} | messages=${msgCount}`);
-    if (prompt) {
-      logger.info(`[LLMService] prompt [system] ${prompt}`);
-    }
-    if (options?.messages?.length) {
-      for (const msg of options.messages) {
+    const messages = options?.messages;
+    if (messages && messages.length > 0) {
+      for (const msg of messages) {
         const content =
           typeof msg.content === 'string'
             ? msg.content
@@ -921,6 +927,10 @@ export class LLMService {
               : '';
         logger.info(`[LLMService] prompt [${msg.role}] ${content}`);
       }
+      return;
+    }
+    if (prompt) {
+      logger.info(`[LLMService] prompt [user] ${prompt}`);
     }
   }
 

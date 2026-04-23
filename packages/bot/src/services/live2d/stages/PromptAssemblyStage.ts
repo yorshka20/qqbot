@@ -1,47 +1,94 @@
 // PromptAssemblyStage — produces the LLM-ready message list for this run.
 //
-// Responsibility has grown from "render a template" to "assemble the full
-// prompt": template-rendered sceneSystem + rolling thread history (via
-// Live2DSessionService) + optional memory context + the current query.
+// Layered structure (mirrors the main conversation pipeline):
 //
-// Template inputs (unchanged):
-//   - `availableActions`: live action-map from the avatar, rendered as
-//     Markdown bullets so the LLM picks from actions that actually exist.
+//   [system] base      — persona + cross-scene rules + tag DSL + actions + anti-repeat
+//                        stable across all avatar sources (cache-friendly prefix).
+//   [system] scene     — THIS source's task framing + scene-specific hard limits
+//                        (e.g. "1-2 sentences ≤ 50 chars" for bilibili batches).
+//   [user/assistant] × N — few-shot examples (source-specific, role-based).
+//                          Teaches output format + character voice + tag usage
+//                          pattern more reliably than prose examples in system.
+//   [user/assistant] × M — real rolling history from Live2DSessionService.
+//   [user] final       — memory_context + rag_context + <current_query>.
+//                        Mirrors the main pipeline: `<current_query>` is the
+//                        outer semantic envelope added by the assembler, and
+//                        the user_frame template fills it with natural-language
+//                        framing (e.g. "用户说：\n{input}" for /avatar,
+//                        "直播间最新状态：\n{input}" for bilibili). No XML-ish
+//                        inner wrappers — avoids double-nesting and keeps the
+//                        few-shot / history / final-turn formats consistent.
 //
 // Context slots populated:
-//   - `availableActions`, `systemPrompt` (for logging / back-compat tests)
+//   - `availableActions`, `systemPrompt` (for logging / back-compat tests —
+//     `systemPrompt` is the concatenated base+scene joined with a separator)
 //   - `threadId`   → the session thread id owning this scope (used by
 //     LLMStage to append the user input + reply on success)
-//   - `messages`   → the final ChatMessage[] that LLMStage forwards to the
-//     LLM (system + scene system + history entries + final user block)
+//   - `messages`   → the final ChatMessage[] that LLMStage forwards to the LLM
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { formatActionsForPrompt } from '@qqbot/avatar';
 import { inject, injectable } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
+import type { FewShotExample } from '@/ai/prompt/PromptMessageAssembler';
 import { PromptMessageAssembler } from '@/ai/prompt/PromptMessageAssembler';
 import { renderAvatarPartials } from '@/ai/prompt/renderAvatarPartials';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { MemoryService } from '@/memory/MemoryService';
 import { logger } from '@/utils/logger';
+import { getRepoRoot } from '@/utils/repoRoot';
 import type { Live2DSessionService } from '../Live2DSessionService';
 import type { Live2DContext, Live2DStage } from '../Live2DStage';
 import type { Live2DSource } from '../types';
 
-/** Source → template name mapping. Templates live under `prompts/avatar/`. */
-const TEMPLATE_BY_SOURCE: Record<Live2DSource, string> = {
-  'avatar-cmd': 'avatar.speak-system',
-  'bilibili-danmaku-batch': 'avatar.bilibili-batch-system',
-  // Livemode mocks bilibili — reuse the same "react to a batch of danmaku"
-  // prompt so idle-triggered runs stay in the same conversational frame as
-  // real-danmaku runs (history continuity > idle-specific framing).
-  'livemode-private-batch': 'avatar.bilibili-batch-system',
+/**
+ * Template names for each source's scene + user-frame + few-shot example
+ * set. Kept as a table so adding a new source is one row.
+ *
+ * `livemode-private-batch` mocks bilibili — reuse the same "react to a
+ * batch of danmaku" framing so idle-triggered runs stay in the same
+ * conversational frame as real-danmaku runs (history continuity > idle-
+ * specific framing).
+ */
+interface SourceTemplates {
+  sceneTemplate: string;
+  userFrameTemplate: string;
+  exampleFile: string;
+}
+
+const TEMPLATES_BY_SOURCE: Record<Live2DSource, SourceTemplates> = {
+  'avatar-cmd': {
+    sceneTemplate: 'avatar.scenes.avatar-cmd',
+    userFrameTemplate: 'avatar.user-frames.avatar-cmd',
+    exampleFile: 'prompts/avatar/examples/avatar-cmd.json',
+  },
+  'bilibili-danmaku-batch': {
+    sceneTemplate: 'avatar.scenes.bilibili-batch',
+    userFrameTemplate: 'avatar.user-frames.bilibili-batch',
+    exampleFile: 'prompts/avatar/examples/bilibili-batch.json',
+  },
+  'livemode-private-batch': {
+    sceneTemplate: 'avatar.scenes.bilibili-batch',
+    userFrameTemplate: 'avatar.user-frames.bilibili-batch',
+    exampleFile: 'prompts/avatar/examples/bilibili-batch.json',
+  },
 };
+
+const BASE_SYSTEM_TEMPLATE = 'avatar.base.system';
 
 @injectable()
 export class PromptAssemblyStage implements Live2DStage {
   readonly name = 'prompt-assembly';
   private readonly messageAssembler = new PromptMessageAssembler();
+  /**
+   * Cache parsed examples per source. Files are read once on first use
+   * (cheap to parse, but saves the FS call on every danmaku batch).
+   * Falsy cache entries (empty array) are valid — "no examples" is a
+   * legitimate configuration.
+   */
+  private readonly exampleCache = new Map<Live2DSource, FewShotExample[]>();
 
   constructor(
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
@@ -54,25 +101,58 @@ export class PromptAssemblyStage implements Live2DStage {
     ctx.availableActions = formatActionsForPrompt(ctx.avatar.listActions());
 
     // Resolve the shared avatar fragments (persona, tag-spec, action list,
-    // anti-repeat) once so the main template can compose them in. Partials
-    // that fail to render are returned as empty strings — the main template
+    // anti-repeat) once so the base template can compose them in. Partials
+    // that fail to render are returned as empty strings — the base template
     // still renders with blank slots rather than aborting the whole run.
     const partials = renderAvatarPartials(this.promptManager, ctx.availableActions);
 
-    const templateName = TEMPLATE_BY_SOURCE[ctx.input.source];
-    let sceneSystem: string;
-    try {
-      sceneSystem = this.promptManager.render(templateName, {
-        availableActions: ctx.availableActions,
-        ...partials,
-      });
-    } catch (err) {
-      logger.error(`[Live2D/prompt-assembly] template "${templateName}" render failed:`, err);
+    const templates = TEMPLATES_BY_SOURCE[ctx.input.source];
+    if (!templates) {
+      logger.error(`[Live2D/prompt-assembly] no template mapping for source="${ctx.input.source}"`);
       ctx.skipped = true;
       ctx.skipReason = 'prompt-render-failed';
       return;
     }
-    ctx.systemPrompt = sceneSystem;
+
+    let baseSystem: string;
+    let sceneSystem: string;
+    let framedQuery: string;
+    try {
+      // Use the shared base-system renderer so `currentDate` / `adminUserId`
+      // get injected identically to the main pipeline (PromptManager.renderBasePrompt).
+      // Extra vars (partials, availableActions) ride through via overrides.
+      const rendered = this.promptManager.renderBaseSystemTemplate(BASE_SYSTEM_TEMPLATE, {
+        availableActions: ctx.availableActions,
+        ...partials,
+      });
+      if (!rendered) {
+        throw new Error(`base-system template "${BASE_SYSTEM_TEMPLATE}" missing and no fallback available`);
+      }
+      baseSystem = rendered;
+      sceneSystem = this.promptManager.render(templates.sceneTemplate, {
+        availableActions: ctx.availableActions,
+        ...partials,
+      });
+      framedQuery = this.promptManager.render(templates.userFrameTemplate, {
+        input: ctx.input.text,
+      });
+    } catch (err) {
+      logger.error(`[Live2D/prompt-assembly] template render failed (source=${ctx.input.source}):`, err);
+      ctx.skipped = true;
+      ctx.skipReason = 'prompt-render-failed';
+      return;
+    }
+
+    // Back-compat + debug: expose the concatenated system text so callers
+    // (and the existing stage tests) can inspect the full system prompt in
+    // one string. LLMStage prefers `ctx.messages` when present, so this
+    // never actually drives the LLM request.
+    ctx.systemPrompt = `${baseSystem}\n\n${sceneSystem}`;
+
+    // Few-shot examples for this source. Missing / malformed files are
+    // treated as "no examples" — the pipeline should still run without
+    // them, just with a bit less behavioral priming.
+    const fewShotExamples = this.loadExamples(ctx.input.source, templates.exampleFile);
 
     // Session thread: lazily created on first use per (source, scope).
     const scope = this.resolveScope(ctx);
@@ -86,12 +166,13 @@ export class PromptAssemblyStage implements Live2DStage {
     const memoryContext = await this.resolveMemoryContext(ctx);
 
     ctx.messages = this.messageAssembler.buildNormalMessages({
-      baseSystem: undefined,
+      baseSystem,
       sceneSystem,
+      fewShotExamples,
       historyEntries,
       finalUserBlocks: {
         memoryContext,
-        currentQuery: ctx.input.text,
+        currentQuery: framedQuery,
       },
     });
   }
@@ -108,6 +189,47 @@ export class PromptAssemblyStage implements Live2DStage {
     const scope = meta.scope;
     if (typeof scope === 'string' && scope) return scope;
     return undefined;
+  }
+
+  /**
+   * Load + parse the source's few-shot JSON file once, then cache. Any
+   * error (missing file, bad JSON, wrong shape) falls back to an empty
+   * list — the scene system prompt still fully describes the task, so
+   * missing examples degrade gracefully.
+   */
+  private loadExamples(source: Live2DSource, relativePath: string): FewShotExample[] {
+    const cached = this.exampleCache.get(source);
+    if (cached) return cached;
+
+    let examples: FewShotExample[] = [];
+    try {
+      const absolute = resolve(getRepoRoot(), relativePath);
+      const raw = readFileSync(absolute, 'utf-8');
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        throw new Error(`expected JSON array, got ${typeof parsed}`);
+      }
+      examples = parsed
+        .filter((it): it is { role: string; content: string } => {
+          return (
+            typeof it === 'object' &&
+            it !== null &&
+            typeof (it as { role?: unknown }).role === 'string' &&
+            typeof (it as { content?: unknown }).content === 'string'
+          );
+        })
+        .filter((it) => it.role === 'user' || it.role === 'assistant')
+        .map((it) => ({ role: it.role as 'user' | 'assistant', content: it.content }));
+    } catch (err) {
+      logger.debug(
+        `[Live2D/prompt-assembly] examples load skipped (non-fatal) source=${source} path=${relativePath}:`,
+        err,
+      );
+      examples = [];
+    }
+
+    this.exampleCache.set(source, examples);
+    return examples;
   }
 
   private async resolveMemoryContext(ctx: Live2DContext): Promise<string | undefined> {

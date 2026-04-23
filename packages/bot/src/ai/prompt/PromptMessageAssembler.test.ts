@@ -39,6 +39,58 @@ describe('PromptMessageAssembler', () => {
     expect(assembler.serializeForFingerprint(first)).toBe(assembler.serializeForFingerprint(second));
   });
 
+  it('injects fewShotExamples between system messages and history', () => {
+    const assembler = new PromptMessageAssembler();
+    const entries: ConversationMessageEntry[] = [
+      {
+        messageId: '1',
+        userId: 1001,
+        nickname: 'Alice',
+        content: 'real user turn',
+        isBotReply: false,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    ];
+
+    const messages = assembler.buildNormalMessages({
+      baseSystem: 'base',
+      sceneSystem: 'scene',
+      fewShotExamples: [
+        { role: 'user', content: 'example input' },
+        { role: 'assistant', content: 'example reply' },
+      ],
+      historyEntries: entries,
+      finalUserBlocks: { currentQuery: 'q' },
+    });
+
+    // [base-system, scene-system, fewshot-user, fewshot-assistant, real-user, final-user]
+    expect(messages).toHaveLength(6);
+    expect(messages[0].role).toBe('system');
+    expect(messages[1].role).toBe('system');
+    expect(messages[2]).toEqual({ role: 'user', content: 'example input' });
+    expect(messages[3]).toEqual({ role: 'assistant', content: 'example reply' });
+    expect(messages[4].role).toBe('user');
+    expect(messages[4].content).toContain('real user turn');
+    expect(messages[5].role).toBe('user');
+    expect(messages[5].content).toContain('<current_query>');
+  });
+
+  it('skips empty fewShotExamples entries', () => {
+    const assembler = new PromptMessageAssembler();
+    const messages = assembler.buildNormalMessages({
+      sceneSystem: 'scene',
+      fewShotExamples: [
+        { role: 'user', content: '   ' },
+        { role: 'assistant', content: 'kept' },
+      ],
+      historyEntries: [],
+      finalUserBlocks: { currentQuery: 'q' },
+    });
+    // [scene-system, fewshot-assistant(kept), final-user]
+    expect(messages).toHaveLength(3);
+    expect(messages[1]).toEqual({ role: 'assistant', content: 'kept' });
+  });
+
   it('serializes image segments into stable tags', () => {
     const assembler = new PromptMessageAssembler();
     const entries: ConversationMessageEntry[] = [

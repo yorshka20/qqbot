@@ -123,9 +123,25 @@ describe('GateStage', () => {
 
 describe('PromptAssemblyStage', () => {
   const fakeRender = mock((name: string, vars: Record<string, string>) => {
-    return `SYSTEM[${name}]:\n${vars.availableActions}`;
+    return `SYSTEM[${name}]:\n${vars.availableActions ?? ''}`;
   });
-  beforeEach(() => fakeRender.mockClear());
+  /**
+   * Mimics `PromptManager.renderBaseSystemTemplate`: injects currentDate
+   * alongside caller-supplied vars. Tests can assert the marker appears
+   * in the rendered base system to prove the injection is wired.
+   */
+  const fakeRenderBase = mock((name: string, overrides?: Record<string, string>): string | undefined => {
+    const vars: Record<string, string> = { currentDate: '2026-01-01', ...(overrides ?? {}) };
+    return `SYSTEM[${name}]:\n${vars.availableActions ?? ''}\ncurrentDate=${vars.currentDate}`;
+  });
+  beforeEach(() => {
+    fakeRender.mockClear();
+    fakeRenderBase.mockClear();
+  });
+
+  function fakePrompt() {
+    return { render: fakeRender, renderBaseSystemTemplate: fakeRenderBase };
+  }
 
   function fakeSession() {
     let i = 0;
@@ -139,31 +155,38 @@ describe('PromptAssemblyStage', () => {
   }
 
   it('populates availableActions + systemPrompt on the happy path', async () => {
-    const stage = new PromptAssemblyStage({ render: fakeRender } as never, fakeSession() as never);
+    const stage = new PromptAssemblyStage(fakePrompt() as never, fakeSession() as never);
     const ctx = createContext(sampleInput());
     ctx.avatar = makeAvatar() as unknown as Live2DContext['avatar'];
     await stage.execute(ctx);
     expect(ctx.availableActions).toBeDefined();
     expect(ctx.availableActions).toContain('wave');
-    expect(ctx.systemPrompt).toContain('SYSTEM[avatar.speak-system]');
-    expect(ctx.messages?.length).toBeGreaterThanOrEqual(2);
+    // systemPrompt is base + scene joined; both templates should be rendered.
+    expect(ctx.systemPrompt).toContain('SYSTEM[avatar.base.system]');
+    expect(ctx.systemPrompt).toContain('SYSTEM[avatar.scenes.avatar-cmd]');
+    // Base system must carry the date injection (same contract as main pipeline).
+    expect(ctx.systemPrompt).toContain('currentDate=2026-01-01');
+    expect(ctx.messages?.length).toBeGreaterThanOrEqual(3);
     expect(ctx.threadId).toBeDefined();
     expect(ctx.skipped).toBe(false);
   });
 
   it('picks the bilibili template when source is bilibili-danmaku-batch', async () => {
-    const stage = new PromptAssemblyStage({ render: fakeRender } as never, fakeSession() as never);
+    const stage = new PromptAssemblyStage(fakePrompt() as never, fakeSession() as never);
     const ctx = createContext(sampleInput({ source: 'bilibili-danmaku-batch' }));
     ctx.avatar = makeAvatar() as unknown as Live2DContext['avatar'];
     await stage.execute(ctx);
-    expect(ctx.systemPrompt).toContain('avatar.bilibili-batch-system');
+    expect(ctx.systemPrompt).toContain('avatar.scenes.bilibili-batch');
   });
 
   it('skips with prompt-render-failed when the template throws', async () => {
     const throwing = mock(() => {
       throw new Error('template missing');
     });
-    const stage = new PromptAssemblyStage({ render: throwing } as never, fakeSession() as never);
+    const stage = new PromptAssemblyStage(
+      { render: throwing, renderBaseSystemTemplate: throwing } as never,
+      fakeSession() as never,
+    );
     const ctx = createContext(sampleInput());
     ctx.avatar = makeAvatar() as unknown as Live2DContext['avatar'];
     await stage.execute(ctx);
@@ -172,11 +195,12 @@ describe('PromptAssemblyStage', () => {
   });
 
   it('is a no-op when avatar is missing (defensive)', async () => {
-    const stage = new PromptAssemblyStage({ render: fakeRender } as never, fakeSession() as never);
+    const stage = new PromptAssemblyStage(fakePrompt() as never, fakeSession() as never);
     const ctx = createContext(sampleInput());
     ctx.avatar = null;
     await stage.execute(ctx);
     expect(fakeRender).not.toHaveBeenCalled();
+    expect(fakeRenderBase).not.toHaveBeenCalled();
     expect(ctx.systemPrompt).toBeUndefined();
   });
 });

@@ -270,6 +270,29 @@ export class PromptManager {
   }
 
   /**
+   * Render a base-style system prompt from an arbitrary template, using the
+   * same environmental-variable injection as renderBasePrompt (currentDate,
+   * adminUserId). Intended for sub-pipelines (e.g. Live2D) that have their
+   * own base.system template but want to stay aligned with the main pipeline.
+   *
+   * Resolution order matches getTemplate (short name, then fallback by basename),
+   * but falls back to the shared base.system if the requested template is absent,
+   * so callers don't need to special-case missing templates.
+   */
+  renderBaseSystemTemplate(templateName: string, overrides?: Record<string, string>): string | undefined {
+    const template = this.getTemplate(templateName);
+    if (!template) {
+      return this.renderBasePrompt(overrides);
+    }
+    const baseVars: Record<string, string> = {
+      currentDate: getCurrentDateTimeForPrompt(),
+      adminUserId: this.adminUserId || '（无管理员）',
+      ...overrides,
+    };
+    return this.renderTemplateContent(template, templateName, baseVars);
+  }
+
+  /**
    * Extract variable names from template content
    */
   private extractVariables(content: string): string[] {

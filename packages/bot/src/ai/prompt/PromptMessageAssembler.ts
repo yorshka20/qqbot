@@ -10,6 +10,23 @@ export interface FinalUserBlocks {
 }
 
 /**
+ * A pre-filled user/assistant turn injected between the system messages
+ * and the real conversation history. Used to teach the model a pattern
+ * (output format, character voice, tag usage) via role-based few-shot
+ * rather than prose examples embedded in the system prompt — which tends
+ * to confuse small-to-mid models on where "examples" end and real
+ * instructions resume.
+ *
+ * Only `user` and `assistant` roles are allowed; the assembler rejects
+ * anything else at runtime to keep few-shot blocks interleaving cleanly
+ * with the trailing history.
+ */
+export interface FewShotExample {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/**
  * Deterministic role-based message assembler.
  * Keeps block order and formatting stable for better cache hit rate.
  */
@@ -17,10 +34,17 @@ export class PromptMessageAssembler {
   buildNormalMessages(params: {
     baseSystem?: string;
     sceneSystem: string;
+    fewShotExamples?: FewShotExample[];
     historyEntries: ConversationMessageEntry[];
     finalUserBlocks: FinalUserBlocks;
   }): ChatMessage[] {
-    return this.buildMessagesCore(params.baseSystem, params.sceneSystem, params.historyEntries, params.finalUserBlocks);
+    return this.buildMessagesCore(
+      params.baseSystem,
+      params.sceneSystem,
+      params.historyEntries,
+      params.finalUserBlocks,
+      params.fewShotExamples,
+    );
   }
 
   buildProactiveMessages(params: {
@@ -52,12 +76,25 @@ export class PromptMessageAssembler {
     sceneSystem: string,
     historyEntries: ConversationMessageEntry[],
     finalUserBlocks: FinalUserBlocks,
+    fewShotExamples?: FewShotExample[],
   ): ChatMessage[] {
     const messages: ChatMessage[] = [];
     if (baseSystem?.trim()) {
       messages.push({ role: 'system', content: this.normalize(baseSystem) });
     }
     messages.push({ role: 'system', content: this.normalize(sceneSystem) });
+
+    // Few-shot turns live between the system messages and real history.
+    // They anchor the model on format/voice before it sees actual dialogue
+    // and before the final user block. Kept verbatim (no speaker prefix)
+    // because examples represent the target output shape directly.
+    if (fewShotExamples?.length) {
+      for (const ex of fewShotExamples) {
+        const content = this.normalize(ex.content);
+        if (!content) continue;
+        messages.push({ role: ex.role, content });
+      }
+    }
 
     for (const entry of historyEntries) {
       const content = this.serializeEntry(entry);
