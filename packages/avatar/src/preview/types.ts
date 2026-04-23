@@ -72,6 +72,59 @@ export interface AudioMessage {
   };
 }
 
+/**
+ * Bot → renderer: one chunk of a streaming PCM utterance.
+ *
+ * SEQUENCING CONTRACT (strict serial playback required):
+ *
+ * - The bot assigns each utterance a stable `utteranceId` (e.g.
+ *   `crypto.randomUUID()`) before streaming starts.
+ * - The first chunk (`seq === 0`) carries the full metadata: `mime`,
+ *   optional `sampleRate`, `startAtEpochMs`, and `text`. Later chunks omit
+ *   these fields to save bandwidth.
+ * - Chunks arrive in order; the renderer MUST buffer and play them serially
+ *   (do not start the next chunk until the previous one has finished). The
+ *   bot guarantees in-order delivery per utterance over a single WS connection.
+ * - Exactly one chunk per utterance has `isLast === true`. That chunk MAY
+ *   carry `totalDurationMs` so the renderer knows when the utterance ends even
+ *   if its own decoder cannot report duration (e.g. raw PCM without a header).
+ * - The preferred terminator is `{ bytes: '' (empty base64), isLast: true }`
+ *   so the renderer receives an unambiguous end-of-stream signal.
+ * - Renderers MUST NOT start a new utterance's chunks until the previous
+ *   utterance's `isLast` chunk has been received and its audio fully played.
+ *
+ * This message is outbound-only (bot → renderer) and MUST NOT be sent by
+ * the renderer.
+ *
+ * Contract source: qqbot ticket 2026-04-23-avatar-sovits-streaming-pcm.
+ * Renderer schema MUST stay in sync with this definition.
+ */
+export interface AudioChunkMessage {
+  type: 'audio-chunk';
+  data: {
+    /** Stable identifier correlating all chunks of one utterance. */
+    utteranceId: string;
+    /** 0-based sequence index within the utterance. */
+    seq: number;
+    /** Base64-encoded audio bytes. Empty string on the terminator chunk. */
+    base64: string;
+    /** Whether this is the final chunk of the utterance. Exactly one per utterance. */
+    isLast: boolean;
+    /** Total duration of the utterance in ms. Present only on isLast chunks. */
+    totalDurationMs?: number;
+
+    // ── seq === 0 only ───────────────────────────────────────────────────────
+    /** MIME type of the audio stream. Present on seq === 0 only. e.g. 'audio/pcm'. */
+    mime?: string;
+    /** Sample rate in Hz. Present on seq === 0 only; required for 'audio/pcm'. */
+    sampleRate?: number;
+    /** Wall-clock epoch ms when the utterance should start playing. Past-due → play immediately. Present on seq === 0 only. */
+    startAtEpochMs?: number;
+    /** Original utterance text for subtitles/toasts. Present on seq === 0 only. */
+    text?: string;
+  };
+}
+
 export interface TriggerMessage {
   type: 'trigger';
   data: {
@@ -307,4 +360,4 @@ export type PreviewClientMessage =
   | WalkCommandMessage
   | CapabilitiesMessage;
 
-export type PreviewMessage = FrameMessage | StatusMessage | AudioMessage | TunableParamsMessage;
+export type PreviewMessage = FrameMessage | StatusMessage | AudioMessage | AudioChunkMessage | TunableParamsMessage;

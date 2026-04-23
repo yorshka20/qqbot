@@ -11,6 +11,7 @@ import type { IdleClip } from '../compiler/layers/clips/types';
 import type { ActionSummary } from '../compiler/types';
 import { logger } from '../utils/logger';
 import type {
+  AudioChunkMessage,
   AudioMessage,
   CanonicalExpressionName,
   ModelKind,
@@ -363,6 +364,24 @@ export class PreviewServer {
   }
 
   broadcastAudio(msg: AudioMessage): void {
+    const text = JSON.stringify(msg);
+    for (const client of this.clients) {
+      try {
+        client.send(text);
+      } catch {
+        this.clients.delete(client);
+      }
+    }
+  }
+
+  /**
+   * Broadcast a single streaming PCM chunk to all connected renderer clients.
+   * Mirrors `broadcastAudio` — dead sockets are evicted on send failure.
+   * Called once per `SynthesisChunk` yielded by `synthesizeStream`; the
+   * terminator chunk (`isLast=true`, empty `base64`) MUST be sent so renderers
+   * can release playback resources.
+   */
+  broadcastAudioChunk(msg: AudioChunkMessage): void {
     const text = JSON.stringify(msg);
     for (const client of this.clients) {
       try {
