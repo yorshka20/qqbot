@@ -149,3 +149,107 @@ describe('energy-driven channels', () => {
     expect(result['mouth.open']).toBeCloseTo(0.75, 9);
   });
 });
+
+describe('AudioEnvelopeLayer streaming mode', () => {
+  test('construct without envelope, sample after start with no frames returns {}', () => {
+    const layer = new AudioEnvelopeLayer({
+      id: 'streaming-empty',
+      hopMs: 100,
+      startAtMs: 1000,
+      durationMs: 5000,
+    });
+    expect(layer.sample(1050, IDLE)).toEqual({});
+    expect(layer.sample(1500, IDLE)).toEqual({});
+  });
+
+  test('appendFrames([0.3, 0.5]) then sampling within those hops yields non-zero mouth.open', () => {
+    const layer = new AudioEnvelopeLayer({
+      id: 'streaming-frames',
+      hopMs: 100,
+      startAtMs: 0,
+      durationMs: 5000,
+    });
+    layer.appendFrames(new Float32Array([0.3, 0.5]));
+    // t=0 → i0=0 → v=0.3
+    expect(layer.sample(0, IDLE)['mouth.open']).toBeCloseTo(0.3, 5);
+    // t=100 → i0=1 → v=0.5
+    expect(layer.sample(100, IDLE)['mouth.open']).toBeCloseTo(0.5, 5);
+  });
+
+  test('sampling past written frames but before durationMs returns {}', () => {
+    const layer = new AudioEnvelopeLayer({
+      id: 'streaming-ahead',
+      hopMs: 100,
+      startAtMs: 0,
+      durationMs: 5000,
+    });
+    layer.appendFrames(new Float32Array([0.4])); // only 1 frame (covers 0–100ms)
+    // t=500 → i0=5 ≥ envelopeLength(1) → {}
+    expect(layer.sample(500, IDLE)).toEqual({});
+  });
+
+  test('finalize(durationMs) then sampling after exact end returns {}', () => {
+    const layer = new AudioEnvelopeLayer({
+      id: 'streaming-finalized',
+      hopMs: 100,
+      startAtMs: 0,
+      durationMs: 0, // placeholder
+    });
+    layer.appendFrames(new Float32Array([0.5, 0.5, 0.5]));
+    layer.finalize(300);
+    // t = 301 > 300 → {}
+    expect(layer.sample(301, IDLE)).toEqual({});
+    // t = 300 is the boundary: i0=3 ≥ length(3) → {}
+    expect(layer.sample(300, IDLE)).toEqual({});
+    // t = 250 → inside range
+    const result = layer.sample(250, IDLE);
+    expect(result['mouth.open']).toBeGreaterThan(0);
+  });
+
+  test('appendFrames beyond initial capacity causes geometric growth without data loss', () => {
+    const layer = new AudioEnvelopeLayer({
+      id: 'streaming-grow',
+      hopMs: 10,
+      startAtMs: 0,
+      durationMs: 100000,
+    });
+
+    // Push 200 frames (> initial capacity of 64)
+    const count = 200;
+    const frames = new Float32Array(count);
+    for (let i = 0; i < count; i++) frames[i] = (i % 10) / 10;
+    layer.appendFrames(frames);
+
+    // Verify first and last frames are preserved
+    // t=0 → i0=0 → frames[0]=0
+    expect(layer.sample(0, IDLE)['mouth.open']).toBeCloseTo(0, 9);
+    // t=10*(count-1) → i0=199 → frames[199]=9/10=0.9
+    expect(layer.sample(10 * (count - 1), IDLE)['mouth.open']).toBeCloseTo(frames[count - 1], 5);
+  });
+
+  test('appendFrames on non-streaming layer throws', () => {
+    const layer = new AudioEnvelopeLayer({
+      id: 'non-streaming',
+      envelope: new Float32Array([0.1, 0.2]),
+      hopMs: 100,
+      startAtMs: 0,
+      durationMs: 200,
+    });
+    expect(() => layer.appendFrames(new Float32Array([0.3]))).toThrow(/non-streaming/);
+  });
+
+  test('existing non-streaming behavior preserved bit-for-bit', () => {
+    const envelope = new Float32Array([0, 0.5, 1.0]);
+    const layer = new AudioEnvelopeLayer({
+      id: 'compat',
+      envelope,
+      hopMs: 100,
+      startAtMs: 1000,
+      durationMs: 300,
+    });
+    expect(layer.sample(999, IDLE)).toEqual({});
+    expect(layer.sample(1301, IDLE)).toEqual({});
+    expect(layer.sample(1100, IDLE)['mouth.open']).toBeCloseTo(0.5, 9);
+    expect(layer.sample(1150, IDLE)['mouth.open']).toBeCloseTo(0.75, 9);
+  });
+});
