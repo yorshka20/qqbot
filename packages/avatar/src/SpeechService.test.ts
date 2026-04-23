@@ -41,9 +41,11 @@ function makePcmBytes(frameCount = 32): Uint8Array {
 
 /**
  * Provider that supports synthesizeStream and yields the given chunks with
- * a small inter-chunk delay to simulate network latency.
+ * a small inter-chunk delay to simulate network latency. An optional
+ * `firstChunkDelayMs` lets tests simulate a provider round-trip that is
+ * slower than the inter-chunk gap (e.g. Sovits GPU cold start).
  */
-function makeStreamingProvider(chunks: SynthesisChunk[]): TTSProvider {
+function makeStreamingProvider(chunks: SynthesisChunk[], firstChunkDelayMs = 5): TTSProvider {
   return {
     name: 'mock-stream',
     isAvailable: () => true,
@@ -52,9 +54,9 @@ function makeStreamingProvider(chunks: SynthesisChunk[]): TTSProvider {
       return Promise.resolve({ bytes: new Uint8Array(0), mime: 'audio/pcm', durationMs: 0 });
     },
     async *synthesizeStream(): AsyncGenerator<SynthesisChunk> {
-      for (const chunk of chunks) {
-        await new Promise<void>((r) => setTimeout(r, 5));
-        yield chunk;
+      for (let i = 0; i < chunks.length; i++) {
+        await new Promise<void>((r) => setTimeout(r, i === 0 ? firstChunkDelayMs : 5));
+        yield chunks[i];
       }
     },
   };
@@ -189,6 +191,70 @@ describe('SpeechService — streaming path', () => {
 
     // Layer was registered during streaming.
     expect(registeredLayerIds.length).toBe(1);
+  });
+
+  test('startAtEpochMs is anchored to first-chunk arrival, not stream start', async () => {
+    // Regression: `layer.startAtMs` was captured before the synthesizeStream
+    // iteration began, so for slow backends (GPU Sovits round-trip = several
+    // hundred ms) the layer clock raced ahead of the actual audio clock —
+    // sample() overshot envelopeLength and returned {} for the whole utterance,
+    // and the mouth never moved. Fix: defer startAtEpochMs to seq=0.
+    const FIRST_CHUNK_DELAY_MS = 120;
+    const pcmBytes = makePcmBytes(32);
+    const chunks: SynthesisChunk[] = [
+      { bytes: pcmBytes, mime: 'audio/pcm', sampleRate: 32000, isLast: false },
+      {
+        bytes: new Uint8Array(0),
+        mime: 'audio/pcm',
+        sampleRate: 32000,
+        isLast: true,
+        totalDurationMs: 1,
+      },
+    ];
+    const provider = makeStreamingProvider(chunks, FIRST_CHUNK_DELAY_MS);
+    const broadcastedChunks: AudioChunkMessage[] = [];
+    const registeredLayerIds: string[] = [];
+    const registeredLayerStartAts: number[] = [];
+
+    const service = new SpeechService(
+      provider,
+      () => {},
+      () => true,
+      (layer) => {
+        registeredLayerIds.push(layer.id);
+        // Drive sample() so we can observe the layer's internal startAtMs —
+        // at the moment of registration, sample(startAtMs) must fall within
+        // [t=0, hop), so startAtMs = now ± tolerance proves the timing fix.
+        registeredLayerStartAts.push(Date.now());
+      },
+      () => {},
+      Date.now,
+      200,
+      undefined,
+      (msg) => {
+        broadcastedChunks.push(msg);
+      },
+    );
+
+    const speakCalledAt = Date.now();
+    service.speak('timing anchor');
+    while (service.isSpeaking()) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+
+    expect(registeredLayerIds.length).toBe(1);
+    const registeredAt = registeredLayerStartAts[0];
+    const c0 = broadcastedChunks[0].data;
+    expect(typeof c0.startAtEpochMs).toBe('number');
+
+    // Layer must be registered AFTER the first-chunk delay elapses — i.e. the
+    // registration is gated on the first chunk arriving, not on speak().
+    // Give the timer a generous lower bound (delay - small jitter) and
+    // likewise bound startAtEpochMs against the registration time.
+    expect(registeredAt - speakCalledAt).toBeGreaterThanOrEqual(FIRST_CHUNK_DELAY_MS - 20);
+    // broadcast startAtEpochMs must be essentially equal to registration time
+    // (they are captured within a few ms of each other inside drainOneStreaming).
+    expect(Math.abs((c0.startAtEpochMs as number) - registeredAt)).toBeLessThan(20);
   });
 
   test('consumer leaves mid-stream: no further chunks broadcast; layer unregistered', async () => {

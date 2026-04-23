@@ -118,8 +118,7 @@ export class SpeechService {
       }
 
       const utterance = this.queue[0];
-      const canStream =
-        this.broadcastAudioChunk !== undefined && typeof this.provider.synthesizeStream === 'function';
+      const canStream = this.broadcastAudioChunk !== undefined && typeof this.provider.synthesizeStream === 'function';
 
       if (canStream) {
         // Streaming path — inflightNext optimization does not apply.
@@ -295,20 +294,29 @@ export class SpeechService {
       return;
     }
 
-    const now = this.clock();
-    const startAtEpochMs = Math.max(now, this.lastEndTime + this.gapMs);
+    // Timing / layer state is lazily bound on the FIRST chunk. Rationale:
+    // `synthesizeStream` returns an AsyncIterable but does not fire the HTTP
+    // request until the first `for await` iteration — so the round-trip from
+    // request-issued to first-chunk-received can be 300–800ms on a GPU
+    // Sovits backend. If we captured `startAtEpochMs` here (before the
+    // iteration starts), `layer.startAtMs` would be anchored to a wall-clock
+    // that is already 500ms in the past by the time the renderer actually
+    // starts playing audio.
+    //
+    // Consequence observed in prod: `sample(nowMs)` computes
+    // `t = nowMs - startAtMs` which races ~500ms ahead of the real audio
+    // playhead. The envelope writer (appendFrames) only catches up to the
+    // real audio rate, so the sampling index permanently overshoots
+    // `envelopeLength` → `sample()` returns `{}` → mouth never moves.
+    //
+    // Fix: defer `startAtEpochMs` and layer creation until we've actually
+    // received chunk seq=0. That timestamp is a tight upper bound on when
+    // the renderer receives + starts playing the same chunk (only WS latency
+    // separates them, typically <20ms LAN), so the envelope clock and the
+    // audio clock stay in lock-step.
     const layerId = `audio-envelope-${utteranceId}`;
-
-    // Register the layer immediately so playback can begin as soon as the
-    // first chunk arrives. durationMs is a generous placeholder; finalize()
-    // will set the real value when the stream ends.
-    const layer = new AudioEnvelopeLayer({
-      id: layerId,
-      hopMs: ENVELOPE_HOP_MS,
-      startAtMs: startAtEpochMs,
-      durationMs: STREAMING_PLACEHOLDER_DURATION_MS,
-    });
-    this.registerLayer(layer);
+    let startAtEpochMs = 0;
+    let layer: AudioEnvelopeLayer | null = null;
 
     const rmsStreamer = new RmsStreamer({ hopMs: ENVELOPE_HOP_MS });
     let seq = 0;
@@ -321,10 +329,8 @@ export class SpeechService {
       for await (const chunk of stream) {
         // Consumer disconnect: stop mid-stream, unregister layer, drop utterance.
         if (!this.hasConsumer()) {
-          logger.info(
-            `[SpeechService] consumer left mid-stream — id=${utteranceId} seq=${seq}, stopping broadcast`,
-          );
-          if (!layerFinalized) {
+          logger.info(`[SpeechService] consumer left mid-stream — id=${utteranceId} seq=${seq}, stopping broadcast`);
+          if (layer && !layerFinalized) {
             this.unregisterLayer(layerId);
             layerFinalized = true;
           }
@@ -335,7 +341,25 @@ export class SpeechService {
         if (seq === 0) {
           resolvedMime = chunk.mime;
           resolvedSampleRate = chunk.sampleRate ?? 32000;
+
+          // Anchor the timing NOW — first chunk has arrived, renderer is
+          // about to start playback. durationMs is a generous placeholder;
+          // finalize() will set the real value when the stream ends.
+          const now = this.clock();
+          startAtEpochMs = Math.max(now, this.lastEndTime + this.gapMs);
+          layer = new AudioEnvelopeLayer({
+            id: layerId,
+            hopMs: ENVELOPE_HOP_MS,
+            startAtMs: startAtEpochMs,
+            durationMs: STREAMING_PLACEHOLDER_DURATION_MS,
+          });
+          this.registerLayer(layer);
         }
+
+        // After the seq===0 block `layer` is always set (seq===0 runs on the
+        // first iteration and always assigns). The guard is dead code at
+        // runtime but narrows the type for TS without a non-null assertion.
+        if (!layer) continue;
 
         let chunkBase64 = '';
 
@@ -421,11 +445,16 @@ export class SpeechService {
     } catch (err) {
       if (seq === 0) {
         // No chunks emitted yet — fall back to buffered synthesis so the
-        // utterance is not silently lost.
+        // utterance is not silently lost. The layer is created lazily on
+        // seq=0, so there's nothing to unregister here (either we never
+        // registered it, or the error happened after registration within
+        // the same iteration — in which case `layer !== null` below would
+        // still catch it; but seq===0 branch means iteration aborted before
+        // the increment, so the layer, if created, must be removed).
         logger.warn(
           `[SpeechService] synthesizeStream failed before first chunk, falling back to buffered — id=${utteranceId} err=${err instanceof Error ? err.message : String(err)}`,
         );
-        if (!layerFinalized) {
+        if (layer && !layerFinalized) {
           this.unregisterLayer(layerId);
         }
         // drainOneBuffered handles queue.shift() internally.
@@ -437,7 +466,7 @@ export class SpeechService {
       logger.warn(
         `[SpeechService] stream error mid-stream — id=${utteranceId} seq=${seq} err=${err instanceof Error ? err.message : String(err)}`,
       );
-      if (!layerFinalized) {
+      if (layer && !layerFinalized) {
         this.unregisterLayer(layerId);
       }
     }
