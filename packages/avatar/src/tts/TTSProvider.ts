@@ -4,9 +4,21 @@
  * that terminator chunk may carry `totalDurationMs`. The terminator may have
  * zero-length `bytes` (preferred — guarantees a final message even when the
  * provider sends no trailing data frame).
+ *
+ * **Sample alignment**: for raw-PCM streams (`mime === 'audio/pcm'`) providers
+ * MUST emit chunks whose byte length is a whole number of samples
+ * (2 bytes per sample for `s16le`). HTTP chunked transfer does not preserve
+ * sample boundaries, so providers are expected to buffer across reads and
+ * hold back any trailing sub-sample bytes until enough data arrives. Without
+ * this, per-chunk decoders on the far side drop the orphan byte and all
+ * subsequent samples become byte-shifted → audible noise.
  */
 export interface SynthesisChunk {
-  /** Raw audio bytes for this chunk. May be empty on the terminator chunk. */
+  /**
+   * Raw audio bytes for this chunk. May be empty on the terminator chunk.
+   * For `audio/pcm` streams, length MUST be a multiple of the sample width
+   * (2 for s16le) — see the interface docstring above.
+   */
   bytes: Uint8Array;
   /** MIME type of the audio stream, e.g. 'audio/pcm'. Stable across chunks. */
   mime: string;

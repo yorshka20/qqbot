@@ -1,3 +1,4 @@
+import { logger } from '../../utils/logger';
 import type { SynthesisChunk, SynthesisResult, TTSProvider, TTSSynthesizeOptions } from '../TTSProvider';
 
 export interface SovitsProviderOptions {
@@ -202,6 +203,23 @@ export class SovitsProvider implements TTSProvider {
     const reader = response.body.getReader();
     const mime = 'audio/pcm';
 
+    // Sample alignment state. HTTP chunked transfer splits the byte stream at
+    // arbitrary positions, but s16le samples are 2 bytes each. If we yielded
+    // a chunk whose length isn't a multiple of SAMPLE_BYTES, the downstream
+    // per-chunk decoders (lip-sync RMS pipeline AND the renderer) would
+    // Math.floor() away the trailing byte and then treat the next chunk's
+    // first byte as the *high* byte of a new sample — shifting the int16
+    // grid by 1 for the rest of the stream. Result: white noise.
+    //
+    // Solution: buffer any trailing sub-sample bytes and prepend them to the
+    // next incoming chunk. Only yield when we have ≥1 complete sample.
+    //
+    // The renderer currently assumes s16le (see SpeechPlayer.decodePcmToAudioBuffer).
+    // If a future config introduces f32, SAMPLE_BYTES should be derived from
+    // the configured format.
+    const SAMPLE_BYTES = 2;
+    let residual = new Uint8Array(0);
+
     try {
       while (true) {
         let done: boolean;
@@ -216,17 +234,48 @@ export class SovitsProvider implements TTSProvider {
         if (done) {
           break;
         }
-        if (value && value.length > 0) {
-          yield {
-            bytes: value,
-            mime,
-            sampleRate,
-            isLast: false,
-          };
+        if (!value || value.length === 0) {
+          continue;
         }
+
+        // Merge residual with the newly-read bytes into a fresh buffer we
+        // own. Always copying avoids aliasing issues with `reader.read()`
+        // returning views over a shared ArrayBufferLike.
+        const combined = new Uint8Array(residual.length + value.length);
+        combined.set(residual, 0);
+        combined.set(value, residual.length);
+
+        const alignedLen = combined.length - (combined.length % SAMPLE_BYTES);
+        if (alignedLen === 0) {
+          // Not even one full sample — hold everything for the next read.
+          residual = combined;
+          continue;
+        }
+
+        // slice() both halves so the yielded chunk and the carried residual
+        // each own their buffer — avoids surprises if the consumer holds on
+        // to `bytes` across multiple reader iterations.
+        const alignedChunk = combined.slice(0, alignedLen);
+        residual = combined.slice(alignedLen);
+
+        yield {
+          bytes: alignedChunk,
+          mime,
+          sampleRate,
+          isLast: false,
+        };
       }
     } finally {
       reader.releaseLock();
+    }
+
+    // If the producer sent a well-formed stream, residual should be empty at
+    // EOS. A non-empty residual means the backend closed the connection mid-
+    // sample — we log and drop rather than emitting a misaligned chunk.
+    if (residual.length > 0) {
+      logger.warn(
+        `[SovitsProvider] stream ended with ${residual.length} orphan byte(s); dropping (expected multiple of ${SAMPLE_BYTES})`,
+      );
     }
 
     // Terminator chunk — guarantees a final isLast=true message.

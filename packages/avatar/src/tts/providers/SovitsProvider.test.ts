@@ -233,7 +233,9 @@ describe('SovitsProvider.synthesizeStream', () => {
       pcmSampleRate: 32000,
     });
     await expect(async () => {
-      for await (const _ of p.synthesizeStream('hi')) { /* consume */ }
+      for await (const _ of p.synthesizeStream('hi')) {
+        /* consume */
+      }
     }).toThrow(/streaming_mode/);
   });
 
@@ -244,7 +246,9 @@ describe('SovitsProvider.synthesizeStream', () => {
       pcmSampleRate: 32000,
     });
     await expect(async () => {
-      for await (const _ of p.synthesizeStream('hi')) { /* consume */ }
+      for await (const _ of p.synthesizeStream('hi')) {
+        /* consume */
+      }
     }).toThrow(/streaming_mode/);
   });
 
@@ -255,7 +259,9 @@ describe('SovitsProvider.synthesizeStream', () => {
       pcmSampleRate: 32000,
     });
     await expect(async () => {
-      for await (const _ of p.synthesizeStream('hi')) { /* consume */ }
+      for await (const _ of p.synthesizeStream('hi')) {
+        /* consume */
+      }
     }).toThrow(/media_type/);
   });
 
@@ -265,7 +271,9 @@ describe('SovitsProvider.synthesizeStream', () => {
       bodyTemplate: { streaming_mode: true, media_type: 'raw' },
     });
     await expect(async () => {
-      for await (const _ of p.synthesizeStream('hi')) { /* consume */ }
+      for await (const _ of p.synthesizeStream('hi')) {
+        /* consume */
+      }
     }).toThrow(/pcmSampleRate/);
   });
 
@@ -314,7 +322,9 @@ describe('SovitsProvider.synthesizeStream', () => {
       pcmSampleRate: 32000,
     });
     await expect(async () => {
-      for await (const _ of p.synthesizeStream('hi')) { /* consume */ }
+      for await (const _ of p.synthesizeStream('hi')) {
+        /* consume */
+      }
     }).toThrow(/500/);
   });
 
@@ -335,7 +345,98 @@ describe('SovitsProvider.synthesizeStream', () => {
       pcmSampleRate: 32000,
     });
     await expect(async () => {
-      for await (const _ of p.synthesizeStream('hi')) { /* consume */ }
+      for await (const _ of p.synthesizeStream('hi')) {
+        /* consume */
+      }
     }).toThrow(/stream read failure/);
+  });
+
+  // ─── Sample-boundary alignment ──────────────────────────────────────────────
+  //
+  // Regression: HTTP chunked transfer produced odd-byte reads (e.g. 1441 bytes)
+  // which, when decoded as s16le by both the RMS pipeline and the renderer,
+  // dropped the trailing byte and shifted the int16 grid by 1 for the rest of
+  // the stream — audible as pure white noise. The provider now buffers trailing
+  // sub-sample bytes and only yields chunks with even byte lengths.
+  it('carries odd-byte residual across reads and yields only sample-aligned chunks', async () => {
+    // 3 + 4 + 1 = 8 bytes total (4 s16 samples).
+    // After buffering: yield[0]=2 bytes, yield[1]=6 bytes, no residual.
+    const r1 = new Uint8Array([0x01, 0x02, 0x03]);
+    const r2 = new Uint8Array([0x04, 0x05, 0x06, 0x07]);
+    const r3 = new Uint8Array([0x08]);
+    globalThis.fetch = makeStreamFetch([r1, r2, r3]);
+
+    const p = new SovitsProvider({
+      endpoint: 'http://sovits/tts',
+      bodyTemplate: { streaming_mode: true, media_type: 'raw', text: '{text}' },
+      pcmSampleRate: 32000,
+    });
+
+    const collected: Uint8Array[] = [];
+    for await (const chunk of p.synthesizeStream('hello')) {
+      if (!chunk.isLast) collected.push(chunk.bytes);
+      // Data chunks must be sample-aligned (2 bytes/sample for s16le).
+      if (!chunk.isLast) expect(chunk.bytes.length % 2).toBe(0);
+    }
+
+    // Concatenating all yielded chunks must reproduce the original byte
+    // sequence exactly, in order — no data loss, no reordering.
+    const flat = new Uint8Array(collected.reduce((n, c) => n + c.length, 0));
+    let o = 0;
+    for (const c of collected) {
+      flat.set(c, o);
+      o += c.length;
+    }
+    expect(Array.from(flat)).toEqual([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+  });
+
+  it('suppresses yields that would contain less than one full sample', async () => {
+    // Single byte reads — provider must not yield zero-byte data chunks.
+    const reads = [new Uint8Array([0x01]), new Uint8Array([0x02]), new Uint8Array([0x03]), new Uint8Array([0x04])];
+    globalThis.fetch = makeStreamFetch(reads);
+
+    const p = new SovitsProvider({
+      endpoint: 'http://sovits/tts',
+      bodyTemplate: { streaming_mode: true, media_type: 'raw' },
+      pcmSampleRate: 32000,
+    });
+
+    const dataChunks: Uint8Array[] = [];
+    for await (const chunk of p.synthesizeStream('hi')) {
+      if (!chunk.isLast) {
+        dataChunks.push(chunk.bytes);
+        expect(chunk.bytes.length).toBeGreaterThan(0);
+        expect(chunk.bytes.length % 2).toBe(0);
+      }
+    }
+    // 4 single-byte reads → two 2-byte yields OR one 4-byte yield, depending
+    // on coalescing timing. Either way, total yielded bytes = 4 and each
+    // yield is individually aligned.
+    const total = dataChunks.reduce((n, c) => n + c.length, 0);
+    expect(total).toBe(4);
+  });
+
+  it('drops a trailing orphan byte at stream end without emitting it', async () => {
+    // 3 total bytes — after alignment, 2 yielded and 1 dropped at EOS.
+    const r1 = new Uint8Array([0x01, 0x02, 0x03]);
+    globalThis.fetch = makeStreamFetch([r1]);
+
+    const p = new SovitsProvider({
+      endpoint: 'http://sovits/tts',
+      bodyTemplate: { streaming_mode: true, media_type: 'raw' },
+      pcmSampleRate: 32000,
+    });
+
+    const dataChunks: Uint8Array[] = [];
+    let terminator: { isLast: boolean; bytes: Uint8Array } | null = null;
+    for await (const chunk of p.synthesizeStream('hi')) {
+      if (chunk.isLast) terminator = { isLast: chunk.isLast, bytes: chunk.bytes };
+      else dataChunks.push(chunk.bytes);
+    }
+
+    expect(dataChunks.length).toBe(1);
+    expect(Array.from(dataChunks[0])).toEqual([0x01, 0x02]);
+    expect(terminator).not.toBeNull();
+    expect(terminator?.bytes.length).toBe(0);
   });
 });
