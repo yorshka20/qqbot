@@ -738,10 +738,7 @@ describe('AnimationCompiler — clip execution path', () => {
       test_clip: { kind: 'clip', clip: 'test-clip.json' },
     });
     try {
-      const compiler = newAnimationCompilerTest(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
-        mapPath,
-      );
+      const compiler = newAnimationCompilerTest({ fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' }, mapPath);
       compiler.enqueue([
         {
           action: 'test_clip',
@@ -776,10 +773,7 @@ describe('AnimationCompiler — clip execution path', () => {
       test_clip: { kind: 'clip', clip: 'test-clip.json' },
     });
     try {
-      const compiler = newAnimationCompilerTest(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
-        mapPath,
-      );
+      const compiler = newAnimationCompilerTest({ fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' }, mapPath);
       compiler.enqueue([
         {
           action: 'test_clip',
@@ -810,10 +804,7 @@ describe('AnimationCompiler — clip execution path', () => {
       clip_b: { kind: 'clip', clip: 'test-clip.json' },
     });
     try {
-      const compiler = newAnimationCompilerTest(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
-        mapPath,
-      );
+      const compiler = newAnimationCompilerTest({ fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' }, mapPath);
       // Set short crossfadeMs for testability
       compiler.setTunableParam('compiler:envelope', 'crossfadeMs', 100);
 
@@ -935,10 +926,7 @@ describe('AnimationCompiler — clip execution path', () => {
       const savedT = nowRef.t;
 
       // Run 1: intensity=1.0
-      const compiler1 = newAnimationCompilerTest(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
-        mapPath,
-      );
+      const compiler1 = newAnimationCompilerTest({ fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' }, mapPath);
       compiler1.enqueue([
         {
           action: 'test_clip',
@@ -957,10 +945,7 @@ describe('AnimationCompiler — clip execution path', () => {
 
       // Reset time for run 2
       nowRef.t = savedT;
-      const compiler2 = newAnimationCompilerTest(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
-        mapPath,
-      );
+      const compiler2 = newAnimationCompilerTest({ fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' }, mapPath);
       compiler2.enqueue([
         {
           action: 'test_clip',
@@ -1104,10 +1089,7 @@ describe('AnimationCompiler — quat clip path', () => {
       quat_clip: { kind: 'clip', clip: 'quat-clip.json' },
     });
     try {
-      const compiler = newAnimationCompilerTest(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
-        mapPath,
-      );
+      const compiler = newAnimationCompilerTest({ fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' }, mapPath);
       compiler.enqueue([
         {
           action: 'quat_clip',
@@ -1149,10 +1131,7 @@ describe('AnimationCompiler — quat clip path', () => {
       const savedT = nowRef.t;
 
       // Run 1: intensity=1.0
-      const compiler1 = newAnimationCompilerTest(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
-        mapPath,
-      );
+      const compiler1 = newAnimationCompilerTest({ fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' }, mapPath);
       compiler1.enqueue([
         {
           action: 'quat_clip',
@@ -1174,10 +1153,7 @@ describe('AnimationCompiler — quat clip path', () => {
 
       // Run 2: intensity=0.3
       nowRef.t = savedT;
-      const compiler2 = newAnimationCompilerTest(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' },
-        mapPath,
-      );
+      const compiler2 = newAnimationCompilerTest({ fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' }, mapPath);
       compiler2.enqueue([
         {
           action: 'quat_clip',

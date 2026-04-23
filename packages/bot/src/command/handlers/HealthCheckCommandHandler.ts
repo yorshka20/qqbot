@@ -98,7 +98,9 @@ export class HealthCheckCommandHandler implements CommandHandler {
 
   private async refreshOne(serviceName: string): Promise<CommandResult> {
     const registered = this.healthCheckManager.getRegisteredServices();
-    const match = registered.find((n) => n === serviceName) ?? registered.find((n) => n.toLowerCase() === serviceName.toLowerCase());
+    const match =
+      registered.find((n) => n === serviceName) ??
+      registered.find((n) => n.toLowerCase() === serviceName.toLowerCase());
 
     if (!match) {
       return {
@@ -143,7 +145,9 @@ export class HealthCheckCommandHandler implements CommandHandler {
 
   private resetOne(serviceName: string): CommandResult {
     const registered = this.healthCheckManager.getRegisteredServices();
-    const match = registered.find((n) => n === serviceName) ?? registered.find((n) => n.toLowerCase() === serviceName.toLowerCase());
+    const match =
+      registered.find((n) => n === serviceName) ??
+      registered.find((n) => n.toLowerCase() === serviceName.toLowerCase());
 
     if (!match) {
       return {
@@ -154,7 +158,9 @@ export class HealthCheckCommandHandler implements CommandHandler {
 
     const ok = this.healthCheckManager.resetService(match);
     const messageBuilder = new MessageBuilder();
-    messageBuilder.text(ok ? `Reset cached health for "${match}". Next probe starts clean.` : `Failed to reset "${match}".`);
+    messageBuilder.text(
+      ok ? `Reset cached health for "${match}". Next probe starts clean.` : `Failed to reset "${match}".`,
+    );
     return { success: ok, segments: messageBuilder.build() };
   }
 }
