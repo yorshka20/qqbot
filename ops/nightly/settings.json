@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(rm:*)",
+      "Bash(mv:*)",
+      "Bash(cp:*)",
+      "Bash(chmod:*)",
+      "Bash(chown:*)",
+      "Bash(git:*)",
+      "Bash(bun:*)",
+      "Bash(npm:*)",
+      "Bash(pnpm:*)",
+      "Bash(yarn:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(nc:*)",
+      "Bash(sudo:*)",
+      "Bash(kill:*)",
+      "Write(packages/**)",
+      "Write(config.jsonc)",
+      "Write(config.d/**)",
+      "Write(.git/**)",
+      "Write(**/*.ts)",
+      "Write(**/*.js)",
+      "Write(**/*.tsx)",
+      "Write(**/*.jsx)",
+      "Write(**/*.json)",
+      "Write(**/*.jsonc)",
+      "Edit(**)"
+    ]
+  }
+}

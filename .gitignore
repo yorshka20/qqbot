@@ -91,3 +91,7 @@ repomix-*.md
 
 /tickets
 local
+
+# Nightly ops
+ops/nightly/env.sh
+/ops/reports/
