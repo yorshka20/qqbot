@@ -162,7 +162,7 @@ describe('AudioEnvelopeLayer streaming mode', () => {
     expect(layer.sample(1500, IDLE)).toEqual({});
   });
 
-  test('appendFrames([0.3, 0.5]) then sampling within those hops yields non-zero mouth.open', () => {
+  test('appendFrames([0.3, 0.5]) normalizes to running peak (0.5) scaled to 0.95', () => {
     const layer = new AudioEnvelopeLayer({
       id: 'streaming-frames',
       hopMs: 100,
@@ -170,10 +170,11 @@ describe('AudioEnvelopeLayer streaming mode', () => {
       durationMs: 5000,
     });
     layer.appendFrames(new Float32Array([0.3, 0.5]));
-    // t=0 → i0=0 → v=0.3
-    expect(layer.sample(0, IDLE)['mouth.open']).toBeCloseTo(0.3, 5);
-    // t=100 → i0=1 → v=0.5
-    expect(layer.sample(100, IDLE)['mouth.open']).toBeCloseTo(0.5, 5);
+    // Streaming mode normalizes: raw / peak * 0.95. peak=0.5.
+    // t=0 → raw=0.3 → 0.3/0.5*0.95 = 0.57
+    expect(layer.sample(0, IDLE)['mouth.open']).toBeCloseTo(0.57, 5);
+    // t=100 → raw=0.5 → 0.5/0.5*0.95 = 0.95
+    expect(layer.sample(100, IDLE)['mouth.open']).toBeCloseTo(0.95, 5);
   });
 
   test('sampling past written frames but before durationMs returns {}', () => {
@@ -220,11 +221,12 @@ describe('AudioEnvelopeLayer streaming mode', () => {
     for (let i = 0; i < count; i++) frames[i] = (i % 10) / 10;
     layer.appendFrames(frames);
 
-    // Verify first and last frames are preserved
-    // t=0 → i0=0 → frames[0]=0
+    // Verify first and last frames are preserved (after streaming
+    // normalization). peak across frames = max((i%10)/10 for i<200) = 0.9.
+    // t=0 → i0=0 → raw=0 → normalized=0
     expect(layer.sample(0, IDLE)['mouth.open']).toBeCloseTo(0, 9);
-    // t=10*(count-1) → i0=199 → frames[199]=9/10=0.9
-    expect(layer.sample(10 * (count - 1), IDLE)['mouth.open']).toBeCloseTo(frames[count - 1], 5);
+    // t=10*(count-1) → i0=199 → raw=0.9 → 0.9/0.9*0.95 = 0.95
+    expect(layer.sample(10 * (count - 1), IDLE)['mouth.open']).toBeCloseTo(0.95, 5);
   });
 
   test('appendFrames on non-streaming layer throws', () => {
@@ -236,6 +238,62 @@ describe('AudioEnvelopeLayer streaming mode', () => {
       durationMs: 200,
     });
     expect(() => layer.appendFrames(new Float32Array([0.3]))).toThrow(/non-streaming/);
+  });
+
+  test('quiet speech still reaches peak amplitude (0.95) on its loudest frame', () => {
+    // Simulates the real bug: unnormalized Sovits RMS peaks around 0.2–0.3
+    // so mouth.open never exceeds ~0.3 without streaming normalization.
+    const layer = new AudioEnvelopeLayer({
+      id: 'streaming-quiet',
+      hopMs: 100,
+      startAtMs: 0,
+      durationMs: 5000,
+    });
+    layer.appendFrames(new Float32Array([0.05, 0.1, 0.2, 0.15, 0.1]));
+    // peak = 0.2 → loudest frame maps to 0.95, not 0.2.
+    expect(layer.sample(200, IDLE)['mouth.open']).toBeCloseTo(0.95, 5);
+    // And quieter frames scale proportionally — 0.05/0.2*0.95 = 0.2375.
+    expect(layer.sample(0, IDLE)['mouth.open']).toBeCloseTo(0.2375, 5);
+  });
+
+  test('peak follower rises monotonically and retroactively rescales earlier frames', () => {
+    const layer = new AudioEnvelopeLayer({
+      id: 'streaming-retro',
+      hopMs: 100,
+      startAtMs: 0,
+      durationMs: 5000,
+    });
+    // First batch: peak becomes 0.2 after append. 0.1/0.2*0.95 = 0.475.
+    layer.appendFrames(new Float32Array([0.1, 0.2]));
+    expect(layer.sample(0, IDLE)['mouth.open']).toBeCloseTo(0.475, 5);
+
+    // Second batch adds a louder frame; peak becomes 0.5.
+    // The earlier 0.1 frame is now rescaled against the new peak:
+    // 0.1/0.5*0.95 = 0.19. This is the "retroactive rescale" contract.
+    layer.appendFrames(new Float32Array([0.5]));
+    expect(layer.sample(0, IDLE)['mouth.open']).toBeCloseTo(0.19, 5);
+    expect(layer.sample(200, IDLE)['mouth.open']).toBeCloseTo(0.95, 5);
+  });
+
+  test('excite-driven channels also benefit from streaming normalization', () => {
+    // Raw 0.3 would be below threshold (0.3) and emit only mouth.open.
+    // After normalization (peak=0.3, scale to 0.95), v=0.95 clears threshold
+    // and excites body.z / eye.open / brow. This fixes "quiet speech →
+    // lifeless avatar" for streaming utterances specifically.
+    const layer = new AudioEnvelopeLayer({
+      id: 'streaming-excite',
+      hopMs: 100,
+      startAtMs: 0,
+      durationMs: 5000,
+    });
+    layer.appendFrames(new Float32Array([0.2, 0.3])); // peak = 0.3
+
+    const result = layer.sample(100, IDLE);
+    expect(result['mouth.open']).toBeCloseTo(0.95, 5);
+    expect(result['body.z']).toBeGreaterThan(0);
+    expect(result['eye.open.left']).toBeGreaterThan(0);
+    expect(result['eye.open.right']).toBeGreaterThan(0);
+    expect(result.brow).toBeGreaterThan(0);
   });
 
   test('existing non-streaming behavior preserved bit-for-bit', () => {

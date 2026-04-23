@@ -27,6 +27,13 @@ export interface AudioEnvelopeLayerOptions {
 const INITIAL_STREAMING_CAPACITY = 64;
 
 /**
+ * Target amplitude after streaming peak-normalization. Mirrors the 0.95 used
+ * by `computeRmsEnvelope({ normalize: true })` so streaming and buffered
+ * paths produce mouth openings of roughly the same maximum visual size.
+ */
+const STREAMING_NORMALIZE_TARGET = 0.95;
+
+/**
  * Ephemeral per-utterance layer driven by a pre-computed RMS envelope.
  *
  * Drives two families of channels:
@@ -43,6 +50,13 @@ const INITIAL_STREAMING_CAPACITY = 64;
  *
  * **Streaming mode**: Construct without `envelope`. Call `appendFrames()` as
  * RMS frames arrive and `finalize(totalDurationMs)` when synthesis is done.
+ * Streaming frames are stored raw (unnormalized) and divided by the running
+ * per-utterance peak at `sample()` time, matching the 0.95 peak that the
+ * buffered path gets from `computeRmsEnvelope({ normalize: true })`. This is
+ * retroactive: as the peak grows mid-utterance, previously-sampled frames are
+ * re-evaluated against the new peak. Because `sample()` is only called for
+ * monotonically increasing `nowMs`, there's no visual glitch — the viewer
+ * never re-sees an old frame.
  */
 export class AudioEnvelopeLayer extends BaseLayer {
   readonly id: string;
@@ -54,6 +68,12 @@ export class AudioEnvelopeLayer extends BaseLayer {
   private durationMs: number;
   /** True when constructed without a pre-computed envelope. Guards appendFrames/finalize. */
   private readonly streamingMode: boolean;
+  /**
+   * Running maximum of all RMS frames appended so far. Used by `sample()` in
+   * streaming mode to normalize the output to `STREAMING_NORMALIZE_TARGET`.
+   * Monotonically non-decreasing — never resets within an utterance.
+   */
+  private streamingPeak = 0;
 
   constructor(opts: AudioEnvelopeLayerOptions) {
     super();
@@ -95,6 +115,13 @@ export class AudioEnvelopeLayer extends BaseLayer {
 
     this.envelopeData.set(arr, this.envelopeLength);
     this.envelopeLength += arr.length;
+
+    // Track the running peak so sample() can normalize. Only the max matters;
+    // NaN/negative guards are unnecessary because RMS is non-negative.
+    for (let i = 0; i < arr.length; i++) {
+      const f = arr[i];
+      if (f > this.streamingPeak) this.streamingPeak = f;
+    }
   }
 
   /**
@@ -125,7 +152,16 @@ export class AudioEnvelopeLayer extends BaseLayer {
 
     const i1 = Math.min(i0 + 1, this.envelopeLength - 1);
     const frac = idxF - i0;
-    const v = this.envelopeData[i0] * (1 - frac) + this.envelopeData[i1] * frac;
+    const rawV = this.envelopeData[i0] * (1 - frac) + this.envelopeData[i1] * frac;
+
+    // Streaming-mode peak normalization. Buffered mode (pre-computed envelope)
+    // arrives already peak-normalized via computeRmsEnvelope({normalize:true}),
+    // so we only rescale when we own the normalization — otherwise we'd
+    // double-normalize.
+    let v = rawV;
+    if (this.streamingMode && this.streamingPeak > 0) {
+      v = Math.min(1, (rawV / this.streamingPeak) * STREAMING_NORMALIZE_TARGET);
+    }
 
     const out: Record<string, number> = { 'mouth.open': v };
 
