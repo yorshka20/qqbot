@@ -45,7 +45,7 @@ export class ProactiveConversationPlugin extends PluginBase {
   /** preferenceKey -> trigger words from prompts/preference/{preferenceKey}/trigger.txt (one word per line). */
   private triggerWords: Record<string, string[]> = {};
   private triggerAccumulator: Record<string, number> = {};
-  private accumulatorThreshold = 30;
+  private accumulatorThreshold = 100;
   /** Default cooldown duration in minutes. */
   private cooldownDefaultMinutes = 30;
   /** groupId -> cooldown expiry timestamp (ms). While active, proactive analysis is suppressed. */
