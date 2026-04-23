@@ -46,4 +46,26 @@ describe('splitIntoUtterances', () => {
       expect(chunk.length).toBeLessThanOrEqual(80);
     }
   });
+
+  test('keeps consecutive terminators together (regression: "主人？！")', () => {
+    // Observed in production: "主人？！" was split into ["主人？", "！"].
+    // The lone "！" is punctuation-only and crashes GPT-SoVITS.
+    expect(splitIntoUtterances('主人？！')).toEqual(['主人？！']);
+  });
+
+  test('greedy-extend across mixed terminators and clause separators', () => {
+    // "好了！，。继续。" — first chunk absorbs the "！，。" run, second is clean.
+    expect(splitIntoUtterances('好了！，。继续。')).toEqual(['好了！，。', '继续。']);
+  });
+
+  test('drops modelled silence "。。。" entirely', () => {
+    // Models sometimes reply with bare "。。。" to signal silence. Feeding that
+    // to TTS errors out; we must drop the utterance.
+    expect(splitIntoUtterances('。。。')).toEqual([]);
+  });
+
+  test('drops a lone punctuation utterance even after primary split', () => {
+    // Synthetic: an all-punctuation prefix then a real sentence.
+    expect(splitIntoUtterances('。！你好啊。')).toEqual(['你好啊。']);
+  });
 });

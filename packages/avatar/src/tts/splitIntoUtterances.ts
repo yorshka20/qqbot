@@ -1,17 +1,38 @@
+const SENTENCE_TERMINATOR_CHARS = '。！？.!?';
+const CLAUSE_SEPARATOR_CHARS = '，,；;、—';
+
+/**
+ * A string is "speakable" when it has at least one character that isn't a
+ * sentence terminator, clause separator, or whitespace. TTS providers like
+ * GPT-SoVITS reject empty/punctuation-only input outright, so chunks that
+ * fail this check MUST NOT reach `provider.synthesize()`.
+ */
+function hasSpeakableContent(s: string): boolean {
+  for (const ch of s) {
+    if (SENTENCE_TERMINATOR_CHARS.includes(ch)) continue;
+    if (CLAUSE_SEPARATOR_CHARS.includes(ch)) continue;
+    if (/\s/.test(ch)) continue;
+    return true;
+  }
+  return false;
+}
+
 /**
  * Split AI reply text into playback-sized utterances.
  *
  * 1. Primary split on sentence terminators (Chinese: 。！？ / English: . ! ?)
- *    keeping the terminator attached to the preceding chunk
+ *    keeping the terminator attached to the preceding chunk. Consecutive
+ *    trailing terminators/clause separators are GREEDY-EXTENDED into the
+ *    same chunk so "主人？！" stays one utterance — otherwise the lone "！"
+ *    would go to TTS as a punctuation-only chunk and crash synthesis.
  * 2. If any resulting chunk > maxChars, secondary-split on clause separators
  *    (, ， ; ； 、 —) preferring the one closest to the chunk midpoint
- * 3. Trim each chunk, drop empty/whitespace-only
+ * 3. Drop chunks with no speakable content (empty, whitespace-only, or
+ *    punctuation-only like "。。。" for modelled silence).
  */
 export function splitIntoUtterances(text: string, maxChars = 80): string[] {
-  const sentenceTerminatorChars = '。！？.!?';
-  const clauseSeparatorChars = '，,；;、—';
-
-  // Step 1: split by sentence terminators
+  // Step 1: split by sentence terminators, greedy-extending through any
+  // immediately-following terminators/clause separators.
   const sentences: string[] = [];
   let current = '';
 
@@ -19,14 +40,19 @@ export function splitIntoUtterances(text: string, maxChars = 80): string[] {
     const char = text[i];
     current += char;
 
-    // Check if this char is a sentence terminator
-    if (sentenceTerminatorChars.includes(char)) {
+    if (SENTENCE_TERMINATOR_CHARS.includes(char)) {
+      while (
+        i + 1 < text.length &&
+        (SENTENCE_TERMINATOR_CHARS.includes(text[i + 1]) || CLAUSE_SEPARATOR_CHARS.includes(text[i + 1]))
+      ) {
+        i++;
+        current += text[i];
+      }
       sentences.push(current);
       current = '';
     }
   }
 
-  // Add any remaining text as the last sentence (if no terminator at end)
   if (current.trim().length > 0) {
     sentences.push(current);
   }
@@ -48,7 +74,7 @@ export function splitIntoUtterances(text: string, maxChars = 80): string[] {
       const matches: number[] = [];
 
       for (let i = 0; i < trimmed.length; i++) {
-        if (clauseSeparatorChars.includes(trimmed[i])) {
+        if (CLAUSE_SEPARATOR_CHARS.includes(trimmed[i])) {
           matches.push(i);
         }
       }
@@ -89,5 +115,8 @@ export function splitIntoUtterances(text: string, maxChars = 80): string[] {
     }
   }
 
-  return result.filter((s) => s.trim().length > 0);
+  // Final guard: drop anything whose non-punctuation/whitespace content is
+  // empty. This is the last line of defense against punctuation-only chunks
+  // (e.g. from models emitting "。。。" for silence) reaching TTS.
+  return result.filter(hasSpeakableContent);
 }
