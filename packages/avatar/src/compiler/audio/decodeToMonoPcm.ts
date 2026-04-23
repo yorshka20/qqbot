@@ -162,6 +162,37 @@ async function decodeMp3ViaNpm(bytes: Uint8Array): Promise<{ pcm: Float32Array; 
 }
 
 // ---------------------------------------------------------------------------
+// Raw PCM decoder (audio/pcm)
+// ---------------------------------------------------------------------------
+
+export interface DecodePcmOpts {
+  /** Required when mime is audio/pcm. */
+  sampleRate: number;
+  /** Sample format. Default 's16le'. */
+  format?: 's16le' | 'f32';
+}
+
+function decodePcm(bytes: Uint8Array, opts: DecodePcmOpts): { pcm: Float32Array; sampleRate: number } {
+  const format = opts.format ?? 's16le';
+
+  if (format === 'f32') {
+    // Always copy the byte range so the returned Float32Array owns its buffer
+    // (callers may detach or reuse the input view) and alignment is guaranteed.
+    const sliced = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    return { pcm: new Float32Array(sliced), sampleRate: opts.sampleRate };
+  }
+
+  // s16le: little-endian signed int16 mono
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const frameCount = Math.floor(bytes.byteLength / 2);
+  const pcm = new Float32Array(frameCount);
+  for (let i = 0; i < frameCount; i++) {
+    pcm[i] = view.getInt16(i * 2, true) / 32768;
+  }
+  return { pcm, sampleRate: opts.sampleRate };
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -171,10 +202,12 @@ async function decodeMp3ViaNpm(bytes: Uint8Array): Promise<{ pcm: Float32Array; 
  * Supported mime types:
  *   - audio/wav, audio/wave, audio/x-wav  (hand-written RIFF parser)
  *   - audio/mpeg, audio/mp3               (ffmpeg if available, else audio-decode fallback)
+ *   - audio/pcm                           (raw PCM; opts.sampleRate required)
  */
 export async function decodeToMonoPcm(
   bytes: Uint8Array,
   mime: string,
+  opts?: DecodePcmOpts,
 ): Promise<{ pcm: Float32Array; sampleRate: number }> {
   const m = mime.toLowerCase();
   if (m === 'audio/wav' || m === 'audio/wave' || m === 'audio/x-wav') {
@@ -183,6 +216,10 @@ export async function decodeToMonoPcm(
   if (m === 'audio/mpeg' || m === 'audio/mp3') {
     const hasFfmpeg = await detectFfmpeg();
     return hasFfmpeg ? decodeMp3ViaFfmpeg(bytes) : decodeMp3ViaNpm(bytes);
+  }
+  if (m === 'audio/pcm') {
+    if (!opts?.sampleRate) throw new Error('audio/pcm requires sampleRate');
+    return decodePcm(bytes, opts);
   }
   throw new Error(`unsupported mime: ${mime}`);
 }

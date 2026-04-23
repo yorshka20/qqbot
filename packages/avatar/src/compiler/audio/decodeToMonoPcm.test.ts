@@ -133,3 +133,39 @@ describe('decodeToMonoPcm', () => {
     await expect(decodeToMonoPcm(new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]), 'audio/mpeg')).rejects.toThrow();
   });
 });
+
+describe('decodeToMonoPcm audio/pcm', () => {
+  test('missing sampleRate throws "audio/pcm requires sampleRate"', async () => {
+    const bytes = new Uint8Array([0, 0]);
+    // opts is optional at the type level; sampleRate is enforced at runtime
+    await expect(decodeToMonoPcm(bytes, 'audio/pcm')).rejects.toThrow('audio/pcm requires sampleRate');
+  });
+
+  test('s16le: [0x00,0x00, 0x00,0x40] decodes to [0, 16384/32768]', async () => {
+    // 0x0000 = 0, 0x4000 = 16384
+    const bytes = new Uint8Array([0x00, 0x00, 0x00, 0x40]);
+    const { pcm, sampleRate } = await decodeToMonoPcm(bytes, 'audio/pcm', { sampleRate: 16000 });
+    expect(sampleRate).toBe(16000);
+    expect(pcm.length).toBe(2);
+    expect(pcm[0]).toBe(0);
+    expect(pcm[1]).toBeCloseTo(16384 / 32768, 9);
+  });
+
+  test('s16le is default format when format is omitted', async () => {
+    const bytes = new Uint8Array([0x00, 0x40]); // 0x4000 = 16384
+    const { pcm } = await decodeToMonoPcm(bytes, 'audio/pcm', { sampleRate: 8000 });
+    expect(pcm.length).toBe(1);
+    expect(pcm[0]).toBeCloseTo(16384 / 32768, 9);
+  });
+
+  test('f32: reinterprets bytes as Float32Array', async () => {
+    // Build a Float32Array with values [0.5, -0.25] and convert to bytes
+    const original = new Float32Array([0.5, -0.25]);
+    const bytes = new Uint8Array(original.buffer);
+    const { pcm, sampleRate } = await decodeToMonoPcm(bytes, 'audio/pcm', { sampleRate: 22050, format: 'f32' });
+    expect(sampleRate).toBe(22050);
+    expect(pcm.length).toBe(2);
+    expect(pcm[0]).toBeCloseTo(0.5, 6);
+    expect(pcm[1]).toBeCloseTo(-0.25, 6);
+  });
+});
