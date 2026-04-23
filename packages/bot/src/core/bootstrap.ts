@@ -475,10 +475,6 @@ function instantiateTTSProvider(entry: TTSProviderEntry): TTSProvider | null {
           entry.headers && typeof entry.headers === 'object' && !Array.isArray(entry.headers)
             ? (entry.headers as Record<string, string>)
             : undefined,
-        responseFormat:
-          entry.responseFormat === 'audio/wav' || entry.responseFormat === 'audio/mpeg'
-            ? entry.responseFormat
-            : undefined,
         defaultVoice: typeof entry.defaultVoice === 'string' ? entry.defaultVoice : undefined,
         pcmSampleRate:
           typeof entry.pcmSampleRate === 'number' && entry.pcmSampleRate > 0 ? entry.pcmSampleRate : undefined,

@@ -835,11 +835,13 @@
       // `ref_audio_path` is a path on the host that runs the API. Docs:
       // docs/local/GPT-SoVITS-API-v2-integration.md
       //
-      // The example below enables raw-PCM streaming mode. Enable only when
-      // Sovits runs on GPU and the first chunk is meaningfully faster than
-      // whole-utterance synthesis (i.e. latency-to-first-audio matters).
-      // For CPU-only or slow hosts, omit streaming_mode / media_type / pcmSampleRate
-      // and use "media_type": "wav" instead.
+      // `bodyTemplate` carries ONLY stable synthesis params. Streaming fields
+      // (`streaming_mode`, `media_type`) are owned by the provider and forced
+      // per-call — do NOT put them here, they'll be silently overwritten:
+      //   - /tts command (QQ voice record) → forces streaming_mode=false, media_type=wav
+      //   - renderer / Live2D (SpeechService)  → forces streaming_mode=true, media_type=raw
+      // `pcmSampleRate` is the sample rate of the raw-PCM stream used by the
+      // renderer path; wav (the /tts command path) carries its own rate in-band.
       // ,{
       //   "type": "sovits",
       //   "name": "sovits-lan",
@@ -850,9 +852,7 @@
       //     "text_lang": "zh",
       //     "ref_audio_path": "D:/path/to/reference.wav",
       //     "prompt_text": "参考音频对应文本",
-      //     "prompt_lang": "zh",
-      //     "media_type": "raw",
-      //     "streaming_mode": true
+      //     "prompt_lang": "zh"
       //   }
       // }
     ]

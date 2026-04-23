@@ -109,20 +109,54 @@ describe('SovitsProvider', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = (fetchMock as unknown as ReturnType<typeof mock>).mock.calls[0] as [string, RequestInit];
     expect(url).toBe('http://sovits/tts');
-    expect(JSON.parse(init.body as string)).toEqual({ text: 'hello', speaker: 'bob' });
+    // synthesize() always injects non-streaming wav fields on top of the template.
+    expect(JSON.parse(init.body as string)).toEqual({
+      text: 'hello',
+      speaker: 'bob',
+      streaming_mode: false,
+      media_type: 'wav',
+    });
     expect(result.mime).toBe('audio/wav');
     expect(result.bytes).toBeInstanceOf(Uint8Array);
   });
 
-  it('uses responseFormat over Content-Type for mime', async () => {
-    globalThis.fetch = makeMockFetch({ contentType: 'audio/wav' });
+  it('always returns audio/wav mime regardless of server Content-Type', async () => {
+    // Some GPT-SoVITS builds mislabel the Content-Type (e.g. `application/octet-stream`).
+    // synthesize() must still report `audio/wav` because we asked the server for wav.
+    globalThis.fetch = makeMockFetch({ contentType: 'application/octet-stream' });
     const p = new SovitsProvider({
       endpoint: 'http://sovits/tts',
       bodyTemplate: { text: '{text}' },
-      responseFormat: 'audio/mpeg',
     });
     const result = await p.synthesize('hi');
-    expect(result.mime).toBe('audio/mpeg');
+    expect(result.mime).toBe('audio/wav');
+  });
+
+  it('overwrites streaming fields already present in the template', async () => {
+    // Regression: earlier versions of the provider passed bodyTemplate through
+    // verbatim, so a template with streaming_mode=true + media_type=raw made
+    // /tts return raw PCM bytes mislabelled as wav — Milky then rejected the
+    // record segment with "消息体无法解析" (500). synthesize() must now force
+    // non-streaming wav output irrespective of template contents.
+    const fetchMock = makeMockFetch({ contentType: 'audio/wav' });
+    globalThis.fetch = fetchMock;
+    const p = new SovitsProvider({
+      endpoint: 'http://sovits/tts',
+      bodyTemplate: {
+        text: '{text}',
+        text_lang: 'zh',
+        streaming_mode: true,
+        media_type: 'raw',
+      },
+    });
+    await p.synthesize('hi');
+    const [, init] = (fetchMock as unknown as ReturnType<typeof mock>).mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.streaming_mode).toBe(false);
+    expect(body.media_type).toBe('wav');
+    // Stable template fields are preserved.
+    expect(body.text).toBe('hi');
+    expect(body.text_lang).toBe('zh');
   });
 
   it('uses defaultVoice when opts.voice is not provided', async () => {
@@ -136,7 +170,11 @@ describe('SovitsProvider', () => {
     });
     await p.synthesize('text');
     const [, init] = (fetchMock as unknown as ReturnType<typeof mock>).mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(init.body as string)).toEqual({ speaker: 'default-speaker' });
+    expect(JSON.parse(init.body as string)).toEqual({
+      speaker: 'default-speaker',
+      streaming_mode: false,
+      media_type: 'wav',
+    });
   });
 
   it('throws on non-ok response', async () => {
@@ -175,7 +213,11 @@ describe('SovitsProvider', () => {
     const p = new SovitsProvider({ endpoint: 'http://sovits/tts', bodyTemplate: { text: '{text}' } });
     await p.synthesize('  hello  ');
     const [, init] = (fetchMock as unknown as ReturnType<typeof mock>).mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(init.body as string)).toEqual({ text: 'hello' });
+    expect(JSON.parse(init.body as string)).toEqual({
+      text: 'hello',
+      streaming_mode: false,
+      media_type: 'wav',
+    });
   });
 });
 
@@ -226,55 +268,39 @@ describe('SovitsProvider.synthesizeStream', () => {
     }) as unknown as typeof globalThis.fetch;
   }
 
-  it('throws when streaming_mode is missing', async () => {
-    const p = new SovitsProvider({
-      endpoint: 'http://sovits/tts',
-      bodyTemplate: { media_type: 'raw' },
-      pcmSampleRate: 32000,
-    });
-    await expect(async () => {
-      for await (const _ of p.synthesizeStream('hi')) {
-        /* consume */
-      }
-    }).toThrow(/streaming_mode/);
-  });
-
-  it('throws when streaming_mode is false', async () => {
-    const p = new SovitsProvider({
-      endpoint: 'http://sovits/tts',
-      bodyTemplate: { streaming_mode: false, media_type: 'raw' },
-      pcmSampleRate: 32000,
-    });
-    await expect(async () => {
-      for await (const _ of p.synthesizeStream('hi')) {
-        /* consume */
-      }
-    }).toThrow(/streaming_mode/);
-  });
-
-  it('throws when media_type is not raw', async () => {
-    const p = new SovitsProvider({
-      endpoint: 'http://sovits/tts',
-      bodyTemplate: { streaming_mode: true, media_type: 'wav' },
-      pcmSampleRate: 32000,
-    });
-    await expect(async () => {
-      for await (const _ of p.synthesizeStream('hi')) {
-        /* consume */
-      }
-    }).toThrow(/media_type/);
-  });
-
   it('throws when pcmSampleRate is not configured', async () => {
+    // streaming_mode / media_type are now forced by the provider, so
+    // pcmSampleRate is the only remaining config invariant — raw PCM has no
+    // in-band sample rate and the renderer needs one to init its AudioContext.
     const p = new SovitsProvider({
       endpoint: 'http://sovits/tts',
-      bodyTemplate: { streaming_mode: true, media_type: 'raw' },
+      bodyTemplate: {},
     });
     await expect(async () => {
       for await (const _ of p.synthesizeStream('hi')) {
         /* consume */
       }
     }).toThrow(/pcmSampleRate/);
+  });
+
+  it('forces streaming_mode=true + media_type=raw into the request body', async () => {
+    const fetchMock = makeStreamFetch([new Uint8Array([0x01, 0x02])]);
+    globalThis.fetch = fetchMock;
+    const p = new SovitsProvider({
+      endpoint: 'http://sovits/tts',
+      // Template without any streaming fields — the provider must inject them.
+      bodyTemplate: { text: '{text}', text_lang: 'zh' },
+      pcmSampleRate: 32000,
+    });
+    for await (const _ of p.synthesizeStream('hi')) {
+      /* consume */
+    }
+    const [, init] = (fetchMock as unknown as ReturnType<typeof mock>).mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.streaming_mode).toBe(true);
+    expect(body.media_type).toBe('raw');
+    expect(body.text).toBe('hi');
+    expect(body.text_lang).toBe('zh');
   });
 
   it('happy path: yields data chunks then terminator with isLast=true', async () => {
@@ -284,7 +310,7 @@ describe('SovitsProvider.synthesizeStream', () => {
 
     const p = new SovitsProvider({
       endpoint: 'http://sovits/tts',
-      bodyTemplate: { streaming_mode: true, media_type: 'raw', text: '{text}' },
+      bodyTemplate: { text: '{text}' },
       pcmSampleRate: 32000,
     });
 
@@ -318,7 +344,7 @@ describe('SovitsProvider.synthesizeStream', () => {
     globalThis.fetch = makeStreamFetch([], 500, 'Internal Server Error');
     const p = new SovitsProvider({
       endpoint: 'http://sovits/tts',
-      bodyTemplate: { streaming_mode: true, media_type: 'raw' },
+      bodyTemplate: {},
       pcmSampleRate: 32000,
     });
     await expect(async () => {
@@ -341,7 +367,7 @@ describe('SovitsProvider.synthesizeStream', () => {
 
     const p = new SovitsProvider({
       endpoint: 'http://sovits/tts',
-      bodyTemplate: { streaming_mode: true, media_type: 'raw' },
+      bodyTemplate: {},
       pcmSampleRate: 32000,
     });
     await expect(async () => {
@@ -368,7 +394,7 @@ describe('SovitsProvider.synthesizeStream', () => {
 
     const p = new SovitsProvider({
       endpoint: 'http://sovits/tts',
-      bodyTemplate: { streaming_mode: true, media_type: 'raw', text: '{text}' },
+      bodyTemplate: { text: '{text}' },
       pcmSampleRate: 32000,
     });
 
@@ -397,7 +423,7 @@ describe('SovitsProvider.synthesizeStream', () => {
 
     const p = new SovitsProvider({
       endpoint: 'http://sovits/tts',
-      bodyTemplate: { streaming_mode: true, media_type: 'raw' },
+      bodyTemplate: {},
       pcmSampleRate: 32000,
     });
 
@@ -423,7 +449,7 @@ describe('SovitsProvider.synthesizeStream', () => {
 
     const p = new SovitsProvider({
       endpoint: 'http://sovits/tts',
-      bodyTemplate: { streaming_mode: true, media_type: 'raw' },
+      bodyTemplate: {},
       pcmSampleRate: 32000,
     });
 

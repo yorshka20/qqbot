@@ -5,17 +5,31 @@ export interface SovitsProviderOptions {
   /** Registry name. Defaults to `'sovits'`; override when registering multiple SoVITS instances. */
   name?: string;
   endpoint: string;
-  /** JSON body template; use `{text}` and `{voice}` as placeholders. */
+  /**
+   * JSON body template; use `{text}` and `{voice}` as placeholders.
+   *
+   * The template should carry only *stable* synthesis params (e.g.
+   * `text_lang`, `ref_audio_path`, `prompt_text`, `prompt_lang`). Streaming
+   * fields — `streaming_mode` and `media_type` — are owned by the provider
+   * and forced per-method:
+   *   - `synthesize()` overrides to `{streaming_mode: false, media_type: 'wav'}`
+   *     so Milky `record` segments (QQ voice message) receive a proper WAV
+   *     rather than undecodable raw-PCM bytes labelled as wav.
+   *   - `synthesizeStream()` overrides to `{streaming_mode: true, media_type: 'raw'}`
+   *     so the renderer / Live2D path gets chunked PCM.
+   * Any `streaming_mode` / `media_type` the caller puts in the template is
+   * silently overwritten.
+   */
   bodyTemplate: Record<string, unknown>;
   method?: 'GET' | 'POST';
   headers?: Record<string, string>;
-  responseFormat?: 'audio/wav' | 'audio/mpeg';
   defaultVoice?: string;
   /**
-   * Required sample rate (Hz) when streaming raw PCM audio
-   * (`bodyTemplate.streaming_mode` truthy AND `bodyTemplate.media_type === 'raw'`).
-   * Passed through to each yielded `SynthesisChunk` so the renderer can
-   * initialise its AudioContext at the correct rate. Ignored for non-PCM paths.
+   * Sample rate (Hz) of the PCM stream returned by the server in streaming
+   * mode. Required for `synthesizeStream()` (passed through to each yielded
+   * `SynthesisChunk` so the renderer can initialise its AudioContext at the
+   * correct rate). Ignored by non-streaming `synthesize()`, whose WAV
+   * response carries its own sample rate in the file header.
    */
   pcmSampleRate?: number;
 }
@@ -95,7 +109,6 @@ export class SovitsProvider implements TTSProvider {
   private readonly bodyTemplate: Record<string, unknown>;
   private readonly method: 'GET' | 'POST';
   private readonly headers: Record<string, string>;
-  private readonly responseFormat: 'audio/wav' | 'audio/mpeg' | undefined;
   private readonly defaultVoice: string | undefined;
   private readonly pcmSampleRate: number | undefined;
 
@@ -105,7 +118,6 @@ export class SovitsProvider implements TTSProvider {
     this.bodyTemplate = options.bodyTemplate;
     this.method = options.method ?? 'POST';
     this.headers = options.headers ?? { 'Content-Type': 'application/json' };
-    this.responseFormat = options.responseFormat;
     this.defaultVoice = options.defaultVoice;
     this.pcmSampleRate = options.pcmSampleRate;
   }
@@ -114,10 +126,23 @@ export class SovitsProvider implements TTSProvider {
     return typeof this.endpoint === 'string' && this.endpoint.length > 0;
   }
 
+  /**
+   * Synthesize the full utterance into a single WAV buffer.
+   *
+   * Always requests `streaming_mode: false` + `media_type: 'wav'` so the
+   * response is a complete, self-describing WAV file. This is required by
+   * the `/tts` command path: the Milky `record` segment it produces cannot
+   * carry chunked raw PCM — the backend rejects it with "消息体无法解析"
+   * (500 Internal error). Any streaming fields in the configured
+   * `bodyTemplate` are overwritten.
+   */
   async synthesize(text: string, opts?: TTSSynthesizeOptions): Promise<SynthesisResult> {
     const voice = opts?.voice ?? this.defaultVoice;
     const trimmedText = text.trim();
-    const body = substitutePlaceholders(this.bodyTemplate, { text: trimmedText, voice });
+    const body = substitutePlaceholders(
+      { ...this.bodyTemplate, streaming_mode: false, media_type: 'wav' },
+      { text: trimmedText, voice },
+    );
 
     const init: RequestInit = {
       method: this.method,
@@ -136,23 +161,27 @@ export class SovitsProvider implements TTSProvider {
       );
     }
 
-    const contentType = response.headers.get('Content-Type') ?? '';
-    const mime = this.responseFormat ?? (contentType.includes('wav') ? 'audio/wav' : 'audio/mpeg');
-
     const buffer = await response.arrayBuffer();
     const bytes = new Uint8Array(buffer);
 
+    // Mime is fixed because we asked the server for wav above. The
+    // Content-Type header is ignored — some GPT-SoVITS builds mislabel
+    // it as `audio/x-wav` or even `application/octet-stream`, and we don't
+    // want that leaking into downstream consumers that switch on mime.
     return {
       bytes,
-      mime,
+      mime: 'audio/wav',
       durationMs: bytes.length / 4000,
     };
   }
 
   /**
-   * Stream raw PCM audio from Sovits. Only supported when the body template
-   * has `streaming_mode` truthy AND `media_type === 'raw'`. Throws immediately
-   * if these conditions are not met, or if `pcmSampleRate` is missing.
+   * Stream raw PCM audio from Sovits. Always requests
+   * `streaming_mode: true` + `media_type: 'raw'` — any such fields in the
+   * configured `bodyTemplate` are overwritten.
+   *
+   * Requires `pcmSampleRate` to be configured (raw PCM has no in-band
+   * sample rate; the renderer needs it to init its AudioContext).
    *
    * Each yielded chunk carries `mime='audio/pcm'` and the configured
    * `sampleRate`. The stream ends with a single terminator chunk where
@@ -161,15 +190,6 @@ export class SovitsProvider implements TTSProvider {
    * Throws on any non-2xx response or stream-read failure.
    */
   async *synthesizeStream(text: string, opts?: TTSSynthesizeOptions): AsyncIterable<SynthesisChunk> {
-    const streamingMode = this.bodyTemplate.streaming_mode;
-    const mediaType = this.bodyTemplate.media_type;
-
-    if (!streamingMode || mediaType !== 'raw') {
-      throw new Error(
-        'SovitsProvider.synthesizeStream requires bodyTemplate.streaming_mode to be truthy and bodyTemplate.media_type === "raw"',
-      );
-    }
-
     if (this.pcmSampleRate === undefined) {
       throw new Error('SovitsProvider.synthesizeStream requires pcmSampleRate to be configured');
     }
@@ -177,7 +197,10 @@ export class SovitsProvider implements TTSProvider {
     const sampleRate = this.pcmSampleRate;
     const voice = opts?.voice ?? this.defaultVoice;
     const trimmedText = text.trim();
-    const body = substitutePlaceholders(this.bodyTemplate, { text: trimmedText, voice });
+    const body = substitutePlaceholders(
+      { ...this.bodyTemplate, streaming_mode: true, media_type: 'raw' },
+      { text: trimmedText, voice },
+    );
 
     const init: RequestInit = {
       method: this.method,
