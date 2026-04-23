@@ -263,3 +263,114 @@ describe('centroid override', () => {
     expect(customDominant).toBe('ee');
   });
 });
+
+describe('h exposure', () => {
+  test('h is populated on every frame (voiced, silent, and early transient)', () => {
+    const sr = 32000;
+    const streamer = new VisemeStreamer({ hopMs: 20 });
+    // Mix silence + voiced so we hit both branches of computeFrame.
+    const silence = new Float32Array(Math.round(sr * 0.05));
+    const tone = sine(1000, 0.1, sr, 0.5);
+    const mixed = new Float32Array(silence.length + tone.length);
+    mixed.set(silence, 0);
+    mixed.set(tone, silence.length);
+    const frames = streamer.push(mixed, sr);
+
+    expect(frames.length).toBeGreaterThan(0);
+    for (const f of frames) {
+      expect(typeof f.h).toBe('number');
+      expect(Number.isFinite(f.h)).toBe(true);
+      expect(f.h).toBeGreaterThanOrEqual(0);
+      expect(f.h).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test('silent frames report h = 0.5 (epsilon guard) rather than NaN', () => {
+    const sr = 32000;
+    const streamer = new VisemeStreamer({ hopMs: 20 });
+    const pcm = new Float32Array(Math.round(sr * 0.1));
+    const frames = streamer.push(pcm, sr);
+
+    for (const f of frames) {
+      expect(f.rms).toBe(0);
+      expect(f.h).toBe(0.5);
+    }
+  });
+});
+
+describe('pre-emphasis', () => {
+  test('default (preEmphasis=true) raises h on low-frequency-dominated input', () => {
+    // A 500 Hz tone should be ~half-attenuated by a first-order pre-emphasis
+    // (α=0.97 gives a ~−6 dB/oct rolloff correction); the high band at 2000 Hz
+    // is not touched. So h should be higher with pre-emphasis than without.
+    const sr = 32000;
+    const tone = sine(500, 0.2, sr, 0.5);
+
+    const withPE = new VisemeStreamer({ hopMs: 20, preEmphasis: true }).push(tone, sr).slice(3); // skip filter warm-up
+    const noPE = new VisemeStreamer({ hopMs: 20, preEmphasis: false }).push(tone, sr).slice(3);
+
+    expect(withPE.length).toBeGreaterThan(0);
+    expect(noPE.length).toBeGreaterThan(0);
+    // Pre-emphasis attenuates the 500 Hz low-band energy relative to the
+    // 2000 Hz high-band energy → h increases.
+    expect(withPE[0].h).toBeGreaterThan(noPE[0].h);
+  });
+
+  test('preEmphasis=false preserves raw filter behaviour (regression for A/B)', () => {
+    const sr = 32000;
+    const tone = sine(1000, 0.2, sr, 0.5);
+    const s1 = new VisemeStreamer({ hopMs: 20, preEmphasis: false }).push(tone, sr);
+    const s2 = new VisemeStreamer({ hopMs: 20, preEmphasis: false }).push(tone, sr);
+
+    // Same input + same (disabled) pre-emphasis must be bit-exact across runs.
+    expect(s1.length).toBe(s2.length);
+    for (let i = 0; i < s1.length; i++) {
+      expect(s1[i].h).toBeCloseTo(s2[i].h, 10);
+      expect(s1[i].rms).toBeCloseTo(s2[i].rms, 10);
+    }
+  });
+
+  test('pre-emphasis state carries across push() calls (no seam artifact)', () => {
+    // Split a single continuous tone in half. If the pre-emphasis memory were
+    // reset between pushes, the first sample of the second chunk would be
+    // treated as "x[n−1] = 0", creating a spurious high-frequency spike.
+    const sr = 32000;
+    const tone = sine(1000, 0.2, sr, 0.5);
+    const half = Math.floor(tone.length / 2);
+    const chunk1 = tone.subarray(0, half);
+    const chunk2 = tone.subarray(half);
+
+    const split = new VisemeStreamer({ hopMs: 20 });
+    const a = split.push(chunk1, sr);
+    const b = split.push(chunk2, sr);
+
+    const whole = new VisemeStreamer({ hopMs: 20 }).push(tone, sr);
+
+    // Frames on each side of the seam should match the single-push version
+    // to within FP epsilon — this is the "no seam" guarantee that motivates
+    // carrying preEmphPrev across pushes.
+    const combined = [...a, ...b];
+    expect(combined.length).toBe(whole.length);
+    for (let i = 0; i < whole.length; i++) {
+      expect(combined[i].h).toBeCloseTo(whole[i].h, 10);
+      expect(combined[i].rms).toBeCloseTo(whole[i].rms, 10);
+    }
+  });
+
+  test('reset() clears pre-emphasis state so stale samples do not bleed', () => {
+    const sr = 32000;
+    const streamer = new VisemeStreamer({ hopMs: 20 });
+
+    // Push a loud signal to charge up pre-emphasis state.
+    streamer.push(sine(1000, 0.2, sr, 0.8), sr);
+    streamer.reset();
+
+    // Fresh streamer processing silence — if reset failed, the first sample's
+    // pre-emph output would be (0 − 0.97*lastLoudSample), producing a spike
+    // that would register as noisy RMS on the first hop.
+    const afterReset = streamer.push(new Float32Array(Math.round(sr * 0.1)), sr);
+    for (const f of afterReset) {
+      expect(f.rms).toBe(0);
+    }
+  });
+});

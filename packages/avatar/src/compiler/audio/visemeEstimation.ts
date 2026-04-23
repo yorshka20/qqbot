@@ -64,10 +64,20 @@ export interface VisemeFrame {
   /**
    * RMS of this hop's samples (linear, not dB). Computed inline with the
    * filter loop so callers don't need to run `RmsStreamer` in parallel.
-   * Unnormalized (raw amplitude); apply your own peak-follower if you
-   * want loudness-normalized mouth opening.
+   * Unnormalized (raw amplitude, measured on the PRE-emphasis signal so
+   * amplitude semantics match callers that tee off raw audio for RMS);
+   * apply your own peak-follower if you want loudness-normalized mouth
+   * opening.
    */
   rms: number;
+  /**
+   * Loudness-invariant high-band energy fraction `E_high / (E_high + E_low)`
+   * measured on the (optionally pre-emphasized) signal. Exposed for offline
+   * calibration — bin across a corpus of real TTS output to pick centroids
+   * at evenly-spaced quantiles. NaN-safe: 0.5 on silent frames where the
+   * denominator is zero.
+   */
+  h: number;
 }
 
 export interface VisemeStreamerOptions {
@@ -100,10 +110,31 @@ export interface VisemeStreamerOptions {
   highCenterHz?: number;
   q?: number;
   /**
+   * Apply a first-order pre-emphasis filter `y[n] = x[n] − α·x[n−1]`
+   * (α default 0.97) before the band split. Standard speech-processing
+   * trick that removes the ~−6 dB/oct spectral tilt of voiced speech so
+   * `h = E_high / (E_high + E_low)` spreads roughly evenly across [0, 1]
+   * instead of crowding near 0. Without it, on real TTS the `h`
+   * distribution clusters around 0.1–0.3 regardless of vowel, which
+   * makes whichever centroid happens to sit in that band (by default
+   * `oh=0.18`) dominate 60–70 % of frames.
+   *
+   * Default `true`. Set `false` for A/B comparison or if downstream
+   * assumes un-pre-emphasized signal.
+   */
+  preEmphasis?: boolean;
+  /**
+   * Pre-emphasis coefficient α in `y[n] = x[n] − α·x[n−1]`. Range
+   * (0, 1). 0.97 is the canonical value from speech-codec literature
+   * and gives an almost-flat residual spectrum on voiced speech.
+   * Ignored when `preEmphasis` is false.
+   */
+  preEmphasisAlpha?: number;
+  /**
    * Per-viseme canonical `h` (high-band energy fraction). Override only
    * if you've measured your TTS's actual formant distribution; the
-   * defaults are tuned for generic voiced speech and match the Sovits
-   * output sampled during development.
+   * defaults are calibrated on a small Mandarin Sovits corpus with
+   * pre-emphasis enabled.
    */
   centroids?: Partial<Record<VisemeName, number>>;
 }
@@ -111,21 +142,27 @@ export interface VisemeStreamerOptions {
 /**
  * Default viseme centroids in the `h = E_high / (E_high + E_low)` axis.
  *
- * Derivation: for each vowel we take its canonical F1 / F2 from published
- * tables, pass two sine waves at (F1, F2) through the default biquad
- * pair, and record the steady-state (l, h) ratio. These are the rounded
- * results — tune per-language via `opts.centroids` if needed.
+ * Derivation: empirically measured on a small Mandarin Sovits TTS corpus
+ * with pre-emphasis enabled. For each utterance we dumped `h` for every
+ * voiced hop and picked centroids at the 10/30/50/70/90 quantiles of the
+ * aggregated distribution. This yields a set that evenly partitions the
+ * observed `h` axis instead of assuming a synthetic uniform distribution
+ * (which doesn't match real speech, where the natural spectral tilt
+ * concentrates `h` near the low end even on /ee/-like sounds).
  *
  * Ordering (low h → high h): oh, ou, aa, ih, ee. The 1D spread in h
  * alone suffices to discriminate all 5 with soft overlap, which is why
  * this module only needs TWO biquads, not five.
+ *
+ * Re-measure with `packages/avatar/scripts/probe-visemes.ts --dump-h`
+ * across a representative corpus if you switch TTS engines or languages.
  */
 export const DEFAULT_VISEME_CENTROIDS: Record<VisemeName, number> = {
-  oh: 0.18,
-  ou: 0.25,
-  aa: 0.45,
-  ih: 0.7,
-  ee: 0.82,
+  oh: 0.09,
+  ou: 0.21,
+  aa: 0.4,
+  ih: 0.69,
+  ee: 0.94,
 };
 
 const ALL_VISEMES: readonly VisemeName[] = ['aa', 'ih', 'ee', 'oh', 'ou'] as const;
@@ -144,6 +181,8 @@ interface ResolvedOptions {
   lowCenterHz: number;
   highCenterHz: number;
   q: number;
+  preEmphasis: boolean;
+  preEmphasisAlpha: number;
   centroids: Record<VisemeName, number>;
 }
 
@@ -167,6 +206,8 @@ function resolveOptions(opts: VisemeStreamerOptions): ResolvedOptions {
     lowCenterHz: opts.lowCenterHz ?? 500,
     highCenterHz: opts.highCenterHz ?? 2000,
     q: opts.q ?? 1.4,
+    preEmphasis: opts.preEmphasis ?? true,
+    preEmphasisAlpha: opts.preEmphasisAlpha ?? 0.97,
     centroids,
   };
 }
@@ -188,6 +229,12 @@ export class VisemeStreamer {
   private lowBand: Biquad | null = null;
   private highBand: Biquad | null = null;
   private residual: Float32Array = new Float32Array(0);
+  /**
+   * One-sample state for the first-order pre-emphasis filter
+   * `y[n] = x[n] − α·x[n−1]`. Persisted across push/flush boundaries so
+   * chunk stitching doesn't introduce spurious energy spikes at seams.
+   */
+  private preEmphPrev = 0;
 
   constructor(opts: VisemeStreamerOptions) {
     this.opts = resolveOptions(opts);
@@ -259,6 +306,7 @@ export class VisemeStreamer {
     this.lowBand?.reset();
     this.highBand?.reset();
     this.residual = new Float32Array(0);
+    this.preEmphPrev = 0;
   }
 
   /**
@@ -272,8 +320,11 @@ export class VisemeStreamer {
     // Unreachable at runtime (push() initializes both before calling us)
     // but narrow the types for TS.
     if (!low || !high) {
-      return { weights: ZERO_WEIGHTS, rms: 0 };
+      return { weights: ZERO_WEIGHTS, rms: 0, h: 0.5 };
     }
+
+    const { preEmphasis, preEmphasisAlpha } = this.opts;
+    let prev = this.preEmphPrev;
 
     let sumSqLow = 0;
     let sumSqHigh = 0;
@@ -281,28 +332,38 @@ export class VisemeStreamer {
 
     for (let i = 0; i < len; i++) {
       const x = buf[start + i];
-      const yl = low.step(x);
-      const yh = high.step(x);
+      // RMS is measured on the raw (pre-pre-emphasis) signal: amplitude
+      // semantics should match the `RmsStreamer` path so callers that
+      // split audio across both streamers don't see conflicting loudness.
+      sumSq += x * x;
+      const filterInput = preEmphasis ? x - preEmphasisAlpha * prev : x;
+      prev = x;
+      const yl = low.step(filterInput);
+      const yh = high.step(filterInput);
       sumSqLow += yl * yl;
       sumSqHigh += yh * yh;
-      sumSq += x * x;
     }
+
+    this.preEmphPrev = prev;
 
     const rms = Math.sqrt(sumSq / len);
 
-    if (rms < this.opts.silenceFloor) {
-      return { weights: { ...ZERO_WEIGHTS }, rms };
-    }
-
+    // Compute `h` regardless of silence gating so offline calibration
+    // tools (probe-visemes --dump-h) see every frame's ratio, not just
+    // the voiced ones.
+    const eTotal = sumSqLow + sumSqHigh;
     // Loudness-invariant h in [0, 1]. The denominator epsilon guards the
     // transient boot-up hop where both filters haven't settled — without
     // it, a ratio of 0/~0 can swing wildly and produce garbage visemes
     // on the very first frame of an utterance.
-    const eTotal = sumSqLow + sumSqHigh;
     const h = eTotal > 1e-12 ? sumSqHigh / eTotal : 0.5;
 
+    if (rms < this.opts.silenceFloor) {
+      return { weights: { ...ZERO_WEIGHTS }, rms, h };
+    }
+
     const weights = this.scoreVisemes(h);
-    return { weights, rms };
+    return { weights, rms, h };
   }
 
   /**
