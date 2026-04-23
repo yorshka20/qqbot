@@ -318,6 +318,17 @@
       //     "deleteAfterArchive": true
       //   }
       // },
+      // NightlyOpsReportPlugin: scans ops/reports/ and pushes TL;DR summaries to bot owner.
+      // Prerequisite: ops/nightly/ infrastructure must be set up and running (see ops/nightly/README.md).
+      // {
+      //   "name": "nightlyOpsReport",
+      //   "enabled": false,
+      //   "config": {
+      //     "cron": "*/10 * * * *",
+      //     "timezone": "Asia/Tokyo",
+      //     "protocol": "milky"
+      //   }
+      // },
       // Text2Img SFW Filter Plugin - forces specific users to use SFW template for text2img commands
       {
         "name": "text2imgSfwFilter",
