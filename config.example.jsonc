@@ -834,17 +834,25 @@
       // Example: GPT-SoVITS `api_v2.py` (POST /tts). Field names follow that API;
       // `ref_audio_path` is a path on the host that runs the API. Docs:
       // docs/local/GPT-SoVITS-API-v2-integration.md
+      //
+      // The example below enables raw-PCM streaming mode. Enable only when
+      // Sovits runs on GPU and the first chunk is meaningfully faster than
+      // whole-utterance synthesis (i.e. latency-to-first-audio matters).
+      // For CPU-only or slow hosts, omit streaming_mode / media_type / pcmSampleRate
+      // and use "media_type": "wav" instead.
       // ,{
       //   "type": "sovits",
       //   "name": "sovits-lan",
       //   "endpoint": "http://192.168.1.50:9880/tts",
+      //   "pcmSampleRate": 32000,
       //   "bodyTemplate": {
       //     "text": "{text}",
       //     "text_lang": "zh",
       //     "ref_audio_path": "D:/path/to/reference.wav",
       //     "prompt_text": "参考音频对应文本",
       //     "prompt_lang": "zh",
-      //     "media_type": "wav"
+      //     "media_type": "raw",
+      //     "streaming_mode": true
       //   }
       // }
     ]

@@ -480,6 +480,8 @@ function instantiateTTSProvider(entry: TTSProviderEntry): TTSProvider | null {
             ? entry.responseFormat
             : undefined,
         defaultVoice: typeof entry.defaultVoice === 'string' ? entry.defaultVoice : undefined,
+        pcmSampleRate:
+          typeof entry.pcmSampleRate === 'number' && entry.pcmSampleRate > 0 ? entry.pcmSampleRate : undefined,
       });
     default:
       return null;

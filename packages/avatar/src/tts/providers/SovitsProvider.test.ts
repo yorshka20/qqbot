@@ -178,3 +178,164 @@ describe('SovitsProvider', () => {
     expect(JSON.parse(init.body as string)).toEqual({ text: 'hello' });
   });
 });
+
+// ─── SovitsProvider.synthesizeStream ──────────────────────────────────────────
+
+describe('SovitsProvider.synthesizeStream', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  /** Build a mock fetch that returns a streaming response from the given chunks. */
+  function makeStreamFetch(chunks: Uint8Array[], status = 200, statusText = 'OK') {
+    return mock(async (_url: string, _init?: RequestInit) => {
+      if (status !== 200) {
+        return {
+          ok: false,
+          status,
+          statusText,
+          headers: { get: () => null },
+          arrayBuffer: async () => new Uint8Array(0).buffer,
+          body: null,
+        };
+      }
+      // Build a ReadableStream that yields each chunk in sequence.
+      let idx = 0;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (idx < chunks.length) {
+            controller.enqueue(chunks[idx++]);
+          } else {
+            controller.close();
+          }
+        },
+      });
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: { get: () => null },
+        body,
+      };
+    }) as unknown as typeof globalThis.fetch;
+  }
+
+  it('throws when streaming_mode is missing', async () => {
+    const p = new SovitsProvider({
+      endpoint: 'http://sovits/tts',
+      bodyTemplate: { media_type: 'raw' },
+      pcmSampleRate: 32000,
+    });
+    await expect(async () => {
+      for await (const _ of p.synthesizeStream('hi')) { /* consume */ }
+    }).toThrow(/streaming_mode/);
+  });
+
+  it('throws when streaming_mode is false', async () => {
+    const p = new SovitsProvider({
+      endpoint: 'http://sovits/tts',
+      bodyTemplate: { streaming_mode: false, media_type: 'raw' },
+      pcmSampleRate: 32000,
+    });
+    await expect(async () => {
+      for await (const _ of p.synthesizeStream('hi')) { /* consume */ }
+    }).toThrow(/streaming_mode/);
+  });
+
+  it('throws when media_type is not raw', async () => {
+    const p = new SovitsProvider({
+      endpoint: 'http://sovits/tts',
+      bodyTemplate: { streaming_mode: true, media_type: 'wav' },
+      pcmSampleRate: 32000,
+    });
+    await expect(async () => {
+      for await (const _ of p.synthesizeStream('hi')) { /* consume */ }
+    }).toThrow(/media_type/);
+  });
+
+  it('throws when pcmSampleRate is not configured', async () => {
+    const p = new SovitsProvider({
+      endpoint: 'http://sovits/tts',
+      bodyTemplate: { streaming_mode: true, media_type: 'raw' },
+    });
+    await expect(async () => {
+      for await (const _ of p.synthesizeStream('hi')) { /* consume */ }
+    }).toThrow(/pcmSampleRate/);
+  });
+
+  it('happy path: yields data chunks then terminator with isLast=true', async () => {
+    const chunk1 = new Uint8Array([0x01, 0x02]);
+    const chunk2 = new Uint8Array([0x03, 0x04]);
+    globalThis.fetch = makeStreamFetch([chunk1, chunk2]);
+
+    const p = new SovitsProvider({
+      endpoint: 'http://sovits/tts',
+      bodyTemplate: { streaming_mode: true, media_type: 'raw', text: '{text}' },
+      pcmSampleRate: 32000,
+    });
+
+    const collected: Array<{ bytes: Uint8Array; mime: string; sampleRate?: number; isLast: boolean }> = [];
+    for await (const chunk of p.synthesizeStream('hello')) {
+      collected.push(chunk);
+    }
+
+    // Should have 2 data chunks plus 1 terminator
+    expect(collected.length).toBe(3);
+
+    // Data chunks carry stable mime and sampleRate
+    expect(collected[0].mime).toBe('audio/pcm');
+    expect(collected[0].sampleRate).toBe(32000);
+    expect(collected[0].isLast).toBe(false);
+    expect(collected[0].bytes).toEqual(chunk1);
+
+    expect(collected[1].mime).toBe('audio/pcm');
+    expect(collected[1].sampleRate).toBe(32000);
+    expect(collected[1].isLast).toBe(false);
+    expect(collected[1].bytes).toEqual(chunk2);
+
+    // Terminator chunk
+    expect(collected[2].isLast).toBe(true);
+    expect(collected[2].bytes.length).toBe(0);
+    expect(collected[2].mime).toBe('audio/pcm');
+    expect(collected[2].sampleRate).toBe(32000);
+  });
+
+  it('throws with HTTP error detail on 500', async () => {
+    globalThis.fetch = makeStreamFetch([], 500, 'Internal Server Error');
+    const p = new SovitsProvider({
+      endpoint: 'http://sovits/tts',
+      bodyTemplate: { streaming_mode: true, media_type: 'raw' },
+      pcmSampleRate: 32000,
+    });
+    await expect(async () => {
+      for await (const _ of p.synthesizeStream('hi')) { /* consume */ }
+    }).toThrow(/500/);
+  });
+
+  it('throws on stream read failure', async () => {
+    // Build a fetch whose body throws during read.
+    globalThis.fetch = mock(async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.error(new Error('network interrupted'));
+        },
+      });
+      return { ok: true, status: 200, statusText: 'OK', headers: { get: () => null }, body };
+    }) as unknown as typeof globalThis.fetch;
+
+    const p = new SovitsProvider({
+      endpoint: 'http://sovits/tts',
+      bodyTemplate: { streaming_mode: true, media_type: 'raw' },
+      pcmSampleRate: 32000,
+    });
+    await expect(async () => {
+      for await (const _ of p.synthesizeStream('hi')) { /* consume */ }
+    }).toThrow(/stream read failure/);
+  });
+});

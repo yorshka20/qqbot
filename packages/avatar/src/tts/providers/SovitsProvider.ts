@@ -1,4 +1,4 @@
-import type { SynthesisResult, TTSProvider, TTSSynthesizeOptions } from '../TTSProvider';
+import type { SynthesisChunk, SynthesisResult, TTSProvider, TTSSynthesizeOptions } from '../TTSProvider';
 
 export interface SovitsProviderOptions {
   /** Registry name. Defaults to `'sovits'`; override when registering multiple SoVITS instances. */
@@ -10,6 +10,13 @@ export interface SovitsProviderOptions {
   headers?: Record<string, string>;
   responseFormat?: 'audio/wav' | 'audio/mpeg';
   defaultVoice?: string;
+  /**
+   * Required sample rate (Hz) when streaming raw PCM audio
+   * (`bodyTemplate.streaming_mode` truthy AND `bodyTemplate.media_type === 'raw'`).
+   * Passed through to each yielded `SynthesisChunk` so the renderer can
+   * initialise its AudioContext at the correct rate. Ignored for non-PCM paths.
+   */
+  pcmSampleRate?: number;
 }
 
 /**
@@ -89,6 +96,7 @@ export class SovitsProvider implements TTSProvider {
   private readonly headers: Record<string, string>;
   private readonly responseFormat: 'audio/wav' | 'audio/mpeg' | undefined;
   private readonly defaultVoice: string | undefined;
+  private readonly pcmSampleRate: number | undefined;
 
   constructor(options: SovitsProviderOptions) {
     this.name = options.name ?? 'sovits';
@@ -98,6 +106,7 @@ export class SovitsProvider implements TTSProvider {
     this.headers = options.headers ?? { 'Content-Type': 'application/json' };
     this.responseFormat = options.responseFormat;
     this.defaultVoice = options.defaultVoice;
+    this.pcmSampleRate = options.pcmSampleRate;
   }
 
   isAvailable(): boolean {
@@ -136,6 +145,96 @@ export class SovitsProvider implements TTSProvider {
       bytes,
       mime,
       durationMs: bytes.length / 4000,
+    };
+  }
+
+  /**
+   * Stream raw PCM audio from Sovits. Only supported when the body template
+   * has `streaming_mode` truthy AND `media_type === 'raw'`. Throws immediately
+   * if these conditions are not met, or if `pcmSampleRate` is missing.
+   *
+   * Each yielded chunk carries `mime='audio/pcm'` and the configured
+   * `sampleRate`. The stream ends with a single terminator chunk where
+   * `isLast=true` and `bytes` is an empty `Uint8Array`.
+   *
+   * Throws on any non-2xx response or stream-read failure.
+   */
+  async *synthesizeStream(text: string, opts?: TTSSynthesizeOptions): AsyncIterable<SynthesisChunk> {
+    const streamingMode = this.bodyTemplate.streaming_mode;
+    const mediaType = this.bodyTemplate.media_type;
+
+    if (!streamingMode || mediaType !== 'raw') {
+      throw new Error(
+        'SovitsProvider.synthesizeStream requires bodyTemplate.streaming_mode to be truthy and bodyTemplate.media_type === "raw"',
+      );
+    }
+
+    if (this.pcmSampleRate === undefined) {
+      throw new Error('SovitsProvider.synthesizeStream requires pcmSampleRate to be configured');
+    }
+
+    const sampleRate = this.pcmSampleRate;
+    const voice = opts?.voice ?? this.defaultVoice;
+    const trimmedText = text.trim();
+    const body = substitutePlaceholders(this.bodyTemplate, { text: trimmedText, voice });
+
+    const init: RequestInit = {
+      method: this.method,
+      headers: this.headers,
+    };
+    if (this.method !== 'GET') {
+      init.body = JSON.stringify(body);
+    }
+
+    const response = await globalThis.fetch(this.endpoint, init);
+
+    if (!response.ok) {
+      const detail = await readHttpErrorDetail(response);
+      throw new Error(
+        `Sovits TTS request failed: ${response.status} ${response.statusText}${detail ? ` — ${detail}` : ''}`,
+      );
+    }
+
+    if (!response.body) {
+      throw new Error('Sovits TTS streaming response has no body');
+    }
+
+    const reader = response.body.getReader();
+    const mime = 'audio/pcm';
+
+    try {
+      while (true) {
+        let done: boolean;
+        let value: Uint8Array | undefined;
+        try {
+          const readResult = await reader.read();
+          done = readResult.done;
+          value = readResult.value;
+        } catch (err) {
+          throw new Error(`Sovits TTS stream read failure: ${String(err)}`);
+        }
+        if (done) {
+          break;
+        }
+        if (value && value.length > 0) {
+          yield {
+            bytes: value,
+            mime,
+            sampleRate,
+            isLast: false,
+          };
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    // Terminator chunk — guarantees a final isLast=true message.
+    yield {
+      bytes: new Uint8Array(0),
+      mime,
+      sampleRate,
+      isLast: true,
     };
   }
 
