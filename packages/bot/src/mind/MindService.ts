@@ -18,6 +18,7 @@ import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import type { AgendaSystemEvent } from '@/agenda/types';
 import { logger } from '@/utils/logger';
 import { applyStimulus, deriveModulation, freshPhenotype, tickPhenotype } from './ode';
+import { buildPromptPatch, type PromptPatch, renderPromptPatchFragment } from './prompt/PromptPatchAssembler';
 import type { MindConfig, MindStateSnapshot, Phenotype, Stimulus } from './types';
 
 /**
@@ -131,6 +132,31 @@ export class MindService {
    */
   deriveModulation(): ReturnType<typeof deriveModulation> {
     return deriveModulation(this.phenotype, this.config);
+  }
+
+  /**
+   * Structured prompt patch derived from the current phenotype. Returns
+   * an empty patch when the mind is disabled, `promptPatch.enabled=false`,
+   * or phenotype is unremarkable (no notable fatigue). Callers that need
+   * the ready-to-concatenate fragment string should use
+   * `getPromptPatchFragment()` instead.
+   */
+  getPromptPatch(): PromptPatch {
+    if (!this.config.enabled || !this.config.promptPatch.enabled) return {};
+    return buildPromptPatch(this.getSnapshot(), {
+      fatigueMildMin: this.config.promptPatch.fatigueMildMin,
+      fatigueModerateMin: this.config.promptPatch.fatigueModerateMin,
+      fatigueSevereMin: this.config.promptPatch.fatigueSevereMin,
+    });
+  }
+
+  /**
+   * Ready-to-inject string for `metadata.systemPromptFragments`. Returns
+   * `''` when the patch is empty — caller should check and skip the push
+   * so the fragments list stays clean.
+   */
+  getPromptPatchFragment(): string {
+    return renderPromptPatchFragment(this.getPromptPatch());
   }
 
   private tick(): void {

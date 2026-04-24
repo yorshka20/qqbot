@@ -85,6 +85,60 @@ describe('MindService — snapshot', () => {
   });
 });
 
+describe('MindService — prompt patch', () => {
+  test('disabled service returns empty patch + empty fragment', () => {
+    const bus = new InternalEventBus();
+    const mind = new MindService({ ...DEFAULT_MIND_CONFIG, enabled: false }, bus);
+    expect(mind.getPromptPatch()).toEqual({});
+    expect(mind.getPromptPatchFragment()).toBe('');
+  });
+
+  test('promptPatch.enabled=false suppresses patch even when mind enabled', () => {
+    const bus = new InternalEventBus();
+    const mind = new MindService(
+      {
+        ...DEFAULT_MIND_CONFIG,
+        enabled: true,
+        promptPatch: { ...DEFAULT_MIND_CONFIG.promptPatch, enabled: false },
+      },
+      bus,
+    );
+    (mind as unknown as { phenotype: { fatigue: number } }).phenotype.fatigue = 0.9;
+    expect(mind.getPromptPatch()).toEqual({});
+    expect(mind.getPromptPatchFragment()).toBe('');
+  });
+
+  test('high fatigue produces a non-empty fragment wrapped in <mind_state>', () => {
+    const { mind } = service();
+    (mind as unknown as { phenotype: { fatigue: number } }).phenotype.fatigue = 0.9;
+    const fragment = mind.getPromptPatchFragment();
+    expect(fragment).toContain('<mind_state>');
+    expect(fragment).toContain('非常疲惫');
+  });
+
+  test('low fatigue produces no fragment', () => {
+    const { mind } = service();
+    expect(mind.getPromptPatchFragment()).toBe('');
+  });
+
+  test('custom thresholds from config are honored', () => {
+    const bus = new InternalEventBus();
+    const mind = new MindService(
+      {
+        ...DEFAULT_MIND_CONFIG,
+        enabled: true,
+        promptPatch: {
+          ...DEFAULT_MIND_CONFIG.promptPatch,
+          fatigueSevereMin: 0.4,
+        },
+      },
+      bus,
+    );
+    (mind as unknown as { phenotype: { fatigue: number } }).phenotype.fatigue = 0.45;
+    expect(mind.getPromptPatch().moodSummary).toContain('非常疲惫');
+  });
+});
+
 describe('mergeMindConfig', () => {
   test('undefined input returns defaults (disabled)', () => {
     const c = mergeMindConfig(undefined);
@@ -110,5 +164,17 @@ describe('mergeMindConfig', () => {
   test('invalid types fall back to defaults', () => {
     const c = mergeMindConfig({ tickMs: 'not-a-number' as unknown as number });
     expect(c.tickMs).toBe(DEFAULT_MIND_CONFIG.tickMs);
+  });
+
+  test('promptPatch section defaults to enabled + default thresholds', () => {
+    const c = mergeMindConfig({});
+    expect(c.promptPatch.enabled).toBe(true);
+    expect(c.promptPatch.fatigueMildMin).toBe(DEFAULT_MIND_CONFIG.promptPatch.fatigueMildMin);
+  });
+
+  test('promptPatch partial override merges over defaults', () => {
+    const c = mergeMindConfig({ promptPatch: { enabled: false } });
+    expect(c.promptPatch.enabled).toBe(false);
+    expect(c.promptPatch.fatigueSevereMin).toBe(DEFAULT_MIND_CONFIG.promptPatch.fatigueSevereMin);
   });
 });

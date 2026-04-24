@@ -1276,6 +1276,16 @@
   //   // "modulation": {
   //   //   "fatigueIntensityDrop": 0.4,  // at fatigue=1.0 → 60% intensity
   //   //   "fatigueSpeedDrop": 0.3       // at fatigue=1.0 → 70% speed
+  //   // },
+  //
+  //   // Phase 2: Prompt-patch behaviour — inject a short mood fragment
+  //   // into the reply pipeline's system prompt when fatigue exceeds a
+  //   // threshold. Requires plugin "mind-prompt" enabled in plugins.jsonc.
+  //   // "promptPatch": {
+  //   //   "enabled": true,
+  //   //   "fatigueMildMin": 0.3,      // below this → no injection
+  //   //   "fatigueModerateMin": 0.55, // moderate wording above this
+  //   //   "fatigueSevereMin": 0.8     // strongest wording above this
   //   // }
   // }
 }

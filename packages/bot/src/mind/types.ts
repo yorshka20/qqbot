@@ -123,6 +123,26 @@ export interface MindConfig {
      */
     fatigueSpeedDrop: number;
   };
+
+  /**
+   * Prompt-patch behaviour (Phase 2). Controls whether and when the
+   * mind subsystem injects natural-language hints into the reply
+   * pipeline's system prompt. Kept separate from `mind.enabled` so
+   * A/B testing can isolate "modulation only" from "prompt-coloured".
+   */
+  promptPatch: {
+    /**
+     * Master switch. When false, prompt fragments are never emitted
+     * even if `mind.enabled=true`. Defaults to true.
+     */
+    enabled: boolean;
+    /** Below this fatigue level, no mood summary is injected. */
+    fatigueMildMin: number;
+    /** Between mild and moderate bands. */
+    fatigueModerateMin: number;
+    /** Above this, strongest-wording hint. */
+    fatigueSevereMin: number;
+  };
 }
 
 export const DEFAULT_MIND_CONFIG: MindConfig = {
@@ -139,6 +159,12 @@ export const DEFAULT_MIND_CONFIG: MindConfig = {
     fatigueIntensityDrop: 0.4,
     fatigueSpeedDrop: 0.3,
   },
+  promptPatch: {
+    enabled: true,
+    fatigueMildMin: 0.3,
+    fatigueModerateMin: 0.55,
+    fatigueSevereMin: 0.8,
+  },
 };
 
 /**
@@ -151,6 +177,7 @@ export function mergeMindConfig(raw: Record<string, unknown> | undefined): MindC
   const src = (raw ?? {}) as Partial<MindConfig>;
   const odeSrc = (src.ode ?? {}) as Partial<MindConfig['ode']>;
   const modSrc = (src.modulation ?? {}) as Partial<MindConfig['modulation']>;
+  const ppSrc = (src.promptPatch ?? {}) as Partial<MindConfig['promptPatch']>;
   return {
     enabled: typeof src.enabled === 'boolean' ? src.enabled : DEFAULT_MIND_CONFIG.enabled,
     personaId: typeof src.personaId === 'string' && src.personaId ? src.personaId : DEFAULT_MIND_CONFIG.personaId,
@@ -167,6 +194,12 @@ export function mergeMindConfig(raw: Record<string, unknown> | undefined): MindC
     modulation: {
       fatigueIntensityDrop: numberOr(modSrc.fatigueIntensityDrop, DEFAULT_MIND_CONFIG.modulation.fatigueIntensityDrop),
       fatigueSpeedDrop: numberOr(modSrc.fatigueSpeedDrop, DEFAULT_MIND_CONFIG.modulation.fatigueSpeedDrop),
+    },
+    promptPatch: {
+      enabled: typeof ppSrc.enabled === 'boolean' ? ppSrc.enabled : DEFAULT_MIND_CONFIG.promptPatch.enabled,
+      fatigueMildMin: numberOr(ppSrc.fatigueMildMin, DEFAULT_MIND_CONFIG.promptPatch.fatigueMildMin),
+      fatigueModerateMin: numberOr(ppSrc.fatigueModerateMin, DEFAULT_MIND_CONFIG.promptPatch.fatigueModerateMin),
+      fatigueSevereMin: numberOr(ppSrc.fatigueSevereMin, DEFAULT_MIND_CONFIG.promptPatch.fatigueSevereMin),
     },
   };
 }
