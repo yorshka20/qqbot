@@ -120,6 +120,7 @@ function buildWanderExecutor(avatar: AvatarService): WanderExecutor {
   return {
     getCurrentPose: () => avatar.getCurrentActivity()?.pose ?? 'neutral',
     isAvatarActive: () => avatar.isActive(),
+    checkAvailable: (f) => avatar.checkAvailable(f),
     walkForward: (m) => avatar.walkForward(m),
     strafe: (m) => avatar.strafe(m),
     turn: (r) => avatar.turn(r),

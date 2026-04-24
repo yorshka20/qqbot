@@ -27,6 +27,7 @@ import { PerlinNoiseLayer } from './layers/PerlinNoiseLayer';
 import { PersonaPostureLayer } from './layers/PersonaPostureLayer';
 import type { AnimationLayer } from './layers/types';
 import { WalkingLayer } from './layers/WalkingLayer';
+import { slerpQuat, slerpWithIdentity } from './quatMath';
 import type {
   ActionSummary,
   ActiveAnimation,
@@ -271,6 +272,68 @@ export class AnimationCompiler extends EventEmitter {
 
   getActionDuration(action: string): number | undefined {
     return this.actionMap.getDuration(action);
+  }
+
+  /**
+   * Channel footprint of an action, computed once at ActionMap load time.
+   * Delegates to `ActionMap.getFootprint`. Used by schedulers (wander,
+   * autonomous enqueue) to decide whether a candidate action would collide
+   * with currently-active animations.
+   */
+  getActionFootprint(action: string): ReadonlySet<string> | null {
+    return this.actionMap.getFootprint(action);
+  }
+
+  /**
+   * Tier A / B channel occupancy — the set of channels currently claimed by
+   * active discrete animations (both envelope and clip kinds). Fading-out
+   * and release-phase animations still count as occupying their channels:
+   * they're still writing contributions, and a new animation on the same
+   * channels would triple-drive them (old tail + new attack + spring).
+   *
+   * **Does NOT include** Tier C ambient layers (breath, blink, perlin, gaze
+   * noise) — those are designed to compose additively with absolute poses
+   * and schedulers should not gate on them. Emotion channelBaseline is also
+   * not included: emotions occupy a disjoint channel subset
+   * (mouth / eye.smile / brow / cheek) that no action enqueue path targets
+   * in practice.
+   *
+   * `opts.excludeActionName` skips animations whose source node's action
+   * name matches — used by the enqueue path so a same-name re-enqueue
+   * during release doesn't self-conflict (that's a chained-replay, not a
+   * collision).
+   */
+  getOccupiedChannels(opts?: { excludeActionName?: string }): Set<string> {
+    const skip = opts?.excludeActionName;
+    const occupied = new Set<string>();
+    for (const anim of this.activeAnimations) {
+      if (skip !== undefined && anim.node.action === skip) continue;
+      if (anim.kind === 'envelope') {
+        for (const t of anim.targetParams) occupied.add(t.channel);
+      } else {
+        for (const t of anim.clip.tracks) occupied.add(t.channel);
+      }
+    }
+    return occupied;
+  }
+
+  /**
+   * Intersection of `footprint` with the current Tier A/B occupancy. An
+   * empty returned set means every channel in `footprint` is free and the
+   * caller may proceed with enqueue. A non-empty set names the specific
+   * conflicts; callers can log them, pick a different intent, or fall back.
+   *
+   * `opts.excludeActionName` has the same semantics as on
+   * `getOccupiedChannels` — used by the enqueue path to avoid self-conflict
+   * on same-name chained replays.
+   */
+  checkAvailable(footprint: Iterable<string>, opts?: { excludeActionName?: string }): Set<string> {
+    const occupied = this.getOccupiedChannels(opts);
+    const conflicts = new Set<string>();
+    for (const ch of footprint) {
+      if (occupied.has(ch)) conflicts.add(ch);
+    }
+    return conflicts;
   }
 
   /** Read-through for `ActionMap.getCategory`. Used by AvatarService to
@@ -621,6 +684,38 @@ export class AnimationCompiler extends EventEmitter {
       // Unknown action — skip silently
       if (!resolved) continue;
 
+      // Same-name dedup: if the same action is already active and has not
+      // yet entered its release phase, drop the new enqueue outright. Two
+      // instances of the same action on the same channels stack instead of
+      // replaying cleanly (first half gets double intensity, second half
+      // crossfades into itself). Release-phase same-name is allowed through
+      // — that's an intentional chain-replay and the existing crossfade
+      // path handles the tail overlap.
+      const sameName = this.activeAnimations.find((a) => a.node.action === node.action);
+      if (sameName && sameName.phase !== 'release') {
+        logger.debug(
+          `[AnimationCompiler] dedup: dropping "${node.action}" — same-name animation still in ${sameName.phase} phase`,
+        );
+        continue;
+      }
+
+      // Footprint occupancy: drop if another action (not same name) holds
+      // any channel this one wants. Matches the "polite queue" contract —
+      // LLM tags and autonomous enqueues respect channel ownership; explicit
+      // preemption is not offered today. Same-name animations are excluded
+      // so a release-phase chained replay passes through (handled by the
+      // same-name branch above and the existing crossfade logic).
+      const footprint = this.actionMap.getFootprint(node.action);
+      if (footprint) {
+        const conflicts = this.checkAvailable(footprint, { excludeActionName: node.action });
+        if (conflicts.size > 0) {
+          logger.debug(
+            `[AnimationCompiler] dedup: dropping "${node.action}" — channels busy: ${[...conflicts].join(',')}`,
+          );
+          continue;
+        }
+      }
+
       const startTime = (node.timestamp || now) + (node.delay ?? 0);
       const endTime = startTime + node.duration + (resolved.holdMs ?? 0);
 
@@ -845,12 +940,33 @@ export class AnimationCompiler extends EventEmitter {
           contributions[ch] = (contributions[ch] ?? 0) + v * anim.intensity * envelopeScale * fadeScale;
         }
 
-        // Quat tracks: slerp-with-identity approximation.
+        // Quat tracks: slerp FROM the current anchor TO the clip quat.
         // k = clamp(intensity * envelopeScale * fadeScale, 0, 1)
-        // emits vrm.<bone>.q[xyzw] and marks channels as quat frame channels.
+        //
+        // Anchor resolution (per bone, per tick):
+        //   1. Prefer `contributions[bone.q*]` if all four components are
+        //      already populated — this is the upstream continuous-layer
+        //      quat (typically IdleMotionLayer's idle-loop frame, written
+        //      in step 4b). Using it as the slerp anchor means the release
+        //      tail (k→0) blends back to the current idle pose rather than
+        //      identity, avoiding the T-pose flash at clip end.
+        //   2. Otherwise fall back to identity — preserves legacy behavior
+        //      when no layer covers this bone (e.g. Cubism models, or tests
+        //      without the continuous stack).
+        //
+        // Subsequent animations in `activeAnimations` will see THIS anim's
+        // output as their anchor, giving a natural chained crossfade when
+        // two animations target the same bone concurrently.
         for (const [bone, q] of Object.entries(sampled.quat)) {
           const k = Math.max(0, Math.min(1, anim.intensity * envelopeScale * fadeScale));
-          const sq = slerpWithIdentity(q.x, q.y, q.z, q.w, k);
+          const ax = contributions[`${bone}.qx`];
+          const ay = contributions[`${bone}.qy`];
+          const az = contributions[`${bone}.qz`];
+          const aw = contributions[`${bone}.qw`];
+          const hasAnchor = ax !== undefined && ay !== undefined && az !== undefined && aw !== undefined;
+          const sq = hasAnchor
+            ? slerpQuat(ax, ay, az, aw, q.x, q.y, q.z, q.w, k)
+            : slerpWithIdentity(q.x, q.y, q.z, q.w, k);
           contributions[`${bone}.qx`] = sq.x;
           contributions[`${bone}.qy`] = sq.y;
           contributions[`${bone}.qz`] = sq.z;
@@ -1076,54 +1192,6 @@ export class AnimationCompiler extends EventEmitter {
     }
     return null;
   }
-}
-
-/**
- * Slerp from the identity quaternion (0,0,0,1) to (bx,by,bz,bw) at t∈[0,1].
- * Used to scale clip quaternion contributions by intensity/envelope/fade.
- */
-function slerpWithIdentity(
-  bx: number,
-  by: number,
-  bz: number,
-  bw: number,
-  t: number,
-): { x: number; y: number; z: number; w: number } {
-  if (t <= 0) return { x: 0, y: 0, z: 0, w: 1 };
-  if (t >= 1) return { x: bx, y: by, z: bz, w: bw };
-
-  let dot = bw; // dot(identity, b) = bw
-  // Ensure shortest arc: if dot < 0, flip b so we always rotate the short way.
-  if (dot < 0) {
-    bx = -bx;
-    by = -by;
-    bz = -bz;
-    bw = -bw;
-    dot = -dot;
-  }
-
-  if (dot > 0.9995) {
-    // Nearly identity — linear interpolation and normalise.
-    const rx = t * bx;
-    const ry = t * by;
-    const rz = t * bz;
-    const rw = 1 + t * (bw - 1);
-    const len = Math.sqrt(rx * rx + ry * ry + rz * rz + rw * rw);
-    return { x: rx / len, y: ry / len, z: rz / len, w: rw / len };
-  }
-
-  const theta0 = Math.acos(dot); // angle between identity and b
-  const sinTheta0 = Math.sin(theta0);
-  const sinA = Math.sin((1 - t) * theta0) / sinTheta0; // weight for identity
-  const sinB = Math.sin(t * theta0) / sinTheta0; // weight for b
-
-  // identity = (0, 0, 0, 1)
-  return {
-    x: sinB * bx,
-    y: sinB * by,
-    z: sinB * bz,
-    w: sinA + sinB * bw,
-  };
 }
 
 function humanizeLayerId(id: string): string {

@@ -839,6 +839,29 @@ export class AvatarService {
     return this.stateMachine?.current ?? null;
   }
 
+  /**
+   * Tier A / B channel occupancy — which channels active discrete animations
+   * currently hold. Consumers (wander scheduler, autonomous enqueue callers)
+   * query this to avoid starting new motion while an action is in flight.
+   * Empty set when the compiler is not initialised. Thin delegate over
+   * `AnimationCompiler.getOccupiedChannels` — see that method for the tier
+   * model and exclusions.
+   */
+  getOccupiedChannels(): Set<string> {
+    return this.compiler?.getOccupiedChannels() ?? new Set<string>();
+  }
+
+  /**
+   * Intersection of `footprint` with current channel occupancy. Empty set
+   * means every channel is free and the caller may proceed; a non-empty
+   * set names the specific conflicts. Returns `footprint` as an empty
+   * conflict set when the compiler is not initialised (nothing can conflict
+   * with a non-running pipeline).
+   */
+  checkAvailable(footprint: Iterable<string>): Set<string> {
+    return this.compiler?.checkAvailable(footprint) ?? new Set<string>();
+  }
+
   hasConsumer(): boolean {
     return this.consumerCount > 0;
   }

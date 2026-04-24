@@ -230,11 +230,15 @@ function mockActionMap(
     holdMs?: number;
   } | null,
 ) {
+  // Footprint mirrors the envelope targets so the compiler's footprint-dedup
+  // path sees the same channel set the real ActionMap would precompute.
+  const footprint = resolved ? new Set(resolved.targets.map((t) => t.channel)) : null;
   return {
     resolveAction: () => resolved,
     getDuration: () => 1000,
     listActions: () => [],
     has: () => resolved !== null,
+    getFootprint: () => footprint,
   };
 }
 
@@ -343,20 +347,22 @@ describe('AnimationCompiler endPose baseline persistence', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Test 9 — crossfade no-sink: shared channel value never drops below
-  // min(old, new) - epsilon during transition
+  // Test 9 — different-action conflict dropped: incumbent value never perturbed
   // -------------------------------------------------------------------------
-  test('Test 9: crossfade arm.right never sinks below min(old,new) - 0.1', () => {
+  // Polite-queue contract: when a second action's envelope targets a channel
+  // already owned by an active animation, the second enqueue is dropped and
+  // the incumbent's value on the shared channel is never pulled toward the
+  // dropped candidate. Formerly this test verified crossfade "no-sink"
+  // dynamics; after footprint dedup there's no transition to dip.
+  test('Test 9: conflicting second enqueue is dropped; incumbent arm.right stays at 5', () => {
     const compiler = newAnimationCompilerTest({
       crossfadeMs: 250,
-      attackRatio: 0.0, // immediate full value
-      releaseRatio: 0.0, // no release (stays at peak)
+      attackRatio: 0.0,
+      releaseRatio: 0.0,
       baselineHalfLifeMs: 1_000_000,
     });
 
     let callCount = 0;
-    // First call: old animation targeting arm.right=5
-    // Second call: new animation targeting arm.right=3
     (compiler as any).actionMap = {
       resolveAction: (_a: string, _e: string, _i: number) => {
         callCount++;
@@ -367,9 +373,9 @@ describe('AnimationCompiler endPose baseline persistence', () => {
       getDuration: () => 1000,
       listActions: () => [],
       has: () => true,
+      getFootprint: () => new Set(['arm.right']),
     };
 
-    // Enqueue first animation at t=1000, duration=1000ms
     nowRef.t = 1000;
     compiler.enqueue([
       {
@@ -382,13 +388,11 @@ describe('AnimationCompiler endPose baseline persistence', () => {
       },
     ]);
 
-    // Run first animation for 100ms to let it get to sustain
     for (let i = 0; i < 6; i++) {
       nowRef.t += 16.67;
       (compiler as any).tick();
     }
 
-    // Enqueue second animation 100ms after start — this triggers crossfade
     nowRef.t = 1100;
     compiler.enqueue([
       {
@@ -401,24 +405,22 @@ describe('AnimationCompiler endPose baseline persistence', () => {
       },
     ]);
 
-    const minExpected = Math.min(5, 3) - 0.1; // = 2.9
-    let minSeen = Infinity;
+    expect(compiler.getActiveAnimationCount()).toBe(1);
 
-    // Sample frames throughout the crossfade window (250ms at 16ms intervals = ~15 ticks)
+    let minSeen = Infinity;
     for (let i = 0; i < 20; i++) {
       nowRef.t += 16.67;
       (compiler as any).tick();
       const val = compiler.getCurrentParams()['arm.right'];
       if (val !== undefined) minSeen = Math.min(minSeen, val);
     }
-
-    expect(minSeen).toBeGreaterThan(minExpected);
+    expect(minSeen).toBeGreaterThan(4.5);
   });
 
   // -------------------------------------------------------------------------
-  // Test 10 — crossfadeMs=0 immediate switch
+  // Test 10 — conflict dedup is independent of crossfadeMs config
   // -------------------------------------------------------------------------
-  test('Test 10: crossfadeMs=0 switches immediately with no intermediate sink', () => {
+  test('Test 10: conflict dedup drops anim2 even with crossfadeMs=0', () => {
     const compiler = newAnimationCompilerTest({
       crossfadeMs: 0,
       attackRatio: 0.0,
@@ -437,9 +439,9 @@ describe('AnimationCompiler endPose baseline persistence', () => {
       getDuration: () => 1000,
       listActions: () => [],
       has: () => true,
+      getFootprint: () => new Set(['arm.right']),
     };
 
-    // Enqueue first animation at t=1000
     nowRef.t = 1000;
     compiler.enqueue([
       {
@@ -452,13 +454,11 @@ describe('AnimationCompiler endPose baseline persistence', () => {
       },
     ]);
 
-    // Run for 100ms
     for (let i = 0; i < 6; i++) {
       nowRef.t += 16.67;
       (compiler as any).tick();
     }
 
-    // Enqueue second animation at t=1100 — crossfadeMs=0 means immediate
     nowRef.t = 1100;
     compiler.enqueue([
       {
@@ -471,19 +471,12 @@ describe('AnimationCompiler endPose baseline persistence', () => {
       },
     ]);
 
-    // Tick once at t=1100 — old anim should be fully faded (fp=1 immediately)
+    expect(compiler.getActiveAnimationCount()).toBe(1);
     (compiler as any).tick();
-
-    // Since crossfadeMs=0, old animation is immediately harvested (isCrossfadeDone).
-    // New animation should have full weight. arm.right should be at ~4 (no sink).
     const val = compiler.getCurrentParams()['arm.right'];
-    // Allow spring tolerance — spring was snapped to old, now approaching 4
-    // After one tick from snap+16ms, spring position should be moving toward 4
-    // (spring omega=8 for arm.right, so it converges quickly)
     expect(val).toBeDefined();
-    // Should not be stuck at 8 — spring should have moved toward 4
-    // (but allow for spring dynamics; within ~4 is not realistic in 1 tick, so just check > 0)
-    expect(val).toBeGreaterThan(0);
+    // Incumbent targetValue=8 stays live; anim2 (targetValue=4) never got in.
+    expect(val).toBeGreaterThan(6);
   });
 
   // -------------------------------------------------------------------------
@@ -796,17 +789,19 @@ describe('AnimationCompiler — clip execution path', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Test C — two-clip crossfade on same channel
+  // Test C — different-action channel conflict is dropped, not crossfaded
   // -------------------------------------------------------------------------
-  test('Test C: two-clip crossfade — both present at mid-window, old removed after', async () => {
+  // Policy: different action names targeting overlapping channels follow the
+  // polite-queue contract — the later enqueue is dropped, the earlier one
+  // continues uninterrupted. The compiler's crossfade machinery still exists
+  // but is reserved for the same-name release-chain case (see below).
+  test('Test C: conflicting different-name clip is dropped; original continues solo', async () => {
     const { mapPath, cleanup } = await mkClipEnv(STD_CLIP, {
       clip_a: { kind: 'clip', clip: 'test-clip.json' },
       clip_b: { kind: 'clip', clip: 'test-clip.json' },
     });
     try {
       const compiler = newAnimationCompilerTest({ fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' }, mapPath);
-      // Set short crossfadeMs for testability
-      compiler.setTunableParam('compiler:envelope', 'crossfadeMs', 100);
 
       // Enqueue clip A
       compiler.enqueue([
@@ -819,14 +814,14 @@ describe('AnimationCompiler — clip execution path', () => {
           easing: 'easeInOutCubic',
         },
       ]);
+      expect(compiler.getActiveAnimationCount()).toBe(1);
 
-      // Advance 100ms (6 ticks) then enqueue clip B
+      // Advance 100ms so clip_a is clearly in sustain, then try to enqueue clip_b
+      // on the same underlying channel — the footprint-dedup path should drop it.
       for (let i = 0; i < 6; i++) {
         nowRef.t += 16.67;
         (compiler as any).tick();
       }
-
-      const crossfadeStart = nowRef.t;
       compiler.enqueue([
         {
           action: 'clip_b',
@@ -838,14 +833,7 @@ describe('AnimationCompiler — clip execution path', () => {
         },
       ]);
 
-      // Mid-crossfade: 50ms after clip B start — clip A still fading, not yet removed
-      nowRef.t = crossfadeStart + 50;
-      (compiler as any).tick();
-      expect(compiler.getActiveAnimationCount()).toBe(2);
-
-      // After crossfade: 101ms after clip B start — clip A fully faded out and removed
-      nowRef.t = crossfadeStart + 101;
-      (compiler as any).tick();
+      // Still exactly one animation active — clip_b never got in.
       expect(compiler.getActiveAnimationCount()).toBe(1);
     } finally {
       cleanup();
@@ -1228,18 +1216,18 @@ describe('AnimationCompiler — quat clip path', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Test Q4 — two sequential quat clips crossfade via base-channel conflict
+  // Test Q4 — footprint dedup blocks a second quat clip on the same bone
   // -------------------------------------------------------------------------
-  test('Test Q4: two quat clips on vrm.hips crossfade; only 1 active after crossfade', async () => {
+  // Sibling of Test C for the quat path: different action names targeting
+  // the same base bone channel (vrm.hips) should see the later enqueue
+  // dropped by footprint dedup, not crossfaded.
+  test('Test Q4: conflicting different-name quat clip is dropped on shared bone', async () => {
     const { mapPath, cleanup } = await mkQClipEnv(QUAT_CLIP, {
       quat_a: { kind: 'clip', clip: 'quat-clip.json' },
       quat_b: { kind: 'clip', clip: 'quat-clip.json' },
     });
     try {
-      const compiler = newAnimationCompilerTest(
-        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', crossfadeMs: 100 },
-        mapPath,
-      );
+      const compiler = newAnimationCompilerTest({ fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic' }, mapPath);
 
       compiler.enqueue([
         {
@@ -1251,14 +1239,13 @@ describe('AnimationCompiler — quat clip path', () => {
           easing: 'easeInOutCubic',
         },
       ]);
+      expect(compiler.getActiveAnimationCount()).toBe(1);
 
-      // Advance 6 ticks ≈ 100ms
+      // Advance into sustain, then try to enqueue quat_b on same bone.
       for (let i = 0; i < 6; i++) {
         nowRef.t += 16.67;
         (compiler as any).tick();
       }
-
-      const crossfadeStart = nowRef.t;
       compiler.enqueue([
         {
           action: 'quat_b',
@@ -1270,14 +1257,7 @@ describe('AnimationCompiler — quat clip path', () => {
         },
       ]);
 
-      // Mid-crossfade: both still active
-      nowRef.t = crossfadeStart + 50;
-      (compiler as any).tick();
-      expect(compiler.getActiveAnimationCount()).toBe(2);
-
-      // Post-crossfade: first clip removed
-      nowRef.t = crossfadeStart + 101;
-      (compiler as any).tick();
+      // quat_b dropped — quat_a remains the sole active animation.
       expect(compiler.getActiveAnimationCount()).toBe(1);
     } finally {
       cleanup();

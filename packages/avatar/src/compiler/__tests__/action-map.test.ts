@@ -655,8 +655,24 @@ describe('ActionMap — modelSupport filtering (listActions)', () => {
 describe('mergeActionMapPayloads + default package map', () => {
   it('core overwrites the same key as extension', () => {
     const merged = mergeActionMapPayloads(
-      { foo: { kind: 'clip' as const, category: 'movement' as const, modelSupport: 'vrm' as const, clip: 'clips/a.json', defaultDuration: 1 } },
-      { foo: { kind: 'clip' as const, category: 'movement' as const, modelSupport: 'vrm' as const, clip: 'clips/b.json', defaultDuration: 2 } },
+      {
+        foo: {
+          kind: 'clip' as const,
+          category: 'movement' as const,
+          modelSupport: 'vrm' as const,
+          clip: 'clips/a.json',
+          defaultDuration: 1,
+        },
+      },
+      {
+        foo: {
+          kind: 'clip' as const,
+          category: 'movement' as const,
+          modelSupport: 'vrm' as const,
+          clip: 'clips/b.json',
+          defaultDuration: 2,
+        },
+      },
     );
     expect(merged.foo).toMatchObject({ clip: 'clips/b.json' });
   });

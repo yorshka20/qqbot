@@ -46,6 +46,14 @@ export interface WanderExecutor {
   getCurrentPose(): string;
   /** Returns true when the avatar subsystem is up (ready to accept calls). */
   isAvatarActive(): boolean;
+  /**
+   * Intersection of the given footprint with currently-active discrete
+   * animation channels. Empty set ⇒ every channel is free and the intent
+   * may proceed; a non-empty set names the specific conflicts the
+   * scheduler should log and retreat from. Delegates through AvatarService
+   * to the compiler's Tier A/B occupancy.
+   */
+  checkAvailable(footprint: Iterable<string>): Set<string>;
   walkForward(meters: number): Promise<void>;
   strafe(meters: number): Promise<void>;
   turn(radians: number): Promise<void>;

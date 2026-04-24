@@ -125,6 +125,75 @@ function buildSteps(kind: WanderIntentKind, config: WanderConfig, rng: () => num
 }
 
 /**
+ * Static channel footprint per step kind. Used by the scheduler to gate
+ * on Tier A/B occupancy so wander never walks / turns while a discrete
+ * action is driving the same body segments. Conservative on purpose:
+ *
+ * - Walk-cycle steps claim the VRM root + the bone set the walk-cycle clip
+ *   overlays (legs, spine, hips). WalkingLayer itself writes root via the
+ *   scalarBypass path and the cycle clip writes the rest via quat —
+ *   discrete actions that touch any of these (`greet`, `bow`, etc.) would
+ *   collide.
+ * - Gaze / head overrides claim the eye-ball and head-rotation channels
+ *   so an action with explicit head.* / eye.ball.* targets isn't stomped
+ *   mid-motion.
+ * - `wait` has empty footprint — it's just a sleep and never conflicts.
+ *
+ * Wander only drives VRM roots and channels available across kinds; the
+ * bot-side footprint stays in semantic channel names so it matches actions
+ * authored against either model (VRM actions use `vrm.*` directly, Cubism
+ * actions use aliased `head.*` / `eye.*`).
+ */
+const WALK_FOOTPRINT: ReadonlySet<string> = new Set([
+  'vrm.root.x',
+  'vrm.root.z',
+  'vrm.root.rotY',
+  'vrm.hips',
+  'vrm.spine',
+  'vrm.leftUpperLeg',
+  'vrm.rightUpperLeg',
+  'vrm.leftLowerLeg',
+  'vrm.rightLowerLeg',
+  'vrm.leftFoot',
+  'vrm.rightFoot',
+]);
+
+const GAZE_FOOTPRINT: ReadonlySet<string> = new Set(['eye.ball.x', 'eye.ball.y']);
+
+const HEAD_FOOTPRINT: ReadonlySet<string> = new Set(['head.yaw', 'head.pitch', 'head.roll', 'vrm.head']);
+
+function stepFootprint(step: WanderStep): ReadonlySet<string> {
+  switch (step.kind) {
+    case 'turn':
+    case 'walkForward':
+    case 'strafe':
+      return WALK_FOOTPRINT;
+    case 'setGaze':
+      return GAZE_FOOTPRINT;
+    case 'setHead':
+      return HEAD_FOOTPRINT;
+    case 'wait':
+      return EMPTY_FOOTPRINT;
+  }
+}
+
+const EMPTY_FOOTPRINT: ReadonlySet<string> = new Set();
+
+/**
+ * Union of channel footprints across every step in an intent. Called once
+ * by the scheduler after `pickIntent`, before executing — the scheduler
+ * drops the whole tick if any channel in the union collides with active
+ * animations. Returns empty for wait-only intents (never conflicts).
+ */
+export function getIntentFootprint(intent: WanderIntent): ReadonlySet<string> {
+  const out = new Set<string>();
+  for (const step of intent.steps) {
+    for (const ch of stepFootprint(step)) out.add(ch);
+  }
+  return out;
+}
+
+/**
  * Execute a sequence of wander steps. Each step's promise is awaited;
  * WalkInterruptedError (and any other motion rejection) is swallowed so
  * one interrupted step does not abort the rest of the sequence *visibly*

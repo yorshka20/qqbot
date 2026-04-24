@@ -1,5 +1,6 @@
 import { applyEasing } from '../easing';
 import type { IdleClip, IdleClipQuatKeyframe } from '../layers/clips/types';
+import { slerpQuat } from '../quatMath';
 import type { EasingType } from '../types';
 
 /** Output of sampleClip: scalar channel map plus quaternion bone map. */
@@ -122,53 +123,4 @@ export function sampleClip(
   }
 
   return { scalar, quat };
-}
-
-/**
- * Spherical linear interpolation between two unit quaternions (a, b) at t∈[0,1].
- * Ensures shortest-path interpolation by flipping b if dot product is negative.
- */
-function slerpQuat(
-  ax: number,
-  ay: number,
-  az: number,
-  aw: number,
-  bx: number,
-  by: number,
-  bz: number,
-  bw: number,
-  t: number,
-): { x: number; y: number; z: number; w: number } {
-  let dot = ax * bx + ay * by + az * bz + aw * bw;
-
-  // Ensure shortest arc
-  if (dot < 0) {
-    bx = -bx;
-    by = -by;
-    bz = -bz;
-    bw = -bw;
-    dot = -dot;
-  }
-
-  if (dot > 0.9995) {
-    // Nearly identical quaternions — linear interpolation and normalise
-    const rx = ax + t * (bx - ax);
-    const ry = ay + t * (by - ay);
-    const rz = az + t * (bz - az);
-    const rw = aw + t * (bw - aw);
-    const len = Math.sqrt(rx * rx + ry * ry + rz * rz + rw * rw);
-    return { x: rx / len, y: ry / len, z: rz / len, w: rw / len };
-  }
-
-  const theta0 = Math.acos(dot);
-  const sinTheta0 = Math.sin(theta0);
-  const sinA = Math.sin((1 - t) * theta0) / sinTheta0;
-  const sinB = Math.sin(t * theta0) / sinTheta0;
-
-  return {
-    x: sinA * ax + sinB * bx,
-    y: sinA * ay + sinB * by,
-    z: sinA * az + sinB * bz,
-    w: sinA * aw + sinB * bw,
-  };
 }

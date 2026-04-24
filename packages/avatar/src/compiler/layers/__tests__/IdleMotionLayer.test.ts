@@ -167,14 +167,21 @@ describe('IdleMotionLayer quat output', () => {
     expect(Object.keys(quat)).toHaveLength(0);
   });
 
-  test('activeChannels set drops matching quat bones', () => {
+  test('activeChannels does NOT filter quat bones (they flow through as slerp anchor)', () => {
+    // Quat output is intentionally unfiltered: AnimationCompiler reads the
+    // idle quat for an animated bone as the slerp anchor so the clip's
+    // release tail blends back to the idle pose rather than identity.
+    // Scalar still gets filtered (tested below under "per-channel exclusion").
     const layer = new IdleMotionLayer();
     layer.setLoopClip(makeQuatLoopClip());
 
     const active = new Set(['vrm.rightLowerArm']);
     layer.sample(1000, IDLE_ACTIVITY, active);
     const quat = layer.sampleQuat(1000, IDLE_ACTIVITY, active);
-    expect(quat['vrm.rightLowerArm']).toBeUndefined();
+    const q = quat['vrm.rightLowerArm'];
+    expect(q).toBeDefined();
+    expect(q.x).toBeCloseTo(0.3, 6);
+    expect(q.w).toBeCloseTo(0.9539392, 6);
   });
 });
 

@@ -13,7 +13,7 @@
 
 import { logger } from '@/utils/logger';
 import type { WanderConfig } from '../types';
-import { executeIntent, pickIntent } from './intents';
+import { executeIntent, getIntentFootprint, pickIntent } from './intents';
 import type { WanderExecutor, WanderIntent } from './types';
 
 export interface WanderSchedulerOptions {
@@ -86,6 +86,16 @@ export class WanderScheduler {
   async tickOnce(): Promise<WanderIntent | null> {
     if (!this.gateOpen()) return null;
     const intent = pickIntent(this.config, this.rng);
+    // Footprint gate — a picked intent is skipped when its channel set
+    // collides with active discrete animations. No retry / alternative
+    // pick: intents are small and the next timer tick picks again. Keeping
+    // it drop-on-conflict also keeps the test matrix small.
+    const footprint = getIntentFootprint(intent);
+    const conflicts = this.executor.checkAvailable(footprint);
+    if (conflicts.size > 0) {
+      logger.debug(`[WanderScheduler] intent=${intent.label} dropped — channels busy: ${[...conflicts].join(',')}`);
+      return null;
+    }
     this.running = true;
     try {
       await executeIntent(intent, this.executor, this.sleep);
@@ -113,8 +123,16 @@ export class WanderScheduler {
       this.scheduleNext();
       return;
     }
+    const intent = pickIntent(this.config, this.rng);
+    // Footprint gate — see `tickOnce` for rationale on drop-without-retry.
+    const footprint = getIntentFootprint(intent);
+    const conflicts = this.executor.checkAvailable(footprint);
+    if (conflicts.size > 0) {
+      logger.debug(`[WanderScheduler] intent=${intent.label} dropped — channels busy: ${[...conflicts].join(',')}`);
+      this.scheduleNext();
+      return;
+    }
     try {
-      const intent = pickIntent(this.config, this.rng);
       this.running = true;
       logger.info(`[WanderScheduler] intent=${intent.label} steps=${intent.steps.length}`);
       await executeIntent(intent, this.executor, this.sleep);

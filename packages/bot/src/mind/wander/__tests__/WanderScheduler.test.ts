@@ -16,19 +16,29 @@ interface FakeAvatar extends WanderExecutor {
   >;
   pose: string;
   active: boolean;
+  /** Channels the fake reports as "currently occupied" — tests can flip this
+   *  to simulate an in-flight discrete animation and verify the scheduler's
+   *  footprint gate drops conflicting intents. Defaults to empty (all free). */
+  occupied: Set<string>;
 }
 
-function fakeAvatar(init: Partial<Pick<FakeAvatar, 'pose' | 'active'>> = {}): FakeAvatar {
+function fakeAvatar(init: Partial<Pick<FakeAvatar, 'pose' | 'active' | 'occupied'>> = {}): FakeAvatar {
   const calls: FakeAvatar['calls'] = [];
   return {
     calls,
     pose: init.pose ?? 'neutral',
     active: init.active ?? true,
+    occupied: init.occupied ?? new Set<string>(),
     getCurrentPose() {
       return this.pose;
     },
     isAvatarActive() {
       return this.active;
+    },
+    checkAvailable(footprint) {
+      const conflicts = new Set<string>();
+      for (const ch of footprint) if (this.occupied.has(ch)) conflicts.add(ch);
+      return conflicts;
     },
     async walkForward(meters) {
       calls.push({ kind: 'walkForward', meters });

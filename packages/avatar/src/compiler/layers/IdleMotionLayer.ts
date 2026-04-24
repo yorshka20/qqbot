@@ -129,8 +129,12 @@ export class IdleMotionLayer extends BaseLayer {
       return {};
     }
     const scalar = filterActiveChannels(frame.scalar, activeChannels);
-    const quat = filterActiveChannels(frame.quat, activeChannels);
-    this.cached = { nowMs, scalar, quat };
+    // Quat is intentionally NOT filtered against activeChannels. The
+    // AnimationCompiler reads the pre-discrete quat contribution for a bone
+    // as the slerp anchor so a clip's release tail blends back to the idle
+    // pose (not identity / T-pose). Scalar still gets filtered to avoid the
+    // additive double-bias on delta channels.
+    this.cached = { nowMs, scalar, quat: frame.quat };
     return scalar;
   }
 
