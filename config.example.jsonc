@@ -663,7 +663,20 @@
       //   "model": "gpt-3.5-turbo",
       //   "baseURL": "https://api.openai.com/v1",
       //   "temperature": 0.7,
-      //   "maxTokens": 2000
+      //   "maxTokens": 2000,
+      //   // Optional: enable gpt-image-2 text2img (/v1/images/generations) +
+      //   // img2img (/v1/images/edits). Powers the /gpt2 command. When enabled,
+      //   // OpenAIProvider also registers `text2img` + `img2img` capabilities.
+      //   "image": {
+      //     "enabled": true,
+      //     "model": "gpt-image-2",
+      //     "size": "auto",            // "1024x1024" | "1536x1024" | "1024x1536" | "auto"
+      //     "quality": "auto",         // "low" | "medium" | "high" | "auto"
+      //     "background": "auto",      // "transparent" | "opaque" | "auto"
+      //     "outputFormat": "png",     // "png" | "jpeg" | "webp"
+      //     "moderation": "auto",      // "low" | "auto"
+      //     "inputFidelity": "low"     // "high" | "low" — edits-only
+      //   }
       // },
       // Local Text2Image provider example (connects to local Python server)
       // "local-text2img": {

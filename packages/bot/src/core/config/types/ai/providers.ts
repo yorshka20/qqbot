@@ -17,6 +17,23 @@ export type AIProviderType =
   | 'minimax'
   | 'siliconflow';
 
+/**
+ * OpenAI image generation / editing config (gpt-image-2 family).
+ * Gates BOTH text2img (`/v1/images/generations`) and img2img (`/v1/images/edits`).
+ * When `enabled` is true, OpenAIProvider also registers `text2img` + `img2img` capabilities.
+ */
+export interface OpenAIImageConfig {
+  enabled?: boolean;
+  model?: string; // default 'gpt-image-2'
+  size?: '1024x1024' | '1536x1024' | '1024x1536' | 'auto';
+  quality?: 'low' | 'medium' | 'high' | 'auto';
+  background?: 'transparent' | 'opaque' | 'auto';
+  outputFormat?: 'png' | 'jpeg' | 'webp';
+  outputCompression?: number; // 0-100, only for jpeg/webp
+  moderation?: 'low' | 'auto';
+  inputFidelity?: 'high' | 'low'; // edits-only; how strictly to preserve the input
+}
+
 export interface OpenAIProviderConfig {
   type: 'openai';
   apiKey: string;
@@ -26,6 +43,7 @@ export interface OpenAIProviderConfig {
   maxTokens?: number;
   enableContext?: boolean; // Enable automatic context loading from conversation history
   contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
+  image?: OpenAIImageConfig; // Optional: enable gpt-image-2 text2img + img2img
 }
 
 export interface AnthropicProviderConfig {

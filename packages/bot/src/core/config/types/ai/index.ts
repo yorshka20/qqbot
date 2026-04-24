@@ -207,6 +207,7 @@ export type {
   MinimaxProviderConfig,
   NovelAIProviderConfig,
   OllamaProviderConfig,
+  OpenAIImageConfig,
   OpenAIProviderConfig,
   OpenRouterProviderConfig,
   RunPodProviderConfig,

@@ -39,6 +39,7 @@ export class ProviderFactory {
             defaultMaxTokens: config.maxTokens,
             enableContext: config.enableContext,
             contextMessageCount: config.contextMessageCount,
+            image: config.image,
           });
         }
         case 'ollama': {
