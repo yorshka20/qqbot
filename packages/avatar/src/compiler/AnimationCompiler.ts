@@ -20,6 +20,7 @@ import {
 } from './layers/audio-envelope-config';
 import { BreathLayer } from './layers/BreathLayer';
 import { EyeGazeLayer } from './layers/EyeGazeLayer';
+import { HeadLookLayer } from './layers/HeadLookLayer';
 import { IdleMotionLayer } from './layers/IdleMotionLayer';
 import { LayerManager } from './layers/LayerManager';
 import { PerlinNoiseLayer } from './layers/PerlinNoiseLayer';
@@ -168,10 +169,16 @@ export class AnimationCompiler extends EventEmitter {
     const debugQuiet = this.config.debugQuiet === true;
     if (debugQuiet) eyeGaze.setQuietMode(true);
 
+    const headLook = new HeadLookLayer();
+
     const stack: AnimationLayer[] = [
       new BreathLayer(),
       new AutoBlinkLayer(),
       eyeGaze,
+      // HeadLookLayer sits next to EyeGazeLayer: both are gaze-family layers driven by
+      // deliberate override targets (setGazeTarget / setHeadLook), and visually the head
+      // and eyes coordinate when looking somewhere.
+      headLook,
     ];
     // IdleMotionLayer loops the resting-pose clip (e.g. peace_sign) and drives
     // hips/spine/chest channels continuously. Under debugQuiet we skip it so

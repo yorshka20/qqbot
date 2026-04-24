@@ -16,7 +16,7 @@
  *  - Intents are picked by weighted random; weights tunable in config.
  */
 
-import type { GazeTarget } from '@qqbot/avatar';
+import type { GazeTarget, HeadLookTarget } from '@qqbot/avatar';
 
 /** One discrete step inside an intent; executed sequentially. */
 export type WanderStep =
@@ -24,6 +24,9 @@ export type WanderStep =
   | { kind: 'walkForward'; meters: number }
   | { kind: 'strafe'; meters: number }
   | { kind: 'setGaze'; target: GazeTarget }
+  // setHead targets the HeadLookLayer — rotates head only (body stays put). `null`
+  // releases the override and the head drifts back to neutral.
+  | { kind: 'setHead'; target: HeadLookTarget | null }
   | { kind: 'wait'; ms: number };
 
 /**
@@ -47,4 +50,5 @@ export interface WanderExecutor {
   strafe(meters: number): Promise<void>;
   turn(radians: number): Promise<void>;
   setGazeTarget(target: GazeTarget | null): void;
+  setHeadLook(target: HeadLookTarget | null): void;
 }

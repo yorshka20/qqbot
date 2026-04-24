@@ -124,5 +124,6 @@ function buildWanderExecutor(avatar: AvatarService): WanderExecutor {
     strafe: (m) => avatar.strafe(m),
     turn: (r) => avatar.turn(r),
     setGazeTarget: (t) => avatar.setGazeTarget(t),
+    setHeadLook: (t) => avatar.setHeadLook(t),
   };
 }

@@ -719,6 +719,29 @@ export class AvatarService {
   }
 
   /**
+   * Sustained head-look override — the avatar points its head at the given yaw / pitch
+   * (in degrees, clamped to the head-channel ±30° range). Pass `null` to release the
+   * override; the layer drifts back to neutral and then stops emitting so discrete head
+   * actions (nod / shake_head) own the channel cleanly.
+   *
+   * Semantically distinct from {@link setGazeTarget}:
+   *   - `setGazeTarget`  — eyes only (plus a mild OU-drift smoothing of `eye.ball.x/y`)
+   *   - `setHeadLook`    — head rotation only (body stays still)
+   *   - `walkForward / turn` — body / root rotation
+   *
+   * Callers that want "look there with head + eyes" combine both calls; the two layers
+   * coordinate independently. `head.yaw` / `head.pitch` contributions from this layer
+   * stack additively with discrete nod / shake_head envelope actions — shaking head
+   * while looking left reads as "no" centred on the look offset, which is the
+   * desired semantic.
+   */
+  setHeadLook(target: { yaw?: number; pitch?: number } | null): void {
+    const layer = this.compiler?.getLayer('head-look');
+    const capable = layer as { setHeadLook?: (t: { yaw?: number; pitch?: number } | null) => void } | undefined;
+    capable?.setHeadLook?.(target);
+  }
+
+  /**
    * Low-level: walk to absolute scene coordinates. Kept on AvatarService for programmatic
    * / LLM use when the caller already has world coords. HUD and semantic callers should
    * prefer the `walkForward / strafe / turn / orbit` primitives below.

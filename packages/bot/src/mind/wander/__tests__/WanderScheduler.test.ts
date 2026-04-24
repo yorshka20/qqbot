@@ -12,6 +12,7 @@ interface FakeAvatar extends WanderExecutor {
     | { kind: 'strafe'; meters: number }
     | { kind: 'turn'; radians: number }
     | { kind: 'setGaze'; target: unknown }
+    | { kind: 'setHead'; target: unknown }
   >;
   pose: string;
   active: boolean;
@@ -40,6 +41,9 @@ function fakeAvatar(init: Partial<Pick<FakeAvatar, 'pose' | 'active'>> = {}): Fa
     },
     setGazeTarget(target) {
       calls.push({ kind: 'setGaze', target });
+    },
+    setHeadLook(target) {
+      calls.push({ kind: 'setHead', target });
     },
   };
 }
@@ -104,25 +108,34 @@ describe('pickIntent — step shape per kind', () => {
     expect(intent.steps[2]).toEqual({ kind: 'setGaze', target: { type: 'clear' } });
   });
 
-  test('glance to left/right couples a head turn with the gaze', () => {
+  test('glance to left/right couples a head-only rotation with the gaze', () => {
     const config = wanderConfig({ intents: { ...DEFAULT_MIND_CONFIG.wander.intents, glance: 1 } });
-    // rng[1]=0.5 picks index 2 (right), which has a non-zero headYawFraction
+    // rng[1]=0.5 picks index 2 (right), which has a non-zero head yaw
     const intent = pickIntent(config, seededRng(0.01, 0.5, 0.3));
-    expect(intent.steps.map((s) => s.kind)).toEqual(['turn', 'setGaze', 'wait', 'turn', 'setGaze']);
-    const turns = intent.steps.filter((s) => s.kind === 'turn') as Array<{ kind: 'turn'; radians: number }>;
-    // Head turns out then back by the same magnitude with opposite sign.
-    expect(turns[0].radians).toBeCloseTo(-turns[1].radians, 6);
+    expect(intent.steps.map((s) => s.kind)).toEqual(['setHead', 'setGaze', 'wait', 'setGaze', 'setHead']);
+    const heads = intent.steps.filter((s) => s.kind === 'setHead') as Array<{
+      kind: 'setHead';
+      target: { yaw?: number; pitch?: number } | null;
+    }>;
+    // First setHead sets a non-zero yaw, last releases the override.
+    expect(heads[0].target?.yaw).not.toBe(0);
+    expect(heads[1].target).toBeNull();
   });
 
-  test('look_around produces turn → wait → turn', () => {
+  test('look_around produces head-only sweep (setHead → wait → setHead → wait → release)', () => {
     const config = wanderConfig({
       intents: { ...DEFAULT_MIND_CONFIG.wander.intents, glance: 0, look_around: 1 },
     });
-    const intent = pickIntent(config, seededRng(0.01, 0.6, 0.5, 0.3));
-    expect(intent.steps.map((s) => s.kind)).toEqual(['turn', 'wait', 'turn']);
-    const turns = intent.steps.filter((s) => s.kind === 'turn') as Array<{ kind: 'turn'; radians: number }>;
-    // Second turn is opposite sign to first (return move)
-    expect(Math.sign(turns[0].radians)).not.toBe(Math.sign(turns[1].radians));
+    const intent = pickIntent(config, seededRng(0.01, 0.6, 0.5, 0.3, 0.4));
+    expect(intent.steps.map((s) => s.kind)).toEqual(['setHead', 'wait', 'setHead', 'wait', 'setHead']);
+    const heads = intent.steps.filter((s) => s.kind === 'setHead') as Array<{
+      kind: 'setHead';
+      target: { yaw?: number } | null;
+    }>;
+    // First two head targets have opposite yaw sign (out then back-past-centre); last
+    // releases the override entirely.
+    expect(Math.sign(heads[0].target?.yaw ?? 0)).not.toBe(Math.sign(heads[1].target?.yaw ?? 0));
+    expect(heads[2].target).toBeNull();
   });
 
   test('micro_step forward then back', () => {

@@ -10,19 +10,23 @@ import type { WanderConfig } from '../types';
 import type { WanderExecutor, WanderIntent, WanderIntentKind, WanderStep } from './types';
 
 /**
- * Glance targets with an accompanying head-yaw offset so the whole face
- * rotates toward the gaze direction instead of eyes-only motion. Yaw
- * fraction multiplies `amplitude.maxTurnRad` so the head turn stays within
- * the same budget the other intents use — the number captures "how much
- * of the configured turn amplitude this glance should consume" (0 = gaze
- * only, 1 = full turn). Camera stays head-still; up uses a pitch we can't
- * drive via `turn()`, so its head offset is also zero.
+ * Glance targets coupling gaze + head rotation. Head yaw is in degrees (Cubism
+ * head.yaw / head.pitch channel units, clamped to ±30° by HeadLookLayer). Pitch
+ * handles "up" which `turn()` couldn't express. Camera stays head-neutral; left/
+ * right yaw to ±15° (half the channel range, reads as "glanced over there").
+ *
+ * The head offset is applied through `HeadLookLayer`, which rotates the head bone
+ * only — the body stays put. Previously `glance` went through WalkingLayer.turn()
+ * and rotated the whole root; that looked like the avatar was turning, not just
+ * looking.
  */
-const NAMED_GLANCE_TARGETS: Array<{ target: GazeTarget; headYawFraction: number }> = [
-  { target: { type: 'named', name: 'camera' }, headYawFraction: 0 },
-  { target: { type: 'named', name: 'left' }, headYawFraction: -0.55 },
-  { target: { type: 'named', name: 'right' }, headYawFraction: 0.55 },
-  { target: { type: 'named', name: 'up' }, headYawFraction: 0 },
+const NAMED_GLANCE_TARGETS: Array<{ target: GazeTarget; headYawDeg: number; headPitchDeg: number }> = [
+  { target: { type: 'named', name: 'camera' }, headYawDeg: 0, headPitchDeg: 0 },
+  { target: { type: 'named', name: 'left' }, headYawDeg: -15, headPitchDeg: 0 },
+  { target: { type: 'named', name: 'right' }, headYawDeg: 15, headPitchDeg: 0 },
+  // Positive pitch = head up (matches the avatar looking toward +Y); mirrors the
+  // named eye target 'up' which uses negative eye.ball.y (Cubism convention).
+  { target: { type: 'named', name: 'up' }, headYawDeg: 0, headPitchDeg: -10 },
 ];
 
 /**
@@ -62,22 +66,32 @@ function buildSteps(kind: WanderIntentKind, config: WanderConfig, rng: () => num
   switch (kind) {
     case 'glance': {
       const pick = NAMED_GLANCE_TARGETS[Math.floor(rng() * NAMED_GLANCE_TARGETS.length)];
-      const headYaw = pick.headYawFraction * amp.maxTurnRad;
       const holdMs = 2500 + Math.floor(rng() * 1500);
+      const needsHead = Math.abs(pick.headYawDeg) > 1e-3 || Math.abs(pick.headPitchDeg) > 1e-3;
       const steps: WanderStep[] = [];
-      if (Math.abs(headYaw) > 1e-3) steps.push({ kind: 'turn', radians: headYaw });
+      if (needsHead) {
+        steps.push({ kind: 'setHead', target: { yaw: pick.headYawDeg, pitch: pick.headPitchDeg } });
+      }
       steps.push({ kind: 'setGaze', target: pick.target }, { kind: 'wait', ms: holdMs });
-      if (Math.abs(headYaw) > 1e-3) steps.push({ kind: 'turn', radians: -headYaw });
       steps.push({ kind: 'setGaze', target: { type: 'clear' } });
+      if (needsHead) steps.push({ kind: 'setHead', target: null });
       return steps;
     }
     case 'look_around': {
-      const t1 = signed() * amp.maxTurnRad * positive();
-      const t2 = -t1 * (0.5 + rng() * 0.5);
+      // Head-only look-around (body stays put). Yaw is sampled in degrees on the head
+      // channel's ±30° range; maxTurnRad's value is kept as a "relative amplitude cap"
+      // so tuning maxTurnRad smaller still produces a proportionally smaller look-around.
+      // Factor 15°/radian (so default maxTurnRad=π/6 ≈ 0.524 rad → ~7.85° peak, doubled
+      // by positive() up to ~16° which fits comfortably inside the ±30° head channel).
+      const degPerRad = 30; // scales rad amplitude into reasonable head-yaw degrees
+      const y1 = signed() * amp.maxTurnRad * positive() * degPerRad;
+      const y2 = -y1 * (0.5 + rng() * 0.5);
       return [
-        { kind: 'turn', radians: t1 },
+        { kind: 'setHead', target: { yaw: y1 } },
         { kind: 'wait', ms: 500 + Math.floor(rng() * 900) },
-        { kind: 'turn', radians: t2 },
+        { kind: 'setHead', target: { yaw: y2 } },
+        { kind: 'wait', ms: 400 + Math.floor(rng() * 600) },
+        { kind: 'setHead', target: null },
       ];
     }
     case 'shift_weight': {
@@ -151,6 +165,9 @@ async function runStep(
       return;
     case 'setGaze':
       executor.setGazeTarget(step.target);
+      return;
+    case 'setHead':
+      executor.setHeadLook(step.target);
       return;
     case 'wait':
       await sleep(step.ms);
