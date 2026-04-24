@@ -60,9 +60,35 @@ export class AutoBlinkLayer extends BaseLayer {
   /** Timestamp at which the next blink should start (wall-clock ms). */
   private nextBlinkAt = 0;
 
+  /**
+   * Runtime frequency multiplier applied to all blink timing.
+   * Clamped to [0.2, 3.0]; default is 1.0 (identity).
+   */
+  private _rate = 1.0;
+
   constructor(config: Partial<BlinkConfig> = {}) {
     super();
     this.config = { ...DEFAULT_BLINK_CONFIG, ...config };
+  }
+
+  /**
+   * Change the ambient blink frequency without touching config or tunables.
+   *
+   * `multiplier` is clamped to **[0.2, 3.0]**: values below 0.2 are silently
+   * raised to 0.2; values above 3.0 are silently lowered to 3.0.
+   *
+   * - `setRate(1.0)` is identity — behaviour is identical to never calling it.
+   * - `setRate(2.0)` doubles blink frequency: both the open-state wait interval
+   *   and the closing/closed/opening phase durations are halved.
+   * - `setRate(0.5)` halves blink frequency: all durations are doubled.
+   *
+   * The currently-scheduled `nextBlinkAt` wall-clock time is **not** retroactively
+   * adjusted; the already-scheduled open-wait completes as originally timed.
+   * All subsequent intervals and phase durations immediately use the new rate.
+   */
+  setRate(multiplier: number): void {
+    if (Number.isNaN(multiplier)) return; // NaN: keep current rate unchanged
+    this._rate = Math.min(3.0, Math.max(0.2, multiplier));
   }
 
   override reset(): void {
@@ -93,7 +119,10 @@ export class AutoBlinkLayer extends BaseLayer {
       this.enterPhase('closing', nowMs);
     }
 
-    const { closingMs, closedMs, openingMs } = this.config;
+    // Divide config durations by _rate: higher rate → shorter phases.
+    const closingMs = this.config.closingMs / this._rate;
+    const closedMs = this.config.closedMs / this._rate;
+    const openingMs = this.config.openingMs / this._rate;
     const elapsed = nowMs - this.phaseStartMs;
 
     switch (this.phase) {
@@ -128,6 +157,6 @@ export class AutoBlinkLayer extends BaseLayer {
 
   private randomInterval(): number {
     const { intervalMin: lo, intervalMax: hi } = this.config;
-    return lo + Math.random() * Math.max(0, hi - lo);
+    return (lo + Math.random() * Math.max(0, hi - lo)) / this._rate;
   }
 }

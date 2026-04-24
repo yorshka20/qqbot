@@ -49,6 +49,30 @@ export class BreathLayer extends BaseLayer {
   // BreathLayer drives Cubism-specific breath params (ParamAngle*, ParamBreath).
   readonly modelSupport = ['cubism'] as const;
 
+  /**
+   * Runtime frequency multiplier applied to all oscillator channels.
+   * Clamped to [0.2, 3.0]; default is 1.0 (identity).
+   */
+  private _rate = 1.0;
+
+  /**
+   * Change the ambient breathing frequency without touching config or tunables.
+   *
+   * `multiplier` is clamped to **[0.2, 3.0]**: values below 0.2 are silently
+   * raised to 0.2; values above 3.0 are silently lowered to 3.0.
+   *
+   * - `setRate(1.0)` is identity — behaviour is identical to never calling it.
+   * - `setRate(2.0)` doubles temporal frequency (halves effective period).
+   * - `setRate(0.5)` halves temporal frequency (doubles effective period).
+   *
+   * Only temporal frequency changes; per-channel amplitudes and DC offsets are
+   * not affected.
+   */
+  setRate(multiplier: number): void {
+    if (Number.isNaN(multiplier)) return; // NaN: keep current rate unchanged
+    this._rate = Math.min(3.0, Math.max(0.2, multiplier));
+  }
+
   private readonly channels: Record<string, ChannelOsc> = {
     // Head rotation — degrees. Amplitudes match Cubism's default breath config;
     // Fundamental periods differ (+ prime-ish harmonics) so head motion doesn't
@@ -113,7 +137,8 @@ export class BreathLayer extends BaseLayer {
   private computeChannel(osc: ChannelOsc, t: number): number {
     const center = osc.center ?? 0;
     const phase = osc.phase ?? 0;
-    const omega = (2 * Math.PI) / osc.periodSec;
+    // Multiply angular frequency by _rate: higher rate → faster oscillation.
+    const omega = ((2 * Math.PI) / osc.periodSec) * this._rate;
     let v = osc.amplitude * Math.sin(omega * t + phase);
     if (osc.harmonics) {
       for (const h of osc.harmonics) {
