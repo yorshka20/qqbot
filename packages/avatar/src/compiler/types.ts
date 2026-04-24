@@ -38,6 +38,13 @@ export interface StateNode {
   delay?: number;
   /** Easing function used for interpolation */
   easing: EasingType;
+  /**
+   * Optional per-variant selection weights (persona modulation input).
+   * Indexed positionally against the action-map's *declared* variant array.
+   * Ignored when the action has a single variant or when length mismatches.
+   * See `ActionMap.resolveAction` + `ResolveActionOptions`.
+   */
+  variantWeights?: readonly number[];
 }
 
 /**

@@ -231,6 +231,102 @@ describe('ActionMap — variants', () => {
   });
 });
 
+describe('ActionMap — variant weights (persona modulation)', () => {
+  let tmpDir: string;
+  let tmpPath: string;
+
+  beforeAll(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'actionmap-weights-'));
+    tmpPath = join(tmpDir, 'map.json');
+  });
+  afterAll(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writeThreeVariantMap(): ActionMap {
+    writeFileSync(
+      tmpPath,
+      JSON.stringify({
+        foo: [
+          { params: [{ channel: 'a', targetValue: 1, weight: 1 }], defaultDuration: 1000 },
+          { params: [{ channel: 'b', targetValue: 2, weight: 1 }], defaultDuration: 1000 },
+          { params: [{ channel: 'c', targetValue: 3, weight: 1 }], defaultDuration: 1000 },
+        ],
+      }),
+    );
+    return new ActionMap(tmpPath);
+  }
+
+  it('weights [1,0,0] always picks variant 0', () => {
+    const map = writeThreeVariantMap();
+    for (let i = 0; i < 30; i++) {
+      const r = map.resolveAction('foo', 'n', 1, null, { variantWeights: [1, 0, 0] });
+      expect(asEnv(r).targets[0].channel).toBe('a');
+    }
+  });
+
+  it('weights [0,0,1] always picks variant 2', () => {
+    const map = writeThreeVariantMap();
+    for (let i = 0; i < 30; i++) {
+      const r = map.resolveAction('foo', 'n', 1, null, { variantWeights: [0, 0, 1] });
+      expect(asEnv(r).targets[0].channel).toBe('c');
+    }
+  });
+
+  it('weights [0,0,0] (sum=0) falls back to uniform', () => {
+    const map = writeThreeVariantMap();
+    const seen = new Set<string>();
+    for (let i = 0; i < 100; i++) {
+      const r = map.resolveAction('foo', 'n', 1, null, { variantWeights: [0, 0, 0] });
+      seen.add(asEnv(r).targets[0].channel);
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it('skews distribution with [8,1,1] toward variant 0', () => {
+    const map = writeThreeVariantMap();
+    const counts = { a: 0, b: 0, c: 0 } as Record<string, number>;
+    for (let i = 0; i < 500; i++) {
+      const r = map.resolveAction('foo', 'n', 1, null, { variantWeights: [8, 1, 1] });
+      const ch = asEnv(r).targets[0].channel;
+      counts[ch] = (counts[ch] ?? 0) + 1;
+    }
+    // 8/10 expectation → allow wide envelope for 500-draw randomness.
+    expect(counts.a).toBeGreaterThan(counts.b);
+    expect(counts.a).toBeGreaterThan(counts.c);
+    expect(counts.a).toBeGreaterThan(300); // well above uniform 166
+  });
+
+  it('weight length mismatch falls back to uniform (no throw)', () => {
+    const map = writeThreeVariantMap();
+    const seen = new Set<string>();
+    for (let i = 0; i < 50; i++) {
+      // length 2 vs declared 3 — invalid, should warn-once + uniform
+      const r = map.resolveAction('foo', 'n', 1, null, { variantWeights: [1, 1] });
+      seen.add(asEnv(r).targets[0].channel);
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it('undefined opts preserves uniform selection (backward compat)', () => {
+    const map = writeThreeVariantMap();
+    const seen = new Set<string>();
+    for (let i = 0; i < 100; i++) {
+      const r = map.resolveAction('foo', 'n', 1);
+      seen.add(asEnv(r).targets[0].channel);
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it('negative/NaN weights are sanitized to 0', () => {
+    const map = writeThreeVariantMap();
+    for (let i = 0; i < 30; i++) {
+      const r = map.resolveAction('foo', 'n', 1, null, { variantWeights: [Number.NaN, -5, 1] });
+      expect(asEnv(r).targets[0].channel).toBe('c');
+    }
+  });
+});
+
 describe('ActionMap — accompaniment', () => {
   let tmpDir: string;
   let tmpPath: string;

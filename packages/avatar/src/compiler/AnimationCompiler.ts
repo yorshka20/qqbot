@@ -7,7 +7,7 @@ import { logger } from '../utils/logger';
 const PERF_LOG_ENABLED = process.env.AVATAR_PERF_LOG === '1';
 
 import { type AvatarActivity, DEFAULT_ACTIVITY } from '../state/types';
-import { ActionMap } from './action-map';
+import { ActionMap, type ResolveActionOptions } from './action-map';
 import { sampleClip } from './clips/sampleClip';
 import { applyEasing } from './easing';
 import { AmbientAudioLayer } from './layers/AmbientAudioLayer';
@@ -242,6 +242,13 @@ export class AnimationCompiler extends EventEmitter {
     return this.actionMap.getDuration(action);
   }
 
+  /** Read-through for `ActionMap.getCategory`. Used by AvatarService to
+   * supply category context to the mind-modulation provider so persona
+   * per-category intensity scaling can be applied at enqueue time. */
+  getActionCategory(action: string): string | undefined {
+    return this.actionMap.getCategory(action);
+  }
+
   /** Public summary of actions compatible with the current model kind. See `ActionMap.listActions()`. */
   listActions(): ActionSummary[] {
     return this.actionMap.listActions(this.currentModelKind);
@@ -309,8 +316,13 @@ export class AnimationCompiler extends EventEmitter {
   /** Public read-through for pre-resolving an action by name. Used by
    * AvatarService.enqueueEmotion to get the envelope targets without
    * re-enqueueing the full action. Filtered by the current model kind. */
-  resolveAction(action: string, emotion: string, intensity: number): ResolvedAction | null {
-    return this.actionMap.resolveAction(action, emotion, intensity, this.currentModelKind);
+  resolveAction(
+    action: string,
+    emotion: string,
+    intensity: number,
+    opts?: ResolveActionOptions,
+  ): ResolvedAction | null {
+    return this.actionMap.resolveAction(action, emotion, intensity, this.currentModelKind, opts);
   }
 
   /** Seed emotion baseline directly. The next tick's baseline decay + mix
@@ -572,7 +584,9 @@ export class AnimationCompiler extends EventEmitter {
     while (this.pendingQueue.length > 0) {
       const node = this.pendingQueue.shift();
       if (!node) continue;
-      const resolved = this.actionMap.resolveAction(node.action, node.emotion, node.intensity, this.currentModelKind);
+      const resolved = this.actionMap.resolveAction(node.action, node.emotion, node.intensity, this.currentModelKind, {
+        variantWeights: node.variantWeights,
+      });
       // Unknown action — skip silently
       if (!resolved) continue;
 

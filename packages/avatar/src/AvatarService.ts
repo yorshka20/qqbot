@@ -7,6 +7,13 @@ import { WalkingLayer } from './compiler/layers/WalkingLayer';
 import type { ActionSummary, StateNode } from './compiler/types';
 import { mergeAvatarConfig } from './config';
 import { VTSDriver } from './drivers/VTSDriver';
+import {
+  type ActionCategory,
+  IDENTITY_MODULATION,
+  type MindModulation,
+  type MindModulationProvider,
+  sanitizeScale,
+} from './mind/types';
 import { PreviewServer } from './preview/PreviewServer';
 import type { RendererCapabilities, WalkCommandData } from './preview/types';
 import { SpeechService } from './SpeechService';
@@ -39,6 +46,14 @@ export class AvatarService {
    */
   private consumerCount = 0;
   private speechService?: SpeechService;
+  /**
+   * Optional mind-system modulation provider. When set via
+   * `setMindModulationProvider`, it is consulted on every
+   * `enqueueTagAnimation` call to apply persona-driven intensity / duration
+   * scaling before the compiler's random jitter. Unset → identity (no
+   * modulation), preserving pre-Phase-1 behaviour.
+   */
+  private modulationProvider?: MindModulationProvider;
 
   // TODO(capability-gating): use connectedCapabilities to gate compiler channel
   // emission per connection — e.g. skip unsupported channels or custom morph
@@ -434,9 +449,30 @@ export class AvatarService {
   }
 
   /**
+   * Register (or clear) the mind-system modulation provider. Called by the
+   * bot-side mind bootstrap when mind is enabled. Avatar never imports mind
+   * directly — passing `undefined` restores identity-modulation behaviour.
+   */
+  setMindModulationProvider(provider: MindModulationProvider | undefined): void {
+    this.modulationProvider = provider;
+    logger.info(`[AvatarService] MindModulationProvider ${provider ? 'registered' : 'cleared'}`);
+  }
+
+  /** Read-only snapshot of the current modulation for debug / HUD surfaces. */
+  getCurrentMindModulation(): MindModulation {
+    return this.modulationProvider?.getModulation() ?? IDENTITY_MODULATION;
+  }
+
+  /**
    * Queue a single LLM-authored action animation onto the compiler.
    * Duration defaults to the action-map's registered value, or 1500ms if
    * the action is unknown (the compiler will silently drop it in that case).
+   *
+   * Pipeline (inside this method):
+   *   base → persona modulation → jitter → compiler
+   * Modulation is deterministic and reflects the current mind state;
+   * jitter is random and sits on top so two calls with the same state
+   * still produce slight variation.
    */
   enqueueTagAnimation(tag: { emotion: string; action: string; intensity: number; durationOverrideMs?: number }): void {
     if (!this.compiler) {
@@ -448,15 +484,45 @@ export class AvatarService {
     // it replaces the action-map's registered duration as the jitter base.
     const baseDuration = tag.durationOverrideMs ?? registered ?? 1500;
 
-    // Apply jitter via the compiler's effective override so HUD tunable changes
-    // flow through immediately. NOT applied in toStateNodes() — state-transition
-    // animations are orchestration-layer and stay deterministic.
-    const { duration: dJ, intensity: iJ, intensityFloor } = this.compiler.getEffectiveJitter();
-    const duration = Math.max(1, Math.round(baseDuration * (1 + (Math.random() * 2 - 1) * dJ)));
-    const intensity = Math.max(intensityFloor, Math.min(1, tag.intensity * (1 + (Math.random() * 2 - 1) * iJ)));
+    // ─── Persona modulation (deterministic) ─────────────────────────────
+    const category = this.compiler.getActionCategory(tag.action) as ActionCategory | undefined;
+    const modulation =
+      this.modulationProvider?.getModulation({
+        actionName: tag.action,
+        category,
+      }) ?? IDENTITY_MODULATION;
 
+    const speedScale = sanitizeScale(modulation.timing.speedScale);
+    // Local divide-by-zero guard: speedScale sanitizes to ≥0, but duration
+    // division needs a positive floor to avoid Infinity when a persona
+    // genuinely emits 0 (nonsensical but not our problem to crash on).
+    const speedDivisor = Math.max(0.1, speedScale);
+    const durationBias = Number.isFinite(modulation.timing.durationBias) ? (modulation.timing.durationBias ?? 0) : 0;
+    const modulatedDuration = baseDuration / speedDivisor + durationBias;
+
+    const intensityScale = sanitizeScale(modulation.amplitude.intensityScale);
+    const categoryScale = category ? sanitizeScale(modulation.amplitude.perCategoryScale?.[category], 1) : 1;
+    const modulatedIntensity = tag.intensity * intensityScale * categoryScale;
+
+    // ─── Random jitter (HUD-tunable) ────────────────────────────────────
+    // Jitter magnitudes can be damped by `timing.jitterScale` (e.g. a very
+    // controlled persona wants smaller envelope randomisation).
+    const { duration: dJBase, intensity: iJBase, intensityFloor } = this.compiler.getEffectiveJitter();
+    const jitterScale = sanitizeScale(modulation.timing.jitterScale, 1);
+    const dJ = dJBase * jitterScale;
+    const iJ = iJBase * jitterScale;
+    const duration = Math.max(1, Math.round(modulatedDuration * (1 + (Math.random() * 2 - 1) * dJ)));
+    const intensity = Math.max(intensityFloor, Math.min(1, modulatedIntensity * (1 + (Math.random() * 2 - 1) * iJ)));
+
+    // ─── Variant weights (persona action preference) ────────────────────
+    const variantWeights = modulation.actionPref?.variantWeights?.[tag.action];
+
+    const modulatedLog =
+      modulation === IDENTITY_MODULATION
+        ? ''
+        : ` mod={iScale=${intensityScale.toFixed(2)},catScale=${categoryScale.toFixed(2)},speed=${speedScale.toFixed(2)},dBias=${durationBias}}`;
     logger.info(
-      `[AvatarService] enqueueTagAnimation | action=${tag.action} emotion=${tag.emotion} intensity=${intensity.toFixed(2)} (base=${tag.intensity.toFixed(2)}) duration=${duration}ms (base=${baseDuration}ms) registered=${registered != null} override=${tag.durationOverrideMs ?? 'none'}`,
+      `[AvatarService] enqueueTagAnimation | action=${tag.action} emotion=${tag.emotion} intensity=${intensity.toFixed(2)} (base=${tag.intensity.toFixed(2)}) duration=${duration}ms (base=${baseDuration}ms) registered=${registered != null} override=${tag.durationOverrideMs ?? 'none'}${modulatedLog}`,
     );
     this.compiler.enqueue([
       {
@@ -466,6 +532,7 @@ export class AvatarService {
         duration,
         easing: 'easeInOutCubic',
         timestamp: Date.now(),
+        variantWeights,
       },
     ]);
   }

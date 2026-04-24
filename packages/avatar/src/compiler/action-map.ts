@@ -17,6 +17,63 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
+/**
+ * Options accepted by `ActionMap.resolveAction`. Additive / optional — all
+ * callers pre-Phase-1 pass no options and get uniform variant selection.
+ *
+ * - `variantWeights`: persona modulation input. Indexed against the
+ *   action-map's *declared* variant array (i.e. positional in the JSON).
+ *   Weights corresponding to variants filtered out by `modelKind` are
+ *   dropped. Length mismatch logs once and falls back to uniform.
+ */
+export interface ResolveActionOptions {
+  variantWeights?: readonly number[];
+}
+
+const weightWarnedActions = new Set<string>();
+
+/**
+ * Pick a variant index into `filtered` using `weights` aligned to
+ * `declared`. Returns uniform-random index when weights are absent,
+ * mismatched, or the sum over the filtered subset is ≤ 0.
+ */
+function pickVariantIndex<T>(
+  filtered: readonly T[],
+  declared: readonly T[],
+  actionName: string,
+  weights: readonly number[] | undefined,
+): number {
+  if (!weights || filtered.length <= 1) {
+    return Math.floor(Math.random() * filtered.length);
+  }
+  if (weights.length !== declared.length) {
+    if (!weightWarnedActions.has(actionName)) {
+      logger.warn(
+        `[ActionMap] variantWeights length=${weights.length} != declared variants=${declared.length} for action "${actionName}"; falling back to uniform`,
+      );
+      weightWarnedActions.add(actionName);
+    }
+    return Math.floor(Math.random() * filtered.length);
+  }
+  // Restrict to the post-filter subset, preserving original indices.
+  const perFilterWeight: number[] = new Array(filtered.length);
+  let total = 0;
+  for (let i = 0; i < filtered.length; i++) {
+    const originalIdx = declared.indexOf(filtered[i]);
+    const w = originalIdx >= 0 ? weights[originalIdx] : 0;
+    const safe = typeof w === 'number' && Number.isFinite(w) && w >= 0 ? w : 0;
+    perFilterWeight[i] = safe;
+    total += safe;
+  }
+  if (total <= 0) return Math.floor(Math.random() * filtered.length);
+  let r = Math.random() * total;
+  for (let i = 0; i < filtered.length; i++) {
+    r -= perFilterWeight[i];
+    if (r < 0) return i;
+  }
+  return filtered.length - 1;
+}
+
 function isClipEntry(e: ActionMapEntry): e is ActionMapEntryClip {
   return e.kind === 'clip';
 }
@@ -135,6 +192,19 @@ export class ActionMap {
     return name in this.entries;
   }
 
+  /**
+   * Return the `category` declared on the first variant of this action, or
+   * undefined when unknown. Variants of the same action share a category
+   * by convention (see `ActionMapEntry.category`); the first-variant lookup
+   * matches `listActions()`'s representative-variant rule.
+   */
+  getCategory(name: string): string | undefined {
+    const raw = this.entries[name];
+    if (!raw) return undefined;
+    const variants = Array.isArray(raw) ? raw : [raw];
+    return variants[0]?.category;
+  }
+
   getDuration(name: string): number | undefined {
     const raw = this.entries[name];
     if (!raw) return undefined;
@@ -161,6 +231,7 @@ export class ActionMap {
     emotion: string,
     intensity: number,
     modelKind?: ModelKind | null,
+    opts?: ResolveActionOptions,
   ): ResolvedAction | null {
     void emotion;
     const raw = this.entries[action];
@@ -177,7 +248,13 @@ export class ActionMap {
       modelKind != null ? allVariants.filter((v) => isEntryCompatible(v, modelKind, clipChannels)) : allVariants;
     if (variants.length === 0) return null;
 
-    const idx = Math.floor(Math.random() * variants.length);
+    // variantWeights are indexed against the original declared variants in
+    // `allVariants`. We map them onto the post-filter list so weights aligned
+    // with an incompatible (filtered-out) variant are silently dropped. When
+    // weights length mismatches declared variant count we log once and fall
+    // back to uniform — this keeps persona modulation safe across action-map
+    // edits without surprising behaviour.
+    const idx = pickVariantIndex(variants, allVariants, action, opts?.variantWeights);
     const variant = variants[idx];
 
     if (isClipEntry(variant)) {
