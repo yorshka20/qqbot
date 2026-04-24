@@ -22,9 +22,16 @@ import { BaseLayer } from './BaseLayer';
  * (via LayerManager) so it's subtler than in idle.
  */
 interface GazeConfig {
-  /** OU mean-reversion strength per tick (0..1). Higher = snappier. */
+  /** OU mean-reversion strength per tick (0..1) for the autonomous no-override path.
+   *  Higher = snappier. Tuned for slow biological-looking drift between saccades. */
   theta: number;
-  /** Gaussian noise stddev per tick (normalized units). */
+  /** OU theta used while an explicit override target is active (setGazeTarget or quietMode
+   *  recovery). Much higher than `theta` so the eye converges on the override target in
+   *  ~100-200 ms — fast enough to read as a deliberate glance but smooth enough to avoid
+   *  the pop-to-target "teleport" the old hard-override path produced. */
+  overrideTheta: number;
+  /** Gaussian noise stddev per tick (normalized units). Suppressed on the override / quiet
+   *  paths so deliberate gaze doesn't jitter. */
   noiseSigma: number;
   /** Amplitude of the gaze region, normalized. 1.0 = full eye-ball range. */
   maxRadius: number;
@@ -36,6 +43,10 @@ interface GazeConfig {
 
 const DEFAULT_GAZE_CONFIG: GazeConfig = {
   theta: 0.08,
+  // 0.25 @ 60 fps ≈ 6.2 ms time constant × ~15 frames to 98 % convergence ≈ 167 ms total.
+  // Human saccade duration is ~20–200 ms depending on amplitude; this sits in the
+  // middle of that range which reads as "quick but not instant".
+  overrideTheta: 0.25,
   noiseSigma: 0.015,
   maxRadius: 0.6,
   saccadeIntervalMin: 3000,
@@ -154,60 +165,85 @@ export class EyeGazeLayer extends BaseLayer {
 
   sample(nowMs: number, _activity: AvatarActivity): Record<string, number> {
     void _activity;
-    if (this.override) {
-      // Explicit override always wins; defaultContactPref has no effect here.
-      this.lastSampleAt = nowMs;
-      return { 'eye.ball.x': this.override.x, 'eye.ball.y': this.override.y };
-    }
-    if (this.quietMode) {
-      // Freeze: no OU drift, no saccades. Emits a still gaze so downstream
-      // layers observe a stable baseline for the testing pass.
-      this.lastSampleAt = nowMs;
-      return { 'eye.ball.x': 0, 'eye.ball.y': 0 };
-    }
-    if (this.nextSaccadeAt === 0) this.nextSaccadeAt = nowMs + this.randomSaccadeInterval();
-
-    // Saccade: pick a new target on the unit disk, biased toward center.
-    if (nowMs >= this.nextSaccadeAt) {
-      const r = this.config.maxRadius * Math.random() ** 2;
-      const theta = Math.random() * 2 * Math.PI;
-      this.targetX = r * Math.cos(theta);
-      this.targetY = r * Math.sin(theta);
-      this.nextSaccadeAt = nowMs + this.randomSaccadeInterval();
-    }
-
-    // OU step toward the current saccade target. Note: `theta` parameter is
-    // tuned at ~60fps tick rate; we scale by the actual elapsed time so the
-    // drift speed stays consistent if the compiler fps changes.
+    // Unified OU-drift model: the eye position always drifts toward a target with a
+    // per-path theta. Three scenarios share one integration step:
     //
-    // `dt` is clamped to 100ms to defend against huge jumps after a pause —
-    // the compiler is paused whenever there are no frame consumers, and on
-    // resume the wall-clock gap can be arbitrarily large. An unclamped
-    // `theta * (Δ/16.67)` would produce a single massive OU step that
-    // overshoots the target on the first resumed frame.
+    //   1. override    — target = override.{x,y},  theta = overrideTheta, no noise.
+    //                    Explicit deliberate gaze (setGazeTarget / wander glance /
+    //                    LLM [G:] tag). Previously snapped; now converges in ~150–200 ms
+    //                    for a natural fast-saccade feel instead of a teleport.
+    //   2. quietMode   — target = (0, 0),          theta = overrideTheta, no noise.
+    //                    Debug / test mode: eye drifts to camera centre and holds,
+    //                    producing a stable still baseline.
+    //   3. autonomous  — target = saccade target,  theta = config.theta,  + Gaussian noise.
+    //                    The original OU + periodic saccade + gaze-avoidance path.
+    //
+    // `dt` is clamped to 100 ms to defend against pause/resume wall-clock gaps — the
+    // compiler pauses when no one is reading frames, and resume otherwise produces a
+    // single massive step that overshoots.
     const rawDt = this.lastSampleAt === 0 ? 16.67 : nowMs - this.lastSampleAt;
     const dt = Math.min(rawDt, 100);
-    const step = this.config.theta * (dt / 16.67);
-    this.posX += step * (this.targetX - this.posX) + this.config.noiseSigma * gaussian();
-    this.posY += step * (this.targetY - this.posY) + this.config.noiseSigma * gaussian();
-
-    // Clamp to the unit disk (soft clamp by radius) to avoid corner-peg.
-    const r = Math.hypot(this.posX, this.posY);
-    if (r > this.config.maxRadius) {
-      const k = this.config.maxRadius / r;
-      this.posX *= k;
-      this.posY *= k;
-    }
-
     this.lastSampleAt = nowMs;
 
-    // Apply the default contact preference bias as a deterministic additive
-    // offset to the OU output. The override path already returned above, so
-    // this block only runs when there is no explicit gaze target.
-    //
-    // pref=1 → avoidantOffset = 0   (camera-facing, no bias)
-    // pref=0 → avoidantOffset = AVOIDANT_Y_OFFSET (downward / avoidant)
-    // pref=null → avoidantOffset = 0 (original behaviour, no change)
+    let tx: number;
+    let ty: number;
+    let effectiveTheta: number;
+    let addNoise: boolean;
+
+    if (this.override) {
+      tx = this.override.x;
+      ty = this.override.y;
+      effectiveTheta = this.config.overrideTheta;
+      addNoise = false;
+    } else if (this.quietMode) {
+      tx = 0;
+      ty = 0;
+      effectiveTheta = this.config.overrideTheta;
+      addNoise = false;
+    } else {
+      if (this.nextSaccadeAt === 0) this.nextSaccadeAt = nowMs + this.randomSaccadeInterval();
+      // Saccade: pick a new target on the unit disk, biased toward centre.
+      if (nowMs >= this.nextSaccadeAt) {
+        const r = this.config.maxRadius * Math.random() ** 2;
+        const a = Math.random() * 2 * Math.PI;
+        this.targetX = r * Math.cos(a);
+        this.targetY = r * Math.sin(a);
+        this.nextSaccadeAt = nowMs + this.randomSaccadeInterval();
+      }
+      tx = this.targetX;
+      ty = this.targetY;
+      effectiveTheta = this.config.theta;
+      addNoise = true;
+    }
+
+    const step = effectiveTheta * (dt / 16.67);
+    this.posX += step * (tx - this.posX) + (addNoise ? this.config.noiseSigma * gaussian() : 0);
+    this.posY += step * (ty - this.posY) + (addNoise ? this.config.noiseSigma * gaussian() : 0);
+
+    // maxRadius clamp keeps the autonomous wander within a natural gaze region, but it
+    // must NOT apply to override / quiet paths — the caller asked for a specific target
+    // (named 'left'/'right' etc map to ±0.7, outside the 0.6 autonomous disk) and
+    // clamping here would silently override their intent. The hard [-1, 1] clamp below
+    // still runs to keep the output within the eye-ball channel's valid range.
+    if (!this.override && !this.quietMode) {
+      const r = Math.hypot(this.posX, this.posY);
+      if (r > this.config.maxRadius) {
+        const k = this.config.maxRadius / r;
+        this.posX *= k;
+        this.posY *= k;
+      }
+    }
+
+    // Overrides and quiet-mode bypass the default contact-preference bias — deliberate
+    // gaze should land exactly where the caller asked. Only the autonomous path applies
+    // the avoidant offset.
+    if (this.override || this.quietMode) {
+      const clamp = (v: number) => Math.max(-1, Math.min(1, v));
+      return { 'eye.ball.x': clamp(this.posX), 'eye.ball.y': clamp(this.posY) };
+    }
+
+    // pref=1 → avoidantOffset = 0 (camera-facing); pref=0 → full AVOIDANT_Y_OFFSET;
+    // pref=null (unset) → 0 (pure OU behaviour, original contract).
     const avoidantOffset = this.defaultContactPref !== null ? (1 - this.defaultContactPref) * AVOIDANT_Y_OFFSET : 0;
     const clamp = (v: number) => Math.max(-1, Math.min(1, v));
     return { 'eye.ball.x': this.posX, 'eye.ball.y': clamp(this.posY + avoidantOffset) };

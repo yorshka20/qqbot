@@ -364,13 +364,23 @@ describe('WalkingLayer – walk-cycle clip', () => {
   });
 
   test('speed coupling: half-speed walk for double time advances the cycle identically', () => {
+    // With the default `easeInOutCubic` easing, instantaneous speed is ~0 at motion start
+    // (the curve's derivative at t=0 is zero). That breaks the "dt × speed = fixed
+    // cycle advance" arithmetic this test was designed around — for long-distance walks
+    // the tick sits near progress=0 where step ≈ 0 and the layer falls back to the
+    // rate-factor clamp floor, producing the same cycle delta regardless of configured
+    // speed. Force `linear` easing here so the test actually exercises the rate-scaling
+    // invariant it was written to validate (constant instantaneous speed = speedMps).
     // dtMs is capped at 100 ms, so use tick intervals ≤ 100 ms for precise control.
-    // After warm-up (dtMs = 16.67), the next tick provides a controlled delta:
     //   A (speed=0.5, dt=50 ms): cycle delta = 50 * 0.5 = 25 ms → value delta = 0.025 s
     //   B (speed=1.0, dt=25 ms): cycle delta = 25 * 1.0 = 25 ms → value delta = 0.025 s
-    // For the linear clip (value = t_sec), both deltas equal 0.025.
     function measureDelta(speedMps: number, dt2Ms: number): number {
-      const layer = new WalkingLayer({ speedMps, arrivalThresholdM: 0.001, onWalkingThrottleMs: 10000 });
+      const layer = new WalkingLayer({
+        speedMps,
+        arrivalThresholdM: 0.001,
+        onWalkingThrottleMs: 10000,
+        easing: 'linear',
+      });
       layer.setWalkCycleClip(LINEAR_CLIP, 1.0);
       layer.walkTo(1000, 0, 0);
       const frame0 = layer.sample(0, IDLE); // warm-up (dtMs = 16.67)
@@ -393,6 +403,54 @@ describe('WalkingLayer – walk-cycle clip', () => {
     await flush();
     expect(frame).toEqual({});
     expect(await rejection).toBeInstanceOf(WalkInterruptedError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Easing — eased vs linear progress profile
+// ---------------------------------------------------------------------------
+describe('WalkingLayer – easing profile', () => {
+  test('eased start-speed is ~0 (wind-up): first short tick moves a tiny fraction of linear equivalent', () => {
+    // f'(0) = 0 for easeInOutCubic, so the first 16ms tick of a 1m/1s walk should move
+    // orders of magnitude less than the ~16mm a linear profile would produce.
+    const eased = new WalkingLayer({ speedMps: 1.0, arrivalThresholdM: 0.001 });
+    eased.walkTo(0, 1, 0);
+    const frameEased = eased.sample(16.67, IDLE);
+    const zEased = frameEased['vrm.root.z'] as number;
+    expect(zEased).toBeGreaterThan(0);
+    expect(zEased).toBeLessThan(0.002); // << 16mm
+  });
+
+  test('eased vs linear: at same tick, eased has moved less during the ease-in phase', () => {
+    // Direct comparison: both layers do the same walk, ticked identically. During the
+    // ease-in phase (progress < 0.5) the eased layer is behind; at progress=0.5 they
+    // cross; past 0.5 the eased layer is ahead until they both land at 1.0.
+    function tick(layer: WalkingLayer, steps: number): number {
+      // dtMs clamps to 100, so use 50ms steps to build up elapsed time cleanly.
+      for (let i = 0; i < steps; i++) layer.sample(i * 50, IDLE);
+      return layer.getPosition().z;
+    }
+    const eased = new WalkingLayer({ speedMps: 1.0, arrivalThresholdM: 0.001 });
+    const linear = new WalkingLayer({ speedMps: 1.0, arrivalThresholdM: 0.001, easing: 'linear' });
+    eased.walkTo(0, 1, 0);
+    linear.walkTo(0, 1, 0);
+    // 5 ticks × 50 ms (with first tick's internal 16.67ms fallback) ≈ ~216ms of elapsed
+    // time, well into the ease-in phase where linear is clearly ahead.
+    const zEased = tick(eased, 5);
+    const zLinear = tick(linear, 5);
+    expect(zEased).toBeLessThan(zLinear);
+    expect(zEased).toBeGreaterThan(0);
+  });
+
+  test('motion arrives exactly at target regardless of easing', async () => {
+    // Progress clamps to 1; the eased curve reaches 1 only at end-of-duration, so
+    // "arrived" means "exactly at target", not "within arrivalThreshold".
+    const layer = new WalkingLayer({ speedMps: 1.0, arrivalThresholdM: 0.001 });
+    const p = layer.walkTo(0, 1, 0);
+    for (let i = 0; i < 30; i++) layer.sample(i * 50, IDLE);
+    await p;
+    const pos = layer.getPosition();
+    expect(pos.z).toBeCloseTo(1.0, 6);
   });
 });
 

@@ -8,54 +8,87 @@ const ACTIVITY: AvatarActivity = { pose: 'neutral', ambientGain: 1 };
 // AVOIDANT_Y_OFFSET constant in EyeGazeLayer.ts. Keep these in sync.
 const AVOIDANT_Y_OFFSET = 0.3;
 
+// Drive the layer to near-convergence for an override target. Override uses
+// overrideTheta=0.25 per 16.67 ms frame, so ~15 frames (≈ 250 ms) reaches >98 %.
+function runToConvergence(layer: EyeGazeLayer, ticks = 40): void {
+  for (let i = 0; i < ticks; i++) layer.sample(1000 + i * 16, ACTIVITY);
+}
+
 describe('EyeGazeLayer.setGazeTarget', () => {
-  test('named camera → sample returns {x:0, y:0}', () => {
+  test('named camera → eye converges to (0, 0)', () => {
     const layer = new EyeGazeLayer();
     layer.setGazeTarget({ type: 'named', name: 'camera' });
-    const result = layer.sample(1000, ACTIVITY);
-    expect(result).toEqual({ 'eye.ball.x': 0, 'eye.ball.y': 0 });
+    runToConvergence(layer);
+    const result = layer.sample(2000, ACTIVITY);
+    expect(result['eye.ball.x']).toBeCloseTo(0, 3);
+    expect(result['eye.ball.y']).toBeCloseTo(0, 3);
   });
 
-  test('named left → sample returns {x:-0.7, y:0}', () => {
+  test('named left → eye converges to (-0.7, 0)', () => {
     const layer = new EyeGazeLayer();
     layer.setGazeTarget({ type: 'named', name: 'left' });
-    const result = layer.sample(1000, ACTIVITY);
-    expect(result).toEqual({ 'eye.ball.x': -0.7, 'eye.ball.y': 0 });
+    runToConvergence(layer);
+    const result = layer.sample(2000, ACTIVITY);
+    expect(result['eye.ball.x']).toBeCloseTo(-0.7, 3);
+    expect(result['eye.ball.y']).toBeCloseTo(0, 3);
   });
 
-  test('named right → sample returns {x:0.7, y:0}', () => {
+  test('named right → eye converges to (0.7, 0)', () => {
+    const layer = new EyeGazeLayer();
+    layer.setGazeTarget({ type: 'named', name: 'right' });
+    runToConvergence(layer);
+    const result = layer.sample(2000, ACTIVITY);
+    expect(result['eye.ball.x']).toBeCloseTo(0.7, 3);
+    expect(result['eye.ball.y']).toBeCloseTo(0, 3);
+  });
+
+  test('named up → eye converges to (0, -0.7)', () => {
+    const layer = new EyeGazeLayer();
+    layer.setGazeTarget({ type: 'named', name: 'up' });
+    runToConvergence(layer);
+    const result = layer.sample(2000, ACTIVITY);
+    expect(result['eye.ball.x']).toBeCloseTo(0, 3);
+    expect(result['eye.ball.y']).toBeCloseTo(-0.7, 3);
+  });
+
+  test('named down → eye converges to (0, 0.7)', () => {
+    const layer = new EyeGazeLayer();
+    layer.setGazeTarget({ type: 'named', name: 'down' });
+    runToConvergence(layer);
+    const result = layer.sample(2000, ACTIVITY);
+    expect(result['eye.ball.x']).toBeCloseTo(0, 3);
+    expect(result['eye.ball.y']).toBeCloseTo(0.7, 3);
+  });
+
+  test('point target → eye converges to clamped target', () => {
+    const layer = new EyeGazeLayer();
+    layer.setGazeTarget({ type: 'point', x: 0.3, y: -0.2 });
+    runToConvergence(layer);
+    const result = layer.sample(2000, ACTIVITY);
+    expect(result['eye.ball.x']).toBeCloseTo(0.3, 3);
+    expect(result['eye.ball.y']).toBeCloseTo(-0.2, 3);
+  });
+
+  test('point out-of-range is clamped to [-1, 1] then converged toward', () => {
+    const layer = new EyeGazeLayer();
+    layer.setGazeTarget({ type: 'point', x: 5, y: -5 });
+    runToConvergence(layer);
+    const result = layer.sample(2000, ACTIVITY);
+    // Override target is clamped to (1, -1) at setGazeTarget time; overrides bypass
+    // the autonomous maxRadius disk so the eye converges onto (1, -1).
+    expect(result['eye.ball.x']).toBeCloseTo(1, 3);
+    expect(result['eye.ball.y']).toBeCloseTo(-1, 3);
+  });
+
+  test('first tick after override is partway to target (smooth drift, not a snap)', () => {
     const layer = new EyeGazeLayer();
     layer.setGazeTarget({ type: 'named', name: 'right' });
     const result = layer.sample(1000, ACTIVITY);
-    expect(result).toEqual({ 'eye.ball.x': 0.7, 'eye.ball.y': 0 });
-  });
-
-  test('named up → sample returns {x:0, y:-0.7}', () => {
-    const layer = new EyeGazeLayer();
-    layer.setGazeTarget({ type: 'named', name: 'up' });
-    const result = layer.sample(1000, ACTIVITY);
-    expect(result).toEqual({ 'eye.ball.x': 0, 'eye.ball.y': -0.7 });
-  });
-
-  test('named down → sample returns {x:0, y:0.7}', () => {
-    const layer = new EyeGazeLayer();
-    layer.setGazeTarget({ type: 'named', name: 'down' });
-    const result = layer.sample(1000, ACTIVITY);
-    expect(result).toEqual({ 'eye.ball.x': 0, 'eye.ball.y': 0.7 });
-  });
-
-  test('point target → sample returns exact clamped values', () => {
-    const layer = new EyeGazeLayer();
-    layer.setGazeTarget({ type: 'point', x: 0.3, y: -0.2 });
-    const result = layer.sample(1000, ACTIVITY);
-    expect(result).toEqual({ 'eye.ball.x': 0.3, 'eye.ball.y': -0.2 });
-  });
-
-  test('point out-of-range is clamped to [-1, 1]', () => {
-    const layer = new EyeGazeLayer();
-    layer.setGazeTarget({ type: 'point', x: 5, y: -5 });
-    const result = layer.sample(1000, ACTIVITY);
-    expect(result).toEqual({ 'eye.ball.x': 1, 'eye.ball.y': -1 });
+    // overrideTheta=0.25 at dt=16.67ms → step=0.25; posX = 0 + 0.25 * (0.7 - 0) = 0.175
+    expect(result['eye.ball.x']).toBeGreaterThan(0);
+    expect(result['eye.ball.x']).toBeLessThan(0.7);
+    // Not the old snap-to-target behaviour
+    expect(result['eye.ball.x']).not.toBeCloseTo(0.7, 2);
   });
 
   test('setGazeTarget(null) after override restores OU path (two samples differ)', () => {
@@ -187,18 +220,23 @@ describe('EyeGazeLayer.setDefaultContactPreference', () => {
     const layer = new EyeGazeLayer();
     layer.setDefaultContactPreference(0); // avoidant bias
     layer.setGazeTarget({ type: 'named', name: 'camera' });
-    const result = layer.sample(1000, ACTIVITY);
-    // Explicit override → exact (0, 0), not shifted by avoidant offset
-    expect(result).toEqual({ 'eye.ball.x': 0, 'eye.ball.y': 0 });
+    // Drive to convergence; eye should land at (0, 0), not biased down by the avoidant offset.
+    for (let i = 0; i < 40; i++) layer.sample(1000 + i * 16, ACTIVITY);
+    const result = layer.sample(2000, ACTIVITY);
+    expect(result['eye.ball.x']).toBeCloseTo(0, 3);
+    expect(result['eye.ball.y']).toBeCloseTo(0, 3);
   });
 
   test('explicit point target wins over default contact preference', () => {
     const layer = new EyeGazeLayer();
     layer.setDefaultContactPreference(0);
     layer.setGazeTarget({ type: 'point', x: 0.2, y: -0.1 });
-    const result = layer.sample(1000, ACTIVITY);
-    // Override wins — no avoidant shift applied
-    expect(result).toEqual({ 'eye.ball.x': 0.2, 'eye.ball.y': -0.1 });
+    for (let i = 0; i < 40; i++) layer.sample(1000 + i * 16, ACTIVITY);
+    const result = layer.sample(2000, ACTIVITY);
+    // Override path suppresses avoidant offset entirely: eye lands at the point, not
+    // the point + downward bias.
+    expect(result['eye.ball.x']).toBeCloseTo(0.2, 3);
+    expect(result['eye.ball.y']).toBeCloseTo(-0.1, 3);
   });
 
   test('clearing override after pref=0 is set restores avoidant offset', () => {

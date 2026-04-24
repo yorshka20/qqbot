@@ -2,6 +2,8 @@ import { EventEmitter } from 'node:events';
 import type { TunableParam } from '../../preview/types';
 import type { AvatarActivity } from '../../state/types';
 import { sampleClip } from '../clips/sampleClip';
+import { applyEasing } from '../easing';
+import type { EasingType } from '../types';
 import { BaseLayer } from './BaseLayer';
 import type { IdleClip } from './clips/types';
 
@@ -35,17 +37,33 @@ export interface WalkPosition {
 }
 
 export interface WalkingLayerConfig {
-  /** Linear translation speed in metres per second. */
+  /** Linear translation speed in metres per second.
+   *
+   *  Interpreted as the **average** speed across the entire motion — total duration of a
+   *  motion equals `distanceM / speedMps`. Instantaneous speed varies along the easing
+   *  curve (e.g. `easeInOutCubic` peaks at ~1.5× speedMps in the middle and goes to 0 at
+   *  the boundaries). If you want a hard cap on peak speed, lower `speedMps`. */
   speedMps: number;
-  /** Angular turning speed in radians per second. Applies to facing interpolation in linear
-   *  motions and to target-facing interp in orbit motions when tangent-facing is disabled. */
+  /** Angular turning speed in radians per second. Same "average" interpretation as speedMps:
+   *  total duration of a pure turn equals `|facingDelta| / angularSpeedRadPerSec`.
+   *
+   *  For combined walk+turn, total motion duration is `max(distTime, facingTime)` so
+   *  translation and facing arrive simultaneously under the shared eased progress curve. */
   angularSpeedRadPerSec: number;
-  /** Distance in metres at which translation is considered arrived. */
+  /** Distance in metres at which translation is considered arrived.
+   *  Kept for backward compat / informational use (`onWalking.remainingM`); the eased motion
+   *  snaps exactly to the target at progress=1 so this threshold is not load-bearing. */
   arrivalThresholdM: number;
-  /** Angular tolerance in radians at which facing is considered arrived. */
+  /** Angular tolerance in radians at which facing is considered arrived. See arrivalThresholdM. */
   arrivalThresholdRad: number;
   /** Minimum interval in ms between `walking` callback emissions. */
   onWalkingThrottleMs: number;
+  /** Easing curve applied to the motion's progress. Both translation and facing share the
+   *  same eased progress so a combined walk+turn feels coherent. `linear` recovers the old
+   *  constant-speed (rectangular) profile — avoid in production: starts/stops are abrupt
+   *  and visually stiff. Default `easeInOutCubic` is the standard S-curve (ease-in /
+   *  sustain / ease-out) and provides natural wind-up + follow-through on every motion. */
+  easing: EasingType;
 }
 
 export const DEFAULT_WALKING_CONFIG: WalkingLayerConfig = {
@@ -54,6 +72,7 @@ export const DEFAULT_WALKING_CONFIG: WalkingLayerConfig = {
   arrivalThresholdM: 0.02,
   arrivalThresholdRad: 0.01, // ~0.57°
   onWalkingThrottleMs: 200,
+  easing: 'easeInOutCubic',
 };
 
 export interface OrbitOptions {
@@ -80,6 +99,16 @@ interface BaseMotion {
 interface LinearMotion extends BaseMotion {
   kind: 'linear';
   target: { x: number; z: number; facing: number };
+  /** Pose at motion start — anchor for the eased progress interpolation. */
+  startX: number;
+  startZ: number;
+  startFacing: number;
+  /** Signed shortest arc from startFacing to target.facing. */
+  facingDeltaRad: number;
+  /** Total duration in seconds — `max(dist/speedMps, |facingDelta|/angularSpeedRadPerSec)`. */
+  durationSec: number;
+  /** Wall-clock seconds since motion start; monotonically increases per tick. */
+  elapsedSec: number;
 }
 
 interface OrbitMotion extends BaseMotion {
@@ -90,13 +119,18 @@ interface OrbitMotion extends BaseMotion {
   startAngle: number;
   /** Signed total radians to sweep (positive = CCW). Direction derived from sign. */
   totalSweepRad: number;
-  /** Unsigned radians swept so far. Motion done when `sweptRad >= |totalSweepRad|`. */
+  /** Unsigned radians swept so far — derived from `|totalSweepRad| * easedProgress` each
+   *  tick. Kept on the motion so `onWalking` progress events can report remaining arc. */
   sweptRad: number;
   keepFacingTangent: boolean;
   /** Used only when `!keepFacingTangent`: final facing to interp to across the sweep. */
   targetFacing?: number;
   /** Facing at motion start, for non-tangent interp. */
   startFacing: number;
+  /** Total duration in seconds — `(|sweepRad| * radius) / speedMps`, plus a non-tangent
+   *  facing term when `!keepFacingTangent`. */
+  durationSec: number;
+  elapsedSec: number;
 }
 
 type Motion = LinearMotion | OrbitMotion;
@@ -183,6 +217,7 @@ export class WalkingLayer extends BaseLayer {
       arrivalThresholdM: config.arrivalThresholdM ?? DEFAULT_WALKING_CONFIG.arrivalThresholdM,
       arrivalThresholdRad: config.arrivalThresholdRad ?? DEFAULT_WALKING_CONFIG.arrivalThresholdRad,
       onWalkingThrottleMs: config.onWalkingThrottleMs ?? DEFAULT_WALKING_CONFIG.onWalkingThrottleMs,
+      easing: config.easing ?? DEFAULT_WALKING_CONFIG.easing,
     };
   }
 
@@ -200,9 +235,26 @@ export class WalkingLayer extends BaseLayer {
     return new Promise((resolve, reject) => {
       this.interruptMotion();
       const targetFacing = face ?? this.currentFacing;
+      const startX = this.currentX;
+      const startZ = this.currentZ;
+      const startFacing = this.currentFacing;
+      const dx = x - startX;
+      const dz = z - startZ;
+      const distM = Math.sqrt(dx * dx + dz * dz);
+      const facingDelta = shortestArc(startFacing, targetFacing);
+      const distSec = this.config.speedMps > 0 ? distM / this.config.speedMps : 0;
+      const facingSec =
+        this.config.angularSpeedRadPerSec > 0 ? Math.abs(facingDelta) / this.config.angularSpeedRadPerSec : 0;
+      const durationSec = Math.max(distSec, facingSec);
       this.motion = {
         kind: 'linear',
         target: { x, z, facing: targetFacing },
+        startX,
+        startZ,
+        startFacing,
+        facingDeltaRad: facingDelta,
+        durationSec,
+        elapsedSec: 0,
         resolve,
         reject,
       };
@@ -269,6 +321,16 @@ export class WalkingLayer extends BaseLayer {
       const effectiveRadius = actualRadius > 1e-3 ? actualRadius : radius;
       const startAngle = actualRadius > 1e-3 ? Math.atan2(dz, dx) : 0;
       const keepFacingTangent = opts.keepFacingTangent ?? true;
+      // Duration: time to traverse the arc at speedMps, plus a non-tangent facing term if
+      // the facing must interpolate to an explicit target (shared eased progress → both
+      // finish simultaneously).
+      const arcLen = Math.abs(opts.sweepRad) * effectiveRadius;
+      const arcSec = this.config.speedMps > 0 ? arcLen / this.config.speedMps : 0;
+      let facingSec = 0;
+      if (!keepFacingTangent && opts.targetFacing !== undefined && this.config.angularSpeedRadPerSec > 0) {
+        facingSec = Math.abs(shortestArc(this.currentFacing, opts.targetFacing)) / this.config.angularSpeedRadPerSec;
+      }
+      const durationSec = Math.max(arcSec, facingSec);
       this.motion = {
         kind: 'orbit',
         center: { x: center.x, z: center.z },
@@ -279,6 +341,8 @@ export class WalkingLayer extends BaseLayer {
         keepFacingTangent,
         targetFacing: opts.targetFacing,
         startFacing: this.currentFacing,
+        durationSec,
+        elapsedSec: 0,
         resolve,
         reject,
       };
@@ -471,67 +535,71 @@ export class WalkingLayer extends BaseLayer {
   // Motion advancement
   // ──────────────────────────────────────────────────────────────────────────────
 
-  /** Advance a linear motion by one tick. Returns whether the motion is done and how far
-   *  the character translated this tick (used for walk-cycle rate scaling). */
+  /**
+   * Advance a linear motion by one tick.
+   *
+   * Model: progress-based with shared eased curve across translation + facing.
+   *   rawProgress  = elapsedSec / durationSec       (clamped to [0, 1])
+   *   easedP       = applyEasing(rawProgress, cfg.easing)
+   *   currentX     = startX + (targetX - startX) * easedP
+   *   currentZ     = startZ + (targetZ - startZ) * easedP
+   *   currentFacing = normalize(startFacing + facingDelta * easedP)
+   *
+   * With `easeInOutCubic` the instantaneous speed ramps from 0 → peak (~1.5× speedMps) →
+   * 0 across the motion, producing natural wind-up / follow-through. `linearStepM` is
+   * returned as the actual Euclidean distance moved this tick so downstream walk-cycle
+   * rate scaling stays accurate under the varying instantaneous speed.
+   */
   private advanceLinear(motion: LinearMotion, dtSec: number): { done: boolean; linearStepM: number } {
-    const target = motion.target;
-    const dx = target.x - this.currentX;
-    const dz = target.z - this.currentZ;
-    const dist = Math.sqrt(dx * dx + dz * dz);
+    motion.elapsedSec += dtSec;
+    const rawProgress = motion.durationSec > 0 ? Math.min(1, motion.elapsedSec / motion.durationSec) : 1;
+    const easedProgress = applyEasing(rawProgress, this.config.easing);
 
-    let linearStepM = 0;
-    if (dist > this.config.arrivalThresholdM) {
-      const step = Math.min(this.config.speedMps * dtSec, dist);
-      const nx = dx / dist;
-      const nz = dz / dist;
-      this.currentX += nx * step;
-      this.currentZ += nz * step;
-      linearStepM = step;
-    } else {
-      this.currentX = target.x;
-      this.currentZ = target.z;
-    }
+    const prevX = this.currentX;
+    const prevZ = this.currentZ;
 
-    const facingDelta = shortestArc(this.currentFacing, target.facing);
-    if (Math.abs(facingDelta) > this.config.arrivalThresholdRad) {
-      const maxStep = this.config.angularSpeedRadPerSec * dtSec;
-      const step = Math.sign(facingDelta) * Math.min(maxStep, Math.abs(facingDelta));
-      this.currentFacing = normalizeAngle(this.currentFacing + step);
-    } else {
-      this.currentFacing = target.facing;
-    }
+    this.currentX = motion.startX + (motion.target.x - motion.startX) * easedProgress;
+    this.currentZ = motion.startZ + (motion.target.z - motion.startZ) * easedProgress;
+    this.currentFacing = normalizeAngle(motion.startFacing + motion.facingDeltaRad * easedProgress);
 
-    const xzDone = Math.abs(target.x - this.currentX) < 1e-9 && Math.abs(target.z - this.currentZ) < 1e-9;
-    const facingDone = Math.abs(shortestArc(this.currentFacing, target.facing)) <= this.config.arrivalThresholdRad;
-    return { done: xzDone && facingDone, linearStepM };
+    const linearStepM = Math.sqrt((this.currentX - prevX) ** 2 + (this.currentZ - prevZ) ** 2);
+    return { done: rawProgress >= 1, linearStepM };
   }
 
-  /** Advance an orbit motion by one tick. Parameterised on polar angle around `center`. */
+  /**
+   * Advance an orbit motion by one tick.
+   *
+   * Same progress model as linear motion: `sweptRad = |totalSweepRad| * easedProgress`,
+   * position derived from polar angle around the centre, facing follows tangent (or
+   * interpolates to targetFacing via the shared eased progress for non-tangent orbits).
+   * `linearStepM` is Euclidean, so it captures the actual arc-chord moved this tick
+   * including the non-linear speed profile at the boundaries.
+   */
   private advanceOrbit(motion: OrbitMotion, dtSec: number): { done: boolean; linearStepM: number } {
-    // Angular speed so that character's linear speed along the arc equals `speedMps`.
-    const orbitAngularSpeed = this.config.speedMps / Math.max(1e-3, motion.radius);
-    const remaining = Math.abs(motion.totalSweepRad) - motion.sweptRad;
-    const step = Math.min(orbitAngularSpeed * dtSec, Math.max(0, remaining));
-    motion.sweptRad += step;
+    motion.elapsedSec += dtSec;
+    const rawProgress = motion.durationSec > 0 ? Math.min(1, motion.elapsedSec / motion.durationSec) : 1;
+    const easedProgress = applyEasing(rawProgress, this.config.easing);
 
+    motion.sweptRad = Math.abs(motion.totalSweepRad) * easedProgress;
     const direction = Math.sign(motion.totalSweepRad) || 1;
     const currentAngle = motion.startAngle + direction * motion.sweptRad;
+
+    const prevX = this.currentX;
+    const prevZ = this.currentZ;
+
     this.currentX = motion.center.x + motion.radius * Math.cos(currentAngle);
     this.currentZ = motion.center.z + motion.radius * Math.sin(currentAngle);
-
-    const linearStepM = step * motion.radius;
 
     if (motion.keepFacingTangent) {
       this.currentFacing = this.tangentFacingAt(currentAngle, direction);
     } else if (motion.targetFacing !== undefined) {
-      // Interpolate facing linearly across the sweep so it lands on targetFacing at arrival.
-      const progress = Math.min(1, motion.sweptRad / Math.max(1e-9, Math.abs(motion.totalSweepRad)));
       const totalDelta = shortestArc(motion.startFacing, motion.targetFacing);
-      this.currentFacing = normalizeAngle(motion.startFacing + totalDelta * progress);
+      this.currentFacing = normalizeAngle(motion.startFacing + totalDelta * easedProgress);
     }
     // else: facing held at motion.startFacing (no-op, current already matches)
 
-    return { done: motion.sweptRad >= Math.abs(motion.totalSweepRad) - 1e-9, linearStepM };
+    const linearStepM = Math.sqrt((this.currentX - prevX) ** 2 + (this.currentZ - prevZ) ** 2);
+    return { done: rawProgress >= 1, linearStepM };
   }
 
   /**
