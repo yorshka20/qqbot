@@ -3,6 +3,7 @@ import { AnimationCompiler } from './compiler/AnimationCompiler';
 import { isEmotionChannel } from './compiler/emotion-channels';
 import type { AmbientAudioLayer } from './compiler/layers/AmbientAudioLayer';
 import { IdleMotionLayer } from './compiler/layers/IdleMotionLayer';
+import type { PersonaPostureBias } from './compiler/layers/PersonaPostureLayer';
 import { WalkingLayer } from './compiler/layers/WalkingLayer';
 import type { ActionSummary, StateNode, StateNodeSource } from './compiler/types';
 import { mergeAvatarConfig } from './config';
@@ -698,6 +699,17 @@ export class AvatarService {
     // importing the concrete class (prevents potential circular imports).
     const gazeCapable = layer as { setGazeTarget?: (t: GazeTarget | null) => void } | undefined;
     gazeCapable?.setGazeTarget?.(target);
+  }
+
+  /**
+   * Apply a partial posture-bias to the persona-posture layer.
+   * All fields are optional; passing `{}` is a valid no-op.
+   * Safe to call before the compiler is initialized.
+   */
+  setPersonaPostureBias(bias: PersonaPostureBias): void {
+    const layer = this.compiler?.getLayer('persona-posture');
+    const postureCapable = layer as { setBias?: (bias: PersonaPostureBias) => void } | undefined;
+    postureCapable?.setBias?.(bias);
   }
 
   /**

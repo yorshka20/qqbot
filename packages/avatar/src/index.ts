@@ -9,6 +9,7 @@ export {
   getChannelGroup,
 } from './channels/groups';
 export type { ResolveActionOptions } from './compiler/action-map';
+export type { PersonaPostureBias } from './compiler/layers/PersonaPostureLayer';
 export type { ActionSummary, StateNodeSource } from './compiler/types';
 export { mergeAvatarConfig } from './config';
 export {
