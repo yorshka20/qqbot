@@ -126,7 +126,10 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
   }
 
   /**
-   * Map ChatMessage[] to DeepSeek/OpenAI API format (supports tool role and assistant tool_calls)
+   * Map ChatMessage[] to DeepSeek/OpenAI API format (supports tool role and assistant tool_calls).
+   * For DeepSeek thinking models, the assistant's `reasoning_content` from the prior turn MUST be
+   * echoed back on the same assistant message, otherwise the API rejects the request with
+   * "The `reasoning_content` in the thinking mode must be passed back to the API.".
    */
   private mapMessagesToApi(messages: ChatMessage[]): Array<Record<string, unknown>> {
     return messages.map((m) => {
@@ -138,7 +141,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
         };
       }
       if (m.role === 'assistant' && m.tool_calls?.length) {
-        return {
+        const out: Record<string, unknown> = {
           role: 'assistant',
           content: m.content ?? '',
           tool_calls: m.tool_calls.map((tc) => ({
@@ -147,6 +150,20 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
             function: { name: tc.name, arguments: tc.arguments },
           })),
         };
+        if (m.reasoning_content) {
+          out.reasoning_content = m.reasoning_content;
+        }
+        return out;
+      }
+      if (m.role === 'assistant') {
+        const out: Record<string, unknown> = {
+          role: 'assistant',
+          content: contentToPlainString(m.content),
+        };
+        if (m.reasoning_content) {
+          out.reasoning_content = m.reasoning_content;
+        }
+        return out;
       }
       return {
         role: m.role,
@@ -234,6 +251,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
         choices: Array<{
           message: {
             content?: string;
+            reasoning_content?: string;
             tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }>;
           };
         }>;
@@ -243,6 +261,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
 
       const msg = data.choices[0]?.message;
       const text = msg?.content ?? '';
+      const reasoningContent = msg?.reasoning_content || undefined;
       const usage = data.usage
         ? {
             promptTokens: data.usage.prompt_tokens,
@@ -254,7 +273,8 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
       const result: AIGenerateResponse = {
         text,
         usage,
-        metadata: { model: data.model },
+        reasoningContent,
+        metadata: { model: data.model, reasoningContent },
       };
 
       const toolCalls = msg?.tool_calls;

@@ -677,12 +677,17 @@ export class LLMService {
           }
         }
 
-        // Append single assistant message with all tool_calls, then all tool result messages
-        currentMessages.push({
+        // Append single assistant message with all tool_calls, then all tool result messages.
+        // Preserve reasoning_content for thinking models (required by DeepSeek; ignored by others).
+        const assistantMsg: ChatMessage = {
           role: 'assistant',
           content: '',
           tool_calls: assistantToolCalls,
-        });
+        };
+        if (response.reasoningContent) {
+          assistantMsg.reasoning_content = response.reasoningContent;
+        }
+        currentMessages.push(assistantMsg);
         for (const msg of toolMessages) {
           currentMessages.push(msg);
         }

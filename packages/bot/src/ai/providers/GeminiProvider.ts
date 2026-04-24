@@ -271,9 +271,16 @@ export class GeminiProvider
    * - Assistant messages (no tool_calls) → {role:'model', parts:[{text}]}
    * - Assistant messages (with tool_calls) → {role:'model', parts:[{functionCall:{name,args}}]}
    * - Tool messages → {role:'user', parts:[{functionResponse:{name,response}}]}
+   *
+   * Also returns `hasUnsignedToolCall`: true when at least one assistant tool_call in the history
+   * lacks a `thought_signature`. This happens when a prior turn was handled by another provider
+   * (e.g. OpenAI/DeepSeek) and the conversation is now falling back to Gemini. Gemini's thinking
+   * models reject such requests with 400 INVALID_ARGUMENT, so the caller must disable thinking
+   * (thinkingBudget=0) for this request.
    */
   private static mapChatMessagesToGeminiContents(messages: ChatMessage[]): {
     systemInstruction?: string;
+    hasUnsignedToolCall: boolean;
     contents: Array<{
       role: string;
       parts: Array<{
@@ -313,6 +320,8 @@ export class GeminiProvider
       }>;
     }> = [];
 
+    let hasUnsignedToolCall = false;
+
     for (const msg of messages) {
       if (msg.role === 'system') {
         continue; // handled as systemInstruction
@@ -346,6 +355,9 @@ export class GeminiProvider
             // Echo back thoughtSignature for Gemini thinking models.
             if (tc.thought_signature) {
               part.thoughtSignature = tc.thought_signature;
+            } else {
+              // Tool call was produced by a non-Gemini provider during fallback; no signature available.
+              hasUnsignedToolCall = true;
             }
             parts.push(part);
           }
@@ -401,7 +413,7 @@ export class GeminiProvider
       }
     }
 
-    return { systemInstruction, contents };
+    return { systemInstruction, contents, hasUnsignedToolCall };
   }
 
   /**
@@ -418,6 +430,7 @@ export class GeminiProvider
       tools?: ToolDefinition[];
       systemInstruction?: string;
       paidModel?: string;
+      disableThinking?: boolean;
     },
   ): Promise<{
     text: string;
@@ -442,6 +455,7 @@ export class GeminiProvider
       tools?: ToolDefinition[];
       systemInstruction?: string;
       paidModel?: string;
+      disableThinking?: boolean;
     },
   ): Promise<{
     text: string;
@@ -458,6 +472,7 @@ export class GeminiProvider
       tools?: ToolDefinition[];
       systemInstruction?: string;
       paidModel?: string;
+      disableThinking?: boolean;
     },
   ): Promise<{
     text: string;
@@ -474,6 +489,12 @@ export class GeminiProvider
     }
     if (options?.systemInstruction) {
       config.systemInstruction = options.systemInstruction;
+    }
+    if (options?.disableThinking) {
+      // Gemini thinking models require thought_signature on every functionCall part echoed from
+      // prior turns. When history contains tool_calls from another provider (no signature), the
+      // request would fail with 400 INVALID_ARGUMENT. Disable thinking to avoid the requirement.
+      config.thinkingConfig = { thinkingBudget: 0 };
     }
 
     const response = await this.withPaidFallback((isPaidFallback) =>
@@ -605,11 +626,19 @@ export class GeminiProvider
     if (options?.messages?.length) {
       // Multi-turn path: map ChatMessage[] to Gemini Content[] format.
       // This correctly handles tool use messages (functionCall / functionResponse parts).
-      const { systemInstruction, contents } = GeminiProvider.mapChatMessagesToGeminiContents(options.messages);
+      const { systemInstruction, contents, hasUnsignedToolCall } = GeminiProvider.mapChatMessagesToGeminiContents(
+        options.messages,
+      );
 
       // Gemini requires at least one non-empty content entry.
       if (contents.length === 0) {
         contents.push({ role: 'user', parts: [{ text: prompt }] });
+      }
+
+      if (hasUnsignedToolCall) {
+        logger.warn(
+          '[GeminiProvider] History contains tool_calls without thought_signature (from another provider); disabling thinking for this request.',
+        );
       }
 
       const result = await this.generateContentText(model, contents, {
@@ -618,6 +647,7 @@ export class GeminiProvider
         tools: options.tools,
         systemInstruction: systemInstruction ?? options.systemPrompt,
         paidModel,
+        disableThinking: hasUnsignedToolCall,
       });
       return {
         text: result.text,

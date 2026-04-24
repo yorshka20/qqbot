@@ -75,6 +75,14 @@ export interface ChatMessage {
   tool_call_id?: string;
   /** When role is 'assistant' and LLM returned tool_calls (e.g. OpenAI). */
   tool_calls?: ChatMessageToolCall[];
+  /**
+   * When role is 'assistant' and the provider uses a thinking/reasoning model (e.g. DeepSeek-Reasoner,
+   * deepseek-v4 thinking, Doubao, Minimax), the model's returned `reasoning_content` MUST be echoed
+   * back on the assistant message in the next API call for that provider. Otherwise DeepSeek returns
+   * "The `reasoning_content` in the thinking mode must be passed back to the API." Other providers
+   * ignore this field.
+   */
+  reasoning_content?: string;
 }
 
 /**
@@ -167,6 +175,12 @@ export interface AIGenerateResponse {
    * which provider was used even after transparent fallback.
    */
   resolvedProviderName?: string;
+  /**
+   * Raw reasoning_content returned by thinking/reasoning models (DeepSeek v4 thinking, Doubao, Minimax, etc.).
+   * Must be echoed back on the assistant message in subsequent tool-use rounds for DeepSeek, or the API
+   * will reject the request with "reasoning_content must be passed back". Other providers ignore it.
+   */
+  reasoningContent?: string;
 }
 
 /**
