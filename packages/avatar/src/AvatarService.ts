@@ -276,16 +276,22 @@ export class AvatarService {
     const idleActionName = this.config.compiler.idle?.loopClipActionName;
     if (idleActionName) {
       const idleLayer = this.compiler.getLayer('idle-motion');
-      const clip = this.compiler.getClipByActionName(idleActionName);
-      if (idleLayer instanceof IdleMotionLayer && clip) {
-        idleLayer.setLoopClip(clip);
+      if (!idleLayer) {
         logger.info(
-          `[AvatarService] IdleMotionLayer loop mode enabled with clip "${idleActionName}" (${clip.duration.toFixed(2)}s)`,
+          `[AvatarService] IdleMotionLayer not registered (compiler.debugQuiet=true?); idle clip "${idleActionName}" skipped`,
         );
       } else {
-        logger.warn(
-          `[AvatarService] idle.loopClipActionName="${idleActionName}" did not resolve to a clip; idle layer stays in gap mode`,
-        );
+        const clip = this.compiler.getClipByActionName(idleActionName);
+        if (idleLayer instanceof IdleMotionLayer && clip) {
+          idleLayer.setLoopClip(clip);
+          logger.info(
+            `[AvatarService] IdleMotionLayer loop mode enabled with clip "${idleActionName}" (${clip.duration.toFixed(2)}s)`,
+          );
+        } else {
+          logger.warn(
+            `[AvatarService] idle.loopClipActionName="${idleActionName}" did not resolve to a clip; idle layer stays in gap mode`,
+          );
+        }
       }
     }
 

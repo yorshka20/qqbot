@@ -172,7 +172,12 @@ export class AnimationCompiler extends EventEmitter {
       new BreathLayer(),
       new AutoBlinkLayer(),
       eyeGaze,
-      new IdleMotionLayer(),
+    ];
+    // IdleMotionLayer loops the resting-pose clip (e.g. peace_sign) and drives
+    // hips/spine/chest channels continuously. Under debugQuiet we skip it so
+    // the skeleton is still and only deliberate motion is observable.
+    if (!debugQuiet) stack.push(new IdleMotionLayer());
+    stack.push(
       new WalkingLayer(this.config.walk),
       // PersonaPostureLayer sits immediately after WalkingLayer: both are motion
       // layers that write body/spine/head channels, so keeping them adjacent makes
@@ -180,7 +185,7 @@ export class AnimationCompiler extends EventEmitter {
       // contribute their independent noise on top of the motion group.
       personaPosture,
       new AmbientAudioLayer(),
-    ];
+    );
     if (!debugQuiet) {
       stack.push(new PerlinNoiseLayer({ weight: 0.2 }));
     }
