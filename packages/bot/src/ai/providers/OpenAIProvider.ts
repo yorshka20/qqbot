@@ -497,8 +497,7 @@ export class OpenAIProvider
       const timestamp = Date.now();
       const filename = `${timestamp}_${originalFilename}`;
       const filepath = join(this.outputPath, filename);
-      const imageBuffer: Buffer =
-        imageData instanceof Buffer ? imageData : Buffer.from(imageData as string, 'base64');
+      const imageBuffer: Buffer = imageData instanceof Buffer ? imageData : Buffer.from(imageData as string, 'base64');
       await writeFile(filepath, imageBuffer);
       logger.info(`[OpenAIProvider] Saved image to: ${filepath} (${imageBuffer.length} bytes)`);
       return `openai/${filename}`;
@@ -523,10 +522,7 @@ export class OpenAIProvider
   /**
    * Map a saved image (or fallback base64) into ProviderImageGenerationResponse shape.
    */
-  private async buildImageEntry(
-    base64: string,
-    suffix: string,
-  ): Promise<{ relativePath?: string; base64?: string }> {
+  private async buildImageEntry(base64: string, suffix: string): Promise<{ relativePath?: string; base64?: string }> {
     const ext = (this.config.image?.outputFormat ?? 'png').toLowerCase();
     const buffer = Buffer.from(base64, 'base64');
     const relativePath = await this.saveImageToFile(buffer, `${suffix}.${ext}`);
@@ -547,9 +543,7 @@ export class OpenAIProvider
     const numImages = options?.numImages && options.numImages > 0 ? Math.min(options.numImages, 10) : 1;
 
     try {
-      logger.info(
-        `[OpenAIProvider] generateImage | model=${model} size=${size} quality=${quality} n=${numImages}`,
-      );
+      logger.info(`[OpenAIProvider] generateImage | model=${model} size=${size} quality=${quality} n=${numImages}`);
       const response = await this.client.images.generate({
         model,
         prompt,
@@ -635,7 +629,7 @@ export class OpenAIProvider
         background: imageCfg?.background ?? 'auto',
         output_format: imageCfg?.outputFormat ?? 'png',
         output_compression: imageCfg?.outputCompression,
-        input_fidelity: imageCfg?.inputFidelity ?? 'low',
+        // input_fidelity: imageCfg?.inputFidelity ?? 'low',
       });
 
       const images: Array<{ relativePath?: string; base64?: string }> = [];
