@@ -189,4 +189,37 @@ describe('AvatarService.enqueueTagAnimation — persona modulation', () => {
     const node = (spy.mock.calls[0][0] as Array<{ variantWeights?: readonly number[] }>)[0];
     expect(node.variantWeights).toBe(weights);
   });
+
+  // ── Regression: autonomous path must also receive persona modulation ───────
+  test('enqueueAutonomous — speedScale=2 halves duration (same pipeline as LLM)', () => {
+    const compiler = (s as any).compiler;
+    compiler.setTunableParam('compiler:jitter', 'durationJitter', 0);
+    compiler.setTunableParam('compiler:jitter', 'intensityJitter', 0);
+    withProvider(s, {
+      amplitude: { intensityScale: 1.0 },
+      timing: { speedScale: 2.0 },
+    });
+    const base = compiler.getActionDuration('smile');
+    const spy = spyOn(compiler, 'enqueue');
+    s.enqueueAutonomous('smile', 0.5);
+    const node = (spy.mock.calls[0][0] as Array<{ duration: number; source: string }>)[0];
+    // Duration halved by speedScale=2, same math as enqueueTagAnimation.
+    expect(node.duration).toBe(Math.round(base / 2));
+    // Source marker confirms the node is autonomous, not llm.
+    expect(node.source).toBe('autonomous');
+  });
+
+  test('enqueueAutonomous — intensityScale=0.5 halves intensity (same pipeline as LLM)', () => {
+    const compiler = (s as any).compiler;
+    compiler.setTunableParam('compiler:jitter', 'durationJitter', 0);
+    compiler.setTunableParam('compiler:jitter', 'intensityJitter', 0);
+    withProvider(s, {
+      amplitude: { intensityScale: 0.5 },
+      timing: { speedScale: 1.0 },
+    });
+    const spy = spyOn(compiler, 'enqueue');
+    s.enqueueAutonomous('smile', 0.8);
+    const node = (spy.mock.calls[0][0] as Array<{ intensity: number }>)[0];
+    expect(node.intensity).toBeCloseTo(0.4, 5);
+  });
 });

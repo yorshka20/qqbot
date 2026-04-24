@@ -4,7 +4,7 @@ import { isEmotionChannel } from './compiler/emotion-channels';
 import type { AmbientAudioLayer } from './compiler/layers/AmbientAudioLayer';
 import { IdleMotionLayer } from './compiler/layers/IdleMotionLayer';
 import { WalkingLayer } from './compiler/layers/WalkingLayer';
-import type { ActionSummary, StateNode } from './compiler/types';
+import type { ActionSummary, StateNode, StateNodeSource } from './compiler/types';
 import { mergeAvatarConfig } from './config';
 import { VTSDriver } from './drivers/VTSDriver';
 import {
@@ -504,12 +504,72 @@ export class AvatarService {
     // When durationOverrideMs is provided (e.g. from a [H:...] hold tag),
     // it replaces the action-map's registered duration as the jitter base.
     const baseDuration = tag.durationOverrideMs ?? registered ?? 1500;
+    this._enqueueModulated(tag.action, tag.emotion, tag.intensity, baseDuration, 'llm', {
+      durationOverrideMs: tag.durationOverrideMs,
+      registered,
+    });
+  }
+
+  /**
+   * Queue a programmatic action animation onto the compiler, bypassing LLM
+   * tag parsing. The call still travels through the full modulation + jitter
+   * pipeline so persona-driven scaling applies exactly as it does for
+   * `enqueueTagAnimation`. The resulting `StateNode` carries `source:
+   * 'autonomous'` so HUD traces and logs can distinguish the two paths.
+   *
+   * @param actionName - Key in the action-map (e.g. 'smile', 'nod').
+   * @param intensity  - Base intensity in [0, 1] (clamped before modulation).
+   * @param opts       - Optional overrides; `durationOverrideMs` replaces the
+   *                     action-map default as the jitter base.
+   */
+  enqueueAutonomous(
+    actionName: string,
+    intensity: number,
+    opts?: { emotion?: string; durationOverrideMs?: number },
+  ): void {
+    if (!this.compiler) {
+      logger.warn(`[AvatarService] enqueueAutonomous dropped (no compiler) | action=${actionName}`);
+      return;
+    }
+    const registered = this.compiler.getActionDuration(actionName);
+    const baseDuration = opts?.durationOverrideMs ?? registered ?? 1500;
+    const emotion = opts?.emotion ?? 'neutral';
+    this._enqueueModulated(actionName, emotion, intensity, baseDuration, 'autonomous', {
+      durationOverrideMs: opts?.durationOverrideMs,
+      registered,
+    });
+  }
+
+  /**
+   * Shared modulation + jitter pipeline called by both `enqueueTagAnimation`
+   * (source='llm') and `enqueueAutonomous` (source='autonomous'). Keeps the
+   * two public APIs in sync: any change to modulation math here applies to
+   * both paths automatically.
+   *
+   * @param actionName    - Action key in the action-map.
+   * @param emotion       - Emotion label forwarded to the StateNode.
+   * @param baseIntensity - Pre-modulation intensity (clamped by caller or here).
+   * @param baseDuration  - Pre-modulation duration in ms.
+   * @param source        - Pipeline origin marker written onto the StateNode.
+   * @param meta          - Extra fields only used for the log line.
+   */
+  private _enqueueModulated(
+    actionName: string,
+    emotion: string,
+    baseIntensity: number,
+    baseDuration: number,
+    source: StateNodeSource,
+    meta: { durationOverrideMs?: number; registered: number | undefined },
+  ): void {
+    // Compiler null-guard is at the call site (enqueueTagAnimation /
+    // enqueueAutonomous) — we assert non-null here for a clean cast.
+    const compiler = this.compiler!;
 
     // ─── Persona modulation (deterministic) ─────────────────────────────
-    const category = this.compiler.getActionCategory(tag.action) as ActionCategory | undefined;
+    const category = compiler.getActionCategory(actionName) as ActionCategory | undefined;
     const modulation =
       this.modulationProvider?.getModulation({
-        actionName: tag.action,
+        actionName,
         category,
       }) ?? IDENTITY_MODULATION;
 
@@ -523,12 +583,12 @@ export class AvatarService {
 
     const intensityScale = sanitizeScale(modulation.amplitude.intensityScale);
     const categoryScale = category ? sanitizeScale(modulation.amplitude.perCategoryScale?.[category], 1) : 1;
-    const modulatedIntensity = tag.intensity * intensityScale * categoryScale;
+    const modulatedIntensity = baseIntensity * intensityScale * categoryScale;
 
     // ─── Random jitter (HUD-tunable) ────────────────────────────────────
     // Jitter magnitudes can be damped by `timing.jitterScale` (e.g. a very
     // controlled persona wants smaller envelope randomisation).
-    const { duration: dJBase, intensity: iJBase, intensityFloor } = this.compiler.getEffectiveJitter();
+    const { duration: dJBase, intensity: iJBase, intensityFloor } = compiler.getEffectiveJitter();
     const jitterScale = sanitizeScale(modulation.timing.jitterScale, 1);
     const dJ = dJBase * jitterScale;
     const iJ = iJBase * jitterScale;
@@ -536,24 +596,25 @@ export class AvatarService {
     const intensity = Math.max(intensityFloor, Math.min(1, modulatedIntensity * (1 + (Math.random() * 2 - 1) * iJ)));
 
     // ─── Variant weights (persona action preference) ────────────────────
-    const variantWeights = modulation.actionPref?.variantWeights?.[tag.action];
+    const variantWeights = modulation.actionPref?.variantWeights?.[actionName];
 
     const modulatedLog =
       modulation === IDENTITY_MODULATION
         ? ''
         : ` mod={iScale=${intensityScale.toFixed(2)},catScale=${categoryScale.toFixed(2)},speed=${speedScale.toFixed(2)},dBias=${durationBias}}`;
     logger.info(
-      `[AvatarService] enqueueTagAnimation | action=${tag.action} emotion=${tag.emotion} intensity=${intensity.toFixed(2)} (base=${tag.intensity.toFixed(2)}) duration=${duration}ms (base=${baseDuration}ms) registered=${registered != null} override=${tag.durationOverrideMs ?? 'none'}${modulatedLog}`,
+      `[AvatarService] enqueueModulated | source=${source} action=${actionName} emotion=${emotion} intensity=${intensity.toFixed(2)} (base=${baseIntensity.toFixed(2)}) duration=${duration}ms (base=${baseDuration}ms) registered=${meta.registered != null} override=${meta.durationOverrideMs ?? 'none'}${modulatedLog}`,
     );
-    this.compiler.enqueue([
+    compiler.enqueue([
       {
-        action: tag.action,
-        emotion: tag.emotion,
+        action: actionName,
+        emotion,
         intensity,
         duration,
         easing: 'easeInOutCubic',
         timestamp: Date.now(),
         variantWeights,
+        source,
       },
     ]);
   }
@@ -571,28 +632,59 @@ export class AvatarService {
       logger.warn(`[AvatarService] enqueueEmotion dropped (no compiler) | emotion=${name}`);
       return;
     }
+    this._applyEmotionBaseline(name, intensity, 'llm');
+  }
+
+  /**
+   * Programmatic variant of `enqueueEmotion` — same semantics (baseline seed
+   * on emotion-category channels), but the call is not produced by an LLM
+   * reply. The `source` label in the log line reflects the autonomous origin
+   * so debug traces distinguish both paths.
+   *
+   * @param name      - Emotion / action name to look up in the action-map.
+   * @param intensity - Desired intensity in [0, 1] (clamped internally).
+   */
+  enqueueAutonomousEmotion(name: string, intensity: number): void {
+    if (!this.compiler) {
+      logger.warn(`[AvatarService] enqueueAutonomousEmotion dropped (no compiler) | emotion=${name}`);
+      return;
+    }
+    this._applyEmotionBaseline(name, intensity, 'autonomous');
+  }
+
+  /**
+   * Shared core for `enqueueEmotion` and `enqueueAutonomousEmotion`. Resolves
+   * the action-map entry, filters to facial/emotion channels, and seeds the
+   * compiler baseline. The `source` label is used only for log output — it
+   * does not affect the baseline values written to the compiler.
+   */
+  private _applyEmotionBaseline(name: string, intensity: number, source: StateNodeSource): void {
+    // Compiler non-null guaranteed by both public call sites.
+    const compiler = this.compiler!;
     const clamped = Math.max(0, Math.min(1, intensity));
-    const resolved = this.compiler.resolveAction(name, name, clamped);
+    const resolved = compiler.resolveAction(name, name, clamped);
     if (!resolved) {
-      logger.warn(`[AvatarService] enqueueEmotion unknown emotion | name=${name}`);
+      logger.warn(`[AvatarService] enqueueEmotion unknown emotion | source=${source} name=${name}`);
       return;
     }
     if (resolved.kind !== 'envelope') {
-      logger.warn(`[AvatarService] enqueueEmotion non-envelope action | name=${name} kind=${resolved.kind}`);
+      logger.warn(
+        `[AvatarService] enqueueEmotion non-envelope action | source=${source} name=${name} kind=${resolved.kind}`,
+      );
       return;
     }
     const filtered = resolved.targets.filter((t) => isEmotionChannel(t.channel));
     if (filtered.length === 0) {
-      logger.warn(`[AvatarService] enqueueEmotion produced no emotion channels | name=${name}`);
+      logger.warn(`[AvatarService] enqueueEmotion produced no emotion channels | source=${source} name=${name}`);
       return;
     }
     // Seed baseline directly — skips ADSR attack but the baseline decay
     // curve still produces a soft arrival. Values are already
     // intensity-scaled by resolveAction.
     const entries = filtered.map((t) => ({ channel: t.channel, value: t.targetValue }));
-    this.compiler.seedChannelBaseline(entries);
+    compiler.seedChannelBaseline(entries);
     logger.info(
-      `[AvatarService] enqueueEmotion | name=${name} intensity=${clamped.toFixed(2)} channels=${filtered.length}`,
+      `[AvatarService] enqueueEmotion | source=${source} name=${name} intensity=${clamped.toFixed(2)} channels=${filtered.length}`,
     );
   }
 

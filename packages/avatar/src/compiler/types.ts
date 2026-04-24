@@ -20,6 +20,17 @@ export type EasingType = 'linear' | 'easeInOutCubic' | 'easeOutElastic' | 'easeI
 export type AnimationPhase = 'attack' | 'sustain' | 'release';
 
 /**
+ * Identifies which pipeline path produced an action node.
+ * - 'llm': authored by an LLM reply tag (e.g. parsed from a [A:...] tag)
+ * - 'autonomous': produced by a direct programmatic API call, not parsed from
+ *   an LLM reply (e.g. `enqueueAutonomous` called by the mind system)
+ *
+ * Optional on StateNode for backward compatibility with state-machine
+ * transition nodes that predate this field.
+ */
+export type StateNodeSource = 'llm' | 'autonomous';
+
+/**
  * A single keyframe-like node that defines a target state
  * for the avatar at a given timestamp.
  */
@@ -45,6 +56,12 @@ export interface StateNode {
    * See `ActionMap.resolveAction` + `ResolveActionOptions`.
    */
   variantWeights?: readonly number[];
+  /**
+   * Pipeline source that produced this node. Absent on legacy / state-machine
+   * transition nodes. Used in HUD debug traces and log lines to distinguish
+   * LLM-driven and programmatic animation calls.
+   */
+  source?: StateNodeSource;
 }
 
 /**

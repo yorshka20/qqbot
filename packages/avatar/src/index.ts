@@ -9,7 +9,7 @@ export {
   getChannelGroup,
 } from './channels/groups';
 export type { ResolveActionOptions } from './compiler/action-map';
-export type { ActionSummary } from './compiler/types';
+export type { ActionSummary, StateNodeSource } from './compiler/types';
 export { mergeAvatarConfig } from './config';
 export {
   type ActionCategory,
