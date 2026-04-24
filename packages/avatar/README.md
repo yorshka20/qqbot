@@ -119,7 +119,9 @@ params.
 flourish, not a settled pose.
 
 See `wave`, `nod`, and `point_forward` in
-`packages/avatar/assets/default-action-map.json` for live examples.
+`packages/avatar/assets/core-action-map.json` for live examples. The default
+action map also merges a generated VRM index; see
+[Default package action map](#default-package-action-map) under **Action Map Format** below.
 
 ### Variants
 
@@ -255,6 +257,27 @@ configured via `compiler.idle.loopClipActionName` (see "VRM Idle Loop" section).
 
 ## Action Map Format
 
+### Default package action map
+
+When `avatar.actionMap.path` is **not** set, `ActionMap` loads two JSON files from `packages/avatar/assets/` and merges them:
+
+| File | Role |
+|------|------|
+| `vrm-extend-action-map.json` | **Generated** — do not hand-edit. One `kind: "clip"` entry per file under `assets/clips/vrm/*.json`, except `test-fixture.json`. Action names are `vrm_<filename-slug>` (non-alphanumeric characters in the base name are folded to `_`, e.g. `VRMA_01.json` → `vrm_VRMA_01`, `Take 001.json` → `vrm_Take_001`). Durations are taken from each clip’s `duration` field. |
+| `core-action-map.json` | **Hand-authored** — envelope actions, Cubism-only gestures, curated VRM clip names (`greet`, `formal_bow`, …), and any entry that should override a generated one. |
+
+Merge order is **extend first, then core** (`mergeActionMapPayloads`): **core wins on the same key**, so you can override or mask a generated action by redefining it in `core-action-map.json`.
+
+Clip paths in both files use the same base directory: the folder that contains the JSON (typically `assets/`), e.g. `"clip": "clips/vrm/VRMA_01.json"`.
+
+**Regenerate** the extend file after adding, removing, or renaming clip JSONs under `assets/clips/vrm/`:
+
+```bash
+cd packages/avatar && bun run gen:vrm-extend
+```
+
+`default-action-map.json` was **removed**; the package default is this two-file merge. If you set `avatar.actionMap.path` in config, that path points to a **single** map file: it is loaded **as-is** with no merge (used for tests or a fully custom map).
+
 Action maps are plain JSON files with the following shape per entry:
 
 ```jsonc
@@ -319,8 +342,10 @@ animation driven by a JSON file).
 }
 ```
 
-The `clip` field is a path relative to the action-map JSON file. At startup
-`ActionMap.preloadClips()` loads and caches all clip files referenced by
+The `clip` field is a path relative to the **assets directory** that holds the
+action-map JSON (for the default merge, that is the directory of
+`core-action-map.json` / `vrm-extend-action-map.json`, i.e. `packages/avatar/assets/`). At
+startup `ActionMap.preloadClips()` loads and caches all clip files referenced by
 `kind: 'clip'` entries.
 
 ### Clip schema

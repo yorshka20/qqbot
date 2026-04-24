@@ -5,7 +5,8 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "gen:vrm-extend": "bun run scripts/generate-vrm-extend-action-map.ts"
   },
   "dependencies": {
     "audio-decode": "^3.9.3",

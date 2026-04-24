@@ -223,7 +223,7 @@ export type ResolvedAction =
 
 /**
  * Envelope-path action map entry — the legacy ADSR + ParamTarget format.
- * This is what every current `default-action-map.json` entry uses.
+ * This is what every current `core-action-map.json` entry uses.
  */
 export interface ActionMapEntryEnvelope {
   /** Discriminator. Absent defaults to 'envelope' for back-compat with existing action-map.json files. */
@@ -404,7 +404,7 @@ export interface CompilerConfig {
     speedMps?: number;
     arrivalThresholdM?: number;
     /**
-     * Action name (key in default-action-map.json) whose clip should loop on
+     * Action name (key in the merged action map) whose clip should loop on
      * WalkingLayer bone channels while a walk is pending. Omit / unresolved →
      * falls back to pure slide behavior (still emits vrm.root.* but no legs).
      */

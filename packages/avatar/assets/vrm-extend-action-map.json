@@ -1,0 +1,1074 @@
+{
+  "vrm_001_motion_pose": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: 001_motion_pose.json",
+    "clip": "clips/vrm/001_motion_pose.json",
+    "defaultDuration": 19967
+  },
+  "vrm_002_dogeza": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: 002_dogeza.json",
+    "clip": "clips/vrm/002_dogeza.json",
+    "defaultDuration": 7300
+  },
+  "vrm_003_humidai": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: 003_humidai.json",
+    "clip": "clips/vrm/003_humidai.json",
+    "defaultDuration": 2267
+  },
+  "vrm_004_hello_1": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: 004_hello_1.json",
+    "clip": "clips/vrm/004_hello_1.json",
+    "defaultDuration": 15767
+  },
+  "vrm_005_smartphone": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: 005_smartphone.json",
+    "clip": "clips/vrm/005_smartphone.json",
+    "defaultDuration": 10367
+  },
+  "vrm_006_drinkwater": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: 006_drinkwater.json",
+    "clip": "clips/vrm/006_drinkwater.json",
+    "defaultDuration": 23667
+  },
+  "vrm_007_gekirei": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: 007_gekirei.json",
+    "clip": "clips/vrm/007_gekirei.json",
+    "defaultDuration": 21500
+  },
+  "vrm_008_gatan": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: 008_gatan.json",
+    "clip": "clips/vrm/008_gatan.json",
+    "defaultDuration": 11400
+  },
+  "vrm_change_bottoms_m": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: change_bottoms_m.json",
+    "clip": "clips/vrm/change_bottoms_m.json",
+    "defaultDuration": 4000
+  },
+  "vrm_change_bottoms_w": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: change_bottoms_w.json",
+    "clip": "clips/vrm/change_bottoms_w.json",
+    "defaultDuration": 4000
+  },
+  "vrm_change_shoes_m": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: change_shoes_m.json",
+    "clip": "clips/vrm/change_shoes_m.json",
+    "defaultDuration": 4000
+  },
+  "vrm_change_shoes_w": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: change_shoes_w.json",
+    "clip": "clips/vrm/change_shoes_w.json",
+    "defaultDuration": 4000
+  },
+  "vrm_change_tops_m": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: change_tops_m.json",
+    "clip": "clips/vrm/change_tops_m.json",
+    "defaultDuration": 4000
+  },
+  "vrm_change_tops_w": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: change_tops_w.json",
+    "clip": "clips/vrm/change_tops_w.json",
+    "defaultDuration": 4000
+  },
+  "vrm_change_wait_m": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: change_wait_m.json",
+    "clip": "clips/vrm/change_wait_m.json",
+    "defaultDuration": 2000
+  },
+  "vrm_change_wait_w": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: change_wait_w.json",
+    "clip": "clips/vrm/change_wait_w.json",
+    "defaultDuration": 2000
+  },
+  "vrm_conduct_music": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: conduct_music.json",
+    "clip": "clips/vrm/conduct_music.json",
+    "defaultDuration": 2300
+  },
+  "vrm_damage_25": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: damage_25.json",
+    "clip": "clips/vrm/damage_25.json",
+    "defaultDuration": 1100
+  },
+  "vrm_DAMAGED00": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: DAMAGED00.json",
+    "clip": "clips/vrm/DAMAGED00.json",
+    "defaultDuration": 1167
+  },
+  "vrm_DAMAGED01": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: DAMAGED01.json",
+    "clip": "clips/vrm/DAMAGED01.json",
+    "defaultDuration": 3600
+  },
+  "vrm_determined": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: determined.json",
+    "clip": "clips/vrm/determined.json",
+    "defaultDuration": 1500
+  },
+  "vrm_elated": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: elated.json",
+    "clip": "clips/vrm/elated.json",
+    "defaultDuration": 2500
+  },
+  "vrm_embar_01": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: embar_01.json",
+    "clip": "clips/vrm/embar_01.json",
+    "defaultDuration": 4833
+  },
+  "vrm_emote_front_tuck_flip": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: emote_front_tuck_flip.json",
+    "clip": "clips/vrm/emote_front_tuck_flip.json",
+    "defaultDuration": 1500
+  },
+  "vrm_emote_hey": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: emote_hey.json",
+    "clip": "clips/vrm/emote_hey.json",
+    "defaultDuration": 1500
+  },
+  "vrm_Female_Standby10": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: Female_Standby10.json",
+    "clip": "clips/vrm/Female_Standby10.json",
+    "defaultDuration": 9400
+  },
+  "vrm_Female_Standby9": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: Female_Standby9.json",
+    "clip": "clips/vrm/Female_Standby9.json",
+    "defaultDuration": 8833
+  },
+  "vrm_finger_gun": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: finger_gun.json",
+    "clip": "clips/vrm/finger_gun.json",
+    "defaultDuration": 3367
+  },
+  "vrm_greet_00": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: greet_00.json",
+    "clip": "clips/vrm/greet_00.json",
+    "defaultDuration": 2067
+  },
+  "vrm_greet_02": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: greet_02.json",
+    "clip": "clips/vrm/greet_02.json",
+    "defaultDuration": 2333
+  },
+  "vrm_greet_03": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: greet_03.json",
+    "clip": "clips/vrm/greet_03.json",
+    "defaultDuration": 1500
+  },
+  "vrm_HANDUP00_R": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: HANDUP00_R.json",
+    "clip": "clips/vrm/HANDUP00_R.json",
+    "defaultDuration": 833
+  },
+  "vrm_home_idling_001_m": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: home_idling_001_m.json",
+    "clip": "clips/vrm/home_idling_001_m.json",
+    "defaultDuration": 6000
+  },
+  "vrm_home_idling_001_w": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: home_idling_001_w.json",
+    "clip": "clips/vrm/home_idling_001_w.json",
+    "defaultDuration": 6000
+  },
+  "vrm_home_intro_m": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: home_intro_m.json",
+    "clip": "clips/vrm/home_intro_m.json",
+    "defaultDuration": 3633
+  },
+  "vrm_home_intro_w": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: home_intro_w.json",
+    "clip": "clips/vrm/home_intro_w.json",
+    "defaultDuration": 3633
+  },
+  "vrm_home_tap_m": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: home_tap_m.json",
+    "clip": "clips/vrm/home_tap_m.json",
+    "defaultDuration": 4000
+  },
+  "vrm_home_tap_w": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: home_tap_w.json",
+    "clip": "clips/vrm/home_tap_w.json",
+    "defaultDuration": 4000
+  },
+  "vrm_Hub_Idle01": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: Hub_Idle01.json",
+    "clip": "clips/vrm/Hub_Idle01.json",
+    "defaultDuration": 14533
+  },
+  "vrm_Hub_Idle02": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: Hub_Idle02.json",
+    "clip": "clips/vrm/Hub_Idle02.json",
+    "defaultDuration": 20533
+  },
+  "vrm_Hub_Idle03": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: Hub_Idle03.json",
+    "clip": "clips/vrm/Hub_Idle03.json",
+    "defaultDuration": 12133
+  },
+  "vrm_Hub_Idle04": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: Hub_Idle04.json",
+    "clip": "clips/vrm/Hub_Idle04.json",
+    "defaultDuration": 13700
+  },
+  "vrm_Hub_Idle05": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: Hub_Idle05.json",
+    "clip": "clips/vrm/Hub_Idle05.json",
+    "defaultDuration": 21200
+  },
+  "vrm_Hub_laugh01": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: Hub_laugh01.json",
+    "clip": "clips/vrm/Hub_laugh01.json",
+    "defaultDuration": 7900
+  },
+  "vrm_idle_01": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: idle_01.json",
+    "clip": "clips/vrm/idle_01.json",
+    "defaultDuration": 2000
+  },
+  "vrm_idle_20": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: idle_20.json",
+    "clip": "clips/vrm/idle_20.json",
+    "defaultDuration": 1167
+  },
+  "vrm_jump_10": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: jump_10.json",
+    "clip": "clips/vrm/jump_10.json",
+    "defaultDuration": 1167
+  },
+  "vrm_jump_11": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: jump_11.json",
+    "clip": "clips/vrm/jump_11.json",
+    "defaultDuration": 1500
+  },
+  "vrm_JUMP00": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: JUMP00.json",
+    "clip": "clips/vrm/JUMP00.json",
+    "defaultDuration": 1867
+  },
+  "vrm_JUMP00B": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: JUMP00B.json",
+    "clip": "clips/vrm/JUMP00B.json",
+    "defaultDuration": 1867
+  },
+  "vrm_JUMP01": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: JUMP01.json",
+    "clip": "clips/vrm/JUMP01.json",
+    "defaultDuration": 2033
+  },
+  "vrm_JUMP01B": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: JUMP01B.json",
+    "clip": "clips/vrm/JUMP01B.json",
+    "defaultDuration": 2033
+  },
+  "vrm_kick_21": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: kick_21.json",
+    "clip": "clips/vrm/kick_21.json",
+    "defaultDuration": 1300
+  },
+  "vrm_kick_23": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: kick_23.json",
+    "clip": "clips/vrm/kick_23.json",
+    "defaultDuration": 967
+  },
+  "vrm_kick_25": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: kick_25.json",
+    "clip": "clips/vrm/kick_25.json",
+    "defaultDuration": 1167
+  },
+  "vrm_L_Hand_Gao": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: L_Hand_Gao.json",
+    "clip": "clips/vrm/L_Hand_Gao.json",
+    "defaultDuration": 67
+  },
+  "vrm_L_Hand_Good": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: L_Hand_Good.json",
+    "clip": "clips/vrm/L_Hand_Good.json",
+    "defaultDuration": 67
+  },
+  "vrm_L_Hand_Grip": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: L_Hand_Grip.json",
+    "clip": "clips/vrm/L_Hand_Grip.json",
+    "defaultDuration": 67
+  },
+  "vrm_L_Hand_Natural": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: L_Hand_Natural.json",
+    "clip": "clips/vrm/L_Hand_Natural.json",
+    "defaultDuration": 67
+  },
+  "vrm_L_Hand_Open_Index": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: L_Hand_Open_Index.json",
+    "clip": "clips/vrm/L_Hand_Open_Index.json",
+    "defaultDuration": 67
+  },
+  "vrm_L_Hand_Open_V": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: L_Hand_Open_V.json",
+    "clip": "clips/vrm/L_Hand_Open_V.json",
+    "defaultDuration": 67
+  },
+  "vrm_L_Hand_Open": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: L_Hand_Open.json",
+    "clip": "clips/vrm/L_Hand_Open.json",
+    "defaultDuration": 67
+  },
+  "vrm_lmao": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: lmao.json",
+    "clip": "clips/vrm/lmao.json",
+    "defaultDuration": 1300
+  },
+  "vrm_LOSE00": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: LOSE00.json",
+    "clip": "clips/vrm/LOSE00.json",
+    "defaultDuration": 3600
+  },
+  "vrm_pose_00": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: pose_00.json",
+    "clip": "clips/vrm/pose_00.json",
+    "defaultDuration": 4000
+  },
+  "vrm_pose_01": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: pose_01.json",
+    "clip": "clips/vrm/pose_01.json",
+    "defaultDuration": 4000
+  },
+  "vrm_punch_21": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: punch_21.json",
+    "clip": "clips/vrm/punch_21.json",
+    "defaultDuration": 667
+  },
+  "vrm_REFLESH00": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: REFLESH00.json",
+    "clip": "clips/vrm/REFLESH00.json",
+    "defaultDuration": 3900
+  },
+  "vrm_run_00": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: run_00.json",
+    "clip": "clips/vrm/run_00.json",
+    "defaultDuration": 833
+  },
+  "vrm_RUN00_F": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: RUN00_F.json",
+    "clip": "clips/vrm/RUN00_F.json",
+    "defaultDuration": 833
+  },
+  "vrm_RUN00_L": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: RUN00_L.json",
+    "clip": "clips/vrm/RUN00_L.json",
+    "defaultDuration": 833
+  },
+  "vrm_RUN00_R": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: RUN00_R.json",
+    "clip": "clips/vrm/RUN00_R.json",
+    "defaultDuration": 833
+  },
+  "vrm_salute_00": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: salute_00.json",
+    "clip": "clips/vrm/salute_00.json",
+    "defaultDuration": 4133
+  },
+  "vrm_shot_aori": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: shot_aori.json",
+    "clip": "clips/vrm/shot_aori.json",
+    "defaultDuration": 3000
+  },
+  "vrm_shot_face_hand": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: shot_face_hand.json",
+    "clip": "clips/vrm/shot_face_hand.json",
+    "defaultDuration": 3000
+  },
+  "vrm_shot_fight": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: shot_fight.json",
+    "clip": "clips/vrm/shot_fight.json",
+    "defaultDuration": 3000
+  },
+  "vrm_shot_hair_up": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: shot_hair_up.json",
+    "clip": "clips/vrm/shot_hair_up.json",
+    "defaultDuration": 3000
+  },
+  "vrm_shot_hizidon": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: shot_hizidon.json",
+    "clip": "clips/vrm/shot_hizidon.json",
+    "defaultDuration": 3000
+  },
+  "vrm_shot_left_hand": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: shot_left_hand.json",
+    "clip": "clips/vrm/shot_left_hand.json",
+    "defaultDuration": 3000
+  },
+  "vrm_shot_newyear_kirarajump_a": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: shot_newyear_kirarajump_a.json",
+    "clip": "clips/vrm/shot_newyear_kirarajump_a.json",
+    "defaultDuration": 3000
+  },
+  "vrm_shot_newyear_nezumi": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: shot_newyear_nezumi.json",
+    "clip": "clips/vrm/shot_newyear_nezumi.json",
+    "defaultDuration": 3000
+  },
+  "vrm_shot_nicely_stand": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: shot_nicely_stand.json",
+    "clip": "clips/vrm/shot_nicely_stand.json",
+    "defaultDuration": 3000
+  },
+  "vrm_shot_nose": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: shot_nose.json",
+    "clip": "clips/vrm/shot_nose.json",
+    "defaultDuration": 3000
+  },
+  "vrm_shot_question": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: shot_question.json",
+    "clip": "clips/vrm/shot_question.json",
+    "defaultDuration": 3000
+  },
+  "vrm_shot_salute": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: shot_salute.json",
+    "clip": "clips/vrm/shot_salute.json",
+    "defaultDuration": 3000
+  },
+  "vrm_shot_sitting": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: shot_sitting.json",
+    "clip": "clips/vrm/shot_sitting.json",
+    "defaultDuration": 3000
+  },
+  "vrm_shot_standingKnee": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: shot_standingKnee.json",
+    "clip": "clips/vrm/shot_standingKnee.json",
+    "defaultDuration": 3000
+  },
+  "vrm_SLIDE00": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: SLIDE00.json",
+    "clip": "clips/vrm/SLIDE00.json",
+    "defaultDuration": 1400
+  },
+  "vrm_special_20": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: special_20.json",
+    "clip": "clips/vrm/special_20.json",
+    "defaultDuration": 1167
+  },
+  "vrm_spot_acrobatic_1": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: spot_acrobatic_1.json",
+    "clip": "clips/vrm/spot_acrobatic_1.json",
+    "defaultDuration": 67
+  },
+  "vrm_spot_acrobatic_2": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: spot_acrobatic_2.json",
+    "clip": "clips/vrm/spot_acrobatic_2.json",
+    "defaultDuration": 67
+  },
+  "vrm_spot_awkward_smile": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: spot_awkward_smile.json",
+    "clip": "clips/vrm/spot_awkward_smile.json",
+    "defaultDuration": 67
+  },
+  "vrm_spot_crouching_1": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: spot_crouching_1.json",
+    "clip": "clips/vrm/spot_crouching_1.json",
+    "defaultDuration": 67
+  },
+  "vrm_spot_crouching_2": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: spot_crouching_2.json",
+    "clip": "clips/vrm/spot_crouching_2.json",
+    "defaultDuration": 67
+  },
+  "vrm_spot_crouching_3": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: spot_crouching_3.json",
+    "clip": "clips/vrm/spot_crouching_3.json",
+    "defaultDuration": 67
+  },
+  "vrm_spot_crouching_4": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: spot_crouching_4.json",
+    "clip": "clips/vrm/spot_crouching_4.json",
+    "defaultDuration": 67
+  },
+  "vrm_spot_gazing_up_1": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: spot_gazing_up_1.json",
+    "clip": "clips/vrm/spot_gazing_up_1.json",
+    "defaultDuration": 67
+  },
+  "vrm_spot_gazing_up_2": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: spot_gazing_up_2.json",
+    "clip": "clips/vrm/spot_gazing_up_2.json",
+    "defaultDuration": 67
+  },
+  "vrm_spot_hold_out_hands": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: spot_hold_out_hands.json",
+    "clip": "clips/vrm/spot_hold_out_hands.json",
+    "defaultDuration": 67
+  },
+  "vrm_spot_lie_down_1": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: spot_lie_down_1.json",
+    "clip": "clips/vrm/spot_lie_down_1.json",
+    "defaultDuration": 67
+  },
+  "vrm_spot_lie_down_2": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: spot_lie_down_2.json",
+    "clip": "clips/vrm/spot_lie_down_2.json",
+    "defaultDuration": 67
+  },
+  "vrm_spot_look_over_shoulder": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: spot_look_over_shoulder.json",
+    "clip": "clips/vrm/spot_look_over_shoulder.json",
+    "defaultDuration": 67
+  },
+  "vrm_spot_target_locked": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: spot_target_locked.json",
+    "clip": "clips/vrm/spot_target_locked.json",
+    "defaultDuration": 67
+  },
+  "vrm_stretch": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: stretch.json",
+    "clip": "clips/vrm/stretch.json",
+    "defaultDuration": 3067
+  },
+  "vrm_stroll": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: stroll.json",
+    "clip": "clips/vrm/stroll.json",
+    "defaultDuration": 1200
+  },
+  "vrm_super_delicious": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: super_delicious.json",
+    "clip": "clips/vrm/super_delicious.json",
+    "defaultDuration": 1333
+  },
+  "vrm_Take_001": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: Take 001.json",
+    "clip": "clips/vrm/Take 001.json",
+    "defaultDuration": 2000
+  },
+  "vrm_UMATOBI00": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: UMATOBI00.json",
+    "clip": "clips/vrm/UMATOBI00.json",
+    "defaultDuration": 1300
+  },
+  "vrm_VRMA_01": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: VRMA_01.json",
+    "clip": "clips/vrm/VRMA_01.json",
+    "defaultDuration": 11800
+  },
+  "vrm_VRMA_02": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: VRMA_02.json",
+    "clip": "clips/vrm/VRMA_02.json",
+    "defaultDuration": 7267
+  },
+  "vrm_VRMA_03": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: VRMA_03.json",
+    "clip": "clips/vrm/VRMA_03.json",
+    "defaultDuration": 11684
+  },
+  "vrm_VRMA_04": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: VRMA_04.json",
+    "clip": "clips/vrm/VRMA_04.json",
+    "defaultDuration": 9600
+  },
+  "vrm_VRMA_05": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: VRMA_05.json",
+    "clip": "clips/vrm/VRMA_05.json",
+    "defaultDuration": 9317
+  },
+  "vrm_VRMA_06": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: VRMA_06.json",
+    "clip": "clips/vrm/VRMA_06.json",
+    "defaultDuration": 7517
+  },
+  "vrm_VRMA_07": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: VRMA_07.json",
+    "clip": "clips/vrm/VRMA_07.json",
+    "defaultDuration": 11517
+  },
+  "vrm_VRoid_Arms": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: VRoid_Arms.json",
+    "clip": "clips/vrm/VRoid_Arms.json",
+    "defaultDuration": 500
+  },
+  "vrm_VRoid_F00_DefaultPose": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: VRoid_F00_DefaultPose.json",
+    "clip": "clips/vrm/VRoid_F00_DefaultPose.json",
+    "defaultDuration": 3000
+  },
+  "vrm_VRoid_M00_DefaultPose": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: VRoid_M00_DefaultPose.json",
+    "clip": "clips/vrm/VRoid_M00_DefaultPose.json",
+    "defaultDuration": 1000
+  },
+  "vrm_VRoid_Shoes": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: VRoid_Shoes.json",
+    "clip": "clips/vrm/VRoid_Shoes.json",
+    "defaultDuration": 3000
+  },
+  "vrm_VRoid_UMA_APose": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: VRoid_UMA_APose.json",
+    "clip": "clips/vrm/VRoid_UMA_APose.json",
+    "defaultDuration": 67
+  },
+  "vrm_WAIT00": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: WAIT00.json",
+    "clip": "clips/vrm/WAIT00.json",
+    "defaultDuration": 100
+  },
+  "vrm_WAIT01": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: WAIT01.json",
+    "clip": "clips/vrm/WAIT01.json",
+    "defaultDuration": 6633
+  },
+  "vrm_WAIT02": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: WAIT02.json",
+    "clip": "clips/vrm/WAIT02.json",
+    "defaultDuration": 8333
+  },
+  "vrm_WAIT03": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: WAIT03.json",
+    "clip": "clips/vrm/WAIT03.json",
+    "defaultDuration": 5200
+  },
+  "vrm_WAIT04": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: WAIT04.json",
+    "clip": "clips/vrm/WAIT04.json",
+    "defaultDuration": 5200
+  },
+  "vrm_walk_00": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: walk_00.json",
+    "clip": "clips/vrm/walk_00.json",
+    "defaultDuration": 1333
+  },
+  "vrm_WALK00_B": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: WALK00_B.json",
+    "clip": "clips/vrm/WALK00_B.json",
+    "defaultDuration": 4500
+  },
+  "vrm_WALK00_F": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: WALK00_F.json",
+    "clip": "clips/vrm/WALK00_F.json",
+    "defaultDuration": 1333
+  },
+  "vrm_WALK00_L": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: WALK00_L.json",
+    "clip": "clips/vrm/WALK00_L.json",
+    "defaultDuration": 1333
+  },
+  "vrm_WALK00_R": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: WALK00_R.json",
+    "clip": "clips/vrm/WALK00_R.json",
+    "defaultDuration": 1333
+  },
+  "vrm_Wave": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: Wave.json",
+    "clip": "clips/vrm/Wave.json",
+    "defaultDuration": 2467
+  },
+  "vrm_we_ve_got_this": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: we_ve_got_this.json",
+    "clip": "clips/vrm/we_ve_got_this.json",
+    "defaultDuration": 1300
+  },
+  "vrm_WIN00": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: WIN00.json",
+    "clip": "clips/vrm/WIN00.json",
+    "defaultDuration": 4000
+  },
+  "vrm_yay": {
+    "kind": "clip",
+    "category": "movement",
+    "modelSupport": "vrm",
+    "description": "VRM clip: yay.json",
+    "clip": "clips/vrm/yay.json",
+    "defaultDuration": 1700
+  }
+}

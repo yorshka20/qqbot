@@ -1200,7 +1200,9 @@
   //     "host": "0.0.0.0"
   //   },
   //
-  //   // Action → Live2D parameter map. Omitted = package default; set "path" for a JSON file.
+  //   // Action map. Omitted = @qqbot/avatar merges `assets/core-action-map.json` (hand)
+  //   // with `assets/vrm-extend-action-map.json` (generated: `bun run gen:vrm-extend` in
+  //   // packages/avatar). Set "path" to a single JSON file to replace the whole default (no merge).
   //   "actionMap": {
   //     // "path": "config/my-action-map.json"
   //   },

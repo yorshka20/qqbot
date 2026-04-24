@@ -25,7 +25,7 @@ describe('AvatarService.enqueueTagAnimation — jitter application', () => {
     const compiler = (service as any).compiler;
     expect(compiler).not.toBeNull();
     const enqueueSpy = spyOn(compiler, 'enqueue');
-    const base = compiler.getActionDuration('smile'); // exists in default-action-map.json
+    const base = compiler.getActionDuration('smile'); // exists in core-action-map.json
     expect(base).toBeGreaterThan(0);
 
     for (let i = 0; i < 100; i++) {

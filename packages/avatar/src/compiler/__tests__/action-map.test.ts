@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ActionMap } from '../action-map';
+import { ActionMap, mergeActionMapPayloads } from '../action-map';
 import type { ResolvedAction } from '../types';
 
 type EnvelopeAction = Extract<ResolvedAction, { kind: 'envelope' }>;
@@ -649,6 +649,29 @@ describe('ActionMap — modelSupport filtering (listActions)', () => {
     expect(names).toContain('nod');
     expect(names).toContain('formal_bow');
     expect(names).toContain('smile');
+  });
+});
+
+describe('mergeActionMapPayloads + default package map', () => {
+  it('core overwrites the same key as extension', () => {
+    const merged = mergeActionMapPayloads(
+      { foo: { kind: 'clip' as const, category: 'movement' as const, modelSupport: 'vrm' as const, clip: 'clips/a.json', defaultDuration: 1 } },
+      { foo: { kind: 'clip' as const, category: 'movement' as const, modelSupport: 'vrm' as const, clip: 'clips/b.json', defaultDuration: 2 } },
+    );
+    expect(merged.foo).toMatchObject({ clip: 'clips/b.json' });
+  });
+
+  it('default ActionMap lists both hand key greet and generated vrm_VRMA_02', () => {
+    const map = new ActionMap();
+    expect(map.has('greet')).toBe(true);
+    expect(map.has('vrm_VRMA_02')).toBe(true);
+  });
+
+  it('default map resolves a generated vrm_ clip for vrm', () => {
+    const map = new ActionMap();
+    const r = map.resolveAction('vrm_001_motion_pose', 'n', 1, 'vrm');
+    expect(r).not.toBeNull();
+    expect(r!.kind).toBe('clip');
   });
 });
 

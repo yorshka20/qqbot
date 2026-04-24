@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from '../utils/logger';
@@ -31,6 +31,31 @@ export interface ResolveActionOptions {
 }
 
 const weightWarnedActions = new Set<string>();
+
+/**
+ * Merges two action maps: `core` overwrites the same key as `extension`.
+ * Use for `vrm-extend-action-map.json` (generated) + `core-action-map.json` (hand-authored).
+ * Keys starting with `_` are ignored (reserved for future metadata).
+ */
+export function mergeActionMapPayloads(
+  extension: Readonly<Record<string, ActionMapEntry | ActionMapEntry[] | unknown>>,
+  core: Readonly<Record<string, ActionMapEntry | ActionMapEntry[] | unknown>>,
+): Record<string, ActionMapEntry | ActionMapEntry[]> {
+  const ext = Object.fromEntries(
+    Object.entries(extension).filter(([k, v]) => !k.startsWith('_') && v !== null && typeof v === 'object'),
+  ) as Record<string, ActionMapEntry | ActionMapEntry[]>;
+  const c = Object.fromEntries(
+    Object.entries(core).filter(([k, v]) => !k.startsWith('_') && v !== null && typeof v === 'object'),
+  ) as Record<string, ActionMapEntry | ActionMapEntry[]>;
+  return { ...ext, ...c };
+}
+
+function readJsonMap(path: string): Record<string, ActionMapEntry | ActionMapEntry[] | unknown> {
+  if (!existsSync(path)) {
+    return {};
+  }
+  return JSON.parse(readFileSync(path, 'utf8')) as Record<string, ActionMapEntry | ActionMapEntry[] | unknown>;
+}
 
 /**
  * Pick a variant index into `filtered` using `weights` aligned to
@@ -142,13 +167,34 @@ export class ActionMap {
   private readonly entries: Record<string, ActionMapEntry | ActionMapEntry[]>;
   /** Preloaded clips keyed by action name. Array to support variant pools. */
   private readonly clipsByName: Map<string, IdleClip[]> = new Map();
+  /**
+   * Precomputed channel footprint per action — union of channels written
+   * across all variants (envelope `params` + `accompaniment`, clip `tracks`).
+   * Used by `AnimationCompiler.checkAvailable` to gate enqueue decisions on
+   * channel occupancy. Computed once after preloadClips; treated as
+   * immutable at runtime.
+   */
+  private readonly footprintsByName: Map<string, ReadonlySet<string>> = new Map();
 
   constructor(filePath?: string) {
-    const resolved = filePath ?? fileURLToPath(new URL('../../assets/default-action-map.json', import.meta.url));
-    const raw = readFileSync(resolved, 'utf8');
-    const parsed = JSON.parse(raw) as Record<string, ActionMapEntry | ActionMapEntry[]>;
+    let parsed: Record<string, ActionMapEntry | ActionMapEntry[]>;
+    let assetsDir: string;
+
+    if (filePath) {
+      const resolved = filePath;
+      const raw = readFileSync(resolved, 'utf8');
+      parsed = JSON.parse(raw) as Record<string, ActionMapEntry | ActionMapEntry[]>;
+      assetsDir = dirname(resolved);
+    } else {
+      const corePath = fileURLToPath(new URL('../../assets/core-action-map.json', import.meta.url));
+      const extendPath = fileURLToPath(new URL('../../assets/vrm-extend-action-map.json', import.meta.url));
+      assetsDir = dirname(corePath);
+      parsed = mergeActionMapPayloads(readJsonMap(extendPath), readJsonMap(corePath));
+    }
+
     this.entries = parsed;
-    this.preloadClips(dirname(resolved));
+    this.preloadClips(assetsDir);
+    this.computeFootprints();
   }
 
   private preloadClips(baseDir: string): void {
@@ -186,6 +232,49 @@ export class ActionMap {
       }
       this.clipsByName.set(name, clips);
     }
+  }
+
+  /**
+   * Build `footprintsByName` after preloadClips so both clip- and envelope-kind
+   * actions contribute. Envelope footprint = union of `params[*].channel` and
+   * `accompaniment[*].channel` across every variant. Clip footprint = union
+   * of `tracks[*].channel` across every preloaded variant clip.
+   *
+   * Variants for the same action are assumed to share a channel footprint
+   * (true in practice — same action, different authoring); unioning keeps
+   * the check conservative if an author ever diverges.
+   */
+  private computeFootprints(): void {
+    for (const [name, raw] of Object.entries(this.entries)) {
+      const variants = Array.isArray(raw) ? raw : [raw];
+      const channels = new Set<string>();
+
+      if (this.clipsByName.has(name)) {
+        const clips = this.clipsByName.get(name) as IdleClip[];
+        for (const clip of clips) {
+          for (const track of clip.tracks) channels.add(track.channel);
+        }
+      } else {
+        for (const v of variants) {
+          const env = v as ActionMapEntryEnvelope;
+          for (const p of env.params ?? []) channels.add(p.channel);
+          for (const p of env.accompaniment ?? []) channels.add(p.channel);
+        }
+      }
+
+      if (channels.size > 0) this.footprintsByName.set(name, channels);
+    }
+  }
+
+  /**
+   * Channel footprint of an action — the set of channels any variant of
+   * `name` will write. Returns `null` for unknown actions or actions with
+   * no discovered channels (bad clip path, empty envelope). Callers use
+   * this to ask the compiler whether a new enqueue would collide with
+   * currently-active animations.
+   */
+  getFootprint(name: string): ReadonlySet<string> | null {
+    return this.footprintsByName.get(name) ?? null;
   }
 
   has(name: string): boolean {

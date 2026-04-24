@@ -94,7 +94,7 @@ describe('AvatarService.enqueueTagAnimation — persona modulation', () => {
     const compiler = (s as any).compiler;
     compiler.setTunableParam('compiler:jitter', 'durationJitter', 0);
     compiler.setTunableParam('compiler:jitter', 'intensityJitter', 0);
-    // smile is category=emotion in default-action-map.json
+    // smile is category=emotion in core-action-map.json
     withProvider(s, {
       amplitude: {
         intensityScale: 0.8,

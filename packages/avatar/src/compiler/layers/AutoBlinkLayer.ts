@@ -24,7 +24,7 @@ import { BaseLayer } from './BaseLayer';
  * Consequence: discrete actions that want to change eye openness (e.g.
  * `thinking` → half-lidded, `angry` → narrowed) author their `eye.open.*`
  * targets as **deltas from 1.0** (negative values), since the compiler mixes
- * layer + action contributions additively. See default-action-map.json.
+ * layer + action contributions additively. See core-action-map.json.
  */
 interface BlinkConfig {
   /** Minimum wait between blinks in open state (ms). */
