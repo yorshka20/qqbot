@@ -410,4 +410,12 @@ export interface CompilerConfig {
      */
     cycleClipActionName?: string;
   };
+  /**
+   * When true, skip registration of ambient micro-perturbation layers
+   * (currently `PerlinNoiseLayer`) and freeze `EyeGazeLayer`'s OU drift so
+   * the baseline is as still as possible. Intended for validating
+   * deliberate motion (wander intents, LLM-driven actions, persona posture)
+   * without head/body noise obscuring the effect. Default: false.
+   */
+  debugQuiet?: boolean;
 }

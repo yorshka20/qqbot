@@ -165,6 +165,9 @@ export class AnimationCompiler extends EventEmitter {
     const personaPosture = new PersonaPostureLayer();
     personaPosture.setEyeGazeLayer(eyeGaze);
 
+    const debugQuiet = this.config.debugQuiet === true;
+    if (debugQuiet) eyeGaze.setQuietMode(true);
+
     const stack: AnimationLayer[] = [
       new BreathLayer(),
       new AutoBlinkLayer(),
@@ -177,15 +180,17 @@ export class AnimationCompiler extends EventEmitter {
       // contribute their independent noise on top of the motion group.
       personaPosture,
       new AmbientAudioLayer(),
-      new PerlinNoiseLayer({ weight: 0.2 }),
     ];
+    if (!debugQuiet) {
+      stack.push(new PerlinNoiseLayer({ weight: 0.2 }));
+    }
 
     for (const layer of stack) {
       this.registerLayer(layer);
     }
 
     logger.info(
-      '[AnimationCompiler] continuous stack → LayerManager:',
+      `[AnimationCompiler] continuous stack → LayerManager:${debugQuiet ? ' [debugQuiet]' : ''}`,
       this.listLayers().map((l) => l.id),
     );
   }

@@ -9,11 +9,20 @@ import type { GazeTarget } from '@qqbot/avatar';
 import type { WanderConfig } from '../types';
 import type { WanderExecutor, WanderIntent, WanderIntentKind, WanderStep } from './types';
 
-const NAMED_GLANCE_TARGETS: GazeTarget[] = [
-  { type: 'named', name: 'camera' },
-  { type: 'named', name: 'left' },
-  { type: 'named', name: 'right' },
-  { type: 'named', name: 'up' },
+/**
+ * Glance targets with an accompanying head-yaw offset so the whole face
+ * rotates toward the gaze direction instead of eyes-only motion. Yaw
+ * fraction multiplies `amplitude.maxTurnRad` so the head turn stays within
+ * the same budget the other intents use — the number captures "how much
+ * of the configured turn amplitude this glance should consume" (0 = gaze
+ * only, 1 = full turn). Camera stays head-still; up uses a pitch we can't
+ * drive via `turn()`, so its head offset is also zero.
+ */
+const NAMED_GLANCE_TARGETS: Array<{ target: GazeTarget; headYawFraction: number }> = [
+  { target: { type: 'named', name: 'camera' }, headYawFraction: 0 },
+  { target: { type: 'named', name: 'left' }, headYawFraction: -0.55 },
+  { target: { type: 'named', name: 'right' }, headYawFraction: 0.55 },
+  { target: { type: 'named', name: 'up' }, headYawFraction: 0 },
 ];
 
 /**
@@ -52,12 +61,15 @@ function buildSteps(kind: WanderIntentKind, config: WanderConfig, rng: () => num
 
   switch (kind) {
     case 'glance': {
-      const target = NAMED_GLANCE_TARGETS[Math.floor(rng() * NAMED_GLANCE_TARGETS.length)];
-      return [
-        { kind: 'setGaze', target },
-        { kind: 'wait', ms: 800 + Math.floor(rng() * 1400) },
-        { kind: 'setGaze', target: { type: 'clear' } },
-      ];
+      const pick = NAMED_GLANCE_TARGETS[Math.floor(rng() * NAMED_GLANCE_TARGETS.length)];
+      const headYaw = pick.headYawFraction * amp.maxTurnRad;
+      const holdMs = 2500 + Math.floor(rng() * 1500);
+      const steps: WanderStep[] = [];
+      if (Math.abs(headYaw) > 1e-3) steps.push({ kind: 'turn', radians: headYaw });
+      steps.push({ kind: 'setGaze', target: pick.target }, { kind: 'wait', ms: holdMs });
+      if (Math.abs(headYaw) > 1e-3) steps.push({ kind: 'turn', radians: -headYaw });
+      steps.push({ kind: 'setGaze', target: { type: 'clear' } });
+      return steps;
     }
     case 'look_around': {
       const t1 = signed() * amp.maxTurnRad * positive();

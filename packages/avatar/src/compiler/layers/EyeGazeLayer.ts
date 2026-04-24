@@ -79,6 +79,15 @@ export class EyeGazeLayer extends BaseLayer {
    */
   private defaultContactPref: number | null = null;
 
+  /**
+   * When true, the no-override path returns `(0, 0)` instead of running the
+   * OU drift + saccade pipeline. Combined with `compiler.debugQuiet` this
+   * makes explicit `setGazeTarget()` calls the only source of eye motion, so
+   * wander glances / LLM gaze tags are unambiguously visible during testing.
+   * An override target still wins regardless of this flag.
+   */
+  private quietMode = false;
+
   constructor(config: Partial<GazeConfig> = {}) {
     super();
     this.config = { ...DEFAULT_GAZE_CONFIG, ...config };
@@ -93,6 +102,11 @@ export class EyeGazeLayer extends BaseLayer {
     this.lastSampleAt = 0;
     this.override = null;
     this.defaultContactPref = null;
+    this.quietMode = false;
+  }
+
+  setQuietMode(enabled: boolean): void {
+    this.quietMode = enabled;
   }
 
   /**
@@ -144,6 +158,12 @@ export class EyeGazeLayer extends BaseLayer {
       // Explicit override always wins; defaultContactPref has no effect here.
       this.lastSampleAt = nowMs;
       return { 'eye.ball.x': this.override.x, 'eye.ball.y': this.override.y };
+    }
+    if (this.quietMode) {
+      // Freeze: no OU drift, no saccades. Emits a still gaze so downstream
+      // layers observe a stable baseline for the testing pass.
+      this.lastSampleAt = nowMs;
+      return { 'eye.ball.x': 0, 'eye.ball.y': 0 };
     }
     if (this.nextSaccadeAt === 0) this.nextSaccadeAt = nowMs + this.randomSaccadeInterval();
 

@@ -96,12 +96,22 @@ describe('pickIntent — weighted kind selection', () => {
 });
 
 describe('pickIntent — step shape per kind', () => {
-  test('glance produces setGaze → wait → clear', () => {
+  test('glance with head-still target emits setGaze → wait → clear', () => {
     const config = wanderConfig({ intents: { ...DEFAULT_MIND_CONFIG.wander.intents, glance: 1 } });
-    const intent = pickIntent(config, seededRng(0.01, 0.5, 0.3));
-    expect(intent.steps[0].kind).toBe('setGaze');
-    expect(intent.steps[1].kind).toBe('wait');
+    // rng[1]=0 picks index 0 (camera, headYawFraction=0) so no head turn is added
+    const intent = pickIntent(config, seededRng(0.01, 0, 0.3));
+    expect(intent.steps.map((s) => s.kind)).toEqual(['setGaze', 'wait', 'setGaze']);
     expect(intent.steps[2]).toEqual({ kind: 'setGaze', target: { type: 'clear' } });
+  });
+
+  test('glance to left/right couples a head turn with the gaze', () => {
+    const config = wanderConfig({ intents: { ...DEFAULT_MIND_CONFIG.wander.intents, glance: 1 } });
+    // rng[1]=0.5 picks index 2 (right), which has a non-zero headYawFraction
+    const intent = pickIntent(config, seededRng(0.01, 0.5, 0.3));
+    expect(intent.steps.map((s) => s.kind)).toEqual(['turn', 'setGaze', 'wait', 'turn', 'setGaze']);
+    const turns = intent.steps.filter((s) => s.kind === 'turn') as Array<{ kind: 'turn'; radians: number }>;
+    // Head turns out then back by the same magnitude with opposite sign.
+    expect(turns[0].radians).toBeCloseTo(-turns[1].radians, 6);
   });
 
   test('look_around produces turn → wait → turn', () => {
