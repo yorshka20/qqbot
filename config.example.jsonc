@@ -1254,5 +1254,28 @@
   //   <id>/results/          — auto-generated execution artifacts
   "tickets": {
     "dir": "/absolute/path/to/cluster-tickets"
-  }
+  },
+  // Mind system — phenotype ODE + modulation provider for the avatar.
+  // See docs/local/mind-system-design.md. Phase 1 only implements fatigue +
+  // attention and drives avatar intensity / speed multipliers. Disabled by
+  // default; enable alongside "avatar" to see persona modulation kick in.
+  // "mind": {
+  //   "enabled": false,
+  //   "personaId": "default",
+  //   "tickMs": 1000,
+  //
+  //   // ODE time constants. Defaults match mergeMindConfig().
+  //   // "ode": {
+  //   //   "tauAttentionMs": 120000,        // 2 min exponential decay
+  //   //   "fatigueAccrualPerMs": 5e-7,     // full fatigue over ~33 min active
+  //   //   "fatigueRestDecayPerMs": 1e-6,   // full recovery over ~16 min idle
+  //   //   "attentionSpikePerMessage": 0.3
+  //   // },
+  //
+  //   // Phenotype → avatar modulation mapping.
+  //   // "modulation": {
+  //   //   "fatigueIntensityDrop": 0.4,  // at fatigue=1.0 → 60% intensity
+  //   //   "fatigueSpeedDrop": 0.3       // at fatigue=1.0 → 70% speed
+  //   // }
+  // }
 }

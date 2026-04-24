@@ -15,7 +15,7 @@ import {
   sanitizeScale,
 } from './mind/types';
 import { PreviewServer } from './preview/PreviewServer';
-import type { RendererCapabilities, WalkCommandData } from './preview/types';
+import type { PreviewStatus, RendererCapabilities, WalkCommandData } from './preview/types';
 import { SpeechService } from './SpeechService';
 import { ActivityTracker } from './state/IdleStateMachine';
 import { type AvatarActivityPatch, DEFAULT_ACTIVITY, type StateNodeOutput } from './state/types';
@@ -54,6 +54,13 @@ export class AvatarService {
    * modulation), preserving pre-Phase-1 behaviour.
    */
   private modulationProvider?: MindModulationProvider;
+  /**
+   * Optional callback that returns the current mind-state snapshot for
+   * HUD broadcast. Kept as a plain callback so the avatar package does
+   * not depend on the mind module's types; see `PreviewStatus.mindState`
+   * for the loose shape consumers should return.
+   */
+  private mindStateSource?: () => PreviewStatus['mindState'] | undefined;
 
   // TODO(capability-gating): use connectedCapabilities to gate compiler channel
   // emission per connection — e.g. skip unsupported channels or custom morph
@@ -424,6 +431,8 @@ export class AvatarService {
         // Authoritative pose broadcast so HUDs can display without replicating
         // bot state via frame params. Absent when no WalkingLayer (cubism).
         rootPosition: walkingLayer?.getPosition(),
+        // Mind snapshot is optional — undefined when no source registered.
+        mindState: this.mindStateSource?.(),
       });
     }, 1000);
   }
@@ -456,6 +465,18 @@ export class AvatarService {
   setMindModulationProvider(provider: MindModulationProvider | undefined): void {
     this.modulationProvider = provider;
     logger.info(`[AvatarService] MindModulationProvider ${provider ? 'registered' : 'cleared'}`);
+  }
+
+  /**
+   * Register (or clear) the mind-state snapshot source. Called at
+   * bootstrap by the bot-side wiring. The callback is invoked on every
+   * `startStatusBroadcast` tick; its return value is forwarded verbatim
+   * on `PreviewStatus.mindState` for HUD display. Return `undefined` to
+   * hide the mind panel.
+   */
+  setMindStateSource(source: (() => PreviewStatus['mindState'] | undefined) | undefined): void {
+    this.mindStateSource = source;
+    logger.info(`[AvatarService] MindStateSource ${source ? 'registered' : 'cleared'}`);
   }
 
   /** Read-only snapshot of the current modulation for debug / HUD surfaces. */
@@ -673,6 +694,16 @@ export class AvatarService {
 
   getCurrentPosition(): { x: number; z: number; facing: number } {
     return this.getWalkingLayer()?.getPosition() ?? { x: 0, z: 0, facing: 0 };
+  }
+
+  /**
+   * Current `AvatarActivity` from the state machine, or `null` if the
+   * avatar system has not been initialized. Exposed so external
+   * subsystems (notably `MindService`) can read pose / ambientGain
+   * without owning a reference to the state machine.
+   */
+  getCurrentActivity(): { pose: string; ambientGain: number } | null {
+    return this.stateMachine?.current ?? null;
   }
 
   hasConsumer(): boolean {

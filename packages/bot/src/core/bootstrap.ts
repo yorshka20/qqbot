@@ -24,6 +24,7 @@ import { HealthCheckManager } from '@/core/health';
 import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { EventInitializer } from '@/events/EventInitializer';
 import type { EventRouter } from '@/events/EventRouter';
+import type { MindModulationAdapter, MindService } from '@/mind';
 import { PluginInitializer } from '@/plugins/PluginInitializer';
 import { DiscordConnection } from '@/protocol/discord/DiscordConnection';
 import { ProtocolAdapterInitializer } from '@/protocol/ProtocolAdapterInitializer';
@@ -301,6 +302,44 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   } catch (err) {
     logger.warn('[Bootstrap] Avatar service failed to initialize (non-fatal):', err);
     avatarService = null;
+  }
+
+  // ── Mind ↔ Avatar wiring ──
+  // MindService was constructed by ConversationInitializer (via
+  // MindInitializer) and registered to the DI container; its tick loop
+  // is started here once AvatarService is known. If avatar is disabled
+  // or mind is disabled, skip the wiring — both sides handle absence
+  // gracefully.
+  try {
+    const mindService = container.isRegistered(DITokens.MIND_SERVICE)
+      ? container.resolve<MindService>(DITokens.MIND_SERVICE)
+      : null;
+    if (mindService?.isEnabled()) {
+      if (avatarService) {
+        const boundAvatar = avatarService;
+        const modulationProvider = container.resolve<MindModulationAdapter>(DITokens.MIND_MODULATION_PROVIDER);
+        boundAvatar.setMindModulationProvider(modulationProvider);
+        boundAvatar.setMindStateSource(() => mindService.getSnapshot());
+        // Pose provider: MindService needs to know when the avatar is
+        // "active" (not truly idle) so fatigue can accrue. Wire as a
+        // callback so the flow stays strictly one-way (mind reads avatar).
+        mindService.setPoseProvider(() => {
+          const activity = boundAvatar.getCurrentActivity();
+          return { isActive: !!activity && activity.pose !== 'neutral' };
+        });
+      }
+      mindService.start();
+      logger.info(
+        `[Bootstrap] Mind subsystem started | linkedToAvatar=${!!avatarService} config=${JSON.stringify({
+          tickMs: mindService.getConfig().tickMs,
+          persona: mindService.getConfig().personaId,
+        })}`,
+      );
+    } else if (mindService) {
+      logger.info('[Bootstrap] Mind subsystem disabled by config; skipped wiring');
+    }
+  } catch (err) {
+    logger.warn('[Bootstrap] Mind subsystem wiring failed (non-fatal):', err);
   }
 
   // ── Live2DSessionService (rolling thread history for Live2D runs) ──

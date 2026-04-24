@@ -1,6 +1,7 @@
 // Conversation Initializer - initializes all conversation-related components
 
 import { AgendaInitializer } from '@/agenda';
+import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import {
   AIManager,
   AIService,
@@ -31,6 +32,7 @@ import { DatabaseManager } from '@/database/DatabaseManager';
 import { HookManager } from '@/hooks/HookManager';
 import { MemoryExtractService, MemoryRAGService, MemoryService } from '@/memory';
 import { MessageUtils } from '@/message/MessageUtils';
+import { MindInitializer } from '@/mind';
 import { BilibiliService } from '@/services/bilibili';
 import { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
 import { FileReadService } from '@/services/file';
@@ -310,6 +312,16 @@ export class ConversationInitializer {
     });
     serviceRegistry.registerAgendaServices(agendaComponents);
 
+    // Mind framework: phenotype ODE + modulation adapter for avatar.
+    // Must run AFTER agenda so it can share the same InternalEventBus;
+    // bootstrap wires mindService.start() + pose provider + avatar
+    // modulation injection after AvatarService is ready.
+    const mindComponents = MindInitializer.initialize({
+      rawConfig: config.getMindConfig(),
+      internalEventBus: agendaComponents.internalEventBus,
+    });
+    serviceRegistry.registerMindServices(mindComponents);
+
     const completeServices: CompleteServices = {
       ...services,
       aiService,
@@ -579,6 +591,9 @@ export class ConversationInitializer {
       services.contextManager,
       services.conversationConfigService,
       container.resolve<ProviderRouter>(DITokens.PROVIDER_ROUTER),
+      container.isRegistered(DITokens.INTERNAL_EVENT_BUS)
+        ? container.resolve<InternalEventBus>(DITokens.INTERNAL_EVENT_BUS)
+        : undefined,
     );
     const conversationManager = new ConversationManager(pipeline);
     container.registerInstance(DITokens.CONVERSATION_MANAGER, conversationManager);

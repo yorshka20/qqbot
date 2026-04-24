@@ -1,5 +1,6 @@
 // Message Pipeline - processes messages through the complete flow
 
+import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import type { ProviderRouter } from '@/ai/routing/ProviderRouter';
 import type { ContextManager, ConversationContext } from '@/context';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
@@ -9,6 +10,7 @@ import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { cacheMessage } from '@/message/MessageCache';
+import { MIND_EVENT_MESSAGE_RECEIVED } from '@/mind';
 import { logger } from '@/utils/logger';
 import { getLogColorForKey, getLogTag } from '@/utils/messageLogContext';
 import type { ConversationConfigService } from './ConversationConfigService';
@@ -29,6 +31,13 @@ export class MessagePipeline {
     private contextManager: ContextManager,
     private conversationConfigService: ConversationConfigService,
     private providerRouter: ProviderRouter,
+    /**
+     * Optional — when present, the pipeline publishes
+     * `MIND_EVENT_MESSAGE_RECEIVED` after every successful `lifecycle.execute`
+     * so `MindService` can translate it into an attention stimulus.
+     * Absent in tests / setups without mind.
+     */
+    private internalEventBus?: InternalEventBus,
   ) {}
 
   /**
@@ -77,6 +86,7 @@ export class MessagePipeline {
             return { success: false, error: 'Processing interrupted' };
           }
 
+          this.publishMindStimulus(event, context);
           return this.buildResult(hookContext, context, event);
         } catch (error) {
           return await this.handleError(error, event, context);
@@ -224,6 +234,25 @@ export class MessagePipeline {
       success: false,
       error: err.message,
     };
+  }
+
+  /**
+   * Publish a message-received event so MindService can register an
+   * attention spike. Silently no-ops when the event bus is not present
+   * or a subscriber throws — a failure here must never break reply flow.
+   */
+  private publishMindStimulus(event: NormalizedMessageEvent, context: MessageProcessingContext): void {
+    if (!this.internalEventBus) return;
+    try {
+      this.internalEventBus.publish({
+        type: MIND_EVENT_MESSAGE_RECEIVED,
+        groupId: event.groupId != null ? String(event.groupId) : '',
+        userId: event.userId != null ? String(event.userId) : '',
+        botSelfId: context.botSelfId ?? '',
+      });
+    } catch (err) {
+      logger.debug(`[MessagePipeline] mind stimulus publish failed (non-fatal): ${err}`);
+    }
   }
 
   /**

@@ -51,6 +51,10 @@ export const DITokens = {
   // Video pipeline services
   VIDEO_DOWNLOAD_SERVICE: 'VideoDownloadService',
   RESOURCE_CLEANUP_SERVICE: 'ResourceCleanupService',
+  // Mind system (persona state, modulation, reflection)
+  MIND_SERVICE: 'MindService',
+  MIND_CONFIG: 'MindConfig',
+  MIND_MODULATION_PROVIDER: 'MindModulationProvider',
   // Avatar system
   AVATAR_SERVICE: 'AvatarService',
   TTS_MANAGER: 'TTSManager',

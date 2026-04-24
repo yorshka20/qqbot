@@ -40,6 +40,30 @@ export interface PreviewStatus {
    * WalkingLayer is registered (e.g. cubism model).
    */
   rootPosition?: { x: number; z: number; facing: number };
+  /**
+   * Optional mind-subsystem snapshot — populated when the bot has
+   * configured a `MindStateSource` (see `AvatarService.setMindStateSource`).
+   * Included so HUDs can display fatigue/attention curves alongside the
+   * compiler state. Plain JSON object; no renderer-side code required
+   * beyond displaying the fields. Kept loosely typed here so the avatar
+   * package stays independent of the mind module's shape.
+   */
+  mindState?: {
+    enabled: boolean;
+    personaId: string;
+    phenotype: {
+      fatigue: number;
+      attention: number;
+      stimulusCount: number;
+      lastStimulusAt?: number;
+    };
+    modulation: {
+      intensityScale: number;
+      speedScale: number;
+      durationBias: number;
+    };
+    capturedAt: number;
+  };
 }
 
 export interface FrameMessage {
