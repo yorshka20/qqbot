@@ -1525,3 +1525,102 @@ setRate(multiplier: number): void
   最后落 `packages/avatar/README.md`
 - 相关 tickets 在 `~/project/cluster-tickets/qqbot/2026-04-1[89]-avatar-*/`
   和 `2026-04-20-avatar-*/` / `2026-04-21-avatar-*/`
+
+## PersonaPostureLayer (2026-04-24)
+
+VRM-only continuous layer that applies additive posture bias with first-order
+exponential smoothing. Added by ticket `2026-04-24-persona-posture-layer`.
+
+### Channel mapping
+
+| Bias field | Channel | Scale |
+|------------|---------|-------|
+| `postureLean` | `vrm.spine.x` | `postureLean × MAX_LEAN_SPINE_RAD (0.2 rad)` |
+| `postureLean` | `vrm.chest.x` | `postureLean × 0.2 × 0.4` (CHEST_ASSIST_RATIO) |
+| `headTiltBias` | `vrm.head.z` | `headTiltBias × MAX_HEAD_TILT_RAD (0.15 rad)` |
+
+Chest assist ratio (0.4) makes the lean read as whole-torso motion rather than
+a single joint kink. All input fields normalised to [-1, 1] before scaling.
+
+### activeChannels exclusion
+
+`sample(nowMs, activity, activeChannels?: ReadonlySet<string>)` skips any
+channel that appears in `activeChannels` (the set of channels active discrete
+animations will write this tick). This prevents the posture bias from
+additively corrupting in-flight action animations on the same joints.
+
+Implementation: per-channel `if (!(activeChannels?.has(key) ?? false))` guard
+before writing into the output record.
+
+### Ambient gating
+
+`PersonaPostureLayer` does NOT read `activity.ambientGain` itself — the
+`LayerManager` multiplies every layer's entire output by `ambientGain` after
+sampling. Setting `ambientGain = 0` effectively zeroes all posture contributions
+without the layer needing to be aware.
+
+### Smoothing — tau = 1200ms
+
+First-order exponential filter: `alpha = 1 - exp(-dt / SMOOTHING_TAU_MS)`.
+`SMOOTHING_TAU_MS = 1200` (1.2 s).
+
+- 63% of a step change reached in 1.2 s
+- ~95% in 3.6 s (≈ 3τ)
+- dt clamped to 100ms to prevent a large jump after a compiler pause
+
+**Why 1200ms, not 400ms**: the ticket wants posture drift to feel like
+personality, not a mechanical snap. A tau of 400ms produces a perceptible but
+mechanical pop. 1200ms reads as a gradual lean the viewer notices over 2-3 s.
+
+**Test implication**: to fully converge (>99.9%, residual < 5e-5 rad) before
+asserting equality, you need at least 600 ticks at 16ms (= 9.6 s ≈ 8τ).
+Using 200 ticks (3.2 s ≈ 2.7τ) only reaches ~93% — the next tick's tiny step
+breaks `toBeCloseTo(..., 4)` precision.
+
+### EyeGazeLayer coupling and gazeContactPreference mapping
+
+`PersonaPostureLayer.setEyeGazeLayer(layer: EyeGazeDefaultBias)` wires a
+reference to the EyeGazeLayer (or any object matching the narrow interface)
+so that `setBias({ gazeContactPreference })` can forward to
+`EyeGazeLayer.setDefaultContactPreference(pref)` without AvatarService
+needing to know about EyeGazeLayer internals.
+
+```
+gazeContactPreference = 1   → no avoidant offset (camera-facing default)
+gazeContactPreference = 0   → full AVOIDANT_Y_OFFSET (downward/avoidant default)
+gazeContactPreference = null → clear preference, restore original OU behaviour
+```
+
+Wiring happens once in `AnimationCompiler.registerContinuousStack()` — not
+part of the runtime hot path.
+
+**`null` to clear**: the `PersonaPostureBias` interface uses
+`gazeContactPreference?: number | null`. The `'gazeContactPreference' in bias`
+check (not `bias.gazeContactPreference !== undefined`) is used so that an
+explicit `null` forwards the clear intent vs a missing field (no-op).
+
+### Type canonical location
+
+`PersonaPostureBias` is defined once in `PersonaPostureLayer.ts` as an
+`export interface`. Do NOT redefine it in `AvatarService.ts`.
+
+- `AvatarService.ts` imports it: `import type { PersonaPostureBias } from './compiler/layers/PersonaPostureLayer';`
+- Package root (`packages/avatar/src/index.ts`) re-exports: `export type { PersonaPostureBias } from './compiler/layers/PersonaPostureLayer';`
+- `compiler/layers/index.ts` also re-exports it (for internal layer consumers)
+
+### Stack order
+
+```
+BreathLayer
+AutoBlinkLayer
+EyeGazeLayer
+IdleMotionLayer
+WalkingLayer
+PersonaPostureLayer   ← immediately after WalkingLayer (motion group together)
+AmbientAudioLayer
+PerlinNoiseLayer
+```
+
+Motion layers (Idle, Walking, PersonaPosture) are grouped together; ambient and
+noise layers follow. Since layers write to non-overlapping channels, ordering
+only affects readability here, not correctness.
