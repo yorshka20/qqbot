@@ -143,6 +143,39 @@ export interface MindConfig {
     /** Above this, strongest-wording hint. */
     fatigueSevereMin: number;
   };
+
+  /**
+   * Autonomous wander (Phase 3). Periodic low-amplitude idle motion —
+   * small glances, weight shifts, micro-steps — gated to neutral pose
+   * so the bot never moves while speaking / listening / thinking.
+   *
+   * Suppressed when `mind.enabled=false` or `wander.enabled=false`. All
+   * amplitudes are caps; each intent samples a random fraction in
+   * [0.25, 1] of the cap, so typical motion is visibly subtle.
+   */
+  wander: {
+    enabled: boolean;
+    /** Minimum delay between wander attempts (ms). */
+    intervalMinMs: number;
+    /** Maximum delay between wander attempts (ms). */
+    intervalMaxMs: number;
+    /** After a wander finishes, wait at least this long before the next is eligible. */
+    cooldownMs: number;
+    /** Weights for the intent kinds — picked by weighted random each fire. */
+    intents: {
+      glance: number;
+      look_around: number;
+      shift_weight: number;
+      micro_step: number;
+      browse: number;
+    };
+    /** Amplitude caps for generated motion. */
+    amplitude: {
+      maxTurnRad: number;
+      maxStepMeters: number;
+      maxStrafeMeters: number;
+    };
+  };
 }
 
 export const DEFAULT_MIND_CONFIG: MindConfig = {
@@ -165,7 +198,28 @@ export const DEFAULT_MIND_CONFIG: MindConfig = {
     fatigueModerateMin: 0.55,
     fatigueSevereMin: 0.8,
   },
+  wander: {
+    enabled: true,
+    intervalMinMs: 45_000,
+    intervalMaxMs: 120_000,
+    cooldownMs: 12_000,
+    intents: {
+      glance: 0.3,
+      look_around: 0.25,
+      shift_weight: 0.2,
+      micro_step: 0.15,
+      browse: 0.1,
+    },
+    amplitude: {
+      maxTurnRad: Math.PI / 6, // ~30°
+      maxStepMeters: 0.25,
+      maxStrafeMeters: 0.2,
+    },
+  },
 };
+
+/** Minimal shape exported for `wander/*` consumers without a full re-import. */
+export type WanderConfig = MindConfig['wander'];
 
 /**
  * Merge raw JSONC config blob onto the defaults. Unknown fields are
@@ -200,6 +254,31 @@ export function mergeMindConfig(raw: Record<string, unknown> | undefined): MindC
       fatigueMildMin: numberOr(ppSrc.fatigueMildMin, DEFAULT_MIND_CONFIG.promptPatch.fatigueMildMin),
       fatigueModerateMin: numberOr(ppSrc.fatigueModerateMin, DEFAULT_MIND_CONFIG.promptPatch.fatigueModerateMin),
       fatigueSevereMin: numberOr(ppSrc.fatigueSevereMin, DEFAULT_MIND_CONFIG.promptPatch.fatigueSevereMin),
+    },
+    wander: mergeWanderConfig(src.wander),
+  };
+}
+
+function mergeWanderConfig(raw: unknown): MindConfig['wander'] {
+  const src = (raw ?? {}) as Partial<MindConfig['wander']>;
+  const intentsSrc = (src.intents ?? {}) as Partial<MindConfig['wander']['intents']>;
+  const ampSrc = (src.amplitude ?? {}) as Partial<MindConfig['wander']['amplitude']>;
+  return {
+    enabled: typeof src.enabled === 'boolean' ? src.enabled : DEFAULT_MIND_CONFIG.wander.enabled,
+    intervalMinMs: numberOr(src.intervalMinMs, DEFAULT_MIND_CONFIG.wander.intervalMinMs),
+    intervalMaxMs: numberOr(src.intervalMaxMs, DEFAULT_MIND_CONFIG.wander.intervalMaxMs),
+    cooldownMs: numberOr(src.cooldownMs, DEFAULT_MIND_CONFIG.wander.cooldownMs),
+    intents: {
+      glance: numberOr(intentsSrc.glance, DEFAULT_MIND_CONFIG.wander.intents.glance),
+      look_around: numberOr(intentsSrc.look_around, DEFAULT_MIND_CONFIG.wander.intents.look_around),
+      shift_weight: numberOr(intentsSrc.shift_weight, DEFAULT_MIND_CONFIG.wander.intents.shift_weight),
+      micro_step: numberOr(intentsSrc.micro_step, DEFAULT_MIND_CONFIG.wander.intents.micro_step),
+      browse: numberOr(intentsSrc.browse, DEFAULT_MIND_CONFIG.wander.intents.browse),
+    },
+    amplitude: {
+      maxTurnRad: numberOr(ampSrc.maxTurnRad, DEFAULT_MIND_CONFIG.wander.amplitude.maxTurnRad),
+      maxStepMeters: numberOr(ampSrc.maxStepMeters, DEFAULT_MIND_CONFIG.wander.amplitude.maxStepMeters),
+      maxStrafeMeters: numberOr(ampSrc.maxStrafeMeters, DEFAULT_MIND_CONFIG.wander.amplitude.maxStrafeMeters),
     },
   };
 }

@@ -97,3 +97,36 @@ export function deriveModulation(
     durationBias: 0,
   };
 }
+
+/**
+ * Project the phenotype onto the three PersonaPostureLayer bias fields.
+ *
+ * Phase 1 model is hardcoded and intentionally subtle: the avatar always
+ * has a tiny forward lean + moderate eye-contact baseline (so posture is
+ * observable even at fatigue=0), and fatigue amplifies the lean +
+ * suppresses eye-contact preference to convey "tired → slumps + avoids
+ * gaze". No persona-preset input yet; when Core DNA lands, the baseline
+ * will be read from the persona file instead of these constants.
+ *
+ * All outputs are in PersonaPostureLayer's documented ranges: lean and
+ * headTilt in [-1, 1], gazeContactPreference in [0, 1].
+ */
+export function derivePersonaPostureBias(phenotype: Phenotype): {
+  postureLean: number;
+  headTiltBias: number;
+  gazeContactPreference: number;
+} {
+  const fatigue = clamp01(phenotype.fatigue);
+  return {
+    postureLean: clampRange(0.08 + fatigue * 0.25, -1, 1),
+    headTiltBias: 0,
+    gazeContactPreference: clampRange(0.6 - fatigue * 0.3, 0, 1),
+  };
+}
+
+function clampRange(v: number, lo: number, hi: number): number {
+  if (!Number.isFinite(v)) return lo;
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
+}

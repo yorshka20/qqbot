@@ -1286,6 +1286,28 @@
   //   //   "fatigueMildMin": 0.3,      // below this → no injection
   //   //   "fatigueModerateMin": 0.55, // moderate wording above this
   //   //   "fatigueSevereMin": 0.8     // strongest wording above this
+  //   // },
+  //
+  //   // Phase 3: Autonomous wander — periodic low-amplitude idle motion.
+  //   // Gated to neutral pose (never fires while speaking/listening/thinking).
+  //   // Requires the avatar system to be active.
+  //   // "wander": {
+  //   //   "enabled": true,
+  //   //   "intervalMinMs": 45000,     // min delay between wander attempts
+  //   //   "intervalMaxMs": 120000,    // max delay between wander attempts
+  //   //   "cooldownMs": 12000,        // post-wander cooldown before next eligible
+  //   //   "intents": {                // weighted random over intent kinds
+  //   //     "glance": 0.3,
+  //   //     "look_around": 0.25,
+  //   //     "shift_weight": 0.2,
+  //   //     "micro_step": 0.15,
+  //   //     "browse": 0.1
+  //   //   },
+  //   //   "amplitude": {              // caps on per-step magnitudes
+  //   //     "maxTurnRad": 0.524,      // ≈ 30°
+  //   //     "maxStepMeters": 0.25,
+  //   //     "maxStrafeMeters": 0.2
+  //   //   }
   //   // }
   // }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { applyStimulus, deriveModulation, freshPhenotype, tickPhenotype } from '../ode';
+import { applyStimulus, deriveModulation, derivePersonaPostureBias, freshPhenotype, tickPhenotype } from '../ode';
 import { DEFAULT_MIND_CONFIG, type MindConfig } from '../types';
 
 function config(overrides: Partial<MindConfig> = {}): MindConfig {
@@ -112,5 +112,37 @@ describe('deriveModulation', () => {
     const p = { ...freshPhenotype(), fatigue: 0.5 };
     const m = deriveModulation(p, cfg);
     expect(m.intensityScale).toBeCloseTo(1 - 0.5 * cfg.modulation.fatigueIntensityDrop, 6);
+  });
+});
+
+describe('derivePersonaPostureBias', () => {
+  test('fatigue=0 → subtle baseline (visible but small)', () => {
+    const bias = derivePersonaPostureBias(freshPhenotype());
+    expect(bias.postureLean).toBeCloseTo(0.08, 6);
+    expect(bias.headTiltBias).toBe(0);
+    expect(bias.gazeContactPreference).toBeCloseTo(0.6, 6);
+  });
+
+  test('high fatigue amplifies lean, suppresses gaze contact', () => {
+    const bias = derivePersonaPostureBias({ ...freshPhenotype(), fatigue: 1 });
+    expect(bias.postureLean).toBeGreaterThan(0.08);
+    expect(bias.gazeContactPreference).toBeLessThan(0.6);
+  });
+
+  test('outputs stay in documented ranges', () => {
+    for (const f of [-1, 0, 0.3, 0.7, 1, 2]) {
+      const bias = derivePersonaPostureBias({ ...freshPhenotype(), fatigue: f });
+      expect(bias.postureLean).toBeGreaterThanOrEqual(-1);
+      expect(bias.postureLean).toBeLessThanOrEqual(1);
+      expect(bias.gazeContactPreference).toBeGreaterThanOrEqual(0);
+      expect(bias.gazeContactPreference).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test('monotonic: higher fatigue ⇒ larger lean, lower gaze', () => {
+    const low = derivePersonaPostureBias({ ...freshPhenotype(), fatigue: 0.2 });
+    const high = derivePersonaPostureBias({ ...freshPhenotype(), fatigue: 0.8 });
+    expect(high.postureLean).toBeGreaterThan(low.postureLean);
+    expect(high.gazeContactPreference).toBeLessThan(low.gazeContactPreference);
   });
 });
