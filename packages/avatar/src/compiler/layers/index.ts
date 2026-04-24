@@ -11,6 +11,8 @@ export { IdleMotionLayer } from './IdleMotionLayer';
 export { LayerManager } from './LayerManager';
 export type { PerlinChannelConfig, PerlinNoiseLayerOptions } from './PerlinNoiseLayer';
 export { PerlinNoiseLayer } from './PerlinNoiseLayer';
+export type { EyeGazeDefaultBias, PersonaPostureBias } from './PersonaPostureLayer';
+export { PersonaPostureLayer } from './PersonaPostureLayer';
 export type { AnimationLayer } from './types';
 export type { WalkingLayerConfig, WalkProgress } from './WalkingLayer';
 export { WalkInterruptedError, WalkingLayer } from './WalkingLayer';

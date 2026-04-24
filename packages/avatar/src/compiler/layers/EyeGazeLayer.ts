@@ -42,6 +42,17 @@ const DEFAULT_GAZE_CONFIG: GazeConfig = {
   saccadeIntervalMax: 10000,
 };
 
+/**
+ * Downward/avoidant y-offset applied to the OU output when
+ * `defaultContactPref` is set to 0 (full avoidance). Values between 0 and 1
+ * linearly interpolate from full-avoidance to no offset.
+ *
+ * Using a value of 0.3 keeps the offset large enough to be visually distinct
+ * (and detectable in unit tests) while staying comfortably within the [-1, 1]
+ * eye-ball range even when the OU position is near its maxRadius boundary.
+ */
+const AVOIDANT_Y_OFFSET = 0.3;
+
 export class EyeGazeLayer extends BaseLayer {
   readonly id = 'eye-gaze';
   // EyeGazeLayer drives eye.ball.x/y channels supported by both cubism and vrm renderers.
@@ -56,6 +67,18 @@ export class EyeGazeLayer extends BaseLayer {
   private lastSampleAt = 0;
   private override: { x: number; y: number } | null = null;
 
+  /**
+   * Default gaze contact preference, set by {@link setDefaultContactPreference}.
+   * `null` = no preference (exact original OU behaviour).
+   * `1`   = biased toward camera center (no downward offset).
+   * `0`   = avoidant / downward default (full AVOIDANT_Y_OFFSET applied).
+   * Values between 0 and 1 linearly interpolate the offset.
+   *
+   * This field only influences the no-override path. Explicit
+   * `setGazeTarget()` calls always win regardless of this value.
+   */
+  private defaultContactPref: number | null = null;
+
   constructor(config: Partial<GazeConfig> = {}) {
     super();
     this.config = { ...DEFAULT_GAZE_CONFIG, ...config };
@@ -69,6 +92,27 @@ export class EyeGazeLayer extends BaseLayer {
     this.nextSaccadeAt = 0;
     this.lastSampleAt = 0;
     this.override = null;
+    this.defaultContactPref = null;
+  }
+
+  /**
+   * Set the default gaze contact preference for the no-override path.
+   *
+   * - `null` — clears the preference; the layer reverts to its original
+   *   pure-OU behaviour with no directional bias.
+   * - `1`    — biased toward camera-center (no avoidant offset).
+   * - `0`    — avoidant / downward default (full {@link AVOIDANT_Y_OFFSET}).
+   * - Values between 0 and 1 linearly interpolate the offset.
+   *
+   * Explicit overrides via {@link setGazeTarget} are unaffected by this
+   * setting — the override path always wins.
+   *
+   * Called by {@link PersonaPostureLayer} when the user pushes a
+   * `gazeContactPreference` bias; not intended to be called directly by
+   * AvatarService consumers.
+   */
+  setDefaultContactPreference(pref: number | null): void {
+    this.defaultContactPref = pref !== null ? Math.max(0, Math.min(1, pref)) : null;
   }
 
   setGazeTarget(target: GazeTarget | null): void {
@@ -97,6 +141,7 @@ export class EyeGazeLayer extends BaseLayer {
   sample(nowMs: number, _activity: AvatarActivity): Record<string, number> {
     void _activity;
     if (this.override) {
+      // Explicit override always wins; defaultContactPref has no effect here.
       this.lastSampleAt = nowMs;
       return { 'eye.ball.x': this.override.x, 'eye.ball.y': this.override.y };
     }
@@ -135,7 +180,17 @@ export class EyeGazeLayer extends BaseLayer {
     }
 
     this.lastSampleAt = nowMs;
-    return { 'eye.ball.x': this.posX, 'eye.ball.y': this.posY };
+
+    // Apply the default contact preference bias as a deterministic additive
+    // offset to the OU output. The override path already returned above, so
+    // this block only runs when there is no explicit gaze target.
+    //
+    // pref=1 → avoidantOffset = 0   (camera-facing, no bias)
+    // pref=0 → avoidantOffset = AVOIDANT_Y_OFFSET (downward / avoidant)
+    // pref=null → avoidantOffset = 0 (original behaviour, no change)
+    const avoidantOffset = this.defaultContactPref !== null ? (1 - this.defaultContactPref) * AVOIDANT_Y_OFFSET : 0;
+    const clamp = (v: number) => Math.max(-1, Math.min(1, v));
+    return { 'eye.ball.x': this.posX, 'eye.ball.y': clamp(this.posY + avoidantOffset) };
   }
 
   private randomSaccadeInterval(): number {

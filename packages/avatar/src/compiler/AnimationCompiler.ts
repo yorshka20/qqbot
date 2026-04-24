@@ -23,6 +23,7 @@ import { EyeGazeLayer } from './layers/EyeGazeLayer';
 import { IdleMotionLayer } from './layers/IdleMotionLayer';
 import { LayerManager } from './layers/LayerManager';
 import { PerlinNoiseLayer } from './layers/PerlinNoiseLayer';
+import { PersonaPostureLayer } from './layers/PersonaPostureLayer';
 import type { AnimationLayer } from './layers/types';
 import { WalkingLayer } from './layers/WalkingLayer';
 import type {
@@ -156,12 +157,25 @@ export class AnimationCompiler extends EventEmitter {
    * `AudioEnvelopeLayer` is registered later by {@link SpeechService}.
    */
   private registerContinuousStack(): void {
+    // Instantiate EyeGazeLayer and PersonaPostureLayer explicitly so that
+    // PersonaPostureLayer can wire itself to the gaze layer for
+    // gazeContactPreference routing without exposing EyeGazeLayer in the
+    // AvatarService public API.
+    const eyeGaze = new EyeGazeLayer();
+    const personaPosture = new PersonaPostureLayer();
+    personaPosture.setEyeGazeLayer(eyeGaze);
+
     const stack: AnimationLayer[] = [
       new BreathLayer(),
       new AutoBlinkLayer(),
-      new EyeGazeLayer(),
+      eyeGaze,
       new IdleMotionLayer(),
       new WalkingLayer(this.config.walk),
+      // PersonaPostureLayer sits immediately after WalkingLayer: both are motion
+      // layers that write body/spine/head channels, so keeping them adjacent makes
+      // the stack intent readable. Ambient and perlin layers follow so they
+      // contribute their independent noise on top of the motion group.
+      personaPosture,
       new AmbientAudioLayer(),
       new PerlinNoiseLayer({ weight: 0.2 }),
     ];
