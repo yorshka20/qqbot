@@ -294,6 +294,16 @@ export interface ActionMapEntryClip {
    * `ActionMap.resolveAction()` and `listActions()` to filter by current model.
    */
   modelSupport?: 'cubism' | 'vrm' | 'both';
+  /**
+   * Optional companion face-action name played alongside this body clip.
+   * VRM clips animate skeleton bones only — they cannot drive blendshapes,
+   * so emotion clips need a paired face envelope. When present,
+   * `AvatarService.enqueueTagAnimation` enqueues this action in addition to
+   * the clip; their channel footprints (face vs body) don't conflict, so
+   * the arbiter lets them coexist. Must reference an envelope-kind action
+   * (e.g. `emotion_smile`) — referencing another clip is unsupported.
+   */
+  face?: string;
 }
 
 export type ActionMapEntry = ActionMapEntryEnvelope | ActionMapEntryClip;
@@ -393,6 +403,15 @@ export interface CompilerConfig {
    * back to humanoid-identity T-pose.
    */
   idle?: {
+    /**
+     * Action name whose clip(s) the IdleMotionLayer loops continuously to
+     * hold the resting pose. Pooled actions (variant array) rotate one
+     * variant per loop wrap. Use a "basic idle" pool (subtle small-motion
+     * clips like `vrm_idle_basic`) so the avatar appears mostly still while
+     * micro layers (breath / perlin / gaze) overlay ambient life. Bigger
+     * idle clips fire on cooldown via the unified IdleScheduler, not from
+     * inside this layer.
+     */
     loopClipActionName?: string;
   };
   /**
@@ -404,11 +423,35 @@ export interface CompilerConfig {
     speedMps?: number;
     arrivalThresholdM?: number;
     /**
-     * Action name (key in the merged action map) whose clip should loop on
-     * WalkingLayer bone channels while a walk is pending. Omit / unresolved →
-     * falls back to pure slide behavior (still emits vrm.root.* but no legs).
+     * Legacy single-direction walk-cycle binding. When set without
+     * `cycleClipActionNameByDirection`, the layer uses this clip for all
+     * motion regardless of direction. Prefer the directional binding below
+     * for production use — without leg animation matching the motion
+     * direction the avatar slides "feet locked" through space.
      */
     cycleClipActionName?: string;
+    /**
+     * Hard binding from motion direction to walk-cycle clip. WalkingLayer
+     * picks the clip matching the dominant local motion vector at every
+     * `walkTo` / `orbit` call:
+     *
+     *   - linear forward / backward / left strafe / right strafe → matching
+     *     directional clip
+     *   - orbit → forward (avatar continuously turns to face the tangent
+     *     while the cycle plays)
+     *   - pure turn (no translation) → no cycle clip; just facing rotation
+     *
+     * If a translation is requested but the matching directional clip is
+     * absent the motion is REJECTED ("legs don't move → can't translate").
+     * Random-angle walks must turn-then-translate; the 4-quadrant table is
+     * sufficient and an omnidirectional walk clip is unnecessary.
+     */
+    cycleClipActionNameByDirection?: {
+      forward?: string;
+      backward?: string;
+      left?: string;
+      right?: string;
+    };
   };
   /**
    * When true, skip registration of ambient micro-perturbation layers

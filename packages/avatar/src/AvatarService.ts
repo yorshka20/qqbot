@@ -2,6 +2,7 @@ import { singleton } from 'tsyringe';
 import { AnimationCompiler } from './compiler/AnimationCompiler';
 import { isEmotionChannel } from './compiler/emotion-channels';
 import type { AmbientAudioLayer } from './compiler/layers/AmbientAudioLayer';
+import type { IdleClip } from './compiler/layers/clips/types';
 import { IdleMotionLayer } from './compiler/layers/IdleMotionLayer';
 import type { PersonaPostureBias } from './compiler/layers/PersonaPostureLayer';
 import { WalkingLayer } from './compiler/layers/WalkingLayer';
@@ -280,26 +281,50 @@ export class AvatarService {
         logger.info(
           `[AvatarService] IdleMotionLayer not registered (compiler.debugQuiet=true?); idle clip "${idleActionName}" skipped`,
         );
-      } else {
-        const clip = this.compiler.getClipByActionName(idleActionName);
-        if (idleLayer instanceof IdleMotionLayer && clip) {
-          idleLayer.setLoopClip(clip);
+      } else if (idleLayer instanceof IdleMotionLayer) {
+        const clips = this.compiler.getClipsByActionName(idleActionName);
+        if (clips && clips.length > 0) {
+          idleLayer.setLoopClips(clips);
+          const totalSec = clips.reduce((s, c) => s + c.duration, 0);
           logger.info(
-            `[AvatarService] IdleMotionLayer loop mode enabled with clip "${idleActionName}" (${clip.duration.toFixed(2)}s)`,
+            `[AvatarService] IdleMotionLayer loop mode enabled with action "${idleActionName}" (${clips.length} variant${clips.length === 1 ? '' : 's'}, ~${totalSec.toFixed(1)}s pooled)`,
           );
         } else {
           logger.warn(
-            `[AvatarService] idle.loopClipActionName="${idleActionName}" did not resolve to a clip; idle layer stays in gap mode`,
+            `[AvatarService] idle.loopClipActionName="${idleActionName}" did not resolve to any clip; idle layer stays in gap mode`,
           );
         }
       }
     }
 
+    const walkingLayer = this.compiler.getLayer('walking');
+    const walkByDir = this.config.compiler.walk?.cycleClipActionNameByDirection;
     const walkCycleName = this.config.compiler.walk?.cycleClipActionName;
-    if (walkCycleName) {
-      const walkingLayer = this.compiler.getLayer('walking');
+    if (walkByDir && walkingLayer instanceof WalkingLayer) {
+      // Directional binding takes precedence — resolve all 4 cardinal clips
+      // and hand the table to the layer. Missing entries are passed through
+      // as `undefined`; the layer will reject motions in those directions.
+      const resolved: { forward?: IdleClip; backward?: IdleClip; left?: IdleClip; right?: IdleClip } = {};
+      const log: string[] = [];
+      for (const dir of ['forward', 'backward', 'left', 'right'] as const) {
+        const name = walkByDir[dir];
+        if (!name) {
+          log.push(`${dir}=∅`);
+          continue;
+        }
+        const clip = this.compiler.getClipByActionName(name);
+        if (clip) {
+          resolved[dir] = clip;
+          log.push(`${dir}=${name}(${clip.duration.toFixed(2)}s)`);
+        } else {
+          log.push(`${dir}=${name}(missing)`);
+        }
+      }
+      walkingLayer.setWalkCycleClipsByDirection(resolved);
+      logger.info(`[AvatarService] WalkingLayer directional cycle clips: ${log.join(', ')}`);
+    } else if (walkCycleName && walkingLayer instanceof WalkingLayer) {
       const walkClip = this.compiler.getClipByActionName(walkCycleName);
-      if (walkingLayer instanceof WalkingLayer && walkClip) {
+      if (walkClip) {
         walkingLayer.setWalkCycleClip(walkClip);
         logger.info(
           `[AvatarService] WalkingLayer cycle clip enabled with "${walkCycleName}" (${walkClip.duration.toFixed(2)}s)`,
@@ -524,7 +549,7 @@ export class AvatarService {
    * `enqueueTagAnimation`. The resulting `StateNode` carries `source:
    * 'autonomous'` so HUD traces and logs can distinguish the two paths.
    *
-   * @param actionName - Key in the action-map (e.g. 'smile', 'nod').
+   * @param actionName - Key in the action-map (e.g. 'emotion_smile', 'micro_blink').
    * @param intensity  - Base intensity in [0, 1] (clamped before modulation).
    * @param opts       - Optional overrides; `durationOverrideMs` replaces the
    *                     action-map default as the jitter base.
@@ -624,6 +649,27 @@ export class AvatarService {
         source,
       },
     ]);
+
+    // Face composition: a clip-kind action may declare a paired face envelope
+    // (`face: 'emotion_smile'`) so emotion clips animate body and face
+    // together. Footprints don't overlap (skeleton vs blendshape channels) so
+    // the arbiter coexists them. Face piggybacks on the body's already-
+    // modulated intensity & duration to stay in sync. Single-level fan-out:
+    // the face action is an envelope, which has no `face` field.
+    const face = compiler.getActionFace(actionName);
+    if (face) {
+      compiler.enqueue([
+        {
+          action: face,
+          emotion,
+          intensity,
+          duration,
+          easing: 'easeInOutCubic',
+          timestamp: Date.now(),
+          source,
+        },
+      ]);
+    }
   }
 
   /**
@@ -859,7 +905,12 @@ export class AvatarService {
    * with a non-running pipeline).
    */
   checkAvailable(footprint: Iterable<string>): Set<string> {
-    return this.compiler?.checkAvailable(footprint) ?? new Set<string>();
+    // Wander/IdleScheduler callsite: must see continuous-layer ownership so
+    // root-translation steps are blocked while idle-layer holds leg/spine
+    // channels. Discrete enqueue paths (`processQueue` cross-action check)
+    // call `compiler.checkAvailable` directly with the default
+    // `includeContinuousLayers=false` — see AnimationCompiler.ts.
+    return this.compiler?.checkAvailable(footprint, { includeContinuousLayers: true }) ?? new Set<string>();
   }
 
   hasConsumer(): boolean {
@@ -940,7 +991,23 @@ export class AvatarService {
  * so prompt-cache hits survive action-map reorderings within a bucket.
  */
 export function formatActionsForPrompt(actions: ActionSummary[]): string {
-  const CATEGORY_ORDER: readonly string[] = ['emotion', 'movement', 'micro'];
+  // Order optimized for LLM prompt scan: expressive intent first (emotion /
+  // reaction / greet), then situational (pose / idle / locomotion / combat),
+  // then auto-fidget micros, then UI-only costume. `movement` is kept for
+  // back-compat with any envelope entries still using the old single-bucket
+  // category. Anything outside this list falls through to `_other`.
+  const CATEGORY_ORDER: readonly string[] = [
+    'emotion',
+    'reaction',
+    'greet',
+    'pose',
+    'idle',
+    'locomotion',
+    'combat',
+    'movement',
+    'micro',
+    'costume',
+  ];
   const byCategory = new Map<string, ActionSummary[]>();
   for (const a of actions) {
     const key = a.category && CATEGORY_ORDER.includes(a.category) ? a.category : '_other';

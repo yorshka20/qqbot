@@ -100,6 +100,22 @@ export interface AnimationLayer {
   reset?(): void;
 
   /**
+   * Optional: report channels the layer is currently writing (or holding).
+   * Read by `AnimationCompiler.getOccupiedChannels` so the channel-occupancy
+   * arbiter sees continuous-layer ownership, not just queued discrete
+   * animations. Critical for blocking wander/locomotion while the idle loop
+   * owns leg/spine/hips channels — without it the arbiter reports those
+   * channels as free and wander triggers root translation while the idle
+   * clip's leg quats are still locked, producing the "body slides, feet stay"
+   * visual bug.
+   *
+   * Layers that hold absolute poses (idle loop clip, walk cycle clip) MUST
+   * implement this. Delta layers (breath, perlin, gaze) can omit — their
+   * contributions are small and additive, not authoritative.
+   */
+  getActiveChannels?(): ReadonlySet<string>;
+
+  /**
    * Optional: expose a set of runtime-tunable parameters for the tuning HUD.
    * Called on-demand when the HUD requests the current param list.
    */

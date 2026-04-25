@@ -89,6 +89,17 @@ export class IdleMotionLayer extends BaseLayer {
    *  frozen when the truly-idle gate closed. Re-emitted every tick while
    *  gated off. */
   private frozenElapsedSec = 0;
+  /** Loop-pool mode: when set, on each wrap (elapsed >= duration) a random
+   *  variant from this pool replaces `config.loopClip` so a pooled action
+   *  like `vrm_idle_loop` rotates through its variants instead of looping
+   *  one forever. Null = single-clip loop mode (legacy). */
+  private loopPool: IdleClip[] | null = null;
+  /** Cached union of channels the loop clip(s) write — recomputed on
+   *  setLoopClip / setLoopClips. Returned from `getActiveChannels()` so the
+   *  occupancy arbiter blocks wander/locomotion while the idle loop owns
+   *  the leg/spine/hips quat channels. Frozen-frame state still reports the
+   *  same channels because the pose is visually held, even when not ticking. */
+  private loopChannels: ReadonlySet<string> | null = null;
   /** Whether the previous tick observed a truly-idle activity. Flips back to
    *  `false` on exit so re-entry reseeds the gap-mode timer / loop-mode
    *  anchor cleanly. */
@@ -100,17 +111,63 @@ export class IdleMotionLayer extends BaseLayer {
   }
 
   /**
-   * Switch to / update loop mode at runtime. Pass `null` to return to gap
-   * mode. Called by `AvatarService` after compiler initialization once the
-   * configured `loopClipActionName` resolves to a preloaded clip.
+   * Switch to / update single-clip loop mode at runtime. Pass `null` to
+   * return to gap mode. Called by `AvatarService` after compiler init once
+   * the configured `loopClipActionName` resolves to a single preloaded clip.
    */
   setLoopClip(clip: IdleClip | null): void {
+    this.loopPool = null;
     this.config.loopClip = clip ?? undefined;
+    this.loopChannels = clip ? channelSetOf([clip]) : null;
     // Reset state so the mode switch starts cleanly on the next tick.
     this.active = null;
     this.loopStartMs = 0;
     this.frozenElapsedSec = 0;
     this.cached = null;
+  }
+
+  /**
+   * Switch to loop-pool mode: the layer loops one variant at a time, picking
+   * a fresh random variant from `clips` on every wrap. Used for pooled idle
+   * actions (e.g. `vrm_idle_loop`'s 16 variants) so the resting pose has
+   * built-in variety without exiting loop mode. Pass an empty array to
+   * disable (returns to gap mode). Single-element arrays are equivalent to
+   * `setLoopClip`.
+   */
+  setLoopClips(clips: readonly IdleClip[]): void {
+    if (clips.length === 0) {
+      this.setLoopClip(null);
+      return;
+    }
+    if (clips.length === 1) {
+      this.setLoopClip(clips[0]);
+      return;
+    }
+    this.loopPool = [...clips];
+    this.config.loopClip = clips[Math.floor(Math.random() * clips.length)];
+    // Union across the whole pool — any variant might be the active one at
+    // any given tick, so they all need to register as occupied for arbiter.
+    this.loopChannels = channelSetOf(clips);
+    this.active = null;
+    this.loopStartMs = 0;
+    this.frozenElapsedSec = 0;
+    this.cached = null;
+  }
+
+  /**
+   * Channels currently owned by this layer — read by the occupancy arbiter.
+   *
+   * Loop mode: the layer continuously writes (or holds frozen) the loop
+   * clip's tracks even while gated off, so its channels are owned for the
+   * full lifetime of the loop configuration.
+   *
+   * Gap mode: only owns channels while a clip is actively playing; between
+   * clips the layer emits nothing and returns empty.
+   */
+  getActiveChannels(): ReadonlySet<string> {
+    if (this.loopChannels) return this.loopChannels;
+    if (this.active) return channelSetOf([this.active.clip]);
+    return EMPTY_CHANNEL_SET;
   }
 
   override reset(): void {
@@ -167,7 +224,7 @@ export class IdleMotionLayer extends BaseLayer {
     // Loop mode — the loop clip is the sole source of truth for resting pose,
     // so freeze on gate exit rather than stop emitting.
     if (this.config.loopClip) {
-      const loopClip = this.config.loopClip;
+      let loopClip = this.config.loopClip;
       let elapsedSec: number;
 
       if (truly) {
@@ -180,7 +237,20 @@ export class IdleMotionLayer extends BaseLayer {
           this.loopStartMs = nowMs;
         }
         this.wasIdle = true;
-        elapsedSec = ((nowMs - this.loopStartMs) / 1000) % loopClip.duration;
+        const totalElapsedSec = (nowMs - this.loopStartMs) / 1000;
+        if (totalElapsedSec >= loopClip.duration) {
+          // Wrap boundary — in pool mode, rotate to a fresh variant so a
+          // pooled idle action animates with built-in variety; in single-
+          // clip mode, just loop the same clip again.
+          if (this.loopPool && this.loopPool.length > 1) {
+            loopClip = this.loopPool[Math.floor(Math.random() * this.loopPool.length)];
+            this.config.loopClip = loopClip;
+          }
+          this.loopStartMs = nowMs;
+          elapsedSec = 0;
+        } else {
+          elapsedSec = totalElapsedSec;
+        }
         this.frozenElapsedSec = elapsedSec;
       } else {
         // Gated off — re-emit the last idle-tick frame every tick. Freeze
@@ -236,6 +306,14 @@ export class IdleMotionLayer extends BaseLayer {
   private randomGap(): number {
     return this.config.gapMin + Math.random() * Math.max(0, this.config.gapMax - this.config.gapMin);
   }
+}
+
+const EMPTY_CHANNEL_SET: ReadonlySet<string> = new Set();
+
+function channelSetOf(clips: readonly IdleClip[]): ReadonlySet<string> {
+  const set = new Set<string>();
+  for (const c of clips) for (const t of c.tracks) set.add(t.channel);
+  return set;
 }
 
 function filterActiveChannels<V>(raw: Record<string, V>, activeChannels?: ReadonlySet<string>): Record<string, V> {

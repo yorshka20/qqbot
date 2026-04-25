@@ -43,6 +43,32 @@ import type {
 
 const DEFAULT_SPRING: SpringParams = { omega: 12, zeta: 1 };
 
+/**
+ * Defense-in-depth output clamp table — per-channel valid range applied at
+ * the very end of `tick()` before the frame is emitted. Catches any upstream
+ * additive overshoot (layer + action sums beyond the visual range), bug-
+ * introduced negative values, or persona-modulation overflows. Channels not
+ * listed pass through verbatim — root translation, custom morphs, and
+ * artist-defined channels keep their full numeric range.
+ *
+ * Authoring conventions:
+ * - eye/mouth/brow blendshapes are unit-interval `[0, 1]` (Cubism + VRM convention)
+ * - head Euler is in degrees; ±45° / ±30° matches HeadLookLayer's natural caps
+ * - brow has been observed authored in `[-1, 1]` (negative = furrowed)
+ */
+const CHANNEL_RANGE_TABLE: ReadonlyArray<readonly [string, readonly [number, number]]> = [
+  ['eye.open.left', [0, 1]],
+  ['eye.open.right', [0, 1]],
+  ['eye.smile.left', [0, 1]],
+  ['eye.smile.right', [0, 1]],
+  ['mouth.smile', [0, 1]],
+  ['mouth.open', [0, 1]],
+  ['brow', [-1, 1]],
+  ['head.yaw', [-45, 45]],
+  ['head.pitch', [-30, 30]],
+  ['head.roll', [-30, 30]],
+];
+
 const DEFAULT_SPRING_BY_CHANNEL: Record<string, SpringParams> = {
   'mouth.open': { omega: 25, zeta: 1 },
   'mouth.smile': { omega: 20, zeta: 1 },
@@ -303,7 +329,7 @@ export class AnimationCompiler extends EventEmitter {
    * during release doesn't self-conflict (that's a chained-replay, not a
    * collision).
    */
-  getOccupiedChannels(opts?: { excludeActionName?: string }): Set<string> {
+  getOccupiedChannels(opts?: { excludeActionName?: string; includeContinuousLayers?: boolean }): Set<string> {
     const skip = opts?.excludeActionName;
     const occupied = new Set<string>();
     for (const anim of this.activeAnimations) {
@@ -312,6 +338,27 @@ export class AnimationCompiler extends EventEmitter {
         for (const t of anim.targetParams) occupied.add(t.channel);
       } else {
         for (const t of anim.clip.tracks) occupied.add(t.channel);
+      }
+    }
+    // Continuous layers that hold absolute poses (idle loop, walk cycle) own
+    // their channels every tick. Two callers, two semantics:
+    //
+    //  - Wander gate (`AvatarService.checkAvailable` → here with
+    //    `includeContinuousLayers=true`): MUST see layer ownership so a
+    //    wander step that translates the root is blocked while the idle
+    //    layer holds the legs (otherwise the body slides while feet stay).
+    //
+    //  - Discrete cross-action enqueue (`processQueue` → here with the
+    //    default false): MUST NOT see layer ownership, otherwise an idle
+    //    interject like `[A:vrm_idle_loop_*]` would self-conflict against
+    //    the basic-idle layer that's already holding pose. The layer's
+    //    `activeChannels` filter mechanism (in LayerManager.sample) lets
+    //    the layer yield its channels to discrete actions automatically;
+    //    the arbiter shouldn't double-block.
+    if (opts?.includeContinuousLayers) {
+      for (const layer of this.layerManager.list()) {
+        if (!layer.isEnabled() || !layer.getActiveChannels) continue;
+        for (const ch of layer.getActiveChannels()) occupied.add(ch);
       }
     }
     return occupied;
@@ -327,11 +374,37 @@ export class AnimationCompiler extends EventEmitter {
    * `getOccupiedChannels` — used by the enqueue path to avoid self-conflict
    * on same-name chained replays.
    */
-  checkAvailable(footprint: Iterable<string>, opts?: { excludeActionName?: string }): Set<string> {
+  checkAvailable(
+    footprint: Iterable<string>,
+    opts?: { excludeActionName?: string; includeContinuousLayers?: boolean },
+  ): Set<string> {
     const occupied = this.getOccupiedChannels(opts);
     const conflicts = new Set<string>();
     for (const ch of footprint) {
-      if (occupied.has(ch)) conflicts.add(ch);
+      if (occupied.has(ch)) {
+        conflicts.add(ch);
+        continue;
+      }
+      // Bidirectional base/axis match: an idle clip writing
+      // `vrm.hips.x/y/z` (axis channels) must collide with a footprint that
+      // declares `vrm.hips` (base channel), and vice versa. Without this the
+      // wander gate misses idle-loop ownership entirely — its WALK_FOOTPRINT
+      // uses base names while the clip tracks are authored with axes.
+      let matched = false;
+      for (const oc of occupied) {
+        if (oc.startsWith(`${ch}.`)) {
+          matched = true;
+          break;
+        }
+      }
+      if (matched) {
+        conflicts.add(ch);
+        continue;
+      }
+      const dot = ch.lastIndexOf('.');
+      if (dot > 0 && occupied.has(ch.slice(0, dot))) {
+        conflicts.add(ch);
+      }
     }
     return conflicts;
   }
@@ -343,6 +416,15 @@ export class AnimationCompiler extends EventEmitter {
     return this.actionMap.getCategory(action);
   }
 
+  /**
+   * Companion face-action declared on a clip-kind action's `face` field.
+   * `AvatarService.enqueueTagAnimation` reads this to fan a single tag into
+   * body-clip + face-envelope pair (e.g. `vrm_emotion_laugh` + `emotion_smile`).
+   */
+  getActionFace(action: string): string | null {
+    return this.actionMap.getFace(action);
+  }
+
   /** Public summary of actions compatible with the current model kind. See `ActionMap.listActions()`. */
   listActions(): ActionSummary[] {
     return this.actionMap.listActions(this.currentModelKind);
@@ -351,6 +433,11 @@ export class AnimationCompiler extends EventEmitter {
   /** Return the first preloaded IdleClip for a clip-kind action, or null. */
   getClipByActionName(name: string) {
     return this.actionMap.getClipByActionName(name);
+  }
+
+  /** Return every preloaded IdleClip variant for a clip-kind action, or null. */
+  getClipsByActionName(name: string) {
+    return this.actionMap.getClipsByActionName(name);
   }
 
   /** Register a continuous animation layer (breath, blink, gaze, idle clip…). */
@@ -1072,6 +1159,20 @@ export class AnimationCompiler extends EventEmitter {
     //    own idle physics when a key disappears from the emitted frame).
     for (const id of this.springStates.keys()) {
       if (!(id in contributions)) this.springStates.delete(id);
+    }
+
+    // Defense-in-depth clamp: known semantic channels have natural valid
+    // ranges (eye.open ∈ [0,1], head.yaw ∈ ±45°, etc.). Source-side bugs
+    // (action authors, layer mis-mixing, additive overshoot) can produce
+    // out-of-range values; clamping at the output boundary guarantees the
+    // renderer never receives invalid params even if a component upstream
+    // misbehaves. Channels not in the table pass through unchanged so root
+    // translation, custom morphs, etc. retain their full numeric range.
+    for (const [channel, range] of CHANNEL_RANGE_TABLE) {
+      const v = next[channel];
+      if (v === undefined) continue;
+      if (v < range[0]) next[channel] = range[0];
+      else if (v > range[1]) next[channel] = range[1];
     }
 
     this.currentParams = next;

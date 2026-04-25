@@ -97,11 +97,33 @@ export class AutoBlinkLayer extends BaseLayer {
     this.nextBlinkAt = 0;
   }
 
-  sample(nowMs: number, _activity: AvatarActivity): Record<string, number> {
+  sample(
+    nowMs: number,
+    _activity: AvatarActivity,
+    activeChannels?: ReadonlySet<string>,
+  ): Record<string, number> {
     void _activity;
     // First-run: schedule the first blink lazily so we don't depend on a
     // constructor `now` reference (tests/mocks can move the clock).
     if (this.nextBlinkAt === 0) this.nextBlinkAt = nowMs + this.randomInterval();
+
+    // Yield to a discrete eye.open.* action: when an action like
+    // `micro_blink` is active, its target is authored as a delta from the
+    // layer baseline 1.0 (so action `-1.0` + layer `1.0` = closed `0.0`).
+    // If the layer is mid-blink (closure > 0) the deltas would compound
+    // into negative-clamped or visually "double-droopy" eyes. Holding
+    // steady at 1.0 + pausing the state machine lets the action drive a
+    // clean curve, then the layer reschedules the next auto-blink after
+    // the action's duration window has elapsed.
+    if (activeChannels?.has('eye.open.left') || activeChannels?.has('eye.open.right')) {
+      // Reset to `open` phase; the running phase (if any) is abandoned —
+      // the discrete action takes over the closure curve.
+      this.phase = 'open';
+      // Push next auto-blink past at least one full inter-blink window so
+      // we don't immediately retrigger right after the action releases.
+      this.nextBlinkAt = Math.max(this.nextBlinkAt, nowMs + this.config.intervalMin / this._rate);
+      return { 'eye.open.left': 1, 'eye.open.right': 1 };
+    }
 
     const closure = this.advanceAndSampleClosure(nowMs);
     const open = 1 - closure;

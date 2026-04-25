@@ -144,7 +144,15 @@ export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
     releaseRatio: 0.3,
     crossfadeMs: 250,
     baselineHalfLifeMs: 3000,
-    idle: { loopClipActionName: 'peace_sign' },
+    idle: { loopClipActionName: 'vrm_idle_basic' },
+    walk: {
+      cycleClipActionNameByDirection: {
+        forward: 'vrm_locomotion_walk_f',
+        backward: 'vrm_locomotion_walk_b',
+        left: 'vrm_locomotion_walk_l',
+        right: 'vrm_locomotion_walk_r',
+      },
+    },
   },
   idle: {
     idleIntervalMin: 3000,

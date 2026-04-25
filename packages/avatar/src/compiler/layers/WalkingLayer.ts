@@ -7,6 +7,8 @@ import type { EasingType } from '../types';
 import { BaseLayer } from './BaseLayer';
 import type { IdleClip } from './clips/types';
 
+const WALKING_LAYER_EMPTY_CHANNELS: ReadonlySet<string> = new Set();
+
 /**
  * Error thrown when a pending motion is interrupted by a new motion or by stop().
  */
@@ -198,6 +200,17 @@ export class WalkingLayer extends BaseLayer {
 
   /** Walk-cycle clip to sample while a motion is active, or null for slide-only motion. */
   private walkCycleClip: IdleClip | null = null;
+  /** Per-direction walk-cycle clip table. When set, `walkTo`/`orbit` select
+   *  the clip matching the motion's dominant local-frame component on every
+   *  motion start. Translations without a matching clip are rejected so the
+   *  avatar never slides with locked legs. Null = legacy single-clip mode
+   *  driven by `setWalkCycleClip`. */
+  private walkCycleByDirection: {
+    forward?: IdleClip;
+    backward?: IdleClip;
+    left?: IdleClip;
+    right?: IdleClip;
+  } | null = null;
   /** Elapsed playback time (ms) within the current walk-cycle clip. */
   private cycleElapsedMs = 0;
   /** Authored walking speed (m/s) for the injected clip; used to scale playback rate. */
@@ -258,6 +271,26 @@ export class WalkingLayer extends BaseLayer {
         resolve,
         reject,
       };
+      // Direction-bound walk-cycle clip selection. In legacy single-clip mode
+      // (`walkCycleByDirection === null`) the existing `walkCycleClip` is
+      // kept untouched. In directional mode, refuse to translate without a
+      // matching clip — "legs don't move, body doesn't move".
+      if (this.walkCycleByDirection) {
+        const cycle = this.pickCycleClipForMotion(this.motion);
+        if (distM >= 1e-3 && !cycle) {
+          this.motion = null;
+          reject(
+            new WalkInterruptedError({
+              x: startX,
+              z: startZ,
+              facing: startFacing,
+            }),
+          );
+          return;
+        }
+        this.walkCycleClip = cycle;
+        this.cycleElapsedMs = 0;
+      }
       this.onMotionStart({ x, z, facing: targetFacing });
     });
   }
@@ -346,6 +379,25 @@ export class WalkingLayer extends BaseLayer {
         resolve,
         reject,
       };
+      // Orbit always uses the forward cycle clip (avatar continuously
+      // re-faces the tangent, so motion is "forward in current facing").
+      // Refuse the orbit if directional mode is on but forward is missing.
+      if (this.walkCycleByDirection) {
+        const cycle = this.pickCycleClipForMotion(this.motion);
+        if (!cycle) {
+          this.motion = null;
+          reject(
+            new WalkInterruptedError({
+              x: this.currentX,
+              z: this.currentZ,
+              facing: this.currentFacing,
+            }),
+          );
+          return;
+        }
+        this.walkCycleClip = cycle;
+        this.cycleElapsedMs = 0;
+      }
       // startWalk event carries a synthesised "target" at the end of the sweep for debug.
       const endAngle = startAngle + opts.sweepRad;
       const endX = center.x + effectiveRadius * Math.cos(endAngle);
@@ -384,10 +436,72 @@ export class WalkingLayer extends BaseLayer {
    * displacement) holds the clip at rate 0.
    */
   setWalkCycleClip(clip: IdleClip | null, authoredSpeedMps = 1.0): void {
+    this.walkCycleByDirection = null;
     this.walkCycleClip = clip;
     this.authoredSpeedMps = authoredSpeedMps;
     this.cycleElapsedMs = 0;
     this.cachedQuat = null;
+  }
+
+  /**
+   * Bind walk-cycle clips to the four cardinal motion directions
+   * (character-local frame). On every `walkTo` / `orbit`, the layer picks
+   * the entry matching the dominant local component of the motion vector:
+   *
+   *   - forward (positive +Z local) → `forward`
+   *   - backward → `backward`
+   *   - right strafe (positive +X local) → `right`
+   *   - left strafe → `left`
+   *   - orbit (any sweep) → `forward` (avatar continuously turns to tangent
+   *     so the cycle is always "moving forward in current facing")
+   *   - pure turn (no translation) → no cycle clip
+   *
+   * Random-angle walks must `turn` first then translate along a cardinal
+   * direction; an omnidirectional clip is unnecessary. Diagonal motions
+   * pick the dominant axis (forward + slight strafe → forward clip).
+   *
+   * If a translation is requested and the matching directional entry is
+   * absent, the motion is rejected — "legs don't move, body doesn't move".
+   */
+  setWalkCycleClipsByDirection(
+    map: { forward?: IdleClip; backward?: IdleClip; left?: IdleClip; right?: IdleClip },
+    authoredSpeedMps = 1.0,
+  ): void {
+    this.walkCycleByDirection = { ...map };
+    this.walkCycleClip = null;
+    this.authoredSpeedMps = authoredSpeedMps;
+    this.cycleElapsedMs = 0;
+    this.cachedQuat = null;
+  }
+
+  /**
+   * Pick the walk-cycle clip matching `motion`'s dominant local-frame
+   * direction. Returns null when no directional table is configured (caller
+   * falls back to legacy single-clip mode), when no matching entry exists
+   * for the motion's direction, or when motion is a pure rotation with no
+   * translation.
+   */
+  private pickCycleClipForMotion(motion: Motion): IdleClip | null {
+    if (!this.walkCycleByDirection) return this.walkCycleClip;
+    if (motion.kind === 'orbit') return this.walkCycleByDirection.forward ?? null;
+    const dx = motion.target.x - motion.startX;
+    const dz = motion.target.z - motion.startZ;
+    const distM = Math.sqrt(dx * dx + dz * dz);
+    if (distM < 1e-3) return null; // pure turn — no walk cycle needed
+    // Transform world Δ into character-local frame at motion start. Forward
+    // axis = (sin(facing), cos(facing)); Right axis = (cos(facing), -sin(facing)).
+    const sinF = Math.sin(motion.startFacing);
+    const cosF = Math.cos(motion.startFacing);
+    const localFwd = dx * sinF + dz * cosF;
+    const localRight = dx * cosF - dz * sinF;
+    if (Math.abs(localFwd) >= Math.abs(localRight)) {
+      return localFwd >= 0
+        ? (this.walkCycleByDirection.forward ?? null)
+        : (this.walkCycleByDirection.backward ?? null);
+    }
+    return localRight >= 0
+      ? (this.walkCycleByDirection.right ?? null)
+      : (this.walkCycleByDirection.left ?? null);
   }
 
   reset(): void {
@@ -399,6 +513,22 @@ export class WalkingLayer extends BaseLayer {
     this.lastOnWalkingEmitMs = null;
     this.cycleElapsedMs = 0;
     this.cachedQuat = null;
+  }
+
+  /**
+   * Channels currently owned by this layer — read by the occupancy arbiter.
+   * When a motion is pending the layer drives root translation
+   * (`vrm.root.x/z/rotY`) and, if a walk-cycle clip is configured, the bone
+   * tracks of that clip (legs / spine / hips). When no motion is active the
+   * layer emits nothing and returns empty.
+   */
+  getActiveChannels(): ReadonlySet<string> {
+    if (!this.motion) return WALKING_LAYER_EMPTY_CHANNELS;
+    const set = new Set<string>(['vrm.root.x', 'vrm.root.z', 'vrm.root.rotY']);
+    if (this.walkCycleClip) {
+      for (const t of this.walkCycleClip.tracks) set.add(t.channel);
+    }
+    return set;
   }
 
   // ──────────────────────────────────────────────────────────────────────────────
