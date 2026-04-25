@@ -1288,45 +1288,37 @@ describe('AnimationCompiler currentModelKind', () => {
 // Model-aware listActions / resolveAction paths (Task 2)
 // ---------------------------------------------------------------------------
 describe('AnimationCompiler — model-aware listActions and resolveAction', () => {
-  test('listActions filters by current model kind (cubism excludes vrm-only)', () => {
+  test('listActions filters by current model kind (cubism excludes vrm-only clips)', () => {
     const compiler = newAnimationCompilerTest();
     compiler.setCurrentModelKind('cubism');
-    const actions = compiler.listActions();
-    const names = actions.map((a) => a.name);
-    // formal_bow is vrm-only in the default map — must be absent for cubism
-    expect(names).not.toContain('formal_bow');
-    // nod is head/body-only (no explicit modelSupport → auto-derives to both)
-    expect(names).toContain('nod');
-    // wave carries arm.* which conflicts with VRM idle; explicit cubism-only
-    expect(names).toContain('wave');
+    const names = compiler.listActions().map((a) => a.name);
+    // vrm_greet_formal_bow is vrm-only — must be absent for cubism
+    expect(names).not.toContain('vrm_pose_peace_sign');
+    // emotion_smile is modelSupport: 'both' — present
+    expect(names).toContain('emotion_smile');
   });
 
   test('listActions includes vrm-only actions when model is vrm', () => {
     const compiler = newAnimationCompilerTest();
     compiler.setCurrentModelKind('vrm');
-    const actions = compiler.listActions();
-    const names = actions.map((a) => a.name);
-    expect(names).toContain('formal_bow');
-    // nod auto-derives to both (head.pitch + body.y, no vrm.* prefix, no arm conflict)
-    expect(names).toContain('nod');
-    // wave is still explicitly cubism-only due to arm.* channel conflicts
-    // with the VRM idle loop's absolute-pose bone tracks
-    expect(names).not.toContain('wave');
+    const names = compiler.listActions().map((a) => a.name);
+    expect(names).toContain('vrm_pose_peace_sign');
+    expect(names).toContain('emotion_smile');
   });
 
   test('resolveAction returns null for vrm-only action when model is cubism', () => {
     const compiler = newAnimationCompilerTest();
     compiler.setCurrentModelKind('cubism');
-    const result = compiler.resolveAction('formal_bow', 'neutral', 1.0);
+    const result = compiler.resolveAction('vrm_pose_peace_sign', 'neutral', 1.0);
     expect(result).toBeNull();
   });
 
   test('resolveAction resolves for vrm-only action when model is vrm', () => {
     const compiler = newAnimationCompilerTest();
     compiler.setCurrentModelKind('vrm');
-    const result = compiler.resolveAction('formal_bow', 'neutral', 1.0);
+    const result = compiler.resolveAction('vrm_pose_peace_sign', 'neutral', 1.0);
     expect(result).not.toBeNull();
-    expect(result!.kind).toBe('clip');
+    expect(result?.kind).toBe('clip');
   });
 });
 

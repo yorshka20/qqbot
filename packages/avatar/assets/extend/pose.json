@@ -1,0 +1,108 @@
+{
+  "vrm_pose_show_body": {
+    "kind": "clip",
+    "category": "pose",
+    "modelSupport": "vrm",
+    "description": "全身展示——转身展示整体身形",
+    "clip": "clips/vrm/sample_vrma_01.json",
+    "defaultDuration": 11800
+  },
+  "vrm_pose_peace_sign": {
+    "kind": "clip",
+    "category": "pose",
+    "modelSupport": "vrm",
+    "description": "比 V 字胜利手势",
+    "clip": "clips/vrm/sample_vrma_03.json",
+    "defaultDuration": 11684,
+    "face": "emotion_smile"
+  },
+  "vrm_pose_shoot": {
+    "kind": "clip",
+    "category": "pose",
+    "modelSupport": "vrm",
+    "description": "做出开枪姿势",
+    "clip": "clips/vrm/sample_vrma_04.json",
+    "defaultDuration": 9600
+  },
+  "vrm_pose_spin": {
+    "kind": "clip",
+    "category": "pose",
+    "modelSupport": "vrm",
+    "description": "原地旋转一周",
+    "clip": "clips/vrm/sample_vrma_05.json",
+    "defaultDuration": 9317
+  },
+  "vrm_pose_model": {
+    "kind": "clip",
+    "category": "pose",
+    "modelSupport": "vrm",
+    "description": "时装模特定型 pose（左手叉腰）",
+    "clip": "clips/vrm/sample_vrma_06.json",
+    "defaultDuration": 7517
+  },
+  "vrm_pose_dogeza": {
+    "kind": "clip",
+    "category": "pose",
+    "modelSupport": "vrm",
+    "description": "跪下磕头（土下座）",
+    "clip": "clips/vrm/pose_dogeza_01.json",
+    "defaultDuration": 7300
+  },
+  "vrm_pose_drink_water": {
+    "kind": "clip",
+    "category": "pose",
+    "modelSupport": "vrm",
+    "description": "拿起水瓶拧开喝水",
+    "clip": "clips/vrm/pose_drink_water_01.json",
+    "defaultDuration": 23667
+  },
+  "vrm_pose_finger_gun": {
+    "kind": "clip",
+    "category": "pose",
+    "modelSupport": "vrm",
+    "description": "手指枪手势",
+    "clip": "clips/vrm/pose_finger_gun_01.json",
+    "defaultDuration": 3367
+  },
+  "vrm_pose_sit_down": {
+    "kind": "clip",
+    "category": "pose",
+    "modelSupport": "vrm",
+    "description": "坐下",
+    "clip": "clips/vrm/pose_gatan_01.json",
+    "defaultDuration": 11400
+  },
+  "vrm_pose_cheer_on": {
+    "kind": "clip",
+    "category": "pose",
+    "modelSupport": "vrm",
+    "description": "加油打气，鼓励",
+    "clip": "clips/vrm/pose_gekirei_01.json",
+    "defaultDuration": 21500,
+    "face": "emotion_smile"
+  },
+  "vrm_pose_strength": {
+    "kind": "clip",
+    "category": "pose",
+    "modelSupport": "vrm",
+    "description": "展示力量",
+    "clip": "clips/vrm/pose_general_01.json",
+    "defaultDuration": 4000
+  },
+  "vrm_pose_fighting_stance": {
+    "kind": "clip",
+    "category": "pose",
+    "modelSupport": "vrm",
+    "description": "格斗准备 pose",
+    "clip": "clips/vrm/pose_general_02.json",
+    "defaultDuration": 4000
+  },
+  "vrm_pose_smartphone": {
+    "kind": "clip",
+    "category": "pose",
+    "modelSupport": "vrm",
+    "description": "看手机",
+    "clip": "clips/vrm/pose_smartphone_01.json",
+    "defaultDuration": 10367
+  }
+}

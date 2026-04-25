@@ -39,8 +39,8 @@ describe('AvatarService.enqueueTagAnimation — persona modulation', () => {
     compiler.setTunableParam('compiler:jitter', 'durationJitter', 0);
     compiler.setTunableParam('compiler:jitter', 'intensityJitter', 0);
     const spy = spyOn(compiler, 'enqueue');
-    const base = compiler.getActionDuration('smile');
-    s.enqueueTagAnimation({ action: 'smile', emotion: 'happy', intensity: 0.5 });
+    const base = compiler.getActionDuration('emotion_smile');
+    s.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 0.5 });
     const node = (spy.mock.calls[0][0] as Array<{ duration: number; intensity: number }>)[0];
     expect(node.duration).toBe(base);
     expect(node.intensity).toBe(0.5);
@@ -54,9 +54,9 @@ describe('AvatarService.enqueueTagAnimation — persona modulation', () => {
       amplitude: { intensityScale: 1.0 },
       timing: { speedScale: 2.0 },
     });
-    const base = compiler.getActionDuration('smile');
+    const base = compiler.getActionDuration('emotion_smile');
     const spy = spyOn(compiler, 'enqueue');
-    s.enqueueTagAnimation({ action: 'smile', emotion: 'happy', intensity: 0.5 });
+    s.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 0.5 });
     const node = (spy.mock.calls[0][0] as Array<{ duration: number; intensity: number }>)[0];
     expect(node.duration).toBe(Math.round(base / 2));
   });
@@ -69,9 +69,9 @@ describe('AvatarService.enqueueTagAnimation — persona modulation', () => {
       amplitude: { intensityScale: 1.0 },
       timing: { speedScale: 0.5 },
     });
-    const base = compiler.getActionDuration('smile');
+    const base = compiler.getActionDuration('emotion_smile');
     const spy = spyOn(compiler, 'enqueue');
-    s.enqueueTagAnimation({ action: 'smile', emotion: 'happy', intensity: 0.5 });
+    s.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 0.5 });
     const node = (spy.mock.calls[0][0] as Array<{ duration: number; intensity: number }>)[0];
     expect(node.duration).toBe(Math.round(base * 2));
   });
@@ -85,7 +85,7 @@ describe('AvatarService.enqueueTagAnimation — persona modulation', () => {
       timing: { speedScale: 1.0 },
     });
     const spy = spyOn(compiler, 'enqueue');
-    s.enqueueTagAnimation({ action: 'smile', emotion: 'happy', intensity: 0.8 });
+    s.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 0.8 });
     const node = (spy.mock.calls[0][0] as Array<{ duration: number; intensity: number }>)[0];
     expect(node.intensity).toBeCloseTo(0.4, 5);
   });
@@ -103,7 +103,7 @@ describe('AvatarService.enqueueTagAnimation — persona modulation', () => {
       timing: { speedScale: 1.0 },
     });
     const spy = spyOn(compiler, 'enqueue');
-    s.enqueueTagAnimation({ action: 'smile', emotion: 'happy', intensity: 1.0 });
+    s.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 1.0 });
     const node = (spy.mock.calls[0][0] as Array<{ duration: number; intensity: number }>)[0];
     // 1.0 × 0.8 × 0.5 = 0.4
     expect(node.intensity).toBeCloseTo(0.4, 5);
@@ -117,9 +117,9 @@ describe('AvatarService.enqueueTagAnimation — persona modulation', () => {
       amplitude: { intensityScale: 1.0 },
       timing: { speedScale: 1.0, durationBias: 300 },
     });
-    const base = compiler.getActionDuration('smile');
+    const base = compiler.getActionDuration('emotion_smile');
     const spy = spyOn(compiler, 'enqueue');
-    s.enqueueTagAnimation({ action: 'smile', emotion: 'happy', intensity: 0.5 });
+    s.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 0.5 });
     const node = (spy.mock.calls[0][0] as Array<{ duration: number; intensity: number }>)[0];
     expect(node.duration).toBe(base + 300);
   });
@@ -131,10 +131,10 @@ describe('AvatarService.enqueueTagAnimation — persona modulation', () => {
       amplitude: { intensityScale: 1.0 },
       timing: { speedScale: 1.0, jitterScale: 0 },
     });
-    const base = compiler.getActionDuration('smile');
+    const base = compiler.getActionDuration('emotion_smile');
     const spy = spyOn(compiler, 'enqueue');
     for (let i = 0; i < 20; i++) {
-      s.enqueueTagAnimation({ action: 'smile', emotion: 'happy', intensity: 0.5 });
+      s.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 0.5 });
     }
     for (const call of spy.mock.calls) {
       const node = (call[0] as Array<{ duration: number; intensity: number }>)[0];
@@ -152,7 +152,7 @@ describe('AvatarService.enqueueTagAnimation — persona modulation', () => {
       timing: { speedScale: Number.NaN },
     });
     const spy = spyOn(compiler, 'enqueue');
-    s.enqueueTagAnimation({ action: 'smile', emotion: 'happy', intensity: 0.5 });
+    s.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 0.5 });
     const node = (spy.mock.calls[0][0] as Array<{ duration: number; intensity: number }>)[0];
     expect(Number.isFinite(node.duration)).toBe(true);
     expect(node.duration).toBeGreaterThan(0);
@@ -168,9 +168,9 @@ describe('AvatarService.enqueueTagAnimation — persona modulation', () => {
       timing: { speedScale: 2.0 },
     });
     s.setMindModulationProvider(undefined);
-    const base = compiler.getActionDuration('smile');
+    const base = compiler.getActionDuration('emotion_smile');
     const spy = spyOn(compiler, 'enqueue');
-    s.enqueueTagAnimation({ action: 'smile', emotion: 'happy', intensity: 0.5 });
+    s.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 0.5 });
     const node = (spy.mock.calls[0][0] as Array<{ duration: number; intensity: number }>)[0];
     expect(node.duration).toBe(base);
     expect(node.intensity).toBe(0.5);
@@ -182,10 +182,10 @@ describe('AvatarService.enqueueTagAnimation — persona modulation', () => {
     withProvider(s, {
       amplitude: { intensityScale: 1.0 },
       timing: { speedScale: 1.0 },
-      actionPref: { variantWeights: { smile: weights } },
+      actionPref: { variantWeights: { emotion_smile: weights } },
     });
     const spy = spyOn(compiler, 'enqueue');
-    s.enqueueTagAnimation({ action: 'smile', emotion: 'happy', intensity: 0.5 });
+    s.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 0.5 });
     const node = (spy.mock.calls[0][0] as Array<{ variantWeights?: readonly number[] }>)[0];
     expect(node.variantWeights).toBe(weights);
   });
@@ -199,9 +199,9 @@ describe('AvatarService.enqueueTagAnimation — persona modulation', () => {
       amplitude: { intensityScale: 1.0 },
       timing: { speedScale: 2.0 },
     });
-    const base = compiler.getActionDuration('smile');
+    const base = compiler.getActionDuration('emotion_smile');
     const spy = spyOn(compiler, 'enqueue');
-    s.enqueueAutonomous('smile', 0.5);
+    s.enqueueAutonomous('emotion_smile', 0.5);
     const node = (spy.mock.calls[0][0] as Array<{ duration: number; source: string }>)[0];
     // Duration halved by speedScale=2, same math as enqueueTagAnimation.
     expect(node.duration).toBe(Math.round(base / 2));
@@ -218,7 +218,7 @@ describe('AvatarService.enqueueTagAnimation — persona modulation', () => {
       timing: { speedScale: 1.0 },
     });
     const spy = spyOn(compiler, 'enqueue');
-    s.enqueueAutonomous('smile', 0.8);
+    s.enqueueAutonomous('emotion_smile', 0.8);
     const node = (spy.mock.calls[0][0] as Array<{ intensity: number }>)[0];
     expect(node.intensity).toBeCloseTo(0.4, 5);
   });

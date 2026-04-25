@@ -5,7 +5,7 @@
   },
   {
     "role": "assistant",
-    "content": "[E:happy@0.9]诶嘿谢谢夸奖～[A:wave]666 是在刷什么啊！"
+    "content": "[E:happy@0.9]诶嘿谢谢夸奖～[A:vrm_greet_wave]666 是在刷什么啊！"
   },
   {
     "role": "user",
@@ -13,7 +13,7 @@
   },
   {
     "role": "assistant",
-    "content": "[G:clear]…算了不聊这个了，[A:tilt_head][E:thinking@0.8]我突然想起来明天好像有会。"
+    "content": "[G:clear]…算了不聊这个了，[A:micro_tilt_head][E:thinking@0.8]我突然想起来明天好像有会。"
   },
   {
     "role": "user",

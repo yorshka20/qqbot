@@ -1,0 +1,38 @@
+{
+  "vrm_combat_kick": [
+    {
+      "kind": "clip",
+      "category": "combat",
+      "modelSupport": "vrm",
+      "description": "踢腿（侧踢/快踢/转身踢的多种变体）",
+      "clip": "clips/vrm/combat_kick_01.json",
+      "defaultDuration": 1300
+    },
+    { "kind": "clip", "clip": "clips/vrm/combat_kick_02.json", "defaultDuration": 967 },
+    { "kind": "clip", "clip": "clips/vrm/combat_kick_03.json", "defaultDuration": 1167 }
+  ],
+  "vrm_combat_punch": {
+    "kind": "clip",
+    "category": "combat",
+    "modelSupport": "vrm",
+    "description": "右挥拳",
+    "clip": "clips/vrm/combat_punch_01.json",
+    "defaultDuration": 667
+  },
+  "vrm_combat_special": {
+    "kind": "clip",
+    "category": "combat",
+    "modelSupport": "vrm",
+    "description": "转身上蹬必杀",
+    "clip": "clips/vrm/combat_special_01.json",
+    "defaultDuration": 1167
+  },
+  "vrm_combat_spin_kick": {
+    "kind": "clip",
+    "category": "combat",
+    "modelSupport": "vrm",
+    "description": "旋转飞踢",
+    "clip": "clips/vrm/acrobatic_front_flip_01.json",
+    "defaultDuration": 1500
+  }
+}

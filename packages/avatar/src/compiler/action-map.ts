@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from '../utils/logger';
 import type { IdleClip } from './layers/clips/types';
@@ -187,9 +187,19 @@ export class ActionMap {
       assetsDir = dirname(resolved);
     } else {
       const corePath = fileURLToPath(new URL('../../assets/core-action-map.json', import.meta.url));
-      const extendPath = fileURLToPath(new URL('../../assets/vrm-extend-action-map.json', import.meta.url));
+      const extendDir = fileURLToPath(new URL('../../assets/extend/', import.meta.url));
       assetsDir = dirname(corePath);
-      parsed = mergeActionMapPayloads(readJsonMap(extendPath), readJsonMap(corePath));
+      const extendFiles = existsSync(extendDir)
+        ? readdirSync(extendDir)
+            .filter((f) => f.endsWith('.json'))
+            .sort()
+            .map((f) => join(extendDir, f))
+        : [];
+      const mergedExtend = extendFiles.reduce<Record<string, ActionMapEntry | ActionMapEntry[]>>(
+        (acc, p) => mergeActionMapPayloads(acc, readJsonMap(p)),
+        {},
+      );
+      parsed = mergeActionMapPayloads(mergedExtend, readJsonMap(corePath));
     }
 
     this.entries = parsed;
@@ -292,6 +302,23 @@ export class ActionMap {
     if (!raw) return undefined;
     const variants = Array.isArray(raw) ? raw : [raw];
     return variants[0]?.category;
+  }
+
+  /**
+   * Return the optional `face` companion-action name declared on the first
+   * variant of a clip-kind action. Used by `AvatarService` to fan a single
+   * tag enqueue into a body-clip + face-envelope pair so emotion clips like
+   * `vrm_emotion_laugh` get a paired smile blendshape automatically.
+   * Returns null for envelope entries, single clips without `face`, or
+   * unknown actions.
+   */
+  getFace(name: string): string | null {
+    const raw = this.entries[name];
+    if (!raw) return null;
+    const variants = Array.isArray(raw) ? raw : [raw];
+    const v0 = variants[0];
+    if (!v0 || v0.kind !== 'clip') return null;
+    return typeof v0.face === 'string' && v0.face.length > 0 ? v0.face : null;
   }
 
   getDuration(name: string): number | undefined {
@@ -441,6 +468,17 @@ export class ActionMap {
   getClipByActionName(name: string): IdleClip | null {
     const clips = this.clipsByName.get(name);
     return clips?.[0] ?? null;
+  }
+
+  /**
+   * Return every preloaded IdleClip variant for an action, or null if the
+   * action is non-clip or unknown. Used by `IdleMotionLayer` loop-pool mode
+   * so a pooled action like `vrm_idle_loop` (16 variant clips) rotates one
+   * variant per loop wrap instead of looping a single clip forever.
+   */
+  getClipsByActionName(name: string): IdleClip[] | null {
+    const clips = this.clipsByName.get(name);
+    return clips && clips.length > 0 ? [...clips] : null;
   }
 
   /**

@@ -1,0 +1,15 @@
+{
+  "vrm_reaction_damaged": [
+    {
+      "kind": "clip",
+      "category": "reaction",
+      "modelSupport": "vrm",
+      "description": "受伤反应（被顶撞，多种程度变体）",
+      "clip": "clips/vrm/emote_damaged_01.json",
+      "defaultDuration": 1167,
+      "face": "emotion_surprised"
+    },
+    { "kind": "clip", "clip": "clips/vrm/emote_damaged_02.json", "defaultDuration": 3600 },
+    { "kind": "clip", "clip": "clips/vrm/emote_damaged_03.json", "defaultDuration": 1100 }
+  ]
+}

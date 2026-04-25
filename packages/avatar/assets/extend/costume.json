@@ -1,0 +1,34 @@
+{
+  "vrm_costume_tops_m": {
+    "kind": "clip",
+    "category": "costume",
+    "modelSupport": "vrm",
+    "description": "展示上衣（男）",
+    "clip": "clips/vrm/costume_tops_m.json",
+    "defaultDuration": 4000
+  },
+  "vrm_costume_tops_w": {
+    "kind": "clip",
+    "category": "costume",
+    "modelSupport": "vrm",
+    "description": "展示上衣（女）",
+    "clip": "clips/vrm/costume_tops_w.json",
+    "defaultDuration": 4000
+  },
+  "vrm_costume_bottoms_m": {
+    "kind": "clip",
+    "category": "costume",
+    "modelSupport": "vrm",
+    "description": "TODO: review and describe",
+    "clip": "clips/vrm/costume_bottoms_m.json",
+    "defaultDuration": 4000
+  },
+  "vrm_costume_bottoms_w": {
+    "kind": "clip",
+    "category": "costume",
+    "modelSupport": "vrm",
+    "description": "TODO: review and describe",
+    "clip": "clips/vrm/costume_bottoms_w.json",
+    "defaultDuration": 4000
+  }
+}

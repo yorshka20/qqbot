@@ -1,0 +1,89 @@
+{
+  "vrm_emotion_confident": {
+    "kind": "clip",
+    "category": "emotion",
+    "modelSupport": "vrm",
+    "description": "自信抱拳",
+    "clip": "clips/vrm/emote_confident_01.json",
+    "defaultDuration": 1300
+  },
+  "vrm_emotion_delicious": {
+    "kind": "clip",
+    "category": "emotion",
+    "modelSupport": "vrm",
+    "description": "好吃，赞美食物",
+    "clip": "clips/vrm/emote_delicious_01.json",
+    "defaultDuration": 1333,
+    "face": "emotion_smile"
+  },
+  "vrm_emotion_determined": {
+    "kind": "clip",
+    "category": "emotion",
+    "modelSupport": "vrm",
+    "description": "下定决心",
+    "clip": "clips/vrm/emote_determined_01.json",
+    "defaultDuration": 1500
+  },
+  "vrm_emotion_elated": {
+    "kind": "clip",
+    "category": "emotion",
+    "modelSupport": "vrm",
+    "description": "高兴雀跃",
+    "clip": "clips/vrm/emote_elated_01.json",
+    "defaultDuration": 2500,
+    "face": "emotion_smile"
+  },
+  "vrm_emotion_embarrassed": {
+    "kind": "clip",
+    "category": "emotion",
+    "modelSupport": "vrm",
+    "description": "尴尬，摸后脑勺",
+    "clip": "clips/vrm/emote_embarrassed_01.json",
+    "defaultDuration": 4833
+  },
+  "vrm_emotion_laugh": {
+    "kind": "clip",
+    "category": "emotion",
+    "modelSupport": "vrm",
+    "description": "大笑",
+    "clip": "clips/vrm/emote_laugh_01.json",
+    "defaultDuration": 7900,
+    "face": "emotion_smile"
+  },
+  "vrm_emotion_lose": {
+    "kind": "clip",
+    "category": "emotion",
+    "modelSupport": "vrm",
+    "description": "失败沮丧",
+    "clip": "clips/vrm/emote_lose_01.json",
+    "defaultDuration": 3600,
+    "face": "emotion_sad"
+  },
+  "vrm_emotion_refresh": {
+    "kind": "clip",
+    "category": "emotion",
+    "modelSupport": "vrm",
+    "description": "累了，松口气休息",
+    "clip": "clips/vrm/emote_refresh_01.json",
+    "defaultDuration": 3900,
+    "face": "emotion_smile"
+  },
+  "vrm_emotion_win": {
+    "kind": "clip",
+    "category": "emotion",
+    "modelSupport": "vrm",
+    "description": "胜利，跳跃并比耶",
+    "clip": "clips/vrm/emote_win_01.json",
+    "defaultDuration": 4000,
+    "face": "emotion_smile"
+  },
+  "vrm_emotion_yay": {
+    "kind": "clip",
+    "category": "emotion",
+    "modelSupport": "vrm",
+    "description": "庆祝，举双手欢呼",
+    "clip": "clips/vrm/emote_yay_01.json",
+    "defaultDuration": 1700,
+    "face": "emotion_smile"
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "smile": {
+  "emotion_smile": {
     "category": "emotion",
     "modelSupport": "both",
     "description": "露出笑容,嘴角上扬,眼睛微眯——开心或友好的表情",
@@ -11,67 +11,42 @@
     ],
     "defaultDuration": 2000
   },
-  "nod": {
-    "category": "movement",
-    "description": "点头两次,表示同意、赞同或肯定",
+  "emotion_sad": {
+    "category": "emotion",
+    "modelSupport": "both",
+    "description": "眉头下垂、低头,面露沮丧——失落或难过",
     "params": [
-      { "channel": "head.pitch", "targetValue": -18.0, "weight": 1.0, "oscillate": 2 },
-      { "channel": "body.y", "targetValue": -0.25, "weight": 0.6, "oscillate": 2 }
+      { "channel": "mouth.smile", "targetValue": 0.0, "weight": 1.0 },
+      { "channel": "brow", "targetValue": -0.5, "weight": 0.8 },
+      { "channel": "head.pitch", "targetValue": -8.0, "weight": 0.6 },
+      { "channel": "body.y", "targetValue": -0.15, "weight": 0.5 }
     ],
-    "accompaniment": [
-      { "channel": "body.y", "targetValue": -0.05, "weight": 0.4, "leadMs": -50 }
+    "defaultDuration": 2500
+  },
+  "emotion_angry": {
+    "category": "emotion",
+    "modelSupport": "both",
+    "description": "皱眉瞪眼、嘴角紧绷——生气或不满",
+    "params": [
+      { "channel": "brow", "targetValue": -0.8, "weight": 1.0 },
+      { "channel": "mouth.smile", "targetValue": 0.0, "weight": 0.7 },
+      { "channel": "eye.open.left", "targetValue": -0.6, "weight": 0.6 },
+      { "channel": "eye.open.right", "targetValue": -0.6, "weight": 0.6 }
+    ],
+    "defaultDuration": 1800
+  },
+  "emotion_surprised": {
+    "category": "emotion",
+    "modelSupport": "both",
+    "description": "张嘴挑眉、头轻仰——吃惊或出乎意料",
+    "params": [
+      { "channel": "mouth.open", "targetValue": 0.8, "weight": 1.0 },
+      { "channel": "brow", "targetValue": 0.6, "weight": 0.8 },
+      { "channel": "head.roll", "targetValue": 3.0, "weight": 0.3 }
     ],
     "defaultDuration": 1200
   },
-  "wave": [
-    {
-      "category": "movement",
-      "modelSupport": "cubism",
-      "description": "右手挥动,伴随身体轻晃——打招呼或告别",
-      "params": [
-        { "channel": "arm.right", "targetValue": 7.0, "weight": 1.0, "oscillate": 2.5 },
-        { "channel": "head.roll", "targetValue": 6.0, "weight": 0.5, "oscillate": 2.5 },
-        { "channel": "body.x", "targetValue": 0.1, "weight": 0.3, "oscillate": 2.5 }
-      ],
-      "accompaniment": [
-        { "channel": "head.roll", "targetValue": 3.0, "weight": 0.3, "leadMs": -80 }
-      ],
-      "defaultDuration": 1800
-    },
-    {
-      "category": "movement",
-      "modelSupport": "cubism",
-      "description": "右手挥动,伴随身体轻晃——打招呼或告别",
-      "params": [
-        { "channel": "arm.right", "targetValue": 8.0, "weight": 1.0, "oscillate": 3 },
-        { "channel": "head.roll", "targetValue": 5.0, "weight": 0.5, "oscillate": 3 },
-        { "channel": "body.x", "targetValue": 0.08, "weight": 0.3, "oscillate": 3 }
-      ],
-      "defaultDuration": 2100
-    },
-    {
-      "category": "movement",
-      "modelSupport": "cubism",
-      "description": "右手挥动,伴随身体轻晃——打招呼或告别",
-      "params": [
-        { "channel": "arm.right", "targetValue": 6.5, "weight": 1.0, "oscillate": 2 },
-        { "channel": "head.roll", "targetValue": 7.0, "weight": 0.5, "oscillate": 2 },
-        { "channel": "body.x", "targetValue": 0.12, "weight": 0.3, "oscillate": 2 }
-      ],
-      "defaultDuration": 1600
-    }
-  ],
-  "raise_hand": {
-    "category": "movement",
-    "modelSupport": "cubism",
-    "description": "举起右手,像在示意或强调某个观点",
-    "params": [
-      { "channel": "arm.right", "targetValue": 8.0, "weight": 1.0 },
-      { "channel": "head.pitch", "targetValue": 4.0, "weight": 0.4 }
-    ],
-    "defaultDuration": 2000
-  },
-  "thinking": {
+  "emotion_thinking": {
     "category": "emotion",
     "modelSupport": "both",
     "description": "微微歪头眯眼,皱眉思索——表达在思考或权衡",
@@ -84,91 +59,9 @@
     ],
     "defaultDuration": 3000
   },
-  "sad": {
-    "category": "emotion",
-    "modelSupport": "both",
-    "description": "眉头下垂、低头,面露沮丧——失落或难过",
-    "params": [
-      { "channel": "mouth.smile", "targetValue": 0.0, "weight": 1.0 },
-      { "channel": "brow", "targetValue": -0.5, "weight": 0.8 },
-      { "channel": "head.pitch", "targetValue": -8.0, "weight": 0.6 },
-      { "channel": "body.y", "targetValue": -0.15, "weight": 0.5 }
-    ],
-    "defaultDuration": 2500
-  },
-  "angry": {
-    "category": "emotion",
-    "modelSupport": "both",
-    "description": "皱眉瞪眼、嘴角紧绷——生气或不满",
-    "params": [
-      { "channel": "brow", "targetValue": -0.8, "weight": 1.0 },
-      { "channel": "mouth.smile", "targetValue": 0.0, "weight": 0.7 },
-      { "channel": "eye.open.left", "targetValue": -0.6, "weight": 0.6 },
-      { "channel": "eye.open.right", "targetValue": -0.6, "weight": 0.6 }
-    ],
-    "defaultDuration": 1800
-  },
-  "surprised": {
-    "category": "emotion",
-    "modelSupport": "both",
-    "description": "张嘴挑眉、头轻仰——吃惊或出乎意料",
-    "params": [
-      { "channel": "mouth.open", "targetValue": 0.8, "weight": 1.0 },
-      { "channel": "brow", "targetValue": 0.6, "weight": 0.8 },
-      { "channel": "head.roll", "targetValue": 3.0, "weight": 0.3 }
-    ],
-    "defaultDuration": 1200
-  },
-  "head_sway": {
-    "category": "movement",
-    "description": "头部缓慢左右摆动——放松、有节奏感的待机动作",
-    "params": [
-      { "channel": "head.yaw", "targetValue": 15.0, "weight": 1.0 },
-      { "channel": "body.x", "targetValue": 0.1, "weight": 0.5 }
-    ],
-    "defaultDuration": 3000
-  },
-  "breathe": {
+  "micro_blink": {
     "category": "micro",
-    "description": "一次明显的深呼吸——叹气、放松或感叹",
-    "params": [{ "channel": "body.y", "targetValue": 0.05, "weight": 1.0 }],
-    "defaultDuration": 4000
-  },
-  "lean_forward": {
-    "category": "movement",
-    "description": "身体前倾、低头靠近——表达关注、倾听或好奇",
-    "params": [
-      { "channel": "body.z", "targetValue": 0.2, "weight": 1.0 },
-      { "channel": "head.pitch", "targetValue": -5.0, "weight": 0.7 }
-    ],
-    "defaultDuration": 1000
-  },
-  "lean_back": {
-    "category": "movement",
-    "description": "身体后仰、头微抬——放松、从容或故作高深",
-    "params": [
-      { "channel": "body.z", "targetValue": -0.2, "weight": 1.0 },
-      { "channel": "head.pitch", "targetValue": 3.0, "weight": 0.7 }
-    ],
-    "defaultDuration": 1000
-  },
-  "tilt_head": {
-    "category": "movement",
-    "description": "歪头——表示困惑、好奇或俏皮",
-    "params": [{ "channel": "head.roll", "targetValue": 15.0, "weight": 1.0 }],
-    "defaultDuration": 1200
-  },
-  "shake_head": {
-    "category": "movement",
-    "description": "摇头两次——否定、拒绝或无奈",
-    "params": [
-      { "channel": "head.yaw", "targetValue": 22.0, "weight": 1.0, "oscillate": 2 },
-      { "channel": "body.x", "targetValue": -0.08, "weight": 0.4, "oscillate": 2 }
-    ],
-    "defaultDuration": 1400
-  },
-  "blink": {
-    "category": "micro",
+    "modelSupport": "both",
     "description": "一次明显的眨眼——俏皮的眨眼或强调(区别于自动眨眼)",
     "params": [
       { "channel": "eye.open.left", "targetValue": -1.0, "weight": 1.0 },
@@ -176,130 +69,31 @@
     ],
     "defaultDuration": 300
   },
-  "shrug": {
-    "category": "movement",
-    "modelSupport": "cubism",
-    "description": "双手微张、耸肩——表示不知道、无可奈何",
+  "micro_head_sway": {
+    "category": "micro",
+    "modelSupport": "both",
+    "description": "头部缓慢左右摆动——放松、有节奏感的待机动作",
     "params": [
-      { "channel": "arm.left", "targetValue": 5.0, "weight": 0.8 },
-      { "channel": "arm.right", "targetValue": 5.0, "weight": 0.8 },
-      { "channel": "head.roll", "targetValue": 3.0, "weight": 0.3 }
+      { "channel": "head.yaw", "targetValue": 15.0, "weight": 1.0 },
+      { "channel": "body.x", "targetValue": 0.1, "weight": 0.5 }
+    ],
+    "defaultDuration": 3000
+  },
+  "micro_shake_head": {
+    "category": "micro",
+    "modelSupport": "both",
+    "description": "摇头两次——否定、拒绝或无奈",
+    "params": [
+      { "channel": "head.yaw", "targetValue": 22.0, "weight": 1.0, "oscillate": 2 },
+      { "channel": "body.x", "targetValue": -0.08, "weight": 0.4, "oscillate": 2 }
     ],
     "defaultDuration": 1400
   },
-  "cross_arms": {
-    "category": "movement",
-    "modelSupport": "cubism",
-    "description": "双臂交叉抱胸——防御、思考或自我保护的姿态",
-    "params": [
-      { "channel": "arm.left", "targetValue": 4.5, "weight": 0.9 },
-      { "channel": "arm.right", "targetValue": 4.5, "weight": 0.9 },
-      { "channel": "body.z", "targetValue": 0.05, "weight": 0.3 },
-      { "channel": "brow", "targetValue": -0.15, "weight": 0.4 }
-    ],
-    "endPose": [
-      { "channel": "arm.left", "value": 2.8, "weight": 0.8 },
-      { "channel": "arm.right", "value": 2.8, "weight": 0.8 }
-    ],
-    "defaultDuration": 2000
-  },
-  "hand_on_hip": {
-    "category": "movement",
-    "modelSupport": "cubism",
-    "description": "右手叉腰——自信、随意或稍带不满的姿势",
-    "params": [
-      { "channel": "arm.right", "targetValue": 5.5, "weight": 0.9 },
-      { "channel": "body.x", "targetValue": 0.06, "weight": 0.5 }
-    ],
-    "endPose": [
-      { "channel": "arm.right", "value": 3.2, "weight": 0.8 },
-      { "channel": "body.x", "value": 0.03, "weight": 0.4 }
-    ],
-    "defaultDuration": 2000
-  },
-  "point_forward": {
-    "category": "movement",
-    "modelSupport": "cubism",
-    "description": "伸手向前指——强调、指向或发出指令",
-    "params": [
-      { "channel": "arm.right", "targetValue": 9.0, "weight": 1.0 },
-      { "channel": "head.pitch", "targetValue": 3.0, "weight": 0.5 },
-      { "channel": "body.z", "targetValue": 0.1, "weight": 0.4 }
-    ],
-    "accompaniment": [
-      { "channel": "head.yaw", "targetValue": 5.0, "weight": 0.4, "leadMs": -100 },
-      { "channel": "body.x", "targetValue": 0.08, "weight": 0.3, "leadMs": -120 }
-    ],
-    "endPose": [
-      { "channel": "arm.right", "value": 5.5, "weight": 0.9 }
-    ],
-    "defaultDuration": 1800
-  },
-  "formal_bow": {
-    "kind": "clip",
-    "category": "movement",
-    "modelSupport": "vrm",
-    "description": "正式鞠躬——表示尊敬或郑重问候",
-    "clip": "clips/formal-bow.json",
-    "defaultDuration": 1800,
-    "endPose": [
-      { "channel": "vrm.hips.x", "value": 0.0, "weight": 0.5 }
-    ]
-  },
-  "show_body": {
-    "kind": "clip",
-    "category": "movement",
-    "modelSupport": "vrm",
-    "description": "全身展示——转身展示整体身形",
-    "clip": "clips/vrm/VRMA_01.json",
-    "defaultDuration": 11800
-  },
-  "greet": {
-    "kind": "clip",
-    "category": "movement",
-    "modelSupport": "vrm",
-    "description": "打招呼——抬手鞠躬的问候动作",
-    "clip": "clips/vrm/VRMA_02.json",
-    "defaultDuration": 7267
-  },
-  "peace_sign": {
-    "kind": "clip",
-    "category": "movement",
-    "modelSupport": "vrm",
-    "description": "比 V 字胜利手势",
-    "clip": "clips/vrm/VRMA_03.json",
-    "defaultDuration": 11684
-  },
-  "shoot": {
-    "kind": "clip",
-    "category": "movement",
-    "modelSupport": "vrm",
-    "description": "做出开枪姿势",
-    "clip": "clips/vrm/VRMA_04.json",
-    "defaultDuration": 9600
-  },
-  "spin": {
-    "kind": "clip",
-    "category": "movement",
-    "modelSupport": "vrm",
-    "description": "原地旋转一周",
-    "clip": "clips/vrm/VRMA_05.json",
-    "defaultDuration": 9317
-  },
-  "model_pose": {
-    "kind": "clip",
-    "category": "movement",
-    "modelSupport": "vrm",
-    "description": "时装模特定型 pose",
-    "clip": "clips/vrm/VRMA_06.json",
-    "defaultDuration": 7517
-  },
-  "squat_stretch": {
-    "kind": "clip",
-    "category": "movement",
-    "modelSupport": "vrm",
-    "description": "屈膝伸展——热身式蹲起",
-    "clip": "clips/vrm/VRMA_07.json",
-    "defaultDuration": 11517
+  "micro_tilt_head": {
+    "category": "micro",
+    "modelSupport": "both",
+    "description": "歪头——表示困惑、好奇或俏皮",
+    "params": [{ "channel": "head.roll", "targetValue": 15.0, "weight": 1.0 }],
+    "defaultDuration": 1200
   }
 }

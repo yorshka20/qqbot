@@ -25,11 +25,11 @@ describe('AvatarService.enqueueTagAnimation — jitter application', () => {
     const compiler = (service as any).compiler;
     expect(compiler).not.toBeNull();
     const enqueueSpy = spyOn(compiler, 'enqueue');
-    const base = compiler.getActionDuration('smile'); // exists in core-action-map.json
+    const base = compiler.getActionDuration('emotion_smile'); // exists in core-action-map.json
     expect(base).toBeGreaterThan(0);
 
     for (let i = 0; i < 100; i++) {
-      service.enqueueTagAnimation({ action: 'smile', emotion: 'happy', intensity: 0.5 });
+      service.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 0.5 });
     }
     expect(enqueueSpy).toHaveBeenCalledTimes(100);
     for (const call of enqueueSpy.mock.calls) {
@@ -45,7 +45,7 @@ describe('AvatarService.enqueueTagAnimation — jitter application', () => {
     const enqueueSpy = spyOn(compiler, 'enqueue');
 
     for (let i = 0; i < 100; i++) {
-      service.enqueueTagAnimation({ action: 'smile', emotion: 'happy', intensity: 0.5 });
+      service.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 0.5 });
     }
     for (const call of enqueueSpy.mock.calls) {
       const nodes = call[0] as Array<{ duration: number; intensity: number }>;
@@ -61,7 +61,7 @@ describe('AvatarService.enqueueTagAnimation — jitter application', () => {
     const enqueueSpy = spyOn(compiler, 'enqueue');
 
     for (let i = 0; i < 200; i++) {
-      service.enqueueTagAnimation({ action: 'smile', emotion: 'happy', intensity: 0.2 });
+      service.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 0.2 });
     }
     for (const call of enqueueSpy.mock.calls) {
       const nodes = call[0] as Array<{ duration: number; intensity: number }>;
@@ -73,10 +73,10 @@ describe('AvatarService.enqueueTagAnimation — jitter application', () => {
     const compiler = (service as any).compiler;
     compiler.setTunableParam('compiler:jitter', 'durationJitter', 0);
     const enqueueSpy = spyOn(compiler, 'enqueue');
-    const base = compiler.getActionDuration('smile');
+    const base = compiler.getActionDuration('emotion_smile');
 
     for (let i = 0; i < 10; i++) {
-      service.enqueueTagAnimation({ action: 'smile', emotion: 'happy', intensity: 0.5 });
+      service.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 0.5 });
     }
     for (const call of enqueueSpy.mock.calls) {
       const nodes = call[0] as Array<{ duration: number; intensity: number }>;

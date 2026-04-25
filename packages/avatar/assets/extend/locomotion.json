@@ -1,0 +1,103 @@
+{
+  "vrm_locomotion_jump": [
+    {
+      "kind": "clip",
+      "category": "locomotion",
+      "modelSupport": "vrm",
+      "description": "原地跳跃（多种风格变体：用力/轻快/小跳/蹬腿）",
+      "clip": "clips/vrm/locomotion_jump_01.json",
+      "defaultDuration": 1867
+    },
+    { "kind": "clip", "clip": "clips/vrm/locomotion_jump_02.json", "defaultDuration": 1867 },
+    { "kind": "clip", "clip": "clips/vrm/locomotion_jump_03.json", "defaultDuration": 2033 },
+    { "kind": "clip", "clip": "clips/vrm/locomotion_jump_04.json", "defaultDuration": 2033 },
+    { "kind": "clip", "clip": "clips/vrm/locomotion_jump_05.json", "defaultDuration": 1167 },
+    { "kind": "clip", "clip": "clips/vrm/locomotion_jump_06.json", "defaultDuration": 1500 }
+  ],
+  "vrm_locomotion_walk_f": [
+    {
+      "kind": "clip",
+      "category": "locomotion",
+      "modelSupport": "vrm",
+      "description": "向前走",
+      "clip": "clips/vrm/locomotion_walk_f_01.json",
+      "defaultDuration": 1333
+    },
+    { "kind": "clip", "clip": "clips/vrm/locomotion_walk_f_02.json", "defaultDuration": 1333 }
+  ],
+  "vrm_locomotion_walk_b": {
+    "kind": "clip",
+    "category": "locomotion",
+    "modelSupport": "vrm",
+    "description": "向后走",
+    "clip": "clips/vrm/locomotion_walk_b_01.json",
+    "defaultDuration": 4500
+  },
+  "vrm_locomotion_walk_l": {
+    "kind": "clip",
+    "category": "locomotion",
+    "modelSupport": "vrm",
+    "description": "向左走",
+    "clip": "clips/vrm/locomotion_walk_l_01.json",
+    "defaultDuration": 1333
+  },
+  "vrm_locomotion_walk_r": {
+    "kind": "clip",
+    "category": "locomotion",
+    "modelSupport": "vrm",
+    "description": "向右走",
+    "clip": "clips/vrm/locomotion_walk_r_01.json",
+    "defaultDuration": 1333
+  },
+  "vrm_locomotion_run_f": [
+    {
+      "kind": "clip",
+      "category": "locomotion",
+      "modelSupport": "vrm",
+      "description": "向前跑",
+      "clip": "clips/vrm/locomotion_run_f_01.json",
+      "defaultDuration": 833
+    },
+    { "kind": "clip", "clip": "clips/vrm/locomotion_run_f_02.json", "defaultDuration": 833 }
+  ],
+  "vrm_locomotion_run_l": {
+    "kind": "clip",
+    "category": "locomotion",
+    "modelSupport": "vrm",
+    "description": "向左跑",
+    "clip": "clips/vrm/locomotion_run_l_01.json",
+    "defaultDuration": 833
+  },
+  "vrm_locomotion_run_r": {
+    "kind": "clip",
+    "category": "locomotion",
+    "modelSupport": "vrm",
+    "description": "向右跑",
+    "clip": "clips/vrm/locomotion_run_r_01.json",
+    "defaultDuration": 833
+  },
+  "vrm_locomotion_run_hand_up": {
+    "kind": "clip",
+    "category": "locomotion",
+    "modelSupport": "vrm",
+    "description": "举着手向前跑（兴奋呼喊式）",
+    "clip": "clips/vrm/pose_hand_up_01.json",
+    "defaultDuration": 833
+  },
+  "vrm_locomotion_slide": {
+    "kind": "clip",
+    "category": "locomotion",
+    "modelSupport": "vrm",
+    "description": "下滑铲动作",
+    "clip": "clips/vrm/locomotion_slide_01.json",
+    "defaultDuration": 1400
+  },
+  "vrm_locomotion_stroll": {
+    "kind": "clip",
+    "category": "locomotion",
+    "modelSupport": "vrm",
+    "description": "缓慢散步",
+    "clip": "clips/vrm/locomotion_stroll_01.json",
+    "defaultDuration": 1200
+  }
+}

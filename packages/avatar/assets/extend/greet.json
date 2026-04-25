@@ -1,0 +1,72 @@
+{
+  "vrm_greet_bow": {
+    "kind": "clip",
+    "category": "greet",
+    "modelSupport": "vrm",
+    "description": "打招呼，鞠躬",
+    "clip": "clips/vrm/greet_general_01.json",
+    "defaultDuration": 2067
+  },
+  "vrm_greet_wave": {
+    "kind": "clip",
+    "category": "greet",
+    "modelSupport": "vrm",
+    "description": "打招呼，单手挥手",
+    "clip": "clips/vrm/greet_general_02.json",
+    "defaultDuration": 2333,
+    "face": "emotion_smile"
+  },
+  "vrm_greet_wave_double": {
+    "kind": "clip",
+    "category": "greet",
+    "modelSupport": "vrm",
+    "description": "打招呼，双手在面前挥舞",
+    "clip": "clips/vrm/greet_wave_01.json",
+    "defaultDuration": 2467,
+    "face": "emotion_smile"
+  },
+  "vrm_greet_shout": {
+    "kind": "clip",
+    "category": "greet",
+    "modelSupport": "vrm",
+    "description": "打招呼，呼喊",
+    "clip": "clips/vrm/greet_general_03.json",
+    "defaultDuration": 1500,
+    "face": "emotion_smile"
+  },
+  "vrm_greet_hey": {
+    "kind": "clip",
+    "category": "greet",
+    "modelSupport": "vrm",
+    "description": "打招呼，下蹲侧身嗨嗨",
+    "clip": "clips/vrm/greet_hey_01.json",
+    "defaultDuration": 1500,
+    "face": "emotion_smile"
+  },
+  "vrm_greet_salute": {
+    "kind": "clip",
+    "category": "greet",
+    "modelSupport": "vrm",
+    "description": "敬礼",
+    "clip": "clips/vrm/greet_salute_01.json",
+    "defaultDuration": 4133
+  },
+  "vrm_greet_intro_m": {
+    "kind": "clip",
+    "category": "greet",
+    "modelSupport": "vrm",
+    "description": "入场介绍，抬手（男）",
+    "clip": "clips/vrm/home_intro_m_01.json",
+    "defaultDuration": 3633,
+    "face": "emotion_smile"
+  },
+  "vrm_greet_intro_w": {
+    "kind": "clip",
+    "category": "greet",
+    "modelSupport": "vrm",
+    "description": "入场介绍，挥手（女）",
+    "clip": "clips/vrm/home_intro_w_01.json",
+    "defaultDuration": 3633,
+    "face": "emotion_smile"
+  }
+}

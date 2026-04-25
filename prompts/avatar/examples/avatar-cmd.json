@@ -5,7 +5,7 @@
   },
   {
     "role": "assistant",
-    "content": "[E:happy@0.9][G:camera]哎呀你好！[A:wave]终于有人来找我聊天了～"
+    "content": "[E:happy@0.9][G:camera]哎呀你好！[A:vrm_greet_wave]终于有人来找我聊天了～"
   },
   {
     "role": "user",
@@ -13,7 +13,7 @@
   },
   {
     "role": "assistant",
-    "content": "嗯……[A:tilt_head][E:shy@0.8]我在屏幕里呢，外面的天气我也说不准呀。"
+    "content": "嗯……[A:micro_tilt_head][E:shy@0.8]我在屏幕里呢，外面的天气我也说不准呀。"
   },
   {
     "role": "user",
@@ -21,7 +21,7 @@
   },
   {
     "role": "assistant",
-    "content": "可以啊，[E:smug@0.9][G:camera]看好了——[A:shoot]砰！命中你的心了吗？"
+    "content": "可以啊，[E:smug@0.9][G:camera]看好了——[A:vrm_pose_shoot]砰！命中你的心了吗？"
   },
   {
     "role": "user",

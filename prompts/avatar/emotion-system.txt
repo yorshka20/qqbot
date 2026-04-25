@@ -15,5 +15,5 @@
 - 标签位置即触发时机：把 `[A:...]` 放在**应该触发动画的那句话之后**
 
 示例：
-- "[E:happy@0.9]今天天气真好啊！[A:wave]"
-- "让我想想……[A:tilt_head][E:thinking@0.9]嗯，我觉得吧……"
+- "[E:happy@0.9]今天天气真好啊！[A:vrm_greet_wave]"
+- "让我想想……[A:micro_tilt_head][E:thinking@0.9]嗯，我觉得吧……"

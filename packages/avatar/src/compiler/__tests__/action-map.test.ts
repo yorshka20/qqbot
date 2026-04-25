@@ -29,7 +29,7 @@ describe('ActionMap.resolveAction', () => {
   const map = new ActionMap();
 
   it('returns a ResolvedAction with targets for a known action', () => {
-    const result = map.resolveAction('smile', 'happy', 1.0);
+    const result = map.resolveAction('emotion_smile', 'happy', 1.0);
     expect(result).not.toBeNull();
     expect(asEnv(result).targets).toBeDefined();
     expect(asEnv(result).targets.length).toBeGreaterThan(0);
@@ -41,8 +41,8 @@ describe('ActionMap.resolveAction', () => {
   });
 
   it('scales targets.targetValue by intensity', () => {
-    const full = map.resolveAction('smile', 'happy', 1.0);
-    const half = map.resolveAction('smile', 'happy', 0.5);
+    const full = map.resolveAction('emotion_smile', 'happy', 1.0);
+    const half = map.resolveAction('emotion_smile', 'happy', 0.5);
     expect(full).not.toBeNull();
     expect(half).not.toBeNull();
     const fullEnv = asEnv(full);
@@ -52,100 +52,66 @@ describe('ActionMap.resolveAction', () => {
     }
   });
 
-  it('does not scale endPose.value by intensity', () => {
-    // cross_arms has endPose entries
-    const full = map.resolveAction('cross_arms', 'neutral', 1.0);
-    const half = map.resolveAction('cross_arms', 'neutral', 0.5);
-    expect(full).not.toBeNull();
-    expect(half).not.toBeNull();
+  it('does not scale endPose.value by intensity (synthetic fixture)', () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'actionmap-endpose-'));
+    const tmpPath = join(tmpDir, 'map.json');
+    writeFileSync(
+      tmpPath,
+      JSON.stringify({
+        held: {
+          params: [
+            { channel: 'arm.left', targetValue: 5, weight: 1 },
+            { channel: 'arm.right', targetValue: 5, weight: 1 },
+          ],
+          endPose: [
+            { channel: 'arm.left', value: 2.5, weight: 0.8 },
+            { channel: 'arm.right', value: 2.5, weight: 0.8 },
+          ],
+          defaultDuration: 1500,
+        },
+      }),
+    );
+    const m = new ActionMap(tmpPath);
+    const full = m.resolveAction('held', 'neutral', 1.0);
+    const half = m.resolveAction('held', 'neutral', 0.5);
     expect(full!.endPose).toBeDefined();
-    expect(half!.endPose).toBeDefined();
-    // endPose values must be identical regardless of intensity
     for (let i = 0; i < full!.endPose!.length; i++) {
       expect(half!.endPose![i].value).toBe(full!.endPose![i].value);
     }
-  });
-
-  it('returns endPose for cross_arms with arm channels only', () => {
-    const result = map.resolveAction('cross_arms', 'neutral', 1.0);
-    expect(result).not.toBeNull();
-    expect(result!.endPose).toBeDefined();
-    const channels = result!.endPose!.map((e) => e.channel);
-    expect(channels).toContain('arm.left');
-    expect(channels).toContain('arm.right');
-    // body.z and brow should NOT be in the endPose
-    expect(channels).not.toContain('body.z');
-    expect(channels).not.toContain('brow');
-  });
-
-  it('returns endPose for hand_on_hip with arm.right and body.x', () => {
-    const result = map.resolveAction('hand_on_hip', 'neutral', 1.0);
-    expect(result).not.toBeNull();
-    expect(result!.endPose).toBeDefined();
-    const channels = result!.endPose!.map((e) => e.channel);
-    expect(channels).toContain('arm.right');
-    expect(channels).toContain('body.x');
-  });
-
-  it('returns endPose for point_forward with arm.right only', () => {
-    const result = map.resolveAction('point_forward', 'neutral', 1.0);
-    expect(result).not.toBeNull();
-    expect(result!.endPose).toBeDefined();
-    const channels = result!.endPose!.map((e) => e.channel);
-    expect(channels).toContain('arm.right');
-    // head and body should NOT persist in endPose
-    expect(channels).not.toContain('head.pitch');
-    expect(channels).not.toContain('body.z');
-  });
-
-  it('endPose.value is smaller than the corresponding param peak', () => {
-    // For point_forward, arm.right endPose.value should be less than params targetValue
-    const result = map.resolveAction('point_forward', 'neutral', 1.0);
-    expect(result).not.toBeNull();
-    const env = asEnv(result);
-    const armTarget = env.targets.find((t) => t.channel === 'arm.right');
-    const armEnd = env.endPose!.find((e) => e.channel === 'arm.right');
-    expect(armTarget).toBeDefined();
-    expect(armEnd).toBeDefined();
+    // endPose channels and values pass through verbatim
+    const fullEnv = asEnv(full);
+    const armTarget = fullEnv.targets.find((t) => t.channel === 'arm.left');
+    const armEnd = fullEnv.endPose!.find((e) => e.channel === 'arm.left');
     expect(armEnd!.value).toBeLessThan(armTarget!.targetValue);
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 });
 
 describe('ActionMap.listActions', () => {
   const map = new ActionMap();
 
-  it('exposes description and category for cross_arms', () => {
+  it('exposes description and category for envelope-kind core entry', () => {
     const actions = map.listActions();
-    const entry = actions.find((a) => a.name === 'cross_arms');
+    const entry = actions.find((a) => a.name === 'emotion_smile');
     expect(entry).toBeDefined();
     expect(entry!.description).toBeTruthy();
-    expect(entry!.category).toBe('movement');
+    expect(entry!.category).toBe('emotion');
   });
 
-  it('exposes description and category for hand_on_hip', () => {
+  it('exposes description and category for clip-kind extend entry', () => {
     const actions = map.listActions();
-    const entry = actions.find((a) => a.name === 'hand_on_hip');
+    const entry = actions.find((a) => a.name === 'vrm_pose_peace_sign');
     expect(entry).toBeDefined();
     expect(entry!.description).toBeTruthy();
-    expect(entry!.category).toBe('movement');
+    expect(entry!.category).toBe('pose');
   });
 
-  it('exposes description and category for point_forward', () => {
+  it('lists channels per entry kind', () => {
     const actions = map.listActions();
-    const entry = actions.find((a) => a.name === 'point_forward');
-    expect(entry).toBeDefined();
-    expect(entry!.description).toBeTruthy();
-    expect(entry!.category).toBe('movement');
-  });
-
-  it('lists channels for new actions', () => {
-    const actions = map.listActions();
-    const crossArms = actions.find((a) => a.name === 'cross_arms');
-    expect(crossArms!.channels).toContain('arm.left');
-    expect(crossArms!.channels).toContain('arm.right');
-
-    const pointFwd = actions.find((a) => a.name === 'point_forward');
-    expect(pointFwd!.channels).toContain('arm.right');
+    const smile = actions.find((a) => a.name === 'emotion_smile');
+    expect(smile!.channels).toContain('mouth.smile');
+    const formalBow = actions.find((a) => a.name === 'vrm_pose_peace_sign');
+    expect(formalBow!.channels.some((c) => c.startsWith('vrm.'))).toBe(true);
   });
 });
 
@@ -519,11 +485,11 @@ describe('ActionMap — clip kind', () => {
 
   it('resolves envelope backwards-compat (kind returns envelope)', () => {
     const mapPath = writeMapAndFixtures(
-      { smile: { params: [{ channel: 'mouth.smile', targetValue: 1, weight: 1 }], defaultDuration: 1000 } },
+      { emotion_smile: { params: [{ channel: 'mouth.smile', targetValue: 1, weight: 1 }], defaultDuration: 1000 } },
       {},
     );
     const map = new ActionMap(mapPath);
-    const r = map.resolveAction('smile', 'neutral', 0.5);
+    const r = map.resolveAction('emotion_smile', 'neutral', 0.5);
     expect(r).not.toBeNull();
     expect(r!.kind).toBe('envelope');
     const env = asEnv(r);
@@ -544,7 +510,7 @@ describe('ActionMap — clip kind', () => {
     const map = new ActionMap(mapPath);
     expect(map.getClipByActionName('bow')).not.toBeNull();
     expect(map.getClipByActionName('bow')!.id).toBe('bow');
-    expect(map.getClipByActionName('smile')).toBeNull();
+    expect(map.getClipByActionName('emotion_smile')).toBeNull();
     expect(map.getClipByActionName('unknown')).toBeNull();
   });
 
@@ -601,54 +567,44 @@ describe('ActionMap — clip kind', () => {
 describe('ActionMap — modelSupport filtering (resolveAction)', () => {
   const map = new ActionMap();
 
-  it('formal_bow resolves null for cubism (modelSupport=vrm)', () => {
-    // formal_bow has modelSupport: 'vrm' — must be filtered out for cubism
-    const result = map.resolveAction('formal_bow', 'neutral', 1.0, 'cubism');
+  it('vrm-only clip resolves null for cubism', () => {
+    // vrm_greet_formal_bow has modelSupport: 'vrm' — filtered out for cubism
+    const result = map.resolveAction('vrm_pose_peace_sign', 'neutral', 1.0, 'cubism');
     expect(result).toBeNull();
   });
 
-  it('formal_bow resolves a clip for vrm', () => {
-    const result = map.resolveAction('formal_bow', 'neutral', 1.0, 'vrm');
+  it('vrm-only clip resolves a clip for vrm', () => {
+    const result = map.resolveAction('vrm_pose_peace_sign', 'neutral', 1.0, 'vrm');
     expect(result).not.toBeNull();
-    expect(result!.kind).toBe('clip');
+    expect(result?.kind).toBe('clip');
   });
 
-  it('formal_bow resolves without filtering when modelKind=null', () => {
-    const result = map.resolveAction('formal_bow', 'neutral', 1.0, null);
+  it('vrm-only clip resolves without filtering when modelKind=null', () => {
+    const result = map.resolveAction('vrm_pose_peace_sign', 'neutral', 1.0, null);
     expect(result).not.toBeNull();
-    expect(result!.kind).toBe('clip');
+    expect(result?.kind).toBe('clip');
   });
 });
 
 describe('ActionMap — modelSupport filtering (listActions)', () => {
   const map = new ActionMap();
 
-  it('listActions("vrm") includes nod (auto-both), smile (both), formal_bow (vrm); excludes wave (arm-conflict cubism-only)', () => {
-    const actions = map.listActions('vrm');
-    const names = actions.map((a) => a.name);
-    // nod (head.pitch + body.y) auto-derives to both; no arm channels
-    expect(names).toContain('nod');
-    expect(names).toContain('smile');
-    expect(names).toContain('formal_bow');
-    // wave writes arm.right which conflicts with VRM idle loop — explicit cubism-only
-    expect(names).not.toContain('wave');
+  it('listActions("vrm") includes both-mode envelopes and vrm clips', () => {
+    const names = map.listActions('vrm').map((a) => a.name);
+    expect(names).toContain('emotion_smile'); // modelSupport: both
+    expect(names).toContain('vrm_pose_peace_sign'); // modelSupport: vrm
   });
 
-  it('listActions("cubism") excludes formal_bow (vrm-only) but includes nod, smile, and wave', () => {
-    const actions = map.listActions('cubism');
-    const names = actions.map((a) => a.name);
-    expect(names).not.toContain('formal_bow');
-    expect(names).toContain('nod');
-    expect(names).toContain('smile');
-    expect(names).toContain('wave');
+  it('listActions("cubism") excludes vrm-only clips, keeps both-mode envelopes', () => {
+    const names = map.listActions('cubism').map((a) => a.name);
+    expect(names).not.toContain('vrm_pose_peace_sign');
+    expect(names).toContain('emotion_smile');
   });
 
-  it('listActions(null) returns all actions including both nod and formal_bow', () => {
-    const all = map.listActions(null);
-    const names = all.map((a) => a.name);
-    expect(names).toContain('nod');
-    expect(names).toContain('formal_bow');
-    expect(names).toContain('smile');
+  it('listActions(null) returns all actions regardless of modelSupport', () => {
+    const names = map.listActions(null).map((a) => a.name);
+    expect(names).toContain('emotion_smile');
+    expect(names).toContain('vrm_pose_peace_sign');
   });
 });
 
@@ -677,15 +633,16 @@ describe('mergeActionMapPayloads + default package map', () => {
     expect(merged.foo).toMatchObject({ clip: 'clips/b.json' });
   });
 
-  it('default ActionMap lists both hand key greet and generated vrm_VRMA_02', () => {
+  it('default ActionMap merges core (envelope) and per-category extend (clip) entries', () => {
     const map = new ActionMap();
-    expect(map.has('greet')).toBe(true);
-    expect(map.has('vrm_VRMA_02')).toBe(true);
+    expect(map.has('emotion_smile')).toBe(true);
+    expect(map.has('vrm_pose_peace_sign')).toBe(true);
+    expect(map.has('vrm_idle_loop')).toBe(true);
   });
 
-  it('default map resolves a generated vrm_ clip for vrm', () => {
+  it('default map resolves a clip-kind extend entry for vrm', () => {
     const map = new ActionMap();
-    const r = map.resolveAction('vrm_001_motion_pose', 'n', 1, 'vrm');
+    const r = map.resolveAction('vrm_idle_loop', 'n', 1, 'vrm');
     expect(r).not.toBeNull();
     expect(r!.kind).toBe('clip');
   });

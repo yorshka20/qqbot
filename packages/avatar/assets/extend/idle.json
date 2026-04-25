@@ -1,0 +1,72 @@
+{
+  "vrm_idle_loop": [
+    {
+      "kind": "clip",
+      "category": "idle",
+      "modelSupport": "vrm",
+      "description": "idle 动态待机池（自然舒展、动态小幅度，cooldown 触发；basic idle 用 vrm_idle_basic）",
+      "clip": "clips/vrm/idle_hub_01.json",
+      "defaultDuration": 14533
+    },
+    { "kind": "clip", "clip": "clips/vrm/idle_hub_02.json", "defaultDuration": 20533 },
+    { "kind": "clip", "clip": "clips/vrm/idle_hub_03.json", "defaultDuration": 12133 },
+    { "kind": "clip", "clip": "clips/vrm/idle_hub_04.json", "defaultDuration": 13700 },
+    { "kind": "clip", "clip": "clips/vrm/idle_hub_05.json", "defaultDuration": 21200 },
+    { "kind": "clip", "clip": "clips/vrm/idle_standby_w_01.json", "defaultDuration": 8833 },
+    { "kind": "clip", "clip": "clips/vrm/idle_standby_w_02.json", "defaultDuration": 9400 },
+    { "kind": "clip", "clip": "clips/vrm/idle_wait_02.json", "defaultDuration": 6633 },
+    { "kind": "clip", "clip": "clips/vrm/idle_wait_03.json", "defaultDuration": 8333 },
+    { "kind": "clip", "clip": "clips/vrm/idle_wait_04.json", "defaultDuration": 5200 },
+    { "kind": "clip", "clip": "clips/vrm/home_idle_m_01.json", "defaultDuration": 6000 },
+    { "kind": "clip", "clip": "clips/vrm/home_idle_w_01.json", "defaultDuration": 6000 },
+    { "kind": "clip", "clip": "clips/vrm/home_tap_m_01.json", "defaultDuration": 4000 },
+    { "kind": "clip", "clip": "clips/vrm/home_tap_w_01.json", "defaultDuration": 4000 }
+  ],
+  "vrm_idle_relaxed": {
+    "kind": "clip",
+    "category": "idle",
+    "modelSupport": "vrm",
+    "description": "短暂自然放松站立",
+    "clip": "clips/vrm/idle_general_01.json",
+    "defaultDuration": 2000
+  },
+  "vrm_idle_basic": [
+    {
+      "kind": "clip",
+      "category": "idle",
+      "modelSupport": "vrm",
+      "description": "basic idle 静态待机池（基本不动，静态小幅度）——用作 IdleMotionLayer 默认持续 hold pose",
+      "clip": "clips/vrm/idle_general_01.json",
+      "defaultDuration": 2000
+    },
+    { "kind": "clip", "clip": "clips/vrm/costume_wait_m.json", "defaultDuration": 2000 },
+    { "kind": "clip", "clip": "clips/vrm/costume_wait_w.json", "defaultDuration": 2000 }
+  ],
+  "vrm_idle_invite": {
+    "kind": "clip",
+    "category": "idle",
+    "modelSupport": "vrm",
+    "description": "比试比试，邀约对方过招的姿态",
+    "clip": "clips/vrm/idle_general_02.json",
+    "defaultDuration": 1167
+  },
+  "vrm_idle_shoes_demo": [
+    {
+      "kind": "clip",
+      "category": "idle",
+      "modelSupport": "vrm",
+      "description": "试穿鞋子，主题相关的展示型 idle",
+      "clip": "clips/vrm/costume_shoes_m.json",
+      "defaultDuration": 4000
+    },
+    { "kind": "clip", "clip": "clips/vrm/costume_shoes_w.json", "defaultDuration": 4000 }
+  ],
+  "vrm_idle_squat_stretch": {
+    "kind": "clip",
+    "category": "idle",
+    "modelSupport": "vrm",
+    "description": "屈膝伸展——热身式蹲起",
+    "clip": "clips/vrm/sample_vrma_07.json",
+    "defaultDuration": 11517
+  }
+}
