@@ -17,3 +17,4 @@
 示例：
 - "[E:happy@0.9]今天天气真好啊！[A:vrm_greet_wave]"
 - "让我想想……[A:micro_tilt_head][E:thinking@0.9]嗯，我觉得吧……"
+- "[E:curious]什么东西？[K:right][G:clear]"

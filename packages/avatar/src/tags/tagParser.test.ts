@@ -65,6 +65,36 @@ describe('parseRichTags', () => {
   });
 });
 
+describe('[K:] head-look tags', () => {
+  it('[K: left] → headLook yaw=-15', () => {
+    expect(parseRichTags('[K: left]')).toEqual([{ kind: 'headLook', target: { yaw: -15, pitch: 0 } }]);
+  });
+
+  it('[K: right] → headLook yaw=15', () => {
+    expect(parseRichTags('[K: right]')).toEqual([{ kind: 'headLook', target: { yaw: 15, pitch: 0 } }]);
+  });
+
+  it('[K: up] → headLook pitch=-10', () => {
+    expect(parseRichTags('[K: up]')).toEqual([{ kind: 'headLook', target: { yaw: 0, pitch: -10 } }]);
+  });
+
+  it('[K: down] → headLook pitch=10', () => {
+    expect(parseRichTags('[K: down]')).toEqual([{ kind: 'headLook', target: { yaw: 0, pitch: 10 } }]);
+  });
+
+  it('[K: clear] → headLook target=null', () => {
+    expect(parseRichTags('[K: clear]')).toEqual([{ kind: 'headLook', target: null }]);
+  });
+
+  it('[K: -20,5] → headLook numeric pair', () => {
+    expect(parseRichTags('[K: -20,5]')).toEqual([{ kind: 'headLook', target: { yaw: -20, pitch: 5 } }]);
+  });
+
+  it('[K: bogus] → graceful skip (no headLook entry)', () => {
+    expect(parseRichTags('[K: bogus]')).toEqual([]);
+  });
+});
+
 describe('parseLive2DTags (shim)', () => {
   it('regression: returns exactly one legacy-shaped object', () => {
     const result = parseLive2DTags('[LIVE2D: action=wave, emotion=happy, intensity=0.8]');

@@ -1,15 +1,17 @@
 import type { FaceTarget, GazeTarget, LegacyLive2DTag, ParsedTag, WalkMotion, WalkToTarget } from './types';
+import { parseNamedHeadLookTarget } from './headLook';
 
 const DEFAULT_EMOTION = 'neutral';
 const DEFAULT_ACTION = 'idle';
 const DEFAULT_INTENSITY = 0.5;
 
 const LEGACY_TAG_RE = /\[LIVE2D:\s*([^\]]*)\]/gi;
-const RICH_TAG_RE = /\[([AEGHWaeghw]):\s*([^\]]+?)\s*\]/g;
+const RICH_TAG_RE = /\[([AEGHWKaeghwk]):\s*([^\]]+?)\s*\]/g;
 const LEGACY_FIELD_RE = /(\w+)\s*=\s*([^,\]\s]+)/g;
 const NAME_RE = /^([a-z][a-z0-9_]*)$/i;
 const NAME_AT_INTENSITY_RE = /^([a-z][a-z0-9_]*)@([0-9]*\.?[0-9]+)$/i;
 const GAZE_POINT_RE = /^(-?[0-9]*\.?[0-9]+)\s*,\s*(-?[0-9]*\.?[0-9]+)$/;
+const HEAD_LOOK_PAIR_RE = /^(-?[0-9]*\.?[0-9]+)\s*,\s*(-?[0-9]*\.?[0-9]+)$/;
 
 const NAMED_GAZE_TARGETS = new Set(['camera', 'left', 'right', 'up', 'down', 'center']);
 const WALK_TO_TARGETS = new Set<WalkToTarget>(['camera', 'center', 'back']);
@@ -122,6 +124,16 @@ function isValidRichTagPayload(letter: string, payload: string): boolean {
   if (l === 'w') {
     return parseWalkPayload(payload) !== null;
   }
+  if (l === 'k') {
+    const lower = payload.toLowerCase().trim();
+    const named = parseNamedHeadLookTarget(lower);
+    if (named !== undefined) return true;
+    const m = HEAD_LOOK_PAIR_RE.exec(lower);
+    if (m) {
+      return Number.isFinite(Number(m[1])) && Number.isFinite(Number(m[2]));
+    }
+    return false;
+  }
   return false;
 }
 
@@ -186,6 +198,21 @@ export function parseRichTags(text: string): ParsedTag[] {
         const motion = parseWalkPayload(entry.payload);
         if (motion) {
           out.push({ kind: 'walk', motion });
+        }
+      } else if (l === 'k') {
+        const lower = entry.payload.toLowerCase().trim();
+        const named = parseNamedHeadLookTarget(lower);
+        if (named !== undefined) {
+          out.push({ kind: 'headLook', target: named });
+        } else {
+          const m = HEAD_LOOK_PAIR_RE.exec(lower);
+          if (m) {
+            const yaw = Number(m[1]);
+            const pitch = Number(m[2]);
+            if (Number.isFinite(yaw) && Number.isFinite(pitch)) {
+              out.push({ kind: 'headLook', target: { yaw, pitch } });
+            }
+          }
         }
       }
     } else {

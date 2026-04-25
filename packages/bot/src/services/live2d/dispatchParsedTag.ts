@@ -58,6 +58,9 @@ export function dispatchParsedTag(tag: ParsedTag, ctx: Live2DContext, avatar: Av
     case 'walk':
       dispatchWalk(tag.motion, avatar);
       break;
+    case 'headLook':
+      avatar.setHeadLook(tag.target);
+      break;
   }
 }
 

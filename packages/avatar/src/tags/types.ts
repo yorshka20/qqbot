@@ -1,3 +1,5 @@
+export type { HeadLookTarget } from '../compiler/layers/HeadLookLayer';
+
 export interface LegacyLive2DTag {
   emotion: string;
   action: string;
@@ -26,4 +28,5 @@ export type ParsedTag =
   | { kind: 'emotion'; emotion: string; intensity: number }
   | { kind: 'gaze'; target: GazeTarget }
   | { kind: 'hold'; dur: 'brief' | 'short' | 'long' }
-  | { kind: 'walk'; motion: WalkMotion };
+  | { kind: 'walk'; motion: WalkMotion }
+  | { kind: 'headLook'; target: import('../compiler/layers/HeadLookLayer').HeadLookTarget | null };

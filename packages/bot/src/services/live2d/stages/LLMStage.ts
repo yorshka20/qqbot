@@ -66,6 +66,8 @@ function describeTag(t: ParsedTag): string {
       return `H:${t.dur}`;
     case 'walk':
       return `W:${t.motion.type}`;
+    case 'headLook':
+      return `K:${t.target === null ? 'clear' : `${t.target.yaw ?? 0},${t.target.pitch ?? 0}`}`;
   }
 }
 

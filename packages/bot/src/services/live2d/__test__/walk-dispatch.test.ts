@@ -198,6 +198,76 @@ describe('dispatchTags — walk vector-merge', () => {
     expect(avatar.turn).not.toHaveBeenCalled();
   });
 
+  // headLook dispatch tests
+
+  it('[K:left] => setHeadLook called with named target { yaw: -15, pitch: 0 }', () => {
+    const tags = parseRichTags('[K:left]');
+    const ctx = createContext(sampleInput());
+    const setHeadLookCalls: Array<{ yaw?: number; pitch?: number } | null> = [];
+    const avatarWithHeadLook = {
+      ...avatar,
+      setHeadLook: mock((_target: { yaw?: number; pitch?: number } | null): void => {
+        setHeadLookCalls.push(_target);
+      }),
+    };
+    dispatchTags(tags, ctx, avatarWithHeadLook as never);
+
+    expect(setHeadLookCalls).toHaveLength(1);
+    expect(setHeadLookCalls[0]).toEqual({ yaw: -15, pitch: 0 });
+    expect(avatar.walkRelativeCalls).toHaveLength(0);
+  });
+
+  it('[K:clear] => setHeadLook called with null', () => {
+    const tags = parseRichTags('[K:clear]');
+    const ctx = createContext(sampleInput());
+    const setHeadLookCalls: Array<{ yaw?: number; pitch?: number } | null> = [];
+    const avatarWithHeadLook = {
+      ...avatar,
+      setHeadLook: mock((_target: { yaw?: number; pitch?: number } | null): void => {
+        setHeadLookCalls.push(_target);
+      }),
+    };
+    dispatchTags(tags, ctx, avatarWithHeadLook as never);
+
+    expect(setHeadLookCalls).toHaveLength(1);
+    expect(setHeadLookCalls[0]).toBeNull();
+  });
+
+  it('[W:forward:1.0][K:left][W:strafe:0.3] => two separate walkRelative calls (K breaks walk-vector merge)', () => {
+    const dispatchOrder: string[] = [];
+    const setHeadLookCalls: Array<{ yaw?: number; pitch?: number } | null> = [];
+
+    avatar.walkRelative = mock(function (this: typeof avatar, forwardM: number, strafeM: number, turnRad: number) {
+      this.walkRelativeCalls.push({ forwardM, strafeM, turnRad });
+      dispatchOrder.push(`walkRelative(${forwardM.toFixed(1)},${strafeM.toFixed(1)},${turnRad.toFixed(1)})`);
+      return Promise.resolve();
+    });
+
+    const avatarWithHeadLook = {
+      ...avatar,
+      setHeadLook: mock((_target: { yaw?: number; pitch?: number } | null): void => {
+        setHeadLookCalls.push(_target);
+        dispatchOrder.push('setHeadLook');
+      }),
+    };
+
+    const tags = parseRichTags('[W:forward:1.0][K:left][W:strafe:0.3]');
+    const ctx = createContext(sampleInput());
+    dispatchTags(tags, ctx, avatarWithHeadLook as never);
+
+    // Two separate walkRelative calls: forward flushed before K, strafe flushed at end.
+    expect(avatar.walkRelativeCalls).toHaveLength(2);
+    expect(avatar.walkRelativeCalls[0].forwardM).toBeCloseTo(1.0);
+    expect(avatar.walkRelativeCalls[0].strafeM).toBeCloseTo(0);
+    expect(avatar.walkRelativeCalls[1].forwardM).toBeCloseTo(0);
+    expect(avatar.walkRelativeCalls[1].strafeM).toBeCloseTo(0.3);
+    // setHeadLook was called once between the two walks.
+    expect(setHeadLookCalls).toHaveLength(1);
+    expect(setHeadLookCalls[0]).toEqual({ yaw: -15, pitch: 0 });
+    // Dispatch order: walk → headLook → walk.
+    expect(dispatchOrder).toEqual(['walkRelative(1.0,0.0,0.0)', 'setHeadLook', 'walkRelative(0.0,0.3,0.0)']);
+  });
+
   it('two streaming chunks (chunk1=[W:forward:1.0], chunk2=[W:strafe:0.3]) => two separate walk calls (no cross-chunk merge)', () => {
     const ctx = createContext(sampleInput());
 
