@@ -100,7 +100,21 @@ describe('dispatchTags — walk vector-merge', () => {
     expect(avatar.turn).not.toHaveBeenCalled();
   });
 
-  it('[W:forward:1.0][A:vrm_greet_wave][W:strafe:0.3] => forward flush, action enqueue, then strafe flush', () => {
+  it('[W:forward:1.0][A:vrm_greet_wave][W:strafe:0.3] => forward flush, action enqueue, then strafe flush (order verified)', () => {
+    // Track dispatch order explicitly so the test proves the sequencing contract,
+    // not only the call counts.
+    const dispatchOrder: string[] = [];
+
+    avatar.walkRelative = mock(function (this: typeof avatar, forwardM: number, strafeM: number, turnRad: number) {
+      this.walkRelativeCalls.push({ forwardM, strafeM, turnRad });
+      dispatchOrder.push(`walkRelative(${forwardM.toFixed(1)},${strafeM.toFixed(1)},${turnRad.toFixed(1)})`);
+      return Promise.resolve();
+    });
+    avatar.enqueueTagAnimation = mock(function (this: typeof avatar, t: unknown) {
+      this.enqueued.push(t);
+      dispatchOrder.push(`enqueue(${(t as { action: string }).action})`);
+    });
+
     const tags = parseRichTags('[W:forward:1.0][A:vrm_greet_wave][W:strafe:0.3]');
     const ctx = createContext(sampleInput());
     dispatchTags(tags, ctx, avatar as never);
@@ -114,6 +128,12 @@ describe('dispatchTags — walk vector-merge', () => {
     // Action was enqueued between the two walks.
     expect(avatar.enqueued).toHaveLength(1);
     expect((avatar.enqueued[0] as { action: string }).action).toBe('vrm_greet_wave');
+    // Explicit dispatch order: walk → action → walk.
+    expect(dispatchOrder).toEqual([
+      'walkRelative(1.0,0.0,0.0)',
+      'enqueue(vrm_greet_wave)',
+      'walkRelative(0.0,0.3,0.0)',
+    ]);
   });
 
   it('[W:forward:1.0][W:to:camera] => flush forward first, then separate semantic walk', () => {
