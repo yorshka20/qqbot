@@ -17,6 +17,7 @@
 
 import type { AvatarService } from '@qqbot/avatar';
 import { logger } from '@/utils/logger';
+import { AutonomousTriggerScheduler } from './AutonomousTriggerScheduler';
 import type { MindModulationAdapter } from './MindModulationAdapter';
 import type { MindService } from './MindService';
 import { derivePersonaPostureBias } from './ode';
@@ -32,6 +33,8 @@ export interface MindLifecycleHandles {
   /** Null when no avatar is available; otherwise the interval handle for
    *  the posture-bias push loop. */
   postureTimer: ReturnType<typeof setInterval> | null;
+  /** Null when no avatar / autonomous trigger disabled. */
+  autonomousTriggerScheduler: AutonomousTriggerScheduler | null;
 }
 
 /**
@@ -52,7 +55,7 @@ export function startMindSubsystem(
 ): MindLifecycleHandles {
   if (!mindService.isEnabled()) {
     logger.info('[Mind] Disabled by config — skipped wiring');
-    return { wanderScheduler: null, postureTimer: null };
+    return { wanderScheduler: null, postureTimer: null, autonomousTriggerScheduler: null };
   }
 
   if (avatarService) {
@@ -76,7 +79,16 @@ export function startMindSubsystem(
     postureTimer = startPostureDriver(mindService, avatarService);
   }
 
-  return { wanderScheduler, postureTimer };
+  let autonomousTriggerScheduler: AutonomousTriggerScheduler | null = null;
+  if (avatarService && cfg.autonomousTrigger.enabled) {
+    autonomousTriggerScheduler = new AutonomousTriggerScheduler(cfg.autonomousTrigger, {
+      mind: mindService,
+      avatar: avatarService,
+    });
+    autonomousTriggerScheduler.start();
+  }
+
+  return { wanderScheduler, postureTimer, autonomousTriggerScheduler };
 }
 
 /** Avatar ↔ mind wiring. Extracted so the mind→wander block below stays readable. */

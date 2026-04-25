@@ -190,6 +190,42 @@ export interface MindConfig {
      */
     idleClipPool: string[];
   };
+
+  /**
+   * Autonomous trigger (Phase 3). Translates long-running phenotype state
+   * into discrete avatar actions: fatigue → yawn-style refresh clip on a
+   * randomised cooldown; valence → emotion drift state machine (sad /
+   * neutral / happy bands with hysteresis). Requires avatar enabled.
+   *
+   * Valence is read defensively (`phenotype.valence ?? 0`) because Phase 1
+   * Phenotype does not carry the field yet — production triggers are no-ops
+   * until valence lands in a future ticket.
+   */
+  autonomousTrigger: {
+    enabled: boolean;
+    yawn: {
+      fatigueThreshold: number;
+      cooldownMinMs: number;
+      cooldownMaxMs: number;
+      actionName: string;
+      intensity: number;
+    };
+    valenceDrift: {
+      negativeThreshold: number;
+      positiveThreshold: number;
+      neutralLowMin: number;
+      neutralHighMax: number;
+      sadEmotionName: string;
+      happyEmotionName: string;
+      neutralEmotionName: string;
+      sadIntensityMin: number;
+      sadIntensityMax: number;
+      sadIntensityFactor: number;
+      happyIntensityMin: number;
+      happyIntensityMax: number;
+      happyIntensityFactor: number;
+    };
+  };
 }
 
 export const DEFAULT_MIND_CONFIG: MindConfig = {
@@ -237,6 +273,31 @@ export const DEFAULT_MIND_CONFIG: MindConfig = {
     },
     idleClipPool: ['vrm_idle_loop'],
   },
+  autonomousTrigger: {
+    enabled: true,
+    yawn: {
+      fatigueThreshold: 0.8,
+      cooldownMinMs: 300_000,
+      cooldownMaxMs: 600_000,
+      actionName: 'vrm_emotion_refresh',
+      intensity: 0.6,
+    },
+    valenceDrift: {
+      negativeThreshold: -0.3,
+      positiveThreshold: 0.5,
+      neutralLowMin: -0.1,
+      neutralHighMax: 0.3,
+      sadEmotionName: 'emotion_sad',
+      happyEmotionName: 'emotion_smile',
+      neutralEmotionName: 'emotion_thinking',
+      sadIntensityMin: 0.2,
+      sadIntensityMax: 0.5,
+      sadIntensityFactor: 0.6,
+      happyIntensityMin: 0.3,
+      happyIntensityMax: 0.6,
+      happyIntensityFactor: 0.5,
+    },
+  },
 };
 
 /** Minimal shape exported for `wander/*` consumers without a full re-import. */
@@ -277,6 +338,7 @@ export function mergeMindConfig(raw: Record<string, unknown> | undefined): MindC
       fatigueSevereMin: numberOr(ppSrc.fatigueSevereMin, DEFAULT_MIND_CONFIG.promptPatch.fatigueSevereMin),
     },
     wander: mergeWanderConfig(src.wander),
+    autonomousTrigger: mergeAutonomousTriggerConfig(src.autonomousTrigger),
   };
 }
 
@@ -305,6 +367,47 @@ function mergeWanderConfig(raw: unknown): MindConfig['wander'] {
     idleClipPool: Array.isArray(src.idleClipPool)
       ? src.idleClipPool.filter((s): s is string => typeof s === 'string')
       : [...DEFAULT_MIND_CONFIG.wander.idleClipPool],
+  };
+}
+
+function mergeAutonomousTriggerConfig(raw: unknown): MindConfig['autonomousTrigger'] {
+  const src = (raw ?? {}) as Partial<MindConfig['autonomousTrigger']>;
+  const yawnSrc = (src.yawn ?? {}) as Partial<MindConfig['autonomousTrigger']['yawn']>;
+  const vdSrc = (src.valenceDrift ?? {}) as Partial<MindConfig['autonomousTrigger']['valenceDrift']>;
+  const D = DEFAULT_MIND_CONFIG.autonomousTrigger;
+  return {
+    enabled: typeof src.enabled === 'boolean' ? src.enabled : D.enabled,
+    yawn: {
+      fatigueThreshold: numberOr(yawnSrc.fatigueThreshold, D.yawn.fatigueThreshold),
+      cooldownMinMs: numberOr(yawnSrc.cooldownMinMs, D.yawn.cooldownMinMs),
+      cooldownMaxMs: numberOr(yawnSrc.cooldownMaxMs, D.yawn.cooldownMaxMs),
+      actionName: typeof yawnSrc.actionName === 'string' && yawnSrc.actionName ? yawnSrc.actionName : D.yawn.actionName,
+      intensity: numberOr(yawnSrc.intensity, D.yawn.intensity),
+    },
+    valenceDrift: {
+      negativeThreshold: numberOr(vdSrc.negativeThreshold, D.valenceDrift.negativeThreshold),
+      positiveThreshold: numberOr(vdSrc.positiveThreshold, D.valenceDrift.positiveThreshold),
+      neutralLowMin: numberOr(vdSrc.neutralLowMin, D.valenceDrift.neutralLowMin),
+      neutralHighMax: numberOr(vdSrc.neutralHighMax, D.valenceDrift.neutralHighMax),
+      sadEmotionName:
+        typeof vdSrc.sadEmotionName === 'string' && vdSrc.sadEmotionName
+          ? vdSrc.sadEmotionName
+          : D.valenceDrift.sadEmotionName,
+      happyEmotionName:
+        typeof vdSrc.happyEmotionName === 'string' && vdSrc.happyEmotionName
+          ? vdSrc.happyEmotionName
+          : D.valenceDrift.happyEmotionName,
+      neutralEmotionName:
+        typeof vdSrc.neutralEmotionName === 'string' && vdSrc.neutralEmotionName
+          ? vdSrc.neutralEmotionName
+          : D.valenceDrift.neutralEmotionName,
+      sadIntensityMin: numberOr(vdSrc.sadIntensityMin, D.valenceDrift.sadIntensityMin),
+      sadIntensityMax: numberOr(vdSrc.sadIntensityMax, D.valenceDrift.sadIntensityMax),
+      sadIntensityFactor: numberOr(vdSrc.sadIntensityFactor, D.valenceDrift.sadIntensityFactor),
+      happyIntensityMin: numberOr(vdSrc.happyIntensityMin, D.valenceDrift.happyIntensityMin),
+      happyIntensityMax: numberOr(vdSrc.happyIntensityMax, D.valenceDrift.happyIntensityMax),
+      happyIntensityFactor: numberOr(vdSrc.happyIntensityFactor, D.valenceDrift.happyIntensityFactor),
+    },
   };
 }
 

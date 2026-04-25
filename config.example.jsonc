@@ -831,6 +831,11 @@
   },
   // TTS configuration (optional).
   //
+  // Implementation lives in the bot package: `packages/bot/src/services/tts/`
+  // (`TTSManager`, `FishAudioProvider`, `SovitsProvider`). Bootstrap registers
+  // each provider with `HealthCheckManager` via `TtsProviderHealthAdapter` so
+  // `/tts` can fall back when a backend is unhealthy.
+  //
   // Multi-provider schema. Each entry in `providers[]` has a `type`
   // discriminator (`fish-audio` | `sovits`) that picks the implementation.
   // `defaultProvider` matches one of the `name` fields and is used when
@@ -1322,6 +1327,36 @@
   //   //     "maxTurnRad": 0.524,      // ≈ 30°
   //   //     "maxStepMeters": 0.25,
   //   //     "maxStrafeMeters": 0.2
+  //   //   }
+  //   // }
+  //
+  //   // Phase 3: Autonomous triggers — translate phenotype state into discrete
+  //   // avatar actions. Fatigue → yawn-like refresh clip on a 5–10 min cooldown.
+  //   // Valence → emotion drift (sad / smile / thinking) as a hysteresis state
+  //   // machine. Requires "avatar" enabled.
+  //   // "autonomousTrigger": {
+  //   //   "enabled": true,
+  //   //   "yawn": {
+  //   //     "fatigueThreshold": 0.8,
+  //   //     "cooldownMinMs": 300000,
+  //   //     "cooldownMaxMs": 600000,
+  //   //     "actionName": "vrm_emotion_refresh",
+  //   //     "intensity": 0.6
+  //   //   },
+  //   //   "valenceDrift": {
+  //   //     "negativeThreshold": -0.3,
+  //   //     "positiveThreshold": 0.5,
+  //   //     "neutralLowMin": -0.1,
+  //   //     "neutralHighMax": 0.3,
+  //   //     "sadEmotionName": "emotion_sad",
+  //   //     "happyEmotionName": "emotion_smile",
+  //   //     "neutralEmotionName": "emotion_thinking",
+  //   //     "sadIntensityMin": 0.2,
+  //   //     "sadIntensityMax": 0.5,
+  //   //     "sadIntensityFactor": 0.6,
+  //   //     "happyIntensityMin": 0.3,
+  //   //     "happyIntensityMax": 0.6,
+  //   //     "happyIntensityFactor": 0.5
   //   //   }
   //   // }
   // }
