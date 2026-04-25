@@ -428,6 +428,37 @@ export class SQLiteAdapter implements DatabaseAdapter {
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`,
+      // Mind Phase 2: epigenetics persistence
+      `CREATE TABLE IF NOT EXISTS persona_epigenetics (
+        persona_id TEXT PRIMARY KEY,
+        topic_mastery_json TEXT NOT NULL DEFAULT '{}',
+        behavioral_biases_json TEXT NOT NULL DEFAULT '{}',
+        learned_preferences_json TEXT NOT NULL DEFAULT '{}',
+        forbidden_words_json TEXT NOT NULL DEFAULT '[]',
+        forbidden_topics_json TEXT NOT NULL DEFAULT '[]',
+        trait_history_json TEXT NOT NULL DEFAULT '[]',
+        updated_at INTEGER NOT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS persona_relationships (
+        persona_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        affinity REAL NOT NULL DEFAULT 0,
+        familiarity REAL NOT NULL DEFAULT 0,
+        last_interaction_at INTEGER NOT NULL,
+        tags_json TEXT NOT NULL DEFAULT '[]',
+        shared_memory_refs_json TEXT NOT NULL DEFAULT '[]',
+        extra_json TEXT NOT NULL DEFAULT '{}',
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (persona_id, user_id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS persona_reflections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        persona_id TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        trigger TEXT NOT NULL,
+        insight_md TEXT NOT NULL,
+        applied_patch_json TEXT NOT NULL
+      )`,
     ];
 
     for (const statement of statements) {
@@ -525,6 +556,10 @@ export class SQLiteAdapter implements DatabaseAdapter {
       `CREATE INDEX IF NOT EXISTS idx_bilibili_danmaku_room_received ON bilibili_danmaku(roomId, receivedAt)`,
       `CREATE INDEX IF NOT EXISTS idx_bilibili_danmaku_mentions ON bilibili_danmaku(mentionsStreamer, receivedAt)`,
       `CREATE INDEX IF NOT EXISTS idx_bilibili_danmaku_batch ON bilibili_danmaku(batchId)`,
+      // Mind Phase 2: epigenetics indexes
+      `CREATE INDEX IF NOT EXISTS idx_rel_affinity ON persona_relationships(persona_id, affinity DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_rel_familiarity ON persona_relationships(persona_id, familiarity DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_refl_persona_ts ON persona_reflections(persona_id, timestamp DESC)`,
     ];
 
     for (const statement of indexStatements) {

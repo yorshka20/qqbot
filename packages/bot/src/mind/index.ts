@@ -24,3 +24,13 @@ export {
 export { executeIntent, pickIntent } from './wander/intents';
 export type { WanderExecutor, WanderIntent, WanderIntentKind, WanderStep } from './wander/types';
 export { WanderScheduler, type WanderSchedulerOptions } from './wander/WanderScheduler';
+// Mind Phase 2 — epigenetics persistence
+export { EpigeneticsStore } from './epigenetics/EpigeneticsStore';
+export type {
+  PersonaEpigenetics,
+  PersonaReflection,
+  PersonaRelationship,
+  ReflectionPatch,
+  TraitHistoryEntry,
+  TraitKey,
+} from './epigenetics/types';
