@@ -121,6 +121,19 @@ function buildSteps(kind: WanderIntentKind, config: WanderConfig, rng: () => num
         { kind: 'turn', radians: -t },
       ];
     }
+    case 'idle_clip': {
+      // Pool of clip-kind action names declared in config; the action map's
+      // own variant random-pick handles per-clip selection within a pool
+      // action like `vrm_idle_loop` (14 variants).
+      const pool = config.idleClipPool;
+      if (!pool || pool.length === 0) {
+        // No pool configured — degenerate to a no-op wait so the scheduler
+        // round still completes (better than throwing).
+        return [{ kind: 'wait', ms: 100 }];
+      }
+      const actionName = pool[Math.floor(rng() * pool.length)];
+      return [{ kind: 'playIdleClip', actionName }];
+    }
   }
 }
 
@@ -172,6 +185,13 @@ function stepFootprint(step: WanderStep): ReadonlySet<string> {
       return GAZE_FOOTPRINT;
     case 'setHead':
       return HEAD_FOOTPRINT;
+    case 'playIdleClip':
+      // Empty: the discrete enqueue path runs its own cross-action conflict
+      // check (which deliberately excludes continuous-layer ownership so the
+      // basic idle layer's leg/spine claim doesn't self-block an idle clip
+      // interject). Letting the scheduler-level footprint say "free" is
+      // intentional — playIdleClip never collides with itself by design.
+      return EMPTY_FOOTPRINT;
     case 'wait':
       return EMPTY_FOOTPRINT;
   }
@@ -237,6 +257,9 @@ async function runStep(
       return;
     case 'setHead':
       executor.setHeadLook(step.target);
+      return;
+    case 'playIdleClip':
+      executor.playIdleClip(step.actionName);
       return;
     case 'wait':
       await sleep(step.ms);

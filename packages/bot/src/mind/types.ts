@@ -168,6 +168,13 @@ export interface MindConfig {
       shift_weight: number;
       micro_step: number;
       browse: number;
+      /**
+       * Weight for "play one random idle clip from `idleClipPool`". Folds
+       * idle-motion-layer's interject scheduling into the unified wander
+       * scheduler so wander steps and clip interjects share one cooldown
+       * timer (mutex by design — only one fires per tick).
+       */
+      idle_clip: number;
     };
     /** Amplitude caps for generated motion. */
     amplitude: {
@@ -175,6 +182,13 @@ export interface MindConfig {
       maxStepMeters: number;
       maxStrafeMeters: number;
     };
+    /**
+     * Action names eligible for the `idle_clip` intent. Each entry should
+     * resolve to a clip-kind action (variant pools like `vrm_idle_loop` are
+     * supported — the action map's own random pick handles per-clip
+     * selection within the pool). Defaults to `['vrm_idle_loop']`.
+     */
+    idleClipPool: string[];
   };
 }
 
@@ -200,21 +214,28 @@ export const DEFAULT_MIND_CONFIG: MindConfig = {
   },
   wander: {
     enabled: true,
-    intervalMinMs: 45_000,
-    intervalMaxMs: 120_000,
-    cooldownMs: 12_000,
+    intervalMinMs: 10_000,
+    intervalMaxMs: 20_000,
+    cooldownMs: 10_000,
     intents: {
-      glance: 0.3,
-      look_around: 0.25,
-      shift_weight: 0.2,
-      micro_step: 0.15,
-      browse: 0.1,
+      // idle_clip dominates the weight — most ticks should play an idle
+      // clip variant (subtle bone motion, no translation). Wander steps
+      // (gaze / look-around / micro-step / browse) sprinkle in for spatial
+      // randomness. Tuned so the avatar reads as "mostly still + occasional
+      // motion" rather than "constant procedural fidget".
+      glance: 0.15,
+      look_around: 0.1,
+      shift_weight: 0.08,
+      micro_step: 0.05,
+      browse: 0.02,
+      idle_clip: 0.6,
     },
     amplitude: {
       maxTurnRad: Math.PI / 6, // ~30°
       maxStepMeters: 0.25,
       maxStrafeMeters: 0.2,
     },
+    idleClipPool: ['vrm_idle_loop'],
   },
 };
 
@@ -274,12 +295,16 @@ function mergeWanderConfig(raw: unknown): MindConfig['wander'] {
       shift_weight: numberOr(intentsSrc.shift_weight, DEFAULT_MIND_CONFIG.wander.intents.shift_weight),
       micro_step: numberOr(intentsSrc.micro_step, DEFAULT_MIND_CONFIG.wander.intents.micro_step),
       browse: numberOr(intentsSrc.browse, DEFAULT_MIND_CONFIG.wander.intents.browse),
+      idle_clip: numberOr(intentsSrc.idle_clip, DEFAULT_MIND_CONFIG.wander.intents.idle_clip),
     },
     amplitude: {
       maxTurnRad: numberOr(ampSrc.maxTurnRad, DEFAULT_MIND_CONFIG.wander.amplitude.maxTurnRad),
       maxStepMeters: numberOr(ampSrc.maxStepMeters, DEFAULT_MIND_CONFIG.wander.amplitude.maxStepMeters),
       maxStrafeMeters: numberOr(ampSrc.maxStrafeMeters, DEFAULT_MIND_CONFIG.wander.amplitude.maxStrafeMeters),
     },
+    idleClipPool: Array.isArray(src.idleClipPool)
+      ? src.idleClipPool.filter((s): s is string => typeof s === 'string')
+      : [...DEFAULT_MIND_CONFIG.wander.idleClipPool],
   };
 }
 

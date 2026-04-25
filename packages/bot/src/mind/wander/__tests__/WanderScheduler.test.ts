@@ -13,6 +13,7 @@ interface FakeAvatar extends WanderExecutor {
     | { kind: 'turn'; radians: number }
     | { kind: 'setGaze'; target: unknown }
     | { kind: 'setHead'; target: unknown }
+    | { kind: 'playIdleClip'; actionName: string }
   >;
   pose: string;
   active: boolean;
@@ -55,6 +56,9 @@ function fakeAvatar(init: Partial<Pick<FakeAvatar, 'pose' | 'active' | 'occupied
     setHeadLook(target) {
       calls.push({ kind: 'setHead', target });
     },
+    playIdleClip(actionName) {
+      calls.push({ kind: 'playIdleClip', actionName });
+    },
   };
 }
 
@@ -77,7 +81,7 @@ const wanderConfig = (overrides: Partial<MindConfig['wander']> = {}): MindConfig
 describe('pickIntent — weighted kind selection', () => {
   test('picks the only non-zero weight kind reliably', () => {
     const config = wanderConfig({
-      intents: { glance: 1, look_around: 0, shift_weight: 0, micro_step: 0, browse: 0 },
+      intents: { glance: 1, look_around: 0, shift_weight: 0, micro_step: 0, browse: 0, idle_clip: 0 },
     });
     const intent = pickIntent(config, () => 0.42);
     expect(intent.label).toBe('glance');
@@ -85,7 +89,7 @@ describe('pickIntent — weighted kind selection', () => {
 
   test('falls back to glance when all weights are zero', () => {
     const config = wanderConfig({
-      intents: { glance: 0, look_around: 0, shift_weight: 0, micro_step: 0, browse: 0 },
+      intents: { glance: 0, look_around: 0, shift_weight: 0, micro_step: 0, browse: 0, idle_clip: 0 },
     });
     const intent = pickIntent(config, () => 0.1);
     expect(intent.label).toBe('glance');
@@ -93,7 +97,7 @@ describe('pickIntent — weighted kind selection', () => {
 
   test('samples proportionally across many trials', () => {
     const config = wanderConfig({
-      intents: { glance: 1, look_around: 1, shift_weight: 0, micro_step: 0, browse: 0 },
+      intents: { glance: 1, look_around: 1, shift_weight: 0, micro_step: 0, browse: 0, idle_clip: 0 },
     });
     const counts: Record<WanderIntentKind, number> = {
       glance: 0,
@@ -101,6 +105,7 @@ describe('pickIntent — weighted kind selection', () => {
       shift_weight: 0,
       micro_step: 0,
       browse: 0,
+      idle_clip: 0,
     };
     for (let i = 0; i < 400; i++) counts[pickIntent(config).label]++;
     expect(counts.glance).toBeGreaterThan(100);
@@ -152,7 +157,7 @@ describe('pickIntent — step shape per kind', () => {
     // All weights zero except micro_step so the first rng call lands on micro_step
     // regardless of magnitude (weighted-random sums the only non-zero entry).
     const config = wanderConfig({
-      intents: { glance: 0, look_around: 0, shift_weight: 0, micro_step: 1, browse: 0 },
+      intents: { glance: 0, look_around: 0, shift_weight: 0, micro_step: 1, browse: 0, idle_clip: 0 },
     });
     const intent = pickIntent(config, seededRng(0.05, 0.7, 0.5));
     const walks = intent.steps.filter((s) => s.kind === 'walkForward') as Array<{
@@ -208,7 +213,7 @@ describe('WanderScheduler — gate predicate', () => {
     const avatar = fakeAvatar();
     const scheduler = new WanderScheduler(
       wanderConfig({
-        intents: { glance: 1, look_around: 0, shift_weight: 0, micro_step: 0, browse: 0 },
+        intents: { glance: 1, look_around: 0, shift_weight: 0, micro_step: 0, browse: 0, idle_clip: 0 },
       }),
       avatar,
       { sleep: async () => {}, rng: () => 0.2 },
@@ -253,7 +258,7 @@ describe('WanderScheduler — error swallow', () => {
       throw Object.assign(new Error('interrupted'), { name: 'WalkInterruptedError' });
     };
     const scheduler = new WanderScheduler(
-      wanderConfig({ intents: { glance: 0, look_around: 1, shift_weight: 0, micro_step: 0, browse: 0 } }),
+      wanderConfig({ intents: { glance: 0, look_around: 1, shift_weight: 0, micro_step: 0, browse: 0, idle_clip: 0 } }),
       avatar,
       { sleep: async () => {} },
     );

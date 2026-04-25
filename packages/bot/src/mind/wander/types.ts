@@ -27,6 +27,11 @@ export type WanderStep =
   // setHead targets the HeadLookLayer — rotates head only (body stays put). `null`
   // releases the override and the head drifts back to neutral.
   | { kind: 'setHead'; target: HeadLookTarget | null }
+  // playIdleClip enqueues a clip-kind action via the discrete pipeline so the
+  // unified idle scheduler can pick "play an idle clip" alongside translation
+  // / turn / gaze steps. Footprint is empty at the wander layer — the action
+  // map's enqueue path runs its own cross-action conflict check.
+  | { kind: 'playIdleClip'; actionName: string }
   | { kind: 'wait'; ms: number };
 
 /**
@@ -38,7 +43,17 @@ export interface WanderIntent {
   steps: WanderStep[];
 }
 
-export type WanderIntentKind = 'glance' | 'look_around' | 'shift_weight' | 'micro_step' | 'browse';
+export type WanderIntentKind =
+  | 'glance'
+  | 'look_around'
+  | 'shift_weight'
+  | 'micro_step'
+  | 'browse'
+  // idle_clip = "play one random idle clip from the configured pool". Folds
+  // idle-motion-layer's interject scheduling into the unified wander scheduler
+  // — wander and idle clip are both "the avatar is filling time" idle
+  // behaviours; routing them through one timer keeps them mutex by design.
+  | 'idle_clip';
 
 /** Adapter the scheduler calls to actually drive the avatar. */
 export interface WanderExecutor {
@@ -59,4 +74,12 @@ export interface WanderExecutor {
   turn(radians: number): Promise<void>;
   setGazeTarget(target: GazeTarget | null): void;
   setHeadLook(target: HeadLookTarget | null): void;
+  /**
+   * Enqueue a clip-kind action through the discrete animation pipeline.
+   * Fire-and-forget — the underlying `enqueueAutonomous` call returns
+   * immediately and the clip plays out asynchronously. The next wander tick
+   * (10-20s later by default) will see the clip in `activeAnimations` and
+   * either drop a conflicting intent or pick something compatible.
+   */
+  playIdleClip(actionName: string): void;
 }

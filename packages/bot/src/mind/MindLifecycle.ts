@@ -126,5 +126,6 @@ function buildWanderExecutor(avatar: AvatarService): WanderExecutor {
     turn: (r) => avatar.turn(r),
     setGazeTarget: (t) => avatar.setGazeTarget(t),
     setHeadLook: (t) => avatar.setHeadLook(t),
+    playIdleClip: (name) => avatar.enqueueAutonomous(name, 1.0),
   };
 }
