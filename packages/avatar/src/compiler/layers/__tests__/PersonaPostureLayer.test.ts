@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { AvatarActivity } from '../../../state/types';
+import type { GazeDistribution } from '../EyeGazeLayer';
 import { LayerManager } from '../LayerManager';
 import { PersonaPostureLayer } from '../PersonaPostureLayer';
 
@@ -247,6 +248,7 @@ describe('PersonaPostureLayer — gazeContactPreference forwarding', () => {
       setDefaultContactPreference(pref: number | null): void {
         capturedPref = pref;
       },
+      setGazeDistribution(_dist: GazeDistribution | null): void {},
     };
 
     const layer = new PersonaPostureLayer();
@@ -261,6 +263,7 @@ describe('PersonaPostureLayer — gazeContactPreference forwarding', () => {
       setDefaultContactPreference(pref: number | null): void {
         capturedPref = pref;
       },
+      setGazeDistribution(_dist: GazeDistribution | null): void {},
     };
 
     const layer = new PersonaPostureLayer();
@@ -275,6 +278,7 @@ describe('PersonaPostureLayer — gazeContactPreference forwarding', () => {
       setDefaultContactPreference(_pref: number | null): void {
         called = true;
       },
+      setGazeDistribution(_dist: GazeDistribution | null): void {},
     };
 
     const layer = new PersonaPostureLayer();
@@ -289,6 +293,7 @@ describe('PersonaPostureLayer — gazeContactPreference forwarding', () => {
       setDefaultContactPreference(pref: number | null): void {
         capturedPref = pref;
       },
+      setGazeDistribution(_dist: GazeDistribution | null): void {},
     };
 
     const layer = new PersonaPostureLayer();
@@ -299,5 +304,92 @@ describe('PersonaPostureLayer — gazeContactPreference forwarding', () => {
 
     layer.setBias({ gazeContactPreference: -3 });
     expect(capturedPref).toBeCloseTo(0, 5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// gazeDistribution forwarding
+// ---------------------------------------------------------------------------
+
+describe('PersonaPostureLayer — gazeDistribution forwarding', () => {
+  test('setBias with gazeDistribution calls setGazeDistribution and NOT setDefaultContactPreference', () => {
+    const captured = { dist: undefined as GazeDistribution | null | undefined, called: false };
+    let prefCalled = false;
+    const fakeBias = {
+      setDefaultContactPreference(_pref: number | null): void {
+        prefCalled = true;
+      },
+      setGazeDistribution(dist: GazeDistribution | null): void {
+        captured.dist = dist;
+        captured.called = true;
+      },
+    };
+
+    const layer = new PersonaPostureLayer();
+    layer.setEyeGazeLayer(fakeBias);
+    layer.setBias({ gazeDistribution: { camera: 0.5, down: 0.5 } });
+
+    expect(captured.called).toBe(true);
+    expect(captured.dist).toEqual({ camera: 0.5, down: 0.5 });
+    expect(prefCalled).toBe(false);
+  });
+
+  test('setBias with gazeDistribution=null forwards null via setGazeDistribution', () => {
+    let setGazeDistributionCalled = false;
+    let capturedDistValue: GazeDistribution | null = { camera: 1 }; // non-null sentinel
+    const fakeBias = {
+      setDefaultContactPreference(_pref: number | null): void {},
+      setGazeDistribution(dist: GazeDistribution | null): void {
+        setGazeDistributionCalled = true;
+        capturedDistValue = dist;
+      },
+    };
+
+    const layer = new PersonaPostureLayer();
+    layer.setEyeGazeLayer(fakeBias);
+    layer.setBias({ gazeDistribution: null });
+
+    expect(setGazeDistributionCalled).toBe(true);
+    expect(capturedDistValue).toBeNull();
+  });
+
+  test('gazeDistribution wins over gazeContactPreference when both present', () => {
+    let distCalled = false;
+    let prefCalled = false;
+    const fakeBias = {
+      setDefaultContactPreference(_pref: number | null): void {
+        prefCalled = true;
+      },
+      setGazeDistribution(_dist: GazeDistribution | null): void {
+        distCalled = true;
+      },
+    };
+
+    const layer = new PersonaPostureLayer();
+    layer.setEyeGazeLayer(fakeBias);
+    layer.setBias({ gazeDistribution: { camera: 1 }, gazeContactPreference: 0.5 });
+
+    expect(distCalled).toBe(true);
+    expect(prefCalled).toBe(false);
+  });
+
+  test('setBias with only gazeContactPreference (no gazeDistribution key) calls setDefaultContactPreference only', () => {
+    let distCalled = false;
+    let capturedPref: number | null = null;
+    const fakeBias = {
+      setDefaultContactPreference(pref: number | null): void {
+        capturedPref = pref;
+      },
+      setGazeDistribution(_dist: GazeDistribution | null): void {
+        distCalled = true;
+      },
+    };
+
+    const layer = new PersonaPostureLayer();
+    layer.setEyeGazeLayer(fakeBias);
+    layer.setBias({ gazeContactPreference: 0.8 });
+
+    expect(capturedPref).toBeCloseTo(0.8, 5);
+    expect(distCalled).toBe(false);
   });
 });

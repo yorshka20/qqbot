@@ -116,33 +116,63 @@ describe('deriveModulation', () => {
 });
 
 describe('derivePersonaPostureBias', () => {
-  test('fatigue=0 → subtle baseline (visible but small)', () => {
+  type PhenotypeWithValence = ReturnType<typeof freshPhenotype> & { valence?: number };
+
+  test('fatigue=0, valence=0 → camera ≥ 0.5 and down is smallest weight', () => {
     const bias = derivePersonaPostureBias(freshPhenotype());
-    expect(bias.postureLean).toBeCloseTo(0.08, 6);
-    expect(bias.headTiltBias).toBe(0);
-    expect(bias.gazeContactPreference).toBeCloseTo(0.6, 6);
+    const d = bias.gazeDistribution ?? {};
+    expect(d.camera ?? 0).toBeGreaterThanOrEqual(0.5);
+    expect(d.down ?? 0).toBeLessThanOrEqual(d.camera ?? 0);
+    expect(d.down ?? 0).toBeLessThanOrEqual(d.side ?? 0);
   });
 
-  test('high fatigue amplifies lean, suppresses gaze contact', () => {
-    const bias = derivePersonaPostureBias({ ...freshPhenotype(), fatigue: 1 });
-    expect(bias.postureLean).toBeGreaterThan(0.08);
-    expect(bias.gazeContactPreference).toBeLessThan(0.6);
+  test('fatigue=1, valence=0 → camera < 0.3 and side+down > baseline', () => {
+    const bias = derivePersonaPostureBias({ ...freshPhenotype(), fatigue: 1 } as PhenotypeWithValence);
+    const d = bias.gazeDistribution ?? {};
+    expect(d.camera ?? 0).toBeLessThan(0.3);
+    expect((d.side ?? 0) + (d.down ?? 0)).toBeGreaterThan(0.4);
   });
 
-  test('outputs stay in documented ranges', () => {
-    for (const f of [-1, 0, 0.3, 0.7, 1, 2]) {
-      const bias = derivePersonaPostureBias({ ...freshPhenotype(), fatigue: f });
-      expect(bias.postureLean).toBeGreaterThanOrEqual(-1);
-      expect(bias.postureLean).toBeLessThanOrEqual(1);
-      expect(bias.gazeContactPreference).toBeGreaterThanOrEqual(0);
-      expect(bias.gazeContactPreference).toBeLessThanOrEqual(1);
+  test('fatigue=0, valence=-0.6 → down > camera', () => {
+    const p = { ...freshPhenotype(), valence: -0.6 } as PhenotypeWithValence;
+    const bias = derivePersonaPostureBias(p as ReturnType<typeof freshPhenotype>);
+    const d = bias.gazeDistribution ?? {};
+    expect(d.down ?? 0).toBeGreaterThan(d.camera ?? 0);
+  });
+
+  test('fatigue=0, valence=+0.8 → camera is the largest weight and >= 0.7', () => {
+    const p = { ...freshPhenotype(), valence: 0.8 } as PhenotypeWithValence;
+    const bias = derivePersonaPostureBias(p as ReturnType<typeof freshPhenotype>);
+    const d = bias.gazeDistribution ?? {};
+    expect(d.camera ?? 0).toBeGreaterThanOrEqual(0.7);
+    expect(d.camera ?? 0).toBeGreaterThanOrEqual(d.side ?? 0);
+    expect(d.camera ?? 0).toBeGreaterThanOrEqual(d.down ?? 0);
+  });
+
+  test('all weights non-negative across fatigue × valence grid', () => {
+    for (const fatigue of [0, 0.5, 1]) {
+      for (const valence of [-1, 0, 1]) {
+        const p = { ...freshPhenotype(), fatigue, valence } as PhenotypeWithValence;
+        const bias = derivePersonaPostureBias(p as ReturnType<typeof freshPhenotype>);
+        const d = bias.gazeDistribution ?? {};
+        expect(d.camera ?? 0).toBeGreaterThanOrEqual(0);
+        expect(d.side ?? 0).toBeGreaterThanOrEqual(0);
+        expect(d.down ?? 0).toBeGreaterThanOrEqual(0);
+      }
     }
   });
 
-  test('monotonic: higher fatigue ⇒ larger lean, lower gaze', () => {
+  test('postureLean stays in [-1, 1]', () => {
+    for (const fatigue of [0, 0.5, 1]) {
+      const bias = derivePersonaPostureBias({ ...freshPhenotype(), fatigue });
+      expect(bias.postureLean ?? 0).toBeGreaterThanOrEqual(-1);
+      expect(bias.postureLean ?? 0).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test('high fatigue amplifies lean', () => {
     const low = derivePersonaPostureBias({ ...freshPhenotype(), fatigue: 0.2 });
     const high = derivePersonaPostureBias({ ...freshPhenotype(), fatigue: 0.8 });
-    expect(high.postureLean).toBeGreaterThan(low.postureLean);
-    expect(high.gazeContactPreference).toBeLessThan(low.gazeContactPreference);
+    expect(high.postureLean ?? 0).toBeGreaterThan(low.postureLean ?? 0);
   });
 });

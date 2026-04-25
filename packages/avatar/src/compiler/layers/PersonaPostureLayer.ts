@@ -1,5 +1,6 @@
 import type { AvatarActivity } from '../../state/types';
 import { BaseLayer } from './BaseLayer';
+import type { GazeDistribution } from './EyeGazeLayer';
 
 // ---------------------------------------------------------------------------
 // Constants — maximum additive radian offsets and smoothing time constant.
@@ -57,6 +58,13 @@ export interface PersonaPostureBias {
    * Has no effect if no EyeGazeLayer was wired via {@link setEyeGazeLayer}.
    */
   gazeContactPreference?: number | null;
+
+  /**
+   * Probability distribution over saccade target kinds. Takes precedence over
+   * gazeContactPreference if both are present in the same setBias call.
+   * Has no effect if no EyeGazeLayer was wired via {@link setEyeGazeLayer}.
+   */
+  gazeDistribution?: GazeDistribution | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,6 +81,11 @@ export interface EyeGazeDefaultBias {
    * `null` clears the preference and restores vanilla OU behaviour.
    */
   setDefaultContactPreference(pref: number | null): void;
+  /**
+   * Set a probability distribution over saccade target kinds.
+   * `null` clears the distribution and restores vanilla OU behaviour.
+   */
+  setGazeDistribution(dist: GazeDistribution | null): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,7 +164,9 @@ export class PersonaPostureLayer extends BaseLayer {
     if (bias.headTiltBias !== undefined) {
       this.targetHeadTilt = Math.max(-1, Math.min(1, bias.headTiltBias));
     }
-    if ('gazeContactPreference' in bias) {
+    if ('gazeDistribution' in bias) {
+      this.eyeGazeBias?.setGazeDistribution(bias.gazeDistribution ?? null);
+    } else if ('gazeContactPreference' in bias) {
       const pref = bias.gazeContactPreference;
       if (pref === null || pref === undefined) {
         this.eyeGazeBias?.setDefaultContactPreference(null);

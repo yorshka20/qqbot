@@ -16,6 +16,7 @@
  * is easy to reason about.
  */
 
+import type { PersonaPostureBias } from '@qqbot/avatar';
 import type { MindConfig, Phenotype, Stimulus } from './types';
 
 /** Clamp to [0, 1]. */
@@ -99,28 +100,54 @@ export function deriveModulation(
 }
 
 /**
- * Project the phenotype onto the three PersonaPostureLayer bias fields.
+ * Project the phenotype onto PersonaPostureBias including a gaze probability distribution.
  *
- * Phase 1 model is hardcoded and intentionally subtle: the avatar always
- * has a tiny forward lean + moderate eye-contact baseline (so posture is
- * observable even at fatigue=0), and fatigue amplifies the lean +
- * suppresses eye-contact preference to convey "tired → slumps + avoids
- * gaze". No persona-preset input yet; when Core DNA lands, the baseline
- * will be read from the persona file instead of these constants.
+ * Model: fatigue → less eye contact, more side + down gaze.
+ * valence (if present on Phenotype): negative → look down (sadness);
+ * positive → more eye contact (confidence). Since Phenotype does not yet
+ * have `valence` in Phase 1, it is safely defaulted to 0 via a type cast —
+ * DO NOT add valence to Phenotype in this change.
  *
  * All outputs are in PersonaPostureLayer's documented ranges: lean and
- * headTilt in [-1, 1], gazeContactPreference in [0, 1].
+ * headTilt in [-1, 1], distribution weights are non-negative.
  */
-export function derivePersonaPostureBias(phenotype: Phenotype): {
-  postureLean: number;
-  headTiltBias: number;
-  gazeContactPreference: number;
-} {
+export function derivePersonaPostureBias(phenotype: Phenotype): PersonaPostureBias {
   const fatigue = clamp01(phenotype.fatigue);
+  // Safe default: Phenotype does not yet define valence (Phase 1).
+  const rawValence = (phenotype as { valence?: number }).valence ?? 0;
+  const valence = Math.max(-1, Math.min(1, rawValence));
+
+  let camera = 0.6;
+  let side = 0.3;
+  let down = 0.1;
+
+  // Fatigue → less eye contact, more side + down
+  camera -= fatigue * 0.4;
+  side += fatigue * 0.2;
+  down += fatigue * 0.2;
+
+  // Negative valence → look down (averted gaze, sadness)
+  if (valence < 0) {
+    const drag = Math.abs(valence) * 0.5;
+    camera -= drag;
+    down += drag;
+  }
+
+  // Positive valence → eye contact (confidence)
+  if (valence > 0) {
+    camera += valence * 0.3;
+    side -= valence * 0.15;
+    down -= valence * 0.15;
+  }
+
   return {
     postureLean: clampRange(0.08 + fatigue * 0.25, -1, 1),
     headTiltBias: 0,
-    gazeContactPreference: clampRange(0.6 - fatigue * 0.3, 0, 1),
+    gazeDistribution: {
+      camera: Math.max(0, camera),
+      side: Math.max(0, side),
+      down: Math.max(0, down),
+    },
   };
 }
 

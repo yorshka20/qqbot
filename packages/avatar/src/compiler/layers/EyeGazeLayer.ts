@@ -12,10 +12,10 @@ import { BaseLayer } from './BaseLayer';
  *    This produces smooth, biological-looking micro-drift that never walks
  *    far from center.
  *
- * 2. **Saccades** — every 3-10s, pick a new random target on the unit disk
- *    (bias toward center via r = Math.random() squared). OU process then
- *    drifts toward that target over the next few hundred ms, producing the
- *    characteristic "sudden jump, then hold" rhythm of human gaze.
+ * 2. **Saccades** — every 3-10s, pick a new random target according to the
+ *    active {@link GazeDistribution} (camera / side / down / target kinds).
+ *    OU process then drifts toward that target over the next few hundred ms,
+ *    producing the characteristic "sudden jump, then hold" rhythm of human gaze.
  *
  * Gaze keeps running even during `speaking` / `thinking` states because a
  * frozen gaze looks lifeless. The global gate still scales amplitude down
@@ -54,15 +54,23 @@ const DEFAULT_GAZE_CONFIG: GazeConfig = {
 };
 
 /**
- * Downward/avoidant y-offset applied to the OU output when
- * `defaultContactPref` is set to 0 (full avoidance). Values between 0 and 1
- * linearly interpolate from full-avoidance to no offset.
+ * Probability distribution over saccade target kinds.
  *
- * Using a value of 0.3 keeps the offset large enough to be visually distinct
- * (and detectable in unit tests) while staying comfortably within the [-1, 1]
- * eye-ball range even when the OU position is near its maxRadius boundary.
+ * All fields are optional and default to 0. The layer normalises the weights
+ * internally so only relative magnitudes matter. If all weights sum to 0 (or
+ * the distribution is `null`) the layer reverts to the vanilla OU disk
+ * sampling path.
  */
-const AVOIDANT_Y_OFFSET = 0.3;
+export interface GazeDistribution {
+  /** Weight for saccading to camera (eye contact). Default 0. */
+  camera?: number;
+  /** Weight for saccading off-camera left/right. Default 0. */
+  side?: number;
+  /** Weight for saccading downward (averted gaze). Default 0. */
+  down?: number;
+  /** Reserved for future explicit-target use; falls back to camera in this ticket. Default 0. */
+  target?: number;
+}
 
 export class EyeGazeLayer extends BaseLayer {
   readonly id = 'eye-gaze';
@@ -79,16 +87,12 @@ export class EyeGazeLayer extends BaseLayer {
   private override: { x: number; y: number } | null = null;
 
   /**
-   * Default gaze contact preference, set by {@link setDefaultContactPreference}.
-   * `null` = no preference (exact original OU behaviour).
-   * `1`   = biased toward camera center (no downward offset).
-   * `0`   = avoidant / downward default (full AVOIDANT_Y_OFFSET applied).
-   * Values between 0 and 1 linearly interpolate the offset.
+   * Normalized distribution over saccade target kinds. null = unset (vanilla OU disk sampling).
    *
    * This field only influences the no-override path. Explicit
    * `setGazeTarget()` calls always win regardless of this value.
    */
-  private defaultContactPref: number | null = null;
+  private gazeDistribution: { camera: number; side: number; down: number; target: number } | null = null;
 
   /**
    * When true, the no-override path returns `(0, 0)` instead of running the
@@ -112,7 +116,7 @@ export class EyeGazeLayer extends BaseLayer {
     this.nextSaccadeAt = 0;
     this.lastSampleAt = 0;
     this.override = null;
-    this.defaultContactPref = null;
+    this.gazeDistribution = null;
     this.quietMode = false;
   }
 
@@ -121,13 +125,47 @@ export class EyeGazeLayer extends BaseLayer {
   }
 
   /**
-   * Set the default gaze contact preference for the no-override path.
+   * Set a probability distribution over saccade target kinds.
+   *
+   * - `null` — clears the distribution; the layer reverts to its original
+   *   pure-OU behaviour with no directional bias.
+   * - Weights are non-negative clamped; if the sum is ≤ 0 the distribution
+   *   is treated as null (vanilla path).
+   *
+   * Called by {@link PersonaPostureLayer} when the mind pushes a
+   * `gazeDistribution` bias; not intended to be called directly by
+   * AvatarService consumers.
+   */
+  setGazeDistribution(dist: GazeDistribution | null): void {
+    if (dist === null) {
+      this.gazeDistribution = null;
+      return;
+    }
+    const camera = Math.max(0, dist.camera ?? 0);
+    const side = Math.max(0, dist.side ?? 0);
+    const down = Math.max(0, dist.down ?? 0);
+    const target = Math.max(0, dist.target ?? 0);
+    const sum = camera + side + down + target;
+    if (sum <= 0) {
+      this.gazeDistribution = null;
+      return;
+    }
+    this.gazeDistribution = {
+      camera: camera / sum,
+      side: side / sum,
+      down: down / sum,
+      target: target / sum,
+    };
+  }
+
+  /**
+   * Back-compat shim — delegates to {@link setGazeDistribution}.
    *
    * - `null` — clears the preference; the layer reverts to its original
    *   pure-OU behaviour with no directional bias.
-   * - `1`    — biased toward camera-center (no avoidant offset).
-   * - `0`    — avoidant / downward default (full {@link AVOIDANT_Y_OFFSET}).
-   * - Values between 0 and 1 linearly interpolate the offset.
+   * - `1`    — biased toward camera-center.
+   * - `0`    — avoidant / side default.
+   * - Values between 0 and 1 linearly interpolate.
    *
    * Explicit overrides via {@link setGazeTarget} are unaffected by this
    * setting — the override path always wins.
@@ -137,7 +175,12 @@ export class EyeGazeLayer extends BaseLayer {
    * AvatarService consumers.
    */
   setDefaultContactPreference(pref: number | null): void {
-    this.defaultContactPref = pref !== null ? Math.max(0, Math.min(1, pref)) : null;
+    if (pref === null) {
+      this.setGazeDistribution(null);
+      return;
+    }
+    const clamped = Math.max(0, Math.min(1, pref));
+    this.setGazeDistribution({ camera: clamped, side: 1 - clamped, down: 0 });
   }
 
   setGazeTarget(target: GazeTarget | null): void {
@@ -176,7 +219,7 @@ export class EyeGazeLayer extends BaseLayer {
     //                    Debug / test mode: eye drifts to camera centre and holds,
     //                    producing a stable still baseline.
     //   3. autonomous  — target = saccade target,  theta = config.theta,  + Gaussian noise.
-    //                    The original OU + periodic saccade + gaze-avoidance path.
+    //                    The original OU + periodic saccade + gaze-distribution path.
     //
     // `dt` is clamped to 100 ms to defend against pause/resume wall-clock gaps — the
     // compiler pauses when no one is reading frames, and resume otherwise produces a
@@ -202,12 +245,51 @@ export class EyeGazeLayer extends BaseLayer {
       addNoise = false;
     } else {
       if (this.nextSaccadeAt === 0) this.nextSaccadeAt = nowMs + this.randomSaccadeInterval();
-      // Saccade: pick a new target on the unit disk, biased toward centre.
+      // Saccade: pick a new target using the active gaze distribution, or vanilla disk.
       if (nowMs >= this.nextSaccadeAt) {
-        const r = this.config.maxRadius * Math.random() ** 2;
-        const a = Math.random() * 2 * Math.PI;
-        this.targetX = r * Math.cos(a);
-        this.targetY = r * Math.sin(a);
+        const cap = this.config.maxRadius; // 0.6
+        if (this.gazeDistribution) {
+          const r = Math.random();
+          const d = this.gazeDistribution;
+          let kind: 'camera' | 'side' | 'down' | 'target';
+          if (r < d.camera) kind = 'camera';
+          else if (r < d.camera + d.side) kind = 'side';
+          else if (r < d.camera + d.side + d.down) kind = 'down';
+          else kind = 'target';
+
+          switch (kind) {
+            case 'camera': {
+              const rr = cap * 0.15 * Math.random() ** 2;
+              const a = Math.random() * 2 * Math.PI;
+              this.targetX = rr * Math.cos(a);
+              this.targetY = rr * Math.sin(a);
+              break;
+            }
+            case 'side': {
+              const sign = Math.random() < 0.5 ? -1 : 1;
+              this.targetX = sign * (0.55 + 0.4 * Math.random()) * cap; // 0.55–0.95 of cap
+              this.targetY = (Math.random() - 0.5) * 0.3 * cap;
+              break;
+            }
+            case 'down': {
+              this.targetY = (0.6 + 0.4 * Math.random()) * cap; // 0.6–1.0 of cap, downward
+              this.targetX = (Math.random() - 0.5) * 0.3 * cap;
+              break;
+            }
+            case 'target': {
+              // No external target wired in this ticket — fall back to camera.
+              this.targetX = 0;
+              this.targetY = 0;
+              break;
+            }
+          }
+        } else {
+          // Vanilla path: original disk sampling kept verbatim.
+          const rr = cap * Math.random() ** 2;
+          const a = Math.random() * 2 * Math.PI;
+          this.targetX = rr * Math.cos(a);
+          this.targetY = rr * Math.sin(a);
+        }
         this.nextSaccadeAt = nowMs + this.randomSaccadeInterval();
       }
       tx = this.targetX;
@@ -234,19 +316,8 @@ export class EyeGazeLayer extends BaseLayer {
       }
     }
 
-    // Overrides and quiet-mode bypass the default contact-preference bias — deliberate
-    // gaze should land exactly where the caller asked. Only the autonomous path applies
-    // the avoidant offset.
-    if (this.override || this.quietMode) {
-      const clamp = (v: number) => Math.max(-1, Math.min(1, v));
-      return { 'eye.ball.x': clamp(this.posX), 'eye.ball.y': clamp(this.posY) };
-    }
-
-    // pref=1 → avoidantOffset = 0 (camera-facing); pref=0 → full AVOIDANT_Y_OFFSET;
-    // pref=null (unset) → 0 (pure OU behaviour, original contract).
-    const avoidantOffset = this.defaultContactPref !== null ? (1 - this.defaultContactPref) * AVOIDANT_Y_OFFSET : 0;
     const clamp = (v: number) => Math.max(-1, Math.min(1, v));
-    return { 'eye.ball.x': this.posX, 'eye.ball.y': clamp(this.posY + avoidantOffset) };
+    return { 'eye.ball.x': clamp(this.posX), 'eye.ball.y': clamp(this.posY) };
   }
 
   private randomSaccadeInterval(): number {
