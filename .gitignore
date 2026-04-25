@@ -95,3 +95,7 @@ local
 # Nightly ops
 ops/nightly/env.sh
 /ops/reports/
+
+
+# vrma json revert
+packages/avatar/assets/clips
