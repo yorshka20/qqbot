@@ -141,6 +141,7 @@ The bot automatically handles database schema initialization. For SQLite, tables
 - **Core Bot**: `packages/bot/src/core/Bot.ts`
 - **Message Pipeline**: `packages/bot/src/conversation/MessagePipeline.ts`
 - **AI Service**: `packages/bot/src/ai/AIService.ts`
+- **TTS (bot core)**: `packages/bot/src/services/tts/` — `TTSManager`, providers (`FishAudioProvider`, `SovitsProvider`), health adapters under `packages/bot/src/core/health/TtsProviderHealthAdapter.ts`; `/tts` command: `packages/bot/src/command/handlers/TTSCommandHandler.ts`
 - **Tool System**: `packages/bot/src/tools/ToolManager.ts`
 - **Plugin Manager**: `packages/bot/src/plugins/PluginManager.ts`
 - **Configuration**: `config.jsonc` (local, not committed)
@@ -188,3 +189,40 @@ The bot automatically handles database schema initialization. For SQLite, tables
 - **Workbook**: 按日期（`YYYY-MM-DD.md`）记录，`index.md` 是所有日报的摘要
 - **Learnings**: 按 scope 分文件记录，scope 可按需新增。判断内容应写入已有 scope 还是新建 scope
 - **两个目录的 `index.md`** 都必须在内容变更后同步更新，简要记录新增/修改的内容
+
+### Roadmap（每个 scope 文件头部维护）
+
+每个 `.claude-learnings/<scope>.md` 文件**头部**维护一段 ROADMAP 表，把该 scope 下的所有待办、进行中、已完成项汇总。这是规划与记录需求点的单一入口，**确保所有内容都不遗漏**——以后想到该 scope 的新需求，先记进 ROADMAP，再去拆 ticket / 写代码。
+
+参考样例：[`/Users/yorshka/project/video-knowledge-backend/ROADMAP.md`](file:///Users/yorshka/project/video-knowledge-backend/ROADMAP.md)（VKB 仓库的全局 roadmap，本仓库放在 scope 文件头部即可，不必创建顶层 ROADMAP）。
+
+#### Status Legend
+
+- 🔴 **P0** — 阻塞其他工作 / 数据正确性 / 核心功能缺失
+- 🟡 **P1** — 重要但不阻塞，按计划推进
+- 🟢 **P2** — 改进项，有时间再做
+- ⚪ **P3** — 优化 / nice-to-have / 已记录暂不实施
+- ✅ **DONE** — 已完成
+- 🚧 **WIP** — 进行中
+- 📋 **TODO** — 待实施
+- 💭 **DESIGN** — 待设计 / 待决策
+
+#### 表格格式
+
+```markdown
+## Roadmap
+
+| 状态 | 优先级 | 任务 | 链接 / 备注 |
+|---|---|---|---|
+| ✅ | — | **完成项标题** | workbook YYYY-MM-DD / commit hash / 备注 |
+| 🚧 | 🟡 P1 | **进行中标题** | ticket id 或当前 worker |
+| 📋 | 🟢 P2 | **待办标题** | 设计文档链接 / 简述 |
+| 💭 | ⚪ P3 | **待设计标题** | 关键问题 / 暂搁原因 |
+```
+
+#### 触发更新时机
+
+- **工作完成后**：把新做完的项移到 ✅，并在"链接"列填 workbook 日期 / commit
+- **新发现需求**：写一行 📋，避免遗漏；不需要立即做，先记下
+- **每次开始工作前**：扫一眼 ROADMAP 决定下一步做什么；ROADMAP 是 scope 内的"全局 TODO 列表"
+- **scope 之间相互依赖**时：在备注里相互引用（如 `mind.md` 的 phenotype 任务依赖 `core.md` 的 SQLite 表）
