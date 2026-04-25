@@ -15,7 +15,7 @@
 import { parseRichTags } from '@qqbot/avatar';
 import { injectable } from 'tsyringe';
 import { logger } from '@/utils/logger';
-import { dispatchParsedTag } from '../dispatchParsedTag';
+import { dispatchTags } from '../dispatchParsedTag';
 import type { Live2DContext, Live2DStage } from '../Live2DStage';
 
 @injectable()
@@ -29,9 +29,7 @@ export class TagAnimationStage implements Live2DStage {
 
     try {
       const tags = parseRichTags(ctx.replyText);
-      for (const tag of tags) {
-        dispatchParsedTag(tag, ctx, ctx.avatar);
-      }
+      dispatchTags(tags, ctx, ctx.avatar);
       // Drop any unconsumed hold — stage boundary is per-reply.
       ctx.pendingHoldMultiplier = undefined;
       ctx.tagCount = tags.length;

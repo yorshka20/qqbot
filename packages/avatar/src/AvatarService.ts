@@ -819,6 +819,24 @@ export class AvatarService {
     return layer.turn(radians);
   }
 
+  /**
+   * Vector-merge consecutive relative motion into one walkTo call. Uses the current
+   * position snapshot so forward/strafe/turn deltas compose correctly.
+   *
+   * - forwardM:  metres along the character's current facing (positive = forward)
+   * - strafeM:   metres perpendicular to facing (positive = character's right)
+   * - turnRad:   additional facing delta (positive = CW from above)
+   */
+  walkRelative(forwardM: number, strafeM: number, turnRad: number): Promise<void> {
+    const layer = this.getWalkingLayer();
+    if (!layer) return Promise.reject(new Error('[AvatarService] WalkingLayer is not available'));
+    const { x, z, facing } = layer.getPosition();
+    const targetX = x + forwardM * Math.sin(facing) + strafeM * Math.cos(facing);
+    const targetZ = z + forwardM * Math.cos(facing) + strafeM * (-Math.sin(facing));
+    const targetFacing = facing + turnRad;
+    return layer.walkTo(targetX, targetZ, targetFacing);
+  }
+
   /** Orbit around a centre (defaults to `radius` metres left of character). */
   orbit(opts: Parameters<WalkingLayer['orbit']>[0]): Promise<void> {
     const layer = this.getWalkingLayer();

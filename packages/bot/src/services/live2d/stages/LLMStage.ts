@@ -25,7 +25,7 @@ import type { LLMService } from '@/ai/services/LLMService';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
-import { dispatchParsedTag } from '../dispatchParsedTag';
+import { dispatchTags } from '../dispatchParsedTag';
 import type { Live2DMemoryExtractionCoordinator } from '../Live2DMemoryExtractionCoordinator';
 import type { Live2DSessionService } from '../Live2DSessionService';
 import type { Live2DContext, Live2DStage } from '../Live2DStage';
@@ -110,9 +110,7 @@ export class LLMStage implements Live2DStage {
       try {
         const tags = parseRichTags(chunk);
         if (ctx.avatar) {
-          for (const tag of tags) {
-            dispatchParsedTag(tag, ctx, ctx.avatar);
-          }
+          dispatchTags(tags, ctx, ctx.avatar);
         }
         ctx.tagCount = (ctx.tagCount ?? 0) + tags.length;
         if (tags.length > 0) {
