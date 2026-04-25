@@ -156,6 +156,12 @@ export interface ActiveClipAnimation {
   endPose?: ActionEndPoseEntry[];
   /** Wall-clock time (ms) at which the fade-out crossfade should begin. */
   fadeOutStartMs?: number;
+  /**
+   * When set, the compiler synthesises a sin-arc on `vrm.root.y` across the
+   * clip duration: y(t) = peakMeters × sin(π × t / duration). Routed through
+   * bypassFrameChannels (no spring-damper, no baseline accumulation).
+   */
+  verticalArc?: { peakMeters: number };
 }
 
 export type ActiveAnimation = ActiveEnvelopeAnimation | ActiveClipAnimation;
@@ -219,6 +225,8 @@ export type ResolvedAction =
       duration: number;
       /** NOT pre-applied to clip samples — caller multiplies per tick for slerp-like scaling. */
       intensity: number;
+      /** When set, synthesise a sin-arc on vrm.root.y across the clip duration. */
+      verticalArc?: { peakMeters: number };
     };
 
 /**
@@ -294,6 +302,13 @@ export interface ActionMapEntryClip {
    * `ActionMap.resolveAction()` and `listActions()` to filter by current model.
    */
   modelSupport?: 'cubism' | 'vrm' | 'both';
+  /**
+   * When set, the compiler synthesises a sin-arc on `vrm.root.y` across the
+   * clip duration: y(t) = peakMeters × sin(π × t / duration). Only the first
+   * variant's value is used (shared-across-variants convention, same as
+   * `category`). Absent on all non-jump clip entries.
+   */
+  verticalArc?: { peakMeters: number };
   /**
    * Optional companion face-action name played alongside this body clip.
    * VRM clips animate skeleton bones only — they cannot drive blendshapes,

@@ -380,6 +380,10 @@ export class ActionMap {
       const allIdx = allVariants.indexOf(variant);
       const clip = clips[Math.min(allIdx < 0 ? idx : allIdx, clips.length - 1)];
       const duration = variant.defaultDuration ?? Math.round(clip.duration * 1000);
+      // verticalArc is a shared action-level property (same as `category`): read from
+      // the first declared variant so authoring it once covers all 6 jump variants.
+      const v0 = allVariants[0];
+      const verticalArc = isClipEntry(v0) ? v0.verticalArc : undefined;
       return {
         kind: 'clip',
         clip,
@@ -387,6 +391,7 @@ export class ActionMap {
         holdMs: variant.holdMs,
         duration,
         intensity,
+        verticalArc,
       };
     }
 

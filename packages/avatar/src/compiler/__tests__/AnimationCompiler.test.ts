@@ -1377,3 +1377,141 @@ describe('AnimationCompiler — cubism path does not emit vrm.* params (regressi
     expect(quatKeys).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Jump vertical arc synthesis tests
+// ---------------------------------------------------------------------------
+describe('jump vertical arc', () => {
+  let nowRef: { t: number };
+  let dateSpy: ReturnType<typeof spyOn>;
+
+  // Jump clip fixture: 1s duration, dummy scalar track (vrm.root.y is synthesised, not sampled).
+  const JUMP_CLIP = {
+    id: 'jump-arc-test',
+    duration: 1,
+    tracks: [
+      {
+        channel: 'vrm.hips.x',
+        keyframes: [
+          { time: 0, value: 0 },
+          { time: 1, value: 0 },
+        ],
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    nowRef = { t: 10_000 };
+    dateSpy = spyOn(Date, 'now').mockImplementation(() => nowRef.t);
+  });
+
+  afterEach(() => {
+    dateSpy.mockRestore();
+  });
+
+  async function mkJumpClipEnv(withArc: boolean): Promise<{ mapPath: string; cleanup: () => void }> {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'jump-arc-'));
+    writeFileSync(join(dir, 'jump-clip.json'), JSON.stringify(JUMP_CLIP));
+    const entry: Record<string, unknown> = {
+      kind: 'clip',
+      clip: 'jump-clip.json',
+      ...(withArc ? { verticalArc: { peakMeters: 0.4 } } : {}),
+    };
+    const mapPath = join(dir, 'map.json');
+    writeFileSync(mapPath, JSON.stringify({ jump_test: entry }));
+    return { mapPath, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+  }
+
+  // -------------------------------------------------------------------------
+  // Test jump-1 — peak: sin(π/2) = 1 → vrm.root.y ≈ 0.4 at 50% through 1s clip
+  // -------------------------------------------------------------------------
+  test('Test jump-1: vrm.root.y ≈ 0.4 at mid-clip (elapsed ≈ 0.5s)', async () => {
+    const { mapPath, cleanup } = await mkJumpClipEnv(true);
+    try {
+      const compiler = newAnimationCompilerTest({ fps: 60, outputFps: 60, defaultEasing: 'linear' }, mapPath);
+      compiler.enqueue([
+        {
+          action: 'jump_test',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 1000,
+          easing: 'linear',
+        },
+      ]);
+
+      // Advance to 50% through the 1s clip; sin(π/2) = 1 → y = 0.4 × 1 = 0.4
+      nowRef.t += 500;
+      (compiler as any).tick();
+
+      const y = compiler.getCurrentParams()['vrm.root.y'];
+      expect(y).toBeDefined();
+      // Allow ±5% tolerance (±0.02)
+      expect(Math.abs((y ?? 0) - 0.4)).toBeLessThan(0.02);
+    } finally {
+      cleanup();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Test jump-2 — end: sin(π) ≈ 0 → vrm.root.y ≈ 0 just before clip expires
+  // -------------------------------------------------------------------------
+  test('Test jump-2: vrm.root.y ≈ 0 at clip end (elapsed ≈ 1.0s)', async () => {
+    const { mapPath, cleanup } = await mkJumpClipEnv(true);
+    try {
+      const compiler = newAnimationCompilerTest({ fps: 60, outputFps: 60, defaultEasing: 'linear' }, mapPath);
+      compiler.enqueue([
+        {
+          action: 'jump_test',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 1000,
+          easing: 'linear',
+        },
+      ]);
+
+      // Advance to 1ms before clip expires (endTime = nowRef.t + 1000).
+      // elapsedSec = min(1.0, 0.999) = 0.999; sin(π × 0.999) ≈ 0.00314 → y ≈ 0.00126
+      nowRef.t += 999;
+      (compiler as any).tick();
+
+      const y = compiler.getCurrentParams()['vrm.root.y'] ?? 0;
+      expect(Math.abs(y)).toBeLessThan(0.05);
+    } finally {
+      cleanup();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Test jump-3 — no verticalArc: walk-style clip must not write vrm.root.y
+  // -------------------------------------------------------------------------
+  test('Test jump-3: clip without verticalArc writes no vrm.root.y', async () => {
+    const { mapPath, cleanup } = await mkJumpClipEnv(false);
+    try {
+      const compiler = newAnimationCompilerTest({ fps: 60, outputFps: 60, defaultEasing: 'linear' }, mapPath);
+      compiler.enqueue([
+        {
+          action: 'jump_test',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 1000,
+          easing: 'linear',
+        },
+      ]);
+
+      // Advance to mid-animation
+      nowRef.t += 500;
+      (compiler as any).tick();
+
+      // No verticalArc set — vrm.root.y must not appear in output params
+      expect(compiler.getCurrentParams()['vrm.root.y']).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+});

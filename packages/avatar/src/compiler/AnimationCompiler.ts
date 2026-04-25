@@ -338,6 +338,7 @@ export class AnimationCompiler extends EventEmitter {
         for (const t of anim.targetParams) occupied.add(t.channel);
       } else {
         for (const t of anim.clip.tracks) occupied.add(t.channel);
+        if (anim.verticalArc) occupied.add('vrm.root.y');
       }
     }
     // Continuous layers that hold absolute poses (idle loop, walk cycle) own
@@ -839,6 +840,7 @@ export class AnimationCompiler extends EventEmitter {
           phase: 'attack',
           endPose: resolved.endPose,
           fadeOutStartMs: undefined,
+          verticalArc: resolved.verticalArc,
         });
       } else {
         this.activeAnimations.push({
@@ -935,6 +937,7 @@ export class AnimationCompiler extends EventEmitter {
         for (const t of anim.targetParams) activeAnimChannels.add(t.channel);
       } else {
         for (const t of anim.clip.tracks) activeAnimChannels.add(t.channel);
+        if (anim.verticalArc) activeAnimChannels.add('vrm.root.y');
       }
     }
 
@@ -1062,6 +1065,17 @@ export class AnimationCompiler extends EventEmitter {
           this.bypassFrameChannels.add(`${bone}.qy`);
           this.bypassFrameChannels.add(`${bone}.qz`);
           this.bypassFrameChannels.add(`${bone}.qw`);
+        }
+
+        // Synthesise vrm.root.y vertical arc: y(t) = peakMeters × sin(π × t / duration).
+        // Peaks at duration/2, returns to 0 at clip end. Routed through bypass so no
+        // spring-damper smoothing and no baseline accumulation — matches WalkingLayer
+        // scalar bypass semantics for root position channels.
+        if (anim.verticalArc) {
+          const dur = anim.clip.duration;
+          const y = dur > 0 ? anim.verticalArc.peakMeters * Math.sin((Math.PI * Math.min(elapsedSec, dur)) / dur) : 0;
+          contributions['vrm.root.y'] = y;
+          this.bypassFrameChannels.add('vrm.root.y');
         }
 
         continue;

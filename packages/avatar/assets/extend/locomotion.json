@@ -6,7 +6,8 @@
       "modelSupport": "vrm",
       "description": "原地跳跃（多种风格变体：用力/轻快/小跳/蹬腿）",
       "clip": "clips/vrm/locomotion_jump_01.json",
-      "defaultDuration": 1867
+      "defaultDuration": 1867,
+      "verticalArc": { "peakMeters": 0.4 }
     },
     { "kind": "clip", "clip": "clips/vrm/locomotion_jump_02.json", "defaultDuration": 1867 },
     { "kind": "clip", "clip": "clips/vrm/locomotion_jump_03.json", "defaultDuration": 2033 },
