@@ -464,7 +464,7 @@ describe('ProactiveConversationPlugin skip and schedule coverage', () => {
     await plugin.onInit?.();
 
     const context = makeGroupHookContext('no trigger', { noReplyTrigger: true });
-    for (let i = 0; i < 29; i++) {
+    for (let i = 0; i < 99; i++) {
       plugin.onMessageComplete(context);
     }
     expect(scheduleForGroup).not.toHaveBeenCalled();
