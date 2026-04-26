@@ -55,6 +55,7 @@ export const DITokens = {
   MIND_SERVICE: 'MindService',
   MIND_CONFIG: 'MindConfig',
   MIND_MODULATION_PROVIDER: 'MindModulationProvider',
+  EPIGENETICS_STORE: 'EpigeneticsStore',
   // Avatar system
   AVATAR_SERVICE: 'AvatarService',
   TTS_MANAGER: 'TTSManager',

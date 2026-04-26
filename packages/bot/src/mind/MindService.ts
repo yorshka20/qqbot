@@ -17,8 +17,14 @@
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import type { AgendaSystemEvent } from '@/agenda/types';
 import { logger } from '@/utils/logger';
+import type { EpigeneticsStore } from './epigenetics/EpigeneticsStore';
 import { applyStimulus, deriveModulation, freshPhenotype, tickPhenotype } from './ode';
-import { buildPromptPatch, type PromptPatch, renderPromptPatchFragment } from './prompt/PromptPatchAssembler';
+import {
+  buildPromptPatch,
+  buildPromptPatchAsync,
+  type PromptPatch,
+  renderPromptPatchFragment,
+} from './prompt/PromptPatchAssembler';
 import type { MindConfig, MindStateSnapshot, Phenotype, Stimulus } from './types';
 
 /**
@@ -42,6 +48,7 @@ export class MindService {
   private lastTickAt = Date.now();
   private started = false;
   private poseProvider: PoseProvider | null = null;
+  private epigeneticsStore: EpigeneticsStore | null = null;
   private readonly messageHandler = (event: AgendaSystemEvent): void => {
     this.handleMessageEvent(event);
   };
@@ -57,6 +64,19 @@ export class MindService {
    */
   setPoseProvider(provider: PoseProvider | null): void {
     this.poseProvider = provider;
+  }
+
+  /**
+   * Wire the epigenetics store. Called during plugin init when SQLite is
+   * available. Safe to call before or after `start()`.
+   */
+  setEpigeneticsStore(store: EpigeneticsStore | null): void {
+    this.epigeneticsStore = store;
+  }
+
+  /** Read-only access to the epigenetics store (for relationship lookups). */
+  getEpigeneticsStore(): EpigeneticsStore | null {
+    return this.epigeneticsStore;
   }
 
   isEnabled(): boolean {
@@ -157,6 +177,33 @@ export class MindService {
    */
   getPromptPatchFragment(): string {
     return renderPromptPatchFragment(this.getPromptPatch());
+  }
+
+  /**
+   * Async variant of `getPromptPatch` that additionally populates
+   * `relationshipSummary` from the EpigeneticsStore when a userId is
+   * provided and the store is available.
+   */
+  async getPromptPatchAsync(opts?: { userId?: string }): Promise<PromptPatch> {
+    if (!this.config.enabled || !this.config.promptPatch.enabled) return {};
+    return buildPromptPatchAsync(this.getSnapshot(), {
+      store: this.epigeneticsStore,
+      userId: opts?.userId,
+      thresholds: {
+        fatigueMildMin: this.config.promptPatch.fatigueMildMin,
+        fatigueModerateMin: this.config.promptPatch.fatigueModerateMin,
+        fatigueSevereMin: this.config.promptPatch.fatigueSevereMin,
+      },
+    });
+  }
+
+  /**
+   * Async variant of `getPromptPatchFragment`. Returns `''` when the patch
+   * is empty. Use this in hooks where a userId is available (e.g. PREPROCESS)
+   * so the relationship summary is included alongside the mood summary.
+   */
+  async getPromptPatchFragmentAsync(opts?: { userId?: string }): Promise<string> {
+    return renderPromptPatchFragment(await this.getPromptPatchAsync(opts));
   }
 
   private tick(): void {

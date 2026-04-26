@@ -142,6 +142,23 @@ export class ConversationInitializer {
       logger.debug('[ConversationInitializer] MemoryFactMetaService not available (non-SQLite or init error):', err);
     }
 
+    // EpigeneticsStore — Mind Phase 2 relationship + epigenetics persistence (SQLite only).
+    try {
+      const { SQLiteAdapter } = await import('@/database/adapters/SQLiteAdapter');
+      const adapter = databaseManager.getAdapter();
+      if (adapter instanceof SQLiteAdapter) {
+        const rawDb = adapter.getRawDb();
+        if (rawDb) {
+          const { EpigeneticsStore } = await import('@/mind/epigenetics/EpigeneticsStore');
+          const epigeneticsStore = new EpigeneticsStore(rawDb);
+          container.registerInstance(DITokens.EPIGENETICS_STORE, epigeneticsStore);
+          logger.info('[ConversationInitializer] EpigeneticsStore registered');
+        }
+      }
+    } catch (err) {
+      logger.debug('[ConversationInitializer] EpigeneticsStore not available (non-SQLite or init error):', err);
+    }
+
     // Conversation config services are required by CommandManager.
     const globalConfigManager = new GlobalConfigManager();
     container.registerInstance(DITokens.GLOBAL_CONFIG_MANAGER, globalConfigManager);

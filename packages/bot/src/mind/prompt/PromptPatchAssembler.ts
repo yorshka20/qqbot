@@ -21,6 +21,8 @@
  *    bot state as fact.
  */
 
+import type { EpigeneticsStore } from '../epigenetics/EpigeneticsStore';
+import type { PersonaEpigenetics, PersonaRelationship } from '../epigenetics/types';
 import type { MindStateSnapshot } from '../types';
 
 /** Thresholds that decide which bucket fatigue falls into. */
@@ -45,8 +47,9 @@ export const DEFAULT_PROMPT_PATCH_THRESHOLDS: PromptPatchThresholds = {
  */
 export interface PromptPatch {
   moodSummary?: string;
+  /** Short Chinese summary of the persona↔user relationship state. Phase 2. */
+  relationshipSummary?: string;
   // Reserved for later phases (keep them optional + additive):
-  // relationshipSummary?: string;
   // strategyDirective?: string;
   // memoryAnchors?: string[];
   // catchphraseHint?: string;
@@ -90,7 +93,101 @@ export function renderPromptPatchFragment(patch: PromptPatch): string {
   if (patch.moodSummary) {
     lines.push(`<mind_state>\n${patch.moodSummary}\n</mind_state>`);
   }
+  if (patch.relationshipSummary) {
+    lines.push(`<relationship_state>\n${patch.relationshipSummary}\n</relationship_state>`);
+  }
   return lines.join('\n\n');
+}
+
+// ─── Relationship summary helpers ────────────────────────────────────────────
+
+/** Map an affinity value to a concise Chinese bucket phrase. */
+function affinityBucket(affinity: number): string {
+  if (affinity >= 0.5) return '对你非常有好感';
+  if (affinity >= 0.1) return '对你略有好感';
+  if (affinity > -0.1) return '关系普通';
+  if (affinity > -0.5) return '略有隔阂';
+  return '较为反感';
+}
+
+/** Map a familiarity value to a concise Chinese bucket phrase. */
+function familiarityBucket(familiarity: number): string {
+  if (familiarity >= 0.7) return '非常熟悉';
+  if (familiarity >= 0.4) return '比较熟悉';
+  if (familiarity >= 0.15) return '有些了解';
+  return '了解不多';
+}
+
+/**
+ * Build a concise Chinese summary of the persona↔user relationship.
+ *
+ * Includes visible numeric affinity and familiarity values alongside bucket
+ * phrases so the LLM can calibrate response tone precisely.
+ *
+ * - null (first interaction) → phrase containing `首次`
+ * - otherwise → affinity bucket + numeric + familiarity bucket + numeric
+ *               + optional tag list + optional epigenetics hints
+ */
+export function buildRelationshipSummary(
+  relationship: PersonaRelationship | null,
+  epigenetics?: PersonaEpigenetics | null,
+): string {
+  if (!relationship) {
+    return '这是与该用户的首次互动，保持开放友好的态度。';
+  }
+  const affinitySign = relationship.affinity >= 0 ? '+' : '';
+  const affinityStr = `${affinitySign}${relationship.affinity.toFixed(2)}`;
+  const familiarityStr = relationship.familiarity.toFixed(2);
+  const affinityPhrase = affinityBucket(relationship.affinity);
+  const familiarityPhrase = familiarityBucket(relationship.familiarity);
+  let summary = `你${affinityPhrase}（好感度：${affinityStr}），彼此${familiarityPhrase}（熟悉度：${familiarityStr}）。`;
+  if (relationship.tags && relationship.tags.length > 0) {
+    summary += `用户标签：[${relationship.tags.join(', ')}]`;
+  }
+  // Incorporate notable behavioral biases from epigenetics (Phase 2).
+  if (epigenetics) {
+    const biasEntries = Object.entries(epigenetics.behavioralBiases).filter(([, v]) => Math.abs(v) >= 0.1);
+    if (biasEntries.length > 0) {
+      const biasText = biasEntries.map(([k, v]) => `${k}:${v >= 0 ? '+' : ''}${v.toFixed(2)}`).join(', ');
+      summary += `行为偏差：${biasText}。`;
+    }
+    const prefKeys = Object.keys(epigenetics.learnedPreferences);
+    if (prefKeys.length > 0) {
+      summary += `已知偏好：${prefKeys.slice(0, 3).join('、')}。`;
+    }
+  }
+  return summary;
+}
+
+/**
+ * Async variant of `buildPromptPatch` that additionally populates
+ * `relationshipSummary` from the EpigeneticsStore when available.
+ *
+ * Falls back gracefully: if store/personaId/userId is absent, the
+ * relationship field is simply omitted (same as before Phase 2).
+ */
+export async function buildPromptPatchAsync(
+  snapshot: MindStateSnapshot,
+  opts: {
+    store?: EpigeneticsStore | null;
+    userId?: string | null;
+    thresholds?: PromptPatchThresholds;
+  } = {},
+): Promise<PromptPatch> {
+  const patch = buildPromptPatch(snapshot, opts.thresholds);
+  if (!snapshot.enabled) return patch;
+  if (!opts.store || !opts.userId) return patch;
+  try {
+    // Read relationship + epigenetics in parallel for a complete relationship summary.
+    const [relationship, epigenetics] = await Promise.all([
+      opts.store.getRelationship(snapshot.personaId, opts.userId),
+      opts.store.getEpigenetics(snapshot.personaId),
+    ]);
+    patch.relationshipSummary = buildRelationshipSummary(relationship, epigenetics);
+  } catch {
+    // Non-fatal: leave relationshipSummary unset
+  }
+  return patch;
 }
 
 function clamp01(v: number): number {
