@@ -1,8 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import type { PersonaRelationship } from '../../epigenetics/types';
+import type { EpigeneticsStore } from '../../epigenetics/EpigeneticsStore';
+import type { PersonaEpigenetics, PersonaRelationship } from '../../epigenetics/types';
+import { TONE_MAPPINGS } from '../../tone/mappings';
+import { TONE_VOCABULARY } from '../../tone/types';
 import type { MindStateSnapshot } from '../../types';
 import {
   buildPromptPatch,
+  buildPromptPatchAsync,
   buildRelationshipSummary,
   DEFAULT_PROMPT_PATCH_THRESHOLDS,
   renderPromptPatchFragment,
@@ -210,5 +214,139 @@ describe('buildRelationshipSummary', () => {
     const summary = buildRelationshipSummary(relationship(), epi);
     expect(summary).toContain('已知偏好');
     expect(summary).toContain('responseLength');
+  });
+
+  test('epigenetics behavioral biases with string currentTone is NOT shown in 行为偏差 section', () => {
+    // currentTone is a string, not a number — it must be filtered from the numeric bias summary
+    const epi: PersonaEpigenetics = {
+      personaId: 'default',
+      topicMastery: {},
+      behavioralBiases: { currentTone: 'playful', humor: 0.2 },
+      learnedPreferences: {},
+      forbiddenWords: [],
+      forbiddenTopics: [],
+      traitHistory: [],
+      updatedAt: Date.now(),
+    };
+    const summary = buildRelationshipSummary(relationship(), epi);
+    // humor (numeric, >= 0.1) should appear; 'playful' (string) must NOT appear in 行为偏差
+    expect(summary).toContain('humor');
+    expect(summary).not.toContain('playful');
+  });
+});
+
+// ─── Tone mapping tests ───────────────────────────────────────────────────────
+
+describe('TONE_MAPPINGS — vocabulary coverage', () => {
+  test('all 12 tones in TONE_VOCABULARY have an entry in TONE_MAPPINGS', () => {
+    expect(TONE_VOCABULARY.length).toBe(12);
+    for (const tone of TONE_VOCABULARY) {
+      expect(TONE_MAPPINGS[tone]).toBeDefined();
+      expect(typeof TONE_MAPPINGS[tone].promptFragment).toBe('string');
+      expect(TONE_MAPPINGS[tone].modulationDelta).toBeDefined();
+    }
+  });
+
+  test('neutral tone has empty promptFragment (identity fallback)', () => {
+    expect(TONE_MAPPINGS.neutral.promptFragment).toBe('');
+    expect(TONE_MAPPINGS.neutral.modulationDelta.intensityScale).toBe(1.0);
+    expect(TONE_MAPPINGS.neutral.modulationDelta.speedScale).toBe(1.0);
+    expect(TONE_MAPPINGS.neutral.modulationDelta.durationBias).toBe(0);
+  });
+
+  test('every non-neutral tone has a non-empty promptFragment', () => {
+    for (const tone of TONE_VOCABULARY) {
+      if (tone === 'neutral') continue;
+      expect(TONE_MAPPINGS[tone].promptFragment.length).toBeGreaterThan(0);
+    }
+  });
+
+  test('playful modulationDelta has intensityScale > 1.0 (energetic)', () => {
+    expect(TONE_MAPPINGS.playful.modulationDelta.intensityScale).toBeGreaterThan(1.0);
+  });
+
+  test('weary modulationDelta has intensityScale < 1.0 (subdued)', () => {
+    expect(TONE_MAPPINGS.weary.modulationDelta.intensityScale).toBeLessThan(1.0);
+  });
+});
+
+// ─── buildPromptPatchAsync — tone injection tests ─────────────────────────────
+
+function makeEpigeneticsStore(behavioralBiases: Record<string, number | string>) {
+  const epi: PersonaEpigenetics = {
+    personaId: 'default',
+    topicMastery: {},
+    behavioralBiases,
+    learnedPreferences: {},
+    forbiddenWords: [],
+    forbiddenTopics: [],
+    traitHistory: [],
+    updatedAt: Date.now(),
+  };
+  return {
+    getRelationship: async () => null,
+    getEpigenetics: async () => epi,
+  };
+}
+
+describe('buildPromptPatchAsync — tone injection', () => {
+  const mindSnap = snapshot({ fatigue: 0 });
+
+  test('currentTone=playful → tonePromptFragment is set to playful fragment', async () => {
+    const store = makeEpigeneticsStore({ currentTone: 'playful' });
+    const patch = await buildPromptPatchAsync(mindSnap, {
+      store: store as unknown as EpigeneticsStore,
+      userId: 'user1',
+    });
+    expect(patch.tonePromptFragment).toBe(TONE_MAPPINGS.playful.promptFragment);
+    expect(patch.tonePromptFragment).not.toBe('');
+  });
+
+  test('currentTone missing → tonePromptFragment is undefined (neutral = no injection)', async () => {
+    const store = makeEpigeneticsStore({});
+    const patch = await buildPromptPatchAsync(mindSnap, {
+      store: store as unknown as EpigeneticsStore,
+      userId: 'user1',
+    });
+    expect(patch.tonePromptFragment).toBeUndefined();
+  });
+
+  test('currentTone=neutral → tonePromptFragment is undefined (neutral promptFragment is empty)', async () => {
+    const store = makeEpigeneticsStore({ currentTone: 'neutral' });
+    const patch = await buildPromptPatchAsync(mindSnap, {
+      store: store as unknown as EpigeneticsStore,
+      userId: 'user1',
+    });
+    // neutral has empty promptFragment → not set (falsy check in assembler)
+    expect(patch.tonePromptFragment).toBeUndefined();
+  });
+
+  test('invalid currentTone string → falls back to neutral → tonePromptFragment undefined', async () => {
+    const store = makeEpigeneticsStore({ currentTone: 'not_a_real_tone' });
+    const patch = await buildPromptPatchAsync(mindSnap, {
+      store: store as unknown as EpigeneticsStore,
+      userId: 'user1',
+    });
+    expect(patch.tonePromptFragment).toBeUndefined();
+  });
+
+  test('currentTone=excited → tonePromptFragment includes expected fragment text', async () => {
+    const store = makeEpigeneticsStore({ currentTone: 'excited' });
+    const patch = await buildPromptPatchAsync(mindSnap, {
+      store: store as unknown as EpigeneticsStore,
+      userId: 'user1',
+    });
+    expect(patch.tonePromptFragment).toBe(TONE_MAPPINGS.excited.promptFragment);
+  });
+
+  test('tonePromptFragment wraps in <tone_state> block when rendered', async () => {
+    const store = makeEpigeneticsStore({ currentTone: 'sarcastic' });
+    const patch = await buildPromptPatchAsync(mindSnap, {
+      store: store as unknown as EpigeneticsStore,
+      userId: 'user1',
+    });
+    const fragment = renderPromptPatchFragment(patch);
+    expect(fragment).toContain('<tone_state>');
+    expect(fragment).toContain('</tone_state>');
   });
 });

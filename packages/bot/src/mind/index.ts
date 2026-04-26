@@ -1,5 +1,12 @@
 // Mind Phase 2 — epigenetics persistence
 export { EpigeneticsStore } from './epigenetics/EpigeneticsStore';
+// Mind Phase 3 — reflection engine
+export { ReflectionEngine } from './reflection/ReflectionEngine';
+export { REFLECTION_SYSTEM_TEMPLATE_NAME, renderReflectionPrompt } from './reflection/prompt';
+export type { ReflectionEngineOptions, ReflectionTrigger } from './reflection/types';
+// Mind Phase 3 — tone vocabulary
+export { TONE_MAPPINGS } from './tone/mappings';
+export { isTone, type Tone, type ToneMapping, type ToneModulationDelta, TONE_VOCABULARY } from './tone/types';
 export type {
   PersonaEpigenetics,
   PersonaReflection,

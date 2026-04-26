@@ -11,6 +11,7 @@
 import type { MindModulation, MindModulationProvider, ModulationContext } from '@qqbot/avatar';
 import { IDENTITY_MODULATION } from '@qqbot/avatar';
 import type { MindService } from './MindService';
+import { TONE_MAPPINGS } from './tone/mappings';
 
 export class MindModulationAdapter implements MindModulationProvider {
   constructor(private readonly mind: MindService) {}
@@ -18,9 +19,19 @@ export class MindModulationAdapter implements MindModulationProvider {
   getModulation(_ctx?: ModulationContext): MindModulation {
     if (!this.mind.isEnabled()) return IDENTITY_MODULATION;
     const { intensityScale, speedScale, durationBias } = this.mind.deriveModulation();
-    return {
-      amplitude: { intensityScale },
-      timing: { speedScale, durationBias },
+    const toneMapping = TONE_MAPPINGS[this.mind.getCurrentTone()];
+    const { modulationDelta } = toneMapping;
+
+    const combined: MindModulation = {
+      amplitude: { intensityScale: intensityScale * modulationDelta.intensityScale },
+      timing: {
+        speedScale: speedScale * modulationDelta.speedScale,
+        durationBias: (durationBias ?? 0) + modulationDelta.durationBias,
+      },
     };
+    if (modulationDelta.variantWeights) {
+      combined.actionPref = { variantWeights: modulationDelta.variantWeights };
+    }
+    return combined;
   }
 }

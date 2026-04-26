@@ -21,6 +21,7 @@ import { AutonomousTriggerScheduler } from './AutonomousTriggerScheduler';
 import type { MindModulationAdapter } from './MindModulationAdapter';
 import type { MindService } from './MindService';
 import { derivePersonaPostureBias } from './ode';
+import type { ReflectionEngine } from './reflection/ReflectionEngine';
 import type { WanderExecutor } from './wander/types';
 import { WanderScheduler } from './wander/WanderScheduler';
 
@@ -35,6 +36,13 @@ export interface MindLifecycleHandles {
   postureTimer: ReturnType<typeof setInterval> | null;
   /** Null when no avatar / autonomous trigger disabled. */
   autonomousTriggerScheduler: AutonomousTriggerScheduler | null;
+  /**
+   * The reflection engine instance, when provided by the caller.
+   * Constructed and started by MindPromptPlugin.onInit() (after DI services
+   * including EpigeneticsStore are available). Null when mind is disabled or
+   * the engine was not passed to startMindSubsystem().
+   */
+  reflectionEngine: ReflectionEngine | null;
 }
 
 /**
@@ -52,10 +60,11 @@ export function startMindSubsystem(
   mindService: MindService,
   modulationProvider: MindModulationAdapter,
   avatarService: AvatarService | null,
+  reflectionEngine?: ReflectionEngine | null,
 ): MindLifecycleHandles {
   if (!mindService.isEnabled()) {
     logger.info('[Mind] Disabled by config — skipped wiring');
-    return { wanderScheduler: null, postureTimer: null, autonomousTriggerScheduler: null };
+    return { wanderScheduler: null, postureTimer: null, autonomousTriggerScheduler: null, reflectionEngine: null };
   }
 
   if (avatarService) {
@@ -88,7 +97,7 @@ export function startMindSubsystem(
     autonomousTriggerScheduler.start();
   }
 
-  return { wanderScheduler, postureTimer, autonomousTriggerScheduler };
+  return { wanderScheduler, postureTimer, autonomousTriggerScheduler, reflectionEngine: reflectionEngine ?? null };
 }
 
 /** Avatar ↔ mind wiring. Extracted so the mind→wander block below stays readable. */

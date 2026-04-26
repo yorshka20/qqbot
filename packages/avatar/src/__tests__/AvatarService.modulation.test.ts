@@ -222,4 +222,66 @@ describe('AvatarService.enqueueTagAnimation — persona modulation', () => {
     const node = (spy.mock.calls[0][0] as Array<{ intensity: number }>)[0];
     expect(node.intensity).toBeCloseTo(0.4, 5);
   });
+
+  // ── Tone delta: verify the MindModulationAdapter tone-composition path ────
+
+  test('tone delta: playful modulationDelta (1.1 intensityScale, 1.1 speedScale, -20ms bias) composed with phenotype', () => {
+    // Simulate what MindModulationAdapter.getModulation produces for playful tone:
+    //   phenotype intensityScale=1.0, speedScale=1.0, durationBias=0
+    //   tone delta: intensityScale=1.1, speedScale=1.1, durationBias=-20
+    //   → combined intensityScale=1.0*1.1=1.1 (capped at 1.0 by AvatarService), speedScale=1.1, durationBias=-20
+    const compiler = (s as any).compiler;
+    compiler.setTunableParam('compiler:jitter', 'durationJitter', 0);
+    compiler.setTunableParam('compiler:jitter', 'intensityJitter', 0);
+    const playfulDelta = { intensityScale: 1.1, speedScale: 1.1, durationBias: -20 };
+    withProvider(s, {
+      amplitude: { intensityScale: playfulDelta.intensityScale },
+      timing: { speedScale: playfulDelta.speedScale, durationBias: playfulDelta.durationBias },
+    });
+    const base = compiler.getActionDuration('emotion_smile');
+    const spy = spyOn(compiler, 'enqueue');
+    s.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 0.5 });
+    const node = (spy.mock.calls[0][0] as Array<{ duration: number; intensity: number }>)[0];
+    // speedScale=1.1 → duration = round(base / 1.1) + bias(-20)
+    const expectedDuration = Math.round(base / playfulDelta.speedScale) + playfulDelta.durationBias;
+    expect(node.duration).toBe(expectedDuration);
+  });
+
+  test('tone delta: weary modulationDelta (0.75 intensityScale, 0.8 speedScale, +80ms bias) composed with phenotype', () => {
+    // Weary: slower, lower intensity, longer duration
+    const compiler = (s as any).compiler;
+    compiler.setTunableParam('compiler:jitter', 'durationJitter', 0);
+    compiler.setTunableParam('compiler:jitter', 'intensityJitter', 0);
+    const wearyDelta = { intensityScale: 0.75, speedScale: 0.8, durationBias: 80 };
+    withProvider(s, {
+      amplitude: { intensityScale: wearyDelta.intensityScale },
+      timing: { speedScale: wearyDelta.speedScale, durationBias: wearyDelta.durationBias },
+    });
+    const base = compiler.getActionDuration('emotion_smile');
+    const spy = spyOn(compiler, 'enqueue');
+    s.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 1.0 });
+    const node = (spy.mock.calls[0][0] as Array<{ duration: number; intensity: number }>)[0];
+    // speedScale=0.8 → slower → longer duration; +80ms bias
+    const expectedDuration = Math.round(base / wearyDelta.speedScale) + wearyDelta.durationBias;
+    expect(node.duration).toBe(expectedDuration);
+    // intensity reduced by 0.75
+    expect(node.intensity).toBeCloseTo(1.0 * wearyDelta.intensityScale, 5);
+  });
+
+  test('tone delta: excited modulationDelta (1.25 intensityScale, 1.2 speedScale, -30ms bias)', () => {
+    const compiler = (s as any).compiler;
+    compiler.setTunableParam('compiler:jitter', 'durationJitter', 0);
+    compiler.setTunableParam('compiler:jitter', 'intensityJitter', 0);
+    const excitedDelta = { intensityScale: 1.25, speedScale: 1.2, durationBias: -30 };
+    withProvider(s, {
+      amplitude: { intensityScale: excitedDelta.intensityScale },
+      timing: { speedScale: excitedDelta.speedScale, durationBias: excitedDelta.durationBias },
+    });
+    const base = compiler.getActionDuration('emotion_smile');
+    const spy = spyOn(compiler, 'enqueue');
+    s.enqueueTagAnimation({ action: 'emotion_smile', emotion: 'happy', intensity: 0.6 });
+    const node = (spy.mock.calls[0][0] as Array<{ duration: number; intensity: number }>)[0];
+    const expectedDuration = Math.round(base / excitedDelta.speedScale) + excitedDelta.durationBias;
+    expect(node.duration).toBe(expectedDuration);
+  });
 });

@@ -23,6 +23,8 @@
 
 import type { EpigeneticsStore } from '../epigenetics/EpigeneticsStore';
 import type { PersonaEpigenetics, PersonaRelationship } from '../epigenetics/types';
+import { TONE_MAPPINGS } from '../tone/mappings';
+import { isTone } from '../tone/types';
 import type { MindStateSnapshot } from '../types';
 
 /** Thresholds that decide which bucket fatigue falls into. */
@@ -49,6 +51,11 @@ export interface PromptPatch {
   moodSummary?: string;
   /** Short Chinese summary of the persona↔user relationship state. Phase 2. */
   relationshipSummary?: string;
+  /**
+   * Tone-derived prompt fragment from `TONE_MAPPINGS[currentTone].promptFragment`.
+   * Undefined when tone is neutral or unknown (no injection needed).
+   */
+  tonePromptFragment?: string;
   // Reserved for later phases (keep them optional + additive):
   // strategyDirective?: string;
   // memoryAnchors?: string[];
@@ -95,6 +102,9 @@ export function renderPromptPatchFragment(patch: PromptPatch): string {
   }
   if (patch.relationshipSummary) {
     lines.push(`<relationship_state>\n${patch.relationshipSummary}\n</relationship_state>`);
+  }
+  if (patch.tonePromptFragment) {
+    lines.push(`<tone_state>\n${patch.tonePromptFragment}\n</tone_state>`);
   }
   return lines.join('\n\n');
 }
@@ -145,8 +155,11 @@ export function buildRelationshipSummary(
     summary += `用户标签：[${relationship.tags.join(', ')}]`;
   }
   // Incorporate notable behavioral biases from epigenetics (Phase 2).
+  // Skip non-numeric entries (e.g. currentTone stored as string).
   if (epigenetics) {
-    const biasEntries = Object.entries(epigenetics.behavioralBiases).filter(([, v]) => Math.abs(v) >= 0.1);
+    const biasEntries = Object.entries(epigenetics.behavioralBiases).filter(
+      ([, v]) => typeof v === 'number' && Math.abs(v) >= 0.1,
+    ) as [string, number][];
     if (biasEntries.length > 0) {
       const biasText = biasEntries.map(([k, v]) => `${k}:${v >= 0 ? '+' : ''}${v.toFixed(2)}`).join(', ');
       summary += `行为偏差：${biasText}。`;
@@ -178,14 +191,23 @@ export async function buildPromptPatchAsync(
   if (!snapshot.enabled) return patch;
   if (!opts.store || !opts.userId) return patch;
   try {
-    // Read relationship + epigenetics in parallel for a complete relationship summary.
+    // Read relationship + epigenetics in parallel for relationship summary and tone.
     const [relationship, epigenetics] = await Promise.all([
       opts.store.getRelationship(snapshot.personaId, opts.userId),
       opts.store.getEpigenetics(snapshot.personaId),
     ]);
     patch.relationshipSummary = buildRelationshipSummary(relationship, epigenetics);
+    // Attach tone fragment if a valid non-neutral tone is recorded in epigenetics.
+    if (epigenetics) {
+      const rawTone = epigenetics.behavioralBiases['currentTone'];
+      const tone = isTone(rawTone) ? rawTone : 'neutral';
+      const fragment = TONE_MAPPINGS[tone].promptFragment;
+      if (fragment) {
+        patch.tonePromptFragment = fragment;
+      }
+    }
   } catch {
-    // Non-fatal: leave relationshipSummary unset
+    // Non-fatal: leave relationshipSummary and tonePromptFragment unset
   }
   return patch;
 }

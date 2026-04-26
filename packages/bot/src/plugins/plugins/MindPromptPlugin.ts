@@ -8,12 +8,16 @@
 // in `MindService.getPromptPatchFragmentAsync()` and further upstream in
 // `mind/prompt/PromptPatchAssembler.ts`.
 
+import type { PromptManager } from '@/ai/prompt/PromptManager';
+import type { LLMService } from '@/ai/services/LLMService';
+import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { getReply } from '@/context/HookContextHelpers';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import type { MindService } from '@/mind';
 import type { EpigeneticsStore } from '@/mind/epigenetics/EpigeneticsStore';
+import { ReflectionEngine } from '@/mind/reflection/ReflectionEngine';
 import { RelationshipUpdater } from '@/mind/relationships/RelationshipUpdater';
 import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
@@ -27,6 +31,7 @@ import { PluginBase } from '../PluginBase';
 export class MindPromptPlugin extends PluginBase {
   private mind: MindService | null = null;
   private relationshipUpdater: RelationshipUpdater | null = null;
+  private reflectionEngine: ReflectionEngine | null = null;
 
   async onInit(): Promise<void> {
     const container = getContainer();
@@ -37,6 +42,34 @@ export class MindPromptPlugin extends PluginBase {
       const store = container.resolve<EpigeneticsStore>(DITokens.EPIGENETICS_STORE);
       this.mind.setEpigeneticsStore(store);
       this.relationshipUpdater = new RelationshipUpdater(store);
+
+      // Build + start ReflectionEngine when all required services are present.
+      if (
+        container.isRegistered(DITokens.LLM_SERVICE) &&
+        container.isRegistered(DITokens.PROMPT_MANAGER) &&
+        container.isRegistered(DITokens.CONVERSATION_HISTORY_SERVICE)
+      ) {
+        try {
+          const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
+          const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+          const historyService = container.resolve<ConversationHistoryService>(
+            DITokens.CONVERSATION_HISTORY_SERVICE,
+          );
+          const personaId = this.mind.getConfig().personaId;
+          this.reflectionEngine = new ReflectionEngine(
+            store,
+            this.mind,
+            llmService,
+            promptManager,
+            historyService,
+            { personaId },
+          );
+          this.reflectionEngine.start();
+          logger.info('[MindPromptPlugin] ReflectionEngine started');
+        } catch (err) {
+          logger.warn('[MindPromptPlugin] ReflectionEngine init failed (non-fatal):', err);
+        }
+      }
     }
   }
 
@@ -90,6 +123,15 @@ export class MindPromptPlugin extends PluginBase {
       const personaId = this.mind.getConfig().personaId;
       await this.relationshipUpdater.update(personaId, userId, userText);
       logger.debug(`[MindPromptPlugin] relationship bumped | persona=${personaId} user=${userId}`);
+
+      // Fire-and-forget event reflection — runs async, never blocks reply.
+      if (this.reflectionEngine) {
+        const groupId = context.message?.groupId;
+        this.reflectionEngine.enqueueEventReflection(
+          userText,
+          groupId != null ? { groupId } : undefined,
+        );
+      }
     } catch (err) {
       logger.warn('[MindPromptPlugin] relationship update failed (non-fatal):', err);
     }

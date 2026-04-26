@@ -25,6 +25,7 @@ import {
   type PromptPatch,
   renderPromptPatchFragment,
 } from './prompt/PromptPatchAssembler';
+import type { Tone } from './tone/types';
 import type { MindConfig, MindStateSnapshot, Phenotype, Stimulus } from './types';
 
 /**
@@ -49,6 +50,8 @@ export class MindService {
   private started = false;
   private poseProvider: PoseProvider | null = null;
   private epigeneticsStore: EpigeneticsStore | null = null;
+  /** In-memory current tone — updated by ReflectionEngine (Task 2). Defaults to neutral. */
+  private currentTone: Tone = 'neutral';
   private readonly messageHandler = (event: AgendaSystemEvent): void => {
     this.handleMessageEvent(event);
   };
@@ -81,6 +84,19 @@ export class MindService {
 
   isEnabled(): boolean {
     return this.config.enabled;
+  }
+
+  /** Return the current in-memory tone. Safe to call on the hot path — no I/O. */
+  getCurrentTone(): Tone {
+    return this.currentTone;
+  }
+
+  /**
+   * Set the current tone. Called by ReflectionEngine (Task 2) after DB persistence.
+   * Also callable from tests or manual override hooks.
+   */
+  setCurrentTone(tone: Tone): void {
+    this.currentTone = tone;
   }
 
   getConfig(): MindConfig {

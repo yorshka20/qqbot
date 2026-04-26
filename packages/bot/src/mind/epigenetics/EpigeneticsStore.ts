@@ -95,7 +95,7 @@ function deserializeEpigenetics(row: EpigeneticsRow): PersonaEpigenetics {
   return {
     personaId: row.persona_id,
     topicMastery: JSON.parse(row.topic_mastery_json) as Record<string, number>,
-    behavioralBiases: JSON.parse(row.behavioral_biases_json) as Record<string, number>,
+    behavioralBiases: JSON.parse(row.behavioral_biases_json) as Record<string, number | string>,
     learnedPreferences: JSON.parse(row.learned_preferences_json) as Record<string, unknown>,
     forbiddenWords: JSON.parse(row.forbidden_words_json) as string[],
     forbiddenTopics: JSON.parse(row.forbidden_topics_json) as string[],
@@ -242,11 +242,17 @@ export class EpigeneticsStore {
       }
     }
 
-    const newBehavioralBiases = { ...state.behavioralBiases };
+    const newBehavioralBiases: Record<string, number | string> = { ...state.behavioralBiases };
     if (patch.behavioralBiasesDelta) {
       for (const [key, delta] of Object.entries(patch.behavioralBiasesDelta)) {
-        newBehavioralBiases[key] = (newBehavioralBiases[key] ?? 0) + delta;
+        // Numeric accumulation: treat existing string values as 0 (shouldn't happen for delta keys).
+        const existing = newBehavioralBiases[key];
+        newBehavioralBiases[key] = (typeof existing === 'number' ? existing : 0) + delta;
       }
+    }
+    // Persist currentTone as a string under behavioral_biases_json.currentTone.
+    if (patch.currentTone !== undefined) {
+      newBehavioralBiases['currentTone'] = patch.currentTone;
     }
 
     // learnedPreferencesAdd: upsert semantics — new keys are set, existing keys overwritten.
@@ -317,6 +323,23 @@ export class EpigeneticsStore {
     reflectionId = typeof lastId === 'bigint' ? Number(lastId) : lastId;
 
     return { accepted: true, reflectionId };
+  }
+
+  /**
+   * Write a rejection audit row to `persona_reflections`.
+   * Called by ReflectionEngine when a patch is rejected after all retries.
+   * The `trigger` is stored as the literal string 'rejected' at the DB level
+   * (SQLite imposes no enum constraint on the column).
+   * This is a narrow internal helper — it does not modify epigenetics state.
+   */
+  async writeRejectionAudit(personaId: string, patch: ReflectionPatch, reason: string): Promise<void> {
+    const now = Date.now();
+    this.db
+      .query(
+        `INSERT INTO persona_reflections (persona_id, timestamp, trigger, insight_md, applied_patch_json)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(personaId, now, 'rejected', reason, JSON.stringify(patch));
   }
 
   /**

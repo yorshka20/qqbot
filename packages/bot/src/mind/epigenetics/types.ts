@@ -1,6 +1,8 @@
 // Mind Phase 2 epigenetics types — persistent persona state that evolves
 // over time via reflection patches.
 
+import type { Tone } from '../tone/types';
+
 /** Big-Five trait keys used in EpigeneticsStore trait-bound enforcement. */
 export type TraitKey = 'extraversion' | 'neuroticism' | 'openness' | 'agreeableness' | 'conscientiousness';
 
@@ -20,8 +22,12 @@ export interface PersonaEpigenetics {
   personaId: string;
   /** Topic name → mastery score in [0, 1]. Deltas are clamped on write. */
   topicMastery: Record<string, number>;
-  /** Arbitrary behavioral bias keys → numeric values. */
-  behavioralBiases: Record<string, number>;
+  /**
+   * Behavioral bias keys → values.
+   * Numeric entries are accumulated deltas (e.g. verbosity, humor).
+   * String entries are discrete state values (e.g. currentTone).
+   */
+  behavioralBiases: Record<string, number | string>;
   /** Arbitrary learned preference keys → values of any shape. */
   learnedPreferences: Record<string, unknown>;
   /** Append-only set of forbidden words. No remove API. */
@@ -88,8 +94,13 @@ export interface ReflectionPatch {
   forbiddenWordsAdd?: string[];
   /** Topics to append to the forbiddenTopics list (no duplicates). */
   forbiddenTopicsAdd?: string[];
-  /** Accumulate delta onto behavioralBiases[key]. */
+  /** Accumulate delta onto behavioralBiases[key]. Values must be numeric. */
   behavioralBiasesDelta?: Record<string, number>;
+  /**
+   * Set the current tone. Persisted under `behavioral_biases_json.currentTone`.
+   * Separate from `behavioralBiasesDelta` so numeric accumulation stays clean.
+   */
+  currentTone?: Tone;
   /** Set or overwrite learned preference keys with arbitrary values. */
   learnedPreferencesAdd?: Record<string, unknown>;
 }
