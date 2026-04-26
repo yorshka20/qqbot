@@ -1,7 +1,6 @@
 import type { SynthesisResult, TTSProvider, TTSSynthesizeOptions } from '../TTSProvider';
 
 export interface FishAudioProviderOptions {
-  /** Registry name. Defaults to `'fish-audio'`; override when registering multiple fish-audio configs. */
   name?: string;
   apiKey: string;
   voiceMap: Record<string, string>;
@@ -35,13 +34,62 @@ export class FishAudioProvider implements TTSProvider {
     return typeof this.apiKey === 'string' && this.apiKey.length > 0;
   }
 
-  /** Names registered in this provider's voiceMap, in declaration order. */
   listVoices(): string[] {
     return Object.keys(this.voiceMap);
   }
 
+  /**
+   * Lightweight reachability + auth probe: POST minimal JSON to the configured
+   * endpoint with a short timeout. Does not guarantee quota/billing health,
+   * but catches DNS/TLS/network/auth failures early for fallback routing.
+   */
+  async healthCheck(): Promise<boolean> {
+    if (!this.isAvailable()) {
+      return false;
+    }
+
+    let referenceId: string | undefined;
+    if (this.defaultVoice && this.voiceMap[this.defaultVoice]) {
+      referenceId = this.voiceMap[this.defaultVoice];
+    } else if (this.defaultVoice) {
+      referenceId = this.defaultVoice;
+    }
+
+    const body: Record<string, unknown> = { text: 'ping', format: this.format };
+    if (referenceId) {
+      body.reference_id = referenceId;
+    }
+
+    let response: Response;
+    try {
+      response = await globalThis.fetch(this.endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          model: this.model,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      return false;
+    }
+
+    // Consume body so the connection can be reused; healthCheck does not need audio bytes.
+    try {
+      await response.arrayBuffer();
+    } catch {
+      /* ignore */
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return false;
+    }
+
+    return response.ok;
+  }
+
   async synthesize(text: string, opts?: TTSSynthesizeOptions): Promise<SynthesisResult> {
-    // Resolve reference_id: opts.voice -> voiceMap[opts.voice] -> voiceMap[defaultVoice] -> defaultVoice
     const voiceKey = opts?.voice;
     let referenceId: string | undefined;
     if (voiceKey && this.voiceMap[voiceKey]) {
@@ -81,4 +129,5 @@ export class FishAudioProvider implements TTSProvider {
       durationMs: bytes.length / 4000,
     };
   }
+
 }

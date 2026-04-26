@@ -1,10 +1,11 @@
-import type { TTSManager, TTSProvider } from '@qqbot/avatar';
 import { inject, injectable } from 'tsyringe';
 import type { APIClient } from '@/api/APIClient';
 import { FileAPI } from '@/api/methods/FileAPI';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { MessageUtils } from '@/message/MessageUtils';
+import type { TTSManager } from '@/services/tts/TTSManager';
+import type { SynthesisResult, TTSProvider } from '@/services/tts/TTSProvider';
 import { uploadFileBuffer } from '@/utils/fileUpload';
 import { logger } from '@/utils/logger';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
@@ -109,36 +110,32 @@ export class TTSCommandHandler implements CommandHandler {
         };
       }
 
-      // ── Select provider ──
-      let provider: TTSProvider | null;
-      if (options.provider) {
-        provider = this.ttsManager.get(options.provider);
-        if (!provider) {
-          const available =
-            this.ttsManager
-              .listAll()
-              .map((p) => p.name)
-              .join(', ') || '(none)';
-          return {
-            success: false,
-            error: `TTS provider "${options.provider}" is not registered. Available: ${available}`,
-          };
-        }
-        if (!provider.isAvailable()) {
-          return {
-            success: false,
-            error: `TTS provider "${options.provider}" is registered but not available (missing API key / endpoint).`,
-          };
-        }
-      } else {
-        provider = this.ttsManager.getDefault();
-        if (!provider) {
-          return {
-            success: false,
-            error:
-              'No TTS provider is configured. Add an entry to `tts.providers[]` and set `tts.defaultProvider` in config.',
-          };
-        }
+      // ── Select provider (with health-based fallback) ──
+      if (options.provider && !this.ttsManager.get(options.provider)) {
+        const available =
+          this.ttsManager
+            .listAll()
+            .map((p) => p.name)
+            .join(', ') || '(none)';
+        return {
+          success: false,
+          error: `TTS provider "${options.provider}" is not registered. Available: ${available}`,
+        };
+      }
+
+      const resolvedProvider = await this.ttsManager.resolveProvider(options.provider);
+      const provider = resolvedProvider.provider;
+      if (!provider) {
+        return {
+          success: false,
+          error:
+            'No healthy TTS provider is available. Check `tts.providers[]` config, API keys/endpoints, and provider health.',
+        };
+      }
+      if (resolvedProvider.usedFallback) {
+        logger.warn(
+          `[TTSCommandHandler] Provider "${resolvedProvider.requestedProvider ?? 'default'}" unavailable/unhealthy, auto-fallback to "${provider.name}"`,
+        );
       }
 
       // ── Resolve voice (optional) ──
@@ -163,8 +160,39 @@ export class TTSCommandHandler implements CommandHandler {
         `[TTSCommandHandler] Synthesizing via provider="${provider.name}" voice="${voice ?? '(default)'}" text="${text.substring(0, 50)}..."`,
       );
 
-      // ── Synthesize ──
-      const result = await provider.synthesize(text, { voice });
+      // ── Synthesize with automatic fallback on runtime failure ──
+      let selectedProvider: TTSProvider = provider;
+      let selectedVoice = voice;
+      let result: SynthesisResult;
+      try {
+        result = await selectedProvider.synthesize(text, { voice: selectedVoice });
+        this.ttsManager.markProviderHealthy(selectedProvider.name);
+      } catch (primaryError) {
+        this.ttsManager.markProviderUnhealthy(
+          selectedProvider.name,
+          primaryError instanceof Error ? primaryError.message : String(primaryError),
+        );
+        const fallback = await this.ttsManager.getFallbackProvider([selectedProvider.name]);
+        if (!fallback) {
+          throw primaryError;
+        }
+        logger.warn(
+          `[TTSCommandHandler] Provider "${selectedProvider.name}" synthesis failed, retrying with fallback "${fallback.name}"`,
+          primaryError,
+        );
+        if (selectedVoice && fallback.listVoices) {
+          const fallbackVoices = fallback.listVoices();
+          if (fallbackVoices.length > 0 && !fallbackVoices.includes(selectedVoice)) {
+            logger.warn(
+              `[TTSCommandHandler] Voice "${selectedVoice}" not supported by fallback "${fallback.name}", using provider default voice`,
+            );
+            selectedVoice = undefined;
+          }
+        }
+        result = await fallback.synthesize(text, { voice: selectedVoice });
+        this.ttsManager.markProviderHealthy(fallback.name);
+        selectedProvider = fallback;
+      }
       const audioBuffer = Buffer.from(result.bytes);
       const format = result.mime === 'audio/wav' ? 'wav' : 'mp3';
 

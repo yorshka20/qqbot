@@ -11,6 +11,7 @@ A production-ready, AI-powered QQ bot framework built with TypeScript and Bun. C
 - **Commands**: Prefix-based routing with owner/admin/user permissions
 - **Memory**: Per-user and per-group long-term memory with LLM extraction
 - **MCP**: Model Context Protocol and SearXNG search for RAG
+- **TTS**: Bot-core registry (`packages/bot/src/services/tts/`) — multi-provider config, health checks, `/tts` command; avatar consumes the same manager for SpeechService (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#tts-text-to-speech))
 - **Persistence**: SQLite and MongoDB; Puppeteer card rendering; TypeScript strict + tsyringe DI
 
 ## Prerequisites
@@ -150,7 +151,7 @@ bun run build        # production bundle
 
 - [docs/FLOW_DIAGRAMS_EN.md](docs/FLOW_DIAGRAMS_EN.md) — **Architecture flow diagrams** (English) — visual walkthroughs of every major pipeline: protocol layer, command system, reply system (8-stage AI pipeline), multi-turn tool calling loop, proactive reply (message-driven), and agenda (schedule-driven). Start here to understand how the pieces fit together.
 - [docs/FLOW_DIAGRAMS_CN.md](docs/FLOW_DIAGRAMS_CN.md) — Same flow diagrams in Chinese
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Layer and component design
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Layer and component design (includes [TTS](docs/ARCHITECTURE.md#tts-text-to-speech): providers, health, avatar split)
 - [docs/CONTEXT_METADATA.md](docs/CONTEXT_METADATA.md) — HookContext metadata
 - [docs/REPLY_METADATA_IMPROVEMENT.md](docs/REPLY_METADATA_IMPROVEMENT.md) — Reply content design
 - [prompts/README.md](prompts/README.md) — Prompt template authoring

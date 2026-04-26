@@ -18,12 +18,11 @@ import {
 } from './mind/types';
 import { PreviewServer } from './preview/PreviewServer';
 import type { PreviewStatus, RendererCapabilities, WalkCommandData } from './preview/types';
+import type { AvatarTTSManager, AvatarTTSProvider } from './speech/TTSTypes';
 import { SpeechService } from './SpeechService';
 import { ActivityTracker } from './state/IdleStateMachine';
 import { type AvatarActivityPatch, DEFAULT_ACTIVITY, type StateNodeOutput } from './state/types';
 import type { FaceTarget, GazeTarget, WalkToTarget } from './tags';
-import type { TTSManager } from './tts/TTSManager';
-import type { TTSProvider } from './tts/TTSProvider';
 import type { AvatarConfig } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './types';
 import { logger } from './utils/logger';
@@ -85,7 +84,7 @@ export class AvatarService {
    * next door. `undefined` is treated as "no avatar section" and leaves the
    * service disabled.
    */
-  async initialize(rawConfig: Record<string, unknown> | undefined, ttsManager?: TTSManager): Promise<void> {
+  async initialize(rawConfig: Record<string, unknown> | undefined, ttsManager?: AvatarTTSManager): Promise<void> {
     const config = mergeAvatarConfig(rawConfig);
     this.config = config;
 
@@ -179,7 +178,7 @@ export class AvatarService {
    * for the meaning of each dependency. Here we point callbacks at
    * `previewServer` (if any), `consumerCount`, and `AnimationCompiler` layers.
    */
-  private createSpeechService(provider: TTSProvider, speech: AvatarConfig['speech']): SpeechService {
+  private createSpeechService(provider: AvatarTTSProvider, speech: AvatarConfig['speech']): SpeechService {
     return new SpeechService(
       provider,
       (msg) => this.previewServer?.broadcastAudio(msg), // full utterance → preview `audio` WS

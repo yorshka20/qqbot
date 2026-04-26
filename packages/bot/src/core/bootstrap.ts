@@ -7,7 +7,7 @@
 //   bot.start(), MCPInitializer.connectServers(), ClaudeCodeInitializer.start(),
 //   and process signal handlers.
 
-import { AvatarService, FishAudioProvider, SovitsProvider, TTSManager, type TTSProvider } from '@qqbot/avatar';
+import { AvatarService } from '@qqbot/avatar';
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import { APIClient } from '@/api/APIClient';
 import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
@@ -45,6 +45,10 @@ import type { MCPSystem } from '@/services/mcp/MCPInitializer';
 import { MCPInitializer } from '@/services/mcp/MCPInitializer';
 import { RetrievalService } from '@/services/retrieval';
 import { initStaticServer } from '@/services/staticServer';
+import { TTSManager } from '@/services/tts/TTSManager';
+import type { TTSProvider } from '@/services/tts/TTSProvider';
+import { FishAudioProvider } from '@/services/tts/providers/FishAudioProvider';
+import { SovitsProvider } from '@/services/tts/providers/SovitsProvider';
 import { logger } from '@/utils/logger';
 import { registerConnectionClass } from './connection/ConnectionManager';
 
@@ -255,6 +259,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
         );
       }
     }
+    ttsManager.attachHealthManager(healthCheckManager);
     container.registerInstance(DITokens.TTS_MANAGER, ttsManager);
     const summary = ttsManager.listAll().map((p) => `${p.name}${p.isAvailable() ? '' : ' (unavailable)'}`);
     if (summary.length > 0) {

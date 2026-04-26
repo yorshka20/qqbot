@@ -106,7 +106,7 @@ These keys control whether and how the message should be processed.
 - **Set By**:
   - `CommandSystem` (PROCESS stage) - from command execution result
   - `TaskSystem` (PROCESS stage) - from task execution result
-  - `EchoPlugin` (PREPROCESS stage) - from triggered TTS command
+  - `EchoPlugin` (PREPROCESS stage) - from triggered `/tts` command (speech synthesized via bot `TTSCommandHandler` → `TTSManager`, not the avatar package)
   - `AIService` (PROCESS stage) - from AI generation result
   - `MessagePipeline.sendMessage()` - may be modified before sending
 - **Read By**:

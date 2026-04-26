@@ -10,7 +10,7 @@ The `reply` metadata key is currently used to store the reply message content, b
 
 - **CommandSystem** sets `reply` from command execution result
 - **TaskSystem** sets `reply` from task execution result
-- **EchoPlugin** sets `reply` from triggered TTS command (in PREPROCESS stage)
+- **EchoPlugin** sets `reply` from triggered `/tts` command (in PREPROCESS stage; synthesis via bot `TTSManager`, not `@qqbot/avatar`)
 - **MessagePipeline** may modify `reply` before sending
 
 **Problem**: Last writer wins, but there's no clear priority system. TaskSystem currently checks for `existingReply` to avoid overwriting, but this is a workaround, not a solution.

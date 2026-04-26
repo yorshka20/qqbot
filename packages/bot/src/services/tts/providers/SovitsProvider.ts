@@ -1,44 +1,16 @@
-import { logger } from '../../utils/logger';
+import { logger } from '@/utils/logger';
 import type { SynthesisChunk, SynthesisResult, TTSProvider, TTSSynthesizeOptions } from '../TTSProvider';
 
 export interface SovitsProviderOptions {
-  /** Registry name. Defaults to `'sovits'`; override when registering multiple SoVITS instances. */
   name?: string;
   endpoint: string;
-  /**
-   * JSON body template; use `{text}` and `{voice}` as placeholders.
-   *
-   * The template should carry only *stable* synthesis params (e.g.
-   * `text_lang`, `ref_audio_path`, `prompt_text`, `prompt_lang`). Streaming
-   * fields — `streaming_mode` and `media_type` — are owned by the provider
-   * and forced per-method:
-   *   - `synthesize()` overrides to `{streaming_mode: false, media_type: 'wav'}`
-   *     so Milky `record` segments (QQ voice message) receive a proper WAV
-   *     rather than undecodable raw-PCM bytes labelled as wav.
-   *   - `synthesizeStream()` overrides to `{streaming_mode: true, media_type: 'raw'}`
-   *     so the renderer / Live2D path gets chunked PCM.
-   * Any `streaming_mode` / `media_type` the caller puts in the template is
-   * silently overwritten.
-   */
   bodyTemplate: Record<string, unknown>;
   method?: 'GET' | 'POST';
   headers?: Record<string, string>;
   defaultVoice?: string;
-  /**
-   * Sample rate (Hz) of the PCM stream returned by the server in streaming
-   * mode. Required for `synthesizeStream()` (passed through to each yielded
-   * `SynthesisChunk` so the renderer can initialise its AudioContext at the
-   * correct rate). Ignored by non-streaming `synthesize()`, whose WAV
-   * response carries its own sample rate in the file header.
-   */
   pcmSampleRate?: number;
 }
 
-/**
- * Recursively traverse `template` and replace `{text}` and `{voice}` inside
- * string values. Does **not** mutate the original object. If `voice` is not
- * provided, `{voice}` placeholders are left unchanged.
- */
 export function substitutePlaceholders(
   template: Record<string, unknown>,
   replacements: { text: string; voice?: string },
@@ -67,7 +39,6 @@ function substituteValue(value: unknown, replacements: { text: string; voice?: s
   return value;
 }
 
-/** GPT-SoVITS api_v2 often returns { message, Exception }; `message` may be the generic "tts failed". */
 function formatProviderJsonError(j: Record<string, unknown>): string {
   const parts: string[] = [];
   const msg = j.message;
@@ -76,7 +47,7 @@ function formatProviderJsonError(j: Record<string, unknown>): string {
   }
   const ex = j.Exception;
   if (typeof ex === 'string' && ex.length > 0 && ex !== msg) {
-    const short = ex.length > 1200 ? `${ex.slice(0, 1200)}…` : ex;
+    const short = ex.length > 1200 ? `${ex.slice(0, 1200)}...` : ex;
     parts.push(short);
   }
   if (parts.length > 0) {
@@ -127,15 +98,53 @@ export class SovitsProvider implements TTSProvider {
   }
 
   /**
-   * Synthesize the full utterance into a single WAV buffer.
-   *
-   * Always requests `streaming_mode: false` + `media_type: 'wav'` so the
-   * response is a complete, self-describing WAV file. This is required by
-   * the `/tts` command path: the Milky `record` segment it produces cannot
-   * carry chunked raw PCM — the backend rejects it with "消息体无法解析"
-   * (500 Internal error). Any streaming fields in the configured
-   * `bodyTemplate` are overwritten.
+   * Best-effort probe of the configured SoVITS HTTP endpoint.
+   * Uses the same non-streaming payload shape as `synthesize()`, with a hard timeout,
+   * and treats only transport/HTTP failures as unhealthy (consumes response body).
    */
+  async healthCheck(): Promise<boolean> {
+    if (!this.isAvailable()) {
+      return false;
+    }
+
+    if (this.method === 'GET') {
+      try {
+        const response = await globalThis.fetch(this.endpoint, { method: 'GET', headers: this.headers });
+        try {
+          await response.arrayBuffer();
+        } catch {
+          /* ignore */
+        }
+        return response.ok;
+      } catch {
+        return false;
+      }
+    }
+
+    const voice = this.defaultVoice;
+    const trimmedText = '你';
+    const body = substitutePlaceholders(
+      { ...this.bodyTemplate, streaming_mode: false, media_type: 'wav' },
+      { text: trimmedText, voice },
+    );
+
+    try {
+      const response = await globalThis.fetch(this.endpoint, {
+        method: this.method,
+        headers: this.headers,
+        body: JSON.stringify(body),
+      });
+      try {
+        await response.arrayBuffer();
+      } catch {
+        /* ignore */
+      }
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
   async synthesize(text: string, opts?: TTSSynthesizeOptions): Promise<SynthesisResult> {
     const voice = opts?.voice ?? this.defaultVoice;
     const trimmedText = text.trim();
@@ -157,17 +166,13 @@ export class SovitsProvider implements TTSProvider {
     if (!response.ok) {
       const detail = await readHttpErrorDetail(response);
       throw new Error(
-        `Sovits TTS request failed: ${response.status} ${response.statusText}${detail ? ` — ${detail}` : ''}`,
+        `Sovits TTS request failed: ${response.status} ${response.statusText}${detail ? ` - ${detail}` : ''}`,
       );
     }
 
     const buffer = await response.arrayBuffer();
     const bytes = new Uint8Array(buffer);
 
-    // Mime is fixed because we asked the server for wav above. The
-    // Content-Type header is ignored — some GPT-SoVITS builds mislabel
-    // it as `audio/x-wav` or even `application/octet-stream`, and we don't
-    // want that leaking into downstream consumers that switch on mime.
     return {
       bytes,
       mime: 'audio/wav',
@@ -175,20 +180,6 @@ export class SovitsProvider implements TTSProvider {
     };
   }
 
-  /**
-   * Stream raw PCM audio from Sovits. Always requests
-   * `streaming_mode: true` + `media_type: 'raw'` — any such fields in the
-   * configured `bodyTemplate` are overwritten.
-   *
-   * Requires `pcmSampleRate` to be configured (raw PCM has no in-band
-   * sample rate; the renderer needs it to init its AudioContext).
-   *
-   * Each yielded chunk carries `mime='audio/pcm'` and the configured
-   * `sampleRate`. The stream ends with a single terminator chunk where
-   * `isLast=true` and `bytes` is an empty `Uint8Array`.
-   *
-   * Throws on any non-2xx response or stream-read failure.
-   */
   async *synthesizeStream(text: string, opts?: TTSSynthesizeOptions): AsyncIterable<SynthesisChunk> {
     if (this.pcmSampleRate === undefined) {
       throw new Error('SovitsProvider.synthesizeStream requires pcmSampleRate to be configured');
@@ -215,7 +206,7 @@ export class SovitsProvider implements TTSProvider {
     if (!response.ok) {
       const detail = await readHttpErrorDetail(response);
       throw new Error(
-        `Sovits TTS request failed: ${response.status} ${response.statusText}${detail ? ` — ${detail}` : ''}`,
+        `Sovits TTS request failed: ${response.status} ${response.statusText}${detail ? ` - ${detail}` : ''}`,
       );
     }
 
@@ -225,22 +216,7 @@ export class SovitsProvider implements TTSProvider {
 
     const reader = response.body.getReader();
     const mime = 'audio/pcm';
-
-    // Sample alignment state. HTTP chunked transfer splits the byte stream at
-    // arbitrary positions, but s16le samples are 2 bytes each. If we yielded
-    // a chunk whose length isn't a multiple of SAMPLE_BYTES, the downstream
-    // per-chunk decoders (lip-sync RMS pipeline AND the renderer) would
-    // Math.floor() away the trailing byte and then treat the next chunk's
-    // first byte as the *high* byte of a new sample — shifting the int16
-    // grid by 1 for the rest of the stream. Result: white noise.
-    //
-    // Solution: buffer any trailing sub-sample bytes and prepend them to the
-    // next incoming chunk. Only yield when we have ≥1 complete sample.
-    //
-    // The renderer currently assumes s16le (see SpeechPlayer.decodePcmToAudioBuffer).
-    // If a future config introduces f32, SAMPLE_BYTES should be derived from
-    // the configured format.
-    const SAMPLE_BYTES = 2;
+    const sampleBytes = 2;
     let residual = new Uint8Array(0);
 
     try {
@@ -261,23 +237,16 @@ export class SovitsProvider implements TTSProvider {
           continue;
         }
 
-        // Merge residual with the newly-read bytes into a fresh buffer we
-        // own. Always copying avoids aliasing issues with `reader.read()`
-        // returning views over a shared ArrayBufferLike.
         const combined = new Uint8Array(residual.length + value.length);
         combined.set(residual, 0);
         combined.set(value, residual.length);
 
-        const alignedLen = combined.length - (combined.length % SAMPLE_BYTES);
+        const alignedLen = combined.length - (combined.length % sampleBytes);
         if (alignedLen === 0) {
-          // Not even one full sample — hold everything for the next read.
           residual = combined;
           continue;
         }
 
-        // slice() both halves so the yielded chunk and the carried residual
-        // each own their buffer — avoids surprises if the consumer holds on
-        // to `bytes` across multiple reader iterations.
         const alignedChunk = combined.slice(0, alignedLen);
         residual = combined.slice(alignedLen);
 
@@ -292,16 +261,12 @@ export class SovitsProvider implements TTSProvider {
       reader.releaseLock();
     }
 
-    // If the producer sent a well-formed stream, residual should be empty at
-    // EOS. A non-empty residual means the backend closed the connection mid-
-    // sample — we log and drop rather than emitting a misaligned chunk.
     if (residual.length > 0) {
       logger.warn(
-        `[SovitsProvider] stream ended with ${residual.length} orphan byte(s); dropping (expected multiple of ${SAMPLE_BYTES})`,
+        `[SovitsProvider] stream ended with ${residual.length} orphan byte(s); dropping (expected multiple of ${sampleBytes})`,
       );
     }
 
-    // Terminator chunk — guarantees a final isLast=true message.
     yield {
       bytes: new Uint8Array(0),
       mime,
@@ -310,22 +275,12 @@ export class SovitsProvider implements TTSProvider {
     };
   }
 
-  /**
-   * Tiny dummy synthesize to force the GPT-SoVITS engine to load the
-   * currently-configured reference audio + model weights into memory before
-   * the first real user utterance arrives. Without this, the first real
-   * synth pays ~1–3s of cold-start overhead on top of normal inference.
-   *
-   * We intentionally use a single Chinese character so the request is valid
-   * under almost any `text_split_method` + language combination. Errors are
-   * swallowed — the caller already treats warmup as fire-and-forget, and we
-   * don't want a flaky warmup to crash bootstrap.
-   */
   async warmup(): Promise<void> {
     try {
       await this.synthesize('你');
     } catch {
-      /* swallow — warmup is best-effort */
+      /* swallow */
     }
   }
+
 }

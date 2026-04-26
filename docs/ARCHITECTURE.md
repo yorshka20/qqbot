@@ -17,13 +17,14 @@ This document describes the architecture of the QQ Bot framework, a production-r
 9. [Plugin System](#plugin-system)
 10. [Hook System](#hook-system)
 11. [Command System](#command-system)
-12. [AI Service](#ai-service)
-13. [Tool System](#tool-system)
-14. [Memory System](#memory-system)
-15. [Database Layer](#database-layer)
-16. [Cluster System](#cluster-system)
-17. [Error Handling](#error-handling)
-18. [Development Workflow](#development-workflow)
+12. [TTS (Text-to-Speech)](#tts-text-to-speech)
+13. [AI Service](#ai-service)
+14. [Tool System](#tool-system)
+15. [Memory System](#memory-system)
+16. [Database Layer](#database-layer)
+17. [Cluster System](#cluster-system)
+18. [Error Handling](#error-handling)
+19. [Development Workflow](#development-workflow)
 
 ## System Overview
 
@@ -201,7 +202,8 @@ Config → APIClient → PromptInitializer → PluginInitializer (factory) →
 MCPInitializer → HealthCheckManager → RetrievalService → StaticServer →
 ProjectRegistry → ClaudeCodeInitializer → ConversationInitializer →
 ClusterManager → EventInitializer → ServiceRegistry.verify() →
-ProtocolAdapterInitializer → PluginInitializer.loadPlugins()
+ProtocolAdapterInitializer → PluginInitializer.loadPlugins() →
+TTSManager (from tts.* config) + attachHealthManager → AvatarService (optional)
 ```
 
 ### Protocol Layer
@@ -468,6 +470,30 @@ Commands use lazy instantiation — handlers are created on first execution via 
 ### CommandSystem
 
 Sits inside the PROCESS stage of the message lifecycle. Fires `onCommandDetected` and `onCommandExecuted` hooks around each command execution.
+
+## TTS (Text-to-Speech)
+
+Text-to-speech is a **bot-core capability** (not part of the LLM stack). It lives under `packages/bot/src/services/tts/` and is registered in DI as `DITokens.TTS_MANAGER` from `packages/bot/src/core/bootstrap.ts`.
+
+### Components
+
+| Piece | Role |
+|-------|------|
+| `TTSManager` | Registry of `TTSProvider` instances, default provider (`tts.defaultProvider`), health-aware selection, and ordered fallback when the preferred or default provider is unavailable or fails a probe. |
+| `TTSProvider` | Interface for backends (`synthesize`, optional `synthesizeStream`, optional `warmup`, optional `healthCheck`). |
+| `FishAudioProvider` / `SovitsProvider` | Concrete providers; each implements `healthCheck()` (HTTP probe to the configured endpoint; SoVITS uses the same non-streaming shape as `synthesize` for POST). |
+| `TtsProviderHealthAdapter` | Wraps a `TTSProvider` as `HealthCheckable`; service name is `provider.name` so `HealthCheckManager` and `TTSManager` share one namespace. |
+| `TTSCommandHandler` | `/tts` command: resolves a provider via `TTSManager.resolveProvider()` (respects health), synthesizes audio, and on failure marks the provider unhealthy and retries another registered provider when possible. |
+
+### Wiring
+
+1. `bootstrapApp()` builds a `TTSManager`, instantiates providers from `tts` config (`tts.providers[]`, or the legacy single-provider `apiKey` shape for Fish Audio).
+2. `ttsManager.attachHealthManager(healthCheckManager)` registers each provider with `HealthCheckManager` before the manager is exposed on DI.
+3. Optional `warmup()` runs fire-and-forget for providers that support it (e.g. SoVITS cold start).
+
+### Avatar package
+
+`@qqbot/avatar` does **not** own TTS implementations. It receives the same `TTSManager` (or a minimal `AvatarTTSManager` / `AvatarTTSProvider` view in `packages/avatar/src/speech/`) for `SpeechService` and preview; utterance splitting lives in `packages/avatar/src/speech/splitIntoUtterances.ts`.
 
 ## AI Service
 
