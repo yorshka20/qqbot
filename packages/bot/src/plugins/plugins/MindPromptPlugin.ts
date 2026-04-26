@@ -10,8 +10,8 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
-import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { getReply } from '@/context/HookContextHelpers';
+import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
@@ -52,18 +52,11 @@ export class MindPromptPlugin extends PluginBase {
         try {
           const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
           const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
-          const historyService = container.resolve<ConversationHistoryService>(
-            DITokens.CONVERSATION_HISTORY_SERVICE,
-          );
+          const historyService = container.resolve<ConversationHistoryService>(DITokens.CONVERSATION_HISTORY_SERVICE);
           const personaId = this.mind.getConfig().personaId;
-          this.reflectionEngine = new ReflectionEngine(
-            store,
-            this.mind,
-            llmService,
-            promptManager,
-            historyService,
-            { personaId },
-          );
+          this.reflectionEngine = new ReflectionEngine(store, this.mind, llmService, promptManager, historyService, {
+            personaId,
+          });
           this.reflectionEngine.start();
           logger.info('[MindPromptPlugin] ReflectionEngine started');
         } catch (err) {
@@ -127,10 +120,7 @@ export class MindPromptPlugin extends PluginBase {
       // Fire-and-forget event reflection — runs async, never blocks reply.
       if (this.reflectionEngine) {
         const groupId = context.message?.groupId;
-        this.reflectionEngine.enqueueEventReflection(
-          userText,
-          groupId != null ? { groupId } : undefined,
-        );
+        this.reflectionEngine.enqueueEventReflection(userText, groupId != null ? { groupId } : undefined);
       }
     } catch (err) {
       logger.warn('[MindPromptPlugin] relationship update failed (non-fatal):', err);

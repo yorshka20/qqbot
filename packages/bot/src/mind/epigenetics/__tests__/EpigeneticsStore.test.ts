@@ -1,11 +1,11 @@
 // Tests for EpigeneticsStore — uses an in-memory SQLite DB via SQLiteAdapter
 // so migrations run through the real migration path, not mocks.
 
+import type { Database } from 'bun:sqlite';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Database } from 'bun:sqlite';
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { SQLiteAdapter } from '@/database/adapters/SQLiteAdapter';
 import { EpigeneticsStore } from '../EpigeneticsStore';
 

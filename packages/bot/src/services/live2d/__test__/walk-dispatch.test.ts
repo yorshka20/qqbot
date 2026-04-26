@@ -27,27 +27,26 @@ function makeWalkAvatar() {
     emotioned: [] as unknown[],
     gazed: [] as unknown[],
 
-    walkRelative: mock(function (this: ReturnType<typeof makeWalkAvatar>, forwardM: number, strafeM: number, turnRad: number): Promise<void> {
+    walkRelative: mock(function (
+      this: ReturnType<typeof makeWalkAvatar>,
+      forwardM: number,
+      strafeM: number,
+      turnRad: number,
+    ): Promise<void> {
       this.walkRelativeCalls.push({ forwardM, strafeM, turnRad });
       return Promise.resolve();
     }),
-    walkForward: mock(function (): Promise<void> {
+    walkForward: mock((): Promise<void> => {
       // Should never be called — dispatchTags routes into walkRelative.
       return Promise.resolve();
     }),
-    strafe: mock(function (): Promise<void> {
-      return Promise.resolve();
-    }),
-    turn: mock(function (): Promise<void> {
-      return Promise.resolve();
-    }),
+    strafe: mock((): Promise<void> => Promise.resolve()),
+    turn: mock((): Promise<void> => Promise.resolve()),
     walkToSemantic: mock(function (this: ReturnType<typeof makeWalkAvatar>, target: string): Promise<void> {
       this.walkToSemanticCalls.push(target);
       return Promise.resolve();
     }),
-    faceSemantic: mock(function (): Promise<void> {
-      return Promise.resolve();
-    }),
+    faceSemantic: mock((): Promise<void> => Promise.resolve()),
     orbit: mock(function (this: ReturnType<typeof makeWalkAvatar>, opts: unknown): Promise<void> {
       this.orbitCalls.push(opts);
       return Promise.resolve();

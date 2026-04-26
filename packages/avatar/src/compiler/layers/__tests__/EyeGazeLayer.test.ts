@@ -241,7 +241,7 @@ describe('EyeGazeLayer.setGazeDistribution', () => {
     let cameraSaccades = 0;
     let sideSaccades = 0;
     const n = 200;
-    const threshold = 0.20;
+    const threshold = 0.2;
 
     for (let i = 0; i < n; i++) {
       const layer = new EyeGazeLayer();
@@ -274,7 +274,7 @@ describe('EyeGazeLayer.setGazeDistribution', () => {
     let cameraSaccades = 0;
     let sideSaccades = 0;
     const n = 200;
-    const threshold = 0.20;
+    const threshold = 0.2;
 
     for (let i = 0; i < n; i++) {
       const layer = new EyeGazeLayer();
@@ -296,7 +296,7 @@ describe('EyeGazeLayer.setGazeDistribution', () => {
 
     // 70% camera expected; side ~30%
     expect(cameraSaccades).toBeGreaterThan(n * 0.55); // mean 140, threshold 110 = mean-2.1σ
-    expect(sideSaccades).toBeGreaterThan(n * 0.15);   // mean 60,  threshold 30  = mean-3.9σ
+    expect(sideSaccades).toBeGreaterThan(n * 0.15); // mean 60,  threshold 30  = mean-3.9σ
   });
 
   test('setGazeDistribution(null) after non-null → eye position varies (OU resumes)', () => {

@@ -97,11 +97,7 @@ export class AutoBlinkLayer extends BaseLayer {
     this.nextBlinkAt = 0;
   }
 
-  sample(
-    nowMs: number,
-    _activity: AvatarActivity,
-    activeChannels?: ReadonlySet<string>,
-  ): Record<string, number> {
+  sample(nowMs: number, _activity: AvatarActivity, activeChannels?: ReadonlySet<string>): Record<string, number> {
     void _activity;
     // First-run: schedule the first blink lazily so we don't depend on a
     // constructor `now` reference (tests/mocks can move the clock).

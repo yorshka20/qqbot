@@ -1,5 +1,5 @@
-import type { FaceTarget, GazeTarget, LegacyLive2DTag, ParsedTag, WalkMotion, WalkToTarget } from './types';
 import { parseNamedHeadLookTarget } from './headLook';
+import type { FaceTarget, GazeTarget, LegacyLive2DTag, ParsedTag, WalkMotion, WalkToTarget } from './types';
 
 const DEFAULT_EMOTION = 'neutral';
 const DEFAULT_ACTION = 'idle';

@@ -495,13 +495,9 @@ export class WalkingLayer extends BaseLayer {
     const localFwd = dx * sinF + dz * cosF;
     const localRight = dx * cosF - dz * sinF;
     if (Math.abs(localFwd) >= Math.abs(localRight)) {
-      return localFwd >= 0
-        ? (this.walkCycleByDirection.forward ?? null)
-        : (this.walkCycleByDirection.backward ?? null);
+      return localFwd >= 0 ? (this.walkCycleByDirection.forward ?? null) : (this.walkCycleByDirection.backward ?? null);
     }
-    return localRight >= 0
-      ? (this.walkCycleByDirection.right ?? null)
-      : (this.walkCycleByDirection.left ?? null);
+    return localRight >= 0 ? (this.walkCycleByDirection.right ?? null) : (this.walkCycleByDirection.left ?? null);
   }
 
   reset(): void {

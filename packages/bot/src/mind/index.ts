@@ -1,12 +1,5 @@
 // Mind Phase 2 — epigenetics persistence
 export { EpigeneticsStore } from './epigenetics/EpigeneticsStore';
-// Mind Phase 3 — reflection engine
-export { ReflectionEngine } from './reflection/ReflectionEngine';
-export { REFLECTION_SYSTEM_TEMPLATE_NAME, renderReflectionPrompt } from './reflection/prompt';
-export type { ReflectionEngineOptions, ReflectionTrigger } from './reflection/types';
-// Mind Phase 3 — tone vocabulary
-export { TONE_MAPPINGS } from './tone/mappings';
-export { isTone, type Tone, type ToneMapping, type ToneModulationDelta, TONE_VOCABULARY } from './tone/types';
 export type {
   PersonaEpigenetics,
   PersonaReflection,
@@ -29,8 +22,15 @@ export {
   type PromptPatchThresholds,
   renderPromptPatchFragment,
 } from './prompt/PromptPatchAssembler';
+export { REFLECTION_SYSTEM_TEMPLATE_NAME, renderReflectionPrompt } from './reflection/prompt';
+// Mind Phase 3 — reflection engine
+export { ReflectionEngine } from './reflection/ReflectionEngine';
+export type { ReflectionEngineOptions, ReflectionTrigger } from './reflection/types';
 // Mind Phase 2 — relationship write path
 export { classifyAffinityDelta, RelationshipUpdater } from './relationships/RelationshipUpdater';
+// Mind Phase 3 — tone vocabulary
+export { TONE_MAPPINGS } from './tone/mappings';
+export { isTone, TONE_VOCABULARY, type Tone, type ToneMapping, type ToneModulationDelta } from './tone/types';
 export {
   DEFAULT_MIND_CONFIG,
   type MessageStimulus,

@@ -129,5 +129,4 @@ export class FishAudioProvider implements TTSProvider {
       durationMs: bytes.length / 4000,
     };
   }
-
 }

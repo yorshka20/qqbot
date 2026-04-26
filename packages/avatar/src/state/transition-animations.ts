@@ -22,7 +22,5 @@ import type { AvatarPose, StateNodeOutput } from './types';
 export const TRANSITION_ANIMATIONS: Record<AvatarPose, StateNodeOutput[]> = {
   neutral: [],
   listening: [],
-  thinking: [
-    { action: 'emotion_thinking', emotion: 'neutral', intensity: 0.6, duration: 0, easing: 'easeInOutCubic' },
-  ],
+  thinking: [{ action: 'emotion_thinking', emotion: 'neutral', intensity: 0.6, duration: 0, easing: 'easeInOutCubic' }],
 };

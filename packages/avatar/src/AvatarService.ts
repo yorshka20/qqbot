@@ -18,8 +18,8 @@ import {
 } from './mind/types';
 import { PreviewServer } from './preview/PreviewServer';
 import type { PreviewStatus, RendererCapabilities, WalkCommandData } from './preview/types';
-import type { AvatarTTSManager, AvatarTTSProvider } from './speech/TTSTypes';
 import { SpeechService } from './SpeechService';
+import type { AvatarTTSManager, AvatarTTSProvider } from './speech/TTSTypes';
 import { ActivityTracker } from './state/IdleStateMachine';
 import { type AvatarActivityPatch, DEFAULT_ACTIVITY, type StateNodeOutput } from './state/types';
 import type { FaceTarget, GazeTarget, WalkToTarget } from './tags';
@@ -831,7 +831,7 @@ export class AvatarService {
     if (!layer) return Promise.reject(new Error('[AvatarService] WalkingLayer is not available'));
     const { x, z, facing } = layer.getPosition();
     const targetX = x + forwardM * Math.sin(facing) + strafeM * Math.cos(facing);
-    const targetZ = z + forwardM * Math.cos(facing) + strafeM * (-Math.sin(facing));
+    const targetZ = z + forwardM * Math.cos(facing) + strafeM * -Math.sin(facing);
     const targetFacing = facing + turnRad;
     return layer.walkTo(targetX, targetZ, targetFacing);
   }

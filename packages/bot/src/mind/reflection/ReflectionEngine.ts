@@ -14,11 +14,11 @@
 // Fire-and-forget safety: runReflection() swallows all errors so callers on
 // the reply path are never blocked.
 
+import { z } from 'zod';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { logger } from '@/utils/logger';
-import { z } from 'zod';
 import type { EpigeneticsStore } from '../epigenetics/EpigeneticsStore';
 import type { ReflectionPatch } from '../epigenetics/types';
 import type { MindService } from '../MindService';
@@ -85,9 +85,7 @@ function extractJsonFromText(text: string): unknown {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function halveTraitDeltas(
-  traitDeltas: ReflectionPatch['traitDeltas'],
-): ReflectionPatch['traitDeltas'] {
+function halveTraitDeltas(traitDeltas: ReflectionPatch['traitDeltas']): ReflectionPatch['traitDeltas'] {
   if (!traitDeltas) return undefined;
   const result: ReflectionPatch['traitDeltas'] = {};
   for (const [k, v] of Object.entries(traitDeltas)) {
@@ -170,10 +168,7 @@ export class ReflectionEngine {
    *
    * Fire-and-forget: never throws, never awaits LLM work on the caller's path.
    */
-  enqueueEventReflection(
-    userText: string,
-    sessionCtx?: { groupId?: string | number },
-  ): void {
+  enqueueEventReflection(userText: string, sessionCtx?: { groupId?: string | number }): void {
     const now = Date.now();
 
     // Track activity for timer gating.
@@ -225,9 +220,7 @@ export class ReflectionEngine {
 
       const recentDialogue =
         recentMessages.length > 0
-          ? recentMessages
-              .map((m) => `${m.isBotReply ? 'Bot' : `User<${m.userId}>`}: ${m.content}`)
-              .join('\n')
+          ? recentMessages.map((m) => `${m.isBotReply ? 'Bot' : `User<${m.userId}>`}: ${m.content}`).join('\n')
           : '（无近期对话记录）';
 
       // 3. Render prompt.
@@ -362,9 +355,7 @@ export class ReflectionEngine {
       // Other rejection — write audit trail.
       const auditReason = `rejected: ${result.rejectedReason ?? 'unknown'}`;
       await this.store.writeRejectionAudit(personaId, patch, auditReason);
-      logger.warn(
-        `[ReflectionEngine] patch rejected | persona=${personaId} reason=${result.rejectedReason}`,
-      );
+      logger.warn(`[ReflectionEngine] patch rejected | persona=${personaId} reason=${result.rejectedReason}`);
     }
   }
 }

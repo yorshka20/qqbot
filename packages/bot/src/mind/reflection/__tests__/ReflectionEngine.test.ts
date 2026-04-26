@@ -10,9 +10,9 @@
 //   6. Cooldown: repeated event trigger within cooldown skips LLM.
 
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
-import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
+import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { EpigeneticsStore } from '../../epigenetics/EpigeneticsStore';
 import type { ReflectionPatch } from '../../epigenetics/types';
 import type { MindService } from '../../MindService';
@@ -110,14 +110,7 @@ function buildEngine(
     cooldownMs: 60_000,
     ...overrides,
   };
-  return new ReflectionEngine(
-    store,
-    mindSvc,
-    llmSvc,
-    fakePromptManager(),
-    fakeHistoryService(),
-    options,
-  );
+  return new ReflectionEngine(store, mindSvc, llmSvc, fakePromptManager(), fakeHistoryService(), options);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

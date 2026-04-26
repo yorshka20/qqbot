@@ -45,10 +45,10 @@ import type { MCPSystem } from '@/services/mcp/MCPInitializer';
 import { MCPInitializer } from '@/services/mcp/MCPInitializer';
 import { RetrievalService } from '@/services/retrieval';
 import { initStaticServer } from '@/services/staticServer';
-import { TTSManager } from '@/services/tts/TTSManager';
-import type { TTSProvider } from '@/services/tts/TTSProvider';
 import { FishAudioProvider } from '@/services/tts/providers/FishAudioProvider';
 import { SovitsProvider } from '@/services/tts/providers/SovitsProvider';
+import { TTSManager } from '@/services/tts/TTSManager';
+import type { TTSProvider } from '@/services/tts/TTSProvider';
 import { logger } from '@/utils/logger';
 import { registerConnectionClass } from './connection/ConnectionManager';
 
