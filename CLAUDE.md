@@ -89,6 +89,32 @@ The bot requires a `config.jsonc` file (JSONC with comments). Copy from `config.
 - **Async/Await**: Prefer async/await over callbacks
 - **Error Handling**: Custom error types (ConfigError, APIError, ConnectionError)
 
+## 修 Bug 原则：禁止 patch 思路（Root Cause First）
+
+**强约束**：遇到 bug 必须先定位**根因**，从设计层面修复；**禁止**通过堆叠局部 patch / 兜底 / fallback / 缓存 / 特例处理来"压住"症状。
+
+### 执行规则
+
+1. **先诊断根因，再写代码**：在动手修之前，必须能用一句话回答"为什么会出这个 bug"。如果答案是"在某个时刻某变量是错值"——这是症状，不是根因。继续问"为什么那个变量是错值，是哪条设计假设崩了"，直到答到"某个抽象 / 数据流 / 状态机的设计漏洞"为止
+2. **方案要消灭根因，不是绕开它**：好的修复**删除**问题成因（错误的 fallback 路径 / 缺失的权威状态 / 不一致的语义）；坏的修复**叠加**新代码（新增 memo / drift / retry / 特殊判断）。如果方案让代码变复杂、检查变多，先怀疑自己没找到根因
+3. **Patch 思路的典型信号——出现这些就停下重审**：
+   - "如果上次记住了……"（last-emitted memo）
+   - "再加一个 fallback"（已经有 fallback 了，再加一层）
+   - "在 X 之前先检查 Y"（特例守卫）
+   - "缓慢 drift 到正确值"（用时间稀释错误状态）
+   - "这种情况下临时关掉 / 跳过"（feature flag 兜底）
+   - "重试 N 次"（不知道为啥会失败，所以试运气）
+4. **唯一允许 patch 的场景：真正的 edge case**——确认是外部不可控因素（特定厂商 API 抖动 / 第三方库已知 bug / 硬件个例），且根因修复成本远超影响。这种情况必须**显式说明**：
+   - 在 PR / commit message / 代码注释里**写明这是 edge-case patch**，不是设计修复
+   - 说明 edge case 是什么、为什么不能根治
+   - 留一个 follow-up 链接（issue / ticket）记录"什么时候应该升级为根治"
+
+### 与用户协作的方式
+
+- 提交方案前，**先讲根因诊断**，再讲方案如何消灭根因；让用户能审"诊断对不对"，而不是只审"代码对不对"
+- 若发现自己的方案在叠 patch（symptom A 加 fallback，symptom B 加 memo……），**主动停下重审**："等等，这是症状治理，根因可能是 X"，不要等用户指出
+- 若用户拒绝方案、说"不要 patch"，**重新做根因诊断**，不要换一个角度的 patch 再提交
+
 ## Testing Approach
 
 When testing changes:
