@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import type { AvatarActivity } from '../../state/types';
 import type { AnimationCompiler } from '../AnimationCompiler';
 import type { AnimationLayer } from '../layers/types';
+import { eulerToQuat, loadRestPose, type RestPose } from '../restPose';
 import type { ModelKind } from '../types';
 import { newAnimationCompilerTest } from './newAnimationCompilerTest';
 
@@ -1510,6 +1511,267 @@ describe('jump vertical arc', () => {
 
       // No verticalArc set — vrm.root.y must not appear in output params
       expect(compiler.getCurrentParams()['vrm.root.y']).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rest pose anchor validation tests (root-cause fix for T-pose flash)
+// ---------------------------------------------------------------------------
+// These tests prove that the identity-quat T-pose fallback has been replaced
+// with the authoritative rest pose anchor from packages/avatar/assets/vrm-rest-pose.json.
+// ---------------------------------------------------------------------------
+
+/** Synthetic rest pose for hermetic tests: leftUpperArm has z≈1.4 rad so qw≈0.765 (far from 1). */
+function makeSynthRest(): RestPose {
+  const leftUpperArm = eulerToQuat(0, 0, 1.4);
+  const hips = eulerToQuat(0, 0, 0);
+  return {
+    euler: {
+      hips: { x: 0, y: 0, z: 0 },
+      leftUpperArm: { x: 0, y: 0, z: 1.4 },
+    },
+    quat: { hips, leftUpperArm },
+  };
+}
+
+describe('AnimationCompiler — rest pose anchor (T-pose fix)', () => {
+  let nowRef: { t: number };
+  let dateSpy: ReturnType<typeof spyOn>;
+
+  // Quat clip fixture targeting vrm.leftUpperArm — duration must match node.duration so
+  // that clipDurMs === enqueue duration and the release envelope fires correctly.
+  // node.duration = 1000ms → clipDurMs = 1000ms; eA=200ms, eR=300ms; release at 700-1000ms.
+  const sin45 = Math.sin(Math.PI / 4);
+  const cos45 = Math.cos(Math.PI / 4);
+
+  const LARM_CLIP = {
+    id: 'larm-test',
+    duration: 1, // 1 second = 1000ms to match node.duration below
+    tracks: [
+      {
+        kind: 'quat',
+        channel: 'vrm.leftUpperArm',
+        keyframes: [
+          { time: 0, x: 0, y: 0, z: 0, w: 1 },
+          { time: 1, x: 0, y: 0, z: sin45, w: cos45 },
+        ],
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    nowRef = { t: 10_000 };
+    dateSpy = spyOn(Date, 'now').mockImplementation(() => nowRef.t);
+  });
+  afterEach(() => {
+    dateSpy.mockRestore();
+  });
+
+  async function mkLArmEnv(): Promise<{ mapPath: string; cleanup: () => void }> {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'rest-pose-'));
+    writeFileSync(join(dir, 'larm-clip.json'), JSON.stringify(LARM_CLIP));
+    const mapPath = join(dir, 'map.json');
+    writeFileSync(mapPath, JSON.stringify({ larm_action: { kind: 'clip', clip: 'larm-clip.json' } }));
+    return { mapPath, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+  }
+
+  // -------------------------------------------------------------------------
+  // Test QRP-A — clip uses rest pose as slerp anchor at attack start
+  // At k≈0 (attack start), output should be near rest pose, not identity.
+  // -------------------------------------------------------------------------
+  test('QRP-A: at attack start (k→0), quat output is rest pose, not identity', async () => {
+    const rest = makeSynthRest();
+    const { mapPath, cleanup } = await mkLArmEnv();
+    try {
+      const compiler = newAnimationCompilerTest(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', crossfadeMs: 0 },
+        mapPath,
+        { restPose: rest },
+      );
+      compiler.enqueue([
+        {
+          action: 'larm_action',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 1000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
+
+      // Advance just 1 tick (≈16ms). Attack envelope is 200ms, so k ≈ 0.08.
+      nowRef.t += 16;
+      (compiler as any).tick();
+
+      const params = compiler.getCurrentParams();
+      const qw = params['vrm.leftUpperArm.qw'];
+      expect(qw).toBeDefined();
+
+      // At k≈0.08 (16ms into 200ms attack), slerp(rest, sampled_near_identity, k) ≈ rest.
+      // rest.leftUpperArm.qw = cos(0.7) ≈ 0.765 — not 1.0 (identity).
+      // The output should be closer to rest.qw (0.765) than to identity (1.0).
+      const distToRest = Math.abs((qw ?? 0) - rest.quat.leftUpperArm.w);
+      const distToIdentity = Math.abs((qw ?? 0) - 1.0);
+      expect(distToRest).toBeLessThan(distToIdentity);
+    } finally {
+      cleanup();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Test QRP-B — clip release tail returns to rest pose, not identity
+  // During release tail (k→0), qw must approach rest.qw, not 1.0 (identity).
+  // -------------------------------------------------------------------------
+  test('QRP-B: release tail drives qw toward rest pose, not identity (1.0)', async () => {
+    const rest = makeSynthRest();
+    const { mapPath, cleanup } = await mkLArmEnv();
+    try {
+      const compiler = newAnimationCompilerTest(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', crossfadeMs: 0 },
+        mapPath,
+        { restPose: rest },
+      );
+
+      // duration=1000ms matches LARM_CLIP.duration=1s so clipDurMs and node.duration align.
+      // Attack: 0–200ms, Sustain: 200–700ms, Release: 700–1000ms (eR=300ms).
+      compiler.enqueue([
+        {
+          action: 'larm_action',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 1000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
+
+      // Collect qw values late in the release window (ticks 57–61 = elapsed 912–976ms).
+      // At that point envelopeScale = (1000-elapsed)/300 ≈ 0.08–0.29 → k is small.
+      // slerp(rest, sampled, k_small) is close to rest, not identity.
+      const qwDuringRelease: number[] = [];
+      for (let i = 0; i < 62; i++) {
+        nowRef.t += 16;
+        (compiler as any).tick();
+        const qw = compiler.getCurrentParams()['vrm.leftUpperArm.qw'];
+        if (qw !== undefined && i >= 57) {
+          qwDuringRelease.push(qw);
+        }
+      }
+
+      // Late-release frames must be closer to rest.qw (0.765) than to identity (1.0).
+      expect(qwDuringRelease.length).toBeGreaterThan(0);
+      for (const qw of qwDuringRelease) {
+        const distToRest = Math.abs(qw - rest.quat.leftUpperArm.w);
+        const distToIdentity = Math.abs(qw - 1.0);
+        expect(distToRest).toBeLessThan(distToIdentity);
+      }
+    } finally {
+      cleanup();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Test QRP-C — clip-to-clip handoff: second clip slerps from rest, not identity
+  // After clip A expires, clip B's attack anchors from rest pose.
+  // -------------------------------------------------------------------------
+  test('QRP-C: after clip A expires, clip B attack anchors from rest pose, not identity', async () => {
+    const rest = makeSynthRest();
+    const { mapPath, cleanup } = await mkLArmEnv();
+    try {
+      const compiler = newAnimationCompilerTest(
+        { fps: 60, outputFps: 60, defaultEasing: 'easeInOutCubic', crossfadeMs: 0 },
+        mapPath,
+        { restPose: rest },
+      );
+
+      // Enqueue clip A and advance past its endTime so it gets harvested.
+      compiler.enqueue([
+        {
+          action: 'larm_action',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 1000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
+      nowRef.t += 1050; // past endTime = nowRef.t + 1000
+      (compiler as any).tick();
+      expect(compiler.getActiveAnimationCount()).toBe(0);
+
+      // Enqueue clip B immediately after A has expired.
+      compiler.enqueue([
+        {
+          action: 'larm_action',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 1000,
+          easing: 'easeInOutCubic',
+        },
+      ]);
+
+      // Advance 1 tick into clip B's attack — k is small, output near rest pose.
+      nowRef.t += 16;
+      (compiler as any).tick();
+
+      const qw = compiler.getCurrentParams()['vrm.leftUpperArm.qw'];
+      expect(qw).toBeDefined();
+
+      // output should be closer to rest.qw (0.765) than to identity (1.0)
+      const distToRest = Math.abs((qw ?? 0) - rest.quat.leftUpperArm.w);
+      const distToIdentity = Math.abs((qw ?? 0) - 1.0);
+      expect(distToRest).toBeLessThan(distToIdentity);
+    } finally {
+      cleanup();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Test QRP-D — crossfadeMs=0 attack evolves monotonically from rest toward target
+  // -------------------------------------------------------------------------
+  test('QRP-D: crossfadeMs=0 attack: qw evolves from rest.qw toward clip target (no identity snap)', async () => {
+    const rest = makeSynthRest();
+    const { mapPath, cleanup } = await mkLArmEnv();
+    try {
+      const compiler = newAnimationCompilerTest(
+        { fps: 60, outputFps: 60, defaultEasing: 'linear', crossfadeMs: 0 },
+        mapPath,
+        { restPose: rest },
+      );
+      compiler.enqueue([
+        {
+          action: 'larm_action',
+          emotion: 'neutral',
+          intensity: 1.0,
+          timestamp: nowRef.t,
+          duration: 1000,
+          easing: 'linear',
+        },
+      ]);
+
+      // With linear easing, attack is the first 200ms (attackRatio=0.2 × 1000ms).
+      // Collect qw across 15 ticks (≈250ms) — covers attack window.
+      const qwValues: number[] = [];
+      for (let i = 0; i < 15; i++) {
+        nowRef.t += 16;
+        (compiler as any).tick();
+        const qw = compiler.getCurrentParams()['vrm.leftUpperArm.qw'];
+        if (qw !== undefined) qwValues.push(qw);
+      }
+
+      expect(qwValues.length).toBeGreaterThan(3);
+
+      // First tick (k≈0.08, early attack) must be closer to rest.qw (0.765) than identity (1.0).
+      // This is the key assertion: slerp(rest, sampled_near_identity, k_small) ≈ rest, NOT identity.
+      const firstQw = qwValues[0];
+      expect(Math.abs(firstQw - rest.quat.leftUpperArm.w)).toBeLessThan(Math.abs(firstQw - 1.0));
     } finally {
       cleanup();
     }

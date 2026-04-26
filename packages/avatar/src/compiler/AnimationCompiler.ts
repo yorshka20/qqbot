@@ -27,7 +27,8 @@ import { PerlinNoiseLayer } from './layers/PerlinNoiseLayer';
 import { PersonaPostureLayer } from './layers/PersonaPostureLayer';
 import type { AnimationLayer } from './layers/types';
 import { WalkingLayer } from './layers/WalkingLayer';
-import { slerpQuat, slerpWithIdentity } from './quatMath';
+import { slerpQuat } from './quatMath';
+import { loadRestPose, type RestPose } from './restPose';
 import type {
   ActionSummary,
   ActiveAnimation,
@@ -117,9 +118,16 @@ const DEFAULT_INTENSITY_FLOOR = 0.1;
  * continuous layer stack right after construction (same as production). Pass `false`
  * if you need an empty {@link LayerManager}, or use `newAnimationCompilerTest()` in
  * `__tests__/newAnimationCompilerTest.ts`.
+ * @property restPose — Test-only escape hatch: inject a synthetic rest pose instead
+ * of loading from `packages/avatar/assets/vrm-rest-pose.json`. Production code must omit this so
+ * the loader runs and validates the on-disk JSON.
  */
 export type AnimationCompilerOptions = {
   registerContinuousStack?: boolean;
+  /** Test-only escape hatch: inject a synthetic rest pose instead of loading
+   *  from `packages/avatar/assets/vrm-rest-pose.json`. Production code must omit this so
+   *  the loader runs and validates the on-disk JSON. */
+  restPose?: RestPose;
 };
 
 export class AnimationCompiler extends EventEmitter {
@@ -133,6 +141,7 @@ export class AnimationCompiler extends EventEmitter {
   private springOverrides: Map<string, Partial<SpringParams>> = new Map();
   /** Per-channel resting values written by endPose harvesting; decay over time. */
   private channelBaseline: Map<string, number> = new Map();
+  private readonly restPose: RestPose;
   /** Runtime overrides for envelope/crossfade tunables — take effect next tick. */
   private envelopeOverrides: { crossfadeMs?: number; baselineHalfLifeMs?: number } = {};
   /** Runtime overrides for jitter tunables — take effect on next enqueueTagAnimation call. */
@@ -174,6 +183,7 @@ export class AnimationCompiler extends EventEmitter {
       ...config,
     };
     this.actionMap = new ActionMap(actionMapPath);
+    this.restPose = options.restPose ?? loadRestPose();
     if (options.registerContinuousStack !== false) {
       this.registerContinuousStack();
     }
@@ -888,11 +898,23 @@ export class AnimationCompiler extends EventEmitter {
     const halfLife = this.resolveBaselineHalfLifeMs();
     const decayFactor = Math.exp((-dtMs * Math.LN2) / halfLife);
     for (const [ch, v] of this.channelBaseline) {
-      const newV = v * decayFactor;
-      if (Math.abs(newV) < 1e-4) {
-        this.channelBaseline.delete(ch);
+      const restV = this.restEulerForChannel(ch);
+      if (restV === null) {
+        // Non-VRM-bone channel (blendshape, head.yaw, mouth.smile, ...) — rest = 0.
+        const newV = v * decayFactor;
+        if (Math.abs(newV) < 1e-4) {
+          this.channelBaseline.delete(ch);
+        } else {
+          this.channelBaseline.set(ch, newV);
+        }
       } else {
-        this.channelBaseline.set(ch, newV);
+        // VRM bone Euler channel — decay toward the rest pose Euler value.
+        const newV = restV + (v - restV) * decayFactor;
+        if (Math.abs(newV - restV) < 1e-4) {
+          this.channelBaseline.delete(ch);
+        } else {
+          this.channelBaseline.set(ch, newV);
+        }
       }
     }
 
@@ -1033,30 +1055,37 @@ export class AnimationCompiler extends EventEmitter {
         // Quat tracks: slerp FROM the current anchor TO the clip quat.
         // k = clamp(intensity * envelopeScale * fadeScale, 0, 1)
         //
-        // Anchor resolution (per bone, per tick):
-        //   1. Prefer `contributions[bone.q*]` if all four components are
-        //      already populated — this is the upstream continuous-layer
-        //      quat (typically IdleMotionLayer's idle-loop frame, written
-        //      in step 4b). Using it as the slerp anchor means the release
-        //      tail (k→0) blends back to the current idle pose rather than
-        //      identity, avoiding the T-pose flash at clip end.
-        //   2. Otherwise fall back to identity — preserves legacy behavior
-        //      when no layer covers this bone (e.g. Cubism models, or tests
-        //      without the continuous stack).
+        // Anchor priority (per bone, per tick):
+        //   1. `contributions[bone.q*]` if already populated — this is the
+        //      upstream continuous-layer quat (typically IdleMotionLayer's
+        //      idle-loop frame, written in step 4b). Using it means the
+        //      release tail blends back to the current idle pose.
+        //   2. `restPose.quat[bone]` — the authoritative resting pose loaded
+        //      from packages/avatar/assets/vrm-rest-pose.json. This is the fallback when
+        //      no layer currently covers the bone.
+        //   3. Throw — a bone in sampled.quat that is unknown to the rest pose
+        //      is a data error (missing JSON entry), not a silent fallback.
+        //
+        // Identity quat is NO LONGER a valid fallback. Using identity produced
+        // a T-pose flash on clip release tail (k→0) and on clip-to-clip handoffs
+        // when no idle layer covered the bone.
         //
         // Subsequent animations in `activeAnimations` will see THIS anim's
         // output as their anchor, giving a natural chained crossfade when
         // two animations target the same bone concurrently.
         for (const [bone, q] of Object.entries(sampled.quat)) {
           const k = Math.max(0, Math.min(1, anim.intensity * envelopeScale * fadeScale));
-          const ax = contributions[`${bone}.qx`];
-          const ay = contributions[`${bone}.qy`];
-          const az = contributions[`${bone}.qz`];
-          const aw = contributions[`${bone}.qw`];
-          const hasAnchor = ax !== undefined && ay !== undefined && az !== undefined && aw !== undefined;
-          const sq = hasAnchor
-            ? slerpQuat(ax, ay, az, aw, q.x, q.y, q.z, q.w, k)
-            : slerpWithIdentity(q.x, q.y, q.z, q.w, k);
+          // Quat track channels use `vrm.<bone>` format; rest pose JSON uses bare bone names.
+          const boneKey = bone.startsWith('vrm.') ? bone.slice(4) : bone;
+          const rest = this.restPose.quat[boneKey];
+          if (!rest) {
+            throw new Error(`[AnimationCompiler] rest pose missing for bone "${bone}"`);
+          }
+          const ax = contributions[`${bone}.qx`] ?? rest.x;
+          const ay = contributions[`${bone}.qy`] ?? rest.y;
+          const az = contributions[`${bone}.qz`] ?? rest.z;
+          const aw = contributions[`${bone}.qw`] ?? rest.w;
+          const sq = slerpQuat(ax, ay, az, aw, q.x, q.y, q.z, q.w, k);
           contributions[`${bone}.qx`] = sq.x;
           contributions[`${bone}.qy`] = sq.y;
           contributions[`${bone}.qz`] = sq.z;
@@ -1250,6 +1279,22 @@ export class AnimationCompiler extends EventEmitter {
 
   private resolveBaselineHalfLifeMs(): number {
     return this.envelopeOverrides.baselineHalfLifeMs ?? this.config.baselineHalfLifeMs ?? DEFAULT_BASELINE_HALF_LIFE_MS;
+  }
+
+  /**
+   * Look up the rest pose Euler value for a VRM bone Euler channel of the form
+   * `vrm.<bone>.<axis>` where axis ∈ x|y|z. Returns null for any channel that
+   * is not a VRM bone Euler channel (face blendshapes, head.yaw, etc.) so the
+   * caller can fall back to decay-toward-zero semantics for those.
+   */
+  private restEulerForChannel(channel: string): number | null {
+    const m = /^vrm\.([a-zA-Z]+)\.([xyz])$/.exec(channel);
+    if (!m) return null;
+    const bone = m[1];
+    const axis = m[2] as 'x' | 'y' | 'z';
+    const e = this.restPose.euler[bone];
+    if (!e) return null;
+    return e[axis];
   }
 
   private resolveJitter(): { duration: number; intensity: number; intensityFloor: number } {

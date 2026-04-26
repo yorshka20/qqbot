@@ -241,17 +241,38 @@ actions compatible with that model. The HUD trigger list therefore narrows
 automatically to the renderer's actual capabilities without any manual
 configuration.
 
-### Deviation from ticket §D — `restPose` not reimplemented
+### VRM Rest Pose (data layer)
 
-The original ticket §D described a `CompilerConfig.restPose` field. **This field
-was removed in a prior session** (2026-04-22, idle-loop-as-rest-pose refactor)
-because it is architecturally superseded: the `IdleMotionLayer` loop clip is the
-single source of truth for the avatar's resting posture (VRM idle = T-pose by
-spec; any non-T-pose must come from the loop clip). Reintroducing a static
-`restPose` alongside an absolute-pose loop clip would cause channel contention.
+The compiler loads an authoritative resting pose from
+`packages/avatar/assets/vrm-rest-pose.json` at construction time. This is the skeleton
+baseline used when no continuous layer currently covers a bone.
 
-§D is therefore documented as **superseded, not reimplemented**. Idle posture is
-configured via `compiler.idle.loopClipActionName` (see "VRM Idle Loop" section).
+**Where the data lives:** `packages/avatar/assets/vrm-rest-pose.json`
+(schema `vrm-rest-pose.v1`, rotation order `XYZ`, 56 VRM humanoid bones).
+
+**How it is generated:** run
+```bash
+bun run packages/avatar/scripts/extract-rest-pose.ts
+```
+The script reads frame 0 of `idle_general_01.json` and writes
+`packages/avatar/assets/vrm-rest-pose.json`. Bones absent from the source clip default
+to `{0, 0, 0}` euler. The script and JSON are both checked in.
+
+**Why it exists:** eliminates the identity-quat T-pose fallback that previously
+caused bones to snap to T-pose at clip release tail and during clip-to-clip
+handoffs. Prior to this change, any bone not covered by an active continuous
+layer fell back to identity quaternion (`0, 0, 0, 1`) — which is T-pose in
+the VRM spec. Identity quat is **no longer a valid runtime fallback** in production.
+
+**How it interacts with `IdleMotionLayer`:** `IdleMotionLayer` provides additive
+idle dynamics (breathing, micro-swaying) on top of the rest pose. Bones outside
+the idle clip's coverage no longer fall to T-pose because the rest pose JSON
+covers all 56 VRM humanoid bones. The two mechanisms are complementary: the
+JSON provides the static baseline, and the idle clip provides continuous motion.
+
+**How to extend:** regenerate `packages/avatar/assets/vrm-rest-pose.json` via the script
+when the source idle clip changes. If a new VRM model has different resting bone
+angles, update the source clip or regenerate the JSON accordingly.
 
 ---
 
@@ -421,13 +442,19 @@ clip action or unknown).
 
 ## VRM Idle Loop
 
-VRM 1.0's normalized humanoid defines T-pose as identity on every bone. Any
-non-T-pose standing posture (A-pose + breathing, a held gesture, etc.) must
-come from the `IdleMotionLayer` loop clip — the compiler has no separate
-"rest pose" fallback. A VRM avatar setup therefore **requires a loop clip**
-configured via `idle.loopClipActionName`; without one, idle channels simply
-stop being emitted and the renderer falls back to the last observed value
-(or T-pose on a fresh connection).
+VRM 1.0's normalized humanoid defines T-pose as identity on every bone. The
+compiler's rest pose JSON (`packages/avatar/assets/vrm-rest-pose.json`) provides the
+authoritative static baseline for all bones, eliminating identity-quat T-pose
+fallbacks. On top of this baseline, `IdleMotionLayer` provides **additive idle
+dynamics** — continuous motion (breathing, swaying, subtle micro-motions) that
+animates the avatar while in the resting state. `IdleMotionLayer` is therefore
+an **additive motion layer**, not the sole source of resting posture.
+
+A VRM avatar setup still benefits from a loop clip configured via
+`idle.loopClipActionName`; without one, idle motion channels (hips sway,
+spine breathing, etc.) simply stop being emitted and only the static rest pose
+is held. The renderer falls back to the last observed value (or rest pose)
+rather than T-pose.
 
 ### `idle.loopClipActionName`: continuous VRM idle clip
 
