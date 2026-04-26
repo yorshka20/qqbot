@@ -47,7 +47,7 @@ guide，并不会直接读 plan.md。>
 
 ## Task 1: Backend: 新增 tag 模型 + migration
 
-- **template**: `minimax-m2`
+- **template**: `deepseek-coder`
 - **estimated_duration**: 5-8 min
 - **depends_on**: []
 - **files**:
@@ -68,7 +68,7 @@ guide，并不会直接读 plan.md。>
 
 ## Task 2: Backend: tag CRUD endpoints
 
-- **template**: `minimax-m2`
+- **template**: `deepseek-coder`
 - **estimated_duration**: 8-12 min
 - **depends_on**: [Task 1]    # Task 1 的模型必须存在才能加 handler
 - **files**:

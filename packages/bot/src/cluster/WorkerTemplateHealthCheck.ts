@@ -6,14 +6,15 @@
  *   1. CLI binary exists and is reachable (via Bun.which)
  *   2. Binary is functional (via `<binary> --version` or equivalent)
  *   3. Template-specific env vars that ARE required (e.g. minimax-cli
- *      needs ANTHROPIC_API_KEY because it's a façade over claude binary
- *      with a custom base URL)
+ *      and deepseek-cli need an Anthropic-compat token because they're
+ *      façades over the claude binary with a custom base URL)
  *
  * NOTE: claude-cli / codex-cli / gemini-cli each have their own built-in
  * auth mechanisms (login, config files, etc.). We do NOT check for API key
  * env vars for these backends — they handle auth internally at spawn time.
- * Only minimax-cli requires an explicit key in template.env because it
- * redirects the claude binary to a third-party endpoint.
+ * Only minimax-cli (ANTHROPIC_API_KEY) and deepseek-cli (ANTHROPIC_AUTH_TOKEN)
+ * require an explicit key in template.env because they redirect the claude
+ * binary to a third-party endpoint.
  *
  * Results are logged as warnings; unavailable templates do NOT block startup.
  */
@@ -65,6 +66,14 @@ const BACKEND_REQUIREMENTS: Record<WorkerBackendType, BackendRequirements> = {
     // minimax-cli redirects claude to MiniMax's endpoint — an explicit
     // API key in template.env is mandatory (no built-in auth for MiniMax).
     requiredEnvVars: ['ANTHROPIC_API_KEY'],
+  },
+  'deepseek-cli': {
+    binary: 'claude', // façade over claude binary
+    versionArgs: ['--version'],
+    // deepseek-cli redirects claude to DeepSeek's endpoint. DeepSeek's
+    // coding-agents guide uses ANTHROPIC_AUTH_TOKEN (not _API_KEY) — using
+    // the wrong env var silently fails to authenticate.
+    requiredEnvVars: ['ANTHROPIC_AUTH_TOKEN'],
   },
 };
 

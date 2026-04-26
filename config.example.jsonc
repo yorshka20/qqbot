@@ -1040,16 +1040,19 @@
     ]
   },
   // Agent Cluster — local multi-agent task execution.
-  // Spawns coding agent workers (Claude Code / Codex / Gemini / MiniMax)
-  // to process tasks autonomously. Disabled by default. The full template
-  // (with all 4 providers + tokens) lives in config.d/cluster.jsonc which
-  // is gitignored — keep API keys there, not here.
+  // Spawns coding agent workers (Claude Code / Codex / Gemini / MiniMax /
+  // DeepSeek) to process tasks autonomously. Disabled by default. The full
+  // template (with all providers + tokens) lives in config.d/cluster.jsonc
+  // which is gitignored — keep API keys there, not here.
   //
   // Supported worker template `type` values:
-  //   - "claude-cli"  Claude Code CLI (also Anthropic-compat endpoints
-  //                   like MiniMax via ANTHROPIC_BASE_URL env override)
-  //   - "codex-cli"   OpenAI Codex CLI (`codex exec`)
-  //   - "gemini-cli"  Google Gemini CLI (`gemini -p`)
+  //   - "claude-cli"   Claude Code CLI (also Anthropic-compat endpoints
+  //                    via ANTHROPIC_BASE_URL env override)
+  //   - "minimax-cli"  MiniMax M2 CN via anthropic-compat façade
+  //   - "deepseek-cli" DeepSeek via anthropic-compat façade
+  //                    (auth via ANTHROPIC_AUTH_TOKEN, not _API_KEY)
+  //   - "codex-cli"    OpenAI Codex CLI (`codex exec`)
+  //   - "gemini-cli"   Google Gemini CLI (`gemini -p`)
   //
   // Each template inherits process.env and merges its own `env` on top,
   // so you can ship per-template API keys / model overrides.
@@ -1109,7 +1112,7 @@
       // "gemini-pro":   gemini-cli + gemini-3.1-pro (huge context)
       //
       // See config.d/cluster.jsonc for full template examples including
-      // codex-cli / gemini-cli / minimax-m2 / heavy executors.
+      // codex-cli / gemini-cli / minimax-m2 / deepseek-coder / heavy executors.
     },
     // Phase 3 multi-agent: when a ticket has `usePlanner: true` but doesn't
     // pin its own template, the scheduler picks this one. Must reference a

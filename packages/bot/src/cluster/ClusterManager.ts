@@ -10,6 +10,7 @@ import type { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
 import { logger } from '@/utils/logger';
 import { ClaudeCliBackend } from './backends/ClaudeCliBackend';
 import { CodexCliBackend } from './backends/CodexCliBackend';
+import { DeepseekBackend } from './backends/DeepseekBackend';
 import { GeminiCliBackend } from './backends/GeminiCliBackend';
 import { MinimaxBackend } from './backends/MinimaxBackend';
 import { ClusterScheduler } from './ClusterScheduler';
@@ -368,6 +369,9 @@ export class ClusterManager {
     }
     if (types.has('minimax-cli')) {
       this.workerPool.registerBackend(new MinimaxBackend());
+    }
+    if (types.has('deepseek-cli')) {
+      this.workerPool.registerBackend(new DeepseekBackend());
     }
   }
 

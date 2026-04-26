@@ -58,7 +58,7 @@ export interface ClusterConfig {
   };
 }
 
-export type WorkerBackendType = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'minimax-cli';
+export type WorkerBackendType = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'minimax-cli' | 'deepseek-cli';
 
 export type WorkerTemplateRole = 'planner' | 'executor';
 
@@ -84,6 +84,8 @@ export interface WorkerTemplateConfig {
    * Useful for API keys, base URL overrides, model selection, etc.
    * For "minimax-cli" templates, only `ANTHROPIC_API_KEY` is required —
    * the backend bakes in MiniMax CN's base URL and default model.
+   * For "deepseek-cli" templates, only `ANTHROPIC_AUTH_TOKEN` is required —
+   * the backend bakes in DeepSeek's base URL and model-alias mappings.
    */
   env?: Record<string, string>;
   maxConcurrent: number;
@@ -113,6 +115,10 @@ function defaultCommandForType(type: WorkerBackendType): string {
       // minimax-cli is a façade that delegates to the `claude` binary
       // (see MinimaxBackend) with MiniMax CN env vars baked in.
       return 'claude';
+    case 'deepseek-cli':
+      // deepseek-cli is a façade that delegates to the `claude` binary
+      // (see DeepseekBackend) with DeepSeek env vars baked in.
+      return 'claude';
     default:
       return 'claude';
   }
@@ -126,6 +132,9 @@ function defaultArgsForType(type: WorkerBackendType): string[] {
       return ['--approval-mode=yolo', '--output-format', 'stream-json'];
     case 'minimax-cli':
       // Same flags as claude-cli — minimax just routes to a different host.
+      return ['--print', '--dangerously-skip-permissions', '--output-format', 'text'];
+    case 'deepseek-cli':
+      // Same flags as claude-cli — deepseek just routes to a different host.
       return ['--print', '--dangerously-skip-permissions', '--output-format', 'text'];
     default:
       return ['--print', '--dangerously-skip-permissions', '--output-format', 'text'];
@@ -171,7 +180,12 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
   for (const [name, tpl] of Object.entries(templatesRaw)) {
     const rawType = (tpl.type as string) || 'claude-cli';
     const type: WorkerBackendType =
-      rawType === 'codex-cli' || rawType === 'gemini-cli' || rawType === 'minimax-cli' ? rawType : 'claude-cli';
+      rawType === 'codex-cli' ||
+      rawType === 'gemini-cli' ||
+      rawType === 'minimax-cli' ||
+      rawType === 'deepseek-cli'
+        ? rawType
+        : 'claude-cli';
     const rawRole = tpl.role as string | undefined;
     const role: WorkerTemplateRole | undefined = rawRole === 'planner' || rawRole === 'executor' ? rawRole : undefined;
     workerTemplates[name] = {
