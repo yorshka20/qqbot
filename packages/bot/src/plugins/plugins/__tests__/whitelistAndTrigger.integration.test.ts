@@ -100,7 +100,7 @@ async function initMessageTrigger(config: { wakeWords?: string[] } = {}) {
   container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
   container.registerInstance(
     DITokens.PROACTIVE_CONVERSATION_SERVICE,
-    { getGroupPreferenceKeys: () => [] },
+    { getGroupPreferenceKeys: () => [], isGroupSuppressed: () => false },
     { allowOverride: true },
   );
   container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
@@ -242,7 +242,7 @@ describe('Whitelist + MessageTrigger integration', () => {
       container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
       container.registerInstance(
         DITokens.PROACTIVE_CONVERSATION_SERVICE,
-        { getGroupPreferenceKeys: () => [], setGroupConfig: () => {}, setAnalysisProvider: () => {}, scheduleForGroup },
+        { getGroupPreferenceKeys: () => [], setGroupConfig: () => {}, setAnalysisProvider: () => {}, setGroupSuppressed: () => {}, isGroupSuppressed: () => false, scheduleForGroup },
         { allowOverride: true },
       );
       container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
@@ -363,7 +363,7 @@ describe('Whitelist + MessageTrigger integration', () => {
       container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
       container.registerInstance(
         DITokens.PROACTIVE_CONVERSATION_SERVICE,
-        { getGroupPreferenceKeys: () => [], setGroupConfig: () => {}, setAnalysisProvider: () => {}, scheduleForGroup },
+        { getGroupPreferenceKeys: () => [], setGroupConfig: () => {}, setAnalysisProvider: () => {}, setGroupSuppressed: () => {}, isGroupSuppressed: () => false, scheduleForGroup },
         { allowOverride: true },
       );
       container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });

@@ -53,7 +53,7 @@ export class WakeWordMatcher {
   match(groupId: string | undefined, message: string): WakeWordTriggerSource | null {
     const text = this.getTextForMatch(message).toLowerCase();
 
-    if (groupId) {
+    if (groupId && !this.proactiveConversationService?.isGroupSuppressed(groupId)) {
       const preferenceWords = this.getGroupPreferenceWords(groupId);
       if (preferenceWords.some((w) => text.includes(w))) {
         return 'wakeWordPreference';

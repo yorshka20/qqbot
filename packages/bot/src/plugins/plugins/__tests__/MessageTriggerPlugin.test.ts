@@ -134,6 +134,7 @@ describe('MessageTriggerPlugin', () => {
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
       {
         getGroupPreferenceKeys: (gid: string) => (gid === '1' && opts.preferenceKeys ? opts.preferenceKeys : []),
+        isGroupSuppressed: () => false,
       },
       { allowOverride: true },
     );
@@ -185,7 +186,7 @@ describe('MessageTriggerPlugin', () => {
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
-      { getGroupPreferenceKeys: () => [] },
+      { getGroupPreferenceKeys: () => [], isGroupSuppressed: () => false },
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
@@ -315,7 +316,7 @@ describe('MessageTriggerPlugin', () => {
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
-      { getGroupPreferenceKeys: (groupId: string) => (groupId === '1' ? ['acg'] : []) },
+      { getGroupPreferenceKeys: (groupId: string) => (groupId === '1' ? ['acg'] : []), isGroupSuppressed: () => false },
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
@@ -354,7 +355,7 @@ describe('MessageTriggerPlugin', () => {
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
-      { getGroupPreferenceKeys: (groupId: string) => (groupId === '1' ? ['acg'] : []) },
+      { getGroupPreferenceKeys: (groupId: string) => (groupId === '1' ? ['acg'] : []), isGroupSuppressed: () => false },
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
@@ -421,7 +422,7 @@ describe('MessageTriggerPlugin', () => {
     container.registerInstance(DITokens.PROMPT_MANAGER, new PromptManager(), { allowOverride: true });
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
-      { getGroupPreferenceKeys: () => [] },
+      { getGroupPreferenceKeys: () => [], isGroupSuppressed: () => false },
       { allowOverride: true },
     );
     container.registerInstance(
@@ -530,7 +531,7 @@ describe('MessageTriggerPlugin', () => {
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
-      { getGroupPreferenceKeys: () => [] },
+      { getGroupPreferenceKeys: () => [], isGroupSuppressed: () => false },
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });

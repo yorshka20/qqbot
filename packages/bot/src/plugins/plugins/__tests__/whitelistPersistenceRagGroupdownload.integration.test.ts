@@ -149,7 +149,7 @@ describe('Whitelist functional: non-whitelist skipped but DB+RAG run', () => {
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
-      { getGroupPreferenceKeys: () => [] },
+      { getGroupPreferenceKeys: () => [], isGroupSuppressed: () => false },
       { allowOverride: true },
     );
     container.registerInstance(
@@ -224,7 +224,7 @@ describe('Whitelist functional: whitelist group can trigger proactive, messageTr
     const scheduleForGroup = mock(() => {});
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
-      { getGroupPreferenceKeys: () => [], setGroupConfig: () => {}, setAnalysisProvider: () => {}, scheduleForGroup },
+      { getGroupPreferenceKeys: () => [], setGroupConfig: () => {}, setAnalysisProvider: () => {}, setGroupSuppressed: () => {}, isGroupSuppressed: () => false, scheduleForGroup },
       { allowOverride: true },
     );
     container.registerInstance(

@@ -171,8 +171,11 @@ export class ProactiveConversationPlugin extends PluginBase {
     );
     this.commandManager.register(proactiveCommandHandler, 'proactiveConversation');
 
-    // Restore persisted cooldown state
+    // Restore persisted cooldown state and sync suppression to service
     await this.loadCooldownState();
+    for (const groupId of this.cooldownUntil.keys()) {
+      this.proactiveConversationService.setGroupSuppressed(groupId, true);
+    }
   }
 
   /**
@@ -183,6 +186,7 @@ export class ProactiveConversationPlugin extends PluginBase {
     if (!until) return false;
     if (Date.now() >= until) {
       this.cooldownUntil.delete(groupId);
+      this.proactiveConversationService.setGroupSuppressed(groupId, false);
       this.saveCooldownState();
       return false;
     }
@@ -242,6 +246,7 @@ export class ProactiveConversationPlugin extends PluginBase {
       }
       const until = Date.now() + minutes * 60_000;
       this.cooldownUntil.set(groupId, until);
+      this.proactiveConversationService.setGroupSuppressed(groupId, true);
       this.saveCooldownState();
       const expireTime = new Date(until).toLocaleTimeString('zh-CN', { hour12: false });
       logger.info(`[ProactiveConversationPlugin] Cooldown activated | group=${groupId} duration=${minutes}min`);
@@ -261,6 +266,7 @@ export class ProactiveConversationPlugin extends PluginBase {
     if (sub === 'resume') {
       const wasCooling = this.cooldownUntil.has(groupId);
       this.cooldownUntil.delete(groupId);
+      this.proactiveConversationService.setGroupSuppressed(groupId, false);
       this.saveCooldownState();
       logger.info(`[ProactiveConversationPlugin] Cooldown lifted | group=${groupId} wasCooling=${wasCooling}`);
       return {

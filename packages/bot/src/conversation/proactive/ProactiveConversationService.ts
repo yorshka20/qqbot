@@ -81,6 +81,11 @@ export class ProactiveConversationService {
    * messages arrived after this boundary; if none, blocks to prevent duplicate cross-thread replies.
    */
   private lastNewThreadBoundaryByGroup = new Map<string, string>();
+  /**
+   * Groups where proactive behaviour (analysis + preference wake-word triggers) is suppressed.
+   * Managed by ProactiveConversationPlugin when cooldown is active.
+   */
+  private suppressedGroups = new Set<string>();
   /** Builds inject context (thread, preference, RAG, memory) for proactive reply at the context layer. */
   private replyContextBuilder: ProactiveReplyContextBuilder;
 
@@ -139,6 +144,26 @@ export class ProactiveConversationService {
    */
   getGroupPreferenceKeys(groupId: string): string[] {
     return this.groupConfig.get(groupId) ?? [];
+  }
+
+  /**
+   * Mark a group as suppressed (cooldown active): blocks both proactive analysis scheduling
+   * AND preference-based wake-word triggers in WakeWordMatcher.
+   */
+  setGroupSuppressed(groupId: string, suppressed: boolean): void {
+    if (suppressed) {
+      this.suppressedGroups.add(groupId);
+    } else {
+      this.suppressedGroups.delete(groupId);
+    }
+  }
+
+  /**
+   * Whether a group is currently suppressed (cooldown active).
+   * Used by WakeWordMatcher to skip preference trigger words during cooldown.
+   */
+  isGroupSuppressed(groupId: string): boolean {
+    return this.suppressedGroups.has(groupId);
   }
 
   /**

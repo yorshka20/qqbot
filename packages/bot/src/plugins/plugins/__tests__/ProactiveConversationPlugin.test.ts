@@ -89,6 +89,7 @@ describe('ProactiveConversationPlugin wake-word dedupe', () => {
     const proactiveService = {
       setGroupConfig: () => {},
       setAnalysisProvider: () => {},
+      setGroupSuppressed: () => {},
       scheduleForGroup,
     };
     container.registerInstance(DITokens.PROACTIVE_CONVERSATION_SERVICE, proactiveService, { allowOverride: true });
@@ -133,7 +134,7 @@ describe('ProactiveConversationPlugin wake-word dedupe', () => {
     const scheduleForGroup = mock(() => {});
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
-      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, scheduleForGroup },
+      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, setGroupSuppressed: () => {}, scheduleForGroup },
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
@@ -170,7 +171,7 @@ describe('ProactiveConversationPlugin wake-word dedupe', () => {
     });
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
-      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, scheduleForGroup },
+      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, setGroupSuppressed: () => {}, scheduleForGroup },
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
@@ -211,7 +212,7 @@ describe('ProactiveConversationPlugin wake-word dedupe', () => {
     });
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
-      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, scheduleForGroup },
+      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, setGroupSuppressed: () => {}, scheduleForGroup },
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
@@ -263,7 +264,7 @@ describe('ProactiveConversationPlugin skip and schedule coverage', () => {
     });
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
-      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, scheduleForGroup },
+      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, setGroupSuppressed: () => {}, scheduleForGroup },
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
@@ -293,7 +294,7 @@ describe('ProactiveConversationPlugin skip and schedule coverage', () => {
     const scheduleForGroup = mock(() => {});
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
-      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, scheduleForGroup },
+      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, setGroupSuppressed: () => {}, scheduleForGroup },
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
@@ -322,7 +323,7 @@ describe('ProactiveConversationPlugin skip and schedule coverage', () => {
     const scheduleForGroup = mock(() => {});
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
-      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, scheduleForGroup },
+      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, setGroupSuppressed: () => {}, scheduleForGroup },
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
@@ -392,7 +393,7 @@ describe('ProactiveConversationPlugin skip and schedule coverage', () => {
     promptManager.registerTemplate({ name: 'acg.trigger', namespace: 'preference', content: 'x' });
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
-      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, scheduleForGroup },
+      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, setGroupSuppressed: () => {}, scheduleForGroup },
       { allowOverride: true },
     );
     container.registerInstance(
@@ -444,7 +445,7 @@ describe('ProactiveConversationPlugin skip and schedule coverage', () => {
     promptManager.registerTemplate({ name: 'acg.trigger', namespace: 'preference', content: 'rareword' });
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
-      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, scheduleForGroup },
+      { setGroupConfig: () => {}, setAnalysisProvider: () => {}, setGroupSuppressed: () => {}, scheduleForGroup },
       { allowOverride: true },
     );
     container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
