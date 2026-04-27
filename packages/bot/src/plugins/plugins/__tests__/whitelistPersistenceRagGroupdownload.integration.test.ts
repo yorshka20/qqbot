@@ -224,7 +224,14 @@ describe('Whitelist functional: whitelist group can trigger proactive, messageTr
     const scheduleForGroup = mock(() => {});
     container.registerInstance(
       DITokens.PROACTIVE_CONVERSATION_SERVICE,
-      { getGroupPreferenceKeys: () => [], setGroupConfig: () => {}, setAnalysisProvider: () => {}, setGroupSuppressed: () => {}, isGroupSuppressed: () => false, scheduleForGroup },
+      {
+        getGroupPreferenceKeys: () => [],
+        setGroupConfig: () => {},
+        setAnalysisProvider: () => {},
+        setGroupSuppressed: () => {},
+        isGroupSuppressed: () => false,
+        scheduleForGroup,
+      },
       { allowOverride: true },
     );
     container.registerInstance(

@@ -37,17 +37,13 @@ describe('eulerToQuat', () => {
   test('(0,PI/2,0) ≈ {x:0, y:SQRT1_2, z:0, w:SQRT1_2}', () => {
     const q = eulerToQuat(0, Math.PI / 2, 0);
     const eps = 1e-9;
-    expect(
-      quatApprox(q, { x: 0, y: Math.SQRT1_2, z: 0, w: Math.SQRT1_2 }, eps),
-    ).toBe(true);
+    expect(quatApprox(q, { x: 0, y: Math.SQRT1_2, z: 0, w: Math.SQRT1_2 }, eps)).toBe(true);
   });
 
   test('(0,0,PI/2) ≈ {x:0, y:0, z:SQRT1_2, w:SQRT1_2}', () => {
     const q = eulerToQuat(0, 0, Math.PI / 2);
     const eps = 1e-9;
-    expect(
-      quatApprox(q, { x: 0, y: 0, z: Math.SQRT1_2, w: Math.SQRT1_2 }, eps),
-    ).toBe(true);
+    expect(quatApprox(q, { x: 0, y: 0, z: Math.SQRT1_2, w: Math.SQRT1_2 }, eps)).toBe(true);
   });
 
   test('(0.1, 0.2, 0.3) produces a unit quaternion', () => {

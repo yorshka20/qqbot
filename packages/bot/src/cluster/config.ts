@@ -180,10 +180,7 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
   for (const [name, tpl] of Object.entries(templatesRaw)) {
     const rawType = (tpl.type as string) || 'claude-cli';
     const type: WorkerBackendType =
-      rawType === 'codex-cli' ||
-      rawType === 'gemini-cli' ||
-      rawType === 'minimax-cli' ||
-      rawType === 'deepseek-cli'
+      rawType === 'codex-cli' || rawType === 'gemini-cli' || rawType === 'minimax-cli' || rawType === 'deepseek-cli'
         ? rawType
         : 'claude-cli';
     const rawRole = tpl.role as string | undefined;

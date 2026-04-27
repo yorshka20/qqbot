@@ -82,15 +82,11 @@ export function loadRestPose(jsonPath?: string): RestPose {
   const obj = parsed as Record<string, unknown>;
 
   if (obj['$schema'] !== 'vrm-rest-pose.v1') {
-    throw new Error(
-      `[restPose] schema mismatch: expected "vrm-rest-pose.v1", got "${obj['$schema']}"`,
-    );
+    throw new Error(`[restPose] schema mismatch: expected "vrm-rest-pose.v1", got "${obj['$schema']}"`);
   }
 
   if (obj['rotationOrder'] !== 'XYZ') {
-    throw new Error(
-      `[restPose] unsupported rotationOrder: expected "XYZ", got "${obj['rotationOrder']}"`,
-    );
+    throw new Error(`[restPose] unsupported rotationOrder: expected "XYZ", got "${obj['rotationOrder']}"`);
   }
 
   const euler = obj['euler'] as RestPoseEuler;

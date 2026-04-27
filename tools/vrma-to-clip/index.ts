@@ -1,5 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { dirname, basename, extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import { convert } from './src/convert.js';
 
 const args = process.argv.slice(2);
@@ -10,15 +10,12 @@ const quiet = quietIdx !== -1;
 const positionals = args.filter((a) => a !== '-q' && a !== '--quiet');
 
 if (positionals.length === 0) {
-  process.stderr.write(
-    'Usage: bun run tools/vrma-to-clip/index.ts <input.vrma|.glb> [output.json] [-q|--quiet]\n',
-  );
+  process.stderr.write('Usage: bun run tools/vrma-to-clip/index.ts <input.vrma|.glb> [output.json] [-q|--quiet]\n');
   process.exit(1);
 }
 
 const inputPath = positionals[0];
-const outputPath =
-  positionals[1] ?? join(dirname(inputPath), basename(inputPath, extname(inputPath)) + '.json');
+const outputPath = positionals[1] ?? join(dirname(inputPath), basename(inputPath, extname(inputPath)) + '.json');
 
 const id = basename(inputPath, extname(inputPath));
 
@@ -62,9 +59,7 @@ try {
     process.stdout.write(
       `  bone tracks: ${boneTracks.length} (${boneNames}${boneEllipsis}) — ${quatBoneTracks.length} quat, ${scalarAxisTracks.length} scalar-axes\n`,
     );
-    process.stdout.write(
-      `  expression tracks: ${exprTracks.length}${exprNames ? ` (${exprNames})` : ''}\n`,
-    );
+    process.stdout.write(`  expression tracks: ${exprTracks.length}${exprNames ? ` (${exprNames})` : ''}\n`);
     process.stdout.write(`  root motion: ${hasRoot ? 'yes' : 'no'}\n`);
     process.stdout.write(`  keyframes total: ${totalKeyframes}\n`);
     process.stdout.write(`  output size: ${outputSizeKB}KB\n`);
