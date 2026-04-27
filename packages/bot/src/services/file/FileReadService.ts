@@ -1,6 +1,18 @@
 // File Read Service - provides safe file/directory access within project root
 
-import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  closeSync,
+  existsSync,
+  futimesSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, extname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import type { FileReadServiceConfig } from '@/core/config/types/bot';
 import { logger } from '@/utils/logger';
@@ -282,6 +294,73 @@ export class FileReadService {
       const msg = err instanceof Error ? err.message : String(err);
       logger.warn('[FileReadService] writeFile failed:', err);
       return { success: false, error: `写入文件失败: ${msg}` };
+    }
+  }
+
+  /**
+   * Append text content to a file within the project root.
+   * Creates parent directories and the file itself if needed.
+   * When noCheck is true, filterPaths are skipped (caller must restrict who uses noCheck).
+   */
+  appendFile(path: string, content: string, noCheck = false): WriteFileResult {
+    const { resolved, error } = this.resolvePath(path, noCheck);
+    if (error) {
+      return { success: false, error };
+    }
+
+    try {
+      // Reject if target exists but is not a regular file (avoid appending to dirs/sockets/etc.)
+      if (existsSync(resolved)) {
+        const stat = statSync(resolved);
+        if (!stat.isFile()) {
+          return { success: false, error: '路径不是文件' };
+        }
+      }
+      mkdirSync(dirname(resolved), { recursive: true });
+      appendFileSync(resolved, content, 'utf-8');
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('[FileReadService] appendFile failed:', err);
+      return { success: false, error: `追加文件失败: ${msg}` };
+    }
+  }
+
+  /**
+   * Touch a file: create it (empty) if missing, otherwise update its access/modification time.
+   * Creates parent directories if needed.
+   * When noCheck is true, filterPaths are skipped (caller must restrict who uses noCheck).
+   */
+  touchFile(path: string, noCheck = false): WriteFileResult {
+    const { resolved, error } = this.resolvePath(path, noCheck);
+    if (error) {
+      return { success: false, error };
+    }
+
+    try {
+      if (existsSync(resolved)) {
+        const stat = statSync(resolved);
+        if (!stat.isFile()) {
+          return { success: false, error: '路径不是文件' };
+        }
+        const now = new Date();
+        const fd = openSync(resolved, 'r');
+        try {
+          futimesSync(fd, now, now);
+        } finally {
+          closeSync(fd);
+        }
+      } else {
+        mkdirSync(dirname(resolved), { recursive: true });
+        // 'wx' flag would error if exists; we already checked existsSync above
+        const fd = openSync(resolved, 'w');
+        closeSync(fd);
+      }
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('[FileReadService] touchFile failed:', err);
+      return { success: false, error: `创建文件失败: ${msg}` };
     }
   }
 

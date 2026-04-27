@@ -127,6 +127,109 @@ export class CatCommand implements CommandHandler {
 }
 
 /**
+ * Touch command - create an empty file or update its mtime (mirrors POSIX touch).
+ */
+@Command({
+  name: 'touch',
+  description: 'Create an empty file (or update its mtime). Admins can use absolute paths.',
+  usage: '/touch <path>',
+  permissions: ['admin'],
+})
+@injectable()
+export class TouchCommand implements CommandHandler {
+  name = 'touch';
+  description = 'Create an empty file (or update its mtime). Admins can use absolute paths.';
+  usage = '/touch <path>';
+
+  constructor(@inject(DITokens.FILE_READ_SERVICE) private fileReadService: FileReadService) {}
+
+  execute(args: string[], context: CommandContext): CommandResult {
+    const path = args.join(' ').trim();
+    if (!path) {
+      return {
+        success: false,
+        error: '请提供文件路径，例如: /touch notes/todo.md',
+      };
+    }
+
+    const noCheck = !!context.metadata.isPrivileged;
+    const result = this.fileReadService.touchFile(path, noCheck);
+    if (!result.success) {
+      return { success: false, error: result.error ?? '未知错误' };
+    }
+
+    logger.info(`[TouchCommand] File touched | path=${path}`);
+    const messageBuilder = new MessageBuilder();
+    messageBuilder.text(`✅ 已创建/更新文件: ${path}`);
+    return { success: true, segments: messageBuilder.build() };
+  }
+}
+
+/**
+ * Write command - append text to a local file (append-only for safety).
+ *
+ * Usage: /write <path> <content...> [--newline=true]
+ *   - Path is the first whitespace-delimited token; the rest is treated as content.
+ *   - Pass --newline=true to append a trailing '\n' after the content.
+ */
+@Command({
+  name: 'write',
+  description:
+    'Append text to a file (append-only). Path is the first token; remaining args are content. Admins can use absolute paths.',
+  usage: '/write <path> <content...> [--newline=true]',
+  permissions: ['admin'],
+})
+@injectable()
+export class WriteCommand implements CommandHandler {
+  name = 'write';
+  description =
+    'Append text to a file (append-only). Path is the first token; remaining args are content. Admins can use absolute paths.';
+  usage = '/write <path> <content...> [--newline=true]';
+
+  private readonly argsConfig: ParserConfig = {
+    options: {
+      newline: { property: 'newline', type: 'boolean' },
+    },
+  };
+
+  constructor(@inject(DITokens.FILE_READ_SERVICE) private fileReadService: FileReadService) {}
+
+  execute(args: string[], context: CommandContext): CommandResult {
+    const { text, options } = CommandArgsParser.parse<{ newline?: boolean }>(args, this.argsConfig);
+
+    // Split path (first token) from content (the rest)
+    const trimmed = text.replace(/^\s+/, '');
+    const match = trimmed.match(/^(\S+)(?:\s+([\s\S]*))?$/);
+    if (!match) {
+      return {
+        success: false,
+        error: '请提供文件路径和要追加的内容，例如: /write notes/todo.md 新的一项',
+      };
+    }
+    const path = match[1];
+    const content = match[2] ?? '';
+    if (!content) {
+      return {
+        success: false,
+        error: '请提供要追加的内容；如需仅创建空文件请使用 /touch',
+      };
+    }
+
+    const payload = options.newline ? `${content}\n` : content;
+    const noCheck = !!context.metadata.isPrivileged;
+    const result = this.fileReadService.appendFile(path, payload, noCheck);
+    if (!result.success) {
+      return { success: false, error: result.error ?? '未知错误' };
+    }
+
+    logger.info(`[WriteCommand] Appended ${payload.length} chars | path=${path}`);
+    const messageBuilder = new MessageBuilder();
+    messageBuilder.text(`✅ 已追加 ${payload.length} 字符到 ${path}`);
+    return { success: true, segments: messageBuilder.build() };
+  }
+}
+
+/**
  * Fetch command - send a file from project root via QQ file upload API
  */
 @Command({
