@@ -125,7 +125,7 @@ function attachAvatar(mind: MindService, modulationProvider: MindModulationAdapt
  */
 function startPostureDriver(mind: MindService, avatar: AvatarService): ReturnType<typeof setInterval> {
   const push = (): void => {
-    const bias = derivePersonaPostureBias(mind.getPhenotype());
+    const bias = derivePersonaPostureBias(mind.getPhenotype(), mind.getCorePersona().modulation.spatial);
     avatar.setPersonaPostureBias(bias);
   };
   push();

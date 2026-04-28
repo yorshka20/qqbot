@@ -17,6 +17,7 @@
  */
 
 import type { PersonaPostureBias } from '@qqbot/avatar';
+import type { CoreDNA } from './personaStore/CoreDNALoader';
 import type { MindConfig, Phenotype, Stimulus } from './types';
 
 /** Clamp to [0, 1]. */
@@ -111,20 +112,23 @@ export function deriveModulation(
  * All outputs are in PersonaPostureLayer's documented ranges: lean and
  * headTilt in [-1, 1], distribution weights are non-negative.
  */
-export function derivePersonaPostureBias(phenotype: Phenotype): PersonaPostureBias {
+export function derivePersonaPostureBias(
+  phenotype: Phenotype,
+  spatial: CoreDNA['modulation']['spatial'],
+): PersonaPostureBias {
   const fatigue = clamp01(phenotype.fatigue);
   // Safe default: Phenotype does not yet define valence (Phase 1).
   const rawValence = (phenotype as { valence?: number }).valence ?? 0;
   const valence = Math.max(-1, Math.min(1, rawValence));
 
-  let camera = 0.6;
-  let side = 0.3;
-  let down = 0.1;
+  let camera = spatial.gazeDistributionBaseline.camera;
+  let side = spatial.gazeDistributionBaseline.side;
+  let down = spatial.gazeDistributionBaseline.down;
 
   // Fatigue → less eye contact, more side + down
-  camera -= fatigue * 0.4;
-  side += fatigue * 0.2;
-  down += fatigue * 0.2;
+  camera -= fatigue * spatial.fatigueResponse.cameraDrop;
+  side += fatigue * spatial.fatigueResponse.sideRise;
+  down += fatigue * spatial.fatigueResponse.downRise;
 
   // Negative valence → look down (averted gaze, sadness)
   if (valence < 0) {
@@ -141,8 +145,8 @@ export function derivePersonaPostureBias(phenotype: Phenotype): PersonaPostureBi
   }
 
   return {
-    postureLean: clampRange(0.08 + fatigue * 0.25, -1, 1),
-    headTiltBias: 0,
+    postureLean: clampRange(spatial.postureLeanBaseline + fatigue * spatial.fatigueResponse.leanGain, -1, 1),
+    headTiltBias: spatial.headTiltBias,
     gazeDistribution: {
       camera: Math.max(0, camera),
       side: Math.max(0, side),

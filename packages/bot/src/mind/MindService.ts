@@ -20,6 +20,7 @@ import { logger } from '@/utils/logger';
 import type { EpigeneticsStore } from './epigenetics/EpigeneticsStore';
 import { applyStimulus, deriveModulation, freshPhenotype, tickPhenotype } from './ode';
 import { type CharacterBible, EMPTY_BIBLE } from './personaStore/CharacterBibleLoader';
+import { type CoreDNA, DEFAULT_CORE_DNA } from './personaStore/CoreDNALoader';
 import {
   buildPromptPatch,
   buildPromptPatchAsync,
@@ -55,6 +56,8 @@ export class MindService {
   private currentTone: Tone = 'neutral';
   /** Character bible loaded at startup. Defaults to EMPTY_BIBLE if no file found. */
   private bible: CharacterBible = EMPTY_BIBLE;
+  /** Core DNA loaded at startup. Defaults to DEFAULT_CORE_DNA if no file found. */
+  private corePersona: CoreDNA = DEFAULT_CORE_DNA;
   private readonly messageHandler = (event: AgendaSystemEvent): void => {
     this.handleMessageEvent(event);
   };
@@ -108,6 +111,14 @@ export class MindService {
 
   getCharacterBible(): CharacterBible {
     return this.bible;
+  }
+
+  setCorePersona(dna: CoreDNA): void {
+    this.corePersona = dna;
+  }
+
+  getCorePersona(): CoreDNA {
+    return this.corePersona;
   }
 
   getConfig(): MindConfig {

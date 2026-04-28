@@ -14,6 +14,7 @@ import { logger } from '@/utils/logger';
 import { MindModulationAdapter } from './MindModulationAdapter';
 import { MindService } from './MindService';
 import { type CharacterBible, loadCharacterBible } from './personaStore/CharacterBibleLoader';
+import { type CoreDNA, loadCoreDNA } from './personaStore/CoreDNALoader';
 import { type MindConfig, mergeMindConfig } from './types';
 
 export interface MindComponents {
@@ -28,12 +29,35 @@ function countNonEmptySections(bible: CharacterBible): number {
   ).length;
 }
 
+/**
+ * Three-layer priority merge: user-config > Core DNA > DEFAULT_MIND_CONFIG.
+ * Scope kept narrow this ticket: only fatigue drop coefficients are merged.
+ * Other Core DNA fields are read directly via mindService.getCorePersona() by
+ * adapters/ode helpers — see ticket §备注 三层优先级 for the降级方案 we adopted.
+ */
+function applyCoreDnaToConfig(config: MindConfig, dna: CoreDNA, raw: Record<string, unknown> | undefined): MindConfig {
+  const userMod = (raw?.modulation ?? {}) as Partial<MindConfig['modulation']>;
+  return {
+    ...config,
+    modulation: {
+      fatigueIntensityDrop:
+        userMod.fatigueIntensityDrop !== undefined
+          ? config.modulation.fatigueIntensityDrop
+          : dna.emotion.fatigueIntensityDrop,
+      fatigueSpeedDrop:
+        userMod.fatigueSpeedDrop !== undefined ? config.modulation.fatigueSpeedDrop : dna.emotion.fatigueSpeedDrop,
+    },
+  };
+}
+
 export class MindInitializer {
   static async initialize(deps: {
     rawConfig: Record<string, unknown> | undefined;
     internalEventBus: InternalEventBus;
   }): Promise<MindComponents> {
-    const config = mergeMindConfig(deps.rawConfig);
+    const baseConfig = mergeMindConfig(deps.rawConfig);
+    const dna = await loadCoreDNA({ dataDir: baseConfig.dataDir, personaId: baseConfig.personaId });
+    const config = applyCoreDnaToConfig(baseConfig, dna, deps.rawConfig);
     logger.info(
       `[MindInitializer] Mind system ${config.enabled ? 'enabled' : 'disabled'} | persona=${config.personaId} tickMs=${config.tickMs}`,
     );
@@ -41,6 +65,7 @@ export class MindInitializer {
 
     const bible = await loadCharacterBible({ dataDir: config.dataDir, personaId: config.personaId });
     mindService.setCharacterBible(bible);
+    mindService.setCorePersona(dna);
     const nonEmptySections = countNonEmptySections(bible);
     logger.info(
       `[MindService] character bible loaded | persona=${config.personaId} | sections=${nonEmptySections}/6 | rawBytes=${bible.raw.length}`,

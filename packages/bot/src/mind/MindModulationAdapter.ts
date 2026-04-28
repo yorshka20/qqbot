@@ -21,6 +21,7 @@ export class MindModulationAdapter implements MindModulationProvider {
     const { intensityScale, speedScale, durationBias } = this.mind.deriveModulation();
     const toneMapping = TONE_MAPPINGS[this.mind.getCurrentTone()];
     const { modulationDelta } = toneMapping;
+    const cdna = this.mind.getCorePersona();
 
     const combined: MindModulation = {
       amplitude: { intensityScale: intensityScale * modulationDelta.intensityScale },
@@ -29,9 +30,26 @@ export class MindModulationAdapter implements MindModulationProvider {
         durationBias: (durationBias ?? 0) + modulationDelta.durationBias,
       },
     };
-    if (modulationDelta.variantWeights) {
-      combined.actionPref = { variantWeights: modulationDelta.variantWeights };
+
+    // actionPref: persona variantWeights baseline + tone overrides on key collision; persona forbiddenActions appended
+    const personaWeights = cdna.modulation.actionPref.variantWeights;
+    const toneWeights = modulationDelta.variantWeights ?? {};
+    const merged: Record<string, readonly number[]> = { ...personaWeights, ...toneWeights };
+    const hasMerged = Object.keys(merged).length > 0;
+    const forbidden = cdna.modulation.actionPref.forbiddenActions;
+    if (hasMerged || forbidden.length > 0) {
+      combined.actionPref = {
+        ...(hasMerged ? { variantWeights: merged } : {}),
+        ...(forbidden.length > 0 ? { forbiddenActions: forbidden } : {}),
+      };
     }
+
+    // ambient: persona baseline × fatigue drop, always emit (small object)
+    const fatigue = this.mind.getPhenotype().fatigue;
+    const clampedFatigue = Math.max(0, Math.min(1, fatigue));
+    const gain = cdna.modulation.ambient.gainScale * (1 - cdna.modulation.ambient.fatigueDrop * clampedFatigue);
+    combined.ambient = { gainScale: Math.max(0, gain) };
+
     return combined;
   }
 }

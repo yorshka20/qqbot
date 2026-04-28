@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { applyStimulus, deriveModulation, derivePersonaPostureBias, freshPhenotype, tickPhenotype } from '../ode';
+import { DEFAULT_CORE_DNA } from '../personaStore/CoreDNALoader';
 import { DEFAULT_MIND_CONFIG, type MindConfig } from '../types';
+
+const DEFAULT_SPATIAL = DEFAULT_CORE_DNA.modulation.spatial;
 
 function config(overrides: Partial<MindConfig> = {}): MindConfig {
   return { ...DEFAULT_MIND_CONFIG, ...overrides, enabled: true };
@@ -119,7 +122,7 @@ describe('derivePersonaPostureBias', () => {
   type PhenotypeWithValence = ReturnType<typeof freshPhenotype> & { valence?: number };
 
   test('fatigue=0, valence=0 → camera ≥ 0.5 and down is smallest weight', () => {
-    const bias = derivePersonaPostureBias(freshPhenotype());
+    const bias = derivePersonaPostureBias(freshPhenotype(), DEFAULT_SPATIAL);
     const d = bias.gazeDistribution ?? {};
     expect(d.camera ?? 0).toBeGreaterThanOrEqual(0.5);
     expect(d.down ?? 0).toBeLessThanOrEqual(d.camera ?? 0);
@@ -127,7 +130,7 @@ describe('derivePersonaPostureBias', () => {
   });
 
   test('fatigue=1, valence=0 → camera < 0.3 and side+down > baseline', () => {
-    const bias = derivePersonaPostureBias({ ...freshPhenotype(), fatigue: 1 } as PhenotypeWithValence);
+    const bias = derivePersonaPostureBias({ ...freshPhenotype(), fatigue: 1 } as PhenotypeWithValence, DEFAULT_SPATIAL);
     const d = bias.gazeDistribution ?? {};
     expect(d.camera ?? 0).toBeLessThan(0.3);
     expect((d.side ?? 0) + (d.down ?? 0)).toBeGreaterThan(0.4);
@@ -135,14 +138,14 @@ describe('derivePersonaPostureBias', () => {
 
   test('fatigue=0, valence=-0.6 → down > camera', () => {
     const p = { ...freshPhenotype(), valence: -0.6 } as PhenotypeWithValence;
-    const bias = derivePersonaPostureBias(p as ReturnType<typeof freshPhenotype>);
+    const bias = derivePersonaPostureBias(p as ReturnType<typeof freshPhenotype>, DEFAULT_SPATIAL);
     const d = bias.gazeDistribution ?? {};
     expect(d.down ?? 0).toBeGreaterThan(d.camera ?? 0);
   });
 
   test('fatigue=0, valence=+0.8 → camera is the largest weight and >= 0.7', () => {
     const p = { ...freshPhenotype(), valence: 0.8 } as PhenotypeWithValence;
-    const bias = derivePersonaPostureBias(p as ReturnType<typeof freshPhenotype>);
+    const bias = derivePersonaPostureBias(p as ReturnType<typeof freshPhenotype>, DEFAULT_SPATIAL);
     const d = bias.gazeDistribution ?? {};
     expect(d.camera ?? 0).toBeGreaterThanOrEqual(0.7);
     expect(d.camera ?? 0).toBeGreaterThanOrEqual(d.side ?? 0);
@@ -153,7 +156,7 @@ describe('derivePersonaPostureBias', () => {
     for (const fatigue of [0, 0.5, 1]) {
       for (const valence of [-1, 0, 1]) {
         const p = { ...freshPhenotype(), fatigue, valence } as PhenotypeWithValence;
-        const bias = derivePersonaPostureBias(p as ReturnType<typeof freshPhenotype>);
+        const bias = derivePersonaPostureBias(p as ReturnType<typeof freshPhenotype>, DEFAULT_SPATIAL);
         const d = bias.gazeDistribution ?? {};
         expect(d.camera ?? 0).toBeGreaterThanOrEqual(0);
         expect(d.side ?? 0).toBeGreaterThanOrEqual(0);
@@ -164,15 +167,15 @@ describe('derivePersonaPostureBias', () => {
 
   test('postureLean stays in [-1, 1]', () => {
     for (const fatigue of [0, 0.5, 1]) {
-      const bias = derivePersonaPostureBias({ ...freshPhenotype(), fatigue });
+      const bias = derivePersonaPostureBias({ ...freshPhenotype(), fatigue }, DEFAULT_SPATIAL);
       expect(bias.postureLean ?? 0).toBeGreaterThanOrEqual(-1);
       expect(bias.postureLean ?? 0).toBeLessThanOrEqual(1);
     }
   });
 
   test('high fatigue amplifies lean', () => {
-    const low = derivePersonaPostureBias({ ...freshPhenotype(), fatigue: 0.2 });
-    const high = derivePersonaPostureBias({ ...freshPhenotype(), fatigue: 0.8 });
+    const low = derivePersonaPostureBias({ ...freshPhenotype(), fatigue: 0.2 }, DEFAULT_SPATIAL);
+    const high = derivePersonaPostureBias({ ...freshPhenotype(), fatigue: 0.8 }, DEFAULT_SPATIAL);
     expect(high.postureLean ?? 0).toBeGreaterThan(low.postureLean ?? 0);
   });
 });
