@@ -9,6 +9,7 @@ import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { NormalizedNoticeEvent } from '@/events/types';
 import type { HookContext } from '@/hooks/types';
 import type { PluginManager } from '@/plugins/PluginManager';
+import type { ProactiveConversationPlugin } from '@/plugins/plugins/ProactiveConversationPlugin';
 import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
 import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
@@ -18,10 +19,12 @@ interface MessageOperationPluginConfig {
   /**
    * Map of reaction ID to operation
    * Key: reaction ID (string)
-   * Value: operation type ('recall' for message recall, 'reply' for bot reply to that message)
-   * Example: { "38": "recall", "1": "reply" }
+   * Value: operation type ('recall' for message recall, 'reply' for bot reply to that message, 'mute_proactive' for suppressing proactive conversation)
+   * Example: { "38": "recall", "1": "reply", "265": "mute_proactive" }
    */
   reactionOperations?: Record<string, string>;
+  /** Duration in minutes for mute_proactive operation. Default: 10. */
+  muteProactiveDurationMinutes?: number;
 }
 
 @RegisterPlugin({
@@ -35,6 +38,7 @@ export class MessageOperationPlugin extends PluginBase {
    * Populated from config.reactionOperations
    */
   private reactionToOperationMap: Map<string, string> = new Map();
+  private muteProactiveDurationMinutes = 10;
 
   private messageAPI!: MessageAPI;
   private databaseManager!: DatabaseManager;
@@ -65,6 +69,9 @@ export class MessageOperationPlugin extends PluginBase {
         for (const [reactionId, operation] of Object.entries(pluginConfig.reactionOperations)) {
           this.reactionToOperationMap.set(reactionId, operation);
         }
+      }
+      if (pluginConfig?.muteProactiveDurationMinutes != null && pluginConfig.muteProactiveDurationMinutes > 0) {
+        this.muteProactiveDurationMinutes = pluginConfig.muteProactiveDurationMinutes;
       }
     } catch (error) {
       logger.error('[MessageOperationPlugin] Error loading config:', error);
@@ -169,6 +176,9 @@ export class MessageOperationPlugin extends PluginBase {
       case 'reply':
         await this.replyMessage(context);
         break;
+      case 'mute_proactive':
+        this.muteProactive(context);
+        break;
       default:
         logger.warn(`[MessageOperationPlugin] Unknown operation: ${operation}`);
     }
@@ -204,6 +214,29 @@ export class MessageOperationPlugin extends PluginBase {
         `[MessageOperationPlugin] Failed to recall message (likely not bot's message) | messageSeq=${messageSeq} | groupId=${groupId} | error=${(error as Error).message}`,
       );
     }
+  }
+
+  /**
+   * Mute proactive conversation for the group where the reaction was made.
+   */
+  private muteProactive(context: {
+    reactionId: string;
+    messageSeq: number;
+    groupId: number | string;
+    userId: number | string;
+    noticeEvent: NormalizedNoticeEvent;
+  }): void {
+    const groupId = String(context.groupId);
+    const pluginManager = getContainer().resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
+    const proactivePlugin = pluginManager?.getPluginAs<ProactiveConversationPlugin>('proactiveConversation');
+    if (!proactivePlugin) {
+      logger.warn('[MessageOperationPlugin] ProactiveConversationPlugin not found, cannot mute');
+      return;
+    }
+    proactivePlugin.activateCooldown(groupId, this.muteProactiveDurationMinutes);
+    logger.info(
+      `[MessageOperationPlugin] Proactive muted for ${this.muteProactiveDurationMinutes}min in group ${groupId} via reaction ${context.reactionId}`,
+    );
   }
 
   /**

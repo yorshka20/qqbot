@@ -224,9 +224,13 @@
           "enabled": true,
           // Map of reaction ID to operation
           // When someone reacts with reaction ID "38" to bot's message, recall the message
+          // "mute_proactive" suppresses proactive conversation for the group (default 10 min)
           "reactionOperations": {
-            "38": "recall"
-          }
+            "38": "recall",
+            "265": "mute_proactive"
+          },
+          // Duration in minutes for mute_proactive operation (default: 10)
+          "muteProactiveDurationMinutes": 10
         }
       },
       // Nudge Plugin - automatically replies with bot status when bot is nudged (戳一戳)

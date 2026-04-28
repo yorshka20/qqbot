@@ -229,6 +229,18 @@ export class ProactiveConversationPlugin extends PluginBase {
   }
 
   /**
+   * Activate cooldown for a group (suppress proactive analysis for N minutes).
+   * Can be called externally by other plugins (e.g. MessageOperationPlugin on reaction).
+   */
+  activateCooldown(groupId: string, minutes: number): void {
+    const until = Date.now() + minutes * 60_000;
+    this.cooldownUntil.set(groupId, until);
+    this.proactiveConversationService.setGroupSuppressed(groupId, true);
+    this.saveCooldownState();
+    logger.info(`[ProactiveConversationPlugin] Cooldown activated | group=${groupId} duration=${minutes}min`);
+  }
+
+  /**
    * /proactive command handler.
    */
   private executeProactiveCommand(args: string[], context: CommandContext): CommandResult {
@@ -244,12 +256,8 @@ export class ProactiveConversationPlugin extends PluginBase {
       if (Number.isNaN(minutes) || minutes <= 0) {
         return { success: false, error: `无效的时间: ${args[1]}，请提供正整数（分钟）` };
       }
-      const until = Date.now() + minutes * 60_000;
-      this.cooldownUntil.set(groupId, until);
-      this.proactiveConversationService.setGroupSuppressed(groupId, true);
-      this.saveCooldownState();
-      const expireTime = new Date(until).toLocaleTimeString('zh-CN', { hour12: false });
-      logger.info(`[ProactiveConversationPlugin] Cooldown activated | group=${groupId} duration=${minutes}min`);
+      this.activateCooldown(groupId, minutes);
+      const expireTime = new Date(this.cooldownUntil.get(groupId)!).toLocaleTimeString('zh-CN', { hour12: false });
       return {
         success: true,
         segments: [
