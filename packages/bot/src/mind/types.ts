@@ -91,6 +91,8 @@ export interface MindConfig {
   enabled: boolean;
   /** Persona id to load. Phase 1 treats this as a label only. */
   personaId: PersonaId;
+  /** Root directory for persona-related on-disk assets (Bible, future Core DNA, …). Default './data/mind'. */
+  dataDir: string;
   /** Tick interval in ms. Default 1000 (1Hz). Lower = smoother HUD but more CPU. */
   tickMs: number;
 
@@ -142,6 +144,10 @@ export interface MindConfig {
     fatigueModerateMin: number;
     /** Above this, strongest-wording hint. */
     fatigueSevereMin: number;
+    /** Whether to inject persona_identity / persona_boundaries blocks from CharacterBible. Default true. */
+    injectBible: boolean;
+    /** Max chars per Bible section when truncating for prompt budget. Default 800 (chars, not tokens). */
+    bibleMaxCharsPerSection: number;
   };
 
   /**
@@ -231,6 +237,7 @@ export interface MindConfig {
 export const DEFAULT_MIND_CONFIG: MindConfig = {
   enabled: false,
   personaId: 'default',
+  dataDir: './data/mind',
   tickMs: 1000,
   ode: {
     tauAttentionMs: 120_000,
@@ -247,6 +254,8 @@ export const DEFAULT_MIND_CONFIG: MindConfig = {
     fatigueMildMin: 0.3,
     fatigueModerateMin: 0.55,
     fatigueSevereMin: 0.8,
+    injectBible: true,
+    bibleMaxCharsPerSection: 800,
   },
   wander: {
     enabled: true,
@@ -317,6 +326,7 @@ export function mergeMindConfig(raw: Record<string, unknown> | undefined): MindC
   return {
     enabled: typeof src.enabled === 'boolean' ? src.enabled : DEFAULT_MIND_CONFIG.enabled,
     personaId: typeof src.personaId === 'string' && src.personaId ? src.personaId : DEFAULT_MIND_CONFIG.personaId,
+    dataDir: typeof src.dataDir === 'string' && src.dataDir ? src.dataDir : DEFAULT_MIND_CONFIG.dataDir,
     tickMs: numberOr(src.tickMs, DEFAULT_MIND_CONFIG.tickMs),
     ode: {
       tauAttentionMs: numberOr(odeSrc.tauAttentionMs, DEFAULT_MIND_CONFIG.ode.tauAttentionMs),
@@ -336,6 +346,12 @@ export function mergeMindConfig(raw: Record<string, unknown> | undefined): MindC
       fatigueMildMin: numberOr(ppSrc.fatigueMildMin, DEFAULT_MIND_CONFIG.promptPatch.fatigueMildMin),
       fatigueModerateMin: numberOr(ppSrc.fatigueModerateMin, DEFAULT_MIND_CONFIG.promptPatch.fatigueModerateMin),
       fatigueSevereMin: numberOr(ppSrc.fatigueSevereMin, DEFAULT_MIND_CONFIG.promptPatch.fatigueSevereMin),
+      injectBible:
+        typeof ppSrc.injectBible === 'boolean' ? ppSrc.injectBible : DEFAULT_MIND_CONFIG.promptPatch.injectBible,
+      bibleMaxCharsPerSection: numberOr(
+        ppSrc.bibleMaxCharsPerSection,
+        DEFAULT_MIND_CONFIG.promptPatch.bibleMaxCharsPerSection,
+      ),
     },
     wander: mergeWanderConfig(src.wander),
     autonomousTrigger: mergeAutonomousTriggerConfig(src.autonomousTrigger),

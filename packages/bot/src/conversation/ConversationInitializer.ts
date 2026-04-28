@@ -333,7 +333,7 @@ export class ConversationInitializer {
     // Must run AFTER agenda so it can share the same InternalEventBus;
     // bootstrap wires mindService.start() + pose provider + avatar
     // modulation injection after AvatarService is ready.
-    const mindComponents = MindInitializer.initialize({
+    const mindComponents = await MindInitializer.initialize({
       rawConfig: config.getMindConfig(),
       internalEventBus: agendaComponents.internalEventBus,
     });

@@ -19,6 +19,7 @@ import type { AgendaSystemEvent } from '@/agenda/types';
 import { logger } from '@/utils/logger';
 import type { EpigeneticsStore } from './epigenetics/EpigeneticsStore';
 import { applyStimulus, deriveModulation, freshPhenotype, tickPhenotype } from './ode';
+import { type CharacterBible, EMPTY_BIBLE } from './personaStore/CharacterBibleLoader';
 import {
   buildPromptPatch,
   buildPromptPatchAsync,
@@ -52,6 +53,8 @@ export class MindService {
   private epigeneticsStore: EpigeneticsStore | null = null;
   /** In-memory current tone — updated by ReflectionEngine (Task 2). Defaults to neutral. */
   private currentTone: Tone = 'neutral';
+  /** Character bible loaded at startup. Defaults to EMPTY_BIBLE if no file found. */
+  private bible: CharacterBible = EMPTY_BIBLE;
   private readonly messageHandler = (event: AgendaSystemEvent): void => {
     this.handleMessageEvent(event);
   };
@@ -97,6 +100,14 @@ export class MindService {
    */
   setCurrentTone(tone: Tone): void {
     this.currentTone = tone;
+  }
+
+  setCharacterBible(bible: CharacterBible): void {
+    this.bible = bible;
+  }
+
+  getCharacterBible(): CharacterBible {
+    return this.bible;
   }
 
   getConfig(): MindConfig {

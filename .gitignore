@@ -74,6 +74,11 @@ Thumbs.db
 
 # others
 data/
+# Persona bible files are static content that should be tracked
+!data/mind/
+!data/mind/persona/
+!data/mind/persona/*/
+!data/mind/persona/*/bible.md
 output/
 docs/local
 scripts/local
