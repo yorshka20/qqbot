@@ -79,6 +79,7 @@ data/
 !data/mind/persona/
 !data/mind/persona/*/
 !data/mind/persona/*/bible.md
+!data/mind/persona/*/core-dna.json
 output/
 docs/local
 scripts/local

@@ -1,0 +1,65 @@
+{
+  "id": "default",
+  "displayName": "默认人格",
+  "identity": {
+    "bigFive": {
+      "openness": 0.6,
+      "conscientiousness": 0.5,
+      "extraversion": 0.55,
+      "agreeableness": 0.6,
+      "neuroticism": 0.4
+    },
+    "values": [],
+    "linguistic": {
+      "catchphrases": [],
+      "forbiddenWords": []
+    }
+  },
+  "modulation": {
+    "amplitude": {
+      "intensityScale": 1.0,
+      "perCategoryScale": { "emotion": 1.0, "movement": 1.0, "micro": 1.0 }
+    },
+    "timing": {
+      "speedScale": 1.0,
+      "durationBias": 0,
+      "jitterScale": 1.0,
+      "idleGapScale": 1.0
+    },
+    "spatial": {
+      "postureLeanBaseline": 0.08,
+      "headTiltBias": 0,
+      "gazeDistributionBaseline": { "camera": 0.6, "side": 0.3, "down": 0.1 },
+      "fatigueResponse": {
+        "leanGain": 0.25,
+        "cameraDrop": 0.4,
+        "sideRise": 0.2,
+        "downRise": 0.2
+      }
+    },
+    "actionPref": {
+      "variantWeights": {},
+      "forbiddenActions": []
+    },
+    "ambient": {
+      "gainScale": 1.0,
+      "fatigueDrop": 0.3
+    }
+  },
+  "emotion": {
+    "valenceBaseline": 0,
+    "arousalBaseline": 0,
+    "dominanceBaseline": 0,
+    "tauValenceMs": 600000,
+    "tauArousalMs": 180000,
+    "tauDominanceMs": 1800000,
+    "valenceFloor": -1,
+    "valenceCeiling": 1,
+    "fatigueIntensityDrop": 0.4,
+    "fatigueSpeedDrop": 0.3
+  },
+  "_meta": {
+    "schemaVersion": 1,
+    "notes": "default persona — 中性基线，所有数值与原 hardcoded 一致"
+  }
+}
