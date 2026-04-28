@@ -17,6 +17,7 @@ interface Harness {
   scheduler: AutonomousTriggerScheduler;
   phenotypeRef: { current: FakePhenotype };
   clockRef: { current: number };
+  consumerRef: { present: boolean };
   enqueueAutonomous: ReturnType<typeof mock>;
   enqueueAutonomousEmotion: ReturnType<typeof mock>;
   advance(ms: number): void;
@@ -25,9 +26,11 @@ interface Harness {
 function makeHarness(opts?: {
   configOverrides?: Partial<typeof DEFAULT_MIND_CONFIG.autonomousTrigger>;
   randomQueue?: number[];
+  consumerPresent?: boolean;
 }): Harness {
   const phenotypeRef = { current: freshFakePhenotype() };
   const clockRef = { current: 0 };
+  const consumerRef = { present: opts?.consumerPresent ?? true };
   const enqueueAutonomous = mock<
     (name: string, intensity: number, opts?: { emotion?: string; durationOverrideMs?: number }) => void
   >(() => {});
@@ -49,6 +52,7 @@ function makeHarness(opts?: {
     avatar: {
       enqueueAutonomous: enqueueAutonomous as never,
       enqueueAutonomousEmotion: enqueueAutonomousEmotion as never,
+      hasConsumer: () => consumerRef.present,
     },
     now: () => clockRef.current,
     random,
@@ -58,6 +62,7 @@ function makeHarness(opts?: {
     scheduler,
     phenotypeRef,
     clockRef,
+    consumerRef,
     enqueueAutonomous,
     enqueueAutonomousEmotion,
     advance(ms: number) {
@@ -185,5 +190,20 @@ describe('AutonomousTriggerScheduler — disabled config', () => {
     expect(h.enqueueAutonomous).not.toHaveBeenCalled();
     expect(h.enqueueAutonomousEmotion).not.toHaveBeenCalled();
     h.scheduler.stop();
+  });
+});
+
+describe('AutonomousTriggerScheduler — no-consumer gate', () => {
+  test('tick() skips work when no renderer / VTS consumer connected', () => {
+    const h = makeHarness({ consumerPresent: false });
+    h.phenotypeRef.current = freshFakePhenotype({ fatigue: 0.95, valence: -0.6 });
+    h.scheduler.tick();
+    expect(h.enqueueAutonomous).not.toHaveBeenCalled();
+    expect(h.enqueueAutonomousEmotion).not.toHaveBeenCalled();
+    // Reconnect → next tick processes phenotype as usual.
+    h.consumerRef.present = true;
+    h.scheduler.tick();
+    expect(h.enqueueAutonomous).toHaveBeenCalledTimes(1);
+    expect(h.enqueueAutonomousEmotion).toHaveBeenCalledTimes(1);
   });
 });

@@ -30,8 +30,10 @@ type DriftBand = 'sad' | 'neutral' | 'happy' | null;
 export interface AutonomousTriggerSchedulerDeps {
   /** Phenotype source. Only `getPhenotype()` is used. */
   mind: Pick<MindService, 'getPhenotype'>;
-  /** Avatar enqueue surface. Only the two autonomous APIs are used. */
-  avatar: Pick<AvatarService, 'enqueueAutonomous' | 'enqueueAutonomousEmotion'>;
+  /** Avatar enqueue surface. Only the two autonomous APIs are used.
+   *  `hasConsumer` is queried each tick so we skip when no renderer/VTS is
+   *  connected — same rationale as `WanderScheduler`'s consumer gate. */
+  avatar: Pick<AvatarService, 'enqueueAutonomous' | 'enqueueAutonomousEmotion' | 'hasConsumer'>;
   /** Source of "now" in ms. Defaults to `Date.now`. Tests inject a fake clock. */
   now?: () => number;
   /** Source of `[0,1)` randomness. Defaults to `Math.random`. */
@@ -86,6 +88,10 @@ export class AutonomousTriggerScheduler {
   /** Single evaluation step. Public so tests drive it without a real timer. */
   tick(): void {
     if (!this.config.enabled) return;
+    // Mirror WanderScheduler: skip the tick body when no renderer / VTS is
+    // connected. The avatar pipeline is paused, so any enqueued autonomous
+    // animation would be wasted (dropped by dedup, logs spammed).
+    if (!this.avatar.hasConsumer()) return;
     const now = this.now();
     const phenotype = this.mind.getPhenotype();
     this.checkFatigueYawn(phenotype, now);

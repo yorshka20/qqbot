@@ -172,6 +172,10 @@ export class WanderScheduler {
     if (!this.config.enabled) return 'disabled-by-config';
     if (this.running) return 'intent-in-flight';
     if (!this.executor.isAvatarActive()) return 'avatar-not-active';
+    // Skip when no renderer is connected: the compiler tick is paused and
+    // every enqueued autonomous animation would just be dropped by the
+    // dedup pass. Saves CPU + keeps logs quiet during idle hours.
+    if (!this.executor.hasConsumer()) return 'no-consumer';
     const pose = this.executor.getCurrentPose();
     if (pose !== 'neutral') return `pose-is-${pose}`;
     const cooldownLeft = this.config.cooldownMs - (this.now() - this.lastCompletedAt);

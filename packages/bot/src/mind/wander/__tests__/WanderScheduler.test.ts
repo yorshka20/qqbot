@@ -21,20 +21,29 @@ interface FakeAvatar extends WanderExecutor {
    *  to simulate an in-flight discrete animation and verify the scheduler's
    *  footprint gate drops conflicting intents. Defaults to empty (all free). */
   occupied: Set<string>;
+  /** Mirrors AvatarService.hasConsumer(); flipped to false in the
+   *  no-consumer gate test. Defaults to true so existing tests keep firing. */
+  consumerPresent: boolean;
 }
 
-function fakeAvatar(init: Partial<Pick<FakeAvatar, 'pose' | 'active' | 'occupied'>> = {}): FakeAvatar {
+function fakeAvatar(
+  init: Partial<Pick<FakeAvatar, 'pose' | 'active' | 'occupied' | 'consumerPresent'>> = {},
+): FakeAvatar {
   const calls: FakeAvatar['calls'] = [];
   return {
     calls,
     pose: init.pose ?? 'neutral',
     active: init.active ?? true,
     occupied: init.occupied ?? new Set<string>(),
+    consumerPresent: init.consumerPresent ?? true,
     getCurrentPose() {
       return this.pose;
     },
     isAvatarActive() {
       return this.active;
+    },
+    hasConsumer() {
+      return this.consumerPresent;
     },
     checkAvailable(footprint) {
       const conflicts = new Set<string>();
@@ -198,6 +207,18 @@ describe('WanderScheduler — gate predicate', () => {
     const scheduler = new WanderScheduler(wanderConfig(), avatar, { sleep: async () => {} });
     scheduler.start();
     expect(await scheduler.tickOnce()).toBeNull();
+    scheduler.stop();
+  });
+
+  test('no-consumer gate suppresses wander when no renderer connected', async () => {
+    const avatar = fakeAvatar({ consumerPresent: false });
+    const scheduler = new WanderScheduler(wanderConfig(), avatar, { sleep: async () => {} });
+    scheduler.start();
+    expect(await scheduler.tickOnce()).toBeNull();
+    expect(avatar.calls).toHaveLength(0);
+    // Reconnecting a consumer re-opens the gate.
+    avatar.consumerPresent = true;
+    expect(await scheduler.tickOnce()).not.toBeNull();
     scheduler.stop();
   });
 

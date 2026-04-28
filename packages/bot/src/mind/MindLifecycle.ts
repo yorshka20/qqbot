@@ -141,6 +141,7 @@ function buildWanderExecutor(avatar: AvatarService): WanderExecutor {
   return {
     getCurrentPose: () => avatar.getCurrentActivity()?.pose ?? 'neutral',
     isAvatarActive: () => avatar.isActive(),
+    hasConsumer: () => avatar.hasConsumer(),
     checkAvailable: (f) => avatar.checkAvailable(f),
     walkForward: (m) => avatar.walkForward(m),
     strafe: (m) => avatar.strafe(m),

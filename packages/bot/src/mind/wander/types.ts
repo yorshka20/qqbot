@@ -62,6 +62,14 @@ export interface WanderExecutor {
   /** Returns true when the avatar subsystem is up (ready to accept calls). */
   isAvatarActive(): boolean;
   /**
+   * Returns true when at least one downstream frame consumer is connected
+   * (VTS driver and/or a preview WebSocket renderer). Wander work is pure
+   * waste without a consumer — the compiler tick is paused, queued
+   * autonomous animations would only generate dedup-drop / log spam — so
+   * the scheduler gates on this just like the avatar's frame pipeline.
+   */
+  hasConsumer(): boolean;
+  /**
    * Intersection of the given footprint with currently-active discrete
    * animation channels. Empty set ⇒ every channel is free and the intent
    * may proceed; a non-empty set names the specific conflicts the
