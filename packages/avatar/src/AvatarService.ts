@@ -636,6 +636,11 @@ export class AvatarService {
         category,
       }) ?? IDENTITY_MODULATION;
 
+    if (modulation.actionPref?.forbiddenActions?.includes(actionName)) {
+      logger.debug(`[AvatarService] action dropped by forbiddenActions | action=${actionName} | source=${source}`);
+      return;
+    }
+
     const speedScale = sanitizeScale(modulation.timing.speedScale);
     // Local divide-by-zero guard: speedScale sanitizes to ≥0, but duration
     // division needs a positive floor to avoid Infinity when a persona
