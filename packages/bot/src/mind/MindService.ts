@@ -221,6 +221,9 @@ export class MindService {
         fatigueModerateMin: this.config.promptPatch.fatigueModerateMin,
         fatigueSevereMin: this.config.promptPatch.fatigueSevereMin,
       },
+      bible: this.bible,
+      injectBible: this.config.promptPatch.injectBible,
+      bibleMaxCharsPerSection: this.config.promptPatch.bibleMaxCharsPerSection,
     });
   }
 

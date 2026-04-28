@@ -23,6 +23,7 @@
 
 import type { EpigeneticsStore } from '../epigenetics/EpigeneticsStore';
 import type { PersonaEpigenetics, PersonaRelationship } from '../epigenetics/types';
+import type { CharacterBible } from '../personaStore/CharacterBibleLoader';
 import { TONE_MAPPINGS } from '../tone/mappings';
 import { isTone } from '../tone/types';
 import type { MindStateSnapshot } from '../types';
@@ -56,6 +57,18 @@ export interface PromptPatch {
    * Undefined when tone is neutral or unknown (no injection needed).
    */
   tonePromptFragment?: string;
+  /**
+   * Persona identity block built from CharacterBible Self-concept + Voice + Lore.
+   * Already truncated per `bibleMaxCharsPerSection`. Empty/undefined when bible is empty
+   * or `injectBible` is false. Rendered into a `<persona_identity>` XML block.
+   */
+  personaIdentity?: string;
+  /**
+   * Persona hard boundaries block built from CharacterBible Boundaries section.
+   * Already truncated. Rendered into a separate `<persona_boundaries>` XML block so the
+   * LLM treats anti-jailbreak rules as a distinct directive.
+   */
+  personaBoundaries?: string;
   // Reserved for later phases (keep them optional + additive):
   // strategyDirective?: string;
   // memoryAnchors?: string[];
@@ -97,6 +110,12 @@ export function buildPromptPatch(
  */
 export function renderPromptPatchFragment(patch: PromptPatch): string {
   const lines: string[] = [];
+  if (patch.personaIdentity) {
+    lines.push(`<persona_identity>\n${patch.personaIdentity}\n</persona_identity>`);
+  }
+  if (patch.personaBoundaries) {
+    lines.push(`<persona_boundaries>\n${patch.personaBoundaries}\n</persona_boundaries>`);
+  }
   if (patch.moodSummary) {
     lines.push(`<mind_state>\n${patch.moodSummary}\n</mind_state>`);
   }
@@ -173,6 +192,41 @@ export function buildRelationshipSummary(
 }
 
 /**
+ * Build the inner text for the `<persona_identity>` XML block from a CharacterBible.
+ *
+ * Combines Self-concept + Voice + Lore in that order, each labeled `[Section]\n...`,
+ * separated by a blank line. Each section is truncated to `maxCharsPerSection` chars
+ * (counted by `String.length`, treating each Unicode code unit as 1 — fine for the
+ * Chinese/English mix used in this project; this is a budget heuristic, not a token
+ * count). Truncated sections get a trailing ` …` (single space + `…`).
+ *
+ * Empty source sections are skipped entirely (no header emitted). Returns `''` when all
+ * three are empty so callers can short-circuit.
+ */
+export function buildPersonaIdentityFragment(bible: CharacterBible, maxCharsPerSection: number): string {
+  const parts: string[] = [];
+  if (bible.selfConcept) parts.push(`[Self-concept]\n${truncateChars(bible.selfConcept, maxCharsPerSection)}`);
+  if (bible.voice) parts.push(`[Voice]\n${truncateChars(bible.voice, maxCharsPerSection)}`);
+  if (bible.lore) parts.push(`[Lore]\n${truncateChars(bible.lore, maxCharsPerSection)}`);
+  return parts.join('\n\n');
+}
+
+/**
+ * Build the inner text for the `<persona_boundaries>` XML block — truncated Boundaries
+ * section. Returns `''` for an empty bible (caller skips the block).
+ */
+export function buildPersonaBoundariesFragment(bible: CharacterBible, maxChars: number): string {
+  if (!bible.boundaries) return '';
+  return truncateChars(bible.boundaries, maxChars);
+}
+
+/** Local helper — pure char-count truncation. Not exported. */
+function truncateChars(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return `${s.slice(0, max)} …`;
+}
+
+/**
  * Async variant of `buildPromptPatch` that additionally populates
  * `relationshipSummary` from the EpigeneticsStore when available.
  *
@@ -185,10 +239,21 @@ export async function buildPromptPatchAsync(
     store?: EpigeneticsStore | null;
     userId?: string | null;
     thresholds?: PromptPatchThresholds;
+    bible?: CharacterBible | null;
+    injectBible?: boolean;
+    bibleMaxCharsPerSection?: number;
   } = {},
 ): Promise<PromptPatch> {
   const patch = buildPromptPatch(snapshot, opts.thresholds);
   if (!snapshot.enabled) return patch;
+  // Bible injection is independent of epigenetics store — apply it before the store guard.
+  if (opts.injectBible && opts.bible) {
+    const maxChars = opts.bibleMaxCharsPerSection ?? 800;
+    const identity = buildPersonaIdentityFragment(opts.bible, maxChars);
+    if (identity) patch.personaIdentity = identity;
+    const boundaries = buildPersonaBoundariesFragment(opts.bible, maxChars);
+    if (boundaries) patch.personaBoundaries = boundaries;
+  }
   if (!opts.store || !opts.userId) return patch;
   try {
     // Read relationship + epigenetics in parallel for relationship summary and tone.
