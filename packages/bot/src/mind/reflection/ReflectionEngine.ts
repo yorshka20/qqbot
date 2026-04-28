@@ -224,12 +224,17 @@ export class ReflectionEngine {
           : '（无近期对话记录）';
 
       // 3. Render prompt.
+      const bibleObj = this.mindService.getCharacterBible();
+      const characterBible =
+        bibleObj.raw.length > 0 ? bibleObj.raw : '(no character bible configured for this persona)';
+
       const systemPrompt = renderReflectionPrompt(this.promptManager, {
         personaId,
         phenotypeJson: JSON.stringify(phenotype, null, 2),
         epigeneticsJson: epigenetics ? JSON.stringify(epigenetics, null, 2) : '（无记录）',
         recentDialogue,
         trigger,
+        characterBible,
       });
 
       // 4. Call LLM — pinned provider, no fallback, JSON mode.

@@ -49,6 +49,15 @@ function fakeMindService() {
       calls.push(tone);
     },
     isEnabled: () => true,
+    getCharacterBible: () => ({
+      raw: '',
+      selfConcept: '',
+      voice: '',
+      triggersRaw: '',
+      reflexesRaw: '',
+      boundaries: '',
+      lore: '',
+    }),
   } as unknown as MindService;
   return { svc, calls };
 }

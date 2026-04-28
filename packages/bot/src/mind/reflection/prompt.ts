@@ -17,6 +17,8 @@ export interface ReflectionPromptVars {
   epigeneticsJson: string;
   recentDialogue: string;
   trigger: string;
+  /** Full raw markdown of CharacterBible.raw (or placeholder when bible empty). */
+  characterBible: string;
 }
 
 /**
@@ -30,5 +32,6 @@ export function renderReflectionPrompt(promptManager: PromptManager, vars: Refle
     epigeneticsJson: vars.epigeneticsJson,
     recentDialogue: vars.recentDialogue,
     trigger: vars.trigger,
+    characterBible: vars.characterBible,
   });
 }

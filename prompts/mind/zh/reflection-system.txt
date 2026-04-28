@@ -7,6 +7,11 @@
 - 最近对话样本（最多 20 条）：
 {{recentDialogue}}
 - 触发原因：{{trigger}}
+- 角色 Bible（人格长期身份设定）：
+
+========== CHARACTER BIBLE ==========
+{{characterBible}}
+========== END CHARACTER BIBLE ==========
 
 任务：仔细审视最近对话，用一段中文 markdown 总结你观察到的对话模式与趋势（写进 insightMd），然后给出一个 JSON patch 来更新人格的长期积累状态。
 
@@ -36,3 +41,4 @@
 6. forbidden 字段只能追加，不能删除已有内容
 7. 如果没有明确的强信号，delta 字段可以留空对象 {} 或省略，不要强行编造变化
 8. patch 中的数值 delta 要保守，不要夸大
+9. 你的输出（包括 insightMd 总结、epigenetics patch、currentTone 选择）必须与 character_bible 中的 self_concept 和 boundaries 一致；patch 不得违反 Bible 的长期身份设定。
