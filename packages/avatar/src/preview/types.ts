@@ -64,6 +64,18 @@ export interface PreviewStatus {
     };
     capturedAt: number;
   };
+  /**
+   * Multi-source ambient-gain bus snapshot — diagnostic for the HUD.
+   * `sources` lists the currently-active per-subsystem inputs (idle /
+   * mind / activity); `resolved` is the value that was actually written
+   * into `activity.ambientGain` this tick (after reducer + lerp). Older
+   * renderers without panel support ignore. Type kept inline so this
+   * file does not import from `compiler/`.
+   */
+  ambient?: {
+    sources: Partial<Record<'idle' | 'mind' | 'activity', number>>;
+    resolved: number;
+  };
 }
 
 export interface FrameMessage {

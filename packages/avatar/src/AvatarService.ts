@@ -1,4 +1,5 @@
 import { singleton } from 'tsyringe';
+import { AmbientGainBus, type AmbientSourceName } from './compiler/AmbientGainBus';
 import { AnimationCompiler } from './compiler/AnimationCompiler';
 import { isEmotionChannel } from './compiler/emotion-channels';
 import type { AmbientAudioLayer } from './compiler/layers/AmbientAudioLayer';
@@ -21,7 +22,7 @@ import type { PreviewStatus, RendererCapabilities, WalkCommandData } from './pre
 import { SpeechService } from './SpeechService';
 import type { AvatarTTSManager, AvatarTTSProvider } from './speech/TTSTypes';
 import { ActivityTracker } from './state/IdleStateMachine';
-import { type AvatarActivityPatch, DEFAULT_ACTIVITY, type StateNodeOutput } from './state/types';
+import { type AvatarActivity, type AvatarActivityPatch, DEFAULT_ACTIVITY, type StateNodeOutput } from './state/types';
 import type { FaceTarget, GazeTarget, WalkToTarget } from './tags';
 import type { AvatarConfig } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './types';
@@ -62,6 +63,7 @@ export class AvatarService {
    * for the loose shape consumers should return.
    */
   private mindStateSource?: () => PreviewStatus['mindState'] | undefined;
+  private readonly ambientBus = new AmbientGainBus();
 
   // TODO(capability-gating): use connectedCapabilities to gate compiler channel
   // emission per connection — e.g. skip unsupported channels or custom morph
@@ -442,30 +444,33 @@ export class AvatarService {
     if (!this.previewServer || !this.stateMachine || !this.compiler) return;
     this.lastFpsSampleAt = Date.now();
     this.frameCount = 0;
-    this.statusTimer = setInterval(() => {
-      if (!this.previewServer || !this.stateMachine || !this.compiler) return;
-      const now = Date.now();
-      const elapsed = (now - this.lastFpsSampleAt) / 1000;
-      this.measuredFps = elapsed > 0 ? Math.round(this.frameCount / elapsed) : 0;
-      this.frameCount = 0;
-      this.lastFpsSampleAt = now;
-      const activity = this.stateMachine.current;
-      const walkingLayer = this.getWalkingLayer();
-      this.previewServer.updateStatus({
-        pose: activity.pose,
-        ambientGain: activity.ambientGain,
-        fps: this.measuredFps,
-        activeAnimations: this.compiler.getActiveAnimationCount(),
-        queueLength: this.compiler.getQueueLength(),
-        channelBaseline: this.compiler.getChannelBaselineSnapshot(),
-        activeAnimationDetails: this.compiler.getActiveAnimationDetails(),
-        // Authoritative pose broadcast so HUDs can display without replicating
-        // bot state via frame params. Absent when no WalkingLayer (cubism).
-        rootPosition: walkingLayer?.getPosition(),
-        // Mind snapshot is optional — undefined when no source registered.
-        mindState: this.mindStateSource?.(),
-      });
-    }, 1000);
+    this.statusTimer = setInterval(() => this.runStatusTick(), 1000);
+  }
+
+  private runStatusTick(): void {
+    if (!this.previewServer || !this.stateMachine || !this.compiler) return;
+    const now = Date.now();
+    const elapsed = (now - this.lastFpsSampleAt) / 1000;
+    this.measuredFps = elapsed > 0 ? Math.round(this.frameCount / elapsed) : 0;
+    this.frameCount = 0;
+    this.lastFpsSampleAt = now;
+    const activity = this.stateMachine.current;
+    const walkingLayer = this.getWalkingLayer();
+    this.ambientBus.tick(1000);
+    const ambientSnapshot = this.ambientBus.snapshot();
+    this.compiler.setActivity(this.applyBusToActivity(activity));
+    this.previewServer.updateStatus({
+      pose: activity.pose,
+      ambientGain: ambientSnapshot.resolved,
+      fps: this.measuredFps,
+      activeAnimations: this.compiler.getActiveAnimationCount(),
+      queueLength: this.compiler.getQueueLength(),
+      channelBaseline: this.compiler.getChannelBaselineSnapshot(),
+      activeAnimationDetails: this.compiler.getActiveAnimationDetails(),
+      rootPosition: walkingLayer?.getPosition(),
+      mindState: this.mindStateSource?.(),
+      ambient: ambientSnapshot,
+    });
   }
 
   /**
@@ -481,11 +486,38 @@ export class AvatarService {
    */
   setActivity(patch: AvatarActivityPatch): void {
     if (!this.stateMachine || !this.compiler) return;
+    if (patch.ambientGain !== undefined) {
+      this.ambientBus.setSource('activity', patch.ambientGain);
+      const { ambientGain: _drop, ...rest } = patch;
+      patch = rest;
+    }
     const nodes = this.stateMachine.update(patch);
-    this.compiler.setActivity(this.stateMachine.current);
+    this.compiler.setActivity(this.applyBusToActivity(this.stateMachine.current));
     if (nodes.length > 0) {
       this.compiler.enqueue(toStateNodes(nodes));
     }
+  }
+
+  /**
+   * Multi-source ambient-gain writer. Each source ('idle' | 'mind' |
+   * 'activity') can be set independently; the bus reduces them with
+   * `Math.min` (default) and lerp-smooths the result before writing back
+   * into `activity.ambientGain` on the next status tick. Use this from
+   * mind / idle subsystems that want to suggest an ambient gain ceiling
+   * without conflicting with the activity-pipeline writer.
+   */
+  setAmbientGainSource(name: AmbientSourceName, value: number): void {
+    this.ambientBus.setSource(name, value);
+  }
+
+  /** Remove a previously-set ambient-gain source. The remaining sources
+   *  reassert in the next reduction. */
+  clearAmbientGainSource(name: AmbientSourceName): void {
+    this.ambientBus.clearSource(name);
+  }
+
+  private applyBusToActivity(activity: AvatarActivity): AvatarActivity {
+    return { ...activity, ambientGain: this.ambientBus.snapshot().resolved };
   }
 
   /**
