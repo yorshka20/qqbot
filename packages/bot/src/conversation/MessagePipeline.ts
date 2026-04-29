@@ -73,6 +73,9 @@ export class MessagePipeline {
     const resolvedSource = source ?? context.source ?? deriveSourceFromEvent(event);
     context.source = resolvedSource;
     const hookContext = await this.createHookContext(event, context, resolvedSource);
+    if (context.responseCallback) {
+      hookContext.metadata.set('responseCallback', context.responseCallback);
+    }
     const messageId = String(event.id ?? event.messageId ?? 'unknown');
     const contextKey = `${context.sessionId}_${messageId}`;
     const logTag = getLogTag(messageId);

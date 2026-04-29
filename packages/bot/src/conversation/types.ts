@@ -1,7 +1,7 @@
 // Conversation module type definitions
 
-import type { MessageSource } from './sources';
 import type { NormalizedMessageEvent } from '@/events/types';
+import type { MessageSource } from './sources';
 
 /**
  * Message processing result
@@ -34,4 +34,7 @@ export interface MessageProcessingContext {
   /** Propagated to hook context metadata; used by WhitelistPlugin to allow reply without @bot. */
   replyTrigger?: 'at' | 'reaction';
   source: MessageSource; // Origin label for hook filtering
+  /** Caller-provided callback invoked when sourceConfig.responseHandler === 'callback' (e.g. avatar-cmd).
+   * Receives the final ReplyContent. The pipeline does NOT send to IM in this case. */
+  responseCallback?: (reply: import('@/hooks/types').ReplyContent) => void;
 }

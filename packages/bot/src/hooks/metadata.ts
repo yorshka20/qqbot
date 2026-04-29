@@ -62,6 +62,8 @@ export interface HookContextMetadata {
    * private-chat messages when the avatar is active).
    */
   systemPromptFragments?: string[];
+  /** Caller-provided callback for sources with responseHandler === 'callback' (e.g. avatar-cmd). Receives the final ReplyContent. */
+  responseCallback?: (reply: import('./types').ReplyContent) => void;
 }
 
 type MetadataKeys = keyof HookContextMetadata;
@@ -79,6 +81,7 @@ const DEFAULT_METADATA: Required<
     | 'usedCardFormat'
     | 'explicitSendAsForward'
     | 'systemPromptFragments'
+    | 'responseCallback'
   >
 > = {
   sessionId: '',
@@ -108,6 +111,7 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'usedCardFormat',
   'explicitSendAsForward',
   'systemPromptFragments',
+  'responseCallback',
 ];
 
 /**
