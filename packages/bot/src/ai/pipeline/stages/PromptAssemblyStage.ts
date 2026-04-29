@@ -3,6 +3,7 @@
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { NormalEpisodeService } from '@/conversation/history';
+import { getSourceConfig } from '@/conversation/sources/registry';
 import type { AIChatConfig, ReasoningEffort } from '@/core/config/types/ai';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
@@ -68,9 +69,19 @@ export class PromptAssemblyStage implements ReplyStage {
       toolUsageInstructions: ctx.toolUsageInstructions,
     });
 
-    const sceneSystemPromptRaw = this.promptManager.render('llm.reply.system', {
-      toolInstruct,
-    });
+    const source = ctx.hookContext.source;
+    const sourceCfg = getSourceConfig(source);
+    const sceneTemplateId = `scenes.${sourceCfg.promptScene}.zh.scene`;
+    let sceneSystemPromptRaw: string;
+    try {
+      sceneSystemPromptRaw = this.promptManager.render(sceneTemplateId, { toolInstruct }) ?? '';
+    } catch (err) {
+      logger.warn(
+        `[PromptAssemblyStage] scene template ${sceneTemplateId} render failed, falling back to llm.reply.system:`,
+        err,
+      );
+      sceneSystemPromptRaw = this.promptManager.render('llm.reply.system', { toolInstruct }) ?? '';
+    }
 
     // Plugin-contributed system-prompt fragments. Plugins push into
     // `metadata.systemPromptFragments` during PREPROCESS — see e.g.
