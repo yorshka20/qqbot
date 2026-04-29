@@ -64,6 +64,8 @@ export interface HookContextMetadata {
   systemPromptFragments?: string[];
   /** Caller-provided callback for sources with responseHandler === 'callback' (e.g. avatar-cmd). Receives the final ReplyContent. */
   responseCallback?: (reply: import('./types').ReplyContent) => void;
+  /** Per-source history adapter kind, written by SessionStrategyPlugin during onMessagePreprocess. */
+  historyAdapterKind?: import('../conversation/sources/types').SourceConfig['historyAdapter'];
 }
 
 type MetadataKeys = keyof HookContextMetadata;
@@ -82,6 +84,7 @@ const DEFAULT_METADATA: Required<
     | 'explicitSendAsForward'
     | 'systemPromptFragments'
     | 'responseCallback'
+    | 'historyAdapterKind'
   >
 > = {
   sessionId: '',
@@ -112,6 +115,7 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'explicitSendAsForward',
   'systemPromptFragments',
   'responseCallback',
+  'historyAdapterKind',
 ];
 
 /**
