@@ -59,7 +59,6 @@ export const DITokens = {
   // Avatar system
   AVATAR_SERVICE: 'AvatarService',
   TTS_MANAGER: 'TTSManager',
-  LIVE2D_PIPELINE: 'Live2DPipeline',
   AVATAR_SESSION_SERVICE: 'AvatarSessionService',
   AVATAR_MEMORY_EXTRACTION_COORDINATOR: 'AvatarMemoryExtractionCoordinator',
   LIVEMODE_STATE: 'LivemodeState',

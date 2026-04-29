@@ -43,7 +43,6 @@ import { AvatarMemoryExtractionCoordinator } from '@/integrations/avatar/AvatarM
 import { AvatarSessionService } from '@/integrations/avatar/AvatarSessionService';
 import { LivemodeInterceptor } from '@/integrations/avatar/LivemodeInterceptor';
 import { LivemodeState } from '@/integrations/avatar/LivemodeState';
-import { Live2DPipeline } from '@/services/live2d/Live2DPipeline';
 import type { MCPSystem } from '@/services/mcp/MCPInitializer';
 import { MCPInitializer } from '@/services/mcp/MCPInitializer';
 import { RetrievalService } from '@/services/retrieval';
@@ -331,7 +330,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   }
 
   // ── AvatarSessionService (rolling thread history for avatar runs) ──
-  // Must register BEFORE Live2DPipeline resolves — stages inject it by token.
+  // Avatar session service: rolling thread history for avatar runs.
   const avatarSessionService = container.resolve(AvatarSessionService);
   container.registerInstance(DITokens.AVATAR_SESSION_SERVICE, avatarSessionService);
 
@@ -346,16 +345,9 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   // ── LivemodeState (per-user mock-livestream buffers) ──
   // Registered here so both the /livemode command and the PROCESS-stage
   // interceptor can resolve the same singleton. Its flush handler is wired
-  // below once live2dPipeline exists (avoids a construction-order cycle).
+  // below (avoids a construction-order cycle).
   const livemodeState = container.resolve(LivemodeState);
   container.registerInstance(DITokens.LIVEMODE_STATE, livemodeState);
-
-  // ── Live2DPipeline (shared by /avatar command + bilibili bridge) ──
-  // Depends on LLM_SERVICE / PROMPT_MANAGER / CONFIG — all registered above.
-  // AvatarService is resolved lazily inside the pipeline, so registration
-  // order against `avatarService` above doesn't matter.
-  const live2dPipeline = container.resolve(Live2DPipeline);
-  container.registerInstance(DITokens.LIVE2D_PIPELINE, live2dPipeline);
 
   // ── Livemode wiring ──
   // Resolve idle trigger before wiring the flush handler so the handler can
