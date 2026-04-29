@@ -325,7 +325,22 @@ export class PluginManager {
 
       // Bind handler to plugin instance to preserve 'this' context
       const boundHandler = handler.bind(plugin) as HookHandler;
-      this.hookManager.addHandler(hookMeta.hookName, boundHandler, priority);
+
+      // Wrap with source filter when applicableSources is declared
+      const allowed = hookMeta.applicableSources;
+      const finalHandler: HookHandler = allowed
+        ? (ctx) => {
+            if (!allowed.includes(ctx.source)) {
+              logger.debug(
+                `[Hook] skipped due to applicableSources mismatch | plugin=${pluginName} hook=${hookMeta.hookName} source=${ctx.source}`,
+              );
+              return true;
+            }
+            return boundHandler(ctx);
+          }
+        : boundHandler;
+
+      this.hookManager.addHandler(hookMeta.hookName, finalHandler, priority);
     }
   }
 }

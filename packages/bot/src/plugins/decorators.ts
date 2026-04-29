@@ -1,5 +1,6 @@
 // Plugin and Hook decorators for automatic registration
 
+import type { MessageSource } from '@/conversation/sources';
 import type { HookPriorityVariant } from '@/hooks/HookPriority';
 import type { Plugin } from './types';
 
@@ -19,6 +20,7 @@ export interface HookOptions {
   stage: string;
   priority: HookPriorityVariant; // Default: 'NORMAL'
   order: number; // Default: 0
+  applicableSources?: readonly MessageSource[]; // When defined, hook only runs for listed sources
 }
 
 /**
@@ -37,6 +39,7 @@ export interface HookMetadata {
   order: number;
   methodName: string;
   pluginClass: new (...args: any[]) => Plugin;
+  applicableSources?: readonly MessageSource[]; // When defined, hook only runs for listed sources
 }
 
 // Symbol for storing plugin metadata on class
@@ -100,6 +103,7 @@ export function Hook(options: HookOptions) {
       order: options.order,
       methodName: propertyKey,
       pluginClass,
+      ...(options.applicableSources ? { applicableSources: options.applicableSources } : {}),
     };
 
     // Get or create hooks array for this plugin class
