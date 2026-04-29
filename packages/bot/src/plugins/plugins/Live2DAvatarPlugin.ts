@@ -61,7 +61,7 @@ export class Live2DAvatarPlugin extends PluginBase {
     return context.message?.messageType === 'private';
   }
 
-  @Hook({ stage: 'onMessageReceived', priority: 'NORMAL', order: 10 })
+  @Hook({ stage: 'onMessageReceived', priority: 'NORMAL', order: 10, applicableSources: ['qq-private'] })
   async onMessageReceived(context: HookContext): Promise<boolean> {
     if (!this.active || !this.isPrivate(context)) return true;
     try {
@@ -82,7 +82,7 @@ export class Live2DAvatarPlugin extends PluginBase {
    * plugin enabled, avatar active. Group chat never gets `[LIVE2D: ...]`
    * tags — the bot isn't driving a visual there.
    */
-  @Hook({ stage: 'onMessagePreprocess', priority: 'NORMAL', order: 10 })
+  @Hook({ stage: 'onMessagePreprocess', priority: 'NORMAL', order: 10, applicableSources: ['qq-private'] })
   async onMessagePreprocess(context: HookContext): Promise<boolean> {
     if (!this.active || !this.isPrivate(context)) return true;
     if (!this.avatar || !this.promptManager) return true;
@@ -104,7 +104,7 @@ export class Live2DAvatarPlugin extends PluginBase {
     return true;
   }
 
-  @Hook({ stage: 'onAIGenerationStart', priority: 'NORMAL', order: 10 })
+  @Hook({ stage: 'onAIGenerationStart', priority: 'NORMAL', order: 10, applicableSources: ['qq-private'] })
   async onAIGenerationStart(context: HookContext): Promise<boolean> {
     if (!this.active || !this.isPrivate(context)) return true;
     try {
@@ -115,7 +115,7 @@ export class Live2DAvatarPlugin extends PluginBase {
     return true;
   }
 
-  @Hook({ stage: 'onAIGenerationComplete', priority: 'NORMAL', order: 10 })
+  @Hook({ stage: 'onAIGenerationComplete', priority: 'NORMAL', order: 10, applicableSources: ['qq-private'] })
   async onAIGenerationComplete(context: HookContext): Promise<boolean> {
     if (!this.active || !this.isPrivate(context)) return true;
     try {
@@ -134,7 +134,7 @@ export class Live2DAvatarPlugin extends PluginBase {
     return true;
   }
 
-  @Hook({ stage: 'onMessageBeforeSend', priority: 'NORMAL', order: 10 })
+  @Hook({ stage: 'onMessageBeforeSend', priority: 'NORMAL', order: 10, applicableSources: ['qq-private'] })
   async onMessageBeforeSend(context: HookContext): Promise<boolean> {
     try {
       // Tag → enqueue requires the plugin to be active AND the message to be
@@ -179,7 +179,7 @@ export class Live2DAvatarPlugin extends PluginBase {
     return true;
   }
 
-  @Hook({ stage: 'onMessageSent', priority: 'NORMAL', order: 10 })
+  @Hook({ stage: 'onMessageSent', priority: 'NORMAL', order: 10, applicableSources: ['qq-private'] })
   async onMessageSent(context: HookContext): Promise<boolean> {
     if (!this.active || !this.isPrivate(context)) return true;
     try {
@@ -190,7 +190,7 @@ export class Live2DAvatarPlugin extends PluginBase {
     return true;
   }
 
-  @Hook({ stage: 'onMessageComplete', priority: 'NORMAL', order: 10 })
+  @Hook({ stage: 'onMessageComplete', priority: 'NORMAL', order: 10, applicableSources: ['qq-private'] })
   async onMessageComplete(context: HookContext): Promise<boolean> {
     if (!this.active || !this.isPrivate(context)) return true;
     try {
