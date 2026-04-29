@@ -22,6 +22,7 @@ function makeContext(metadataOverrides: {
     message: {} as HookContext['message'],
     context: {} as HookContext['context'],
     metadata,
+    source: 'qq-private' as const,
   };
 }
 

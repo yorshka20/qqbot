@@ -7,6 +7,7 @@ import type { NormalizedMessageEvent } from '@/events/types';
 import { getProtocolSelfId } from '@/protocol/ProtocolRegistry';
 import { logger } from '@/utils/logger';
 import type { MessagePipeline } from './MessagePipeline';
+import { deriveSourceFromEvent } from './sources';
 import type { MessageProcessingContext, MessageProcessingResult, ProcessMessageOptions } from './types';
 
 /**
@@ -63,6 +64,7 @@ export class ConversationManager {
         conversationId: undefined, // Can be loaded from database
         botSelfId: this.getBotSelfId(event.protocol),
         replyTrigger: options?.replyTrigger,
+        source: deriveSourceFromEvent(event),
       };
 
       // Process through pipeline
@@ -93,6 +95,7 @@ export class ConversationManager {
         conversationId: undefined,
         botSelfId: this.getBotSelfId(event.protocol),
         replyTrigger: 'reaction',
+        source: deriveSourceFromEvent(event),
       };
       return await this.pipeline.processReplyOnly(event, context);
     } catch (error) {

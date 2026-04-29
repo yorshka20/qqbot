@@ -2,6 +2,7 @@
 // Provides a unified way to create HookContext instances
 
 import type { CommandResult, ParsedCommand } from '@/command/types';
+import { deriveSourceFromEvent, type MessageSource } from '@/conversation/sources';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import type { HookContextMetadata, HookMetadataMap } from '@/hooks/metadata';
 import { createDefaultHookMetadata } from '@/hooks/metadata';
@@ -30,6 +31,7 @@ export class HookContextBuilder {
   private error?: Error;
   private metadata: HookMetadataMap;
   private reply?: ReplyContent;
+  private sourceField?: MessageSource;
 
   private constructor() {
     this.metadata = createDefaultHookMetadata();
@@ -77,6 +79,7 @@ export class HookContextBuilder {
     builder.metadata = context.metadata.clone();
     builder.reply = context.reply;
     builder.notice = context.notice;
+    builder.sourceField = context.source;
     return builder;
   }
 
@@ -134,6 +137,14 @@ export class HookContextBuilder {
    */
   withNotice(notice: NormalizedNoticeEvent): this {
     this.notice = notice;
+    return this;
+  }
+
+  /**
+   * Set the message source (origin label for hook filtering)
+   */
+  withSource(source: MessageSource): this {
+    this.sourceField = source;
     return this;
   }
 
@@ -239,10 +250,12 @@ export class HookContextBuilder {
       throw new Error('HookContextBuilder: conversationContext is required. Use withConversationContext() to set it.');
     }
 
+    const resolvedSource = this.sourceField ?? deriveSourceFromEvent(this.message);
     const context: HookContext = {
       message: this.message,
       context: this.conversationContext,
       metadata: this.metadata,
+      source: resolvedSource,
     };
 
     if (this.command !== undefined) {

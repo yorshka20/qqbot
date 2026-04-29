@@ -87,6 +87,7 @@ function makeHookContext(messageText: string): HookContext {
       metadata: new Map(),
     },
     metadata,
+    source: 'qq-group' as const,
   };
 }
 

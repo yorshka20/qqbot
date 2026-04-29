@@ -1,5 +1,6 @@
 // Conversation module type definitions
 
+import type { MessageSource } from './sources';
 import type { NormalizedMessageEvent } from '@/events/types';
 
 /**
@@ -32,4 +33,5 @@ export interface MessageProcessingContext {
   botSelfId: string;
   /** Propagated to hook context metadata; used by WhitelistPlugin to allow reply without @bot. */
   replyTrigger?: 'at' | 'reaction';
+  source: MessageSource; // Origin label for hook filtering
 }

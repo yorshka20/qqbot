@@ -78,6 +78,7 @@ function makeHookContext(opts: {
       metadata: new Map(),
     },
     metadata,
+    source: (messageType === 'private' ? 'qq-private' : 'qq-group') as import('@/conversation/sources').MessageSource,
   };
 }
 

@@ -12,6 +12,7 @@
 
 import 'reflect-metadata';
 
+import type { MessageSource } from '@/conversation/sources';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import type { ToolManager } from '@/tools/ToolManager';
@@ -31,6 +32,8 @@ export interface HookContextOptions {
   reply?: HookContext['reply'];
   /** Attach a parsed command */
   command?: HookContext['command'];
+  /** Origin label for hook filtering (defaults to 'qq-private') */
+  source?: MessageSource;
 }
 
 /**
@@ -47,6 +50,7 @@ export function createHookContext(opts: HookContextOptions): HookContext {
     metadataEntries,
     reply,
     command,
+    source = 'qq-private',
   } = opts;
 
   const resolvedGroupId = groupId ?? (messageType === 'group' ? 1 : undefined);
@@ -80,6 +84,7 @@ export function createHookContext(opts: HookContextOptions): HookContext {
       metadata: new Map(),
     },
     metadata,
+    source,
     ...(reply ? { reply } : {}),
     ...(command ? { command } : {}),
   } as HookContext;

@@ -15,6 +15,7 @@ import { logger } from '@/utils/logger';
 import { getLogColorForKey, getLogTag } from '@/utils/messageLogContext';
 import type { ConversationConfigService } from './ConversationConfigService';
 import type { Lifecycle } from './Lifecycle';
+import { deriveSourceFromEvent, type MessageSource } from './sources';
 import type { MessageProcessingContext, MessageProcessingResult } from './types';
 
 /**
@@ -64,8 +65,14 @@ export class MessagePipeline {
   /**
    * Process message through the complete pipeline
    */
-  async process(event: NormalizedMessageEvent, context: MessageProcessingContext): Promise<MessageProcessingResult> {
-    const hookContext = await this.createHookContext(event, context);
+  async process(
+    event: NormalizedMessageEvent,
+    context: MessageProcessingContext,
+    source?: MessageSource,
+  ): Promise<MessageProcessingResult> {
+    const resolvedSource = source ?? context.source ?? deriveSourceFromEvent(event);
+    context.source = resolvedSource;
+    const hookContext = await this.createHookContext(event, context, resolvedSource);
     const messageId = String(event.id ?? event.messageId ?? 'unknown');
     const contextKey = `${context.sessionId}_${messageId}`;
     const logTag = getLogTag(messageId);
@@ -78,7 +85,7 @@ export class MessagePipeline {
         try {
           cacheMessage(event);
           logger.debug(
-            `[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId}`,
+            `[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId} | source=${resolvedSource}`,
           );
 
           const success = await this.lifecycle.execute(hookContext);
@@ -102,8 +109,11 @@ export class MessagePipeline {
   async processReplyOnly(
     event: NormalizedMessageEvent,
     context: MessageProcessingContext,
+    source?: MessageSource,
   ): Promise<MessageProcessingResult> {
-    const hookContext = await this.createHookContext(event, context);
+    const resolvedSource = source ?? context.source ?? deriveSourceFromEvent(event);
+    context.source = resolvedSource;
+    const hookContext = await this.createHookContext(event, context, resolvedSource);
     const messageId = String(event.id ?? event.messageId ?? 'unknown');
     hookContext.metadata.set('replyOnly', true);
     this.applyProviderPrefix(hookContext, event);
@@ -154,6 +164,7 @@ export class MessagePipeline {
   private async createHookContext(
     event: NormalizedMessageEvent,
     context: MessageProcessingContext,
+    source?: MessageSource,
   ): Promise<HookContext> {
     const conversationContext = this.buildConversationContext(event, context);
     const options: Parameters<typeof HookContextBuilder.fromMessage>[1] = {
@@ -168,6 +179,7 @@ export class MessagePipeline {
     };
     const hookContext = HookContextBuilder.fromMessage(event, options)
       .withConversationContext(conversationContext)
+      .withSource(source ?? deriveSourceFromEvent(event))
       .build();
     const groupId = event.groupId != null ? event.groupId.toString() : undefined;
     if (groupId) {
@@ -226,6 +238,7 @@ export class MessagePipeline {
       senderRole: event.sender?.role ?? '',
     })
       .withConversationContext(conversationContext)
+      .withSource(deriveSourceFromEvent(event))
       .withError(err)
       .build();
     await this.hookManager.execute('onError', errorContext);
