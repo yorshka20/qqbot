@@ -1288,7 +1288,8 @@
   // default; enable alongside "avatar" to see persona modulation kick in.
   // "mind": {
   //   "enabled": false,
-  //   "personaId": "default",
+  //   "personaId": "default",      // 对应 data/mind/persona/<id>/{core-dna.json,bible.md} 目录
+  //   "dataDir": "./data/mind",    // SQLite 反思日志 + persona 文件根目录
   //   "tickMs": 1000,
   //
   //   // ODE time constants. Defaults match mergeMindConfig().
@@ -1299,20 +1300,31 @@
   //   //   "attentionSpikePerMessage": 0.3
   //   // },
   //
-  //   // Phenotype → avatar modulation mapping.
+  //   // Phenotype → avatar modulation mapping. Note: Core DNA JSON
+  //   // (data/mind/persona/<id>/core-dna.json) overrides these — these
+  //   // keys 只在 Core DNA 缺该字段或 user-config 显式 override 时生效。
   //   // "modulation": {
   //   //   "fatigueIntensityDrop": 0.4,  // at fatigue=1.0 → 60% intensity
   //   //   "fatigueSpeedDrop": 0.3       // at fatigue=1.0 → 70% speed
   //   // },
   //
-  //   // Phase 2: Prompt-patch behaviour — inject a short mood fragment
-  //   // into the reply pipeline's system prompt when fatigue exceeds a
-  //   // threshold. Requires plugin "mind-prompt" enabled in plugins.jsonc.
+  //   // Phase 2/3.5: Prompt-patch behaviour — inject persona context into
+  //   // the reply pipeline's system prompt. Requires plugin "mind-prompt"
+  //   // enabled in plugins.jsonc.
+  //   //
+  //   // 注入块（按出现顺序）：
+  //   //   <persona_identity>     ← bible.md Self-concept + Voice + Lore（injectBible 控制）
+  //   //   <persona_boundaries>   ← bible.md Boundaries 段（injectBible 控制）
+  //   //   <mind_state>           ← fatigue → moodSummary（fatigue*Min 控制）
+  //   //   <relationship_state>   ← per-user affinity / familiarity 摘要
+  //   //   <tone_state>           ← System 2 反思当前 tone 片段
   //   // "promptPatch": {
   //   //   "enabled": true,
-  //   //   "fatigueMildMin": 0.3,      // below this → no injection
-  //   //   "fatigueModerateMin": 0.55, // moderate wording above this
-  //   //   "fatigueSevereMin": 0.8     // strongest wording above this
+  //   //   "fatigueMildMin": 0.3,        // below this → no mood injection
+  //   //   "fatigueModerateMin": 0.55,
+  //   //   "fatigueSevereMin": 0.8,
+  //   //   "injectBible": true,          // false → 跳过 identity / boundaries 块（bible 仍喂 reflection）
+  //   //   "bibleMaxCharsPerSection": 800 // 每段 truncate 上限（含中文按字符计）
   //   // },
   //
   //   // Phase 3: Autonomous wander — periodic low-amplitude idle motion.
@@ -1320,21 +1332,23 @@
   //   // Requires the avatar system to be active.
   //   // "wander": {
   //   //   "enabled": true,
-  //   //   "intervalMinMs": 45000,     // min delay between wander attempts
-  //   //   "intervalMaxMs": 120000,    // max delay between wander attempts
-  //   //   "cooldownMs": 12000,        // post-wander cooldown before next eligible
+  //   //   "intervalMinMs": 10000,
+  //   //   "intervalMaxMs": 20000,
+  //   //   "cooldownMs": 10000,
   //   //   "intents": {                // weighted random over intent kinds
-  //   //     "glance": 0.3,
-  //   //     "look_around": 0.25,
-  //   //     "shift_weight": 0.2,
-  //   //     "micro_step": 0.15,
-  //   //     "browse": 0.1
+  //   //     "glance": 0.15,
+  //   //     "look_around": 0.1,
+  //   //     "shift_weight": 0.08,
+  //   //     "micro_step": 0.05,
+  //   //     "browse": 0.02,
+  //   //     "idle_clip": 0.6          // dominant: pick a clip from idleClipPool
   //   //   },
   //   //   "amplitude": {              // caps on per-step magnitudes
   //   //     "maxTurnRad": 0.524,      // ≈ 30°
   //   //     "maxStepMeters": 0.25,
   //   //     "maxStrafeMeters": 0.2
-  //   //   }
+  //   //   },
+  //   //   "idleClipPool": ["vrm_idle_loop"]
   //   // }
   //
   //   // Phase 3: Autonomous triggers — translate phenotype state into discrete
