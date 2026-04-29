@@ -11,6 +11,8 @@
  * Design reference: `docs/local/mind-system-design.md`.
  */
 
+import { type MessageSource, SOURCE_VALUES } from '@/conversation/sources';
+
 /**
  * Persona identifier. Phase 1 only has a single hardcoded `default`
  * persona; Phase 4 introduces persona presets loaded from JSON. Kept as
@@ -148,6 +150,13 @@ export interface MindConfig {
     injectBible: boolean;
     /** Max chars per Bible section when truncating for prompt budget. Default 800 (chars, not tokens). */
     bibleMaxCharsPerSection: number;
+    /**
+     * Phase 3.6: which message sources receive mind / persona injection.
+     * When undefined, the producer falls back to its built-in default
+     * (qq-private, qq-group, avatar-cmd, bilibili-danmaku). Override here
+     * to e.g. silence mind in groups or extend coverage to idle-trigger.
+     */
+    applicableSources?: readonly MessageSource[];
   };
 
   /**
@@ -352,6 +361,11 @@ export function mergeMindConfig(raw: Record<string, unknown> | undefined): MindC
         ppSrc.bibleMaxCharsPerSection,
         DEFAULT_MIND_CONFIG.promptPatch.bibleMaxCharsPerSection,
       ),
+      applicableSources: Array.isArray(ppSrc.applicableSources)
+        ? (ppSrc.applicableSources.filter(
+            (s): s is MessageSource => typeof s === 'string' && SOURCE_VALUES.includes(s as MessageSource),
+          ) as readonly MessageSource[])
+        : undefined,
     },
     wander: mergeWanderConfig(src.wander),
     autonomousTrigger: mergeAutonomousTriggerConfig(src.autonomousTrigger),

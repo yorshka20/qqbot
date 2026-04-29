@@ -10,11 +10,15 @@
  */
 
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
+import type { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import { MindModulationAdapter } from './MindModulationAdapter';
 import { MindService } from './MindService';
 import { type CharacterBible, loadCharacterBible } from './personaStore/CharacterBibleLoader';
 import { type CoreDNA, loadCoreDNA } from './personaStore/CoreDNALoader';
+import { createMindPromptInjectionProducer } from './promptInjectionProducer';
 import { type MindConfig, mergeMindConfig } from './types';
 
 export interface MindComponents {
@@ -72,6 +76,25 @@ export class MindInitializer {
     );
 
     const modulationProvider = new MindModulationAdapter(mindService);
+
+    // Phase 3.6: register mind as a PromptInjectionProducer so all sources
+    // (qq-private, qq-group, avatar-cmd, bilibili-danmaku, etc.) get persona
+    // injection through the unified registry rather than the old per-pipeline hook.
+    try {
+      const container = getContainer();
+      if (container.isRegistered(DITokens.PROMPT_INJECTION_REGISTRY)) {
+        const registry = container.resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
+        const producer = createMindPromptInjectionProducer({ mindService, config });
+        registry.register(producer);
+      } else {
+        logger.warn(
+          '[MindInitializer] PromptInjectionRegistry not registered — mind prompt injection skipped (avatar-only / minimal bootstrap?)',
+        );
+      }
+    } catch (err) {
+      logger.warn('[MindInitializer] failed to register mind PromptInjectionProducer (non-fatal):', err);
+    }
+
     return { mindService, modulationProvider, config };
   }
 }
