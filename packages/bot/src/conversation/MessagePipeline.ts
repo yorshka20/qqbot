@@ -16,6 +16,7 @@ import { getLogColorForKey, getLogTag } from '@/utils/messageLogContext';
 import type { ConversationConfigService } from './ConversationConfigService';
 import type { Lifecycle } from './Lifecycle';
 import { deriveSourceFromEvent, type MessageSource } from './sources';
+import { getSourceConfig } from './sources/registry';
 import type { MessageProcessingContext, MessageProcessingResult } from './types';
 
 /**
@@ -26,6 +27,8 @@ import type { MessageProcessingContext, MessageProcessingResult } from './types'
  * async local storage so PromptManager can look up the correct context for this async chain when rendering.
  */
 export class MessagePipeline {
+  private serialQueues = new Map<MessageSource, Promise<void>>();
+
   constructor(
     private lifecycle: Lifecycle,
     private hookManager: HookManager,
@@ -72,6 +75,27 @@ export class MessagePipeline {
   ): Promise<MessageProcessingResult> {
     const resolvedSource = source ?? context.source ?? deriveSourceFromEvent(event);
     context.source = resolvedSource;
+    const cfg = getSourceConfig(resolvedSource);
+    if (cfg.serial) {
+      const prev = this.serialQueues.get(resolvedSource) ?? Promise.resolve();
+      const next = prev.catch(() => undefined).then(() => this._processInner(event, context, resolvedSource));
+      this.serialQueues.set(
+        resolvedSource,
+        next.then(
+          () => undefined,
+          () => undefined,
+        ),
+      );
+      return next;
+    }
+    return this._processInner(event, context, resolvedSource);
+  }
+
+  private async _processInner(
+    event: NormalizedMessageEvent,
+    context: MessageProcessingContext,
+    resolvedSource: MessageSource,
+  ): Promise<MessageProcessingResult> {
     const hookContext = await this.createHookContext(event, context, resolvedSource);
     if (context.responseCallback) {
       hookContext.metadata.set('responseCallback', context.responseCallback);
