@@ -38,12 +38,12 @@ import { DanmakuStore } from '@/services/bilibili/live/DanmakuStore';
 import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
-import { Live2DIdleTrigger } from '@/services/live2d/Live2DIdleTrigger';
-import { Live2DMemoryExtractionCoordinator } from '@/services/live2d/Live2DMemoryExtractionCoordinator';
+import { AvatarIdleTrigger } from '@/integrations/avatar/AvatarIdleTrigger';
+import { AvatarMemoryExtractionCoordinator } from '@/integrations/avatar/AvatarMemoryExtractionCoordinator';
+import { AvatarSessionService } from '@/integrations/avatar/AvatarSessionService';
+import { LivemodeInterceptor } from '@/integrations/avatar/LivemodeInterceptor';
+import { LivemodeState } from '@/integrations/avatar/LivemodeState';
 import { Live2DPipeline } from '@/services/live2d/Live2DPipeline';
-import { Live2DSessionService } from '@/services/live2d/Live2DSessionService';
-import { LivemodeInterceptor } from '@/services/live2d/LivemodeInterceptor';
-import { LivemodeState } from '@/services/live2d/LivemodeState';
 import type { MCPSystem } from '@/services/mcp/MCPInitializer';
 import { MCPInitializer } from '@/services/mcp/MCPInitializer';
 import { RetrievalService } from '@/services/retrieval';
@@ -330,18 +330,18 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     logger.warn('[Bootstrap] Mind subsystem wiring failed (non-fatal):', err);
   }
 
-  // ── Live2DSessionService (rolling thread history for Live2D runs) ──
+  // ── AvatarSessionService (rolling thread history for avatar runs) ──
   // Must register BEFORE Live2DPipeline resolves — stages inject it by token.
-  const live2dSessionService = container.resolve(Live2DSessionService);
-  container.registerInstance(DITokens.LIVE2D_SESSION_SERVICE, live2dSessionService);
+  const avatarSessionService = container.resolve(AvatarSessionService);
+  container.registerInstance(DITokens.AVATAR_SESSION_SERVICE, avatarSessionService);
 
-  // ── Live2DMemoryExtractionCoordinator (write side of <memory_context>) ──
+  // ── AvatarMemoryExtractionCoordinator (write side of <memory_context>) ──
   // Resolves MemoryExtractService lazily, so if it isn't registered yet
   // (edge cases / test harnesses) the coordinator degrades to a no-op
   // instead of failing construction. Ordering against the MemoryExtract
   // registration therefore doesn't matter.
-  const live2dMemoryExtractionCoordinator = container.resolve(Live2DMemoryExtractionCoordinator);
-  container.registerInstance(DITokens.LIVE2D_MEMORY_EXTRACTION_COORDINATOR, live2dMemoryExtractionCoordinator);
+  const avatarMemoryExtractionCoordinator = container.resolve(AvatarMemoryExtractionCoordinator);
+  container.registerInstance(DITokens.AVATAR_MEMORY_EXTRACTION_COORDINATOR, avatarMemoryExtractionCoordinator);
 
   // ── LivemodeState (per-user mock-livestream buffers) ──
   // Registered here so both the /livemode command and the PROCESS-stage
@@ -361,9 +361,9 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   // Resolve idle trigger before wiring the flush handler so the handler can
   // call `markActivity()` to reset the per-user idle clock on every flush.
   const messagePipeline = container.resolve<MessagePipeline>(DITokens.MESSAGE_PIPELINE);
-  const live2dIdleTrigger = container.resolve(Live2DIdleTrigger);
+  const avatarIdleTrigger = container.resolve(AvatarIdleTrigger);
   livemodeState.setFlushHandler((userId, payload) => {
-    live2dIdleTrigger.markActivity(userId);
+    avatarIdleTrigger.markActivity(userId);
     const event = makeSyntheticEvent({
       source: 'idle-trigger',
       userId: String(userId),
@@ -384,7 +384,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
       'idle-trigger',
     );
   });
-  live2dIdleTrigger.start();
+  avatarIdleTrigger.start();
   try {
     const interceptorRegistry = container.resolve<ProcessStageInterceptorRegistry>(
       DITokens.PROCESS_STAGE_INTERCEPTOR_REGISTRY,

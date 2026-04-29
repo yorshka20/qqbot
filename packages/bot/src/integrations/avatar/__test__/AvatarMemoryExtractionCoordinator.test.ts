@@ -18,8 +18,8 @@ import { container } from 'tsyringe';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import type { MemoryExtractService } from '@/memory';
-import { Live2DMemoryExtractionCoordinator } from '../Live2DMemoryExtractionCoordinator';
-import type { Live2DSessionService } from '../Live2DSessionService';
+import { AvatarMemoryExtractionCoordinator } from '../AvatarMemoryExtractionCoordinator';
+import type { AvatarSessionService } from '../AvatarSessionService';
 import type { Live2DSource } from '../types';
 
 /**
@@ -53,7 +53,7 @@ function makeEntry(partial: Partial<FakeEntry> & { content: string; isBotReply: 
 }
 
 interface CoordinatorEnv {
-  coordinator: Live2DMemoryExtractionCoordinator;
+  coordinator: AvatarMemoryExtractionCoordinator;
   fakeConfig: Record<string, unknown>;
   fakeSession: {
     getGroupId: ReturnType<typeof mock>;
@@ -126,9 +126,9 @@ function setup(opts: SetupOptions = {}): CoordinatorEnv {
     container.registerInstance(DITokens.MEMORY_EXTRACT_SERVICE, extractService as unknown as MemoryExtractService);
   }
 
-  const coordinator = new Live2DMemoryExtractionCoordinator(
+  const coordinator = new AvatarMemoryExtractionCoordinator(
     configShim as Config,
-    fakeSession as unknown as Live2DSessionService,
+    fakeSession as unknown as AvatarSessionService,
   );
 
   return { coordinator, fakeConfig, fakeSession, extractService };

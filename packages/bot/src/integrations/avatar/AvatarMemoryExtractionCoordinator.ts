@@ -34,7 +34,7 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { MemoryExtractService } from '@/memory';
 import { logger } from '@/utils/logger';
-import type { Live2DSessionService } from './Live2DSessionService';
+import type { AvatarSessionService } from './AvatarSessionService';
 import type { Live2DSource } from './types';
 
 interface ScheduleEntry {
@@ -65,12 +65,12 @@ interface ResolvedConfig {
 
 @injectable()
 @singleton()
-export class Live2DMemoryExtractionCoordinator {
+export class AvatarMemoryExtractionCoordinator {
   private readonly timersByThread = new Map<string, ScheduleEntry>();
 
   constructor(
     @inject(DITokens.CONFIG) private readonly config: Config,
-    @inject(DITokens.LIVE2D_SESSION_SERVICE) private readonly sessionService: Live2DSessionService,
+    @inject(DITokens.AVATAR_SESSION_SERVICE) private readonly sessionService: AvatarSessionService,
   ) {}
 
   /**

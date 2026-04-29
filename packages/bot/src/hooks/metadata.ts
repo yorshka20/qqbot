@@ -58,7 +58,7 @@ export interface HookContextMetadata {
    * The reply pipeline's PromptAssemblyStage appends each non-empty string
    * to the scene system prompt in push order — the core stage stays
    * domain-agnostic, plugins own their own prompt contributions (e.g.
-   * Live2DAvatarPlugin pushes the `avatar.emotion-system` fragment for
+   * AvatarPlugin pushes the `avatar.emotion-system` fragment for
    * private-chat messages when the avatar is active).
    */
   systemPromptFragments?: string[];

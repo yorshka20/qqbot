@@ -241,7 +241,7 @@
       // Live2D Avatar Plugin — drives a VTubeStudio-connected Live2D avatar based on bot state and LLM emotion tags
       // Requires the top-level "avatar" config block to be set with enabled=true
       // {
-      //   "name": "live2d-avatar",
+      //   "name": "avatar",
       //   "enabled": false
       // },
       // Todo Plugin - manages project ToDo items via /todo command

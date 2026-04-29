@@ -10,7 +10,7 @@
 
 import type { AvatarService } from '@qqbot/avatar';
 import type { ChatMessage } from '@/ai/types';
-import type { Live2DInput, Live2DResult } from './types';
+import type { Live2DInput, Live2DResult } from '@/integrations/avatar/types';
 
 export interface Live2DContext {
   /** Input passed to `Live2DPipeline.enqueue`. Immutable from stages. */

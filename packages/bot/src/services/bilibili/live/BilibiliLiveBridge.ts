@@ -25,7 +25,7 @@
 import type { MessagePipeline } from '@/conversation/MessagePipeline';
 import type { MessageProcessingContext } from '@/conversation/types';
 import { makeSyntheticEvent } from '@/conversation/synthetic';
-import type { Live2DBatchSender } from '@/services/live2d/types';
+import type { AvatarBatchSender } from '@/integrations/avatar/types';
 import { logger } from '@/utils/logger';
 import type { BilibiliLiveClient, DanmakuEvent } from './BilibiliLiveClient';
 import type { BufferEntry, DanmakuBuffer, FlushPayload } from './DanmakuBuffer';
@@ -191,7 +191,7 @@ export class BilibiliLiveBridge {
 }
 
 /**
- * Collapse a flush payload's entries into one {@link Live2DBatchSender} per
+ * Collapse a flush payload's entries into one {@link AvatarBatchSender} per
  * distinct uid. A single uid may appear across multiple `BufferEntry`s (if
  * they said different things), so we fold by uid and join their raw lines
  * with `\n` — that joined text becomes the per-user RAG query downstream.
@@ -204,7 +204,7 @@ export class BilibiliLiveBridge {
  * because the buffer doesn't know about live2d / per-user memory — this is
  * a pure integration-layer concern.
  */
-export function aggregateBatchSenders(entries: BufferEntry[]): Live2DBatchSender[] {
+export function aggregateBatchSenders(entries: BufferEntry[]): AvatarBatchSender[] {
   // Insertion-order Map guarantees stable output for tests + cache stability.
   const byUid = new Map<string, { name: string; texts: string[] }>();
   for (const entry of entries) {
@@ -222,7 +222,7 @@ export function aggregateBatchSenders(entries: BufferEntry[]): Live2DBatchSender
       }
     }
   }
-  const out: Live2DBatchSender[] = [];
+  const out: AvatarBatchSender[] = [];
   for (const [uid, agg] of byUid) {
     out.push({ uid, name: agg.name, text: agg.texts.join('\n') });
   }

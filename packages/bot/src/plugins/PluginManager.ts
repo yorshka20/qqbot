@@ -33,6 +33,8 @@ export class PluginManager {
   private enabledPlugins = new Set<string>();
   // Plugin directory is relative to this file's location
   private readonly pluginDirectory = join(import.meta.dir, 'plugins');
+  // Additional plugin directory for integrations (e.g. integrations/avatar/)
+  private readonly integrationsDirectory = join(import.meta.dir, '..', 'integrations');
 
   private readonly apiClient: APIClient;
   private readonly eventRouter: EventRouter;
@@ -65,6 +67,11 @@ export class PluginManager {
     // Load plugins from fixed src/plugins directory
     if (this.dirExists(this.pluginDirectory)) {
       await this.loadPluginsFromDirectory(this.pluginDirectory, pluginConfigMap, true, options?.skipEnable);
+    }
+
+    // Load plugins from src/integrations/ (e.g. integrations/avatar/)
+    if (this.dirExists(this.integrationsDirectory)) {
+      await this.loadPluginsFromDirectory(this.integrationsDirectory, pluginConfigMap, true, options?.skipEnable);
     }
 
     logger.info(`📦 [PluginManager] Finished loading plugins. Total: ${this.plugins.size}`);

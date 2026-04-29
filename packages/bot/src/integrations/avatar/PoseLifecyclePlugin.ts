@@ -7,8 +7,8 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
-import { Hook, RegisterPlugin } from '../decorators';
-import { PluginBase } from '../PluginBase';
+import { Hook, RegisterPlugin } from '@/plugins/decorators';
+import { PluginBase } from '@/plugins/PluginBase';
 
 @RegisterPlugin({
   name: 'pose-lifecycle',

@@ -3,8 +3,8 @@
 
 import { getSourceConfig } from '@/conversation/sources/registry';
 import type { HookContext } from '@/hooks/types';
-import { Hook, RegisterPlugin } from '../decorators';
-import { PluginBase } from '../PluginBase';
+import { Hook, RegisterPlugin } from '@/plugins/decorators';
+import { PluginBase } from '@/plugins/PluginBase';
 
 @RegisterPlugin({
   name: 'session-strategy',

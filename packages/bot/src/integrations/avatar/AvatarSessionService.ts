@@ -30,7 +30,7 @@ const LIVE2D_PREFERENCE_PREFIX = 'live2d';
 
 @injectable()
 @singleton()
-export class Live2DSessionService {
+export class AvatarSessionService {
   constructor(
     @inject(DITokens.THREAD_SERVICE) private threadService: ThreadService,
     @inject(DITokens.THREAD_CONTEXT_COMPRESSION_SERVICE)
@@ -48,7 +48,7 @@ export class Live2DSessionService {
     if (existingId) return existingId;
     const thread = this.threadService.create(groupId, `${LIVE2D_PREFERENCE_PREFIX}:${source}`, []);
     logger.debug(
-      `[Live2DSessionService] created thread | source=${source} scope=${scope ?? '-'} threadId=${thread.threadId}`,
+      `[AvatarSessionService] created thread | source=${source} scope=${scope ?? '-'} threadId=${thread.threadId}`,
     );
     return thread.threadId;
   }

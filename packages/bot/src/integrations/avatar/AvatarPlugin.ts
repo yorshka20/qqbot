@@ -9,8 +9,8 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
-import { Hook, RegisterPlugin } from '../decorators';
-import { PluginBase } from '../PluginBase';
+import { Hook, RegisterPlugin } from '@/plugins/decorators';
+import { PluginBase } from '@/plugins/PluginBase';
 
 /**
  * Ambient-gain presets keyed to pipeline phase. Lower values suppress the
@@ -29,11 +29,11 @@ const AMBIENT = {
 } as const;
 
 @RegisterPlugin({
-  name: 'live2d-avatar',
+  name: 'avatar',
   version: '1.0.0',
   description: 'Drives a VTubeStudio-connected Live2D avatar based on bot state and LLM emotion tags',
 })
-export class Live2DAvatarPlugin extends PluginBase {
+export class AvatarPlugin extends PluginBase {
   private avatar: AvatarService | null = null;
   private promptManager: PromptManager | null = null;
 
@@ -67,7 +67,7 @@ export class Live2DAvatarPlugin extends PluginBase {
     try {
       this.avatar?.setActivity({ pose: 'listening', ambientGain: AMBIENT.LISTENING });
     } catch (err) {
-      logger.warn('[Live2DAvatarPlugin] onMessageReceived setActivity failed:', err);
+      logger.warn('[AvatarPlugin] onMessageReceived setActivity failed:', err);
     }
     return true;
   }
@@ -99,7 +99,7 @@ export class Live2DAvatarPlugin extends PluginBase {
       const existing = context.metadata.get('systemPromptFragments') ?? [];
       context.metadata.set('systemPromptFragments', [...existing, fragment]);
     } catch (err) {
-      logger.warn('[Live2DAvatarPlugin] emotion-system fragment assembly failed:', err);
+      logger.warn('[AvatarPlugin] emotion-system fragment assembly failed:', err);
     }
     return true;
   }
@@ -110,7 +110,7 @@ export class Live2DAvatarPlugin extends PluginBase {
     try {
       this.avatar?.setActivity({ pose: 'thinking', ambientGain: AMBIENT.THINKING });
     } catch (err) {
-      logger.warn('[Live2DAvatarPlugin] onAIGenerationStart setActivity failed:', err);
+      logger.warn('[AvatarPlugin] onAIGenerationStart setActivity failed:', err);
     }
     return true;
   }
@@ -124,12 +124,12 @@ export class Live2DAvatarPlugin extends PluginBase {
         const tags = parseLive2DTags(text);
         for (const tag of tags) {
           logger.info(
-            `[Live2DAvatarPlugin] tag: emotion=${tag.emotion} action=${tag.action} intensity=${tag.intensity}`,
+            `[AvatarPlugin] tag: emotion=${tag.emotion} action=${tag.action} intensity=${tag.intensity}`,
           );
         }
       }
     } catch (err) {
-      logger.warn('[Live2DAvatarPlugin] onAIGenerationComplete failed:', err);
+      logger.warn('[AvatarPlugin] onAIGenerationComplete failed:', err);
     }
     return true;
   }
@@ -174,7 +174,7 @@ export class Live2DAvatarPlugin extends PluginBase {
       // the `/avatar <text>` command, which handles its own LLM call +
       // plain-text delivery + speak() without going through cardrender.
     } catch (err) {
-      logger.warn('[Live2DAvatarPlugin] onMessageBeforeSend failed:', err);
+      logger.warn('[AvatarPlugin] onMessageBeforeSend failed:', err);
     }
     return true;
   }
@@ -185,7 +185,7 @@ export class Live2DAvatarPlugin extends PluginBase {
     try {
       this.avatar?.setActivity({ pose: 'neutral', ambientGain: AMBIENT.SPEAKING });
     } catch (err) {
-      logger.warn('[Live2DAvatarPlugin] onMessageSent setActivity failed:', err);
+      logger.warn('[AvatarPlugin] onMessageSent setActivity failed:', err);
     }
     return true;
   }
@@ -196,7 +196,7 @@ export class Live2DAvatarPlugin extends PluginBase {
     try {
       this.avatar?.setActivity({ pose: 'neutral', ambientGain: AMBIENT.FULL });
     } catch (err) {
-      logger.warn('[Live2DAvatarPlugin] onMessageComplete setActivity failed:', err);
+      logger.warn('[AvatarPlugin] onMessageComplete setActivity failed:', err);
     }
     return true;
   }

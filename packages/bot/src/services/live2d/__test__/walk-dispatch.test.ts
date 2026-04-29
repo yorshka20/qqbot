@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import { parseRichTags } from '@qqbot/avatar';
 import { dispatchTags } from '../dispatchParsedTag';
 import { createContext } from '../Live2DStage';
-import type { Live2DInput } from '../types';
+import type { Live2DInput } from '@/integrations/avatar/types';
 
 function sampleInput(overrides?: Partial<Live2DInput>): Live2DInput {
   return { text: 'hello', source: 'avatar-cmd', ...overrides };

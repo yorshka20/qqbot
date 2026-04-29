@@ -1,4 +1,4 @@
-// Live2DPipeline input/output types. Kept in a leaf module (no deps on
+// Avatar pipeline input/output types. Kept in a leaf module (no deps on
 // stages or the pipeline itself) so stage files can import them without
 // creating import cycles with the orchestrator.
 
@@ -20,7 +20,7 @@ export type Live2DSource = 'avatar-cmd' | 'bilibili-danmaku-batch' | 'livemode-p
  *   the whole batch. Optional: callers may omit it and consumers fall back
  *   to the batch-wide text.
  */
-export interface Live2DBatchSender {
+export interface AvatarBatchSender {
   uid: string;
   name: string;
   text?: string;
@@ -41,7 +41,7 @@ export interface Live2DInput {
    * Free-form metadata. Not sent to the LLM as user text.
    * - `temperature` (number): LLM temperature for this run.
    * - `llmStream` (boolean): if set, overrides `avatar.llmStream` for API stream vs one-shot `generate`.
-   * - `senders` (`Live2DBatchSender[]`): populated by `BilibiliLiveBridge`
+   * - `senders` (`AvatarBatchSender[]`): populated by `BilibiliLiveBridge`
    *   for danmaku batches. Distinct viewers aggregated from the flush
    *   payload. Prompt stage fans out per-user memory lookups across them.
    */

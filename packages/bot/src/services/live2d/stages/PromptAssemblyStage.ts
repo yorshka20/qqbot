@@ -40,9 +40,9 @@ import { formatMemoryMarkdown, type MemorySpeakerSection } from '@/memory/format
 import { GROUP_MEMORY_USER_ID, type MemoryService } from '@/memory/MemoryService';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
-import type { Live2DSessionService } from '../Live2DSessionService';
+import type { AvatarSessionService } from '@/integrations/avatar/AvatarSessionService';
+import type { AvatarBatchSender, Live2DSource } from '@/integrations/avatar/types';
 import type { Live2DContext, Live2DStage } from '../Live2DStage';
-import type { Live2DBatchSender, Live2DSource } from '../types';
 
 /**
  * Template names for each source's scene + user-frame + few-shot example
@@ -93,7 +93,7 @@ export class PromptAssemblyStage implements Live2DStage {
 
   constructor(
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
-    @inject(DITokens.LIVE2D_SESSION_SERVICE) private sessionService: Live2DSessionService,
+    @inject(DITokens.AVATAR_SESSION_SERVICE) private sessionService: AvatarSessionService,
   ) {}
 
   async execute(ctx: Live2DContext): Promise<void> {
@@ -314,10 +314,10 @@ export class PromptAssemblyStage implements Live2DStage {
     ];
   }
 
-  private readSendersMeta(ctx: Live2DContext): Live2DBatchSender[] | undefined {
+  private readSendersMeta(ctx: Live2DContext): AvatarBatchSender[] | undefined {
     const raw = ctx.input.meta?.senders;
     if (!Array.isArray(raw)) return undefined;
-    const out: Live2DBatchSender[] = [];
+    const out: AvatarBatchSender[] = [];
     for (const item of raw) {
       if (!item || typeof item !== 'object') continue;
       const uid = (item as { uid?: unknown }).uid;

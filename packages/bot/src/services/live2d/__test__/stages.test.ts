@@ -11,7 +11,7 @@ import { LLMStage } from '../stages/LLMStage';
 import { PromptAssemblyStage } from '../stages/PromptAssemblyStage';
 import { SpeakStage } from '../stages/SpeakStage';
 import { TagAnimationStage } from '../stages/TagAnimationStage';
-import type { Live2DInput } from '../types';
+import type { Live2DInput } from '@/integrations/avatar/types';
 
 function sampleInput(overrides?: Partial<Live2DInput>): Live2DInput {
   return { text: 'hello', source: 'avatar-cmd', ...overrides };

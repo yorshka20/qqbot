@@ -37,11 +37,11 @@ import { LLMStage } from './stages/LLMStage';
 import { PromptAssemblyStage } from './stages/PromptAssemblyStage';
 import { SpeakStage } from './stages/SpeakStage';
 import { TagAnimationStage } from './stages/TagAnimationStage';
-import type { Live2DInput, Live2DResult } from './types';
+import type { Live2DInput, Live2DResult } from '@/integrations/avatar/types';
 
 // Re-export types so existing call sites (`import { Live2DInput } from '…/Live2DPipeline'`)
 // keep working after the types moved into `./types`.
-export type { Live2DInput, Live2DResult, Live2DSource } from './types';
+export type { Live2DInput, Live2DResult, Live2DSource } from '@/integrations/avatar/types';
 
 /**
  * Soft threshold: when the backlog crosses this, emit a warn so a wedged

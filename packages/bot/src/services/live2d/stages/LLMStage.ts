@@ -26,8 +26,8 @@ import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import { dispatchTags } from '../dispatchParsedTag';
-import type { Live2DMemoryExtractionCoordinator } from '../Live2DMemoryExtractionCoordinator';
-import type { Live2DSessionService } from '../Live2DSessionService';
+import type { AvatarMemoryExtractionCoordinator } from '@/integrations/avatar/AvatarMemoryExtractionCoordinator';
+import type { AvatarSessionService } from '@/integrations/avatar/AvatarSessionService';
 import type { Live2DContext, Live2DStage } from '../Live2DStage';
 import { SentenceFlusher } from './SentenceFlusher';
 
@@ -78,9 +78,9 @@ export class LLMStage implements Live2DStage {
   constructor(
     @inject(DITokens.LLM_SERVICE) private llmService: LLMService,
     @inject(DITokens.CONFIG) private config: Config,
-    @inject(DITokens.LIVE2D_SESSION_SERVICE) private sessionService: Live2DSessionService,
-    @inject(DITokens.LIVE2D_MEMORY_EXTRACTION_COORDINATOR)
-    private memoryExtractionCoordinator: Live2DMemoryExtractionCoordinator,
+    @inject(DITokens.AVATAR_SESSION_SERVICE) private sessionService: AvatarSessionService,
+    @inject(DITokens.AVATAR_MEMORY_EXTRACTION_COORDINATOR)
+    private memoryExtractionCoordinator: AvatarMemoryExtractionCoordinator,
   ) {}
 
   async execute(ctx: Live2DContext): Promise<void> {

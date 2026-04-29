@@ -57,7 +57,7 @@ const MAX_CONSECUTIVE_IDLE_FIRES = 2;
 
 @injectable()
 @singleton()
-export class Live2DIdleTrigger {
+export class AvatarIdleTrigger {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastActivityByUser = new Map<string, number>();
   private consecutiveIdleByUser = new Map<string, number>();
@@ -75,7 +75,7 @@ export class Live2DIdleTrigger {
       void this.tick();
     }, CHECK_INTERVAL_MS);
     logger.info(
-      `[Live2DIdleTrigger] started (checkInterval=${CHECK_INTERVAL_MS}ms threshold=${IDLE_THRESHOLD_MS}ms maxConsecutive=${MAX_CONSECUTIVE_IDLE_FIRES})`,
+      `[AvatarIdleTrigger] started (checkInterval=${CHECK_INTERVAL_MS}ms threshold=${IDLE_THRESHOLD_MS}ms maxConsecutive=${MAX_CONSECUTIVE_IDLE_FIRES})`,
     );
   }
 
@@ -139,7 +139,7 @@ export class Live2DIdleTrigger {
       try {
         await this.messagePipeline.process(event, procContext, 'idle-trigger');
       } catch (err) {
-        logger.warn(`[Live2DIdleTrigger] enqueue failed | userId=${userId}:`, err);
+        logger.warn(`[AvatarIdleTrigger] enqueue failed | userId=${userId}:`, err);
       }
     }
   }
