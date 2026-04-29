@@ -1,5 +1,5 @@
 // BilibiliLiveBridge — wires BilibiliLiveClient → DanmakuBuffer → (DanmakuStore
-// + Live2DPipeline). This is the single place that knows about all four and
+// + MessagePipeline). This is the single place that knows about all four and
 // chooses when to persist / dispatch vs. drop.
 //
 // Flow per incoming danmaku:
@@ -8,8 +8,9 @@
 //   2. Buffer emits 'flush' on its 3s tick when non-empty — bridge:
 //        a. writes every raw event from the flush into DanmakuStore
 //           (preserving per-sender history, even for deduped entries)
-//        b. if pipeToLive2D, hands the formatted summaryText off to the
-//           Live2DPipeline for the avatar reaction
+//        b. if pipeToLive2D, constructs a synthetic NormalizedMessageEvent
+//           (source=bilibili-danmaku) and dispatches via MessagePipeline.
+//           SourceConfig discards the reply; serial=true enforces single-flight.
 //
 // Lifecycle: `start()` connects the live client; `stop()` tears it down.
 // Re-entrant: calling `start()` while already started is a no-op; calling
@@ -21,7 +22,9 @@
 // listened" — without an error listener, Node rethrows `emit('error')`
 // synchronously, which would escape our start()'s try/catch.
 
-import type { Live2DPipeline } from '@/services/live2d/Live2DPipeline';
+import type { MessagePipeline } from '@/conversation/MessagePipeline';
+import type { MessageProcessingContext } from '@/conversation/types';
+import { makeSyntheticEvent } from '@/conversation/synthetic';
 import type { Live2DBatchSender } from '@/services/live2d/types';
 import { logger } from '@/utils/logger';
 import type { BilibiliLiveClient, DanmakuEvent } from './BilibiliLiveClient';
@@ -67,7 +70,7 @@ export class BilibiliLiveBridge {
     private readonly client: BilibiliLiveClient,
     private readonly buffer: DanmakuBuffer,
     private readonly store: DanmakuStore,
-    private readonly pipeline: Live2DPipeline,
+    private readonly messagePipeline: MessagePipeline,
     private readonly opts: BilibiliLiveBridgeOptions,
   ) {}
 
@@ -157,31 +160,30 @@ export class BilibiliLiveBridge {
 
     if (!this.opts.pipeToLive2D) return;
 
+    // TODO([4/5]→follow-up): batchId/totalDanmaku/distinctSenders/anyMention/senders
+    // used to flow via Live2DInput.meta. If downstream prompt scenes need this
+    // metadata, thread it through MessageProcessingContext extension.
+    const event = makeSyntheticEvent({
+      source: 'bilibili-danmaku',
+      userId: '__bilibili__',
+      groupId: `bili-room-${this.opts.roomId}`,
+      text: payload.summaryText,
+      messageType: 'group',
+      protocol: 'milky',
+    });
+    const procContext: MessageProcessingContext = {
+      message: event,
+      sessionId: `bili-room-${this.opts.roomId}`,
+      sessionType: 'group',
+      botSelfId: '',
+      source: 'bilibili-danmaku',
+      // No responseCallback: SourceConfig.responseHandler === 'discard' drops the reply.
+    };
     try {
-      const senders = aggregateBatchSenders(payload.entries);
-      const result = await this.pipeline.enqueue({
-        text: payload.summaryText,
-        source: 'bilibili-danmaku-batch',
-        meta: {
-          batchId: payload.batchId,
-          totalDanmaku: payload.totalDanmaku,
-          distinctSenders: payload.distinctSenders,
-          anyMention: payload.anyMention,
-          // Forwarded for per-user memory fan-out in the Live2D prompt stage.
-          // Aggregated here (not in DanmakuBuffer) so the buffer stays purely
-          // about dedup/display and doesn't grow a live2d-specific field.
-          senders,
-        },
-      });
-      if (result.skipped) {
-        logger.debug(
-          `[BilibiliLiveBridge] flush batchId=${payload.batchId} skipped by pipeline (${result.skipReason}); total=${payload.totalDanmaku}`,
-        );
-      } else {
-        logger.debug(
-          `[BilibiliLiveBridge] flush batchId=${payload.batchId} → ${result.tagCount} tags; total=${payload.totalDanmaku}`,
-        );
-      }
+      const result = await this.messagePipeline.process(event, procContext, 'bilibili-danmaku');
+      logger.debug(
+        `[BilibiliLiveBridge] flush batchId=${payload.batchId} processed (success=${result.success}); total=${payload.totalDanmaku}`,
+      );
     } catch (err) {
       logger.warn('[BilibiliLiveBridge] pipeline dispatch failed:', err);
     }

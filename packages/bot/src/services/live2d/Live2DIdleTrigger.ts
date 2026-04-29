@@ -19,8 +19,10 @@
 
 import { inject, injectable, singleton } from 'tsyringe';
 import { DITokens } from '@/core/DITokens';
+import type { MessagePipeline } from '@/conversation/MessagePipeline';
+import type { MessageProcessingContext } from '@/conversation/types';
+import { makeSyntheticEvent } from '@/conversation/synthetic';
 import { logger } from '@/utils/logger';
-import type { Live2DPipeline } from './Live2DPipeline';
 import type { LivemodeState } from './LivemodeState';
 
 const CHECK_INTERVAL_MS = 15_000;
@@ -64,7 +66,7 @@ export class Live2DIdleTrigger {
 
   constructor(
     @inject(DITokens.LIVEMODE_STATE) private state: LivemodeState,
-    @inject(DITokens.LIVE2D_PIPELINE) private pipeline: Live2DPipeline,
+    @inject(DITokens.MESSAGE_PIPELINE) private messagePipeline: MessagePipeline,
   ) {}
 
   start(): void {
@@ -117,13 +119,25 @@ export class Live2DIdleTrigger {
       this.consecutiveIdleByUser.set(userId, consecutive + 1);
 
       const kickoff = this.nextKickoff(userId);
+      // TODO([4/5]→follow-up): IDLE_TEMPERATURE / scope metadata used to flow via
+      // Live2DInput.meta — restore via MessageProcessingContext extension if needed.
+      const event = makeSyntheticEvent({
+        source: 'idle-trigger',
+        userId: String(userId),
+        groupId: null,
+        text: kickoff,
+        messageType: 'private',
+        protocol: 'milky',
+      });
+      const procContext: MessageProcessingContext = {
+        message: event,
+        sessionId: `idle-${userId}`,
+        sessionType: 'user',
+        botSelfId: '',
+        source: 'idle-trigger',
+      };
       try {
-        await this.pipeline.enqueue({
-          text: kickoff,
-          source: 'livemode-private-batch',
-          sender: { uid: userId },
-          meta: { scope: userId, idle: true, temperature: IDLE_TEMPERATURE },
-        });
+        await this.messagePipeline.process(event, procContext, 'idle-trigger');
       } catch (err) {
         logger.warn(`[Live2DIdleTrigger] enqueue failed | userId=${userId}:`, err);
       }

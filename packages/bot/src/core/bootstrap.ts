@@ -29,6 +29,8 @@ import { type MindModulationAdapter, type MindService, startMindSubsystem } from
 import { PluginInitializer } from '@/plugins/PluginInitializer';
 import { DiscordConnection } from '@/protocol/discord/DiscordConnection';
 import { ProtocolAdapterInitializer } from '@/protocol/ProtocolAdapterInitializer';
+import type { MessagePipeline } from '@/conversation/MessagePipeline';
+import { makeSyntheticEvent } from '@/conversation/synthetic';
 import { BilibiliLiveBridge } from '@/services/bilibili/live/BilibiliLiveBridge';
 import { BilibiliLiveClient } from '@/services/bilibili/live/BilibiliLiveClient';
 import { DanmakuBuffer } from '@/services/bilibili/live/DanmakuBuffer';
@@ -358,20 +360,29 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   // ── Livemode wiring ──
   // Resolve idle trigger before wiring the flush handler so the handler can
   // call `markActivity()` to reset the per-user idle clock on every flush.
+  const messagePipeline = container.resolve<MessagePipeline>(DITokens.MESSAGE_PIPELINE);
   const live2dIdleTrigger = container.resolve(Live2DIdleTrigger);
   livemodeState.setFlushHandler((userId, payload) => {
     live2dIdleTrigger.markActivity(userId);
-    void live2dPipeline.enqueue({
+    const event = makeSyntheticEvent({
+      source: 'idle-trigger',
+      userId: String(userId),
+      groupId: null,
       text: payload.summaryText,
-      source: 'livemode-private-batch',
-      sender: { uid: userId },
-      meta: {
-        scope: userId,
-        batchId: payload.batchId,
-        totalDanmaku: payload.totalDanmaku,
-        distinctSenders: payload.distinctSenders,
-      },
+      messageType: 'private',
+      protocol: 'milky',
     });
+    void messagePipeline.process(
+      event,
+      {
+        message: event,
+        sessionId: `idle-${userId}`,
+        sessionType: 'user',
+        botSelfId: '',
+        source: 'idle-trigger',
+      },
+      'idle-trigger',
+    );
   });
   live2dIdleTrigger.start();
   try {
@@ -406,7 +417,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
         streamerAliases: aliases,
       });
       const store = container.resolve(DanmakuStore);
-      bilibiliLiveBridge = new BilibiliLiveBridge(client, buffer, store, live2dPipeline, {
+      bilibiliLiveBridge = new BilibiliLiveBridge(client, buffer, store, messagePipeline, {
         roomId: String(liveCfg.roomId),
         pipeToLive2D: liveCfg.pipeToLive2D !== false,
         streamerAliases: aliases,
