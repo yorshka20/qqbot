@@ -3,8 +3,11 @@
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { NormalEpisodeService } from '@/conversation/history';
+import type { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import { getSourceConfig } from '@/conversation/sources/registry';
 import type { AIChatConfig, ReasoningEffort } from '@/core/config/types/ai';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../../capabilities/types';
@@ -83,14 +86,38 @@ export class PromptAssemblyStage implements ReplyStage {
       sceneSystemPromptRaw = this.promptManager.render('llm.reply.system', { toolInstruct }) ?? '';
     }
 
-    // Plugin-contributed system-prompt fragments. Plugins push into
-    // `metadata.systemPromptFragments` during PREPROCESS — see e.g.
-    // Live2DAvatarPlugin.onMessagePreprocess for the avatar fragment.
-    // Appended in push order; empty / blank entries filtered out so a
-    // plugin that fails to render silently drops instead of producing
-    // "\n\n\n\n" runs in the final prompt.
+    // Phase 3.6: gather cross-cutting prompt injections (mind / future RAG / safety / persona overlay)
+    // from PromptInjectionRegistry. Falls back gracefully when registry isn't registered (avatar-only
+    // / minimal bootstrap paths).
+    let registryFragments: string[] = [];
+    try {
+      const container = getContainer();
+      if (container.isRegistered(DITokens.PROMPT_INJECTION_REGISTRY)) {
+        const registry = container.resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
+        const message = hookContext.message;
+        const userId = message?.userId != null ? String(message.userId) : undefined;
+        const groupId = message?.groupId != null ? String(message.groupId) : undefined;
+        const injections = await registry.gather({
+          source: hookContext.source,
+          userId,
+          groupId,
+          hookContext,
+        });
+        registryFragments = injections.map((i) => i.fragment);
+      }
+    } catch (err) {
+      logger.warn('[PromptAssemblyStage] PromptInjectionRegistry.gather failed (non-fatal):', err);
+    }
+
+    // Legacy plugin-contributed fragments (deprecated — migrate to PromptInjectionRegistry).
     const pluginFragments = hookContext.metadata.get('systemPromptFragments') ?? [];
-    const sceneSystemPrompt = [sceneSystemPromptRaw, ...pluginFragments]
+    if (pluginFragments.length > 0) {
+      logger.warn(
+        `[PromptAssemblyStage] systemPromptFragments metadata is deprecated; migrate to PromptInjectionRegistry. source=${hookContext.source}`,
+      );
+    }
+
+    const sceneSystemPrompt = [sceneSystemPromptRaw, ...registryFragments, ...pluginFragments]
       .map((s) => s?.trim())
       .filter((s): s is string => !!s && s.length > 0)
       .join('\n\n');
