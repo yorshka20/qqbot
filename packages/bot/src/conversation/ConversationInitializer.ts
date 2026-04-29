@@ -612,6 +612,7 @@ export class ConversationInitializer {
         ? container.resolve<InternalEventBus>(DITokens.INTERNAL_EVENT_BUS)
         : undefined,
     );
+    container.registerInstance(DITokens.MESSAGE_PIPELINE, pipeline);
     const conversationManager = new ConversationManager(pipeline);
     container.registerInstance(DITokens.CONVERSATION_MANAGER, conversationManager);
 

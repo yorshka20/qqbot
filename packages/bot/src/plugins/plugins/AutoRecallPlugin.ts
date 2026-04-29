@@ -125,6 +125,7 @@ export class AutoRecallPlugin extends PluginBase {
     stage: 'onMessageSent',
     priority: 'NORMAL',
     order: 0,
+    applicableSources: ['qq-private', 'qq-group', 'discord'],
   })
   async onMessageSent(context: HookContext): Promise<boolean> {
     if (!this.shouldAutoRecall(context)) {

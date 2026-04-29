@@ -152,6 +152,7 @@ export class MessageTriggerPlugin extends PluginBase {
     stage: 'onMessagePreprocess',
     priority: 'HIGHEST',
     order: -1,
+    applicableSources: ['qq-private', 'qq-group', 'discord'],
   })
   async onMessagePreprocess(context: HookContext): Promise<boolean> {
     // Commands are handled by CommandSystem in PROCESS; gate by capability so limited groups can disable command.

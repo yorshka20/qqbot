@@ -98,6 +98,7 @@ export class LightAppPlugin extends PluginBase {
     stage: 'onMessageReceived',
     priority: 'NORMAL',
     order: 0,
+    applicableSources: ['qq-private', 'qq-group', 'discord'],
   })
   async onMessageReceived(context: HookContext): Promise<boolean> {
     if (!this.enabled) {

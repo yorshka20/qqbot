@@ -157,6 +157,7 @@ export class EchoPlugin extends PluginBase {
     stage: 'onMessagePreprocess',
     priority: 'NORMAL',
     order: 10,
+    applicableSources: ['qq-private', 'qq-group', 'discord'],
   })
   async onMessagePreprocess(context: HookContext): Promise<boolean> {
     if (!this.shouldTrigger(context)) {

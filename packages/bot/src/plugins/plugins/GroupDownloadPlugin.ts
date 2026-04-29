@@ -114,6 +114,7 @@ export class GroupDownloadPlugin extends PluginBase {
     stage: 'onMessageComplete',
     priority: 'NORMAL',
     order: 0,
+    applicableSources: ['qq-private', 'qq-group', 'discord'],
   })
   onMessageComplete(context: HookContext): boolean {
     this.handleMessage(context.message);

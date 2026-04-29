@@ -69,6 +69,8 @@ export const DITokens = {
   BILIBILI_DANMAKU_STORE: 'BilibiliDanmakuStore',
   // Prompt injection
   PROMPT_INJECTION_REGISTRY: 'PromptInjectionRegistry',
+  // Message pipeline
+  MESSAGE_PIPELINE: 'MessagePipeline',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];

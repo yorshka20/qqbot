@@ -529,6 +529,7 @@ export class MemoryPlugin extends PluginBase {
     stage: 'onMessageComplete',
     priority: 'NORMAL',
     order: 5,
+    applicableSources: ['qq-private', 'qq-group', 'discord'],
   })
   onMessageComplete(context: HookContext): HookResult {
     if (!this.enabled || this.groupIds.size === 0) {

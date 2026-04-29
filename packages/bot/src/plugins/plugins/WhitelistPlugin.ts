@@ -157,6 +157,7 @@ export class WhitelistPlugin extends PluginBase {
     stage: 'onMessageReceived',
     priority: 'HIGHEST',
     order: -10,
+    applicableSources: ['qq-private', 'qq-group', 'discord'],
   })
   onMessageReceived(context: HookContext): HookResult {
     const message = context.message;
