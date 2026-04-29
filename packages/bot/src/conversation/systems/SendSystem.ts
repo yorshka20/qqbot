@@ -3,6 +3,7 @@
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { SendMessageResult } from '@/api/types';
 import { getReplyContent } from '@/context/HookContextHelpers';
+import { getSourceConfig } from '@/conversation/sources/registry';
 import type { System, SystemContext } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
 import type { HookManager } from '@/hooks/HookManager';
@@ -47,6 +48,21 @@ export class SendSystem implements System {
     if (!replyContent?.segments || replyContent.segments.length === 0) {
       return true;
     }
+
+    const cfg = getSourceConfig(context.source);
+    if (cfg.responseHandler === 'discard') {
+      await this.hookManager.execute('onMessageBeforeSend', context);
+      await this.hookManager.execute('onMessageSent', context);
+      return true;
+    }
+    if (cfg.responseHandler === 'callback') {
+      const cb = context.metadata.get('responseCallback');
+      if (typeof cb === 'function' && context.reply) cb(context.reply);
+      await this.hookManager.execute('onMessageBeforeSend', context);
+      await this.hookManager.execute('onMessageSent', context);
+      return true;
+    }
+    // default 'send-to-im' falls through to existing logic
 
     // Hook: onMessageBeforeSend — final check before sending
     const shouldContinue = await this.hookManager.execute('onMessageBeforeSend', context);
