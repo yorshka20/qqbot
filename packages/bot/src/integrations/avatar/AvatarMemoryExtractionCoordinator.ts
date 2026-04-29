@@ -35,7 +35,7 @@ import { DITokens } from '@/core/DITokens';
 import type { MemoryExtractService } from '@/memory';
 import { logger } from '@/utils/logger';
 import type { AvatarSessionService } from './AvatarSessionService';
-import type { Live2DSource } from './types';
+import type { AvatarSource } from './types';
 
 interface ScheduleEntry {
   timer: ReturnType<typeof setTimeout>;
@@ -82,7 +82,7 @@ export class AvatarMemoryExtractionCoordinator {
    *     `/livemode` are dev/test input and intentionally excluded)
    *   - the thread has no resolvable groupId
    */
-  schedule(threadId: string, source: Live2DSource): void {
+  schedule(threadId: string, source: AvatarSource): void {
     const resolved = this.resolveConfig();
     if (!resolved.enabled) return;
 
@@ -155,7 +155,7 @@ export class AvatarMemoryExtractionCoordinator {
    * and an admin who *really* wants to override it can widen the allowlist
    * in config rather than have a different code path bypass it.
    */
-  async runNow(threadId: string, source: Live2DSource): Promise<void> {
+  async runNow(threadId: string, source: AvatarSource): Promise<void> {
     const resolved = this.resolveConfig();
     if (!resolved.enabled) return;
     if (!resolved.allowedSources.has(source)) return;

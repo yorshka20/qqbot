@@ -1,5 +1,5 @@
 // DanmakuBuffer — aggregates raw DanmakuEvents over a short window before
-// dispatching them to the Live2DPipeline, so the avatar doesn't try to
+// dispatching them to the avatar pipeline, so the avatar doesn't try to
 // respond to every single danmaku.
 //
 // Design:
@@ -55,7 +55,7 @@ export interface FlushPayload {
   batchId: string;
   /** Deduped entries, one per unique normalized text. */
   entries: BufferEntry[];
-  /** Formatted prompt-ready summary text (for Live2DPipeline). */
+  /** Formatted prompt-ready summary text (for avatar pipeline). */
   summaryText: string;
   /** Total raw event count collapsed into this flush (sum of counts). */
   totalDanmaku: number;
@@ -102,7 +102,7 @@ export function detectMention(raw: string, aliases: string[] | undefined): boole
 }
 
 /**
- * Format a buffer flush as a batch summary for the Live2DPipeline prompt.
+ * Format a buffer flush as a batch summary for the avatar pipeline prompt.
  * Shape:
  *
  *   [直播间弹幕 · 过去3秒 · 8条 · 5人]

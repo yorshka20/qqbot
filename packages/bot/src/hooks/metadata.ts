@@ -53,15 +53,6 @@ export interface HookContextMetadata {
   usedCardFormat?: boolean;
   /** Explicit sendAsForward hint from command handler; consumed by ReplyPrepareSystem. */
   explicitSendAsForward?: boolean;
-  /**
-   * Extra system-prompt fragments contributed by plugins during PREPROCESS.
-   * The reply pipeline's PromptAssemblyStage appends each non-empty string
-   * to the scene system prompt in push order — the core stage stays
-   * domain-agnostic, plugins own their own prompt contributions (e.g.
-   * AvatarPlugin pushes the `avatar.emotion-system` fragment for
-   * private-chat messages when the avatar is active).
-   */
-  systemPromptFragments?: string[];
   /** Caller-provided callback for sources with responseHandler === 'callback' (e.g. avatar-cmd). Receives the final ReplyContent. */
   responseCallback?: (reply: import('./types').ReplyContent) => void;
   /** Per-source history adapter kind, written by SessionStrategyPlugin during onMessagePreprocess. */
@@ -82,7 +73,6 @@ const DEFAULT_METADATA: Required<
     | 'suggestedProvider'
     | 'usedCardFormat'
     | 'explicitSendAsForward'
-    | 'systemPromptFragments'
     | 'responseCallback'
     | 'historyAdapterKind'
   >
@@ -113,7 +103,6 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'whitelistGroupCapabilities',
   'usedCardFormat',
   'explicitSendAsForward',
-  'systemPromptFragments',
   'responseCallback',
   'historyAdapterKind',
 ];

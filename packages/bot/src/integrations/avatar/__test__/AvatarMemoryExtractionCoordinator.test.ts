@@ -20,7 +20,7 @@ import { DITokens } from '@/core/DITokens';
 import type { MemoryExtractService } from '@/memory';
 import { AvatarMemoryExtractionCoordinator } from '../AvatarMemoryExtractionCoordinator';
 import type { AvatarSessionService } from '../AvatarSessionService';
-import type { Live2DSource } from '../types';
+import type { AvatarSource } from '../types';
 
 /**
  * Default source used across tests. Must match the default allowlist in
@@ -28,7 +28,7 @@ import type { Live2DSource } from '../types';
  * exercising the extract path. The `schedules only when source is in
  * allowlist` test explicitly overrides.
  */
-const DEFAULT_SOURCE: Live2DSource = 'bilibili-danmaku-batch';
+const DEFAULT_SOURCE: AvatarSource = 'bilibili-danmaku-batch';
 
 interface FakeEntry {
   messageId: string;

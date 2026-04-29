@@ -1,6 +1,6 @@
-// Live2DIdleTrigger — keeps the livemode conversation alive when viewers
-// go quiet by enqueuing a "no danmaku right now" run through the normal
-// Live2DPipeline. The run is NOT treated as a separate flow: it goes
+// AvatarIdleTrigger — keeps the livemode conversation alive when viewers
+// go quiet by enqueuing a "no danmaku right now" run through the main
+// MessagePipeline. The run is NOT treated as a separate flow: it goes
 // through the same prompt template and appends to the same session
 // history as real-danmaku runs, so the LLM's next reply stays contextual.
 //
@@ -120,7 +120,7 @@ export class AvatarIdleTrigger {
 
       const kickoff = this.nextKickoff(userId);
       // TODO([4/5]→follow-up): IDLE_TEMPERATURE / scope metadata used to flow via
-      // Live2DInput.meta — restore via MessageProcessingContext extension if needed.
+      // pipeline input meta — restore via MessageProcessingContext extension if needed.
       const event = makeSyntheticEvent({
         source: 'idle-trigger',
         userId: String(userId),

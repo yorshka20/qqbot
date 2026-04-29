@@ -109,15 +109,7 @@ export class PromptAssemblyStage implements ReplyStage {
       logger.warn('[PromptAssemblyStage] PromptInjectionRegistry.gather failed (non-fatal):', err);
     }
 
-    // Legacy plugin-contributed fragments (deprecated — migrate to PromptInjectionRegistry).
-    const pluginFragments = hookContext.metadata.get('systemPromptFragments') ?? [];
-    if (pluginFragments.length > 0) {
-      logger.warn(
-        `[PromptAssemblyStage] systemPromptFragments metadata is deprecated; migrate to PromptInjectionRegistry. source=${hookContext.source}`,
-      );
-    }
-
-    const sceneSystemPrompt = [sceneSystemPromptRaw, ...registryFragments, ...pluginFragments]
+    const sceneSystemPrompt = [sceneSystemPromptRaw, ...registryFragments]
       .map((s) => s?.trim())
       .filter((s): s is string => !!s && s.length > 0)
       .join('\n\n');

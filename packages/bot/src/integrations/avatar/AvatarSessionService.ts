@@ -23,7 +23,7 @@ import type { ConversationMessageEntry } from '@/conversation/history';
 import type { ThreadContextCompressionService, ThreadService } from '@/conversation/thread';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
-import type { Live2DSource } from './types';
+import type { AvatarSource } from './types';
 
 /** Fake preferenceKey for Live2D threads. Not used for template rendering. */
 const LIVE2D_PREFERENCE_PREFIX = 'live2d';
@@ -42,7 +42,7 @@ export class AvatarSessionService {
    * Returns the thread id. Subsequent calls with the same scope return
    * the same id.
    */
-  ensureThread(source: Live2DSource, scope?: string): string {
+  ensureThread(source: AvatarSource, scope?: string): string {
     const groupId = this.resolveGroupId(source, scope);
     const existingId = this.threadService.getCurrentThreadId(groupId);
     if (existingId) return existingId;
@@ -104,11 +104,11 @@ export class AvatarSessionService {
    * and the write path (memory extraction coordinator) share a single
    * derivation rule instead of duplicating it.
    */
-  groupIdFor(source: Live2DSource, scope?: string): string {
+  groupIdFor(source: AvatarSource, scope?: string): string {
     return this.resolveGroupId(source, scope);
   }
 
-  private resolveGroupId(source: Live2DSource, scope?: string): string {
+  private resolveGroupId(source: AvatarSource, scope?: string): string {
     if (source === 'avatar-cmd') return `${LIVE2D_PREFERENCE_PREFIX}:avatar-cmd:global`;
     if (source === 'bilibili-danmaku-batch') {
       return scope ? `${LIVE2D_PREFERENCE_PREFIX}:bilibili-live:${scope}` : `${LIVE2D_PREFERENCE_PREFIX}:bilibili-live`;

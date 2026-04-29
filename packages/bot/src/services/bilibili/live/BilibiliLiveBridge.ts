@@ -161,7 +161,7 @@ export class BilibiliLiveBridge {
     if (!this.opts.pipeToLive2D) return;
 
     // TODO([4/5]→follow-up): batchId/totalDanmaku/distinctSenders/anyMention/senders
-    // used to flow via Live2DInput.meta. If downstream prompt scenes need this
+    // used to flow via pipeline input meta. If downstream prompt scenes need this
     // metadata, thread it through MessageProcessingContext extension.
     const event = makeSyntheticEvent({
       source: 'bilibili-danmaku',

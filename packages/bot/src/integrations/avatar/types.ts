@@ -1,9 +1,9 @@
-export type Live2DSource = 'avatar-cmd' | 'bilibili-danmaku-batch' | 'livemode-private-batch';
+export type AvatarSource = 'avatar-cmd' | 'bilibili-danmaku-batch' | 'livemode-private-batch';
 
 /**
  * One distinct sender contributing to a multi-user Live2D input batch
  * (currently only `bilibili-danmaku-batch`). Forwarded through
- * `Live2DInput.meta.senders` so the prompt stage can fan out per-user
+ * `AvatarBatchSender.senders` so the prompt stage can fan out per-user
  * memory lookups instead of being limited to a single `sender.uid`.
  *
  * - `uid`  — platform-native user id (string-form; bilibili uid is numeric

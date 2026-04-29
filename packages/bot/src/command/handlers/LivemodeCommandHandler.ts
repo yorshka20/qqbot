@@ -1,6 +1,6 @@
 // LivemodeCommandHandler — `/livemode on|off|status` toggles the per-user
 // "mock livestream" mode that reroutes private-chat messages into the
-// Live2DPipeline as aggregated danmaku batches (see LivemodeState).
+// main MessagePipeline as aggregated danmaku batches (see LivemodeState).
 //
 // Subcommands:
 //   /livemode on [--proactive=off]  — enable for the caller. Default

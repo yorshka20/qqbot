@@ -2,7 +2,7 @@
 //
 // When a user runs `/livemode on`, their private-chat messages stop being
 // answered as regular 1:1 dialogue and instead feed a DanmakuBuffer that
-// aggregates on a 3-second window and dispatches to Live2DPipeline as
+// aggregates on a 3-second window and dispatches to the avatar pipeline as
 // `livemode-private-batch` — mocking the bilibili live-room flow so the
 // avatar can be exercised without an actual live room.
 //

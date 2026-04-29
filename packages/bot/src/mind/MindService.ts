@@ -209,7 +209,7 @@ export class MindService {
   }
 
   /**
-   * Ready-to-inject string for `metadata.systemPromptFragments`. Returns
+   * Ready-to-inject string returned via PromptInjectionRegistry. Returns
    * `''` when the patch is empty — caller should check and skip the push
    * so the fragments list stays clean.
    */

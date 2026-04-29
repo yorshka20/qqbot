@@ -106,7 +106,7 @@ export function buildPromptPatch(
  *
  * Returns an empty string when the patch has no non-empty fields —
  * caller should detect `''` and skip injection (don't push blank
- * fragments to `systemPromptFragments`).
+ * fragments to PromptInjectionRegistry).
  */
 export function renderPromptPatchFragment(patch: PromptPatch): string {
   const lines: string[] = [];

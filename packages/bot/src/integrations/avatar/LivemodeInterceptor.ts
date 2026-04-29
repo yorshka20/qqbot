@@ -9,7 +9,7 @@
 //   - skips non-private messages (group chat is still handled normally even
 //     if the user has livemode on)
 //   - pushes the raw text into the user's buffer; the buffer's 3s flush
-//     timer fires asynchronously and dispatches to Live2DPipeline via the
+//     timer fires asynchronously and dispatches to the avatar pipeline via the
 //     flush handler installed by bootstrap
 //
 // No reply is set on the context — SendSystem handles missing/empty replies
