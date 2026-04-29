@@ -553,6 +553,17 @@
       {
         "name": "groupReport",
         "enabled": true
+      },
+      // PoseLifecyclePlugin — drives avatar thinking/neutral pose lifecycle for non-IM sources
+      // (avatar-cmd, bilibili-danmaku, idle-trigger, bootstrap). Requires AvatarService active.
+      {
+        "name": "pose-lifecycle",
+        "enabled": true
+      },
+      // SessionStrategyPlugin — selects history adapter (conversation-history vs live2d-session) per message source
+      {
+        "name": "session-strategy",
+        "enabled": true
       }
     ]
   },
