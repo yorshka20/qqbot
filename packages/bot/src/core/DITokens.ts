@@ -67,6 +67,8 @@ export const DITokens = {
   BILIBILI_LIVE_CLIENT: 'BilibiliLiveClient',
   BILIBILI_LIVE_BRIDGE: 'BilibiliLiveBridge',
   BILIBILI_DANMAKU_STORE: 'BilibiliDanmakuStore',
+  // Prompt injection
+  PROMPT_INJECTION_REGISTRY: 'PromptInjectionRegistry',
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];

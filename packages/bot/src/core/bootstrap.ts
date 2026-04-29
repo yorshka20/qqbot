@@ -9,6 +9,7 @@
 
 import { AvatarService } from '@qqbot/avatar';
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
+import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import { APIClient } from '@/api/APIClient';
 import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
@@ -141,6 +142,9 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   let clusterManager: ClusterManager | null = null;
   const clusterRawConfig = config.getClusterConfig();
   const clusterConfig = parseClusterConfig(clusterRawConfig);
+
+  // ── PromptInjectionRegistry (before ConversationInitializer so PromptAssemblyStage can resolve it) ──
+  container.registerSingleton(DITokens.PROMPT_INJECTION_REGISTRY, PromptInjectionRegistry);
 
   // ── Conversation system (tools, hooks, commands, AI, DB, context, agenda) ──
   const conversationComponents = await ConversationInitializer.initialize(config, apiClient);
