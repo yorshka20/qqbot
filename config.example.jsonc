@@ -1335,7 +1335,13 @@
   //   //   "fatigueModerateMin": 0.55,
   //   //   "fatigueSevereMin": 0.8,
   //   //   "injectBible": true,          // false → 跳过 identity / boundaries 块（bible 仍喂 reflection）
-  //   //   "bibleMaxCharsPerSection": 800 // 每段 truncate 上限（含中文按字符计）
+  //   //   "bibleMaxCharsPerSection": 800, // 每段 truncate 上限（含中文按字符计）
+  //   //   // Phase 3.6: which sources receive mind / persona injection.
+  //   //   // Default = ["qq-private", "qq-group", "avatar-cmd", "bilibili-danmaku"]
+  //   //   // Set to a narrower list to silence mind in specific sources, or extend
+  //   //   // to ["qq-private", "qq-group", "avatar-cmd", "bilibili-danmaku", "idle-trigger"]
+  //   //   // to give idle wandering its own persona too.
+  //   //   // "applicableSources": ["qq-private", "qq-group", "avatar-cmd", "bilibili-danmaku"],
   //   // },
   //
   //   // Phase 3: Autonomous wander — periodic low-amplitude idle motion.
