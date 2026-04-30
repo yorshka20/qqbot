@@ -23,3 +23,5 @@ export { SearchChatHistoryToolExecutor } from './SearchChatHistoryToolExecutor';
 export { SearchCodeToolExecutor } from './SearchCodeToolExecutor';
 export { SearchMemoryToolExecutor } from './SearchMemoryToolExecutor';
 export { SearchToolExecutor } from './SearchToolExecutor';
+export { EpigeneticsHistoryToolExecutor } from '@/persona/reflection/epigenetics/EpigeneticsHistoryToolExecutor';
+export { RelationshipHistoryToolExecutor } from '@/persona/reflection/relationships/RelationshipHistoryToolExecutor';
