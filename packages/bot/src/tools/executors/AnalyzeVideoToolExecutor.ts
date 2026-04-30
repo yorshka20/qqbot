@@ -29,7 +29,7 @@ const MAX_VIDEO_DURATION_SECONDS = 10 * 60; // 10 minutes
   name: 'analyze_video',
   description: '下载并分析视频内容。使用视频URL调用此工具，获取视频的主题、内容概要和关键亮点等分析结果。',
   executor: 'analyze_video',
-  visibility: ['reply', 'subagent'],
+  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] }, subagent: true },
   parameters: {
     url: {
       type: 'string',

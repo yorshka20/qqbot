@@ -17,7 +17,7 @@ const MAX_RESULTS = 50;
   description:
     '在当前群的聊天记录中按关键词搜索。返回包含关键词的消息列表（发送者、内容、时间）。支持可选的时间范围限制。',
   executor: 'search_chat_history',
-  visibility: ['reply'],
+  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord', 'avatar-cmd'] } },
   parameters: {
     keyword: {
       type: 'string',

@@ -128,7 +128,7 @@ function parseMemberRecord(
   description:
     '群成员查询（二选一，必须通过参数 mode 指定）。mode=stats：仅返回当前群人数。mode=member：传入 user_ids（QQ 号数组，单个也传一个元素）查询在本群的昵称、群名片、角色与头像 URL；不要用于拉取全群成员列表。',
   executor: 'get_group_member_list',
-  visibility: ['subagent'],
+  visibility: { subagent: true },
   parameters: {
     mode: {
       type: 'string',

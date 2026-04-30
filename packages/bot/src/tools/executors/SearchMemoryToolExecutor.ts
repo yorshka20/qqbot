@@ -17,7 +17,7 @@ const DEFAULT_MIN_SCORE = 0.6;
   description:
     '语义搜索 bot 提取的结构化记忆（用户偏好、设定、历史事实等）。使用向量相似度匹配，可跨用户检索。注意：这不是搜索聊天记录，而是搜索 bot 从聊天中提取并保存的长期记忆摘要。',
   executor: 'search_memory',
-  visibility: ['subagent'],
+  visibility: { subagent: true },
   parameters: {
     query: {
       type: 'string',

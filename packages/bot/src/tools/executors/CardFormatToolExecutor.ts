@@ -8,7 +8,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 
 @Tool({
   name: 'format_as_card',
-  visibility: ['reply'],
+  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] } },
   description:
     '获取卡片排版模板。仅当回复正文预计超过 150 字且包含结构化内容（列表、对比、步骤、数据等），或内容明显需要分层展示时调用。调用后以卡片 JSON 数组格式输出最终回复。日常闲聊、简单问答、不足 150 字的回复不得调用。',
   executor: 'format_as_card',

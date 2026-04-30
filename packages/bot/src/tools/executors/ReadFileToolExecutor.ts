@@ -18,7 +18,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
   description:
     '列出目录内容或读取指定文件全文。部分路径出于安全原因被禁止访问（如含 API key 的配置文件、node_modules、.env、.git 等），被拒绝时会返回错误而非文件内容。如果不知道文件位置，请先用 search_code 搜索。',
   executor: 'read_file',
-  visibility: ['reply', 'subagent'],
+  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'], adminOnly: true }, subagent: true },
   parameters: {
     path: {
       type: 'string',

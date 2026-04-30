@@ -18,7 +18,7 @@ const PROJECT_ROOT = process.cwd();
   description:
     '在 bot 源代码中搜索关键词或正则表达式。返回匹配的文件路径、行号和代码片段。用于解释功能实现细节或帮助用户了解 bot 的工作原理。',
   executor: 'search_code',
-  visibility: ['reply', 'subagent'],
+  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'], adminOnly: true }, subagent: true },
   parameters: {
     pattern: {
       type: 'string',
