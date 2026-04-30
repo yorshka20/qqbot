@@ -25,6 +25,8 @@ import {
   buildPromptPatchAsync,
   type PromptPatch,
   renderPromptPatchFragment,
+  renderStablePromptPatchFragment,
+  renderVolatilePromptPatchFragment,
 } from './prompt/PromptPatchAssembler';
 import type { EpigeneticsStore } from './reflection/epigenetics/EpigeneticsStore';
 import type { Tone } from './reflection/tone/types';
@@ -260,9 +262,36 @@ export class PersonaService {
    * Async variant of `getPromptPatchFragment`. Returns `''` when the patch
    * is empty. Use this in hooks where a userId is available (e.g. PREPROCESS)
    * so the relationship summary is included alongside the mood summary.
+   *
+   * **Note**: production reply pipeline now prefers the split variants
+   * (`getStableFragmentAsync` / `getVolatileFragmentAsync`) so the stable
+   * persona identity blocks can sit in the cache-friendly front of the
+   * system prompt while volatile mind state stays at the back. This
+   * combined method is kept for back-compat with tests / non-pipeline
+   * callers.
    */
   async getPromptPatchFragmentAsync(opts?: { userId?: string }): Promise<string> {
     return renderPromptPatchFragment(await this.getPromptPatchAsync(opts));
+  }
+
+  /**
+   * Stable persona identity fragment — `<persona_identity>` +
+   * `<persona_boundaries>`. Doesn't change run-to-run for a given
+   * persona + Bible. Place in the cache-friendly front of the system
+   * prompt so upstream prompt caches keep hitting.
+   */
+  async getStableFragmentAsync(opts?: { userId?: string }): Promise<string> {
+    return renderStablePromptPatchFragment(await this.getPromptPatchAsync(opts));
+  }
+
+  /**
+   * Volatile persona state fragment — `<mind_state>` +
+   * `<relationship_state>` + `<tone_state>`. Recomputed every message
+   * (fatigue / per-user / System-2 reflection output). Place at the
+   * back of the system prompt where churn doesn't break upstream cache.
+   */
+  async getVolatileFragmentAsync(opts?: { userId?: string }): Promise<string> {
+    return renderVolatilePromptPatchFragment(await this.getPromptPatchAsync(opts));
   }
 
   private tick(): void {

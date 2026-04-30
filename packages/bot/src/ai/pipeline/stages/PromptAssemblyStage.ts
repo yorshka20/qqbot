@@ -5,6 +5,7 @@ import type { ConversationMessageEntry } from '@/conversation/history';
 import { NormalEpisodeService } from '@/conversation/history';
 import type { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import { getSourceConfig } from '@/conversation/sources/registry';
+import { STABLE_PRIORITY_MAX } from '@/persona/prompt/promptInjectionProducer';
 import type { AIChatConfig, ReasoningEffort } from '@/core/config/types/ai';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -86,10 +87,16 @@ export class PromptAssemblyStage implements ReplyStage {
       sceneSystemPromptRaw = this.promptManager.render('llm.reply.system', { toolInstruct }) ?? '';
     }
 
-    // Phase 3.6: gather cross-cutting prompt injections (mind / future RAG / safety / persona overlay)
+    // Phase 3.6: gather cross-cutting prompt injections (persona / future RAG / safety / persona overlay)
     // from PromptInjectionRegistry. Falls back gracefully when registry isn't registered (avatar-only
     // / minimal bootstrap paths).
-    let registryFragments: string[] = [];
+    //
+    // Split into "stable" (priority ≤ STABLE_PRIORITY_MAX, e.g. persona identity / boundaries)
+    // and "volatile" (priority > STABLE_PRIORITY_MAX, e.g. mood / relationship / tone). Stable
+    // fragments sit BEFORE the scene template (cache-friendly front of system prompt); volatile
+    // fragments sit AFTER (per-message churn doesn't break upstream cache prefixes).
+    const stableFragments: string[] = [];
+    const volatileFragments: string[] = [];
     try {
       const container = getContainer();
       if (container.isRegistered(DITokens.PROMPT_INJECTION_REGISTRY)) {
@@ -103,13 +110,19 @@ export class PromptAssemblyStage implements ReplyStage {
           groupId,
           hookContext,
         });
-        registryFragments = injections.map((i) => i.fragment);
+        for (const inj of injections) {
+          const isStable = (inj.priority ?? 100) <= STABLE_PRIORITY_MAX;
+          (isStable ? stableFragments : volatileFragments).push(inj.fragment);
+        }
       }
     } catch (err) {
       logger.warn('[PromptAssemblyStage] PromptInjectionRegistry.gather failed (non-fatal):', err);
     }
 
-    const sceneSystemPrompt = [sceneSystemPromptRaw, ...registryFragments]
+    // Order: stable persona blocks → scene template → volatile mind state.
+    // Cache-friendly prefix:  base + stable blocks (mostly stable per persona).
+    // Variable suffix:        scene + volatile blocks (changes per source / per message).
+    const sceneSystemPrompt = [...stableFragments, sceneSystemPromptRaw, ...volatileFragments]
       .map((s) => s?.trim())
       .filter((s): s is string => !!s && s.length > 0)
       .join('\n\n');

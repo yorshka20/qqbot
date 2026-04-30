@@ -18,7 +18,10 @@ import { logger } from '@/utils/logger';
 import { type CharacterBible, loadCharacterBible } from './data/CharacterBibleLoader';
 import { type CoreDNA, loadCoreDNA } from './data/CoreDNALoader';
 import { PersonaService } from './PersonaService';
-import { createPersonaPromptInjectionProducer } from './prompt/promptInjectionProducer';
+import {
+  createPersonaStableProducer,
+  createPersonaVolatileProducer,
+} from './prompt/promptInjectionProducer';
 import { mergePersonaConfig, type PersonaConfig } from './types';
 
 export interface PersonaComponents {
@@ -81,22 +84,27 @@ export class PersonaInitializer {
 
     const modulationProvider = new PersonaModulationAdapter(personaService);
 
-    // Phase 3.6: register mind as a PromptInjectionProducer so all sources
+    // Phase 3.6: register persona as PromptInjectionProducers so all sources
     // (qq-private, qq-group, avatar-cmd, bilibili-danmaku, etc.) get persona
     // injection through the unified registry rather than the old per-pipeline hook.
+    //
+    // Split into TWO producers (stable + volatile) so PromptAssemblyStage can
+    // place stable identity blocks at the cache-friendly front of the system
+    // prompt and volatile mind state at the back — see
+    // STABLE_PRIORITY_MAX in promptInjectionProducer.ts.
     try {
       const container = getContainer();
       if (container.isRegistered(DITokens.PROMPT_INJECTION_REGISTRY)) {
         const registry = container.resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
-        const producer = createPersonaPromptInjectionProducer({ personaService, config });
-        registry.register(producer);
+        registry.register(createPersonaStableProducer({ personaService, config }));
+        registry.register(createPersonaVolatileProducer({ personaService, config }));
       } else {
         logger.warn(
-          '[PersonaInitializer] PromptInjectionRegistry not registered — mind prompt injection skipped (avatar-only / minimal bootstrap?)',
+          '[PersonaInitializer] PromptInjectionRegistry not registered — persona prompt injection skipped (avatar-only / minimal bootstrap?)',
         );
       }
     } catch (err) {
-      logger.warn('[PersonaInitializer] failed to register mind PromptInjectionProducer (non-fatal):', err);
+      logger.warn('[PersonaInitializer] failed to register persona PromptInjectionProducers (non-fatal):', err);
     }
 
     return { personaService, modulationProvider, config };

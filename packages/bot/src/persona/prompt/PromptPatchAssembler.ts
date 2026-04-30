@@ -101,14 +101,38 @@ export function buildPromptPatch(
 
 /**
  * Render a PromptPatch into the final prompt fragment string. Wraps each
- * non-empty piece in an XML-style `<mind_state>` block so the LLM sees
- * it as a distinct instruction, not blended into the main persona.
+ * non-empty piece in an XML-style block so the LLM sees it as a distinct
+ * instruction, not blended into the main persona.
  *
  * Returns an empty string when the patch has no non-empty fields —
  * caller should detect `''` and skip injection (don't push blank
  * fragments to PromptInjectionRegistry).
+ *
+ * **Note**: kept for back-compat / tests; production reply pipeline now
+ * uses `renderStablePromptPatchFragment` + `renderVolatilePromptPatchFragment`
+ * separately so stable persona content can sit in the cache-friendly
+ * front of the system prompt while volatile mind state stays at the back.
  */
 export function renderPromptPatchFragment(patch: PromptPatch): string {
+  const stable = renderStablePromptPatchFragment(patch);
+  const volatile = renderVolatilePromptPatchFragment(patch);
+  return [stable, volatile].filter((s) => s.length > 0).join('\n\n');
+}
+
+/**
+ * Render only the **stable** persona identity blocks (Bible-derived,
+ * doesn't change run-to-run for a given persona):
+ *   - `<persona_identity>` — Self-concept + Voice + Lore
+ *   - `<persona_boundaries>` — anti-jailbreak / safety baseline
+ *
+ * These are intended to sit in the cache-friendly **front** of the
+ * system prompt, after the equally-stable `base.system.txt` and before
+ * the per-message-volatile blocks. Same persona + same Bible → same
+ * output → prompt cache hit.
+ *
+ * Returns empty string when no stable fields are present.
+ */
+export function renderStablePromptPatchFragment(patch: PromptPatch): string {
   const lines: string[] = [];
   if (patch.personaIdentity) {
     lines.push(`<persona_identity>\n${patch.personaIdentity}\n</persona_identity>`);
@@ -116,6 +140,23 @@ export function renderPromptPatchFragment(patch: PromptPatch): string {
   if (patch.personaBoundaries) {
     lines.push(`<persona_boundaries>\n${patch.personaBoundaries}\n</persona_boundaries>`);
   }
+  return lines.join('\n\n');
+}
+
+/**
+ * Render only the **volatile** persona state blocks (recompute every
+ * message, change with phenotype / per-user / System-2 reflection):
+ *   - `<mind_state>` — fatigue → moodSummary
+ *   - `<relationship_state>` — per-user affinity / familiarity summary
+ *   - `<tone_state>` — currentTone fragment from reflection
+ *
+ * These sit at the **back** of the system prompt where their volatility
+ * doesn't break upstream cache prefixes.
+ *
+ * Returns empty string when no volatile fields are present.
+ */
+export function renderVolatilePromptPatchFragment(patch: PromptPatch): string {
+  const lines: string[] = [];
   if (patch.moodSummary) {
     lines.push(`<mind_state>\n${patch.moodSummary}\n</mind_state>`);
   }

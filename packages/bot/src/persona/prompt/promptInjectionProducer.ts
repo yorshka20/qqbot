@@ -10,11 +10,27 @@ import type { PromptInjectionProducer } from '@/conversation/promptInjection/typ
 import type { MessageSource } from '@/conversation/sources';
 import type { PersonaConfig } from '@/persona/types';
 
-/** Minimal subset of PersonaService required by the producer. */
+/** Minimal subset of PersonaService required by the producers. */
 export interface PersonaServiceLike {
   isEnabled(): boolean;
+  /** Combined fragment — kept for back-compat with non-pipeline callers / tests. */
   getPromptPatchFragmentAsync(opts?: { userId?: string }): Promise<string>;
+  /** Stable identity blocks — placed at the cache-friendly front of system prompt. */
+  getStableFragmentAsync?(opts?: { userId?: string }): Promise<string>;
+  /** Volatile state blocks — placed at the back where per-message churn is fine. */
+  getVolatileFragmentAsync?(opts?: { userId?: string }): Promise<string>;
 }
+
+/**
+ * Priority cutoff for PromptAssemblyStage:
+ *   - `priority ≤ STABLE_PRIORITY_MAX` (≤ 49): placed BEFORE scene template (cache-friendly front)
+ *   - `priority > STABLE_PRIORITY_MAX`: placed AFTER scene template (volatile back)
+ */
+export const STABLE_PRIORITY_MAX = 49;
+/** Stable persona identity (Bible-derived, doesn't change per message). */
+const PRIORITY_PERSONA_STABLE = 10;
+/** Volatile persona state (mood / relationship / tone — recomputed per message). */
+const PRIORITY_PERSONA_VOLATILE = 60;
 
 const FALLBACK_SYNTHETIC_INCLUSIVE: readonly MessageSource[] = [
   'qq-private',
@@ -47,8 +63,14 @@ function resolveProducerSources(config: PersonaConfig): readonly MessageSource[]
 }
 
 /**
- * Creates a PromptInjectionProducer that injects mind/persona state into the
- * system prompt for applicable message sources.
+ * Legacy single-producer factory — emits both stable + volatile persona
+ * blocks as one fragment at priority 10. Kept so existing tests / callers
+ * that wired only one producer keep working.
+ *
+ * Production reply pipeline should register `createPersonaStableProducer`
+ * + `createPersonaVolatileProducer` separately so PromptAssemblyStage can
+ * place stable blocks at the cache-friendly front and volatile blocks at
+ * the back. See `PersonaInitializer`.
  */
 export function createPersonaPromptInjectionProducer(deps: {
   personaService: PersonaServiceLike;
@@ -58,14 +80,68 @@ export function createPersonaPromptInjectionProducer(deps: {
   return {
     name: 'persona',
     applicableSources: resolveProducerSources(config),
-    priority: 10,
+    priority: PRIORITY_PERSONA_STABLE,
     async produce(ctx) {
       if (!personaService.isEnabled()) return null;
       if (!config.promptPatch.enabled) return null;
       const userId = ctx.userId;
       const fragment = await personaService.getPromptPatchFragmentAsync(userId ? { userId } : undefined);
       if (!fragment) return null;
-      return { producerName: 'persona', priority: 10, fragment };
+      return { producerName: 'persona', priority: PRIORITY_PERSONA_STABLE, fragment };
+    },
+  };
+}
+
+/**
+ * Stable producer — only emits the Bible-derived `<persona_identity>` +
+ * `<persona_boundaries>` blocks. Stable across messages for a given
+ * persona, so PromptAssemblyStage places it BEFORE the scene template
+ * (cache-friendly front) at priority `PRIORITY_PERSONA_STABLE`.
+ */
+export function createPersonaStableProducer(deps: {
+  personaService: PersonaServiceLike;
+  config: PersonaConfig;
+}): PromptInjectionProducer {
+  const { personaService, config } = deps;
+  return {
+    name: 'persona-stable',
+    applicableSources: resolveProducerSources(config),
+    priority: PRIORITY_PERSONA_STABLE,
+    async produce(ctx) {
+      if (!personaService.isEnabled()) return null;
+      if (!config.promptPatch.enabled) return null;
+      if (!personaService.getStableFragmentAsync) return null;
+      const userId = ctx.userId;
+      const fragment = await personaService.getStableFragmentAsync(userId ? { userId } : undefined);
+      if (!fragment) return null;
+      return { producerName: 'persona-stable', priority: PRIORITY_PERSONA_STABLE, fragment };
+    },
+  };
+}
+
+/**
+ * Volatile producer — emits per-message state blocks (`<mind_state>` /
+ * `<relationship_state>` / `<tone_state>`). Recomputed every message;
+ * placed AFTER the scene template at priority `PRIORITY_PERSONA_VOLATILE`
+ * so per-message churn doesn't break upstream prompt cache prefixes.
+ */
+export function createPersonaVolatileProducer(deps: {
+  personaService: PersonaServiceLike;
+  config: PersonaConfig;
+}): PromptInjectionProducer {
+  const { personaService, config } = deps;
+  return {
+    name: 'persona-volatile',
+    applicableSources: resolveProducerSources(config),
+    priority: PRIORITY_PERSONA_VOLATILE,
+    async produce(ctx) {
+      if (!personaService.isEnabled()) return null;
+      if (!config.promptPatch.enabled) return null;
+      if (!personaService.getVolatileFragmentAsync) return null;
+      const userId = ctx.userId;
+      const fragment = await personaService.getVolatileFragmentAsync(userId ? { userId } : undefined);
+      if (!fragment) return null;
+      return { producerName: 'persona-volatile', priority: PRIORITY_PERSONA_VOLATILE, fragment };
     },
   };
 }
