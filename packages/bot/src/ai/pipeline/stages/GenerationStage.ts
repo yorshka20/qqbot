@@ -79,7 +79,7 @@ export class GenerationStage implements ReplyStage {
     context: HookContext,
     params: GenerationPipelineParams,
   ): Promise<GenerationPipelineResult> {
-    const { messages, genOptions, selectedProviderName, effectiveNativeSearchEnabled } = params;
+    const { messages, genOptions, toolDefinitions, selectedProviderName, effectiveNativeSearchEnabled } = params;
 
     // Reset per-attempt so retries with fallback providers start clean.
     context.metadata.delete('usedCardFormat');
@@ -87,16 +87,13 @@ export class GenerationStage implements ReplyStage {
     const toolExecutor = (call: { name: string; arguments: string }) =>
       executeSkillCall(call, context, this.toolManager, this.hookManager);
 
-    // System 1 path (default reply pipeline): tool calling disabled.
-    // Tools belong to System 2 (ReflectionEngine + future System-2 paths).
-    // `toolDefinitions` from params is intentionally ignored — pass empty array.
     const r = await this.llmService.generateWithTools(
       messages,
-      [],
+      toolDefinitions,
       {
         temperature: genOptions.temperature,
         maxTokens: genOptions.maxTokens,
-        maxToolRounds: 0,
+        maxToolRounds: 4,
         sessionId: genOptions.sessionId,
         nativeWebSearch: effectiveNativeSearchEnabled,
         toolExecutor,

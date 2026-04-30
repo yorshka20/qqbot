@@ -16,7 +16,7 @@ afterEach(async () => {
 });
 
 async function writeCoreDNA(personaId: string, content: unknown): Promise<void> {
-  const dir = path.join(tmpDir, personaId);
+  const dir = path.join(tmpDir, 'persona', personaId);
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(path.join(dir, 'core-dna.json'), JSON.stringify(content, null, 2), 'utf-8');
 }

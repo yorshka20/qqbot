@@ -68,22 +68,22 @@ export class PromptAssemblyStage implements ReplyStage {
     const baseSystemPrompt = this.promptManager.renderBasePrompt({
       whitelistLimitedFragment: whitelistFragment,
     });
+    const toolInstruct = this.promptManager.render('llm.tool.instruct', {
+      toolUsageInstructions: ctx.toolUsageInstructions,
+    });
 
-    // System 1 path (default reply pipeline): no tool calling, no tool catalog.
-    // Tools belong to System 2 (ReflectionEngine + future System-2 paths).
-    // Scene templates no longer reference {{toolInstruct}}; render with empty vars.
     const source = ctx.hookContext.source;
     const sourceCfg = getSourceConfig(source);
     const sceneTemplateId = `scenes.${sourceCfg.promptScene}.zh.scene`;
     let sceneSystemPromptRaw: string;
     try {
-      sceneSystemPromptRaw = this.promptManager.render(sceneTemplateId, {}) ?? '';
+      sceneSystemPromptRaw = this.promptManager.render(sceneTemplateId, { toolInstruct }) ?? '';
     } catch (err) {
       logger.warn(
         `[PromptAssemblyStage] scene template ${sceneTemplateId} render failed, falling back to llm.reply.system:`,
         err,
       );
-      sceneSystemPromptRaw = this.promptManager.render('llm.reply.system', {}) ?? '';
+      sceneSystemPromptRaw = this.promptManager.render('llm.reply.system', { toolInstruct }) ?? '';
     }
 
     // Phase 3.6: gather cross-cutting prompt injections (mind / future RAG / safety / persona overlay)

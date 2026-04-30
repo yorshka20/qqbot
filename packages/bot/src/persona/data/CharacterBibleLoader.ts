@@ -89,7 +89,7 @@ function parseSections(content: string): Map<string, string> {
 }
 
 export async function loadCharacterBible(opts: CharacterBibleLoaderOptions): Promise<CharacterBible> {
-  const filePath = path.join(opts.dataDir, opts.personaId, 'bible.md');
+  const filePath = path.join(opts.dataDir, 'persona', opts.personaId, 'bible.md');
 
   let content: string;
   try {

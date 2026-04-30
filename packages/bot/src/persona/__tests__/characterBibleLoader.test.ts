@@ -46,7 +46,7 @@ afterEach(async () => {
 });
 
 async function writeFixture(personaId: string, content: string): Promise<void> {
-  const dir = path.join(tmpDir, personaId);
+  const dir = path.join(tmpDir, 'persona', personaId);
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(path.join(dir, 'bible.md'), content, 'utf-8');
 }
