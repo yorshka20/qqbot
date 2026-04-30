@@ -29,18 +29,18 @@ import { PluginBase } from '../PluginBase';
   description: 'Injects mind-state mood fragment into the reply pipeline system prompt',
 })
 export class PersonaCompletionHookPlugin extends PluginBase {
-  private mind: PersonaService | null = null;
+  private persona: PersonaService | null = null;
   private relationshipUpdater: RelationshipUpdater | null = null;
   private reflectionEngine: ReflectionEngine | null = null;
 
   async onInit(): Promise<void> {
     const container = getContainer();
     if (container.isRegistered(DITokens.PERSONA_SERVICE)) {
-      this.mind = container.resolve<PersonaService>(DITokens.PERSONA_SERVICE);
+      this.persona = container.resolve<PersonaService>(DITokens.PERSONA_SERVICE);
     }
-    if (this.mind && container.isRegistered(DITokens.EPIGENETICS_STORE)) {
+    if (this.persona && container.isRegistered(DITokens.EPIGENETICS_STORE)) {
       const store = container.resolve<EpigeneticsStore>(DITokens.EPIGENETICS_STORE);
-      this.mind.setEpigeneticsStore(store);
+      this.persona.setEpigeneticsStore(store);
       this.relationshipUpdater = new RelationshipUpdater(store);
 
       // Build + start ReflectionEngine when all required services are present.
@@ -53,8 +53,8 @@ export class PersonaCompletionHookPlugin extends PluginBase {
           const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
           const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
           const historyService = container.resolve<ConversationHistoryService>(DITokens.CONVERSATION_HISTORY_SERVICE);
-          const personaId = this.mind.getConfig().personaId;
-          this.reflectionEngine = new ReflectionEngine(store, this.mind, llmService, promptManager, historyService, {
+          const personaId = this.persona.getConfig().personaId;
+          this.reflectionEngine = new ReflectionEngine(store, this.persona, llmService, promptManager, historyService, {
             personaId,
           });
           this.reflectionEngine.start();
@@ -82,12 +82,12 @@ export class PersonaCompletionHookPlugin extends PluginBase {
     applicableSources: ['qq-private', 'qq-group', 'discord'],
   })
   async onMessageComplete(context: HookContext): Promise<boolean> {
-    if (!this.enabled || !this.mind || !this.relationshipUpdater) return true;
-    if (!this.mind.isEnabled()) return true;
+    if (!this.enabled || !this.persona || !this.relationshipUpdater) return true;
+    if (!this.persona.isEnabled()) return true;
     // Runtime user-config gate (decorator's applicableSources is the
     // synthetic-exclusion baseline; user can further narrow via
     // mind.applicableSources, e.g. ['qq-private'] for DM-only test).
-    if (!this.mind.isApplicableSource(context.source)) return true;
+    if (!this.persona.isApplicableSource(context.source)) return true;
     try {
       // Only update relationship when an actual reply was produced.
       const reply = getReply(context);
@@ -97,7 +97,7 @@ export class PersonaCompletionHookPlugin extends PluginBase {
       if (!userId || userId === '0') return true;
       // Read user's message text for affinity classification. `message` is always present; rawMessage is optional.
       const userText = context.message?.message ?? context.message?.rawMessage ?? '';
-      const personaId = this.mind.getConfig().personaId;
+      const personaId = this.persona.getConfig().personaId;
       await this.relationshipUpdater.update(personaId, userId, userText);
       logger.debug(`[PersonaCompletionHookPlugin] relationship bumped | persona=${personaId} user=${userId}`);
 

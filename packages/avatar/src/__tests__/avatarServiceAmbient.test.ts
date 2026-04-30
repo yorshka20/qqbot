@@ -66,7 +66,7 @@ describe('AvatarService ambient gain bus integration', () => {
     const spy = spyOn(compiler, 'setActivity');
 
     s.setActivity({ ambientGain: 0.3 });
-    s.setAmbientGainSource('mind', 0.5);
+    s.setAmbientGainSource('persona', 0.5);
 
     for (let i = 0; i < 10; i++) {
       (s as any).runStatusTick();
@@ -83,7 +83,7 @@ describe('AvatarService ambient gain bus integration', () => {
 
     // Set both sources
     s.setActivity({ ambientGain: 0.3 });
-    s.setAmbientGainSource('mind', 0.5);
+    s.setAmbientGainSource('persona', 0.5);
 
     // Converge to 0.3
     for (let i = 0; i < 10; i++) {

@@ -38,7 +38,7 @@ export class MissingBibleSectionError extends Error {
 const REQUIRED_SECTIONS = ['Self-concept', 'Voice', 'Triggers', 'Reflexes', 'Boundaries', 'Lore'] as const;
 
 export interface CharacterBibleLoaderOptions {
-  dataDir: string; // e.g. './data/mind'
+  dataDir: string; // e.g. './data/persona'
   personaId: string;
 }
 

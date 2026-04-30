@@ -14,14 +14,14 @@ import type { PersonaService } from '@/persona/PersonaService';
 import { TONE_MAPPINGS } from '@/persona/reflection/tone/mappings';
 
 export class PersonaModulationAdapter implements MindModulationProvider {
-  constructor(private readonly mind: PersonaService) {}
+  constructor(private readonly persona: PersonaService) {}
 
   getModulation(_ctx?: ModulationContext): MindModulation {
-    if (!this.mind.isEnabled()) return IDENTITY_MODULATION;
-    const { intensityScale, speedScale, durationBias } = this.mind.deriveModulation();
-    const toneMapping = TONE_MAPPINGS[this.mind.getCurrentTone()];
+    if (!this.persona.isEnabled()) return IDENTITY_MODULATION;
+    const { intensityScale, speedScale, durationBias } = this.persona.deriveModulation();
+    const toneMapping = TONE_MAPPINGS[this.persona.getCurrentTone()];
     const { modulationDelta } = toneMapping;
-    const cdna = this.mind.getCorePersona();
+    const cdna = this.persona.getCorePersona();
 
     const combined: MindModulation = {
       amplitude: { intensityScale: intensityScale * modulationDelta.intensityScale },
@@ -45,7 +45,7 @@ export class PersonaModulationAdapter implements MindModulationProvider {
     }
 
     // ambient: persona baseline × fatigue drop, always emit (small object)
-    const fatigue = this.mind.getPhenotype().fatigue;
+    const fatigue = this.persona.getPhenotype().fatigue;
     const clampedFatigue = Math.max(0, Math.min(1, fatigue));
     const gain = cdna.modulation.ambient.gainScale * (1 - cdna.modulation.ambient.fatigueDrop * clampedFatigue);
     combined.ambient = { gainScale: Math.max(0, gain) };

@@ -4,14 +4,14 @@
  * Encapsulates all the per-service plumbing that was previously spread
  * across `bootstrap.ts`:
  *   - wiring modulation provider into avatar
- *   - wiring mind-state source into avatar (HUD broadcast)
- *   - wiring avatar pose back into mind (fatigue accrual)
+ *   - wiring persona-state source into avatar (HUD broadcast)
+ *   - wiring avatar pose back into persona (fatigue accrual)
  *   - starting the phenotype tick loop
  *   - building the wander executor adapter
  *   - starting the wander scheduler
  *
  * Bootstrap calls `startPersonaSubsystem(...)` once; all of the above is
- * hidden inside. Adding new mind↔avatar wires (Phase 3+) amends this
+ * hidden inside. Adding new persona↔avatar wires (Phase 3+) amends this
  * function, not bootstrap.
  */
 
@@ -39,18 +39,18 @@ export interface PersonaLifecycleHandles {
   /**
    * The reflection engine instance, when provided by the caller.
    * Constructed and started by PersonaCompletionHookPlugin.onInit() (after DI services
-   * including EpigeneticsStore are available). Null when mind is disabled or
+   * including EpigeneticsStore are available). Null when persona is disabled or
    * the engine was not passed to startPersonaSubsystem().
    */
   reflectionEngine: ReflectionEngine | null;
 }
 
 /**
- * Attach mind ↔ avatar and start the mind tick loop + wander scheduler.
+ * Attach persona ↔ avatar and start the persona tick loop + wander scheduler.
  *
  * Behaviour:
  *  - `personaService.isEnabled() === false` → returns immediately, no-op
- *  - `avatarService == null` → mind still starts (fatigue will stay at
+ *  - `avatarService == null` → persona still starts (fatigue will stay at
  *    zero since pose provider is unset), but no avatar wiring and no
  *    wander scheduler
  *  - otherwise wires everything and returns handles for the caller to
@@ -91,7 +91,7 @@ export function startPersonaSubsystem(
   let autonomousTriggerScheduler: AutonomousTriggerScheduler | null = null;
   if (avatarService && cfg.autonomousTrigger.enabled) {
     autonomousTriggerScheduler = new AutonomousTriggerScheduler(cfg.autonomousTrigger, {
-      mind: personaService,
+      persona: personaService,
       avatar: avatarService,
     });
     autonomousTriggerScheduler.start();
@@ -100,11 +100,11 @@ export function startPersonaSubsystem(
   return { wanderScheduler, postureTimer, autonomousTriggerScheduler, reflectionEngine: reflectionEngine ?? null };
 }
 
-/** Avatar ↔ mind wiring. Extracted so the mind→wander block below stays readable. */
-function attachAvatar(mind: PersonaService, modulationProvider: PersonaModulationAdapter, avatar: AvatarService): void {
+/** Avatar ↔ persona wiring. Extracted so the persona→wander block below stays readable. */
+function attachAvatar(persona: PersonaService, modulationProvider: PersonaModulationAdapter, avatar: AvatarService): void {
   avatar.setMindModulationProvider(modulationProvider);
-  avatar.setMindStateSource(() => mind.getSnapshot());
-  mind.setPoseProvider(() => {
+  avatar.setMindStateSource(() => persona.getSnapshot());
+  persona.setPoseProvider(() => {
     const activity = avatar.getCurrentActivity();
     return { isActive: !!activity && activity.pose !== 'neutral' };
   });
@@ -123,14 +123,14 @@ function attachAvatar(mind: PersonaService, modulationProvider: PersonaModulatio
  * at fatigue=0, and fatigue amplifies / suppresses them. Tuning moves
  * into config once we have a Core DNA persona loader.
  */
-function startPostureDriver(mind: PersonaService, avatar: AvatarService): ReturnType<typeof setInterval> {
+function startPostureDriver(persona: PersonaService, avatar: AvatarService): ReturnType<typeof setInterval> {
   const push = (): void => {
-    const phenotype = mind.getPhenotype();
-    const cdna = mind.getCorePersona();
+    const phenotype = persona.getPhenotype();
+    const cdna = persona.getCorePersona();
     avatar.setPersonaPostureBias(derivePersonaPostureBias(phenotype, cdna.modulation.spatial));
     const ambient = cdna.modulation.ambient;
     const gain = ambient.gainScale * (1 - ambient.fatigueDrop * Math.max(0, Math.min(1, phenotype.fatigue)));
-    avatar.setAmbientGainSource('mind', Math.max(0, gain));
+    avatar.setAmbientGainSource('persona', Math.max(0, gain));
   };
   push();
   return setInterval(push, POSTURE_PUSH_MS);
@@ -139,7 +139,7 @@ function startPostureDriver(mind: PersonaService, avatar: AvatarService): Return
 /**
  * Adapter from AvatarService's public API to the narrow interface
  * `WanderScheduler` consumes. Kept here (not on AvatarService) so the
- * avatar package stays unaware of mind internals.
+ * avatar package stays unaware of persona internals.
  */
 function buildWanderExecutor(avatar: AvatarService): WanderExecutor {
   return {

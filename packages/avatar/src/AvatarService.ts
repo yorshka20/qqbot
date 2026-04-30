@@ -499,7 +499,7 @@ export class AvatarService {
   }
 
   /**
-   * Multi-source ambient-gain writer. Each source ('idle' | 'mind' |
+   * Multi-source ambient-gain writer. Each source ('idle' | 'persona' |
    * 'activity') can be set independently; the bus reduces them with
    * `Math.min` (default) and lerp-smooths the result before writing back
    * into `activity.ambientGain` on the next status tick. Use this from

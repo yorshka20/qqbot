@@ -93,7 +93,7 @@ export interface PersonaConfig {
   enabled: boolean;
   /** Persona id to load. Phase 1 treats this as a label only. */
   personaId: PersonaId;
-  /** Root directory for persona-related on-disk assets (Bible, future Core DNA, …). Default './data/mind'. */
+  /** Root directory for persona-related on-disk assets (Bible, future Core DNA, …). Default './data/persona'. */
   dataDir: string;
   /** Tick interval in ms. Default 1000 (1Hz). Lower = smoother HUD but more CPU. */
   tickMs: number;
@@ -261,7 +261,7 @@ export interface PersonaConfig {
 export const DEFAULT_PERSONA_CONFIG: PersonaConfig = {
   enabled: false,
   personaId: 'default',
-  dataDir: './data/mind',
+  dataDir: './data/persona',
   tickMs: 1000,
   applicableSources: ['qq-private', 'qq-group', 'discord'],
   ode: {

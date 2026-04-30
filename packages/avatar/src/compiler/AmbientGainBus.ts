@@ -1,6 +1,6 @@
 import { logger } from '../utils/logger';
 
-export type AmbientSourceName = 'idle' | 'mind' | 'activity';
+export type AmbientSourceName = 'idle' | 'persona' | 'activity'| 'persona' |'idle' | 'persona' | 'activity';
 
 export interface AmbientBusSnapshot {
   /** Active sources only (cleared / never-set sources are omitted). */
@@ -21,8 +21,8 @@ export interface AmbientGainBusOptions {
 }
 
 /**
- * Multi-source ambient-gain bus. Each source ('idle' | 'mind' |
- * 'activity') is upserted independently; resolved value is reducer(sources)
+ * Multi-source ambient-gain bus. Each source ('idle' | 'persona' | 'activity'| 'persona' |
+ *'idle' | 'persona' | 'activity') is upserted independently; resolved value is reducer(sources)
  * (default min) lerp-smoothed by `tick(dtMs)`. Bus holds no timers —
  * caller drives `tick`. Snapshot exposes active sources + smoothed value
  * for HUD diagnostics.

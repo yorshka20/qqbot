@@ -111,8 +111,8 @@ export interface BotConfig {
   lanRelay?: LanRelayConfig;
   /** Avatar system (VTubeStudio driver, animation compiler, preview server). */
   avatar?: Record<string, unknown>;
-  /** Mind system (persona state, modulation, reflection). */
-  mind?: Record<string, unknown>;
+  /** Persona system (state, modulation, reflection — three time scales). */
+  persona?: Record<string, unknown>;
   /** Bilibili integration — currently `live` (danmaku listener → avatar bridge). */
   bilibili?: BilibiliConfig;
 }
@@ -475,7 +475,7 @@ export class Config {
   }
 
   getPersonaConfig(): Record<string, unknown> | undefined {
-    return this.config.mind;
+    return this.config.persona;
   }
 
   /**

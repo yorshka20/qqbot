@@ -58,11 +58,11 @@ function reflectionJson(tone: string, traitDelta = 0.02): string {
 
 let adapter: SQLiteAdapter;
 let store: EpigeneticsStore;
-let mind: PersonaService;
+let persona: PersonaService;
 let cleanup: () => void;
 
 beforeEach(async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'mind-refl-flow-'));
+  const dir = mkdtempSync(join(tmpdir(), 'persona-refl-flow-'));
   const dbPath = join(dir, 'test.db');
   adapter = new SQLiteAdapter(dbPath);
   await adapter.connect();
@@ -70,8 +70,8 @@ beforeEach(async () => {
   const db = adapter.getRawDb();
   if (!db) throw new Error('SQLiteAdapter.getRawDb() returned null');
   store = new EpigeneticsStore(db);
-  mind = new PersonaService({ ...DEFAULT_PERSONA_CONFIG, enabled: true }, new InternalEventBus());
-  mind.setEpigeneticsStore(store);
+  persona = new PersonaService({ ...DEFAULT_PERSONA_CONFIG, enabled: true }, new InternalEventBus());
+  persona.setEpigeneticsStore(store);
   cleanup = () => {
     try {
       rmSync(dir, { recursive: true, force: true });
@@ -95,7 +95,7 @@ describe('MindReflectionFlow integration', () => {
 
     const engine = new ReflectionEngine(
       store,
-      mind,
+      persona,
       fakeLLMServiceWith(reflectionJson('playful', 0.02)),
       fakePromptManager(),
       fakeHistoryService(),
@@ -113,7 +113,7 @@ describe('MindReflectionFlow integration', () => {
     await engine.runReflection({ trigger: 'manual' });
 
     // PersonaService tone should have been updated to 'playful'
-    expect(mind.getCurrentTone()).toBe('playful');
+    expect(persona.getCurrentTone()).toBe('playful');
 
     // EpigeneticsStore should persist currentTone under behavioralBiases
     const epi = await store.getEpigenetics(personaId);
@@ -121,7 +121,7 @@ describe('MindReflectionFlow integration', () => {
     expect(epi?.behavioralBiases['currentTone']).toBe('playful');
 
     // buildPromptPatchAsync should return tonePromptFragment for 'playful'
-    const mindSnapshot = mind.getSnapshot();
+    const mindSnapshot = persona.getSnapshot();
     const patch = await buildPromptPatchAsync(mindSnapshot, { store, userId });
     expect(patch.tonePromptFragment).toBeDefined();
     expect(patch.tonePromptFragment).not.toBe('');
@@ -138,7 +138,7 @@ describe('MindReflectionFlow integration', () => {
 
     const engine = new ReflectionEngine(
       store,
-      mind,
+      persona,
       fakeLLMServiceWith(reflectionJson('neutral', 0.01)),
       fakePromptManager(),
       fakeHistoryService(),
@@ -150,7 +150,7 @@ describe('MindReflectionFlow integration', () => {
 
     await engine.runReflection({ trigger: 'manual' });
 
-    const mindSnapshot = mind.getSnapshot();
+    const mindSnapshot = persona.getSnapshot();
     const patch = await buildPromptPatchAsync(mindSnapshot, { store, userId });
     // neutral tone has empty promptFragment → should be undefined
     expect(patch.tonePromptFragment).toBeUndefined();
@@ -167,7 +167,7 @@ describe('MindReflectionFlow integration', () => {
     // Now both 0.05 and halved 0.025 will exceed since window sum=0.10
     const engine = new ReflectionEngine(
       store,
-      mind,
+      persona,
       fakeLLMServiceWith(reflectionJson('melancholy', 0.05)),
       fakePromptManager(),
       fakeHistoryService(),
@@ -188,7 +188,7 @@ describe('MindReflectionFlow integration', () => {
 
     const engine = new ReflectionEngine(
       store,
-      mind,
+      persona,
       fakeLLMServiceWith(reflectionJson('excited', 0.01)),
       fakePromptManager(),
       fakeHistoryService(),
@@ -201,7 +201,7 @@ describe('MindReflectionFlow integration', () => {
     // Drain microtask queue + async chain
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(mind.getCurrentTone()).toBe('excited');
+    expect(persona.getCurrentTone()).toBe('excited');
   });
 });
 

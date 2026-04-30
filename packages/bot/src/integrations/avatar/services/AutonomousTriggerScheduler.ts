@@ -1,8 +1,8 @@
 /**
- * AutonomousTriggerScheduler — translates mind phenotype state into
+ * AutonomousTriggerScheduler — translates persona phenotype state into
  * discrete autonomous avatar triggers.
  *
- * Runs on a 1Hz timer independent of the mind tick so the mind tick
+ * Runs on a 1Hz timer independent of the persona tick so the persona tick
  * stays a pure ODE computation and this layer owns "translate state →
  * visible behavior" exclusively.
  *
@@ -29,7 +29,7 @@ type DriftBand = 'sad' | 'neutral' | 'happy' | null;
 
 export interface AutonomousTriggerSchedulerDeps {
   /** Phenotype source. Only `getPhenotype()` is used. */
-  mind: Pick<PersonaService, 'getPhenotype'>;
+  persona: Pick<PersonaService, 'getPhenotype'>;
   /** Avatar enqueue surface. Only the two autonomous APIs are used.
    *  `hasConsumer` is queried each tick so we skip when no renderer/VTS is
    *  connected — same rationale as `WanderScheduler`'s consumer gate. */
@@ -48,7 +48,7 @@ export class AutonomousTriggerScheduler {
   private nextYawnCooldownMs = 0;
   private currentDriftBand: DriftBand = null;
 
-  private readonly mind: AutonomousTriggerSchedulerDeps['mind'];
+  private readonly persona: AutonomousTriggerSchedulerDeps['persona'];
   private readonly avatar: AutonomousTriggerSchedulerDeps['avatar'];
   private readonly now: () => number;
   private readonly random: () => number;
@@ -57,7 +57,7 @@ export class AutonomousTriggerScheduler {
     private readonly config: PersonaConfig['autonomousTrigger'],
     deps: AutonomousTriggerSchedulerDeps,
   ) {
-    this.mind = deps.mind;
+    this.persona = deps.persona;
     this.avatar = deps.avatar;
     this.now = deps.now ?? (() => Date.now());
     this.random = deps.random ?? Math.random;
@@ -93,7 +93,7 @@ export class AutonomousTriggerScheduler {
     // animation would be wasted (dropped by dedup, logs spammed).
     if (!this.avatar.hasConsumer()) return;
     const now = this.now();
-    const phenotype = this.mind.getPhenotype();
+    const phenotype = this.persona.getPhenotype();
     this.checkFatigueYawn(phenotype, now);
     this.checkValenceDrift(phenotype as { valence?: number });
   }

@@ -3,10 +3,10 @@ import { InternalEventBus } from '@/agenda/InternalEventBus';
 import { PERSONA_EVENT_MESSAGE_RECEIVED, PersonaService } from '../PersonaService';
 import { DEFAULT_PERSONA_CONFIG, mergePersonaConfig, type PersonaConfig } from '../types';
 
-function service(override: Partial<PersonaConfig> = {}): { mind: PersonaService; bus: InternalEventBus } {
+function service(override: Partial<PersonaConfig> = {}): { persona: PersonaService; bus: InternalEventBus } {
   const bus = new InternalEventBus();
-  const mind = new PersonaService({ ...DEFAULT_PERSONA_CONFIG, ...override, enabled: true }, bus);
-  return { mind, bus };
+  const persona = new PersonaService({ ...DEFAULT_PERSONA_CONFIG, ...override, enabled: true }, bus);
+  return { persona, bus };
 }
 
 describe('PersonaService — event subscription', () => {
@@ -16,9 +16,9 @@ describe('PersonaService — event subscription', () => {
   });
 
   test('message_received event on bus spikes attention', () => {
-    const { mind, bus } = service();
-    mind.start();
-    cleanups.push(() => mind.stop());
+    const { persona, bus } = service();
+    persona.start();
+    cleanups.push(() => persona.stop());
 
     bus.publish({
       type: PERSONA_EVENT_MESSAGE_RECEIVED,
@@ -28,24 +28,24 @@ describe('PersonaService — event subscription', () => {
       data: { source: 'qq-private' },
     });
 
-    const snap = mind.getSnapshot();
+    const snap = persona.getSnapshot();
     expect(snap.phenotype.attention).toBeCloseTo(0.3, 5);
     expect(snap.phenotype.stimulusCount).toBe(1);
     expect(snap.phenotype.lastStimulusAt).toBeGreaterThan(0);
   });
 
   test('unrelated event type is ignored', () => {
-    const { mind, bus } = service();
-    mind.start();
-    cleanups.push(() => mind.stop());
+    const { persona, bus } = service();
+    persona.start();
+    cleanups.push(() => persona.stop());
 
     bus.publish({ type: 'other_event', userId: '1', groupId: '', botSelfId: '' });
-    expect(mind.getPhenotype().stimulusCount).toBe(0);
+    expect(persona.getPhenotype().stimulusCount).toBe(0);
   });
 
   test('stop() unsubscribes — no further spikes', () => {
-    const { mind, bus } = service();
-    mind.start();
+    const { persona, bus } = service();
+    persona.start();
     bus.publish({
       type: PERSONA_EVENT_MESSAGE_RECEIVED,
       userId: '1',
@@ -53,7 +53,7 @@ describe('PersonaService — event subscription', () => {
       botSelfId: '',
       data: { source: 'qq-private' },
     });
-    mind.stop();
+    persona.stop();
     bus.publish({
       type: PERSONA_EVENT_MESSAGE_RECEIVED,
       userId: '1',
@@ -61,13 +61,13 @@ describe('PersonaService — event subscription', () => {
       botSelfId: '',
       data: { source: 'qq-private' },
     });
-    expect(mind.getPhenotype().stimulusCount).toBe(1);
+    expect(persona.getPhenotype().stimulusCount).toBe(1);
   });
 
   test('disabled service is a no-op even when start() is called', () => {
     const bus = new InternalEventBus();
-    const mind = new PersonaService({ ...DEFAULT_PERSONA_CONFIG, enabled: false }, bus);
-    mind.start();
+    const persona = new PersonaService({ ...DEFAULT_PERSONA_CONFIG, enabled: false }, bus);
+    persona.start();
     bus.publish({
       type: PERSONA_EVENT_MESSAGE_RECEIVED,
       userId: '1',
@@ -75,18 +75,18 @@ describe('PersonaService — event subscription', () => {
       botSelfId: '',
       data: { source: 'qq-private' },
     });
-    expect(mind.getPhenotype().stimulusCount).toBe(0);
-    mind.stop();
+    expect(persona.getPhenotype().stimulusCount).toBe(0);
+    persona.stop();
   });
 
   test('event without applicable source is ignored (e.g. group when applicableSources=[qq-private])', () => {
     const bus = new InternalEventBus();
-    const mind = new PersonaService(
+    const persona = new PersonaService(
       { ...DEFAULT_PERSONA_CONFIG, enabled: true, applicableSources: ['qq-private'] },
       bus,
     );
-    mind.start();
-    cleanups.push(() => mind.stop());
+    persona.start();
+    cleanups.push(() => persona.stop());
     bus.publish({
       type: PERSONA_EVENT_MESSAGE_RECEIVED,
       userId: '99',
@@ -94,15 +94,15 @@ describe('PersonaService — event subscription', () => {
       botSelfId: 'bot',
       data: { source: 'qq-group' }, // not in allow-list
     });
-    expect(mind.getPhenotype().stimulusCount).toBe(0);
+    expect(persona.getPhenotype().stimulusCount).toBe(0);
   });
 });
 
 describe('PersonaService — snapshot', () => {
   test('snapshot mirrors current phenotype + derived modulation', () => {
-    const { mind } = service();
-    mind.ingest({ kind: 'message', ts: Date.now() });
-    const snap = mind.getSnapshot();
+    const { persona } = service();
+    persona.ingest({ kind: 'message', ts: Date.now() });
+    const snap = persona.getSnapshot();
     expect(snap.enabled).toBe(true);
     expect(snap.personaId).toBe('default');
     expect(snap.phenotype.attention).toBeGreaterThan(0);
@@ -112,11 +112,11 @@ describe('PersonaService — snapshot', () => {
   });
 
   test('derived modulation reflects fatigue in snapshot', () => {
-    const { mind } = service({ modulation: { fatigueIntensityDrop: 0.5, fatigueSpeedDrop: 0.5 } });
+    const { persona } = service({ modulation: { fatigueIntensityDrop: 0.5, fatigueSpeedDrop: 0.5 } });
     // Force fatigue via tick-style mutation (public ingest doesn't touch fatigue).
     // Use a private escape hatch for the test — cast and mutate.
-    (mind as unknown as { phenotype: { fatigue: number } }).phenotype.fatigue = 1;
-    const snap = mind.getSnapshot();
+    (persona as unknown as { phenotype: { fatigue: number } }).phenotype.fatigue = 1;
+    const snap = persona.getSnapshot();
     expect(snap.modulation.intensityScale).toBeCloseTo(0.5, 5);
     expect(snap.modulation.speedScale).toBeCloseTo(0.5, 5);
   });
@@ -125,14 +125,14 @@ describe('PersonaService — snapshot', () => {
 describe('PersonaService — prompt patch', () => {
   test('disabled service returns empty patch + empty fragment', () => {
     const bus = new InternalEventBus();
-    const mind = new PersonaService({ ...DEFAULT_PERSONA_CONFIG, enabled: false }, bus);
-    expect(mind.getPromptPatch()).toEqual({});
-    expect(mind.getPromptPatchFragment()).toBe('');
+    const persona = new PersonaService({ ...DEFAULT_PERSONA_CONFIG, enabled: false }, bus);
+    expect(persona.getPromptPatch()).toEqual({});
+    expect(persona.getPromptPatchFragment()).toBe('');
   });
 
-  test('promptPatch.enabled=false suppresses patch even when mind enabled', () => {
+  test('promptPatch.enabled=false suppresses patch even when persona enabled', () => {
     const bus = new InternalEventBus();
-    const mind = new PersonaService(
+    const persona = new PersonaService(
       {
         ...DEFAULT_PERSONA_CONFIG,
         enabled: true,
@@ -140,27 +140,27 @@ describe('PersonaService — prompt patch', () => {
       },
       bus,
     );
-    (mind as unknown as { phenotype: { fatigue: number } }).phenotype.fatigue = 0.9;
-    expect(mind.getPromptPatch()).toEqual({});
-    expect(mind.getPromptPatchFragment()).toBe('');
+    (persona as unknown as { phenotype: { fatigue: number } }).phenotype.fatigue = 0.9;
+    expect(persona.getPromptPatch()).toEqual({});
+    expect(persona.getPromptPatchFragment()).toBe('');
   });
 
   test('high fatigue produces a non-empty fragment wrapped in <mind_state>', () => {
-    const { mind } = service();
-    (mind as unknown as { phenotype: { fatigue: number } }).phenotype.fatigue = 0.9;
-    const fragment = mind.getPromptPatchFragment();
+    const { persona } = service();
+    (persona as unknown as { phenotype: { fatigue: number } }).phenotype.fatigue = 0.9;
+    const fragment = persona.getPromptPatchFragment();
     expect(fragment).toContain('<mind_state>');
     expect(fragment).toContain('非常疲惫');
   });
 
   test('low fatigue produces no fragment', () => {
-    const { mind } = service();
-    expect(mind.getPromptPatchFragment()).toBe('');
+    const { persona } = service();
+    expect(persona.getPromptPatchFragment()).toBe('');
   });
 
   test('custom thresholds from config are honored', () => {
     const bus = new InternalEventBus();
-    const mind = new PersonaService(
+    const persona = new PersonaService(
       {
         ...DEFAULT_PERSONA_CONFIG,
         enabled: true,
@@ -171,8 +171,8 @@ describe('PersonaService — prompt patch', () => {
       },
       bus,
     );
-    (mind as unknown as { phenotype: { fatigue: number } }).phenotype.fatigue = 0.45;
-    expect(mind.getPromptPatch().moodSummary).toContain('非常疲惫');
+    (persona as unknown as { phenotype: { fatigue: number } }).phenotype.fatigue = 0.45;
+    expect(persona.getPromptPatch().moodSummary).toContain('非常疲惫');
   });
 });
 

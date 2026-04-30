@@ -24,7 +24,7 @@ let store: EpigeneticsStore;
 let cleanup: () => void;
 
 beforeEach(async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'mind-rel-flow-'));
+  const dir = mkdtempSync(join(tmpdir(), 'persona-rel-flow-'));
   const dbPath = join(dir, 'test.db');
   adapter = new SQLiteAdapter(dbPath);
   await adapter.connect();
@@ -117,7 +117,7 @@ describe('MindRelationshipFlow integration', () => {
     expect(patch.relationshipSummary).toBeUndefined();
   });
 
-  it('mind disabled → always returns empty patch even with store+userId', async () => {
+  it('persona disabled → always returns empty patch even with store+userId', async () => {
     const patch = await buildPromptPatchAsync(mindSnapshot(false), { store, userId: 'u1' });
     expect(patch).toEqual({});
   });

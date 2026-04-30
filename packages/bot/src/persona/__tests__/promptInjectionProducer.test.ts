@@ -64,7 +64,7 @@ describe('createPersonaPromptInjectionProducer', () => {
     const producer = createPersonaPromptInjectionProducer({ personaService, config: makeConfig() });
     const result = await producer.produce(makeCtx('qq-private', 'u1'));
     expect(result).not.toBeNull();
-    expect(result?.producerName).toBe('mind');
+    expect(result?.producerName).toBe('persona');
     expect(result?.priority).toBe(10);
     expect(result?.fragment).toBe('mood: calm');
   });
@@ -112,7 +112,7 @@ describe('createPersonaPromptInjectionProducer — registry integration', () => 
   });
 
   it('produce NOT invoked when source not in applicableSources', async () => {
-    const produceFn = vi.fn(async () => ({ producerName: 'mind', priority: 10, fragment: 'should not appear' }));
+    const produceFn = vi.fn(async () => ({ producerName: 'persona', priority: 10, fragment: 'should not appear' }));
     const personaService: PersonaServiceLike = {
       isEnabled: () => true,
       getPromptPatchFragmentAsync: produceFn as any,

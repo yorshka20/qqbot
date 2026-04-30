@@ -56,7 +56,7 @@ export function createPersonaPromptInjectionProducer(deps: {
 }): PromptInjectionProducer {
   const { personaService, config } = deps;
   return {
-    name: 'mind',
+    name: 'persona',
     applicableSources: resolveProducerSources(config),
     priority: 10,
     async produce(ctx) {
@@ -65,7 +65,7 @@ export function createPersonaPromptInjectionProducer(deps: {
       const userId = ctx.userId;
       const fragment = await personaService.getPromptPatchFragmentAsync(userId ? { userId } : undefined);
       if (!fragment) return null;
-      return { producerName: 'mind', priority: 10, fragment };
+      return { producerName: 'persona', priority: 10, fragment };
     },
   };
 }

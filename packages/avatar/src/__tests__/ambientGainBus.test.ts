@@ -21,7 +21,7 @@ describe('AmbientGainBus', () => {
   it('three sources reduced with min', () => {
     const bus = new AmbientGainBus();
     bus.setSource('idle', 1.0);
-    bus.setSource('mind', 0.7);
+    bus.setSource('persona', 0.7);
     bus.setSource('activity', 0.3);
     for (let i = 0; i < 12; i++) {
       bus.tick(1000);
@@ -58,27 +58,27 @@ describe('AmbientGainBus', () => {
 
   it('NaN rejected — source not set', () => {
     const bus = new AmbientGainBus();
-    bus.setSource('mind', NaN);
+    bus.setSource('persona', NaN);
     // source should not be set
-    expect('mind' in bus.snapshot().sources).toBe(false);
+    expect('persona' in bus.snapshot().sources).toBe(false);
   });
 
   it('Infinity rejected — source not set', () => {
     const bus = new AmbientGainBus();
-    bus.setSource('mind', Infinity);
-    expect('mind' in bus.snapshot().sources).toBe(false);
+    bus.setSource('persona', Infinity);
+    expect('persona' in bus.snapshot().sources).toBe(false);
   });
 
   it('negative value clamped to 0', () => {
     const bus = new AmbientGainBus();
-    bus.setSource('mind', -1);
-    expect(bus.snapshot().sources.mind).toBe(0);
+    bus.setSource('persona', -1);
+    expect(bus.snapshot().sources.persona).toBe(0);
   });
 
   it('clearSource removes from reduction', () => {
     const bus = new AmbientGainBus();
     bus.setSource('activity', 0.3);
-    bus.setSource('mind', 0.5);
+    bus.setSource('persona', 0.5);
     bus.clearSource('activity');
     // Converge toward 0.5
     for (let i = 0; i < 12; i++) {
@@ -90,7 +90,7 @@ describe('AmbientGainBus', () => {
   it('custom reducer (max)', () => {
     const bus = new AmbientGainBus({ reducer: (vs) => Math.max(...vs) });
     bus.setSource('idle', 0.3);
-    bus.setSource('mind', 0.5);
+    bus.setSource('persona', 0.5);
     bus.setSource('activity', 0.8);
     for (let i = 0; i < 12; i++) {
       bus.tick(1000);

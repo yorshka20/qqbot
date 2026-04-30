@@ -48,7 +48,7 @@ function makeHarness(opts?: {
   };
 
   const scheduler = new AutonomousTriggerScheduler(config, {
-    mind: { getPhenotype: () => phenotypeRef.current as never },
+    persona: { getPhenotype: () => phenotypeRef.current as never },
     avatar: {
       enqueueAutonomous: enqueueAutonomous as never,
       enqueueAutonomousEmotion: enqueueAutonomousEmotion as never,
