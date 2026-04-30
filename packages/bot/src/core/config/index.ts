@@ -474,7 +474,7 @@ export class Config {
     return this.config.avatar;
   }
 
-  getMindConfig(): Record<string, unknown> | undefined {
+  getPersonaConfig(): Record<string, unknown> | undefined {
     return this.config.mind;
   }
 

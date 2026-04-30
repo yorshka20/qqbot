@@ -17,7 +17,7 @@
 import { inject, injectable } from 'tsyringe';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import type { LivemodeState } from '@/integrations/avatar/LivemodeState';
+import type { LivemodeState } from '@/integrations/avatar/livemode/LivemodeState';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 

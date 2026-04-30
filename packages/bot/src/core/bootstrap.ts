@@ -25,7 +25,7 @@ import { HealthCheckManager } from '@/core/health';
 import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { EventInitializer } from '@/events/EventInitializer';
 import type { EventRouter } from '@/events/EventRouter';
-import { type MindModulationAdapter, type MindService, startMindSubsystem } from '@/mind';
+import { type PersonaModulationAdapter, type PersonaService, startPersonaSubsystem } from '@/persona';
 import { PluginInitializer } from '@/plugins/PluginInitializer';
 import { DiscordConnection } from '@/protocol/discord/DiscordConnection';
 import { ProtocolAdapterInitializer } from '@/protocol/ProtocolAdapterInitializer';
@@ -38,11 +38,11 @@ import { DanmakuStore } from '@/services/bilibili/live/DanmakuStore';
 import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
-import { AvatarIdleTrigger } from '@/integrations/avatar/AvatarIdleTrigger';
-import { AvatarMemoryExtractionCoordinator } from '@/integrations/avatar/AvatarMemoryExtractionCoordinator';
-import { AvatarSessionService } from '@/integrations/avatar/AvatarSessionService';
-import { LivemodeInterceptor } from '@/integrations/avatar/LivemodeInterceptor';
-import { LivemodeState } from '@/integrations/avatar/LivemodeState';
+import { AvatarIdleTrigger } from '@/integrations/avatar/services/AvatarIdleTrigger';
+import { AvatarMemoryExtractionCoordinator } from '@/integrations/avatar/services/AvatarMemoryExtractionCoordinator';
+import { AvatarSessionService } from '@/integrations/avatar/services/AvatarSessionService';
+import { LivemodeInterceptor } from '@/integrations/avatar/livemode/LivemodeInterceptor';
+import { LivemodeState } from '@/integrations/avatar/livemode/LivemodeState';
 import type { MCPSystem } from '@/services/mcp/MCPInitializer';
 import { MCPInitializer } from '@/services/mcp/MCPInitializer';
 import { RetrievalService } from '@/services/retrieval';
@@ -316,14 +316,14 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
 
   // ── Mind subsystem lifecycle ──
   // All per-service wiring (modulation provider, state source, pose
-  // provider, wander scheduler) is encapsulated in `startMindSubsystem`
+  // provider, wander scheduler) is encapsulated in `startPersonaSubsystem`
   // so bootstrap stays agnostic. Safe to call even when mind or avatar
   // is absent.
   try {
-    if (container.isRegistered(DITokens.MIND_SERVICE)) {
-      const mindService = container.resolve<MindService>(DITokens.MIND_SERVICE);
-      const modulationProvider = container.resolve<MindModulationAdapter>(DITokens.MIND_MODULATION_PROVIDER);
-      startMindSubsystem(mindService, modulationProvider, avatarService);
+    if (container.isRegistered(DITokens.PERSONA_SERVICE)) {
+      const personaService = container.resolve<PersonaService>(DITokens.PERSONA_SERVICE);
+      const modulationProvider = container.resolve<PersonaModulationAdapter>(DITokens.PERSONA_MODULATION_PROVIDER);
+      startPersonaSubsystem(personaService, modulationProvider, avatarService);
     }
   } catch (err) {
     logger.warn('[Bootstrap] Mind subsystem wiring failed (non-fatal):', err);

@@ -52,9 +52,9 @@ export const DITokens = {
   VIDEO_DOWNLOAD_SERVICE: 'VideoDownloadService',
   RESOURCE_CLEANUP_SERVICE: 'ResourceCleanupService',
   // Mind system (persona state, modulation, reflection)
-  MIND_SERVICE: 'MindService',
-  MIND_CONFIG: 'MindConfig',
-  MIND_MODULATION_PROVIDER: 'MindModulationProvider',
+  PERSONA_SERVICE: 'PersonaService',
+  PERSONA_CONFIG: 'PersonaConfig',
+  PERSONA_MODULATION_PROVIDER: 'MindModulationProvider',
   EPIGENETICS_STORE: 'EpigeneticsStore',
   // Avatar system
   AVATAR_SERVICE: 'AvatarService',

@@ -32,7 +32,7 @@ import { DatabaseManager } from '@/database/DatabaseManager';
 import { HookManager } from '@/hooks/HookManager';
 import { MemoryExtractService, MemoryRAGService, MemoryService } from '@/memory';
 import { MessageUtils } from '@/message/MessageUtils';
-import { MindInitializer } from '@/mind';
+import { PersonaInitializer } from '@/persona';
 import { BilibiliService } from '@/services/bilibili';
 import { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
 import { FileReadService } from '@/services/file';
@@ -149,7 +149,7 @@ export class ConversationInitializer {
       if (adapter instanceof SQLiteAdapter) {
         const rawDb = adapter.getRawDb();
         if (rawDb) {
-          const { EpigeneticsStore } = await import('@/mind/epigenetics/EpigeneticsStore');
+          const { EpigeneticsStore } = await import('@/persona/reflection/epigenetics/EpigeneticsStore');
           const epigeneticsStore = new EpigeneticsStore(rawDb);
           container.registerInstance(DITokens.EPIGENETICS_STORE, epigeneticsStore);
           logger.info('[ConversationInitializer] EpigeneticsStore registered');
@@ -331,13 +331,13 @@ export class ConversationInitializer {
 
     // Mind framework: phenotype ODE + modulation adapter for avatar.
     // Must run AFTER agenda so it can share the same InternalEventBus;
-    // bootstrap wires mindService.start() + pose provider + avatar
+    // bootstrap wires personaService.start() + pose provider + avatar
     // modulation injection after AvatarService is ready.
-    const mindComponents = await MindInitializer.initialize({
-      rawConfig: config.getMindConfig(),
+    const mindComponents = await PersonaInitializer.initialize({
+      rawConfig: config.getPersonaConfig(),
       internalEventBus: agendaComponents.internalEventBus,
     });
-    serviceRegistry.registerMindServices(mindComponents);
+    serviceRegistry.registerPersonaServices(mindComponents);
 
     const completeServices: CompleteServices = {
       ...services,

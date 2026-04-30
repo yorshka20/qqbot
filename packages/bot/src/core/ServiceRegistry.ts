@@ -11,7 +11,7 @@ import type { ProactiveConversationService } from '@/conversation/proactive';
 import type { ThreadService } from '@/conversation/thread';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
-import type { MindComponents } from '@/mind';
+import type { PersonaComponents } from '@/persona';
 import type { FileReadService } from '@/services/file';
 import type { RetrievalService } from '@/services/retrieval';
 import type { ToolManager } from '@/tools/ToolManager';
@@ -201,10 +201,10 @@ export class ServiceRegistry {
    * after mind is constructed (requires InternalEventBus to be available,
    * so must run after `registerAgendaServices`).
    */
-  registerMindServices(components: MindComponents): void {
-    this.container.registerInstance(DITokens.MIND_SERVICE, components.mindService);
-    this.container.registerInstance(DITokens.MIND_CONFIG, components.config);
-    this.container.registerInstance(DITokens.MIND_MODULATION_PROVIDER, components.modulationProvider);
+  registerPersonaServices(components: PersonaComponents): void {
+    this.container.registerInstance(DITokens.PERSONA_SERVICE, components.personaService);
+    this.container.registerInstance(DITokens.PERSONA_CONFIG, components.config);
+    this.container.registerInstance(DITokens.PERSONA_MODULATION_PROVIDER, components.modulationProvider);
     logger.debug('[ServiceRegistry] Registered mind subsystem services');
   }
 

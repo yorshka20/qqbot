@@ -10,7 +10,7 @@ import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { cacheMessage } from '@/message/MessageCache';
-import { MIND_EVENT_MESSAGE_RECEIVED } from '@/mind';
+import { PERSONA_EVENT_MESSAGE_RECEIVED } from '@/persona';
 import { logger } from '@/utils/logger';
 import { getLogColorForKey, getLogTag } from '@/utils/messageLogContext';
 import type { ConversationConfigService } from './ConversationConfigService';
@@ -37,8 +37,8 @@ export class MessagePipeline {
     private providerRouter: ProviderRouter,
     /**
      * Optional — when present, the pipeline publishes
-     * `MIND_EVENT_MESSAGE_RECEIVED` after every successful `lifecycle.execute`
-     * so `MindService` can translate it into an attention stimulus.
+     * `PERSONA_EVENT_MESSAGE_RECEIVED` after every successful `lifecycle.execute`
+     * so `PersonaService` can translate it into an attention stimulus.
      * Absent in tests / setups without mind.
      */
     private internalEventBus?: InternalEventBus,
@@ -277,7 +277,7 @@ export class MessagePipeline {
   }
 
   /**
-   * Publish a message-received event so MindService can register an
+   * Publish a message-received event so PersonaService can register an
    * attention spike + relationship row for the speaker. Silently no-ops
    * when the event bus is not present or a subscriber throws — a failure
    * here must never break reply flow.
@@ -286,11 +286,11 @@ export class MessagePipeline {
    *   1. **Synthetic exclusion (here)**: synthetic sources (avatar-cmd /
    *      bilibili-danmaku / idle-trigger / bootstrap) carry sentinel
    *      userIds and never produce stimulus.
-   *   2. **User config (MindService.handleMessageEvent)**: even for real-IM
-   *      sources, `MindService` checks `mind.applicableSources` so the
+   *   2. **User config (PersonaService.handleMessageEvent)**: even for real-IM
+   *      sources, `PersonaService` checks `mind.applicableSources` so the
    *      user can narrow stimulus to e.g. private DM only.
    *
-   * `data.source` is forwarded so MindService can apply layer 2 without
+   * `data.source` is forwarded so PersonaService can apply layer 2 without
    * needing to know about MessageProcessingContext.
    */
   private publishMindStimulus(event: NormalizedMessageEvent, context: MessageProcessingContext): void {
@@ -299,7 +299,7 @@ export class MessagePipeline {
     if (source !== 'qq-private' && source !== 'qq-group' && source !== 'discord') return;
     try {
       this.internalEventBus.publish({
-        type: MIND_EVENT_MESSAGE_RECEIVED,
+        type: PERSONA_EVENT_MESSAGE_RECEIVED,
         groupId: event.groupId != null ? String(event.groupId) : '',
         userId: event.userId != null ? String(event.userId) : '',
         botSelfId: context.botSelfId ?? '',
