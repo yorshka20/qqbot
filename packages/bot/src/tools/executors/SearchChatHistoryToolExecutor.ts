@@ -17,7 +17,7 @@ const MAX_RESULTS = 50;
   description:
     '在当前群的聊天记录中按关键词搜索。返回包含关键词的消息列表（发送者、内容、时间）。支持可选的时间范围限制。',
   executor: 'search_chat_history',
-  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord', 'avatar-cmd'] } },
+  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord', 'avatar-cmd'] }, reflection: true },
   parameters: {
     keyword: {
       type: 'string',
@@ -53,6 +53,14 @@ export class SearchChatHistoryToolExecutor extends BaseToolExecutor {
   async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     const groupId = context.groupId;
     if (!groupId) {
+      if (Boolean(context.metadata?.reflectionScope)) {
+        return this.success('（reflection 上下文：当前无活跃群上下文，无法搜索聊天记录）', {
+          reflectionContext: true,
+          reason: 'no-group',
+          messageCount: 0,
+          messages: [],
+        });
+      }
       return this.error('只有群聊场景下才能搜索聊天记录', 'search_chat_history requires group context');
     }
 

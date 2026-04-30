@@ -12,7 +12,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
   description:
     '读取当前群或指定用户的本地长期记忆。返回 bot 过去提取并保存的关于该群/用户的关键信息（偏好、设定、历史事实等）。',
   executor: 'get_memory',
-  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord', 'avatar-cmd'] }, subagent: true },
+  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord', 'avatar-cmd'] }, subagent: true, reflection: true },
   parameters: {
     userId: {
       type: 'string',
@@ -41,6 +41,12 @@ export class GetMemoryToolExecutor extends BaseToolExecutor {
   execute(call: ToolCall, context: ToolExecutionContext): ToolResult {
     const groupId = context.groupId?.toString();
     if (!groupId) {
+      if (Boolean(context.metadata?.reflectionScope)) {
+        return this.success('（reflection 上下文：当前无活跃群上下文，无法读取本地群/用户记忆）', {
+          reflectionContext: true,
+          reason: 'no-group',
+        });
+      }
       return this.error('只有群聊场景下才能读取本地记忆', 'get_memory requires group context');
     }
 
