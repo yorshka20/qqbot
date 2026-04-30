@@ -98,6 +98,21 @@ export interface MindConfig {
   /** Tick interval in ms. Default 1000 (1Hz). Lower = smoother HUD but more CPU. */
   tickMs: number;
 
+  /**
+   * Master allow-list for which real-IM message sources drive **all**
+   * mind-related effects: stimulus accrual (fatigue / attention),
+   * onMessageComplete reflection / relationship update, and prompt
+   * injection (when `promptPatch.applicableSources` is omitted).
+   *
+   * Default: `['qq-private', 'qq-group', 'discord']` (all real-IM).
+   * Synthetic sources (avatar-cmd / bilibili-danmaku / idle-trigger /
+   * bootstrap) are **always** excluded by separate logic — they don't
+   * represent real users and would pollute mind state.
+   *
+   * Set to `['qq-private']` to test the full persona system in DM only.
+   */
+  applicableSources?: readonly import('../conversation/sources').MessageSource[];
+
   /** ODE time constants (see `ode.ts`). */
   ode: {
     /** Attention exponential decay time constant, in ms. Default 120_000 (2 min). */
@@ -248,6 +263,7 @@ export const DEFAULT_MIND_CONFIG: MindConfig = {
   personaId: 'default',
   dataDir: './data/mind',
   tickMs: 1000,
+  applicableSources: ['qq-private', 'qq-group', 'discord'],
   ode: {
     tauAttentionMs: 120_000,
     fatigueAccrualPerMs: 5e-7,
@@ -337,6 +353,9 @@ export function mergeMindConfig(raw: Record<string, unknown> | undefined): MindC
     personaId: typeof src.personaId === 'string' && src.personaId ? src.personaId : DEFAULT_MIND_CONFIG.personaId,
     dataDir: typeof src.dataDir === 'string' && src.dataDir ? src.dataDir : DEFAULT_MIND_CONFIG.dataDir,
     tickMs: numberOr(src.tickMs, DEFAULT_MIND_CONFIG.tickMs),
+    applicableSources: Array.isArray(src.applicableSources)
+      ? (src.applicableSources as readonly import('../conversation/sources').MessageSource[])
+      : DEFAULT_MIND_CONFIG.applicableSources,
     ode: {
       tauAttentionMs: numberOr(odeSrc.tauAttentionMs, DEFAULT_MIND_CONFIG.ode.tauAttentionMs),
       fatigueAccrualPerMs: numberOr(odeSrc.fatigueAccrualPerMs, DEFAULT_MIND_CONFIG.ode.fatigueAccrualPerMs),

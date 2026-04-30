@@ -84,6 +84,10 @@ export class MindPromptPlugin extends PluginBase {
   async onMessageComplete(context: HookContext): Promise<boolean> {
     if (!this.enabled || !this.mind || !this.relationshipUpdater) return true;
     if (!this.mind.isEnabled()) return true;
+    // Runtime user-config gate (decorator's applicableSources is the
+    // synthetic-exclusion baseline; user can further narrow via
+    // mind.applicableSources, e.g. ['qq-private'] for DM-only test).
+    if (!this.mind.isApplicableSource(context.source)) return true;
     try {
       // Only update relationship when an actual reply was produced.
       const reply = getReply(context);

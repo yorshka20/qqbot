@@ -282,11 +282,16 @@ export class MessagePipeline {
    * when the event bus is not present or a subscriber throws — a failure
    * here must never break reply flow.
    *
-   * Gated to real-IM sources (`qq-private` / `qq-group` / `discord`).
-   * Synthetic-event sources (avatar-cmd / bilibili-danmaku / idle-trigger
-   * / bootstrap) carry sentinel `userId`s like `__bilibili__` and would
-   * otherwise pollute `persona_relationships` and inflate fatigue with
-   * non-conversational signals.
+   * Two-layer gate:
+   *   1. **Synthetic exclusion (here)**: synthetic sources (avatar-cmd /
+   *      bilibili-danmaku / idle-trigger / bootstrap) carry sentinel
+   *      userIds and never produce stimulus.
+   *   2. **User config (MindService.handleMessageEvent)**: even for real-IM
+   *      sources, `MindService` checks `mind.applicableSources` so the
+   *      user can narrow stimulus to e.g. private DM only.
+   *
+   * `data.source` is forwarded so MindService can apply layer 2 without
+   * needing to know about MessageProcessingContext.
    */
   private publishMindStimulus(event: NormalizedMessageEvent, context: MessageProcessingContext): void {
     if (!this.internalEventBus) return;
@@ -298,6 +303,7 @@ export class MessagePipeline {
         groupId: event.groupId != null ? String(event.groupId) : '',
         userId: event.userId != null ? String(event.userId) : '',
         botSelfId: context.botSelfId ?? '',
+        data: { source },
       });
     } catch (err) {
       logger.debug(`[MessagePipeline] mind stimulus publish failed (non-fatal): ${err}`);

@@ -16,12 +16,35 @@ export interface MindServiceLike {
   getPromptPatchFragmentAsync(opts?: { userId?: string }): Promise<string>;
 }
 
-const FALLBACK_SOURCES: readonly MessageSource[] = [
+const FALLBACK_SYNTHETIC_INCLUSIVE: readonly MessageSource[] = [
   'qq-private',
   'qq-group',
   'avatar-cmd',
   'bilibili-danmaku',
 ];
+
+/**
+ * Resolution order for the mind producer's `applicableSources`:
+ *   1. `promptPatch.applicableSources` if set — fine-grained prompt-only override
+ *   2. `mind.applicableSources` if set — master mind allow-list
+ *      (extended with avatar-cmd / bilibili-danmaku to keep avatar-driven
+ *      LLM paths personalised, since those don't appear in the master list
+ *      which only governs real-IM stimulus / reflection)
+ *   3. Hard-coded fallback (synthetic-inclusive default)
+ */
+function resolveProducerSources(config: MindConfig): readonly MessageSource[] {
+  if (config.promptPatch.applicableSources && config.promptPatch.applicableSources.length > 0) {
+    return config.promptPatch.applicableSources;
+  }
+  const master = config.applicableSources;
+  if (master && master.length > 0) {
+    const set = new Set<MessageSource>(master);
+    set.add('avatar-cmd');
+    set.add('bilibili-danmaku');
+    return Array.from(set);
+  }
+  return FALLBACK_SYNTHETIC_INCLUSIVE;
+}
 
 /**
  * Creates a PromptInjectionProducer that injects mind/persona state into the
@@ -34,7 +57,7 @@ export function createMindPromptInjectionProducer(deps: {
   const { mindService, config } = deps;
   return {
     name: 'mind',
-    applicableSources: config.promptPatch.applicableSources ?? FALLBACK_SOURCES,
+    applicableSources: resolveProducerSources(config),
     priority: 10,
     async produce(ctx) {
       if (!mindService.isEnabled()) return null;

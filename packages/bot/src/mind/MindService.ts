@@ -162,6 +162,24 @@ export class MindService {
     this.phenotype = applyStimulus(this.phenotype, stimulus, this.config);
   }
 
+  /**
+   * Master source-allow-list check used by every mind subsystem that
+   * wants to gate behaviour by the originating MessageSource:
+   *   - stimulus accrual (this service's own message handler)
+   *   - onMessageComplete reflection / relationship update (MindPromptPlugin)
+   *   - prompt injection default (promptInjectionProducer)
+   *
+   * Synthetic sources (avatar-cmd / bilibili-danmaku / idle-trigger /
+   * bootstrap) are excluded by callers' own logic — this list only
+   * constrains which **real-IM** sources are eligible. Returns true when
+   * the source is in `config.applicableSources` (default all real-IM).
+   */
+  isApplicableSource(source: import('../conversation/sources').MessageSource | undefined): boolean {
+    if (!source) return false;
+    const list = this.config.applicableSources ?? ['qq-private', 'qq-group', 'discord'];
+    return list.includes(source);
+  }
+
   /** Read-only phenotype. */
   getPhenotype(): Phenotype {
     return this.phenotype;
@@ -257,6 +275,14 @@ export class MindService {
 
   private handleMessageEvent(event: AgendaSystemEvent): void {
     if (!this.config.enabled) return;
+    // Source-aware gate: only real-IM sources in applicableSources drive
+    // stimulus accrual. Synthetic events are already filtered upstream
+    // (MessagePipeline.publishMindStimulus); this layer additionally
+    // enforces the user-configured allow-list (e.g. "DM only").
+    const source = (event.data?.source ?? undefined) as
+      | import('../conversation/sources').MessageSource
+      | undefined;
+    if (!this.isApplicableSource(source)) return;
     this.ingest({
       kind: 'message',
       ts: Date.now(),

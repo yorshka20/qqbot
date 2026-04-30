@@ -25,6 +25,7 @@ describe('MindService — event subscription', () => {
       userId: '42',
       groupId: '100',
       botSelfId: 'bot',
+      data: { source: 'qq-private' },
     });
 
     const snap = mind.getSnapshot();
@@ -45,9 +46,21 @@ describe('MindService — event subscription', () => {
   test('stop() unsubscribes — no further spikes', () => {
     const { mind, bus } = service();
     mind.start();
-    bus.publish({ type: MIND_EVENT_MESSAGE_RECEIVED, userId: '1', groupId: '', botSelfId: '' });
+    bus.publish({
+      type: MIND_EVENT_MESSAGE_RECEIVED,
+      userId: '1',
+      groupId: '',
+      botSelfId: '',
+      data: { source: 'qq-private' },
+    });
     mind.stop();
-    bus.publish({ type: MIND_EVENT_MESSAGE_RECEIVED, userId: '1', groupId: '', botSelfId: '' });
+    bus.publish({
+      type: MIND_EVENT_MESSAGE_RECEIVED,
+      userId: '1',
+      groupId: '',
+      botSelfId: '',
+      data: { source: 'qq-private' },
+    });
     expect(mind.getPhenotype().stimulusCount).toBe(1);
   });
 
@@ -55,9 +68,33 @@ describe('MindService — event subscription', () => {
     const bus = new InternalEventBus();
     const mind = new MindService({ ...DEFAULT_MIND_CONFIG, enabled: false }, bus);
     mind.start();
-    bus.publish({ type: MIND_EVENT_MESSAGE_RECEIVED, userId: '1', groupId: '', botSelfId: '' });
+    bus.publish({
+      type: MIND_EVENT_MESSAGE_RECEIVED,
+      userId: '1',
+      groupId: '',
+      botSelfId: '',
+      data: { source: 'qq-private' },
+    });
     expect(mind.getPhenotype().stimulusCount).toBe(0);
     mind.stop();
+  });
+
+  test('event without applicable source is ignored (e.g. group when applicableSources=[qq-private])', () => {
+    const bus = new InternalEventBus();
+    const mind = new MindService(
+      { ...DEFAULT_MIND_CONFIG, enabled: true, applicableSources: ['qq-private'] },
+      bus,
+    );
+    mind.start();
+    cleanups.push(() => mind.stop());
+    bus.publish({
+      type: MIND_EVENT_MESSAGE_RECEIVED,
+      userId: '99',
+      groupId: '500',
+      botSelfId: 'bot',
+      data: { source: 'qq-group' }, // not in allow-list
+    });
+    expect(mind.getPhenotype().stimulusCount).toBe(0);
   });
 });
 
