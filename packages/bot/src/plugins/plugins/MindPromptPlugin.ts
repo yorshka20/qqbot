@@ -71,7 +71,16 @@ export class MindPromptPlugin extends PluginBase {
    * user's message text. Uses the coarse keyword classifier in
    * `RelationshipUpdater`. Failures are swallowed — never breaks reply flow.
    */
-  @Hook({ stage: 'onMessageComplete', priority: 'NORMAL', order: 10 })
+  @Hook({
+    stage: 'onMessageComplete',
+    priority: 'NORMAL',
+    order: 10,
+    // Reflection / relationship updates only make sense for real-user IM
+    // exchanges. Synthetic-event sources (avatar-cmd / bilibili-danmaku /
+    // idle-trigger / bootstrap) carry sentinel userIds and shouldn't drive
+    // System-2 reflection or `persona_relationships`.
+    applicableSources: ['qq-private', 'qq-group', 'discord'],
+  })
   async onMessageComplete(context: HookContext): Promise<boolean> {
     if (!this.enabled || !this.mind || !this.relationshipUpdater) return true;
     if (!this.mind.isEnabled()) return true;

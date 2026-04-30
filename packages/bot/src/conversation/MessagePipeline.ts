@@ -278,11 +278,20 @@ export class MessagePipeline {
 
   /**
    * Publish a message-received event so MindService can register an
-   * attention spike. Silently no-ops when the event bus is not present
-   * or a subscriber throws — a failure here must never break reply flow.
+   * attention spike + relationship row for the speaker. Silently no-ops
+   * when the event bus is not present or a subscriber throws — a failure
+   * here must never break reply flow.
+   *
+   * Gated to real-IM sources (`qq-private` / `qq-group` / `discord`).
+   * Synthetic-event sources (avatar-cmd / bilibili-danmaku / idle-trigger
+   * / bootstrap) carry sentinel `userId`s like `__bilibili__` and would
+   * otherwise pollute `persona_relationships` and inflate fatigue with
+   * non-conversational signals.
    */
   private publishMindStimulus(event: NormalizedMessageEvent, context: MessageProcessingContext): void {
     if (!this.internalEventBus) return;
+    const source = context.source;
+    if (source !== 'qq-private' && source !== 'qq-group' && source !== 'discord') return;
     try {
       this.internalEventBus.publish({
         type: MIND_EVENT_MESSAGE_RECEIVED,

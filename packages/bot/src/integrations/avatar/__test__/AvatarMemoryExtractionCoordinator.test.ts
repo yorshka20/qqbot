@@ -1,4 +1,4 @@
-// Live2DMemoryExtractionCoordinator — unit tests for the debounced extract
+// AvatarMemoryExtractionCoordinator — unit tests for the debounced extract
 // scheduler. Uses Bun's fake timers so tests don't actually wait `debounceMs`.
 //
 // Coverage targets:
@@ -138,7 +138,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-describe('Live2DMemoryExtractionCoordinator', () => {
+describe('AvatarMemoryExtractionCoordinator', () => {
   beforeEach(() => {
     // No global setup needed; each test calls setup() which resets container.
   });
