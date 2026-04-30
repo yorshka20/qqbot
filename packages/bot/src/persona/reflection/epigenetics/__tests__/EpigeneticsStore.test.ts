@@ -223,6 +223,43 @@ describe('EpigeneticsStore', () => {
     expect(r.appliedPatch.topicMasteryDelta?.writing).toBeCloseTo(0.2);
   });
 
+  // ── getRelationshipEvents ───────────────────────────────────────────────────
+
+  it('first bumpRelationship creates init event with old values=0', async () => {
+    await store.bumpRelationship('persona-A', 'user-ev1', { affinityDelta: 0.05, familiarityDelta: 0.001 });
+    const events = await store.getRelationshipEvents('persona-A', 'user-ev1');
+    expect(events).toHaveLength(1);
+    expect(events[0].eventType).toBe('init');
+    expect(events[0].oldAffinity).toBe(0);
+    expect(events[0].newAffinity).toBeCloseTo(0.05);
+    expect(events[0].oldFamiliarity).toBe(0);
+    expect(events[0].newFamiliarity).toBeCloseTo(0.001);
+    expect(events[0].source).toBe('message');
+  });
+
+  it('second bumpRelationship creates update event with correct old values', async () => {
+    await store.bumpRelationship('persona-A', 'user-ev2', { affinityDelta: 0.05 }, 'message');
+    await store.bumpRelationship('persona-A', 'user-ev2', { affinityDelta: 0.03 }, 'message');
+    const events = await store.getRelationshipEvents('persona-A', 'user-ev2');
+    expect(events).toHaveLength(2);
+    // DESC order — most recent first
+    expect(events[0].eventType).toBe('update');
+    expect(events[0].oldAffinity).toBeCloseTo(0.05);
+    expect(events[0].newAffinity).toBeCloseTo(0.08);
+    expect(events[1].eventType).toBe('init');
+  });
+
+  it('getRelationshipEvents isolates by userId', async () => {
+    await store.bumpRelationship('persona-A', 'user-iso1', { affinityDelta: 0.1 });
+    await store.bumpRelationship('persona-A', 'user-iso2', { affinityDelta: 0.2 });
+    const events1 = await store.getRelationshipEvents('persona-A', 'user-iso1');
+    const events2 = await store.getRelationshipEvents('persona-A', 'user-iso2');
+    expect(events1).toHaveLength(1);
+    expect(events1[0].userId).toBe('user-iso1');
+    expect(events2).toHaveLength(1);
+    expect(events2[0].userId).toBe('user-iso2');
+  });
+
   // ── Migration idempotency ───────────────────────────────────────────────────
 
   it('repeated connect+migrate on same DB does not throw', async () => {

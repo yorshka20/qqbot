@@ -67,6 +67,23 @@ export interface PersonaRelationship {
 }
 
 /**
+ * One relationship change event stored in `persona_relationship_events`.
+ * Append-only: rows are never deleted or updated.
+ */
+export interface PersonaRelationshipEvent {
+  id: number;
+  personaId: string;
+  userId: string;
+  eventType: 'init' | 'update';
+  oldAffinity: number;
+  newAffinity: number;
+  oldFamiliarity: number;
+  newFamiliarity: number;
+  source: 'message' | 'reflection';
+  ts: number;
+}
+
+/**
  * One reflection log entry stored in `persona_reflections`.
  * Append-only: rows are never deleted or updated.
  */

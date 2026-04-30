@@ -60,9 +60,11 @@ export class RelationshipUpdater {
    */
   async update(personaId: string, userId: string, userText: string): Promise<void> {
     const affinityDelta = classifyAffinityDelta(userText);
-    await this.store.bumpRelationship(personaId, userId, {
-      affinityDelta,
-      familiarityDelta: FAMILIARITY_PER_MESSAGE,
-    });
+    await this.store.bumpRelationship(
+      personaId,
+      userId,
+      { affinityDelta, familiarityDelta: FAMILIARITY_PER_MESSAGE },
+      'message',
+    );
   }
 }

@@ -459,6 +459,18 @@ export class SQLiteAdapter implements DatabaseAdapter {
         insight_md TEXT NOT NULL,
         applied_patch_json TEXT NOT NULL
       )`,
+      `CREATE TABLE IF NOT EXISTS persona_relationship_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        persona_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        old_affinity REAL NOT NULL,
+        new_affinity REAL NOT NULL,
+        old_familiarity REAL NOT NULL,
+        new_familiarity REAL NOT NULL,
+        source TEXT NOT NULL,
+        ts INTEGER NOT NULL
+      )`,
     ];
 
     for (const statement of statements) {
@@ -560,6 +572,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       `CREATE INDEX IF NOT EXISTS idx_rel_affinity ON persona_relationships(persona_id, affinity DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_rel_familiarity ON persona_relationships(persona_id, familiarity DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_refl_persona_ts ON persona_reflections(persona_id, timestamp DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_pre_persona_user ON persona_relationship_events(persona_id, user_id, ts)`,
     ];
 
     for (const statement of indexStatements) {

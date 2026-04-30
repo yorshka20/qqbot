@@ -32,6 +32,7 @@ import type {
   PersonaEpigenetics,
   PersonaReflection,
   PersonaRelationship,
+  PersonaRelationshipEvent,
   ReflectionPatch,
   TraitHistoryEntry,
   TraitKey,
@@ -346,6 +347,7 @@ export class EpigeneticsStore {
    * Increment relationship scores between a persona and a user.
    * Creates the row if it does not exist.
    * affinity is clamped to [-1, 1]; familiarity is clamped to [0, 1].
+   * The upsert and event INSERT are wrapped in a single transaction.
    */
   async bumpRelationship(
     personaId: string,
@@ -356,6 +358,7 @@ export class EpigeneticsStore {
       tagAdd?: string[];
       sharedMemoryRefAdd?: string[];
     },
+    source: 'message' | 'reflection' = 'message',
   ): Promise<void> {
     const now = Date.now();
     const existing = await this.getRelationship(personaId, userId);
@@ -378,31 +381,102 @@ export class EpigeneticsStore {
     const newRefs = delta.sharedMemoryRefAdd
       ? appendUnique(base.sharedMemoryRefs, delta.sharedMemoryRefAdd)
       : base.sharedMemoryRefs;
+    const eventType: 'init' | 'update' = existing ? 'update' : 'init';
 
-    this.db
-      .query(
-        `INSERT INTO persona_relationships (
-          persona_id, user_id, affinity, familiarity,
-          last_interaction_at, tags_json, shared_memory_refs_json, extra_json, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(persona_id, user_id) DO UPDATE SET
-          affinity = excluded.affinity,
-          familiarity = excluded.familiarity,
-          last_interaction_at = excluded.last_interaction_at,
-          tags_json = excluded.tags_json,
-          shared_memory_refs_json = excluded.shared_memory_refs_json,
-          updated_at = excluded.updated_at`,
+    const doWrite = this.db.transaction(() => {
+      this.db
+        .query(
+          `INSERT INTO persona_relationships (
+            persona_id, user_id, affinity, familiarity,
+            last_interaction_at, tags_json, shared_memory_refs_json, extra_json, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(persona_id, user_id) DO UPDATE SET
+            affinity = excluded.affinity,
+            familiarity = excluded.familiarity,
+            last_interaction_at = excluded.last_interaction_at,
+            tags_json = excluded.tags_json,
+            shared_memory_refs_json = excluded.shared_memory_refs_json,
+            updated_at = excluded.updated_at`,
+        )
+        .run(
+          personaId,
+          userId,
+          newAffinity,
+          newFamiliarity,
+          now,
+          JSON.stringify(newTags),
+          JSON.stringify(newRefs),
+          JSON.stringify(base.extra),
+          now,
+        );
+
+      this.db
+        .query(
+          `INSERT INTO persona_relationship_events
+            (persona_id, user_id, event_type, old_affinity, new_affinity,
+             old_familiarity, new_familiarity, source, ts)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          personaId,
+          userId,
+          eventType,
+          base.affinity,
+          newAffinity,
+          base.familiarity,
+          newFamiliarity,
+          source,
+          now,
+        );
+    });
+
+    doWrite();
+  }
+
+  /**
+   * Query relationship change events for a persona↔user pair.
+   * Returns events in descending timestamp order.
+   */
+  async getRelationshipEvents(
+    personaId: string,
+    userId: string,
+    opts?: { sinceTs?: number; limit?: number },
+  ): Promise<PersonaRelationshipEvent[]> {
+    const limit = opts?.limit && opts.limit > 0 ? opts.limit : 100;
+    const sinceTs = opts?.sinceTs ?? 0;
+    const rows = this.db
+      .query<
+        {
+          id: number;
+          persona_id: string;
+          user_id: string;
+          event_type: string;
+          old_affinity: number;
+          new_affinity: number;
+          old_familiarity: number;
+          new_familiarity: number;
+          source: string;
+          ts: number;
+        },
+        [string, string, number]
+      >(
+        `SELECT * FROM persona_relationship_events
+         WHERE persona_id = ? AND user_id = ? AND ts >= ?
+         ORDER BY ts DESC
+         LIMIT ${Math.max(1, limit)}`,
       )
-      .run(
-        personaId,
-        userId,
-        newAffinity,
-        newFamiliarity,
-        now,
-        JSON.stringify(newTags),
-        JSON.stringify(newRefs),
-        JSON.stringify(base.extra),
-        now,
-      );
+      .all(personaId, userId, sinceTs);
+    return rows.map((r) => ({
+      id: r.id,
+      personaId: r.persona_id,
+      userId: r.user_id,
+      eventType: r.event_type as 'init' | 'update',
+      oldAffinity: r.old_affinity,
+      newAffinity: r.new_affinity,
+      oldFamiliarity: r.old_familiarity,
+      newFamiliarity: r.new_familiarity,
+      source: r.source as 'message' | 'reflection',
+      ts: r.ts,
+    }));
   }
 }

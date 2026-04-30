@@ -1,4 +1,9 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { SQLiteAdapter } from '@/database/adapters/SQLiteAdapter';
+import { EpigeneticsStore } from '../../epigenetics/EpigeneticsStore';
 import { classifyAffinityDelta, RelationshipUpdater } from '../RelationshipUpdater';
 
 // ─── classifyAffinityDelta ────────────────────────────────────────────────────
@@ -41,14 +46,16 @@ class MockStore {
     personaId: string;
     userId: string;
     delta: { affinityDelta?: number; familiarityDelta?: number };
+    source: string;
   }> = [];
 
   async bumpRelationship(
     personaId: string,
     userId: string,
     delta: { affinityDelta?: number; familiarityDelta?: number },
+    source: 'message' | 'reflection' = 'message',
   ): Promise<void> {
-    this.calls.push({ personaId, userId, delta });
+    this.calls.push({ personaId, userId, delta, source });
   }
 }
 
@@ -94,5 +101,50 @@ describe('RelationshipUpdater.update', () => {
     await updater.update('persona-x', 'user-42', '');
     expect(store.calls[0].personaId).toBe('persona-x');
     expect(store.calls[0].userId).toBe('user-42');
+  });
+
+  test('source="message" is forwarded to store', async () => {
+    const store = new MockStore();
+    const updater = new RelationshipUpdater(store as never);
+    await updater.update('persona-x', 'user-42', '');
+    expect(store.calls[0].source).toBe('message');
+  });
+});
+
+// ─── RelationshipUpdater integration (real DB) ───────────────────────────────
+
+describe('RelationshipUpdater.update — integration with real DB', () => {
+  let adapter: SQLiteAdapter;
+  let cleanup: () => void;
+
+  beforeEach(async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rel-updater-test-'));
+    const dbPath = join(dir, 'test.db');
+    adapter = new SQLiteAdapter(dbPath);
+    await adapter.connect();
+    await adapter.migrate();
+    cleanup = () => {
+      try {
+        rmSync(dir, { recursive: true, force: true });
+      } catch {
+        // best-effort cleanup
+      }
+    };
+  });
+
+  afterEach(async () => {
+    await adapter.disconnect();
+    cleanup();
+  });
+
+  test('update records event with source=message and eventType=init', async () => {
+    const db = adapter.getRawDb()!;
+    const store = new EpigeneticsStore(db);
+    const updater = new RelationshipUpdater(store);
+    await updater.update('p1', 'u1', '谢谢');
+    const events = await store.getRelationshipEvents('p1', 'u1');
+    expect(events).toHaveLength(1);
+    expect(events[0].source).toBe('message');
+    expect(events[0].eventType).toBe('init');
   });
 });
