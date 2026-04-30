@@ -49,7 +49,7 @@ const TOOL_SPEC: ToolSpec = {
   description:
     '渲染群聊每日汇报为精美图片并发送到群内。需要传入完整的报告数据（JSON格式），包括统计数据、话题分析、成员点评、精选发言和总评。',
   executor: 'render_group_report',
-  visibility: ['subagent'],
+  visibility: { subagent: true },
   parameters: {
     reportData: {
       type: 'string',

@@ -6,9 +6,7 @@ import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { getAllToolMetadata, metadataToToolSpec } from './decorators';
-import type { ToolCall, ToolExecutionContext, ToolExecutor, ToolResult, ToolScope, ToolSpec } from './types';
-
-const DEFAULT_VISIBILITY: ToolScope[] = [];
+import type { ToolCall, ToolExecutionContext, ToolExecutor, ToolResult, ToolScope, ToolSpec, ToolVisibility } from './types';
 
 export class ToolManager {
   private tools = new Map<string, ToolSpec>();
@@ -117,12 +115,16 @@ export class ToolManager {
 
   /**
    * Get tools visible in the given scope.
-   * Tools without explicit visibility default to [] (not available in any scope).
+   * Tools without explicit visibility are not available in any scope.
    */
   getToolsByScope(scope: ToolScope): ToolSpec[] {
     return this.getAllTools().filter((t) => {
-      const vis = t.visibility ?? DEFAULT_VISIBILITY;
-      return vis.includes(scope);
+      const vis: ToolVisibility = t.visibility ?? {};
+      if (scope === 'reply')      return vis.reply !== undefined;
+      if (scope === 'subagent')   return vis.subagent === true;
+      if (scope === 'internal')   return vis.internal === true;
+      if (scope === 'reflection') return vis.reflection === true;
+      return false;
     });
   }
 

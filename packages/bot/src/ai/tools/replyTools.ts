@@ -5,10 +5,11 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { ToolExecutionContextBuilder } from '@/context/ToolExecutionContextBuilder';
+import type { MessageSource } from '@/conversation/sources';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { ToolManager } from '@/tools/ToolManager';
-import type { ToolCall, ToolResult, ToolSpec } from '@/tools/types';
+import type { ReplyVisibility, ToolCall, ToolResult, ToolSpec } from '@/tools/types';
 import { logger } from '@/utils/logger';
 import type { FunctionCall, ToolDefinition } from '../types';
 
@@ -18,16 +19,58 @@ export interface ReplyToolOptions {
 
 const SEARCH_TOOL_NAME = 'search';
 
+/** Real-IM sources that get the full tool catalog by default. */
+const REAL_IM_SOURCES: readonly MessageSource[] = ['qq-private', 'qq-group', 'discord'];
+
+function resolveReplyVisibility(spec: ToolSpec): ReplyVisibility | null {
+  const v = spec.visibility?.reply;
+  if (v === undefined) return null;
+  if (v === true) return {};  // legacy: defaults applied below
+  return v;
+}
+
 /**
- * Get tool definitions for the reply flow.
- * Uses visibility scope + optional nativeWebSearch filter.
+ * Filter reply-scope specs by source and admin status.
  */
-export function getReplyToolDefs(toolManager: ToolManager, options?: ReplyToolOptions): ToolDefinition[] {
+export function filterToolsForReply(
+  specs: ToolSpec[],
+  source: MessageSource,
+  isAdmin: boolean,
+): ToolSpec[] {
+  return specs.filter((spec) => {
+    const rv = resolveReplyVisibility(spec);
+    if (!rv) return false;
+    if (rv.adminOnly && !isAdmin) return false;
+    const sources = rv.sources ?? REAL_IM_SOURCES;
+    return sources.includes(source);
+  });
+}
+
+function selectReplySpecs(
+  toolManager: ToolManager,
+  source: MessageSource,
+  isAdmin: boolean,
+  options?: ReplyToolOptions,
+): ToolSpec[] {
   let specs = toolManager.getToolsByScope('reply');
+  specs = filterToolsForReply(specs, source, isAdmin);
   if (options?.nativeWebSearchEnabled) {
     specs = specs.filter((t) => t.name !== SEARCH_TOOL_NAME);
   }
-  return toolManager.toToolDefinitions(specs);
+  return specs;
+}
+
+/**
+ * Get tool definitions for the reply flow.
+ * Filters by source (real-IM only by default) and admin status.
+ */
+export function getReplyToolDefs(
+  toolManager: ToolManager,
+  source: MessageSource,
+  isAdmin: boolean,
+  options?: ReplyToolOptions,
+): ToolDefinition[] {
+  return toolManager.toToolDefinitions(selectReplySpecs(toolManager, source, isAdmin, options));
 }
 
 /**
@@ -38,6 +81,8 @@ export function buildToolUsageInstructions(
   tools: ToolDefinition[],
   options: ReplyToolOptions | undefined,
   promptManager: PromptManager,
+  source: MessageSource,
+  isAdmin: boolean,
 ): string {
   if (tools.length === 0) {
     return promptManager.render(
@@ -45,10 +90,7 @@ export function buildToolUsageInstructions(
     );
   }
 
-  let specs = toolManager.getToolsByScope('reply');
-  if (options?.nativeWebSearchEnabled) {
-    specs = specs.filter((t) => t.name !== SEARCH_TOOL_NAME);
-  }
+  const specs = selectReplySpecs(toolManager, source, isAdmin, options);
   const specsByName = new Map<string, ToolSpec>(specs.map((s) => [s.name, s]));
 
   const toolList = tools
@@ -137,3 +179,4 @@ export const getReplySkillDefinitions = getReplyToolDefs;
 export const getReplyToolDefinitions = getReplyToolDefs;
 export const buildSkillUsageInstructions = buildToolUsageInstructions;
 export const executeSkillCall = executeToolCall;
+

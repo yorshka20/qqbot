@@ -294,6 +294,7 @@ export class ConversationInitializer {
       databaseManager,
       llmService,
       providerRouter,
+      services.permissionChecker,
       {
         providerName: aiConfig.taskProviders?.subagent,
         model: aiConfig.taskProviders?.subagentModel,
@@ -372,6 +373,7 @@ export class ConversationInitializer {
     commandManager: CommandManager;
     toolManager: ToolManager;
     hookManager: HookManager;
+    permissionChecker: DefaultPermissionChecker;
   }> {
     const aiManager = new AIManager();
     container.registerInstance(DITokens.AI_MANAGER, aiManager);
@@ -417,6 +419,7 @@ export class ConversationInitializer {
       commandManager,
       toolManager,
       hookManager,
+      permissionChecker,
     };
   }
 

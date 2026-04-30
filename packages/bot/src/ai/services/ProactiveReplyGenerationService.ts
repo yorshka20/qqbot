@@ -112,12 +112,14 @@ export class ProactiveReplyGenerationService {
     if (!canUseToolUse) {
       return { tools: [], toolUsageInstructions: '当前没有可用工具，请直接回答。' };
     }
-    const tools = getReplySkillDefinitions(this.toolManager, { nativeWebSearchEnabled });
+    const tools = getReplySkillDefinitions(this.toolManager, 'qq-group', false, { nativeWebSearchEnabled });
     const toolUsageInstructions = buildSkillUsageInstructions(
       this.toolManager,
       tools,
       { nativeWebSearchEnabled },
       this.promptManager,
+      'qq-group',
+      false,
     );
     return { tools, toolUsageInstructions };
   }

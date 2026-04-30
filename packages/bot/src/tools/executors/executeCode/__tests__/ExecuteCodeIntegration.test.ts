@@ -29,7 +29,7 @@ const toolSpecs = [
     name: 'internal_admin',
     executor: 'internal_admin',
     description: 'Admin only',
-    visibility: ['internal'],
+    visibility: { internal: true },
   }),
   // execute_code itself — should NOT be exposed (prevent recursion)
   createToolSpec({ name: 'execute_code', executor: 'execute_code', description: 'Execute code' }),

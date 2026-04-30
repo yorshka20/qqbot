@@ -2,14 +2,62 @@
 
 import type { ContentPart } from '@/ai/types';
 import type { HookContext } from '@/hooks/types';
+import type { MessageSource } from '@/conversation/sources';
 
 /**
  * Scope that controls where a tool is visible.
  * - 'reply': available as LLM tool in the reply generation flow
  * - 'subagent': available as LLM tool in SubAgent sessions
  * - 'internal': never exposed to LLM — only callable programmatically
+ * - 'reflection': reserved for future use
  */
-export type ToolScope = 'reply' | 'subagent' | 'internal';
+export type ToolScope = 'reply' | 'subagent' | 'internal' | 'reflection';
+
+/**
+ * Fine-grained reply-scope visibility config.
+ */
+export interface ReplyVisibility {
+  /**
+   * Real-IM sources where this tool should appear in the reply prompt.
+   * Default (when omitted): all real-IM sources ['qq-private', 'qq-group', 'discord'].
+   * Synthetic sources are EXCLUDED by default — list them explicitly to opt in.
+   */
+  sources?: readonly MessageSource[];
+  /** Hide the tool unless the active user is an admin. Default: false. */
+  adminOnly?: boolean;
+}
+
+/**
+ * Rich visibility descriptor for a tool.
+ * Replaces the legacy ToolScope[] form.
+ */
+export interface ToolVisibility {
+  reply?: ReplyVisibility | true;  // true = legacy: all real-IM sources, no admin gate
+  subagent?: boolean;
+  internal?: boolean;
+  reflection?: boolean;            // reserved; not consumed yet
+}
+
+/**
+ * Normalize legacy ToolScope[] or ToolVisibility into canonical ToolVisibility form.
+ * Idempotent: passing a ToolVisibility returns it unchanged.
+ */
+export function normalizeVisibility(
+  input: ToolScope[] | ToolVisibility | undefined,
+): ToolVisibility {
+  if (!input) return {};
+  if (Array.isArray(input)) {
+    const v: ToolVisibility = {};
+    for (const s of input) {
+      if (s === 'reply') v.reply = true;
+      else if (s === 'subagent') v.subagent = true;
+      else if (s === 'internal') v.internal = true;
+      else if (s === 'reflection') v.reflection = true;
+    }
+    return v;
+  }
+  return input;
+}
 
 /**
  * Tool specification — the rich internal definition of a tool.
@@ -27,10 +75,10 @@ export interface ToolSpec {
   executor: string;
 
   /**
-   * Where this tool is visible. Required — tools without visibility are not available in any scope.
-   * Set to ['internal'] for executors that should never be exposed to LLM.
+   * Where this tool is visible. Normalized to ToolVisibility at decoration time.
+   * Tools without visibility are not available in any scope.
    */
-  visibility: ToolScope[];
+  visibility: ToolVisibility;
 
   /** Tool parameters definition */
   parameters?: {

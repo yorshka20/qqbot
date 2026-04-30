@@ -142,7 +142,7 @@ export function createMockToolManager(specs: ToolSpec[], executors: Record<strin
 export function createToolSpec(overrides: Partial<ToolSpec> & { name: string; executor: string }): ToolSpec {
   return {
     description: `Mock ${overrides.name} tool`,
-    visibility: ['reply'],
+    visibility: { reply: true },
     ...overrides,
   } as ToolSpec;
 }
