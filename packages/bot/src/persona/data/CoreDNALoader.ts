@@ -144,7 +144,7 @@ export interface CoreDNALoaderOptions {
 }
 
 export async function loadCoreDNA(opts: CoreDNALoaderOptions): Promise<CoreDNA> {
-  const file = path.join(opts.dataDir, 'persona', opts.personaId, 'core-dna.json');
+  const file = path.join(opts.dataDir, opts.personaId, 'core-dna.json');
   let raw: string;
   try {
     raw = await fs.readFile(file, 'utf8');
