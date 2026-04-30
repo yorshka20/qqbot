@@ -17,7 +17,12 @@
 import { z } from 'zod';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
+import type { FunctionCall } from '@/ai/types';
+import { HookContextBuilder } from '@/context/HookContextBuilder';
+import { ToolExecutionContextBuilder } from '@/context/ToolExecutionContextBuilder';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
+import type { HookManager } from '@/hooks/HookManager';
+import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
 import type { PersonaService } from '../PersonaService';
 import type { EpigeneticsStore } from './epigenetics/EpigeneticsStore';
@@ -134,6 +139,8 @@ export class ReflectionEngine {
     private readonly promptManager: PromptManager,
     private readonly historyService: ConversationHistoryService,
     private readonly options: ReflectionEngineOptions,
+    private readonly toolManager?: ToolManager,
+    private readonly hookManager?: HookManager,
   ) {
     this.timerIntervalMs = options.timerIntervalMs ?? 5 * 60_000;
     this.activityWindowMs = options.activityWindowMs ?? 5 * 60_000;
@@ -237,35 +244,27 @@ export class ReflectionEngine {
         characterBible,
       });
 
-      // 4. Call LLM — pinned provider, no fallback, JSON mode.
-      const response = await this.llmService.generateFixed(this.pinnedProvider, '', {
-        systemPrompt,
-        maxTokens: 1024,
-        temperature: 0.3,
-        messages: [
-          {
-            role: 'user',
-            content: '请根据以上输入完成反思，输出符合格式要求的 JSON。',
-          },
-        ],
-      });
+      // 4. Choose execution path: agent loop (tool-equipped) or single call.
+      const reflectionCfg = this.personaService.getConfig().reflection;
+      const toolEquipped = reflectionCfg?.toolEquipped === true;
+      const maxToolRounds = reflectionCfg?.maxToolRounds ?? 4;
 
-      // 5. Parse + validate.
-      let parsed: unknown;
-      try {
-        parsed = extractJsonFromText(response.text);
-      } catch (parseErr) {
-        logger.warn('[ReflectionEngine] failed to extract JSON from LLM response:', parseErr);
+      let output: ReflectionOutput | undefined;
+
+      if (toolEquipped && maxToolRounds > 0 && this.toolManager && this.hookManager) {
+        output = await this.runToolLoop(systemPrompt, maxToolRounds, personaId);
+      }
+
+      // If the tool loop didn't produce a valid output (or was not enabled), fall back to single call.
+      if (!output) {
+        output = await this.runSingleCall(systemPrompt);
+      }
+
+      if (!output) {
+        // Both paths failed — reflection aborted (errors already logged inside each path).
         return;
       }
 
-      const validation = ReflectionOutputSchema.safeParse(parsed);
-      if (!validation.success) {
-        logger.warn('[ReflectionEngine] schema validation failed:', validation.error.flatten());
-        return;
-      }
-
-      const output = validation.data;
       const patch = buildReflectionPatch(output);
 
       // 6. Write path: apply patch, retry once on trait_bound_exceeded.
@@ -283,6 +282,143 @@ export class ReflectionEngine {
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
+
+  /**
+   * Run the single-call fallback path (current behavior).
+   * Returns a validated ReflectionOutput or undefined on failure.
+   */
+  private async runSingleCall(systemPrompt: string): Promise<ReflectionOutput | undefined> {
+    const response = await this.llmService.generateFixed(this.pinnedProvider, '', {
+      systemPrompt,
+      maxTokens: 1024,
+      temperature: 0.3,
+      messages: [
+        {
+          role: 'user',
+          content: '请根据以上输入完成反思，输出符合格式要求的 JSON。',
+        },
+      ],
+    });
+
+    let parsed: unknown;
+    try {
+      parsed = extractJsonFromText(response.text);
+    } catch (parseErr) {
+      logger.warn('[ReflectionEngine] single-call: failed to extract JSON:', parseErr);
+      return undefined;
+    }
+
+    const validation = ReflectionOutputSchema.safeParse(parsed);
+    if (!validation.success) {
+      logger.warn('[ReflectionEngine] single-call: schema validation failed:', validation.error.flatten());
+      return undefined;
+    }
+    return validation.data;
+  }
+
+  /**
+   * Run the tool-equipped agent loop.
+   * Returns a validated ReflectionOutput or undefined when the loop ends without a valid final JSON.
+   */
+  private async runToolLoop(
+    systemPrompt: string,
+    maxToolRounds: number,
+    personaId: string,
+  ): Promise<ReflectionOutput | undefined> {
+    // Both are guaranteed non-null by the call-site guard in runReflection().
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const toolManager = this.toolManager as ToolManager;
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const hookManager = this.hookManager as HookManager;
+
+    const reflectionTools = toolManager.getToolsByScope('reflection');
+    if (reflectionTools.length === 0) {
+      logger.debug('[ReflectionEngine] tool loop: no reflection-scope tools found, skipping');
+      return undefined;
+    }
+
+    const toolDefinitions = toolManager.toToolDefinitions(reflectionTools);
+
+    // Build a minimal HookContext for reflection-scope tool execution.
+    const reflectionHookContext = HookContextBuilder.create()
+      .withSyntheticMessage({ userId: 0, messageType: 'private', message: 'reflection-scope' })
+      .withConversationContext({ userMessage: '', history: [], userId: 0, messageType: 'private', metadata: new Map() })
+      .withSource('qq-private')
+      .build();
+
+    // Build ToolExecutionContext — no real message/group, just reflection metadata.
+    const toolExecutionContext = ToolExecutionContextBuilder.create()
+      .withUserId('reflection-system')
+      .withMessageType('private')
+      .withMetadata({ reflectionScope: true, personaId })
+      .build();
+
+    let toolCallsExecuted = 0;
+
+    const toolExecutor = async (call: FunctionCall): Promise<unknown> => {
+      toolCallsExecuted++;
+      logger.debug(`[ReflectionEngine] tool loop: executing tool "${call.name}"`);
+
+      const toolSpec = toolManager.getTool(call.name);
+      if (!toolSpec) {
+        return `Error: tool "${call.name}" not found in reflection scope`;
+      }
+
+      let parameters: Record<string, unknown>;
+      try {
+        parameters = JSON.parse(call.arguments) as Record<string, unknown>;
+      } catch {
+        parameters = {};
+      }
+
+      const toolCall = {
+        type: call.name,
+        parameters,
+        executor: toolSpec.executor,
+      };
+
+      const result = await toolManager.execute(toolCall, toolExecutionContext, hookManager, reflectionHookContext);
+      return result.success ? (result.data ?? result.reply) : `Error: ${result.error}`;
+    };
+
+    const response = await this.llmService.generateWithTools(
+      [{ role: 'user', content: '请根据以上输入完成反思，使用工具收集更多上下文，然后输出符合格式要求的 JSON。' }],
+      toolDefinitions,
+      {
+        systemPrompt,
+        maxTokens: 1024,
+        temperature: 0.3,
+        maxToolRounds,
+        toolExecutor,
+      },
+      this.pinnedProvider,
+    );
+
+    logger.debug(
+      `[ReflectionEngine] tool loop finished | toolRoundsUsed=${maxToolRounds} toolCallsExecuted=${toolCallsExecuted} stopReason=${response.stopReason}`,
+    );
+
+    // Attempt to parse final assistant text as ReflectionOutput JSON.
+    let parsed: unknown;
+    try {
+      parsed = extractJsonFromText(response.text);
+    } catch {
+      logger.warn('[ReflectionEngine] tool loop: final output is not valid JSON; falling back to single-call');
+      return undefined;
+    }
+
+    const validation = ReflectionOutputSchema.safeParse(parsed);
+    if (!validation.success) {
+      logger.warn(
+        '[ReflectionEngine] tool loop: final JSON failed schema validation; falling back to single-call:',
+        validation.error.flatten(),
+      );
+      return undefined;
+    }
+
+    logger.debug('[ReflectionEngine] tool loop: final JSON valid ✓');
+    return validation.data;
+  }
 
   private async timerTick(): Promise<void> {
     const now = Date.now();

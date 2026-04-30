@@ -58,6 +58,7 @@ function fakeMindService() {
       boundaries: '',
       lore: '',
     }),
+    getConfig: () => ({ reflection: { toolEquipped: false, maxToolRounds: 4 } }),
   } as unknown as PersonaService;
   return { svc, calls };
 }

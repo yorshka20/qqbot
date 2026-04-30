@@ -14,11 +14,13 @@ import { getReply } from '@/context/HookContextHelpers';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { PersonaService } from '@/persona';
 import type { EpigeneticsStore } from '@/persona/reflection/epigenetics/EpigeneticsStore';
 import { ReflectionEngine } from '@/persona/reflection/ReflectionEngine';
 import { RelationshipUpdater } from '@/persona/reflection/relationships/RelationshipUpdater';
+import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
@@ -54,9 +56,24 @@ export class PersonaCompletionHookPlugin extends PluginBase {
           const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
           const historyService = container.resolve<ConversationHistoryService>(DITokens.CONVERSATION_HISTORY_SERVICE);
           const personaId = this.persona.getConfig().personaId;
-          this.reflectionEngine = new ReflectionEngine(store, this.persona, llmService, promptManager, historyService, {
-            personaId,
-          });
+
+          const toolManager = container.isRegistered(DITokens.TOOL_MANAGER)
+            ? container.resolve<ToolManager>(DITokens.TOOL_MANAGER)
+            : undefined;
+          const hookManager = container.isRegistered(DITokens.HOOK_MANAGER)
+            ? container.resolve<HookManager>(DITokens.HOOK_MANAGER)
+            : undefined;
+
+          this.reflectionEngine = new ReflectionEngine(
+            store,
+            this.persona,
+            llmService,
+            promptManager,
+            historyService,
+            { personaId },
+            toolManager,
+            hookManager,
+          );
           this.reflectionEngine.start();
           logger.info('[PersonaCompletionHookPlugin] ReflectionEngine started');
         } catch (err) {

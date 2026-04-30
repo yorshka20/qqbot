@@ -256,6 +256,23 @@ export interface PersonaConfig {
       happyIntensityFactor: number;
     };
   };
+
+  /**
+   * Reflection agent-loop configuration (System 2 tool-equipping).
+   * When toolEquipped=true and maxToolRounds>0, ReflectionEngine runs a
+   * multi-round LLM tool loop using reflection-scope tools before producing
+   * the final ReflectionOutput JSON.  Falls back to single-call behavior
+   * when toolEquipped=false or maxToolRounds=0.
+   */
+  reflection?: {
+    /** Enable the agent-loop path. Default: false. */
+    toolEquipped?: boolean;
+    /**
+     * Maximum tool-use rounds per reflection cycle.
+     * Only used when toolEquipped=true.  Default: 4.
+     */
+    maxToolRounds?: number;
+  };
 }
 
 export const DEFAULT_PERSONA_CONFIG: PersonaConfig = {
@@ -332,6 +349,10 @@ export const DEFAULT_PERSONA_CONFIG: PersonaConfig = {
       happyIntensityFactor: 0.5,
     },
   },
+  reflection: {
+    toolEquipped: false,
+    maxToolRounds: 4,
+  },
 };
 
 /** Minimal shape exported for `wander/*` consumers without a full re-import. */
@@ -391,6 +412,7 @@ export function mergePersonaConfig(raw: Record<string, unknown> | undefined): Pe
     },
     wander: mergeWanderConfig(src.wander),
     autonomousTrigger: mergeAutonomousTriggerConfig(src.autonomousTrigger),
+    reflection: mergeReflectionConfig(src.reflection),
   };
 }
 
@@ -460,6 +482,14 @@ function mergeAutonomousTriggerConfig(raw: unknown): PersonaConfig['autonomousTr
       happyIntensityMax: numberOr(vdSrc.happyIntensityMax, D.valenceDrift.happyIntensityMax),
       happyIntensityFactor: numberOr(vdSrc.happyIntensityFactor, D.valenceDrift.happyIntensityFactor),
     },
+  };
+}
+
+function mergeReflectionConfig(raw: unknown): PersonaConfig['reflection'] {
+  const src = (raw ?? {}) as Partial<NonNullable<PersonaConfig['reflection']>>;
+  return {
+    toolEquipped: typeof src.toolEquipped === 'boolean' ? src.toolEquipped : false,
+    maxToolRounds: numberOr(src.maxToolRounds, 4),
   };
 }
 
