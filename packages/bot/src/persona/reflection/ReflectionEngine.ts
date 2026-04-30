@@ -19,11 +19,11 @@ import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { logger } from '@/utils/logger';
+import type { PersonaService } from '../PersonaService';
 import type { EpigeneticsStore } from './epigenetics/EpigeneticsStore';
 import type { ReflectionPatch } from './epigenetics/types';
-import type { PersonaService } from '../PersonaService';
-import { TONE_VOCABULARY } from './tone/types';
 import { renderReflectionPrompt } from './prompt';
+import { TONE_VOCABULARY } from './tone/types';
 import type { ReflectionEngineOptions, ReflectionTrigger } from './types';
 
 // ── Strong-signal keyword tables ────────────────────────────────────────────

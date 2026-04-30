@@ -11,8 +11,8 @@
  * so the scheduler can be tested by injecting a fake executor + clock.
  */
 
-import { logger } from '@/utils/logger';
 import type { WanderConfig } from '@/persona/types';
+import { logger } from '@/utils/logger';
 import { executeIntent, getIntentFootprint, pickIntent } from './intents';
 import type { WanderExecutor, WanderIntent } from './types';
 

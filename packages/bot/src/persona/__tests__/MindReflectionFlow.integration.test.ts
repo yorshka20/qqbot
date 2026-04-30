@@ -18,9 +18,9 @@ import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { SQLiteAdapter } from '@/database/adapters/SQLiteAdapter';
-import { EpigeneticsStore } from '../reflection/epigenetics/EpigeneticsStore';
 import { PersonaService } from '../PersonaService';
 import { buildPromptPatchAsync, renderPromptPatchFragment } from '../prompt/PromptPatchAssembler';
+import { EpigeneticsStore } from '../reflection/epigenetics/EpigeneticsStore';
 import { ReflectionEngine } from '../reflection/ReflectionEngine';
 import { DEFAULT_PERSONA_CONFIG } from '../types';
 

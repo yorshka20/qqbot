@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from 'bun:test';
-import { AutonomousTriggerScheduler } from '../AutonomousTriggerScheduler';
 import { DEFAULT_PERSONA_CONFIG } from '@/persona/types';
+import { AutonomousTriggerScheduler } from '../AutonomousTriggerScheduler';
 
 interface FakePhenotype {
   fatigue: number;

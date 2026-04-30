@@ -3,8 +3,8 @@
  * Allows AgentLoop to use the same tool executor (executeToolCall) as the reply flow.
  */
 
-import { deriveSourceFromEvent } from '@/conversation/sources';
 import type { ConversationContext } from '@/context/types';
+import { deriveSourceFromEvent } from '@/conversation/sources';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { createDefaultHookMetadata } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';

@@ -18,10 +18,10 @@
 // idle clock and the consecutive-fire counter.
 
 import { inject, injectable, singleton } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
 import type { MessagePipeline } from '@/conversation/MessagePipeline';
-import type { MessageProcessingContext } from '@/conversation/types';
 import { makeSyntheticEvent } from '@/conversation/synthetic';
+import type { MessageProcessingContext } from '@/conversation/types';
+import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import type { LivemodeState } from '../livemode/LivemodeState';
 

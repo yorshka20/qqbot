@@ -21,9 +21,9 @@
  *    bot state as fact.
  */
 
+import type { CharacterBible } from '../data/CharacterBibleLoader';
 import type { EpigeneticsStore } from '../reflection/epigenetics/EpigeneticsStore';
 import type { PersonaEpigenetics, PersonaRelationship } from '../reflection/epigenetics/types';
-import type { CharacterBible } from '../data/CharacterBibleLoader';
 import { TONE_MAPPINGS } from '../reflection/tone/mappings';
 import { isTone } from '../reflection/tone/types';
 import type { PersonaStateSnapshot } from '../types';

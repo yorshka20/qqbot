@@ -34,8 +34,8 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { MemoryExtractService } from '@/memory';
 import { logger } from '@/utils/logger';
-import type { AvatarSessionService } from './AvatarSessionService';
 import type { AvatarSource } from '../types';
+import type { AvatarSessionService } from './AvatarSessionService';
 
 interface ScheduleEntry {
   timer: ReturnType<typeof setTimeout>;

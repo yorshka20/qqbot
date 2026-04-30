@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { describe, it, expect, vi, beforeEach } from 'bun:test';
+import { beforeEach, describe, expect, it, vi } from 'bun:test';
 import { PromptInjectionRegistry } from '../PromptInjectionRegistry';
 import type { PromptInjectionContext, PromptInjectionProducer } from '../types';
 
@@ -68,7 +68,9 @@ describe('PromptInjectionRegistry', () => {
     const { logger } = await import('@/utils/logger');
     const thrower: PromptInjectionProducer = {
       name: 'thrower',
-      produce: () => { throw new Error('boom'); },
+      produce: () => {
+        throw new Error('boom');
+      },
     };
     const good: PromptInjectionProducer = {
       name: 'good',

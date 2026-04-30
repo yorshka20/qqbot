@@ -4,13 +4,13 @@
 // stage so long replies don't get sent as images).
 
 import { inject, injectable } from 'tsyringe';
+import type { MessagePipeline } from '@/conversation/MessagePipeline';
+import { makeSyntheticEvent } from '@/conversation/synthetic';
+import type { MessageProcessingContext } from '@/conversation/types';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
-import { MessageBuilder } from '@/message/MessageBuilder';
-import type { MessagePipeline } from '@/conversation/MessagePipeline';
-import type { MessageProcessingContext } from '@/conversation/types';
-import { makeSyntheticEvent } from '@/conversation/synthetic';
 import type { ReplyContent } from '@/hooks/types';
+import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
@@ -71,7 +71,9 @@ export class AvatarCommandHandler implements CommandHandler {
       sessionType: 'user',
       botSelfId: String(this.config.getBotUserId() ?? ''),
       source: 'avatar-cmd',
-      responseCallback: (reply) => { captured = reply; },
+      responseCallback: (reply) => {
+        captured = reply;
+      },
     };
 
     try {

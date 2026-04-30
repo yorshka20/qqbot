@@ -16,14 +16,14 @@
  */
 
 import type { AvatarService } from '@qqbot/avatar';
-import { logger } from '@/utils/logger';
 import { AutonomousTriggerScheduler } from '@/integrations/avatar/services/AutonomousTriggerScheduler';
 import type { PersonaModulationAdapter } from '@/integrations/avatar/services/PersonaModulationAdapter';
-import type { PersonaService } from './PersonaService';
-import { derivePersonaPostureBias } from './ode';
-import type { ReflectionEngine } from './reflection/ReflectionEngine';
 import type { WanderExecutor } from '@/integrations/avatar/services/wander/types';
 import { WanderScheduler } from '@/integrations/avatar/services/wander/WanderScheduler';
+import { logger } from '@/utils/logger';
+import { derivePersonaPostureBias } from './ode';
+import type { PersonaService } from './PersonaService';
+import type { ReflectionEngine } from './reflection/ReflectionEngine';
 
 /** Interval at which phenotype → PersonaPostureBias push fires. */
 const POSTURE_PUSH_MS = 1000;

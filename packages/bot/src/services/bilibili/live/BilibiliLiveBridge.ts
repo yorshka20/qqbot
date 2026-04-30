@@ -23,8 +23,8 @@
 // synchronously, which would escape our start()'s try/catch.
 
 import type { MessagePipeline } from '@/conversation/MessagePipeline';
-import type { MessageProcessingContext } from '@/conversation/types';
 import { makeSyntheticEvent } from '@/conversation/synthetic';
+import type { MessageProcessingContext } from '@/conversation/types';
 import type { AvatarBatchSender } from '@/integrations/avatar/types';
 import { logger } from '@/utils/logger';
 import type { BilibiliLiveClient, DanmakuEvent } from './BilibiliLiveClient';

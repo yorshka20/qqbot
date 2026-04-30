@@ -18,9 +18,9 @@ import { container } from 'tsyringe';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import type { MemoryExtractService } from '@/memory';
+import type { AvatarSource } from '../../types';
 import { AvatarMemoryExtractionCoordinator } from '../AvatarMemoryExtractionCoordinator';
 import type { AvatarSessionService } from '../AvatarSessionService';
-import type { AvatarSource } from '../../types';
 
 /**
  * Default source used across tests. Must match the default allowlist in

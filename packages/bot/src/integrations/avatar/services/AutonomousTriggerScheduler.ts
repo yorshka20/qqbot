@@ -21,9 +21,9 @@
  */
 
 import type { AvatarService } from '@qqbot/avatar';
-import { logger } from '@/utils/logger';
 import type { PersonaService } from '@/persona/PersonaService';
 import type { PersonaConfig } from '@/persona/types';
+import { logger } from '@/utils/logger';
 
 type DriftBand = 'sad' | 'neutral' | 'happy' | null;
 

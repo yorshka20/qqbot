@@ -13,13 +13,13 @@ import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import type { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { logger } from '@/utils/logger';
 import { PersonaModulationAdapter } from '@/integrations/avatar/services/PersonaModulationAdapter';
-import { PersonaService } from './PersonaService';
+import { logger } from '@/utils/logger';
 import { type CharacterBible, loadCharacterBible } from './data/CharacterBibleLoader';
 import { type CoreDNA, loadCoreDNA } from './data/CoreDNALoader';
+import { PersonaService } from './PersonaService';
 import { createPersonaPromptInjectionProducer } from './prompt/promptInjectionProducer';
-import { type PersonaConfig, mergePersonaConfig } from './types';
+import { mergePersonaConfig, type PersonaConfig } from './types';
 
 export interface PersonaComponents {
   personaService: PersonaService;
@@ -39,7 +39,11 @@ function countNonEmptySections(bible: CharacterBible): number {
  * Other Core DNA fields are read directly via personaService.getCorePersona() by
  * adapters/ode helpers — see ticket §备注 三层优先级 for the降级方案 we adopted.
  */
-function applyCoreDnaToConfig(config: PersonaConfig, dna: CoreDNA, raw: Record<string, unknown> | undefined): PersonaConfig {
+function applyCoreDnaToConfig(
+  config: PersonaConfig,
+  dna: CoreDNA,
+  raw: Record<string, unknown> | undefined,
+): PersonaConfig {
   const userMod = (raw?.modulation ?? {}) as Partial<PersonaConfig['modulation']>;
   return {
     ...config,

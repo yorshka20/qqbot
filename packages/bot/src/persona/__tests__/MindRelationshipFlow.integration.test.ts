@@ -12,8 +12,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SQLiteAdapter } from '@/database/adapters/SQLiteAdapter';
-import { EpigeneticsStore } from '../reflection/epigenetics/EpigeneticsStore';
 import { buildPromptPatchAsync, renderPromptPatchFragment } from '../prompt/PromptPatchAssembler';
+import { EpigeneticsStore } from '../reflection/epigenetics/EpigeneticsStore';
 import { RelationshipUpdater } from '../reflection/relationships/RelationshipUpdater';
 import { DEFAULT_PERSONA_CONFIG, mergePersonaConfig } from '../types';
 

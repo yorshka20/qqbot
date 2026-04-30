@@ -18,9 +18,7 @@ export class PromptInjectionRegistry {
   }
 
   async gather(ctx: PromptInjectionContext): Promise<PromptInjection[]> {
-    const applicable = this.producers.filter(
-      (p) => !p.applicableSources || p.applicableSources.includes(ctx.source),
-    );
+    const applicable = this.producers.filter((p) => !p.applicableSources || p.applicableSources.includes(ctx.source));
     const results = await Promise.all(
       applicable.map(async (p) => {
         try {

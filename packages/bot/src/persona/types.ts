@@ -366,7 +366,10 @@ export function mergePersonaConfig(raw: Record<string, unknown> | undefined): Pe
       ),
     },
     modulation: {
-      fatigueIntensityDrop: numberOr(modSrc.fatigueIntensityDrop, DEFAULT_PERSONA_CONFIG.modulation.fatigueIntensityDrop),
+      fatigueIntensityDrop: numberOr(
+        modSrc.fatigueIntensityDrop,
+        DEFAULT_PERSONA_CONFIG.modulation.fatigueIntensityDrop,
+      ),
       fatigueSpeedDrop: numberOr(modSrc.fatigueSpeedDrop, DEFAULT_PERSONA_CONFIG.modulation.fatigueSpeedDrop),
     },
     promptPatch: {

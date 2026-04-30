@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { InternalEventBus } from '@/agenda/InternalEventBus';
 import { PERSONA_EVENT_MESSAGE_RECEIVED, PersonaService } from '../PersonaService';
-import { DEFAULT_PERSONA_CONFIG, type PersonaConfig, mergePersonaConfig } from '../types';
+import { DEFAULT_PERSONA_CONFIG, mergePersonaConfig, type PersonaConfig } from '../types';
 
 function service(override: Partial<PersonaConfig> = {}): { mind: PersonaService; bus: InternalEventBus } {
   const bus = new InternalEventBus();

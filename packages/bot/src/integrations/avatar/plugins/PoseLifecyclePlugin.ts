@@ -6,9 +6,9 @@ import { getSourceConfig } from '@/conversation/sources/registry';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
-import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
+import { logger } from '@/utils/logger';
 
 @RegisterPlugin({
   name: 'pose-lifecycle',

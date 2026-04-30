@@ -6,9 +6,9 @@ import { parseLive2DTags, stripLive2DTags } from '@qqbot/avatar';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
-import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
+import { logger } from '@/utils/logger';
 
 /**
  * Ambient-gain presets keyed to pipeline phase. Lower values suppress the
@@ -85,9 +85,7 @@ export class AvatarPlugin extends PluginBase {
       if (text) {
         const tags = parseLive2DTags(text);
         for (const tag of tags) {
-          logger.info(
-            `[AvatarPlugin] tag: emotion=${tag.emotion} action=${tag.action} intensity=${tag.intensity}`,
-          );
+          logger.info(`[AvatarPlugin] tag: emotion=${tag.emotion} action=${tag.action} intensity=${tag.intensity}`);
         }
       }
     } catch (err) {

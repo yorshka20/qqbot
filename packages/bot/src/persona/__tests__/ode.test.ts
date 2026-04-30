@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { applyStimulus, deriveModulation, derivePersonaPostureBias, freshPhenotype, tickPhenotype } from '../ode';
 import { DEFAULT_CORE_DNA } from '../data/CoreDNALoader';
+import { applyStimulus, deriveModulation, derivePersonaPostureBias, freshPhenotype, tickPhenotype } from '../ode';
 import { DEFAULT_PERSONA_CONFIG, type PersonaConfig } from '../types';
 
 const DEFAULT_SPATIAL = DEFAULT_CORE_DNA.modulation.spatial;

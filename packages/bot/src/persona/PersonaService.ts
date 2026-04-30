@@ -17,16 +17,16 @@
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import type { AgendaSystemEvent } from '@/agenda/types';
 import { logger } from '@/utils/logger';
-import type { EpigeneticsStore } from './reflection/epigenetics/EpigeneticsStore';
-import { applyStimulus, deriveModulation, freshPhenotype, tickPhenotype } from './ode';
 import { type CharacterBible, EMPTY_BIBLE } from './data/CharacterBibleLoader';
 import { type CoreDNA, DEFAULT_CORE_DNA } from './data/CoreDNALoader';
+import { applyStimulus, deriveModulation, freshPhenotype, tickPhenotype } from './ode';
 import {
   buildPromptPatch,
   buildPromptPatchAsync,
   type PromptPatch,
   renderPromptPatchFragment,
 } from './prompt/PromptPatchAssembler';
+import type { EpigeneticsStore } from './reflection/epigenetics/EpigeneticsStore';
 import type { Tone } from './reflection/tone/types';
 import type { PersonaConfig, PersonaStateSnapshot, Phenotype, Stimulus } from './types';
 
@@ -279,9 +279,7 @@ export class PersonaService {
     // stimulus accrual. Synthetic events are already filtered upstream
     // (MessagePipeline.publishMindStimulus); this layer additionally
     // enforces the user-configured allow-list (e.g. "DM only").
-    const source = (event.data?.source ?? undefined) as
-      | import('../conversation/sources').MessageSource
-      | undefined;
+    const source = (event.data?.source ?? undefined) as import('../conversation/sources').MessageSource | undefined;
     if (!this.isApplicableSource(source)) return;
     this.ingest({
       kind: 'message',

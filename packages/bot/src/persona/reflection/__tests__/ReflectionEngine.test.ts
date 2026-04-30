@@ -13,10 +13,10 @@ import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:te
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
-import type { EpigeneticsStore } from '../epigenetics/EpigeneticsStore';
-import type { ReflectionPatch } from '../epigenetics/types';
 import type { PersonaService } from '../../PersonaService';
 import type { Phenotype } from '../../types';
+import type { EpigeneticsStore } from '../epigenetics/EpigeneticsStore';
+import type { ReflectionPatch } from '../epigenetics/types';
 import { ReflectionEngine } from '../ReflectionEngine';
 import type { ReflectionEngineOptions } from '../types';
 

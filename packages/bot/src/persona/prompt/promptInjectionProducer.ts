@@ -6,8 +6,8 @@
  *   2. Unit tests can exercise the producer in isolation with a fake PersonaService.
  */
 
-import type { MessageSource } from '@/conversation/sources';
 import type { PromptInjectionProducer } from '@/conversation/promptInjection/types';
+import type { MessageSource } from '@/conversation/sources';
 import type { PersonaConfig } from '@/persona/types';
 
 /** Minimal subset of PersonaService required by the producer. */

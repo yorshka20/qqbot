@@ -1,8 +1,8 @@
 // ToolRunner - executes tool calls for SubAgent using ToolManager executors (no hooks)
 
 import type { FunctionCall } from '@/ai/types';
-import { deriveSourceFromEvent } from '@/conversation/sources';
 import { ToolExecutionContextBuilder } from '@/context/ToolExecutionContextBuilder';
+import { deriveSourceFromEvent } from '@/conversation/sources';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
 import { createDefaultHookMetadata } from '@/hooks/metadata';

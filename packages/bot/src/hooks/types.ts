@@ -2,8 +2,8 @@
 
 import type { SendMessageResult } from '@/api/types';
 import type { CommandResult, ParsedCommand } from '@/command/types';
-import type { MessageSource } from '@/conversation/sources';
 import type { ConversationContext } from '@/context/types';
+import type { MessageSource } from '@/conversation/sources';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import type { MessageSegment } from '@/message/types';
 import type { ToolCall, ToolResult } from '@/tools/types';

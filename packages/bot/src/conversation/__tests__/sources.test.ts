@@ -1,7 +1,7 @@
 import { describe, expect, it, mock } from 'bun:test';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
-import { SOURCE_VALUES, deriveSourceFromEvent } from '../sources';
+import { deriveSourceFromEvent, SOURCE_VALUES } from '../sources';
 
 function makeEvent(protocol: string, messageType: 'private' | 'group'): NormalizedMessageEvent {
   return {
