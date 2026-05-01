@@ -53,7 +53,7 @@ export class SearchChatHistoryToolExecutor extends BaseToolExecutor {
   async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     const groupId = context.groupId;
     if (!groupId) {
-      if (Boolean(context.metadata?.reflectionScope)) {
+      if (context.metadata?.reflectionScope) {
         return this.success('（reflection 上下文：当前无活跃群上下文，无法搜索聊天记录）', {
           reflectionContext: true,
           reason: 'no-group',

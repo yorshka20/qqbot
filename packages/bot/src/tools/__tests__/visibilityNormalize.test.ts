@@ -1,10 +1,10 @@
 import 'reflect-metadata';
 
 import { describe, expect, it } from 'bun:test';
-import { Tool, getToolMetadata, metadataToToolSpec } from '../decorators';
+import { getToolMetadata, metadataToToolSpec, Tool } from '../decorators';
 import { BaseToolExecutor } from '../executors/BaseToolExecutor';
-import { normalizeVisibility } from '../types';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
+import { normalizeVisibility } from '../types';
 
 describe('normalizeVisibility', () => {
   it('converts ToolScope[] to ToolVisibility', () => {

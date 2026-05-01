@@ -1,8 +1,8 @@
 // Tool type definitions
 
 import type { ContentPart } from '@/ai/types';
-import type { HookContext } from '@/hooks/types';
 import type { MessageSource } from '@/conversation/sources';
+import type { HookContext } from '@/hooks/types';
 
 /**
  * Scope that controls where a tool is visible.
@@ -32,19 +32,17 @@ export interface ReplyVisibility {
  * Replaces the legacy ToolScope[] form.
  */
 export interface ToolVisibility {
-  reply?: ReplyVisibility | true;  // true = legacy: all real-IM sources, no admin gate
+  reply?: ReplyVisibility | true; // true = legacy: all real-IM sources, no admin gate
   subagent?: boolean;
   internal?: boolean;
-  reflection?: boolean;            // reserved; not consumed yet
+  reflection?: boolean; // reserved; not consumed yet
 }
 
 /**
  * Normalize legacy ToolScope[] or ToolVisibility into canonical ToolVisibility form.
  * Idempotent: passing a ToolVisibility returns it unchanged.
  */
-export function normalizeVisibility(
-  input: ToolScope[] | ToolVisibility | undefined,
-): ToolVisibility {
+export function normalizeVisibility(input: ToolScope[] | ToolVisibility | undefined): ToolVisibility {
   if (!input) return {};
   if (Array.isArray(input)) {
     const v: ToolVisibility = {};

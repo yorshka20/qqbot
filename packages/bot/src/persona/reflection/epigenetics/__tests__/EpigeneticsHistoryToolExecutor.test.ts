@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SQLiteAdapter } from '@/database/adapters/SQLiteAdapter';
-import { EpigeneticsStore } from '../EpigeneticsStore';
 import { EpigeneticsHistoryToolExecutor } from '../EpigeneticsHistoryToolExecutor';
+import { EpigeneticsStore } from '../EpigeneticsStore';
 
 let adapter: SQLiteAdapter;
 let store: EpigeneticsStore;
@@ -66,8 +66,8 @@ describe('EpigeneticsHistoryToolExecutor', () => {
     );
     expect(r.success).toBe(true);
     expect((r.data as any).count).toBe(2);
-    expect(((r.data as any).traitDeltasSum.extraversion as number)).toBeCloseTo(0.05, 5);
-    expect(((r.data as any).traitDeltasSum.openness as number)).toBeCloseTo(-0.01, 5);
+    expect((r.data as any).traitDeltasSum.extraversion as number).toBeCloseTo(0.05, 5);
+    expect((r.data as any).traitDeltasSum.openness as number).toBeCloseTo(-0.01, 5);
     expect((r.data as any).toneTransitions).toEqual(['playful', 'excited']);
   });
 

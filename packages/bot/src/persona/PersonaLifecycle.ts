@@ -101,7 +101,11 @@ export function startPersonaSubsystem(
 }
 
 /** Avatar ↔ persona wiring. Extracted so the persona→wander block below stays readable. */
-function attachAvatar(persona: PersonaService, modulationProvider: PersonaModulationAdapter, avatar: AvatarService): void {
+function attachAvatar(
+  persona: PersonaService,
+  modulationProvider: PersonaModulationAdapter,
+  avatar: AvatarService,
+): void {
   avatar.setMindModulationProvider(modulationProvider);
   avatar.setMindStateSource(() => persona.getSnapshot());
   persona.setPoseProvider(() => {

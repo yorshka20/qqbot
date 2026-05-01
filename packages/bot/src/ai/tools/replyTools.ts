@@ -25,18 +25,14 @@ const REAL_IM_SOURCES: readonly MessageSource[] = ['qq-private', 'qq-group', 'di
 function resolveReplyVisibility(spec: ToolSpec): ReplyVisibility | null {
   const v = spec.visibility?.reply;
   if (v === undefined) return null;
-  if (v === true) return {};  // legacy: defaults applied below
+  if (v === true) return {}; // legacy: defaults applied below
   return v;
 }
 
 /**
  * Filter reply-scope specs by source and admin status.
  */
-export function filterToolsForReply(
-  specs: ToolSpec[],
-  source: MessageSource,
-  isAdmin: boolean,
-): ToolSpec[] {
+export function filterToolsForReply(specs: ToolSpec[], source: MessageSource, isAdmin: boolean): ToolSpec[] {
   return specs.filter((spec) => {
     const rv = resolveReplyVisibility(spec);
     if (!rv) return false;
@@ -179,4 +175,3 @@ export const getReplySkillDefinitions = getReplyToolDefs;
 export const getReplyToolDefinitions = getReplyToolDefs;
 export const buildSkillUsageInstructions = buildToolUsageInstructions;
 export const executeSkillCall = executeToolCall;
-

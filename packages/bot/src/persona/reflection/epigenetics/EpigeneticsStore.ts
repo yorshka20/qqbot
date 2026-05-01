@@ -417,17 +417,7 @@ export class EpigeneticsStore {
              old_familiarity, new_familiarity, source, ts)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(
-          personaId,
-          userId,
-          eventType,
-          base.affinity,
-          newAffinity,
-          base.familiarity,
-          newFamiliarity,
-          source,
-          now,
-        );
+        .run(personaId, userId, eventType, base.affinity, newAffinity, base.familiarity, newFamiliarity, source, now);
     });
 
     doWrite();

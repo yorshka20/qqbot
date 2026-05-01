@@ -156,14 +156,28 @@ describe('replyTools', () => {
   describe('buildToolUsageInstructions', () => {
     it('returns fallback when tools is empty and nativeWebSearchEnabled is false', () => {
       const toolManager = new ToolManager();
-      const text = buildToolUsageInstructions(toolManager, [], { nativeWebSearchEnabled: false }, stubPromptManager, 'qq-private', true);
+      const text = buildToolUsageInstructions(
+        toolManager,
+        [],
+        { nativeWebSearchEnabled: false },
+        stubPromptManager,
+        'qq-private',
+        true,
+      );
       expect(text).toContain('当前没有可用技能');
       expect(text).not.toContain('内建搜索');
     });
 
     it('returns fallback when tools is empty and nativeWebSearchEnabled is true', () => {
       const toolManager = new ToolManager();
-      const text = buildToolUsageInstructions(toolManager, [], { nativeWebSearchEnabled: true }, stubPromptManager, 'qq-private', true);
+      const text = buildToolUsageInstructions(
+        toolManager,
+        [],
+        { nativeWebSearchEnabled: true },
+        stubPromptManager,
+        'qq-private',
+        true,
+      );
       expect(text).toContain('内建搜索');
     });
 
@@ -171,7 +185,14 @@ describe('replyTools', () => {
       const toolManager = new ToolManager();
       toolManager.registerTool(getWeatherToolSpec);
       const tools = getReplyToolDefinitions(toolManager, 'qq-private', true);
-      const text = buildToolUsageInstructions(toolManager, tools, { nativeWebSearchEnabled: false }, stubPromptManager, 'qq-private', true);
+      const text = buildToolUsageInstructions(
+        toolManager,
+        tools,
+        { nativeWebSearchEnabled: false },
+        stubPromptManager,
+        'qq-private',
+        true,
+      );
 
       expect(text).toContain('get_weather');
       expect(text).toContain('Get the current weather');

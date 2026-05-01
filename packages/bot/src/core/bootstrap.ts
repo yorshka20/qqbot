@@ -27,6 +27,10 @@ import { HealthCheckManager } from '@/core/health';
 import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { EventInitializer } from '@/events/EventInitializer';
 import type { EventRouter } from '@/events/EventRouter';
+// Avatar integration registers its own plugins via this barrel side-effect
+// import — PluginManager stays unaware of integrations.
+import '@/integrations/avatar/plugins';
+
 import { LivemodeInterceptor } from '@/integrations/avatar/livemode/LivemodeInterceptor';
 import { LivemodeState } from '@/integrations/avatar/livemode/LivemodeState';
 import { AvatarIdleTrigger } from '@/integrations/avatar/services/AvatarIdleTrigger';

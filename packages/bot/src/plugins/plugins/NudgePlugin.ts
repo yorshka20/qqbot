@@ -1,7 +1,7 @@
 // Nudge Plugin - automatically replies when bot is nudged (戳一戳)
 
 import type { AIManager } from '@/ai/AIManager';
-import { MessageAPI } from '@/api/methods/MessageAPI';
+import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';

@@ -6,7 +6,15 @@ import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { getAllToolMetadata, metadataToToolSpec } from './decorators';
-import type { ToolCall, ToolExecutionContext, ToolExecutor, ToolResult, ToolScope, ToolSpec, ToolVisibility } from './types';
+import type {
+  ToolCall,
+  ToolExecutionContext,
+  ToolExecutor,
+  ToolResult,
+  ToolScope,
+  ToolSpec,
+  ToolVisibility,
+} from './types';
 
 export class ToolManager {
   private tools = new Map<string, ToolSpec>();
@@ -120,9 +128,9 @@ export class ToolManager {
   getToolsByScope(scope: ToolScope): ToolSpec[] {
     return this.getAllTools().filter((t) => {
       const vis: ToolVisibility = t.visibility ?? {};
-      if (scope === 'reply')      return vis.reply !== undefined;
-      if (scope === 'subagent')   return vis.subagent === true;
-      if (scope === 'internal')   return vis.internal === true;
+      if (scope === 'reply') return vis.reply !== undefined;
+      if (scope === 'subagent') return vis.subagent === true;
+      if (scope === 'internal') return vis.internal === true;
       if (scope === 'reflection') return vis.reflection === true;
       return false;
     });

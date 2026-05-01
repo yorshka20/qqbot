@@ -7,75 +7,116 @@ import type { ToolSpec } from '@/tools/types';
 // never appear in filterToolsForReply output.
 
 const research: ToolSpec = {
-  name: 'research', description: 'x', executor: 'research',
+  name: 'research',
+  description: 'x',
+  executor: 'research',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] } },
 };
 const format_as_card: ToolSpec = {
-  name: 'format_as_card', description: 'x', executor: 'format_as_card',
+  name: 'format_as_card',
+  description: 'x',
+  executor: 'format_as_card',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] } },
 };
 const list_bot_features: ToolSpec = {
-  name: 'list_bot_features', description: 'x', executor: 'list_bot_features',
+  name: 'list_bot_features',
+  description: 'x',
+  executor: 'list_bot_features',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] }, subagent: true },
 };
 const get_memory: ToolSpec = {
-  name: 'get_memory', description: 'x', executor: 'get_memory',
+  name: 'get_memory',
+  description: 'x',
+  executor: 'get_memory',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord', 'avatar-cmd'] }, subagent: true },
 };
 const read_file: ToolSpec = {
-  name: 'read_file', description: 'x', executor: 'read_file',
+  name: 'read_file',
+  description: 'x',
+  executor: 'read_file',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'], adminOnly: true }, subagent: true },
 };
 const fetch_image: ToolSpec = {
-  name: 'fetch_image', description: 'x', executor: 'fetch_image',
+  name: 'fetch_image',
+  description: 'x',
+  executor: 'fetch_image',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] } },
 };
 const search_chat_history: ToolSpec = {
-  name: 'search_chat_history', description: 'x', executor: 'search_chat_history',
+  name: 'search_chat_history',
+  description: 'x',
+  executor: 'search_chat_history',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord', 'avatar-cmd'] } },
 };
 const search_code: ToolSpec = {
-  name: 'search_code', description: 'x', executor: 'search_code',
+  name: 'search_code',
+  description: 'x',
+  executor: 'search_code',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'], adminOnly: true }, subagent: true },
 };
 const execute_command: ToolSpec = {
-  name: 'execute_command', description: 'x', executor: 'execute_command',
+  name: 'execute_command',
+  description: 'x',
+  executor: 'execute_command',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'], adminOnly: true } },
 };
 const analyze_video: ToolSpec = {
-  name: 'analyze_video', description: 'x', executor: 'analyze_video',
+  name: 'analyze_video',
+  description: 'x',
+  executor: 'analyze_video',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] }, subagent: true },
 };
 const execute_code: ToolSpec = {
-  name: 'execute_code', description: 'x', executor: 'execute_code',
+  name: 'execute_code',
+  description: 'x',
+  executor: 'execute_code',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'], adminOnly: true }, subagent: true },
 };
 const bilibili: ToolSpec = {
-  name: 'bilibili', description: 'x', executor: 'bilibili',
+  name: 'bilibili',
+  description: 'x',
+  executor: 'bilibili',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] }, subagent: true },
 };
 
 // Subagent-only — should never appear in reply filter
 const fetch_page: ToolSpec = {
-  name: 'fetch_page', description: 'x', executor: 'fetch_page',
+  name: 'fetch_page',
+  description: 'x',
+  executor: 'fetch_page',
   visibility: { subagent: true },
 };
 const get_group_member_list: ToolSpec = {
-  name: 'get_group_member_list', description: 'x', executor: 'get_group_member_list',
+  name: 'get_group_member_list',
+  description: 'x',
+  executor: 'get_group_member_list',
   visibility: { subagent: true },
 };
 
 // Internal — should never appear in reply filter
 const deduplicate_files: ToolSpec = {
-  name: 'deduplicate_files', description: 'x', executor: 'deduplicate_files',
+  name: 'deduplicate_files',
+  description: 'x',
+  executor: 'deduplicate_files',
   visibility: { internal: true },
 };
 
 const ALL_SPECS: ToolSpec[] = [
-  research, format_as_card, list_bot_features, get_memory, read_file,
-  fetch_image, search_chat_history, search_code, execute_command,
-  analyze_video, execute_code, bilibili,
-  fetch_page, get_group_member_list, deduplicate_files,
+  research,
+  format_as_card,
+  list_bot_features,
+  get_memory,
+  read_file,
+  fetch_image,
+  search_chat_history,
+  search_code,
+  execute_command,
+  analyze_video,
+  execute_code,
+  bilibili,
+  fetch_page,
+  get_group_member_list,
+  deduplicate_files,
 ];
 
 const ADMIN_TOOLS = ['execute_command', 'execute_code', 'read_file', 'search_code'];

@@ -1,7 +1,29 @@
 // Plugin loading and lifecycle management
+//
+// Plugins register themselves via the `@RegisterPlugin` decorator at import
+// time. The barrel import below pulls every first-party builtin plugin
+// module into memory so their decorators fire and populate the static plugin
+// registry (see `decorators.ts`). PluginManager then iterates that registry
+// — it does NOT walk the filesystem. Mirrors the CommandManager
+// registry-consumption pattern.
+//
+// PluginManager only imports the **builtins** barrel. Other plugin sources
+// register themselves through their own initialization paths so that
+// PluginManager stays unaware of integrations / services / third-party:
+//   - Service-owned plugins (e.g. ClaudeCodePlugin under
+//     `services/claudeCode/plugins/`) — registered via the service module's
+//     own re-exports (`services/claudeCode/index.ts`), imported by
+//     bootstrap.
+//   - Integration-owned plugins (e.g. avatar plugins under
+//     `integrations/avatar/plugins/`) — registered by the integration's
+//     bootstrap block in `core/bootstrap.ts`, which side-effect imports
+//     the integration's plugin barrel.
+//   - Third-party plugins under `<repo>/plugins/` are NOT YET SUPPORTED —
+//     see `plugins/README.md` for the open design questions.
 
-import { existsSync, readdirSync, statSync } from 'node:fs';
-import { extname, join } from 'node:path';
+// Side-effect import: trigger @RegisterPlugin decorators for first-party builtins.
+import './plugins';
+
 import type { APIClient } from '@/api/APIClient';
 import type { CommandContext } from '@/command/types';
 import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
@@ -12,7 +34,7 @@ import type { HookManager } from '@/hooks/HookManager';
 import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookHandler } from '@/hooks/types';
 import { logger } from '@/utils/logger';
-import { getPluginHooks, getPluginMetadata, type HookMetadata } from './decorators';
+import { getAllPluginMetadata, getPluginHooks, type HookMetadata, type PluginMetadata } from './decorators';
 import type { Plugin, PluginContext } from './types';
 
 /**
@@ -31,10 +53,6 @@ export interface PluginManagerDeps {
 export class PluginManager {
   private plugins = new Map<string, Plugin>();
   private enabledPlugins = new Set<string>();
-  // Plugin directory is relative to this file's location
-  private readonly pluginDirectory = join(import.meta.dir, 'plugins');
-  // Additional plugin directory for integrations (e.g. integrations/avatar/)
-  private readonly integrationsDirectory = join(import.meta.dir, '..', 'integrations');
 
   private readonly apiClient: APIClient;
   private readonly eventRouter: EventRouter;
@@ -63,31 +81,19 @@ export class PluginManager {
     options?: { skipEnable?: boolean },
   ): Promise<void> {
     const pluginConfigMap = new Map(pluginConfigs.map((p) => [p.name, p]));
-    // Collect per-plugin failures across both directory walks so a single
-    // broken plugin doesn't short-circuit the rest, but the aggregate still
-    // bubbles up to bootstrap / smoke-test.
+    // Collect per-plugin failures so a single broken plugin doesn't
+    // short-circuit the rest, but the aggregate still bubbles up to
+    // bootstrap / smoke-test (DI-token regressions must not slip past).
     const failures: Array<{ source: string; error: unknown }> = [];
 
-    // Load plugins from fixed src/plugins directory
-    if (this.dirExists(this.pluginDirectory)) {
-      await this.loadPluginsFromDirectory(
-        this.pluginDirectory,
-        pluginConfigMap,
-        true,
-        options?.skipEnable,
-        failures,
-      );
-    }
-
-    // Load plugins from src/integrations/ (e.g. integrations/avatar/)
-    if (this.dirExists(this.integrationsDirectory)) {
-      await this.loadPluginsFromDirectory(
-        this.integrationsDirectory,
-        pluginConfigMap,
-        true,
-        options?.skipEnable,
-        failures,
-      );
+    const allMetadata = getAllPluginMetadata();
+    for (const metadata of allMetadata) {
+      try {
+        await this.registerPluginFromMetadata(metadata, pluginConfigMap, options?.skipEnable);
+      } catch (error) {
+        logger.error(`❌ [PluginManager] Failed to load plugin ${metadata.name}:`, error);
+        failures.push({ source: metadata.name, error });
+      }
     }
 
     logger.info(`📦 [PluginManager] Finished loading plugins. Total: ${this.plugins.size}`);
@@ -96,9 +102,7 @@ export class PluginManager {
       const summary = failures
         .map(({ source, error }) => `  - ${source}: ${error instanceof Error ? error.message : String(error)}`)
         .join('\n');
-      const aggregate = new Error(
-        `[PluginManager] ${failures.length} plugin(s) failed to load:\n${summary}`,
-      );
+      const aggregate = new Error(`[PluginManager] ${failures.length} plugin(s) failed to load:\n${summary}`);
       // Preserve the underlying causes for debugging — `cause` is an array
       // because Node's stock Error.cause is a single value.
       (aggregate as Error & { causes?: unknown[] }).causes = failures.map((f) => f.error);
@@ -107,112 +111,52 @@ export class PluginManager {
   }
 
   /**
-   * Check if directory exists
+   * Register, init, and (if enabled in config) enable a single plugin from
+   * its decorator metadata. Mirrors what the previous fs-walk did per file.
    */
-  private dirExists(dir: string): boolean {
-    try {
-      return existsSync(dir) && statSync(dir).isDirectory();
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Load plugins from a specific directory (recurses into subdirectories)
-   */
-  private async loadPluginsFromDirectory(
-    directory: string,
+  private async registerPluginFromMetadata(
+    metadata: PluginMetadata,
     pluginConfigMap: Map<string, { name: string; enabled: boolean; config?: unknown }>,
-    isBuiltin: boolean = false,
     skipEnable?: boolean,
-    failures?: Array<{ source: string; error: unknown }>,
   ): Promise<void> {
-    const entries = readdirSync(directory);
-
-    for (const entry of entries) {
-      const fullPath = join(directory, entry);
-      let stat: ReturnType<typeof statSync>;
-      try {
-        stat = statSync(fullPath);
-      } catch {
-        continue;
-      }
-
-      if (stat.isDirectory()) {
-        await this.loadPluginsFromDirectory(fullPath, pluginConfigMap, isBuiltin, skipEnable, failures);
-        continue;
-      }
-
-      if (extname(entry) !== '.ts' && extname(entry) !== '.js') {
-        continue;
-      }
-
-      // Skip test/spec files - they use describe/it only inside test runner
-      if (/\.(test|spec)\.(ts|js)$/i.test(entry)) {
-        continue;
-      }
-
-      try {
-        const pluginModule = await import(fullPath);
-
-        // Support both default export and named export
-        const PluginClass = pluginModule.default || pluginModule[Object.keys(pluginModule)[0]];
-
-        if (!PluginClass) {
-          logger.warn(`[PluginManager] No plugin class found in ${entry}`);
-          continue;
-        }
-
-        // Get plugin metadata from decorator (decorator executed during import)
-        const pluginMetadata = getPluginMetadata(PluginClass);
-        if (!pluginMetadata) {
-          // Not a plugin entry file (e.g. helper module in plugin dir), skip
-          continue;
-        }
-
-        // LAN relay role-based filter (C5 decision: completely skip — no
-        // instantiation, no DI side effects, no db opens). Looks at
-        // lanRelay.<role>.disabledPlugins for the current instance role.
-        if (this.config.isPluginDisabledByRole(pluginMetadata.name)) {
-          logger.info(`⏭️  [PluginManager] Skipped plugin ${pluginMetadata.name} (disabled by lanRelay role filter)`);
-          continue;
-        }
-
-        const plugin: Plugin = new PluginClass(pluginMetadata);
-
-        if (this.plugins.has(plugin.name)) {
-          continue;
-        }
-
-        this.plugins.set(plugin.name, plugin);
-
-        // setup plugin context and configuration
-        const pluginConfig = pluginConfigMap.get(plugin.name);
-        plugin.loadConfig(this.getContext(), pluginConfig);
-
-        await plugin.onInit?.();
-
-        if (pluginConfig?.enabled && !skipEnable) {
-          await this.enablePlugin(plugin.name);
-        }
-
-        // Register hooks from plugin using decorator metadata
-        const hookMetadataList = getPluginHooks(PluginClass);
-        if (hookMetadataList.length > 0) {
-          this.registerPluginHooksFromMetadata(plugin, hookMetadataList, plugin.name);
-        }
-
-        logger.info(
-          `✅ [PluginManager] Loaded plugin: ${plugin.name} v${plugin.version} (enabled: ${pluginConfig?.enabled ?? false})${isBuiltin ? ' [built-in]' : ''}`,
-        );
-      } catch (error) {
-        logger.error(`❌ [PluginManager] Failed to load plugin ${entry} from ${directory}:`, error);
-        // Record so loadPlugins() can throw an aggregate error after both
-        // directory walks complete (instead of silently continuing — that
-        // was the bug that let DI-token regressions slip past smoke-test).
-        failures?.push({ source: `${directory}/${entry}`, error });
-      }
+    // LAN relay role-based filter: completely skip — no instantiation, no DI
+    // side effects, no db opens. Looks at lanRelay.<role>.disabledPlugins for
+    // the current instance role.
+    if (this.config.isPluginDisabledByRole(metadata.name)) {
+      logger.info(`⏭️  [PluginManager] Skipped plugin ${metadata.name} (disabled by lanRelay role filter)`);
+      return;
     }
+
+    // Dedupe — registry can in theory contain duplicates if a plugin file
+    // is imported through multiple paths. First-wins semantics.
+    if (this.plugins.has(metadata.name)) {
+      return;
+    }
+
+    const PluginClass = metadata.pluginClass;
+    const plugin: Plugin = new PluginClass(metadata);
+
+    this.plugins.set(plugin.name, plugin);
+
+    // setup plugin context and configuration
+    const pluginConfig = pluginConfigMap.get(plugin.name);
+    plugin.loadConfig(this.getContext(), pluginConfig);
+
+    await plugin.onInit?.();
+
+    if (pluginConfig?.enabled && !skipEnable) {
+      await this.enablePlugin(plugin.name);
+    }
+
+    // Register hooks from plugin using decorator metadata
+    const hookMetadataList = getPluginHooks(PluginClass);
+    if (hookMetadataList.length > 0) {
+      this.registerPluginHooksFromMetadata(plugin, hookMetadataList, plugin.name);
+    }
+
+    logger.info(
+      `✅ [PluginManager] Loaded plugin: ${plugin.name} v${plugin.version} (enabled: ${pluginConfig?.enabled ?? false})`,
+    );
   }
 
   async enablePlugin(name: string): Promise<void> {

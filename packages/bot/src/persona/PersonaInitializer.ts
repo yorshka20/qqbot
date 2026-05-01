@@ -18,10 +18,7 @@ import { logger } from '@/utils/logger';
 import { type CharacterBible, loadCharacterBible } from './data/CharacterBibleLoader';
 import { type CoreDNA, loadCoreDNA } from './data/CoreDNALoader';
 import { PersonaService } from './PersonaService';
-import {
-  createPersonaStableProducer,
-  createPersonaVolatileProducer,
-} from './prompt/promptInjectionProducer';
+import { createPersonaStableProducer, createPersonaVolatileProducer } from './prompt/promptInjectionProducer';
 import { mergePersonaConfig, type PersonaConfig } from './types';
 
 export interface PersonaComponents {

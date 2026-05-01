@@ -1,6 +1,6 @@
 import { logger } from '../utils/logger';
 
-export type AmbientSourceName = 'idle' | 'persona' | 'activity'| 'persona' |'idle' | 'persona' | 'activity';
+export type AmbientSourceName = 'idle' | 'persona' | 'activity' | 'persona' | 'idle' | 'persona' | 'activity';
 
 export interface AmbientBusSnapshot {
   /** Active sources only (cleared / never-set sources are omitted). */

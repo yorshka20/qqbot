@@ -14,8 +14,7 @@ const MAX_EVENTS = 200;
 
 @Tool({
   name: 'relationship_history',
-  description:
-    '读取 persona ↔ 特定 user 的 affinity / familiarity 演化轨迹（按事件流）。Read-only。',
+  description: '读取 persona ↔ 特定 user 的 affinity / familiarity 演化轨迹（按事件流）。Read-only。',
   executor: 'relationship_history',
   visibility: { reflection: true },
   parameters: {

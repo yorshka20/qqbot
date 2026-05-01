@@ -1,5 +1,7 @@
 // Tool executors - import all executors to ensure decorators are executed
 
+export { EpigeneticsHistoryToolExecutor } from '@/persona/reflection/epigenetics/EpigeneticsHistoryToolExecutor';
+export { RelationshipHistoryToolExecutor } from '@/persona/reflection/relationships/RelationshipHistoryToolExecutor';
 // Service-specific tool executors
 export { BilibiliToolExecutor } from '@/services/bilibili/executors';
 export { ZhihuDigestToolExecutor } from '@/services/zhihu/executors';
@@ -23,5 +25,3 @@ export { SearchChatHistoryToolExecutor } from './SearchChatHistoryToolExecutor';
 export { SearchCodeToolExecutor } from './SearchCodeToolExecutor';
 export { SearchMemoryToolExecutor } from './SearchMemoryToolExecutor';
 export { SearchToolExecutor } from './SearchToolExecutor';
-export { EpigeneticsHistoryToolExecutor } from '@/persona/reflection/epigenetics/EpigeneticsHistoryToolExecutor';
-export { RelationshipHistoryToolExecutor } from '@/persona/reflection/relationships/RelationshipHistoryToolExecutor';
