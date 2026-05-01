@@ -92,20 +92,11 @@ export class PersonaInitializer {
     // place stable identity blocks at the cache-friendly front of the system
     // prompt and volatile mind state at the back — see
     // STABLE_PRIORITY_MAX in promptInjectionProducer.ts.
-    try {
-      const container = getContainer();
-      if (container.isRegistered(DITokens.PROMPT_INJECTION_REGISTRY)) {
-        const registry = container.resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
-        registry.register(createPersonaStableProducer({ personaService, config }));
-        registry.register(createPersonaVolatileProducer({ personaService, config }));
-      } else {
-        logger.warn(
-          '[PersonaInitializer] PromptInjectionRegistry not registered — persona prompt injection skipped (avatar-only / minimal bootstrap?)',
-        );
-      }
-    } catch (err) {
-      logger.warn('[PersonaInitializer] failed to register persona PromptInjectionProducers (non-fatal):', err);
-    }
+    // PROMPT_INJECTION_REGISTRY is required (DITokens.ts) — registered by
+    // bootstrap before ConversationInitializer runs.
+    const registry = getContainer().resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
+    registry.register(createPersonaStableProducer({ personaService, config }));
+    registry.register(createPersonaVolatileProducer({ personaService, config }));
 
     return { personaService, modulationProvider, config };
   }

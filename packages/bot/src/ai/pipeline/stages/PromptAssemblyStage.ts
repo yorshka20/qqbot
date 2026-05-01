@@ -95,25 +95,24 @@ export class PromptAssemblyStage implements ReplyStage {
     // and "volatile" (priority > STABLE_PRIORITY_MAX, e.g. mood / relationship / tone). Stable
     // fragments sit BEFORE the scene template (cache-friendly front of system prompt); volatile
     // fragments sit AFTER (per-message churn doesn't break upstream cache prefixes).
+    // PROMPT_INJECTION_REGISTRY is required (DITokens.ts) — registered by
+    // bootstrap before this stage ever runs.
     const stableFragments: string[] = [];
     const volatileFragments: string[] = [];
     try {
-      const container = getContainer();
-      if (container.isRegistered(DITokens.PROMPT_INJECTION_REGISTRY)) {
-        const registry = container.resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
-        const message = hookContext.message;
-        const userId = message?.userId != null ? String(message.userId) : undefined;
-        const groupId = message?.groupId != null ? String(message.groupId) : undefined;
-        const injections = await registry.gather({
-          source: hookContext.source,
-          userId,
-          groupId,
-          hookContext,
-        });
-        for (const inj of injections) {
-          const isStable = (inj.priority ?? 100) <= STABLE_PRIORITY_MAX;
-          (isStable ? stableFragments : volatileFragments).push(inj.fragment);
-        }
+      const registry = getContainer().resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
+      const message = hookContext.message;
+      const userId = message?.userId != null ? String(message.userId) : undefined;
+      const groupId = message?.groupId != null ? String(message.groupId) : undefined;
+      const injections = await registry.gather({
+        source: hookContext.source,
+        userId,
+        groupId,
+        hookContext,
+      });
+      for (const inj of injections) {
+        const isStable = (inj.priority ?? 100) <= STABLE_PRIORITY_MAX;
+        (isStable ? stableFragments : volatileFragments).push(inj.fragment);
       }
     } catch (err) {
       logger.warn('[PromptAssemblyStage] PromptInjectionRegistry.gather failed (non-fatal):', err);

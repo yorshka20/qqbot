@@ -42,22 +42,17 @@ export interface GroupDownloadPluginConfig {
 })
 export class GroupDownloadPlugin extends PluginBase {
   private messageAPI!: MessageAPI;
-  private fileService: FileReadService | null = null;
+  private fileService!: FileReadService;
   private groupIdSet: Set<string> = new Set();
   private deduplicateTimer: ReturnType<typeof setInterval> | undefined;
 
   async onInit(): Promise<void> {
     const container = getContainer();
-    if (!container.isRegistered(DITokens.MESSAGE_API)) {
-      logger.warn('[GroupDownloadPlugin] MESSAGE_API not registered; plugin will not download resources.');
-      return;
-    }
+    // MESSAGE_API and FILE_READ_SERVICE are required tokens (DITokens.ts);
+    // resolve directly so a missing registration becomes a hard failure
+    // surfaced through PluginManager → bootstrap.
     this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
-
-    // Resolve FileReadService for scheduled dedup (optional)
-    if (container.isRegistered(DITokens.FILE_READ_SERVICE)) {
-      this.fileService = container.resolve<FileReadService>(DITokens.FILE_READ_SERVICE);
-    }
+    this.fileService = container.resolve<FileReadService>(DITokens.FILE_READ_SERVICE);
 
     try {
       const pluginConfig = this.pluginConfig?.config as GroupDownloadPluginConfig | undefined;
@@ -70,7 +65,7 @@ export class GroupDownloadPlugin extends PluginBase {
 
       // Start scheduled dedup if configured
       const intervalMs = pluginConfig?.deduplicateIntervalMs ?? 0;
-      if (intervalMs > 0 && this.fileService) {
+      if (intervalMs > 0) {
         this.deduplicateTimer = setInterval(() => {
           void this.runScheduledDedup();
         }, intervalMs);
@@ -93,7 +88,7 @@ export class GroupDownloadPlugin extends PluginBase {
   // ---------------------------------------------------------------------------
 
   private async runScheduledDedup(): Promise<void> {
-    if (!this.fileService || this.groupIdSet.size === 0) {
+    if (this.groupIdSet.size === 0) {
       return;
     }
 

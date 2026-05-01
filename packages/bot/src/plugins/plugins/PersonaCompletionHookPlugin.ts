@@ -37,50 +37,39 @@ export class PersonaCompletionHookPlugin extends PluginBase {
 
   async onInit(): Promise<void> {
     const container = getContainer();
-    if (container.isRegistered(DITokens.PERSONA_SERVICE)) {
-      this.persona = container.resolve<PersonaService>(DITokens.PERSONA_SERVICE);
-    }
-    if (this.persona && container.isRegistered(DITokens.EPIGENETICS_STORE)) {
-      const store = container.resolve<EpigeneticsStore>(DITokens.EPIGENETICS_STORE);
-      this.persona.setEpigeneticsStore(store);
-      this.relationshipUpdater = new RelationshipUpdater(store);
+    // PERSONA_SERVICE is required (DITokens.ts) — resolve directly.
+    this.persona = container.resolve<PersonaService>(DITokens.PERSONA_SERVICE);
 
-      // Build + start ReflectionEngine when all required services are present.
-      if (
-        container.isRegistered(DITokens.LLM_SERVICE) &&
-        container.isRegistered(DITokens.PROMPT_MANAGER) &&
-        container.isRegistered(DITokens.CONVERSATION_HISTORY_SERVICE)
-      ) {
-        try {
-          const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
-          const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
-          const historyService = container.resolve<ConversationHistoryService>(DITokens.CONVERSATION_HISTORY_SERVICE);
-          const personaId = this.persona.getConfig().personaId;
+    // EPIGENETICS_STORE is optional (SQLite-only). Without it there's no
+    // place to persist relationships or epigenetics, so RelationshipUpdater
+    // and ReflectionEngine are intentionally skipped on MongoDB.
+    if (!container.isRegistered(DITokens.EPIGENETICS_STORE)) return;
+    const store = container.resolve<EpigeneticsStore>(DITokens.EPIGENETICS_STORE);
+    this.persona.setEpigeneticsStore(store);
+    this.relationshipUpdater = new RelationshipUpdater(store);
 
-          const toolManager = container.isRegistered(DITokens.TOOL_MANAGER)
-            ? container.resolve<ToolManager>(DITokens.TOOL_MANAGER)
-            : undefined;
-          const hookManager = container.isRegistered(DITokens.HOOK_MANAGER)
-            ? container.resolve<HookManager>(DITokens.HOOK_MANAGER)
-            : undefined;
+    // All other deps are required tokens (DITokens.ts) — resolve directly.
+    // If any is missing, the resolve call throws and PluginManager surfaces
+    // an aggregate error to bootstrap, which is the signal we want.
+    const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
+    const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+    const historyService = container.resolve<ConversationHistoryService>(DITokens.CONVERSATION_HISTORY_SERVICE);
+    const toolManager = container.resolve<ToolManager>(DITokens.TOOL_MANAGER);
+    const hookManager = container.resolve<HookManager>(DITokens.HOOK_MANAGER);
+    const personaId = this.persona.getConfig().personaId;
 
-          this.reflectionEngine = new ReflectionEngine(
-            store,
-            this.persona,
-            llmService,
-            promptManager,
-            historyService,
-            { personaId },
-            toolManager,
-            hookManager,
-          );
-          this.reflectionEngine.start();
-          logger.info('[PersonaCompletionHookPlugin] ReflectionEngine started');
-        } catch (err) {
-          logger.warn('[PersonaCompletionHookPlugin] ReflectionEngine init failed (non-fatal):', err);
-        }
-      }
-    }
+    this.reflectionEngine = new ReflectionEngine(
+      store,
+      this.persona,
+      llmService,
+      promptManager,
+      historyService,
+      { personaId },
+      toolManager,
+      hookManager,
+    );
+    this.reflectionEngine.start();
+    logger.info('[PersonaCompletionHookPlugin] ReflectionEngine started');
   }
 
   /**

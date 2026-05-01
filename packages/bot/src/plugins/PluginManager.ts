@@ -63,18 +63,47 @@ export class PluginManager {
     options?: { skipEnable?: boolean },
   ): Promise<void> {
     const pluginConfigMap = new Map(pluginConfigs.map((p) => [p.name, p]));
+    // Collect per-plugin failures across both directory walks so a single
+    // broken plugin doesn't short-circuit the rest, but the aggregate still
+    // bubbles up to bootstrap / smoke-test.
+    const failures: Array<{ source: string; error: unknown }> = [];
 
     // Load plugins from fixed src/plugins directory
     if (this.dirExists(this.pluginDirectory)) {
-      await this.loadPluginsFromDirectory(this.pluginDirectory, pluginConfigMap, true, options?.skipEnable);
+      await this.loadPluginsFromDirectory(
+        this.pluginDirectory,
+        pluginConfigMap,
+        true,
+        options?.skipEnable,
+        failures,
+      );
     }
 
     // Load plugins from src/integrations/ (e.g. integrations/avatar/)
     if (this.dirExists(this.integrationsDirectory)) {
-      await this.loadPluginsFromDirectory(this.integrationsDirectory, pluginConfigMap, true, options?.skipEnable);
+      await this.loadPluginsFromDirectory(
+        this.integrationsDirectory,
+        pluginConfigMap,
+        true,
+        options?.skipEnable,
+        failures,
+      );
     }
 
     logger.info(`📦 [PluginManager] Finished loading plugins. Total: ${this.plugins.size}`);
+
+    if (failures.length > 0) {
+      const summary = failures
+        .map(({ source, error }) => `  - ${source}: ${error instanceof Error ? error.message : String(error)}`)
+        .join('\n');
+      const aggregate = new Error(
+        `[PluginManager] ${failures.length} plugin(s) failed to load:\n${summary}`,
+      );
+      // Preserve the underlying causes for debugging — `cause` is an array
+      // because Node's stock Error.cause is a single value.
+      (aggregate as Error & { causes?: unknown[] }).causes = failures.map((f) => f.error);
+      throw aggregate;
+    }
   }
 
   /**
@@ -96,6 +125,7 @@ export class PluginManager {
     pluginConfigMap: Map<string, { name: string; enabled: boolean; config?: unknown }>,
     isBuiltin: boolean = false,
     skipEnable?: boolean,
+    failures?: Array<{ source: string; error: unknown }>,
   ): Promise<void> {
     const entries = readdirSync(directory);
 
@@ -109,7 +139,7 @@ export class PluginManager {
       }
 
       if (stat.isDirectory()) {
-        await this.loadPluginsFromDirectory(fullPath, pluginConfigMap, isBuiltin, skipEnable);
+        await this.loadPluginsFromDirectory(fullPath, pluginConfigMap, isBuiltin, skipEnable, failures);
         continue;
       }
 
@@ -177,6 +207,10 @@ export class PluginManager {
         );
       } catch (error) {
         logger.error(`❌ [PluginManager] Failed to load plugin ${entry} from ${directory}:`, error);
+        // Record so loadPlugins() can throw an aggregate error after both
+        // directory walks complete (instead of silently continuing — that
+        // was the bug that let DI-token regressions slip past smoke-test).
+        failures?.push({ source: `${directory}/${entry}`, error });
       }
     }
   }

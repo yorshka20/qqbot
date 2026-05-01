@@ -2,7 +2,7 @@ import { inject, injectable } from 'tsyringe';
 import type { AIService, Image2ImageOptions, Text2ImageOptions } from '@/ai';
 import { extractImagesFromMessageAndReply, visionImageToString } from '@/ai/utils/imageUtils';
 import type { APIClient } from '@/api/APIClient';
-import { MessageAPI } from '@/api/methods/MessageAPI';
+import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
@@ -46,15 +46,12 @@ export class Gpt2Command implements CommandHandler {
     },
   };
 
-  private messageAPI: MessageAPI;
-
   constructor(
     @inject(DITokens.AI_SERVICE) private aiService: AIService,
     @inject(DITokens.API_CLIENT) private apiClient: APIClient,
     @inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager,
-  ) {
-    this.messageAPI = new MessageAPI(this.apiClient);
-  }
+    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
+  ) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     if (args.length === 0) {

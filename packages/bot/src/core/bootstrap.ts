@@ -191,9 +191,6 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   const eventRouter = eventSystem.eventRouter;
   container.registerInstance(DITokens.EVENT_ROUTER, eventRouter);
 
-  // ── Service registry verification ──
-  new ServiceRegistry().verifyServices();
-
   // ── Protocol adapter registration (registers event listeners, no connections) ──
   const connectionManager = bot.getConnectionManager();
   const connectionTypeMap: Record<string, new (cfg: ProtocolConfig) => Connection> = {
@@ -212,6 +209,8 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   ProtocolAdapterInitializer.initialize(config, connectionManager, eventRouter, apiClient);
 
   // ── Load plugins (triggers onInit for all enabled plugins, e.g. WeChatIngestPlugin DI registration) ──
+  // Plugin load throws an aggregate error if any plugin's onInit failed —
+  // that's the smoke-test signal for "DI wiring is broken at load time".
   await PluginInitializer.loadPlugins(config, { skipEnable: options?.skipPluginEnable });
 
   // ── Startup health check (AFTER plugins, so plugins like CloudflareWorkerProxy can replace httpClient first) ──
@@ -315,19 +314,13 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   }
 
   // ── Mind subsystem lifecycle ──
-  // All per-service wiring (modulation provider, state source, pose
-  // provider, wander scheduler) is encapsulated in `startPersonaSubsystem`
-  // so bootstrap stays agnostic. Safe to call even when mind or avatar
-  // is absent.
-  try {
-    if (container.isRegistered(DITokens.PERSONA_SERVICE)) {
-      const personaService = container.resolve<PersonaService>(DITokens.PERSONA_SERVICE);
-      const modulationProvider = container.resolve<PersonaModulationAdapter>(DITokens.PERSONA_MODULATION_PROVIDER);
-      startPersonaSubsystem(personaService, modulationProvider, avatarService);
-    }
-  } catch (err) {
-    logger.warn('[Bootstrap] Mind subsystem wiring failed (non-fatal):', err);
-  }
+  // PERSONA_SERVICE / PERSONA_MODULATION_PROVIDER are required (DITokens.ts);
+  // PersonaInitializer always registers them, even when persona is disabled.
+  // The "avatar may be absent" comment still applies — `avatarService` itself
+  // is the gated piece, and `startPersonaSubsystem` accepts null.
+  const personaService = container.resolve<PersonaService>(DITokens.PERSONA_SERVICE);
+  const modulationProvider = container.resolve<PersonaModulationAdapter>(DITokens.PERSONA_MODULATION_PROVIDER);
+  startPersonaSubsystem(personaService, modulationProvider, avatarService);
 
   // ── AvatarSessionService (rolling thread history for avatar runs) ──
   // Avatar session service: rolling thread history for avatar runs.
@@ -425,6 +418,13 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     logger.warn('[Bootstrap] Bilibili live bridge init failed (non-fatal):', err);
     bilibiliLiveBridge = null;
   }
+
+  // ── Final DI contract check ──
+  // Runs LAST, after every initializer (TTS / Avatar / Livemode / Bilibili)
+  // has had a chance to register its tokens. Throws on any missing
+  // `required: true` token in `DITokens.ts` so smoke-test fails loud
+  // instead of letting consumers null-deref later.
+  new ServiceRegistry().verifyServices();
 
   logger.info('[Bootstrap] All initialization stages completed');
 

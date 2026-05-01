@@ -429,13 +429,11 @@ export class ConversationHistoryService {
   async buildConversationHistory(context: HookContext): Promise<string> {
     const proactiveThreadId = context.metadata.get('proactiveThreadId');
     if (proactiveThreadId) {
-      const container = getContainer();
-      if (container.isRegistered(DITokens.THREAD_SERVICE)) {
-        const threadService = container.resolve<ThreadService>(DITokens.THREAD_SERVICE);
-        const text = threadService.getContextFormatted(proactiveThreadId);
-        if (text) {
-          return text;
-        }
+      // THREAD_SERVICE is required (DITokens.ts).
+      const threadService = getContainer().resolve<ThreadService>(DITokens.THREAD_SERVICE);
+      const text = threadService.getContextFormatted(proactiveThreadId);
+      if (text) {
+        return text;
       }
     }
 

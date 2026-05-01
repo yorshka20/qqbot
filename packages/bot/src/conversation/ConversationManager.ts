@@ -35,13 +35,10 @@ export class ConversationManager {
   }
 
   private getBotSelfIdFromConfig(): string {
-    const container = getContainer();
-    if (container.isRegistered(DITokens.CONFIG)) {
-      const config = container.resolve<Config>(DITokens.CONFIG);
-      const botConfig = config.getConfig();
-      return botConfig.bot.selfId;
-    }
-    return '';
+    // CONFIG is required (DITokens.ts) — registered first thing in
+    // ServiceRegistry.registerInfrastructureServices.
+    const config = getContainer().resolve<Config>(DITokens.CONFIG);
+    return config.getConfig().bot.selfId;
   }
 
   /**

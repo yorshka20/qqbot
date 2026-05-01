@@ -47,7 +47,6 @@ import { Lifecycle } from './Lifecycle';
 import { MessagePipeline } from './MessagePipeline';
 import { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
 import {
-  DefaultPreferenceKnowledgeService,
   DefaultProactiveThreadPersistenceService,
   ProactiveConversationService,
   SearXNGPreferenceKnowledgeService,
@@ -485,15 +484,14 @@ export class ConversationInitializer {
       new PreliminaryAnalysisService(aiManager, promptManager),
     );
 
-    // Use SearXNG-backed preference knowledge when RetrievalService is available.
+    // RETRIEVAL_SERVICE is required (DITokens.ts) — bootstrap registers it
+    // unconditionally before this runs.
     const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
-    const preferenceKnowledge = container.isRegistered(DITokens.RETRIEVAL_SERVICE)
-      ? new SearXNGPreferenceKnowledgeService(
-          container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE),
-          llmService,
-          promptManager,
-        )
-      : new DefaultPreferenceKnowledgeService();
+    const preferenceKnowledge = new SearXNGPreferenceKnowledgeService(
+      container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE),
+      llmService,
+      promptManager,
+    );
     container.registerInstance(DITokens.PREFERENCE_KNOWLEDGE_SERVICE, preferenceKnowledge);
     container.registerInstance(
       DITokens.PROACTIVE_THREAD_PERSISTENCE_SERVICE,
@@ -605,15 +603,15 @@ export class ConversationInitializer {
     const lifecycle = new Lifecycle(services.hookManager, commandRouter, processStageInterceptorRegistry);
     container.registerInstance(DITokens.LIFECYCLE, lifecycle);
 
+    // INTERNAL_EVENT_BUS is required (DITokens.ts) — registered earlier in
+    // this same initializer via `serviceRegistry.registerAgendaServices`.
     const pipeline = new MessagePipeline(
       lifecycle,
       services.hookManager,
       services.contextManager,
       services.conversationConfigService,
       container.resolve<ProviderRouter>(DITokens.PROVIDER_ROUTER),
-      container.isRegistered(DITokens.INTERNAL_EVENT_BUS)
-        ? container.resolve<InternalEventBus>(DITokens.INTERNAL_EVENT_BUS)
-        : undefined,
+      container.resolve<InternalEventBus>(DITokens.INTERNAL_EVENT_BUS),
     );
     container.registerInstance(DITokens.MESSAGE_PIPELINE, pipeline);
     const conversationManager = new ConversationManager(pipeline);
