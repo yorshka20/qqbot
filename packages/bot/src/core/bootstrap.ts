@@ -27,10 +27,6 @@ import { HealthCheckManager } from '@/core/health';
 import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { EventInitializer } from '@/events/EventInitializer';
 import type { EventRouter } from '@/events/EventRouter';
-// Avatar integration registers its own plugins via this barrel side-effect
-// import — PluginManager stays unaware of integrations.
-import '@/integrations/avatar/plugins';
-
 import { LivemodeInterceptor } from '@/integrations/avatar/livemode/LivemodeInterceptor';
 import { LivemodeState } from '@/integrations/avatar/livemode/LivemodeState';
 import { AvatarIdleTrigger } from '@/integrations/avatar/services/AvatarIdleTrigger';
@@ -57,6 +53,10 @@ import { TTSManager } from '@/services/tts/TTSManager';
 import type { TTSProvider } from '@/services/tts/TTSProvider';
 import { logger } from '@/utils/logger';
 import { registerConnectionClass } from './connection/ConnectionManager';
+
+// Avatar integration registers its own plugins via this barrel side-effect
+// import — PluginManager stays unaware of integrations.
+import '@/integrations/avatar/plugins';
 
 export interface BootstrapResult {
   bot: Bot;
