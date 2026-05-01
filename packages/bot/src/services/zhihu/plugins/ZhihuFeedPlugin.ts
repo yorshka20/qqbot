@@ -8,6 +8,8 @@ import type { CommandManager } from '@/command/CommandManager';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import { RegisterPlugin } from '@/plugins/decorators';
+import { PluginBase } from '@/plugins/PluginBase';
 import { ZhihuDITokens } from '@/services/zhihu/tokens';
 import { DEFAULT_ZHIHU_CONFIG } from '@/services/zhihu/types';
 import { ZhihuClient } from '@/services/zhihu/ZhihuClient';
@@ -15,9 +17,7 @@ import { ZhihuContentParser } from '@/services/zhihu/ZhihuContentParser';
 import { ZhihuDatabase } from '@/services/zhihu/ZhihuDatabase';
 import { ZhihuFeedService } from '@/services/zhihu/ZhihuFeedService';
 import { logger } from '@/utils/logger';
-import { RegisterPlugin } from '../../decorators';
-import { PluginBase } from '../../PluginBase';
-import { ZhihuCommandHandler } from './ZhihuCommandHandler';
+import { ZhihuCommandHandler } from '../commands/ZhihuCommandHandler';
 
 @RegisterPlugin({
   name: 'zhihuFeed',

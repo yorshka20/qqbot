@@ -4,6 +4,7 @@
 import { SubAgentType } from '@/agent/types';
 import type { AIService } from '@/ai/AIService';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { CommandContext, CommandHandler, CommandResult, PermissionLevel } from '@/command/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { RetrievalService } from '@/services/retrieval';
 import type {
@@ -18,7 +19,6 @@ import type {
 import type { WechatMomentsAnalysisService } from '@/services/wechat/moments/WechatMomentsAnalysisService';
 import { WechatMomentsIngestService } from '@/services/wechat/moments/WechatMomentsIngestService';
 import { logger } from '@/utils/logger';
-import type { CommandContext, CommandHandler, CommandResult, PermissionLevel } from '../../../command/types';
 
 const USAGE = `
 /wechat status              — 微信登录状态

@@ -34,6 +34,4 @@ export * from './RulePlugin';
 export * from './Text2ImgSFWFilterPlugin';
 export * from './TodoPlugin';
 export * from './VideoAnalyzePlugin';
-export * from './WeChatIngestPlugin';
 export * from './WhitelistPlugin';
-export * from './ZhihuFeedPlugin';

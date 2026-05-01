@@ -11,6 +11,8 @@ import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
+import { RegisterPlugin } from '@/plugins/decorators';
+import { PluginBase } from '@/plugins/PluginBase';
 import type { RetrievalService } from '@/services/retrieval';
 import type { WeChatIngestConfig, WeChatRealtimeRule } from '@/services/wechat';
 import {
@@ -27,9 +29,7 @@ import { WechatMomentsAnalysisService } from '@/services/wechat/moments/WechatMo
 import { WechatDigestService } from '@/services/wechat/WechatDigestService';
 import { WechatReportService } from '@/services/wechat/WechatReportService';
 import { logger } from '@/utils/logger';
-import { RegisterPlugin } from '../../decorators';
-import { PluginBase } from '../../PluginBase';
-import { WechatCommandHandler } from './WechatCommandHandler';
+import { WechatCommandHandler } from '../commands/WechatCommandHandler';
 
 @RegisterPlugin({
   name: 'wechatIngest',

@@ -1,5 +1,7 @@
 // Zhihu service — public API
 
+export * from './commands/ZhihuCommandHandler';
+export * from './plugins/ZhihuFeedPlugin';
 export { ZhihuDITokens } from './tokens';
 export type {
   ZhihuConfig,

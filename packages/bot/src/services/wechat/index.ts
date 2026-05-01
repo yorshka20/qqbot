@@ -1,8 +1,10 @@
+export * from './commands/WechatCommandHandler';
 export type { NotifyCallback } from './ingest/WeChatIngestService';
 export { WeChatIngestService } from './ingest/WeChatIngestService';
 export { WeChatMessageBuffer } from './ingest/WeChatMessageBuffer';
 export type { WechatEventType, WechatMessageEventData } from './ingest/WechatEventBridge';
 export { WechatEventBridge } from './ingest/WechatEventBridge';
+export * from './plugins/index';
 export { WechatDITokens } from './tokens';
 export type {
   MessageCategory,
