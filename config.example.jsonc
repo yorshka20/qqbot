@@ -1293,14 +1293,14 @@
   "tickets": {
     "dir": "/absolute/path/to/cluster-tickets"
   },
-  // Mind system — phenotype ODE + modulation provider for the avatar.
+  // Persona system — phenotype ODE + modulation provider for the avatar.
   // See docs/local/mind-system-design.md. Phase 1 only implements fatigue +
   // attention and drives avatar intensity / speed multipliers. Disabled by
   // default; enable alongside "avatar" to see persona modulation kick in.
-  // "mind": {
+  // "persona": {
   //   "enabled": false,
-  //   "personaId": "default",      // 对应 data/mind/persona/<id>/{core-dna.json,bible.md} 目录
-  //   "dataDir": "./data/mind",    // SQLite 反思日志 + persona 文件根目录
+  //   "personaId": "default",         // 对应 data/persona/<id>/{core-dna.json,bible.md} 目录
+  //   "dataDir": "./data/persona",    // SQLite 反思日志 + persona 文件根目录
   //   "tickMs": 1000,
   //
   //   // ODE time constants. Defaults match mergeMindConfig().
@@ -1396,6 +1396,18 @@
   //   //     "happyIntensityMax": 0.6,
   //   //     "happyIntensityFactor": 0.5
   //   //   }
+  //   // }
+  //
+  //   // System 2 reflection — tool-equipped agent loop. When toolEquipped=true,
+  //   // ReflectionEngine runs a multi-round agent loop that can call
+  //   // reflection-scope tools (get_memory / search_chat_history /
+  //   // epigenetics_history / relationship_history) before producing the final
+  //   // ReflectionOutput JSON. Falls back to the single-call schema-only path
+  //   // when toolEquipped=false, maxToolRounds=0, or the loop fails to yield
+  //   // valid JSON.
+  //   // "reflection": {
+  //   //   "toolEquipped": false,
+  //   //   "maxToolRounds": 4
   //   // }
   // }
 }
