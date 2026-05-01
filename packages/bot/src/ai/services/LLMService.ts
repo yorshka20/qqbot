@@ -97,21 +97,22 @@ export class LLMService {
   }
 
   /**
-   * Check if provider is available and healthy.
-   * If the resolved provider is unhealthy, attempts to find a healthy fallback.
+   * Resolve a provider for the caller, honoring explicit intent.
    *
-   * Note: this method preserves legacy behavior for non-generation callers
-   * (feature probes, external services). Generation entry points should use
-   * {@link resolveProviderForGeneration} instead, which honors explicit caller
-   * intent and strips stale `options.model` when a health-based swap occurs.
+   * Behavior is identical to {@link resolveProviderForGeneration}:
+   * - Explicit `providerName` is returned as-is even when marked unhealthy
+   *   (callers must rely on the runtime catch path / fallback chain).
+   * - When no `providerName` is supplied (session/default path), an unhealthy
+   *   resolution is swapped to the first healthy fallback.
+   *
+   * This method exists for non-generation callers (capability probes such as
+   * `supportsToolUse` / `supportsNativeWebSearch`, and external services).
+   * Generation entry points use `resolveProviderForGeneration` directly so
+   * they can also strip stale `options.model` on swap.
    */
   async getAvailableProvider(providerName?: string, sessionId?: string): Promise<LLMCapability | null> {
     const resolved = await this.resolveProviderForGeneration(providerName, sessionId);
-    if (!resolved) return null;
-    // Legacy callers expect health-based swap for both explicit and implicit requests.
-    if (resolved.swapped || !resolved.isUnhealthy) return resolved.provider;
-    const healthyFallback = await this.getFirstHealthyProvider(sessionId, resolved.resolvedName);
-    return healthyFallback ?? resolved.provider;
+    return resolved?.provider ?? null;
   }
 
   /**
