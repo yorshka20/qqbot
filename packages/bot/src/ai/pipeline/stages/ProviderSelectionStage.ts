@@ -3,6 +3,7 @@
 import type { PermissionChecker } from '@/command/CommandManager';
 import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
+import type { AIProvider } from '../../base/AIProvider';
 import type { PromptManager } from '../../prompt/PromptManager';
 import type { ProviderRouter } from '../../routing/ProviderRouter';
 import type { LLMService } from '../../services/LLMService';
@@ -85,6 +86,14 @@ export class ProviderSelectionStage implements ReplyStage {
     const providerCanUseTools = await this.checkProviderToolUseSupport(effectiveProvider, sessionId);
     ctx.effectiveNativeSearchEnabled = false;
 
+    // Detect native function-calling support for toolList suppression
+    const resolvedProvider = await this.llmService.getAvailableProvider(
+      effectiveProvider === 'default' ? undefined : effectiveProvider,
+      sessionId,
+    );
+    ctx.providerHasFunctionCalling =
+      !!resolvedProvider && (resolvedProvider as unknown as AIProvider).getCapabilities().includes('function_calling');
+
     // Resolve source and admin status for tool catalog filtering
     const source = hookContext.source;
     const userId = hookContext.message.userId;
@@ -108,6 +117,7 @@ export class ProviderSelectionStage implements ReplyStage {
       this.promptManager,
       source,
       isAdmin,
+      ctx.providerHasFunctionCalling,
     );
 
     logger.debug(

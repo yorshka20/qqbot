@@ -40,6 +40,7 @@ export class ReplyPipelineContext {
   userMessage = '';
   selectedProviderName: string | undefined;
   providerHasVision = false;
+  providerHasFunctionCalling = false;
   effectiveNativeSearchEnabled = false;
   toolDefinitions: ToolDefinition[] = [];
   toolUsageInstructions = '';

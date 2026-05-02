@@ -5,6 +5,7 @@
 import { getRolePreset } from '@/agent/SubAgentRolePresets';
 import type { PromptManager } from '@/ai';
 import type { AIService } from '@/ai/AIService';
+import type { AIProvider } from '@/ai/base/AIProvider';
 import type { LLMService } from '@/ai/services/LLMService';
 import { executeToolCall } from '@/ai/tools/replyTools';
 import type { ChatMessage, ToolDefinition } from '@/ai/types';
@@ -329,7 +330,7 @@ export class AgentLoop {
     // Agenda tasks are system-level: include both reply and subagent scoped tools
     // so the LLM can access specialized tools (e.g. wechat_stats, wechat_report)
     const tools = this.getAgendaToolDefinitions();
-    const toolInstruct = this.buildAgendaToolInstructions(tools);
+    const toolInstruct = await this.buildAgendaToolInstructions(tools);
     const messages = this.buildPrompt(item, conversationContext, eventContext, toolInstruct);
 
     try {
@@ -393,9 +394,16 @@ export class AgentLoop {
   /**
    * Build tool usage instructions for agenda tasks.
    */
-  private buildAgendaToolInstructions(tools: ToolDefinition[]): string {
+  private async buildAgendaToolInstructions(tools: ToolDefinition[]): Promise<string> {
     if (tools.length === 0) {
       return this.promptManager.render('llm.tool.no_tools.local');
+    }
+
+    // Default LLM provider supports native function calling → skip toolList,
+    // keep only the behaviour note (mirrors buildToolUsageInstructions).
+    const defaultLlm = await this.llmService.getAvailableProvider(undefined);
+    if ((defaultLlm as unknown as AIProvider | undefined)?.getCapabilities().includes('function_calling')) {
+      return this.promptManager.render('llm.tool.note.local');
     }
 
     const replySpecs = this.toolManager.getToolsByScope('reply');

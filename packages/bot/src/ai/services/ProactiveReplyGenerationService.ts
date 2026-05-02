@@ -8,6 +8,7 @@ import type { HookManager } from '@/hooks/HookManager';
 import type { PluginManager } from '@/plugins/PluginManager';
 import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
 import type { ToolManager } from '@/tools/ToolManager';
+import type { AIProvider } from '../base/AIProvider';
 import type { VisionImage } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
 import { PromptMessageAssembler } from '../prompt/PromptMessageAssembler';
@@ -54,6 +55,7 @@ export class ProactiveReplyGenerationService {
     const { tools, toolUsageInstructions } = this.getToolsAndInstructions(
       capabilities.canUseToolUse,
       capabilities.nativeWebSearchEnabled,
+      capabilities.nativeFunctionCalling,
     );
     const { baseSystemPrompt, proactiveSystemPrompt, finalUserQuery } = this.buildPrompts(
       context,
@@ -87,6 +89,7 @@ export class ProactiveReplyGenerationService {
     effectiveProviderName: string | undefined;
     canUseToolUse: boolean;
     nativeWebSearchEnabled: boolean;
+    nativeFunctionCalling: boolean;
   }> {
     const sessionId = context.sessionId;
     const effectiveProviderName = useVision
@@ -98,7 +101,10 @@ export class ProactiveReplyGenerationService {
     const nativeWebSearchEnabled = canUseToolUse
       ? await this.llmService.supportsNativeWebSearch(effectiveProviderName, sessionId)
       : false;
-    return { effectiveProviderName, canUseToolUse, nativeWebSearchEnabled };
+    const resolvedProvider = await this.llmService.getAvailableProvider(effectiveProviderName, sessionId);
+    const nativeFunctionCalling =
+      !!resolvedProvider && (resolvedProvider as unknown as AIProvider).getCapabilities().includes('function_calling');
+    return { effectiveProviderName, canUseToolUse, nativeWebSearchEnabled, nativeFunctionCalling };
   }
 
   // ---------------------------------------------------------------------------
@@ -108,6 +114,7 @@ export class ProactiveReplyGenerationService {
   private getToolsAndInstructions(
     canUseToolUse: boolean,
     nativeWebSearchEnabled: boolean,
+    nativeFunctionCalling: boolean,
   ): { tools: ReturnType<typeof getReplySkillDefinitions>; toolUsageInstructions: string } {
     if (!canUseToolUse) {
       return { tools: [], toolUsageInstructions: '当前没有可用工具，请直接回答。' };
@@ -120,6 +127,7 @@ export class ProactiveReplyGenerationService {
       this.promptManager,
       'qq-group',
       false,
+      nativeFunctionCalling,
     );
     return { tools, toolUsageInstructions };
   }

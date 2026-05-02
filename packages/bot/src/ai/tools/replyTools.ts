@@ -79,10 +79,18 @@ export function buildToolUsageInstructions(
   promptManager: PromptManager,
   source: MessageSource,
   isAdmin: boolean,
+  nativeFunctionCalling: boolean,
 ): string {
   if (tools.length === 0) {
     return promptManager.render(
       options?.nativeWebSearchEnabled ? 'llm.tool.no_tools.native_search' : 'llm.tool.no_tools.local',
+    );
+  }
+
+  // Native FC: tools[] schema already conveys catalog. Render only behaviour note.
+  if (nativeFunctionCalling) {
+    return promptManager.render(
+      options?.nativeWebSearchEnabled ? 'llm.tool.note.native_search' : 'llm.tool.note.local',
     );
   }
 
