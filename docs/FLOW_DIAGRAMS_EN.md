@@ -424,28 +424,55 @@ ctx.reply is set → return to outer Lifecycle → PREPARE → SEND → COMPLETE
 
 ### Final Prompt Structure
 
+The main reply pipeline assembles the system prompt via the
+`PromptInjectionRegistry` producer model, organised into 4 layers:
+
+| Layer | Purpose | Producers | System message |
+|-------|---------|-----------|----------------|
+| `baseline` | Stable identity (cache-friendly prefix) | `BaselineProducer` (rendered base.system) + `persona-stable` | system message #1 |
+| `scene` | Per-source scene template | `SceneProducer` (`scenes.<source>.zh.scene`) | system message #2 (top) |
+| `runtime` | Per-message volatile state | `persona-volatile` (mood / relationship / tone) | system message #2 (middle) |
+| `tool` | Tool invocation instructions | `ToolInstructProducer` (`llm.tool.instruct`) | system message #2 (bottom) |
+
+`PromptAssemblyStage` calls
+`registry.gatherByLayer({ source, userId, groupId, hookContext })` and
+receives `{ baseline, scene, runtime, tool }`, then:
+
+- system message #1 = `baseline.map(i => i.fragment).join('\n\n')`
+- system message #2 = `[...scene, ...runtime, ...tool].map(i => i.fragment).join('\n\n')`
+
+Within each layer, producers are ordered by ascending `priority`
+(lower = earlier; default 100).
+
 ```
 ChatMessage[] ordering:
 
-  ┌─ system 1 ───────────────────────────────────────────────┐
-  │  baseSystem prompt (base.system.txt)                     │
-  │  Vars: currentDate (hour-precision + JST timezone)       │
-  │        adminUserId, whitelistLimitedFragment              │
-  │  ← Anthropic prompt cache anchor (rolls hourly)          │
-  └──────────────────────────────────────────────────────────┘
-  ┌─ system 2 ───────────────────────────────────────────────┐
-  │  [stable persona blocks]  (conditional)                   │
+  ┌─ system 1 (baseline layer) ───────────────────────────────┐
+  │  BaselineProducer fragment (base.system.txt rendered)     │
+  │    Vars: currentDate (hour-precision + JST timezone)      │
+  │          adminUserId, whitelistLimitedFragment              │
+  │  persona-stable fragment                                  │
   │    <persona_identity>...</persona_identity>              │
   │    <persona_boundaries>...</persona_boundaries>          │
-  │       ↑ only when persona is enabled AND Bible non-empty │
-  │  scene template (scenes.<source>.zh.scene)               │
-  │    Vars: toolInstruct (full tool list + whenToUse + params)│
-  │  [volatile persona/mind blocks]  (conditional)            │
+  │       ↑ only when persona enabled AND Bible non-empty    │
+  │  ← Anthropic prompt cache anchor (entire baseline layer  │
+  │    is stable across requests)                             │
+  └──────────────────────────────────────────────────────────┘
+  ┌─ system 2 (scene + runtime + tool layers) ──────────────┐
+  │  SceneProducer fragment                                   │
+  │    scene template (scenes.<source>.zh.scene)              │
+  │      Vars: toolInstruct (rendered by ToolInstructProducer │
+  │            in the tool layer below)                       │
+  │  persona-volatile fragment                               │
   │    <mind_state>...</mind_state>                          │
   │    <relationship_state>...</relationship_state>          │
   │    <tone_state>...</tone_state>                          │
   │       ↑ each block has its own silence threshold;        │
   │         omitted when state is unremarkable               │
+  │  ToolInstructProducer fragment                            │
+  │    llm.tool.instruct (tool list + whenToUse + params)    │
+  │       ↑ only injected when provider lacks native         │
+  │         function calling support                         │
   └──────────────────────────────────────────────────────────┘
   ┌─ history (alternating user/assistant) ───────────────────┐
   │  user:      "[speaker:uid:nick] message content"         │
@@ -470,20 +497,20 @@ ChatMessage[] ordering:
   └──────────────────────────────────────────────────────────┘
 ```
 
-**Injection layering**
+### Shim status (May 2026)
 
-`PromptInjectionRegistry` partitions producers into stable vs volatile by
-priority (see `STABLE_PRIORITY_MAX = 49`):
+`PromptManager.renderBasePrompt` and `renderBaseSystemTemplate` are
+retained as shims for sideline services that still build their prompts
+directly (not via `PromptInjectionRegistry`):
 
-- priority ≤ 49 (stable): persona Bible identity blocks. Placed **before** the
-  scene template, alongside the equally-stable baseSystem, forming a
-  cache-friendly prefix.
-- priority > 49 (volatile): mind state / relationship / tone. Placed **after**
-  the scene template — these change per message but sit at the tail of the
-  system prompt, so upstream prefix caches are not invalidated.
+- `MemoryExtractService` (`packages/bot/src/memory/MemoryExtractService.ts`)
+- `NsfwReplyService` (`packages/bot/src/ai/services/NsfwReplyService.ts`)
+- `PreliminaryAnalysisService` (`packages/bot/src/ai/services/PreliminaryAnalysisService.ts`)
+- `ProactiveReplyGenerationService` (`packages/bot/src/ai/services/ProactiveReplyGenerationService.ts`)
 
-`<preference>` blocks are injected **only** on the proactive-reply path
-(ProactiveConversationPlugin), not on regular reply paths.
+The main reply pipeline has been fully migrated to the producer model.
+When the sideline services above are also migrated (separate ticket),
+both shims should be deleted.
 
 ---
 

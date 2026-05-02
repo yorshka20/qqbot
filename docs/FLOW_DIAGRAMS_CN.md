@@ -424,28 +424,51 @@ ctx.reply 已设置 → 返回外层 Lifecycle → PREPARE → SEND → COMPLETE
 
 ### Prompt 最终结构
 
+主 reply pipeline 的 system prompt 通过 `PromptInjectionRegistry` 的
+producer 模型拼装，分为 4 层：
+
+| Layer | 用途 | 包含 producer | 落在哪个 system message |
+|-------|------|---------------|------------------------|
+| `baseline` | 稳定身份层（指令缓存友好） | `BaselineProducer`（base.system 渲染产物）+ `persona-stable` | system message #1 |
+| `scene` | 场景模板（按 source 切换） | `SceneProducer`（`scenes.<source>.zh.scene`） | system message #2（前段） |
+| `runtime` | 每条消息变化的状态 | `persona-volatile`（mood / relationship / tone） | system message #2（中段） |
+| `tool` | 工具调用说明 | `ToolInstructProducer`（`llm.tool.instruct`） | system message #2（后段） |
+
+`PromptAssemblyStage` 调用 `registry.gatherByLayer({ source, userId, groupId, hookContext })`
+得到 `{ baseline, scene, runtime, tool }`，然后：
+
+- system message #1 = `baseline.map(i => i.fragment).join('\n\n')`
+- system message #2 = `[...scene, ...runtime, ...tool].map(i => i.fragment).join('\n\n')`
+
+同层内按 producer 的 `priority`（数字小 = 靠前）排序，默认 100。
+
 ```
 ChatMessage[] 排列顺序:
 
-  ┌─ system 1 ───────────────────────────────────────────────┐
-  │  baseSystem prompt (base.system.txt)                     │
-  │  变量: currentDate (小时精度 + JST 时区)                  │
-  │        adminUserId, whitelistLimitedFragment              │
-  │  ← Anthropic prompt cache 锚点（按小时滚动）              │
-  └──────────────────────────────────────────────────────────┘
-  ┌─ system 2 ───────────────────────────────────────────────┐
-  │  [stable persona blocks]  (条件注入)                      │
+  ┌─ system 1 (baseline 层) ──────────────────────────────────┐
+  │  BaselineProducer fragment (base.system.txt 渲染产物)     │
+  │    变量: currentDate (小时精度 + JST 时区)                  │
+  │          adminUserId, whitelistLimitedFragment              │
+  │  persona-stable fragment                                  │
   │    <persona_identity>...</persona_identity>              │
   │    <persona_boundaries>...</persona_boundaries>          │
   │       ↑ 仅当 persona enabled 且 Bible 有内容时出现        │
-  │  scene template (scenes.<source>.zh.scene)               │
-  │    变量: toolInstruct (完整工具列表 + whenToUse + params)│
-  │  [volatile persona/mind blocks]  (条件注入)               │
+  │  ← Anthropic prompt cache 锚点（baseline 层整体稳定）     │
+  └──────────────────────────────────────────────────────────┘
+  ┌─ system 2 (scene + runtime + tool 层) ───────────────────┐
+  │  SceneProducer fragment                                   │
+  │    scene template (scenes.<source>.zh.scene)              │
+  │      变量: toolInstruct (由上一条 system message 的       │
+  │             ToolInstructProducer 提供)                     │
+  │  persona-volatile fragment                               │
   │    <mind_state>...</mind_state>                          │
   │    <relationship_state>...</relationship_state>          │
   │    <tone_state>...</tone_state>                          │
   │       ↑ fatigue/relationship/tone 各自有 silence 阈值    │
   │         数值未达阈值时不输出对应块                        │
+  │  ToolInstructProducer fragment                            │
+  │    llm.tool.instruct（工具列表 + whenToUse + params）     │
+  │       ↑ 仅当 provider 不支持原生 function calling 时注入 │
   └──────────────────────────────────────────────────────────┘
   ┌─ history (交替 user/assistant) ──────────────────────────┐
   │  user:      "[speaker:uid:nick] 消息内容"                 │
@@ -470,18 +493,19 @@ ChatMessage[] 排列顺序:
   └──────────────────────────────────────────────────────────┘
 ```
 
-**注入分层说明**
+### Shim 状态（2026-05）
 
-`PromptInjectionRegistry` 通过 priority 决定 stable vs volatile 分组（见
-`STABLE_PRIORITY_MAX = 49`）：
+`PromptManager.renderBasePrompt` 与 `renderBaseSystemTemplate` 仍存在，但仅
+作为 shim 给非主 reply pipeline 的支线服务使用：
 
-- priority ≤ 49（stable）：persona Bible 身份块。位于 scene template **之前**，
-  与同样稳定的 baseSystem 一起构成 cache-friendly 前缀。
-- priority > 49（volatile）：mind state / relationship / tone。位于 scene template
-  **之后**，每条消息都可能变化，但因为放在 system prompt 末尾，不会破坏前缀缓存。
+- `MemoryExtractService` (`packages/bot/src/memory/MemoryExtractService.ts`)
+- `NsfwReplyService` (`packages/bot/src/ai/services/NsfwReplyService.ts`)
+- `PreliminaryAnalysisService` (`packages/bot/src/ai/services/PreliminaryAnalysisService.ts`)
+- `ProactiveReplyGenerationService` (`packages/bot/src/ai/services/ProactiveReplyGenerationService.ts`)
 
-`<preference>` 块仅在 ProactiveConversationPlugin 的主动发话路径中注入，
-**不在常规 reply 路径中出现**。
+主 reply pipeline 已经完全通过 `PromptInjectionRegistry` 的 producer 模型
+拼装 system prompt。后续若把上述支线服务也接入 producer 模型，应当
+一并删除这两个 shim。
 
 ---
 
