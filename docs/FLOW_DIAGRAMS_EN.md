@@ -427,15 +427,25 @@ ctx.reply is set → return to outer Lifecycle → PREPARE → SEND → COMPLETE
 ```
 ChatMessage[] ordering:
 
-  ┌─ system ─────────────────────────────────────────────────┐
+  ┌─ system 1 ───────────────────────────────────────────────┐
   │  baseSystem prompt (base.system.txt)                     │
-  │  Vars: currentDate, adminUserId, whitelistLimited...     │
-  │  ← Anthropic prompt cache anchor                         │
+  │  Vars: currentDate (hour-precision + JST timezone)       │
+  │        adminUserId, whitelistLimitedFragment              │
+  │  ← Anthropic prompt cache anchor (rolls hourly)          │
   └──────────────────────────────────────────────────────────┘
-  ┌─ system ─────────────────────────────────────────────────┐
-  │  sceneSystem prompt (llm.reply.system)                   │
-  │  Vars: toolInstruct                     │
-  │  toolInstruct = full tool list + whenToUse + params      │
+  ┌─ system 2 ───────────────────────────────────────────────┐
+  │  [stable persona blocks]  (conditional)                   │
+  │    <persona_identity>...</persona_identity>              │
+  │    <persona_boundaries>...</persona_boundaries>          │
+  │       ↑ only when persona is enabled AND Bible non-empty │
+  │  scene template (scenes.<source>.zh.scene)               │
+  │    Vars: toolInstruct (full tool list + whenToUse + params)│
+  │  [volatile persona/mind blocks]  (conditional)            │
+  │    <mind_state>...</mind_state>                          │
+  │    <relationship_state>...</relationship_state>          │
+  │    <tone_state>...</tone_state>                          │
+  │       ↑ each block has its own silence threshold;        │
+  │         omitted when state is unremarkable               │
   └──────────────────────────────────────────────────────────┘
   ┌─ history (alternating user/assistant) ───────────────────┐
   │  user:      "[speaker:uid:nick] message content"         │
@@ -443,22 +453,37 @@ ChatMessage[] ordering:
   │  (with vision: ContentPart[] with base64 images)         │
   └──────────────────────────────────────────────────────────┘
   ┌─ user (final user message block) ───────────────────────┐
-  │  <memory_context>                                        │
+  │  <memory_context>                          (conditional)  │
   │    ## Group memory                                       │
   │    {groupMemory}                                         │
   │    ## User memory                                        │
   │    {userMemory}                                          │
   │  </memory_context>                                       │
   │                                                          │
-  │  <rag_context>                                           │
+  │  <rag_context>                             (conditional)  │
   │    {retrieved relevant conversation segments}             │
   │  </rag_context>                                          │
   │                                                          │
-  │  <current_query>                                         │
+  │  <current_query>                           (always)       │
   │    [speaker:uid:nick] current user message               │
   │  </current_query>                                        │
   └──────────────────────────────────────────────────────────┘
 ```
+
+**Injection layering**
+
+`PromptInjectionRegistry` partitions producers into stable vs volatile by
+priority (see `STABLE_PRIORITY_MAX = 49`):
+
+- priority ≤ 49 (stable): persona Bible identity blocks. Placed **before** the
+  scene template, alongside the equally-stable baseSystem, forming a
+  cache-friendly prefix.
+- priority > 49 (volatile): mind state / relationship / tone. Placed **after**
+  the scene template — these change per message but sit at the tail of the
+  system prompt, so upstream prefix caches are not invalidated.
+
+`<preference>` blocks are injected **only** on the proactive-reply path
+(ProactiveConversationPlugin), not on regular reply paths.
 
 ---
 

@@ -3,7 +3,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
-import { getCurrentDateTimeForPrompt } from '@/utils/dateTime';
+import { getCurrentDateHourForPrompt } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 
@@ -261,7 +261,7 @@ export class PromptManager {
       return undefined;
     }
     const baseVars: Record<string, string> = {
-      currentDate: getCurrentDateTimeForPrompt(),
+      currentDate: getCurrentDateHourForPrompt(),
       adminUserId: this.adminUserId || '（无管理员）',
       whitelistLimitedFragment: '',
       ...overrides,
@@ -285,7 +285,7 @@ export class PromptManager {
       return this.renderBasePrompt(overrides);
     }
     const baseVars: Record<string, string> = {
-      currentDate: getCurrentDateTimeForPrompt(),
+      currentDate: getCurrentDateHourForPrompt(),
       adminUserId: this.adminUserId || '（无管理员）',
       ...overrides,
     };

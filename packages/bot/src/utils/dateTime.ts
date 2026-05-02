@@ -61,6 +61,36 @@ export function getCurrentDateTimeForPrompt(): string {
 }
 
 /**
+ * Hour-precision date/time for stable prompt injection. Returns
+ * `YYYY-MM-DD HH:00 JST 星期三`. Truncated to the hour and tagged
+ * with the timezone abbreviation so prompt-cache prefixes (commonly
+ * 1h TTL upstream) stay stable for an entire hour and the model can
+ * unambiguously interpret the hour value.
+ */
+export function getCurrentDateHourForPrompt(): string {
+  const date = new Date();
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone: TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hour12: false,
+    weekday: 'long',
+  };
+  const parts = new Intl.DateTimeFormat('en-US', options).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? '';
+  const year = get('year');
+  const month = get('month');
+  const day = get('day');
+  const hour = get('hour');
+  const weekdayEn = get('weekday');
+  const weekday = WEEKDAY_MAP[weekdayEn] ?? weekdayEn;
+  const tzAbbr = TIMEZONE === 'Asia/Tokyo' ? 'JST' : TIMEZONE;
+  return `${year}-${month}-${day} ${hour}:00 ${tzAbbr} ${weekday}`;
+}
+
+/**
  * Format a date to YYYY-MM-DD HH:mm in Asia/Tokyo timezone.
  * Suitable for RAG context and conversation history display.
  * Example output: "2026-03-18 15:30"

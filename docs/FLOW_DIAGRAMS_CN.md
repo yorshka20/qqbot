@@ -427,15 +427,25 @@ ctx.reply 已设置 → 返回外层 Lifecycle → PREPARE → SEND → COMPLETE
 ```
 ChatMessage[] 排列顺序:
 
-  ┌─ system ─────────────────────────────────────────────────┐
+  ┌─ system 1 ───────────────────────────────────────────────┐
   │  baseSystem prompt (base.system.txt)                     │
-  │  变量: currentDate, adminUserId, whitelistLimited...     │
-  │  ← Anthropic prompt cache 锚点                           │
+  │  变量: currentDate (小时精度 + JST 时区)                  │
+  │        adminUserId, whitelistLimitedFragment              │
+  │  ← Anthropic prompt cache 锚点（按小时滚动）              │
   └──────────────────────────────────────────────────────────┘
-  ┌─ system ─────────────────────────────────────────────────┐
-  │  sceneSystem prompt (llm.reply.system)                   │
-  │  变量: toolInstruct                     │
-  │  toolInstruct = 完整工具列表 + whenToUse + params         │
+  ┌─ system 2 ───────────────────────────────────────────────┐
+  │  [stable persona blocks]  (条件注入)                      │
+  │    <persona_identity>...</persona_identity>              │
+  │    <persona_boundaries>...</persona_boundaries>          │
+  │       ↑ 仅当 persona enabled 且 Bible 有内容时出现        │
+  │  scene template (scenes.<source>.zh.scene)               │
+  │    变量: toolInstruct (完整工具列表 + whenToUse + params)│
+  │  [volatile persona/mind blocks]  (条件注入)               │
+  │    <mind_state>...</mind_state>                          │
+  │    <relationship_state>...</relationship_state>          │
+  │    <tone_state>...</tone_state>                          │
+  │       ↑ fatigue/relationship/tone 各自有 silence 阈值    │
+  │         数值未达阈值时不输出对应块                        │
   └──────────────────────────────────────────────────────────┘
   ┌─ history (交替 user/assistant) ──────────────────────────┐
   │  user:      "[speaker:uid:nick] 消息内容"                 │
@@ -443,22 +453,35 @@ ChatMessage[] 排列顺序:
   │  (vision时: ContentPart[] 含 base64 图片)                │
   └──────────────────────────────────────────────────────────┘
   ┌─ user (最终用户消息块) ──────────────────────────────────┐
-  │  <memory_context>                                        │
+  │  <memory_context>                          (条件)         │
   │    ## 关于本群的记忆                                      │
   │    {groupMemory}                                         │
   │    ## 关于当前用户的记忆                                   │
   │    {userMemory}                                          │
   │  </memory_context>                                       │
   │                                                          │
-  │  <rag_context>                                           │
+  │  <rag_context>                             (条件)         │
   │    {检索到的相关对话片段}                                  │
   │  </rag_context>                                          │
   │                                                          │
-  │  <current_query>                                         │
+  │  <current_query>                           (始终存在)     │
   │    [speaker:uid:nick] 当前用户消息                        │
   │  </current_query>                                        │
   └──────────────────────────────────────────────────────────┘
 ```
+
+**注入分层说明**
+
+`PromptInjectionRegistry` 通过 priority 决定 stable vs volatile 分组（见
+`STABLE_PRIORITY_MAX = 49`）：
+
+- priority ≤ 49（stable）：persona Bible 身份块。位于 scene template **之前**，
+  与同样稳定的 baseSystem 一起构成 cache-friendly 前缀。
+- priority > 49（volatile）：mind state / relationship / tone。位于 scene template
+  **之后**，每条消息都可能变化，但因为放在 system prompt 末尾，不会破坏前缀缓存。
+
+`<preference>` 块仅在 ProactiveConversationPlugin 的主动发话路径中注入，
+**不在常规 reply 路径中出现**。
 
 ---
 
