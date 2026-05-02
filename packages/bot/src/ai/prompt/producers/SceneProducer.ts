@@ -1,8 +1,5 @@
+import type { PromptInjectionContext, PromptInjectionProducer } from '@/conversation/promptInjection/types';
 import { getSourceConfig } from '@/conversation/sources/registry';
-import type {
-  PromptInjectionContext,
-  PromptInjectionProducer,
-} from '@/conversation/promptInjection/types';
 import { logger } from '@/utils/logger';
 import type { PromptManager } from '../PromptManager';
 
@@ -29,7 +26,10 @@ export function createSceneProducer(deps: { promptManager: PromptManager }): Pro
       try {
         fragment = promptManager.render(sceneTemplateId, { toolInstruct: '' }) ?? '';
       } catch (err) {
-        logger.warn(`[SceneProducer] scene template ${sceneTemplateId} render failed, falling back to llm.reply.system:`, err);
+        logger.warn(
+          `[SceneProducer] scene template ${sceneTemplateId} render failed, falling back to llm.reply.system:`,
+          err,
+        );
         fragment = promptManager.render('llm.reply.system', { toolInstruct: '' }) ?? '';
       }
       if (!fragment) return null;

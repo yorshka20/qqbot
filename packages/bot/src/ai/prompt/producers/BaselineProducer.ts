@@ -1,7 +1,4 @@
-import type {
-  PromptInjectionContext,
-  PromptInjectionProducer,
-} from '@/conversation/promptInjection/types';
+import type { PromptInjectionContext, PromptInjectionProducer } from '@/conversation/promptInjection/types';
 import type { PromptManager } from '../PromptManager';
 
 /**

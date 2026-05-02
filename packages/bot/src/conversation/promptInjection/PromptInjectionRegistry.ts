@@ -23,9 +23,7 @@ export class PromptInjectionRegistry {
     runtime: PromptInjection[];
     tool: PromptInjection[];
   }> {
-    const applicable = this.producers.filter(
-      (p) => !p.applicableSources || p.applicableSources.includes(ctx.source),
-    );
+    const applicable = this.producers.filter((p) => !p.applicableSources || p.applicableSources.includes(ctx.source));
     const pairs = await Promise.all(
       applicable.map(async (p) => {
         try {

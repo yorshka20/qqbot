@@ -9,10 +9,10 @@
 
 import { AvatarService } from '@qqbot/avatar';
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { createBaselineProducer } from '@/ai/prompt/producers/BaselineProducer';
 import { createSceneProducer } from '@/ai/prompt/producers/SceneProducer';
 import { createToolInstructProducer } from '@/ai/prompt/producers/ToolInstructProducer';
-import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { APIClient } from '@/api/APIClient';
 import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';

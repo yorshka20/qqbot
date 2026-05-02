@@ -87,9 +87,7 @@ describe('PromptAssemblyStage source-aware scene template', () => {
 
     await stage.execute(ctx);
 
-    expect(registry.gatherByLayer).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'qq-private' }),
-    );
+    expect(registry.gatherByLayer).toHaveBeenCalledWith(expect.objectContaining({ source: 'qq-private' }));
     // baseSystem should contain the baseline fragment
     expect(ctx.messages.length).toBeGreaterThan(0);
   });
@@ -101,9 +99,7 @@ describe('PromptAssemblyStage source-aware scene template', () => {
 
     await stage.execute(ctx);
 
-    expect(registry.gatherByLayer).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'avatar-cmd' }),
-    );
+    expect(registry.gatherByLayer).toHaveBeenCalledWith(expect.objectContaining({ source: 'avatar-cmd' }));
     expect(ctx.messages.length).toBeGreaterThan(0);
   });
 

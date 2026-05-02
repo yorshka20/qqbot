@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 import { describe, expect, it, mock } from 'bun:test';
+import type { PromptInjection } from '@/conversation/promptInjection/types';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
-import type { PromptInjection } from '@/conversation/promptInjection/types';
 import type { ReplyPipelineContext } from '../../ReplyPipelineContext';
 import { PromptAssemblyStage } from '../PromptAssemblyStage';
 
@@ -94,10 +94,7 @@ describe('PromptAssemblyStage producer-driven', () => {
       gatherByLayer: mock(async () => ({
         baseline: [makeInj('baseline', 'BASE')],
         scene: [makeInj('scene', 'SCENE')],
-        runtime: [
-          makeInj('persona-stable', 'STABLE', 10),
-          makeInj('persona-volatile', 'VOLATILE', 60),
-        ],
+        runtime: [makeInj('persona-stable', 'STABLE', 10), makeInj('persona-volatile', 'VOLATILE', 60)],
         tool: [],
       })),
     } as any;
