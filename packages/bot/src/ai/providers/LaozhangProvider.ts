@@ -101,7 +101,7 @@ export class LaozhangProvider
     // Build capabilities from structured config: llm, vision, text2img(+img2img)
     this._capabilities = [];
     if (config.llm) {
-      this._capabilities.push('llm');
+      this._capabilities.push('llm', 'function_calling');
       this.setContextConfig(config.llm.enableContext ?? false, config.llm.contextMessageCount ?? 10);
     }
     if (config.vision || config.llm) {

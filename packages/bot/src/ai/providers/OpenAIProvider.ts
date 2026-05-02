@@ -65,7 +65,7 @@ export class OpenAIProvider
     // Explicitly declare supported capabilities
     // OpenAI supports LLM and Vision (GPT-4 Vision models) by default;
     // text2img + img2img (gpt-image-2) are opt-in via `image.enabled`.
-    this._capabilities = ['llm', 'vision'];
+    this._capabilities = ['llm', 'function_calling', 'vision'];
     if (config.image?.enabled) {
       this._capabilities.push('text2img', 'img2img');
     }

@@ -143,7 +143,7 @@ export class MinimaxProvider extends AIProvider implements LLMCapability, Vision
 
     // Explicitly declare supported capabilities
     // Minimax supports both LLM and Vision (image_url in content array)
-    this._capabilities = ['llm', 'vision'];
+    this._capabilities = ['llm', 'function_calling', 'vision'];
 
     // Set context configuration
     this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);

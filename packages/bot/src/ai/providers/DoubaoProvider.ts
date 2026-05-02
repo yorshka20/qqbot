@@ -262,7 +262,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
 
     // Explicitly declare supported capabilities
     // Doubao supports both LLM and Vision
-    this._capabilities = ['llm', 'vision'];
+    this._capabilities = ['llm', 'function_calling', 'vision'];
 
     // Set context configuration
     this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);

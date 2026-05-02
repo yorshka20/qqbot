@@ -55,7 +55,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
 
     // Explicitly declare supported capabilities
     // DeepSeek currently supports LLM text generation only
-    this._capabilities = ['llm'];
+    this._capabilities = ['llm', 'function_calling'];
 
     // Set context configuration
     this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);

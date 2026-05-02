@@ -80,7 +80,7 @@ export class GeminiProvider
     // Build capabilities from structured config: llm, vision, video_analysis, text2img (+ img2img)
     this._capabilities = [];
     if (config.llm) {
-      this._capabilities.push('llm');
+      this._capabilities.push('llm', 'function_calling');
       this.setContextConfig(config.llm.enableContext ?? false, config.llm.contextMessageCount ?? 10);
     }
     // Vision uses the same generateContent path as LLM; when llm is set, multimodal input is supported

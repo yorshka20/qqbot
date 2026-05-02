@@ -44,7 +44,7 @@ export class SiliconFlowProvider extends AIProvider implements LLMCapability {
     this.config = config;
     this.baseUrl = config.baseURL || 'https://api.siliconflow.com/v1';
 
-    this._capabilities = ['llm'];
+    this._capabilities = ['llm', 'function_calling'];
 
     this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);
 

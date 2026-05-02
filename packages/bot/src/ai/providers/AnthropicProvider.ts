@@ -199,7 +199,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
 
     // Explicitly declare supported capabilities
     // Anthropic Claude 3 supports both LLM and Vision
-    this._capabilities = ['llm', 'vision'];
+    this._capabilities = ['llm', 'function_calling', 'vision'];
 
     // Set context configuration
     this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);
