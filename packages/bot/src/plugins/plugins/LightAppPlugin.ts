@@ -100,7 +100,7 @@ export class LightAppPlugin extends PluginBase {
     order: 0,
     applicableSources: ['qq-private', 'qq-group', 'discord'],
   })
-  async onMessageReceived(context: HookContext): Promise<boolean> {
+  onMessageReceived(context: HookContext): boolean {
     if (!this.enabled) {
       return true;
     }
@@ -131,18 +131,19 @@ export class LightAppPlugin extends PluginBase {
     builder.text(text);
     const replySegments = builder.build();
 
-    try {
-      const protocol = message.protocol;
-      const botUserId = this.config.getBotUserId();
-
-      if (protocol === 'milky' && botUserId) {
-        await this.messageAPI.sendForwardFromContext([{ segments: replySegments, senderName: 'Bot' }], message, 10000, {
-          botUserId,
-        });
-      } else {
-        await this.messageAPI.sendFromContext(replySegments, message, 10000);
-      }
-    } catch (_error) {}
+    // Light-app URL extraction is a side-channel reply, not a pipeline prerequisite.
+    // Fire-and-forget so a slow protocol send can never delay LLM processing.
+    const protocol = message.protocol;
+    const botUserId = this.config.getBotUserId();
+    const sendPromise =
+      protocol === 'milky' && botUserId
+        ? this.messageAPI.sendForwardFromContext([{ segments: replySegments, senderName: 'Bot' }], message, 10000, {
+            botUserId,
+          })
+        : this.messageAPI.sendFromContext(replySegments, message, 10000);
+    sendPromise.catch((err) => {
+      logger.warn('[LightAppPlugin] Failed to send URL preview:', err);
+    });
     return true;
   }
 }

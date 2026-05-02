@@ -114,44 +114,56 @@ export class EchoPlugin extends PluginBase {
   }
 
   /**
-   * Trigger TTS command programmatically and send result directly (no pipeline reply).
-   * TTS only accepts plain text; skips when text looks like a command.
+   * TTS is a side-channel echo, not a pipeline step. Run as a fire-and-forget
+   * background task with a hard timeout so a slow/stuck provider can never
+   * block the message pipeline.
    */
-  private async triggerTTSCommand(text: string, context: HookContext): Promise<void> {
+  private static readonly TTS_BACKGROUND_TIMEOUT_MS = 30_000;
+
+  private runTTSInBackground(text: string, context: HookContext): void {
     if (!this.commandManager) {
       return;
     }
-    // TTS only processes plain text; skip command content
     if (MessageUtils.isCommand(text.trim())) {
       return;
     }
 
-    try {
-      // Build command using CommandBuilder
-      const command = CommandBuilder.build('tts', [text, '--voice=派蒙']);
+    const command = CommandBuilder.build('tts', [text, '--voice=派蒙']);
+    const commandContext = CommandContextBuilder.fromHookContext(context).build();
 
-      // Construct CommandContext using builder
-      const commandContext = CommandContextBuilder.fromHookContext(context).build();
+    logger.info(`[EchoPlugin] Triggering TTS command for text: ${text.substring(0, 50)}...`);
 
-      logger.info(`[EchoPlugin] Triggering TTS command for text: ${text.substring(0, 50)}...`);
-
+    const task = (async () => {
       const result = await this.commandManager.execute(command, commandContext, this.hookManager, context);
-
       if (result.success && result.segments && result.segments.length > 0) {
-        // Send TTS result directly; do not set context.reply (no pipeline, no DB persistence for TTS)
         await this.messageAPI.sendFromContext(result.segments, context.message, 10000);
         logger.info(`[EchoPlugin] TTS sent successfully`);
       } else {
         logger.warn(`[EchoPlugin] TTS command failed or no segments: ${result.error || 'no segments'}`);
       }
-    } catch (error) {
-      logger.error('[EchoPlugin] Failed to trigger TTS command:', error);
-    }
+    })();
+
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<void>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`TTS background task exceeded ${EchoPlugin.TTS_BACKGROUND_TIMEOUT_MS}ms, discarded`)),
+        EchoPlugin.TTS_BACKGROUND_TIMEOUT_MS,
+      );
+    });
+
+    Promise.race([task, timeout])
+      .catch((error) => {
+        logger.warn('[EchoPlugin] TTS background task discarded:', error);
+      })
+      .finally(() => {
+        if (timer) clearTimeout(timer);
+      });
   }
 
   /**
    * Hook: onMessagePreprocess
-   * Check if message is from admin, not a command, and not @bot, then trigger TTS and send directly (no pipeline reply).
+   * Kicks off TTS as a background task and returns immediately. The pipeline
+   * must NOT wait on TTS — it is a side-channel output, not a prerequisite.
    */
   @Hook({
     stage: 'onMessagePreprocess',
@@ -165,8 +177,7 @@ export class EchoPlugin extends PluginBase {
     }
 
     const messageText = context.message.message?.trim() || '';
-
-    await this.triggerTTSCommand(messageText, context);
+    this.runTTSInBackground(messageText, context);
 
     return true;
   }

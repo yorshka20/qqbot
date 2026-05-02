@@ -76,6 +76,12 @@ export class NsfwModePlugin extends PluginBase {
 
     this.nsfwInterceptor = {
       shouldIntercept: async (ctx: HookContext): Promise<boolean> => {
+        // Defense-in-depth: even if the interceptor is still registered (e.g.
+        // disabled via a path that didn't run onDisable), respect the plugin's
+        // enabled flag so toggling enable/disable always takes effect.
+        if (!this.enabled) {
+          return false;
+        }
         const rawSessionId = ctx.metadata.get('sessionId');
         const sessionType = ctx.metadata.get('sessionType');
         if (!rawSessionId || !sessionType) {

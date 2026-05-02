@@ -81,7 +81,19 @@ export class TTSManager {
     for (const provider of this.registry.values()) {
       this.registerProviderWithHealthManager(provider);
     }
+    // Auto-warmup so the first /tts request never pays cold-probe latency.
+    // Coupled with attach so callers can't forget; lives entirely inside the
+    // TTS module instead of leaking into bootstrap.
+    this.warmupHealthCache();
   }
+
+  /**
+   * Probe timeout for TTS provider health checks. A provider that can't ack a
+   * health ping in 2s is effectively unusable for interactive use, and a long
+   * timeout here directly translates to pipeline delay on cold cache /
+   * fallback paths. Keep this tight; attach-time warmup covers the cold case.
+   */
+  private static readonly HEALTH_PROBE_TIMEOUT_MS = 2_000;
 
   async checkProviderHealth(name: string, force = false): Promise<boolean> {
     const provider = this.registry.get(name);
@@ -94,7 +106,10 @@ export class TTSManager {
     }
 
     if (this.healthManager) {
-      const result = await this.healthManager.checkHealth(name, { force, timeout: 10_000 });
+      const result = await this.healthManager.checkHealth(name, {
+        force,
+        timeout: TTSManager.HEALTH_PROBE_TIMEOUT_MS,
+      });
       return result.status === HealthStatus.HEALTHY;
     }
 
@@ -220,14 +235,35 @@ export class TTSManager {
 
   private async findFirstHealthyProvider(excludeNames: string[] = []): Promise<TTSProvider | null> {
     const excluded = new Set(excludeNames);
-    for (const provider of this.registry.values()) {
-      if (excluded.has(provider.name)) {
-        continue;
-      }
-      if (await this.checkProviderHealth(provider.name)) {
-        return provider;
-      }
+    const candidates = [...this.registry.values()].filter((p) => !excluded.has(p.name));
+    if (candidates.length === 0) {
+      return null;
     }
-    return null;
+    // Probe candidates in parallel — sequential await of multiple unhealthy
+    // providers would compound timeouts (e.g. 2s × 3 providers = 6s) before
+    // returning a healthy one. With Promise.all the worst case is the slowest
+    // single probe, not the sum.
+    const results = await Promise.all(
+      candidates.map(async (p) => ({ provider: p, healthy: await this.checkProviderHealth(p.name) })),
+    );
+    return results.find((r) => r.healthy)?.provider ?? null;
+  }
+
+  /**
+   * Fire-and-forget warmup: probe every registered provider in parallel and
+   * populate the health cache. Bootstrap calls this so the first user request
+   * does not pay cold-start probe latency. Errors are swallowed — the probe
+   * itself records UNHEALTHY in the cache, which is the desired outcome.
+   */
+  warmupHealthCache(): void {
+    if (!this.healthManager) {
+      return;
+    }
+    for (const provider of this.registry.values()) {
+      if (!provider.isAvailable()) continue;
+      void this.checkProviderHealth(provider.name, true).catch(() => {
+        // checkProviderHealth itself caches failures; nothing else to do here.
+      });
+    }
   }
 }
