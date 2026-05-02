@@ -57,55 +57,67 @@ function makeContext(source: string): ReplyPipelineContext {
   } as unknown as ReplyPipelineContext;
 }
 
+/** Minimal promptManager mock for the user_frame render in PromptAssemblyStage. */
+const mockPromptManager = {
+  render: mock((name: string, vars?: Record<string, string>) => vars?.userMessage ?? ''),
+  renderBasePrompt: mock(() => 'base'),
+} as any;
+
+/**
+ * Build a mock PromptInjectionRegistry that returns scene fragment containing
+ * the template name so tests can assert on which scene was rendered.
+ */
+function makeRegistry(source: string) {
+  const sceneFragment = `scene-for-${source}`;
+  return {
+    gatherByLayer: mock(async () => ({
+      baseline: [{ producerName: 'baseline', fragment: 'base-system-prompt' }],
+      scene: [{ producerName: 'scene', fragment: sceneFragment }],
+      runtime: [],
+      tool: [],
+    })),
+  } as any;
+}
+
 describe('PromptAssemblyStage source-aware scene template', () => {
-  it('renders scenes.qq-private.zh.scene for qq-private source', async () => {
-    const renderMock = mock((name: string, _vars?: Record<string, string>) => `rendered:${name}`);
-    const pm = {
-      render: renderMock,
-      renderBasePrompt: mock(() => 'base-system-prompt'),
-    } as any;
-    const stage = new PromptAssemblyStage(pm, {} as any);
+  it('renders scenes.qq-private.zh.scene for qq-private source (via SceneProducer in registry)', async () => {
+    const registry = makeRegistry('qq-private');
+    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any);
     const ctx = makeContext('qq-private');
 
     await stage.execute(ctx);
 
-    const calledNames = renderMock.mock.calls.map((c: unknown[]) => c[0] as string);
-    expect(calledNames).toContain('scenes.qq-private.zh.scene');
+    expect(registry.gatherByLayer).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'qq-private' }),
+    );
+    // baseSystem should contain the baseline fragment
+    expect(ctx.messages.length).toBeGreaterThan(0);
   });
 
-  it('renders scenes.avatar-cmd.zh.scene for avatar-cmd source', async () => {
-    const renderMock = mock((name: string, _vars?: Record<string, string>) => `rendered:${name}`);
-    const pm = {
-      render: renderMock,
-      renderBasePrompt: mock(() => 'base-system-prompt'),
-    } as any;
-    const stage = new PromptAssemblyStage(pm, {} as any);
+  it('renders scenes.avatar-cmd.zh.scene for avatar-cmd source (via SceneProducer in registry)', async () => {
+    const registry = makeRegistry('avatar-cmd');
+    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any);
     const ctx = makeContext('avatar-cmd');
 
     await stage.execute(ctx);
 
-    const calledNames = renderMock.mock.calls.map((c: unknown[]) => c[0] as string);
-    expect(calledNames).toContain('scenes.avatar-cmd.zh.scene');
+    expect(registry.gatherByLayer).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'avatar-cmd' }),
+    );
+    expect(ctx.messages.length).toBeGreaterThan(0);
   });
 
-  it('falls back to llm.reply.system when scene template render throws', async () => {
-    const renderMock = mock((name: string, _vars?: Record<string, string>) => {
-      if (name.startsWith('scenes.')) {
-        throw new Error('template not found');
-      }
-      return `rendered:${name}`;
-    });
-    const pm = {
-      render: renderMock,
-      renderBasePrompt: mock(() => 'base-system-prompt'),
-    } as any;
-    const stage = new PromptAssemblyStage(pm, {} as any);
+  it('produces 2 system messages (baseSystem + sceneSystem) when registry returns baseline and scene', async () => {
+    const registry = makeRegistry('qq-private');
+    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any);
     const ctx = makeContext('qq-private');
 
     await stage.execute(ctx);
 
-    const calledNames = renderMock.mock.calls.map((c: unknown[]) => c[0] as string);
-    expect(calledNames).toContain('scenes.qq-private.zh.scene');
-    expect(calledNames).toContain('llm.reply.system');
+    // buildNormalMessages always produces at least 2 system messages + 1 user message
+    const systemMessages = ctx.messages.filter((m) => m.role === 'system');
+    expect(systemMessages).toHaveLength(2);
+    expect(systemMessages[0].content).toBe('base-system-prompt');
+    expect(systemMessages[1].content).toBe('scene-for-qq-private');
   });
 });

@@ -21,12 +21,6 @@ export interface PersonaServiceLike {
   getVolatileFragmentAsync?(opts?: { userId?: string }): Promise<string>;
 }
 
-/**
- * Priority cutoff for PromptAssemblyStage:
- *   - `priority ≤ STABLE_PRIORITY_MAX` (≤ 49): placed BEFORE scene template (cache-friendly front)
- *   - `priority > STABLE_PRIORITY_MAX`: placed AFTER scene template (volatile back)
- */
-export const STABLE_PRIORITY_MAX = 49;
 /** Stable persona identity (Bible-derived, doesn't change per message). */
 const PRIORITY_PERSONA_STABLE = 10;
 /** Volatile persona state (mood / relationship / tone — recomputed per message). */
@@ -79,6 +73,7 @@ export function createPersonaPromptInjectionProducer(deps: {
   const { personaService, config } = deps;
   return {
     name: 'persona',
+    layer: 'baseline' as const,
     applicableSources: resolveProducerSources(config),
     priority: PRIORITY_PERSONA_STABLE,
     async produce(ctx) {
@@ -105,6 +100,7 @@ export function createPersonaStableProducer(deps: {
   const { personaService, config } = deps;
   return {
     name: 'persona-stable',
+    layer: 'baseline' as const,
     applicableSources: resolveProducerSources(config),
     priority: PRIORITY_PERSONA_STABLE,
     async produce(ctx) {
@@ -132,6 +128,7 @@ export function createPersonaVolatileProducer(deps: {
   const { personaService, config } = deps;
   return {
     name: 'persona-volatile',
+    layer: 'runtime' as const,
     applicableSources: resolveProducerSources(config),
     priority: PRIORITY_PERSONA_VOLATILE,
     async produce(ctx) {

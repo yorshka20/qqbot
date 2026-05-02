@@ -121,7 +121,8 @@ describe('createPersonaPromptInjectionProducer — registry integration', () => 
     const producer = createPersonaPromptInjectionProducer({ personaService, config });
     registry.register(producer);
 
-    const results = await registry.gather(makeCtx('avatar-cmd', 'u1'));
+    const layered = await registry.gatherByLayer(makeCtx('avatar-cmd', 'u1'));
+    const results = [...layered.baseline, ...layered.scene, ...layered.runtime, ...layered.tool];
     expect(results).toHaveLength(0);
     // produceFn should NOT have been called — registry filtered by applicableSources
     expect(produceFn).not.toHaveBeenCalled();

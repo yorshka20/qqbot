@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'bun:test';
 import { PromptInjectionRegistry } from '../PromptInjectionRegistry';
 import type { PromptInjectionContext, PromptInjectionProducer } from '../types';
 
-// Stub a minimal HookContext — gather only uses ctx.source
+// Stub a minimal HookContext — gatherByLayer only uses ctx.source
 function makeCtx(source: string): PromptInjectionContext {
   return {
     source: source as PromptInjectionContext['source'],
@@ -28,13 +28,14 @@ describe('PromptInjectionRegistry', () => {
     registry = new PromptInjectionRegistry();
   });
 
-  it('case 1: register then gather returns the producer fragment', async () => {
+  it('case 1: register then gatherByLayer returns the producer fragment in the correct layer', async () => {
     const producer: PromptInjectionProducer = {
       name: 'test-producer',
+      layer: 'runtime',
       produce: () => ({ producerName: 'test-producer', fragment: 'hello world' }),
     };
     registry.register(producer);
-    const results = await registry.gather(makeCtx('qq-private'));
+    const results = (await registry.gatherByLayer(makeCtx('qq-private'))).runtime;
     expect(results).toHaveLength(1);
     expect(results[0].fragment).toBe('hello world');
     expect(results[0].producerName).toBe('test-producer');
@@ -43,11 +44,12 @@ describe('PromptInjectionRegistry', () => {
   it('case 2: unregister callback removes the producer', async () => {
     const producer: PromptInjectionProducer = {
       name: 'removable',
+      layer: 'runtime',
       produce: () => ({ producerName: 'removable', fragment: 'some text' }),
     };
     const unregister = registry.register(producer);
     unregister();
-    const results = await registry.gather(makeCtx('qq-private'));
+    const results = (await registry.gatherByLayer(makeCtx('qq-private'))).runtime;
     expect(results).toHaveLength(0);
   });
 
@@ -55,11 +57,12 @@ describe('PromptInjectionRegistry', () => {
     const produceFn = vi.fn(() => ({ producerName: 'filtered', fragment: 'filtered text' }));
     const producer: PromptInjectionProducer = {
       name: 'filtered',
+      layer: 'runtime',
       applicableSources: ['qq-private'],
       produce: produceFn,
     };
     registry.register(producer);
-    const results = await registry.gather(makeCtx('idle-trigger'));
+    const results = (await registry.gatherByLayer(makeCtx('idle-trigger'))).runtime;
     expect(produceFn).not.toHaveBeenCalled();
     expect(results).toHaveLength(0);
   });
@@ -68,17 +71,19 @@ describe('PromptInjectionRegistry', () => {
     const { logger } = await import('@/utils/logger');
     const thrower: PromptInjectionProducer = {
       name: 'thrower',
+      layer: 'runtime',
       produce: () => {
         throw new Error('boom');
       },
     };
     const good: PromptInjectionProducer = {
       name: 'good',
+      layer: 'runtime',
       produce: () => ({ producerName: 'good', fragment: 'good fragment' }),
     };
     registry.register(thrower);
     registry.register(good);
-    const results = await registry.gather(makeCtx('qq-private'));
+    const results = (await registry.gatherByLayer(makeCtx('qq-private'))).runtime;
     expect(results).toHaveLength(1);
     expect(results[0].fragment).toBe('good fragment');
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('"thrower" threw'));
@@ -87,36 +92,42 @@ describe('PromptInjectionRegistry', () => {
   it('case 5: empty-string fragment and null result are filtered out', async () => {
     const emptyProducer: PromptInjectionProducer = {
       name: 'empty',
+      layer: 'runtime',
       produce: () => ({ producerName: 'empty', fragment: '' }),
     };
     const nullProducer: PromptInjectionProducer = {
       name: 'null-producer',
+      layer: 'runtime',
       produce: () => null,
     };
     registry.register(emptyProducer);
     registry.register(nullProducer);
-    const results = await registry.gather(makeCtx('qq-private'));
+    const results = (await registry.gatherByLayer(makeCtx('qq-private'))).runtime;
     expect(results).toHaveLength(0);
   });
 
   it('case 6: priority ordering — output sorted ascending, undefined priority defaults to 100', async () => {
     const p100: PromptInjectionProducer = {
       name: 'p100',
+      layer: 'runtime',
       priority: 100,
       produce: () => ({ producerName: 'p100', priority: 100, fragment: 'fragment-100' }),
     };
     const p10: PromptInjectionProducer = {
       name: 'p10',
+      layer: 'runtime',
       priority: 10,
       produce: () => ({ producerName: 'p10', priority: 10, fragment: 'fragment-10' }),
     };
     const p50: PromptInjectionProducer = {
       name: 'p50',
+      layer: 'runtime',
       priority: 50,
       produce: () => ({ producerName: 'p50', priority: 50, fragment: 'fragment-50' }),
     };
     const pUndefined: PromptInjectionProducer = {
       name: 'pUndefined',
+      layer: 'runtime',
       // no priority — should default to 100
       produce: () => ({ producerName: 'pUndefined', fragment: 'fragment-undefined' }),
     };
@@ -124,7 +135,7 @@ describe('PromptInjectionRegistry', () => {
     registry.register(p10);
     registry.register(p50);
     registry.register(pUndefined);
-    const results = await registry.gather(makeCtx('qq-private'));
+    const results = (await registry.gatherByLayer(makeCtx('qq-private'))).runtime;
     expect(results).toHaveLength(4);
     expect(results[0].producerName).toBe('p10');
     expect(results[1].producerName).toBe('p50');
@@ -136,10 +147,11 @@ describe('PromptInjectionRegistry', () => {
   it('case 7 (bonus): producer with no applicableSources applies to any source', async () => {
     const producer: PromptInjectionProducer = {
       name: 'universal',
+      layer: 'runtime',
       produce: () => ({ producerName: 'universal', fragment: 'universal fragment' }),
     };
     registry.register(producer);
-    const results = await registry.gather(makeCtx('idle-trigger'));
+    const results = (await registry.gatherByLayer(makeCtx('idle-trigger'))).runtime;
     expect(results).toHaveLength(1);
     expect(results[0].fragment).toBe('universal fragment');
   });

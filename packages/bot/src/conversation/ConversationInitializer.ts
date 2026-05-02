@@ -41,6 +41,7 @@ import { ResourceCleanupService, VideoDownloadService } from '@/services/video';
 import { ToolInitializer, ToolManager } from '@/tools';
 import { logger } from '@/utils/logger';
 import { SummarizeService } from '../ai/services/SummarizeService';
+import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import { CommandRouter } from './CommandRouter';
 import { ConversationManager } from './ConversationManager';
 import { Lifecycle } from './Lifecycle';
@@ -280,6 +281,7 @@ export class ConversationInitializer {
       logger.info('[ConversationInitializer] Memory RAG enabled for semantic memory filtering');
     }
 
+    const promptInjectionRegistry = container.resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
     const aiService = new AIService(
       services.aiManager,
       services.hookManager,
@@ -294,6 +296,7 @@ export class ConversationInitializer {
       llmService,
       providerRouter,
       services.permissionChecker,
+      promptInjectionRegistry,
       {
         providerName: aiConfig.taskProviders?.subagent,
         model: aiConfig.taskProviders?.subagentModel,

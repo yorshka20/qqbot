@@ -57,6 +57,8 @@ export interface HookContextMetadata {
   responseCallback?: (reply: import('./types').ReplyContent) => void;
   /** Per-source history adapter kind, written by SessionStrategyPlugin during onMessagePreprocess. */
   historyAdapterKind?: import('../conversation/sources/types').SourceConfig['historyAdapter'];
+  /** Tool usage instructions string, mirrored from ReplyPipelineContext by ProviderSelectionStage so ToolInstructProducer can read it. */
+  toolUsageInstructions?: string;
 }
 
 type MetadataKeys = keyof HookContextMetadata;
@@ -75,6 +77,7 @@ const DEFAULT_METADATA: Required<
     | 'explicitSendAsForward'
     | 'responseCallback'
     | 'historyAdapterKind'
+    | 'toolUsageInstructions'
   >
 > = {
   sessionId: '',
@@ -105,6 +108,7 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'explicitSendAsForward',
   'responseCallback',
   'historyAdapterKind',
+  'toolUsageInstructions',
 ];
 
 /**

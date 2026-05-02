@@ -4,15 +4,11 @@ import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { NormalEpisodeService } from '@/conversation/history';
 import type { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
-import { getSourceConfig } from '@/conversation/sources/registry';
 import type { AIChatConfig, ReasoningEffort } from '@/core/config/types/ai';
-import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import type { MessageSegment } from '@/message/types';
-import { STABLE_PRIORITY_MAX } from '@/persona/prompt/promptInjectionProducer';
+import type { PromptManager } from '../../prompt/PromptManager';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../../capabilities/types';
-import type { PromptManager } from '../../prompt/PromptManager';
 import { PromptMessageAssembler } from '../../prompt/PromptMessageAssembler';
 import type { ChatMessage, ContentPart } from '../../types';
 import { extractImagesFromSegmentsAsync, normalizeVisionImages } from '../../utils/imageUtils';
@@ -49,6 +45,7 @@ export class PromptAssemblyStage implements ReplyStage {
   private readonly toolReasoning: ReasoningEffort;
 
   constructor(
+    private registry: PromptInjectionRegistry,
     private promptManager: PromptManager,
     private messageAPI: MessageAPI,
     chatConfig?: AIChatConfig,
@@ -60,71 +57,30 @@ export class PromptAssemblyStage implements ReplyStage {
   async execute(ctx: ReplyPipelineContext): Promise<void> {
     const { hookContext } = ctx;
 
-    // When whitelist is not full permissions, inject fragment into base system via variable.
-    const groupCaps = hookContext.metadata.get('whitelistGroupCapabilities');
-    const whitelistFragment =
-      Array.isArray(groupCaps) && groupCaps.length > 0
-        ? (this.promptManager.render('llm.whitelist_limited.system') ?? '').trim()
-        : '';
-    const baseSystemPrompt = this.promptManager.renderBasePrompt({
-      whitelistLimitedFragment: whitelistFragment,
-    });
-    const toolInstruct = this.promptManager.render('llm.tool.instruct', {
-      toolUsageInstructions: ctx.toolUsageInstructions,
-    });
+    const message = hookContext.message;
+    const userId = message?.userId != null ? String(message.userId) : undefined;
+    const groupId = message?.groupId != null ? String(message.groupId) : undefined;
 
-    const source = ctx.hookContext.source;
-    const sourceCfg = getSourceConfig(source);
-    const sceneTemplateId = `scenes.${sourceCfg.promptScene}.zh.scene`;
-    let sceneSystemPromptRaw: string;
+    let baseSystemPrompt = '';
+    let sceneSystemPrompt = '';
     try {
-      sceneSystemPromptRaw = this.promptManager.render(sceneTemplateId, { toolInstruct }) ?? '';
-    } catch (err) {
-      logger.warn(
-        `[PromptAssemblyStage] scene template ${sceneTemplateId} render failed, falling back to llm.reply.system:`,
-        err,
-      );
-      sceneSystemPromptRaw = this.promptManager.render('llm.reply.system', { toolInstruct }) ?? '';
-    }
-
-    // Phase 3.6: gather cross-cutting prompt injections (persona / future RAG / safety / persona overlay)
-    // from PromptInjectionRegistry. Falls back gracefully when registry isn't registered (avatar-only
-    // / minimal bootstrap paths).
-    //
-    // Split into "stable" (priority ≤ STABLE_PRIORITY_MAX, e.g. persona identity / boundaries)
-    // and "volatile" (priority > STABLE_PRIORITY_MAX, e.g. mood / relationship / tone). Stable
-    // fragments sit BEFORE the scene template (cache-friendly front of system prompt); volatile
-    // fragments sit AFTER (per-message churn doesn't break upstream cache prefixes).
-    // PROMPT_INJECTION_REGISTRY is required (DITokens.ts) — registered by
-    // bootstrap before this stage ever runs.
-    const stableFragments: string[] = [];
-    const volatileFragments: string[] = [];
-    try {
-      const registry = getContainer().resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
-      const message = hookContext.message;
-      const userId = message?.userId != null ? String(message.userId) : undefined;
-      const groupId = message?.groupId != null ? String(message.groupId) : undefined;
-      const injections = await registry.gather({
+      const layered = await this.registry.gatherByLayer({
         source: hookContext.source,
         userId,
         groupId,
         hookContext,
       });
-      for (const inj of injections) {
-        const isStable = (inj.priority ?? 100) <= STABLE_PRIORITY_MAX;
-        (isStable ? stableFragments : volatileFragments).push(inj.fragment);
-      }
+      baseSystemPrompt = layered.baseline
+        .map((i) => i.fragment.trim())
+        .filter((s): s is string => !!s && s.length > 0)
+        .join('\n\n');
+      sceneSystemPrompt = [...layered.scene, ...layered.runtime, ...layered.tool]
+        .map((i) => i.fragment.trim())
+        .filter((s): s is string => !!s && s.length > 0)
+        .join('\n\n');
     } catch (err) {
-      logger.warn('[PromptAssemblyStage] PromptInjectionRegistry.gather failed (non-fatal):', err);
+      logger.warn('[PromptAssemblyStage] PromptInjectionRegistry.gatherByLayer failed (non-fatal):', err);
     }
-
-    // Order: stable persona blocks → scene template → volatile mind state.
-    // Cache-friendly prefix:  base + stable blocks (mostly stable per persona).
-    // Variable suffix:        scene + volatile blocks (changes per source / per message).
-    const sceneSystemPrompt = [...stableFragments, sceneSystemPromptRaw, ...volatileFragments]
-      .map((s) => s?.trim())
-      .filter((s): s is string => !!s && s.length > 0)
-      .join('\n\n');
 
     const sender = hookContext.message?.sender;
     const senderNickname = sender?.nickname ?? sender?.card ?? '';

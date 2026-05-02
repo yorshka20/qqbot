@@ -19,6 +19,7 @@ import { CardRenderingService } from '@/services/card';
 import type { RetrievalService } from '@/services/retrieval';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { ToolResult } from '@/tools/types';
+import type { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import type { AIManager } from './AIManager';
 import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions } from './capabilities/types';
 import type { ProviderSelector } from './ProviderSelector';
@@ -79,6 +80,7 @@ export class AIService {
     llmService: LLMService,
     providerRouter: ProviderRouter,
     permissionChecker: PermissionChecker,
+    registry: PromptInjectionRegistry,
     subagentConfig?: { providerName?: string | string[]; model?: string },
     chatConfig?: AIChatConfig,
   ) {
@@ -123,7 +125,7 @@ export class AIService {
         promptManager,
         permissionChecker,
       ),
-      new PromptAssemblyStage(promptManager, messageAPI, chatConfig),
+      new PromptAssemblyStage(registry, promptManager, messageAPI, chatConfig),
       new GenerationStage(llmService, toolManager, hookManager),
       new ResponseDispatchStage(cardHelper, hookManager),
     ];

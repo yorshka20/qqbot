@@ -9,6 +9,10 @@
 
 import { AvatarService } from '@qqbot/avatar';
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
+import { createBaselineProducer } from '@/ai/prompt/producers/BaselineProducer';
+import { createSceneProducer } from '@/ai/prompt/producers/SceneProducer';
+import { createToolInstructProducer } from '@/ai/prompt/producers/ToolInstructProducer';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { APIClient } from '@/api/APIClient';
 import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
@@ -153,6 +157,22 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
 
   // ── Conversation system (tools, hooks, commands, AI, DB, context, agenda) ──
   const conversationComponents = await ConversationInitializer.initialize(config, apiClient);
+
+  // ── Register core prompt producers (after PromptManager and PromptInjectionRegistry are ready) ──
+  // PromptManager is registered by PromptInitializer above; PromptInjectionRegistry is registered
+  // just above ConversationInitializer. These three producers cover the entire main reply pipeline:
+  //   baseline → base.system + persona-stable (system msg #1)
+  //   scene    → per-source scene template (system msg #2 front)
+  //   tool     → llm.tool.instruct (system msg #2 back)
+  // Volatile persona-runtime producer is registered later by PersonaInitializer (via startPersonaSubsystem).
+  {
+    const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+    const registry = container.resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
+    registry.register(createBaselineProducer({ promptManager }));
+    registry.register(createSceneProducer({ promptManager }));
+    registry.register(createToolInstructProducer({ promptManager }));
+    logger.info('[Bootstrap] Core prompt producers registered (baseline, scene, tool-instruct)');
+  }
 
   // ── Agent Cluster (after DB is ready) ──
   if (clusterConfig) {

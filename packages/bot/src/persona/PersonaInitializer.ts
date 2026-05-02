@@ -85,10 +85,10 @@ export class PersonaInitializer {
     // (qq-private, qq-group, avatar-cmd, bilibili-danmaku, etc.) get persona
     // injection through the unified registry rather than the old per-pipeline hook.
     //
-    // Split into TWO producers (stable + volatile) so PromptAssemblyStage can
-    // place stable identity blocks at the cache-friendly front of the system
-    // prompt and volatile mind state at the back — see
-    // STABLE_PRIORITY_MAX in promptInjectionProducer.ts.
+    // Split into TWO producers (stable + volatile):
+    //   - persona-stable (layer='baseline', priority=10): identity blocks in system msg #1
+    //   - persona-volatile (layer='runtime', priority=60): mind state in system msg #2
+    // PromptAssemblyStage groups fragments by PromptLayer so each lands in the right position.
     // PROMPT_INJECTION_REGISTRY is required (DITokens.ts) — registered by
     // bootstrap before ConversationInitializer runs.
     const registry = getContainer().resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);

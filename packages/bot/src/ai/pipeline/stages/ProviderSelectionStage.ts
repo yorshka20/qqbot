@@ -119,6 +119,9 @@ export class ProviderSelectionStage implements ReplyStage {
       isAdmin,
       ctx.providerHasFunctionCalling,
     );
+    // Mirror into hookContext.metadata so ToolInstructProducer can read it
+    // without depending on ReplyPipelineContext directly.
+    ctx.hookContext.metadata.set('toolUsageInstructions', ctx.toolUsageInstructions);
 
     logger.debug(
       `[ProviderSelectionStage] reply tool catalog | source=${source} | isAdmin=${isAdmin} | toolCount=${ctx.toolDefinitions.length}`,
