@@ -370,7 +370,11 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     }
 
     logger.info(`[STATS] [DoubaoProvider] Generating with model (chat/completions): ${model}`);
-    const data = await this.httpClient.post<ArkChatCompletionsResponse>('/chat/completions', body);
+    const data = await this.httpClient.post<ArkChatCompletionsResponse>(
+      '/chat/completions',
+      body,
+      options?.timeout ? { timeout: options.timeout } : undefined,
+    );
 
     const text = data.choices?.[0]?.message?.content ?? '';
     const usage = data.usage
@@ -407,7 +411,11 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       const hasTools = !!options?.tools?.length || !!options?.nativeWebSearch;
       const body = this.buildRequestBody(model, input, hasTools, options);
 
-      const response = await this.httpClient.post<ArkResponsesResponse>('/responses', body);
+      const response = await this.httpClient.post<ArkResponsesResponse>(
+        '/responses',
+        body,
+        options?.timeout ? { timeout: options.timeout } : undefined,
+      );
       const parsed = parseArkResponse(response);
 
       const includeReasoning = options?.includeReasoning ?? false;
@@ -679,7 +687,11 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     const input: ArkInputItem[] = filtered.map((m) => this.chatMessageToArkInputItem(m));
     const body = this.buildRequestBody(model, input, !!options?.tools?.length, options);
 
-    const response = await this.httpClient.post<ArkResponsesResponse>('/responses', body);
+    const response = await this.httpClient.post<ArkResponsesResponse>(
+      '/responses',
+      body,
+      options?.timeout ? { timeout: options.timeout } : undefined,
+    );
     const parsed = parseArkResponse(response);
     const includeReasoning = options?.includeReasoning ?? false;
     const text =
@@ -722,7 +734,11 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       input.push({ role: 'user', content: userContent });
 
       const body = this.buildRequestBody(model, input, false, options);
-      const response = await this.httpClient.post<ArkResponsesResponse>('/responses', body);
+      const response = await this.httpClient.post<ArkResponsesResponse>(
+        '/responses',
+        body,
+        options?.timeout ? { timeout: options.timeout } : undefined,
+      );
       const parsed = parseArkResponse(response);
       const includeReasoning = options?.includeReasoning ?? false;
       const text =

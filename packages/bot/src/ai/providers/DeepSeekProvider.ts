@@ -257,7 +257,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
         }>;
         usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
         model: string;
-      }>('/chat/completions', body);
+      }>('/chat/completions', body, options?.timeout ? { timeout: options.timeout } : undefined);
 
       const msg = data.choices[0]?.message;
       const text = msg?.content ?? '';

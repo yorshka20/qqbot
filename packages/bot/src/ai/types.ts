@@ -150,6 +150,14 @@ export interface AIGenerateOptions {
    * Changes when the episode rolls (e.g. after summary), resetting the cache anchor.
    */
   episodeKey?: string;
+  /**
+   * Per-call HTTP timeout in milliseconds. Overrides the provider's `defaultTimeout`
+   * (configured at provider construction). Use for long-running structured tasks
+   * (e.g. group_report large JSON generation) where the default 60-120s ceiling is
+   * not enough. Honored by providers that build requests via the shared HttpClient
+   * (DeepSeek, Doubao). Other providers may ignore this field.
+   */
+  timeout?: number;
 }
 
 /**
