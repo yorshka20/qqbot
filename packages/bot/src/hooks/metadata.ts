@@ -49,8 +49,10 @@ export interface HookContextMetadata {
 
   /** Reply-only path: when true, RAG persistence writes only the new reply (not the old user message). */
   replyOnly: boolean;
-  /** Set by CardFormatToolExecutor when the LLM called format_as_card and produced card JSON. Reset per generation attempt. */
-  usedCardFormat?: boolean;
+  /** Set by send_card executor when LLM called send_card and rendering succeeded. */
+  cardSent?: boolean;
+  /** Set by send_card executor when LLM called the tool but rendering failed (Path 1 → Path 2 fall-through trigger). */
+  cardSendFailedReason?: string;
   /** Explicit sendAsForward hint from command handler; consumed by ReplyPrepareSystem. */
   explicitSendAsForward?: boolean;
   /** Caller-provided callback for sources with responseHandler === 'callback' (e.g. avatar-cmd). Receives the final ReplyContent. */
@@ -73,7 +75,8 @@ const DEFAULT_METADATA: Required<
     | 'resolvedProviderPrefix'
     | 'contextMode'
     | 'suggestedProvider'
-    | 'usedCardFormat'
+    | 'cardSent'
+    | 'cardSendFailedReason'
     | 'explicitSendAsForward'
     | 'responseCallback'
     | 'historyAdapterKind'
@@ -104,7 +107,8 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'contextMode',
   'suggestedProvider',
   'whitelistGroupCapabilities',
-  'usedCardFormat',
+  'cardSent',
+  'cardSendFailedReason',
   'explicitSendAsForward',
   'responseCallback',
   'historyAdapterKind',

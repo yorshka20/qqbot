@@ -67,7 +67,7 @@ export class GenerationStage implements ReplyStage {
     ctx.actualProvider = result.actualProvider;
 
     logger.debug(
-      `[GenerationStage] LLM response received | responseLength=${result.response.text.length} | actualProvider=${result.actualProvider ?? 'default'} | usedCardFormat=${ctx.hookContext.metadata.get('usedCardFormat') ?? false}`,
+      `[GenerationStage] LLM response received | responseLength=${result.response.text.length} | actualProvider=${result.actualProvider ?? 'default'} | cardSent=${ctx.hookContext.metadata.get('cardSent') ?? false}`,
     );
   }
 
@@ -82,7 +82,8 @@ export class GenerationStage implements ReplyStage {
     const { messages, genOptions, toolDefinitions, selectedProviderName, effectiveNativeSearchEnabled } = params;
 
     // Reset per-attempt so retries with fallback providers start clean.
-    context.metadata.delete('usedCardFormat');
+    context.metadata.delete('cardSent');
+    context.metadata.delete('cardSendFailedReason');
 
     const toolExecutor = (call: { name: string; arguments: string }) =>
       executeSkillCall(call, context, this.toolManager, this.hookManager);

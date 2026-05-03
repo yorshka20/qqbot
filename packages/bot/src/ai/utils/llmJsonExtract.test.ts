@@ -11,6 +11,10 @@ import {
   parseSearchDecision,
 } from './llmJsonExtract';
 
+// ---------------------------------------------------------------------------
+// Additional tests for expect option + jsonrepair (appended at end of file)
+// ---------------------------------------------------------------------------
+
 describe('extractJsonFromLlmText', () => {
   test('extracts plain JSON object', () => {
     const text = '{"a": 1, "b": "two"}';
@@ -303,5 +307,73 @@ describe('parseSearchDecision', () => {
     });
     const searchResult = parseSearchDecision('  SEARCH: trimmed query  ');
     expect(searchResult.query).toBe('trimmed query');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// expect option tests
+// ---------------------------------------------------------------------------
+
+describe('extractExpectedJsonFromLlmText – expect option', () => {
+  // expect:'array' + array with unescaped inner quotes → jsonrepair fixes → returns array
+  test("expect:'array' + array with unescaped inner quotes → repaired and returned", () => {
+    // This simulates the original bug: LLM writes a string value with unquoted Chinese guillemets
+    const malformed = `[{"type":"paragraph","content":"调用一句"鱼和熊掌不可兼得"就结束思考"}]`;
+    const result = extractExpectedJsonFromLlmText(malformed, { expect: 'array' });
+    // jsonrepair should fix the unescaped quotes; result must be non-null and an array
+    expect(result).not.toBeNull();
+    if (result != null) {
+      const parsed = JSON.parse(result);
+      expect(Array.isArray(parsed)).toBe(true);
+    }
+  });
+
+  // expect:'array' + completely invalid array (unfixable) → null, never falls back to object
+  test("expect:'array' + invalid array that cannot be repaired → null (no fallback to object)", () => {
+    // A lone object with no array wrapper — braceMatch in array mode should NOT pick this up
+    const objectOnly = '{"type":"paragraph","content":"hello world"}';
+    const result = extractExpectedJsonFromLlmText(objectOnly, { expect: 'array' });
+    expect(result).toBeNull();
+  });
+
+  // expect:'array' + valid array → returned normally
+  test("expect:'array' + valid array → returned", () => {
+    const text = '[{"type":"qa","question":"Q","answer":"A"}]';
+    const result = extractExpectedJsonFromLlmText(text, { expect: 'array' });
+    expect(result).not.toBeNull();
+    if (result != null) {
+      expect(Array.isArray(JSON.parse(result))).toBe(true);
+    }
+  });
+
+  // expect:'object' + valid object → returned
+  test("expect:'object' + valid object → returned", () => {
+    const text = '{"key": "value"}';
+    const result = extractExpectedJsonFromLlmText(text, { expect: 'object' });
+    expect(result).not.toBeNull();
+    if (result != null) {
+      expect(typeof JSON.parse(result)).toBe('object');
+      expect(Array.isArray(JSON.parse(result))).toBe(false);
+    }
+  });
+
+  // expect:'any' (default) + array fails → falls back to object (backward compat)
+  test("expect:'any' (default) + text with only object → returns object (backward compat)", () => {
+    const text = 'Some prose. {"key":"value"}';
+    const result = extractExpectedJsonFromLlmText(text);
+    expect(result).not.toBeNull();
+    if (result != null) {
+      expect(Array.isArray(JSON.parse(result))).toBe(false);
+    }
+  });
+
+  // jsonrepair: trailing comma
+  test('jsonrepair fixes trailing comma in array', () => {
+    const text = '[{"type":"list","items":["a","b",]}]';
+    const result = extractExpectedJsonFromLlmText(text, { expect: 'array' });
+    expect(result).not.toBeNull();
+    if (result != null) {
+      expect(Array.isArray(JSON.parse(result))).toBe(true);
+    }
   });
 });

@@ -10,6 +10,7 @@
  *   plain text only; do not use the JSON-specific extractors.
  */
 
+import { jsonrepair } from 'jsonrepair';
 import type { z } from 'zod';
 import { type SearchDecisionResult, SearchDecisionSchema } from '@/ai/schemas';
 import { logger } from '@/utils/logger';
@@ -104,11 +105,24 @@ export function parseSearchDecision(response: string): SearchDecisionResult {
 
 export type ExtractStrategy = 'answer' | 'codeBlock' | 'braceMatch' | 'line' | 'regex';
 
+/**
+ * Expected shape of the top-level JSON value.
+ * - 'array': must be a JSON array; braceMatch/regex will never fall back to object on failure.
+ * - 'object': must be a JSON object.
+ * - 'any': no shape constraint (default, backward-compatible).
+ */
+export type JsonShapeExpect = 'array' | 'object' | 'any';
+
 export interface ExtractOptions {
   /** Which strategies to try, in order. Default: all. */
   strategies?: ExtractStrategy[];
   /** Custom marker regex or string (e.g. "ANSWER:") for the answer strategy. */
   marker?: string | RegExp;
+  /**
+   * Expected shape of the extracted JSON. When 'array', braceMatch will never fall back to
+   * a single object if the array parse fails — returning null instead. Default: 'any'.
+   */
+  expect?: JsonShapeExpect;
 }
 
 const DEFAULT_STRATEGIES: ExtractStrategy[] = ['answer', 'codeBlock', 'braceMatch', 'line', 'regex'];
@@ -122,13 +136,40 @@ const GREEDY_JSON_OBJECT_REGEX = /\{[\s\S]*\}/;
 const GREEDY_JSON_ARRAY_REGEX = /\[[\s\S]*\]/;
 
 /**
- * Try to parse a string as JSON. Returns parsed value or null if invalid.
+ * Try to parse a string as JSON. Falls back to jsonrepair for minor syntax errors
+ * (trailing commas, unquoted keys, single quotes, etc.). Returns parsed value or null.
  */
 function tryParseJson(candidate: string): unknown | null {
   try {
     return JSON.parse(candidate);
   } catch {
+    // empty
+  }
+  try {
+    const repaired = jsonrepair(candidate);
+    return JSON.parse(repaired);
+  } catch {
     return null;
+  }
+}
+
+/**
+ * Return the canonical, parse-safe JSON string for `candidate`.
+ * If the original parses directly, returns it unchanged.
+ * If only jsonrepair makes it valid, returns the repaired string.
+ * Falls back to the original (caller has already verified tryParseJson succeeds).
+ */
+function canonicalJsonString(candidate: string): string {
+  try {
+    JSON.parse(candidate);
+    return candidate;
+  } catch {
+    // empty
+  }
+  try {
+    return jsonrepair(candidate);
+  } catch {
+    return candidate;
   }
 }
 
@@ -257,17 +298,32 @@ export function extractJsonFromLlmText(text: string, options?: ExtractOptions): 
         break;
       }
       case 'braceMatch': {
-        // Try both array and object; prefer the outermost (longer) valid JSON so "[{...}]" yields array, "{\"tasks\": [...]}" yields object
-        const arrayCandidate = extractBalancedJsonArray(trimmed);
-        const objectCandidate = extractBalancedJsonObject(trimmed);
-        const arrayValid = arrayCandidate != null && tryParseJson(arrayCandidate) !== null;
-        const objectValid = objectCandidate != null && tryParseJson(objectCandidate) !== null;
-        if (arrayValid && objectValid && arrayCandidate != null && objectCandidate != null) {
-          candidate = arrayCandidate.length >= objectCandidate.length ? arrayCandidate : objectCandidate;
-        } else if (arrayValid) {
-          candidate = arrayCandidate;
-        } else if (objectValid) {
-          candidate = objectCandidate;
+        const expectShape = options?.expect;
+        if (expectShape === 'array') {
+          // Array-only mode: never fall back to object
+          const arrayCandidate = extractBalancedJsonArray(trimmed);
+          if (arrayCandidate != null && tryParseJson(arrayCandidate) !== null) {
+            candidate = arrayCandidate;
+          }
+        } else if (expectShape === 'object') {
+          // Object-only mode
+          const objectCandidate = extractBalancedJsonObject(trimmed);
+          if (objectCandidate != null && tryParseJson(objectCandidate) !== null) {
+            candidate = objectCandidate;
+          }
+        } else {
+          // 'any' or undefined: prefer the outermost (longer) valid JSON so "[{...}]" yields array, "{\"tasks\": [...]}" yields object
+          const arrayCandidate = extractBalancedJsonArray(trimmed);
+          const objectCandidate = extractBalancedJsonObject(trimmed);
+          const arrayValid = arrayCandidate != null && tryParseJson(arrayCandidate) !== null;
+          const objectValid = objectCandidate != null && tryParseJson(objectCandidate) !== null;
+          if (arrayValid && objectValid && arrayCandidate != null && objectCandidate != null) {
+            candidate = arrayCandidate.length >= objectCandidate.length ? arrayCandidate : objectCandidate;
+          } else if (arrayValid) {
+            candidate = arrayCandidate;
+          } else if (objectValid) {
+            candidate = objectCandidate;
+          }
         }
         break;
       }
@@ -302,8 +358,17 @@ export function extractJsonFromLlmText(text: string, options?: ExtractOptions): 
     if (candidate != null && candidate.length > 0) {
       const parsed = tryParseJson(candidate);
       if (parsed !== null && typeof parsed === 'object') {
-        logger.debug(`[llmJsonExtract] Extracted valid JSON using strategy: ${strategy}`);
-        return candidate;
+        // Validate expected shape
+        const expectShape = options?.expect;
+        if (expectShape === 'array' && !Array.isArray(parsed)) {
+          // Wrong shape — skip to next strategy instead of returning
+          candidate = null;
+        } else if (expectShape === 'object' && Array.isArray(parsed)) {
+          candidate = null;
+        } else {
+          logger.debug(`[llmJsonExtract] Extracted valid JSON using strategy: ${strategy}`);
+          return canonicalJsonString(candidate);
+        }
       }
     }
   }
