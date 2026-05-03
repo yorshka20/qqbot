@@ -12,10 +12,10 @@ const research: ToolSpec = {
   executor: 'research',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] } },
 };
-const format_as_card: ToolSpec = {
-  name: 'format_as_card',
+const send_card: ToolSpec = {
+  name: 'send_card',
   description: 'x',
-  executor: 'format_as_card',
+  executor: 'send_card',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] } },
 };
 const list_bot_features: ToolSpec = {
@@ -103,7 +103,7 @@ const deduplicate_files: ToolSpec = {
 
 const ALL_SPECS: ToolSpec[] = [
   research,
-  format_as_card,
+  send_card,
   list_bot_features,
   get_memory,
   read_file,
@@ -131,7 +131,7 @@ describe('filterToolsForReply — source/admin aware', () => {
     const out = filterToolsForReply(ALL_SPECS, 'qq-private', true);
     const outNames = names(out);
     expect(outNames).toContain('research');
-    expect(outNames).toContain('format_as_card');
+    expect(outNames).toContain('send_card');
     expect(outNames).toContain('fetch_image');
     for (const n of ADMIN_TOOLS) expect(outNames).toContain(n);
     // subagent-only and internal absent
@@ -145,7 +145,7 @@ describe('filterToolsForReply — source/admin aware', () => {
     const outNames = names(out);
     for (const n of ADMIN_TOOLS) expect(outNames).not.toContain(n);
     expect(outNames).toContain('research');
-    expect(outNames).toContain('format_as_card');
+    expect(outNames).toContain('send_card');
     expect(outNames).toContain('fetch_image');
   });
 
@@ -168,7 +168,7 @@ describe('filterToolsForReply — source/admin aware', () => {
     const outNames = names(out);
     for (const n of AVATAR_CMD_TOOLS) expect(outNames).toContain(n);
     expect(outNames).not.toContain('research');
-    expect(outNames).not.toContain('format_as_card');
+    expect(outNames).not.toContain('send_card');
     expect(outNames).not.toContain('fetch_image');
     for (const n of ADMIN_TOOLS) expect(outNames).not.toContain(n);
   });

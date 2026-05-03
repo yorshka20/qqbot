@@ -411,9 +411,11 @@ ReplyPipelineOrchestrator.generateReplyFromToolResults(ctx)
     │  │    └─ 工具调用循环 (见第5节)                                  │
     │  │                                                              │
     │  │  Stage 8: ResponseDispatchStage                             │
-    │  │    ├─ usedCardFormat? → Puppeteer 渲染卡片图片               │
-    │  │    ├─ 文本过长? → LLM 转卡片 JSON → 渲染                    │
-    │  │    ├─ 普通文本 → 清理残留标签 → replaceReply()               │
+    │  │    ├─ Path 1: cardSent=true → 卡片已由 send_card 工具渲染   │
+    │  │    ├─ Path 1.5: cardSendFailedReason → fall through Path 2  │
+    │  │    ├─ Path 2: 文本过长 → LLM 转卡片 JSON (expect:'array')   │
+    │  │    │          → parseCardDeck 校验 → renderParsedCards       │
+    │  │    ├─ Path 3: 原始 prose (ctx.responseText)，不输出 JSON    │
     │  │    └─ hook: onAIGenerationComplete                          │
     │  │                                                              │
     │  └──────────────────────────────────────────────────────────────┘

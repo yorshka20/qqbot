@@ -411,10 +411,12 @@ ReplyPipelineOrchestrator.generateReplyFromToolResults(ctx)
     │  │    └─ Tool calling loop (see Section 5)                     │
     │  │                                                              │
     │  │  Stage 8: ResponseDispatchStage                             │
-    │  │    ├─ usedCardFormat? → Puppeteer render card image         │
-    │  │    ├─ Text too long? → LLM convert to card JSON → render   │
-    │  │    ├─ Plain text → strip residual tags → replaceReply()     │
-    │  │    └─ hook: onAIGenerationComplete                          │
+    │  │    ├─ Path 1: cardSent=true → card rendered by send_card   │
+    │  │    ├─ Path 1.5: cardSendFailedReason → fall through Path 2 │
+    │  │    ├─ Path 2: text too long → LLM convert (expect:'array') │
+    │  │    │          → parseCardDeck → renderParsedCards           │
+    │  │    ├─ Path 3: original prose (ctx.responseText), no JSON   │
+    │  │    └─ hook: onAIGenerationComplete                         │
     │  │                                                              │
     │  └──────────────────────────────────────────────────────────────┘
     │
