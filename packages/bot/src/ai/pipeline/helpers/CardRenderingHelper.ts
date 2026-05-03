@@ -9,6 +9,7 @@ import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
 import { CardRenderingService, getCardDeckNoteForPrompt, getCardTypeSpecForPrompt } from '@/services/card';
+import { type CardData, parseCardDeck } from '@/services/card/cardTypes';
 import { hasSkipCardMarker } from '@/utils/contentMarkers';
 import { logger } from '@/utils/logger';
 import type { PromptManager } from '../../prompt/PromptManager';
@@ -47,6 +48,18 @@ export class CardRenderingHelper {
     const messageBuilder = new MessageBuilder();
     messageBuilder.image({ data: base64Image });
     return { segments: messageBuilder.build(), textForHistory: cardJson };
+  }
+
+  /** Render pre-parsed CardData[] → image segments. Skips JSON extraction entirely. */
+  async renderParsedCards(
+    cards: CardData[],
+    providerName?: string,
+  ): Promise<{ segments: MessageSegment[]; textForHistory: string }> {
+    const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
+    const base64Image = await this.cardRenderingService.renderCardData(cards, provider);
+    const messageBuilder = new MessageBuilder();
+    messageBuilder.image({ data: base64Image });
+    return { segments: messageBuilder.build(), textForHistory: JSON.stringify(cards) };
   }
 
   // ---------------------------------------------------------------------------
@@ -93,10 +106,22 @@ export class CardRenderingHelper {
       logger.info('[CardRenderingHelper] Converting response to card format via LLM');
       const cardJson = await this.convertToCardFormat(responseText, sessionId);
       logger.debug(`[CardRenderingHelper] Card format text: ${cardJson}`);
-      return await this.renderCardJsonToSegments(cardJson, providerName);
+
+      const extracted = extractExpectedJsonFromLlmText(cardJson, { expect: 'array' });
+      if (!extracted) {
+        logger.error('[CardRenderingHelper] Path 2 conversion JSON 提取失败');
+        return null;
+      }
+      let parsed: CardData[];
+      try {
+        parsed = parseCardDeck(extracted);
+      } catch (e) {
+        logger.error(`[CardRenderingHelper] Path 2 parseCardDeck 失败: ${(e as Error).message}`);
+        return null;
+      }
+      return await this.renderParsedCards(parsed, providerName);
     } catch (error) {
-      const err = error instanceof Error ? error : new Error('Unknown card error');
-      logger.warn('[CardRenderingHelper] Card conversion/rendering failed, falling back to text:', err);
+      logger.error('[CardRenderingHelper] Path 2 conversion/rendering 完全失败:', error);
       return null;
     }
   }
@@ -145,7 +170,7 @@ export class CardRenderingHelper {
 
   /** Heuristic: does the text look like card JSON (array of card objects with "type" field)? */
   looksLikeCardJson(text: string): boolean {
-    const jsonStr = extractExpectedJsonFromLlmText(text);
+    const jsonStr = extractExpectedJsonFromLlmText(text, { expect: 'array' });
     if (!jsonStr) return false;
     try {
       const parsed = JSON.parse(jsonStr);
@@ -164,7 +189,7 @@ export class CardRenderingHelper {
   /** Extract human-readable text from card JSON by pulling out text/content fields per card type. */
   extractReadableTextFromCardJson(text: string): string {
     try {
-      const jsonStr = extractExpectedJsonFromLlmText(text);
+      const jsonStr = extractExpectedJsonFromLlmText(text, { expect: 'array' });
       if (!jsonStr) return text;
       const parsed = JSON.parse(jsonStr);
       if (!Array.isArray(parsed)) return text;
@@ -212,7 +237,7 @@ export class CardRenderingHelper {
     }
     if (this.looksLikeCardJson(responseText)) {
       logger.info('[CardRenderingHelper] Text already looks like card JSON, rendering directly (skipping conversion)');
-      const cleanJson = extractExpectedJsonFromLlmText(responseText) ?? responseText;
+      const cleanJson = extractExpectedJsonFromLlmText(responseText, { expect: 'array' }) ?? responseText;
       const directResult = await this.renderCardJsonToSegments(cleanJson, providerName).catch(() => null);
       if (directResult) {
         this.setCardReplyOnContext(context, directResult.segments, directResult.textForHistory);
@@ -244,7 +269,7 @@ export class CardRenderingHelper {
     }
     if (this.looksLikeCardJson(responseText)) {
       logger.info('[CardRenderingHelper] Text already looks like card JSON, rendering directly (skipping conversion)');
-      const cleanJson = extractExpectedJsonFromLlmText(responseText) ?? responseText;
+      const cleanJson = extractExpectedJsonFromLlmText(responseText, { expect: 'array' }) ?? responseText;
       const directResult = await this.renderCardJsonToSegments(cleanJson, providerName).catch(() => null);
       if (directResult) {
         return directResult;
