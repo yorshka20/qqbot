@@ -5,6 +5,7 @@ import type { HookManager } from '@/hooks/HookManager';
 import { MessageUtils } from '@/message/MessageUtils';
 import { logger } from '@/utils/logger';
 import { containsTextToolCalls, stripTextToolCalls } from '../../utils/dsmlParser';
+import { extractExpectedJsonFromLlmText } from '../../utils/llmJsonExtract';
 import type { CardRenderingHelper } from '../helpers/CardRenderingHelper';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';
 import type { ReplyStage } from '../types';
@@ -73,7 +74,36 @@ export class ResponseDispatchStage implements ReplyStage {
       logger.warn('[ResponseDispatchStage] Stripping leaked text-based tool call blocks from final reply');
       finalText = stripTextToolCalls(finalText);
     }
+    // Hard constraint: never send raw card-deck-style JSON to user. If responseText
+    // *looks* like a card JSON array (LLM output JSON-as-text instead of using send_card),
+    // degrade to readable markdown extracted from the deck.
+    if (this.looksLikeCardDeckJson(finalText)) {
+      logger.warn('[ResponseDispatchStage] Path 3 received card-deck-like JSON; extracting readable text');
+      finalText = this.cardHelper.extractReadableTextFromCardJson(finalText);
+    }
     replaceReply(hookContext, finalText, 'ai');
+  }
+
+  /**
+   * True when text contains a parsable JSON array whose first element looks like a card
+   * (object with a `type` field). Used as a final safety net before sending plain prose
+   * — we must never emit raw card JSON to the user.
+   */
+  private looksLikeCardDeckJson(text: string): boolean {
+    const jsonStr = extractExpectedJsonFromLlmText(text, { expect: 'array' });
+    if (!jsonStr) return false;
+    try {
+      const parsed = JSON.parse(jsonStr);
+      return (
+        Array.isArray(parsed) &&
+        parsed.length > 0 &&
+        typeof parsed[0] === 'object' &&
+        parsed[0] !== null &&
+        'type' in parsed[0]
+      );
+    } catch {
+      return false;
+    }
   }
 
   /** Append task result images to context.reply (text + images). */

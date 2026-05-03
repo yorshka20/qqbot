@@ -34,10 +34,6 @@ export class CardFormatToolExecutor extends BaseToolExecutor {
 
   private _cardHelper: CardRenderingHelper | null = null;
 
-  constructor() {
-    super();
-  }
-
   /**
    * Lazily resolve CardRenderingHelper from DI-registered dependencies.
    * CardRenderingHelper is not itself registered in the DI container — we build it

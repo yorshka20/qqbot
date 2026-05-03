@@ -163,6 +163,24 @@ describe('ResponseDispatchStage', () => {
       // setCardReplyOnContext was NOT called and hookManager was fired.
       expect(cardHelper.setCardReplyOnContext).not.toHaveBeenCalled();
       expect(hookManager.execute).toHaveBeenCalledWith('onAIGenerationComplete', hookContext);
+      expect(cardHelper.extractReadableTextFromCardJson).not.toHaveBeenCalled();
+    });
+
+    it('degrades raw card-deck JSON to readable markdown (safety net)', async () => {
+      const hookContext = makeHookContext();
+      const cardHelper = makeCardHelper({
+        shouldUseCardReply: vi.fn().mockReturnValue(false),
+        extractReadableTextFromCardJson: vi.fn().mockReturnValue('## Title\n\n• item one'),
+      });
+      const hookManager = makeHookManager();
+      const stage = new ResponseDispatchStage(cardHelper, hookManager);
+      const rawDeckJson = '[{"type":"highlight","title":"Title","summary":"item one"}]';
+      const ctx = makePipelineContext(rawDeckJson, hookContext);
+
+      await stage.execute(ctx);
+
+      expect(cardHelper.extractReadableTextFromCardJson).toHaveBeenCalledWith(rawDeckJson);
+      expect(hookManager.execute).toHaveBeenCalledWith('onAIGenerationComplete', hookContext);
     });
   });
 });

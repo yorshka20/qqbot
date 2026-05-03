@@ -129,7 +129,7 @@ export class MyToolExecutor extends BaseToolExecutor {
 
 **visibility 控制工具暴露范围:**
 - `['reply', 'subagent']`（默认）— LLM 回复流和 SubAgent 都可调用
-- `['reply']` — 仅在回复流中可用（如 `format_as_card`）
+- `['reply']` — 仅在回复流中可用（如 `send_card`）
 - `['internal']` — 不暴露给 LLM，仅内部调用（如 `reply`、`deduplicate_files`）
 
 **注册方式:** 装饰器 + 在 `src/tools/executors/index.ts` 中 export（确保装饰器在 import 时执行）。
