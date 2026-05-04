@@ -18,6 +18,7 @@ import type {
 } from './types/bot';
 import type { DatabaseConfig } from './types/database';
 import type { LanRelayConfig } from './types/lanRelay';
+import type { LoggingConfig } from './types/logging';
 import type { MCPConfig } from './types/mcp';
 import type { MemoryConfig } from './types/memory';
 import type { PluginsConfig } from './types/plugins';
@@ -115,6 +116,8 @@ export interface BotConfig {
   persona?: Record<string, unknown>;
   /** Bilibili integration — currently `live` (danmaku listener → avatar bridge). */
   bilibili?: BilibiliConfig;
+  /** Logging settings (optional). Currently supports per-message log filtering. */
+  logging?: LoggingConfig;
 }
 
 export class Config {
@@ -353,6 +356,10 @@ export class Config {
 
   getEventConfig(): EventConfig {
     return this.config.events;
+  }
+
+  getLoggingConfig(): LoggingConfig | undefined {
+    return this.config.logging;
   }
 
   getPluginsConfig() {

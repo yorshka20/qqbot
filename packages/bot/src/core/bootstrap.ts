@@ -55,7 +55,7 @@ import { FishAudioProvider } from '@/services/tts/providers/FishAudioProvider';
 import { SovitsProvider } from '@/services/tts/providers/SovitsProvider';
 import { TTSManager } from '@/services/tts/TTSManager';
 import type { TTSProvider } from '@/services/tts/TTSProvider';
-import { logger } from '@/utils/logger';
+import { logger, setMessageLogFilter } from '@/utils/logger';
 import { registerConnectionClass } from './connection/ConnectionManager';
 
 // Avatar integration registers its own plugins via this barrel side-effect
@@ -101,6 +101,20 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   const bot = new Bot(configPath);
   const config = bot.getConfig();
   const container = getContainer();
+
+  // ── Apply per-message log filter (must run before pipeline starts) ──
+  const loggingConfig = config.getLoggingConfig();
+  const mf = loggingConfig?.messageFilter;
+  if (mf?.enabled) {
+    setMessageLogFilter({
+      groupIds: new Set((mf.groupIds ?? []).map(String)),
+      userIds: new Set((mf.userIds ?? []).map(String)),
+      allowLevels: new Set(mf.allowLevels ?? ['warn', 'error']),
+    });
+    logger.info(
+      `[Bootstrap] Message log filter enabled — groups=[${[...(mf.groupIds ?? [])].join(',')}] users=[${[...(mf.userIds ?? [])].join(',')}]`,
+    );
+  }
 
   const apiConfig = config.getAPIConfig();
   const apiClient = new APIClient(apiConfig.strategy, apiConfig.preferredProtocol);
