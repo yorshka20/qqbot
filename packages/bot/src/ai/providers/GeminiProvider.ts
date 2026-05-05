@@ -64,6 +64,11 @@ export class GeminiProvider
   private static readonly DEFAULT_WIDTH = 1024;
   private static readonly DEFAULT_HEIGHT = 1024;
 
+  /** Default per-call timeout for generateContent. The SDK can silently hang under
+   *  network anomalies, so we apply this both via httpOptions.timeout and via an
+   *  outer Promise.race guard. Callers may override via AIGenerateOptions.timeout. */
+  private static readonly DEFAULT_REQUEST_TIMEOUT_MS = 90_000;
+
   /** Runtime key mode (free/paid). Default 'free'. Switch via GeminiProvider.setKeyMode(). */
   private static _keyMode: GeminiKeyMode = 'free';
   static getKeyMode(): GeminiKeyMode {
@@ -152,6 +157,28 @@ export class GeminiProvider
         GeminiProvider.setKeyMode(originalMode);
         logger.debug(`[GeminiProvider] Restored key mode to '${originalMode}'`);
       }
+    }
+  }
+
+  /**
+   * Race a long-running SDK call against a hard timeout. The @google/genai SDK
+   * has been observed to silently hang past httpOptions.timeout; this guard always
+   * fires after timeoutMs and throws so withPaidFallback / LLMService can react.
+   */
+  private async callWithHardTimeout<T>(fn: () => Promise<T>, timeoutMs: number, label: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race<T>([
+        fn(),
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`Gemini ${label} timed out after ${timeoutMs}ms`)),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 
@@ -431,6 +458,7 @@ export class GeminiProvider
       systemInstruction?: string;
       paidModel?: string;
       disableThinking?: boolean;
+      timeoutMs?: number;
     },
   ): Promise<{
     text: string;
@@ -456,6 +484,7 @@ export class GeminiProvider
       systemInstruction?: string;
       paidModel?: string;
       disableThinking?: boolean;
+      timeoutMs?: number;
     },
   ): Promise<{
     text: string;
@@ -473,6 +502,7 @@ export class GeminiProvider
       systemInstruction?: string;
       paidModel?: string;
       disableThinking?: boolean;
+      timeoutMs?: number;
     },
   ): Promise<{
     text: string;
@@ -496,14 +526,26 @@ export class GeminiProvider
       // request would fail with 400 INVALID_ARGUMENT. Disable thinking to avoid the requirement.
       config.thinkingConfig = { thinkingBudget: 0 };
     }
+    // Per-call HTTP timeout. The @google/genai SDK accepts httpOptions.timeout (ms);
+    // we also wrap with Promise.race + setTimeout because the SDK has been observed
+    // to silently hang under network anomalies (no first byte, no abort) far beyond
+    // its nominal default. Belt-and-suspenders: SDK timeout for the happy path,
+    // race-based hard timeout as the always-fires backstop.
+    const timeoutMs = options?.timeoutMs ?? GeminiProvider.DEFAULT_REQUEST_TIMEOUT_MS;
+    config.httpOptions = { timeout: timeoutMs };
 
     const response = await this.withPaidFallback((isPaidFallback) =>
-      this.getClient().models.generateContent({
-        model: isPaidFallback && options?.paidModel ? options.paidModel : model,
-        // The SDK accepts both Part[] and Content[] for contents; cast through unknown to satisfy the union.
-        contents: contentsOrParts as Parameters<GoogleGenAI['models']['generateContent']>[0]['contents'],
-        config,
-      }),
+      this.callWithHardTimeout(
+        () =>
+          this.getClient().models.generateContent({
+            model: isPaidFallback && options?.paidModel ? options.paidModel : model,
+            // The SDK accepts both Part[] and Content[] for contents; cast through unknown to satisfy the union.
+            contents: contentsOrParts as Parameters<GoogleGenAI['models']['generateContent']>[0]['contents'],
+            config,
+          }),
+        timeoutMs,
+        'generateContent',
+      ),
     );
 
     const noCandidatesError = handleNoCandidates(response, '');
@@ -648,6 +690,7 @@ export class GeminiProvider
         systemInstruction: systemInstruction ?? options.systemPrompt,
         paidModel,
         disableThinking: hasUnsignedToolCall,
+        timeoutMs: options?.timeout,
       });
       return {
         text: result.text,
@@ -673,6 +716,7 @@ export class GeminiProvider
       maxTokens,
       tools: options?.tools,
       paidModel,
+      timeoutMs: options?.timeout,
     });
     return {
       text: result.text,
@@ -715,6 +759,7 @@ export class GeminiProvider
       temperature: options?.temperature ?? 0.7,
       maxTokens: options?.maxTokens ?? 2000,
       paidModel,
+      timeoutMs: options?.timeout,
     });
   }
 
@@ -753,10 +798,15 @@ export class GeminiProvider
       logger.info(`[GeminiProvider] Parameters: model=${model}, size=${width}x${height}`);
 
       const response = await this.withPaidFallback((_isPaidFallback) =>
-        this.getClient().models.generateContent({
-          model,
-          contents: prompt,
-        }),
+        this.callWithHardTimeout(
+          () =>
+            this.getClient().models.generateContent({
+              model,
+              contents: prompt,
+            }),
+          GeminiProvider.DEFAULT_REQUEST_TIMEOUT_MS,
+          'text2img',
+        ),
       );
 
       logger.debug(`[GeminiProvider] Response received`, response);
@@ -869,10 +919,15 @@ export class GeminiProvider
       );
 
       const response = await this.withPaidFallback((_isPaidFallback) =>
-        this.getClient().models.generateContent({
-          model,
-          contents: [{ text: prompt }, { inlineData: { mimeType: imageMimeType, data: imageBase64 } }],
-        }),
+        this.callWithHardTimeout(
+          () =>
+            this.getClient().models.generateContent({
+              model,
+              contents: [{ text: prompt }, { inlineData: { mimeType: imageMimeType, data: imageBase64 } }],
+            }),
+          GeminiProvider.DEFAULT_REQUEST_TIMEOUT_MS,
+          'img2img',
+        ),
       );
 
       const noCandidatesError = handleNoCandidates(response, prompt);

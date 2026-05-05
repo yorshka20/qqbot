@@ -154,8 +154,9 @@ export interface AIGenerateOptions {
    * Per-call HTTP timeout in milliseconds. Overrides the provider's `defaultTimeout`
    * (configured at provider construction). Use for long-running structured tasks
    * (e.g. group_report large JSON generation) where the default 60-120s ceiling is
-   * not enough. Honored by providers that build requests via the shared HttpClient
-   * (DeepSeek, Doubao). Other providers may ignore this field.
+   * not enough. Honored by DeepSeek, Doubao (via shared HttpClient) and Gemini
+   * (via SDK httpOptions.timeout). LLMService also enforces an outer hard timeout
+   * around every provider.generate call as a safety net.
    */
   timeout?: number;
 }
