@@ -27,9 +27,13 @@ const MAX_VIDEO_DURATION_SECONDS = 10 * 60; // 10 minutes
 
 @Tool({
   name: 'analyze_video',
-  description: '下载并分析视频内容。使用视频URL调用此工具，获取视频的主题、内容概要和关键亮点等分析结果。',
+  description:
+    '下载并分析视频内容（仅供 video_analyzer subagent 使用，由 /video 命令触发）。普通群聊回复 LLM 看到视频链接不要调用此工具——视频分析需用户显式 /video 指令。',
   executor: 'analyze_video',
-  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] }, subagent: true },
+  // subagent-only: removed reply scope so reply-flow LLM cannot auto-analyze every video URL
+  // it sees in chat. Video analysis must be invoked explicitly via the /video command, which
+  // routes through VideoAnalyzePlugin → runSubAgent('video_analyzer') → this tool.
+  visibility: { subagent: true },
   parameters: {
     url: {
       type: 'string',
@@ -42,9 +46,9 @@ const MAX_VIDEO_DURATION_SECONDS = 10 * 60; // 10 minutes
       description: '分析提示词，描述你想从视频中获得什么样的分析结果。如不提供，则进行通用内容总结',
     },
   },
-  examples: ['分析这个视频讲了什么', '帮我看看这个视频的内容'],
-  triggerKeywords: ['分析视频', '视频内容', '看视频', '视频说了什么'],
-  whenToUse: '当用户发送视频链接并要求分析视频内容时调用。工具会自动下载并分析视频，返回结构化的分析总结。',
+  examples: ['/video https://b23.tv/xxx', '引用视频消息后发送 /video'],
+  whenToUse:
+    'video_analyzer subagent 收到 /video 任务时调用一次。每个 URL 只调一次，失败立即返回错误，禁止用同一 URL 重试或回退到其他视频工具——错误信息会原样转给用户。',
 })
 @injectable()
 export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
@@ -131,7 +135,10 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error(`[AnalyzeVideoToolExecutor] Video download failed: ${msg}`);
-        return this.error(`视频下载失败，请检查链接是否有效：${msg}`, `Video download failed: ${msg}`);
+        return this.error(
+          `视频下载失败，请检查链接是否有效：${msg}（不要重试，直接把这条错误转告用户）`,
+          `Video download failed: ${msg}. Do not retry.`,
+        );
       }
 
       const cleanupSessionId = downloadResult.sessionId;
@@ -183,7 +190,10 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error(`[AnalyzeVideoToolExecutor] Gemini upload failed: ${msg}`);
-        return this.error(`视频上传失败：${msg}`, `Gemini upload failed: ${msg}`);
+        return this.error(
+          `视频上传失败：${msg}（不要重试，直接把这条错误转告用户）`,
+          `Gemini upload failed: ${msg}. Do not retry.`,
+        );
       }
 
       // Step 3: Wait for Gemini to process the video
@@ -193,7 +203,10 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error(`[AnalyzeVideoToolExecutor] Gemini file processing failed: ${msg}`);
-        return this.error(`视频处理失败：${msg}`, `Gemini file processing failed: ${msg}`);
+        return this.error(
+          `视频处理失败：${msg}（不要重试，直接把这条错误转告用户）`,
+          `Gemini file processing failed: ${msg}. Do not retry.`,
+        );
       }
 
       // Step 4: Generate analysis via fileUri (skips re-upload that generateWithVideo would cause)
@@ -212,7 +225,10 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error(`[AnalyzeVideoToolExecutor] Gemini analysis failed: ${msg}`);
-        return this.error(`视频分析失败：${msg}`, `Gemini analysis failed: ${msg}`);
+        return this.error(
+          `视频分析失败：${msg}（不要重试，直接把这条错误转告用户）`,
+          `Gemini analysis failed: ${msg}. Do not retry.`,
+        );
       }
 
       if (!analysisText || analysisText.trim().length === 0) {
