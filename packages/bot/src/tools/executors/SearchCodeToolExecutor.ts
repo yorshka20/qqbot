@@ -16,7 +16,7 @@ const PROJECT_ROOT = process.cwd();
 @Tool({
   name: 'search_code',
   description:
-    '在 bot 源代码中搜索关键词或正则表达式。返回匹配的文件路径、行号和代码片段。用于解释功能实现细节或帮助用户了解 bot 的工作原理。',
+    '在 bot 源代码中搜索关键词或正则表达式。返回匹配的文件路径、行号和代码片段。用于解释功能实现细节或帮助用户了解 bot 的工作原理。本仓为 monorepo，源码位于 packages/ 下（packages/bot/src 是主程序）。',
   executor: 'search_code',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'], adminOnly: true }, subagent: true },
   parameters: {
@@ -28,7 +28,8 @@ const PROJECT_ROOT = process.cwd();
     path: {
       type: 'string',
       required: false,
-      description: '限定搜索目录（相对于项目根），默认 src/',
+      description:
+        '限定搜索目录（相对于项目根）。默认搜索全部包源码 packages/。若想缩小到主程序传 packages/bot/src，单个子包传 packages/<name>/src。',
     },
   },
   examples: [
@@ -51,7 +52,7 @@ export class SearchCodeToolExecutor extends BaseToolExecutor {
 
   async execute(call: ToolCall, _context: ToolExecutionContext): Promise<ToolResult> {
     const pattern = call.parameters?.pattern as string | undefined;
-    const pathParam = (call.parameters?.path as string | undefined) ?? 'src/';
+    const pathParam = (call.parameters?.path as string | undefined) ?? 'packages/';
 
     if (!pattern || pattern.trim().length === 0) {
       return this.error('请提供搜索关键词', 'Missing required parameter: pattern');

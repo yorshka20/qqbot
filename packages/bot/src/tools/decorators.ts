@@ -15,6 +15,9 @@ export interface ToolOptions {
       type: 'string' | 'number' | 'boolean' | 'object' | 'array';
       required: boolean;
       description: string;
+      /** JSON Schema for array elements; required by OpenAI when type === 'array'. */
+      items?: { type: string };
+      enum?: string[];
     };
   };
   examples?: string[];

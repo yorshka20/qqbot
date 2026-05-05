@@ -23,7 +23,8 @@ import { BaseToolExecutor } from './BaseToolExecutor';
     path: {
       type: 'string',
       required: true,
-      description: '相对于项目根目录的路径（如 src、README.md、prompts/base.md）',
+      description:
+        '相对于项目根目录的路径。本仓为 monorepo，源码在 packages/ 下（如 packages/bot/src、packages/avatar、packages/admin、prompts/base.md、README.md）。',
     },
     action: {
       type: 'string',
@@ -31,7 +32,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
       description: "'list' 列出目录内容，'read' 读取文件文本",
     },
   },
-  examples: ['查看 src 下的文件', '读取 README.md 内容', '列出根目录文件'],
+  examples: ['查看 packages/bot/src 下的文件', '读取 README.md 内容', '列出根目录文件'],
   triggerKeywords: ['读取', '查看', '文件列表', '文件内容', 'read', 'list', 'ls', 'file'],
   whenToUse:
     '当已知具体文件路径、需要读取完整内容时调用。如果不确定文件在哪，先用 search_code 定位。路径不能逃逸出项目根目录。注意：config.jsonc、.env 等含敏感信息的文件会被安全策略拒绝，返回错误时不要反复重试，告知用户该文件受限即可。',

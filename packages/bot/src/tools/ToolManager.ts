@@ -142,14 +142,24 @@ export class ToolManager {
    */
   toToolDefinitions(specs: ToolSpec[]): ToolDefinition[] {
     return specs.map((spec) => {
-      const properties: Record<string, { type: string; description?: string; enum?: string[] }> = {};
+      const properties: Record<
+        string,
+        { type: string; description?: string; enum?: string[]; items?: { type: string } }
+      > = {};
       const required: string[] = [];
 
       for (const [key, def] of Object.entries(spec.parameters || {})) {
-        properties[key] = {
+        const prop: { type: string; description?: string; enum?: string[]; items?: { type: string } } = {
           type: def.type,
           description: def.description || '',
         };
+        if (def.type === 'array') {
+          prop.items = def.items ?? { type: 'object' };
+        }
+        if (def.enum) {
+          prop.enum = def.enum;
+        }
+        properties[key] = prop;
         if (def.required) {
           required.push(key);
         }

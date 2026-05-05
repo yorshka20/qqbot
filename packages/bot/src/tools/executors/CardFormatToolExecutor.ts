@@ -23,6 +23,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
     cards: {
       type: 'array',
       required: true,
+      items: { type: 'object' },
       description:
         '卡片数据数组。每项为一个卡片对象（type=paragraph/list/comparison/highlight/qa/steps/knowledge/stats/quote/info/image 之一），字段定义参考系统已知的 CardData schema。',
     },
