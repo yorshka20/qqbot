@@ -127,12 +127,22 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
 
   /**
    * Map ChatMessage[] to DeepSeek/OpenAI API format (supports tool role and assistant tool_calls).
+   *
    * For DeepSeek thinking models, the assistant's `reasoning_content` from the prior turn MUST be
    * echoed back on the same assistant message, otherwise the API rejects the request with
    * "The `reasoning_content` in the thinking mode must be passed back to the API.".
+   *
+   * When the conversation falls back into DeepSeek mid tool-use (e.g. after Gemini failed in
+   * `LLMService.generateWithFallback`), prior `assistant{tool_calls}` turns originate from another
+   * provider and have no `reasoning_content`. DeepSeek thinking models still apply the validation
+   * and reject the request. To eliminate the constraint at the root, fold every unsigned
+   * `assistant{tool_calls}` block (the assistant turn plus its trailing `tool` results) into a
+   * single `user` recap message — DeepSeek then sees only user/tool/system roles in the history
+   * and the thinking-mode validation no longer fires.
    */
   private mapMessagesToApi(messages: ChatMessage[]): Array<Record<string, unknown>> {
-    return messages.map((m) => {
+    const folded = DeepSeekProvider.foldUnsignedToolCalls(messages);
+    return folded.map((m) => {
       if (m.role === 'tool') {
         return {
           role: 'tool',
@@ -170,6 +180,59 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
         content: contentToPlainString(m.content),
       };
     });
+  }
+
+  /**
+   * Collapse cross-provider tool-use history into user recap messages.
+   *
+   * For each `assistant{tool_calls}` turn lacking `reasoning_content`, fold the assistant turn
+   * and its consecutive trailing `tool` results into one `user` message so DeepSeek's thinking
+   * mode does not require `reasoning_content` echo-back. Same-provider DeepSeek turns (which
+   * already carry `reasoning_content`) pass through untouched.
+   */
+  private static foldUnsignedToolCalls(messages: ChatMessage[]): ChatMessage[] {
+    const hasUnsigned = messages.some(
+      (m) => m.role === 'assistant' && (m.tool_calls?.length ?? 0) > 0 && !m.reasoning_content,
+    );
+    if (!hasUnsigned) return messages;
+
+    const result: ChatMessage[] = [];
+    let i = 0;
+    while (i < messages.length) {
+      const m = messages[i];
+      if (m.role === 'assistant' && (m.tool_calls?.length ?? 0) > 0 && !m.reasoning_content) {
+        const toolCalls = m.tool_calls ?? [];
+        // Index trailing tool results that belong to this assistant turn (consecutive tool messages).
+        const resultsByCallId = new Map<string, string>();
+        let j = i + 1;
+        while (j < messages.length && messages[j].role === 'tool') {
+          const tm = messages[j];
+          const id = tm.tool_call_id ?? '';
+          const text = typeof tm.content === 'string' ? tm.content : JSON.stringify(tm.content ?? '');
+          if (id) resultsByCallId.set(id, text);
+          j++;
+        }
+        const lines: string[] = ['[Prior tool calls — folded from cross-provider history]'];
+        const assistantText = contentToPlainString(m.content).trim();
+        if (assistantText) {
+          lines.push(`assistant: ${assistantText}`);
+        }
+        for (const tc of toolCalls) {
+          const argsText = typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments ?? {});
+          lines.push(`call ${tc.name}(${argsText})`);
+          const r = resultsByCallId.get(tc.id);
+          if (r !== undefined) {
+            lines.push(`-> ${r}`);
+          }
+        }
+        result.push({ role: 'user', content: lines.join('\n') });
+        i = j;
+        continue;
+      }
+      result.push(m);
+      i++;
+    }
+    return result;
   }
 
   async generateLite(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
