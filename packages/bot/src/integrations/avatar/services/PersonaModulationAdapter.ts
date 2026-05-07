@@ -21,7 +21,7 @@ export class PersonaModulationAdapter implements MindModulationProvider {
     const { intensityScale, speedScale, durationBias } = this.persona.deriveModulation();
     const toneMapping = TONE_MAPPINGS[this.persona.getCurrentTone()];
     const { modulationDelta } = toneMapping;
-    const cdna = this.persona.getCorePersona();
+    const cDNA = this.persona.getCorePersona();
 
     const combined: MindModulation = {
       amplitude: { intensityScale: intensityScale * modulationDelta.intensityScale },
@@ -32,11 +32,11 @@ export class PersonaModulationAdapter implements MindModulationProvider {
     };
 
     // actionPref: persona variantWeights baseline + tone overrides on key collision; persona forbiddenActions appended
-    const personaWeights = cdna.modulation.actionPref.variantWeights;
+    const personaWeights = cDNA.modulation.actionPref.variantWeights;
     const toneWeights = modulationDelta.variantWeights ?? {};
     const merged: Record<string, readonly number[]> = { ...personaWeights, ...toneWeights };
     const hasMerged = Object.keys(merged).length > 0;
-    const forbidden = cdna.modulation.actionPref.forbiddenActions;
+    const forbidden = cDNA.modulation.actionPref.forbiddenActions;
     if (hasMerged || forbidden.length > 0) {
       combined.actionPref = {
         ...(hasMerged ? { variantWeights: merged } : {}),
@@ -47,7 +47,7 @@ export class PersonaModulationAdapter implements MindModulationProvider {
     // ambient: persona baseline × fatigue drop, always emit (small object)
     const fatigue = this.persona.getPhenotype().fatigue;
     const clampedFatigue = Math.max(0, Math.min(1, fatigue));
-    const gain = cdna.modulation.ambient.gainScale * (1 - cdna.modulation.ambient.fatigueDrop * clampedFatigue);
+    const gain = cDNA.modulation.ambient.gainScale * (1 - cDNA.modulation.ambient.fatigueDrop * clampedFatigue);
     combined.ambient = { gainScale: Math.max(0, gain) };
 
     return combined;

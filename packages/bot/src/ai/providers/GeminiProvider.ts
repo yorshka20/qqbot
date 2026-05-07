@@ -171,10 +171,7 @@ export class GeminiProvider
       return await Promise.race<T>([
         fn(),
         new Promise<T>((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error(`Gemini ${label} timed out after ${timeoutMs}ms`)),
-            timeoutMs,
-          );
+          timer = setTimeout(() => reject(new Error(`Gemini ${label} timed out after ${timeoutMs}ms`)), timeoutMs);
         }),
       ]);
     } finally {

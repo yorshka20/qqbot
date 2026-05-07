@@ -59,10 +59,7 @@ function withHardTimeout<T>(p: Promise<T>, timeoutMs: number, label: string): Pr
   return Promise.race<T>([
     p,
     new Promise<T>((_, reject) => {
-      timer = setTimeout(
-        () => reject(new Error(`[LLMService] ${label} hard-timeout after ${timeoutMs}ms`)),
-        timeoutMs,
-      );
+      timer = setTimeout(() => reject(new Error(`[LLMService] ${label} hard-timeout after ${timeoutMs}ms`)), timeoutMs);
     }),
   ]).finally(() => {
     if (timer) clearTimeout(timer);
@@ -483,11 +480,7 @@ export class LLMService {
         sessionId,
         (p) => {
           const t = fallbackOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
-          return withHardTimeout(
-            this.invokeLiteGeneration(p, prompt, fallbackOptions),
-            t,
-            `generateLite-fallback`,
-          );
+          return withHardTimeout(this.invokeLiteGeneration(p, prompt, fallbackOptions), t, `generateLite-fallback`);
         },
         prompt,
       );
