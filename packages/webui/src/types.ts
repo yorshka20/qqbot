@@ -703,6 +703,7 @@ export interface MemoryFactEntry {
   scope: string;
   source: string;
   status: string;
+  content: string;
   reinforceCount: number;
   hitCount: number;
   firstSeen: number;
