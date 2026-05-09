@@ -17,6 +17,13 @@ export interface ActionHandlerContext {
 /** Action handler interface — implement this to register a direct action */
 export interface ActionHandler {
   readonly name: string;
+  /**
+   * Plugin names this handler requires to be enabled. Checked by AgendaService.fireItem
+   * before dispatch — if any listed plugin is missing from PluginManager.getEnabledPlugins(),
+   * the action is skipped (logged, not executed). Omit/empty = no plugin dependencies.
+   * Use plugin name as registered in PluginManager (e.g. 'wechatIngest', 'clusterIntegration').
+   */
+  readonly dependsOn?: readonly string[];
   execute(ctx: ActionHandlerContext): Promise<string | undefined>;
 }
 
