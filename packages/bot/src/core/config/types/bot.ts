@@ -7,6 +7,10 @@ export interface BotSelfConfig {
   // Bot admins: user IDs that have admin permission level
   // These users can adjust bot behavior and trigger special commands
   admins: string[];
+  // Bot's own nickname/display name as users see it in chat. Injected into the
+  // base system prompt so the LLM can recognize when a user is addressing it
+  // by name rather than only by @QQ. Optional — leave empty to skip.
+  nickname?: string;
 }
 
 export interface StaticServerConfig {

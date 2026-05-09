@@ -31,10 +31,16 @@ export class PromptManager {
   private namespaces = new Map<string, Map<string, PromptTemplate>>(); // namespace -> templates
   /** Bot owner user id from config (bot.owner); used by renderBasePrompt() for {{adminUserId}}. */
   readonly adminUserId: string;
+  /** Bot's own QQ id (bot.selfId); injected into base prompt as {{botSelfId}}. */
+  readonly botSelfId: string;
+  /** Bot's display nickname (bot.nickname); injected into base prompt as {{botNickname}}. */
+  readonly botNickname: string;
 
-  constructor(templateDirectory?: string, adminUserId?: string) {
+  constructor(templateDirectory?: string, adminUserId?: string, botSelfId?: string, botNickname?: string) {
     this.templateDirectory = templateDirectory || resolve(getRepoRoot(), 'prompts');
     this.adminUserId = adminUserId ?? '';
+    this.botSelfId = botSelfId ?? '';
+    this.botNickname = botNickname ?? '';
 
     this.loadTemplatesFromDirectory();
   }
@@ -285,6 +291,8 @@ export class PromptManager {
     const baseVars: Record<string, string> = {
       currentDate: getCurrentDateHourForPrompt(),
       adminUserId: this.adminUserId || '（无管理员）',
+      botSelfId: this.botSelfId || '（未配置）',
+      botNicknameSuffix: this.botNickname ? `，昵称「${this.botNickname}」` : '',
       whitelistLimitedFragment: '',
       ...overrides,
     };
@@ -312,6 +320,8 @@ export class PromptManager {
     const baseVars: Record<string, string> = {
       currentDate: getCurrentDateHourForPrompt(),
       adminUserId: this.adminUserId || '（无管理员）',
+      botSelfId: this.botSelfId || '（未配置）',
+      botNicknameSuffix: this.botNickname ? `，昵称「${this.botNickname}」` : '',
       ...overrides,
     };
     return this.renderTemplateContent(template, templateName, baseVars);

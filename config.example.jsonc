@@ -157,7 +157,10 @@
     "admins": [
       "123123",
       "123123"
-    ]
+    ],
+    // Bot's own display name in chat — injected into the base system prompt so the
+    // LLM recognizes when users address it by name (in addition to @QQ). Optional.
+    "nickname": ""
   },
   // Static file server configuration (optional)
   "staticServer": {
