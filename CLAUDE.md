@@ -245,11 +245,23 @@ The bot automatically handles database schema initialization. For SQLite, tables
 - **Learnings**: 按 scope 分文件记录，scope 可按需新增。判断内容应写入已有 scope 还是新建 scope
 - **两个目录的 `index.md`** 都必须在内容变更后同步更新，简要记录新增/修改的内容
 
-### Roadmap（每个 scope 文件头部维护）
+### Roadmap 维护（两层结构）
 
-每个 `.claude-learnings/<scope>.md` 文件**头部**维护一段 ROADMAP 表，把该 scope 下的所有待办、进行中、已完成项汇总。这是规划与记录需求点的单一入口，**确保所有内容都不遗漏**——以后想到该 scope 的新需求，先记进 ROADMAP，再去拆 ticket / 写代码。
+本仓库的 roadmap 分两层，**都已 gitignore，仅本机笔记**：
 
-参考样例：[`/Users/yorshka/project/video-knowledge-backend/ROADMAP.md`](file:///Users/yorshka/project/video-knowledge-backend/ROADMAP.md)（VKB 仓库的全局 roadmap，本仓库放在 scope 文件头部即可，不必创建顶层 ROADMAP）。
+#### 跨 scope 索引：`/ROADMAP.md`（仓库根）
+
+`/ROADMAP.md` 是跨 scope 的 active 任务仪表盘 / 索引：
+
+- 只列**当前活跃**的 P0/P1/P2/P3 项 + 指回 scope 详情的链接（包含合入分支前的检查清单 / 短期跟进 / 未启动 phase）
+- **不重复列**已完成项（去 scope 文件标 ✅ + 填 commit hash / workbook 日期；本文用一段"已合入历史指针"指向各 scope 即可）
+- 每次**开始工作前**先扫 active 节决定下一步；**新发现需求**先记进本文再展开到 scope
+
+#### 单 scope 详情：`.claude-learnings/<scope>.md` 头部
+
+每个 scope 文件**头部**维护一段 ROADMAP 表，把该 scope 下的所有待办、进行中、已完成项汇总（含历史 phase 完整表）。这是 scope 内的 single source of truth——commit hash / workbook 日期只在这里登记，`/ROADMAP.md` 只引用。
+
+参考样例：[`/Users/yorshka/project/video-knowledge-backend/ROADMAP.md`](file:///Users/yorshka/project/video-knowledge-backend/ROADMAP.md)（VKB 仓库的全局 roadmap，模式类似但更扁平）。
 
 #### Status Legend
 
@@ -277,7 +289,7 @@ The bot automatically handles database schema initialization. For SQLite, tables
 
 #### 触发更新时机
 
-- **工作完成后**：把新做完的项移到 ✅，并在"链接"列填 workbook 日期 / commit
-- **新发现需求**：写一行 📋，避免遗漏；不需要立即做，先记下
-- **每次开始工作前**：扫一眼 ROADMAP 决定下一步做什么；ROADMAP 是 scope 内的"全局 TODO 列表"
-- **scope 之间相互依赖**时：在备注里相互引用（如 `mind.md` 的 phenotype 任务依赖 `core.md` 的 SQLite 表）
+- **工作完成后**：scope 文件里把新做完项移到 ✅ + 填 workbook 日期 / commit；同时从 `/ROADMAP.md` active 节移除（因为已不再 active）
+- **新发现需求**：先在 `/ROADMAP.md` active 节记一行 📋（防遗忘），再去对应 scope 文件展开（明确细节、设计、依赖）
+- **每次开始工作前**：先扫 `/ROADMAP.md` active 节，再按需深入 scope 文件
+- **scope 之间相互依赖**时：在 scope 文件备注里相互引用（如 `persona.md` 的 phenotype 任务依赖 `core.md` 的 SQLite 表）
