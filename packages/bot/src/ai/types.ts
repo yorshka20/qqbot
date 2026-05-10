@@ -159,6 +159,19 @@ export interface AIGenerateOptions {
    * around every provider.generate call as a safety net.
    */
   timeout?: number;
+  /**
+   * Controls verbosity of the `[LLMService] prompt [...]` log dump.
+   * Default `true` keeps the legacy behavior (full prompt + every message body
+   * is info-logged for debugging).
+   *
+   * Set `false` for callers whose prompt is a fixed boilerplate template with a
+   * single variable slot (e.g. card-format conversion, where the {{cardTypeSpec}}
+   * + {{cardDeckNote}} sections are constant noise and only the user-content slot
+   * is informative). LLMService still logs the meta line
+   * `[LLMService] prompt | provider=... | messages=N` so call counts stay traceable;
+   * the caller is expected to log its own context line with the meaningful slot value.
+   */
+  verbosePromptLog?: boolean;
 }
 
 /**

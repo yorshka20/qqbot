@@ -143,6 +143,13 @@ export class CardRenderingHelper {
     const convertLlmProvider = aiConfig?.taskProviders?.convert ?? aiConfig?.defaultProviders?.llm ?? 'deepseek';
     const convertLlmModel = aiConfig?.taskProviders?.convertModel ?? '';
 
+    // Log only the meaningful slot (responseText). The static template body
+    // (format rules, type spec, examples) is intentionally suppressed via
+    // verbosePromptLog=false — it's the same on every call.
+    logger.info(
+      `[CardRenderingHelper] card-convert input | length=${responseText.length} | text=${responseText}`,
+    );
+
     const cardResponse = await this.llmService.generateLite(
       prompt,
       {
@@ -151,6 +158,7 @@ export class CardRenderingHelper {
         sessionId,
         model: convertLlmModel,
         jsonMode: true,
+        verbosePromptLog: false,
       },
       convertLlmProvider,
     );

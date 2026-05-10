@@ -966,6 +966,10 @@ export class LLMService {
   private logLLMPrompt(provider: string, prompt: string, options?: AIGenerateOptions): void {
     const msgCount = options?.messages?.length ?? 0;
     logger.info(`[LLMService] prompt | provider=${provider} | messages=${msgCount}`);
+    // Caller opted out of the verbose body dump (boilerplate prompts where the
+    // template noise has no diagnostic value). Meta line above is still emitted
+    // so call counts remain traceable; the caller logs its own context line.
+    if (options?.verbosePromptLog === false) return;
     const messages = options?.messages;
     if (messages && messages.length > 0) {
       for (const msg of messages) {
