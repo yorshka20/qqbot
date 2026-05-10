@@ -20,6 +20,12 @@ export interface Logger {
  * message context: if a message context exists and the message's group/user
  * is not whitelisted, the call is dropped (unless the level is in allowLevels).
  * Logs without a message context (bootstrap, plugins, system errors) always pass.
+ *
+ * Asymmetric semantics by design:
+ *   - groupIds: strict allowlist (groups are noisy, opt-in only)
+ *   - userIds:  empty → all private chats pass; non-empty → allowlist
+ *               (private is owner-controlled and low-volume; the filter exists
+ *                to silence groups, not interactions the owner initiated)
  */
 export interface MessageLogFilter {
   groupIds: Set<string>;
@@ -54,9 +60,14 @@ function shouldSuppress(target: 'console' | 'file', level: LogLevel, message: st
   const msg = ctx.message;
   const gid = msg.groupId != null ? String(msg.groupId) : '';
   const uid = msg.userId != null ? String(msg.userId) : '';
-  if (gid && messageLogFilter.groupIds.has(gid)) return false;
-  if (!gid && uid && messageLogFilter.userIds.has(uid)) return false;
-  return true;
+  // Group: strict allowlist — group filter exists to silence noisy unrelated groups.
+  if (gid) {
+    return !messageLogFilter.groupIds.has(gid);
+  }
+  // Private: low-volume owner channel; empty userIds means "all private chats pass".
+  // Non-empty userIds becomes an allowlist for the niche case of focusing on one DM.
+  if (messageLogFilter.userIds.size === 0) return false;
+  return !(uid && messageLogFilter.userIds.has(uid));
 }
 
 /** Build a winston format that drops entries via shouldSuppress() for the given transport. */
