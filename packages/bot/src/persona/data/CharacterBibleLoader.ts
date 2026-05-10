@@ -38,7 +38,11 @@ export class MissingBibleSectionError extends Error {
 const REQUIRED_SECTIONS = ['Self-concept', 'Voice', 'Triggers', 'Reflexes', 'Boundaries', 'Lore'] as const;
 
 export interface CharacterBibleLoaderOptions {
-  dataDir: string; // e.g. './data/persona'
+  /**
+   * Persona-files root. Final path = `<dataDir>/<personaId>/bible.md`.
+   * Default: `./data/persona`.
+   */
+  dataDir: string;
   personaId: string;
 }
 
@@ -89,7 +93,7 @@ function parseSections(content: string): Map<string, string> {
 }
 
 export async function loadCharacterBible(opts: CharacterBibleLoaderOptions): Promise<CharacterBible> {
-  const filePath = path.join(opts.dataDir, 'persona', opts.personaId, 'bible.md');
+  const filePath = path.join(opts.dataDir, opts.personaId, 'bible.md');
 
   let content: string;
   try {
