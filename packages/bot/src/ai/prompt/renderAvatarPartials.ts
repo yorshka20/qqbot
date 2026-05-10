@@ -6,10 +6,10 @@
 //   - actions          → `prompts/avatar/partials/actions.txt`
 //   - antiRepeat       → `prompts/avatar/partials/anti-repeat.txt`
 //
-// Two call sites consume this:
-//   1. `Live2DPipeline`'s `PromptAssemblyStage` — for /avatar, bilibili
-//      batches, and livemode runs (all three main avatar templates
-//      reference every partial via `{{persona}}` / `{{tagSpec}}` etc.)
+// Call sites that consume this:
+//   1. `PromptAssemblyStage` — for /avatar, bilibili batches, and livemode runs
+//      (all three main avatar templates reference every partial via
+//      `{{persona}}` / `{{tagSpec}}` etc.)
 //   2. The main `MessagePipeline`'s `PromptAssemblyStage` — when it
 //      injects `avatar.emotion-system` into a private-chat system prompt
 //      so the avatar lip-syncs regular QQ replies. Same partials, same

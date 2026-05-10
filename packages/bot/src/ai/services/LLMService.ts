@@ -46,6 +46,27 @@ export interface LLMServiceConfig {
 }
 
 /**
+ * Outer hard-timeout for any provider.generate call. Acts as a safety net so
+ * a hanging provider (observed: Gemini SDK silently waits past httpOptions.timeout
+ * under certain network anomalies) cannot stall the message pipeline indefinitely.
+ * Callers can override via AIGenerateOptions.timeout (used both for provider-level
+ * HTTP timeout and this guard).
+ */
+const DEFAULT_GENERATE_HARD_TIMEOUT_MS = 120_000;
+
+function withHardTimeout<T>(p: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race<T>([
+    p,
+    new Promise<T>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`[LLMService] ${label} hard-timeout after ${timeoutMs}ms`)), timeoutMs);
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+/**
  * LLM Service
  * Provides LLM text generation capability
  */
@@ -97,21 +118,22 @@ export class LLMService {
   }
 
   /**
-   * Check if provider is available and healthy.
-   * If the resolved provider is unhealthy, attempts to find a healthy fallback.
+   * Resolve a provider for the caller, honoring explicit intent.
    *
-   * Note: this method preserves legacy behavior for non-generation callers
-   * (feature probes, external services). Generation entry points should use
-   * {@link resolveProviderForGeneration} instead, which honors explicit caller
-   * intent and strips stale `options.model` when a health-based swap occurs.
+   * Behavior is identical to {@link resolveProviderForGeneration}:
+   * - Explicit `providerName` is returned as-is even when marked unhealthy
+   *   (callers must rely on the runtime catch path / fallback chain).
+   * - When no `providerName` is supplied (session/default path), an unhealthy
+   *   resolution is swapped to the first healthy fallback.
+   *
+   * This method exists for non-generation callers (capability probes such as
+   * `supportsToolUse` / `supportsNativeWebSearch`, and external services).
+   * Generation entry points use `resolveProviderForGeneration` directly so
+   * they can also strip stale `options.model` on swap.
    */
   async getAvailableProvider(providerName?: string, sessionId?: string): Promise<LLMCapability | null> {
     const resolved = await this.resolveProviderForGeneration(providerName, sessionId);
-    if (!resolved) return null;
-    // Legacy callers expect health-based swap for both explicit and implicit requests.
-    if (resolved.swapped || !resolved.isUnhealthy) return resolved.provider;
-    const healthyFallback = await this.getFirstHealthyProvider(sessionId, resolved.resolvedName);
-    return healthyFallback ?? resolved.provider;
+    return resolved?.provider ?? null;
   }
 
   /**
@@ -307,7 +329,12 @@ export class LLMService {
     let lastError: Error | undefined;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const result = await provider.generate(prompt, options);
+        const hardTimeoutMs = options?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
+        const result = await withHardTimeout(
+          provider.generate(prompt, options),
+          hardTimeoutMs,
+          `generateFixed:${providerName}`,
+        );
         if (result.usage) {
           this.rateLimiter.recordUsage(result.usage.totalTokens, providerName);
         }
@@ -370,7 +397,12 @@ export class LLMService {
     this.logLLMPrompt(resolvedName, prompt, effectiveOptions);
 
     try {
-      const result = await provider.generate(prompt, effectiveOptions);
+      const hardTimeoutMs = effectiveOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
+      const result = await withHardTimeout(
+        provider.generate(prompt, effectiveOptions),
+        hardTimeoutMs,
+        `generate:${resolvedName}`,
+      );
       // Record actual token usage for rate limiting
       if (result.usage) {
         this.rateLimiter.recordUsage(result.usage.totalTokens, resolvedName);
@@ -387,7 +419,15 @@ export class LLMService {
       logger.error(`[LLMService] Provider "${resolvedName}" generate failed:`, err);
       // Strip provider-specific model from options so fallback providers use their own defaults
       const fallbackOptions = options ? { ...options, model: undefined } : options;
-      return this.generateWithFallback(resolvedName, sessionId, (p) => p.generate(prompt, fallbackOptions), prompt);
+      return this.generateWithFallback(
+        resolvedName,
+        sessionId,
+        (p) => {
+          const t = fallbackOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
+          return withHardTimeout(p.generate(prompt, fallbackOptions), t, `generate-fallback`);
+        },
+        prompt,
+      );
     }
   }
 
@@ -419,7 +459,12 @@ export class LLMService {
     this.logLLMPrompt(resolvedName, prompt, mergedOptions);
 
     try {
-      const result = await this.invokeLiteGeneration(provider, prompt, mergedOptions);
+      const hardTimeoutMs = mergedOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
+      const result = await withHardTimeout(
+        this.invokeLiteGeneration(provider, prompt, mergedOptions),
+        hardTimeoutMs,
+        `generateLite:${resolvedName}`,
+      );
       this.logLLMUsage(resolvedName, prompt, mergedOptions, result);
       this.healthCheckManager?.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
@@ -433,7 +478,10 @@ export class LLMService {
       return this.generateWithFallback(
         resolvedName,
         sessionId,
-        (p) => this.invokeLiteGeneration(p, prompt, fallbackOptions),
+        (p) => {
+          const t = fallbackOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
+          return withHardTimeout(this.invokeLiteGeneration(p, prompt, fallbackOptions), t, `generateLite-fallback`);
+        },
         prompt,
       );
     }

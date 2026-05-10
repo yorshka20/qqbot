@@ -11,8 +11,7 @@
 import { inject, injectable } from 'tsyringe';
 import type { AIService } from '@/ai';
 import { getReplyMessageIdFromMessage } from '@/ai/utils/imageUtils';
-import type { APIClient } from '@/api/APIClient';
-import { MessageAPI } from '@/api/methods/MessageAPI';
+import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
@@ -39,16 +38,12 @@ const TASK_DESCRIPTION = '分析给定的视频 URL，提供完整的内容摘�
 export class VideoAnalyzeCommandHandler implements CommandHandler {
   name = 'video';
 
-  private messageAPI: MessageAPI;
-
   constructor(
     @inject(DITokens.AI_SERVICE) private aiService: AIService,
-    @inject(DITokens.API_CLIENT) apiClient: APIClient,
     @inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager,
     @inject(DITokens.CONFIG) private config: Config,
-  ) {
-    this.messageAPI = new MessageAPI(apiClient);
-  }
+    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
+  ) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     // --- Step 1: Resolve video source (URL or file) ---

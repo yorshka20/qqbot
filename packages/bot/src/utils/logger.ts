@@ -15,6 +15,59 @@ export interface Logger {
   error(message: string, ...args: unknown[]): void;
 }
 
+/**
+ * Per-message log filter. When set, every log call checks the current async
+ * message context: if a message context exists and the message's group/user
+ * is not whitelisted, the call is dropped (unless the level is in allowLevels).
+ * Logs without a message context (bootstrap, plugins, system errors) always pass.
+ */
+export interface MessageLogFilter {
+  groupIds: Set<string>;
+  userIds: Set<string>;
+  /** Levels that always pass through. */
+  allowLevels: Set<LogLevel>;
+}
+
+let messageLogFilter: MessageLogFilter | null = null;
+
+export function setMessageLogFilter(filter: MessageLogFilter | null): void {
+  messageLogFilter = filter;
+}
+
+/**
+ * Returns true if this log entry should be suppressed for the given transport.
+ *
+ * Two transports have different needs:
+ *   - 'console': pure display; non-whitelisted is dropped without exception
+ *   - 'file':    also feeds DailyStatsBackend log parsing; [STATS] lines must
+ *                bypass the filter so per-group counters keep working
+ *
+ * Logs without a message context (bootstrap, plugin startup, system errors
+ * outside any pipeline) always pass — they are not "message logs".
+ */
+function shouldSuppress(target: 'console' | 'file', level: LogLevel, message: string): boolean {
+  if (!messageLogFilter) return false;
+  if (messageLogFilter.allowLevels.has(level)) return false;
+  if (target === 'file' && message.includes('[STATS]')) return false;
+  const ctx = getCurrentMessageContext();
+  if (!ctx) return false;
+  const msg = ctx.message;
+  const gid = msg.groupId != null ? String(msg.groupId) : '';
+  const uid = msg.userId != null ? String(msg.userId) : '';
+  if (gid && messageLogFilter.groupIds.has(gid)) return false;
+  if (!gid && uid && messageLogFilter.userIds.has(uid)) return false;
+  return true;
+}
+
+/** Build a winston format that drops entries via shouldSuppress() for the given transport. */
+function buildSuppressFormat(target: 'console' | 'file') {
+  return winston.format((info) => {
+    const lvl = info.level as LogLevel;
+    const msg = typeof info.message === 'string' ? info.message : String(info.message);
+    return shouldSuppress(target, lvl, msg) ? false : info;
+  })();
+}
+
 // Helper function to format JSON data
 function formatJSON(data: unknown): string {
   try {
@@ -114,8 +167,10 @@ class FileLogger implements Logger {
 
     this.currentDate = getLocalDateString(new Date());
 
-    // File format
+    // File format — suppress format runs first so non-whitelisted entries are dropped
+    // before printf (with [STATS] bypass for daily-stats parsing).
     const fileFormat = winston.format.combine(
+      buildSuppressFormat('file'),
       winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
       winston.format.errors({ stack: true }),
       winston.format.splat(),
@@ -148,8 +203,10 @@ class FileLogger implements Logger {
       options: { flags: 'w' }, // Create new file, don't append
     });
 
-    // Console format with better colors
+    // Console format — suppress format runs first; no [STATS] bypass for console
+    // (display-only — daily stats reads from the file transport, not the console).
     const consoleFormat = winston.format.combine(
+      buildSuppressFormat('console'),
       winston.format.timestamp({ format: 'HH:mm:ss' }),
       winston.format.errors({ stack: true }),
       winston.format.splat(),
@@ -226,8 +283,9 @@ class FileLogger implements Logger {
       // Remove old file transport
       this.winstonLogger.remove(this.fileTransport);
 
-      // Create new file transport
+      // Create new file transport (same suppress-then-format chain as on init)
       const fileFormat = winston.format.combine(
+        buildSuppressFormat('file'),
         winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
         winston.format.errors({ stack: true }),
         winston.format.splat(),
@@ -280,6 +338,7 @@ class ConsoleOnlyLogger implements Logger {
 
   constructor(level: LogLevel = 'info') {
     const consoleFormat = winston.format.combine(
+      buildSuppressFormat('console'),
       winston.format.timestamp({ format: 'HH:mm:ss' }),
       winston.format.errors({ stack: true }),
       winston.format.splat(),

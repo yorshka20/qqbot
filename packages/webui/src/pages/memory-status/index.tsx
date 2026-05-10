@@ -6,8 +6,15 @@ import { ArrowLeft, Brain, ChevronRight, Database, Eye, RefreshCw, Shield, Zap }
 import { useCallback, useEffect, useState } from 'react';
 import { getMemoryGroupDetail, getMemoryGroups, getMemoryStats, getMemoryUserFacts } from '../../api';
 import { StatCard } from '../../components/StatCard';
-import type { MemoryGlobalStats, MemoryGroupDetail, MemoryGroupStats, MemoryUserFactDetail } from '../../types';
+import type {
+  MemoryFactEntry,
+  MemoryGlobalStats,
+  MemoryGroupDetail,
+  MemoryGroupStats,
+  MemoryUserFactDetail,
+} from '../../types';
 import { MemorySourceBadge, MemoryStatusBadge } from './components/MemoryBadges';
+import { MemoryFactModal } from './components/MemoryFactModal';
 import { formatMemoryAge, formatMemoryDate } from './utils';
 
 type View =
@@ -26,6 +33,7 @@ export function MemoryStatusPage() {
   const [groupDetail, setGroupDetail] = useState<MemoryGroupDetail | null>(null);
 
   const [userFacts, setUserFacts] = useState<MemoryUserFactDetail | null>(null);
+  const [selectedFact, setSelectedFact] = useState<MemoryFactEntry | null>(null);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -237,7 +245,12 @@ export function MemoryStatusPage() {
                 </thead>
                 <tbody className="divide-y divide-zinc-100 dark:divide-zinc-700">
                   {userFacts.facts.map((f) => (
-                    <tr key={f.factHash} className="hover:bg-zinc-50 dark:hover:bg-zinc-750">
+                    <tr
+                      key={f.factHash}
+                      onClick={() => setSelectedFact(f)}
+                      className="hover:bg-zinc-50 dark:hover:bg-zinc-750 cursor-pointer"
+                      title="Click to view content"
+                    >
                       <td className="px-4 py-2 font-mono text-xs">{f.scope}</td>
                       <td className="px-4 py-2">
                         <MemorySourceBadge source={f.source} />
@@ -263,6 +276,7 @@ export function MemoryStatusPage() {
           <div className="text-center py-12 text-zinc-400">Loading...</div>
         )}
       </div>
+      {selectedFact && <MemoryFactModal fact={selectedFact} onClose={() => setSelectedFact(null)} />}
     </div>
   );
 }

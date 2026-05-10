@@ -2,6 +2,7 @@
 
 import type { FunctionCall } from '@/ai/types';
 import { ToolExecutionContextBuilder } from '@/context/ToolExecutionContextBuilder';
+import { deriveSourceFromEvent } from '@/conversation/sources';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
 import { createDefaultHookMetadata } from '@/hooks/metadata';
@@ -110,6 +111,7 @@ export class ToolRunner implements IToolRunner {
         ]),
       },
       metadata,
+      source: deriveSourceFromEvent(syntheticMessage),
     };
   }
 

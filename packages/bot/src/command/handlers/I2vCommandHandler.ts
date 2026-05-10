@@ -10,7 +10,7 @@ import { prepareImageForI2v } from '@/ai/utils/imageResize';
 import { extractImagesFromMessageAndReply, visionImageToBuffer } from '@/ai/utils/imageUtils';
 import type { APIClient } from '@/api/APIClient';
 import { FileAPI } from '@/api/methods/FileAPI';
-import { MessageAPI } from '@/api/methods/MessageAPI';
+import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { getSessionId } from '@/core/config/SessionUtils';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
@@ -47,7 +47,6 @@ export class I2vCommandHandler implements CommandHandler {
     },
   };
 
-  private messageAPI: MessageAPI;
   private fileAPI: FileAPI;
 
   constructor(
@@ -55,8 +54,8 @@ export class I2vCommandHandler implements CommandHandler {
     @inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager,
     @inject(DITokens.AI_SERVICE) private aiService: AIService,
     @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
+    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
   ) {
-    this.messageAPI = new MessageAPI(this.apiClient);
     this.fileAPI = new FileAPI(this.apiClient);
   }
 

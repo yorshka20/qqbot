@@ -1,6 +1,6 @@
 // Tool decorator for automatic registration
 
-import type { ToolExecutor, ToolScope, ToolSpec } from './types';
+import { normalizeVisibility, type ToolExecutor, type ToolScope, type ToolSpec, type ToolVisibility } from './types';
 
 /**
  * Tool decorator options
@@ -9,12 +9,15 @@ export interface ToolOptions {
   name: string;
   description: string;
   executor: string;
-  visibility?: ToolScope[];
+  visibility?: ToolScope[] | ToolVisibility;
   parameters?: {
     [key: string]: {
       type: 'string' | 'number' | 'boolean' | 'object' | 'array';
       required: boolean;
       description: string;
+      /** JSON Schema for array elements; required by OpenAI when type === 'array'. */
+      items?: { type: string };
+      enum?: string[];
     };
   };
   examples?: string[];
@@ -94,7 +97,7 @@ export function metadataToToolSpec(metadata: ToolMetadata): ToolSpec {
     name: metadata.name,
     description: metadata.description,
     executor: metadata.executor,
-    visibility: metadata.visibility ?? [],
+    visibility: normalizeVisibility(metadata.visibility),
     parameters: metadata.parameters,
     examples: metadata.examples,
     triggerKeywords: metadata.triggerKeywords,

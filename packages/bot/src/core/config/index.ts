@@ -18,6 +18,7 @@ import type {
 } from './types/bot';
 import type { DatabaseConfig } from './types/database';
 import type { LanRelayConfig } from './types/lanRelay';
+import type { LoggingConfig } from './types/logging';
 import type { MCPConfig } from './types/mcp';
 import type { MemoryConfig } from './types/memory';
 import type { PluginsConfig } from './types/plugins';
@@ -111,10 +112,12 @@ export interface BotConfig {
   lanRelay?: LanRelayConfig;
   /** Avatar system (VTubeStudio driver, animation compiler, preview server). */
   avatar?: Record<string, unknown>;
-  /** Mind system (persona state, modulation, reflection). */
-  mind?: Record<string, unknown>;
+  /** Persona system (state, modulation, reflection — three time scales). */
+  persona?: Record<string, unknown>;
   /** Bilibili integration — currently `live` (danmaku listener → avatar bridge). */
   bilibili?: BilibiliConfig;
+  /** Logging settings (optional). Currently supports per-message log filtering. */
+  logging?: LoggingConfig;
 }
 
 export class Config {
@@ -355,6 +358,10 @@ export class Config {
     return this.config.events;
   }
 
+  getLoggingConfig(): LoggingConfig | undefined {
+    return this.config.logging;
+  }
+
   getPluginsConfig() {
     return this.config.plugins;
   }
@@ -474,8 +481,8 @@ export class Config {
     return this.config.avatar;
   }
 
-  getMindConfig(): Record<string, unknown> | undefined {
-    return this.config.mind;
+  getPersonaConfig(): Record<string, unknown> | undefined {
+    return this.config.persona;
   }
 
   /**

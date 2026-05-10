@@ -1,6 +1,6 @@
 // LivemodeCommandHandler — `/livemode on|off|status` toggles the per-user
 // "mock livestream" mode that reroutes private-chat messages into the
-// Live2DPipeline as aggregated danmaku batches (see LivemodeState).
+// main MessagePipeline as aggregated danmaku batches (see LivemodeState).
 //
 // Subcommands:
 //   /livemode on [--proactive=off]  — enable for the caller. Default
@@ -16,8 +16,8 @@
 
 import { inject, injectable } from 'tsyringe';
 import { DITokens } from '@/core/DITokens';
+import type { LivemodeState } from '@/integrations/avatar/livemode/LivemodeState';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import type { LivemodeState } from '@/services/live2d/LivemodeState';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 

@@ -130,6 +130,7 @@ export class MemoryStatusBackend implements Backend {
         scope: f.scope,
         source: f.source,
         status: f.status,
+        content: f.normalizedContent,
         reinforceCount: f.reinforceCount,
         hitCount: f.hitCount,
         firstSeen: f.firstSeen,

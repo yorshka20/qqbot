@@ -11,14 +11,14 @@ import type { ProactiveConversationService } from '@/conversation/proactive';
 import type { ThreadService } from '@/conversation/thread';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
-import type { MindComponents } from '@/mind';
+import type { PersonaComponents } from '@/persona';
 import type { FileReadService } from '@/services/file';
 import type { RetrievalService } from '@/services/retrieval';
 import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
 import type { Config } from './config';
 import { getContainer } from './DIContainer';
-import { DITokens } from './DITokens';
+import { DITokens, getRequiredTokens, getTokenMeta } from './DITokens';
 import type { HealthCheckManager } from './health';
 
 /**
@@ -122,12 +122,8 @@ export class ServiceRegistry {
    * AIManager will check health of all its managed providers
    */
   registerAIManagerHealthCheck(aiManager: AIManager): void {
-    // Get health check manager from container
-    if (!this.container.isRegistered(DITokens.HEALTH_CHECK_MANAGER)) {
-      logger.warn('[ServiceRegistry] Health check manager not registered, skipping AI manager health check');
-      return;
-    }
-
+    // HEALTH_CHECK_MANAGER is required (DITokens.ts) — bootstrap registers
+    // it before ConversationInitializer runs.
     const healthManager = this.container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
 
     // Register AIManager itself (it will check all its providers)
@@ -201,32 +197,50 @@ export class ServiceRegistry {
    * after mind is constructed (requires InternalEventBus to be available,
    * so must run after `registerAgendaServices`).
    */
-  registerMindServices(components: MindComponents): void {
-    this.container.registerInstance(DITokens.MIND_SERVICE, components.mindService);
-    this.container.registerInstance(DITokens.MIND_CONFIG, components.config);
-    this.container.registerInstance(DITokens.MIND_MODULATION_PROVIDER, components.modulationProvider);
+  registerPersonaServices(components: PersonaComponents): void {
+    this.container.registerInstance(DITokens.PERSONA_SERVICE, components.personaService);
+    this.container.registerInstance(DITokens.PERSONA_CONFIG, components.config);
+    this.container.registerInstance(DITokens.PERSONA_MODULATION_PROVIDER, components.modulationProvider);
     logger.debug('[ServiceRegistry] Registered mind subsystem services');
   }
 
   /**
-   * Verify all required services are registered
+   * Verify every required-by-contract token is registered. Throws on failure
+   * so `bun run smoke-test` (and bootstrap) fail loud instead of degrading
+   * silently into runtime null-deref later.
+   *
+   * Optional tokens (gated by config / adapter) are intentionally skipped —
+   * see `DITokens.ts` for the contract.
    */
-  verifyServices(): boolean {
-    const requiredTokens = Object.values(DITokens);
-
+  verifyServices(): void {
+    const required = getRequiredTokens();
     const missing: string[] = [];
-    for (const token of requiredTokens) {
+    for (const token of required) {
       if (!this.container.isRegistered(token)) {
         missing.push(token);
       }
     }
 
     if (missing.length > 0) {
-      logger.warn(`[ServiceRegistry] Missing required services: ${missing.join(', ')}`);
-      return false;
+      throw new Error(
+        `[ServiceRegistry] Bootstrap left required DI tokens unregistered: ${missing.join(', ')}. ` +
+          'Either fix the registration order or, if the token is feature-gated, mark it ' +
+          '`required: false, gatedBy: ...` in DITokens.ts.',
+      );
     }
 
+    // Surface optional tokens that did not register so operators have a single
+    // line summarizing what's gated off in this run.
+    const skipped: string[] = [];
+    for (const token of Object.values(DITokens)) {
+      const meta = getTokenMeta(token);
+      if (meta && !meta.required && !this.container.isRegistered(token)) {
+        skipped.push(`${token} (${meta.gatedBy})`);
+      }
+    }
+    if (skipped.length > 0) {
+      logger.debug(`[ServiceRegistry] Optional tokens not registered: ${skipped.join('; ')}`);
+    }
     logger.debug('[ServiceRegistry] All required services are registered');
-    return true;
   }
 }

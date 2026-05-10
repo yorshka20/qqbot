@@ -302,6 +302,7 @@ export class ProactiveConversationPlugin extends PluginBase {
     stage: 'onMessagePreprocess',
     priority: 'NORMAL',
     order: 20,
+    applicableSources: ['qq-private', 'qq-group', 'discord'],
   })
   onMessagePreprocess(context: HookContext): HookResult {
     if (!this.enabled) return true;
@@ -321,6 +322,7 @@ export class ProactiveConversationPlugin extends PluginBase {
     stage: 'onMessageComplete',
     priority: 'NORMAL',
     order: 10,
+    applicableSources: ['qq-private', 'qq-group', 'discord'],
   })
   onMessageComplete(context: HookContext): HookResult {
     if (!this.enabled || this.groupIds.size === 0) return true;

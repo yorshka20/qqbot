@@ -29,8 +29,11 @@ export class PromptInitializer {
     }
 
     const promptDirectory = resolve(getRepoRoot(), promptsConfig.directory);
-    const adminUserId = config.getConfig().bot.owner;
-    const promptManager = new PromptManager(promptDirectory, adminUserId);
+    const botConfig = config.getConfig().bot;
+    const adminUserId = botConfig.owner;
+    const botSelfId = botConfig.selfId ?? '';
+    const botNickname = botConfig.nickname ?? '';
+    const promptManager = new PromptManager(promptDirectory, adminUserId, botSelfId, botNickname);
 
     logger.info(`[PromptInitializer] PromptManager initialized and templates loaded from: ${promptDirectory}`);
 

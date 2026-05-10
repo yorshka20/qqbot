@@ -47,14 +47,11 @@ export abstract class AIProvider {
   protected contextMessageCount: number = 10;
 
   /**
-   * Get context manager from DI container
+   * Get context manager from DI container. CONTEXT_MANAGER is a required
+   * token (DITokens.ts); this just sugars the resolve call.
    */
-  protected getContextManager(): ContextManager | null {
-    const container = getContainer();
-    if (container.isRegistered(DITokens.CONTEXT_MANAGER)) {
-      return container.resolve<ContextManager>(DITokens.CONTEXT_MANAGER);
-    }
-    return null;
+  protected getContextManager(): ContextManager {
+    return getContainer().resolve<ContextManager>(DITokens.CONTEXT_MANAGER);
   }
 
   /**
@@ -74,9 +71,6 @@ export abstract class AIProvider {
     }
 
     const contextManager = this.getContextManager();
-    if (!contextManager) {
-      return [];
-    }
 
     try {
       const history = contextManager.getHistory(options.sessionId, this.contextMessageCount);

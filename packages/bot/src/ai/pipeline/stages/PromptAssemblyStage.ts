@@ -3,6 +3,7 @@
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { NormalEpisodeService } from '@/conversation/history';
+import type { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import type { AIChatConfig, ReasoningEffort } from '@/core/config/types/ai';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
@@ -44,6 +45,7 @@ export class PromptAssemblyStage implements ReplyStage {
   private readonly toolReasoning: ReasoningEffort;
 
   constructor(
+    private registry: PromptInjectionRegistry,
     private promptManager: PromptManager,
     private messageAPI: MessageAPI,
     chatConfig?: AIChatConfig,
@@ -55,34 +57,30 @@ export class PromptAssemblyStage implements ReplyStage {
   async execute(ctx: ReplyPipelineContext): Promise<void> {
     const { hookContext } = ctx;
 
-    // When whitelist is not full permissions, inject fragment into base system via variable.
-    const groupCaps = hookContext.metadata.get('whitelistGroupCapabilities');
-    const whitelistFragment =
-      Array.isArray(groupCaps) && groupCaps.length > 0
-        ? (this.promptManager.render('llm.whitelist_limited.system') ?? '').trim()
-        : '';
-    const baseSystemPrompt = this.promptManager.renderBasePrompt({
-      whitelistLimitedFragment: whitelistFragment,
-    });
-    const toolInstruct = this.promptManager.render('llm.tool.instruct', {
-      toolUsageInstructions: ctx.toolUsageInstructions,
-    });
+    const message = hookContext.message;
+    const userId = message?.userId != null ? String(message.userId) : undefined;
+    const groupId = message?.groupId != null ? String(message.groupId) : undefined;
 
-    const sceneSystemPromptRaw = this.promptManager.render('llm.reply.system', {
-      toolInstruct,
-    });
-
-    // Plugin-contributed system-prompt fragments. Plugins push into
-    // `metadata.systemPromptFragments` during PREPROCESS — see e.g.
-    // Live2DAvatarPlugin.onMessagePreprocess for the avatar fragment.
-    // Appended in push order; empty / blank entries filtered out so a
-    // plugin that fails to render silently drops instead of producing
-    // "\n\n\n\n" runs in the final prompt.
-    const pluginFragments = hookContext.metadata.get('systemPromptFragments') ?? [];
-    const sceneSystemPrompt = [sceneSystemPromptRaw, ...pluginFragments]
-      .map((s) => s?.trim())
-      .filter((s): s is string => !!s && s.length > 0)
-      .join('\n\n');
+    let baseSystemPrompt = '';
+    let sceneSystemPrompt = '';
+    try {
+      const layered = await this.registry.gatherByLayer({
+        source: hookContext.source,
+        userId,
+        groupId,
+        hookContext,
+      });
+      baseSystemPrompt = layered.baseline
+        .map((i) => i.fragment.trim())
+        .filter((s): s is string => !!s && s.length > 0)
+        .join('\n\n');
+      sceneSystemPrompt = [...layered.scene, ...layered.runtime, ...layered.tool]
+        .map((i) => i.fragment.trim())
+        .filter((s): s is string => !!s && s.length > 0)
+        .join('\n\n');
+    } catch (err) {
+      logger.warn('[PromptAssemblyStage] PromptInjectionRegistry.gatherByLayer failed (non-fatal):', err);
+    }
 
     const sender = hookContext.message?.sender;
     const senderNickname = sender?.nickname ?? sender?.card ?? '';

@@ -1,6 +1,8 @@
 // GroupNotice Plugin - notifies group member changes (join/leave)
 
-import { MessageAPI } from '@/api/methods/MessageAPI';
+import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
@@ -39,7 +41,7 @@ export class GroupNoticePlugin extends PluginBase {
   private leaveMessageTemplate = '成员 {userId} 已离开群聊。';
 
   async onInit(): Promise<void> {
-    this.messageAPI = new MessageAPI(this.api);
+    this.messageAPI = getContainer().resolve<MessageAPI>(DITokens.MESSAGE_API);
 
     try {
       const pluginConfig = this.pluginConfig?.config as GroupNoticePluginConfig | undefined;

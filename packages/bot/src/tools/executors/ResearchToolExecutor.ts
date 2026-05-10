@@ -29,7 +29,7 @@ const RESEARCH_TIMEOUT = 90000;
   description:
     '调研工具：委托一个独立的 subagent 执行信息收集任务。subagent 拥有联网搜索、网页抓取、知识库检索、记忆查询等工具，会自主完成多步调研并返回精炼结论。你无法直接使用这些底层数据工具，必须通过本工具发起调研。',
   executor: 'research',
-  visibility: ['reply'],
+  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] } },
   parameters: {
     task: {
       type: 'string',

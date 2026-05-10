@@ -13,7 +13,7 @@ import type { VideoKnowledgeClient } from '../VideoKnowledgeClient';
   description:
     '查询B站内容。支持搜索视频、获取视频详情、查看热门视频、热搜榜、以及提交视频分析任务。返回视频标题、UP主、播放量等信息。',
   executor: 'bilibili',
-  visibility: ['reply', 'subagent'],
+  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] }, subagent: true },
   parameters: {
     action: {
       type: 'string',

@@ -75,6 +75,7 @@ function makeGroupHookContext(messageText: string, overrides?: ProactiveContextO
       metadata: new Map(),
     },
     metadata,
+    source: (messageType === 'private' ? 'qq-private' : 'qq-group') as import('@/conversation/sources').MessageSource,
   };
 }
 

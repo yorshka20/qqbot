@@ -355,6 +355,7 @@ export class MemoryTriggerPlugin extends PluginBase {
     stage: 'onMessagePreprocess',
     priority: 'NORMAL',
     order: 25,
+    applicableSources: ['qq-private', 'qq-group', 'discord'],
   })
   onMessagePreprocess(context: HookContext): boolean {
     if (!this.enabled || this.groupIds.size === 0 || !this.memoryService) {

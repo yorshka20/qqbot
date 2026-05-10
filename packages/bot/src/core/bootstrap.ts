@@ -9,11 +9,18 @@
 
 import { AvatarService } from '@qqbot/avatar';
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
+import { createBaselineProducer } from '@/ai/prompt/producers/BaselineProducer';
+import { createSceneProducer } from '@/ai/prompt/producers/SceneProducer';
+import { createToolInstructProducer } from '@/ai/prompt/producers/ToolInstructProducer';
 import { APIClient } from '@/api/APIClient';
 import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
 import { ConversationInitializer } from '@/conversation/ConversationInitializer';
+import type { MessagePipeline } from '@/conversation/MessagePipeline';
 import type { ProcessStageInterceptorRegistry } from '@/conversation/ProcessStageInterceptor';
+import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
+import { makeSyntheticEvent } from '@/conversation/synthetic';
 import { Bot } from '@/core/Bot';
 import type { ProtocolConfig } from '@/core/config';
 import type { Connection } from '@/core/connection';
@@ -24,7 +31,12 @@ import { HealthCheckManager } from '@/core/health';
 import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { EventInitializer } from '@/events/EventInitializer';
 import type { EventRouter } from '@/events/EventRouter';
-import { type MindModulationAdapter, type MindService, startMindSubsystem } from '@/mind';
+import { LivemodeInterceptor } from '@/integrations/avatar/livemode/LivemodeInterceptor';
+import { LivemodeState } from '@/integrations/avatar/livemode/LivemodeState';
+import { AvatarIdleTrigger } from '@/integrations/avatar/services/AvatarIdleTrigger';
+import { AvatarMemoryExtractionCoordinator } from '@/integrations/avatar/services/AvatarMemoryExtractionCoordinator';
+import { AvatarSessionService } from '@/integrations/avatar/services/AvatarSessionService';
+import { type PersonaModulationAdapter, type PersonaService, startPersonaSubsystem } from '@/persona';
 import { PluginInitializer } from '@/plugins/PluginInitializer';
 import { DiscordConnection } from '@/protocol/discord/DiscordConnection';
 import { ProtocolAdapterInitializer } from '@/protocol/ProtocolAdapterInitializer';
@@ -35,12 +47,6 @@ import { DanmakuStore } from '@/services/bilibili/live/DanmakuStore';
 import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
-import { Live2DIdleTrigger } from '@/services/live2d/Live2DIdleTrigger';
-import { Live2DMemoryExtractionCoordinator } from '@/services/live2d/Live2DMemoryExtractionCoordinator';
-import { Live2DPipeline } from '@/services/live2d/Live2DPipeline';
-import { Live2DSessionService } from '@/services/live2d/Live2DSessionService';
-import { LivemodeInterceptor } from '@/services/live2d/LivemodeInterceptor';
-import { LivemodeState } from '@/services/live2d/LivemodeState';
 import type { MCPSystem } from '@/services/mcp/MCPInitializer';
 import { MCPInitializer } from '@/services/mcp/MCPInitializer';
 import { RetrievalService } from '@/services/retrieval';
@@ -49,8 +55,12 @@ import { FishAudioProvider } from '@/services/tts/providers/FishAudioProvider';
 import { SovitsProvider } from '@/services/tts/providers/SovitsProvider';
 import { TTSManager } from '@/services/tts/TTSManager';
 import type { TTSProvider } from '@/services/tts/TTSProvider';
-import { logger } from '@/utils/logger';
+import { logger, setMessageLogFilter } from '@/utils/logger';
 import { registerConnectionClass } from './connection/ConnectionManager';
+
+// Avatar integration registers its own plugins via this barrel side-effect
+// import — PluginManager stays unaware of integrations.
+import '@/integrations/avatar/plugins';
 
 export interface BootstrapResult {
   bot: Bot;
@@ -91,6 +101,20 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   const bot = new Bot(configPath);
   const config = bot.getConfig();
   const container = getContainer();
+
+  // ── Apply per-message log filter (must run before pipeline starts) ──
+  const loggingConfig = config.getLoggingConfig();
+  const mf = loggingConfig?.messageFilter;
+  if (mf?.enabled) {
+    setMessageLogFilter({
+      groupIds: new Set((mf.groupIds ?? []).map(String)),
+      userIds: new Set((mf.userIds ?? []).map(String)),
+      allowLevels: new Set(mf.allowLevels ?? ['warn', 'error']),
+    });
+    logger.info(
+      `[Bootstrap] Message log filter enabled — groups=[${[...(mf.groupIds ?? [])].join(',')}] users=[${[...(mf.userIds ?? [])].join(',')}]`,
+    );
+  }
 
   const apiConfig = config.getAPIConfig();
   const apiClient = new APIClient(apiConfig.strategy, apiConfig.preferredProtocol);
@@ -142,8 +166,27 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   const clusterRawConfig = config.getClusterConfig();
   const clusterConfig = parseClusterConfig(clusterRawConfig);
 
+  // ── PromptInjectionRegistry (before ConversationInitializer so PromptAssemblyStage can resolve it) ──
+  container.registerSingleton(DITokens.PROMPT_INJECTION_REGISTRY, PromptInjectionRegistry);
+
   // ── Conversation system (tools, hooks, commands, AI, DB, context, agenda) ──
   const conversationComponents = await ConversationInitializer.initialize(config, apiClient);
+
+  // ── Register core prompt producers (after PromptManager and PromptInjectionRegistry are ready) ──
+  // PromptManager is registered by PromptInitializer above; PromptInjectionRegistry is registered
+  // just above ConversationInitializer. These three producers cover the entire main reply pipeline:
+  //   baseline → base.system + persona-stable (system msg #1)
+  //   scene    → per-source scene template (system msg #2 front)
+  //   tool     → llm.tool.instruct (system msg #2 back)
+  // Volatile persona-runtime producer is registered later by PersonaInitializer (via startPersonaSubsystem).
+  {
+    const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+    const registry = container.resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
+    registry.register(createBaselineProducer({ promptManager }));
+    registry.register(createSceneProducer({ promptManager }));
+    registry.register(createToolInstructProducer({ promptManager }));
+    logger.info('[Bootstrap] Core prompt producers registered (baseline, scene, tool-instruct)');
+  }
 
   // ── Agent Cluster (after DB is ready) ──
   if (clusterConfig) {
@@ -186,9 +229,6 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   const eventRouter = eventSystem.eventRouter;
   container.registerInstance(DITokens.EVENT_ROUTER, eventRouter);
 
-  // ── Service registry verification ──
-  new ServiceRegistry().verifyServices();
-
   // ── Protocol adapter registration (registers event listeners, no connections) ──
   const connectionManager = bot.getConnectionManager();
   const connectionTypeMap: Record<string, new (cfg: ProtocolConfig) => Connection> = {
@@ -207,6 +247,8 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   ProtocolAdapterInitializer.initialize(config, connectionManager, eventRouter, apiClient);
 
   // ── Load plugins (triggers onInit for all enabled plugins, e.g. WeChatIngestPlugin DI registration) ──
+  // Plugin load throws an aggregate error if any plugin's onInit failed —
+  // that's the smoke-test signal for "DI wiring is broken at load time".
   await PluginInitializer.loadPlugins(config, { skipEnable: options?.skipPluginEnable });
 
   // ── Startup health check (AFTER plugins, so plugins like CloudflareWorkerProxy can replace httpClient first) ──
@@ -310,66 +352,62 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   }
 
   // ── Mind subsystem lifecycle ──
-  // All per-service wiring (modulation provider, state source, pose
-  // provider, wander scheduler) is encapsulated in `startMindSubsystem`
-  // so bootstrap stays agnostic. Safe to call even when mind or avatar
-  // is absent.
-  try {
-    if (container.isRegistered(DITokens.MIND_SERVICE)) {
-      const mindService = container.resolve<MindService>(DITokens.MIND_SERVICE);
-      const modulationProvider = container.resolve<MindModulationAdapter>(DITokens.MIND_MODULATION_PROVIDER);
-      startMindSubsystem(mindService, modulationProvider, avatarService);
-    }
-  } catch (err) {
-    logger.warn('[Bootstrap] Mind subsystem wiring failed (non-fatal):', err);
-  }
+  // PERSONA_SERVICE / PERSONA_MODULATION_PROVIDER are required (DITokens.ts);
+  // PersonaInitializer always registers them, even when persona is disabled.
+  // The "avatar may be absent" comment still applies — `avatarService` itself
+  // is the gated piece, and `startPersonaSubsystem` accepts null.
+  const personaService = container.resolve<PersonaService>(DITokens.PERSONA_SERVICE);
+  const modulationProvider = container.resolve<PersonaModulationAdapter>(DITokens.PERSONA_MODULATION_PROVIDER);
+  startPersonaSubsystem(personaService, modulationProvider, avatarService);
 
-  // ── Live2DSessionService (rolling thread history for Live2D runs) ──
-  // Must register BEFORE Live2DPipeline resolves — stages inject it by token.
-  const live2dSessionService = container.resolve(Live2DSessionService);
-  container.registerInstance(DITokens.LIVE2D_SESSION_SERVICE, live2dSessionService);
+  // ── AvatarSessionService (rolling thread history for avatar runs) ──
+  // Avatar session service: rolling thread history for avatar runs.
+  const avatarSessionService = container.resolve(AvatarSessionService);
+  container.registerInstance(DITokens.AVATAR_SESSION_SERVICE, avatarSessionService);
 
-  // ── Live2DMemoryExtractionCoordinator (write side of <memory_context>) ──
+  // ── AvatarMemoryExtractionCoordinator (write side of <memory_context>) ──
   // Resolves MemoryExtractService lazily, so if it isn't registered yet
   // (edge cases / test harnesses) the coordinator degrades to a no-op
   // instead of failing construction. Ordering against the MemoryExtract
   // registration therefore doesn't matter.
-  const live2dMemoryExtractionCoordinator = container.resolve(Live2DMemoryExtractionCoordinator);
-  container.registerInstance(DITokens.LIVE2D_MEMORY_EXTRACTION_COORDINATOR, live2dMemoryExtractionCoordinator);
+  const avatarMemoryExtractionCoordinator = container.resolve(AvatarMemoryExtractionCoordinator);
+  container.registerInstance(DITokens.AVATAR_MEMORY_EXTRACTION_COORDINATOR, avatarMemoryExtractionCoordinator);
 
   // ── LivemodeState (per-user mock-livestream buffers) ──
   // Registered here so both the /livemode command and the PROCESS-stage
   // interceptor can resolve the same singleton. Its flush handler is wired
-  // below once live2dPipeline exists (avoids a construction-order cycle).
+  // below (avoids a construction-order cycle).
   const livemodeState = container.resolve(LivemodeState);
   container.registerInstance(DITokens.LIVEMODE_STATE, livemodeState);
-
-  // ── Live2DPipeline (shared by /avatar command + bilibili bridge) ──
-  // Depends on LLM_SERVICE / PROMPT_MANAGER / CONFIG — all registered above.
-  // AvatarService is resolved lazily inside the pipeline, so registration
-  // order against `avatarService` above doesn't matter.
-  const live2dPipeline = container.resolve(Live2DPipeline);
-  container.registerInstance(DITokens.LIVE2D_PIPELINE, live2dPipeline);
 
   // ── Livemode wiring ──
   // Resolve idle trigger before wiring the flush handler so the handler can
   // call `markActivity()` to reset the per-user idle clock on every flush.
-  const live2dIdleTrigger = container.resolve(Live2DIdleTrigger);
+  const messagePipeline = container.resolve<MessagePipeline>(DITokens.MESSAGE_PIPELINE);
+  const avatarIdleTrigger = container.resolve(AvatarIdleTrigger);
   livemodeState.setFlushHandler((userId, payload) => {
-    live2dIdleTrigger.markActivity(userId);
-    void live2dPipeline.enqueue({
+    avatarIdleTrigger.markActivity(userId);
+    const event = makeSyntheticEvent({
+      source: 'idle-trigger',
+      userId: String(userId),
+      groupId: null,
       text: payload.summaryText,
-      source: 'livemode-private-batch',
-      sender: { uid: userId },
-      meta: {
-        scope: userId,
-        batchId: payload.batchId,
-        totalDanmaku: payload.totalDanmaku,
-        distinctSenders: payload.distinctSenders,
-      },
+      messageType: 'private',
+      protocol: 'milky',
     });
+    void messagePipeline.process(
+      event,
+      {
+        message: event,
+        sessionId: `idle-${userId}`,
+        sessionType: 'user',
+        botSelfId: '',
+        source: 'idle-trigger',
+      },
+      'idle-trigger',
+    );
   });
-  live2dIdleTrigger.start();
+  avatarIdleTrigger.start();
   try {
     const interceptorRegistry = container.resolve<ProcessStageInterceptorRegistry>(
       DITokens.PROCESS_STAGE_INTERCEPTOR_REGISTRY,
@@ -402,7 +440,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
         streamerAliases: aliases,
       });
       const store = container.resolve(DanmakuStore);
-      bilibiliLiveBridge = new BilibiliLiveBridge(client, buffer, store, live2dPipeline, {
+      bilibiliLiveBridge = new BilibiliLiveBridge(client, buffer, store, messagePipeline, {
         roomId: String(liveCfg.roomId),
         pipeToLive2D: liveCfg.pipeToLive2D !== false,
         streamerAliases: aliases,
@@ -418,6 +456,13 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     logger.warn('[Bootstrap] Bilibili live bridge init failed (non-fatal):', err);
     bilibiliLiveBridge = null;
   }
+
+  // ── Final DI contract check ──
+  // Runs LAST, after every initializer (TTS / Avatar / Livemode / Bilibili)
+  // has had a chance to register its tokens. Throws on any missing
+  // `required: true` token in `DITokens.ts` so smoke-test fails loud
+  // instead of letting consumers null-deref later.
+  new ServiceRegistry().verifyServices();
 
   logger.info('[Bootstrap] All initialization stages completed');
 

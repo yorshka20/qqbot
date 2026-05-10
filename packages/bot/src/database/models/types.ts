@@ -123,7 +123,7 @@ export interface MemoryExtractUserCursor extends BaseModel {
  * spam is stored as-is (DanmakuBuffer does the dedup before LLM dispatch, but
  * raw history is preserved here for later RAG / analytics).
  *
- * `batchId` groups danmaku that were flushed into the same Live2DPipeline
+ * `batchId` groups danmaku that were flushed into the same avatar pipeline
  * batch, so downstream jobs can reconstruct what the avatar was reacting to.
  * `mentionsStreamer` is B-station-specific (platform has no structured @) —
  * matched against the configured `streamerAliases` keyword list.

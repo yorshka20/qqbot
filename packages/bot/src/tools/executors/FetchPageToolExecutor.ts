@@ -17,7 +17,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
   description:
     '抓取指定 URL 的正文内容。自动提取文章主体文本或视频描述，去除导航和广告。适用于用户分享链接后需要阅读/总结内容的场景。',
   executor: 'fetch_page',
-  visibility: ['subagent'],
+  visibility: { subagent: true },
   parameters: {
     url: {
       type: 'string',

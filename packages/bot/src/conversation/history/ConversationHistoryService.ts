@@ -429,13 +429,11 @@ export class ConversationHistoryService {
   async buildConversationHistory(context: HookContext): Promise<string> {
     const proactiveThreadId = context.metadata.get('proactiveThreadId');
     if (proactiveThreadId) {
-      const container = getContainer();
-      if (container.isRegistered(DITokens.THREAD_SERVICE)) {
-        const threadService = container.resolve<ThreadService>(DITokens.THREAD_SERVICE);
-        const text = threadService.getContextFormatted(proactiveThreadId);
-        if (text) {
-          return text;
-        }
+      // THREAD_SERVICE is required (DITokens.ts).
+      const threadService = getContainer().resolve<ThreadService>(DITokens.THREAD_SERVICE);
+      const text = threadService.getContextFormatted(proactiveThreadId);
+      if (text) {
+        return text;
       }
     }
 
@@ -598,6 +596,102 @@ export class ConversationHistoryService {
       logger.warn('[ConversationHistoryService] searchMessagesByKeyword failed:', err);
       return [];
     }
+  }
+
+  /**
+   * Search messages by userId with optional time range.
+   * Uses raw SQL for efficient querying; falls back to client-side filtering for MongoDB.
+   */
+  async searchMessagesByUserId(
+    sessionId: string,
+    sessionType: 'group' | 'user',
+    userId: string | number,
+    options?: {
+      since?: Date;
+      includeBot?: boolean;
+      limit?: number;
+    },
+  ): Promise<ConversationMessageEntry[]> {
+    const adapter = this.databaseManager.getAdapter();
+    if (!adapter?.isConnected()) {
+      return [];
+    }
+
+    const canonicalSessionId = normalizeSessionId(sessionId, sessionType);
+    const maxResults = options?.limit ?? 50;
+
+    try {
+      const conversations = adapter.getModel('conversations');
+      const conversation = await conversations.findOne({
+        sessionId: canonicalSessionId,
+        sessionType,
+      });
+      if (!conversation) {
+        return [];
+      }
+
+      const rawDb = (adapter as SQLiteAdapter).getRawDb?.();
+      if (!rawDb) {
+        return this.searchMessagesByUserIdFallback(conversation.id, userId, options);
+      }
+
+      const conditions: string[] = ['m.conversationId = ?', 'm.userId = ?'];
+      const params: (string | number)[] = [conversation.id, userId];
+
+      if (options?.since) {
+        conditions.push('m.createdAt >= ?');
+        params.push(options.since.toISOString());
+      }
+
+      if (!options?.includeBot) {
+        conditions.push('(m.metadata IS NULL OR m.metadata NOT LIKE \'%"isBotReply":true%\')');
+      }
+
+      const sql = `
+        SELECT m.* FROM messages m
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY m.createdAt ASC
+        LIMIT ?
+      `;
+      params.push(maxResults);
+
+      const rows = rawDb.query(sql).all(...params) as Record<string, unknown>[];
+      return rows.map((row) => {
+        const msg = this.deserializeMessageRow(row);
+        return this.mapMessageToEntry(msg);
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.warn('[ConversationHistoryService] searchMessagesByUserId failed:', err);
+      return [];
+    }
+  }
+
+  /** Fallback userId search for MongoDB. */
+  private async searchMessagesByUserIdFallback(
+    conversationId: string,
+    userId: string | number,
+    options?: { since?: Date; includeBot?: boolean; limit?: number },
+  ): Promise<ConversationMessageEntry[]> {
+    const adapter = this.databaseManager.getAdapter();
+    const messages = adapter.getModel('messages');
+    const limit = options?.limit ?? 50;
+
+    const userIdNum = Number(userId);
+    const list = await messages.find(
+      { conversationId, userId: Number.isNaN(userIdNum) ? userId : userIdNum } as Partial<Message>,
+      { orderBy: 'createdAt', order: 'desc', limit: 2000 },
+    );
+
+    const sinceTs = options?.since?.getTime();
+    const filtered = (list as Message[]).filter((msg) => {
+      if (sinceTs && new Date(msg.createdAt).getTime() < sinceTs) return false;
+      if (!options?.includeBot && msg.metadata?.isBotReply) return false;
+      return true;
+    });
+
+    filtered.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    return filtered.slice(-limit).map((m) => this.mapMessageToEntry(m));
   }
 
   /** Fallback keyword search when raw SQL is not available (e.g. MongoDB). Loads recent messages and filters client-side. */

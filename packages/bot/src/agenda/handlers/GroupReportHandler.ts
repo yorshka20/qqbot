@@ -218,7 +218,14 @@ export class GroupReportHandler implements ActionHandler {
         try {
           const response = await llmService.generate(
             prompt,
-            { temperature: 0.7, maxTokens: 4000, jsonMode: true },
+            {
+              temperature: 0.7,
+              maxTokens: 4000,
+              jsonMode: true,
+              // group_report batch JSON 生成是大 prompt + reasoning + jsonMode，
+              // provider 默认 60-120s 超时不够（实测会触发 abort）。显式抬到 4 分钟。
+              timeout: 240_000,
+            },
             providerName,
           );
           parsed = this.parseBatchResult(response.text);

@@ -1,7 +1,7 @@
 // Nudge Plugin - automatically replies when bot is nudged (戳一戳)
 
 import type { AIManager } from '@/ai/AIManager';
-import { MessageAPI } from '@/api/methods/MessageAPI';
+import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -47,23 +47,17 @@ export interface NudgePluginConfig {
 })
 export class NudgePlugin extends PluginBase {
   private messageAPI!: MessageAPI;
-  private aiManager!: AIManager | null;
-  private healthCheckManager!: HealthCheckManager | null;
+  private aiManager!: AIManager;
+  private healthCheckManager!: HealthCheckManager;
 
   async onInit(): Promise<void> {
-    this.messageAPI = new MessageAPI(this.api);
-
     const container = getContainer();
-    this.aiManager = container.resolve<AIManager>(DITokens.AI_MANAGER) ?? null;
-    try {
-      this.healthCheckManager = container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER) ?? null;
-    } catch {
-      this.healthCheckManager = null;
-    }
-
-    if (!this.aiManager) {
-      logger.warn('[NudgePlugin] AIManager not found in DI container');
-    }
+    // Resolve the shared MessageAPI singleton — never `new` it (was the
+    // bug: each plugin built its own instance, fragmenting send-rate
+    // limiters / dedup state).
+    this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+    this.aiManager = container.resolve<AIManager>(DITokens.AI_MANAGER);
+    this.healthCheckManager = container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
 
     this.on<NormalizedNoticeEvent>('notice', this.handleNotice.bind(this));
   }

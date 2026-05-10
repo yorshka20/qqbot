@@ -411,10 +411,12 @@ ReplyPipelineOrchestrator.generateReplyFromToolResults(ctx)
     │  │    └─ Tool calling loop (see Section 5)                     │
     │  │                                                              │
     │  │  Stage 8: ResponseDispatchStage                             │
-    │  │    ├─ usedCardFormat? → Puppeteer render card image         │
-    │  │    ├─ Text too long? → LLM convert to card JSON → render   │
-    │  │    ├─ Plain text → strip residual tags → replaceReply()     │
-    │  │    └─ hook: onAIGenerationComplete                          │
+    │  │    ├─ Path 1: cardSent=true → card rendered by send_card   │
+    │  │    ├─ Path 1.5: cardSendFailedReason → fall through Path 2 │
+    │  │    ├─ Path 2: text too long → LLM convert (expect:'array') │
+    │  │    │          → parseCardDeck → renderParsedCards           │
+    │  │    ├─ Path 3: original prose (ctx.responseText), no JSON   │
+    │  │    └─ hook: onAIGenerationComplete                         │
     │  │                                                              │
     │  └──────────────────────────────────────────────────────────────┘
     │
@@ -424,18 +426,55 @@ ctx.reply is set → return to outer Lifecycle → PREPARE → SEND → COMPLETE
 
 ### Final Prompt Structure
 
+The main reply pipeline assembles the system prompt via the
+`PromptInjectionRegistry` producer model, organised into 4 layers:
+
+| Layer | Purpose | Producers | System message |
+|-------|---------|-----------|----------------|
+| `baseline` | Stable identity (cache-friendly prefix) | `BaselineProducer` (rendered base.system) + `persona-stable` | system message #1 |
+| `scene` | Per-source scene template | `SceneProducer` (`scenes.<source>.zh.scene`) | system message #2 (top) |
+| `runtime` | Per-message volatile state | `persona-volatile` (mood / relationship / tone) | system message #2 (middle) |
+| `tool` | Tool invocation instructions | `ToolInstructProducer` (`llm.tool.instruct`) | system message #2 (bottom) |
+
+`PromptAssemblyStage` calls
+`registry.gatherByLayer({ source, userId, groupId, hookContext })` and
+receives `{ baseline, scene, runtime, tool }`, then:
+
+- system message #1 = `baseline.map(i => i.fragment).join('\n\n')`
+- system message #2 = `[...scene, ...runtime, ...tool].map(i => i.fragment).join('\n\n')`
+
+Within each layer, producers are ordered by ascending `priority`
+(lower = earlier; default 100).
+
 ```
 ChatMessage[] ordering:
 
-  ┌─ system ─────────────────────────────────────────────────┐
-  │  baseSystem prompt (base.system.txt)                     │
-  │  Vars: currentDate, adminUserId, whitelistLimited...     │
-  │  ← Anthropic prompt cache anchor                         │
+  ┌─ system 1 (baseline layer) ───────────────────────────────┐
+  │  BaselineProducer fragment (base.system.txt rendered)     │
+  │    Vars: currentDate (hour-precision + JST timezone)      │
+  │          adminUserId, whitelistLimitedFragment              │
+  │  persona-stable fragment                                  │
+  │    <persona_identity>...</persona_identity>              │
+  │    <persona_boundaries>...</persona_boundaries>          │
+  │       ↑ only when persona enabled AND Bible non-empty    │
+  │  ← Anthropic prompt cache anchor (entire baseline layer  │
+  │    is stable across requests)                             │
   └──────────────────────────────────────────────────────────┘
-  ┌─ system ─────────────────────────────────────────────────┐
-  │  sceneSystem prompt (llm.reply.system)                   │
-  │  Vars: toolInstruct                     │
-  │  toolInstruct = full tool list + whenToUse + params      │
+  ┌─ system 2 (scene + runtime + tool layers) ──────────────┐
+  │  SceneProducer fragment                                   │
+  │    scene template (scenes.<source>.zh.scene)              │
+  │      Vars: toolInstruct (rendered by ToolInstructProducer │
+  │            in the tool layer below)                       │
+  │  persona-volatile fragment                               │
+  │    <mind_state>...</mind_state>                          │
+  │    <relationship_state>...</relationship_state>          │
+  │    <tone_state>...</tone_state>                          │
+  │       ↑ each block has its own silence threshold;        │
+  │         omitted when state is unremarkable               │
+  │  ToolInstructProducer fragment                            │
+  │    llm.tool.instruct (tool list + whenToUse + params)    │
+  │       ↑ only injected when provider lacks native         │
+  │         function calling support                         │
   └──────────────────────────────────────────────────────────┘
   ┌─ history (alternating user/assistant) ───────────────────┐
   │  user:      "[speaker:uid:nick] message content"         │
@@ -443,22 +482,37 @@ ChatMessage[] ordering:
   │  (with vision: ContentPart[] with base64 images)         │
   └──────────────────────────────────────────────────────────┘
   ┌─ user (final user message block) ───────────────────────┐
-  │  <memory_context>                                        │
+  │  <memory_context>                          (conditional)  │
   │    ## Group memory                                       │
   │    {groupMemory}                                         │
   │    ## User memory                                        │
   │    {userMemory}                                          │
   │  </memory_context>                                       │
   │                                                          │
-  │  <rag_context>                                           │
+  │  <rag_context>                             (conditional)  │
   │    {retrieved relevant conversation segments}             │
   │  </rag_context>                                          │
   │                                                          │
-  │  <current_query>                                         │
+  │  <current_query>                           (always)       │
   │    [speaker:uid:nick] current user message               │
   │  </current_query>                                        │
   └──────────────────────────────────────────────────────────┘
 ```
+
+### Shim status (May 2026)
+
+`PromptManager.renderBasePrompt` and `renderBaseSystemTemplate` are
+retained as shims for sideline services that still build their prompts
+directly (not via `PromptInjectionRegistry`):
+
+- `MemoryExtractService` (`packages/bot/src/memory/MemoryExtractService.ts`)
+- `NsfwReplyService` (`packages/bot/src/ai/services/NsfwReplyService.ts`)
+- `PreliminaryAnalysisService` (`packages/bot/src/ai/services/PreliminaryAnalysisService.ts`)
+- `ProactiveReplyGenerationService` (`packages/bot/src/ai/services/ProactiveReplyGenerationService.ts`)
+
+The main reply pipeline has been fully migrated to the producer model.
+When the sideline services above are also migrated (separate ticket),
+both shims should be deleted.
 
 ---
 

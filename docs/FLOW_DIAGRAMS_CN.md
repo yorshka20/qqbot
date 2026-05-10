@@ -411,9 +411,11 @@ ReplyPipelineOrchestrator.generateReplyFromToolResults(ctx)
     │  │    └─ 工具调用循环 (见第5节)                                  │
     │  │                                                              │
     │  │  Stage 8: ResponseDispatchStage                             │
-    │  │    ├─ usedCardFormat? → Puppeteer 渲染卡片图片               │
-    │  │    ├─ 文本过长? → LLM 转卡片 JSON → 渲染                    │
-    │  │    ├─ 普通文本 → 清理残留标签 → replaceReply()               │
+    │  │    ├─ Path 1: cardSent=true → 卡片已由 send_card 工具渲染   │
+    │  │    ├─ Path 1.5: cardSendFailedReason → fall through Path 2  │
+    │  │    ├─ Path 2: 文本过长 → LLM 转卡片 JSON (expect:'array')   │
+    │  │    │          → parseCardDeck 校验 → renderParsedCards       │
+    │  │    ├─ Path 3: 原始 prose (ctx.responseText)，不输出 JSON    │
     │  │    └─ hook: onAIGenerationComplete                          │
     │  │                                                              │
     │  └──────────────────────────────────────────────────────────────┘
@@ -424,18 +426,51 @@ ctx.reply 已设置 → 返回外层 Lifecycle → PREPARE → SEND → COMPLETE
 
 ### Prompt 最终结构
 
+主 reply pipeline 的 system prompt 通过 `PromptInjectionRegistry` 的
+producer 模型拼装，分为 4 层：
+
+| Layer | 用途 | 包含 producer | 落在哪个 system message |
+|-------|------|---------------|------------------------|
+| `baseline` | 稳定身份层（指令缓存友好） | `BaselineProducer`（base.system 渲染产物）+ `persona-stable` | system message #1 |
+| `scene` | 场景模板（按 source 切换） | `SceneProducer`（`scenes.<source>.zh.scene`） | system message #2（前段） |
+| `runtime` | 每条消息变化的状态 | `persona-volatile`（mood / relationship / tone） | system message #2（中段） |
+| `tool` | 工具调用说明 | `ToolInstructProducer`（`llm.tool.instruct`） | system message #2（后段） |
+
+`PromptAssemblyStage` 调用 `registry.gatherByLayer({ source, userId, groupId, hookContext })`
+得到 `{ baseline, scene, runtime, tool }`，然后：
+
+- system message #1 = `baseline.map(i => i.fragment).join('\n\n')`
+- system message #2 = `[...scene, ...runtime, ...tool].map(i => i.fragment).join('\n\n')`
+
+同层内按 producer 的 `priority`（数字小 = 靠前）排序，默认 100。
+
 ```
 ChatMessage[] 排列顺序:
 
-  ┌─ system ─────────────────────────────────────────────────┐
-  │  baseSystem prompt (base.system.txt)                     │
-  │  变量: currentDate, adminUserId, whitelistLimited...     │
-  │  ← Anthropic prompt cache 锚点                           │
+  ┌─ system 1 (baseline 层) ──────────────────────────────────┐
+  │  BaselineProducer fragment (base.system.txt 渲染产物)     │
+  │    变量: currentDate (小时精度 + JST 时区)                  │
+  │          adminUserId, whitelistLimitedFragment              │
+  │  persona-stable fragment                                  │
+  │    <persona_identity>...</persona_identity>              │
+  │    <persona_boundaries>...</persona_boundaries>          │
+  │       ↑ 仅当 persona enabled 且 Bible 有内容时出现        │
+  │  ← Anthropic prompt cache 锚点（baseline 层整体稳定）     │
   └──────────────────────────────────────────────────────────┘
-  ┌─ system ─────────────────────────────────────────────────┐
-  │  sceneSystem prompt (llm.reply.system)                   │
-  │  变量: toolInstruct                     │
-  │  toolInstruct = 完整工具列表 + whenToUse + params         │
+  ┌─ system 2 (scene + runtime + tool 层) ───────────────────┐
+  │  SceneProducer fragment                                   │
+  │    scene template (scenes.<source>.zh.scene)              │
+  │      变量: toolInstruct (由上一条 system message 的       │
+  │             ToolInstructProducer 提供)                     │
+  │  persona-volatile fragment                               │
+  │    <mind_state>...</mind_state>                          │
+  │    <relationship_state>...</relationship_state>          │
+  │    <tone_state>...</tone_state>                          │
+  │       ↑ fatigue/relationship/tone 各自有 silence 阈值    │
+  │         数值未达阈值时不输出对应块                        │
+  │  ToolInstructProducer fragment                            │
+  │    llm.tool.instruct（工具列表 + whenToUse + params）     │
+  │       ↑ 仅当 provider 不支持原生 function calling 时注入 │
   └──────────────────────────────────────────────────────────┘
   ┌─ history (交替 user/assistant) ──────────────────────────┐
   │  user:      "[speaker:uid:nick] 消息内容"                 │
@@ -443,22 +478,36 @@ ChatMessage[] 排列顺序:
   │  (vision时: ContentPart[] 含 base64 图片)                │
   └──────────────────────────────────────────────────────────┘
   ┌─ user (最终用户消息块) ──────────────────────────────────┐
-  │  <memory_context>                                        │
+  │  <memory_context>                          (条件)         │
   │    ## 关于本群的记忆                                      │
   │    {groupMemory}                                         │
   │    ## 关于当前用户的记忆                                   │
   │    {userMemory}                                          │
   │  </memory_context>                                       │
   │                                                          │
-  │  <rag_context>                                           │
+  │  <rag_context>                             (条件)         │
   │    {检索到的相关对话片段}                                  │
   │  </rag_context>                                          │
   │                                                          │
-  │  <current_query>                                         │
+  │  <current_query>                           (始终存在)     │
   │    [speaker:uid:nick] 当前用户消息                        │
   │  </current_query>                                        │
   └──────────────────────────────────────────────────────────┘
 ```
+
+### Shim 状态（2026-05）
+
+`PromptManager.renderBasePrompt` 与 `renderBaseSystemTemplate` 仍存在，但仅
+作为 shim 给非主 reply pipeline 的支线服务使用：
+
+- `MemoryExtractService` (`packages/bot/src/memory/MemoryExtractService.ts`)
+- `NsfwReplyService` (`packages/bot/src/ai/services/NsfwReplyService.ts`)
+- `PreliminaryAnalysisService` (`packages/bot/src/ai/services/PreliminaryAnalysisService.ts`)
+- `ProactiveReplyGenerationService` (`packages/bot/src/ai/services/ProactiveReplyGenerationService.ts`)
+
+主 reply pipeline 已经完全通过 `PromptInjectionRegistry` 的 producer 模型
+拼装 system prompt。后续若把上述支线服务也接入 producer 模型，应当
+一并删除这两个 shim。
 
 ---
 

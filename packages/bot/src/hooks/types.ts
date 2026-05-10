@@ -3,6 +3,7 @@
 import type { SendMessageResult } from '@/api/types';
 import type { CommandResult, ParsedCommand } from '@/command/types';
 import type { ConversationContext } from '@/context/types';
+import type { MessageSource } from '@/conversation/sources';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import type { MessageSegment } from '@/message/types';
 import type { ToolCall, ToolResult } from '@/tools/types';
@@ -39,6 +40,7 @@ export interface ReplyContent {
 export interface HookContext {
   message: NormalizedMessageEvent;
   context: ConversationContext;
+  source: MessageSource; // Origin label — written once by HookContextBuilder.build()
   /** Set when hook is run for a notice event (e.g. onNoticeReceived). */
   notice?: NormalizedNoticeEvent;
   command?: ParsedCommand;

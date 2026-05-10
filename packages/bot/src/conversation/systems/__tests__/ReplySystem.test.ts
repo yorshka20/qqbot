@@ -27,6 +27,7 @@ function makeContext(opts: { message: string; hasReply?: boolean; hasCommand?: b
       metadata: new Map(),
     },
     metadata,
+    source: 'qq-private' as const,
     ...(opts.hasReply ? { reply: { source: 'ai', segments: [{ type: 'text', data: { text: 'r' } }] } } : {}),
     ...(opts.hasCommand ? { command: { name: 'help', args: [] } } : {}),
   } as HookContext;

@@ -91,6 +91,7 @@ dist-types/
 # Local-only notes (gitignore applies to untracked files; remove from index if ever committed)
 .claude-workbook/
 .claude-learnings/
+/ROADMAP.md
 
 repomix-*.xml
 repomix-*.md

@@ -65,6 +65,7 @@ export class Text2ImgSFWFilterPlugin extends PluginBase {
     stage: 'onMessagePreprocess',
     priority: 'NORMAL',
     order: 20, // Run after whitelist plugin but before command routing
+    applicableSources: ['qq-private', 'qq-group', 'discord'],
   })
   onMessagePreprocess(context: HookContext): HookResult {
     if (!this.enabled || this.groupSfwUsers.size === 0) {

@@ -10,11 +10,13 @@ import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { cacheMessage } from '@/message/MessageCache';
-import { MIND_EVENT_MESSAGE_RECEIVED } from '@/mind';
+import { PERSONA_EVENT_MESSAGE_RECEIVED } from '@/persona';
 import { logger } from '@/utils/logger';
 import { getLogColorForKey, getLogTag } from '@/utils/messageLogContext';
 import type { ConversationConfigService } from './ConversationConfigService';
 import type { Lifecycle } from './Lifecycle';
+import { deriveSourceFromEvent, type MessageSource } from './sources';
+import { getSourceConfig } from './sources/registry';
 import type { MessageProcessingContext, MessageProcessingResult } from './types';
 
 /**
@@ -25,6 +27,8 @@ import type { MessageProcessingContext, MessageProcessingResult } from './types'
  * async local storage so PromptManager can look up the correct context for this async chain when rendering.
  */
 export class MessagePipeline {
+  private serialQueues = new Map<MessageSource, Promise<void>>();
+
   constructor(
     private lifecycle: Lifecycle,
     private hookManager: HookManager,
@@ -33,8 +37,8 @@ export class MessagePipeline {
     private providerRouter: ProviderRouter,
     /**
      * Optional — when present, the pipeline publishes
-     * `MIND_EVENT_MESSAGE_RECEIVED` after every successful `lifecycle.execute`
-     * so `MindService` can translate it into an attention stimulus.
+     * `PERSONA_EVENT_MESSAGE_RECEIVED` after every successful `lifecycle.execute`
+     * so `PersonaService` can translate it into an attention stimulus.
      * Absent in tests / setups without mind.
      */
     private internalEventBus?: InternalEventBus,
@@ -64,8 +68,38 @@ export class MessagePipeline {
   /**
    * Process message through the complete pipeline
    */
-  async process(event: NormalizedMessageEvent, context: MessageProcessingContext): Promise<MessageProcessingResult> {
-    const hookContext = await this.createHookContext(event, context);
+  async process(
+    event: NormalizedMessageEvent,
+    context: MessageProcessingContext,
+    source?: MessageSource,
+  ): Promise<MessageProcessingResult> {
+    const resolvedSource = source ?? context.source ?? deriveSourceFromEvent(event);
+    context.source = resolvedSource;
+    const cfg = getSourceConfig(resolvedSource);
+    if (cfg.serial) {
+      const prev = this.serialQueues.get(resolvedSource) ?? Promise.resolve();
+      const next = prev.catch(() => undefined).then(() => this._processInner(event, context, resolvedSource));
+      this.serialQueues.set(
+        resolvedSource,
+        next.then(
+          () => undefined,
+          () => undefined,
+        ),
+      );
+      return next;
+    }
+    return this._processInner(event, context, resolvedSource);
+  }
+
+  private async _processInner(
+    event: NormalizedMessageEvent,
+    context: MessageProcessingContext,
+    resolvedSource: MessageSource,
+  ): Promise<MessageProcessingResult> {
+    const hookContext = await this.createHookContext(event, context, resolvedSource);
+    if (context.responseCallback) {
+      hookContext.metadata.set('responseCallback', context.responseCallback);
+    }
     const messageId = String(event.id ?? event.messageId ?? 'unknown');
     const contextKey = `${context.sessionId}_${messageId}`;
     const logTag = getLogTag(messageId);
@@ -78,7 +112,7 @@ export class MessagePipeline {
         try {
           cacheMessage(event);
           logger.debug(
-            `[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId}`,
+            `[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId} | source=${resolvedSource}`,
           );
 
           const success = await this.lifecycle.execute(hookContext);
@@ -102,8 +136,11 @@ export class MessagePipeline {
   async processReplyOnly(
     event: NormalizedMessageEvent,
     context: MessageProcessingContext,
+    source?: MessageSource,
   ): Promise<MessageProcessingResult> {
-    const hookContext = await this.createHookContext(event, context);
+    const resolvedSource = source ?? context.source ?? deriveSourceFromEvent(event);
+    context.source = resolvedSource;
+    const hookContext = await this.createHookContext(event, context, resolvedSource);
     const messageId = String(event.id ?? event.messageId ?? 'unknown');
     hookContext.metadata.set('replyOnly', true);
     this.applyProviderPrefix(hookContext, event);
@@ -154,6 +191,7 @@ export class MessagePipeline {
   private async createHookContext(
     event: NormalizedMessageEvent,
     context: MessageProcessingContext,
+    source?: MessageSource,
   ): Promise<HookContext> {
     const conversationContext = this.buildConversationContext(event, context);
     const options: Parameters<typeof HookContextBuilder.fromMessage>[1] = {
@@ -168,6 +206,7 @@ export class MessagePipeline {
     };
     const hookContext = HookContextBuilder.fromMessage(event, options)
       .withConversationContext(conversationContext)
+      .withSource(source ?? deriveSourceFromEvent(event))
       .build();
     const groupId = event.groupId != null ? event.groupId.toString() : undefined;
     if (groupId) {
@@ -226,6 +265,7 @@ export class MessagePipeline {
       senderRole: event.sender?.role ?? '',
     })
       .withConversationContext(conversationContext)
+      .withSource(deriveSourceFromEvent(event))
       .withError(err)
       .build();
     await this.hookManager.execute('onError', errorContext);
@@ -237,18 +277,33 @@ export class MessagePipeline {
   }
 
   /**
-   * Publish a message-received event so MindService can register an
-   * attention spike. Silently no-ops when the event bus is not present
-   * or a subscriber throws — a failure here must never break reply flow.
+   * Publish a message-received event so PersonaService can register an
+   * attention spike + relationship row for the speaker. Silently no-ops
+   * when the event bus is not present or a subscriber throws — a failure
+   * here must never break reply flow.
+   *
+   * Two-layer gate:
+   *   1. **Synthetic exclusion (here)**: synthetic sources (avatar-cmd /
+   *      bilibili-danmaku / idle-trigger / bootstrap) carry sentinel
+   *      userIds and never produce stimulus.
+   *   2. **User config (PersonaService.handleMessageEvent)**: even for real-IM
+   *      sources, `PersonaService` checks `mind.applicableSources` so the
+   *      user can narrow stimulus to e.g. private DM only.
+   *
+   * `data.source` is forwarded so PersonaService can apply layer 2 without
+   * needing to know about MessageProcessingContext.
    */
   private publishMindStimulus(event: NormalizedMessageEvent, context: MessageProcessingContext): void {
     if (!this.internalEventBus) return;
+    const source = context.source;
+    if (source !== 'qq-private' && source !== 'qq-group' && source !== 'discord') return;
     try {
       this.internalEventBus.publish({
-        type: MIND_EVENT_MESSAGE_RECEIVED,
+        type: PERSONA_EVENT_MESSAGE_RECEIVED,
         groupId: event.groupId != null ? String(event.groupId) : '',
         userId: event.userId != null ? String(event.userId) : '',
         botSelfId: context.botSelfId ?? '',
+        data: { source },
       });
     } catch (err) {
       logger.debug(`[MessagePipeline] mind stimulus publish failed (non-fatal): ${err}`);

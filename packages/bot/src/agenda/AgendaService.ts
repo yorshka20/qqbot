@@ -13,6 +13,7 @@ import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
+import type { PluginManager } from '@/plugins/PluginManager';
 import { logger } from '@/utils/logger';
 import type { ActionHandlerRegistry } from './ActionHandlerRegistry';
 import type { AgendaReporter } from './AgendaReporter';
@@ -311,6 +312,20 @@ export class AgendaService {
       return;
     }
 
+    // Action items: skip if the registered handler declares dependsOn plugins
+    // that aren't currently enabled (e.g. wechatIngest disabled in config).
+    // This prevents scheduled actions from firing into a no-op state and wasting
+    // cycles / generating empty results.
+    if (fresh.actionType === 'action' && fresh.actionTarget) {
+      const missing = this.findMissingDependencies(fresh.actionTarget);
+      if (missing.length > 0) {
+        logger.info(
+          `[AgendaService] Item "${fresh.name}" skipped: action handler "${fresh.actionTarget}" requires disabled plugin(s): ${missing.join(', ')}`,
+        );
+        return;
+      }
+    }
+
     logger.info(`[AgendaService] Firing item "${fresh.name}" (${fresh.id})`);
     const startedAt = new Date();
     const startedAtIso = startedAt.toISOString();
@@ -356,6 +371,20 @@ export class AgendaService {
     if (!item.lastRunAt) return true;
     const elapsed = Date.now() - new Date(item.lastRunAt).getTime();
     return elapsed >= item.cooldownMs;
+  }
+
+  /**
+   * Look up the action handler by target name and return any plugins it
+   * declares in `dependsOn` that aren't currently in PluginManager's
+   * enabled set. Returns [] when handler is unknown (let the normal
+   * dispatch path raise the missing-handler error) or has no deps.
+   */
+  private findMissingDependencies(actionTarget: string): string[] {
+    const handler = this.actionHandlerRegistry.get(actionTarget);
+    if (!handler?.dependsOn?.length) return [];
+    const pluginManager = getContainer().resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
+    const enabled = new Set(pluginManager.getEnabledPlugins());
+    return handler.dependsOn.filter((name) => !enabled.has(name));
   }
 
   // ─── DB ──────────────────────────────────────────────────────────────────────

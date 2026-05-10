@@ -46,15 +46,9 @@ export class MessageOperationPlugin extends PluginBase {
 
   async onInit(): Promise<void> {
     const container = getContainer();
-    if (!container.isRegistered(DITokens.MESSAGE_API)) {
-      throw new Error('[MessageOperationPlugin] MESSAGE_API not registered in DI container');
-    }
-    if (!container.isRegistered(DITokens.DATABASE_MANAGER)) {
-      throw new Error('[MessageOperationPlugin] DATABASE_MANAGER not registered in DI container');
-    }
-    if (!container.isRegistered(DITokens.CONVERSATION_MANAGER)) {
-      throw new Error('[MessageOperationPlugin] CONVERSATION_MANAGER not registered in DI container');
-    }
+    // MESSAGE_API / DATABASE_MANAGER / CONVERSATION_MANAGER are required
+    // tokens (DITokens.ts) — `resolve` itself throws on missing, so the
+    // hand-rolled isRegistered guards were redundant.
     this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
     this.databaseManager = container.resolve<DatabaseManager>(DITokens.DATABASE_MANAGER);
     this.conversationManager = container.resolve<ConversationManager>(DITokens.CONVERSATION_MANAGER);

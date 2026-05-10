@@ -31,7 +31,27 @@ interface ExtractedContextFields {
 }
 
 export class MessageAPI {
-  constructor(private apiClient: APIClient) {}
+  /**
+   * Hard singleton — exactly one instance is allowed per process. It's
+   * constructed by `ConversationInitializer` and registered into DI as
+   * `DITokens.MESSAGE_API`; every other consumer must resolve from the
+   * container. Multiple instances would fragment outbound state (rate
+   * limiters, dedup buffers, retry queues) and silently drift apart, so
+   * the second `new` throws to enforce the contract at the language
+   * level. Tests that need a fake should `container.registerInstance(
+   * DITokens.MESSAGE_API, mock, { allowOverride: true })`, not `new`.
+   */
+  private static _constructed = false;
+
+  constructor(private apiClient: APIClient) {
+    if (MessageAPI._constructed) {
+      throw new Error(
+        '[MessageAPI] Singleton violation — only one MessageAPI may exist per process. ' +
+          'Resolve via getContainer().resolve(DITokens.MESSAGE_API) instead of `new MessageAPI(...)`.',
+      );
+    }
+    MessageAPI._constructed = true;
+  }
 
   /**
    * Extract protocol from context (CommandContext, NormalizedMessageEvent, or NormalizedNoticeEvent).

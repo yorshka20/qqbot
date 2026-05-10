@@ -59,6 +59,7 @@ export class ReactionPlugin extends PluginBase {
     stage: 'onMessagePreprocess',
     priority: 'NORMAL',
     order: 10,
+    applicableSources: ['qq-private', 'qq-group', 'discord'],
   })
   onMessagePreprocess(context: HookContext): HookResult {
     if (!this.enabled) {

@@ -1,7 +1,9 @@
 // Provider selection stage — routing, vision/tool capability detection, tool definition assembly.
 
+import type { PermissionChecker } from '@/command/CommandManager';
 import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
+import type { AIProvider } from '../../base/AIProvider';
 import type { PromptManager } from '../../prompt/PromptManager';
 import type { ProviderRouter } from '../../routing/ProviderRouter';
 import type { LLMService } from '../../services/LLMService';
@@ -27,6 +29,7 @@ export class ProviderSelectionStage implements ReplyStage {
     private llmService: LLMService,
     private toolManager: ToolManager,
     private promptManager: PromptManager,
+    private permissionChecker: PermissionChecker,
   ) {}
 
   async execute(ctx: ReplyPipelineContext): Promise<void> {
@@ -83,10 +86,28 @@ export class ProviderSelectionStage implements ReplyStage {
     const providerCanUseTools = await this.checkProviderToolUseSupport(effectiveProvider, sessionId);
     ctx.effectiveNativeSearchEnabled = false;
 
+    // Detect native function-calling support for toolList suppression
+    const resolvedProvider = await this.llmService.getAvailableProvider(
+      effectiveProvider === 'default' ? undefined : effectiveProvider,
+      sessionId,
+    );
+    ctx.providerHasFunctionCalling =
+      !!resolvedProvider && (resolvedProvider as unknown as AIProvider).getCapabilities().includes('function_calling');
+
+    // Resolve source and admin status for tool catalog filtering
+    const source = hookContext.source;
+    const userId = hookContext.message.userId;
+    const messageType = hookContext.message.messageType ?? 'private';
+    const protocol = hookContext.message.protocol as string | undefined;
+    const senderRole = hookContext.metadata.get('senderRole') as string | undefined;
+    const isAdmin = this.permissionChecker.checkPermission(userId, messageType, ['admin'], senderRole, protocol);
+
     // Tools: only inject when the provider actually supports tool use
     ctx.toolDefinitions = !providerCanUseTools
       ? []
-      : getReplySkillDefinitions(this.toolManager, { nativeWebSearchEnabled: ctx.effectiveNativeSearchEnabled });
+      : getReplySkillDefinitions(this.toolManager, source, isAdmin, {
+          nativeWebSearchEnabled: ctx.effectiveNativeSearchEnabled,
+        });
 
     // Tool usage instructions
     ctx.toolUsageInstructions = buildSkillUsageInstructions(
@@ -94,6 +115,16 @@ export class ProviderSelectionStage implements ReplyStage {
       ctx.toolDefinitions,
       { nativeWebSearchEnabled: ctx.effectiveNativeSearchEnabled },
       this.promptManager,
+      source,
+      isAdmin,
+      ctx.providerHasFunctionCalling,
+    );
+    // Mirror into hookContext.metadata so ToolInstructProducer can read it
+    // without depending on ReplyPipelineContext directly.
+    ctx.hookContext.metadata.set('toolUsageInstructions', ctx.toolUsageInstructions);
+
+    logger.debug(
+      `[ProviderSelectionStage] reply tool catalog | source=${source} | isAdmin=${isAdmin} | toolCount=${ctx.toolDefinitions.length}`,
     );
 
     // Log

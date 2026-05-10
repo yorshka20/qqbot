@@ -115,6 +115,35 @@ The bot requires a `config.jsonc` file (JSONC with comments). Copy from `config.
 - 若发现自己的方案在叠 patch（symptom A 加 fallback，symptom B 加 memo……），**主动停下重审**："等等，这是症状治理，根因可能是 X"，不要等用户指出
 - 若用户拒绝方案、说"不要 patch"，**重新做根因诊断**，不要换一个角度的 patch 再提交
 
+## 注释风格：禁止 session-context 注释
+
+**默认不写注释**。代码标识符已经讲清楚 "做什么"；只有当 *why* 不显然时才写——隐藏的约束、不直觉的不变量、对某个外部 bug 的绕开、流程上需要警惕的点。
+
+### 禁止的注释类型
+
+写注释时**禁止**夹带任何只在当前任务/会话语境下才能理解的内容：
+
+- ❌ "今天加这行解决 XX 问题"、"为修 issue #123 而加"、"上次调试发现……"
+- ❌ "目前 / today / for now / 暂时这样"、"以后再 revisit"、"等我们想要 raw 内容时再回来改"
+- ❌ "和 XX 字段保持一致"（指向当次改动的临时一致性，不是长期不变量）
+- ❌ "由 X 调用 / 给 Y 流程用"（这些信息属于 PR 描述或 git blame，会随代码演化失真）
+- ❌ 在 type / interface 字段上单独加 JSDoc，但同 interface 里其他字段都没注释——这种"突兀的局部解释"几乎都是 session 上下文泄露
+
+如果一段话脱离当前对话别人就读不懂、或者只是 "这次改动的决策日志"，那它属于 commit message / PR description / `.claude-workbook/`，**不属于代码注释**。
+
+### 允许的注释类型
+
+注释要写成"不知道当前任务的人也能从中受益"的形式：
+
+- ✅ 解释**这段代码为什么必须存在**（消除一类 bug、维持某个不变量、对接某个外部协议的硬约束）
+- ✅ 标记**流程上容易出错的点**（"调用顺序不能换，X 依赖 Y 的副作用"、"这里看似多余但移除会触发 Z"）
+- ✅ 引用**外部规范 / 厂商文档 / 标准**（"按 RFC xxxx §3.2"、"绕开 chromium bug crbug/12345"）——可定位、可验证
+- ✅ 标记 **edge-case patch**（按上一节的规则，必须显式声明并附 follow-up 链接）
+
+### 自检
+
+写完注释先问自己：**"半年后一个新人读到这行，他能理解吗？"** 如果答案依赖"知道这次改动来历"，就删掉它。
+
 ## Testing Approach
 
 When testing changes:
@@ -216,11 +245,23 @@ The bot automatically handles database schema initialization. For SQLite, tables
 - **Learnings**: 按 scope 分文件记录，scope 可按需新增。判断内容应写入已有 scope 还是新建 scope
 - **两个目录的 `index.md`** 都必须在内容变更后同步更新，简要记录新增/修改的内容
 
-### Roadmap（每个 scope 文件头部维护）
+### Roadmap 维护（两层结构）
 
-每个 `.claude-learnings/<scope>.md` 文件**头部**维护一段 ROADMAP 表，把该 scope 下的所有待办、进行中、已完成项汇总。这是规划与记录需求点的单一入口，**确保所有内容都不遗漏**——以后想到该 scope 的新需求，先记进 ROADMAP，再去拆 ticket / 写代码。
+本仓库的 roadmap 分两层，**都已 gitignore，仅本机笔记**：
 
-参考样例：[`/Users/yorshka/project/video-knowledge-backend/ROADMAP.md`](file:///Users/yorshka/project/video-knowledge-backend/ROADMAP.md)（VKB 仓库的全局 roadmap，本仓库放在 scope 文件头部即可，不必创建顶层 ROADMAP）。
+#### 跨 scope 索引：`/ROADMAP.md`（仓库根）
+
+`/ROADMAP.md` 是跨 scope 的 active 任务仪表盘 / 索引：
+
+- 只列**当前活跃**的 P0/P1/P2/P3 项 + 指回 scope 详情的链接（包含合入分支前的检查清单 / 短期跟进 / 未启动 phase）
+- **不重复列**已完成项（去 scope 文件标 ✅ + 填 commit hash / workbook 日期；本文用一段"已合入历史指针"指向各 scope 即可）
+- 每次**开始工作前**先扫 active 节决定下一步；**新发现需求**先记进本文再展开到 scope
+
+#### 单 scope 详情：`.claude-learnings/<scope>.md` 头部
+
+每个 scope 文件**头部**维护一段 ROADMAP 表，把该 scope 下的所有待办、进行中、已完成项汇总（含历史 phase 完整表）。这是 scope 内的 single source of truth——commit hash / workbook 日期只在这里登记，`/ROADMAP.md` 只引用。
+
+参考样例：[`/Users/yorshka/project/video-knowledge-backend/ROADMAP.md`](file:///Users/yorshka/project/video-knowledge-backend/ROADMAP.md)（VKB 仓库的全局 roadmap，模式类似但更扁平）。
 
 #### Status Legend
 
@@ -248,7 +289,7 @@ The bot automatically handles database schema initialization. For SQLite, tables
 
 #### 触发更新时机
 
-- **工作完成后**：把新做完的项移到 ✅，并在"链接"列填 workbook 日期 / commit
-- **新发现需求**：写一行 📋，避免遗漏；不需要立即做，先记下
-- **每次开始工作前**：扫一眼 ROADMAP 决定下一步做什么；ROADMAP 是 scope 内的"全局 TODO 列表"
-- **scope 之间相互依赖**时：在备注里相互引用（如 `mind.md` 的 phenotype 任务依赖 `core.md` 的 SQLite 表）
+- **工作完成后**：scope 文件里把新做完项移到 ✅ + 填 workbook 日期 / commit；同时从 `/ROADMAP.md` active 节移除（因为已不再 active）
+- **新发现需求**：先在 `/ROADMAP.md` active 节记一行 📋（防遗忘），再去对应 scope 文件展开（明确细节、设计、依赖）
+- **每次开始工作前**：先扫 `/ROADMAP.md` active 节，再按需深入 scope 文件
+- **scope 之间相互依赖**时：在 scope 文件备注里相互引用（如 `persona.md` 的 phenotype 任务依赖 `core.md` 的 SQLite 表）

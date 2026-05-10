@@ -17,7 +17,7 @@ const DOWNLOAD_ROOT = 'output/downloads';
 
 @Tool({
   name: 'deduplicate_files',
-  visibility: ['internal'],
+  visibility: { internal: true },
   description:
     'Scan downloaded group media for content-identical duplicate files and remove them, keeping the oldest copy. Supports dry-run mode to preview results without deletion.',
   executor: 'deduplicate_files',

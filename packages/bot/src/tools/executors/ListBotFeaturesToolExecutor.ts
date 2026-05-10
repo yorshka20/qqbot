@@ -14,7 +14,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
   description:
     '列出机器人的所有可用命令和功能。返回命令名称、用法、描述和权限要求，以及已启用的插件列表。用户询问"怎么用"、"有什么功能"时调用。',
   executor: 'list_bot_features',
-  visibility: ['reply', 'subagent'],
+  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] }, subagent: true },
   parameters: {
     query: {
       type: 'string',

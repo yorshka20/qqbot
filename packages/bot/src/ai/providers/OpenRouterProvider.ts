@@ -26,7 +26,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
     this.config = config;
 
     // Explicitly declare supported capabilities
-    this._capabilities = ['llm'];
+    this._capabilities = ['llm', 'function_calling'];
 
     // Set context configuration
     this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);

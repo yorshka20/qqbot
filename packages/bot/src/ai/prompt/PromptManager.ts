@@ -3,7 +3,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
-import { getCurrentDateTimeForPrompt } from '@/utils/dateTime';
+import { getCurrentDateHourForPrompt } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 
@@ -31,10 +31,16 @@ export class PromptManager {
   private namespaces = new Map<string, Map<string, PromptTemplate>>(); // namespace -> templates
   /** Bot owner user id from config (bot.owner); used by renderBasePrompt() for {{adminUserId}}. */
   readonly adminUserId: string;
+  /** Bot's own QQ id (bot.selfId); injected into base prompt as {{botSelfId}}. */
+  readonly botSelfId: string;
+  /** Bot's display nickname (bot.nickname); injected into base prompt as {{botNickname}}. */
+  readonly botNickname: string;
 
-  constructor(templateDirectory?: string, adminUserId?: string) {
+  constructor(templateDirectory?: string, adminUserId?: string, botSelfId?: string, botNickname?: string) {
     this.templateDirectory = templateDirectory || resolve(getRepoRoot(), 'prompts');
     this.adminUserId = adminUserId ?? '';
+    this.botSelfId = botSelfId ?? '';
+    this.botNickname = botNickname ?? '';
 
     this.loadTemplatesFromDirectory();
   }
@@ -252,8 +258,30 @@ export class PromptManager {
   }
 
   /**
-   * Render base system prompt with stable variables only (currentDate, adminUserId) to avoid cache miss.
-   * Optional overrides (e.g. whitelistLimitedFragment) allow injecting per-request content when whitelist is not full permissions.
+   * @shim — Legacy renderer for the base.system template.
+   *
+   * As of the producer-driven prompt refactor (commit ffadab5), the main
+   * reply pipeline (PromptAssemblyStage) **no longer** calls this method.
+   * It now consumes a BaselineProducer registered with
+   * PromptInjectionRegistry, which internally calls renderBasePrompt to
+   * produce the same content but routed through the layered injection
+   * model.
+   *
+   * This method is retained ONLY for sideline services that still build
+   * their own prompts directly (not through PromptInjectionRegistry):
+   *   - MemoryExtractService   (packages/bot/src/memory/MemoryExtractService.ts)
+   *   - NsfwReplyService       (packages/bot/src/ai/services/NsfwReplyService.ts)
+   *   - PreliminaryAnalysisService (packages/bot/src/ai/services/PreliminaryAnalysisService.ts)
+   *   - ProactiveReplyGenerationService (packages/bot/src/ai/services/ProactiveReplyGenerationService.ts)
+   *
+   * Future cleanup: when those sideline services are migrated to the
+   * producer model (separate ticket), this method and
+   * renderBaseSystemTemplate below should both be deleted.
+   *
+   * Renders the base system prompt with stable variables only
+   * (currentDate, adminUserId) to avoid cache miss. Optional overrides
+   * (e.g. whitelistLimitedFragment) allow injecting per-request content
+   * when whitelist is not full permissions.
    */
   renderBasePrompt(overrides?: Record<string, string>): string | undefined {
     const baseTemplate = this.getTemplate(BASE_SYSTEM_TEMPLATE_NAME) ?? this.getTemplate(BASE_TEMPLATE_NAME);
@@ -261,8 +289,10 @@ export class PromptManager {
       return undefined;
     }
     const baseVars: Record<string, string> = {
-      currentDate: getCurrentDateTimeForPrompt(),
+      currentDate: getCurrentDateHourForPrompt(),
       adminUserId: this.adminUserId || '（无管理员）',
+      botSelfId: this.botSelfId || '（未配置）',
+      botNicknameSuffix: this.botNickname ? `，昵称「${this.botNickname}」` : '',
       whitelistLimitedFragment: '',
       ...overrides,
     };
@@ -270,14 +300,17 @@ export class PromptManager {
   }
 
   /**
-   * Render a base-style system prompt from an arbitrary template, using the
-   * same environmental-variable injection as renderBasePrompt (currentDate,
-   * adminUserId). Intended for sub-pipelines (e.g. Live2D) that have their
-   * own base.system template but want to stay aligned with the main pipeline.
+   * @shim — Companion shim to renderBasePrompt; see that method's JSDoc
+   * for the migration context. The main reply pipeline does not call
+   * this method either; sub-pipelines (e.g. Live2D / avatar) that have
+   * their own base.system template still do.
    *
-   * Resolution order matches getTemplate (short name, then fallback by basename),
-   * but falls back to the shared base.system if the requested template is absent,
-   * so callers don't need to special-case missing templates.
+   * Renders a base-style system prompt from an arbitrary template, using
+   * the same environmental-variable injection as renderBasePrompt
+   * (currentDate, adminUserId). Resolution order matches getTemplate
+   * (short name, then fallback by basename), but falls back to the shared
+   * base.system if the requested template is absent, so callers don't
+   * need to special-case missing templates.
    */
   renderBaseSystemTemplate(templateName: string, overrides?: Record<string, string>): string | undefined {
     const template = this.getTemplate(templateName);
@@ -285,8 +318,10 @@ export class PromptManager {
       return this.renderBasePrompt(overrides);
     }
     const baseVars: Record<string, string> = {
-      currentDate: getCurrentDateTimeForPrompt(),
+      currentDate: getCurrentDateHourForPrompt(),
       adminUserId: this.adminUserId || '（无管理员）',
+      botSelfId: this.botSelfId || '（未配置）',
+      botNicknameSuffix: this.botNickname ? `，昵称「${this.botNickname}」` : '',
       ...overrides,
     };
     return this.renderTemplateContent(template, templateName, baseVars);

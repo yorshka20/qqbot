@@ -33,10 +33,23 @@ export class CardRenderingService {
    * @returns Base64 encoded image buffer
    * @throws Error if JSON parsing or rendering fails
    */
+  /**
+   * Render pre-parsed CardData[] to a base64 image string.
+   * Bypasses JSON extraction — caller is responsible for providing valid CardData[].
+   * @param cards - Already-validated card data array
+   * @param providerName - Provider name shown in card footer
+   * @returns Base64 encoded image buffer
+   * @throws Error if rendering fails
+   */
+  async renderCardData(cards: CardData[], providerName: string): Promise<string> {
+    const imageBuffer = await this.cardRenderer.render(cards, { provider: providerName });
+    return imageBuffer.toString('base64');
+  }
+
   async renderCard(responseText: string, providerName: string): Promise<string> {
     try {
       // Expected JSON only: use dedicated JSON extractor (codeBlock, braceMatch, regex); do not mix with non-JSON strategies
-      let jsonStr = extractExpectedJsonFromLlmText(responseText) ?? responseText;
+      let jsonStr = extractExpectedJsonFromLlmText(responseText, { expect: 'array' }) ?? responseText;
       // When provider returns a single object (e.g. response_format.json_object), model may wrap array as {"result": [...]}
       jsonStr = this.normalizeCardDeckJson(jsonStr);
       const cards: CardData[] = parseCardDeck(jsonStr);

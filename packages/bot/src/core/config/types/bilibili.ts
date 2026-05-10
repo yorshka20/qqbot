@@ -34,7 +34,7 @@ export interface BilibiliLiveConfig {
   sessdata?: string;
   /** CSRF token (bili_jct cookie). Required only when `send.enabled=true`. */
   biliJct?: string;
-  /** Forward each flush to the Live2DPipeline. Default true. */
+  /** Forward each flush to drive the avatar pipeline. Default true. */
   pipeToLive2D?: boolean;
   /**
    * Keyword list used to detect @-style mentions of the streamer. B-station

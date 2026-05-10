@@ -5,8 +5,10 @@ import { SubAgentManager } from '@/agent/SubAgentManager';
 import { ToolRunner } from '@/agent/ToolRunner';
 import type { SubAgentConfig, SubAgentType } from '@/agent/types';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { PermissionChecker } from '@/command/CommandManager';
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { ConversationHistoryService } from '@/conversation/history';
+import type { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import type { AIChatConfig } from '@/core/config/types/ai';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookManager } from '@/hooks/HookManager';
@@ -77,6 +79,8 @@ export class AIService {
     databaseManager: DatabaseManager,
     llmService: LLMService,
     providerRouter: ProviderRouter,
+    permissionChecker: PermissionChecker,
+    registry: PromptInjectionRegistry,
     subagentConfig?: { providerName?: string | string[]; model?: string },
     chatConfig?: AIChatConfig,
   ) {
@@ -113,8 +117,15 @@ export class AIService {
       new ContextResolutionStage(messageAPI, databaseManager),
       new HistoryStage(episodeCacheManager),
       contextEnrichmentStage,
-      new ProviderSelectionStage(providerRouter, this.visionService, llmService, toolManager, promptManager),
-      new PromptAssemblyStage(promptManager, messageAPI, chatConfig),
+      new ProviderSelectionStage(
+        providerRouter,
+        this.visionService,
+        llmService,
+        toolManager,
+        promptManager,
+        permissionChecker,
+      ),
+      new PromptAssemblyStage(registry, promptManager, messageAPI, chatConfig),
       new GenerationStage(llmService, toolManager, hookManager),
       new ResponseDispatchStage(cardHelper, hookManager),
     ];

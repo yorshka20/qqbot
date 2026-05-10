@@ -2,13 +2,21 @@
 
 import type { AIProviderConfig, AIProviderType } from './providers';
 
-export type AIProviderCapability = 'llm' | 'vision' | 'video_analysis' | 'text2img' | 'img2img' | 'i2v';
+export type AIProviderCapability =
+  | 'llm'
+  | 'function_calling'
+  | 'vision'
+  | 'video_analysis'
+  | 'text2img'
+  | 'img2img'
+  | 'i2v';
 
 /**
  * Default providers configuration (by capability)
  */
 export interface DefaultProvidersConfig {
   llm?: AIProviderType; // Default LLM provider name
+  function_calling?: AIProviderType; // Default function-calling provider name (usually same as llm)
   vision?: AIProviderType; // Default vision/multimodal provider name
   video_analysis?: AIProviderType; // Default video analysis provider name
   text2img?: AIProviderType; // Default text-to-image provider name
@@ -21,6 +29,7 @@ export interface DefaultProvidersConfig {
  */
 export interface SessionProviderConfig {
   llm?: AIProviderType;
+  function_calling?: AIProviderType;
   vision?: AIProviderType;
   video_analysis?: AIProviderType;
   text2img?: AIProviderType;
@@ -30,6 +39,7 @@ export interface SessionProviderConfig {
 
 declare module '@/database/models/types' {
   interface ProviderSelection {
+    function_calling?: string;
     video_analysis?: string;
   }
 }

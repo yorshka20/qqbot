@@ -4,6 +4,7 @@
  */
 
 import type { ConversationContext } from '@/context/types';
+import { deriveSourceFromEvent } from '@/conversation/sources';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { createDefaultHookMetadata } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
@@ -56,5 +57,6 @@ export function buildAgendaHookContext(
     message,
     context,
     metadata,
+    source: deriveSourceFromEvent(message),
   };
 }

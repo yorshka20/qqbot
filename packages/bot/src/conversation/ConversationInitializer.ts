@@ -21,6 +21,7 @@ import { DefaultPermissionChecker } from '@/command/PermissionChecker';
 import { ContextManager } from '@/context';
 import { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { ConversationHistoryService, SessionHistoryStore } from '@/conversation/history';
+import type { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import type { AIConfig, Config } from '@/core/config';
 import { GlobalConfigManager } from '@/core/config/GlobalConfigManager';
 import { type DIContainer, getContainer } from '@/core/DIContainer';
@@ -32,7 +33,7 @@ import { DatabaseManager } from '@/database/DatabaseManager';
 import { HookManager } from '@/hooks/HookManager';
 import { MemoryExtractService, MemoryRAGService, MemoryService } from '@/memory';
 import { MessageUtils } from '@/message/MessageUtils';
-import { MindInitializer } from '@/mind';
+import { PersonaInitializer } from '@/persona';
 import { BilibiliService } from '@/services/bilibili';
 import { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
 import { FileReadService } from '@/services/file';
@@ -47,7 +48,6 @@ import { Lifecycle } from './Lifecycle';
 import { MessagePipeline } from './MessagePipeline';
 import { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
 import {
-  DefaultPreferenceKnowledgeService,
   DefaultProactiveThreadPersistenceService,
   ProactiveConversationService,
   SearXNGPreferenceKnowledgeService,
@@ -149,7 +149,7 @@ export class ConversationInitializer {
       if (adapter instanceof SQLiteAdapter) {
         const rawDb = adapter.getRawDb();
         if (rawDb) {
-          const { EpigeneticsStore } = await import('@/mind/epigenetics/EpigeneticsStore');
+          const { EpigeneticsStore } = await import('@/persona/reflection/epigenetics/EpigeneticsStore');
           const epigeneticsStore = new EpigeneticsStore(rawDb);
           container.registerInstance(DITokens.EPIGENETICS_STORE, epigeneticsStore);
           logger.info('[ConversationInitializer] EpigeneticsStore registered');
@@ -281,6 +281,7 @@ export class ConversationInitializer {
       logger.info('[ConversationInitializer] Memory RAG enabled for semantic memory filtering');
     }
 
+    const promptInjectionRegistry = container.resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
     const aiService = new AIService(
       services.aiManager,
       services.hookManager,
@@ -294,6 +295,8 @@ export class ConversationInitializer {
       databaseManager,
       llmService,
       providerRouter,
+      services.permissionChecker,
+      promptInjectionRegistry,
       {
         providerName: aiConfig.taskProviders?.subagent,
         model: aiConfig.taskProviders?.subagentModel,
@@ -331,13 +334,13 @@ export class ConversationInitializer {
 
     // Mind framework: phenotype ODE + modulation adapter for avatar.
     // Must run AFTER agenda so it can share the same InternalEventBus;
-    // bootstrap wires mindService.start() + pose provider + avatar
+    // bootstrap wires personaService.start() + pose provider + avatar
     // modulation injection after AvatarService is ready.
-    const mindComponents = await MindInitializer.initialize({
-      rawConfig: config.getMindConfig(),
+    const mindComponents = await PersonaInitializer.initialize({
+      rawConfig: config.getPersonaConfig(),
       internalEventBus: agendaComponents.internalEventBus,
     });
-    serviceRegistry.registerMindServices(mindComponents);
+    serviceRegistry.registerPersonaServices(mindComponents);
 
     const completeServices: CompleteServices = {
       ...services,
@@ -372,6 +375,7 @@ export class ConversationInitializer {
     commandManager: CommandManager;
     toolManager: ToolManager;
     hookManager: HookManager;
+    permissionChecker: DefaultPermissionChecker;
   }> {
     const aiManager = new AIManager();
     container.registerInstance(DITokens.AI_MANAGER, aiManager);
@@ -417,6 +421,7 @@ export class ConversationInitializer {
       commandManager,
       toolManager,
       hookManager,
+      permissionChecker,
     };
   }
 
@@ -482,15 +487,14 @@ export class ConversationInitializer {
       new PreliminaryAnalysisService(aiManager, promptManager),
     );
 
-    // Use SearXNG-backed preference knowledge when RetrievalService is available.
+    // RETRIEVAL_SERVICE is required (DITokens.ts) — bootstrap registers it
+    // unconditionally before this runs.
     const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
-    const preferenceKnowledge = container.isRegistered(DITokens.RETRIEVAL_SERVICE)
-      ? new SearXNGPreferenceKnowledgeService(
-          container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE),
-          llmService,
-          promptManager,
-        )
-      : new DefaultPreferenceKnowledgeService();
+    const preferenceKnowledge = new SearXNGPreferenceKnowledgeService(
+      container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE),
+      llmService,
+      promptManager,
+    );
     container.registerInstance(DITokens.PREFERENCE_KNOWLEDGE_SERVICE, preferenceKnowledge);
     container.registerInstance(
       DITokens.PROACTIVE_THREAD_PERSISTENCE_SERVICE,
@@ -602,16 +606,17 @@ export class ConversationInitializer {
     const lifecycle = new Lifecycle(services.hookManager, commandRouter, processStageInterceptorRegistry);
     container.registerInstance(DITokens.LIFECYCLE, lifecycle);
 
+    // INTERNAL_EVENT_BUS is required (DITokens.ts) — registered earlier in
+    // this same initializer via `serviceRegistry.registerAgendaServices`.
     const pipeline = new MessagePipeline(
       lifecycle,
       services.hookManager,
       services.contextManager,
       services.conversationConfigService,
       container.resolve<ProviderRouter>(DITokens.PROVIDER_ROUTER),
-      container.isRegistered(DITokens.INTERNAL_EVENT_BUS)
-        ? container.resolve<InternalEventBus>(DITokens.INTERNAL_EVENT_BUS)
-        : undefined,
+      container.resolve<InternalEventBus>(DITokens.INTERNAL_EVENT_BUS),
     );
+    container.registerInstance(DITokens.MESSAGE_PIPELINE, pipeline);
     const conversationManager = new ConversationManager(pipeline);
     container.registerInstance(DITokens.CONVERSATION_MANAGER, conversationManager);
 

@@ -26,7 +26,7 @@ const searchToolSpec: ToolSpec = {
   name: 'search',
   description: 'Search the web',
   executor: 'search',
-  visibility: ['reply', 'subagent'],
+  visibility: { reply: true, subagent: true },
   triggerKeywords: ['搜索', 'search'],
   parameters: {
     query: { type: 'string', required: true, description: 'Query' },
@@ -37,7 +37,7 @@ const replyToolSpec: ToolSpec = {
   name: 'reply',
   description: 'Generate reply',
   executor: 'reply',
-  visibility: ['internal'],
+  visibility: { internal: true },
   parameters: {},
 };
 
@@ -45,7 +45,7 @@ const getWeatherToolSpec: ToolSpec = {
   name: 'get_weather',
   description: 'Get the current weather for a given city.',
   executor: 'get_weather',
-  visibility: ['reply', 'subagent'],
+  visibility: { reply: true, subagent: true },
   parameters: {
     city: { type: 'string', required: true, description: 'City name' },
   },
@@ -58,7 +58,7 @@ const optionalOnlyToolSpec: ToolSpec = {
   name: 'optional_only',
   description: 'Optional params only.',
   executor: 'optional_only',
-  visibility: ['reply', 'subagent'],
+  visibility: { reply: true, subagent: true },
   parameters: {
     foo: { type: 'string', required: false, description: 'Optional' },
   },
@@ -87,6 +87,7 @@ function makeHookContext(messageText: string): HookContext {
       metadata: new Map(),
     },
     metadata,
+    source: 'qq-group' as const,
   };
 }
 
@@ -103,7 +104,7 @@ describe('replyTools', () => {
     it('returns tool definitions for all task types except reply (internal visibility)', () => {
       const toolManager = makeToolManager(searchToolSpec, replyToolSpec);
 
-      const tools = getReplyToolDefinitions(toolManager);
+      const tools = getReplyToolDefinitions(toolManager, 'qq-private', true);
       expect(tools.length).toBe(1);
       expect(tools[0].name).toBe('search');
       expect(tools[0].description).toBe('Search the web');
@@ -117,7 +118,7 @@ describe('replyTools', () => {
     it('excludes search when nativeWebSearchEnabled is true', () => {
       const toolManager = makeToolManager(searchToolSpec, getWeatherToolSpec);
 
-      const tools = getReplyToolDefinitions(toolManager, { nativeWebSearchEnabled: true });
+      const tools = getReplyToolDefinitions(toolManager, 'qq-private', true, { nativeWebSearchEnabled: true });
       expect(tools.length).toBe(1);
       expect(tools[0].name).toBe('get_weather');
     });
@@ -125,14 +126,14 @@ describe('replyTools', () => {
     it('includes search when nativeWebSearchEnabled is false', () => {
       const toolManager = makeToolManager(searchToolSpec, getWeatherToolSpec);
 
-      const tools = getReplyToolDefinitions(toolManager, { nativeWebSearchEnabled: false });
+      const tools = getReplyToolDefinitions(toolManager, 'qq-private', true, { nativeWebSearchEnabled: false });
       expect(tools.map((t) => t.name).sort()).toEqual(['get_weather', 'search']);
     });
 
     it('converts parameters to JSON Schema shape', () => {
       const toolManager = makeToolManager(getWeatherToolSpec);
 
-      const tools = getReplyToolDefinitions(toolManager);
+      const tools = getReplyToolDefinitions(toolManager, 'qq-private', true);
       expect(tools[0].parameters.type).toBe('object');
       expect(tools[0].parameters.properties?.city).toEqual({
         type: 'string',
@@ -152,25 +153,59 @@ describe('replyTools', () => {
     });
   });
 
+  const analyzeVideoToolSpec: ToolSpec = {
+    name: 'analyze_video',
+    description: 'Analyze a video file.',
+    executor: 'analyze_video',
+    visibility: { reply: true, subagent: true },
+    parameters: {
+      url: { type: 'string', required: true, description: 'Video URL' },
+    },
+  };
+
   describe('buildToolUsageInstructions', () => {
     it('returns fallback when tools is empty and nativeWebSearchEnabled is false', () => {
       const toolManager = new ToolManager();
-      const text = buildToolUsageInstructions(toolManager, [], { nativeWebSearchEnabled: false }, stubPromptManager);
+      const text = buildToolUsageInstructions(
+        toolManager,
+        [],
+        { nativeWebSearchEnabled: false },
+        stubPromptManager,
+        'qq-private',
+        true,
+        false,
+      );
       expect(text).toContain('当前没有可用技能');
       expect(text).not.toContain('内建搜索');
     });
 
     it('returns fallback when tools is empty and nativeWebSearchEnabled is true', () => {
       const toolManager = new ToolManager();
-      const text = buildToolUsageInstructions(toolManager, [], { nativeWebSearchEnabled: true }, stubPromptManager);
+      const text = buildToolUsageInstructions(
+        toolManager,
+        [],
+        { nativeWebSearchEnabled: true },
+        stubPromptManager,
+        'qq-private',
+        true,
+        false,
+      );
       expect(text).toContain('内建搜索');
     });
 
-    it('returns full instructions with tool list when tools are provided', () => {
+    it('returns full instructions with tool list when tools are provided (nativeFunctionCalling=false)', () => {
       const toolManager = new ToolManager();
       toolManager.registerTool(getWeatherToolSpec);
-      const tools = getReplyToolDefinitions(toolManager);
-      const text = buildToolUsageInstructions(toolManager, tools, { nativeWebSearchEnabled: false }, stubPromptManager);
+      const tools = getReplyToolDefinitions(toolManager, 'qq-private', true);
+      const text = buildToolUsageInstructions(
+        toolManager,
+        tools,
+        { nativeWebSearchEnabled: false },
+        stubPromptManager,
+        'qq-private',
+        true,
+        false,
+      );
 
       expect(text).toContain('get_weather');
       expect(text).toContain('Get the current weather');
@@ -178,6 +213,42 @@ describe('replyTools', () => {
       expect(text).toContain('When user asks about weather.');
       expect(text).toContain('示例');
       expect(text).toContain('北京天气');
+      expect(text).toContain('可用技能列表');
+    });
+
+    it('suppresses toolList and returns only behaviour note when nativeFunctionCalling=true', () => {
+      const toolManager = new ToolManager();
+      toolManager.registerTool(analyzeVideoToolSpec);
+      const tools = getReplyToolDefinitions(toolManager, 'qq-private', true);
+      const text = buildToolUsageInstructions(
+        toolManager,
+        tools,
+        { nativeWebSearchEnabled: false },
+        stubPromptManager,
+        'qq-private',
+        true,
+        true,
+      );
+
+      expect(text).not.toContain('analyze_video');
+      expect(text).toBe('先调用技能，再回答。');
+    });
+
+    it('with tools + nativeFunctionCalling=false: toolList still rendered for non-native providers', () => {
+      const toolManager = new ToolManager();
+      toolManager.registerTool(analyzeVideoToolSpec);
+      const tools = getReplyToolDefinitions(toolManager, 'qq-private', true);
+      const text = buildToolUsageInstructions(
+        toolManager,
+        tools,
+        { nativeWebSearchEnabled: false },
+        stubPromptManager,
+        'qq-private',
+        true,
+        false,
+      );
+
+      expect(text).toContain('analyze_video');
       expect(text).toContain('可用技能列表');
     });
   });

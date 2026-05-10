@@ -23,7 +23,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
   description:
     '获取历史消息中的图片内容，返回给你进行视觉分析。使用消息中 <image_segment> 标签的 id 属性来指定要获取的图片。',
   executor: 'fetch_image',
-  visibility: ['reply'],
+  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] } },
   parameters: {
     image_id: {
       type: 'string',
