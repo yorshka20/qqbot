@@ -116,7 +116,9 @@ export class CardRenderingHelper {
       try {
         parsed = parseCardDeck(extracted);
       } catch (e) {
-        logger.error(`[CardRenderingHelper] Path 2 parseCardDeck 失败: ${(e as Error).message}`);
+        logger.error(
+          `[CardRenderingHelper] Path 2 parseCardDeck 失败: ${(e as Error).message} | extracted=${extracted.slice(0, 1500)}`,
+        );
         return null;
       }
       return await this.renderParsedCards(parsed, providerName);

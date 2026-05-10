@@ -394,7 +394,8 @@ export function parseCardDeck(jsonString: string): CardData[] {
     const cards: CardData[] = [];
     for (let i = 0; i < parsed.length; i++) {
       if (!isCardData(parsed[i])) {
-        throw new Error(`Invalid card at index ${i}`);
+        const snippet = JSON.stringify(parsed[i]).slice(0, 300);
+        throw new Error(`Invalid card at index ${i}: ${snippet}`);
       }
       cards.push(parsed[i]);
     }
