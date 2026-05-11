@@ -128,10 +128,13 @@ export class ToolRunner implements IToolRunner {
   }
 
   private normalizeResult(result: ToolResult): unknown {
-    if (result.data !== undefined) {
-      return result.data;
+    // Per ToolResult contract: `reply` is the authoritative LLM-facing message.
+    // Fall back to `data` only when reply is empty so non-trivial `data` cannot
+    // silently shadow real content (cf. the research-subagent regression).
+    if (result.reply) {
+      return result.reply;
     }
-    return result.reply ?? '';
+    return result.data ?? '';
   }
 
   private async runSpawnSubAgent(call: FunctionCall, session: SubAgentSession): Promise<unknown> {

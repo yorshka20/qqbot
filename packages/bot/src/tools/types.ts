@@ -114,13 +114,27 @@ export interface ToolCall {
 }
 
 /**
- * Tool execution result
+ * Tool execution result.
+ *
+ * Contract: `reply` is the authoritative LLM-facing message. The LLM-facing
+ * formatters (replyTools / agent ToolRunner / ReflectionEngine) render `reply`
+ * to the model as the tool result content. `data` is reserved for specialized
+ * non-LLM consumers (SandboxContext for execute_code, ContextResolutionStage
+ * for fetch_image base64) and **must not** be used to smuggle the primary
+ * content past `reply` — if the model needs to see it, put it in `reply`.
  */
 export interface ToolResult {
   success: boolean;
+  /** Authoritative human/LLM-readable message. Must contain everything the model needs. */
   reply: string;
+  /**
+   * Structured payload for specialized consumers (e.g. JS sandbox in execute_code,
+   * image extraction in ContextResolutionStage). Not rendered to the LLM as content;
+   * use only for fields that other code reads programmatically.
+   */
   data?: Record<string, unknown>;
   error?: string;
+  /** Internal telemetry; never reaches the LLM or downstream tool consumers. */
   metadata?: Record<string, unknown>;
   /**
    * Optional multimodal content parts (e.g. images) to inject into the conversation

@@ -378,7 +378,11 @@ export class ReflectionEngine {
       };
 
       const result = await toolManager.execute(toolCall, toolExecutionContext, hookManager, reflectionHookContext);
-      return result.success ? (result.data ?? result.reply) : `Error: ${result.error}`;
+      if (!result.success) {
+        return `Error: ${result.error}`;
+      }
+      // Per ToolResult contract: prefer `reply`; only use `data` when reply is empty.
+      return result.reply || result.data || '';
     };
 
     const response = await this.llmService.generateWithTools(

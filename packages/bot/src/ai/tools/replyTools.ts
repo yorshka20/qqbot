@@ -165,7 +165,10 @@ export async function executeToolCall(
 
   const result: ToolResult = await toolManager.execute(toolCall, toolContext, hookManager, context);
 
-  const baseResult = result.data ?? result.reply;
+  // Per ToolResult contract: `reply` is the LLM-facing message. Fall back to `data` only
+  // when reply is empty — otherwise non-trivial `data` would silently shadow the reply
+  // (the bug that left research subagent output invisible to the main agent).
+  const baseResult: unknown = result.reply ? result.reply : (result.data ?? '');
 
   // When tool returns multimodal content (e.g. images), wrap with sentinel so LLMService
   // can inject ContentPart[] into the conversation for vision providers.

@@ -87,7 +87,7 @@ export class ReadFileToolExecutor extends BaseToolExecutor {
       return this.error(result.error ?? '未知错误', result.error ?? 'readFile failed');
     }
     const content = result.content ?? '';
-    return this.success('文件已读取', {
+    return this.success(content, {
       action: 'read',
       path,
       content,

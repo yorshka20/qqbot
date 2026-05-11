@@ -707,10 +707,16 @@ export class LLMService {
             }
 
             allToolCalls.push({ tool: fc.name, result: toolResult });
+            // Strings pass through as-is so the model sees natural text; objects get
+            // serialized to JSON. JSON.stringify on a string would wrap it in quotes
+            // (`"text"`) and escape internal newlines, which is harder for the model
+            // to read and inflates tokens.
+            const toolContent =
+              typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult);
             toolMessages.push({
               role: 'tool',
               tool_call_id: callId,
-              content: JSON.stringify(toolResult),
+              content: toolContent,
             });
           } else {
             const errorMessage =
