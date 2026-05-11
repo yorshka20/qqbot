@@ -1,5 +1,6 @@
 // Card templates for rendering LLM responses as HTML cards
 
+import { marked } from 'marked';
 import type {
   CardData,
   ComparisonCardData,
@@ -8,6 +9,7 @@ import type {
   InfoCardData,
   KnowledgeCardData,
   ListCardData,
+  MarkdownCardData,
   ParagraphCardData,
   QACardData,
   QuoteCardData,
@@ -48,6 +50,26 @@ const ALLOWED_CONTENT_TAGS = new Set([
   'th',
   'td',
   'br',
+]);
+
+/**
+ * Wider tag whitelist for markdown-rendered HTML. Adds headings 1/4-6, blockquote,
+ * hr, strikethrough (del/s), task-list checkboxes, and anchor (href stripped via
+ * sanitize). Inputs come from `marked.parse()` so structure is constrained but
+ * we still defensively sanitize attributes.
+ */
+const ALLOWED_MARKDOWN_TAGS = new Set([
+  ...ALLOWED_CONTENT_TAGS,
+  'h1',
+  'h4',
+  'h5',
+  'h6',
+  'blockquote',
+  'hr',
+  'del',
+  's',
+  'a',
+  'input', // checkbox for task lists
 ]);
 
 /**
@@ -315,6 +337,64 @@ export function paragraphCard(data: ParagraphCardData): string {
 }
 
 /**
+ * Sanitize markdown-rendered HTML: keep markdown-output tags, drop everything else.
+ * Attributes are stripped except `href` on anchors (http/https only) and the
+ * `class="task-list-item"` / `disabled checked` shape on task-list inputs.
+ */
+function sanitizeMarkdownHtml(html: string): string {
+  if (!html || typeof html !== 'string') return '';
+  let out = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+  out = out.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '');
+  out = out.replace(/<([a-zA-Z][a-zA-Z0-9]*)\s*([^>]*)>/g, (_, tagName, attrs) => {
+    const lower = tagName.toLowerCase();
+    if (!ALLOWED_MARKDOWN_TAGS.has(lower)) return '';
+    if (lower === 'br' || lower === 'hr') return `<${lower}>`;
+    if (lower === 'a') {
+      const hrefMatch = /href\s*=\s*["']([^"']+)["']/i.exec(attrs);
+      const href = hrefMatch?.[1] ?? '';
+      if (/^https?:\/\//i.test(href)) {
+        return `<a href="${escapeHtml(href)}">`;
+      }
+      return '<a>';
+    }
+    if (lower === 'input') {
+      // Only allow disabled task-list checkboxes that marked emits.
+      const isCheckbox = /type\s*=\s*["']checkbox["']/i.test(attrs);
+      if (!isCheckbox) return '';
+      const checked = /checked/i.test(attrs) ? ' checked' : '';
+      return `<input type="checkbox" disabled${checked}>`;
+    }
+    if (lower === 'code' && /class\s*=\s*["']language-[\w-]+["']/i.test(attrs)) {
+      const m = /class\s*=\s*["'](language-[\w-]+)["']/i.exec(attrs);
+      return `<code class="${m?.[1] ?? ''}">`;
+    }
+    return `<${lower}>`;
+  });
+  out = out.replace(/<\/([a-zA-Z][a-zA-Z0-9]*)>/g, (_, tagName) => {
+    const lower = tagName.toLowerCase();
+    if (!ALLOWED_MARKDOWN_TAGS.has(lower) || lower === 'br' || lower === 'hr' || lower === 'input') return '';
+    return `</${lower}>`;
+  });
+  return out;
+}
+
+/**
+ * Markdown block template — parses GFM markdown to HTML, sanitizes it, and wraps
+ * in a typographic container. Bypasses the LLM card-format conversion entirely.
+ */
+export function markdownCard(data: MarkdownCardData): string {
+  const html = marked.parse(data.content, { gfm: true, breaks: false, async: false }) as string;
+  const sanitized = sanitizeMarkdownHtml(html);
+  const titleHtml = data.title ? `<h1 class="md-title">${escapeHtml(data.title)}</h1>` : '';
+  return `
+    <div class="markdown-card">
+      ${titleHtml}
+      <div class="md-content">${sanitized}</div>
+    </div>
+  `;
+}
+
+/**
  * Image block template (single image, base64 data URI)
  */
 export function imageCard(data: ImageCardData): string {
@@ -353,6 +433,8 @@ export function renderCard(data: CardData): string {
       return paragraphCard(data);
     case 'image':
       return imageCard(data);
+    case 'markdown':
+      return markdownCard(data);
     default:
       throw new Error(`Unknown card type: ${(data as { type: string }).type}`);
   }

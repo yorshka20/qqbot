@@ -11,7 +11,8 @@ export type CardType =
   | 'steps'
   | 'highlight'
   | 'paragraph'
-  | 'image';
+  | 'image'
+  | 'markdown';
 
 export type InfoBoxLevel = 'info' | 'warning' | 'success' | 'tip';
 
@@ -137,6 +138,20 @@ export interface ImageCardData extends BaseCardData {
 }
 
 /**
+ * Markdown block — renders raw GitHub-flavored markdown directly to an image card,
+ * bypassing the LLM-driven JSON-spec conversion. Use when the reply is already
+ * markdown-formatted (headings/tables/code/lists) — much faster than running the
+ * card-format LLM, and preserves the model's chosen layout verbatim.
+ */
+export interface MarkdownCardData extends BaseCardData {
+  type: 'markdown';
+  /** Raw markdown source (GFM). Will be parsed and sanitized at render time. */
+  content: string;
+  /** Optional H1 prepended above the content. */
+  title?: string;
+}
+
+/**
  * Union type for all card data types
  */
 export type CardData =
@@ -150,7 +165,8 @@ export type CardData =
   | StepsCardData
   | HighlightCardData
   | ParagraphCardData
-  | ImageCardData;
+  | ImageCardData
+  | MarkdownCardData;
 
 /**
  * Type guard for Q&A card data
@@ -336,6 +352,23 @@ export function isImageCardData(data: unknown): data is ImageCardData {
 }
 
 /**
+ * Type guard for markdown card data
+ */
+export function isMarkdownCardData(data: unknown): data is MarkdownCardData {
+  if (typeof data !== 'object' || data === null) {
+    return false;
+  }
+  const obj = data as Record<string, unknown>;
+  if (obj.type !== 'markdown' || typeof obj.content !== 'string') {
+    return false;
+  }
+  if (obj.title !== undefined && typeof obj.title !== 'string') {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Type guard for card data
  */
 export function isCardData(data: unknown): data is CardData {
@@ -367,6 +400,8 @@ export function isCardData(data: unknown): data is CardData {
       return isParagraphCardData(data);
     case 'image':
       return isImageCardData(data);
+    case 'markdown':
+      return isMarkdownCardData(data);
     default:
       return false;
   }

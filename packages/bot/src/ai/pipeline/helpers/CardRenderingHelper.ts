@@ -62,6 +62,21 @@ export class CardRenderingHelper {
     return { segments: messageBuilder.build(), textForHistory: JSON.stringify(cards) };
   }
 
+  /**
+   * Direct markdown → image card. Wraps the raw markdown in a single `markdown`
+   * card so cardTemplates can parse + render it without going through the
+   * card-format LLM. `textForHistory` is the original markdown so subsequent
+   * turns see the model's actual prose, not a JSON wrapper.
+   */
+  async renderMarkdownDirect(
+    content: string,
+    providerName?: string,
+  ): Promise<{ segments: MessageSegment[]; textForHistory: string }> {
+    const card: CardData = { type: 'markdown', content };
+    const result = await this.renderParsedCards([card], providerName);
+    return { segments: result.segments, textForHistory: content };
+  }
+
   // ---------------------------------------------------------------------------
   // Context-integrated rendering
   // ---------------------------------------------------------------------------
@@ -178,6 +193,20 @@ export class CardRenderingHelper {
     return responseText.length >= CardRenderingService.getThreshold();
   }
 
+  /**
+   * Heuristic: does the text look like it's already markdown-formatted?
+   * Triggers on any "strong" markdown signal — heading, code fence, table row, blockquote.
+   * Weak signals (bold, list, inline code) are intentionally ignored to avoid false positives
+   * on conversational prose that happens to use a single `**word**` or bullet.
+   */
+  looksLikeMarkdown(text: string): boolean {
+    if (/^#{1,6}\s+\S/m.test(text)) return true; // ATX heading
+    if (/^```/m.test(text)) return true; // fenced code block
+    if (/^\s*\|.+\|.+\|\s*$/m.test(text)) return true; // table row (3+ cells)
+    if (/^>\s+\S/m.test(text)) return true; // blockquote
+    return false;
+  }
+
   /** Heuristic: does the text look like card JSON (array of card objects with "type" field)? */
   looksLikeCardJson(text: string): boolean {
     const jsonStr = extractExpectedJsonFromLlmText(text, { expect: 'array' });
@@ -256,6 +285,16 @@ export class CardRenderingHelper {
         return true;
       }
     }
+    if (this.looksLikeMarkdown(responseText)) {
+      logger.info('[CardRenderingHelper] Text is markdown-formatted, rendering directly (skipping LLM conversion)');
+      const mdResult = await this.renderMarkdownDirect(responseText, providerName).catch(() => null);
+      if (mdResult) {
+        this.setCardReplyOnContext(context, mdResult.segments, mdResult.textForHistory);
+        logger.info('[CardRenderingHelper] Markdown card rendered and stored in reply');
+        await this.hookManager.execute('onAIGenerationComplete', context);
+        return true;
+      }
+    }
     const cardResult = await this.convertAndRenderCard(responseText, sessionId, providerName);
     if (!cardResult) {
       return false;
@@ -283,6 +322,13 @@ export class CardRenderingHelper {
       const directResult = await this.renderCardJsonToSegments(cleanJson, providerName).catch(() => null);
       if (directResult) {
         return directResult;
+      }
+    }
+    if (this.looksLikeMarkdown(responseText)) {
+      logger.info('[CardRenderingHelper] Text is markdown-formatted, rendering directly (skipping LLM conversion)');
+      const mdResult = await this.renderMarkdownDirect(responseText, providerName).catch(() => null);
+      if (mdResult) {
+        return mdResult;
       }
     }
     return this.convertAndRenderCard(responseText, sessionId, providerName);
