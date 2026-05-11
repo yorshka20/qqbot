@@ -144,13 +144,13 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   // ── StaticServer (local HTTP + backends; must precede ConversationInitializer — ImageGenerationService needs it) ──
   // Optional: `lanRelay.*.disabledStaticBackends` omits specific backend modules (see createBackends registry).
   // `ticketsDir` is resolved once here and shared with the Agent Cluster below
-  // so `TicketBackend`, `ContextHub` (plan artifacts) and `ClusterTicketWriteback`
-  // all point at the same filesystem root.
+  // so `ContextHub` (plan artifacts) and `ClusterTicketWriteback` point at
+  // the same filesystem root as `TicketBackend` (which pulls via `config`).
   const ticketsDir = config.getTicketsDir();
   const staticServerConfig = config.getStaticServerConfig();
   if (staticServerConfig) {
     const disabledBackendIds = config.getDisabledStaticBackendIds();
-    await initStaticServer(staticServerConfig, { disabledBackendIds, ticketsDir });
+    await initStaticServer(staticServerConfig, { disabledBackendIds, config });
   }
 
   // ── ProjectRegistry (independent, before ClaudeCode so it can be resolved by both) ──

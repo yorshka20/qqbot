@@ -10,6 +10,7 @@
 
 import { resolve } from 'node:path';
 import { serve } from 'bun';
+import type { Config } from '@/core/config';
 import type { StaticServerConfig } from '@/core/config/types/bot';
 import { logger } from '@/utils/logger';
 import { type Backend, createBackends } from './backends';
@@ -18,11 +19,11 @@ export interface StaticServerInitOptions {
   /** Backend module ids to exclude — must match `lanRelay.*.disabledStaticBackends` / `createBackends` registry. */
   disabledBackendIds?: string[];
   /**
-   * Absolute path to the tickets storage directory (see `TicketsConfig`).
-   * Forwarded to `TicketBackend`. Required when the `tickets` backend is
-   * enabled — bootstrap resolves this from `Config.getTicketsDir()`.
+   * Bot config — forwarded to `createBackends` so each backend can pull its
+   * own slice (`getTicketsDir()`, `getDocsPreviewConfig()`, …). When omitted,
+   * backends fall back to safe defaults.
    */
-  ticketsDir?: string;
+  config?: Config;
 }
 
 export type StaticServerInstance = {
@@ -64,7 +65,7 @@ export class StaticServer implements StaticServerInstance {
     const disabled = new Set(options?.disabledBackendIds ?? []);
     this.backends = createBackends(this.baseDir, {
       disabledIds: disabled,
-      ticketsDir: options?.ticketsDir,
+      config: options?.config,
     });
     if (disabled.size > 0) {
       logger.info(`[StaticServer] Excluded backend module(s): ${[...disabled].sort().join(', ')}`);

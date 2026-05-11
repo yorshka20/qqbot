@@ -17,6 +17,7 @@ import type {
   StaticServerConfig,
 } from './types/bot';
 import type { DatabaseConfig } from './types/database';
+import type { DocsPreviewConfig } from './types/docsPreview';
 import type { LanRelayConfig } from './types/lanRelay';
 import type { LoggingConfig } from './types/logging';
 import type { MCPConfig } from './types/mcp';
@@ -55,6 +56,7 @@ export type { BilibiliConfig, BilibiliLiveConfig } from './types/bilibili';
 export type { BotSelfConfig, ClaudeCodeServiceConfig, ProjectRegistryConfig, StaticServerConfig } from './types/bot';
 export type { LogLevel } from './types/const';
 export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './types/database';
+export type { DocsPreviewConfig, DocsPreviewRootConfig } from './types/docsPreview';
 export type { LanRelayConfig, LanRelayInstanceRole } from './types/lanRelay';
 export type {
   MCPConfig,
@@ -108,6 +110,12 @@ export interface BotConfig {
    * for the full rationale.
    */
   tickets?: TicketsConfig;
+  /**
+   * WebUI docs preview backend (`/api/docs/*`). When absent, only the three
+   * built-in roots (`docs`, `claude-learnings`, `claude-workbook`) are
+   * exposed. See `DocsPreviewConfig` for the full rationale.
+   */
+  docsPreview?: DocsPreviewConfig;
   /** LAN WebSocket relay (host/client); optional. */
   lanRelay?: LanRelayConfig;
   /** Avatar system (VTubeStudio driver, animation compiler, preview server). */
@@ -509,5 +517,9 @@ export class Config {
     const raw = this.config.tickets?.dir?.trim();
     if (!raw) return resolve(getRepoRoot(), 'tickets');
     return resolve(getRepoRoot(), raw);
+  }
+
+  getDocsPreviewConfig(): DocsPreviewConfig | undefined {
+    return this.config.docsPreview;
   }
 }

@@ -1296,6 +1296,26 @@
   "tickets": {
     "dir": "/absolute/path/to/cluster-tickets"
   },
+  // WebUI docs preview (optional) — adds extra browse roots to the
+  // `/api/docs/*` backend that powers the WebUI 文档 page.
+  //
+  // Three built-in roots always exist: `docs`, `claude-learnings`,
+  // `claude-workbook` (mapped to <repoRoot>/docs, <repoRoot>/.claude-learnings,
+  // <repoRoot>/.claude-workbook). `roots` adds more — declare a `repo` root
+  // to browse source code from the WebUI.
+  //
+  // `exclude` is APPENDED to a built-in noise deny-list (node_modules, .git,
+  // dist, build, coverage, .turbo, .cache, output, .next, .DS_Store). The
+  // built-ins cannot be overridden.
+  //
+  // Security: exposed roots surface every readable file including
+  // config.jsonc / .env — intended for local-only WebUI access.
+  // "docsPreview": {
+  //   "roots": [
+  //     { "id": "repo", "label": "Repository/", "path": "." }
+  //   ],
+  //   "exclude": []
+  // },
   // Persona system — phenotype ODE + modulation provider for the avatar.
   // See docs/local/mind-system-design.md. Phase 1 only implements fatigue +
   // attention and drives avatar intensity / speed multipliers. Disabled by

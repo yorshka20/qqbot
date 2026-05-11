@@ -1,19 +1,24 @@
 /**
- * Read-only docs preview API: browse and fetch local markdown/text under fixed roots.
+ * Read-only docs preview API: browse and fetch local files under fixed roots.
  *
  * Routes:
  * - GET /api/docs/roots  -> { roots: DocsRootInfo[] }
  * - GET /api/docs/list?root=&path=  -> { items: FileItem[] } (paths relative to that root)
  * - GET /api/docs/raw?root=&path=   -> file bytes (path must be a file)
  *
- * Roots (all under monorepo root):
+ * Built-in roots (all under monorepo root):
  * - docs: <repo>/docs
- * - claude-learnings: <repo>/claude-learnings
- * - claude-workbook: <repo>/claude-workbook
+ * - claude-learnings: <repo>/.claude-learnings
+ * - claude-workbook: <repo>/.claude-workbook
+ *
+ * Extra roots can be injected via `DocsPreviewConfig.roots` (see
+ * `config.d/webui.jsonc`). Listings filter out a built-in noise deny-list
+ * (node_modules, .git, dist, …) plus any user-supplied `exclude` entries.
  */
 
 import { access, readdir, readFile, stat } from 'node:fs/promises';
-import { basename, join, relative } from 'node:path';
+import { basename, isAbsolute, join, relative, resolve } from 'node:path';
+import type { DocsPreviewConfig } from '@/core/config/types/docsPreview';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import type { FileItem } from './FileManagerBackend';
@@ -23,6 +28,25 @@ import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/docs';
 const MAX_RAW_BYTES = 15 * 1024 * 1024;
+
+/**
+ * Hard-coded noise filter. User-supplied `exclude` entries are appended to
+ * this set — these built-ins cannot be disabled, otherwise enabling a `repo`
+ * root would surface tens of thousands of `node_modules` entries and stall
+ * the WebUI.
+ */
+const BUILTIN_EXCLUDE = new Set<string>([
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  'coverage',
+  '.turbo',
+  '.cache',
+  'output',
+  '.next',
+  '.DS_Store',
+]);
 
 export interface DocsRootInfo {
   id: string;
@@ -40,13 +64,52 @@ interface ListResponse {
   items: FileItem[];
 }
 
-function buildRootMap(): Map<string, { label: string; absPath: string }> {
+function buildBuiltinRoots(): Array<[string, { label: string; absPath: string }]> {
   const repo = getRepoRoot();
-  return new Map([
+  return [
     ['docs', { label: 'docs/', absPath: join(repo, 'docs') }],
     ['claude-learnings', { label: 'claude-learnings/', absPath: join(repo, '.claude-learnings') }],
     ['claude-workbook', { label: 'claude-workbook/', absPath: join(repo, '.claude-workbook') }],
-  ]);
+  ];
+}
+
+function resolveExtraRootPath(rawPath: string): string {
+  return isAbsolute(rawPath) ? resolve(rawPath) : resolve(getRepoRoot(), rawPath);
+}
+
+function buildRootMap(config?: DocsPreviewConfig): Map<string, { label: string; absPath: string }> {
+  const roots = new Map<string, { label: string; absPath: string }>(buildBuiltinRoots());
+  for (const extra of config?.roots ?? []) {
+    const id = extra.id?.trim();
+    if (!id) {
+      logger.warn('[DocsPreviewBackend] Skipping root with empty id');
+      continue;
+    }
+    if (roots.has(id)) {
+      logger.warn(`[DocsPreviewBackend] Duplicate root id '${id}' — keeping the earlier definition`);
+      continue;
+    }
+    if (!extra.path?.trim()) {
+      logger.warn(`[DocsPreviewBackend] Skipping root '${id}' with empty path`);
+      continue;
+    }
+    roots.set(id, {
+      label: extra.label?.trim() || `${id}/`,
+      absPath: resolveExtraRootPath(extra.path),
+    });
+  }
+  return roots;
+}
+
+function buildExcludeSet(config?: DocsPreviewConfig): Set<string> {
+  const set = new Set<string>(BUILTIN_EXCLUDE);
+  for (const raw of config?.exclude ?? []) {
+    const name = raw?.trim();
+    if (name) {
+      set.add(name);
+    }
+  }
+  return set;
 }
 
 function mimeForPath(filePath: string): string {
@@ -100,7 +163,13 @@ function fsErrorToStatusAndMessage(err: unknown): { status: number; message: str
 
 export class DocsPreviewBackend implements Backend {
   readonly prefix = API_PREFIX;
-  private readonly roots = buildRootMap();
+  private readonly roots: Map<string, { label: string; absPath: string }>;
+  private readonly excluded: Set<string>;
+
+  constructor(config?: DocsPreviewConfig) {
+    this.roots = buildRootMap(config);
+    this.excluded = buildExcludeSet(config);
+  }
 
   async handle(pathname: string, req: Request): Promise<Response | null> {
     if (!pathname.startsWith(API_PREFIX)) {
@@ -157,7 +226,10 @@ export class DocsPreviewBackend implements Backend {
       if (!st.isDirectory()) {
         return errorResponse('Not a directory', 400);
       }
-      const entries = await readdir(full, { withFileTypes: true });
+      const rawEntries = await readdir(full, { withFileTypes: true });
+      // Filter noise BEFORE stat() — listing `repo` root otherwise stat()s
+      // every node_modules child and stalls the WebUI.
+      const entries = rawEntries.filter((e) => !this.excluded.has(e.name));
       const items = await Promise.all(
         entries.map(async (e) => {
           const child = join(full, e.name);

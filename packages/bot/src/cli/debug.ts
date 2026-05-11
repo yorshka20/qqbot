@@ -615,7 +615,7 @@ class DebugCLI {
     if (staticServerConfig) {
       await initStaticServer(staticServerConfig, {
         disabledBackendIds: this.config.getDisabledStaticBackendIds(),
-        ticketsDir: this.config.getTicketsDir(),
+        config: this.config,
       });
       this.printInfo('✓ Static file server initialized');
     }
@@ -690,7 +690,7 @@ class DebugCLI {
     if (staticServerConfig) {
       await initStaticServer(staticServerConfig, {
         disabledBackendIds: this.config.getDisabledStaticBackendIds(),
-        ticketsDir: this.config.getTicketsDir(),
+        config: this.config,
       });
       this.printInfo('✓ Static file server initialized');
     }
