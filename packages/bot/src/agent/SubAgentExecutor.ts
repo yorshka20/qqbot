@@ -86,6 +86,12 @@ export class SubAgentExecutor {
           temperature: 0.7,
           maxTokens: session.config.maxTokens ?? 1500,
           maxToolRounds: session.config.maxToolRounds ?? 5,
+          // The preset's config.timeout is the upper bound on how long this subagent may take.
+          // Propagate it as the LLM HTTP + hard-timeout so a single source of truth governs
+          // both the wait-poll budget (SubAgentManager.wait) and the inner provider call.
+          // Without this, the LLM falls back to LLMService's global 120s default, which is
+          // far too short for structured-JSON workloads (e.g. group_report 8K-token output).
+          timeout: session.config.timeout,
           model: session.config.providerName ? undefined : this.defaultModel,
           toolExecutor: (call: FunctionCall) => this.toolRunner.run(call, session),
         },

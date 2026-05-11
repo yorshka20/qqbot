@@ -4,7 +4,7 @@
   "allowedTools": ["render_group_report", "get_group_member_list"],
   "maxDepth": 1,
   "maxChildren": 0,
-  "timeout": 120000,
+  "timeout": 360000,
   "inheritSoul": false,
   "inheritMemory": false,
   "inheritPreference": false,
