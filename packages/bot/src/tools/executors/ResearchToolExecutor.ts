@@ -20,27 +20,6 @@ const URL_REGEX = /https?:\/\/[^\s　<>"]+/g;
 /** Max chars to return on the quick path. ~800 tokens keeps the main reply context lean. */
 const QUICK_PATH_MAX_CHARS = 2500;
 
-/**
- * Keywords that signal multi-source reasoning is needed — must go through the
- * subagent LLM, not the single-URL quick path.
- */
-const MULTI_SOURCE_KEYWORDS = [
-  '多源',
-  '多个来源',
-  '交叉验证',
-  '对比',
-  '比较',
-  '验证真',
-  '查证',
-  '是否真',
-  'multi',
-  'compare',
-  'verify',
-  'cross-check',
-  'sources',
-  'vs',
-];
-
 function extractUrls(text: string): string[] {
   const matches = text.match(URL_REGEX);
   if (!matches) return [];
@@ -49,18 +28,15 @@ function extractUrls(text: string): string[] {
 }
 
 /**
- * Detect a "trivial single-URL fetch" task — exactly one URL, short prompt,
- * no multi-source verification keywords. Returns the URL on match.
+ * Detect a "trivial single-URL fetch" task — exactly one URL in the prompt.
+ * Purely structural signal (no keyword inference). Multi-URL or zero-URL tasks
+ * fall through to the full subagent path. Recursion safety doesn't depend on
+ * this routing: subagent already can't spawn another subagent (research is not
+ * visible in subagent scope, and `spawn_subagent` is in `restrictedTools`).
  */
 function detectQuickPathUrl(task: string): string | null {
   const urls = extractUrls(task);
-  if (urls.length !== 1) return null;
-  if (task.length > 300) return null;
-  const lowered = task.toLowerCase();
-  if (MULTI_SOURCE_KEYWORDS.some((kw) => lowered.includes(kw.toLowerCase()))) {
-    return null;
-  }
-  return urls[0];
+  return urls.length === 1 ? urls[0] : null;
 }
 
 /**
@@ -96,7 +72,7 @@ function detectQuickPathUrl(task: string): string | null {
   ],
   triggerKeywords: ['搜索', 'search', '查', '找', '调研', '了解', '查询', '搜一下', '抓取', 'fetch', '网页', 'URL'],
   whenToUse:
-    '凡是需要读取外部 URL 内容、联网搜索、查询知识库 / 记忆，必须用本工具——禁止用 execute_code 自己 fetch URL。一次调研可完成多步信息收集（先搜索再抓页面），避免多轮工具调用膨胀上下文。视频站 URL（YouTube / B站 / Vimeo / TikTok 等）默认不主动抓取，除非用户明确要求读取该视频内容；图片 URL 不受此限。',
+    '凡是需要读取外部 URL 内容、联网搜索、查询知识库 / 记忆，必须用本工具——禁止用 execute_code 自己 fetch URL。一次调研可完成多步信息收集（先搜索再抓页面），避免多轮工具调用膨胀上下文。**任务描述要聚焦单一主题/单一问题**：宽泛或多子主题的需求请拆开多次调用（如不要把 "TC39 + 浏览器 API + CSS + React 路线图" 塞进一个 task），否则 subagent 会按"每个子话题 ≥2 来源验证"展开导致工具调用爆炸。视频站 URL（YouTube / B站 / Vimeo / TikTok 等）默认不主动抓取，除非用户明确要求读取该视频内容；图片 URL 不受此限。',
 })
 @injectable()
 export class ResearchToolExecutor extends BaseToolExecutor {
@@ -160,7 +136,10 @@ export class ResearchToolExecutor extends BaseToolExecutor {
           inheritMemory: false,
           inheritPreference: false,
           providerName: ['deepseek', 'gemini'],
-          maxToolRounds: 20,
+          // 8 rounds × ~3-5 parallel tool calls = enough for legitimate multi-source verification.
+          // Higher values (we tried 20) let DeepSeek's greedy tool-use blow context to 50k+ tokens
+          // with 30+ fetches before producing a conclusion.
+          maxToolRounds: 8,
           maxTokens: 2000,
         },
       );
