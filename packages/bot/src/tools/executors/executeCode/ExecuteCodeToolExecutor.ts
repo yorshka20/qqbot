@@ -34,7 +34,7 @@ import { DEFAULT_SANDBOX_CONFIG } from './types';
   examples: ['帮我写代码搜索三个关键词并汇总结果', '用代码分析一下这些数据', '并行调用多个工具然后合并结果'],
   triggerKeywords: ['执行代码', '写代码', 'execute', 'code', '计算', '编程'],
   whenToUse:
-    '当你需要进行复杂数据处理、数学计算、组合调用多个工具（尤其是并行调用）、或者用代码逻辑来编排多步骤任务时使用。不要用于简单的单个工具调用——直接调用对应工具即可。',
+    '当你需要进行复杂数据处理、数学计算、组合调用多个工具（尤其是并行调用）、或者用代码逻辑来编排多步骤任务时使用。不要用于简单的单个工具调用——直接调用对应工具即可。**禁止**用本工具 fetch 外部 URL / 抓取网页正文 / 联网查询——这些场景必须走 research（即使用户说"测试 fetch_page"也不要绕开 research 自己写 fetch 代码）。',
 })
 @injectable()
 export class ExecuteCodeToolExecutor extends BaseToolExecutor {

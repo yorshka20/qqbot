@@ -5,6 +5,7 @@ import { inject, injectable } from 'tsyringe';
 import type { SubAgentManager } from '@/agent/SubAgentManager';
 import { SubAgentType } from '@/agent/types';
 import { DITokens } from '@/core/DITokens';
+import type { RetrievalService } from '@/services/retrieval';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -12,6 +13,55 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 
 /** Default timeout for research subagent (60 seconds) */
 const RESEARCH_TIMEOUT = 90000;
+
+/** URL extraction regex (HTTP/HTTPS only). Trailing punctuation stripped after match. */
+const URL_REGEX = /https?:\/\/[^\s　<>"]+/g;
+
+/** Max chars to return on the quick path. ~800 tokens keeps the main reply context lean. */
+const QUICK_PATH_MAX_CHARS = 2500;
+
+/**
+ * Keywords that signal multi-source reasoning is needed — must go through the
+ * subagent LLM, not the single-URL quick path.
+ */
+const MULTI_SOURCE_KEYWORDS = [
+  '多源',
+  '多个来源',
+  '交叉验证',
+  '对比',
+  '比较',
+  '验证真',
+  '查证',
+  '是否真',
+  'multi',
+  'compare',
+  'verify',
+  'cross-check',
+  'sources',
+  'vs',
+];
+
+function extractUrls(text: string): string[] {
+  const matches = text.match(URL_REGEX);
+  if (!matches) return [];
+  // Strip trailing punctuation that commonly clings to URLs in Chinese/English text.
+  return Array.from(new Set(matches.map((u) => u.replace(/[.,;!?。，；！？)\]]+$/, '').trim())));
+}
+
+/**
+ * Detect a "trivial single-URL fetch" task — exactly one URL, short prompt,
+ * no multi-source verification keywords. Returns the URL on match.
+ */
+function detectQuickPathUrl(task: string): string | null {
+  const urls = extractUrls(task);
+  if (urls.length !== 1) return null;
+  if (task.length > 300) return null;
+  const lowered = task.toLowerCase();
+  if (MULTI_SOURCE_KEYWORDS.some((kw) => lowered.includes(kw.toLowerCase()))) {
+    return null;
+  }
+  return urls[0];
+}
 
 /**
  * Research tool executor.
@@ -27,24 +77,26 @@ const RESEARCH_TIMEOUT = 90000;
 @Tool({
   name: 'research',
   description:
-    '调研工具：委托一个独立的 subagent 执行信息收集任务。subagent 拥有联网搜索、网页抓取、知识库检索、记忆查询等工具，会自主完成多步调研并返回精炼结论。你无法直接使用这些底层数据工具，必须通过本工具发起调研。',
+    '调研工具：唯一的"读取外部信息"入口。需要联网搜索、抓取任何 URL 的网页正文、查询知识库或记忆时，都通过本工具发起。底层会自动选择 fetch_page / search / rag_search / search_memory 等工具，并把过程折叠为精炼结论返回。对单 URL 抓取场景会走快路径直接抓取，不再发起额外 LLM 推理。',
   executor: 'research',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] } },
   parameters: {
     task: {
       type: 'string',
       required: true,
-      description: '调研任务描述，说明你需要查找什么信息、回答什么问题。描述越具体，结果越精准。',
+      description:
+        '调研任务描述：需要查找的信息或要回答的问题。如果是单 URL 抓取，直接写"抓取 <URL>"或"读取这个网页 <URL> 的内容"即可。',
     },
   },
   examples: [
+    '抓取这个链接的内容 https://example.com/article',
     '帮我查一下2024年诺贝尔物理学奖得主及其研究内容',
     '搜索并总结这篇文章的要点 https://example.com/article',
     '查找群里关于项目截止日期的讨论记录',
   ],
-  triggerKeywords: ['搜索', 'search', '查', '找', '调研', '了解', '查询', '搜一下'],
+  triggerKeywords: ['搜索', 'search', '查', '找', '调研', '了解', '查询', '搜一下', '抓取', 'fetch', '网页', 'URL'],
   whenToUse:
-    '当需要联网搜索、抓取网页、检索知识库或查询记忆时，必须通过此工具发起调研，不要直接调用底层数据工具。一次调研可完成多步信息收集（如先搜索再抓取网页），避免多次工具调用膨胀上下文。',
+    '凡是需要读取外部 URL 内容、联网搜索、查询知识库 / 记忆，必须用本工具——禁止用 execute_code 自己 fetch URL。一次调研可完成多步信息收集（先搜索再抓页面），避免多轮工具调用膨胀上下文。视频站 URL（YouTube / B站 / Vimeo / TikTok 等）默认不主动抓取，除非用户明确要求读取该视频内容；图片 URL 不受此限。',
 })
 @injectable()
 export class ResearchToolExecutor extends BaseToolExecutor {
@@ -53,6 +105,8 @@ export class ResearchToolExecutor extends BaseToolExecutor {
   constructor(
     @inject(DITokens.SUB_AGENT_MANAGER)
     private subAgentManager: SubAgentManager,
+    @inject(DITokens.RETRIEVAL_SERVICE)
+    private retrievalService: RetrievalService,
   ) {
     super();
   }
@@ -62,6 +116,17 @@ export class ResearchToolExecutor extends BaseToolExecutor {
 
     if (!task) {
       return this.error('请提供调研任务描述', 'Missing required parameter: task');
+    }
+
+    // Quick path: trivial single-URL fetch. Skip the subagent LLM's "decide which tool"
+    // round and call PageContentFetchService directly. The subagent LLM only existed to
+    // pick the right tool — for a bare "fetch this URL" task that decision is foregone.
+    const quickPathUrl = detectQuickPathUrl(task);
+    if (quickPathUrl) {
+      const quickResult = await this.tryQuickFetch(quickPathUrl, task);
+      if (quickResult) return quickResult;
+      // Fetch failed — fall through to subagent so it can try search / alternative sources.
+      logger.info(`[ResearchToolExecutor] Quick-path fetch returned empty for ${quickPathUrl}, escalating to subagent`);
     }
 
     logger.info(
@@ -116,5 +181,39 @@ export class ResearchToolExecutor extends BaseToolExecutor {
       logger.error(`[ResearchToolExecutor] Research failed: ${errorMessage}`);
       return this.error(`调研失败: ${errorMessage}`, errorMessage);
     }
+  }
+
+  /**
+   * Quick-path fetch for trivial single-URL tasks. Calls PageContentFetchService
+   * directly (Jina Reader + Readability fallback) without spawning the subagent
+   * LLM. Returns null on fetch failure so the caller can escalate.
+   */
+  private async tryQuickFetch(url: string, task: string): Promise<ToolResult | null> {
+    const fetchService = this.retrievalService.getPageContentFetchService();
+    if (!fetchService.isEnabled()) {
+      logger.debug('[ResearchToolExecutor] Quick path skipped: page fetch disabled by config');
+      return null;
+    }
+
+    logger.info(`[ResearchToolExecutor] Quick-path fetch | url=${url} | task=${JSON.stringify(task)}`);
+    const startedAt = Date.now();
+    const entries = await fetchService.fetchPages([{ url, title: url }]);
+    const elapsed = Date.now() - startedAt;
+
+    if (entries.length === 0 || !entries[0].text.trim()) {
+      logger.warn(`[ResearchToolExecutor] Quick-path empty result | url=${url} | elapsed=${elapsed}ms`);
+      return null;
+    }
+
+    const entry = entries[0];
+    const truncated =
+      entry.text.length > QUICK_PATH_MAX_CHARS
+        ? `${entry.text.slice(0, QUICK_PATH_MAX_CHARS)}…\n\n（节选：完整长度 ${entry.text.length} 字符；如需完整内容请告知。）`
+        : entry.text;
+
+    logger.info(
+      `[ResearchToolExecutor] Quick-path completed | url=${url} | rawChars=${entry.text.length} | returnedChars=${truncated.length} | elapsed=${elapsed}ms`,
+    );
+    return this.success(truncated);
   }
 }
