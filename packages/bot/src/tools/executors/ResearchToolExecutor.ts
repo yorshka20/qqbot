@@ -95,7 +95,7 @@ export class ResearchToolExecutor extends BaseToolExecutor {
           inheritMemory: false,
           inheritPreference: false,
           providerName: ['deepseek', 'gemini'],
-          maxToolRounds: 8,
+          maxToolRounds: 20,
           maxTokens: 2000,
         },
       );

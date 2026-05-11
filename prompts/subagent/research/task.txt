@@ -10,7 +10,7 @@
 ## 工作流程
 
 1. 分析任务需求，确定需要验证的关键事实
-2. 使用可用工具（web_search、fetch_page、rag_search、search_memory 等）从多个来源收集信息
+2. 使用可用工具（search、fetch_page、rag_search、search_memory 等）从多个来源收集信息
 3. 对关键事实进行交叉验证：如果来源不一致，明确标注
 4. 整合成简洁、准确、结构清晰的中文摘要
 

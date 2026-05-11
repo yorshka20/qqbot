@@ -49,6 +49,7 @@ export interface Message extends BaseModel {
  */
 export interface ProviderSelection {
   llm?: string;
+  native_web_search?: string;
   vision?: string;
   text2img?: string;
   img2img?: string;

@@ -55,6 +55,12 @@ export interface AnthropicProviderConfig {
   enableContext?: boolean; // Enable automatic context loading from conversation history
   contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
   resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/anthropic')
+  /**
+   * Enable Anthropic server-side web_search_20250305 tool. Default: false.
+   * When true, the provider auto-injects the native web_search tool and filters
+   * any caller-supplied tool named `search` to avoid duplication.
+   */
+  nativeWebSearch?: boolean;
 }
 
 export interface OllamaProviderConfig {
@@ -129,6 +135,13 @@ export interface GeminiLLmConfig {
   maxTokens?: number;
   enableContext?: boolean;
   contextMessageCount?: number; // default: 10
+  /**
+   * Enable Gemini googleSearch grounding tool. Default: false.
+   * When true, generateContent requests include `{ googleSearch: {} }` alongside
+   * any function declarations; the provider also filters caller-supplied `search`
+   * tool to let grounding take over web search.
+   */
+  nativeWebSearch?: boolean;
 }
 
 /** Gemini config for vision (image understanding) */

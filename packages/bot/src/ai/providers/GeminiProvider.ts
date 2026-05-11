@@ -86,6 +86,9 @@ export class GeminiProvider
     this._capabilities = [];
     if (config.llm) {
       this._capabilities.push('llm', 'function_calling');
+      if (config.llm.nativeWebSearch) {
+        this._capabilities.push('native_web_search');
+      }
       this.setContextConfig(config.llm.enableContext ?? false, config.llm.contextMessageCount ?? 10);
     }
     // Vision uses the same generateContent path as LLM; when llm is set, multimodal input is supported
@@ -456,6 +459,7 @@ export class GeminiProvider
       paidModel?: string;
       disableThinking?: boolean;
       timeoutMs?: number;
+      nativeWebSearch?: boolean;
     },
   ): Promise<{
     text: string;
@@ -482,6 +486,7 @@ export class GeminiProvider
       paidModel?: string;
       disableThinking?: boolean;
       timeoutMs?: number;
+      nativeWebSearch?: boolean;
     },
   ): Promise<{
     text: string;
@@ -500,6 +505,7 @@ export class GeminiProvider
       paidModel?: string;
       disableThinking?: boolean;
       timeoutMs?: number;
+      nativeWebSearch?: boolean;
     },
   ): Promise<{
     text: string;
@@ -510,9 +516,23 @@ export class GeminiProvider
       temperature: options?.temperature ?? 0.7,
       maxOutputTokens: options?.maxTokens ?? 2000,
     };
-    if (options?.tools?.length) {
-      config.tools = GeminiProvider.mapToolsToGemini(options.tools);
-      config.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
+    // Tools array can hold both functionDeclarations and googleSearch grounding entries.
+    // Drop caller-supplied `search` tool when grounding is on so the model uses grounding instead.
+    const effectiveTools = options?.nativeWebSearch
+      ? (options?.tools ?? []).filter((t) => t.name !== 'search')
+      : options?.tools;
+    const geminiTools: Array<unknown> = [];
+    if (effectiveTools?.length) {
+      geminiTools.push(...GeminiProvider.mapToolsToGemini(effectiveTools));
+    }
+    if (options?.nativeWebSearch) {
+      geminiTools.push({ googleSearch: {} });
+    }
+    if (geminiTools.length > 0) {
+      config.tools = geminiTools;
+      if (effectiveTools?.length) {
+        config.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
+      }
     }
     if (options?.systemInstruction) {
       config.systemInstruction = options.systemInstruction;
@@ -661,6 +681,7 @@ export class GeminiProvider
     const paidModel = this.config.llm.paidModel;
     const temperature = options?.temperature ?? this.config.llm.temperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens ?? 2000;
+    const nativeWebSearch = options?.nativeWebSearch ?? this.config.llm.nativeWebSearch ?? false;
 
     if (options?.messages?.length) {
       // Multi-turn path: map ChatMessage[] to Gemini Content[] format.
@@ -688,6 +709,7 @@ export class GeminiProvider
         paidModel,
         disableThinking: hasUnsignedToolCall,
         timeoutMs: options?.timeout,
+        nativeWebSearch,
       });
       return {
         text: result.text,
@@ -714,6 +736,7 @@ export class GeminiProvider
       tools: options?.tools,
       paidModel,
       timeoutMs: options?.timeout,
+      nativeWebSearch,
     });
     return {
       text: result.text,

@@ -26,6 +26,8 @@ export interface AnthropicProviderConfig {
   enableContext?: boolean;
   contextMessageCount?: number;
   resourceSavePath?: string; // Directory path to save downloaded resources
+  /** Enable Anthropic server-side web_search_20250305 tool. Default: false. */
+  nativeWebSearch?: boolean;
 }
 
 interface AnthropicMessage {
@@ -200,6 +202,9 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     // Explicitly declare supported capabilities
     // Anthropic Claude 3 supports both LLM and Vision
     this._capabilities = ['llm', 'function_calling', 'vision'];
+    if (config.nativeWebSearch) {
+      this._capabilities.push('native_web_search');
+    }
 
     // Set context configuration
     this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);
@@ -700,7 +705,12 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
   private buildAnthropicTools(options?: AIGenerateOptions): AnthropicTool[] {
     const tools: AnthropicTool[] = [];
 
-    if (options?.nativeWebSearch) {
+    // Effective flag: explicit call-site value wins; otherwise fall back to provider config.
+    // Native search supersedes our local `search` tool — when active, we filter it from the
+    // caller's tool list so the model sees one search affordance, not two.
+    const useNativeWebSearch = options?.nativeWebSearch ?? this.config.nativeWebSearch ?? false;
+
+    if (useNativeWebSearch) {
       tools.push({
         type: ANTHROPIC_WEB_SEARCH_TOOL_TYPE,
         name: ANTHROPIC_WEB_SEARCH_TOOL_NAME,
@@ -709,8 +719,11 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     }
 
     if (options?.tools?.length) {
+      const callerTools = useNativeWebSearch
+        ? options.tools.filter((t) => t.name !== ANTHROPIC_WEB_SEARCH_TOOL_NAME && t.name !== 'search')
+        : options.tools;
       tools.push(
-        ...options.tools.map((tool) => ({
+        ...callerTools.map((tool) => ({
           name: tool.name,
           description: tool.description,
           input_schema: tool.parameters,

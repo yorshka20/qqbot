@@ -5,6 +5,7 @@ import type { AIProviderConfig, AIProviderType } from './providers';
 export type AIProviderCapability =
   | 'llm'
   | 'function_calling'
+  | 'native_web_search'
   | 'vision'
   | 'video_analysis'
   | 'text2img'
@@ -17,6 +18,7 @@ export type AIProviderCapability =
 export interface DefaultProvidersConfig {
   llm?: AIProviderType; // Default LLM provider name
   function_calling?: AIProviderType; // Default function-calling provider name (usually same as llm)
+  native_web_search?: AIProviderType; // Unused for selection (native search is a per-provider flag); kept for index type compatibility
   vision?: AIProviderType; // Default vision/multimodal provider name
   video_analysis?: AIProviderType; // Default video analysis provider name
   text2img?: AIProviderType; // Default text-to-image provider name
@@ -30,6 +32,7 @@ export interface DefaultProvidersConfig {
 export interface SessionProviderConfig {
   llm?: AIProviderType;
   function_calling?: AIProviderType;
+  native_web_search?: AIProviderType;
   vision?: AIProviderType;
   video_analysis?: AIProviderType;
   text2img?: AIProviderType;

@@ -84,15 +84,17 @@ export class ProviderSelectionStage implements ReplyStage {
     // Capabilities: check if the effective provider supports tool use
     const effectiveProvider = ctx.selectedProviderName ?? 'default';
     const providerCanUseTools = await this.checkProviderToolUseSupport(effectiveProvider, sessionId);
-    ctx.effectiveNativeSearchEnabled = false;
 
-    // Detect native function-calling support for toolList suppression
+    // Detect native function-calling + native web search support for toolList suppression
     const resolvedProvider = await this.llmService.getAvailableProvider(
       effectiveProvider === 'default' ? undefined : effectiveProvider,
       sessionId,
     );
-    ctx.providerHasFunctionCalling =
-      !!resolvedProvider && (resolvedProvider as unknown as AIProvider).getCapabilities().includes('function_calling');
+    const providerCapabilities = resolvedProvider
+      ? (resolvedProvider as unknown as AIProvider).getCapabilities()
+      : [];
+    ctx.providerHasFunctionCalling = providerCapabilities.includes('function_calling');
+    ctx.effectiveNativeSearchEnabled = providerCapabilities.includes('native_web_search');
 
     // Resolve source and admin status for tool catalog filtering
     const source = hookContext.source;
