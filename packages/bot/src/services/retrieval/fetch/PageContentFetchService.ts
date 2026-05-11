@@ -6,6 +6,8 @@ import { JSDOM } from 'jsdom';
 import type { SearchFetchConfig } from '@/core/config/types/mcp';
 import { logger } from '@/utils/logger';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
+import { JinaReaderService } from './JinaReaderService';
+import { isInternalUrl } from './urlGuards';
 
 export interface FetchEntry {
   url: string;
@@ -334,6 +336,7 @@ export class PageContentFetchService {
   private readonly skipFetchPatterns: string[] | undefined;
   private readonly videoSelectors: Record<string, string>;
   private readonly pageFetchHeaders: Record<string, string>;
+  private readonly jinaReader: JinaReaderService;
 
   constructor(options: PageContentFetchServiceOptions) {
     const cfg = options.config;
@@ -345,6 +348,7 @@ export class PageContentFetchService {
     this.skipFetchPatterns = cfg?.skipFetchPatterns;
     this.videoSelectors = { ...DEFAULT_VIDEO_DESCRIPTION_SELECTORS, ...cfg?.videoDescriptionSelectors };
     this.pageFetchHeaders = { ...DEFAULT_PAGE_FETCH_HEADERS };
+    this.jinaReader = new JinaReaderService(cfg?.jina);
   }
 
   isEnabled(): boolean {
@@ -382,6 +386,23 @@ export class PageContentFetchService {
     if (shouldSkipFetch(url, this.skipFetchPatterns)) {
       logger.debug(`[PageContentFetchService] Skip fetch (pattern): ${url}`);
       return null;
+    }
+
+    // Jina route: public-internet article pages. LAN/loopback addresses must stay
+    // local (don't leak topology); video pages keep their host-specific selector path.
+    if (this.jinaReader.isEnabled() && !isInternalUrl(url) && !isVideoUrl(url)) {
+      const jinaResult = await this.jinaReader.fetch(url);
+      if (jinaResult && !jinaResult.isLoginWall) {
+        const body = truncate(cleanFetchedText(jinaResult.text), this.maxCharsPerPage);
+        return {
+          url,
+          title,
+          text: formatForAiConsumption({ url, title, text: body }),
+        };
+      }
+      if (jinaResult?.isLoginWall) {
+        logger.debug(`[PageContentFetchService] Jina detected login wall for ${url}, falling back to local fetch`);
+      }
     }
 
     const html = await fetchHtmlForCrawler(url, {

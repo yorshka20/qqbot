@@ -49,6 +49,19 @@ export interface SearchFetchConfig {
   skipFetchPatterns?: string[];
   // Host -> CSS selector for video page description block (e.g. B站). If not set, use built-in map.
   videoDescriptionSelectors?: Record<string, string>;
+  // Jina Reader integration. When enabled, public-internet URLs are routed
+  // through r.jina.ai for anti-bot resilient article extraction; LAN URLs
+  // and video pages always fall through to local fetch.
+  jina?: JinaReaderConfig;
+}
+
+export interface JinaReaderConfig {
+  // Enable Jina Reader as the primary fetch path. Default: false.
+  enabled?: boolean;
+  // Base URL for the Reader endpoint. Default: 'https://r.jina.ai'. Override for self-hosted.
+  baseUrl?: string;
+  // Timeout in ms for Jina requests. Default: 15000.
+  timeoutMs?: number;
 }
 
 export interface SearchConfig {
