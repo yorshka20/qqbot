@@ -21,7 +21,7 @@
     "test:network": "NETWORK_TESTS=1 bun test"
   },
   "dependencies": {
-    "@google/genai": "^1.44.0",
+    "@google/genai": "^1.52.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@mozilla/readability": "^0.6.0",
     "@qqbot/avatar": "workspace:*",

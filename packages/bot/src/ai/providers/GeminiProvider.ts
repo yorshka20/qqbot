@@ -531,7 +531,13 @@ export class GeminiProvider
     if (geminiTools.length > 0) {
       config.tools = geminiTools;
       if (effectiveTools?.length) {
-        config.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
+        // Gemini rejects requests that mix built-in tools (googleSearch) with
+        // functionDeclarations unless includeServerSideToolInvocations is set.
+        const toolConfig: Record<string, unknown> = { functionCallingConfig: { mode: 'AUTO' } };
+        if (options?.nativeWebSearch) {
+          toolConfig.includeServerSideToolInvocations = true;
+        }
+        config.toolConfig = toolConfig;
       }
     }
     if (options?.systemInstruction) {
