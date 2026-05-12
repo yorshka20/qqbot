@@ -136,10 +136,7 @@ export class ResearchToolExecutor extends BaseToolExecutor {
           inheritMemory: false,
           inheritPreference: false,
           providerName: ['deepseek', 'gemini'],
-          // 8 rounds × ~3-5 parallel tool calls = enough for legitimate multi-source verification.
-          // Higher values (we tried 20) let DeepSeek's greedy tool-use blow context to 50k+ tokens
-          // with 30+ fetches before producing a conclusion.
-          maxToolRounds: 8,
+          maxToolRounds: 4,
           maxTokens: 2000,
         },
       );
