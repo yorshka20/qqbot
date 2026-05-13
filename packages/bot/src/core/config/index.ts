@@ -65,7 +65,9 @@ export type {
   SearchConfig,
   SearchFetchConfig,
   SearchMode,
+  SearchProvider,
   SearXNGConfig,
+  SerperConfig,
   TriggerStrategy,
 } from './types/mcp';
 export type { MemoryConfig } from './types/memory';

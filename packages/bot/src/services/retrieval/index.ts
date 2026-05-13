@@ -17,3 +17,5 @@ export { buildSummariesFromStringChunks } from './searchFilterRefine';
 export { FILTER_REFINE_MAX_ROUNDS, FILTER_SUPPLEMENT_MAX_RESULTS, SearchService } from './searxng/SearchService';
 export { SearXNGClient } from './searxng/SearXNGClient';
 export type { SearchOptions, SearchResult, SearXNGSearchResponse } from './searxng/types';
+export { SerperClient } from './serper/SerperClient';
+export type { SerperSearchResponse } from './serper/types';

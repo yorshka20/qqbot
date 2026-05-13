@@ -11,6 +11,7 @@ import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNoti
 import type { PageContentFetchService } from '../fetch';
 import type { FilterAndRefineOptions, FilterRefineResult } from '../searchFilterRefine';
 import { parseFilterRefineResponse } from '../searchFilterRefine';
+import { SerperClient } from '../serper/SerperClient';
 import { SearXNGClient } from './SearXNGClient';
 import type { SearchOptions, SearchResult } from './types';
 
@@ -30,6 +31,7 @@ export interface SearchServiceOptions {
 
 export class SearchService {
   private searxngClient: SearXNGClient | null = null;
+  private serperClient: SerperClient | null = null;
   private mcpManager: MCPManager | null = null;
   private config: MCPConfig | null = null;
   private maxResults: number;
@@ -46,9 +48,19 @@ export class SearchService {
     this.healthCheckManager = healthCheckManager;
     this.pageContentFetchService = pageContentFetchService;
 
-    if (config?.enabled && config.search.mode === 'direct') {
-      this.searxngClient = new SearXNGClient(config.searxng);
-      logger.info('[SearchService] Initialized in Direct mode');
+    if (config?.enabled) {
+      const provider = config.search.provider ?? 'searxng';
+      if (provider === 'serper') {
+        if (!config.serper?.apiKey) {
+          logger.warn('[SearchService] provider=serper but mcp.serper.apiKey is missing; search will be disabled');
+        } else {
+          this.serperClient = new SerperClient(config.serper);
+          logger.info('[SearchService] Initialized with Serper provider');
+        }
+      } else if (config.search.mode === 'direct') {
+        this.searxngClient = new SearXNGClient(config.searxng);
+        logger.info('[SearchService] Initialized with SearXNG provider (Direct mode)');
+      }
     }
   }
 
@@ -110,14 +122,20 @@ export class SearchService {
   }
 
   registerHealthCheck(): void {
-    if (!this.searxngClient) {
-      return;
+    if (this.searxngClient) {
+      this.healthCheckManager.registerService(this.searxngClient, {
+        cacheDuration: 60000,
+        timeout: 2000,
+        retries: 0,
+      });
     }
-    this.healthCheckManager.registerService(this.searxngClient, {
-      cacheDuration: 60000,
-      timeout: 2000,
-      retries: 0,
-    });
+    if (this.serperClient) {
+      this.healthCheckManager.registerService(this.serperClient, {
+        cacheDuration: 60000,
+        timeout: 2000,
+        retries: 0,
+      });
+    }
   }
 
   setMCPManager(mcpManager: MCPManager): void {
@@ -131,6 +149,7 @@ export class SearchService {
       return [];
     }
 
+    const provider = this.config.search.provider ?? 'searxng';
     const searchMode = this.config.search.mode;
     const maxResults = options?.maxResults || this.maxResults;
     // Merge config defaults: language (e.g. "zh"), engines (e.g. "baidu,bing"). No default timeRange: prefer year-in-keywords for timeliness.
@@ -144,7 +163,17 @@ export class SearchService {
     try {
       let results: SearchResult[] = [];
 
-      if (searchMode === 'direct') {
+      if (provider === 'serper') {
+        if (!this.serperClient) {
+          logger.warn('[SearchService] provider=serper but client not initialized (missing apiKey?), skipping search');
+          return [];
+        }
+        if (this.healthCheckManager && !(await this.healthCheckManager.isServiceHealthy('Serper'))) {
+          logger.warn('[SearchService] Serper service is not available, skipping search');
+          return [];
+        }
+        results = await this.serperClient.webSearch(query, mergedOptions);
+      } else if (searchMode === 'direct') {
         if (!this.searxngClient) {
           logger.warn('[SearchService] SearXNG client not initialized');
           return [];

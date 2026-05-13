@@ -17,6 +17,19 @@ export interface SearXNGConfig {
   proxy?: ProxyConfig;
 }
 
+export interface SerperConfig {
+  // Required: Serper.dev API key
+  apiKey: string;
+  // Optional: country code passed as `gl` (e.g. "cn", "us"). Default "cn".
+  gl?: string;
+  // Optional: language code passed as `hl` (e.g. "zh-cn", "en"). Default derived from SearchConfig.language.
+  hl?: string;
+  // Optional: API endpoint override (default: "https://google.serper.dev/search")
+  endpoint?: string;
+  // Optional: per-request timeout in ms (default: 10000)
+  timeoutMs?: number;
+}
+
 export type MCPRuntime = 'bunx' | 'npx' | 'npm';
 
 export interface MCPServerConfig {
@@ -29,6 +42,7 @@ export interface MCPServerConfig {
 }
 
 export type SearchMode = 'direct' | 'mcp';
+export type SearchProvider = 'searxng' | 'serper';
 export type TriggerStrategy = 'llm' | 'keywords' | 'none';
 
 /**
@@ -67,7 +81,9 @@ export interface JinaReaderConfig {
 export interface SearchConfig {
   // Whether to enable automatic search
   enabled: boolean;
-  // Search mode: "direct" (SearXNG API) or "mcp" (MCP server)
+  // Backend provider: "searxng" (self-hosted) or "serper" (Serper.dev Google SERP API). Default "searxng".
+  provider?: SearchProvider;
+  // Search mode for SearXNG backend: "direct" (SearXNG API) or "mcp" (MCP server). Ignored when provider=serper.
   mode: SearchMode;
   // Whether to automatically trigger search
   autoTrigger: boolean;
@@ -88,8 +104,10 @@ export interface SearchConfig {
 export interface MCPConfig {
   // Whether MCP feature is enabled
   enabled: boolean;
-  // SearXNG configuration
+  // SearXNG configuration (used when search.provider="searxng")
   searxng: SearXNGConfig;
+  // Serper.dev configuration (used when search.provider="serper")
+  serper?: SerperConfig;
   // MCP server process configuration
   server: MCPServerConfig;
   // Search behavior configuration
