@@ -9,7 +9,7 @@ import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../../capabilities/types';
 import type { PromptManager } from '../../prompt/PromptManager';
-import { PromptMessageAssembler } from '../../prompt/PromptMessageAssembler';
+import { buildSpeakerTag } from '../../prompt/speakerTag';
 import type { ChatMessage, ContentPart } from '../../types';
 import { extractImagesFromSegmentsAsync, normalizeVisionImages } from '../../utils/imageUtils';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';
@@ -40,7 +40,6 @@ const DEFAULT_TOOL_REASONING: ReasoningEffort = 'medium';
 export class PromptAssemblyStage implements ReplyStage {
   readonly name = 'prompt-assembly';
 
-  private readonly messageAssembler = new PromptMessageAssembler();
   private readonly chatReasoning: ReasoningEffort;
   private readonly toolReasoning: ReasoningEffort;
 
@@ -52,6 +51,11 @@ export class PromptAssemblyStage implements ReplyStage {
   ) {
     this.chatReasoning = chatConfig?.reasoningEffort ?? DEFAULT_CHAT_REASONING;
     this.toolReasoning = chatConfig?.toolReasoningEffort ?? DEFAULT_TOOL_REASONING;
+  }
+
+  /** Shared assembler held by PromptManager — single instance for the whole AI service. */
+  private get messageAssembler() {
+    return this.promptManager.messageAssembler;
   }
 
   async execute(ctx: ReplyPipelineContext): Promise<void> {
@@ -84,8 +88,8 @@ export class PromptAssemblyStage implements ReplyStage {
 
     const sender = hookContext.message?.sender;
     const senderNickname = sender?.nickname ?? sender?.card ?? '';
-    const senderUserId = hookContext.message?.userId ?? '';
-    const senderIdentity = senderNickname ? `[speaker:${senderUserId}:${senderNickname}]` : `[speaker:${senderUserId}]`;
+    const senderUserId = String(hookContext.message?.userId ?? '');
+    const senderIdentity = buildSpeakerTag(senderUserId, senderNickname);
 
     const frameCurrentQuery = this.promptManager.render('llm.reply.user_frame', {
       userMessage: ctx.userMessage,
@@ -197,8 +201,8 @@ export class PromptAssemblyStage implements ReplyStage {
       .join('')
       .trim();
     const textContent = textFromSegments || entry.content || '';
-    const prefix = entry.isBotReply ? '' : `[speaker:${entry.userId}:${entry.nickname ?? ''}] `;
-    const parts: ContentPart[] = [{ type: 'text', text: prefix + textContent || '(no text)' }];
+    const prefix = this.entrySpeakerPrefix(entry);
+    const parts: ContentPart[] = [{ type: 'text', text: `${prefix} ${textContent}`.trim() || '(no text)' }];
     for (const img of normalizedImages) {
       const mime = img.mimeType || 'image/jpeg';
       const url = img.base64 ? `data:${mime};base64,${img.base64}` : img.url;
@@ -207,6 +211,18 @@ export class PromptAssemblyStage implements ReplyStage {
       }
     }
     return parts;
+  }
+
+  /**
+   * Build the same speaker prefix that {@link PromptMessageAssembler} uses
+   * for plain-text history entries — needed here because the vision branch
+   * builds `ContentPart[]` directly and bypasses the assembler's serializer.
+   */
+  private entrySpeakerPrefix(entry: ConversationMessageEntry): string {
+    if (entry.isBotReply) {
+      return buildSpeakerTag(this.promptManager.botSelfId, this.promptManager.botNickname);
+    }
+    return buildSpeakerTag(String(entry.userId), entry.nickname);
   }
 
   private messageHashCheck(messages: ChatMessage[]) {

@@ -6,6 +6,7 @@ import { basename, extname, join, resolve } from 'node:path';
 import { getCurrentDateHourForPrompt } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
+import { PromptMessageAssembler } from './PromptMessageAssembler';
 
 export interface PromptTemplate {
   name: string;
@@ -35,12 +36,20 @@ export class PromptManager {
   readonly botSelfId: string;
   /** Bot's display nickname (bot.nickname); injected into base prompt as {{botNickname}}. */
   readonly botNickname: string;
+  /**
+   * Single shared {@link PromptMessageAssembler}, configured with the bot's
+   * identity. Held here because both the reply pipeline (PromptAssemblyStage)
+   * and ProactiveReplyGenerationService need the same instance — separate
+   * `new` calls in each consumer would duplicate state for no reason.
+   */
+  readonly messageAssembler: PromptMessageAssembler;
 
   constructor(templateDirectory?: string, adminUserId?: string, botSelfId?: string, botNickname?: string) {
     this.templateDirectory = templateDirectory || resolve(getRepoRoot(), 'prompts');
     this.adminUserId = adminUserId ?? '';
     this.botSelfId = botSelfId ?? '';
     this.botNickname = botNickname ?? '';
+    this.messageAssembler = new PromptMessageAssembler({ uid: this.botSelfId, nick: this.botNickname });
 
     this.loadTemplatesFromDirectory();
   }

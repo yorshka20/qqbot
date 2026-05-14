@@ -11,7 +11,6 @@ import type { ToolManager } from '@/tools/ToolManager';
 import type { AIProvider } from '../base/AIProvider';
 import type { VisionImage } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
-import { PromptMessageAssembler } from '../prompt/PromptMessageAssembler';
 import { buildSkillUsageInstructions, executeSkillCall, getReplySkillDefinitions } from '../tools/replyTools';
 import type { AIGenerateResponse, ChatMessage, ContentPart } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
@@ -35,8 +34,6 @@ const PROACTIVE_GEN_OPTIONS = {
  * Constructs a synthetic HookContext for tool execution within the proactive flow.
  */
 export class ProactiveReplyGenerationService {
-  private readonly messageAssembler = new PromptMessageAssembler();
-
   constructor(
     private llmService: LLMService,
     private visionService: VisionService,
@@ -44,6 +41,11 @@ export class ProactiveReplyGenerationService {
     private promptManager: PromptManager,
     private toolManager: ToolManager,
   ) {}
+
+  /** Shared assembler held by PromptManager — single instance for the whole AI service. */
+  private get messageAssembler() {
+    return this.promptManager.messageAssembler;
+  }
 
   /**
    * Generate a single proactive reply for group participation.

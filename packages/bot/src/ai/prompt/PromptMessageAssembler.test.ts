@@ -2,9 +2,11 @@ import { describe, expect, it } from 'bun:test';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { PromptMessageAssembler } from './PromptMessageAssembler';
 
+const BOT_IDENTITY = { uid: '999', nick: 'bot' };
+
 describe('PromptMessageAssembler', () => {
   it('builds deterministic output for same input', () => {
-    const assembler = new PromptMessageAssembler();
+    const assembler = new PromptMessageAssembler(BOT_IDENTITY);
     const entries: ConversationMessageEntry[] = [
       {
         messageId: '1',
@@ -40,7 +42,7 @@ describe('PromptMessageAssembler', () => {
   });
 
   it('injects fewShotExamples between system messages and history', () => {
-    const assembler = new PromptMessageAssembler();
+    const assembler = new PromptMessageAssembler(BOT_IDENTITY);
     const entries: ConversationMessageEntry[] = [
       {
         messageId: '1',
@@ -76,7 +78,7 @@ describe('PromptMessageAssembler', () => {
   });
 
   it('skips empty fewShotExamples entries', () => {
-    const assembler = new PromptMessageAssembler();
+    const assembler = new PromptMessageAssembler(BOT_IDENTITY);
     const messages = assembler.buildNormalMessages({
       sceneSystem: 'scene',
       fewShotExamples: [
@@ -92,7 +94,7 @@ describe('PromptMessageAssembler', () => {
   });
 
   it('serializes image segments into stable tags', () => {
-    const assembler = new PromptMessageAssembler();
+    const assembler = new PromptMessageAssembler(BOT_IDENTITY);
     const entries: ConversationMessageEntry[] = [
       {
         messageId: '1',

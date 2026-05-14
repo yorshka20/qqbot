@@ -15,7 +15,7 @@ describe('formatMemoryMarkdown', () => {
       groupMemoryText: '   ',
       userSections: [{ uid: '123', nick: '张三', memoryText: '[preference:food]\n爱吃火锅' }],
     });
-    expect(out).toBe('## 关于用户的记忆\n### [speaker:123:张三]\n[preference:food]\n爱吃火锅');
+    expect(out).toBe('## 关于用户的记忆\n### [speaker:张三:123]\n[preference:food]\n爱吃火锅');
   });
 
   it('emits group + multiple speakers in order (bilibili multi-user batch)', () => {
@@ -33,11 +33,11 @@ describe('formatMemoryMarkdown', () => {
         '不透剧',
         '',
         '## 关于用户的记忆',
-        '### [speaker:111:米哈游工作室]',
+        '### [speaker:米哈游工作室:111]',
         '[preference:game]',
         '喜欢崩铁',
         '',
-        '### [speaker:222:路人A]',
+        '### [speaker:路人A:222]',
         '[history]',
         '第一次来',
       ].join('\n'),
@@ -52,7 +52,7 @@ describe('formatMemoryMarkdown', () => {
         { uid: '333', nick: 'drop-ws', memoryText: '   \n  ' },
       ],
     });
-    expect(out).toContain('[speaker:111:keep]');
+    expect(out).toContain('[speaker:keep:111]');
     expect(out).not.toContain('222');
     expect(out).not.toContain('333');
   });
@@ -69,17 +69,17 @@ describe('formatMemoryMarkdown', () => {
   });
 
   it('strips structural chars [ ] : < > from the nick', () => {
-    expect(buildSpeakerTag('42', 'a[b]c:d<e>f')).toBe('[speaker:42:abcdef]');
-    expect(buildSpeakerTag('42', '[[nested]]')).toBe('[speaker:42:nested]');
+    expect(buildSpeakerTag('42', 'a[b]c:d<e>f')).toBe('[speaker:abcdef:42]');
+    expect(buildSpeakerTag('42', '[[nested]]')).toBe('[speaker:nested:42]');
   });
 
-  it('preserves the trailing colon for an empty / stripped-to-empty nick (matches serializeEntry arity)', () => {
-    expect(buildSpeakerTag('42')).toBe('[speaker:42:]');
-    expect(buildSpeakerTag('42', '')).toBe('[speaker:42:]');
-    expect(buildSpeakerTag('42', ':::')).toBe('[speaker:42:]');
+  it('preserves the leading colon for an empty / stripped-to-empty nick (matches serializeEntry arity)', () => {
+    expect(buildSpeakerTag('42')).toBe('[speaker::42]');
+    expect(buildSpeakerTag('42', '')).toBe('[speaker::42]');
+    expect(buildSpeakerTag('42', ':::')).toBe('[speaker::42]');
   });
 
   it('keeps arbitrary unicode (incl. emoji) in the nick — only structural chars are dropped', () => {
-    expect(buildSpeakerTag('42', '米哈游-小麦🎮')).toBe('[speaker:42:米哈游-小麦🎮]');
+    expect(buildSpeakerTag('42', '米哈游-小麦🎮')).toBe('[speaker:米哈游-小麦🎮:42]');
   });
 });

@@ -2,6 +2,7 @@ import type { ChatMessage } from '@/ai/types';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import type { MessageSegment } from '@/message/types';
 import { contentToPlainString } from '../utils/contentUtils';
+import { buildSpeakerTag, type SpeakerIdentity } from './speakerTag';
 
 export interface FinalUserBlocks {
   memoryContext?: string;
@@ -29,8 +30,15 @@ export interface FewShotExample {
 /**
  * Deterministic role-based message assembler.
  * Keeps block order and formatting stable for better cache hit rate.
+ *
+ * `botIdentity` is required: the bot's own past replies in history get a
+ * `[speaker:<nick>:<uid>]` prefix matching user turns so the LLM can keep
+ * multi-party turn attribution straight. Bot identity comes from config
+ * (`bot.selfId` + `bot.nickname`) and is always known at assembler time.
  */
 export class PromptMessageAssembler {
+  constructor(private readonly botIdentity: SpeakerIdentity) {}
+
   buildNormalMessages(params: {
     baseSystem?: string;
     sceneSystem: string;
@@ -131,12 +139,16 @@ export class PromptMessageAssembler {
     const imageTags = this.extractImageTags(entry.segments, entry.messageId);
     const core = text || imageTags;
     if (!core) return '';
-    if (entry.isBotReply) {
-      return core;
-    }
-    const nick = this.normalize(entry.nickname ?? '');
-    const prefix = `[speaker:${entry.userId}:${nick}]`;
+    const prefix = this.buildEntryPrefix(entry);
     return imageTags && text ? `${prefix} ${text}\n${imageTags}` : `${prefix} ${core}`;
+  }
+
+  /** Build the `[speaker:<nick>:<uid>]` prefix for a history entry. */
+  private buildEntryPrefix(entry: ConversationMessageEntry): string {
+    if (entry.isBotReply) {
+      return buildSpeakerTag(this.botIdentity.uid, this.botIdentity.nick);
+    }
+    return buildSpeakerTag(String(entry.userId), this.normalize(entry.nickname ?? ''));
   }
 
   private extractText(segments?: MessageSegment[]): string {

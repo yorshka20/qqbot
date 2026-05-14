@@ -12,22 +12,21 @@
 //   ...
 //
 //   ## 关于用户的记忆
-//   ### [speaker:<uid>:<nick>]
+//   ### [speaker:<nick>:<uid>]
 //   [scope]
 //   ...
 //
-//   ### [speaker:<uid>:<nick>]
+//   ### [speaker:<nick>:<uid>]
 //   [scope]
 //   ...
 //
-// The speaker tag mirrors `PromptMessageAssembler.serializeEntry`'s history
-// prefix exactly so the LLM sees one consistent schema — uid first for
-// precise alignment, nick second for human readability.
-//
-// `nick` is stripped of `[`, `]`, `:` and angle brackets because those are
-// structural in the surrounding tag grammar (and TTS can't pronounce them
-// anyway). Empty nick is preserved as a trailing `:` to keep the arity
-// identical to `[speaker:${uid}:${nick}]` in `serializeEntry`.
+// The speaker tag is built by {@link buildSpeakerTag} in `ai/prompt/speakerTag.ts`,
+// which is the single source of truth — history entries, current_query, and
+// memory headings all share the same canonical format.
+
+import { buildSpeakerTag } from '@/ai/prompt/speakerTag';
+
+export { buildSpeakerTag } from '@/ai/prompt/speakerTag';
 
 export interface MemorySpeakerSection {
   /** Raw user id — emitted verbatim inside the speaker tag. */
@@ -73,25 +72,3 @@ export function formatMemoryMarkdown(input: FormatMemoryMarkdownInput): string {
   return parts.join('\n\n');
 }
 
-/**
- * Build a `[speaker:<uid>:<nick>]` tag matching `PromptMessageAssembler.
- * serializeEntry`'s format. Exported so tests and other renderers can
- * stay in lockstep on the exact string shape.
- */
-export function buildSpeakerTag(uid: string, nick?: string): string {
-  const safeNick = stripStructuralChars(nick ?? '');
-  return `[speaker:${uid}:${safeNick}]`;
-}
-
-/**
- * Strip characters that would corrupt the surrounding tag grammar:
- *   `[` `]` — section delimiters
- *   `:`      — field separator inside the speaker tag
- *   `<` `>`  — reserved for XML-ish wrappers (e.g. `<memory_context>`)
- *
- * These are all non-phonetic so losing them doesn't hurt the display
- * name any more than TTS would anyway.
- */
-function stripStructuralChars(value: string): string {
-  return value.replace(/[[\]:<>]/g, '').trim();
-}
