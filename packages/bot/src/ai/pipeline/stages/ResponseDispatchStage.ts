@@ -16,7 +16,8 @@ import type { ReplyStage } from '../types';
  *
  * Path 1: send_card executor already rendered and queued the card (cardSent=true)
  * Path 1.5: send_card was called but rendering failed (cardSendFailedReason set) → fall through to Path 2
- * Path 2: Long text → secondary LLM converts to card JSON → render
+ * Path 2a: Long markdown text → render directly as markdown card (no LLM conversion)
+ * Path 2b: Long non-markdown text → secondary LLM converts to card JSON → render
  * Path 3: Plain prose — always uses ctx.responseText (never outputs failed/repaired JSON)
  *
  * Fires `onAIGenerationComplete` hook and appends task result images when present.
@@ -51,8 +52,24 @@ export class ResponseDispatchStage implements ReplyStage {
     // Skip card rendering when the response contains a command (e.g. /nai-plus ...)
     const containsCommand = MessageUtils.isCommand(ctx.responseText);
 
-    // Path 2: Long text → convert to card via second LLM call
+    // Path 2: Long text → render as card image
     if (!containsCommand && this.cardHelper.shouldUseCardReply(ctx.responseText)) {
+      // Path 2a: Text is already markdown-formatted → render directly as markdown card
+      // (skips the LLM conversion, preserves the model's layout verbatim)
+      if (this.cardHelper.looksLikeMarkdown(ctx.responseText)) {
+        const mdResult = await this.cardHelper
+          .renderMarkdownDirect(ctx.responseText, ctx.actualProvider)
+          .catch(() => null);
+        if (mdResult) {
+          logger.info('[ResponseDispatchStage] Path 2a: markdown rendered directly as card');
+          this.cardHelper.setCardReplyOnContext(hookContext, mdResult.segments, mdResult.textForHistory);
+          await this.hookManager.execute('onAIGenerationComplete', hookContext);
+          this.appendToolResultImages(ctx);
+          return;
+        }
+      }
+
+      // Path 2b: Non-markdown long text → convert to card JSON via secondary LLM call
       const cardResult = await this.cardHelper.convertAndRenderCard(
         ctx.responseText,
         ctx.sessionId,
