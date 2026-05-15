@@ -1,6 +1,7 @@
 # Agent Cluster 设计方案
 
-> 本文档是 Agent Cluster 功能的完整实施方案，供 Claude Code 结合 codebase 实现。
+> **Status**: design spec — original implementation plan, since merged. Current behavior is defined by code under `packages/bot/src/cluster/`; this doc preserves the original design intent and decision rationale, and may have drifted from the implementation. When the two disagree, the code wins.
+>
 > 目标：在 QQ Bot 上构建一个自主运行的 worker pool，通过 ContextHub（MCP server）实现 worker 间通信与状态同步，WebUI 为主要监控面板。
 
 ---

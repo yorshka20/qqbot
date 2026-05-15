@@ -83,7 +83,7 @@ bun run dev                      # bot + WebUI dev server with hot reload
 # or:  bun run build && bun run start    for production
 ```
 
-Setting this up on a fresh machine? See **[SETUP.md](SETUP.md)** for a step-by-step walkthrough designed for non-developers (works well with an AI assistant by your side).
+Setting this up on a fresh machine? A step-by-step onboarding guide is being drafted — see [docs/SETUP_OUTLINE.md](docs/SETUP_OUTLINE.md) for the current outline (prose to follow).
 
 ## Configuration
 
@@ -210,16 +210,14 @@ Path alias: `@/` → `packages/bot/src/`.
 ## Documentation
 
 - **[docs/FLOW_DIAGRAMS_EN.md](docs/FLOW_DIAGRAMS_EN.md)** — visual walkthrough of every major pipeline (protocols, command, reply / 8-stage AI pipeline, multi-turn tool calling, proactive reply, agenda). Start here.
-- [docs/FLOW_DIAGRAMS_CN.md](docs/FLOW_DIAGRAMS_CN.md) — Chinese version.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — layer / component design (includes TTS, memory, cluster sections).
-- [docs/AGENT_CLUSTER_DESIGN.md](docs/AGENT_CLUSTER_DESIGN.md) — agent cluster internals.
+- [docs/AGENT_CLUSTER_DESIGN.md](docs/AGENT_CLUSTER_DESIGN.md) — agent cluster original design spec (implementation has since merged; see `packages/bot/src/cluster/` for current behavior).
 - [docs/CONTEXT_METADATA.md](docs/CONTEXT_METADATA.md) — `HookContext` and metadata flow.
-- [docs/REPLY_METADATA_IMPROVEMENT.md](docs/REPLY_METADATA_IMPROVEMENT.md) — reply content design.
-- [docs/REPLY_PERSISTENCE.md](docs/REPLY_PERSISTENCE.md) — reply persistence model.
+- [docs/REPLY_PERSISTENCE.md](docs/REPLY_PERSISTENCE.md) — reply persistence invariants.
 - [packages/avatar/README.md](packages/avatar/README.md) — Live2D avatar internals.
 - [packages/webui/README.md](packages/webui/README.md) — admin UI deployment modes.
 - [prompts/README.md](prompts/README.md) — prompt template authoring.
-- **[SETUP.md](SETUP.md)** — step-by-step onboarding guide for new users / AI-assisted deployment.
+- [docs/SETUP_OUTLINE.md](docs/SETUP_OUTLINE.md) — outline of the upcoming step-by-step onboarding guide (Discord-first, English-default).
 
 ## License
 
