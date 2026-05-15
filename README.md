@@ -1,160 +1,225 @@
 # QQ Bot
 
-A production-ready, AI-powered QQ bot framework built with TypeScript and Bun. Connects to QQ via [LLBot](https://github.com/LLOneBot/LLOneBot) (Milky / OneBot11 / Satori), runs a structured message pipeline with commands and AI task execution, and supports plugins, memory, and multiple AI providers.
+A production-ready, AI-powered chat bot framework built with TypeScript and Bun. Connects to QQ via [LLBot](https://github.com/LLOneBot/LLOneBot) (Milky / OneBot11 / Satori), and also speaks Discord. Runs a structured 6-stage message pipeline with commands, plugins, multi-provider LLMs, LLM-callable tools, long-term memory, and optional Live2D avatar + admin WebUI.
 
-## Features
+## Highlights
 
-- **Multi-Protocol**: Milky, OneBot11, Satori via LLBot with automatic reconnection
-- **AI Pipeline**: 6-stage message lifecycle with 8-stage inner AI pipeline, multi-turn tool calling, card rendering for long replies
-- **AI Providers**: OpenAI, Anthropic, DeepSeek, Doubao, Gemini, Ollama, OpenRouter, NovelAI, RunPod, Google Cloud Run, and more
-- **Plugins**: Whitelist, memory, proactive conversation, image generation, gacha, nudge, reaction, auto-recall, rule scheduler, etc.
-- **Commands**: Prefix-based routing with owner/admin/user permissions
-- **Memory**: Per-user and per-group long-term memory with LLM extraction
-- **MCP**: Model Context Protocol and SearXNG search for RAG
-- **TTS**: Bot-core registry (`packages/bot/src/services/tts/`) — multi-provider config, health checks, `/tts` command; avatar consumes the same manager for SpeechService (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#tts-text-to-speech))
-- **Persistence**: SQLite and MongoDB; Puppeteer card rendering; TypeScript strict + tsyringe DI
+- **Multi-Protocol**: Milky, OneBot11, Satori (via LLBot), Discord. Connect to several at once with automatic event deduplication and reconnection.
+- **AI Pipeline**: 6-stage message lifecycle, multi-turn tool calling, optional card rendering for long replies (Puppeteer) and direct markdown cards.
+- **AI Providers**: OpenAI, Anthropic, DeepSeek, Doubao, Gemini, Ollama, OpenRouter, NovelAI, RunPod, Google Cloud Run, Laozhang, and more — selected per call via `ProviderSelector`.
+- **Tools**: `@Tool()` decorator with visibility scopes (`reply` / `subagent` / `internal`). Built-ins include search (DuckDuckGo / SearXNG / Serper.dev), web fetch, memory ops, image generation, file read, user-avatar fetch, etc.
+- **Plugins**: 14 hook points covering the full pipeline. Built-ins include whitelist, memory, memory-trigger, proactive conversation, nudge, reaction, auto-recall, rule scheduler, gacha, text2img filtering, and more.
+- **Commands**: Prefix-based routing with owner / admin / user permission levels.
+- **Memory**: Per-user and per-group long-term memory with LLM extraction and mention-triggered recall.
+- **Agenda**: Schedule-driven proactive actions (cron / one-shot / event-triggered), authored as markdown.
+- **Agent Cluster**: Multi-worker coordination for parallel AI task execution (Claude Code / Gemini / Codex workers).
+- **Avatar**: Optional `@qqbot/avatar` package — Live2D action-map compiler, channel mixing, TTS-driven speech.
+- **WebUI**: React + Vite admin UI (`@qqbot/webui`) with 14 backends (file browser, reports, memory inspector, cluster dashboard, ...).
+- **Persistence**: SQLite (default) or MongoDB; JSONC config with single-file or split-directory layout.
+- **MCP & RAG**: Model Context Protocol clients and search-backed retrieval.
+
+## Monorepo Layout
+
+```
+qqbot/
+├── packages/
+│   ├── bot/                # @qqbot/bot — core framework, protocols, AI, plugins, tools, cluster
+│   ├── avatar/             # @qqbot/avatar — Live2D animation compiler + speech driver
+│   └── webui/              # @qqbot/webui — React admin UI
+├── prompts/                # Prompt templates (scenes, tools, agenda, persona, ...)
+├── plugins/                # Optional user-defined plugins
+├── config.example.jsonc    # Reference config (copy to config.jsonc)
+├── docs/                   # Architecture & flow diagrams
+└── data/                   # Runtime data (SQLite DBs, agenda, reports) — not committed
+```
+
+`packages/bot/src/` (the core framework):
+
+```
+core/         # bootstrap, DI registry, config, lifecycle
+protocol/     # Milky, OneBot11, Satori, Discord adapters
+events/       # EventRouter, EventDeduplicator
+conversation/ # MessagePipeline (6-stage), ReplySystem, proactive conversation
+command/      # CommandManager, parsers, handlers
+ai/           # AIService, LLMService, providers, prompt assembly
+tools/        # ToolManager + executors (@Tool() definitions)
+agent/        # SubAgentManager — sub-agent execution for advanced tools
+hooks/        # 14 hook points
+plugins/      # PluginManager, PluginBase, built-in plugins
+memory/       # MemoryService, MemoryExtractService
+agenda/       # Schedule-driven proactive actions
+persona/      # Per-user persona / reaction / reflection
+cluster/      # Multi-worker agent coordination
+lan/          # Cross-machine host/client roles
+api/          # APIClient, APIRouter, MessageAPI
+database/     # SQLite & MongoDB adapters
+services/     # TTS, static server, file read, claude-code, ...
+integrations/ # Bridge to @qqbot/avatar
+cli/          # smoke-test, debug, cluster-e2e entry points
+```
 
 ## Prerequisites
 
 - [Bun](https://bun.sh/) >= 1.0.0
-- [LLBot](https://github.com/LLOneBot/LLOneBot) server with protocol endpoints
+- One protocol endpoint:
+  - **QQ**: [LLBot](https://github.com/LLOneBot/LLOneBot) (or compatible Milky / OneBot11 / Satori server)
+  - **Discord**: bot token + intents
+- One LLM provider API key (DeepSeek / OpenAI / Anthropic / ... — pick whatever you can sign up for)
+- Optional: a system Chromium for `puppeteer-core` card rendering
 
-## Installation
+## Quick Start
 
 ```bash
 git clone <repository-url>
 cd qqbot
 bun install
 cp config.example.jsonc config.jsonc
-# or use the split layout:
-# mkdir config.d && cp config.example.jsonc config.d/all.jsonc
+# Or split layout:  mkdir config.d && cp config.example.jsonc config.d/all.jsonc
+
+# Edit config.jsonc — see Configuration below
+
+bun run smoke-test               # MANDATORY — validates DI graph + module initialization
+bun run dev                      # bot + WebUI dev server with hot reload
+# or:  bun run build && bun run start    for production
 ```
 
-Edit config (JSONC with inline comments). Required keys: `protocols`, `database`, `prompts`; others optional.
-
-## Quick Start
-
-```bash
-bun run dev      # development + debug logging
-bun run build && bun run start   # production
-bun run debug    # mock message sending
-```
-
-## Project Structure
-
-```
-qqbot/
-├── src/
-│   ├── core/           # Bot, config, DI, connection management
-│   ├── protocol/       # Milky, OneBot11, Satori adapters
-│   ├── conversation/   # MessagePipeline, Lifecycle, ReplySystem, proactive conversation
-│   ├── command/        # CommandManager, parsers, built-in handlers
-│   ├── ai/             # AIService, LLMService, providers, pipeline stages, prompt assembly
-│   ├── tools/          # ToolManager, tool executors (LLM-callable tools)
-│   ├── hooks/          # HookManager, hook types and priorities
-│   ├── plugins/        # PluginManager, PluginBase, built-in plugins
-│   ├── memory/         # MemoryService, MemoryExtractService
-│   ├── agenda/         # AgendaService, AgentLoop, schedule-driven proactive tasks
-│   ├── database/       # SQLite & MongoDB adapters
-│   ├── events/         # EventRouter, EventDeduplicator
-│   ├── api/            # APIClient, APIRouter, MessageAPI
-│   └── ...
-├── plugins/            # User-defined plugins
-├── prompts/            # Prompt templates
-├── docs/               # Architecture and design docs
-├── config.example.jsonc  # Example config (single file)
-├── config.jsonc          # Local config, single file (not committed)
-└── config.d/             # Or: local config, split into multiple .jsonc files (not committed)
-```
-
-## Architecture (Summary)
-
-Messages flow: **LLBot → ConnectionManager → Protocol adapters → EventDeduplicator → EventRouter → ConversationManager → MessagePipeline** (6 stages: receive → preprocess → process → prepare → send → complete). Commands and AI reply generation run in the process stage; hooks allow plugins to intercept each stage. See [docs/FLOW_DIAGRAMS_EN.md](docs/FLOW_DIAGRAMS_EN.md) for detailed visual walkthroughs and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for component design.
+Setting this up on a fresh machine? See **[SETUP.md](SETUP.md)** for a step-by-step walkthrough designed for non-developers (works well with an AI assistant by your side).
 
 ## Configuration
 
-Two config layouts are supported — choose whichever suits your workflow:
+The bot needs a `config.jsonc` (JSONC = JSON with comments). Two layouts:
 
-### Option A: Single file (simple)
-
+**Single file:**
 ```bash
 cp config.example.jsonc config.jsonc
 ```
 
-All config in one `config.jsonc` file.
-
-### Option B: Split directory (recommended for large configs)
-
+**Split directory** (recommended for large configs):
 ```bash
 mkdir config.d
-# Split into separate files, each contributing top-level keys:
-# config.d/protocols.jsonc  — protocols, api, events
-# config.d/bot.jsonc        — bot, memory, staticServer, fileReadService, claudeCodeService
-# config.d/database.jsonc   — database
-# config.d/ai.jsonc         — ai, contextMemory
-# config.d/plugins.jsonc    — plugins
-# config.d/services.jsonc   — prompts, tts, mcp, rag (or split further)
+# Drop multiple .jsonc files into config.d/, each contributing top-level keys.
+# Files are loaded alphabetically and shallow-merged by top-level key.
+# Duplicate keys log a warning; the last file wins.
 ```
 
-Files are loaded alphabetically and shallow-merged by top-level key. File names are free-form (no numeric prefix required). Duplicate top-level keys across files will log a warning; the last file wins.
+**Resolution order:**
+1. `CONFIG_PATH` env var (file or directory)
+2. `config.d/` in project root
+3. `config.jsonc` in project root
 
-### Resolution order
+**Required top-level keys:**
+- `protocols` — one or more protocol entries with `connection.url` + `accessToken`
+- `database` — `type: "sqlite" | "mongodb"` + path or connection string
+- `bot` — `owner` (QQ ID), optional `admins`
+- `ai` — `defaultProviders.llm` (and optionally `text2img`) plus `providers.*` definitions
+- `prompts` — directory pointing at `./prompts`
 
-1. Constructor argument / `CONFIG_PATH` env var (file or directory)
-2. `config.d/` directory in project root
-3. `config.jsonc` file in project root
+Other sections (`events`, `staticServer`, `mcp`, `contextMemory`, `tts`, `plugins`, `cluster`, ...) are optional. See `config.example.jsonc` for the full shape.
 
-Configure at least:
+## Subsystems
 
-- **protocols** — connection URLs and `accessToken` for each protocol
-- **database** — `type` (sqlite | mongodb) and path/connection string
-- **bot** — `owner`, optional `admins`
-- **ai** — `defaultProviders.llm` (and optionally `text2img`), plus `providers.*` for each service (API keys, base URLs, models)
+Each of these is optional and configured in `config.jsonc` when needed.
 
-Other sections (events, staticServer, mcp, contextMemory, tts, plugins, etc.) are optional. See `config.example.jsonc` for the full shape.
+| Subsystem | Code | Where to read more |
+|---|---|---|
+| Plugins (whitelist, memory, proactive, ...) | `packages/bot/src/plugins/` | This file + [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#plugin-system) |
+| Tools (`@Tool()` decorator) | `packages/bot/src/tools/` | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#tool-system) |
+| Agenda (schedule-driven proactive actions) | `packages/bot/src/agenda/` | This file (see below) |
+| Cluster (multi-worker coordination) | `packages/bot/src/cluster/` | [docs/AGENT_CLUSTER_DESIGN.md](docs/AGENT_CLUSTER_DESIGN.md) |
+| Avatar (Live2D + speech) | `packages/avatar/` | [packages/avatar/README.md](packages/avatar/README.md) |
+| WebUI (React admin UI) | `packages/webui/` | [packages/webui/README.md](packages/webui/README.md) |
+| TTS (multi-provider, health-checked) | `packages/bot/src/services/tts/` | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#tts-text-to-speech) |
+| Memory (long-term + LLM extraction) | `packages/bot/src/memory/` | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#memory-system) |
+| LAN (host/client cross-machine) | `packages/bot/src/lan/` | [packages/bot/src/lan/README.md](packages/bot/src/lan/README.md) |
 
-## Plugins
+### Plugins
 
-Built-in plugins are enabled under `plugins.list` in config. Examples: `whitelist`, `memory`, `memoryTrigger`, `proactiveConversation`, `nudge`, `reaction`, `autoRecall`, `rule`, `gacha`, `conversationConfig`, `text2imgSfwFilter`, and others. Implement custom plugins by extending `PluginBase`, using `PluginContext` (api, events, hookManager), and registering in `plugins.list`. See `src/plugins/PluginBase.ts` and plugins in `src/plugins/plugins/`.
+Built-in plugins are enabled via `plugins.list` in config. Examples: `whitelist`, `memory`, `memoryTrigger`, `proactiveConversation`, `nudge`, `reaction`, `autoRecall`, `rule`, `gacha`, `conversationConfig`, `text2imgSfwFilter`. Custom plugins extend `PluginBase`, use the `PluginContext` API (`api` / `events` / `hookManager`), and register in `plugins.list`. See `packages/bot/src/plugins/PluginBase.ts` and the built-ins under `packages/bot/src/plugins/plugins/`.
 
-## Hooks, Commands, Memory
+### Agenda
 
-- **Hooks**: Register on `onMessageReceived`, `onMessagePreprocess`, `onMessageBeforeAI`, `onAIGenerationStart`, `onAIGenerationComplete`, `onCommandDetected`, `onCommandExecuted`, `onMessageBeforeSend`, `onMessageSent`, `onMessageComplete`, etc. via `hookManager`. Context and metadata: [docs/CONTEXT_METADATA.md](docs/CONTEXT_METADATA.md).
-- **Commands**: Prefix (default `/`), permission levels owner/admin/user. Plugins register via `hookManager.registerCommand()`.
-- **Memory**: `MemoryService` + `MemoryExtractService`; `MemoryPlugin` does debounced extraction; `MemoryTriggerPlugin` triggers on mention.
+Define proactive actions in `data/agenda/schedule.md`:
+
+```markdown
+## Morning greeting
+- 触发: `cron 0 8 * * *`
+- 群: `123456789`
+- 冷却: `23h`
+
+每天早上 8 点给群里发一句早安，并简要总结昨天的群聊。
+```
+
+Triggers can be `cron <expr>`, `once <ISO>`, or `onEvent <event-name>`. Per-run reports land in `data/agenda/reports/YYYY-MM-DD.md`.
+
+### Agent Cluster
+
+Run parallel AI workers for batched tickets. CLI entry points:
+
+```bash
+bun run cluster:e2e:claude
+bun run cluster:e2e:gemini
+bun run cluster:e2e:codex
+```
+
+Worker templates and the project registry are configured under `cluster.*` in config. See [docs/AGENT_CLUSTER_DESIGN.md](docs/AGENT_CLUSTER_DESIGN.md).
+
+## Hooks & Commands
+
+- **Hooks** (14 points): `onMessageReceived`, `onMessagePreprocess`, `onMessageBeforeAI`, `onAIGenerationStart`, `onAIGenerationComplete`, `onCommandDetected`, `onCommandExecuted`, `onMessageBeforeSend`, `onMessageSent`, `onMessageComplete`, plus event / connection hooks. Context shape: [docs/CONTEXT_METADATA.md](docs/CONTEXT_METADATA.md).
+- **Commands**: Prefix (default `/`), permission levels `owner` / `admin` / `user`. Register via `hookManager.registerCommand()`.
 
 ## AI Providers
 
-Default provider keys (e.g. `ollama`, `openai`, `anthropic`, `deepseek`, `doubao`, `gemini`, `openrouter`, `novelai`, `runpod`, `google-cloud-run`, `local-text2img`, `laozhang`) are configured under `ai.providers`. Set `ai.defaultProviders.llm` and optionally `text2img`; `ProviderSelector` chooses per call.
+Provider keys configured under `ai.providers` (examples: `ollama`, `openai`, `anthropic`, `deepseek`, `doubao`, `gemini`, `openrouter`, `novelai`, `runpod`, `google-cloud-run`, `local-text2img`, `laozhang`). Set `ai.defaultProviders.llm` (and optionally `text2img`); `ProviderSelector` chooses per call. Each provider needs at minimum `apiKey`, `baseUrl`, and `model`.
 
 ## Development
 
 ```bash
-bun run typecheck    # tsc --noEmit
-bun run lint         # Biome
+bun run typecheck      # tsc -b
+bun run lint           # Biome
 bun run lint:fix
 bun run format
 bun test
-bun run build        # production bundle
+bun run build          # production bundle (@qqbot/bot)
+bun run build:admin    # build WebUI (@qqbot/webui)
+bun run debug          # mock message sending for local testing
 ```
 
-**Env**: `LOG_LEVEL` (default `info`), `CONFIG_PATH` (file or directory, default auto-detect `config.d/` then `config.jsonc`). Path alias `@/` → `src/`.
+**Smoke test (MANDATORY before commit):**
+```bash
+bun run smoke-test
+```
+
+This boots the real app through `packages/bot/src/core/bootstrap.ts` and verifies DI registration, module loading order, and plugin initialization. It catches circular imports, TDZ errors, and missing DI tokens that `typecheck` cannot. A change is **not** considered complete until `smoke-test` passes.
+
+**Env vars:**
+- `LOG_LEVEL` — default `info`, set `debug` for verbose logs
+- `CONFIG_PATH` — override config location (file or directory)
+- `NO_FILE_LOG=1` — suppress file logging (used by smoke-test / CI)
+
+Path alias: `@/` → `packages/bot/src/`.
 
 ## Troubleshooting
 
-- **No connection**: Check LLBot URLs and `accessToken`; use `LOG_LEVEL=debug`.
-- **Plugin not loading**: `plugins.list[].name` must match the plugin class `name`; ensure `enabled: true`.
-- **No AI reply**: Check provider config and API keys; ensure `ai.defaultProviders.llm` exists and at least one protocol is connected.
-- **Config errors**: Use valid JSONC; required top-level: `protocols`, `database`, `prompts`.
+- **No connection**: Verify protocol URL and `accessToken`; run with `LOG_LEVEL=debug`.
+- **Plugin not loading**: `plugins.list[].name` must match the plugin class `name`; `enabled: true`.
+- **No AI reply**: Check provider config / API keys; `ai.defaultProviders.llm` must exist; at least one protocol must be connected.
+- **Smoke-test fails**: Read the stack — usually a missing DI token or a circular import. Don't proceed until smoke-test passes.
+- **Card rendering empty / errors**: Verify Chromium is findable by `puppeteer-core` (set executable path in config if needed).
 
 ## Documentation
 
-- [docs/FLOW_DIAGRAMS_EN.md](docs/FLOW_DIAGRAMS_EN.md) — **Architecture flow diagrams** (English) — visual walkthroughs of every major pipeline: protocol layer, command system, reply system (8-stage AI pipeline), multi-turn tool calling loop, proactive reply (message-driven), and agenda (schedule-driven). Start here to understand how the pieces fit together.
-- [docs/FLOW_DIAGRAMS_CN.md](docs/FLOW_DIAGRAMS_CN.md) — Same flow diagrams in Chinese
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Layer and component design (includes [TTS](docs/ARCHITECTURE.md#tts-text-to-speech): providers, health, avatar split)
-- [docs/CONTEXT_METADATA.md](docs/CONTEXT_METADATA.md) — HookContext metadata
-- [docs/REPLY_METADATA_IMPROVEMENT.md](docs/REPLY_METADATA_IMPROVEMENT.md) — Reply content design
-- [prompts/README.md](prompts/README.md) — Prompt template authoring
+- **[docs/FLOW_DIAGRAMS_EN.md](docs/FLOW_DIAGRAMS_EN.md)** — visual walkthrough of every major pipeline (protocols, command, reply / 8-stage AI pipeline, multi-turn tool calling, proactive reply, agenda). Start here.
+- [docs/FLOW_DIAGRAMS_CN.md](docs/FLOW_DIAGRAMS_CN.md) — Chinese version.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — layer / component design (includes TTS, memory, cluster sections).
+- [docs/AGENT_CLUSTER_DESIGN.md](docs/AGENT_CLUSTER_DESIGN.md) — agent cluster internals.
+- [docs/CONTEXT_METADATA.md](docs/CONTEXT_METADATA.md) — `HookContext` and metadata flow.
+- [docs/REPLY_METADATA_IMPROVEMENT.md](docs/REPLY_METADATA_IMPROVEMENT.md) — reply content design.
+- [docs/REPLY_PERSISTENCE.md](docs/REPLY_PERSISTENCE.md) — reply persistence model.
+- [packages/avatar/README.md](packages/avatar/README.md) — Live2D avatar internals.
+- [packages/webui/README.md](packages/webui/README.md) — admin UI deployment modes.
+- [prompts/README.md](prompts/README.md) — prompt template authoring.
+- **[SETUP.md](SETUP.md)** — step-by-step onboarding guide for new users / AI-assisted deployment.
 
 ## License
 
