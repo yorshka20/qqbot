@@ -281,7 +281,11 @@ export function getCardStyles({ primary, secondary, primaryRgb, secondaryRgb }: 
   .styled-list {
     list-style: none;
   }
-  .styled-list li {
+  /* Child combinator so styles only hit the top-level items rendered by listCard,
+     not nested <li> inside an item's HTML content — descendant selectors here
+     applied display:flex to nested <li>, which split inline runs into flex items
+     and produced single-character vertical wraps. */
+  .styled-list > li {
     display: flex;
     align-items: flex-start;
     padding: 16px 18px;
@@ -291,7 +295,7 @@ export function getCardStyles({ primary, secondary, primaryRgb, secondaryRgb }: 
     transition: all 0.3s;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   }
-  .styled-list .number {
+  .styled-list > li > .number {
     background: linear-gradient(135deg, ${primary}, ${secondary});
     color: white;
     min-width: 32px;
@@ -306,13 +310,38 @@ export function getCardStyles({ primary, secondary, primaryRgb, secondaryRgb }: 
     flex-shrink: 0;
     box-shadow: 0 3px 10px rgba(${primaryRgb}, 0.3);
   }
-  .styled-list li span:last-child {
+  .styled-list > li > span:last-child {
+    line-height: 1.7;
+    color: #2c3e50;
+    flex: 1;
+    min-width: 0;
+  }
+  .styled-list > li > span:last-child strong {
+    color: #334155;
+    font-weight: 700;
+  }
+  /* Nested lists inside an item's content: keep them as normal block lists with
+     standard markers, not the styled flex cards used at the top level. */
+  .styled-list > li > span:last-child ul,
+  .styled-list > li > span:last-child ol {
+    margin: 8px 0;
+    padding-left: 22px;
+  }
+  .styled-list > li > span:last-child ul { list-style: disc; }
+  .styled-list > li > span:last-child ol { list-style: decimal; }
+  .styled-list > li > span:last-child li {
+    display: list-item;
+    margin: 4px 0;
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
     line-height: 1.7;
     color: #2c3e50;
   }
-  .styled-list li span:last-child strong {
-    color: #334155;
-    font-weight: 700;
+  .styled-list > li > span:last-child p {
+    margin: 6px 0;
+    line-height: 1.7;
   }
   .info-box {
     padding: 24px;
@@ -819,7 +848,7 @@ export function getCardStyles({ primary, secondary, primaryRgb, secondaryRgb }: 
   .answer-content code,
   .info-content code,
   .definition code,
-  .styled-list li span:last-child code,
+  .styled-list > li > span:last-child code,
   .comparison-cell code {
     font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 0.9em;
