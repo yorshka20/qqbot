@@ -2,6 +2,7 @@
 
 import type { SummarizeService } from '@/ai/services/SummarizeService';
 import type { ThreadService } from '@/conversation/thread';
+import type { ProtocolName } from '@/core/config/types/protocol';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { SQLiteAdapter } from '@/database/adapters/SQLiteAdapter';
@@ -100,11 +101,14 @@ export class ConversationHistoryService {
    *
    * @param groupId - Group ID (string "group:123" or number); normalized at entry so no inline checks below.
    * @param content - Reply text to store (card text when reply was rendered as card; plain text otherwise)
+   * @param protocol - Protocol this message was sent through. Stored on the row so reaction/reply lookups
+   *   (which query by the incoming event's protocol, e.g. 'milky') can find this bot message.
    * @param options - Optional botUserId (default 0), messageSeq (when provided, e.g. from send response, so reply lookups can find this message)
    */
   async appendBotReplyToGroup(
     groupId: string | number,
     content: string,
+    protocol: ProtocolName,
     options?: { botUserId?: number; messageSeq?: number },
   ): Promise<void> {
     const adapter = this.databaseManager.getAdapter();
@@ -137,7 +141,7 @@ export class ConversationHistoryService {
         messageType: 'group',
         groupId: groupIdNum,
         content,
-        protocol: 'unknown',
+        protocol,
         messageSeq,
         metadata: {
           isBotReply: true,

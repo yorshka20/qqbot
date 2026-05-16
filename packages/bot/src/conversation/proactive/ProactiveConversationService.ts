@@ -387,7 +387,7 @@ export class ProactiveConversationService {
     this.threadService.endThread(currentThread.threadId);
     const endMessage = `已结束${topicLabel}thread。`;
     const sendResult = await this.sendGroupMessage(groupIdNum, endMessage);
-    await this.conversationHistoryService.appendBotReplyToGroup(groupId, endMessage, {
+    await this.conversationHistoryService.appendBotReplyToGroup(groupId, endMessage, this.preferredProtocol, {
       messageSeq: sendResult?.message_seq,
     });
     logger.info(
@@ -761,7 +761,7 @@ export class ProactiveConversationService {
       isBotReply: true,
     });
     const sendResult = await this.sendGroupMessage(groupIdNum, toSend);
-    await this.conversationHistoryService.appendBotReplyToGroup(groupId, toAppend, {
+    await this.conversationHistoryService.appendBotReplyToGroup(groupId, toAppend, this.preferredProtocol, {
       messageSeq: sendResult?.message_seq,
     });
   }
@@ -807,7 +807,7 @@ export class ProactiveConversationService {
       isBotReply: true,
     });
     const sendResult = await this.sendGroupMessage(groupIdNum, toSend);
-    await this.conversationHistoryService.appendBotReplyToGroup(thread.groupId, toAppend, {
+    await this.conversationHistoryService.appendBotReplyToGroup(thread.groupId, toAppend, this.preferredProtocol, {
       messageSeq: sendResult?.message_seq,
     });
   }
