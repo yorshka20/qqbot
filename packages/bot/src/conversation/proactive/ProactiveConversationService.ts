@@ -24,6 +24,7 @@ import type { RetrievalService } from '@/services/retrieval';
 import { logger } from '@/utils/logger';
 import { type FetchProgressNotifier, MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
+import { parseSubtextTags } from '@/persona/prompt/subtextTagParser';
 import type { ThreadContextCompressionService } from '../thread';
 import { isReadableTextForThread, type ProactiveThread, type ThreadService } from '../thread';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
@@ -750,10 +751,12 @@ export class ProactiveConversationService {
       logger.warn('[ProactiveConversationService] Empty proactive reply');
       return;
     }
+    const parsed = parseSubtextTags(replyText);
+    const cleanReplyText = parsed.visible;
     // Optionally render as card (same pipeline as ReplyGenerationService); store card text in thread for LLM-readable history
-    const cardResult = await this.aiService.processReplyMaybeCard(replyText, groupId, this.analysisProviderName);
-    const toSend = cardResult ? cardResult.segments : replyText;
-    const toAppend = cardResult ? cardResult.textForHistory : replyText;
+    const cardResult = await this.aiService.processReplyMaybeCard(cleanReplyText, groupId, this.analysisProviderName);
+    const toSend = cardResult ? cardResult.segments : cleanReplyText;
+    const toAppend = cardResult ? cardResult.textForHistory : cleanReplyText;
     // Update thread and DB before/on send so the next message or analysis run already sees this reply (no need to wait for echo).
     this.threadService.appendMessage(thread.threadId, {
       userId: 0,
@@ -763,6 +766,8 @@ export class ProactiveConversationService {
     const sendResult = await this.sendGroupMessage(groupIdNum, toSend);
     await this.conversationHistoryService.appendBotReplyToGroup(groupId, toAppend, this.preferredProtocol, {
       messageSeq: sendResult?.message_seq,
+      ...(parsed.subtext !== undefined ? { subtext: parsed.subtext } : {}),
+      ...(parsed.replyTags !== undefined ? { replyTags: parsed.replyTags } : {}),
     });
   }
 
@@ -796,10 +801,12 @@ export class ProactiveConversationService {
       return;
     }
 
+    const parsed = parseSubtextTags(replyText);
+    const cleanReplyText = parsed.visible;
     // Optionally render as card (same pipeline as ReplyGenerationService); store card text in thread for LLM-readable history
-    const cardResult = await this.aiService.processReplyMaybeCard(replyText, thread.groupId, this.analysisProviderName);
-    const toSend = cardResult ? cardResult.segments : replyText;
-    const toAppend = cardResult ? cardResult.textForHistory : replyText;
+    const cardResult = await this.aiService.processReplyMaybeCard(cleanReplyText, thread.groupId, this.analysisProviderName);
+    const toSend = cardResult ? cardResult.segments : cleanReplyText;
+    const toAppend = cardResult ? cardResult.textForHistory : cleanReplyText;
     // Update thread and DB before/on send so the next message or analysis run already sees this reply (no need to wait for echo).
     this.threadService.appendMessage(thread.threadId, {
       userId: 0,
@@ -809,6 +816,8 @@ export class ProactiveConversationService {
     const sendResult = await this.sendGroupMessage(groupIdNum, toSend);
     await this.conversationHistoryService.appendBotReplyToGroup(thread.groupId, toAppend, this.preferredProtocol, {
       messageSeq: sendResult?.message_seq,
+      ...(parsed.subtext !== undefined ? { subtext: parsed.subtext } : {}),
+      ...(parsed.replyTags !== undefined ? { replyTags: parsed.replyTags } : {}),
     });
   }
 

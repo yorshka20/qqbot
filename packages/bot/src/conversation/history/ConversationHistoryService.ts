@@ -103,13 +103,13 @@ export class ConversationHistoryService {
    * @param content - Reply text to store (card text when reply was rendered as card; plain text otherwise)
    * @param protocol - Protocol this message was sent through. Stored on the row so reaction/reply lookups
    *   (which query by the incoming event's protocol, e.g. 'milky') can find this bot message.
-   * @param options - Optional botUserId (default 0), messageSeq (when provided, e.g. from send response, so reply lookups can find this message)
+   * @param options - Optional botUserId (default 0), messageSeq (when provided, e.g. from send response, so reply lookups can find this message), subtext, replyTags
    */
   async appendBotReplyToGroup(
     groupId: string | number,
     content: string,
     protocol: ProtocolName,
-    options?: { botUserId?: number; messageSeq?: number },
+    options?: { botUserId?: number; messageSeq?: number; subtext?: string; replyTags?: string[] },
   ): Promise<void> {
     const adapter = this.databaseManager.getAdapter();
     if (!adapter?.isConnected()) {
@@ -135,6 +135,16 @@ export class ConversationHistoryService {
       }
       const messages = adapter.getModel('messages');
       const messageSeq = options?.messageSeq;
+      const metadata: Record<string, unknown> = {
+        isBotReply: true,
+        timestamp: now.toISOString(),
+      };
+      if (typeof options?.subtext === 'string' && options.subtext.length > 0) {
+        metadata.subtext = options.subtext;
+      }
+      if (Array.isArray(options?.replyTags) && options.replyTags.length > 0) {
+        metadata.replyTags = options.replyTags;
+      }
       await messages.create({
         conversationId: conversation.id,
         userId: botUserId,
@@ -143,10 +153,7 @@ export class ConversationHistoryService {
         content,
         protocol,
         messageSeq,
-        metadata: {
-          isBotReply: true,
-          timestamp: now.toISOString(),
-        },
+        metadata,
       });
       const messageCount = await messages.count({ conversationId: conversation.id });
       await conversations.update(conversation.id, {
