@@ -4,12 +4,14 @@ import { Client } from '@modelcontextprotocol/sdk/client';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { MCPConfig, MCPRuntime } from '@/core/config/types/mcp';
 import { logger } from '@/utils/logger';
+import { killMcpChild, registerMcpChild } from './mcpChildReaper';
 import type { MCPTool, MCPToolCallResult } from './types';
 
 export class MCPClient {
   private client: Client | null = null;
   private transport: StdioClientTransport | null = null;
   private isConnected = false;
+  private childPid: number | null = null;
 
   /**
    * Connect to MCP server
@@ -67,6 +69,15 @@ export class MCPClient {
 
       await this.client.connect(this.transport);
       this.isConnected = true;
+
+      // `bunx -y <pkg>` spawns a subtree the SDK's close() does not fully
+      // reap. Track the root pid so the bot can kill the whole tree
+      // deterministically on shutdown instead of leaking it to init.
+      this.childPid = this.transport.pid;
+      if (this.childPid != null) {
+        registerMcpChild(this.childPid);
+      }
+
       logger.info('[MCPClient] MCP server connected successfully');
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -86,6 +97,12 @@ export class MCPClient {
         logger.info('[MCPClient] MCP server disconnected');
       } catch (error) {
         logger.warn('[MCPClient] Error during disconnect:', error);
+      }
+      // SDK close() only signals the direct child (bunx); kill the full
+      // subtree so the node grandchild cannot survive as an orphan.
+      if (this.childPid != null) {
+        await killMcpChild(this.childPid);
+        this.childPid = null;
       }
       this.client = null;
       this.transport = null;

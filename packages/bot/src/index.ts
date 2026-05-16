@@ -9,6 +9,7 @@ import { DITokens } from './core/DITokens';
 import { initLanRelay } from './lan';
 import { ClaudeCodeInitializer } from './services/claudeCode';
 import { MCPInitializer } from './services/mcp/MCPInitializer';
+import { killAllMcpChildren } from './services/mcp/mcpChildReaper';
 import { stopStaticServer } from './services/staticServer';
 import type { ResourceCleanupService } from './services/video';
 import { logger } from './utils/logger';
@@ -116,8 +117,15 @@ async function main() {
     logger.info('[Main] Bot initialized and ready');
 
     // ── Graceful shutdown ──
+    let shuttingDown = false;
     const shutdown = async (signal: string) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
       logger.info(`[Main] Received ${signal}, shutting down...`);
+      // Kill MCP child subtrees FIRST: every later step can throw or hang,
+      // and this must complete before PM2 escalates to SIGKILL, otherwise
+      // the bunx/node subtree is orphaned to init.
+      await killAllMcpChildren();
       stopStaticServer();
       if (resourceCleanupService) {
         await resourceCleanupService.cleanupAll();

@@ -4,6 +4,7 @@ import type { Config } from '@/core/config';
 import type { RetrievalService } from '@/services/retrieval';
 import { logger } from '@/utils/logger';
 import { MCPManager } from './MCPManager';
+import { reapOrphanedMcpChildren } from './mcpChildReaper';
 
 export interface MCPSystem {
   mcpManager: MCPManager;
@@ -59,6 +60,10 @@ export class MCPInitializer {
     }
 
     try {
+      // Reclaim any subtree leaked by a previous SIGKILL'd bot before
+      // spawning a fresh one (see reapOrphanedMcpChildren for why).
+      reapOrphanedMcpChildren(mcpConfig.server.package || 'mcp-searxng');
+
       // Register searxng MCP server
       await mcpSystem.mcpManager.registerClient('searxng', mcpConfig);
       logger.info('[MCPInitializer] MCP servers connected successfully');
