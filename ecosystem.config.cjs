@@ -18,19 +18,5 @@ module.exports = {
         NODE_ENV: 'development',
       },
     },
-    {
-      name: 'qq-bot-ui',
-      script: path.join(__dirname, 'scripts/pm2/pm2-ui.sh'),
-      args: [],
-      interpreter: 'none',
-      cwd: path.resolve(__dirname),
-      autorestart: true,
-      restart_delay: 60000,
-      max_restarts: 999999,
-      treekill: false,
-      env: {
-        NODE_ENV: 'development',
-      },
-    },
   ],
 };

@@ -8,6 +8,10 @@
   "scripts": {
     "start": "bash start.sh",
     "web": "bun run --filter @qqbot/webui dev",
+    "ui:start": "bash scripts/ui.sh start",
+    "ui:stop": "bash scripts/ui.sh stop",
+    "ui:restart": "bash scripts/ui.sh restart",
+    "ui:status": "bash scripts/ui.sh status",
     "dev": "concurrently -n bot,ui -c blue,green \"bun run packages/bot/src/index.ts\" \"bun run --filter @qqbot/webui dev\"",
     "build": "bun run --filter @qqbot/bot build",
     "build:dev": "bun run --filter @qqbot/bot build:dev",

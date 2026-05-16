@@ -334,12 +334,11 @@ export class RoleCommand implements CommandHandler {
 /** Delay before triggering PM2 restart (ms), so the reply is sent first */
 const RESTART_DELAY_MS = 2000;
 
-/** PM2 app names (must match ecosystem.config.cjs) */
+/** PM2 app name (must match ecosystem.config.cjs). The WebUI is not PM2-managed. */
 const PM2_APP_BOT = 'qq-bot';
-const PM2_APP_UI = 'qq-bot-ui';
 
 /**
- * Restart command: ask PM2 to restart qq-bot (and qq-bot-ui) via two-level spawn.
+ * Restart command: ask PM2 to restart qq-bot via two-level spawn.
  * Spawns scripts/pm2/pm2-restart-helper.cjs (detached), which runs "pm2 restart ... --no-treekill".
  * So the process that runs pm2 is not the direct child of this process, and is not killed
  * when PM2 restarts us. Ecosystem has treekill: false so the helper is not killed either.
@@ -363,7 +362,7 @@ export class RestartCommand implements CommandHandler {
 
     setTimeout(() => {
       const helperPath = path.join(getRepoRoot(), 'scripts', 'pm2', 'pm2-restart-helper.cjs');
-      const restartAppNames = `${PM2_APP_BOT},${PM2_APP_UI}`;
+      const restartAppNames = PM2_APP_BOT;
       const child = spawn(process.execPath, [helperPath], {
         env: { ...process.env, RESTART_APP_NAMES: restartAppNames },
         cwd: process.cwd(),
