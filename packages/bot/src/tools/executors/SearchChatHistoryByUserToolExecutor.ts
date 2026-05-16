@@ -13,8 +13,7 @@ const MAX_RESULTS = 50;
 
 @Tool({
   name: 'search_chat_history_by_user',
-  description:
-    '在当前群的聊天记录中按用户QQ号搜索。返回该用户发送的消息列表（内容、时间）。支持可选的时间范围限制。',
+  description: '在当前群的聊天记录中按用户QQ号搜索。返回该用户发送的消息列表（内容、时间）。支持可选的时间范围限制。',
   executor: 'search_chat_history_by_user',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord', 'avatar-cmd'] }, reflection: true },
   parameters: {
@@ -29,11 +28,7 @@ const MAX_RESULTS = 50;
       description: '限制搜索的时间范围（从多久前开始）。格式: "-Xh"（X小时前）或 "-Xd"（X天前）。省略则搜索全部记录。',
     },
   },
-  examples: [
-    '搜索某个用户在群里说过的话',
-    '查找QQ号123456最近的发言',
-    '看看用户12345过去3天说了什么',
-  ],
+  examples: ['搜索某个用户在群里说过的话', '查找QQ号123456最近的发言', '看看用户12345过去3天说了什么'],
   triggerKeywords: ['用户发言', '某人说过', '谁说的', '发言记录', 'QQ号搜索'],
   whenToUse:
     '当需要查看特定用户在群聊中的发言历史时调用。适用于：查看某人最近说过什么、了解某用户的发言内容、回顾某人的讨论参与情况。',

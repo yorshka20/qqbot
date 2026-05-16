@@ -71,4 +71,3 @@ export function formatMemoryMarkdown(input: FormatMemoryMarkdownInput): string {
 
   return parts.join('\n\n');
 }
-

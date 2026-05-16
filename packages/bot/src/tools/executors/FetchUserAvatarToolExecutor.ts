@@ -22,8 +22,7 @@ const MAX_BYTES = 2 * 1024 * 1024;
 
 @Tool({
   name: 'fetch_user_avatar',
-  description:
-    '获取指定 QQ 用户的头像图片，返回给你进行视觉分析。仅适用于 QQ 平台用户。',
+  description: '获取指定 QQ 用户的头像图片，返回给你进行视觉分析。仅适用于 QQ 平台用户。',
   executor: 'fetch_user_avatar',
   visibility: {
     reply: { sources: ['qq-private', 'qq-group'] },

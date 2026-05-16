@@ -90,9 +90,7 @@ export class ProviderSelectionStage implements ReplyStage {
       effectiveProvider === 'default' ? undefined : effectiveProvider,
       sessionId,
     );
-    const providerCapabilities = resolvedProvider
-      ? (resolvedProvider as unknown as AIProvider).getCapabilities()
-      : [];
+    const providerCapabilities = resolvedProvider ? (resolvedProvider as unknown as AIProvider).getCapabilities() : [];
     ctx.providerHasFunctionCalling = providerCapabilities.includes('function_calling');
     ctx.effectiveNativeSearchEnabled = providerCapabilities.includes('native_web_search');
 
