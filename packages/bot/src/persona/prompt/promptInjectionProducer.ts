@@ -6,6 +6,7 @@
  *   2. Unit tests can exercise the producer in isolation with a fake PersonaService.
  */
 
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { PromptInjectionProducer } from '@/conversation/promptInjection/types';
 import type { MessageSource } from '@/conversation/sources';
 import type { PersonaConfig } from '@/persona/types';
@@ -121,6 +122,29 @@ export function createPersonaStableProducer(deps: {
  * placed AFTER the scene template at priority `PRIORITY_PERSONA_VOLATILE`
  * so per-message churn doesn't break upstream prompt cache prefixes.
  */
+const PRIORITY_PERSONA_SUBTEXT = 15;
+const SUBTEXT_TEMPLATE_KEY = 'mind.zh.subtext-instruction';
+
+export function createPersonaSubtextProducer(deps: {
+  promptManager: PromptManager;
+  personaService: PersonaServiceLike;
+  config: PersonaConfig;
+}): PromptInjectionProducer {
+  const { promptManager, personaService, config } = deps;
+  return {
+    name: 'persona-subtext',
+    layer: 'baseline' as const,
+    applicableSources: resolveProducerSources(config),
+    priority: PRIORITY_PERSONA_SUBTEXT,
+    async produce(_ctx) {
+      if (!personaService.isEnabled()) return null;
+      const fragment = promptManager.render(SUBTEXT_TEMPLATE_KEY, {});
+      if (!fragment) return null;
+      return { producerName: 'persona-subtext', priority: PRIORITY_PERSONA_SUBTEXT, fragment };
+    },
+  };
+}
+
 export function createPersonaVolatileProducer(deps: {
   personaService: PersonaServiceLike;
   config: PersonaConfig;

@@ -3,7 +3,11 @@ import 'reflect-metadata';
 import { beforeEach, describe, expect, it, vi } from 'bun:test';
 import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import type { PromptInjectionContext } from '@/conversation/promptInjection/types';
-import { createPersonaPromptInjectionProducer, type PersonaServiceLike } from '../prompt/promptInjectionProducer';
+import {
+  createPersonaPromptInjectionProducer,
+  createPersonaSubtextProducer,
+  type PersonaServiceLike,
+} from '../prompt/promptInjectionProducer';
 import { DEFAULT_PERSONA_CONFIG, type PersonaConfig } from '../types';
 
 // Stub logger
@@ -126,5 +130,30 @@ describe('createPersonaPromptInjectionProducer — registry integration', () => 
     expect(results).toHaveLength(0);
     // produceFn should NOT have been called — registry filtered by applicableSources
     expect(produceFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('createPersonaSubtextProducer', () => {
+  const fakePromptManager = {
+    render: (_key: string, _vars: Record<string, string>) => 'FAKE [SUBTEXT:] INSTRUCTION',
+  } as any;
+
+  it('personaService enabled → produce returns non-null fragment containing SUBTEXT', async () => {
+    const personaService = makePersonaService({ isEnabled: () => true });
+    const config = makeConfig();
+    const producer = createPersonaSubtextProducer({ promptManager: fakePromptManager, personaService, config });
+    const result = await producer.produce(makeCtx('qq-private', 'u1'));
+    expect(result).not.toBeNull();
+    expect(result?.fragment).toMatch(/SUBTEXT/i);
+    expect(result?.producerName).toBe('persona-subtext');
+    expect(result?.priority).toBe(15);
+  });
+
+  it('personaService disabled → produce returns null', async () => {
+    const personaService = makePersonaService({ isEnabled: () => false });
+    const config = makeConfig();
+    const producer = createPersonaSubtextProducer({ promptManager: fakePromptManager, personaService, config });
+    const result = await producer.produce(makeCtx('qq-private', 'u1'));
+    expect(result).toBeNull();
   });
 });

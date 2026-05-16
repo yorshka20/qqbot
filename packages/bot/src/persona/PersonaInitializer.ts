@@ -10,6 +10,7 @@
  */
 
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -18,7 +19,11 @@ import { logger } from '@/utils/logger';
 import { type CharacterBible, loadCharacterBible } from './data/CharacterBibleLoader';
 import { type CoreDNA, loadCoreDNA } from './data/CoreDNALoader';
 import { PersonaService } from './PersonaService';
-import { createPersonaStableProducer, createPersonaVolatileProducer } from './prompt/promptInjectionProducer';
+import {
+  createPersonaStableProducer,
+  createPersonaSubtextProducer,
+  createPersonaVolatileProducer,
+} from './prompt/promptInjectionProducer';
 import { mergePersonaConfig, type PersonaConfig } from './types';
 
 export interface PersonaComponents {
@@ -94,6 +99,8 @@ export class PersonaInitializer {
     const registry = getContainer().resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
     registry.register(createPersonaStableProducer({ personaService, config }));
     registry.register(createPersonaVolatileProducer({ personaService, config }));
+    const promptManager = getContainer().resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+    registry.register(createPersonaSubtextProducer({ promptManager, personaService, config }));
 
     return { personaService, modulationProvider, config };
   }
