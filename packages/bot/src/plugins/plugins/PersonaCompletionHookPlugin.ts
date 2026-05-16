@@ -17,6 +17,7 @@ import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { PersonaService } from '@/persona';
+import { parseSubtextTags } from '@/persona/prompt/subtextTagParser';
 import type { EpigeneticsStore } from '@/persona/reflection/epigenetics/EpigeneticsStore';
 import { ReflectionEngine } from '@/persona/reflection/ReflectionEngine';
 import { RelationshipUpdater } from '@/persona/reflection/relationships/RelationshipUpdater';
@@ -115,6 +116,35 @@ export class PersonaCompletionHookPlugin extends PluginBase {
     } catch (err) {
       logger.warn('[PersonaCompletionHookPlugin] relationship update failed (non-fatal):', err);
     }
+    return true;
+  }
+
+  @Hook({
+    stage: 'onMessageBeforeSend',
+    priority: 'NORMAL',
+    order: 20,
+    applicableSources: ['qq-private', 'qq-group', 'discord'],
+  })
+  async onMessageBeforeSend(context: HookContext): Promise<boolean> {
+    if (!this.enabled || !this.persona) return true;
+    if (!this.persona.isEnabled()) return true;
+    if (!this.persona.isApplicableSource(context.source)) return true;
+
+    const reply = context.reply;
+    if (!reply || !Array.isArray(reply.segments)) return true;
+
+    let subtext: string | undefined;
+    const tagsAcc: string[] = [];
+    for (const seg of reply.segments) {
+      if (seg.type !== 'text' || typeof seg.data?.text !== 'string') continue;
+      const parsed = parseSubtextTags(seg.data.text);
+      seg.data.text = parsed.visible;
+      if (parsed.subtext && subtext === undefined) subtext = parsed.subtext;
+      if (parsed.replyTags) tagsAcc.push(...parsed.replyTags);
+    }
+
+    if (subtext !== undefined) context.metadata.set('replySubtext', subtext);
+    if (tagsAcc.length > 0) context.metadata.set('replyTagsMeta', tagsAcc);
     return true;
   }
 }

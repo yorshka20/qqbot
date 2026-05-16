@@ -109,6 +109,20 @@ export class DatabasePersistenceSystem implements System {
       const botSelfId = context.metadata.get('botSelfId');
       const botUserId = typeof botSelfId === 'string' ? parseInt(botSelfId, 10) : botSelfId || 0;
       const isCardReply = replyContent?.metadata?.isCardImage === true;
+
+      const botReplyMetadata: Record<string, unknown> = {
+        isBotReply: true,
+        timestamp: now.toISOString(),
+      };
+      const subtextValue = context.metadata.get('replySubtext');
+      if (typeof subtextValue === 'string' && subtextValue.length > 0) {
+        botReplyMetadata.subtext = subtextValue;
+      }
+      const replyTagsValue = context.metadata.get('replyTagsMeta');
+      if (Array.isArray(replyTagsValue) && replyTagsValue.length > 0) {
+        botReplyMetadata.replyTags = replyTagsValue;
+      }
+
       const botReplyData: Omit<Message, 'id' | 'createdAt' | 'updatedAt'> = {
         conversationId: conversation.id,
         userId: botUserId,
@@ -118,7 +132,7 @@ export class DatabasePersistenceSystem implements System {
         rawContent: !isCardReply && replyContent?.segments?.length ? JSON.stringify(replyContent.segments) : undefined,
         protocol: message.protocol || 'unknown',
         messageSeq,
-        metadata: { isBotReply: true, timestamp: now.toISOString() },
+        metadata: botReplyMetadata,
       };
       await messages.create({
         ...botReplyData,

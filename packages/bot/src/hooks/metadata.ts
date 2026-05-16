@@ -61,6 +61,10 @@ export interface HookContextMetadata {
   historyAdapterKind?: import('../conversation/sources/types').SourceConfig['historyAdapter'];
   /** Tool usage instructions string, mirrored from ReplyPipelineContext by ProviderSelectionStage so ToolInstructProducer can read it. */
   toolUsageInstructions?: string;
+  /** Subtext extracted from LLM reply via parseSubtextTags (SUBTEXT tag content). */
+  replySubtext?: string;
+  /** Reply tags extracted from LLM reply via parseSubtextTags (META tag items). */
+  replyTagsMeta?: string[];
 }
 
 type MetadataKeys = keyof HookContextMetadata;
@@ -81,6 +85,8 @@ const DEFAULT_METADATA: Required<
     | 'responseCallback'
     | 'historyAdapterKind'
     | 'toolUsageInstructions'
+    | 'replySubtext'
+    | 'replyTagsMeta'
   >
 > = {
   sessionId: '',
@@ -113,6 +119,8 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'responseCallback',
   'historyAdapterKind',
   'toolUsageInstructions',
+  'replySubtext',
+  'replyTagsMeta',
 ];
 
 /**
