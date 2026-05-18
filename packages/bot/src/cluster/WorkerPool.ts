@@ -52,6 +52,16 @@ const ROLE_SYSTEM_PROMPT_PATHS: Record<'planner' | 'coder', string> = {
   coder: 'prompts/cluster/executor-system.md',
 };
 
+/**
+ * Placeholder in planner-system.md replaced at spawn time with a
+ * config-derived table of spawnable executor templates. Keeps the
+ * planner's worker catalog from drifting away from actual config — see
+ * renderExecutorCatalog.
+ */
+const EXECUTOR_CATALOG_TOKEN = '{{CLUSTER_AVAILABLE_EXECUTORS}}';
+
+const COST_TIER_ORDER: Record<'low' | 'medium' | 'high', number> = { low: 0, medium: 1, high: 2 };
+
 export class WorkerPool {
   private workers = new Map<string, WorkerInstance>();
   /** FIFO history of exited worker instances; capped at RECENTLY_EXITED_MAX. */
@@ -182,6 +192,16 @@ export class WorkerPool {
       return null;
     }
 
+    // Authoritative disable gate. Every spawn path (scheduler tryDispatch
+    // and planner hub_spawn → submitChildTask) funnels through here, so a
+    // template with `enabled: false` cannot be spawned no matter who asks.
+    // Scheduler-side checks additionally avoid *selecting* disabled
+    // templates so tasks don't get silently stuck; this is the last line.
+    if (template.enabled === false) {
+      logger.error(`[WorkerPool] Worker template "${templateName}" is disabled (enabled: false) — refusing to spawn`);
+      return null;
+    }
+
     // Phase 3: derive WorkerRegistry role from template config. Defaults to
     // 'coder' for backwards compat with Phase-1/2 executor-only templates.
     const role: 'coder' | 'planner' = template.role === 'planner' ? 'planner' : 'coder';
@@ -195,7 +215,16 @@ export class WorkerPool {
     // passes taskPrompt through to its CLI, so prefixing here works
     // uniformly without touching ClaudeCli/Codex/Gemini/Minimax individually.
     const rolePrompt = await this.loadRoleSystemPrompt(role, projectPath);
-    const effectivePrompt = rolePrompt ? `${rolePrompt}\n\n${task.description}` : task.description;
+    // The planner prompt carries a {{CLUSTER_AVAILABLE_EXECUTORS}} token
+    // where its executor catalog used to be a hand-maintained markdown
+    // table. We render that table from live config here so the planner's
+    // view of "which workers exist and what they're for" can never drift
+    // from the actual configured (and enabled) set.
+    const renderedRolePrompt =
+      role === 'planner' && rolePrompt
+        ? rolePrompt.replace(EXECUTOR_CATALOG_TOKEN, this.renderExecutorCatalog())
+        : rolePrompt;
+    const effectivePrompt = renderedRolePrompt ? `${renderedRolePrompt}\n\n${task.description}` : task.description;
 
     // Check concurrent limits
     if (!this.canSpawnMore(templateName)) {
@@ -722,6 +751,34 @@ export class WorkerPool {
    * cluster doesn't crash. Better than failing the whole spawn over a
    * missing prompt file.
    */
+  /**
+   * Render the markdown table of executors a planner is allowed to
+   * `hub_spawn`, straight from live config. Only executor-role (the
+   * `role` default) templates that are not disabled appear — planners
+   * can't spawn planners, and a disabled template must not be proposed.
+   * Sorted cheapest-tier-first so the planner reads the low-cost options
+   * before the expensive ones. Per-template `description` carries the
+   * curated "what is this good at" guidance that used to be a static
+   * table in the prompt file.
+   */
+  private renderExecutorCatalog(): string {
+    const rows = Object.entries(this.config.workerTemplates)
+      .filter(([, tpl]) => tpl.role !== 'planner' && tpl.enabled !== false)
+      .sort(([, a], [, b]) => COST_TIER_ORDER[a.costTier] - COST_TIER_ORDER[b.costTier])
+      .map(([name, tpl]) => {
+        const desc = tpl.description?.trim() || tpl.capabilities.join(' / ') || '(无描述)';
+        return `| \`${name}\` | ${tpl.costTier} | ${desc} |`;
+      });
+
+    if (rows.length === 0) {
+      return '> ⚠️ 当前没有任何已启用的 executor template。无法 spawn，请 `hub_report({ status: "blocked" })` 并说明。';
+    }
+
+    return ['| Template | 成本 | 能力定位 & 适用场景 |', '|----------|------|---------------------|', ...rows].join(
+      '\n',
+    );
+  }
+
   private async loadRoleSystemPrompt(role: 'planner' | 'coder', projectPath: string): Promise<string> {
     const cached = this.rolePromptCache[role];
     if (cached !== null) return cached;

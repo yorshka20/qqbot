@@ -1097,6 +1097,19 @@
         // single-task workers. Tag a template with `"role": "planner"` to
         // make it eligible for planner-mode ticket dispatch (see
         // `defaultPlannerTemplate` and ticket `usePlanner: true` below).
+        //
+        // "enabled": false takes this worker class out of rotation without
+        // deleting it (defaults true). A disabled template is rejected at
+        // the spawn chokepoint, excluded from planner default/preference
+        // resolution, and omitted from the executor catalog generated into
+        // the planner prompt — so the planner never proposes it. Use it to
+        // pause a pay-as-you-go provider you don't want to spend on.
+        //
+        // "description" is the curated "what is this worker good at" blurb.
+        // The planner prompt's available-executor table is generated from
+        // these at spawn time, so config stays the single source of truth
+        // (no hand-maintained table to drift). Executor-role templates
+        // should set this; planner-role templates don't need it.
         "command": "claude",
         "args": [
           "--print",
@@ -1109,7 +1122,9 @@
         "capabilities": [
           "code"
         ],
-        "costTier": "medium"
+        "costTier": "medium",
+        "enabled": true,
+        "description": "首席程序员。多数功能开发、多文件重构、复杂 API 接入、有难度的 Bug。"
       }
       // Example planner template (uncomment + customize):
       // "claude-opus-planner": {

@@ -364,13 +364,13 @@ export class ClusterScheduler {
     const explicit = this.config.defaultPlannerTemplate;
     if (explicit) {
       const tpl = this.config.workerTemplates[explicit];
-      if (tpl?.role === 'planner') return explicit;
+      if (tpl?.role === 'planner' && tpl.enabled !== false) return explicit;
       logger.warn(
-        `[ClusterScheduler] cluster.defaultPlannerTemplate "${explicit}" is missing or not a planner-role template; scanning workerTemplates`,
+        `[ClusterScheduler] cluster.defaultPlannerTemplate "${explicit}" is missing, disabled, or not a planner-role template; scanning workerTemplates`,
       );
     }
     for (const [name, tpl] of Object.entries(this.config.workerTemplates)) {
-      if (tpl.role === 'planner') return name;
+      if (tpl.role === 'planner' && tpl.enabled !== false) return name;
     }
     return undefined;
   }
@@ -401,6 +401,19 @@ export class ClusterScheduler {
     if (!templateName) {
       logger.warn(
         `[ClusterScheduler] No workerPreference / workerTemplates configured for project "${task.project}" — task ${task.id} cannot dispatch`,
+      );
+      return false;
+    }
+
+    // Don't dispatch onto a disabled template. The workerPreference /
+    // first-declared fallback above can resolve to a disabled entry; if
+    // we let it through, WorkerPool would refuse and the task would just
+    // churn pending every tick with no clear reason. Surface it once and
+    // leave the task pending until config / preference is fixed.
+    if (this.config.workerTemplates[templateName]?.enabled === false) {
+      logger.warn(
+        `[ClusterScheduler] Resolved template "${templateName}" for task ${task.id} is disabled (enabled: false) — not dispatching. ` +
+          `Pick a different workerPreference for project "${task.project}" or re-enable the template.`,
       );
       return false;
     }
@@ -993,6 +1006,12 @@ export class ClusterScheduler {
     if (childTemplate.role === 'planner') {
       logger.warn(
         `[ClusterScheduler] submitChildTask: planner-role template "${opts.template}" is not allowed for child tasks (one-layer rule)`,
+      );
+      return null;
+    }
+    if (childTemplate.enabled === false) {
+      logger.warn(
+        `[ClusterScheduler] submitChildTask: template "${opts.template}" is disabled (enabled: false) — refusing child spawn`,
       );
       return null;
     }

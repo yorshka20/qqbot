@@ -77,6 +77,26 @@ export interface WorkerTemplateConfig {
    * for the full design.
    */
   role?: WorkerTemplateRole;
+  /**
+   * Whether this template may be spawned. Defaults to `true`. Setting
+   * `false` is the single switch for taking a worker class out of
+   * rotation (e.g. a pay-as-you-go provider you want to stop spending
+   * on) without deleting its config. A disabled template is rejected by
+   * the spawn chokepoint (WorkerPool.spawnWorker), excluded from planner
+   * default-template resolution and the project workerPreference
+   * fallback, and omitted from the executor catalog injected into the
+   * planner prompt — so the planner never even proposes it.
+   */
+  enabled?: boolean;
+  /**
+   * Human-authored "what is this worker good at" blurb. This is the
+   * curated capability/cost positioning that used to live as a static
+   * table in prompts/cluster/planner-system.md. It lives in config so
+   * config stays the single source of truth: the planner prompt's
+   * available-executor table is generated from these descriptions at
+   * spawn time and can never drift from the actual configured set.
+   */
+  description?: string;
   command: string;
   args: string[];
   /**
@@ -188,6 +208,8 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
     workerTemplates[name] = {
       type,
       role,
+      enabled: tpl.enabled === undefined ? true : Boolean(tpl.enabled),
+      description: typeof tpl.description === 'string' ? tpl.description : undefined,
       command: (tpl.command as string) || defaultCommandForType(type),
       args: (tpl.args as string[]) || defaultArgsForType(type),
       env: (tpl.env as Record<string, string>) || undefined,

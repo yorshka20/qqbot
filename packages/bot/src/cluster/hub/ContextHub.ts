@@ -575,7 +575,8 @@ export class ContextHub {
     });
     if (!child) {
       throw new Error(
-        `hub_spawn: scheduler refused to create child task (unknown template "${input.template}" or unknown project)`,
+        `hub_spawn: scheduler refused to create child task — template "${input.template}" is unknown, disabled, or planner-role, ` +
+          `or the project is unknown. Pick a template from the available-executor list in your system prompt.`,
       );
     }
 
