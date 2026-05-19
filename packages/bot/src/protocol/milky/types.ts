@@ -26,7 +26,7 @@ export interface MilkyAPIResponse<T = unknown> {
  * - messageType, userId, message, segments (always set; segments is [] when API omits)
  *
  * Optional (set only when present from API or for group/temp):
- * - groupId: only when message_scene is 'group' or 'temp'
+ * - groupId: group scene -> the group; temp scene -> the originating group (for reply routing)
  * - messageSeq: from data.message_seq (API may omit)
  * - groupName: only when data.group exists
  * - messageScene: from data.message_scene (API may omit)
@@ -39,7 +39,7 @@ export interface NormalizedMilkyMessageEvent extends BaseEvent {
   message: string;
   segments: IncomingSegment[];
 
-  /** Only set when message_scene is 'group' or 'temp'. */
+  /** Group scene: the group. Temp scene: the originating group (used to route the reply). */
   groupId?: number | string;
   /** From data.message_seq; API may omit. */
   messageSeq?: number;

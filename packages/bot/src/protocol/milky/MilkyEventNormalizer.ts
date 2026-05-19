@@ -103,7 +103,10 @@ export class MilkyEventNormalizer {
     baseEvent: BaseEvent,
   ): NormalizedMilkyMessageEvent {
     const { data } = event;
-    const messageType = data.message_scene === 'group' || data.message_scene === 'temp' ? 'group' : 'private';
+    // 'temp' (临时会话/陌生人) is semantically a private chat; only true 'group' scene is group.
+    // messageScene below preserves the original 'temp' so the send path can route the reply
+    // back through the originating group.
+    const messageType = data.message_scene === 'group' ? 'group' : 'private';
 
     const normalized: NormalizedMilkyMessageEvent = {
       ...baseEvent,
@@ -116,9 +119,16 @@ export class MilkyEventNormalizer {
       messageScene: data.message_scene, // Save original message scene for temporary session handling
     };
 
-    if (data.message_scene === 'group' || data.message_scene === 'temp') {
+    if (data.message_scene === 'group') {
       normalized.groupId = data.peer_id;
       if ('group' in data && data.group) {
+        normalized.groupName = data.group.group_name;
+      }
+    } else if (data.message_scene === 'temp') {
+      // Temp session peer_id is the other user's QQ, not a group. The originating group
+      // (data.group.group_id) is what the send path needs to route a temp reply back.
+      if ('group' in data && data.group) {
+        normalized.groupId = data.group.group_id;
         normalized.groupName = data.group.group_name;
       }
     }
