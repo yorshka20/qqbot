@@ -8,6 +8,7 @@ import { formatMemoryMarkdown } from '@/memory/formatMemoryMarkdown';
 import type { MemoryService } from '@/memory/MemoryService';
 import type { RetrievalService } from '@/services/retrieval';
 import { QdrantClient } from '@/services/retrieval';
+import type { VKBContextEngine } from '@/services/vkb';
 import { logger } from '@/utils/logger';
 import type { PromptManager } from '../../prompt/PromptManager';
 import { formatRAGConversationContext } from '../../utils/formatRAGConversationContext';
@@ -29,21 +30,29 @@ export class ContextEnrichmentStage implements ReplyStage {
 
   private config: Config;
 
+  private readonly vkbContextEngine: VKBContextEngine;
+
   constructor(
     private memoryService: MemoryService,
     private retrievalService: RetrievalService,
     private promptManager: PromptManager,
   ) {
     this.config = getContainer().resolve<Config>(DITokens.CONFIG);
+    // VKBContextEngine is always registered (no-op when disabled) — resolve
+    // via DI to avoid bloating AIService's 14-arg constructor for an
+    // optional augmentation source.
+    this.vkbContextEngine = getContainer().resolve<VKBContextEngine>('VKBContextEngine');
   }
 
   async execute(ctx: ReplyPipelineContext): Promise<void> {
-    const [memoryContextText, retrievedConversationSection] = await Promise.all([
+    const [memoryContextText, retrievedConversationSection, vkbContextText] = await Promise.all([
       this.getMemoryContextTextAsync(ctx.hookContext),
       this.getRetrievedConversationSection(ctx.hookContext),
+      this.getVKBContext(ctx.hookContext),
     ]);
     ctx.memoryContextText = memoryContextText;
     ctx.retrievedConversationSection = retrievedConversationSection;
+    ctx.vkbContextText = vkbContextText;
   }
 
   // --- Also used by NSFW path (via orchestrator) ---
@@ -59,6 +68,18 @@ export class ContextEnrichmentStage implements ReplyStage {
   }
 
   // --- Private helpers ---
+
+  private async getVKBContext(context: HookContext): Promise<string> {
+    if (!this.vkbContextEngine.isEnabled()) {
+      return '';
+    }
+    const rawMessage = (context.message?.message ?? '').trim();
+    if (!rawMessage) {
+      return '';
+    }
+    // fetchContextText already swallows errors → empty string. No try/catch needed.
+    return this.vkbContextEngine.fetchContextText(rawMessage);
+  }
 
   private async getRetrievedConversationSection(context: HookContext): Promise<string> {
     if (!this.retrievalService?.isRAGEnabled()) {

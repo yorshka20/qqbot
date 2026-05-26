@@ -7,6 +7,7 @@ import { buildSpeakerTag, type SpeakerIdentity } from './speakerTag';
 export interface FinalUserBlocks {
   memoryContext?: string;
   ragContext?: string;
+  vkbContext?: string;
   currentQuery: string;
 }
 
@@ -128,6 +129,9 @@ export class PromptMessageAssembler {
     }
     if (normalize(blocks.ragContext)) {
       sections.push(`<rag_context>\n${normalize(blocks.ragContext)}\n</rag_context>`);
+    }
+    if (normalize(blocks.vkbContext)) {
+      sections.push(`<vkb_context>\n${normalize(blocks.vkbContext)}\n</vkb_context>`);
     }
     sections.push(`<current_query>\n${normalize(blocks.currentQuery)}\n</current_query>`);
     return sections.join('\n\n');

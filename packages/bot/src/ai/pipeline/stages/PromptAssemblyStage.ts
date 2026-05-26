@@ -98,6 +98,7 @@ export class PromptAssemblyStage implements ReplyStage {
     const finalUserBlocks = {
       memoryContext: ctx.memoryContextText,
       ragContext: ctx.retrievedConversationSection,
+      vkbContext: ctx.vkbContextText,
       currentQuery: frameCurrentQuery,
     };
 
