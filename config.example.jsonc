@@ -1038,6 +1038,49 @@
     // Polling timeout in milliseconds (default: 300000 = 5 minutes)
     "pollTimeoutMs": 300000
   },
+  // VKB Context Engine — per-message knowledge retrieval for prompt injection.
+  //
+  // Wraps VKB's POST /api/v1/chat/evidence-preview to fetch a knowledge pack
+  // (entities + relations + cross-video evidence) for each user message and
+  // inject it into the reply prompt as a <vkb_context> XML block alongside
+  // <memory_context> / <rag_context>.
+  //
+  // Distinct from `videoKnowledge` above (which submits /analyze + /ingest
+  // tasks for bilibili video analysis). Both can point at the same VKB
+  // instance — they cover different endpoint surfaces.
+  //
+  // Uses evidence-preview (not evidence-qa) on purpose: VKB's QA endpoint
+  // runs its own LLM call which would double the token cost + latency for
+  // augmentation we already feed into qqbot's own LLM.
+  "vkbContextEngine": {
+    "enabled": false,
+    "baseURL": "http://localhost:8080",
+    // Optional HMAC bearer token issued by POST /api/v1/auth/verify. Omit
+    // when VKB runs without `authSecret`. 7-day TTL — regenerate manually:
+    //   curl -X POST $baseURL/api/v1/auth/verify \
+    //        -H 'Content-Type: application/json' \
+    //        -d '{"password":"<access_password>"}'
+    // "authToken": "eyJleHAiOjE3...",
+    // Retrieval scope hint. Default "chat_qa".
+    //   chat_qa | pipeline_enrichment | knowledge_extraction
+    "scope": "chat_qa",
+    // Token budget for VKB to truncate the EvidencePack at. Default 1200 —
+    // smaller than VKB's own default (2500) because this is augmentation,
+    // not the whole prompt. Min 100.
+    "tokenBudget": 1200,
+    // Per-request timeout in milliseconds. Default 3000 — kept tight because
+    // this runs in parallel with memory + RAG on every user message; we'd
+    // rather drop the augmentation than block the reply.
+    "timeoutMs": 3000,
+    // Drop entities with relevance below this threshold when formatting.
+    // VKB normalizes relevance to 0-1. Default 0.3.
+    "minRelevance": 0.3,
+    // Caps on what makes it into the formatted block. Token budget rough
+    // estimate at defaults: ~640 tokens with 50% safety margin.
+    "maxEntities": 5,
+    "maxRelations": 5,
+    "maxCrossVideoEvidence": 3
+  },
   // Project registry — shared across ClaudeCode and Cluster workers.
   // Defines allowed project directories and pre-registered projects.
   "projectRegistry": {
