@@ -39,6 +39,7 @@ import { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
 import { FileReadService } from '@/services/file';
 import type { RetrievalService } from '@/services/retrieval';
 import { ResourceCleanupService, VideoDownloadService } from '@/services/video';
+import { VKBContextEngine } from '@/services/vkb';
 import { ToolInitializer, ToolManager } from '@/tools';
 import { logger } from '@/utils/logger';
 import { SummarizeService } from '../ai/services/SummarizeService';
@@ -411,6 +412,14 @@ export class ConversationInitializer {
       vkConfig ?? { enabled: false, baseURL: 'http://localhost:8080' },
     );
     container.registerInstance('VideoKnowledgeClient', videoKnowledgeClient);
+
+    // Register VKBContextEngine (per-message knowledge retrieval).
+    // Same VKB instance as VideoKnowledgeClient but a different endpoint
+    // surface (chat/evidence-preview vs analyze/ingest/tasks), so a
+    // separate service keeps the two responsibilities cleanly split.
+    const vkbCtxConfig = botConfig.vkbContextEngine;
+    const vkbContextEngine = new VKBContextEngine(vkbCtxConfig ?? { enabled: false, baseURL: 'http://localhost:8080' });
+    container.registerInstance('VKBContextEngine', vkbContextEngine);
 
     const toolManager = new ToolManager();
     const hookManager = new HookManager();

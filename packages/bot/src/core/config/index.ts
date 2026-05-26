@@ -29,6 +29,7 @@ import type { RAGConfig } from './types/rag';
 import type { TicketsConfig } from './types/tickets';
 import type { TTSConfig } from './types/tts';
 import type { VideoKnowledgeConfig } from './types/videoKnowledge';
+import type { VKBContextEngineConfig } from './types/vkbContextEngine';
 
 // Re-export runtime/conversation config (merged from former src/config)
 export { ConversationConfigService, type SessionType } from '../../conversation/ConversationConfigService';
@@ -85,6 +86,7 @@ export type { RAGConfig } from './types/rag';
 export type { TicketsConfig } from './types/tickets';
 export type { TTSConfig } from './types/tts';
 export type { VideoKnowledgeConfig } from './types/videoKnowledge';
+export type { VKBContextEngineConfig, VKBContextEngineScope } from './types/vkbContextEngine';
 
 export interface BotConfig {
   protocols: ProtocolConfig[];
@@ -104,6 +106,7 @@ export interface BotConfig {
   fileReadService?: FileReadServiceConfig;
   claudeCodeService?: ClaudeCodeServiceConfig;
   videoKnowledge?: VideoKnowledgeConfig;
+  vkbContextEngine?: VKBContextEngineConfig;
   projectRegistry?: ProjectRegistryConfig;
   cluster?: Record<string, unknown>;
   /**
@@ -481,6 +484,10 @@ export class Config {
 
   getVideoKnowledgeConfig(): VideoKnowledgeConfig | undefined {
     return this.config.videoKnowledge;
+  }
+
+  getVKBContextEngineConfig(): VKBContextEngineConfig | undefined {
+    return this.config.vkbContextEngine;
   }
 
   getClusterConfig(): Record<string, unknown> | undefined {
