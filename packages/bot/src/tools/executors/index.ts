@@ -4,6 +4,7 @@ export { EpigeneticsHistoryToolExecutor } from '@/persona/reflection/epigenetics
 export { RelationshipHistoryToolExecutor } from '@/persona/reflection/relationships/RelationshipHistoryToolExecutor';
 // Service-specific tool executors
 export { BilibiliToolExecutor } from '@/services/bilibili/executors';
+export { VKBLookupToolExecutor } from '@/services/vkb/executors';
 export { ZhihuDigestToolExecutor } from '@/services/zhihu/executors';
 export { AnalyzeVideoToolExecutor } from './AnalyzeVideoToolExecutor';
 export { BaseToolExecutor } from './BaseToolExecutor';
