@@ -1053,9 +1053,13 @@
   //   - 鸡你太美 [0.82]: 出自蔡徐坤打篮球时哼唱"只因你太美",ikun 衍生梗 [相关: ikun, 蔡徐坤]
   //   - ikun [0.71]: 蔡徐坤粉丝群体自称,源于"爱坤" [相关: 鸡你太美]
   //
-  //   使用示例:
+  //   示例语境（语料中真实用法,参考其语气/句式,不要原文复述）:
   //   "他刚才那段舞,鸡你太美啊"
   //   "我是 ikun,坤坤 yyds"
+  //
+  // The 示例语境 section is a style-fewshot anchor — base.system instructs
+  // the LLM to imitate the register/voice shown there (group-chat short
+  // replies, meme-friendly tone) rather than quote the example sentences.
   //
   // Distinct from `videoKnowledge` above (which submits /analyze + /ingest
   // tasks for bilibili video analysis). Both can point at the same VKB
@@ -1095,11 +1099,12 @@
     // graph (relation_type dropped, only the related concept names kept).
     // Set 0 to suppress.
     "maxRelatedPerTerm": 3,
-    // Real-world usage example sentences (extracted from VKB's cross-video
-    // evidence — all video metadata stripped, only the natural-language
-    // context text kept). Anchors the LLM on the typical tone/syntax of
-    // the term. Set 0 to suppress.
-    "maxUsageExamples": 3,
+    // Style-fewshot examples (extracted from VKB's cross-video evidence —
+    // all video metadata stripped, only the natural-language context text
+    // kept). The base.system prompt frames these as register/voice anchors
+    // for the LLM to imitate. Higher than the term/relation caps because
+    // style-fewshot benefits from diversity. Set 0 to suppress.
+    "maxUsageExamples": 5,
     "maxExampleLen": 80
   },
   // Project registry — shared across ClaudeCode and Cluster workers.

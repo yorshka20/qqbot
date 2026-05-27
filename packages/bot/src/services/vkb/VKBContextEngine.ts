@@ -39,7 +39,9 @@ const DEFAULT_TIMEOUT_MS = 3000;
 const DEFAULT_MAX_TERMS = 5;
 const DEFAULT_MAX_TERM_LEN = 200;
 const DEFAULT_MAX_RELATED_PER_TERM = 3;
-const DEFAULT_MAX_USAGE_EXAMPLES = 3;
+// Style-fewshot benefits from diversity — keep this higher than other caps.
+// Each example is short (≤maxExampleLen chars), so 5 still fits the budget.
+const DEFAULT_MAX_USAGE_EXAMPLES = 5;
 const DEFAULT_MAX_EXAMPLE_LEN = 80;
 
 @injectable()
@@ -152,7 +154,12 @@ export class VKBContextEngine {
     if (usageLines.length === 0) {
       return termLines.join('\n');
     }
-    return `${termLines.join('\n')}\n\n使用示例:\n${usageLines.join('\n')}`;
+    // The heading is intentionally written as a style-anchor instruction
+    // (not "examples of the term"). The base.system prompt tells the LLM
+    // to read this section as register/voice reference for in-context
+    // style imitation — classical fewshot positioning (close to the
+    // generation point, framed as "imitate this").
+    return `${termLines.join('\n')}\n\n示例语境（语料中真实用法，参考其语气/句式，不要原文复述）：\n${usageLines.join('\n')}`;
   }
 
   /**
