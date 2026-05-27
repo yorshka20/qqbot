@@ -10,7 +10,7 @@ The main LLM reply flows use a **split** structure instead of a single monolithi
 2. **Scene system** – Second system message:
    - Normal reply: `llm/reply.system.txt` (参考信息说明 for structured blocks + 对话历史 rule + rules).
    - Proactive reply: `llm/proactive.system.txt` (参考信息说明 + 人设 + 规则).
-3. **User messages** – History as user/assistant turns, then one final user message whose content is **assembled in code** (see `PromptMessageAssembler.buildFinalUserContent`) with fixed tags: `<memory_context>`, `<rag_context>`, `<search_results>`, `<task_results>`, `<current_query>`. The `<current_query>` body is rendered from `llm/reply.user_frame.txt` or `llm/proactive.user_frame.txt`.
+3. **User messages** – History as user/assistant turns, then one final user message whose content is **assembled in code** (see `PromptMessageAssembler.buildFinalUserContent`) with fixed tags: `<memory_context>`, `<rag_context>`, `<glossary>`, `<search_results>`, `<task_results>`, `<current_query>`. The `<current_query>` body is rendered from `llm/reply.user_frame.txt` or `llm/proactive.user_frame.txt`.
 
 The “参考信息说明” (what each block means) and behavior rules live in the **scene system** templates (`llm.reply.system`, `llm.proactive.system`), not in the block content templates.
 
