@@ -1048,18 +1048,28 @@
   //
   // What the LLM sees (no VKB-internal vocab — never "entity" / "video" /
   // "bvid" / "graph"). The bracketed number after each term is VKB's
-  // relevance score — left for the LLM to weigh (no qqbot-side filter):
+  // relevance score — left for the LLM to weigh (no qqbot-side filter).
+  // Structured into `### 词条` blocks for definition, `---` separator,
+  // then `### 示例语境` block for style-fewshot:
   //
-  //   - 鸡你太美 [0.82]: 出自蔡徐坤打篮球时哼唱"只因你太美",ikun 衍生梗 [相关: ikun, 蔡徐坤]
-  //   - ikun [0.71]: 蔡徐坤粉丝群体自称,源于"爱坤" [相关: 鸡你太美]
+  //   ### 鸡你太美  (相关度 0.82)
+  //   释义: 出自蔡徐坤打篮球时哼唱"只因你太美",ikun 衍生梗
+  //   关联: ikun / 蔡徐坤
   //
-  //   示例语境（语料中真实用法,参考其语气/句式,不要原文复述）:
-  //   "他刚才那段舞,鸡你太美啊"
-  //   "我是 ikun,坤坤 yyds"
+  //   ### ikun  (相关度 0.71)
+  //   释义: 蔡徐坤粉丝群体自称,源于"爱坤"
+  //   关联: 鸡你太美
   //
-  // The 示例语境 section is a style-fewshot anchor — base.system instructs
-  // the LLM to imitate the register/voice shown there (group-chat short
-  // replies, meme-friendly tone) rather than quote the example sentences.
+  //   ---
+  //
+  //   ### 示例语境(梗的玩法参考 —— 可直接套用其中的梗词与句式融入对话)
+  //   - "他刚才那段舞,鸡你太美啊"
+  //   - "我是 ikun,坤坤 yyds"
+  //
+  // The 示例语境 section is a meme-usage anchor — base.system tells the
+  // LLM that 玩梗 inherently means reusing the same phrasings, so it can
+  // freely copy 梗词/句式 (even whole lines) when they fit the moment,
+  // not just "imitate the register abstractly".
   //
   // Distinct from `videoKnowledge` above (which submits /analyze + /ingest
   // tasks for bilibili video analysis). Both can point at the same VKB

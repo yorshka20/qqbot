@@ -151,15 +151,19 @@ export class VKBContextEngine {
 
     const usageLines = this.renderUsageExamples(pack.cross_video_context ?? []);
 
+    // Structured layout: each term is its own `###` block with labeled
+    // fields, blank lines between blocks, `---` separator before the
+    // fewshot section. This gives the LLM clear visual chunks and an
+    // unambiguous distinction between definition (释义) and the
+    // meme-usage anchor (示例语境). Compact one-liners were too dense —
+    // fields blurred together and the LLM couldn't tell fewshot from
+    // reference.
+    const termsSection = termLines.join('\n\n');
     if (usageLines.length === 0) {
-      return termLines.join('\n');
+      return termsSection;
     }
-    // The heading is intentionally written as a style-anchor instruction
-    // (not "examples of the term"). The base.system prompt tells the LLM
-    // to read this section as register/voice reference for in-context
-    // style imitation — classical fewshot positioning (close to the
-    // generation point, framed as "imitate this").
-    return `${termLines.join('\n')}\n\n示例语境（语料中真实用法，参考其语气/句式，不要原文复述）：\n${usageLines.join('\n')}`;
+    const fewshotSection = `### 示例语境（梗的玩法参考 —— 可直接套用其中的梗词与句式融入对话）\n${usageLines.join('\n')}`;
+    return `${termsSection}\n\n---\n\n${fewshotSection}`;
   }
 
   /**
@@ -192,8 +196,12 @@ export class VKBContextEngine {
   }
 
   /**
-   * `- name [0.42]: definition [相关: A, B, C]` — relevance always shown
-   * so the LLM can judge confidence; related block omitted when empty.
+   * Multi-line structured term block:
+   *   ### <name>  (相关度 0.42)
+   *   释义: <definition>
+   *   关联: <a> / <b> / <c>          ← omitted when empty
+   *
+   * Relevance always shown so the LLM can judge confidence.
    * Returns null when neither definition nor summary yields usable text.
    */
   private renderTerm(e: VKBEntityEvidence, related: string[]): string | null {
@@ -202,9 +210,12 @@ export class VKBContextEngine {
     const gloss = (e.definition?.trim() || e.summary?.trim() || '').replace(/\s+/g, ' ');
     if (!gloss) return null;
     const score = (e.relevance ?? 0).toFixed(2);
-    const base = `- ${name} [${score}]: ${truncate(gloss, this.maxTermLen)}`;
-    if (related.length === 0) return base;
-    return `${base} [相关: ${related.join(', ')}]`;
+
+    const lines: string[] = [`### ${name}  (相关度 ${score})`, `释义: ${truncate(gloss, this.maxTermLen)}`];
+    if (related.length > 0) {
+      lines.push(`关联: ${related.join(' / ')}`);
+    }
+    return lines.join('\n');
   }
 
   /**
