@@ -1,18 +1,29 @@
-// VKB Context Engine — per-message knowledge retrieval for prompt injection.
+// VKB Context Engine — per-message glossary + usage retrieval for prompt injection.
 //
-// Calls VKB's POST /api/v1/chat/evidence-preview, formats the returned
-// EvidencePack into a compact text block suitable for inclusion alongside
-// memory + RAG context in the reply pipeline's final user message.
+// Calls VKB's POST /api/v1/chat/evidence-preview, then projects the returned
+// EvidencePack into three chat-LLM-useful signals — never leaking VKB's
+// internal schema (entity types / video provenance / heat scores / etc.):
 //
-// Designed to fail soft: any error / disabled state / empty query → empty
-// string. Never throws into the pipeline; warn-log + skip.
+//   1. definition       — what the term means (entity.definition / summary)
+//   2. related concepts — what else the LLM might naturally weave in
+//                         (relation graph reduced to a flat "[相关: A, B]" hint)
+//   3. usage examples   — how the term is actually used in the wild
+//                         (cross_video_context.context strings, stripped of
+//                          all video metadata — they're just example sentences)
+//
+// The combination lets the LLM understand the term (def), thread between
+// related concepts (relations), and match the right register / phrasing
+// (usage). Words like "entity" / "relation" / "video" / "bvid" never
+// appear in the rendered block — the qqbot LLM lives in a pure-chat
+// domain that has no such concepts.
+//
+// Fails soft: any error / disabled state / empty query → empty string.
 
 import { injectable } from 'tsyringe';
 import { HttpClient } from '@/api/http/HttpClient';
 import type { VKBContextEngineConfig } from '@/core/config/types/vkbContextEngine';
 import { logger } from '@/utils/logger';
 import type {
-  VKBCrossVideoEvidence,
   VKBEntityEvidence,
   VKBEvidencePack,
   VKBEvidencePreviewRequest,
@@ -26,9 +37,11 @@ const DEFAULT_SCOPE = 'chat_qa' as const;
 const DEFAULT_TOKEN_BUDGET = 1200;
 const DEFAULT_TIMEOUT_MS = 3000;
 const DEFAULT_MIN_RELEVANCE = 0.3;
-const DEFAULT_MAX_ENTITIES = 5;
-const DEFAULT_MAX_RELATIONS = 5;
-const DEFAULT_MAX_CROSS_VIDEO = 3;
+const DEFAULT_MAX_TERMS = 5;
+const DEFAULT_MAX_TERM_LEN = 200;
+const DEFAULT_MAX_RELATED_PER_TERM = 3;
+const DEFAULT_MAX_USAGE_EXAMPLES = 3;
+const DEFAULT_MAX_EXAMPLE_LEN = 80;
 
 @injectable()
 export class VKBContextEngine {
@@ -38,9 +51,11 @@ export class VKBContextEngine {
   private readonly tokenBudget: number;
   private readonly timeoutMs: number;
   private readonly minRelevance: number;
-  private readonly maxEntities: number;
-  private readonly maxRelations: number;
-  private readonly maxCrossVideo: number;
+  private readonly maxTerms: number;
+  private readonly maxTermLen: number;
+  private readonly maxRelatedPerTerm: number;
+  private readonly maxUsageExamples: number;
+  private readonly maxExampleLen: number;
 
   constructor(config: VKBContextEngineConfig) {
     this.enabled = config.enabled;
@@ -48,9 +63,11 @@ export class VKBContextEngine {
     this.tokenBudget = config.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
     this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.minRelevance = config.minRelevance ?? DEFAULT_MIN_RELEVANCE;
-    this.maxEntities = config.maxEntities ?? DEFAULT_MAX_ENTITIES;
-    this.maxRelations = config.maxRelations ?? DEFAULT_MAX_RELATIONS;
-    this.maxCrossVideo = config.maxCrossVideoEvidence ?? DEFAULT_MAX_CROSS_VIDEO;
+    this.maxTerms = config.maxTerms ?? DEFAULT_MAX_TERMS;
+    this.maxTermLen = config.maxTermLen ?? DEFAULT_MAX_TERM_LEN;
+    this.maxRelatedPerTerm = config.maxRelatedPerTerm ?? DEFAULT_MAX_RELATED_PER_TERM;
+    this.maxUsageExamples = config.maxUsageExamples ?? DEFAULT_MAX_USAGE_EXAMPLES;
+    this.maxExampleLen = config.maxExampleLen ?? DEFAULT_MAX_EXAMPLE_LEN;
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (config.authToken) {
@@ -84,11 +101,11 @@ export class VKBContextEngine {
   }
 
   /**
-   * Fetch evidence for a user query and return a pre-formatted text block.
-   * Empty string on any failure / disabled state / empty query / no matches —
-   * caller injects unconditionally and the assembler skips empty sections.
+   * Fetch a glossary block (definitions + related concepts + usage examples)
+   * for terms / memes / slang that may appear in the user's message.
+   * Empty string on any failure / disabled state / empty query / no matches.
    */
-  async fetchContextText(query: string, opts?: { videoBvid?: string }): Promise<string> {
+  async fetchGlossary(query: string): Promise<string> {
     if (!this.enabled) return '';
     const trimmed = query?.trim();
     if (!trimmed) return '';
@@ -98,9 +115,6 @@ export class VKBContextEngine {
       scope: this.scope,
       token_budget: this.tokenBudget,
     };
-    if (opts?.videoBvid) {
-      body.video_bvid = opts.videoBvid;
-    }
 
     let response: VKBEvidencePreviewResponse;
     try {
@@ -110,90 +124,97 @@ export class VKBContextEngine {
       return '';
     }
 
-    return this.formatPack(response.pack);
+    return this.formatGlossary(response.pack);
   }
 
   /**
-   * Reduce an EvidencePack to a compact, LLM-friendly text block.
-   * Public so callers (and tests) can format an already-fetched pack
-   * without re-issuing the HTTP request.
+   * Project an EvidencePack into the glossary text block. Public so tests
+   * (and callers that already hold a pack) can render without re-fetching.
    */
-  formatPack(pack: VKBEvidencePack): string {
+  formatGlossary(pack: VKBEvidencePack): string {
     if (!pack) return '';
 
-    const entities = (pack.entities ?? []).filter((e) => e.relevance >= this.minRelevance).slice(0, this.maxEntities);
-    const relations = (pack.relations ?? []).slice(0, this.maxRelations);
-    const crossVideo = (pack.cross_video_context ?? []).slice(0, this.maxCrossVideo);
+    const terms = (pack.entities ?? []).filter((e) => e.relevance >= this.minRelevance).slice(0, this.maxTerms);
+    if (terms.length === 0) return '';
 
-    if (entities.length === 0 && relations.length === 0 && crossVideo.length === 0) {
-      return '';
+    const relatedByTerm = this.buildRelatedIndex(terms, pack.relations ?? []);
+    const termLines = terms
+      .map((e) => this.renderTerm(e, relatedByTerm.get(e.name) ?? []))
+      .filter((line): line is string => line !== null);
+    if (termLines.length === 0) return '';
+
+    const usageLines = this.renderUsageExamples(pack.cross_video_context ?? []);
+
+    if (usageLines.length === 0) {
+      return termLines.join('\n');
     }
+    return `${termLines.join('\n')}\n\n使用示例:\n${usageLines.join('\n')}`;
+  }
 
+  /**
+   * For each shown term, collect distinct "other-side" names from any
+   * relation edge touching that term, capped per `maxRelatedPerTerm`.
+   * Relation type / description are intentionally dropped — they're VKB
+   * taxonomy that adds tokens without buying chat-LLM comprehension.
+   */
+  private buildRelatedIndex(terms: VKBEntityEvidence[], relations: VKBRelationEvidence[]): Map<string, string[]> {
+    const termNames = new Set(terms.map((e) => e.name?.trim()).filter((n): n is string => !!n));
+    const index = new Map<string, Set<string>>();
+    for (const r of relations) {
+      const src = r.source_name?.trim();
+      const tgt = r.target_name?.trim();
+      if (!src || !tgt || src === tgt) continue;
+      if (termNames.has(src)) {
+        if (!index.has(src)) index.set(src, new Set());
+        index.get(src)?.add(tgt);
+      }
+      if (termNames.has(tgt)) {
+        if (!index.has(tgt)) index.set(tgt, new Set());
+        index.get(tgt)?.add(src);
+      }
+    }
+    const out = new Map<string, string[]>();
+    for (const [name, others] of index) {
+      out.set(name, [...others].slice(0, this.maxRelatedPerTerm));
+    }
+    return out;
+  }
+
+  /**
+   * `- name: definition [相关: A, B, C]` — related-block omitted when empty.
+   * Returns null when neither definition nor summary yields usable text.
+   */
+  private renderTerm(e: VKBEntityEvidence, related: string[]): string | null {
+    const name = e.name?.trim();
+    if (!name) return null;
+    const gloss = (e.definition?.trim() || e.summary?.trim() || '').replace(/\s+/g, ' ');
+    if (!gloss) return null;
+    const base = `- ${name}: ${truncate(gloss, this.maxTermLen)}`;
+    if (related.length === 0) return base;
+    return `${base} [相关: ${related.join(', ')}]`;
+  }
+
+  /**
+   * Extract just the natural-language `context` field from VKB's
+   * cross_video_context items — these are real example sentences containing
+   * the term as used in the wild. Drop everything else (bvid, title,
+   * timestamps): the qqbot LLM has no video domain to anchor those to.
+   */
+  private renderUsageExamples(crossVideo: VKBEvidencePack['cross_video_context']): string[] {
+    if (!crossVideo?.length) return [];
+    const seen = new Set<string>();
     const lines: string[] = [];
-
-    if (entities.length > 0) {
-      lines.push('[相关实体]');
-      for (const e of entities) {
-        lines.push(formatEntity(e));
-      }
+    for (const c of crossVideo) {
+      const text = c.context?.trim().replace(/\s+/g, ' ');
+      if (!text) continue;
+      const truncated = truncate(text, this.maxExampleLen);
+      if (seen.has(truncated)) continue;
+      seen.add(truncated);
+      lines.push(`"${truncated}"`);
+      if (lines.length >= this.maxUsageExamples) break;
     }
-
-    if (relations.length > 0) {
-      if (lines.length > 0) lines.push('');
-      lines.push('[实体关系]');
-      for (const r of relations) {
-        lines.push(formatRelation(r));
-      }
-    }
-
-    if (crossVideo.length > 0) {
-      if (lines.length > 0) lines.push('');
-      lines.push('[相关视频片段]');
-      for (const c of crossVideo) {
-        lines.push(formatCrossVideo(c));
-      }
-    }
-
-    return lines.join('\n');
+    return lines;
   }
-}
-
-function formatEntity(e: VKBEntityEvidence): string {
-  const head = `- ${e.name} (${e.type})`;
-  const body: string[] = [];
-  if (e.definition?.trim()) {
-    body.push(`  释义: ${truncate(e.definition.trim(), 200)}`);
-  }
-  if (e.summary?.trim() && e.summary !== e.definition) {
-    body.push(`  用法: ${truncate(e.summary.trim(), 200)}`);
-  }
-  return [head, ...body].join('\n');
-}
-
-function formatRelation(r: VKBRelationEvidence): string {
-  const arrow = r.relation_type ? `——(${r.relation_type})——>` : '——>';
-  const head = `- ${r.source_name} ${arrow} ${r.target_name}`;
-  if (r.description?.trim()) {
-    return `${head}\n  ${truncate(r.description.trim(), 150)}`;
-  }
-  return head;
-}
-
-function formatCrossVideo(c: VKBCrossVideoEvidence): string {
-  const ts = `${formatTime(c.timestamp_start)}-${formatTime(c.timestamp_end)}`;
-  const title = c.video_title?.trim() || c.video_bvid;
-  const head = `- [${c.video_bvid}] ${title} @ ${ts}`;
-  if (c.context?.trim()) {
-    return `${head}\n  ${truncate(c.context.trim(), 150)}`;
-  }
-  return head;
-}
-
-function formatTime(sec: number): string {
-  const total = Math.max(0, Math.floor(sec));
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 function truncate(s: string, max: number): string {

@@ -45,14 +45,14 @@ export class ContextEnrichmentStage implements ReplyStage {
   }
 
   async execute(ctx: ReplyPipelineContext): Promise<void> {
-    const [memoryContextText, retrievedConversationSection, vkbContextText] = await Promise.all([
+    const [memoryContextText, retrievedConversationSection, glossaryText] = await Promise.all([
       this.getMemoryContextTextAsync(ctx.hookContext),
       this.getRetrievedConversationSection(ctx.hookContext),
-      this.getVKBContext(ctx.hookContext),
+      this.getGlossary(ctx.hookContext),
     ]);
     ctx.memoryContextText = memoryContextText;
     ctx.retrievedConversationSection = retrievedConversationSection;
-    ctx.vkbContextText = vkbContextText;
+    ctx.glossaryText = glossaryText;
   }
 
   // --- Also used by NSFW path (via orchestrator) ---
@@ -69,7 +69,7 @@ export class ContextEnrichmentStage implements ReplyStage {
 
   // --- Private helpers ---
 
-  private async getVKBContext(context: HookContext): Promise<string> {
+  private async getGlossary(context: HookContext): Promise<string> {
     if (!this.vkbContextEngine.isEnabled()) {
       return '';
     }
@@ -77,8 +77,8 @@ export class ContextEnrichmentStage implements ReplyStage {
     if (!rawMessage) {
       return '';
     }
-    // fetchContextText already swallows errors → empty string. No try/catch needed.
-    return this.vkbContextEngine.fetchContextText(rawMessage);
+    // fetchGlossary already swallows errors → empty string. No try/catch needed.
+    return this.vkbContextEngine.fetchGlossary(rawMessage);
   }
 
   private async getRetrievedConversationSection(context: HookContext): Promise<string> {

@@ -1038,19 +1038,31 @@
     // Polling timeout in milliseconds (default: 300000 = 5 minutes)
     "pollTimeoutMs": 300000
   },
-  // VKB Context Engine — per-message knowledge retrieval for prompt injection.
+  // VKB Context Engine — per-message glossary retrieval for prompt injection.
   //
-  // Wraps VKB's POST /api/v1/chat/evidence-preview to fetch a knowledge pack
-  // (entities + relations + cross-video evidence) for each user message and
-  // inject it into the reply prompt as a <vkb_context> XML block alongside
-  // <memory_context> / <rag_context>.
+  // Calls VKB's POST /api/v1/chat/evidence-preview, then projects the
+  // returned data into a chat-LLM-friendly <glossary> block with three
+  // signals per user message: term definitions, related concepts, and
+  // real-world usage examples. The block is injected alongside
+  // <memory_context> / <rag_context> in the final user message.
+  //
+  // What the LLM sees (no VKB-internal vocab — never "entity" / "video" /
+  // "bvid" / "graph"):
+  //
+  //   - 鸡你太美: 出自蔡徐坤打篮球时哼唱"只因你太美",ikun 衍生梗 [相关: ikun, 蔡徐坤]
+  //   - ikun: 蔡徐坤粉丝群体自称,源于"爱坤" [相关: 鸡你太美]
+  //
+  //   使用示例:
+  //   "他刚才那段舞,鸡你太美啊"
+  //   "我是 ikun,坤坤 yyds"
   //
   // Distinct from `videoKnowledge` above (which submits /analyze + /ingest
   // tasks for bilibili video analysis). Both can point at the same VKB
-  // instance — they cover different endpoint surfaces.
+  // instance — they cover different endpoint surfaces with different
+  // consumers.
   //
   // Uses evidence-preview (not evidence-qa) on purpose: VKB's QA endpoint
-  // runs its own LLM call which would double the token cost + latency for
+  // runs its own LLM call, which would double token cost + latency for
   // augmentation we already feed into qqbot's own LLM.
   "vkbContextEngine": {
     "enabled": false,
@@ -1075,11 +1087,21 @@
     // Drop entities with relevance below this threshold when formatting.
     // VKB normalizes relevance to 0-1. Default 0.3.
     "minRelevance": 0.3,
-    // Caps on what makes it into the formatted block. Token budget rough
-    // estimate at defaults: ~640 tokens with 50% safety margin.
-    "maxEntities": 5,
-    "maxRelations": 5,
-    "maxCrossVideoEvidence": 3
+    // Glossary caps. Token budget rough estimate at defaults: ~5×60 (term
+    // lines) + 3×20 (usage examples) ≈ 360 tokens, well under the
+    // tokenBudget cap above.
+    "maxTerms": 5,
+    "maxTermLen": 200,
+    // Inline `[相关: A, B, C]` hint per term — projected from VKB's relation
+    // graph (relation_type dropped, only the related concept names kept).
+    // Set 0 to suppress.
+    "maxRelatedPerTerm": 3,
+    // Real-world usage example sentences (extracted from VKB's cross-video
+    // evidence — all video metadata stripped, only the natural-language
+    // context text kept). Anchors the LLM on the typical tone/syntax of
+    // the term. Set 0 to suppress.
+    "maxUsageExamples": 3,
+    "maxExampleLen": 80
   },
   // Project registry — shared across ClaudeCode and Cluster workers.
   // Defines allowed project directories and pre-registered projects.

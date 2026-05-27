@@ -7,7 +7,14 @@ import { buildSpeakerTag, type SpeakerIdentity } from './speakerTag';
 export interface FinalUserBlocks {
   memoryContext?: string;
   ragContext?: string;
-  vkbContext?: string;
+  /**
+   * Inline glossary for memes / slang / time-sensitive jargon that may
+   * appear in the user's current message. Flat `- term: definition` list.
+   * Source is implementation-detail (currently VKB Context Engine); the
+   * block name stays vendor-neutral so the LLM treats it as ordinary
+   * reference annotation, not a foreign data source.
+   */
+  glossary?: string;
   currentQuery: string;
 }
 
@@ -130,8 +137,8 @@ export class PromptMessageAssembler {
     if (normalize(blocks.ragContext)) {
       sections.push(`<rag_context>\n${normalize(blocks.ragContext)}\n</rag_context>`);
     }
-    if (normalize(blocks.vkbContext)) {
-      sections.push(`<vkb_context>\n${normalize(blocks.vkbContext)}\n</vkb_context>`);
+    if (normalize(blocks.glossary)) {
+      sections.push(`<glossary>\n${normalize(blocks.glossary)}\n</glossary>`);
     }
     sections.push(`<current_query>\n${normalize(blocks.currentQuery)}\n</current_query>`);
     return sections.join('\n\n');

@@ -1,12 +1,22 @@
-// VKB (Video Knowledge Backend) Context Engine integration.
+// VKB Context Engine — per-message glossary + usage retrieval for prompt injection.
 //
-// Wraps VKB's POST /api/v1/chat/evidence-preview endpoint to retrieve a
-// per-message knowledge pack (entities + relations + cross-video evidence)
-// that gets injected into the reply pipeline alongside memory + RAG context.
+// Wraps VKB's POST /api/v1/chat/evidence-preview to retrieve, for each
+// user message, three chat-LLM-useful signals projected from VKB's
+// EvidencePack:
+//   1. definition       — what a term/meme/slang means
+//   2. related concepts — what else the LLM might naturally bring in
+//   3. usage examples   — how the term is actually phrased in the wild
+//                         (real example sentences, stripped of all
+//                         VKB-side metadata like video provenance / heat)
 //
-// Distinct from `videoKnowledge` (which submits /analyze and /ingest tasks
+// Rendered into a <glossary> block alongside <memory_context> /
+// <rag_context>. VKB-internal vocabulary (entity / relation / video /
+// bvid / timestamp / heat / relevance) never reaches the LLM — qqbot
+// lives in a pure-chat domain that has no notion of those.
+//
+// Distinct from `videoKnowledge` (which submits /analyze + /ingest tasks
 // for bilibili video analysis). Both can point at the same VKB instance;
-// they cover different endpoint surfaces.
+// they cover different endpoint surfaces with different consumers.
 
 /** Scope hint passed to VKB's retrieval — affects which Views contribute. */
 export type VKBContextEngineScope = 'chat_qa' | 'pipeline_enrichment' | 'knowledge_extraction';
@@ -41,10 +51,20 @@ export interface VKBContextEngineConfig {
    * formatting. Default: 0.3. Set 0 to keep everything VKB returns.
    */
   minRelevance?: number;
-  /** Max entities to include in the formatted block. Default: 5. */
-  maxEntities?: number;
-  /** Max relations to include in the formatted block. Default: 5. */
-  maxRelations?: number;
-  /** Max cross-video evidence items to include. Default: 3. */
-  maxCrossVideoEvidence?: number;
+  /** Max glossary terms to include. Default: 5. */
+  maxTerms?: number;
+  /** Per-term definition character cap. Default: 200. */
+  maxTermLen?: number;
+  /**
+   * Max related-concept names attached inline to each term. Default: 3.
+   * Set 0 to suppress the `[相关: ...]` hint entirely.
+   */
+  maxRelatedPerTerm?: number;
+  /**
+   * Max real-world usage example sentences listed below the term block.
+   * Default: 3. Set 0 to suppress the `使用示例` section.
+   */
+  maxUsageExamples?: number;
+  /** Per-example character cap. Default: 80. */
+  maxExampleLen?: number;
 }

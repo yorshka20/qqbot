@@ -34,7 +34,7 @@ export class ReplyPipelineContext {
   // --- ContextEnrichmentStage ---
   memoryContextText = '';
   retrievedConversationSection = '';
-  vkbContextText = '';
+  glossaryText = '';
 
   // --- ProviderSelectionStage ---
   providerName: string | undefined;
