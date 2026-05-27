@@ -36,7 +36,6 @@ const LOG_TAG = '[VKBContextEngine]';
 const DEFAULT_SCOPE = 'chat_qa' as const;
 const DEFAULT_TOKEN_BUDGET = 1200;
 const DEFAULT_TIMEOUT_MS = 3000;
-const DEFAULT_MIN_RELEVANCE = 0.3;
 const DEFAULT_MAX_TERMS = 5;
 const DEFAULT_MAX_TERM_LEN = 200;
 const DEFAULT_MAX_RELATED_PER_TERM = 3;
@@ -50,7 +49,6 @@ export class VKBContextEngine {
   private readonly scope: VKBContextEngineConfig['scope'];
   private readonly tokenBudget: number;
   private readonly timeoutMs: number;
-  private readonly minRelevance: number;
   private readonly maxTerms: number;
   private readonly maxTermLen: number;
   private readonly maxRelatedPerTerm: number;
@@ -62,7 +60,6 @@ export class VKBContextEngine {
     this.scope = config.scope ?? DEFAULT_SCOPE;
     this.tokenBudget = config.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
     this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    this.minRelevance = config.minRelevance ?? DEFAULT_MIN_RELEVANCE;
     this.maxTerms = config.maxTerms ?? DEFAULT_MAX_TERMS;
     this.maxTermLen = config.maxTermLen ?? DEFAULT_MAX_TERM_LEN;
     this.maxRelatedPerTerm = config.maxRelatedPerTerm ?? DEFAULT_MAX_RELATED_PER_TERM;
@@ -134,7 +131,14 @@ export class VKBContextEngine {
   formatGlossary(pack: VKBEvidencePack): string {
     if (!pack) return '';
 
-    const terms = (pack.entities ?? []).filter((e) => e.relevance >= this.minRelevance).slice(0, this.maxTerms);
+    // No qqbot-side relevance filtering — relevance is rendered into the
+    // term line so the LLM can weigh each term itself (high score = treat
+    // as factual reference; low score = treat as tentative / ignorable).
+    // We only cap by maxTerms to keep the token budget bounded; sort
+    // descending so the top-N is the highest-relevance subset.
+    const terms = [...(pack.entities ?? [])]
+      .sort((a, b) => (b.relevance ?? 0) - (a.relevance ?? 0))
+      .slice(0, this.maxTerms);
     if (terms.length === 0) return '';
 
     const relatedByTerm = this.buildRelatedIndex(terms, pack.relations ?? []);
@@ -181,7 +185,8 @@ export class VKBContextEngine {
   }
 
   /**
-   * `- name: definition [相关: A, B, C]` — related-block omitted when empty.
+   * `- name [0.42]: definition [相关: A, B, C]` — relevance always shown
+   * so the LLM can judge confidence; related block omitted when empty.
    * Returns null when neither definition nor summary yields usable text.
    */
   private renderTerm(e: VKBEntityEvidence, related: string[]): string | null {
@@ -189,7 +194,8 @@ export class VKBContextEngine {
     if (!name) return null;
     const gloss = (e.definition?.trim() || e.summary?.trim() || '').replace(/\s+/g, ' ');
     if (!gloss) return null;
-    const base = `- ${name}: ${truncate(gloss, this.maxTermLen)}`;
+    const score = (e.relevance ?? 0).toFixed(2);
+    const base = `- ${name} [${score}]: ${truncate(gloss, this.maxTermLen)}`;
     if (related.length === 0) return base;
     return `${base} [相关: ${related.join(', ')}]`;
   }

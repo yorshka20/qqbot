@@ -47,11 +47,11 @@ export interface VKBContextEngineConfig {
    */
   timeoutMs?: number;
   /**
-   * Drop entities whose `relevance` score is below this threshold when
-   * formatting. Default: 0.3. Set 0 to keep everything VKB returns.
+   * Max glossary terms to include (top-N by VKB's relevance score). The
+   * service does NOT apply a relevance floor — the score is rendered into
+   * each term line and the LLM decides what to do with low-scored items.
+   * Default: 5.
    */
-  minRelevance?: number;
-  /** Max glossary terms to include. Default: 5. */
   maxTerms?: number;
   /** Per-term definition character cap. Default: 200. */
   maxTermLen?: number;

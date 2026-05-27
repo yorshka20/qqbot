@@ -1047,10 +1047,11 @@
   // <memory_context> / <rag_context> in the final user message.
   //
   // What the LLM sees (no VKB-internal vocab — never "entity" / "video" /
-  // "bvid" / "graph"):
+  // "bvid" / "graph"). The bracketed number after each term is VKB's
+  // relevance score — left for the LLM to weigh (no qqbot-side filter):
   //
-  //   - 鸡你太美: 出自蔡徐坤打篮球时哼唱"只因你太美",ikun 衍生梗 [相关: ikun, 蔡徐坤]
-  //   - ikun: 蔡徐坤粉丝群体自称,源于"爱坤" [相关: 鸡你太美]
+  //   - 鸡你太美 [0.82]: 出自蔡徐坤打篮球时哼唱"只因你太美",ikun 衍生梗 [相关: ikun, 蔡徐坤]
+  //   - ikun [0.71]: 蔡徐坤粉丝群体自称,源于"爱坤" [相关: 鸡你太美]
   //
   //   使用示例:
   //   "他刚才那段舞,鸡你太美啊"
@@ -1084,12 +1085,10 @@
     // this runs in parallel with memory + RAG on every user message; we'd
     // rather drop the augmentation than block the reply.
     "timeoutMs": 3000,
-    // Drop entities with relevance below this threshold when formatting.
-    // VKB normalizes relevance to 0-1. Default 0.3.
-    "minRelevance": 0.3,
-    // Glossary caps. Token budget rough estimate at defaults: ~5×60 (term
-    // lines) + 3×20 (usage examples) ≈ 360 tokens, well under the
-    // tokenBudget cap above.
+    // Glossary caps. No relevance floor on the qqbot side — the score
+    // (e.g. [0.82]) is rendered into each term line and the LLM weighs
+    // it. Token budget rough estimate at defaults: ~5×60 (term lines) +
+    // 3×20 (usage examples) ≈ 360 tokens, well under tokenBudget.
     "maxTerms": 5,
     "maxTermLen": 200,
     // Inline `[相关: A, B, C]` hint per term — projected from VKB's relation
