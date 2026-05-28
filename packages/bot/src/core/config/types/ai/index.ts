@@ -124,6 +124,31 @@ export interface AIChatConfig {
   reasoningEffort?: ReasoningEffort;
   /** Reasoning effort for chat turns that have tool definitions. Default `'medium'`. */
   toolReasoningEffort?: ReasoningEffort;
+  /**
+   * Reasoning effort applied when (a) the selected provider is in
+   * `replyModeProviders` AND `metadata.replyMode === 'quick'`, OR (b) the
+   * selected provider is in `lowEffortProviders` (always, regardless of
+   * replyMode). Tool turns are never downgraded — they always use
+   * `toolReasoningEffort`. Default `'minimal'` — the smallest thinking
+   * budget on providers that support it.
+   */
+  quickReasoningEffort?: ReasoningEffort;
+  /**
+   * Provider names that respond to runtime `replyMode` downgrade. Defaults
+   * to `['deepseek', 'openai', 'gemini']` — the day-to-day workhorses where
+   * shaving reasoning is a win. Premium providers (e.g. `anthropic`) are
+   * intentionally absent so they keep running at full quality regardless of
+   * routing decisions upstream.
+   */
+  replyModeProviders?: string[];
+  /**
+   * Provider names that always run at `quickReasoningEffort`, regardless of
+   * `replyMode`. Defaults to `['doubao']` — used as a low-quality fallback
+   * that isn't part of the main prompt tuning effort, so reasoning budget
+   * would be wasted. Tool turns still escape this (they use
+   * `toolReasoningEffort`).
+   */
+  lowEffortProviders?: string[];
 }
 
 export interface AIConfig {

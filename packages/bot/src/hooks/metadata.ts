@@ -65,6 +65,16 @@ export interface HookContextMetadata {
   replySubtext?: string;
   /** Reply tags extracted from LLM reply via parseSubtextTags (META tag items). */
   replyTagsMeta?: string[];
+  /**
+   * Reply complexity routing decision: `'quick'` skips the model's reasoning
+   * budget on eligible providers (configured via `ai.chat.replyModeProviders`,
+   * default `['deepseek', 'doubao']`), so casual chat doesn't pay the
+   * thinking-block TTFT. `'deep'` and undefined both keep the configured
+   * default reasoning. Premium providers (e.g. anthropic) ignore this knob
+   * entirely — they always run at full quality. Producer: a future reply-mode
+   * classifier (not yet wired); consumer: PromptAssemblyStage.
+   */
+  replyMode?: 'quick' | 'deep';
 }
 
 type MetadataKeys = keyof HookContextMetadata;
@@ -87,6 +97,7 @@ const DEFAULT_METADATA: Required<
     | 'toolUsageInstructions'
     | 'replySubtext'
     | 'replyTagsMeta'
+    | 'replyMode'
   >
 > = {
   sessionId: '',
@@ -121,6 +132,7 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'toolUsageInstructions',
   'replySubtext',
   'replyTagsMeta',
+  'replyMode',
 ];
 
 /**

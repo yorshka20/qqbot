@@ -30,6 +30,7 @@ export * from './NudgePlugin';
 export * from './PersonaCompletionHookPlugin';
 export * from './ProactiveConversationPlugin';
 export * from './ReactionPlugin';
+export * from './ReplyComplexityClassifierPlugin';
 export * from './RulePlugin';
 export * from './Text2ImgSFWFilterPlugin';
 export * from './TodoPlugin';

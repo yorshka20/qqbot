@@ -36,12 +36,18 @@ import type { ReplyStage } from '../types';
  */
 const DEFAULT_CHAT_REASONING: ReasoningEffort = 'medium';
 const DEFAULT_TOOL_REASONING: ReasoningEffort = 'medium';
+const DEFAULT_QUICK_REASONING: ReasoningEffort = 'minimal';
+const DEFAULT_REPLY_MODE_PROVIDERS = ['deepseek', 'openai', 'gemini'];
+const DEFAULT_LOW_EFFORT_PROVIDERS = ['doubao'];
 
 export class PromptAssemblyStage implements ReplyStage {
   readonly name = 'prompt-assembly';
 
   private readonly chatReasoning: ReasoningEffort;
   private readonly toolReasoning: ReasoningEffort;
+  private readonly quickReasoning: ReasoningEffort;
+  private readonly replyModeProviders: Set<string>;
+  private readonly lowEffortProviders: Set<string>;
 
   constructor(
     private registry: PromptInjectionRegistry,
@@ -51,6 +57,9 @@ export class PromptAssemblyStage implements ReplyStage {
   ) {
     this.chatReasoning = chatConfig?.reasoningEffort ?? DEFAULT_CHAT_REASONING;
     this.toolReasoning = chatConfig?.toolReasoningEffort ?? DEFAULT_TOOL_REASONING;
+    this.quickReasoning = chatConfig?.quickReasoningEffort ?? DEFAULT_QUICK_REASONING;
+    this.replyModeProviders = new Set(chatConfig?.replyModeProviders ?? DEFAULT_REPLY_MODE_PROVIDERS);
+    this.lowEffortProviders = new Set(chatConfig?.lowEffortProviders ?? DEFAULT_LOW_EFFORT_PROVIDERS);
   }
 
   /** Shared assembler held by PromptManager — single instance for the whole AI service. */
@@ -175,7 +184,42 @@ export class PromptAssemblyStage implements ReplyStage {
     // budget needed, and the hidden <think> block dominates TTFT for providers
     // that support thinking). Tool-use benefits from reasoning for selection and
     // argument construction.
-    const reasoningEffort = hasTools ? this.toolReasoning : this.chatReasoning;
+    //
+    // Reasoning-effort decision tree (no-tool turns only — tool turns always
+    // use toolReasoning):
+    //   1. lowEffortProviders (e.g. doubao): always quickReasoning. These
+    //      providers aren't part of main prompt tuning so reasoning budget
+    //      would be wasted.
+    //   2. replyModeProviders + replyMode==='quick': quickReasoning. Casual
+    //      chat skips the thinking-block TTFT on day-to-day workhorses
+    //      (deepseek / openai / gemini).
+    //   3. everyone else (anthropic, or deep/unset replyMode on workhorses):
+    //      chatReasoning. Premium providers always run at full quality
+    //      regardless of upstream routing.
+    const replyMode = ctx.hookContext.metadata.get('replyMode');
+    const providerName = ctx.selectedProviderName ?? '';
+    let reasoningEffort: ReasoningEffort;
+    let effortReason: string;
+    if (hasTools) {
+      reasoningEffort = this.toolReasoning;
+      effortReason = 'tools';
+    } else if (this.lowEffortProviders.has(providerName)) {
+      reasoningEffort = this.quickReasoning;
+      effortReason = 'low-effort-provider';
+    } else if (replyMode === 'quick' && this.replyModeProviders.has(providerName)) {
+      reasoningEffort = this.quickReasoning;
+      effortReason = 'replyMode=quick';
+    } else {
+      reasoningEffort = this.chatReasoning;
+      effortReason = replyMode ? `replyMode=${replyMode}` : 'default';
+    }
+    // Visibility: log only when effort differs from the chat default — the
+    // common 'deep / no-classifier' case stays silent to avoid noise.
+    if (reasoningEffort !== this.chatReasoning) {
+      logger.info(
+        `[PromptAssemblyStage] effort=${reasoningEffort} provider=${providerName || 'unknown'} reason=${effortReason}`,
+      );
+    }
     ctx.genOptions = {
       temperature: 0.7,
       maxTokens,

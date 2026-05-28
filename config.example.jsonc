@@ -635,9 +635,26 @@
     // Values: "none" | "minimal" | "low" | "medium" | "high". Only providers
     // that speak the reasoning_effort dialect (Groq qwen3-*, OpenAI o-series,
     // Anthropic extended-thinking) act on this; others ignore it.
+    //
+    // Runtime quick-reply downgrade (optional). Three provider categories,
+    // decided per-turn in PromptAssemblyStage (no-tool turns only — tool
+    // turns always use `toolReasoningEffort`):
+    //   • `lowEffortProviders` (default `["doubao"]`): always run at
+    //     `quickReasoningEffort`. Used for low-quality fallback providers
+    //     that aren't part of main prompt tuning, so reasoning budget
+    //     would be wasted.
+    //   • `replyModeProviders` (default `["deepseek", "openai", "gemini"]`):
+    //     respect runtime `metadata.replyMode`. When a classifier marks a
+    //     turn `'quick'`, drop to `quickReasoningEffort`; otherwise keep
+    //     `reasoningEffort`.
+    //   • Everyone else (e.g. `anthropic`): always run at `reasoningEffort`
+    //     regardless of routing. Premium providers stay at full quality.
     // "chat": {
     //   "reasoningEffort": "medium",
-    //   "toolReasoningEffort": "medium"
+    //   "toolReasoningEffort": "medium",
+    //   "quickReasoningEffort": "minimal",
+    //   "replyModeProviders": ["deepseek", "openai", "gemini"],
+    //   "lowEffortProviders": ["doubao"]
     // },
     // Task-specific provider overrides (optional)
     // Override provider for specific internal LLM tasks
