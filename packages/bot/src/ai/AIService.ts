@@ -110,7 +110,7 @@ export class AIService {
 
     // Reply generation pipeline
     const episodeCacheManager = new EpisodeCacheManager(conversationHistoryService);
-    const cardHelper = new CardRenderingHelper(this.cardRenderingService, llmService, promptManager, hookManager);
+    const cardHelper = new CardRenderingHelper(this.cardRenderingService, hookManager);
     const contextEnrichmentStage = new ContextEnrichmentStage(memoryService, retrievalService, promptManager);
     const stages = [
       new GateCheckStage(hookManager),

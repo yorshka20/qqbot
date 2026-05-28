@@ -1,38 +1,29 @@
-// Card rendering helper — shared card rendering, conversion, detection, and extraction logic.
+// Card rendering helper — shared card rendering, detection, and extraction logic.
 
 import { replaceReplyWithSegments } from '@/context/HookContextHelpers';
-import type { Config } from '@/core/config';
-import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
-import { CardRenderingService, getCardDeckNoteForPrompt, getCardTypeSpecForPrompt } from '@/services/card';
-import { type CardData, parseCardDeck } from '@/services/card/cardTypes';
+import { CardRenderingService } from '@/services/card';
+import type { CardData } from '@/services/card/cardTypes';
 import { hasSkipCardMarker } from '@/utils/contentMarkers';
 import { logger } from '@/utils/logger';
-import type { PromptManager } from '../../prompt/PromptManager';
-import type { LLMService } from '../../services/LLMService';
 import { extractExpectedJsonFromLlmText } from '../../utils/llmJsonExtract';
 
 /**
  * Shared card rendering helper used by the reply pipeline and external callers.
- * Provides card JSON rendering to image segments, text-to-card conversion via a
- * secondary LLM call, card JSON detection heuristics, and readable text extraction
- * from card JSON as a fallback when rendering fails.
+ * Renders card JSON or markdown to image segments, detects card-JSON shaped
+ * text, and extracts human-readable fallback text from card JSON when rendering
+ * fails. There is intentionally no "convert plain text to card JSON via LLM"
+ * path — the model is given the `send_card` tool; if it chooses not to use it,
+ * the response is rendered as a markdown card (plain prose is valid markdown).
  */
 export class CardRenderingHelper {
-  private config: Config;
-
   constructor(
     private cardRenderingService: CardRenderingService,
-    private llmService: LLMService,
-    private promptManager: PromptManager,
     private hookManager: HookManager,
-  ) {
-    this.config = getContainer().resolve<Config>(DITokens.CONFIG);
-  }
+  ) {}
 
   // ---------------------------------------------------------------------------
   // Pure rendering (no context/hook side effects)
@@ -108,80 +99,6 @@ export class CardRenderingHelper {
   }
 
   // ---------------------------------------------------------------------------
-  // Conversion (text → card JSON via second LLM call)
-  // ---------------------------------------------------------------------------
-
-  /** Convert text → card JSON via second LLM call, then render to segments. Returns null on failure. */
-  async convertAndRenderCard(
-    responseText: string,
-    sessionId: string,
-    providerName?: string,
-  ): Promise<{ segments: MessageSegment[]; textForHistory: string } | null> {
-    try {
-      logger.info('[CardRenderingHelper] Converting response to card format via LLM');
-      const cardJson = await this.convertToCardFormat(responseText, sessionId);
-      logger.debug(`[CardRenderingHelper] Card format text: ${cardJson}`);
-
-      const extracted = extractExpectedJsonFromLlmText(cardJson, { expect: 'array' });
-      if (!extracted) {
-        logger.error('[CardRenderingHelper] Path 2 conversion JSON 提取失败');
-        return null;
-      }
-      let parsed: CardData[];
-      try {
-        parsed = parseCardDeck(extracted);
-      } catch (e) {
-        logger.error(
-          `[CardRenderingHelper] Path 2 parseCardDeck 失败: ${(e as Error).message} | extracted=${extracted.slice(0, 1500)}`,
-        );
-        return null;
-      }
-      return await this.renderParsedCards(parsed, providerName);
-    } catch (error) {
-      logger.error('[CardRenderingHelper] Path 2 conversion/rendering 完全失败:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Convert text response to card format JSON.
-   * Always uses a cheap provider (doubao/deepseek), never the main reply provider.
-   */
-  private async convertToCardFormat(responseText: string, sessionId?: string): Promise<string> {
-    const prompt = this.promptManager.render('llm.reply.convert_to_card', {
-      responseText,
-      cardTypeSpec: getCardTypeSpecForPrompt(),
-      cardDeckNote: getCardDeckNoteForPrompt(),
-    });
-
-    const aiConfig = this.config.getAIConfig();
-    const convertLlmProvider = aiConfig?.taskProviders?.convert ?? aiConfig?.defaultProviders?.llm ?? 'deepseek';
-    const convertLlmModel = aiConfig?.taskProviders?.convertModel ?? '';
-
-    // Log only the meaningful slot (responseText). The static template body
-    // (format rules, type spec, examples) is intentionally suppressed via
-    // verbosePromptLog=false — it's the same on every call.
-    logger.info(`[CardRenderingHelper] card-convert input | length=${responseText.length} | text=${responseText}`);
-
-    const cardResponse = await this.llmService.generateLite(
-      prompt,
-      {
-        temperature: 0.2,
-        maxTokens: 4000,
-        sessionId,
-        model: convertLlmModel,
-        jsonMode: true,
-        verbosePromptLog: false,
-      },
-      convertLlmProvider,
-    );
-
-    logger.debug(`[CardRenderingHelper] Card format conversion completed | responseLength=${cardResponse.text.length}`);
-
-    return cardResponse.text;
-  }
-
-  // ---------------------------------------------------------------------------
   // Detection / extraction utilities
   // ---------------------------------------------------------------------------
 
@@ -194,8 +111,13 @@ export class CardRenderingHelper {
   /**
    * Heuristic: does the text look like it's already markdown-formatted?
    * Triggers on any "strong" markdown signal — heading, code fence, table row, blockquote.
-   * Weak signals (bold, list, inline code) are intentionally ignored to avoid false positives
-   * on conversational prose that happens to use a single `**word**` or bullet.
+   * Weak signals (bold, list, inline code) are intentionally ignored to avoid false
+   * positives on conversational prose that happens to use a single `**word**` or bullet.
+   *
+   * Why this matters: long plain prose should ship as a forward message (multi-bubble
+   * wrapper) rather than getting stuffed into a markdown card — cards exist to render
+   * structured content, not to hide every long reply. ResponseDispatchStage gates the
+   * markdown-card branch on this check.
    */
   looksLikeMarkdown(text: string): boolean {
     if (/^#{1,6}\s+\S/m.test(text)) return true; // ATX heading
@@ -261,74 +183,62 @@ export class CardRenderingHelper {
   // ---------------------------------------------------------------------------
 
   /**
-   * Handle card reply with context: set reply on context, run hook, return boolean.
+   * Handle card reply with context: set reply on context if the text is card-able,
+   * otherwise return false so the caller can ship the original prose as a forward
+   * or direct text message.
+   *
+   * Two card-eligible shapes:
+   *   1. Text parses as card-deck JSON → render JSON.
+   *   2. Text looks markdown-formatted → render markdown card.
+   * Plain prose intentionally returns false — long prose belongs in a forward
+   * message, not a card image.
    */
   async handleCardReplyWithContext(
     responseText: string,
-    sessionId: string,
+    _sessionId: string,
     context: HookContext,
     providerName?: string,
   ): Promise<boolean> {
-    if (!this.shouldUseCardReply(responseText)) {
-      return false;
-    }
+    if (!this.shouldUseCardReply(responseText)) return false;
     if (this.looksLikeCardJson(responseText)) {
-      logger.info('[CardRenderingHelper] Text already looks like card JSON, rendering directly (skipping conversion)');
       const cleanJson = extractExpectedJsonFromLlmText(responseText, { expect: 'array' }) ?? responseText;
       const directResult = await this.renderCardJsonToSegments(cleanJson, providerName).catch(() => null);
       if (directResult) {
         this.setCardReplyOnContext(context, directResult.segments, directResult.textForHistory);
-        logger.info('[CardRenderingHelper] Card image rendered and stored in reply');
         await this.hookManager.execute('onAIGenerationComplete', context);
         return true;
       }
     }
     if (this.looksLikeMarkdown(responseText)) {
-      logger.info('[CardRenderingHelper] Text is markdown-formatted, rendering directly (skipping LLM conversion)');
       const mdResult = await this.renderMarkdownDirect(responseText, providerName).catch(() => null);
       if (mdResult) {
         this.setCardReplyOnContext(context, mdResult.segments, mdResult.textForHistory);
-        logger.info('[CardRenderingHelper] Markdown card rendered and stored in reply');
         await this.hookManager.execute('onAIGenerationComplete', context);
         return true;
       }
     }
-    const cardResult = await this.convertAndRenderCard(responseText, sessionId, providerName);
-    if (!cardResult) {
-      return false;
-    }
-    this.setCardReplyOnContext(context, cardResult.segments, cardResult.textForHistory);
-    logger.info('[CardRenderingHelper] Card image rendered and stored in reply');
-    await this.hookManager.execute('onAIGenerationComplete', context);
-    return true;
+    return false;
   }
 
   /**
-   * Handle card reply without context: return { segments, textForHistory } or null.
+   * Handle card reply without context: return { segments, textForHistory } when the
+   * text is card-able, null otherwise. Same eligibility rules as
+   * `handleCardReplyWithContext` — plain prose → null so caller ships it directly.
    */
   async handleCardReplyWithoutContext(
     responseText: string,
-    sessionId: string,
+    _sessionId: string,
     providerName?: string,
   ): Promise<{ segments: MessageSegment[]; textForHistory: string } | null> {
-    if (!this.shouldUseCardReply(responseText)) {
-      return null;
-    }
+    if (!this.shouldUseCardReply(responseText)) return null;
     if (this.looksLikeCardJson(responseText)) {
-      logger.info('[CardRenderingHelper] Text already looks like card JSON, rendering directly (skipping conversion)');
       const cleanJson = extractExpectedJsonFromLlmText(responseText, { expect: 'array' }) ?? responseText;
       const directResult = await this.renderCardJsonToSegments(cleanJson, providerName).catch(() => null);
-      if (directResult) {
-        return directResult;
-      }
+      if (directResult) return directResult;
     }
     if (this.looksLikeMarkdown(responseText)) {
-      logger.info('[CardRenderingHelper] Text is markdown-formatted, rendering directly (skipping LLM conversion)');
-      const mdResult = await this.renderMarkdownDirect(responseText, providerName).catch(() => null);
-      if (mdResult) {
-        return mdResult;
-      }
+      return this.renderMarkdownDirect(responseText, providerName).catch(() => null);
     }
-    return this.convertAndRenderCard(responseText, sessionId, providerName);
+    return null;
   }
 }

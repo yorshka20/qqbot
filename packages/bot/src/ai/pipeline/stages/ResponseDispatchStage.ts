@@ -16,9 +16,13 @@ import type { ReplyStage } from '../types';
  *
  * Path 1: send_card executor already rendered and queued the card (cardSent=true)
  * Path 1.5: send_card was called but rendering failed (cardSendFailedReason set) → fall through to Path 2
- * Path 2a: Long markdown text → render directly as markdown card (no LLM conversion)
- * Path 2b: Long non-markdown text → secondary LLM converts to card JSON → render
- * Path 3: Plain prose — always uses ctx.responseText (never outputs failed/repaired JSON)
+ * Path 2a: Long + markdown-formatted text → render as markdown card image.
+ * Path 2b: Long + plain prose → force sendAsForward (override group config) and ship
+ *          the original prose. Long plain text shouldn't be stuffed into a card —
+ *          that's what forward messages are for. Falls through to Path 3 for the
+ *          actual reply assembly.
+ * Path 3: Plain text reply — uses ctx.responseText (never outputs failed/repaired JSON).
+ *         ReplyPrepareSystem reads explicitSendAsForward set in Path 2b.
  *
  * Fires `onAIGenerationComplete` hook and appends task result images when present.
  */
@@ -44,7 +48,7 @@ export class ResponseDispatchStage implements ReplyStage {
     // Path 1.5: send_card was called but rendering failed → fall through to Path 2
     if (cardSendFailedReason) {
       logger.warn(
-        `[ResponseDispatchStage] send_card 渲染失败 (${cardSendFailedReason})，fall through 到 Path 2 conversion`,
+        `[ResponseDispatchStage] send_card 渲染失败 (${cardSendFailedReason})，fall through 到 Path 2 markdown render`,
       );
       // Do not return — fall through to Path 2
     }
@@ -52,36 +56,29 @@ export class ResponseDispatchStage implements ReplyStage {
     // Skip card rendering when the response contains a command (e.g. /nai-plus ...)
     const containsCommand = MessageUtils.isCommand(ctx.responseText);
 
-    // Path 2: Long text → render as card image
+    // Path 2: Long text. Only markdown-formatted content gets card-rendered;
+    // plain prose is forwarded instead so we don't stuff every long reply into
+    // a card image. The send_card tool is the model's lever for "I want a
+    // structured card"; not using it means "ship as prose".
     if (!containsCommand && this.cardHelper.shouldUseCardReply(ctx.responseText)) {
-      // Path 2a: Text is already markdown-formatted → render directly as markdown card
-      // (skips the LLM conversion, preserves the model's layout verbatim)
       if (this.cardHelper.looksLikeMarkdown(ctx.responseText)) {
+        // Path 2a: markdown → card
         const mdResult = await this.cardHelper
           .renderMarkdownDirect(ctx.responseText, ctx.actualProvider)
           .catch(() => null);
         if (mdResult) {
-          logger.info('[ResponseDispatchStage] Path 2a: markdown rendered directly as card');
           this.cardHelper.setCardReplyOnContext(hookContext, mdResult.segments, mdResult.textForHistory);
           await this.hookManager.execute('onAIGenerationComplete', hookContext);
           this.appendToolResultImages(ctx);
           return;
         }
+        logger.warn('[ResponseDispatchStage] Path 2a markdown 渲染失败，fallback 到 Path 2b forward');
       }
-
-      // Path 2b: Non-markdown long text → convert to card JSON via secondary LLM call
-      const cardResult = await this.cardHelper.convertAndRenderCard(
-        ctx.responseText,
-        ctx.sessionId,
-        ctx.actualProvider,
-      );
-      if (cardResult) {
-        this.cardHelper.setCardReplyOnContext(hookContext, cardResult.segments, cardResult.textForHistory);
-        await this.hookManager.execute('onAIGenerationComplete', hookContext);
-        this.appendToolResultImages(ctx);
-        return;
-      }
-      logger.error('[ResponseDispatchStage] Path 2 conversion 完全失败，fallback 到 Path 3 plain prose');
+      // Path 2b: long plain prose → force forward (overrides groupUseForwardMsg=false);
+      // fall through to Path 3 which assembles the final text reply. Forward keeps
+      // long replies from spamming the group while preserving the original prose.
+      hookContext.metadata.set('explicitSendAsForward', true);
+      logger.info('[ResponseDispatchStage] Path 2b: long plain prose → explicitSendAsForward=true');
     }
 
     // Path 3: plain prose — always use ctx.responseText (original LLM prose), never output failed JSON

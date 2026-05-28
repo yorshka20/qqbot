@@ -1,8 +1,6 @@
 import { injectable } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
 import { CardRenderingHelper } from '@/ai/pipeline/helpers/CardRenderingHelper';
-import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { LLMService } from '@/ai/services/LLMService';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
@@ -44,15 +42,8 @@ export class CardFormatToolExecutor extends BaseToolExecutor {
     if (!this._cardHelper) {
       const container = getContainer();
       const aiManager = container.resolve<AIManager>(DITokens.AI_MANAGER);
-      const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
-      const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
       const hookManager = container.resolve<HookManager>(DITokens.HOOK_MANAGER);
-      this._cardHelper = new CardRenderingHelper(
-        new CardRenderingService(aiManager),
-        llmService,
-        promptManager,
-        hookManager,
-      );
+      this._cardHelper = new CardRenderingHelper(new CardRenderingService(aiManager), hookManager);
     }
     return this._cardHelper;
   }

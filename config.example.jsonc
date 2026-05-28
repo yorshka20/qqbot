@@ -667,9 +667,6 @@
       // Provider for lightweight/fast LLM calls (prefix-invitation, analysis)
       // "lite": "deepseek",
       // "liteModel": "deepseek-chat",
-      // Provider for convert-to-card LLM calls
-      // "convert": "deepseek",
-      // "convertModel": "deepseek-chat",
       // Provider for article analysis (no fallback, retry-only — cost-sensitive batch task)
       "articleAnalysis": "doubao"
       // "articleAnalysisModel": "",

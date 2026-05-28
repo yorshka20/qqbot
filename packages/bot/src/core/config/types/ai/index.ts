@@ -70,10 +70,6 @@ export interface TaskProvidersConfig {
   lite?: string;
   /** Model override for lite provider (optional) */
   liteModel?: string;
-  /** Provider for convert-to-card LLM calls */
-  convert?: string;
-  /** Model override for convert provider (optional) */
-  convertModel?: string;
   /**
    * Provider for article analysis (WeChatArticleAnalysisService).
    * Uses generateFixed (no fallback, retry-only) — ideal for cost-sensitive batch tasks.

@@ -23,7 +23,8 @@ function makeSegments(): MessageSegment[] {
 function makeCardHelper(overrides: Partial<CardRenderingHelper> = {}): CardRenderingHelper {
   return {
     shouldUseCardReply: vi.fn().mockReturnValue(false),
-    convertAndRenderCard: vi.fn().mockResolvedValue(null),
+    looksLikeMarkdown: vi.fn().mockReturnValue(false),
+    renderMarkdownDirect: vi.fn().mockResolvedValue(null),
     setCardReplyOnContext: vi.fn(),
     looksLikeCardJson: vi.fn().mockReturnValue(false),
     extractReadableTextFromCardJson: vi.fn().mockReturnValue('readable'),
@@ -71,7 +72,7 @@ afterEach(() => {
 
 describe('ResponseDispatchStage', () => {
   describe('Path 1: cardSent=true', () => {
-    it('skips convertAndRenderCard and returns early when cardSent is true', async () => {
+    it('skips markdown render and returns early when cardSent is true', async () => {
       const hookContext = makeHookContext({ cardSent: true });
       const cardHelper = makeCardHelper();
       const hookManager = makeHookManager();
@@ -80,19 +81,20 @@ describe('ResponseDispatchStage', () => {
 
       await stage.execute(ctx);
 
-      expect(cardHelper.convertAndRenderCard).not.toHaveBeenCalled();
+      expect(cardHelper.renderMarkdownDirect).not.toHaveBeenCalled();
       expect(hookManager.execute).not.toHaveBeenCalled();
     });
   });
 
   describe('Path 1.5: cardSendFailedReason set — falls through to Path 2', () => {
-    it('attempts convertAndRenderCard when cardSendFailedReason is set', async () => {
+    it('attempts markdown render when text looks like markdown after send_card failure', async () => {
       const hookContext = makeHookContext({ cardSendFailedReason: 'puppeteer crashed' });
       const cardHelper = makeCardHelper({
         shouldUseCardReply: vi.fn().mockReturnValue(true),
-        convertAndRenderCard: vi.fn().mockResolvedValue({
+        looksLikeMarkdown: vi.fn().mockReturnValue(true),
+        renderMarkdownDirect: vi.fn().mockResolvedValue({
           segments: makeSegments(),
-          textForHistory: '[]',
+          textForHistory: 'a'.repeat(200),
         }),
       });
       const hookManager = makeHookManager();
@@ -101,20 +103,59 @@ describe('ResponseDispatchStage', () => {
 
       await stage.execute(ctx);
 
-      expect(cardHelper.convertAndRenderCard).toHaveBeenCalledTimes(1);
+      expect(cardHelper.renderMarkdownDirect).toHaveBeenCalledTimes(1);
     });
   });
 
-  describe('Path 2: long text → card conversion', () => {
-    it('calls convertAndRenderCard and setCardReplyOnContext on success', async () => {
+  describe('Path 2a: long + markdown → markdown card', () => {
+    it('calls renderMarkdownDirect and setCardReplyOnContext on success', async () => {
       const hookContext = makeHookContext();
       const cardSegments = makeSegments();
       const cardHelper = makeCardHelper({
         shouldUseCardReply: vi.fn().mockReturnValue(true),
-        convertAndRenderCard: vi.fn().mockResolvedValue({
+        looksLikeMarkdown: vi.fn().mockReturnValue(true),
+        renderMarkdownDirect: vi.fn().mockResolvedValue({
           segments: cardSegments,
-          textForHistory: '[]',
+          textForHistory: 'original',
         }),
+      });
+      const hookManager = makeHookManager();
+      const stage = new ResponseDispatchStage(cardHelper, hookManager);
+      const ctx = makePipelineContext('# heading\n'.repeat(20), hookContext);
+
+      await stage.execute(ctx);
+
+      expect(cardHelper.setCardReplyOnContext).toHaveBeenCalledWith(hookContext, cardSegments, 'original');
+      expect(hookManager.execute).toHaveBeenCalledWith('onAIGenerationComplete', hookContext);
+    });
+
+    it('falls through to Path 2b/3 when renderMarkdownDirect returns null', async () => {
+      const hookContext = makeHookContext();
+      const cardHelper = makeCardHelper({
+        shouldUseCardReply: vi.fn().mockReturnValue(true),
+        looksLikeMarkdown: vi.fn().mockReturnValue(true),
+        renderMarkdownDirect: vi.fn().mockResolvedValue(null),
+      });
+      const hookManager = makeHookManager();
+      const stage = new ResponseDispatchStage(cardHelper, hookManager);
+      const ctx = makePipelineContext(`# heading\n${'a'.repeat(200)}`, hookContext);
+
+      await stage.execute(ctx);
+
+      // Path 3 fires onAIGenerationComplete; no card was set
+      expect(hookManager.execute).toHaveBeenCalledWith('onAIGenerationComplete', hookContext);
+      expect(cardHelper.setCardReplyOnContext).not.toHaveBeenCalled();
+      // Path 2b forces forward when card path fails
+      expect(hookContext.metadata.get('explicitSendAsForward')).toBe(true);
+    });
+  });
+
+  describe('Path 2b: long + plain prose → explicitSendAsForward', () => {
+    it('sets explicitSendAsForward=true and falls through to Path 3 (no markdown render call)', async () => {
+      const hookContext = makeHookContext();
+      const cardHelper = makeCardHelper({
+        shouldUseCardReply: vi.fn().mockReturnValue(true),
+        looksLikeMarkdown: vi.fn().mockReturnValue(false),
       });
       const hookManager = makeHookManager();
       const stage = new ResponseDispatchStage(cardHelper, hookManager);
@@ -122,26 +163,10 @@ describe('ResponseDispatchStage', () => {
 
       await stage.execute(ctx);
 
-      expect(cardHelper.setCardReplyOnContext).toHaveBeenCalledWith(hookContext, cardSegments, '[]');
-      expect(hookManager.execute).toHaveBeenCalledWith('onAIGenerationComplete', hookContext);
-    });
-
-    it('falls through to Path 3 when convertAndRenderCard returns null', async () => {
-      const hookContext = makeHookContext();
-      const cardHelper = makeCardHelper({
-        shouldUseCardReply: vi.fn().mockReturnValue(true),
-        convertAndRenderCard: vi.fn().mockResolvedValue(null),
-      });
-      const hookManager = makeHookManager();
-      const stage = new ResponseDispatchStage(cardHelper, hookManager);
-      const ctx = makePipelineContext('original prose text here', hookContext);
-
-      await stage.execute(ctx);
-
-      // Path 3: onAIGenerationComplete should still be called
-      expect(hookManager.execute).toHaveBeenCalledWith('onAIGenerationComplete', hookContext);
-      // setCardReplyOnContext must NOT be called
+      expect(cardHelper.renderMarkdownDirect).not.toHaveBeenCalled();
       expect(cardHelper.setCardReplyOnContext).not.toHaveBeenCalled();
+      expect(hookContext.metadata.get('explicitSendAsForward')).toBe(true);
+      expect(hookManager.execute).toHaveBeenCalledWith('onAIGenerationComplete', hookContext);
     });
   });
 
