@@ -67,6 +67,38 @@ function withHardTimeout<T>(p: Promise<T>, timeoutMs: number, label: string): Pr
 }
 
 /**
+ * Errors that warrant a same-provider retry before falling back. Covers
+ * server-side overload (5xx, rate-limit) and socket-level blips where the
+ * response was cut mid-read — observed when DeepSeek's reasoning stalls past
+ * an intermediate proxy's ~60s idle timeout, surfacing as
+ * "Failed to parse JSON response: The socket connection was closed unexpectedly".
+ *
+ * Excludes 4xx (client error — retry won't help). Hard-timeouts and
+ * AbortError are handled separately via `retryOnTimeout` so the synchronous
+ * `generate()` path can fall back faster while background `generateFixed()`
+ * jobs can still ride out a slow first attempt.
+ */
+const TRANSIENT_LLM_ERROR_PATTERNS: RegExp[] = [
+  /\b429\b/,
+  /\brate[\s_-]?limit/i,
+  /\b50[234]\b/,
+  /socket.*(closed|hang[\s_-]?up)/i,
+  /\b(ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|ENOTFOUND|EAI_AGAIN)\b/,
+  /Failed to parse JSON response/i,
+  /closed unexpectedly/i,
+];
+
+const HARD_TIMEOUT_PATTERN = /hard-timeout|Request timeout/i;
+
+function isTransientLLMError(err: Error, opts?: { retryOnTimeout?: boolean }): boolean {
+  const msg = err.message;
+  if (HARD_TIMEOUT_PATTERN.test(msg) || err.name === 'AbortError') {
+    return opts?.retryOnTimeout ?? false;
+  }
+  return TRANSIENT_LLM_ERROR_PATTERNS.some((p) => p.test(msg));
+}
+
+/**
  * LLM Service
  * Provides LLM text generation capability
  */
@@ -87,6 +119,43 @@ export class LLMService {
   ) {
     this.config = config ?? { toolUseProviders: [], fallback: { fallbackOrder: [] } };
     this.rateLimiter = new TokenRateLimiter(this.config.rateLimit);
+  }
+
+  /**
+   * Run a provider operation with same-provider transient retry. Returns
+   * the op result on success, or throws the last error after retries are
+   * exhausted (or immediately, for non-transient errors). Callers handle
+   * fallback after this throws.
+   *
+   * In-flight retries are silent — `markServiceUnhealthy` is left to the
+   * caller so a single network blip doesn't blacklist a provider for
+   * concurrent requests. Only the final, propagated failure should mark
+   * the provider unhealthy.
+   */
+  private async runWithProviderRetry<T>(
+    providerName: string,
+    op: () => Promise<T>,
+    opts?: { maxRetries?: number; retryDelayMs?: number; opLabel?: string; retryOnTimeout?: boolean },
+  ): Promise<T> {
+    const maxRetries = opts?.maxRetries ?? 1;
+    const retryDelayMs = opts?.retryDelayMs ?? 1500;
+    const label = opts?.opLabel ?? 'generate';
+
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await op();
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt >= maxRetries) break;
+        if (!isTransientLLMError(lastError, { retryOnTimeout: opts?.retryOnTimeout })) break;
+        logger.warn(
+          `[LLMService] ${label} on "${providerName}" transient error, retrying (${attempt + 1}/${maxRetries}): ${lastError.message}`,
+        );
+        await new Promise((r) => setTimeout(r, retryDelayMs));
+      }
+    }
+    throw lastError ?? new Error(`[LLMService] ${label} failed`);
   }
 
   /**
@@ -326,50 +395,31 @@ export class LLMService {
     await this.rateLimiter.waitForCapacity(estimatedTokens, providerName);
     this.logLLMPrompt(providerName, prompt, options);
 
-    let lastError: Error | undefined;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const hardTimeoutMs = options?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
-        const result = await withHardTimeout(
-          provider.generate(prompt, options),
-          hardTimeoutMs,
-          `generateFixed:${providerName}`,
-        );
-        if (result.usage) {
-          this.rateLimiter.recordUsage(result.usage.totalTokens, providerName);
-        }
-        this.logLLMUsage(providerName, prompt, options, result);
-        this.healthCheckManager?.markServiceHealthy(providerName);
-        result.resolvedProviderName = providerName;
-        return result;
-      } catch (err) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-        const isTransient =
-          lastError.message.includes('timeout') ||
-          lastError.name === 'AbortError' ||
-          lastError.message.includes('429') ||
-          lastError.message.includes('rate') ||
-          lastError.message.includes('503') ||
-          lastError.message.includes('502');
-
-        if (isTransient && attempt < maxRetries) {
-          logger.warn(
-            `[LLMService] generateFixed: provider "${providerName}" transient error (attempt ${attempt + 1}/${maxRetries}): ${lastError.message}`,
+    try {
+      const result = await this.runWithProviderRetry(
+        providerName,
+        async () => {
+          const hardTimeoutMs = options?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
+          return await withHardTimeout(
+            provider.generate(prompt, options),
+            hardTimeoutMs,
+            `generateFixed:${providerName}`,
           );
-          await new Promise((r) => setTimeout(r, retryDelayMs));
-          continue;
-        }
-
-        // Non-transient error or retries exhausted
-        this.healthCheckManager?.markServiceUnhealthy(providerName, lastError.message);
-        break;
+        },
+        { maxRetries, retryDelayMs, opLabel: 'generateFixed', retryOnTimeout: true },
+      );
+      if (result.usage) {
+        this.rateLimiter.recordUsage(result.usage.totalTokens, providerName);
       }
+      this.logLLMUsage(providerName, prompt, options, result);
+      this.healthCheckManager?.markServiceHealthy(providerName);
+      result.resolvedProviderName = providerName;
+      return result;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.healthCheckManager?.markServiceUnhealthy(providerName, error.message);
+      throw error;
     }
-
-    throw (
-      lastError ??
-      new Error(`[LLMService] generateFixed: provider "${providerName}" failed after ${maxRetries} retries`)
-    );
   }
 
   /**
@@ -397,11 +447,17 @@ export class LLMService {
     this.logLLMPrompt(resolvedName, prompt, effectiveOptions);
 
     try {
-      const hardTimeoutMs = effectiveOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
-      const result = await withHardTimeout(
-        provider.generate(prompt, effectiveOptions),
-        hardTimeoutMs,
-        `generate:${resolvedName}`,
+      const result = await this.runWithProviderRetry(
+        resolvedName,
+        async () => {
+          const hardTimeoutMs = effectiveOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
+          return await withHardTimeout(
+            provider.generate(prompt, effectiveOptions),
+            hardTimeoutMs,
+            `generate:${resolvedName}`,
+          );
+        },
+        { opLabel: 'generate' },
       );
       // Record actual token usage for rate limiting
       if (result.usage) {
@@ -459,11 +515,17 @@ export class LLMService {
     this.logLLMPrompt(resolvedName, prompt, mergedOptions);
 
     try {
-      const hardTimeoutMs = mergedOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
-      const result = await withHardTimeout(
-        this.invokeLiteGeneration(provider, prompt, mergedOptions),
-        hardTimeoutMs,
-        `generateLite:${resolvedName}`,
+      const result = await this.runWithProviderRetry(
+        resolvedName,
+        async () => {
+          const hardTimeoutMs = mergedOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
+          return await withHardTimeout(
+            this.invokeLiteGeneration(provider, prompt, mergedOptions),
+            hardTimeoutMs,
+            `generateLite:${resolvedName}`,
+          );
+        },
+        { opLabel: 'generateLite' },
       );
       this.logLLMUsage(resolvedName, prompt, mergedOptions, result);
       this.healthCheckManager?.markServiceHealthy(resolvedName);
