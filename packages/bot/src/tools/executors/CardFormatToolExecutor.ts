@@ -30,8 +30,26 @@ import { BaseToolExecutor } from './BaseToolExecutor';
       type: 'array',
       required: true,
       items: { type: 'object' },
-      description:
-        '卡片数据数组。每项为一个卡片对象（type=paragraph/list/comparison/highlight/qa/steps/knowledge/stats/quote/info/image 之一），字段定义参考系统已知的 CardData schema。',
+      description: `卡片数组。每项 = 一个 CardData 对象。**字段必须严格按下面 schema**，多余字段或类型不符会被拒绝。一次可塞多个卡片串成一组。
+
+可用 type：
+- paragraph: { type, content }                     — 一段自然文本（多段就用多个 paragraph）
+- list:      { type, title, items: string[], emoji? } — 标题 + 列表项；items 必须是字符串数组，不要嵌套对象
+- steps:     { type, title, steps: string[] }       — 有序步骤；同样字符串数组
+- qa:        { type, question, answer }             — 一问一答
+- knowledge: { type, term, definition, examples?: string[] } — 单个术语定义；多术语用多个 knowledge 卡
+- comparison:{ type, title, leftHeader, rightHeader, items: [{label, left, right}] } — 双列对比表
+- stats:     { type, title, data: [{label, value, highlight?: boolean}] } — 数据展示
+- highlight: { type, title, summary, detail? }      — 单条结论 / 重点
+- quote:     { type, text, source? }                — 引用
+- info:      { type, title, content, level: 'info'|'warning'|'success'|'tip' } — 提示框
+- markdown:  { type, content, title? }              — 直接写 GFM markdown（heading/list/table/code/quote 都支持），系统会原样渲染。**当结构复杂、上述 type 套不进去时用 markdown 兜底**
+
+组合示例：
+- 概念科普 → [knowledge] 或 [paragraph, list]
+- 怎么做 → [steps] 或 [paragraph, steps]
+- 多角度讲解 → [paragraph, list, highlight] 一组
+- 临时拿不准 type → [markdown] 一卡解决`,
     },
   },
 })
