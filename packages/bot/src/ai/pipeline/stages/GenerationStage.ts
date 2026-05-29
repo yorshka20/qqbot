@@ -85,6 +85,17 @@ export class GenerationStage implements ReplyStage {
     context.metadata.delete('cardSent');
     context.metadata.delete('cardSendFailedReason');
 
+    // Stamp the active provider so tool executors (notably send_card) can
+    // attribute their output to whoever is actually generating this turn.
+    // Without this, send_card falls back to the global default LLM provider
+    // and the card footer shows the wrong name when the requested provider
+    // was overridden upstream (e.g. `claude:` prefix → anthropic).
+    if (selectedProviderName) {
+      context.metadata.set('activeProvider', selectedProviderName);
+    } else {
+      context.metadata.delete('activeProvider');
+    }
+
     const toolExecutor = (call: { name: string; arguments: string }) =>
       executeSkillCall(call, context, this.toolManager, this.hookManager);
 

@@ -91,7 +91,12 @@ export class CardFormatToolExecutor extends BaseToolExecutor {
 
     try {
       const cardHelper = this.getCardHelper();
-      const result = await cardHelper.renderParsedCards(validated);
+      // Stamp the card with whoever is actually generating this turn (set by
+      // GenerationStage). Without this the card defaults to the global
+      // default LLM provider — wrong footer when the active provider was
+      // overridden (e.g. `claude:` prefix → anthropic).
+      const activeProvider = context.hookContext?.metadata.get('activeProvider');
+      const result = await cardHelper.renderParsedCards(validated, activeProvider);
       if (context.hookContext) {
         cardHelper.setCardReplyOnContext(context.hookContext, result.segments, result.textForHistory);
         context.hookContext.metadata.set('cardSent', true);

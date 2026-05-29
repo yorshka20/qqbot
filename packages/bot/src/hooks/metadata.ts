@@ -66,6 +66,15 @@ export interface HookContextMetadata {
   /** Reply tags extracted from LLM reply via parseSubtextTags (META tag items). */
   replyTagsMeta?: string[];
   /**
+   * Provider name currently driving the reply generation (e.g. 'anthropic',
+   * 'deepseek'). Set by GenerationStage before the LLM call so tool
+   * executors invoked mid-generation (e.g. send_card) can stamp the right
+   * provider on their output. Without this, send_card defaults to the
+   * global default LLM provider, producing wrong-provider footers when
+   * the active provider was overridden upstream (e.g. via `claude:` prefix).
+   */
+  activeProvider?: string;
+  /**
    * Reply complexity routing decision: `'quick'` skips the model's reasoning
    * budget on eligible providers (configured via `ai.chat.replyModeProviders`,
    * default `['deepseek', 'doubao']`), so casual chat doesn't pay the
@@ -98,6 +107,7 @@ const DEFAULT_METADATA: Required<
     | 'replySubtext'
     | 'replyTagsMeta'
     | 'replyMode'
+    | 'activeProvider'
   >
 > = {
   sessionId: '',
@@ -133,6 +143,7 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'replySubtext',
   'replyTagsMeta',
   'replyMode',
+  'activeProvider',
 ];
 
 /**
