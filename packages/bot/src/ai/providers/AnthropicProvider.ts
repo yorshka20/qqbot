@@ -117,15 +117,11 @@ const ANTHROPIC_WEB_SEARCH_MAX_USES = 5;
 const ANTHROPIC_PAUSE_TURN_MAX_CONTINUATIONS = 3;
 
 /**
- * Some newer Anthropic models (e.g. Claude Opus 4.7) reject the Messages API `temperature` field.
+ * Claude 4.x models reject the Messages API `temperature` field.
+ * Match patterns like claude-opus-4-7, claude-sonnet-4-8-20250528, etc.
  */
 function anthropicModelAcceptsTemperature(model: string): boolean {
-  const m = model.toLowerCase();
-  // e.g. claude-opus-4-7, claude-sonnet-4-7-20250514
-  if (m.includes('-4-7')) {
-    return false;
-  }
-  return true;
+  return !/claude-\w+-4-\d/.test(model.toLowerCase());
 }
 
 function toAnthropicTextBlocks(text: string): AnthropicTextBlock[] {
