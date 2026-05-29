@@ -225,6 +225,7 @@ export class MessageAPI {
     groupId: number | string,
     message: string | unknown[],
     protocol: ProtocolName,
+    timeout?: number,
   ): Promise<number> {
     const normalizedGroupId = this.normalizeChatId(groupId);
     const segments = this.normalizeToSegments(message);
@@ -240,6 +241,7 @@ export class MessageAPI {
           message: batches[i],
         },
         protocol,
+        timeout,
       );
       const messageId = result.message_seq ?? result.message_id;
       if (messageId === undefined) {

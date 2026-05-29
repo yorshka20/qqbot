@@ -18,6 +18,15 @@ export interface PrecomputedReportStats {
   hourlyActivity: HourlyActivity[];
 }
 
+/**
+ * Group-report images are large base64 payloads. The QQ send API frequently
+ * ack-times-out around 10–60 s even though the image actually uploaded
+ * successfully — leading to the LLM seeing a "send failed" tool result and
+ * retrying, producing duplicate sends. 180 s gives the ack plenty of room.
+ */
+const SEND_TIMEOUT_MS = 180_000;
+const TIMEOUT_ERROR_PATTERN = /timeout|timed out/i;
+
 export class GroupReportToolExecutor implements ToolExecutor {
   name = 'render_group_report';
 
@@ -91,12 +100,21 @@ export class GroupReportToolExecutor implements ToolExecutor {
       mb.image({ data: base64 });
       const segments = mb.build();
 
-      await this.messageAPI.sendGroupMessage(Number(groupId), segments, 'milky');
+      await this.messageAPI.sendGroupMessage(Number(groupId), segments, 'milky', SEND_TIMEOUT_MS);
       logger.info(`[GroupReportTool] Report image sent to group ${groupId}`);
 
       return this.success('群聊每日汇报图片已成功发送到群内。');
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
+      // Timeout on send_group_msg almost always means "image uploaded fine,
+      // ack was just slow" — retrying makes the LLM re-render and re-send,
+      // resulting in duplicate posts. Swallow timeouts as success so the
+      // LLM doesn't loop. Real failures (auth, format, etc.) return errors
+      // promptly with non-timeout messages and still surface here.
+      if (TIMEOUT_ERROR_PATTERN.test(errMsg)) {
+        logger.warn(`[GroupReportTool] send timed out (${errMsg}); assuming image arrived, not retrying`);
+        return this.success('群聊每日汇报图片已发送（API 响应超时但通常已送达，未重试以避免重发）。');
+      }
       logger.error(`[GroupReportTool] Failed to render/send report:`, err);
       return this.error(`渲染或发送报告失败: ${errMsg}`, errMsg);
     }
@@ -105,6 +123,8 @@ export class GroupReportToolExecutor implements ToolExecutor {
   /**
    * Render report data as image and send to group.
    * Called directly by the plugin for batched analysis flow (bypasses tool call).
+   * Mirrors execute()'s timeout handling: swallows timeouts because the image
+   * almost certainly arrived even when the ack times out.
    */
   async renderAndSend(data: GroupReportData, groupId: string): Promise<void> {
     logger.info(`[GroupReportTool] Rendering report for group ${groupId} (direct call)`);
@@ -115,8 +135,17 @@ export class GroupReportToolExecutor implements ToolExecutor {
     mb.image({ data: base64 });
     const segments = mb.build();
 
-    await this.messageAPI.sendGroupMessage(Number(groupId), segments, 'milky');
-    logger.info(`[GroupReportTool] Report image sent to group ${groupId}`);
+    try {
+      await this.messageAPI.sendGroupMessage(Number(groupId), segments, 'milky', SEND_TIMEOUT_MS);
+      logger.info(`[GroupReportTool] Report image sent to group ${groupId}`);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (TIMEOUT_ERROR_PATTERN.test(errMsg)) {
+        logger.warn(`[GroupReportTool] send timed out (${errMsg}); assuming image arrived`);
+        return;
+      }
+      throw err;
+    }
   }
 
   /**
