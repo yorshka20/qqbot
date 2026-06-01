@@ -6,6 +6,7 @@ import { APIContext } from '@/api/types';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import type { WebSocketConnection } from '@/core/connection';
 import type { NormalizedMessageEvent } from '@/events/types';
+import { MessageParser } from '@/message/MessageParser';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { resolveAction } from '../base/ProtocolAdapter';
@@ -83,6 +84,17 @@ export class MilkyAdapter extends WebSocketProtocolAdapter {
     }));
     const forwardSegment = { type: 'forward' as const, data: { messages: nodes } };
     const { action, params } = resolveAction(target);
+
+    // Archive the original forward content: the protocol delivers (and echoes
+    // back) a forward as an opaque multimsg card, so the per-node text is only
+    // recoverable here, at the single egress. [STATS] tag mirrors the inbound
+    // log; the <=== marker keeps it distinct from received-message counting.
+    const dest = target.messageType === 'group' ? `Group ${target.groupId}` : `Private ${target.userId}`;
+    const archived = messages
+      .map((m) => `${m.senderName ?? 'Bot'}: ${MessageParser.segmentsToText(m.segments)}`)
+      .join(' ｜ ');
+    logger.info(`[STATS] <===========[Forward] ${dest} - ${messages.length} node(s): ${archived}`);
+
     const ctx = new APIContext(action, { ...params, message: [forwardSegment] }, 'milky', timeout);
     return this.sendAPI<SendMessageResult>(ctx);
   }
