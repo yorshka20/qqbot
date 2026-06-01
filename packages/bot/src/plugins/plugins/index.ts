@@ -28,6 +28,7 @@ export * from './NightlyOpsReportPlugin';
 export * from './NsfwModePlugin';
 export * from './NudgePlugin';
 export * from './PersonaCompletionHookPlugin';
+export * from './PortraitPlugin';
 export * from './ProactiveConversationPlugin';
 export * from './ReactionPlugin';
 export * from './ReplyComplexityClassifierPlugin';

@@ -23,6 +23,7 @@ import type { LoggingConfig } from './types/logging';
 import type { MCPConfig } from './types/mcp';
 import type { MemoryConfig } from './types/memory';
 import type { PluginsConfig } from './types/plugins';
+import type { PortraitConfig } from './types/portrait';
 import type { PromptsConfig } from './types/prompts';
 import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './types/protocol';
 import type { RAGConfig } from './types/rag';
@@ -73,6 +74,11 @@ export type {
 } from './types/mcp';
 export type { MemoryConfig } from './types/memory';
 export type { PluginsConfig } from './types/plugins';
+export type {
+  PortraitConfig,
+  PortraitDimensionConfig,
+  PortraitScoreRule,
+} from './types/portrait';
 export type { PromptsConfig } from './types/prompts';
 export type {
   APIConfig,
@@ -131,6 +137,8 @@ export interface BotConfig {
   bilibili?: BilibiliConfig;
   /** Logging settings (optional). Currently supports per-message log filtering. */
   logging?: LoggingConfig;
+  /** Keyword-driven personal portrait (radar chart) system; optional. */
+  portrait?: PortraitConfig;
 }
 
 export class Config {
@@ -460,6 +468,10 @@ export class Config {
 
   getTTSConfig(): TTSConfig | undefined {
     return this.config.tts;
+  }
+
+  getPortraitConfig(): PortraitConfig | undefined {
+    return this.config.portrait;
   }
 
   getMCPConfig(): MCPConfig | undefined {

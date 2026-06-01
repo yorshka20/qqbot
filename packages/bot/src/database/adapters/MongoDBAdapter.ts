@@ -15,6 +15,7 @@ import type {
   Message,
   ModelAccessor,
   ProactiveThreadRecord,
+  UserPortraitScore,
 } from '../models/types';
 
 /**
@@ -214,6 +215,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
       commands: this.db.collection('commands'),
       proactiveThreads: this.db.collection('proactive_threads'),
       bilibiliDanmaku: this.db.collection('bilibili_danmaku'),
+      userPortraitScore: this.db.collection('user_portrait_score'),
     };
 
     // Create indexes
@@ -230,6 +232,9 @@ export class MongoDBAdapter implements DatabaseAdapter {
     await collections.bilibiliDanmaku.createIndex({ roomId: 1, receivedAt: -1 });
     await collections.bilibiliDanmaku.createIndex({ mentionsStreamer: 1, receivedAt: -1 });
     await collections.bilibiliDanmaku.createIndex({ batchId: 1 });
+
+    await collections.userPortraitScore.createIndex({ groupId: 1, userId: 1, dimensionId: 1 }, { unique: true });
+    await collections.userPortraitScore.createIndex({ groupId: 1, dimensionId: 1, score: -1 });
 
     logger.info('[MongoDBAdapter] Migrations completed');
   }
@@ -271,6 +276,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
       ),
       agendaItems: new MongoModelAccessor<AgendaItem>(this.db.collection('agenda_items')),
       bilibiliDanmaku: new MongoModelAccessor<BilibiliDanmakuRecord>(this.db.collection('bilibili_danmaku')),
+      userPortraitScore: new MongoModelAccessor<UserPortraitScore>(this.db.collection('user_portrait_score')),
     };
   }
 }

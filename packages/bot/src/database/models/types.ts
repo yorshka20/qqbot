@@ -169,6 +169,21 @@ export interface AgendaItem extends BaseModel {
 }
 
 /**
+ * Per-(group, user, dimension) score row for the keyword-driven portrait system.
+ * One row per portrait dimension (radar axis) a user has accrued score in. The
+ * radar value is derived at read time (normalized against the group's per-axis
+ * max), never stored. `lastGrantAt` gates the per-dimension cooldown so spamming
+ * keywords can't farm score.
+ */
+export interface UserPortraitScore extends BaseModel {
+  groupId: string;
+  userId: string;
+  dimensionId: string;
+  score: number;
+  lastGrantAt: string; // ISO date string
+}
+
+/**
  * Model accessor interface
  */
 export interface ModelAccessor<T extends BaseModel> {
@@ -223,4 +238,5 @@ export interface DatabaseModel {
   memoryExtractUserCursors: ModelAccessor<MemoryExtractUserCursor>;
   agendaItems: ModelAccessor<AgendaItem>;
   bilibiliDanmaku: ModelAccessor<BilibiliDanmakuRecord>;
+  userPortraitScore: ModelAccessor<UserPortraitScore>;
 }
