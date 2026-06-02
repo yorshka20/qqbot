@@ -10,8 +10,8 @@ import type { ImagePromptService } from './ImagePromptService';
 
 /**
  * Image generation facade — wraps {@link ImageGenerationService} and
- * {@link ImagePromptService} with the standard hook lifecycle
- * (`onMessageBeforeAI` → `onAIGenerationStart` → generate → `onAIGenerationComplete`).
+ * {@link ImagePromptService} with the image-generation hook lifecycle
+ * (`onAIGenerationStart` → generate → `onAIGenerationComplete`).
  * Handles text-to-image, image-to-image, and I2V prompt preparation.
  */
 export class ImageFacadeService {
@@ -23,7 +23,7 @@ export class ImageFacadeService {
 
   /**
    * Generate image from text prompt.
-   * Runs hook lifecycle (onMessageBeforeAI → onAIGenerationStart → fn → onAIGenerationComplete).
+   * Runs hook lifecycle (onAIGenerationStart → fn → onAIGenerationComplete).
    */
   async generateImg(
     context: HookContext,
@@ -32,7 +32,7 @@ export class ImageFacadeService {
     skipLLMProcess?: boolean,
     templateName?: string,
   ): Promise<ImageGenerationResponse> {
-    return this.runWithHooks(context, 'Image generation interrupted by hook', async (sessionId) => {
+    return this.runWithHooks(context, async (sessionId) => {
       if (!options?.prompt) {
         throw new Error('options.prompt must be provided by caller');
       }
@@ -76,7 +76,7 @@ export class ImageFacadeService {
     useLLMPreprocess?: boolean,
     templateName?: string,
   ): Promise<ImageGenerationResponse> {
-    return this.runWithHooks(context, 'Image transformation interrupted by hook', async (sessionId) => {
+    return this.runWithHooks(context, async (sessionId) => {
       if (!prompt?.trim()) {
         throw new Error('prompt must be provided for image transformation');
       }
@@ -99,16 +99,17 @@ export class ImageFacadeService {
   // Private
   // ---------------------------------------------------------------------------
 
-  /** Runs standard image-generation hook lifecycle around the given async function. */
-  private async runWithHooks<T>(
-    context: HookContext,
-    interruptMessage: string,
-    fn: (sessionId: string | undefined) => Promise<T>,
-  ): Promise<T> {
-    const shouldContinue = await this.hookManager.execute('onMessageBeforeAI', context);
-    if (!shouldContinue) {
-      throw new Error(interruptMessage);
-    }
+  /**
+   * Runs the image-generation hook lifecycle around the given async function.
+   *
+   * Deliberately does NOT fire `onMessageBeforeAI`: that hook's consumer is the
+   * reply-complexity classifier, a conversational text-reply concern. Image
+   * generation (incl. command-driven /gpt2, /draw, …) is not a text reply, so
+   * firing it there would run the classifier — a wasted lite-LLM call — for a
+   * flow that never produces a workhorse text reply. Image generation brackets
+   * itself with onAIGenerationStart / onAIGenerationComplete only.
+   */
+  private async runWithHooks<T>(context: HookContext, fn: (sessionId: string | undefined) => Promise<T>): Promise<T> {
     const sessionId = context.metadata.get('sessionId');
     await this.hookManager.execute('onAIGenerationStart', context);
     try {
