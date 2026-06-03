@@ -587,15 +587,17 @@ export class ConversationHistoryService {
         conditions.push('(m.metadata IS NULL OR m.metadata NOT LIKE \'%"isBotReply":true%\')');
       }
 
+      // DESC + LIMIT takes the NEWEST N matches; ASC would silently take the oldest N.
       const sql = `
         SELECT m.* FROM messages m
         WHERE ${conditions.join(' AND ')}
-        ORDER BY m.createdAt ASC
+        ORDER BY m.createdAt DESC
         LIMIT ?
       `;
       params.push(maxResults);
 
       const rows = rawDb.query(sql).all(...params) as Record<string, unknown>[];
+      rows.reverse(); // restore chronological (oldest→newest) order for display
 
       // Deserialize rows to Message objects and map to entries
       return rows.map((row) => {
@@ -658,15 +660,17 @@ export class ConversationHistoryService {
         conditions.push('(m.metadata IS NULL OR m.metadata NOT LIKE \'%"isBotReply":true%\')');
       }
 
+      // DESC + LIMIT takes the NEWEST N messages; ASC would silently take the oldest N.
       const sql = `
         SELECT m.* FROM messages m
         WHERE ${conditions.join(' AND ')}
-        ORDER BY m.createdAt ASC
+        ORDER BY m.createdAt DESC
         LIMIT ?
       `;
       params.push(maxResults);
 
       const rows = rawDb.query(sql).all(...params) as Record<string, unknown>[];
+      rows.reverse(); // restore chronological (oldest→newest) order for display
       return rows.map((row) => {
         const msg = this.deserializeMessageRow(row);
         return this.mapMessageToEntry(msg);
