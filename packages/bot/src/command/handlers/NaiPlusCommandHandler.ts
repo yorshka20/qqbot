@@ -124,7 +124,7 @@ export class NaiPlusCommand implements CommandHandler {
           'img2img.generate_nai';
         const response = await this.aiService.generateImageFromImage(
           hookContext,
-          inputImage,
+          [inputImage],
           prompt,
           img2imgOptions,
           'novelai',

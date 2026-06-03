@@ -524,12 +524,18 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
    * Parameters: image (raw base64), strength, noise. Input image is resized to target resolution.
    */
   async generateImageFromImage(
-    image: string,
+    images: string[],
     prompt: string,
     options?: Image2ImageOptions,
   ): Promise<ProviderImageGenerationResponse> {
     if (!this.isAvailable()) {
       throw new Error('NovelAIProvider is not available: accessToken not configured');
+    }
+
+    // NovelAI img2img denoises from a single base image; multi-image reference is not supported.
+    const image = images[0];
+    if (!image) {
+      throw new Error('NovelAIProvider.generateImageFromImage requires at least one source image');
     }
 
     return this.enqueue(async () => {

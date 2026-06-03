@@ -16,6 +16,7 @@ export { FetchHistoryByTimeToolExecutor } from './FetchHistoryByTimeToolExecutor
 export { FetchImageToolExecutor } from './FetchImageToolExecutor';
 export { FetchPageToolExecutor } from './FetchPageToolExecutor';
 export { FetchUserAvatarToolExecutor } from './FetchUserAvatarToolExecutor';
+export { GenerateImageToolExecutor } from './GenerateImageToolExecutor';
 export { GetGroupMemberListToolExecutor } from './GetGroupMemberListToolExecutor';
 export { GetMemoryToolExecutor } from './GetMemoryToolExecutor';
 export { ListBotFeaturesToolExecutor } from './ListBotFeaturesToolExecutor';

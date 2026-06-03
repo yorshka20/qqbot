@@ -176,7 +176,7 @@ export class NovelAICommand implements CommandHandler {
         };
         const response = await this.aiService.generateImageFromImage(
           hookContext,
-          inputImage,
+          [inputImage],
           prompt,
           img2imgOptions,
           'novelai',

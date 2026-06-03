@@ -11,13 +11,15 @@ import type { Image2ImageOptions, ProviderImageGenerationResponse } from './type
 export interface Image2ImageCapability {
   /**
    * Generate image from image based on prompt (image-to-image generation)
-   * @param image - Source image (URL, base64, or file path)
+   * @param images - One or more source images (URL, base64, or file path). Providers that support
+   *   multi-image reference (OpenAI gpt-image, Gemini) use all of them; single-base providers
+   *   (NovelAI) use the first.
    * @param prompt - Generation prompt
    * @param options - Generation options
    * @returns ProviderImageGenerationResponse with relativePath or base64
    */
   generateImageFromImage(
-    image: string,
+    images: string[],
     prompt: string,
     options?: Image2ImageOptions,
   ): Promise<ProviderImageGenerationResponse>;

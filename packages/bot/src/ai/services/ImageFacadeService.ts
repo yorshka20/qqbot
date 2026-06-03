@@ -69,7 +69,7 @@ export class ImageFacadeService {
    */
   async generateImageFromImage(
     context: HookContext,
-    image: string,
+    images: string[],
     prompt: string,
     options?: Image2ImageOptions,
     providerName?: string,
@@ -80,11 +80,14 @@ export class ImageFacadeService {
       if (!prompt?.trim()) {
         throw new Error('prompt must be provided for image transformation');
       }
+      if (!images.length) {
+        throw new Error('at least one source image must be provided for image transformation');
+      }
       const finalPrompt = await this.resolveImageToImagePrompt(prompt, sessionId, useLLMPreprocess, templateName);
       logger.info(
-        `[ImageFacadeService] Generating image from image | prompt="${finalPrompt}" | providerName=${providerName ?? 'default'}`,
+        `[ImageFacadeService] Generating image from ${images.length} image(s) | prompt="${finalPrompt}" | providerName=${providerName ?? 'default'}`,
       );
-      return this.imageGenerationService.generateImageFromImage(image, finalPrompt, options, sessionId, providerName);
+      return this.imageGenerationService.generateImageFromImage(images, finalPrompt, options, sessionId, providerName);
     });
   }
 

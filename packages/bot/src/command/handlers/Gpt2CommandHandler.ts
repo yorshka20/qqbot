@@ -107,7 +107,7 @@ export class Gpt2Command implements CommandHandler {
 
         const response = await this.aiService.generateImageFromImage(
           hookContext,
-          inputImage,
+          [inputImage],
           prompt,
           img2imgOptions,
           'openai',

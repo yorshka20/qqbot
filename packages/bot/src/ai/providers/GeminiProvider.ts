@@ -917,7 +917,7 @@ export class GeminiProvider
   // ---------- Image2ImageCapability ----------
 
   async generateImageFromImage(
-    image: string,
+    sourceImages: string[],
     prompt: string,
     options?: Image2ImageOptions,
   ): Promise<ProviderImageGenerationResponse> {
@@ -927,29 +927,38 @@ export class GeminiProvider
     if (!this.config.text2img) {
       throw new Error('GeminiProvider: text2img not configured (required for img2img)');
     }
+    if (!sourceImages.length) {
+      throw new Error('GeminiProvider.generateImageFromImage requires at least one source image');
+    }
 
     try {
-      logger.info(`[GeminiProvider] Starting image-to-image transformation for prompt: ${prompt}`);
+      logger.info(
+        `[GeminiProvider] Starting image-to-image transformation for prompt: ${prompt} | images=${sourceImages.length}`,
+      );
 
       const model = options?.model ?? this.getText2ImgModel();
       const width = options?.width ?? this.getDefaultWidth();
       const height = options?.height ?? this.getDefaultHeight();
 
-      const { data: imageBase64, mimeType: imageMimeType } = await ResourceDownloader.downloadImageToBase64WithMimeType(
-        image,
-        {
-          timeout: 30000,
-          maxSize: 10 * 1024 * 1024,
-          filename: `gemini_image_${Date.now()}.png`,
-        },
+      const downloaded = await Promise.all(
+        sourceImages.map((img) =>
+          ResourceDownloader.downloadImageToBase64WithMimeType(img, {
+            timeout: 30000,
+            maxSize: 10 * 1024 * 1024,
+            filename: `gemini_image_${Date.now()}.png`,
+          }),
+        ),
       );
+      const imageParts = downloaded.map(({ data, mimeType }) => ({
+        inlineData: { mimeType, data },
+      }));
 
       const response = await this.withPaidFallback((_isPaidFallback) =>
         this.callWithHardTimeout(
           () =>
             this.getClient().models.generateContent({
               model,
-              contents: [{ text: prompt }, { inlineData: { mimeType: imageMimeType, data: imageBase64 } }],
+              contents: [{ text: prompt }, ...imageParts],
             }),
           GeminiProvider.DEFAULT_REQUEST_TIMEOUT_MS,
           'img2img',
@@ -1027,7 +1036,8 @@ export class GeminiProvider
           height,
           model,
           mimeType,
-          inputImage: image.substring(0, 100),
+          inputImage: sourceImages[0]?.substring(0, 100),
+          inputImageCount: sourceImages.length,
         },
       };
     } catch (error) {

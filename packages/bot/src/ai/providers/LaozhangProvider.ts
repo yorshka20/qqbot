@@ -646,16 +646,21 @@ export class LaozhangProvider
    * Supports single image input
    */
   async generateImageFromImage(
-    image: string,
+    sourceImages: string[],
     prompt: string,
     options?: Image2ImageOptions,
   ): Promise<ProviderImageGenerationResponse> {
     if (!this.isAvailable()) {
       throw new Error('LaozhangProvider is not available: apiKey not configured');
     }
+    if (!sourceImages.length) {
+      throw new Error('LaozhangProvider.generateImageFromImage requires at least one source image');
+    }
 
     try {
-      logger.info(`[LaozhangProvider] Starting image-to-image transformation for prompt: ${prompt}`);
+      logger.info(
+        `[LaozhangProvider] Starting image-to-image transformation for prompt: ${prompt} | images=${sourceImages.length}`,
+      );
 
       const model = this.getText2ImgModel();
       const aspectRatio = this.resolveAspectRatioForImage2Image(options);
@@ -663,34 +668,31 @@ export class LaozhangProvider
 
       logger.info(`[LaozhangProvider] Parameters: model=${model}, aspectRatio=${aspectRatio}, imageSize=${imageSize}`);
 
-      // Load input image and convert to base64 (reuse shared util)
-      const { data: imageBase64, mimeType: imageMimeType } = await ResourceDownloader.downloadImageToBase64WithMimeType(
-        image,
-        {
-          timeout: 30000,
-          maxSize: 10 * 1024 * 1024,
-          filename: `laozhang_image_${Date.now()}.png`,
-        },
+      // Load all input images and convert to base64 (reuse shared util). Gemini accepts multiple
+      // inline_data parts as reference images alongside the text instruction.
+      const downloaded = await Promise.all(
+        sourceImages.map((img) =>
+          ResourceDownloader.downloadImageToBase64WithMimeType(img, {
+            timeout: 30000,
+            maxSize: 10 * 1024 * 1024,
+            filename: `laozhang_image_${Date.now()}.png`,
+          }),
+        ),
       );
 
       // Build API endpoint
       const endpoint = `/v1beta/models/${model}:generateContent`;
 
       // Build request payload for image-to-image
-      // Format: contents[0].parts contains both text and inline_data
+      // Format: contents[0].parts contains the text instruction followed by one inline_data per image
       const payload = {
         contents: [
           {
             parts: [
-              {
-                text: prompt,
-              },
-              {
-                inlineData: {
-                  mimeType: imageMimeType,
-                  data: imageBase64,
-                },
-              },
+              { text: prompt },
+              ...downloaded.map(({ data, mimeType }) => ({
+                inlineData: { mimeType, data },
+              })),
             ],
           },
         ],
@@ -806,7 +808,8 @@ export class LaozhangProvider
           imageSize,
           model,
           mimeType,
-          inputImage: image.substring(0, 100), // Store first 100 chars of input image identifier
+          inputImage: sourceImages[0]?.substring(0, 100), // first 100 chars of the first input image identifier
+          inputImageCount: sourceImages.length,
         },
       };
     } catch (error) {

@@ -125,7 +125,7 @@ export class BananaCommand implements CommandHandler {
         // Generate image from image (no LLM preprocessing for img2img)
         const response = await this.aiService.generateImageFromImage(
           hookContext,
-          inputImage,
+          [inputImage],
           prompt,
           img2imgOptions,
           'laozhang',
@@ -329,7 +329,7 @@ export class BananaProCommand implements CommandHandler {
         // Generate image from image (no LLM preprocessing for img2img)
         const response = await this.aiService.generateImageFromImage(
           hookContext,
-          inputImage,
+          [inputImage],
           prompt,
           img2imgOptions,
           'laozhang',

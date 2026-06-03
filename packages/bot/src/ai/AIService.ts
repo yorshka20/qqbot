@@ -253,7 +253,7 @@ export class AIService {
 
   async generateImageFromImage(
     context: HookContext,
-    image: string,
+    images: string[],
     prompt: string,
     options?: Image2ImageOptions,
     providerName?: string,
@@ -262,7 +262,7 @@ export class AIService {
   ): Promise<ImageGenerationResponse> {
     return this.imageFacadeService.generateImageFromImage(
       context,
-      image,
+      images,
       prompt,
       options,
       providerName,

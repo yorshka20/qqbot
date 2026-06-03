@@ -600,12 +600,15 @@ export class OpenAIProvider
    * SDK's multipart upload sees an `Uploadable` regardless of source.
    */
   async generateImageFromImage(
-    image: string,
+    sourceImages: string[],
     prompt: string,
     options?: Image2ImageOptions,
   ): Promise<ProviderImageGenerationResponse> {
     if (!this.client) {
       throw new Error('OpenAI client not initialized');
+    }
+    if (!sourceImages.length) {
+      throw new Error('OpenAIProvider.generateImageFromImage requires at least one source image');
     }
     const imageCfg = this.config.image;
     const model = options?.model ?? imageCfg?.model ?? DEFAULT_IMAGE_MODEL;
@@ -613,15 +616,21 @@ export class OpenAIProvider
     const quality = imageCfg?.quality ?? 'auto';
 
     try {
-      const buffer = await this.loadImageToBuffer(image);
       const ext = imageCfg?.outputFormat ?? 'png';
       const mime = ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : 'image/png';
-      const upload = await toFile(buffer, `input.${ext}`, { type: mime });
+      // gpt-image models accept multiple reference images; upload each and pass them together.
+      const uploads = await Promise.all(
+        sourceImages.map(async (img, idx) =>
+          toFile(await this.loadImageToBuffer(img), `input_${idx}.${ext}`, { type: mime }),
+        ),
+      );
 
-      logger.info(`[OpenAIProvider] generateImageFromImage | model=${model} size=${size} quality=${quality}`);
+      logger.info(
+        `[OpenAIProvider] generateImageFromImage | model=${model} size=${size} quality=${quality} images=${uploads.length}`,
+      );
       const response = await this.client.images.edit({
         model,
-        image: upload,
+        image: uploads,
         prompt,
         n: 1,
         size,

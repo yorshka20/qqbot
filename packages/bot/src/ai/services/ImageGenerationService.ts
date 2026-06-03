@@ -118,7 +118,7 @@ export class ImageGenerationService {
    * Generate image from image based on prompt (image-to-image generation)
    */
   async generateImageFromImage(
-    image: string,
+    images: string[],
     prompt: string,
     options?: Image2ImageOptions,
     sessionId?: string,
@@ -154,7 +154,7 @@ export class ImageGenerationService {
       }
     }
 
-    const providerResponse = await provider.generateImageFromImage(image, prompt, options);
+    const providerResponse = await provider.generateImageFromImage(images, prompt, options);
     // Convert provider response (with relativePath) to final response (with URL)
     return this.convertProviderResponseToFinal(providerResponse);
   }
