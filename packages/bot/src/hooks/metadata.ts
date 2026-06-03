@@ -49,7 +49,15 @@ export interface HookContextMetadata {
 
   /** Reply-only path: when true, RAG persistence writes only the new reply (not the old user message). */
   replyOnly: boolean;
-  /** Set by send_card executor when LLM called send_card and rendering succeeded. */
+  /**
+   * Set by send_card executor when LLM called send_card and rendering succeeded.
+   * Invariant: send_card never sends directly — it renders the card into
+   * `context.reply` and raises this flag. The ONLY consumer is the dispatcher
+   * (ResponseDispatchStage Path 1 / AgentLoop.resolveOutgoing), which ships
+   * `context.reply.segments` and ignores the LLM's trailing prose. Any new path
+   * that runs send_card must read this flag back off the context, not re-derive
+   * output from the LLM's final text.
+   */
   cardSent?: boolean;
   /** Set by send_card executor when LLM called the tool but rendering failed (Path 1 → Path 2 fall-through trigger). */
   cardSendFailedReason?: string;

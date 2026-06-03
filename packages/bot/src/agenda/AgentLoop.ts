@@ -14,6 +14,7 @@ import type { ConversationHistoryService } from '@/conversation/history/Conversa
 import { normalizeGroupId } from '@/conversation/history/ConversationHistoryService';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import type { HookManager } from '@/hooks/HookManager';
+import type { HookContext } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
 import type { ToolManager } from '@/tools/ToolManager';
 import { stripSkipCardMarker } from '@/utils/contentMarkers';
@@ -24,6 +25,16 @@ import { buildAgendaHookContext } from './AgendaHookContext';
 import type { AgendaEventContext, AgendaItem } from './types';
 
 const DEFAULT_PROVIDER: string | undefined = undefined; // Use system default LLM provider
+
+/**
+ * Result of the LLM loop. `hookContext` carries any reply already queued by
+ * tools (e.g. `send_card` writes the rendered card into `hookContext.reply` and
+ * sets `cardSent`). Direct callers (subagent/action) have no such context.
+ */
+interface GeneratedReply {
+  text: string;
+  hookContext?: HookContext;
+}
 
 /**
  * AgentLoop
@@ -65,13 +76,13 @@ export class AgentLoop {
 
     logger.info(`[AgentLoop] Running item "${item.name}" → ${target}`);
 
-    const reply = await this.generateReply(item, contextId, eventContext);
-    if (!reply) {
+    const generated = await this.generateReply(item, contextId, eventContext);
+    if (!generated) {
       logger.debug(`[AgentLoop] Item "${item.name}": no reply generated, skipping send`);
       return;
     }
 
-    await this.deliverReply(reply, item.name, groupId, userId, isPrivate, contextId);
+    await this.deliverReply(generated, item.name, groupId, userId, isPrivate, contextId);
   }
 
   /**
@@ -134,7 +145,7 @@ export class AgentLoop {
         return;
       }
 
-      await this.deliverReply(resultText, item.name, groupId, userId, isPrivate, contextId);
+      await this.deliverReply({ text: resultText }, item.name, groupId, userId, isPrivate, contextId);
     } catch (err) {
       logger.error(`[AgentLoop] Subagent execution failed for item "${item.name}":`, err);
       throw err;
@@ -180,7 +191,7 @@ export class AgentLoop {
       });
 
       if (result && hasChatTarget) {
-        await this.deliverReply(result, item.name, groupId, userId, isPrivate, contextId);
+        await this.deliverReply({ text: result }, item.name, groupId, userId, isPrivate, contextId);
       } else if (result && !hasChatTarget) {
         logger.info(`[AgentLoop] Action "${handlerName}" (${item.name}): ${result}`);
       }
@@ -213,33 +224,66 @@ export class AgentLoop {
   // ─── Reply Delivery ─────────────────────────────────────────────────────────
 
   /**
-   * Deliver a reply text: try card rendering, then send via messageAPI.
+   * Deliver a generated reply: resolve what to send (queued card / rendered card /
+   * plain text), then send via messageAPI.
    */
   private async deliverReply(
-    reply: string,
+    reply: GeneratedReply,
     itemName: string,
     groupId: string | undefined,
     userId: string | undefined,
     isPrivate: boolean,
     contextId: string,
   ): Promise<void> {
-    const cardResult = await this.tryRenderCard(reply, contextId);
-    const cleanReply = stripSkipCardMarker(reply);
-    const message: string | MessageSegment[] = cardResult ?? cleanReply;
+    const outgoing = await this.resolveOutgoing(reply, contextId);
+    if (!outgoing) {
+      logger.debug(`[AgentLoop] Item "${itemName}": empty reply, nothing to send`);
+      return;
+    }
 
     try {
       if (isPrivate) {
-        await this.messageAPI.sendPrivateMessage(Number(userId), message, this.preferredProtocol);
+        await this.messageAPI.sendPrivateMessage(Number(userId), outgoing.message, this.preferredProtocol);
       } else {
-        await this.messageAPI.sendGroupMessage(Number(groupId), message, this.preferredProtocol);
+        await this.messageAPI.sendGroupMessage(Number(groupId), outgoing.message, this.preferredProtocol);
       }
       logger.info(
-        `[AgentLoop] Item "${itemName}": sent ${cardResult ? 'card image' : `${reply.length} chars`} → ${isPrivate ? `user ${userId}` : `group ${groupId}`}`,
+        `[AgentLoop] Item "${itemName}": sent ${outgoing.isCard ? 'card image' : `${outgoing.length} chars`} → ${isPrivate ? `user ${userId}` : `group ${groupId}`}`,
       );
     } catch (err) {
       logger.error(`[AgentLoop] Item "${itemName}": send failed`, err);
       throw err;
     }
+  }
+
+  /**
+   * Resolve the outgoing message from a generated reply. Mirrors the normal reply
+   * pipeline's ResponseDispatchStage:
+   *   Path 1: a tool (send_card) already rendered the card into hookContext.reply —
+   *           ship those segments; the LLM's trailing prose is meta-commentary, not output.
+   *   Path 2: the reply text itself is card-shaped (card JSON / markdown) — render it.
+   *   Path 3: plain text.
+   * Returns null when there is nothing to send.
+   */
+  private async resolveOutgoing(
+    reply: GeneratedReply,
+    contextId: string,
+  ): Promise<{ message: string | MessageSegment[]; isCard: boolean; length: number } | null> {
+    const { text, hookContext } = reply;
+
+    const queued = hookContext?.reply?.segments;
+    if (hookContext?.metadata.get('cardSent') === true && queued?.length) {
+      return { message: queued, isCard: true, length: queued.length };
+    }
+
+    const cardSegments = await this.tryRenderCard(text, contextId);
+    if (cardSegments) {
+      return { message: cardSegments, isCard: true, length: cardSegments.length };
+    }
+
+    const cleanReply = stripSkipCardMarker(text);
+    if (!cleanReply.trim()) return null;
+    return { message: cleanReply, isCard: false, length: cleanReply.length };
   }
 
   // ─── Card Rendering ────────────────────────────────────────────────────────
@@ -325,7 +369,7 @@ export class AgentLoop {
     item: AgendaItem,
     groupId: string,
     eventContext: AgendaEventContext,
-  ): Promise<string | null> {
+  ): Promise<GeneratedReply | null> {
     const conversationContext = await this.fetchRecentContext(groupId);
     // Agenda tasks are system-level: include both reply and subagent scoped tools
     // so the LLM can access specialized tools (e.g. wechat_stats, wechat_report)
@@ -346,7 +390,7 @@ export class AgentLoop {
         },
         DEFAULT_PROVIDER,
       );
-      return response.text?.trim() || null;
+      return { text: response.text?.trim() ?? '', hookContext: agendaContext };
     } catch (err) {
       logger.error(`[AgentLoop] LLM call failed for item "${item.name}":`, err);
       return null;
