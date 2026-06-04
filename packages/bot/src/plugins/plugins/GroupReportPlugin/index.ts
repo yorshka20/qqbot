@@ -36,6 +36,13 @@ import {
   splitIntoBatches,
 } from './computeStats';
 import { GroupReportToolExecutor } from './GroupReportToolExecutor';
+import {
+  asObject,
+  asString,
+  normalizeFeaturedMessages,
+  normalizeMemberComments,
+  normalizeTopics,
+} from './normalizeReport';
 import type { FeaturedMessage, GroupReportData, MemberHighlight, ReportTopic } from './types';
 
 /** Max messages to fetch from DB for report analysis (high to ensure full-day stats accuracy) */
@@ -346,18 +353,24 @@ export class GroupReportPlugin extends PluginBase {
 
   /**
    * Parse a batch LLM response into structured result.
+   *
+   * This is the trust boundary between untrusted LLM JSON and typed internal
+   * data: every array element is normalized so required string fields are
+   * always present. The model intermittently omits fields (e.g. a member
+   * highlight without `comment`); without per-element coercion an `undefined`
+   * reaches the renderer's escapeHtml and throws.
    */
   private parseBatchResult(text: string): BatchAnalysisResult | null {
     try {
       // Try to extract JSON from response (may be wrapped in markdown code block)
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) return null;
-      const data = JSON.parse(jsonMatch[0]) as BatchAnalysisResult;
+      const data = asObject(JSON.parse(jsonMatch[0]));
       return {
-        topics: Array.isArray(data.topics) ? data.topics : [],
-        memberHighlights: Array.isArray(data.memberHighlights) ? data.memberHighlights : [],
-        featuredMessages: Array.isArray(data.featuredMessages) ? data.featuredMessages : [],
-        batchSummary: typeof data.batchSummary === 'string' ? data.batchSummary : '',
+        topics: normalizeTopics(data.topics),
+        memberHighlights: normalizeMemberComments(data.memberHighlights),
+        featuredMessages: normalizeFeaturedMessages(data.featuredMessages),
+        batchSummary: asString(data.batchSummary),
       };
     } catch (err) {
       logger.warn('[GroupReportPlugin] Failed to parse batch result:', err);

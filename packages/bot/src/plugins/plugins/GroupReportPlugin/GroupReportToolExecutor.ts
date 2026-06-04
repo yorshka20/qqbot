@@ -7,6 +7,7 @@ import { BrowserService } from '@/services/browser/BrowserService';
 import type { ToolCall, ToolExecutionContext, ToolExecutor, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 import { normalizeHourlyActivity } from './computeStats';
+import { normalizeFeaturedMessages, normalizeMemberHighlights, normalizeTopics } from './normalizeReport';
 import { avatarUrl, renderReportHTML } from './renderReportHTML';
 import type { GroupReportData, HourlyActivity } from './types';
 
@@ -68,12 +69,13 @@ export class GroupReportToolExecutor implements ToolExecutor {
       );
     }
 
-    // Fill defaults
+    // Normalize LLM-provided arrays at the trust boundary so malformed elements
+    // (missing/mistyped string fields) never reach the renderer (see normalizeReport).
     reportData.groupId = String(groupId);
-    reportData.topics = reportData.topics ?? [];
-    reportData.memberHighlights = reportData.memberHighlights ?? [];
-    reportData.featuredMessages = reportData.featuredMessages ?? [];
-    reportData.totalSummary = reportData.totalSummary ?? '';
+    reportData.topics = normalizeTopics(reportData.topics);
+    reportData.memberHighlights = normalizeMemberHighlights(reportData.memberHighlights);
+    reportData.featuredMessages = normalizeFeaturedMessages(reportData.featuredMessages);
+    reportData.totalSummary = typeof reportData.totalSummary === 'string' ? reportData.totalSummary : '';
 
     // Override statistics with pre-computed values (LLM may modify these during pass-through)
     const precomputed = this.precomputedStats.get(String(groupId));
