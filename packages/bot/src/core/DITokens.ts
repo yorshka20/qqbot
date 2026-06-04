@@ -161,6 +161,8 @@ export const DITokens = {
     required: false,
     gatedBy: 'claudeCode.enabled config',
   }),
+  /** Required — registered unconditionally in bootstrap right after the DB is ready. */
+  TOKEN_USAGE_SERVICE: defineToken('TokenUsageService', { required: true }),
   /** Required — registered unconditionally by ConversationInitializer.createWiringServices. */
   PRELIMINARY_ANALYSIS_SERVICE: defineToken('PreliminaryAnalysisService', { required: true }),
   /** Required — registered unconditionally by ConversationInitializer.createWiringServices. */

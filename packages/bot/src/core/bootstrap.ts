@@ -51,6 +51,7 @@ import type { MCPSystem } from '@/services/mcp/MCPInitializer';
 import { MCPInitializer } from '@/services/mcp/MCPInitializer';
 import { RetrievalService } from '@/services/retrieval';
 import { initStaticServer } from '@/services/staticServer';
+import { TokenUsageService } from '@/services/tokenUsage/TokenUsageService';
 import { FishAudioProvider } from '@/services/tts/providers/FishAudioProvider';
 import { SovitsProvider } from '@/services/tts/providers/SovitsProvider';
 import { TTSManager } from '@/services/tts/TTSManager';
@@ -171,6 +172,9 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
 
   // ── Conversation system (tools, hooks, commands, AI, DB, context, agenda) ──
   const conversationComponents = await ConversationInitializer.initialize(config, apiClient);
+
+  // ── Per-user token/image usage tracking (DB is ready after ConversationInitializer) ──
+  container.registerSingleton(DITokens.TOKEN_USAGE_SERVICE, TokenUsageService);
 
   // ── Register core prompt producers (after PromptManager and PromptInjectionRegistry are ready) ──
   // PromptManager is registered by PromptInitializer above; PromptInjectionRegistry is registered

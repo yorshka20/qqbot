@@ -702,10 +702,15 @@ export class LLMService {
     const currentMessages = [...messages];
     let round = 0;
     const allToolCalls: ToolResult[] = [];
+    // Accumulate token usage across every round so the returned response reports
+    // the full cost of the tool-augmented generation, not just the final round.
+    const accUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    let sawUsage = false;
 
     while (round < maxRounds) {
       // Generate with tools
       const response = await this.generateMessagesWithToolSupport(currentMessages, tools, options, currentProviderName);
+      sawUsage = this.accumulateUsage(accUsage, response.usage) || sawUsage;
 
       // Always use the resolved provider for subsequent rounds (handles internal fallback)
       if (response.resolvedProviderName) {
@@ -719,6 +724,7 @@ export class LLMService {
         // No tool calls, return final response
         return {
           ...response,
+          usage: sawUsage ? { ...accUsage } : response.usage,
           resolvedProviderName: currentProviderName,
           toolCalls: allToolCalls,
           stopReason: 'end_turn',
@@ -841,6 +847,7 @@ export class LLMService {
         // No executor provided, return the function call for external handling
         return {
           ...response,
+          usage: sawUsage ? { ...accUsage } : response.usage,
           toolCalls: allToolCalls,
           stopReason: 'tool_use',
         };
@@ -857,6 +864,7 @@ export class LLMService {
         'You have used all available tool rounds. Please provide your final answer now based on the information you have gathered so far. Do not attempt to call any more tools.',
     });
     const finalResponse = await this.generateFromMessages(currentMessages, options, currentProviderName);
+    sawUsage = this.accumulateUsage(accUsage, finalResponse.usage) || sawUsage;
 
     // Strip text-based tool calls from final text — model may still attempt tool calls via text when tools are absent
     if (finalResponse.text && containsDSML(finalResponse.text)) {
@@ -870,10 +878,27 @@ export class LLMService {
 
     return {
       ...finalResponse,
+      usage: sawUsage ? { ...accUsage } : finalResponse.usage,
       resolvedProviderName: currentProviderName,
       toolCalls: allToolCalls,
       stopReason: 'max_rounds',
     };
+  }
+
+  /**
+   * Add a single response's token usage into an accumulator. Returns true when
+   * usage was present (so callers can tell "summed real numbers" from "no usage
+   * reported at all" and avoid emitting a misleading all-zero total).
+   */
+  private accumulateUsage(
+    acc: { promptTokens: number; completionTokens: number; totalTokens: number },
+    usage?: { promptTokens: number; completionTokens: number; totalTokens: number },
+  ): boolean {
+    if (!usage) return false;
+    acc.promptTokens += usage.promptTokens;
+    acc.completionTokens += usage.completionTokens;
+    acc.totalTokens += usage.totalTokens;
+    return true;
   }
 
   /**

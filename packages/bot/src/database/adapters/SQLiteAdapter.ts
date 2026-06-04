@@ -17,6 +17,7 @@ import type {
   Message,
   ModelAccessor,
   ProactiveThreadRecord,
+  TokenUsageRecord,
   UserPortraitScore,
 } from '../models/types';
 
@@ -423,6 +424,24 @@ export class SQLiteAdapter implements DatabaseAdapter {
         updatedAt TEXT NOT NULL,
         UNIQUE(groupId, userId, dimensionId)
       )`,
+      `CREATE TABLE IF NOT EXISTS token_usage (
+        id TEXT PRIMARY KEY,
+        date TEXT NOT NULL,
+        userId TEXT NOT NULL,
+        nickname TEXT,
+        groupId TEXT,
+        protocol TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        model TEXT,
+        type TEXT NOT NULL CHECK(type IN ('llm', 'image')),
+        source TEXT NOT NULL,
+        promptTokens INTEGER NOT NULL DEFAULT 0,
+        completionTokens INTEGER NOT NULL DEFAULT 0,
+        totalTokens INTEGER NOT NULL DEFAULT 0,
+        imageCount INTEGER NOT NULL DEFAULT 0,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`,
       `CREATE TABLE IF NOT EXISTS memory_fact_meta (
         id TEXT PRIMARY KEY,
         factHash TEXT NOT NULL UNIQUE,
@@ -582,6 +601,8 @@ export class SQLiteAdapter implements DatabaseAdapter {
       `CREATE INDEX IF NOT EXISTS idx_bilibili_danmaku_batch ON bilibili_danmaku(batchId)`,
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_user_portrait_score_key ON user_portrait_score(groupId, userId, dimensionId)`,
       `CREATE INDEX IF NOT EXISTS idx_user_portrait_score_rank ON user_portrait_score(groupId, dimensionId, score)`,
+      `CREATE INDEX IF NOT EXISTS idx_token_usage_date ON token_usage(date)`,
+      `CREATE INDEX IF NOT EXISTS idx_token_usage_date_user ON token_usage(date, userId)`,
       // Mind Phase 2: epigenetics indexes
       `CREATE INDEX IF NOT EXISTS idx_rel_affinity ON persona_relationships(persona_id, affinity DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_rel_familiarity ON persona_relationships(persona_id, familiarity DESC)`,
@@ -653,6 +674,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       agendaItems: new SQLiteModelAccessor<AgendaItem>(this.db, 'agenda_items'),
       bilibiliDanmaku: new SQLiteModelAccessor<BilibiliDanmakuRecord>(this.db, 'bilibili_danmaku'),
       userPortraitScore: new SQLiteModelAccessor<UserPortraitScore>(this.db, 'user_portrait_score'),
+      tokenUsage: new SQLiteModelAccessor<TokenUsageRecord>(this.db, 'token_usage'),
     };
   }
 }

@@ -35,5 +35,6 @@ export * from './ReplyComplexityClassifierPlugin';
 export * from './RulePlugin';
 export * from './Text2ImgSFWFilterPlugin';
 export * from './TodoPlugin';
+export * from './UsageTrackingPlugin';
 export * from './VideoAnalyzePlugin';
 export * from './WhitelistPlugin';

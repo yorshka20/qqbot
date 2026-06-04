@@ -184,6 +184,32 @@ export interface UserPortraitScore extends BaseModel {
 }
 
 /**
+ * Per-call token / image consumption event, attributed to the user who triggered
+ * the reply. One row per LLM call (incl. subagent / tool-loop iterations) and per
+ * image-generation call. Only user-triggered replies are recorded — internal/system
+ * calls (memory extraction, summaries, proactive) carry no attribution and are skipped.
+ *
+ * `date` is the local-timezone YYYY-MM-DD bucket the call happened in, so daily
+ * queries are a plain equality match without timezone math at read time.
+ */
+export interface TokenUsageRecord extends BaseModel {
+  date: string; // YYYY-MM-DD (local timezone)
+  userId: string;
+  /** Denormalized display name (card/nickname) seen at record time, for the top-N view without per-user member lookups. */
+  nickname?: string;
+  groupId?: string;
+  protocol: string;
+  provider: string;
+  model?: string;
+  type: 'llm' | 'image';
+  source: string; // 'reply' | 'subagent' | 'command:gpt2' | 'tool:generate_image' ...
+  promptTokens: number; // 0 for image rows
+  completionTokens: number; // 0 for image rows
+  totalTokens: number; // 0 for image rows
+  imageCount: number; // 0 for llm rows
+}
+
+/**
  * Model accessor interface
  */
 export interface ModelAccessor<T extends BaseModel> {
@@ -239,4 +265,5 @@ export interface DatabaseModel {
   agendaItems: ModelAccessor<AgendaItem>;
   bilibiliDanmaku: ModelAccessor<BilibiliDanmakuRecord>;
   userPortraitScore: ModelAccessor<UserPortraitScore>;
+  tokenUsage: ModelAccessor<TokenUsageRecord>;
 }

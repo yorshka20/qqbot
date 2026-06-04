@@ -21,4 +21,5 @@ export * from './NovelAICommandHandler';
 export * from './ScheduleCommandHandler';
 export * from './Text2ImgCommandHandler';
 export * from './TTSCommandHandler';
+export * from './UsageCommandHandler';
 export * from './VideoAnalyzeCommandHandler';

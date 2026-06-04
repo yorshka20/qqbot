@@ -2,6 +2,25 @@
 // Provides type-safe access to metadata keys
 
 /**
+ * Token/image consumption for the current AI generation, stamped onto the
+ * HookContext by the producer (GenerationStage for LLM, ImageFacadeService for
+ * image) so the `onAIGenerationComplete` hook handler can record it per-user.
+ * The handler consumes (deletes) this key after recording so multi-fire dispatch
+ * paths don't double-count.
+ */
+export interface AIUsageMetadata {
+  type: 'llm' | 'image';
+  provider: string;
+  model?: string;
+  /** Origin of the call: 'reply' | 'nsfw' | 'image' ... */
+  source: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  imageCount?: number;
+}
+
+/**
  * HookContext Metadata interface
  * Defines all possible metadata keys and their types
  *
@@ -89,6 +108,14 @@ export interface HookContextMetadata {
    * classifier (not yet wired); consumer: PromptAssemblyStage.
    */
   replyMode?: 'quick' | 'deep';
+
+  /**
+   * Per-user usage for this generation. Set by the generation producer right
+   * before `onAIGenerationComplete` fires; read and then deleted by the usage
+   * tracking hook handler. Absent for non-tracked generations (e.g. proactive,
+   * internal/system calls).
+   */
+  aiUsage?: AIUsageMetadata;
 }
 
 type MetadataKeys = keyof HookContextMetadata;
@@ -112,6 +139,7 @@ const DEFAULT_METADATA: Required<
     | 'replyTagsMeta'
     | 'replyMode'
     | 'activeProvider'
+    | 'aiUsage'
   >
 > = {
   sessionId: '',
@@ -147,6 +175,7 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'replyTagsMeta',
   'replyMode',
   'activeProvider',
+  'aiUsage',
 ];
 
 /**

@@ -112,9 +112,24 @@ export class GenerationStage implements ReplyStage {
       },
       selectedProviderName,
     );
+
+    // Stamp per-user usage onto the context so the onAIGenerationComplete hook
+    // handler can record it. r.usage is the summed total across all tool rounds.
+    const actualProvider = r.resolvedProviderName ?? selectedProviderName;
+    if (r.usage && actualProvider) {
+      context.metadata.set('aiUsage', {
+        type: 'llm',
+        provider: actualProvider,
+        source: 'reply',
+        promptTokens: r.usage.promptTokens,
+        completionTokens: r.usage.completionTokens,
+        totalTokens: r.usage.totalTokens,
+      });
+    }
+
     return {
       response: { text: r.text, resolvedProviderName: r.resolvedProviderName },
-      actualProvider: r.resolvedProviderName ?? selectedProviderName,
+      actualProvider,
     };
   }
 

@@ -111,7 +111,9 @@ export class ImageGenerationService {
 
     const providerResponse = await provider.generateImage(prompt, options);
     // Convert provider response (with relativePath) to final response (with URL)
-    return this.convertProviderResponseToFinal(providerResponse);
+    const result = this.convertProviderResponseToFinal(providerResponse);
+    result.resolvedProviderName = (provider as { name?: string }).name;
+    return result;
   }
 
   /**
@@ -156,6 +158,8 @@ export class ImageGenerationService {
 
     const providerResponse = await provider.generateImageFromImage(images, prompt, options);
     // Convert provider response (with relativePath) to final response (with URL)
-    return this.convertProviderResponseToFinal(providerResponse);
+    const result = this.convertProviderResponseToFinal(providerResponse);
+    result.resolvedProviderName = (provider as { name?: string }).name;
+    return result;
   }
 }

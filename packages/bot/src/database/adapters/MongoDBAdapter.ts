@@ -15,6 +15,7 @@ import type {
   Message,
   ModelAccessor,
   ProactiveThreadRecord,
+  TokenUsageRecord,
   UserPortraitScore,
 } from '../models/types';
 
@@ -216,6 +217,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
       proactiveThreads: this.db.collection('proactive_threads'),
       bilibiliDanmaku: this.db.collection('bilibili_danmaku'),
       userPortraitScore: this.db.collection('user_portrait_score'),
+      tokenUsage: this.db.collection('token_usage'),
     };
 
     // Create indexes
@@ -235,6 +237,9 @@ export class MongoDBAdapter implements DatabaseAdapter {
 
     await collections.userPortraitScore.createIndex({ groupId: 1, userId: 1, dimensionId: 1 }, { unique: true });
     await collections.userPortraitScore.createIndex({ groupId: 1, dimensionId: 1, score: -1 });
+
+    await collections.tokenUsage.createIndex({ date: 1 });
+    await collections.tokenUsage.createIndex({ date: 1, userId: 1 });
 
     logger.info('[MongoDBAdapter] Migrations completed');
   }
@@ -277,6 +282,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
       agendaItems: new MongoModelAccessor<AgendaItem>(this.db.collection('agenda_items')),
       bilibiliDanmaku: new MongoModelAccessor<BilibiliDanmakuRecord>(this.db.collection('bilibili_danmaku')),
       userPortraitScore: new MongoModelAccessor<UserPortraitScore>(this.db.collection('user_portrait_score')),
+      tokenUsage: new MongoModelAccessor<TokenUsageRecord>(this.db.collection('token_usage')),
     };
   }
 }

@@ -111,6 +111,7 @@ export interface ImageGenerationResponse {
   text?: string; // Text response from provider
   metadata?: Record<string, unknown>;
   prompt?: string; // Processed prompt used for generation (useful for batch generation)
+  resolvedProviderName?: string; // The provider that actually generated the images (for usage attribution)
 }
 
 /**

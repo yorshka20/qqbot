@@ -1,6 +1,7 @@
 // Image facade service — wraps image generation with hook lifecycle and prompt preprocessing.
 
 import type { HookManager } from '@/hooks/HookManager';
+import type { AIUsageMetadata } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions } from '../capabilities/types';
@@ -32,35 +33,39 @@ export class ImageFacadeService {
     skipLLMProcess?: boolean,
     templateName?: string,
   ): Promise<ImageGenerationResponse> {
-    return this.runWithHooks(context, async (sessionId) => {
-      if (!options?.prompt) {
-        throw new Error('options.prompt must be provided by caller');
-      }
-      const userInput = options.prompt;
-      logger.debug(
-        `[ImageFacadeService] Processing prompt | input=${userInput.substring(0, 50)}... | skipLLMProcess=${skipLLMProcess ?? false}`,
-      );
+    return this.runWithHooks(
+      context,
+      async (sessionId) => {
+        if (!options?.prompt) {
+          throw new Error('options.prompt must be provided by caller');
+        }
+        const userInput = options.prompt;
+        logger.debug(
+          `[ImageFacadeService] Processing prompt | input=${userInput.substring(0, 50)}... | skipLLMProcess=${skipLLMProcess ?? false}`,
+        );
 
-      const prepared = await this.imagePromptService.prepareImageGenerationParams(
-        userInput,
-        options,
-        sessionId ?? '',
-        skipLLMProcess,
-        templateName,
-      );
-      logger.info(
-        `[ImageFacadeService] Generating image | prompt="${prepared.prompt.substring(0, 100)}..." | providerName=${providerName ?? 'default'}`,
-      );
+        const prepared = await this.imagePromptService.prepareImageGenerationParams(
+          userInput,
+          options,
+          sessionId ?? '',
+          skipLLMProcess,
+          templateName,
+        );
+        logger.info(
+          `[ImageFacadeService] Generating image | prompt="${prepared.prompt.substring(0, 100)}..." | providerName=${providerName ?? 'default'}`,
+        );
 
-      const response = await this.imageGenerationService.generateImage(
-        prepared.prompt,
-        prepared.options,
-        sessionId,
-        providerName,
-      );
-      response.prompt = prepared.prompt;
-      return response;
-    });
+        const response = await this.imageGenerationService.generateImage(
+          prepared.prompt,
+          prepared.options,
+          sessionId,
+          providerName,
+        );
+        response.prompt = prepared.prompt;
+        return response;
+      },
+      this.describeImageUsage(providerName),
+    );
   }
 
   /**
@@ -76,18 +81,38 @@ export class ImageFacadeService {
     useLLMPreprocess?: boolean,
     templateName?: string,
   ): Promise<ImageGenerationResponse> {
-    return this.runWithHooks(context, async (sessionId) => {
-      if (!prompt?.trim()) {
-        throw new Error('prompt must be provided for image transformation');
-      }
-      if (!images.length) {
-        throw new Error('at least one source image must be provided for image transformation');
-      }
-      const finalPrompt = await this.resolveImageToImagePrompt(prompt, sessionId, useLLMPreprocess, templateName);
-      logger.info(
-        `[ImageFacadeService] Generating image from ${images.length} image(s) | prompt="${finalPrompt}" | providerName=${providerName ?? 'default'}`,
-      );
-      return this.imageGenerationService.generateImageFromImage(images, finalPrompt, options, sessionId, providerName);
+    return this.runWithHooks(
+      context,
+      async (sessionId) => {
+        if (!prompt?.trim()) {
+          throw new Error('prompt must be provided for image transformation');
+        }
+        if (!images.length) {
+          throw new Error('at least one source image must be provided for image transformation');
+        }
+        const finalPrompt = await this.resolveImageToImagePrompt(prompt, sessionId, useLLMPreprocess, templateName);
+        logger.info(
+          `[ImageFacadeService] Generating image from ${images.length} image(s) | prompt="${finalPrompt}" | providerName=${providerName ?? 'default'}`,
+        );
+        return this.imageGenerationService.generateImageFromImage(
+          images,
+          finalPrompt,
+          options,
+          sessionId,
+          providerName,
+        );
+      },
+      this.describeImageUsage(providerName),
+    );
+  }
+
+  /** Build the usage extractor stamped onto the context for image-generation calls. */
+  private describeImageUsage(providerName?: string): (response: ImageGenerationResponse) => AIUsageMetadata {
+    return (response) => ({
+      type: 'image',
+      provider: response.resolvedProviderName ?? providerName ?? 'unknown',
+      source: 'image',
+      imageCount: response.images?.length ?? 0,
     });
   }
 
@@ -112,11 +137,20 @@ export class ImageFacadeService {
    * flow that never produces a workhorse text reply. Image generation brackets
    * itself with onAIGenerationStart / onAIGenerationComplete only.
    */
-  private async runWithHooks<T>(context: HookContext, fn: (sessionId: string | undefined) => Promise<T>): Promise<T> {
+  private async runWithHooks<T>(
+    context: HookContext,
+    fn: (sessionId: string | undefined) => Promise<T>,
+    describeUsage?: (result: T) => AIUsageMetadata | undefined,
+  ): Promise<T> {
     const sessionId = context.metadata.get('sessionId');
     await this.hookManager.execute('onAIGenerationStart', context);
     try {
       const result = await fn(sessionId);
+      // Stamp usage before the completion hook so the tracking handler records it.
+      const usage = describeUsage?.(result);
+      if (usage) {
+        context.metadata.set('aiUsage', usage);
+      }
       await this.hookManager.execute('onAIGenerationComplete', context);
       return result;
     } catch (error) {
