@@ -44,9 +44,6 @@ export interface HookContextMetadata {
   // Command metadata
   senderRole: string;
 
-  // Task analyzer/provider routing metadata
-  suggestedProvider?: string;
-
   /** Reply-only path: when true, RAG persistence writes only the new reply (not the old user message). */
   replyOnly: boolean;
   /**
@@ -105,7 +102,6 @@ const DEFAULT_METADATA: Required<
     | 'replyTriggerType'
     | 'resolvedProviderPrefix'
     | 'contextMode'
-    | 'suggestedProvider'
     | 'cardSent'
     | 'cardSendFailedReason'
     | 'explicitSendAsForward'
@@ -140,7 +136,6 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'replyTrigger',
   'replyTriggerType',
   'contextMode',
-  'suggestedProvider',
   'whitelistGroupCapabilities',
   'cardSent',
   'cardSendFailedReason',
@@ -156,7 +151,7 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
 
 /**
  * Create a HookMetadataMap with all required fields set.
- * Pass partial to override defaults; optional fields (replyTrigger, replyTriggerType, contextMode, suggestedProvider) can be set in partial.
+ * Pass partial to override defaults; optional fields (replyTrigger, replyTriggerType, contextMode) can be set in partial.
  * Use at HookContext construction sites so downstream code can assume all required fields are present.
  */
 export function createDefaultHookMetadata(partial?: Partial<HookContextMetadata>): HookMetadataMap {
