@@ -40,13 +40,28 @@ export interface ProviderUsageAgg {
 export interface UserUsageAgg {
   userId: string;
   nickname?: string;
+  promptTokens: number;
+  completionTokens: number;
   totalTokens: number;
   totalImages: number;
   byProvider: ProviderUsageAgg[];
 }
 
+/** All-user totals for a day plus the top-N users. */
+export interface DailyReport {
+  date: string;
+  userCount: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  totalImages: number;
+  topUsers: UserUsageAgg[];
+}
+
 export interface DailyUsageAgg {
   date: string;
+  promptTokens: number;
+  completionTokens: number;
   totalTokens: number;
   totalImages: number;
   byProvider: ProviderUsageAgg[];
@@ -103,8 +118,11 @@ export class TokenUsageService {
       .catch((err) => logger.warn('[TokenUsageService] Failed to persist usage record:', err));
   }
 
-  /** Top users by total token consumption for a given day, with per-provider breakdown. */
-  async getDailyTopUsers(date: string, limit: number): Promise<UserUsageAgg[]> {
+  /**
+   * Full daily report: all-user totals (accurate, not limited to top-N) plus the
+   * top-N users by total token consumption, each with per-provider breakdown.
+   */
+  async getDailyReport(date: string, limit: number): Promise<DailyReport> {
     const rows = await this.databaseManager.getAdapter().getModel('tokenUsage').find({ date });
 
     const byUser = new Map<string, TokenUsageRecord[]>();
@@ -124,6 +142,8 @@ export class TokenUsageService {
       aggs.push({
         userId,
         nickname,
+        promptTokens: byProvider.reduce((s, p) => s + p.promptTokens, 0),
+        completionTokens: byProvider.reduce((s, p) => s + p.completionTokens, 0),
         totalTokens: byProvider.reduce((s, p) => s + p.totalTokens, 0),
         totalImages: byProvider.reduce((s, p) => s + p.imageCount, 0),
         byProvider,
@@ -131,7 +151,16 @@ export class TokenUsageService {
     }
 
     aggs.sort((a, b) => b.totalTokens - a.totalTokens || b.totalImages - a.totalImages);
-    return aggs.slice(0, limit);
+
+    return {
+      date,
+      userCount: aggs.length,
+      promptTokens: aggs.reduce((s, u) => s + u.promptTokens, 0),
+      completionTokens: aggs.reduce((s, u) => s + u.completionTokens, 0),
+      totalTokens: aggs.reduce((s, u) => s + u.totalTokens, 0),
+      totalImages: aggs.reduce((s, u) => s + u.totalImages, 0),
+      topUsers: aggs.slice(0, limit),
+    };
   }
 
   /** Per-day breakdown for a single user across the given dates (newest first as passed in). */
@@ -143,6 +172,8 @@ export class TokenUsageService {
       const byProvider = this.aggregateByProvider(rows);
       out.push({
         date,
+        promptTokens: byProvider.reduce((s, p) => s + p.promptTokens, 0),
+        completionTokens: byProvider.reduce((s, p) => s + p.completionTokens, 0),
         totalTokens: byProvider.reduce((s, p) => s + p.totalTokens, 0),
         totalImages: byProvider.reduce((s, p) => s + p.imageCount, 0),
         byProvider,
