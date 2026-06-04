@@ -10,6 +10,9 @@ export interface MessageProcessingResult {
   success: boolean;
   reply?: string;
   error?: string;
+  /** True when the message was discarded because another message for the same session
+   * was still in flight (source concurrency === 'drop'). No LLM call was made. */
+  dropped?: boolean;
   metadata?: Record<string, unknown>;
 }
 

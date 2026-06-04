@@ -27,7 +27,10 @@ import type { MessageProcessingContext, MessageProcessingResult } from './types'
  * async local storage so PromptManager can look up the correct context for this async chain when rendering.
  */
 export class MessagePipeline {
-  private serialQueues = new Map<MessageSource, Promise<void>>();
+  /** Sessions (sessionId) with a message currently in flight, for sources whose
+   * concurrency mode is 'drop'. A second message for a session already in this set
+   * is discarded instead of processed. */
+  private inFlightSessions = new Set<string>();
 
   constructor(
     private lifecycle: Lifecycle,
@@ -76,17 +79,20 @@ export class MessagePipeline {
     const resolvedSource = source ?? context.source ?? deriveSourceFromEvent(event);
     context.source = resolvedSource;
     const cfg = getSourceConfig(resolvedSource);
-    if (cfg.serial) {
-      const prev = this.serialQueues.get(resolvedSource) ?? Promise.resolve();
-      const next = prev.catch(() => undefined).then(() => this._processInner(event, context, resolvedSource));
-      this.serialQueues.set(
-        resolvedSource,
-        next.then(
-          () => undefined,
-          () => undefined,
-        ),
-      );
-      return next;
+    if (cfg.concurrency === 'drop') {
+      const sessionKey = context.sessionId;
+      if (this.inFlightSessions.has(sessionKey)) {
+        logger.info(
+          `[MessagePipeline] Dropped message — session busy | sessionId=${sessionKey} | source=${resolvedSource}`,
+        );
+        return { success: false, dropped: true, error: 'session busy' };
+      }
+      this.inFlightSessions.add(sessionKey);
+      try {
+        return await this._processInner(event, context, resolvedSource);
+      } finally {
+        this.inFlightSessions.delete(sessionKey);
+      }
     }
     return this._processInner(event, context, resolvedSource);
   }

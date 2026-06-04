@@ -7,49 +7,51 @@ export const SOURCES: Record<MessageSource, SourceConfig> = {
     responseHandler: 'send-to-im',
     poseLifecycle: false,
     promptScene: 'qq-private',
-    serial: false,
+    concurrency: 'drop',
   },
   'qq-group': {
     historyAdapter: 'conversation-history',
     responseHandler: 'send-to-im',
     poseLifecycle: false,
     promptScene: 'qq-group',
-    serial: false,
+    concurrency: 'concurrent',
   },
   discord: {
     historyAdapter: 'conversation-history',
     responseHandler: 'send-to-im',
     poseLifecycle: false,
     promptScene: 'discord',
-    serial: false,
+    concurrency: 'concurrent',
   },
   'avatar-cmd': {
     historyAdapter: 'live2d-session',
     responseHandler: 'callback',
     poseLifecycle: true,
     promptScene: 'avatar-cmd',
-    serial: false,
+    concurrency: 'concurrent',
   },
   'bilibili-danmaku': {
     historyAdapter: 'live2d-session',
     responseHandler: 'discard',
     poseLifecycle: true,
     promptScene: 'bilibili-danmaku',
-    serial: true,
+    // Danmaku share one session per room (bili-room-{roomId}); dropping mid-flight
+    // danmaku avoids replying to stale stream chatter that queued behind a slow reply.
+    concurrency: 'drop',
   },
   'idle-trigger': {
     historyAdapter: 'live2d-session',
     responseHandler: 'discard',
     poseLifecycle: true,
     promptScene: 'idle-trigger',
-    serial: false,
+    concurrency: 'concurrent',
   },
   bootstrap: {
     historyAdapter: 'conversation-history',
     responseHandler: 'discard',
     poseLifecycle: false,
     promptScene: 'bootstrap',
-    serial: false,
+    concurrency: 'concurrent',
   },
 };
 

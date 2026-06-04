@@ -21,8 +21,12 @@ describe('sourceRegistry', () => {
   test('avatar-cmd uses callback', () => {
     expect(getSourceConfig('avatar-cmd').responseHandler).toBe('callback');
   });
-  test('bilibili-danmaku is serial', () => {
-    expect(getSourceConfig('bilibili-danmaku').serial).toBe(true);
+  test('bilibili-danmaku drops mid-flight danmaku', () => {
+    expect(getSourceConfig('bilibili-danmaku').concurrency).toBe('drop');
+  });
+  test('qq-private drops concurrent messages, qq-group runs concurrent', () => {
+    expect(getSourceConfig('qq-private').concurrency).toBe('drop');
+    expect(getSourceConfig('qq-group').concurrency).toBe('concurrent');
   });
   test('qq-private has no poseLifecycle', () => {
     expect(getSourceConfig('qq-private').poseLifecycle).toBe(false);
