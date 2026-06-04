@@ -1,8 +1,8 @@
 // Memory Plugin - debounced memory extraction from recent messages for configured groups
 
 import { existsSync } from 'node:fs';
-import { appendFile, cp, mkdir, readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import type { ConversationHistoryService } from '@/conversation/history';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
@@ -504,8 +504,8 @@ export class MemoryPlugin extends PluginBase {
   }
 
   /**
-   * Backup all memory files to timestamped directory.
-   * Copies data/memory/ → data/backup/memory/YYYY-MM-DD/
+   * Backup all memory files into a compressed snapshot.
+   * Archives data/memory/ → data/backup/memory/memory-YYYY-MM-DD.tar.gz (one per day, source kept).
    */
   private async backupMemoryFiles(): Promise<void> {
     const srcDir = join(getRepoRoot(), MEMORY_DIR);
@@ -514,11 +514,26 @@ export class MemoryPlugin extends PluginBase {
       return;
     }
     const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    const destDir = join(getRepoRoot(), this.backupDir, date);
+    const destDir = join(getRepoRoot(), this.backupDir);
+    const archivePath = join(destDir, `memory-${date}.tar.gz`);
+    if (existsSync(archivePath)) {
+      logger.debug(`[MemoryPlugin] Memory backup already exists: memory-${date}.tar.gz`);
+      return;
+    }
     try {
       await mkdir(destDir, { recursive: true });
-      await cp(srcDir, destDir, { recursive: true });
-      logger.info(`[MemoryPlugin] Memory backup completed → ${destDir}`);
+      // tar from the parent dir so the archive holds `memory/...` rather than absolute paths.
+      const proc = Bun.spawn(['tar', '-czf', archivePath, basename(srcDir)], {
+        cwd: dirname(srcDir),
+        stdout: 'ignore',
+        stderr: 'pipe',
+      });
+      const exitCode = await proc.exited;
+      if (exitCode !== 0) {
+        const stderr = await new Response(proc.stderr).text();
+        throw new Error(`tar failed (exit ${exitCode}): ${stderr}`);
+      }
+      logger.info(`[MemoryPlugin] Memory backup completed → ${archivePath}`);
     } catch (err) {
       logger.error('[MemoryPlugin] Memory backup failed:', err);
     }
