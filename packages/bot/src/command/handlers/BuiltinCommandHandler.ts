@@ -23,7 +23,14 @@ const TRIGGER_TEMPLATE_SUFFIX = '.trigger';
 
 /**
  * Help command - shows available commands as a card image via AIService (same card pipeline as reply handleCardReply).
- * Falls back to text if card rendering fails (e.g. browser not available).
+ *
+ * Output is ALWAYS an image, never text. The help body lists command names
+ * (e.g. "/ping — ..."), and the protocol echoes the bot's own outgoing message
+ * back into the pipeline where CommandParser re-parses each line as a real
+ * command — so a text help reply fans out into mass command execution, and
+ * because the list includes "/help" itself it self-amplifies. An image segment
+ * carries no parseable text. On render failure we surface a command-free notice
+ * rather than dumping the command list as text.
  */
 @Command({
   name: 'help',
@@ -75,23 +82,7 @@ export class HelpCommand implements CommandHandler {
         content: parts.join('\n\n'),
         level: 'tip',
       };
-
-      try {
-        const segments = await this.aiService.renderCardToSegments(JSON.stringify(cardData));
-        return {
-          success: true,
-          segments,
-        };
-      } catch (err) {
-        logger.warn('[HelpCommand] Card render failed, falling back to text:', err);
-        const help = [handler.description, handler.usage].filter(Boolean).join('\nUsage: ');
-        const messageBuilder = new MessageBuilder();
-        messageBuilder.text(`Command: /${handler.name}\n${help}`);
-        return {
-          success: true,
-          segments: messageBuilder.build(),
-        };
-      }
+      return this.renderCardOnly(cardData);
     }
 
     // Show all commands as list card
@@ -107,27 +98,22 @@ export class HelpCommand implements CommandHandler {
       items,
       emoji: '📋',
     };
+    return this.renderCardOnly(cardData);
+  }
 
+  /**
+   * Render the help card to an image. Never falls back to text — see the class
+   * comment for why help output must not reach a text channel. On render
+   * failure, return a command-free error so the user gets feedback without the
+   * command list being echoed back and re-parsed as commands.
+   */
+  private async renderCardOnly(cardData: InfoCardData | ListCardData): Promise<CommandResult> {
     try {
       const segments = await this.aiService.renderCardToSegments(JSON.stringify(cardData));
-      return {
-        success: true,
-        segments,
-      };
+      return { success: true, segments };
     } catch (err) {
-      logger.warn('[HelpCommand] Card render failed, falling back to text:', err);
-      const commandList = commands
-        .map((c) => {
-          const h = c.handler;
-          return h.description ? `/${h.name} - ${h.description}` : `/${h.name}`;
-        })
-        .join('\n');
-      const messageBuilder = new MessageBuilder();
-      messageBuilder.text(`Available commands:\n${commandList}\n\nUse /help(!help) <command> for more info`);
-      return {
-        success: true,
-        segments: messageBuilder.build(),
-      };
+      logger.warn('[HelpCommand] Card render failed:', err);
+      return { success: false, error: '帮助卡片渲染失败，请稍后再试' };
     }
   }
 }
