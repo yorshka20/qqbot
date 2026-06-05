@@ -582,13 +582,20 @@ export class GeminiProvider
     }
 
     const text = (response as { text?: string }).text ?? candidate.content.parts.map((p) => p.text ?? '').join('');
+    const meta = (response as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
     const out: {
       text: string;
       usage?: AIGenerateResponse['usage'];
       functionCalls?: AIGenerateResponse['functionCalls'];
     } = {
       text: text ?? '',
-      usage: undefined,
+      usage: meta
+        ? {
+            promptTokens: meta.promptTokenCount ?? 0,
+            completionTokens: meta.candidatesTokenCount ?? 0,
+            totalTokens: meta.totalTokenCount ?? 0,
+          }
+        : undefined,
     };
 
     // Extract ALL function calls from the response.
