@@ -1096,8 +1096,14 @@
   "vkbContextEngine": {
     "enabled": false,
     "baseURL": "http://localhost:8080",
-    // Optional HMAC bearer token issued by POST /api/v1/auth/verify. Omit
-    // when VKB runs without `authSecret`. 7-day TTL — regenerate manually:
+    // Auth — only needed when VKB runs with `authSecret` configured.
+    // Prefer authPassword: the engine mints its own short-lived tokens via
+    // POST /api/v1/auth/verify and auto-renews (proactively before the 7-day
+    // expiry, and reactively on 401 after a VKB authSecret rotation).
+    // "authPassword": "<VKB access_password>",
+    //
+    // Alternatively pin a static token (no auto-renew — 401s once it expires,
+    // regenerate by hand). Ignored when authPassword is set.
     //   curl -X POST $baseURL/api/v1/auth/verify \
     //        -H 'Content-Type: application/json' \
     //        -d '{"password":"<access_password>"}'

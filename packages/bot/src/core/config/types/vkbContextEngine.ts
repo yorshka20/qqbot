@@ -27,11 +27,20 @@ export interface VKBContextEngineConfig {
   /** Base URL of the VKB server (e.g. "http://localhost:8080"). */
   baseURL: string;
   /**
-   * Optional HMAC bearer token issued by POST /api/v1/auth/verify.
-   * Omit when VKB runs without `authSecret` configured. 7-day TTL upstream —
-   * regenerate manually when expired; no auto-refresh.
+   * Static HMAC bearer token issued by POST /api/v1/auth/verify. Used as-is
+   * with no refresh — when it hits its 7-day TTL, requests start 401ing until
+   * you regenerate it manually. Prefer `authPassword` for hands-off renewal.
+   * Ignored when `authPassword` is set.
    */
   authToken?: string;
+  /**
+   * VKB access password (the server's `access_password`). When set, the engine
+   * mints short-lived tokens itself via POST /api/v1/auth/verify and refreshes
+   * them proactively before expiry and reactively on 401 — no manual rotation.
+   * Takes precedence over `authToken`. Omit both when VKB runs without
+   * `authSecret` configured.
+   */
+  authPassword?: string;
   /** Retrieval scope passed to VKB. Default: "chat_qa". */
   scope?: VKBContextEngineScope;
   /**

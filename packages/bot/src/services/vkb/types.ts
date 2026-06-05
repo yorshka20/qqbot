@@ -69,3 +69,10 @@ export interface VKBEvidencePreviewResponse {
     build_pack: number;
   };
 }
+
+/** Response of POST /api/v1/auth/verify. `token` present iff `success`. */
+export interface VKBAuthVerifyResponse {
+  success: boolean;
+  token?: string;
+  message?: string;
+}

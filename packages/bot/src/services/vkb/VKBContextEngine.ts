@@ -20,7 +20,7 @@
 // Fails soft: any error / disabled state / empty query → empty string.
 
 import { injectable } from 'tsyringe';
-import { HttpClient } from '@/api/http/HttpClient';
+import { HttpClient, HttpClientError } from '@/api/http/HttpClient';
 import type { VKBContextEngineConfig } from '@/core/config/types/vkbContextEngine';
 import { logger } from '@/utils/logger';
 import type {
@@ -30,6 +30,7 @@ import type {
   VKBEvidencePreviewResponse,
   VKBRelationEvidence,
 } from './types';
+import { VKBTokenManager } from './VKBTokenManager';
 
 const LOG_TAG = '[VKBContextEngine]';
 
@@ -56,6 +57,7 @@ export class VKBContextEngine {
   private readonly maxRelatedPerTerm: number;
   private readonly maxUsageExamples: number;
   private readonly maxExampleLen: number;
+  private readonly tokenManager: VKBTokenManager;
 
   constructor(config: VKBContextEngineConfig) {
     this.enabled = config.enabled;
@@ -68,15 +70,19 @@ export class VKBContextEngine {
     this.maxUsageExamples = config.maxUsageExamples ?? DEFAULT_MAX_USAGE_EXAMPLES;
     this.maxExampleLen = config.maxExampleLen ?? DEFAULT_MAX_EXAMPLE_LEN;
 
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (config.authToken) {
-      headers.Authorization = `Bearer ${config.authToken}`;
-    }
-
+    // Authorization is resolved per-request via tokenManager — not baked into
+    // defaultHeaders — so an auto-renewed token reaches every call without
+    // rebuilding the client.
     this.httpClient = new HttpClient({
       baseURL: config.baseURL,
-      defaultHeaders: headers,
+      defaultHeaders: { 'Content-Type': 'application/json' },
       defaultTimeout: this.timeoutMs,
+    });
+
+    this.tokenManager = new VKBTokenManager({
+      httpClient: this.httpClient,
+      password: config.authPassword,
+      staticToken: config.authToken,
     });
   }
 
@@ -117,13 +123,42 @@ export class VKBContextEngine {
 
     let response: VKBEvidencePreviewResponse;
     try {
-      response = await this.httpClient.post<VKBEvidencePreviewResponse>('/api/v1/chat/evidence-preview', body);
+      response = await this.requestEvidence(body);
     } catch (err) {
       logger.warn(`${LOG_TAG} evidence-preview failed for query="${truncate(trimmed, 80)}":`, err);
       return '';
     }
 
     return this.formatGlossary(response.pack);
+  }
+
+  /**
+   * POST the evidence-preview request with a freshly-resolved bearer token.
+   * On 401 — token expired, or VKB restarted with a new authSecret and
+   * invalidated every outstanding token — drop the cached token and retry
+   * exactly once with a newly-minted one. Other failures propagate to
+   * fetchGlossary's soft-fail.
+   */
+  private async requestEvidence(body: VKBEvidencePreviewRequest): Promise<VKBEvidencePreviewResponse> {
+    try {
+      return await this.httpClient.post<VKBEvidencePreviewResponse>('/api/v1/chat/evidence-preview', body, {
+        headers: await this.authHeaders(),
+      });
+    } catch (err) {
+      if (err instanceof HttpClientError && err.status === 401 && this.tokenManager.canRefresh) {
+        this.tokenManager.invalidate();
+        return this.httpClient.post<VKBEvidencePreviewResponse>('/api/v1/chat/evidence-preview', body, {
+          headers: await this.authHeaders(),
+        });
+      }
+      throw err;
+    }
+  }
+
+  /** Authorization header for VKB requests, or undefined when no auth is configured. */
+  private async authHeaders(): Promise<Record<string, string> | undefined> {
+    const token = await this.tokenManager.getToken();
+    return token ? { Authorization: `Bearer ${token}` } : undefined;
   }
 
   /**
