@@ -10,6 +10,7 @@
 
 export * from './AutoAcceptPlugin';
 export * from './AutoRecallPlugin';
+export * from './BlacklistPlugin';
 export * from './CloudflareWorkerPlugin';
 export * from './ConversationConfigPlugin';
 export * from './EchoPlugin';
