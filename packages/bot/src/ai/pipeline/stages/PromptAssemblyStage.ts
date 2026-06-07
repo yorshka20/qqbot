@@ -179,7 +179,6 @@ export class PromptAssemblyStage implements ReplyStage {
     ctx.messages = messages;
 
     const hasTools = ctx.toolDefinitions.length > 0;
-    const maxTokens = hasTools ? 4000 : 2000;
     // Split reasoning by tool-use: pure chat runs on persona/pattern (no thinking
     // budget needed, and the hidden <think> block dominates TTFT for providers
     // that support thinking). Tool-use benefits from reasoning for selection and
@@ -222,7 +221,6 @@ export class PromptAssemblyStage implements ReplyStage {
     }
     ctx.genOptions = {
       temperature: 0.7,
-      maxTokens,
       sessionId: ctx.sessionId,
       reasoningEffort,
       episodeKey: ctx.episodeKey,

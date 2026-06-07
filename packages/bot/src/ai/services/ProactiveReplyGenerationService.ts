@@ -23,7 +23,6 @@ const PROACTIVE_MAX_HISTORY_ENTRIES = 24;
 
 const PROACTIVE_GEN_OPTIONS = {
   temperature: 0.5,
-  maxTokens: 2000,
   maxToolRounds: 10,
 } as const;
 
@@ -223,7 +222,6 @@ export class ProactiveReplyGenerationService {
           tools,
           {
             temperature: genOptions.temperature,
-            maxTokens: genOptions.maxTokens,
             maxToolRounds: genOptions.maxToolRounds,
             sessionId: genOptions.sessionId,
             nativeWebSearch: nativeWebSearchEnabled,
@@ -235,7 +233,7 @@ export class ProactiveReplyGenerationService {
       }
       return this.visionService.generateWithVisionMessages(
         messages,
-        { temperature: genOptions.temperature, maxTokens: genOptions.maxTokens, sessionId: genOptions.sessionId },
+        { temperature: genOptions.temperature, sessionId: genOptions.sessionId },
         effectiveProviderName,
       );
     }
@@ -245,7 +243,6 @@ export class ProactiveReplyGenerationService {
         tools,
         {
           temperature: genOptions.temperature,
-          maxTokens: genOptions.maxTokens,
           maxToolRounds: genOptions.maxToolRounds,
           sessionId: genOptions.sessionId,
           nativeWebSearch: nativeWebSearchEnabled,

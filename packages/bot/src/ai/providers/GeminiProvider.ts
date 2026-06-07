@@ -514,8 +514,13 @@ export class GeminiProvider
   }> {
     const config: Record<string, unknown> = {
       temperature: options?.temperature ?? 0.7,
-      maxOutputTokens: options?.maxTokens ?? 2000,
     };
+    // Omit maxOutputTokens when unset so the model uses its full output budget. Capping it low is
+    // especially harmful for thinking models: thinking tokens count against this budget, so a small
+    // cap can be fully consumed by thinking, yielding finishReason=MAX_TOKENS with no text parts.
+    if (options?.maxTokens !== undefined) {
+      config.maxOutputTokens = options.maxTokens;
+    }
     // Tools array can hold both functionDeclarations and googleSearch grounding entries.
     // Drop caller-supplied `search` tool when grounding is on so the model uses grounding instead.
     const effectiveTools = options?.nativeWebSearch
@@ -578,6 +583,14 @@ export class GeminiProvider
 
     const candidate = response.candidates?.[0];
     if (!candidate?.content?.parts) {
+      // No content parts. Attribute it to the real cause instead of a generic structure error:
+      // a non-STOP finishReason means the model legitimately stopped before emitting text —
+      // most often MAX_TOKENS (thinking budget consumed the whole output budget), or SAFETY /
+      // RECITATION. Surfacing the reason is what makes this diagnosable downstream.
+      const finishReason = candidate?.finishReason ? String(candidate.finishReason) : undefined;
+      if (finishReason && finishReason !== 'STOP') {
+        throw new Error(`Gemini returned no content (finishReason=${finishReason})`);
+      }
       throw new Error('Invalid response structure');
     }
 
@@ -693,7 +706,7 @@ export class GeminiProvider
     const model = options?.model ?? this.config.llm.model;
     const paidModel = this.config.llm.paidModel;
     const temperature = options?.temperature ?? this.config.llm.temperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens;
     const nativeWebSearch = options?.nativeWebSearch ?? this.config.llm.nativeWebSearch ?? false;
 
     if (options?.messages?.length) {
@@ -790,7 +803,7 @@ export class GeminiProvider
 
     return this.generateContentText(model, contentsParts, {
       temperature: options?.temperature ?? 0.7,
-      maxTokens: options?.maxTokens ?? 2000,
+      maxTokens: options?.maxTokens,
       paidModel,
       timeoutMs: options?.timeout,
     });

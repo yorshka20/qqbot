@@ -255,8 +255,11 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'deepseek-chat';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const rawMaxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
-    const maxTokens = Math.min(Math.max(1, Math.floor(rawMaxTokens)), DEEPSEEK_MAX_TOKENS_LIMIT);
+    const rawMaxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
+    const maxTokens =
+      rawMaxTokens === undefined
+        ? undefined
+        : Math.min(Math.max(1, Math.floor(rawMaxTokens)), DEEPSEEK_MAX_TOKENS_LIMIT);
 
     try {
       logger.info(`[STATS] [DeepSeekProvider] Generating with model: ${model}`);
@@ -370,8 +373,11 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
   ): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'deepseek-chat';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const rawMaxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
-    const maxTokens = Math.min(Math.max(1, Math.floor(rawMaxTokens)), DEEPSEEK_MAX_TOKENS_LIMIT);
+    const rawMaxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
+    const maxTokens =
+      rawMaxTokens === undefined
+        ? undefined
+        : Math.min(Math.max(1, Math.floor(rawMaxTokens)), DEEPSEEK_MAX_TOKENS_LIMIT);
 
     try {
       logger.info(`[STATS] [DeepSeekProvider] Generating stream with model: ${model}`);

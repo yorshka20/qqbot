@@ -157,7 +157,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
     options?: AIGenerateOptions,
   ): Promise<OllamaGenerateResponse> {
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
     const thinking = options?.includeReasoning ?? false;
     const model = options?.model ?? this.config.model;
 
@@ -166,11 +166,11 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
       messages,
       options: {
         temperature,
-        num_predict: maxTokens,
+        num_predict: maxTokens ?? -1,
         top_p: options?.topP,
         repeat_penalty: options?.frequencyPenalty ? 1 + options.frequencyPenalty : undefined,
         thinking,
-        num_ctx: maxTokens,
+        ...(maxTokens !== undefined ? { num_ctx: maxTokens } : {}),
       },
       stream: false,
     };
@@ -188,7 +188,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
     options?: AIGenerateOptions,
   ): Promise<ReadableStream<Uint8Array>> {
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
     const model = options?.model ?? this.config.model;
 
     const streamBody: Record<string, unknown> = {
@@ -196,7 +196,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
       messages,
       options: {
         temperature,
-        num_predict: maxTokens,
+        num_predict: maxTokens ?? -1,
         top_p: options?.topP,
         repeat_penalty: options?.frequencyPenalty ? 1 + options.frequencyPenalty : undefined,
       },

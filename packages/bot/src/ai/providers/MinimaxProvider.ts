@@ -215,7 +215,7 @@ export class MinimaxProvider extends AIProvider implements LLMCapability, Vision
 
     const model = options?.model ?? this.config.model ?? MINIMAX_DEFAULT_MODEL;
     const temperature = this.sanitizeTemperature(options?.temperature ?? this.config.defaultTemperature ?? 1.0);
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
 
     try {
       logger.info(`[STATS] [MinimaxProvider] Generating with model: ${model}`);
@@ -264,7 +264,7 @@ export class MinimaxProvider extends AIProvider implements LLMCapability, Vision
 
     const model = options?.model ?? this.config.model ?? MINIMAX_DEFAULT_MODEL;
     const temperature = this.sanitizeTemperature(options?.temperature ?? this.config.defaultTemperature ?? 1.0);
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
 
     try {
       logger.info(`[STATS] [MinimaxProvider] Generating stream with model: ${model}`);
@@ -316,7 +316,7 @@ export class MinimaxProvider extends AIProvider implements LLMCapability, Vision
 
     const model = options?.model ?? this.config.model ?? MINIMAX_DEFAULT_MODEL;
     const temperature = this.sanitizeTemperature(options?.temperature ?? this.config.defaultTemperature ?? 1.0);
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
 
     try {
       logger.info(`[STATS] [MinimaxProvider] Generating with vision, model: ${model}`);
@@ -389,7 +389,7 @@ export class MinimaxProvider extends AIProvider implements LLMCapability, Vision
 
     const model = options?.model ?? this.config.model ?? MINIMAX_DEFAULT_MODEL;
     const temperature = this.sanitizeTemperature(options?.temperature ?? this.config.defaultTemperature ?? 1.0);
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
 
     try {
       logger.info(`[STATS] [MinimaxProvider] Generating stream with vision, model: ${model}`);

@@ -105,7 +105,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'openai/gpt-3.5-turbo';
     const temperature = options?.temperature ?? this.config.temperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.maxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.maxTokens;
 
     try {
       logger.info(`[STATS] [OpenRouterProvider] Generating with model: ${model}`);
@@ -181,7 +181,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
   ): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'openai/gpt-3.5-turbo';
     const temperature = options?.temperature ?? this.config.temperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.maxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.maxTokens;
 
     try {
       logger.info(`[STATS] [OpenRouterProvider] Generating stream with model: ${model}`);

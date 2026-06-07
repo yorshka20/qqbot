@@ -154,7 +154,7 @@ export class OpenAIProvider
 
     const model = options?.model ?? this.config.model ?? 'gpt-3.5-turbo';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
 
     try {
       logger.info(`[STATS] [OpenAIProvider] Generating with model: ${model}`);
@@ -262,7 +262,7 @@ export class OpenAIProvider
 
     const model = options?.model ?? this.config.model ?? 'gpt-3.5-turbo';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
 
     try {
       logger.info(`[STATS] [OpenAIProvider] Generating stream with model: ${model}`);
@@ -344,7 +344,7 @@ export class OpenAIProvider
     }
     const model = options?.model ?? this.config.model ?? 'gpt-4-vision-preview';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
     const apiMessages = messages.map((m) => ({
       role: m.role,
       content:
@@ -394,7 +394,7 @@ export class OpenAIProvider
 
     const model = options?.model ?? this.config.model ?? 'gpt-4-vision-preview';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
 
     try {
       logger.info(`[STATS] [OpenAIProvider] Generating with vision, model: ${model}`);
@@ -723,7 +723,7 @@ export class OpenAIProvider
 
     const model = options?.model ?? this.config.model ?? 'gpt-4-vision-preview';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
 
     try {
       logger.info(`[STATS] [OpenAIProvider] Generating stream with vision, model: ${model}`);

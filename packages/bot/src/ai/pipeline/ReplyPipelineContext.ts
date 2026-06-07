@@ -50,7 +50,7 @@ export class ReplyPipelineContext {
   messages: ChatMessage[] = [];
   genOptions: {
     temperature: number;
-    maxTokens: number;
+    maxTokens?: number;
     sessionId: string;
     reasoningEffort: ReasoningEffort;
     episodeKey?: string;

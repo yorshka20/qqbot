@@ -111,6 +111,10 @@ type AnthropicWebSearchTool = {
 type AnthropicTool = AnthropicClientTool | AnthropicWebSearchTool;
 
 const ANTHROPIC_DEFAULT_MODEL = 'claude-3-sonnet-20240229';
+// Anthropic's API requires max_tokens on every request (unlike most providers, which let it be
+// omitted to default to the model's full output budget). 8192 is the smallest per-model output
+// cap across current Claude models, so it's the largest value safe to send unconditionally.
+const ANTHROPIC_DEFAULT_MAX_TOKENS = 8192;
 const ANTHROPIC_WEB_SEARCH_TOOL_NAME = 'web_search';
 const ANTHROPIC_WEB_SEARCH_TOOL_TYPE = 'web_search_20250305';
 const ANTHROPIC_WEB_SEARCH_MAX_USES = 5;
@@ -274,7 +278,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? ANTHROPIC_DEFAULT_MODEL;
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS;
 
     try {
       logger.info(`[STATS] [AnthropicProvider] Generating with model: ${model}`);
@@ -355,7 +359,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
   ): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? ANTHROPIC_DEFAULT_MODEL;
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS;
 
     try {
       logger.info(`[STATS] [AnthropicProvider] Generating stream with model: ${model}`);
@@ -454,7 +458,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
   ): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'claude-3-opus-20240229';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS;
 
     try {
       logger.info(`[STATS] [AnthropicProvider] Generating with vision, model: ${model}`);

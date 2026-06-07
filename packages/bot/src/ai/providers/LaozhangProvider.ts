@@ -336,12 +336,17 @@ export class LaozhangProvider
     options?: { temperature?: number; maxTokens?: number },
   ): Promise<{ text: string; usage?: AIGenerateResponse['usage'] }> {
     const endpoint = `/v1beta/models/${model}:generateContent`;
+    const generationConfig: Record<string, unknown> = {
+      temperature: options?.temperature ?? 0.7,
+    };
+    // Omit maxOutputTokens when unset so the model uses its full output budget (see GeminiProvider:
+    // a low cap can be entirely consumed by thinking tokens, leaving no text).
+    if (options?.maxTokens !== undefined) {
+      generationConfig.maxOutputTokens = options.maxTokens;
+    }
     const payload = {
       contents: [{ parts: contentsParts }],
-      generationConfig: {
-        temperature: options?.temperature ?? 0.7,
-        maxOutputTokens: options?.maxTokens ?? 2000,
-      },
+      generationConfig,
     };
     const response = await this.httpClient.post<LaozhangApiResponse>(endpoint, payload, {
       timeout: LaozhangProvider.LLM_TIMEOUT,
@@ -352,6 +357,12 @@ export class LaozhangProvider
     }
     const candidate = response.candidates?.[0];
     if (!candidate?.content?.parts) {
+      // Attribute "no parts" to its real cause (MAX_TOKENS / SAFETY / RECITATION) rather than a
+      // generic structure error — same rationale as GeminiProvider.
+      const finishReason = candidate?.finishReason ? String(candidate.finishReason) : undefined;
+      if (finishReason && finishReason !== 'STOP') {
+        throw new Error(`Laozhang returned no content (finishReason=${finishReason})`);
+      }
       throw new Error('Invalid response structure');
     }
     const text = candidate.content.parts.map((p) => p.text ?? '').join('');
@@ -367,7 +378,7 @@ export class LaozhangProvider
     }
     const model = options?.model ?? this.config.llm.model;
     const temperature = options?.temperature ?? this.config.llm.temperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens ?? 2000;
+    const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens;
     const contentsParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
     if (options?.messages?.length) {
       for (const msg of options.messages) {
@@ -432,7 +443,7 @@ export class LaozhangProvider
     const contentsParts = [...systemPrompt, { text: prompt }, ...imageParts];
     return this.generateContentText(model, contentsParts, {
       temperature: options?.temperature ?? 0.7,
-      maxTokens: options?.maxTokens ?? 2000,
+      maxTokens: options?.maxTokens,
     });
   }
 
