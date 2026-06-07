@@ -108,45 +108,55 @@ export class SendSystem implements System {
         `Protocol "${event.protocol}" is not registered. Connect the IM protocol on this instance, or set lanRelay.enabled + instanceRole client with a reachable host.`,
       );
     }
-    if (!protocolRegistered && relay?.isClientMode()) {
-      if (useForward) {
-        // Forward replies need the bot's own QQ id as the synthetic sender of
-        // the forward node — pass it across the wire so the host can use the
-        // same id (rather than its own selfId, which may differ).
+    try {
+      if (!protocolRegistered && relay?.isClientMode()) {
+        if (useForward) {
+          // Forward replies need the bot's own QQ id as the synthetic sender of
+          // the forward node — pass it across the wire so the host can use the
+          // same id (rather than its own selfId, which may differ).
+          const botSelfId = Number(context.metadata.get('botSelfId'));
+          if (Number.isNaN(botSelfId) || botSelfId <= 0) {
+            throw new Error("Forward relay requires bot self ID. Set config.bot.selfId to the bot's own QQ user id.");
+          }
+          sentMessageResponse = await relay.relayOutboundSend({
+            segments: replyContent.segments,
+            event,
+            useForward: true,
+            botSelfIdForForward: botSelfId,
+          });
+        } else {
+          sentMessageResponse = await relay.relayOutboundSend({
+            segments: replyContent.segments,
+            event,
+            useForward: false,
+          });
+        }
+      } else if (useForward) {
         const botSelfId = Number(context.metadata.get('botSelfId'));
         if (Number.isNaN(botSelfId) || botSelfId <= 0) {
-          throw new Error("Forward relay requires bot self ID. Set config.bot.selfId to the bot's own QQ user id.");
+          throw new Error("Forward message requires bot self ID. Set config.bot.selfId to the bot's own QQ user id.");
         }
-        sentMessageResponse = await relay.relayOutboundSend({
-          segments: replyContent.segments,
+        sentMessageResponse = await this.messageAPI.sendForwardFromContext(
+          [{ segments: replyContent.segments, senderName: 'Bot' }],
           event,
-          useForward: true,
-          botSelfIdForForward: botSelfId,
-        });
+          60000,
+          { botUserId: botSelfId },
+        );
       } else {
-        sentMessageResponse = await relay.relayOutboundSend({
-          segments: replyContent.segments,
-          event,
-          useForward: false,
-        });
+        sentMessageResponse = await this.messageAPI.sendFromContext(replyContent.segments, event, 60000);
       }
-    } else if (useForward) {
-      const botSelfId = Number(context.metadata.get('botSelfId'));
-      if (Number.isNaN(botSelfId) || botSelfId <= 0) {
-        throw new Error("Forward message requires bot self ID. Set config.bot.selfId to the bot's own QQ user id.");
-      }
-      sentMessageResponse = await this.messageAPI.sendForwardFromContext(
-        [{ segments: replyContent.segments, senderName: 'Bot' }],
-        event,
-        60000,
-        { botUserId: botSelfId },
-      );
-    } else {
-      sentMessageResponse = await this.messageAPI.sendFromContext(replyContent.segments, event, 60000);
-    }
 
-    // Store response for downstream hooks/systems
-    context.sentMessageResponse = sentMessageResponse;
+      // Store response for downstream hooks/systems
+      context.sentMessageResponse = sentMessageResponse;
+    } catch (sendError) {
+      // Send failed/timed out — but a timeout may still have been delivered server-side.
+      // Persist the bot reply text regardless (onMessageSent → DB) so history/context never
+      // lose it; the send response (message_seq) is simply absent, so reply-by-seq lookup may
+      // miss for this one message. Re-throw afterwards to keep the existing error notification.
+      logger.error('[SendSystem] Send failed; persisting reply text without message_seq before re-throwing', sendError);
+      await this.hookManager.execute('onMessageSent', context);
+      throw sendError;
+    }
 
     // Hook: onMessageSent (post-send notification, not a check)
     await this.hookManager.execute('onMessageSent', context);

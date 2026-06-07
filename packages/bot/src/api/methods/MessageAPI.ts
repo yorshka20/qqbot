@@ -681,11 +681,18 @@ export class MessageAPI {
     }
 
     if (cached) {
-      const hasImageSegment = cached.segments?.some((s) => s.type === 'image');
-      if (!hasImageSegment) {
+      // A cache hit may be the bot's own opaque echo: a card image, or a forward / multi-msg
+      // (light_app) sent via sendAsForward. Those are stored in DB as the original readable text
+      // (isBotReply), so for any non-text rich segment we defer to DB and prefer that text — keyed
+      // by the exact messageSeq, so no risk of crossing concurrent replies. Plain-text cache hits
+      // are authoritative and returned directly (fast path, no DB read).
+      const hasOpaqueSegment = cached.segments?.some(
+        (s) => s.type === 'image' || s.type === 'forward' || s.type === 'light_app',
+      );
+      if (!hasOpaqueSegment) {
         return cached;
       }
-      // Cache hit with image segments may be bot card echo; prefer DB so referenced message shows cardText, not image.
+      // Cache hit with opaque segment may be a bot card/forward echo; prefer DB so referenced message resolves to original text, not the image/multi-msg card.
     }
 
     // Need DB: resolve adapter once (for cache hit with image override, or cache miss)
