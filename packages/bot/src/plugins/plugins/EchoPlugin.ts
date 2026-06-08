@@ -11,6 +11,7 @@ import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { MessageUtils } from '@/message/MessageUtils';
+import type { TextSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 import { Hook, RegisterPlugin } from '../decorators';
@@ -114,6 +115,44 @@ export class EchoPlugin extends PluginBase {
   }
 
   /**
+   * Build the text to synthesize from the message's text segments only.
+   *
+   * context.message.message is the *serialized* form (MessageParser.segmentsToText), which
+   * renders non-text segments as synthetic markers like [Reply:123], @123456, [Face:1]. Feeding
+   * those to a TTS provider reads the brackets aloud or skews prosody/intonation. Reconstructing
+   * from text segments drops every marker at the source — and, unlike regex-stripping the string,
+   * never touches brackets the user actually typed.
+   */
+  private extractTTSText(message: HookContext['message']): string {
+    const segments = message.segments;
+    if (segments && segments.length > 0) {
+      return segments
+        .filter((s): s is TextSegment => s.type === 'text')
+        .map((s) => s.data.text)
+        .join('')
+        .trim();
+    }
+    return (message.message ?? '').trim();
+  }
+
+  /**
+   * TTS providers derive prosody from punctuation; text ending abruptly on a word character tends
+   * to get clipped or flat final intonation. Append a sentence-final mark only when the text ends
+   * on a word character (CJK / Latin / digit) — if it already ends in punctuation, a quote, or an
+   * emoji we leave it alone, so we never double-punctuate or trail a mark after a non-word symbol.
+   */
+  private ensureTrailingPunctuation(text: string): string {
+    const lastChar = text.slice(-1);
+    if (/[一-鿿]/.test(lastChar)) {
+      return `${text}。`;
+    }
+    if (/[A-Za-z0-9]/.test(lastChar)) {
+      return `${text}.`;
+    }
+    return text;
+  }
+
+  /**
    * TTS is a side-channel echo, not a pipeline step. Run as a fire-and-forget
    * background task with a hard timeout so a slow/stuck provider can never
    * block the message pipeline.
@@ -176,7 +215,11 @@ export class EchoPlugin extends PluginBase {
       return true;
     }
 
-    const messageText = context.message.message?.trim() || '';
+    const messageText = this.ensureTrailingPunctuation(this.extractTTSText(context.message));
+    // After dropping non-text segments the message may be empty (e.g. a bare reply/@). Nothing to speak.
+    if (!messageText) {
+      return true;
+    }
     this.runTTSInBackground(messageText, context);
 
     return true;
