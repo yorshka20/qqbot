@@ -4,6 +4,24 @@ import sharp from 'sharp';
 import { logger } from '@/utils/logger';
 
 /**
+ * Detect MIME type from raw image bytes via sharp metadata.
+ * Falls back to 'image/jpeg' for unknown formats.
+ */
+export async function detectMimeType(buffer: Buffer): Promise<string> {
+  const meta = await sharp(buffer).metadata();
+  switch (meta.format) {
+    case 'png':
+      return 'image/png';
+    case 'webp':
+      return 'image/webp';
+    case 'gif':
+      return 'image/gif';
+    default:
+      return 'image/jpeg';
+  }
+}
+
+/**
  * Alignment for diffusion APIs (e.g. NovelAI): width/height must be multiples of this (64).
  */
 export const DIFFUSION_ALIGN = 64;

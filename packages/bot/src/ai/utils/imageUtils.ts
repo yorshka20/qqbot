@@ -6,7 +6,7 @@ import type { NormalizedMessageEvent } from '@/events/types';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../capabilities/types';
-import { compressImageToMaxBytes } from './imageResize';
+import { compressImageToMaxBytes, detectMimeType } from './imageResize';
 import { ResourceDownloader } from './ResourceDownloader';
 
 /**
@@ -256,9 +256,7 @@ export async function normalizeVisionImages(
           filename: `image_${Date.now()}`,
         });
         normalizedImage.base64 = base64Data;
-        if (!normalizedImage.mimeType) {
-          normalizedImage.mimeType = 'image/jpeg';
-        }
+        normalizedImage.mimeType = await detectMimeType(Buffer.from(base64Data, 'base64'));
       } catch (error) {
         logger.error(`[imageUtils] Failed to convert URL to base64: ${image.url}`, error);
         throw new Error(`Failed to process image URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -271,15 +269,14 @@ export async function normalizeVisionImages(
           filename: `image_${Date.now()}`,
         });
         normalizedImage.base64 = base64Data;
-        if (!normalizedImage.mimeType) {
-          normalizedImage.mimeType = 'image/jpeg';
-        }
+        normalizedImage.mimeType = await detectMimeType(Buffer.from(base64Data, 'base64'));
       } catch (error) {
         logger.error(`[imageUtils] Failed to convert file to base64: ${image.file}`, error);
         throw new Error(`Failed to process image file: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     } else if (image.base64) {
       normalizedImage.base64 = image.base64;
+      normalizedImage.mimeType = await detectMimeType(Buffer.from(image.base64, 'base64'));
     } else {
       logger.error(
         `[imageUtils] Invalid image format - no url, base64, or file field found | image=${JSON.stringify(image)}`,

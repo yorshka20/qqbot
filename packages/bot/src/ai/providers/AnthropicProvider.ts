@@ -16,6 +16,7 @@ import type {
   ToolDefinition,
 } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
+import { detectMimeType } from '../utils/imageResize';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
 
 export interface AnthropicProviderConfig {
@@ -469,7 +470,6 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       // Add images to content
       for (const image of images) {
         let imageData: string;
-        const mimeType = image.mimeType || 'image/jpeg';
 
         // Use ResourceDownloader to handle various input formats
         if (image.base64) {
@@ -496,6 +496,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
           throw new Error('Invalid image format. Must provide base64, url, or file.');
         }
 
+        const mimeType = await detectMimeType(Buffer.from(imageData, 'base64'));
         content.push({
           type: 'image',
           source: {
