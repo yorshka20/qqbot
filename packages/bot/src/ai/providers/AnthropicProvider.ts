@@ -45,7 +45,6 @@ interface AnthropicSystemBlock {
 interface AnthropicMessagesRequestBody {
   model: string;
   max_tokens: number;
-  temperature?: number;
   messages: AnthropicMessage[];
   system?: AnthropicSystemBlock[];
   tools?: AnthropicTool[];
@@ -59,7 +58,6 @@ interface AnthropicStreamRequestBody extends AnthropicMessagesRequestBody {
 interface AnthropicVisionRequestBody {
   model: string;
   max_tokens: number;
-  temperature?: number;
   messages: Array<{ role: 'user'; content: AnthropicMessage['content'] }>;
   system?: AnthropicSystemBlock[];
 }
@@ -120,14 +118,6 @@ const ANTHROPIC_WEB_SEARCH_TOOL_NAME = 'web_search';
 const ANTHROPIC_WEB_SEARCH_TOOL_TYPE = 'web_search_20250305';
 const ANTHROPIC_WEB_SEARCH_MAX_USES = 5;
 const ANTHROPIC_PAUSE_TURN_MAX_CONTINUATIONS = 3;
-
-/**
- * Claude 4.x models reject the Messages API `temperature` field.
- * Match patterns like claude-opus-4-7, claude-sonnet-4-8-20250528, etc.
- */
-function anthropicModelAcceptsTemperature(model: string): boolean {
-  return !/claude-\w+-4-\d/.test(model.toLowerCase());
-}
 
 function toAnthropicTextBlocks(text: string): AnthropicTextBlock[] {
   return [{ type: 'text', text }];
@@ -278,7 +268,6 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
 
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? ANTHROPIC_DEFAULT_MODEL;
-    const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS;
 
     try {
@@ -296,9 +285,6 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
           max_tokens: maxTokens,
           messages,
         };
-        if (anthropicModelAcceptsTemperature(model)) {
-          requestBody.temperature = temperature;
-        }
         if (explicitSystem?.length) {
           requestBody.system = explicitSystem;
         }
@@ -359,7 +345,6 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? ANTHROPIC_DEFAULT_MODEL;
-    const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS;
 
     try {
@@ -376,9 +361,6 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         messages,
         stream: true,
       };
-      if (anthropicModelAcceptsTemperature(model)) {
-        requestBody.temperature = temperature;
-      }
       const explicitSystemStream = this.buildAnthropicSystemPrompt(options);
       if (explicitSystemStream?.length) {
         requestBody.system = explicitSystemStream;
@@ -458,7 +440,6 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'claude-3-opus-20240229';
-    const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS;
 
     try {
@@ -517,9 +498,6 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
           },
         ],
       };
-      if (anthropicModelAcceptsTemperature(model)) {
-        requestBody.temperature = temperature;
-      }
       if (options?.systemPrompt?.trim()) {
         requestBody.system = [{ type: 'text', text: options.systemPrompt, cache_control: { type: 'ephemeral' } }];
       }
