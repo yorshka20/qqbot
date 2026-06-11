@@ -27,6 +27,27 @@ export class CardRenderingService {
   }
 
   /**
+   * Resolve a provider's configured model name for the card footer. Provider configs are not
+   * uniform: most expose `model` at the top level, while multi-mode providers (e.g. gemini) nest
+   * it under `llm.model`. Returns undefined when no model can be resolved, so the footer falls
+   * back to the provider display name.
+   */
+  private resolveModelName(providerName: string): string | undefined {
+    const config = this.aiManager.getProvider(providerName)?.getConfig();
+    if (!config) {
+      return undefined;
+    }
+    if (typeof config.model === 'string' && config.model) {
+      return config.model;
+    }
+    const llm = config.llm as { model?: unknown } | undefined;
+    if (llm && typeof llm.model === 'string' && llm.model) {
+      return llm.model;
+    }
+    return undefined;
+  }
+
+  /**
    * Render card from LLM response text
    * @param responseText - LLM response text (should be JSON card data)
    * @param providerName - Provider name (e.g. doubao, claude, deepseek) shown in card footer; required on all paths
@@ -42,7 +63,10 @@ export class CardRenderingService {
    * @throws Error if rendering fails
    */
   async renderCardData(cards: CardData[], providerName: string): Promise<string> {
-    const imageBuffer = await this.cardRenderer.render(cards, { provider: providerName });
+    const imageBuffer = await this.cardRenderer.render(cards, {
+      provider: providerName,
+      model: this.resolveModelName(providerName),
+    });
     return imageBuffer.toString('base64');
   }
 
@@ -56,7 +80,10 @@ export class CardRenderingService {
 
       // Render card(s) to image (provider required for footer on all paths)
       logger.info('[CardRenderingService] Rendering card image');
-      const imageBuffer = await this.cardRenderer.render(cards, { provider: providerName });
+      const imageBuffer = await this.cardRenderer.render(cards, {
+        provider: providerName,
+        model: this.resolveModelName(providerName),
+      });
 
       // Convert buffer to base64
       const base64Image = imageBuffer.toString('base64');

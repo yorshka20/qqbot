@@ -33,9 +33,11 @@ export class CardRenderer {
    * Render card(s) to WebP image buffer.
    * Accepts single card or array of cards (deck); multiple cards are laid out in order.
    * @param cardData - Single card or array of cards to render
-   * @param options - Provider name (e.g. doubao, claude, deepseek) shown after "AI Assistant" in footer; required on all paths
+   * @param options - provider drives the theme + the large watermark (e.g. "Claude"); model, when
+   *   given, is the full model name shown after "AI Assistant" in the footer (falls back to the
+   *   provider display name when absent).
    */
-  async render(cardData: CardData | CardData[], options: { provider: string }): Promise<Buffer> {
+  async render(cardData: CardData | CardData[], options: { provider: string; model?: string }): Promise<Buffer> {
     const cards = Array.isArray(cardData) ? cardData : [cardData];
     const cardHTML = renderCardDeck(cards);
 
@@ -44,9 +46,10 @@ export class CardRenderer {
     try {
       page = await BrowserService.getInstance().createPage();
 
-      // Footer: use proper display name (e.g. "DeepSeek" not "deepseek")
+      // Theme + large watermark use the provider display name (e.g. "DeepSeek" not "deepseek");
+      // the footer line shows the full model name when known.
       const theme = getProviderTheme(options.provider);
-      const footerText = `🤖 AI Assistant · ${theme.displayName}`;
+      const footerText = `🤖 AI Assistant · ${options.model?.trim() || theme.displayName}`;
 
       // Build full HTML document (twemoji JS is inlined from local libs/ to avoid CDN timeouts)
       const fullHTML = `
