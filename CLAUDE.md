@@ -216,7 +216,7 @@ The bot automatically handles database schema initialization. For SQLite, tables
 
 ### 完成工作后
 
-1. **更新 `.claude-workbook/`**（本机）：在当天日期文件（`YYYY-MM-DD.md`）中记录工作内容（问题描述、根因分析、解决方案、涉及文件、验证结果），然后更新 `index.md` 索引
+1. **更新 `.claude-workbook/`**（本机）：在当月文件夹下当天日期文件（`YYYY-MM/YYYY-MM-DD.md`）中记录工作内容（问题描述、根因分析、解决方案、涉及文件、验证结果），然后更新**当月** `YYYY-MM/index.md`（加一行）。跨月第一天时新建月文件夹 + 月 index，并在顶层 `index.md` 加一行月份
 2. **更新 `.claude-learnings/`**（本机）：将新发现的关键细节和要点写入对应 scope 文件，或新建 scope 文件。然后更新 `index.md` 索引
 3. 提交与推送时**只包含**仓库应跟踪的改动；**勿**将上述两目录纳入 `git add`
 
@@ -224,13 +224,18 @@ The bot automatically handles database schema initialization. For SQLite, tables
 
 ```
 .claude-workbook/
-├── index.md              # 所有日报的摘要索引
-├── 2026-03-27.md         # 按日期记录的工作汇报
-├── 2026-03-26.md
-└── ...
+├── index.md              # 顶层：只列月份 + grep 指引（不列具体日报）
+├── 2026-06/
+│   ├── index.md          # 当月索引：一行一天
+│   ├── 2026-06-07.md     # 按日期记录的工作汇报
+│   └── ...
+├── 2026-04/
+│   ├── index.md
+│   └── ...
+└── ...                   # 按月新增文件夹（YYYY-MM/）
 
 .claude-learnings/
-├── index.md              # 所有 scope 的内容索引
+├── index.md              # 纯指针层：一行一 scope（不存内容）
 ├── rendering.md          # Scope: Puppeteer/渲染相关
 ├── wechat.md             # Scope: 微信 API 相关
 ├── core.md               # Scope: 核心工具函数/通用模式
@@ -241,9 +246,30 @@ The bot automatically handles database schema initialization. For SQLite, tables
 
 ### 规则
 
-- **Workbook**: 按日期（`YYYY-MM-DD.md`）记录，`index.md` 是所有日报的摘要
-- **Learnings**: 按 scope 分文件记录，scope 可按需新增。判断内容应写入已有 scope 还是新建 scope
-- **两个目录的 `index.md`** 都必须在内容变更后同步更新，简要记录新增/修改的内容
+#### `index.md` 是**纯指针层**，不是内容摘要（核心约束）
+
+两个目录的 `index.md` 唯一职责是**让你一眼扫完、决定该打开哪个文件**。它**不存储内容**——内容的唯一真相源是 scope 文件正文（learnings）/ 当日文件（workbook）。
+
+- **格式**：一行一文件，`- [文件名](file.md) — <一句话钩子>`（对齐 `memory/MEMORY.md` 的成熟模式）。钩子只回答"这文件大致装了什么、什么时候该打开"，**够判断即止**。
+- **🚫 禁止往 index 里追加 dated delta**（`2026-XX-XX 新增：…`）。这是当前索引膨胀的根因——每次工作都把变更写进 index 单元格，使它沦为 scope 内容的第二份拷贝、且无上限增长。dated delta 属于 scope 文件正文（learnings）或当日文件（workbook），**不属于 index**。
+- **何时改 index 行**：仅当文件的整体主题/覆盖范围变了，才更新那一行钩子；日常往 scope 文件追加内容**不动 index**。
+- **体量预算**：每个 `index.md` 控制在能一次性读完的规模（经验值 ≲ 60 行 / ≲ 4KB）。若超出，说明又在往里塞内容了，回头按上面规则收回 scope/当日文件。
+
+#### Workbook（按月分文件夹，grep 优先）
+
+- **按月分文件夹** `YYYY-MM/`，当日文件 `YYYY-MM/YYYY-MM-DD.md`（同日多份用 `-2`/`-3` 后缀）记录完整工作（问题 / 根因 / 方案 / 涉及文件 / 验证）。
+- **检索方式以 grep 为主，不要全量通读**：按内容搜用 `grep -rn "关键词" .claude-workbook/`（跨月），定某天用月 index。index 只负责"哪天大概做了啥"，不替代 grep。
+- 三层索引各司其职：
+  - 顶层 `index.md`：只列**月份**（`- [YYYY-MM](YYYY-MM/index.md) — <当月主题一句话>`）+ grep 指引。**不列**具体日报。
+  - 月 `YYYY-MM/index.md`：一行一天（`- [YYYY-MM-DD](YYYY-MM-DD.md) — <≤14 字主题>`），日期倒序、同日多份按 `(2)(3)` 升序。
+  - 当日文件：完整内容只在这里。
+
+#### Learnings
+
+- 按 scope 分文件，scope 可按需新增；判断内容应写入已有 scope 还是新建 scope。
+- 每个 scope 文件**头部**依次维护：①（大文件才需）一段「本文目录」TOC，用锚点链接列出主要 `##` 小节，让人不必通读就能跳转；② 一段 Roadmap 表（见下「Roadmap 维护」）。dated delta、设计细节、坑都写在正文小节里。
+- **TOC 触发阈值**：scope 文件超过约 600 行 / 20KB 时，头部必须有「本文目录」TOC。新增大节时同步补一行 TOC。
+- `index.md`：一行一 scope，钩子只说这个 scope 覆盖什么领域（例：`- [avatar](avatar.md) — Live2D/VRM 动画编译器、layer 栈、tag 语法、TTS/lipsync`），**不列**该 scope 下的具体变更。
 
 ### Roadmap 维护（两层结构）
 
