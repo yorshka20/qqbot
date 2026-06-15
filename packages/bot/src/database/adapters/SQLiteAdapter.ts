@@ -14,6 +14,7 @@ import type {
   ConversationConfig,
   DatabaseModel,
   MemoryExtractUserCursor,
+  MemoryNoteBuffer,
   Message,
   ModelAccessor,
   ProactiveThreadRecord,
@@ -370,6 +371,16 @@ export class SQLiteAdapter implements DatabaseAdapter {
         updatedAt TEXT NOT NULL,
         UNIQUE(groupId, userId)
       )`,
+      `CREATE TABLE IF NOT EXISTS memory_notes_buffer (
+        id TEXT PRIMARY KEY,
+        groupId TEXT NOT NULL,
+        userId TEXT NOT NULL,
+        scope TEXT,
+        content TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`,
       `CREATE TABLE IF NOT EXISTS agenda_items (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -587,6 +598,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       `CREATE INDEX IF NOT EXISTS idx_proactive_threads_groupId ON proactive_threads(groupId)`,
       `CREATE INDEX IF NOT EXISTS idx_proactive_threads_threadId ON proactive_threads(threadId)`,
       `CREATE INDEX IF NOT EXISTS idx_memory_extract_user_cursors_groupId_userId ON memory_extract_user_cursors(groupId, userId)`,
+      `CREATE INDEX IF NOT EXISTS idx_memory_notes_buffer_group_status ON memory_notes_buffer(groupId, status)`,
       `CREATE INDEX IF NOT EXISTS idx_agenda_items_enabled ON agenda_items(enabled)`,
       `CREATE INDEX IF NOT EXISTS idx_agenda_items_triggerType ON agenda_items(triggerType)`,
       `CREATE INDEX IF NOT EXISTS idx_agenda_items_eventType ON agenda_items(eventType)`,
@@ -671,6 +683,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
         this.db,
         'memory_extract_user_cursors',
       ),
+      memoryNotesBuffer: new SQLiteModelAccessor<MemoryNoteBuffer>(this.db, 'memory_notes_buffer'),
       agendaItems: new SQLiteModelAccessor<AgendaItem>(this.db, 'agenda_items'),
       bilibiliDanmaku: new SQLiteModelAccessor<BilibiliDanmakuRecord>(this.db, 'bilibili_danmaku'),
       userPortraitScore: new SQLiteModelAccessor<UserPortraitScore>(this.db, 'user_portrait_score'),

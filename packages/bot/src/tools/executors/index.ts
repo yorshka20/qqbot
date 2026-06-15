@@ -20,6 +20,7 @@ export { GenerateImageToolExecutor } from './GenerateImageToolExecutor';
 export { GetGroupMemberListToolExecutor } from './GetGroupMemberListToolExecutor';
 export { GetMemoryToolExecutor } from './GetMemoryToolExecutor';
 export { ListBotFeaturesToolExecutor } from './ListBotFeaturesToolExecutor';
+export { MemoryNoteToolExecutor } from './MemoryNoteToolExecutor';
 export { RagSearchToolExecutor } from './RagSearchToolExecutor';
 export { ReadFileToolExecutor } from './ReadFileToolExecutor';
 export { ReplyToolExecutor } from './ReplyToolExecutor';

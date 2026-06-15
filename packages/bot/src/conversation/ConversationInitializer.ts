@@ -244,7 +244,13 @@ export class ConversationInitializer {
     container.registerInstance(DITokens.CONVERSATION_HISTORY_SERVICE, conversationHistoryService);
 
     // Memory extraction is triggered by memory-related hooks/tasks.
-    const memoryExtractService = new MemoryExtractService(promptManager, llmService, memoryService);
+    const memoryExtractService = new MemoryExtractService(
+      promptManager,
+      llmService,
+      memoryService,
+      databaseManager,
+      config,
+    );
     container.registerInstance(DITokens.MEMORY_EXTRACT_SERVICE, memoryExtractService);
 
     const sessionHistoryStore = new SessionHistoryStore(maxBufferSize, summaryThreshold, useSummary);

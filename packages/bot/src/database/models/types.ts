@@ -120,6 +120,22 @@ export interface MemoryExtractUserCursor extends BaseModel {
 }
 
 /**
+ * Buffered memory note staged by the `memory_note` tool. The bot persists explicit user
+ * rules/requirements here instead of writing memory directly; the memory consolidation pass
+ * drains pending notes and folds them into a single merge, then deletes them. This makes the
+ * note the sole, once-consumed source of a fact and avoids it being re-processed by extraction.
+ * userId === GROUP_MEMORY_USER_ID routes the note to group-level memory; otherwise to that user.
+ */
+export interface MemoryNoteBuffer extends BaseModel {
+  groupId: string;
+  userId: string;
+  /** Optional memory scope (e.g. 'instruction', 'preference', 'rule'); stored as "[scope] content". */
+  scope?: string;
+  content: string;
+  status: 'pending' | 'merged';
+}
+
+/**
  * Bilibili live-room danmaku record. One row per incoming danmaku; repeated
  * spam is stored as-is (DanmakuBuffer does the dedup before LLM dispatch, but
  * raw history is preserved here for later RAG / analytics).
@@ -262,6 +278,7 @@ export interface DatabaseModel {
   conversationConfigs: ModelAccessor<ConversationConfig>;
   proactiveThreads: ModelAccessor<ProactiveThreadRecord>;
   memoryExtractUserCursors: ModelAccessor<MemoryExtractUserCursor>;
+  memoryNotesBuffer: ModelAccessor<MemoryNoteBuffer>;
   agendaItems: ModelAccessor<AgendaItem>;
   bilibiliDanmaku: ModelAccessor<BilibiliDanmakuRecord>;
   userPortraitScore: ModelAccessor<UserPortraitScore>;

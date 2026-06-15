@@ -12,6 +12,7 @@ import type {
   ConversationConfig,
   DatabaseModel,
   MemoryExtractUserCursor,
+  MemoryNoteBuffer,
   Message,
   ModelAccessor,
   ProactiveThreadRecord,
@@ -279,6 +280,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
       memoryExtractUserCursors: new MongoModelAccessor<MemoryExtractUserCursor>(
         this.db.collection('memory_extract_user_cursors'),
       ),
+      memoryNotesBuffer: new MongoModelAccessor<MemoryNoteBuffer>(this.db.collection('memory_notes_buffer')),
       agendaItems: new MongoModelAccessor<AgendaItem>(this.db.collection('agenda_items')),
       bilibiliDanmaku: new MongoModelAccessor<BilibiliDanmakuRecord>(this.db.collection('bilibili_danmaku')),
       userPortraitScore: new MongoModelAccessor<UserPortraitScore>(this.db.collection('user_portrait_score')),

@@ -4,7 +4,10 @@
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import { type ExtractStrategy, extractJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
+import type { Config } from '@/core/config';
 import { GROUP_CORE_SCOPES, type ParsedScope, USER_CORE_SCOPES } from '@/core/config/types/memory';
+import type { DatabaseManager } from '@/database/DatabaseManager';
+import type { MemoryNoteBuffer } from '@/database/models/types';
 import { logger } from '@/utils/logger';
 import type { MemoryService } from './MemoryService';
 import { GROUP_MEMORY_USER_ID } from './MemoryService';
@@ -29,11 +32,193 @@ export class MemoryExtractService {
   /** Serial queue: only one extract/analyze job runs at a time; others wait. */
   private extractQueue: Promise<void> = Promise.resolve();
 
+  /** Per-group debounce timers for draining buffered memory notes (from the `memory_note` tool). */
+  private noteFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /**
+   * Debounce delay before a buffered note is consolidated. The note takes effect at this next
+   * consolidation pass (not immediately) — long enough that it is clearly a consolidation step,
+   * short enough that notes do not linger unmerged.
+   */
+  private static readonly NOTE_FLUSH_DEBOUNCE_MS = 5 * 60 * 1000;
+
   constructor(
     private promptManager: PromptManager,
     private llmService: LLMService,
     private memoryService: MemoryService,
+    private databaseManager: DatabaseManager,
+    private config: Config,
   ) {}
+
+  // ============================================================================
+  // Memory note buffer (memory_note tool): stage user rules, drain at consolidation
+  // ============================================================================
+
+  /** Pending-notes model accessor, or null when the database is unavailable. */
+  private getNotesModel() {
+    const adapter = this.databaseManager.getAdapter();
+    if (!adapter?.isConnected()) {
+      return null;
+    }
+    try {
+      return adapter.getModel('memoryNotesBuffer');
+    } catch {
+      return null;
+    }
+  }
+
+  /** LLM provider for note consolidation: same as memory extract (taskProviders.memoryExtract → defaultProviders.llm). */
+  private resolveProvider(): string | null {
+    const ai = this.config.getAIConfig();
+    return ai?.taskProviders?.memoryExtract ?? ai?.defaultProviders?.llm ?? null;
+  }
+
+  /**
+   * Stage an explicit user rule/requirement into the note buffer and schedule a debounced flush.
+   * Does NOT write memory directly — the buffer is the single source consumed once by consolidation.
+   * userId === GROUP_MEMORY_USER_ID routes to group memory; otherwise to that user's memory.
+   * Returns false if the database is unavailable.
+   */
+  async addNote(groupId: string, userId: string, content: string, scope?: string): Promise<boolean> {
+    const model = this.getNotesModel();
+    if (!model) {
+      return false;
+    }
+    await model.create({
+      groupId,
+      userId,
+      scope: scope?.trim() || undefined,
+      content: content.trim(),
+      status: 'pending',
+    } as Omit<MemoryNoteBuffer, 'id' | 'createdAt' | 'updatedAt'>);
+    this.scheduleFlush(groupId);
+    return true;
+  }
+
+  /** Schedule a debounced note flush for a group; resets the timer on each new note. */
+  private scheduleFlush(groupId: string): void {
+    const existing = this.noteFlushTimers.get(groupId);
+    if (existing) {
+      clearTimeout(existing);
+    }
+    const timer = setTimeout(() => {
+      this.noteFlushTimers.delete(groupId);
+      void this.flushNotes(groupId);
+    }, MemoryExtractService.NOTE_FLUSH_DEBOUNCE_MS);
+    this.noteFlushTimers.set(groupId, timer);
+  }
+
+  /**
+   * Drain pending notes for a group and consolidate them into memory (notes only, no extraction).
+   * Queued behind any running extract/analyze job so drains never race.
+   */
+  async flushNotes(groupId: string): Promise<void> {
+    const prev = this.extractQueue;
+    this.extractQueue = prev.then(() => this.runFlushNotes(groupId));
+    return this.extractQueue;
+  }
+
+  private async runFlushNotes(groupId: string): Promise<void> {
+    const provider = this.resolveProvider();
+    if (!provider) {
+      logger.warn('[MemoryExtractService] flushNotes: no LLM provider configured, skip');
+      return;
+    }
+    const drained = await this.drainPendingNotes(groupId);
+    if (!drained || (drained.groupNotes.length === 0 && drained.userNotes.size === 0)) {
+      return;
+    }
+    try {
+      await this.consolidateSlots(groupId, drained.groupNotes, drained.userNotes, { provider });
+      await this.deletePendingNotes(drained.ids);
+      logger.info(`[MemoryExtractService] flushed ${drained.ids.length} memory notes | group=${groupId}`);
+    } catch (err) {
+      logger.error('[MemoryExtractService] flushNotes failed (notes kept for retry):', err);
+    }
+  }
+
+  /** Read pending notes for a group, formatted and routed by slot. Returns null if DB unavailable. */
+  private async drainPendingNotes(
+    groupId: string,
+  ): Promise<{ groupNotes: string[]; userNotes: Map<string, string[]>; ids: string[] } | null> {
+    const model = this.getNotesModel();
+    if (!model) {
+      return null;
+    }
+    const pending = await model.find({ groupId, status: 'pending' } as Partial<MemoryNoteBuffer>);
+    const groupNotes: string[] = [];
+    const userNotes = new Map<string, string[]>();
+    const ids: string[] = [];
+    for (const note of pending) {
+      const fact = this.formatNote(note);
+      if (!fact) {
+        continue;
+      }
+      ids.push(note.id);
+      if (note.userId === GROUP_MEMORY_USER_ID) {
+        groupNotes.push(fact);
+      } else {
+        const arr = userNotes.get(note.userId) ?? [];
+        arr.push(fact);
+        userNotes.set(note.userId, arr);
+      }
+    }
+    return { groupNotes, userNotes, ids };
+  }
+
+  /** Format a note as "[scope] content" (or plain content), matching extract fact format. */
+  private formatNote(note: MemoryNoteBuffer): string | null {
+    const content = note.content?.trim();
+    if (!content) {
+      return null;
+    }
+    const scope = note.scope?.trim();
+    return scope ? `[${scope}] ${content}` : content;
+  }
+
+  private async deletePendingNotes(ids: string[]): Promise<void> {
+    if (ids.length === 0) {
+      return;
+    }
+    const model = this.getNotesModel();
+    if (!model) {
+      return;
+    }
+    for (const id of ids) {
+      await model.delete(id);
+    }
+  }
+
+  /**
+   * Merge facts into the group-global slot and each user slot (auto layer), one mergeWithExisting per slot.
+   * Shared by note flush and the periodic extract path so notes and extracted facts collapse together.
+   */
+  private async consolidateSlots(
+    groupId: string,
+    groupFacts: string[],
+    userFacts: Map<string, string[]>,
+    options: MemoryExtractServiceOptions,
+  ): Promise<void> {
+    if (groupFacts.length > 0) {
+      const existing = this.memoryService.getGroupMemoryTextByLayer(groupId, 'auto');
+      const merged = await this.mergeWithExisting(existing, groupFacts.join('\n'), 'global', options);
+      if (merged) {
+        await this.memoryService.upsertMemory(groupId, GROUP_MEMORY_USER_ID, true, merged, 'auto', 'llm_extract');
+      }
+      logger.info(`[MemoryExtractService] memory updated | group=${groupId} target=GROUP_GLOBAL |\n${merged}`);
+    }
+    for (const [userId, facts] of userFacts) {
+      if (!userId || facts.length === 0) {
+        continue;
+      }
+      const existing = this.memoryService.getUserMemoryTextByLayer(groupId, userId, 'auto');
+      const merged = await this.mergeWithExisting(existing, facts.join('\n'), 'user', options);
+      if (merged) {
+        await this.memoryService.upsertMemory(groupId, userId, false, merged, 'auto', 'llm_extract');
+      }
+      logger.info(`[MemoryExtractService] memory updated | group=${groupId} user=${userId} |\n${merged}`);
+    }
+  }
 
   // ============================================================================
   // Scope template variable helpers
@@ -297,40 +482,43 @@ export class MemoryExtractService {
       return;
     }
 
+    // Even when extraction yields nothing, still drain buffered notes for this group so they consolidate.
     const parsed = this.parseExtractOutput(response);
-    if (!parsed) {
+
+    const groupFacts: string[] = [...(parsed?.groupFacts ?? [])];
+    const userFacts = new Map<string, string[]>();
+    for (const u of parsed?.userFacts ?? []) {
+      if (!u.userId || !u.facts?.length) {
+        continue;
+      }
+      const arr = userFacts.get(u.userId) ?? [];
+      arr.push(...u.facts);
+      userFacts.set(u.userId, arr);
+    }
+
+    // Fold buffered notes (from memory_note) into the same merge so they collapse with extracted facts.
+    const drained = await this.drainPendingNotes(groupId);
+    if (drained) {
+      groupFacts.push(...drained.groupNotes);
+      for (const [uid, facts] of drained.userNotes) {
+        const arr = userFacts.get(uid) ?? [];
+        arr.push(...facts);
+        userFacts.set(uid, arr);
+      }
+    }
+
+    if (groupFacts.length === 0 && userFacts.size === 0) {
       return;
     }
 
-    const userIds = (parsed.userFacts ?? []).map((u) => u.userId).filter(Boolean);
     logger.info(
-      `[MemoryExtractService] extract done | group=${groupId} | group_facts=${parsed.groupFacts?.length ?? 0} user_facts_users=[${userIds.join(',')}]`,
+      `[MemoryExtractService] extract done | group=${groupId} | group_facts=${groupFacts.length} user_facts_users=[${[...userFacts.keys()].join(',')}] notes=${drained?.ids.length ?? 0}`,
     );
 
     try {
-      // for group global memory (read/write auto layer only)
-      if (parsed.groupFacts && parsed.groupFacts.length > 0) {
-        const existing = this.memoryService.getGroupMemoryTextByLayer(groupId, 'auto');
-        const newFactsText = parsed.groupFacts.join('\n');
-        const merged = await this.mergeWithExisting(existing, newFactsText, 'global', options);
-        if (merged) {
-          await this.memoryService.upsertMemory(groupId, GROUP_MEMORY_USER_ID, true, merged, 'auto', 'llm_extract');
-        }
-        logger.info(`[MemoryExtractService] memory updated | group=${groupId} target=GROUP_GLOBAL |\n${merged}`);
-      }
-
-      // for user memory (read/write auto layer only)
-      for (const u of parsed.userFacts ?? []) {
-        if (!u.userId || !u.facts?.length) {
-          continue;
-        }
-        const existing = this.memoryService.getUserMemoryTextByLayer(groupId, u.userId, 'auto');
-        const newFactsText = u.facts.join('\n');
-        const merged = await this.mergeWithExisting(existing, newFactsText, 'user', options);
-        if (merged) {
-          await this.memoryService.upsertMemory(groupId, u.userId, false, merged, 'auto', 'llm_extract');
-        }
-        logger.info(`[MemoryExtractService] memory updated | group=${groupId} user=${u.userId} |\n${merged}`);
+      await this.consolidateSlots(groupId, groupFacts, userFacts, options);
+      if (drained) {
+        await this.deletePendingNotes(drained.ids);
       }
     } catch (err) {
       logger.error('[MemoryExtractService] merge/upsert failed:', err);
