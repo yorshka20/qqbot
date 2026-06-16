@@ -8,5 +8,6 @@
   "inheritSoul": false,
   "inheritMemory": false,
   "inheritPreference": false,
-  "providerName": ["deepseek", "gemini"]
+  "providerName": ["deepseek", "gemini"],
+  "providerModels": { "deepseek": "deepseek-v4-flash", "gemini": "gemini-3-flash-preview" }
 }

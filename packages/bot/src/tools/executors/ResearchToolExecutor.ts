@@ -136,6 +136,8 @@ export class ResearchToolExecutor extends BaseToolExecutor {
           inheritMemory: false,
           inheritPreference: false,
           providerName: ['deepseek', 'gemini'],
+          // Pin to base models; main-flow defaults (deepseek-v4-pro / gemini paid 3.5-flash) are too costly here.
+          providerModels: { deepseek: 'deepseek-v4-flash', gemini: 'gemini-3-flash-preview' },
           maxToolRounds: 4,
           maxTokens: 2000,
         },

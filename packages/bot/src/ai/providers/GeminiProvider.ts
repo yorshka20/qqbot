@@ -704,7 +704,8 @@ export class GeminiProvider
       throw new Error('GeminiProvider: llm not configured');
     }
     const model = options?.model ?? this.config.llm.model;
-    const paidModel = this.config.llm.paidModel;
+    // A caller-pinned model suppresses paidModel, so the paid-key retry stays on it.
+    const paidModel = options?.model ? undefined : this.config.llm.paidModel;
     const temperature = options?.temperature ?? this.config.llm.temperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens;
     const nativeWebSearch = options?.nativeWebSearch ?? this.config.llm.nativeWebSearch ?? false;

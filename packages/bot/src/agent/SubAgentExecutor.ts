@@ -78,7 +78,12 @@ export class SubAgentExecutor {
       // Use provider from session config, or fall back to the default provider configured for SubAgentExecutor.
       // When providerName is an array, randomly select one for load distribution.
       const providerName = this.resolveProvider(session.config.providerName);
-      logger.debug(`[SubAgentExecutor] Using provider: ${providerName} for sub-agent ${session.id}`);
+      const model =
+        session.config.providerModels?.[providerName ?? ''] ??
+        (session.config.providerName ? undefined : this.defaultModel);
+      logger.debug(
+        `[SubAgentExecutor] Using provider: ${providerName} (model: ${model ?? 'default'}) for sub-agent ${session.id}`,
+      );
       const result = await this.llmService.generateWithTools(
         messages,
         tools,
@@ -92,7 +97,7 @@ export class SubAgentExecutor {
           // Without this, the LLM falls back to LLMService's global 120s default, which is
           // far too short for structured-JSON workloads (e.g. group_report 8K-token output).
           timeout: session.config.timeout,
-          model: session.config.providerName ? undefined : this.defaultModel,
+          model,
           toolExecutor: (call: FunctionCall) => this.toolRunner.run(call, session),
         },
         providerName,

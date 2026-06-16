@@ -49,6 +49,7 @@ interface PresetConfigFile {
   inheritMemory?: boolean;
   inheritPreference?: boolean;
   providerName?: string | string[];
+  providerModels?: Record<string, string>;
   maxTokens?: number;
   maxToolRounds?: number;
   systemTemplate?: string;
@@ -122,6 +123,7 @@ function configToPreset(cfg: PresetConfigFile): RolePreset {
   if (cfg.inheritMemory !== undefined) overrides.inheritMemory = cfg.inheritMemory;
   if (cfg.inheritPreference !== undefined) overrides.inheritPreference = cfg.inheritPreference;
   if (cfg.providerName !== undefined) overrides.providerName = cfg.providerName;
+  if (cfg.providerModels !== undefined) overrides.providerModels = cfg.providerModels;
   if (cfg.maxTokens !== undefined) overrides.maxTokens = cfg.maxTokens;
   if (cfg.maxToolRounds !== undefined) overrides.maxToolRounds = cfg.maxToolRounds;
   if (cfg.systemTemplate !== undefined) overrides.systemTemplate = cfg.systemTemplate;

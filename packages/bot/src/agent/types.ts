@@ -39,6 +39,7 @@ export interface SubAgentConfig {
 
   // Provider selection
   providerName?: string | string[]; // LLM provider(s) for this sub-agent. Array = random selection per call. (default: use taskProviders.subagent or default LLM provider)
+  providerModels?: Record<string, string>; // Model override keyed by provider name; matches the provider picked from providerName arrays.
 
   // LLM generation parameters
   maxTokens?: number; // Max tokens for LLM generation (default: 1500)

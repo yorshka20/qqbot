@@ -9,6 +9,7 @@
   "inheritMemory": false,
   "inheritPreference": false,
   "providerName": "gemini",
+  "providerModels": { "gemini": "gemini-3-flash-preview" },
   "maxToolRounds": 3,
   "systemTemplate": "subagent.video_analyzer.system"
 }
