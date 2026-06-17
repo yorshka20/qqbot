@@ -1,5 +1,6 @@
 // LLM Service - provides LLM text generation capability
 
+import { HttpClientError } from '@/api/http/HttpClient';
 import type { HealthCheckManager } from '@/core/health';
 import { logger } from '@/utils/logger';
 import type { AIManager } from '../AIManager';
@@ -90,10 +91,18 @@ const TRANSIENT_LLM_ERROR_PATTERNS: RegExp[] = [
 
 const HARD_TIMEOUT_PATTERN = /hard-timeout|Request timeout/i;
 
-function isTransientLLMError(err: Error, opts?: { retryOnTimeout?: boolean }): boolean {
+export function isTransientLLMError(err: Error, opts?: { retryOnTimeout?: boolean }): boolean {
   const msg = err.message;
   if (HARD_TIMEOUT_PATTERN.test(msg) || err.name === 'AbortError') {
     return opts?.retryOnTimeout ?? false;
+  }
+  // Prefer the HTTP status over the message text: a provider's error body may not
+  // echo the status code (e.g. Anthropic 529 reads only "Overloaded"). Retry on
+  // rate-limit (429) and any server-side error (5xx incl. 529); other 4xx are
+  // client errors where a retry won't help.
+  if (err instanceof HttpClientError && err.status !== undefined) {
+    if (err.status === 429 || err.status >= 500) return true;
+    if (err.status >= 400) return false;
   }
   return TRANSIENT_LLM_ERROR_PATTERNS.some((p) => p.test(msg));
 }
@@ -149,10 +158,11 @@ export class LLMService {
         lastError = err instanceof Error ? err : new Error(String(err));
         if (attempt >= maxRetries) break;
         if (!isTransientLLMError(lastError, { retryOnTimeout: opts?.retryOnTimeout })) break;
+        const backoffMs = Math.min(retryDelayMs * 2 ** attempt, 30_000);
         logger.warn(
-          `[LLMService] ${label} on "${providerName}" transient error, retrying (${attempt + 1}/${maxRetries}): ${lastError.message}`,
+          `[LLMService] ${label} on "${providerName}" transient error, retrying in ${backoffMs}ms (${attempt + 1}/${maxRetries}): ${lastError.message}`,
         );
-        await new Promise((r) => setTimeout(r, retryDelayMs));
+        await new Promise((r) => setTimeout(r, backoffMs));
       }
     }
     throw lastError ?? new Error(`[LLMService] ${label} failed`);
@@ -457,7 +467,9 @@ export class LLMService {
             `generate:${resolvedName}`,
           );
         },
-        { opLabel: 'generate' },
+        // Two backoff retries (1.5s, 3s) before falling back: rides out brief
+        // upstream overload (e.g. Anthropic 529) without delaying the reply too much.
+        { opLabel: 'generate', maxRetries: 2 },
       );
       // Record actual token usage for rate limiting
       if (result.usage) {

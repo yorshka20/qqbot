@@ -2,8 +2,9 @@ import 'reflect-metadata';
 
 import { describe, expect, it, test } from 'bun:test';
 import type { AIManager } from '@/ai/AIManager';
-import type { AIGenerateOptions } from '@/ai/types';
-import { LLMService } from '../LLMService';
+import type { AIGenerateOptions, AIGenerateResponse } from '@/ai/types';
+import { HttpClientError } from '@/api/http/HttpClient';
+import { isTransientLLMError, LLMService } from '../LLMService';
 import {
   createAIManagerWithProvider,
   getIntegrationProvider,
@@ -116,5 +117,88 @@ describe('LLMService', () => {
       },
       INTEGRATION_TEST_TIMEOUT_MS,
     );
+  });
+});
+
+describe('isTransientLLMError', () => {
+  it('retries on rate-limit and server-side HTTP statuses (incl. 529)', () => {
+    for (const status of [429, 500, 502, 503, 529, 599]) {
+      expect(isTransientLLMError(new HttpClientError('boom', status))).toBe(true);
+    }
+  });
+
+  it('does not retry on non-429 client errors', () => {
+    for (const status of [400, 401, 403, 404, 422]) {
+      expect(isTransientLLMError(new HttpClientError('nope', status))).toBe(false);
+    }
+  });
+
+  it('uses status over message text: Anthropic 529 body reads only "Overloaded"', () => {
+    // The status drives the decision; the body has no code to regex-match.
+    expect(isTransientLLMError(new HttpClientError('Overloaded', 529))).toBe(true);
+    // Same wording with no status would not be caught by the message patterns.
+    expect(isTransientLLMError(new Error('Overloaded'))).toBe(false);
+  });
+
+  it('falls back to message patterns for status-less errors', () => {
+    expect(isTransientLLMError(new Error('socket hang up'))).toBe(true);
+    expect(isTransientLLMError(new Error('ECONNRESET'))).toBe(true);
+    expect(isTransientLLMError(new Error('rate limit exceeded'))).toBe(true);
+    expect(isTransientLLMError(new Error('Failed to parse JSON response'))).toBe(true);
+    expect(isTransientLLMError(new Error('some random validation error'))).toBe(false);
+  });
+
+  it('treats hard timeouts as transient only when retryOnTimeout is set', () => {
+    const timeout = new Error('Request timeout after 90000ms');
+    expect(isTransientLLMError(timeout)).toBe(false);
+    expect(isTransientLLMError(timeout, { retryOnTimeout: true })).toBe(true);
+  });
+});
+
+describe('LLMService same-provider retry', () => {
+  function makeService(generate: (p: string, o?: Record<string, unknown>) => Promise<AIGenerateResponse>) {
+    let calls = 0;
+    const provider = {
+      name: 'mock',
+      getCapabilities: () => ['llm'],
+      isAvailable: () => true,
+      generate: (p: string, o?: Record<string, unknown>) => {
+        calls++;
+        return generate(p, o);
+      },
+    };
+    const aiManager = {
+      getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
+      getProvidersForCapability: () => [],
+      getDefaultProvider: () => provider,
+    } as unknown as AIManager;
+    return { service: new LLMService(aiManager), getCalls: () => calls };
+  }
+
+  it(
+    'retries a transient 529 then returns the successful response (with resolvedModel)',
+    async () => {
+      let n = 0;
+      const { service, getCalls } = makeService(async () => {
+        n++;
+        if (n === 1) throw new HttpClientError('Overloaded', 529);
+        return { text: 'ok', resolvedModel: 'gemini-3.5-flash' };
+      });
+      const res = await service.generate('hi', undefined, 'mock');
+      expect(res.text).toBe('ok');
+      expect(res.resolvedModel).toBe('gemini-3.5-flash');
+      expect(getCalls()).toBe(2);
+    },
+    20_000,
+  );
+
+  it('does not retry a non-transient 404 (no fallback provider configured → fallback response)', async () => {
+    const { service, getCalls } = makeService(async () => {
+      throw new HttpClientError('not found', 404);
+    });
+    const res = await service.generate('hi', undefined, 'mock');
+    // No same-provider retry, no alternative provider → graceful fallback text.
+    expect(getCalls()).toBe(1);
+    expect(res.text.length).toBeGreaterThan(0);
   });
 });
