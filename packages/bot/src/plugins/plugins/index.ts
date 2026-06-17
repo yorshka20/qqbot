@@ -20,6 +20,7 @@ export * from './GroupReportPlugin';
 export * from './gachaPlugin';
 export * from './LanControlPlugin';
 export * from './LightAppPlugin';
+export * from './LLMDumpPlugin';
 export * from './LogArchivePlugin';
 export * from './MemoryPlugin';
 export * from './MemoryTriggerPlugin';

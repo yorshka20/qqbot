@@ -1,6 +1,7 @@
 // LLM Service - provides LLM text generation capability
 
 import { HttpClientError } from '@/api/http/HttpClient';
+import { getCurrentMessageContext } from '@/context/MessageContextStorage';
 import type { HealthCheckManager } from '@/core/health';
 import { logger } from '@/utils/logger';
 import type { AIManager } from '../AIManager';
@@ -14,6 +15,7 @@ import type {
   ChatMessage,
   ChatMessageToolCall,
   ContentPart,
+  LLMTraceObserver,
   StreamingHandler,
   ToolDefinition,
   ToolResult,
@@ -119,6 +121,45 @@ export class LLMService {
 
   /** Token rate limiter for per-provider TPM enforcement */
   private readonly rateLimiter: TokenRateLimiter;
+
+  /** Observers notified after every completed LLM call (e.g. dump-to-markdown). */
+  private readonly traceObservers: LLMTraceObserver[] = [];
+
+  /** Register an observer for completed LLM calls. Observers are invoked in a
+   *  try/catch so a faulty observer never breaks generation. */
+  addTraceObserver(observer: LLMTraceObserver): void {
+    this.traceObservers.push(observer);
+  }
+
+  /** Build a trace entry from a completed call and fan it out to observers. */
+  private emitTrace(
+    opLabel: string,
+    provider: string,
+    prompt: string,
+    options: AIGenerateOptions | undefined,
+    result: AIGenerateResponse,
+  ): void {
+    if (this.traceObservers.length === 0) return;
+    const entry = {
+      opLabel,
+      provider,
+      resolvedModel: result.resolvedModel,
+      systemPrompt: options?.systemPrompt,
+      prompt,
+      messages: options?.messages,
+      tools: options?.tools,
+      response: { text: result.text, functionCalls: result.functionCalls, usage: result.usage },
+      sessionId: options?.sessionId,
+      turnKey: getCurrentMessageContext()?.logTag,
+    };
+    for (const observer of this.traceObservers) {
+      try {
+        observer(entry);
+      } catch (err) {
+        logger.warn('[LLMService] trace observer failed:', err);
+      }
+    }
+  }
 
   constructor(
     private aiManager: AIManager,
@@ -422,6 +463,7 @@ export class LLMService {
         this.rateLimiter.recordUsage(result.usage.totalTokens, providerName);
       }
       this.logLLMUsage(providerName, prompt, options, result);
+      this.emitTrace('generateFixed', providerName, prompt, options, result);
       this.healthCheckManager?.markServiceHealthy(providerName);
       result.resolvedProviderName = providerName;
       return result;
@@ -476,6 +518,7 @@ export class LLMService {
         this.rateLimiter.recordUsage(result.usage.totalTokens, resolvedName);
       }
       this.logLLMUsage(resolvedName, prompt, effectiveOptions, result);
+      this.emitTrace('generate', resolvedName, prompt, effectiveOptions, result);
       // Mark provider as healthy on success
       this.healthCheckManager?.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
@@ -540,6 +583,7 @@ export class LLMService {
         { opLabel: 'generateLite' },
       );
       this.logLLMUsage(resolvedName, prompt, mergedOptions, result);
+      this.emitTrace('generateLite', resolvedName, prompt, mergedOptions, result);
       this.healthCheckManager?.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
       return result;
@@ -618,6 +662,7 @@ export class LLMService {
       // Mark provider as healthy on success
       this.healthCheckManager?.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
+      this.emitTrace('generateStream', resolvedName, prompt, effectiveOptions, result);
       return result;
     } catch (err) {
       // Mark provider as failed

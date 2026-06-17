@@ -175,22 +175,18 @@ describe('LLMService same-provider retry', () => {
     return { service: new LLMService(aiManager), getCalls: () => calls };
   }
 
-  it(
-    'retries a transient 529 then returns the successful response (with resolvedModel)',
-    async () => {
-      let n = 0;
-      const { service, getCalls } = makeService(async () => {
-        n++;
-        if (n === 1) throw new HttpClientError('Overloaded', 529);
-        return { text: 'ok', resolvedModel: 'gemini-3.5-flash' };
-      });
-      const res = await service.generate('hi', undefined, 'mock');
-      expect(res.text).toBe('ok');
-      expect(res.resolvedModel).toBe('gemini-3.5-flash');
-      expect(getCalls()).toBe(2);
-    },
-    20_000,
-  );
+  it('retries a transient 529 then returns the successful response (with resolvedModel)', async () => {
+    let n = 0;
+    const { service, getCalls } = makeService(async () => {
+      n++;
+      if (n === 1) throw new HttpClientError('Overloaded', 529);
+      return { text: 'ok', resolvedModel: 'gemini-3.5-flash' };
+    });
+    const res = await service.generate('hi', undefined, 'mock');
+    expect(res.text).toBe('ok');
+    expect(res.resolvedModel).toBe('gemini-3.5-flash');
+    expect(getCalls()).toBe(2);
+  }, 20_000);
 
   it('does not retry a non-transient 404 (no fallback provider configured → fallback response)', async () => {
     const { service, getCalls } = makeService(async () => {
@@ -200,5 +196,61 @@ describe('LLMService same-provider retry', () => {
     // No same-provider retry, no alternative provider → graceful fallback text.
     expect(getCalls()).toBe(1);
     expect(res.text.length).toBeGreaterThan(0);
+  });
+});
+
+describe('LLMService trace observers', () => {
+  it('emits a trace entry for each generate() call with prompt, messages and response', async () => {
+    const provider = {
+      name: 'mock',
+      getCapabilities: () => ['llm'],
+      isAvailable: () => true,
+      generate: async () => ({
+        text: 'hello back',
+        resolvedModel: 'mock-1',
+        usage: { promptTokens: 3, completionTokens: 2, totalTokens: 5 },
+      }),
+    };
+    const aiManager = {
+      getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
+      getProvidersForCapability: () => [],
+      getDefaultProvider: () => provider,
+    } as unknown as AIManager;
+    const service = new LLMService(aiManager);
+
+    const seen: import('@/ai/types').LLMTraceEntry[] = [];
+    service.addTraceObserver((e) => seen.push(e));
+
+    await service.generate('ask', { messages: [{ role: 'user', content: 'ask' }], systemPrompt: 'sys' }, 'mock');
+
+    expect(seen.length).toBe(1);
+    expect(seen[0].opLabel).toBe('generate');
+    expect(seen[0].provider).toBe('mock');
+    expect(seen[0].resolvedModel).toBe('mock-1');
+    expect(seen[0].systemPrompt).toBe('sys');
+    expect(seen[0].messages?.[0]?.content).toBe('ask');
+    expect(seen[0].response.text).toBe('hello back');
+    expect(seen[0].response.usage?.totalTokens).toBe(5);
+  });
+
+  it('a throwing observer never breaks generation', async () => {
+    const provider = {
+      name: 'mock',
+      getCapabilities: () => ['llm'],
+      isAvailable: () => true,
+      generate: async () => ({ text: 'ok' }),
+    };
+    const aiManager = {
+      getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
+      getProvidersForCapability: () => [],
+      getDefaultProvider: () => provider,
+    } as unknown as AIManager;
+    const service = new LLMService(aiManager);
+    service.addTraceObserver(() => {
+      throw new Error('observer boom');
+    });
+
+    const res = await service.generate('hi', undefined, 'mock');
+    expect(res.text).toBe('ok');
   });
 });

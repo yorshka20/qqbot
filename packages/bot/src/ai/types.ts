@@ -297,3 +297,36 @@ export interface ToolUseGenerateResponse extends AIGenerateResponse {
   toolCalls?: ToolResult[]; // All tool calls made during generation
   stopReason?: 'end_turn' | 'tool_use' | 'max_rounds'; // Why generation stopped
 }
+
+/**
+ * One completed LLM call, surfaced to trace observers (e.g. dump-to-markdown).
+ * Emitted from LLMService after every generation path (generate / generateLite /
+ * generateFixed / generateStream); tool-use rounds appear as separate entries
+ * (generateWithTools drives them through generate()), so a round's `messages`
+ * already carry prior tool_calls + tool results. Observers must not throw —
+ * LLMService invokes them in a try/catch so tracing never breaks generation.
+ */
+export interface LLMTraceEntry {
+  /** Which generation entrypoint produced this call. */
+  opLabel: string;
+  provider: string;
+  resolvedModel?: string;
+  systemPrompt?: string;
+  /** The flat prompt argument (used by legacy single-turn callers). */
+  prompt: string;
+  /** Role-based messages when the caller supplied them (the usual path). */
+  messages?: ChatMessage[];
+  /** Tool definitions exposed to the model for this call. */
+  tools?: ToolDefinition[];
+  response: {
+    text: string;
+    functionCalls?: FunctionCallInfo[];
+    usage?: AIGenerateResponse['usage'];
+  };
+  sessionId?: string;
+  /** Correlation key for the originating message turn (log tag, e.g. "msg:ab12cd"). */
+  turnKey?: string;
+}
+
+/** Observer notified once per completed LLM call. Must not throw. */
+export type LLMTraceObserver = (entry: LLMTraceEntry) => void;

@@ -567,6 +567,16 @@
       {
         "name": "session-strategy",
         "enabled": true
+      },
+      // LLMDumpPlugin — dumps every LLM prompt/response (incl. tool calls) to
+      // per-message-turn markdown under logs/llm-dumps/YYYY-MM-DD/. Debug aid that
+      // writes a lot of disk; keep disabled unless inspecting model I/O.
+      {
+        "name": "llm-dump",
+        "enabled": false,
+        "config": {
+          "outputDir": "logs/llm-dumps"
+        }
       }
     ]
   },
