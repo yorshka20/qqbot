@@ -96,7 +96,8 @@ export class CardFormatToolExecutor extends BaseToolExecutor {
       // default LLM provider — wrong footer when the active provider was
       // overridden (e.g. `claude:` prefix → anthropic).
       const activeProvider = context.hookContext?.metadata.get('activeProvider');
-      const result = await cardHelper.renderParsedCards(validated, activeProvider);
+      const activeModel = context.hookContext?.metadata.get('activeModel');
+      const result = await cardHelper.renderParsedCards(validated, activeProvider, activeModel);
       if (context.hookContext) {
         cardHelper.setCardReplyOnContext(context.hookContext, result.segments, result.textForHistory);
         context.hookContext.metadata.set('cardSent', true);

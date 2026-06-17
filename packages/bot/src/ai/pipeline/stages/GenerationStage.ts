@@ -24,6 +24,7 @@ interface GenerationPipelineParams {
   toolDefinitions: ToolDefinition[];
   selectedProviderName: string | undefined;
   effectiveNativeSearchEnabled: boolean;
+  preferPaidTier: boolean;
 }
 
 /** Result of the LLM generation pipeline (attempt / retry). */
@@ -59,6 +60,7 @@ export class GenerationStage implements ReplyStage {
       toolDefinitions: ctx.toolDefinitions,
       selectedProviderName: ctx.selectedProviderName,
       effectiveNativeSearchEnabled: ctx.effectiveNativeSearchEnabled,
+      preferPaidTier: ctx.usedExplicitPrefix,
     };
 
     const result = await this.generateWithRetry(ctx.hookContext, params);
@@ -79,7 +81,8 @@ export class GenerationStage implements ReplyStage {
     context: HookContext,
     params: GenerationPipelineParams,
   ): Promise<GenerationPipelineResult> {
-    const { messages, genOptions, toolDefinitions, selectedProviderName, effectiveNativeSearchEnabled } = params;
+    const { messages, genOptions, toolDefinitions, selectedProviderName, effectiveNativeSearchEnabled, preferPaidTier } =
+      params;
 
     // Reset per-attempt so retries with fallback providers start clean.
     context.metadata.delete('cardSent');
@@ -95,6 +98,9 @@ export class GenerationStage implements ReplyStage {
     } else {
       context.metadata.delete('activeProvider');
     }
+    // The real model is only known once a round runs (free→paid swap, fallback);
+    // cleared here and filled by onProviderResolved before any mid-loop tool renders.
+    context.metadata.delete('activeModel');
 
     const toolExecutor = (call: { name: string; arguments: string }) =>
       executeSkillCall(call, context, this.toolManager, this.hookManager);
@@ -108,7 +114,12 @@ export class GenerationStage implements ReplyStage {
         maxToolRounds: 4,
         sessionId: genOptions.sessionId,
         nativeWebSearch: effectiveNativeSearchEnabled,
+        preferPaidTier,
         toolExecutor,
+        onProviderResolved: ({ providerName, model }) => {
+          context.metadata.set('activeProvider', providerName);
+          if (model) context.metadata.set('activeModel', model);
+        },
       },
       selectedProviderName,
     );

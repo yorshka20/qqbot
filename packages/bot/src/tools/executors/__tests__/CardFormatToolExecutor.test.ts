@@ -132,6 +132,29 @@ describe('CardFormatToolExecutor (send_card)', () => {
       const result = await executor.execute(defaultCall, makeContext(undefined));
       expect(result.success).toBe(true);
     });
+
+    it('passes the active provider and actually-used model to the card footer', async () => {
+      const hookContext = makeHookContext();
+      hookContext.metadata.set('activeProvider', 'gemini');
+      hookContext.metadata.set('activeModel', 'gemini-3.5-flash');
+      const cardHelper = makeCardHelper();
+      const executor = await makeExecutorWithHelper(cardHelper);
+
+      await executor.execute(defaultCall, makeContext(hookContext));
+
+      expect(cardHelper.renderParsedCards).toHaveBeenCalledWith(expect.anything(), 'gemini', 'gemini-3.5-flash');
+    });
+
+    it('passes model=undefined when no activeModel was resolved (footer falls back to config)', async () => {
+      const hookContext = makeHookContext();
+      hookContext.metadata.set('activeProvider', 'deepseek');
+      const cardHelper = makeCardHelper();
+      const executor = await makeExecutorWithHelper(cardHelper);
+
+      await executor.execute(defaultCall, makeContext(hookContext));
+
+      expect(cardHelper.renderParsedCards).toHaveBeenCalledWith(expect.anything(), 'deepseek', undefined);
+    });
   });
 
   describe('rendering failure', () => {

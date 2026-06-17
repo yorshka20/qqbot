@@ -729,6 +729,10 @@ export class LLMService {
         currentProviderName = response.resolvedProviderName;
       }
 
+      // Surface the provider/model that actually served this round before its tool
+      // calls run, so mid-loop tools (e.g. send_card footer) can report the truth.
+      options?.onProviderResolved?.({ providerName: currentProviderName, model: response.resolvedModel });
+
       // Get all function calls from this response
       const calls = response.functionCalls ?? [];
 

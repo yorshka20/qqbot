@@ -62,10 +62,11 @@ export class CardRenderingService {
    * @returns Base64 encoded image buffer
    * @throws Error if rendering fails
    */
-  async renderCardData(cards: CardData[], providerName: string): Promise<string> {
+  async renderCardData(cards: CardData[], providerName: string, model?: string): Promise<string> {
     const imageBuffer = await this.cardRenderer.render(cards, {
       provider: providerName,
-      model: this.resolveModelName(providerName),
+      // The actually-used runtime model wins over the static config default.
+      model: model ?? this.resolveModelName(providerName),
     });
     return imageBuffer.toString('base64');
   }

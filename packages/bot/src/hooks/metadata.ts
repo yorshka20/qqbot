@@ -99,6 +99,12 @@ export interface HookContextMetadata {
    */
   activeProvider?: string;
   /**
+   * The model that actually served the current generation, set per tool-use round
+   * from the provider's resolvedModel. Lets mid-loop tools (send_card footer) show
+   * the real model instead of the static config default.
+   */
+  activeModel?: string;
+  /**
    * Reply complexity routing decision: `'quick'` skips the model's reasoning
    * budget on eligible providers (configured via `ai.chat.replyModeProviders`,
    * default `['deepseek', 'doubao']`), so casual chat doesn't pay the
@@ -139,6 +145,7 @@ const DEFAULT_METADATA: Required<
     | 'replyTagsMeta'
     | 'replyMode'
     | 'activeProvider'
+    | 'activeModel'
     | 'aiUsage'
   >
 > = {
@@ -175,6 +182,7 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'replyTagsMeta',
   'replyMode',
   'activeProvider',
+  'activeModel',
   'aiUsage',
 ];
 

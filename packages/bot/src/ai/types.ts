@@ -172,6 +172,13 @@ export interface AIGenerateOptions {
    * the caller is expected to log its own context line with the meaningful slot value.
    */
   verbosePromptLog?: boolean;
+  /**
+   * Request the provider's paid tier directly, skipping the free tier. For Gemini
+   * this uses the paid key + `llm.paidModel` from the start instead of trying the
+   * (possibly quota-exhausted) free key first. Used for explicit provider wake-words
+   * where the user opted into the premium model. Single-tier providers ignore it.
+   */
+  preferPaidTier?: boolean;
 }
 
 /**
@@ -197,6 +204,14 @@ export interface AIGenerateResponse {
    * which provider was used even after transparent fallback.
    */
   resolvedProviderName?: string;
+  /**
+   * The model that actually served this response. May differ from the provider's
+   * configured default — e.g. Gemini swaps to `llm.paidModel` when the free key is
+   * quota-exhausted, or to a caller-pinned model. Carried so downstream consumers
+   * (card footer, usage stats, logs) report the real model instead of guessing
+   * from static config.
+   */
+  resolvedModel?: string;
   /**
    * Raw reasoning_content returned by thinking/reasoning models (DeepSeek v4 thinking, Doubao, Minimax, etc.).
    * Must be echoed back on the assistant message in subsequent tool-use rounds for DeepSeek, or the API
@@ -271,6 +286,10 @@ export interface ToolUseGenerateOptions extends AIGenerateOptions {
   tools?: ToolDefinition[];
   maxToolRounds?: number; // Maximum rounds of tool calling (default: 3)
   toolExecutor?: (call: FunctionCall) => Promise<unknown>; // Function to execute tool calls
+  // Invoked once per round with the provider/model that actually served it, before the
+  // round's tool calls run — lets callers stamp the real model into context for tools
+  // that render mid-loop (e.g. send_card footer).
+  onProviderResolved?: (info: { providerName: string; model?: string }) => void;
 }
 
 /** Tool Use generation response */

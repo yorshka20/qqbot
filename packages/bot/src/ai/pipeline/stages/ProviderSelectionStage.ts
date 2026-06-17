@@ -69,6 +69,7 @@ export class ProviderSelectionStage implements ReplyStage {
 
     ctx.providerName = providerName;
     ctx.userMessage = userMessage;
+    ctx.usedExplicitPrefix = usedExplicitPrefix;
 
     // When images are present, prefer a vision-capable provider; otherwise use the routed provider.
     const hasImages = ctx.messageImages.length > 0;

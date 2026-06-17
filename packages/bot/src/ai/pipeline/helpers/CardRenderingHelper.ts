@@ -45,9 +45,10 @@ export class CardRenderingHelper {
   async renderParsedCards(
     cards: CardData[],
     providerName?: string,
+    model?: string,
   ): Promise<{ segments: MessageSegment[]; textForHistory: string }> {
     const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
-    const base64Image = await this.cardRenderingService.renderCardData(cards, provider);
+    const base64Image = await this.cardRenderingService.renderCardData(cards, provider, model);
     const messageBuilder = new MessageBuilder();
     messageBuilder.image({ data: base64Image });
     return { segments: messageBuilder.build(), textForHistory: JSON.stringify(cards) };

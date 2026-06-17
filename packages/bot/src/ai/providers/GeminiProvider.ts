@@ -142,7 +142,18 @@ export class GeminiProvider
    * If the current mode is 'free' and the call fails, retry once with the paid key,
    * then restore the original key mode regardless of the retry outcome.
    */
-  private async withPaidFallback<T>(fn: (isPaidFallback: boolean) => Promise<T>): Promise<T> {
+  private async withPaidFallback<T>(fn: (isPaidFallback: boolean) => Promise<T>, forcePaid = false): Promise<T> {
+    // Explicit paid-tier request (e.g. provider wake-word): use the paid key from the
+    // start instead of burning a round-trip on a possibly quota-exhausted free key.
+    if (forcePaid && this.config.apiKeyPaid) {
+      const originalMode = GeminiProvider.getKeyMode();
+      GeminiProvider.setKeyMode('paid');
+      try {
+        return await fn(true);
+      } finally {
+        GeminiProvider.setKeyMode(originalMode);
+      }
+    }
     try {
       return await fn(false);
     } catch (error) {
@@ -460,11 +471,13 @@ export class GeminiProvider
       disableThinking?: boolean;
       timeoutMs?: number;
       nativeWebSearch?: boolean;
+      forcePaid?: boolean;
     },
   ): Promise<{
     text: string;
     usage?: AIGenerateResponse['usage'];
     functionCalls?: AIGenerateResponse['functionCalls'];
+    resolvedModel: string;
   }>;
 
   private async generateContentText(
@@ -487,11 +500,13 @@ export class GeminiProvider
       disableThinking?: boolean;
       timeoutMs?: number;
       nativeWebSearch?: boolean;
+      forcePaid?: boolean;
     },
   ): Promise<{
     text: string;
     usage?: AIGenerateResponse['usage'];
     functionCalls?: AIGenerateResponse['functionCalls'];
+    resolvedModel: string;
   }>;
 
   private async generateContentText(
@@ -506,11 +521,13 @@ export class GeminiProvider
       disableThinking?: boolean;
       timeoutMs?: number;
       nativeWebSearch?: boolean;
+      forcePaid?: boolean;
     },
   ): Promise<{
     text: string;
     usage?: AIGenerateResponse['usage'];
     functionCalls?: AIGenerateResponse['functionCalls'];
+    resolvedModel: string;
   }> {
     const config: Record<string, unknown> = {
       temperature: options?.temperature ?? 0.7,
@@ -562,19 +579,21 @@ export class GeminiProvider
     const timeoutMs = options?.timeoutMs ?? GeminiProvider.DEFAULT_REQUEST_TIMEOUT_MS;
     config.httpOptions = { timeout: timeoutMs };
 
-    const response = await this.withPaidFallback((isPaidFallback) =>
-      this.callWithHardTimeout(
+    let resolvedModel = model;
+    const response = await this.withPaidFallback((isPaidFallback) => {
+      resolvedModel = isPaidFallback && options?.paidModel ? options.paidModel : model;
+      return this.callWithHardTimeout(
         () =>
           this.getClient().models.generateContent({
-            model: isPaidFallback && options?.paidModel ? options.paidModel : model,
+            model: resolvedModel,
             // The SDK accepts both Part[] and Content[] for contents; cast through unknown to satisfy the union.
             contents: contentsOrParts as Parameters<GoogleGenAI['models']['generateContent']>[0]['contents'],
             config,
           }),
         timeoutMs,
         'generateContent',
-      ),
-    );
+      );
+    }, options?.forcePaid);
 
     const noCandidatesError = handleNoCandidates(response, '');
     if (noCandidatesError) {
@@ -600,8 +619,10 @@ export class GeminiProvider
       text: string;
       usage?: AIGenerateResponse['usage'];
       functionCalls?: AIGenerateResponse['functionCalls'];
+      resolvedModel: string;
     } = {
       text: text ?? '',
+      resolvedModel,
       usage: meta
         ? {
             promptTokens: meta.promptTokenCount ?? 0,
@@ -737,11 +758,13 @@ export class GeminiProvider
         disableThinking: hasUnsignedToolCall,
         timeoutMs: options?.timeout,
         nativeWebSearch,
+        forcePaid: options?.preferPaidTier,
       });
       return {
         text: result.text,
         usage: result.usage,
         functionCalls: result.functionCalls,
+        resolvedModel: result.resolvedModel,
       };
     }
 
@@ -764,11 +787,13 @@ export class GeminiProvider
       paidModel,
       timeoutMs: options?.timeout,
       nativeWebSearch,
+      forcePaid: options?.preferPaidTier,
     });
     return {
       text: result.text,
       usage: result.usage,
       functionCalls: result.functionCalls,
+      resolvedModel: result.resolvedModel,
     };
   }
 
