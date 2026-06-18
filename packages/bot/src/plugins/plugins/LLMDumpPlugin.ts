@@ -81,28 +81,31 @@ export class LLMDumpPlugin extends PluginBase {
 
   private renderEntry(entry: LLMTraceEntry, at: Date): string {
     const model = entry.resolvedModel ? ` · ${entry.resolvedModel}` : '';
+    // The h2 call header is the ONLY heading that survives — message contents are
+    // fenced (below) so the prompt's own markdown headers can't hijack the outline.
     const lines: string[] = [`## ${this.formatTime(at)} · ${entry.opLabel} · ${entry.provider}${model}`, ''];
 
-    if (entry.systemPrompt) {
-      lines.push('**System**', '', '```', entry.systemPrompt, '```', '');
-    }
-
     if (entry.messages && entry.messages.length > 0) {
-      lines.push('### Input', '');
+      // Number system messages (base system / scene system / …) so the distinct
+      // prompts are easy to tell apart.
+      const systemCount = entry.messages.filter((m) => m.role === 'system').length;
+      let systemIdx = 0;
       for (const msg of entry.messages) {
-        lines.push(...this.renderMessage(msg));
+        const idx = msg.role === 'system' && systemCount > 1 ? ++systemIdx : undefined;
+        lines.push(...this.renderMessage(msg, idx));
       }
-    } else if (entry.prompt) {
-      lines.push('### Input', '', '**[user]**', '', entry.prompt, '');
+    } else {
+      if (entry.systemPrompt) lines.push('### system', '', this.fence(entry.systemPrompt), '');
+      if (entry.prompt) lines.push('### user', '', this.fence(entry.prompt), '');
     }
 
-    lines.push('### Output', '');
-    const text = entry.response.text?.trim();
-    lines.push(text ? text : '_(no text)_', '');
+    lines.push('### ⟵ output', '');
+    const text = entry.response.text ?? '';
+    lines.push(text.trim() ? this.fence(text) : '_(no text)_', '');
     if (entry.response.functionCalls?.length) {
-      lines.push('**Tool calls (response):**', '');
+      lines.push('**tool calls (response):**', '');
       for (const fc of entry.response.functionCalls) {
-        lines.push(`- \`${fc.name}\``, '', '```json', this.pretty(fc.arguments), '```', '');
+        lines.push(`- \`${fc.name}\``, '', this.fence(this.pretty(fc.arguments), 'json'), '');
       }
     }
     if (entry.response.usage) {
@@ -114,17 +117,25 @@ export class LLMDumpPlugin extends PluginBase {
     return lines.join('\n');
   }
 
-  private renderMessage(msg: ChatMessage): string[] {
-    const lines: string[] = [];
-    const roleTag = msg.role === 'tool' && msg.tool_call_id ? `tool ← ${msg.tool_call_id}` : msg.role;
-    lines.push(`**[${roleTag}]**`, '');
+  private renderMessage(msg: ChatMessage, systemIdx?: number): string[] {
+    let label: string;
+    if (msg.role === 'system') label = systemIdx ? `system #${systemIdx}` : 'system';
+    else if (msg.role === 'tool') label = `tool ← ${msg.tool_call_id ?? ''}`;
+    else label = msg.role;
+
+    const lines: string[] = [`### ${label}`, ''];
 
     const content = this.contentToText(msg.content);
-    if (content) lines.push(content, '');
+    if (content.trim()) {
+      lines.push(this.fence(content), '');
+    } else if (!msg.tool_calls?.length) {
+      lines.push('_(empty)_', '');
+    }
 
     if (msg.tool_calls?.length) {
+      lines.push('**tool calls:**', '');
       for (const tc of msg.tool_calls) {
-        lines.push(`→ tool_call \`${tc.name}\` (${tc.id})`, '', '```json', this.pretty(tc.arguments), '```', '');
+        lines.push(`- \`${tc.name}\` (${tc.id})`, '', this.fence(this.pretty(tc.arguments), 'json'), '');
       }
     }
     return lines;
@@ -134,6 +145,18 @@ export class LLMDumpPlugin extends PluginBase {
     if (content == null) return '';
     if (typeof content === 'string') return content;
     return content.map((part) => (part.type === 'text' ? part.text : '[image]')).join('');
+  }
+
+  /**
+   * Wrap content in a fenced block so its own markdown (headers, lists, fences)
+   * renders verbatim instead of clashing with the dump's structure. The fence is
+   * always longer than the longest backtick run inside the content, so embedded
+   * code blocks can't break out.
+   */
+  private fence(content: string, lang = ''): string {
+    const longest = (content.match(/`+/g) ?? []).reduce((m, s) => Math.max(m, s.length), 0);
+    const ticks = '`'.repeat(Math.max(3, longest + 1));
+    return `${ticks}${lang}\n${content}\n${ticks}`;
   }
 
   /** Pretty-print a JSON argument string; fall back to the raw string if it isn't JSON. */

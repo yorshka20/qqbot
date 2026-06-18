@@ -42,15 +42,18 @@ afterEach(() => {
 });
 
 describe('LLMDumpPlugin', () => {
-  it('renders a plain prompt/response turn', () => {
+  it('renders a turn with numbered system prompts, fenced verbatim content', () => {
     const plugin = makePlugin();
     emit(plugin, {
       opLabel: 'generate',
       provider: 'gemini',
       resolvedModel: 'gemini-3.5-flash',
-      systemPrompt: 'you are a bot',
       prompt: 'ignored when messages present',
-      messages: [{ role: 'user', content: 'hello' }],
+      messages: [
+        { role: 'system', content: 'base system\n## 运行环境\nyou are a bot' },
+        { role: 'system', content: 'scene system' },
+        { role: 'user', content: 'hello' },
+      ],
       response: { text: 'hi there', usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 } },
       turnKey: 'msg:abc123',
     });
@@ -58,10 +61,17 @@ describe('LLMDumpPlugin', () => {
     const md = readTurnFile('msg-abc123');
     expect(md).toContain('# LLM dump — msg:abc123');
     expect(md).toContain('· generate · gemini · gemini-3.5-flash');
+    // Two system prompts are numbered so base vs scene are distinguishable.
+    expect(md).toContain('### system #1');
+    expect(md).toContain('### system #2');
+    // Prompt's own markdown header is fenced (kept verbatim, not promoted to an outline heading).
+    expect(md).toContain('## 运行环境');
     expect(md).toContain('you are a bot');
     expect(md).toContain('hello');
     expect(md).toContain('hi there');
     expect(md).toContain('total=15');
+    // The content header must sit inside a code fence, not start a real markdown heading.
+    expect(md).toMatch(/```\n[\s\S]*## 运行环境/);
   });
 
   it('renders tool-calling: assistant tool_calls, tool result, and response function calls', () => {
@@ -88,12 +98,12 @@ describe('LLMDumpPlugin', () => {
 
     const md = readTurnFile('msg-tool99');
     // Input side: the model's tool_call and the tool result that was fed back.
-    expect(md).toContain('→ tool_call `search` (call_1)');
+    expect(md).toContain('`search` (call_1)');
     expect(md).toContain('"query": "qqbot"'); // pretty-printed JSON args
     expect(md).toContain('tool ← call_1');
     expect(md).toContain('8 results found');
     // Output side: the response's function call.
-    expect(md).toContain('Tool calls (response):');
+    expect(md).toContain('tool calls (response):');
     expect(md).toContain('`send_card`');
   });
 
