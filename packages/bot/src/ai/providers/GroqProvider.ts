@@ -406,10 +406,13 @@ export class GroqProvider extends AIProvider implements LLMCapability {
  * `reasoningEffort: 'none'` to cut TTFT.
  *
  * Behavior:
- * - `reasoning_effort`: forwarded verbatim when the caller supplied one.
- *   `'none'` fully disables thinking on providers that support it. No
- *   `reasoning_effort` key is sent when the caller omitted it (preserves
- *   the provider's own default).
+ * - `reasoning_effort`: normalized to the target model's supported set, then
+ *   forwarded. `'none'` fully disables thinking on models that support it
+ *   (e.g. Qwen3), but the gpt-oss family rejects `none`/`minimal` and only
+ *   accepts `low`/`medium`/`high`, so those are clamped up to `low` (the
+ *   minimal valid effort, preserving the TTFT intent). No `reasoning_effort`
+ *   key is sent when the caller omitted it (preserves the provider's own
+ *   default).
  * - `reasoning_format: 'hidden'`: set unconditionally. Groq supports
  *   `raw` (thinking inline as `<think>` XML in content — the default),
  *   `parsed` (separate `reasoning` field), and `hidden` (dropped). We never
@@ -417,9 +420,22 @@ export class GroqProvider extends AIProvider implements LLMCapability {
  *   and prevents the content stream from leaking a `<think>` block that
  *   would otherwise reach downstream consumers (SentenceFlusher → TTS).
  */
+/**
+ * Groq's gpt-oss models require `reasoning_effort` ∈ {low,medium,high} and
+ * reject `none`/`minimal`. Map those down to `low` (the minimal valid effort)
+ * for that family; all other values/models pass through unchanged.
+ */
+function normalizeReasoningEffort(effort: NonNullable<AIGenerateOptions['reasoningEffort']>, model: unknown): string {
+  const isGptOss = typeof model === 'string' && model.includes('gpt-oss');
+  if (isGptOss && (effort === 'none' || effort === 'minimal')) {
+    return 'low';
+  }
+  return effort;
+}
+
 function applyGroqReasoningParams(body: Record<string, unknown>, options: AIGenerateOptions | undefined): void {
   if (options?.reasoningEffort) {
-    body.reasoning_effort = options.reasoningEffort;
+    body.reasoning_effort = normalizeReasoningEffort(options.reasoningEffort, body.model);
   }
   // Never surface reasoning content — downstream TTS would otherwise speak
   // the model's internal monologue (user-visible regression on thinking models).
