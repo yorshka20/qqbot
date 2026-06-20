@@ -89,60 +89,67 @@ The bot requires a `config.jsonc` file (JSONC with comments). Copy from `config.
 - **Async/Await**: Prefer async/await over callbacks
 - **Error Handling**: Custom error types (ConfigError, APIError, ConnectionError)
 
-## 修 Bug 原则：禁止 patch 思路（Root Cause First）
+## Engineering Principles
 
-**强约束**：遇到 bug 必须先定位**根因**，从设计层面修复；**禁止**通过堆叠局部 patch / 兜底 / fallback / 缓存 / 特例处理来"压住"症状。
+- **Read docs before implementing, update docs after changing implementation**: Read the relevant design docs before writing code, and when you change the actual implementation, update the documents it affects. Architecture reference: `docs/ARCHITECTURE.md`.
+- **Prefer good third-party libraries**: Do not hand-roll a poor implementation when a high-quality library is available.
+- **Hold a high implementation bar**: Code with weak architectural design is never acceptable. Always respect the existing module/system design when implementing a new feature within a given scope.
+- **Correct me when I'm wrong**: Always respect the truth. I may be wrong, and you must not accept a wrong suggestion. If your view differs from mine, check whether I've made a mistake before agreeing.
 
-### 执行规则
+## Bug-Fixing Principle: No Patch Mindset (Root Cause First)
 
-1. **先诊断根因，再写代码**：在动手修之前，必须能用一句话回答"为什么会出这个 bug"。如果答案是"在某个时刻某变量是错值"——这是症状，不是根因。继续问"为什么那个变量是错值，是哪条设计假设崩了"，直到答到"某个抽象 / 数据流 / 状态机的设计漏洞"为止
-2. **方案要消灭根因，不是绕开它**：好的修复**删除**问题成因（错误的 fallback 路径 / 缺失的权威状态 / 不一致的语义）；坏的修复**叠加**新代码（新增 memo / drift / retry / 特殊判断）。如果方案让代码变复杂、检查变多，先怀疑自己没找到根因
-3. **Patch 思路的典型信号——出现这些就停下重审**：
-   - "如果上次记住了……"（last-emitted memo）
-   - "再加一个 fallback"（已经有 fallback 了，再加一层）
-   - "在 X 之前先检查 Y"（特例守卫）
-   - "缓慢 drift 到正确值"（用时间稀释错误状态）
-   - "这种情况下临时关掉 / 跳过"（feature flag 兜底）
-   - "重试 N 次"（不知道为啥会失败，所以试运气）
-4. **唯一允许 patch 的场景：真正的 edge case**——确认是外部不可控因素（特定厂商 API 抖动 / 第三方库已知 bug / 硬件个例），且根因修复成本远超影响。这种情况必须**显式说明**：
-   - 在 PR / commit message / 代码注释里**写明这是 edge-case patch**，不是设计修复
-   - 说明 edge case 是什么、为什么不能根治
-   - 留一个 follow-up 链接（issue / ticket）记录"什么时候应该升级为根治"
+**Hard constraint**: When you hit a bug, you must first locate the **root cause** and fix it at the design level. It is **forbidden** to suppress symptoms by stacking local patches / safety nets / fallbacks / caches / special-case handling.
 
-### 与用户协作的方式
+### Execution Rules
 
-- 提交方案前，**先讲根因诊断**，再讲方案如何消灭根因；让用户能审"诊断对不对"，而不是只审"代码对不对"
-- 若发现自己的方案在叠 patch（symptom A 加 fallback，symptom B 加 memo……），**主动停下重审**："等等，这是症状治理，根因可能是 X"，不要等用户指出
-- 若用户拒绝方案、说"不要 patch"，**重新做根因诊断**，不要换一个角度的 patch 再提交
+1. **Diagnose the root cause before writing code**: Before you start fixing, you must be able to answer "why does this bug happen" in a single sentence. If the answer is "at some moment some variable held a wrong value" — that's a symptom, not the root cause. Keep asking "why did that variable hold a wrong value, which design assumption broke" until you reach "a design flaw in some abstraction / data flow / state machine".
+2. **The fix must eliminate the root cause, not work around it**: A good fix **removes** the cause of the problem (a wrong fallback path / a missing authoritative state / inconsistent semantics); a bad fix **stacks** new code (adding a memo / drift / retry / special check). If the fix makes the code more complex and adds more checks, first suspect that you haven't found the root cause.
+3. **Typical signals of patch thinking — stop and re-examine when these appear**:
+   - "If we remembered it last time…" (last-emitted memo)
+   - "Add another fallback" (there's already a fallback, adding one more layer)
+   - "Check Y before X" (special-case guard)
+   - "Slowly drift to the correct value" (diluting a wrong state with time)
+   - "Temporarily turn off / skip in this case" (feature-flag safety net)
+   - "Retry N times" (don't know why it fails, so try our luck)
+4. **The only scenario where a patch is allowed: a genuine edge case** — confirmed to be an uncontrollable external factor (a specific vendor's API jitter / a known third-party library bug / a one-off hardware case), and the cost of a root-cause fix vastly exceeds its impact. In this case you must **state it explicitly**:
+   - In the PR / commit message / code comment, **write that this is an edge-case patch**, not a design fix
+   - Explain what the edge case is and why it can't be properly cured
+   - Leave a follow-up link (issue / ticket) recording "when this should be upgraded to a proper fix"
 
-## 注释风格：禁止 session-context 注释
+### How to Collaborate with the User
 
-**默认不写注释**。代码标识符已经讲清楚 "做什么"；只有当 *why* 不显然时才写——隐藏的约束、不直觉的不变量、对某个外部 bug 的绕开、流程上需要警惕的点。
+- Before proposing a fix, **present the root-cause diagnosis first**, then explain how the fix eliminates the root cause; let the user review "whether the diagnosis is right", not just "whether the code is right".
+- If you notice your own fix is stacking patches (symptom A gets a fallback, symptom B gets a memo…), **stop and re-examine on your own**: "Wait, this is treating symptoms, the root cause might be X" — don't wait for the user to point it out.
+- If the user rejects the fix and says "no patches", **redo the root-cause diagnosis**; don't submit another patch from a different angle.
 
-### 禁止的注释类型
+## Comment Style: No Session-Context Comments
 
-写注释时**禁止**夹带任何只在当前任务/会话语境下才能理解的内容：
+**Write no comments by default**. The code's identifiers already explain "what it does"; only write a comment when the *why* is not obvious — a hidden constraint, a counter-intuitive invariant, a workaround for some external bug, a point in the flow that needs caution.
 
-- ❌ "今天加这行解决 XX 问题"、"为修 issue #123 而加"、"上次调试发现……"
-- ❌ "目前 / today / for now / 暂时这样"、"以后再 revisit"、"等我们想要 raw 内容时再回来改"
-- ❌ "和 XX 字段保持一致"（指向当次改动的临时一致性，不是长期不变量）
-- ❌ "由 X 调用 / 给 Y 流程用"（这些信息属于 PR 描述或 git blame，会随代码演化失真）
-- ❌ 在 type / interface 字段上单独加 JSDoc，但同 interface 里其他字段都没注释——这种"突兀的局部解释"几乎都是 session 上下文泄露
+### Forbidden Comment Types
 
-如果一段话脱离当前对话别人就读不懂、或者只是 "这次改动的决策日志"，那它属于 commit message / PR description / `.claude-workbook/`，**不属于代码注释**。
+When writing comments, it is **forbidden** to smuggle in anything that can only be understood within the current task/session context:
 
-### 允许的注释类型
+- ❌ "Added this line today to solve problem XX", "added to fix issue #123", "found while debugging last time…"
+- ❌ "Currently / today / for now / temporarily like this", "revisit later", "come back and change this when we want the raw content"
+- ❌ "Keep consistent with field XX" (pointing at temporary consistency from the current change, not a long-term invariant)
+- ❌ "Called by X / used by flow Y" (this info belongs in the PR description or git blame; it goes stale as the code evolves)
+- ❌ Adding standalone JSDoc to one type / interface field while no other field in the same interface has comments — this kind of "abrupt local explanation" is almost always session-context leakage.
 
-注释要写成"不知道当前任务的人也能从中受益"的形式：
+If a passage can't be understood by someone outside the current conversation, or is just "a decision log for this change", then it belongs in the commit message / PR description / `.claude-workbook/`, **not in a code comment**.
 
-- ✅ 解释**这段代码为什么必须存在**（消除一类 bug、维持某个不变量、对接某个外部协议的硬约束）
-- ✅ 标记**流程上容易出错的点**（"调用顺序不能换，X 依赖 Y 的副作用"、"这里看似多余但移除会触发 Z"）
-- ✅ 引用**外部规范 / 厂商文档 / 标准**（"按 RFC xxxx §3.2"、"绕开 chromium bug crbug/12345"）——可定位、可验证
-- ✅ 标记 **edge-case patch**（按上一节的规则，必须显式声明并附 follow-up 链接）
+### Allowed Comment Types
 
-### 自检
+Comments should be written so that "someone who doesn't know the current task still benefits":
 
-写完注释先问自己：**"半年后一个新人读到这行，他能理解吗？"** 如果答案依赖"知道这次改动来历"，就删掉它。
+- ✅ Explain **why this code must exist** (eliminates a class of bug, maintains some invariant, a hard constraint of an external protocol it interfaces with)
+- ✅ Mark **error-prone points in the flow** ("the call order can't be swapped, X depends on Y's side effect", "this looks redundant but removing it triggers Z")
+- ✅ Cite **external specs / vendor docs / standards** ("per RFC xxxx §3.2", "works around chromium bug crbug/12345") — locatable and verifiable.
+- ✅ Mark an **edge-case patch** (per the rules in the previous section, must be explicitly declared with a follow-up link).
+
+### Self-Check
+
+After writing a comment, ask yourself: **"Half a year from now, will a newcomer reading this line understand it?"** If the answer depends on "knowing the history of this change", delete it.
 
 ## Testing Approach
 
@@ -203,119 +210,119 @@ The bot automatically handles database schema initialization. For SQLite, tables
 
 ## Workflow: Workbook & Learnings
 
-`.claude-workbook/` 与 `.claude-learnings/` 已列入 `.gitignore`，**仅本机笔记**，不要 `git add` 或推送。交付与协作以仓库内已跟踪的代码与文档为准。
+`.claude-workbook/` and `.claude-learnings/` are listed in `.gitignore` — they are **local-only notes**; do not `git add` or push them. Delivery and collaboration rely on the tracked code and docs inside the repo.
 
-项目维护这两个目录，**建议**每次工作阅读并在完成后更新（可选但有用）：
+The project maintains these two directories; you are **encouraged** (optional but useful) to read them at the start of each work session and update them when done:
 
-### 开始工作时
+### When Starting Work
 
-1. 阅读本文件 (`CLAUDE.md`)
-2. 阅读 `.claude-workbook/index.md` — 了解历史工作情况（先看索引，按需阅读具体日期报告）
-3. 阅读 `.claude-learnings/index.md` — 了解项目关键细节和设计要点（先看索引，按需阅读相关 scope 文件）
-4. 开始执行任务
+1. Read this file (`CLAUDE.md`)
+2. Read `.claude-workbook/index.md` — to understand past work (read the index first, then specific dated reports as needed)
+3. Read `.claude-learnings/index.md` — to understand the project's key details and design points (read the index first, then the relevant scope files as needed)
+4. Start the task
 
-### 完成工作后
+### When Work Is Done
 
-1. **更新 `.claude-workbook/`**（本机）：在当月文件夹下当天日期文件（`YYYY-MM/YYYY-MM-DD.md`）中记录工作内容（问题描述、根因分析、解决方案、涉及文件、验证结果），然后更新**当月** `YYYY-MM/index.md`（加一行）。跨月第一天时新建月文件夹 + 月 index，并在顶层 `index.md` 加一行月份
-2. **更新 `.claude-learnings/`**（本机）：将新发现的关键细节和要点写入对应 scope 文件，或新建 scope 文件。然后更新 `index.md` 索引
-3. 提交与推送时**只包含**仓库应跟踪的改动；**勿**将上述两目录纳入 `git add`
+1. **Update `.claude-workbook/`** (local): in the current month's folder, record your work in that day's dated file (`YYYY-MM/YYYY-MM-DD.md`) — problem description, root-cause analysis, solution, files involved, verification results — then update **that month's** `YYYY-MM/index.md` (add a line). On the first day of a new month, create the month folder + month index, and add a line for the month in the top-level `index.md`.
+2. **Update `.claude-learnings/`** (local): write newly discovered key details and points into the corresponding scope file, or create a new scope file. Then update the `index.md` index.
+3. When committing and pushing, **include only** changes that the repo should track; **do not** add the two directories above to `git add`.
 
-### 目录结构
+### Directory Structure
 
 ```
 .claude-workbook/
-├── index.md              # 顶层：只列月份 + grep 指引（不列具体日报）
+├── index.md              # Top level: lists months only + grep guidance (no individual daily reports)
 ├── 2026-06/
-│   ├── index.md          # 当月索引：一行一天
-│   ├── 2026-06-07.md     # 按日期记录的工作汇报
+│   ├── index.md          # Month index: one line per day
+│   ├── 2026-06-07.md     # Daily work reports by date
 │   └── ...
 ├── 2026-04/
 │   ├── index.md
 │   └── ...
-└── ...                   # 按月新增文件夹（YYYY-MM/）
+└── ...                   # New folder per month (YYYY-MM/)
 
 .claude-learnings/
-├── index.md              # 纯指针层：一行一 scope（不存内容）
-├── rendering.md          # Scope: Puppeteer/渲染相关
-├── wechat.md             # Scope: 微信 API 相关
-├── core.md               # Scope: 核心工具函数/通用模式
-├── ai-providers.md       # Scope: LLM provider 集成要点
-├── plugins.md            # Scope: 插件开发要点
-└── ...                   # 按需新增 scope 文件
+├── index.md              # Pure pointer layer: one line per scope (stores no content)
+├── rendering.md          # Scope: Puppeteer / rendering
+├── wechat.md             # Scope: WeChat API
+├── core.md               # Scope: core utility functions / common patterns
+├── ai-providers.md       # Scope: LLM provider integration points
+├── plugins.md            # Scope: plugin development points
+└── ...                   # Add scope files as needed
 ```
 
-### 规则
+### Rules
 
-#### `index.md` 是**纯指针层**，不是内容摘要（核心约束）
+#### `index.md` Is a **Pure Pointer Layer**, Not a Content Summary (Core Constraint)
 
-两个目录的 `index.md` 唯一职责是**让你一眼扫完、决定该打开哪个文件**。它**不存储内容**——内容的唯一真相源是 scope 文件正文（learnings）/ 当日文件（workbook）。
+The sole job of the `index.md` in both directories is to **let you scan it in one glance and decide which file to open**. It **stores no content** — the single source of truth for content is the body of the scope files (learnings) / the daily files (workbook).
 
-- **格式**：一行一文件，`- [文件名](file.md) — <一句话钩子>`（对齐 `memory/MEMORY.md` 的成熟模式）。钩子只回答"这文件大致装了什么、什么时候该打开"，**够判断即止**。
-- **🚫 禁止往 index 里追加 dated delta**（`2026-XX-XX 新增：…`）。这是当前索引膨胀的根因——每次工作都把变更写进 index 单元格，使它沦为 scope 内容的第二份拷贝、且无上限增长。dated delta 属于 scope 文件正文（learnings）或当日文件（workbook），**不属于 index**。
-- **何时改 index 行**：仅当文件的整体主题/覆盖范围变了，才更新那一行钩子；日常往 scope 文件追加内容**不动 index**。
-- **体量预算**：每个 `index.md` 控制在能一次性读完的规模（经验值 ≲ 60 行 / ≲ 4KB）。若超出，说明又在往里塞内容了，回头按上面规则收回 scope/当日文件。
+- **Format**: one line per file, `- [filename](file.md) — <one-line hook>` (aligned with the mature pattern in `memory/MEMORY.md`). The hook only answers "roughly what's in this file, and when to open it" — just enough to decide, no more.
+- **🚫 Do not append dated deltas to the index** (`2026-XX-XX added: …`). This is the root cause of the current index bloat — every work session writes the change into an index cell, turning it into a second copy of the scope content with unbounded growth. Dated deltas belong in the body of the scope files (learnings) or the daily files (workbook), **not in the index**.
+- **When to change an index line**: only when the file's overall theme / coverage changes do you update that one hook line; routine appends to a scope file **leave the index untouched**.
+- **Size budget**: keep each `index.md` to a size you can read in one sitting (rule of thumb ≲ 60 lines / ≲ 4KB). If it exceeds that, it means content is being stuffed in again — go back and pull it into the scope / daily files per the rules above.
 
-#### Workbook（按月分文件夹，grep 优先）
+#### Workbook (Folders by Month, grep First)
 
-- **按月分文件夹** `YYYY-MM/`，当日文件 `YYYY-MM/YYYY-MM-DD.md`（同日多份用 `-2`/`-3` 后缀）记录完整工作（问题 / 根因 / 方案 / 涉及文件 / 验证）。
-- **检索方式以 grep 为主，不要全量通读**：按内容搜用 `grep -rn "关键词" .claude-workbook/`（跨月），定某天用月 index。index 只负责"哪天大概做了啥"，不替代 grep。
-- 三层索引各司其职：
-  - 顶层 `index.md`：只列**月份**（`- [YYYY-MM](YYYY-MM/index.md) — <当月主题一句话>`）+ grep 指引。**不列**具体日报。
-  - 月 `YYYY-MM/index.md`：一行一天（`- [YYYY-MM-DD](YYYY-MM-DD.md) — <≤14 字主题>`），日期倒序、同日多份按 `(2)(3)` 升序。
-  - 当日文件：完整内容只在这里。
+- **Folders by month** `YYYY-MM/`, with daily files `YYYY-MM/YYYY-MM-DD.md` (multiple files on the same day use `-2`/`-3` suffixes) recording complete work (problem / root cause / solution / files involved / verification).
+- **Search primarily with grep, don't read everything**: search by content with `grep -rn "keyword" .claude-workbook/` (across months); pin down a specific day with the month index. The index only tells you "roughly what was done on which day" — it doesn't replace grep.
+- The three index layers each have their own job:
+  - Top-level `index.md`: lists **months only** (`- [YYYY-MM](YYYY-MM/index.md) — <one-line theme for the month>`) + grep guidance. **Does not list** individual daily reports.
+  - Month `YYYY-MM/index.md`: one line per day (`- [YYYY-MM-DD](YYYY-MM-DD.md) — <topic, ≤14 chars>`), dates in reverse order, multiple files on the same day ordered by `(2)(3)` ascending.
+  - Daily files: the full content lives only here.
 
 #### Learnings
 
-- 按 scope 分文件，scope 可按需新增；判断内容应写入已有 scope 还是新建 scope。
-- 每个 scope 文件**头部**依次维护：①（大文件才需）一段「本文目录」TOC，用锚点链接列出主要 `##` 小节，让人不必通读就能跳转；② 一段 Roadmap 表（见下「Roadmap 维护」）。dated delta、设计细节、坑都写在正文小节里。
-- **TOC 触发阈值**：scope 文件超过约 600 行 / 20KB 时，头部必须有「本文目录」TOC。新增大节时同步补一行 TOC。
-- `index.md`：一行一 scope，钩子只说这个 scope 覆盖什么领域（例：`- [avatar](avatar.md) — Live2D/VRM 动画编译器、layer 栈、tag 语法、TTS/lipsync`），**不列**该 scope 下的具体变更。
+- Split files by scope; scopes can be added as needed; judge whether content goes into an existing scope or a new one.
+- Each scope file maintains at its **top**, in order: ① (only for large files) a "Table of Contents" TOC linking the major `##` sections via anchors, so people can jump without reading the whole thing; ② a Roadmap table (see "Roadmap Maintenance" below). Dated deltas, design details, and pitfalls all go in the body sections.
+- **TOC trigger threshold**: when a scope file exceeds roughly 600 lines / 20KB, it must have a "Table of Contents" TOC at the top. Add a TOC line whenever you add a major section.
+- `index.md`: one line per scope; the hook only states what domain the scope covers (e.g. `- [avatar](avatar.md) — Live2D/VRM animation compiler, layer stack, tag syntax, TTS/lipsync`), and **does not list** the specific changes under that scope.
 
-### Roadmap 维护（两层结构）
+### Roadmap Maintenance (Two-Layer Structure)
 
-本仓库的 roadmap 分两层，**都已 gitignore，仅本机笔记**：
+This repo's roadmap has two layers, **both gitignored, local-only notes**:
 
-#### 跨 scope 索引：`/ROADMAP.md`（仓库根）
+#### Cross-Scope Index: `/ROADMAP.md` (Repo Root)
 
-`/ROADMAP.md` 是跨 scope 的 active 任务仪表盘 / 索引：
+`/ROADMAP.md` is the cross-scope dashboard / index of active tasks:
 
-- 只列**当前活跃**的 P0/P1/P2/P3 项 + 指回 scope 详情的链接（包含合入分支前的检查清单 / 短期跟进 / 未启动 phase）
-- **不重复列**已完成项（去 scope 文件标 ✅ + 填 commit hash / workbook 日期；本文用一段"已合入历史指针"指向各 scope 即可）
-- 每次**开始工作前**先扫 active 节决定下一步；**新发现需求**先记进本文再展开到 scope
+- Lists only the **currently active** P0/P1/P2/P3 items + links back to the scope details (including pre-merge checklists / short-term follow-ups / not-yet-started phases)
+- **Does not duplicate** completed items (mark them ✅ in the scope file + fill in the commit hash / workbook date; here, a single "merged-history pointer" paragraph pointing at each scope is enough)
+- Before **each work session**, scan the active section first to decide the next step; for a **newly discovered requirement**, record it here first, then expand it into the scope file
 
-#### 单 scope 详情：`.claude-learnings/<scope>.md` 头部
+#### Per-Scope Details: Top of `.claude-learnings/<scope>.md`
 
-每个 scope 文件**头部**维护一段 ROADMAP 表，把该 scope 下的所有待办、进行中、已完成项汇总（含历史 phase 完整表）。这是 scope 内的 single source of truth——commit hash / workbook 日期只在这里登记，`/ROADMAP.md` 只引用。
+Each scope file maintains a ROADMAP table at its **top**, aggregating all todo / in-progress / completed items under that scope (including the full historical phase table). This is the single source of truth within the scope — commit hashes / workbook dates are registered only here, and `/ROADMAP.md` merely references them.
 
-参考样例：[`/Users/yorshka/project/video-knowledge-backend/ROADMAP.md`](file:///Users/yorshka/project/video-knowledge-backend/ROADMAP.md)（VKB 仓库的全局 roadmap，模式类似但更扁平）。
+Reference example: [`/Users/yorshka/project/video-knowledge-backend/ROADMAP.md`](file:///Users/yorshka/project/video-knowledge-backend/ROADMAP.md) (the VKB repo's global roadmap — similar pattern but flatter).
 
 #### Status Legend
 
-- 🔴 **P0** — 阻塞其他工作 / 数据正确性 / 核心功能缺失
-- 🟡 **P1** — 重要但不阻塞，按计划推进
-- 🟢 **P2** — 改进项，有时间再做
-- ⚪ **P3** — 优化 / nice-to-have / 已记录暂不实施
-- ✅ **DONE** — 已完成
-- 🚧 **WIP** — 进行中
-- 📋 **TODO** — 待实施
-- 💭 **DESIGN** — 待设计 / 待决策
+- 🔴 **P0** — blocks other work / data correctness / missing core functionality
+- 🟡 **P1** — important but not blocking, proceed per plan
+- 🟢 **P2** — an improvement, do it when there's time
+- ⚪ **P3** — optimization / nice-to-have / recorded but deferred
+- ✅ **DONE** — completed
+- 🚧 **WIP** — in progress
+- 📋 **TODO** — to be implemented
+- 💭 **DESIGN** — to be designed / decided
 
-#### 表格格式
+#### Table Format
 
 ```markdown
 ## Roadmap
 
-| 状态 | 优先级 | 任务 | 链接 / 备注 |
+| Status | Priority | Task | Link / Notes |
 |---|---|---|---|
-| ✅ | — | **完成项标题** | workbook YYYY-MM-DD / commit hash / 备注 |
-| 🚧 | 🟡 P1 | **进行中标题** | ticket id 或当前 worker |
-| 📋 | 🟢 P2 | **待办标题** | 设计文档链接 / 简述 |
-| 💭 | ⚪ P3 | **待设计标题** | 关键问题 / 暂搁原因 |
+| ✅ | — | **Completed item title** | workbook YYYY-MM-DD / commit hash / notes |
+| 🚧 | 🟡 P1 | **In-progress title** | ticket id or current worker |
+| 📋 | 🟢 P2 | **Todo title** | design doc link / brief |
+| 💭 | ⚪ P3 | **To-be-designed title** | key question / reason deferred |
 ```
 
-#### 触发更新时机
+#### When to Update
 
-- **工作完成后**：scope 文件里把新做完项移到 ✅ + 填 workbook 日期 / commit；同时从 `/ROADMAP.md` active 节移除（因为已不再 active）
-- **新发现需求**：先在 `/ROADMAP.md` active 节记一行 📋（防遗忘），再去对应 scope 文件展开（明确细节、设计、依赖）
-- **每次开始工作前**：先扫 `/ROADMAP.md` active 节，再按需深入 scope 文件
-- **scope 之间相互依赖**时：在 scope 文件备注里相互引用（如 `persona.md` 的 phenotype 任务依赖 `core.md` 的 SQLite 表）
+- **After work is done**: in the scope file, move newly finished items to ✅ + fill in the workbook date / commit; at the same time remove them from the `/ROADMAP.md` active section (since they're no longer active).
+- **Newly discovered requirement**: first record a 📋 line in the `/ROADMAP.md` active section (so it isn't forgotten), then expand it in the corresponding scope file (nailing down details, design, dependencies).
+- **Before each work session**: scan the `/ROADMAP.md` active section first, then dive into scope files as needed.
+- **When scopes depend on each other**: cross-reference them in the scope files' notes (e.g. the phenotype task in `persona.md` depends on the SQLite table in `core.md`).
