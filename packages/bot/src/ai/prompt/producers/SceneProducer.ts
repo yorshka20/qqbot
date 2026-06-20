@@ -6,17 +6,23 @@ import type { PromptManager } from '../PromptManager';
 /**
  * Scene producer — emits the per-source scene template (e.g.
  * `scenes.qq-group.zh.scene`). Bot identity variables ({{botSelfId}},
- * {{botNicknameSuffix}}) live in the scene layer now: a bot's QQ number
- * and summoning mechanic are platform-specific, so they belong to the
- * QQ scenes rather than the platform-neutral base.system. Tool instruct
+ * {{botNicknameSuffix}}, {{botWakeWordAlias}}, {{botWakeWordTrigger}}) live
+ * in the scene layer now: a bot's QQ number and summoning mechanic are
+ * platform-specific, so they belong to the QQ scenes rather than the
+ * platform-neutral base.system. Tool instruct
  * content is provided separately by ToolInstructProducer in the 'tool'
  * layer.
  *
  * Falls back to `llm.reply.system` if the per-source template is
  * missing (matches the legacy PromptAssemblyStage fallback).
  */
-export function createSceneProducer(deps: { promptManager: PromptManager }): PromptInjectionProducer {
-  const { promptManager } = deps;
+export function createSceneProducer(deps: {
+  promptManager: PromptManager;
+  /** Wake words that summon the bot without an @ (messageTrigger.wakeWords). */
+  wakeWords: string[];
+}): PromptInjectionProducer {
+  const { promptManager, wakeWords } = deps;
+  const wakeWordList = wakeWords.map((w) => `「${w}」`).join('、');
   return {
     name: 'scene',
     layer: 'scene',
@@ -27,6 +33,8 @@ export function createSceneProducer(deps: { promptManager: PromptManager }): Pro
       const sceneVars: Record<string, string> = {
         botSelfId: promptManager.botSelfId || '（未配置）',
         botNicknameSuffix: promptManager.botNickname ? `，昵称「${promptManager.botNickname}」` : '',
+        botWakeWordAlias: wakeWordList ? `，群友也常用唤醒词${wakeWordList}称呼你` : '',
+        botWakeWordTrigger: wakeWordList ? `、或出现唤醒词${wakeWordList}` : '',
       };
       let fragment: string;
       try {

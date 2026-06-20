@@ -186,8 +186,9 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   {
     const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
     const registry = container.resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
+    const wakeWords = (config.getPluginConfig('messageTrigger') as { wakeWords?: string[] } | undefined)?.wakeWords ?? [];
     registry.register(createBaselineProducer({ promptManager }));
-    registry.register(createSceneProducer({ promptManager }));
+    registry.register(createSceneProducer({ promptManager, wakeWords }));
     registry.register(createToolInstructProducer({ promptManager }));
     logger.info('[Bootstrap] Core prompt producers registered (baseline, scene, tool-instruct)');
   }
