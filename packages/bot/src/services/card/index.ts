@@ -8,6 +8,7 @@ export {
   renderCardDeck,
 } from './cardTemplates';
 export type {
+  CardData,
   ComparisonCardData,
   HighlightCardData,
   ImageCardData,

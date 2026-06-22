@@ -16,7 +16,7 @@ import type { HookContext } from '@/hooks/types';
 import type { MemoryService } from '@/memory/MemoryService';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
-import { CardRenderingService } from '@/services/card';
+import { type CardData, CardRenderingService } from '@/services/card';
 import type { RetrievalService } from '@/services/retrieval';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { ToolResult } from '@/tools/types';
@@ -206,6 +206,24 @@ export class AIService {
   async renderCardToSegments(cardJson: string, providerName?: string): Promise<MessageSegment[]> {
     const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
     const base64Image = await this.cardRenderingService.renderCard(cardJson, provider);
+    const messageBuilder = new MessageBuilder();
+    messageBuilder.image({ data: base64Image });
+    return messageBuilder.build();
+  }
+
+  /**
+   * Render already-built card data to image segments. Use this for cards
+   * constructed in code (e.g. /help): renderCardToSegments runs the LLM-text
+   * JSON extractor, which mis-grabs nested arrays / bracketed substrings out of
+   * a structured card. Pre-validated CardData must bypass that extraction.
+   */
+  async renderCardDataToSegments(
+    cards: CardData | CardData[],
+    providerName?: string,
+  ): Promise<MessageSegment[]> {
+    const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
+    const deck = Array.isArray(cards) ? cards : [cards];
+    const base64Image = await this.cardRenderingService.renderCardData(deck, provider);
     const messageBuilder = new MessageBuilder();
     messageBuilder.image({ data: base64Image });
     return messageBuilder.build();

@@ -109,7 +109,7 @@ export class HelpCommand implements CommandHandler {
    */
   private async renderCardOnly(cardData: InfoCardData | ListCardData): Promise<CommandResult> {
     try {
-      const segments = await this.aiService.renderCardToSegments(JSON.stringify(cardData));
+      const segments = await this.aiService.renderCardDataToSegments(cardData);
       return { success: true, segments };
     } catch (err) {
       logger.warn('[HelpCommand] Card render failed:', err);

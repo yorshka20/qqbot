@@ -86,7 +86,7 @@ export class GroupDedupCommandHandler implements CommandHandler {
         level: 'info',
       };
       try {
-        const segments = await this.aiService.renderCardToSegments(JSON.stringify(cardData));
+        const segments = await this.aiService.renderCardDataToSegments(cardData);
         return {
           success: true,
           segments,
