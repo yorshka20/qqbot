@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import { parseLlmJson } from '@/ai/utils/llmJsonExtract';
+import { getReply } from '@/context/HookContextHelpers';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
@@ -90,11 +91,14 @@ export class ReplyComplexityClassifierPlugin extends PluginBase {
     const senderNickname = context.message.sender?.nickname ?? context.message.sender?.card ?? '匿名';
     const senderRole = String(context.metadata.get('senderRole') ?? 'user');
 
+    const quotedReply = (getReply(context) ?? '').replace(/\s+/g, ' ').trim();
+
     const prompt = this.promptManager.render('analysis.reply_complexity', {
       historyLines,
       senderNickname,
       senderRole,
       currentMessage,
+      quotedReply: quotedReply || '（无）',
     });
 
     const aiConfig = this.config.getAIConfig();
