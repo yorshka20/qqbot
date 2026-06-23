@@ -15,6 +15,13 @@ export interface FinalUserBlocks {
    * reference annotation, not a foreign data source.
    */
   glossary?: string;
+  /**
+   * The bot's own recent actions this session (replied to whom / stayed silent
+   * on what), as a short factual list. Lets the model account for what it
+   * already did this turn instead of regenerating blind. Rendered into a
+   * `<recent_actions>` block just before the current query.
+   */
+  recentActions?: string;
   currentQuery: string;
 }
 
@@ -139,6 +146,9 @@ export class PromptMessageAssembler {
     }
     if (normalize(blocks.glossary)) {
       sections.push(`<glossary>\n${normalize(blocks.glossary)}\n</glossary>`);
+    }
+    if (normalize(blocks.recentActions)) {
+      sections.push(`<recent_actions>\n${normalize(blocks.recentActions)}\n</recent_actions>`);
     }
     sections.push(`<current_query>\n${normalize(blocks.currentQuery)}\n</current_query>`);
     return sections.join('\n\n');

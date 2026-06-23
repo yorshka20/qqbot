@@ -15,6 +15,7 @@ import { createSceneProducer } from '@/ai/prompt/producers/SceneProducer';
 import { createToolInstructProducer } from '@/ai/prompt/producers/ToolInstructProducer';
 import { APIClient } from '@/api/APIClient';
 import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
+import { AuditEventStore } from '@/conversation/audit/AuditEventStore';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
 import { ConversationInitializer } from '@/conversation/ConversationInitializer';
 import type { MessagePipeline } from '@/conversation/MessagePipeline';
@@ -169,6 +170,11 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
 
   // ── PromptInjectionRegistry (before ConversationInitializer so PromptAssemblyStage can resolve it) ──
   container.registerSingleton(DITokens.PROMPT_INJECTION_REGISTRY, PromptInjectionRegistry);
+
+  // ── Audit event ledger (before ConversationInitializer so ContextEnrichmentStage can resolve it) ──
+  // In-memory, dependency-free. Written by the COMPLETE-stage AuditEventPlugin,
+  // read into <recent_actions> by ContextEnrichmentStage.
+  container.registerInstance(DITokens.AUDIT_EVENT_STORE, new AuditEventStore());
 
   // ── Conversation system (tools, hooks, commands, AI, DB, context, agenda) ──
   const conversationComponents = await ConversationInitializer.initialize(config, apiClient);

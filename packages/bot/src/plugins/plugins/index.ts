@@ -8,6 +8,7 @@
 // an `export *` line below. Tests under `__tests__/` are intentionally
 // excluded.
 
+export * from './AuditEventPlugin';
 export * from './AutoAcceptPlugin';
 export * from './AutoRecallPlugin';
 export * from './BlacklistPlugin';

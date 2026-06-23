@@ -1,5 +1,6 @@
 // Context enrichment stage — memory + RAG retrieval (parallel).
 
+import type { AuditEventStore } from '@/conversation/audit/AuditEventStore';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -32,6 +33,8 @@ export class ContextEnrichmentStage implements ReplyStage {
 
   private readonly vkbContextEngine: VKBContextEngine;
 
+  private readonly auditEventStore: AuditEventStore;
+
   constructor(
     private memoryService: MemoryService,
     private retrievalService: RetrievalService,
@@ -42,6 +45,7 @@ export class ContextEnrichmentStage implements ReplyStage {
     // via DI to avoid bloating AIService's 14-arg constructor for an
     // optional augmentation source.
     this.vkbContextEngine = getContainer().resolve<VKBContextEngine>('VKBContextEngine');
+    this.auditEventStore = getContainer().resolve<AuditEventStore>(DITokens.AUDIT_EVENT_STORE);
   }
 
   async execute(ctx: ReplyPipelineContext): Promise<void> {
@@ -53,6 +57,11 @@ export class ContextEnrichmentStage implements ReplyStage {
     ctx.memoryContextText = memoryContextText;
     ctx.retrievedConversationSection = retrievedConversationSection;
     ctx.glossaryText = glossaryText;
+
+    // Recent-action ledger (synchronous in-memory read) — uses the same
+    // canonical sessionId the write hook records under (metadata 'sessionId').
+    const sessionId = ctx.hookContext.metadata.get('sessionId');
+    ctx.recentActionsText = sessionId ? this.auditEventStore.render(sessionId) : '';
   }
 
   // --- Also used by NSFW path (via orchestrator) ---

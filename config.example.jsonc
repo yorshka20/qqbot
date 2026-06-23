@@ -252,6 +252,14 @@
         "name": "todo",
         "enabled": true
       },
+      // Audit Event Plugin - records the bot's own actions (replied / stayed
+      // silent) into a per-session in-memory ledger at the COMPLETE stage,
+      // surfaced next turn as <recent_actions> so the model can account for
+      // what it already did instead of regenerating blind.
+      {
+        "name": "audit-event",
+        "enabled": true
+      },
       // Cloudflare Worker Proxy Plugin - proxy Doubao/Volcengine API requests through Cloudflare Worker
       // Deploy worker.js in src/plugins/plugins/CloudflareWorkerPlugin/ to Cloudflare Workers first
       // {

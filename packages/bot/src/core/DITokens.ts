@@ -109,6 +109,9 @@ export const DITokens = {
   PERSONA_CONFIG: defineToken('PersonaConfig', { required: true }),
   PERSONA_MODULATION_PROVIDER: defineToken('MindModulationProvider', { required: true }),
 
+  // ── Audit event ledger (required — in-memory, always registered) ──
+  AUDIT_EVENT_STORE: defineToken('AuditEventStore', { required: true }),
+
   // ── Avatar dependents that bootstrap.ts always registers (required) ──
   TTS_MANAGER: defineToken('TTSManager', { required: true }),
   AVATAR_SESSION_SERVICE: defineToken('AvatarSessionService', { required: true }),
