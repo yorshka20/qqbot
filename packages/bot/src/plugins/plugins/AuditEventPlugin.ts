@@ -53,19 +53,26 @@ export class AuditEventPlugin extends PluginBase {
 
       const speaker = this.speakerLabel(context);
       const gist = this.gist(context);
+      // The LLM's own first-person take on this turn, emitted as [SUBTEXT: …]
+      // and stripped to metadata by PersonaCompletionHookPlugin. Optional — when
+      // absent the entry is just the factual action. This is what gives the
+      // ledger the bot's reaction/evaluation rather than a monotone action list.
+      const reaction = this.reaction(context);
       const ts = Date.now();
 
       if (reply && reply.trim().length > 0) {
+        const action = gist ? `回复了 ${speaker}：「${gist}」` : `回复了 ${speaker}`;
         this.store.record(sessionId, {
           ts,
           kind: 'reply',
-          summary: gist ? `回复了 ${speaker}：「${gist}」` : `回复了 ${speaker}`,
+          summary: reaction ? `${action} —— ${reaction}` : action,
         });
       } else {
+        const action = gist ? `对 ${speaker} 的「${gist}」选择了不回应` : `对 ${speaker} 选择了不回应`;
         this.store.record(sessionId, {
           ts,
           kind: 'silence',
-          summary: gist ? `对 ${speaker} 的「${gist}」选择了不回应` : `对 ${speaker} 选择了不回应`,
+          summary: reaction ? `${action} —— ${reaction}` : action,
         });
       }
     } catch (err) {
@@ -86,5 +93,10 @@ export class AuditEventPlugin extends PluginBase {
     const text = (context.message?.message ?? context.message?.rawMessage ?? '').trim();
     if (!text) return '';
     return text.length > GIST_MAX_CHARS ? `${text.slice(0, GIST_MAX_CHARS)}…` : text;
+  }
+
+  private reaction(context: HookContext): string {
+    const subtext = context.metadata.get('replySubtext');
+    return typeof subtext === 'string' ? subtext.trim() : '';
   }
 }

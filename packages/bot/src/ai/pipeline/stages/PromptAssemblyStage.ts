@@ -76,6 +76,12 @@ export class PromptAssemblyStage implements ReplyStage {
 
     let baseSystemPrompt = '';
     let sceneSystemPrompt = '';
+    // Volatile persona state (the only `runtime`-layer producers). Delivered in
+    // the final user message rather than the system prompt: it changes every
+    // turn, so keeping it out of system #2 leaves that prefix stable/cacheable
+    // and groups the state with the other context blocks instead of stranding
+    // it between scene and tool rule sections.
+    let personaStateText = '';
     try {
       const layered = await this.registry.gatherByLayer({
         source: hookContext.source,
@@ -87,7 +93,11 @@ export class PromptAssemblyStage implements ReplyStage {
         .map((i) => i.fragment.trim())
         .filter((s): s is string => !!s && s.length > 0)
         .join('\n\n');
-      sceneSystemPrompt = [...layered.scene, ...layered.runtime, ...layered.tool]
+      sceneSystemPrompt = [...layered.scene, ...layered.tool]
+        .map((i) => i.fragment.trim())
+        .filter((s): s is string => !!s && s.length > 0)
+        .join('\n\n');
+      personaStateText = layered.runtime
         .map((i) => i.fragment.trim())
         .filter((s): s is string => !!s && s.length > 0)
         .join('\n\n');
@@ -108,6 +118,7 @@ export class PromptAssemblyStage implements ReplyStage {
       memoryContext: ctx.memoryContextText,
       ragContext: ctx.retrievedConversationSection,
       glossary: ctx.glossaryText,
+      personaState: personaStateText,
       recentActions: ctx.recentActionsText,
       currentQuery: frameCurrentQuery,
     };

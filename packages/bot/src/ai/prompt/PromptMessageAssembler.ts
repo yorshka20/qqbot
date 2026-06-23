@@ -16,6 +16,15 @@ export interface FinalUserBlocks {
    */
   glossary?: string;
   /**
+   * Volatile persona state — pre-rendered fragment already wrapped in its own
+   * `<mind_state>` / `<tone_state>` / `<persona_insight>` / `<relationship_state>`
+   * blocks. Lives in the (uncached) final user message rather than the system
+   * prompt: it changes every turn, so keeping it out of the system prompt keeps
+   * that prefix stable/cacheable, and groups it with the other context blocks
+   * instead of stranding it among system rules.
+   */
+  personaState?: string;
+  /**
    * The bot's own recent actions this session (replied to whom / stayed silent
    * on what), as a short factual list. Lets the model account for what it
    * already did this turn instead of regenerating blind. Rendered into a
@@ -146,6 +155,10 @@ export class PromptMessageAssembler {
     }
     if (normalize(blocks.glossary)) {
       sections.push(`<glossary>\n${normalize(blocks.glossary)}\n</glossary>`);
+    }
+    // personaState already carries its own <mind_state>/<tone_state>/... tags.
+    if (normalize(blocks.personaState)) {
+      sections.push(normalize(blocks.personaState));
     }
     if (normalize(blocks.recentActions)) {
       sections.push(`<recent_actions>\n${normalize(blocks.recentActions)}\n</recent_actions>`);
