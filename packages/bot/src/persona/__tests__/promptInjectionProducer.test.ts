@@ -5,7 +5,9 @@ import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptIn
 import type { PromptInjectionContext } from '@/conversation/promptInjection/types';
 import {
   createPersonaPromptInjectionProducer,
+  createPersonaRelationshipProducer,
   createPersonaSubtextProducer,
+  createPersonaVolatileProducer,
   type PersonaServiceLike,
 } from '../prompt/promptInjectionProducer';
 import { DEFAULT_PERSONA_CONFIG, type PersonaConfig } from '../types';
@@ -130,6 +132,36 @@ describe('createPersonaPromptInjectionProducer — registry integration', () => 
     expect(results).toHaveLength(0);
     // produceFn should NOT have been called — registry filtered by applicableSources
     expect(produceFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('global vs relationship producer split', () => {
+  it('global volatile producer reaches qq-group and uses getGlobalVolatileFragmentAsync', async () => {
+    const personaService = makePersonaService({
+      getGlobalVolatileFragmentAsync: async () => '<mind_state>累</mind_state>',
+      getRelationshipFragmentAsync: async () => '<relationship_state>should-not-be-used</relationship_state>',
+    });
+    const producer = createPersonaVolatileProducer({ personaService, config: makeConfig() });
+    expect(producer.applicableSources).toContain('qq-group');
+    const result = await producer.produce(makeCtx('qq-group', 'u1'));
+    expect(result?.producerName).toBe('persona-volatile');
+    expect(result?.fragment).toBe('<mind_state>累</mind_state>');
+  });
+
+  it('relationship producer is DM-only by default and excludes qq-group', () => {
+    const personaService = makePersonaService();
+    const producer = createPersonaRelationshipProducer({ personaService, config: makeConfig() });
+    expect(producer.applicableSources).toStrictEqual(['qq-private']);
+    expect(producer.applicableSources).not.toContain('qq-group');
+  });
+
+  it('relationship producer returns null when no userId (group anonymous path)', async () => {
+    const personaService = makePersonaService({
+      getRelationshipFragmentAsync: async () => '<relationship_state>x</relationship_state>',
+    });
+    const producer = createPersonaRelationshipProducer({ personaService, config: makeConfig() });
+    const result = await producer.produce(makeCtx('qq-private', undefined));
+    expect(result).toBeNull();
   });
 });
 

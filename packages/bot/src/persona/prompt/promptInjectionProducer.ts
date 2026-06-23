@@ -18,8 +18,12 @@ export interface PersonaServiceLike {
   getPromptPatchFragmentAsync(opts?: { userId?: string }): Promise<string>;
   /** Stable identity blocks — placed at the cache-friendly front of system prompt. */
   getStableFragmentAsync?(opts?: { userId?: string }): Promise<string>;
-  /** Volatile state blocks — placed at the back where per-message churn is fine. */
+  /** Combined volatile blocks — kept for back-compat with non-split callers / tests. */
   getVolatileFragmentAsync?(opts?: { userId?: string }): Promise<string>;
+  /** Global volatile blocks (mood / tone / insight) — safe for group injection. */
+  getGlobalVolatileFragmentAsync?(opts?: { userId?: string }): Promise<string>;
+  /** Per-user volatile block (relationship) — gated to a narrower source set. */
+  getRelationshipFragmentAsync?(opts?: { userId?: string }): Promise<string>;
 }
 
 /** Stable persona identity (Bible-derived, doesn't change per message). */
@@ -145,6 +149,21 @@ export function createPersonaSubtextProducer(deps: {
   };
 }
 
+/** Per-user relationship block source resolution — DM-only by default. */
+function resolveRelationshipSources(config: PersonaConfig): readonly MessageSource[] {
+  const list = config.promptPatch.relationshipApplicableSources;
+  if (list && list.length > 0) return list;
+  return ['qq-private'];
+}
+
+/**
+ * Global volatile producer — emits `<mind_state>` / `<tone_state>` /
+ * `<persona_insight>`. These belong to the bot itself (not any one user),
+ * so they inherit the broad `resolveProducerSources` allow-list and reach
+ * group chats. Recomputed every message; placed at priority
+ * `PRIORITY_PERSONA_VOLATILE` so per-message churn doesn't break upstream
+ * prompt cache prefixes.
+ */
 export function createPersonaVolatileProducer(deps: {
   personaService: PersonaServiceLike;
   config: PersonaConfig;
@@ -158,11 +177,40 @@ export function createPersonaVolatileProducer(deps: {
     async produce(ctx) {
       if (!personaService.isEnabled()) return null;
       if (!config.promptPatch.enabled) return null;
-      if (!personaService.getVolatileFragmentAsync) return null;
+      if (!personaService.getGlobalVolatileFragmentAsync) return null;
       const userId = ctx.userId;
-      const fragment = await personaService.getVolatileFragmentAsync(userId ? { userId } : undefined);
+      const fragment = await personaService.getGlobalVolatileFragmentAsync(userId ? { userId } : undefined);
       if (!fragment) return null;
       return { producerName: 'persona-volatile', priority: PRIORITY_PERSONA_VOLATILE, fragment };
+    },
+  };
+}
+
+/**
+ * Per-user relationship producer — emits only `<relationship_state>`.
+ * Gated to `relationshipApplicableSources` (DM-only by default) because the
+ * underlying affinity/familiarity accumulation is coarse keyword-driven
+ * noise not yet worth surfacing in groups.
+ */
+export function createPersonaRelationshipProducer(deps: {
+  personaService: PersonaServiceLike;
+  config: PersonaConfig;
+}): PromptInjectionProducer {
+  const { personaService, config } = deps;
+  return {
+    name: 'persona-relationship',
+    layer: 'runtime' as const,
+    applicableSources: resolveRelationshipSources(config),
+    priority: PRIORITY_PERSONA_VOLATILE,
+    async produce(ctx) {
+      if (!personaService.isEnabled()) return null;
+      if (!config.promptPatch.enabled) return null;
+      if (!personaService.getRelationshipFragmentAsync) return null;
+      const userId = ctx.userId;
+      if (!userId) return null;
+      const fragment = await personaService.getRelationshipFragmentAsync({ userId });
+      if (!fragment) return null;
+      return { producerName: 'persona-relationship', priority: PRIORITY_PERSONA_VOLATILE, fragment };
     },
   };
 }

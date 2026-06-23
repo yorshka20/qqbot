@@ -126,7 +126,14 @@ export class MessagePipeline {
             return { success: false, error: 'Processing interrupted' };
           }
 
-          this.publishMindStimulus(event, context);
+          // Persona stimulus accrues only from messages that actually addressed
+          // the bot. `replyTriggerType` is set by MessageTriggerPlugin exclusively
+          // when a trigger matched (@ / wake word / provider prefix); ambient group
+          // chatter never sets it. Without this gate a busy group would peg fatigue
+          // and attention from messages the bot was never part of.
+          if (hookContext.metadata.get('replyTriggerType')) {
+            this.publishMindStimulus(event, context);
+          }
           return this.buildResult(hookContext, context, event);
         } catch (error) {
           return await this.handleError(error, event, context);

@@ -166,12 +166,28 @@ export interface PersonaConfig {
     /** Max chars per Bible section when truncating for prompt budget. Default 800 (chars, not tokens). */
     bibleMaxCharsPerSection: number;
     /**
-     * Phase 3.6: which message sources receive mind / persona injection.
-     * When undefined, the producer falls back to its built-in default
-     * (qq-private, qq-group, avatar-cmd, bilibili-danmaku). Override here
-     * to e.g. silence mind in groups or extend coverage to idle-trigger.
+     * Phase 3.6: which message sources receive **global** mind / persona
+     * injection (identity / mood / tone / insight). When undefined, the
+     * producer falls back to its built-in default (qq-private, qq-group,
+     * avatar-cmd, bilibili-danmaku).
      */
     applicableSources?: readonly MessageSource[];
+    /**
+     * Sources that receive the per-user `<relationship_state>` block. Kept
+     * separate from `applicableSources` (which gates the global blocks) so the
+     * coarse, keyword-driven relationship summary can stay DM-only while global
+     * persona/mind state extends to groups. Default `['qq-private']`.
+     */
+    relationshipApplicableSources?: readonly MessageSource[];
+    /**
+     * The most recent reflection insight is injected as `<persona_insight>`
+     * only when fresher than this (ms). Guards against surfacing stale,
+     * possibly-contradicted narrative (reflection runs sparsely). Default
+     * 21_600_000 (6h).
+     */
+    insightMaxAgeMs: number;
+    /** Max chars of the reflection insight injected into `<persona_insight>`. Default 300. */
+    insightMaxChars: number;
   };
 
   /**
@@ -298,6 +314,9 @@ export const DEFAULT_PERSONA_CONFIG: PersonaConfig = {
     fatigueSevereMin: 0.8,
     injectBible: true,
     bibleMaxCharsPerSection: 800,
+    relationshipApplicableSources: ['qq-private'],
+    insightMaxAgeMs: 21_600_000,
+    insightMaxChars: 300,
   },
   wander: {
     enabled: true,
@@ -404,11 +423,12 @@ export function mergePersonaConfig(raw: Record<string, unknown> | undefined): Pe
         ppSrc.bibleMaxCharsPerSection,
         DEFAULT_PERSONA_CONFIG.promptPatch.bibleMaxCharsPerSection,
       ),
-      applicableSources: Array.isArray(ppSrc.applicableSources)
-        ? (ppSrc.applicableSources.filter(
-            (s): s is MessageSource => typeof s === 'string' && SOURCE_VALUES.includes(s as MessageSource),
-          ) as readonly MessageSource[])
-        : undefined,
+      applicableSources: filterSources(ppSrc.applicableSources),
+      relationshipApplicableSources:
+        filterSources(ppSrc.relationshipApplicableSources) ??
+        DEFAULT_PERSONA_CONFIG.promptPatch.relationshipApplicableSources,
+      insightMaxAgeMs: numberOr(ppSrc.insightMaxAgeMs, DEFAULT_PERSONA_CONFIG.promptPatch.insightMaxAgeMs),
+      insightMaxChars: numberOr(ppSrc.insightMaxChars, DEFAULT_PERSONA_CONFIG.promptPatch.insightMaxChars),
     },
     wander: mergeWanderConfig(src.wander),
     autonomousTrigger: mergeAutonomousTriggerConfig(src.autonomousTrigger),
@@ -495,4 +515,12 @@ function mergeReflectionConfig(raw: unknown): PersonaConfig['reflection'] {
 
 function numberOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+/** Keep only known MessageSource strings; returns undefined when not an array. */
+function filterSources(raw: unknown): readonly MessageSource[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  return raw.filter(
+    (s): s is MessageSource => typeof s === 'string' && SOURCE_VALUES.includes(s as MessageSource),
+  ) as readonly MessageSource[];
 }

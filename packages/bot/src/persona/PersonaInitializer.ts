@@ -20,6 +20,7 @@ import { type CharacterBible, loadCharacterBible } from './data/CharacterBibleLo
 import { type CoreDNA, loadCoreDNA } from './data/CoreDNALoader';
 import { PersonaService } from './PersonaService';
 import {
+  createPersonaRelationshipProducer,
   createPersonaStableProducer,
   createPersonaSubtextProducer,
   createPersonaVolatileProducer,
@@ -90,15 +91,17 @@ export class PersonaInitializer {
     // (qq-private, qq-group, avatar-cmd, bilibili-danmaku, etc.) get persona
     // injection through the unified registry rather than the old per-pipeline hook.
     //
-    // Split into TWO producers (stable + volatile):
-    //   - persona-stable (layer='baseline', priority=10): identity blocks in system msg #1
-    //   - persona-volatile (layer='runtime', priority=60): mind state in system msg #2
+    // Split into producers so each block can have its own applicableSources:
+    //   - persona-stable (layer='baseline'): Bible identity blocks in system msg #1
+    //   - persona-volatile (layer='runtime'): global mood / tone / insight — reaches groups
+    //   - persona-relationship (layer='runtime'): per-user relationship — DM-only by default
     // PromptAssemblyStage groups fragments by PromptLayer so each lands in the right position.
     // PROMPT_INJECTION_REGISTRY is required (DITokens.ts) — registered by
     // bootstrap before ConversationInitializer runs.
     const registry = getContainer().resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
     registry.register(createPersonaStableProducer({ personaService, config }));
     registry.register(createPersonaVolatileProducer({ personaService, config }));
+    registry.register(createPersonaRelationshipProducer({ personaService, config }));
     const promptManager = getContainer().resolve<PromptManager>(DITokens.PROMPT_MANAGER);
     registry.register(createPersonaSubtextProducer({ promptManager, personaService, config }));
 

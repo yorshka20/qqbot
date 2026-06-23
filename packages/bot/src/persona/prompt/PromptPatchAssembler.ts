@@ -58,6 +58,12 @@ export interface PromptPatch {
    */
   tonePromptFragment?: string;
   /**
+   * Most recent reflection insight (`insight_md`), truncated. Global (not
+   * per-user). Only populated when fresh enough — see `buildPromptPatchAsync`.
+   * Rendered into a `<persona_insight>` block.
+   */
+  recentInsight?: string;
+  /**
    * Persona identity block built from CharacterBible Self-concept + Voice + Lore.
    * Already truncated per `bibleMaxCharsPerSection`. Empty/undefined when bible is empty
    * or `injectBible` is false. Rendered into a `<persona_identity>` XML block.
@@ -144,29 +150,51 @@ export function renderStablePromptPatchFragment(patch: PromptPatch): string {
 }
 
 /**
- * Render only the **volatile** persona state blocks (recompute every
- * message, change with phenotype / per-user / System-2 reflection):
+ * Render the **global** volatile blocks — state that belongs to the bot
+ * itself, not to any one user, so it is safe to inject in group chats:
  *   - `<mind_state>` — fatigue → moodSummary
- *   - `<relationship_state>` — per-user affinity / familiarity summary
  *   - `<tone_state>` — currentTone fragment from reflection
+ *   - `<persona_insight>` — most recent (fresh) reflection insight
  *
- * These sit at the **back** of the system prompt where their volatility
- * doesn't break upstream cache prefixes.
- *
- * Returns empty string when no volatile fields are present.
+ * Returns empty string when no global fields are present.
  */
-export function renderVolatilePromptPatchFragment(patch: PromptPatch): string {
+export function renderGlobalVolatileFragment(patch: PromptPatch): string {
   const lines: string[] = [];
   if (patch.moodSummary) {
     lines.push(`<mind_state>\n${patch.moodSummary}\n</mind_state>`);
   }
-  if (patch.relationshipSummary) {
-    lines.push(`<relationship_state>\n${patch.relationshipSummary}\n</relationship_state>`);
-  }
   if (patch.tonePromptFragment) {
     lines.push(`<tone_state>\n${patch.tonePromptFragment}\n</tone_state>`);
   }
+  if (patch.recentInsight) {
+    lines.push(`<persona_insight>\n${patch.recentInsight}\n</persona_insight>`);
+  }
   return lines.join('\n\n');
+}
+
+/**
+ * Render the **per-user** `<relationship_state>` block — affinity /
+ * familiarity toward the current speaker. Gated to a narrower source set
+ * than the global blocks (DM-only by default) because the underlying
+ * accumulation is coarse keyword-driven noise.
+ *
+ * Returns empty string when no relationship summary is present.
+ */
+export function renderRelationshipFragment(patch: PromptPatch): string {
+  if (!patch.relationshipSummary) return '';
+  return `<relationship_state>\n${patch.relationshipSummary}\n</relationship_state>`;
+}
+
+/**
+ * Render all volatile blocks (global + relationship) as one fragment.
+ * Kept for back-compat with tests / non-pipeline callers; the production
+ * reply pipeline registers the global and relationship producers
+ * separately so each can have its own `applicableSources`.
+ */
+export function renderVolatilePromptPatchFragment(patch: PromptPatch): string {
+  return [renderGlobalVolatileFragment(patch), renderRelationshipFragment(patch)]
+    .filter((s) => s.length > 0)
+    .join('\n\n');
 }
 
 // ─── Relationship summary helpers ────────────────────────────────────────────
@@ -283,6 +311,12 @@ export async function buildPromptPatchAsync(
     bible?: CharacterBible | null;
     injectBible?: boolean;
     bibleMaxCharsPerSection?: number;
+    /** Recent insight is injected only when fresher than this (ms). Default 6h. */
+    insightMaxAgeMs?: number;
+    /** Truncation budget for the injected insight. Default 300. */
+    insightMaxChars?: number;
+    /** Injectable clock for tests. Defaults to `Date.now()`. */
+    now?: number;
   } = {},
 ): Promise<PromptPatch> {
   const patch = buildPromptPatch(snapshot, opts.thresholds);
@@ -295,25 +329,40 @@ export async function buildPromptPatchAsync(
     const boundaries = buildPersonaBoundariesFragment(opts.bible, maxChars);
     if (boundaries) patch.personaBoundaries = boundaries;
   }
-  if (!opts.store || !opts.userId) return patch;
+  if (!opts.store) return patch;
   try {
-    // Read relationship + epigenetics in parallel for relationship summary and tone.
-    const [relationship, epigenetics] = await Promise.all([
-      opts.store.getRelationship(snapshot.personaId, opts.userId),
+    // Global state (tone / insight) is keyed on personaId only — never on
+    // userId — so it populates in group chats too. Relationship is the only
+    // per-user read, so it is conditional on userId being present.
+    const [epigenetics, reflections, relationship] = await Promise.all([
       opts.store.getEpigenetics(snapshot.personaId),
+      opts.store.getRecentReflections(snapshot.personaId, 1),
+      opts.userId ? opts.store.getRelationship(snapshot.personaId, opts.userId) : Promise.resolve(null),
     ]);
-    patch.relationshipSummary = buildRelationshipSummary(relationship, epigenetics);
-    // Attach tone fragment if a valid non-neutral tone is recorded in epigenetics.
+
+    // Tone fragment (global) — only when a valid non-neutral tone is recorded.
     if (epigenetics) {
-      const rawTone = epigenetics.behavioralBiases['currentTone'];
+      const rawTone = epigenetics.behavioralBiases.currentTone;
       const tone = isTone(rawTone) ? rawTone : 'neutral';
       const fragment = TONE_MAPPINGS[tone].promptFragment;
-      if (fragment) {
-        patch.tonePromptFragment = fragment;
-      }
+      if (fragment) patch.tonePromptFragment = fragment;
+    }
+
+    // Recent insight (global) — gated on freshness so stale, possibly
+    // contradicted narrative is never surfaced.
+    const latest = reflections[0];
+    const now = opts.now ?? Date.now();
+    const maxAge = opts.insightMaxAgeMs ?? 21_600_000;
+    if (latest?.insightMd && now - latest.timestamp <= maxAge) {
+      patch.recentInsight = truncateChars(latest.insightMd.trim(), opts.insightMaxChars ?? 300);
+    }
+
+    // Relationship summary (per-user) — only when a speaker is known.
+    if (opts.userId) {
+      patch.relationshipSummary = buildRelationshipSummary(relationship, epigenetics);
     }
   } catch {
-    // Non-fatal: leave relationshipSummary and tonePromptFragment unset
+    // Non-fatal: leave volatile fields unset.
   }
   return patch;
 }

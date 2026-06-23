@@ -24,7 +24,9 @@ import {
   buildPromptPatch,
   buildPromptPatchAsync,
   type PromptPatch,
+  renderGlobalVolatileFragment,
   renderPromptPatchFragment,
+  renderRelationshipFragment,
   renderStablePromptPatchFragment,
   renderVolatilePromptPatchFragment,
 } from './prompt/PromptPatchAssembler';
@@ -255,6 +257,8 @@ export class PersonaService {
       bible: this.bible,
       injectBible: this.config.promptPatch.injectBible,
       bibleMaxCharsPerSection: this.config.promptPatch.bibleMaxCharsPerSection,
+      insightMaxAgeMs: this.config.promptPatch.insightMaxAgeMs,
+      insightMaxChars: this.config.promptPatch.insightMaxChars,
     });
   }
 
@@ -292,6 +296,23 @@ export class PersonaService {
    */
   async getVolatileFragmentAsync(opts?: { userId?: string }): Promise<string> {
     return renderVolatilePromptPatchFragment(await this.getPromptPatchAsync(opts));
+  }
+
+  /**
+   * Global volatile fragment — `<mind_state>` + `<tone_state>` +
+   * `<persona_insight>`. State that belongs to the bot itself (not any one
+   * user), so its producer can extend to group chats.
+   */
+  async getGlobalVolatileFragmentAsync(opts?: { userId?: string }): Promise<string> {
+    return renderGlobalVolatileFragment(await this.getPromptPatchAsync(opts));
+  }
+
+  /**
+   * Per-user volatile fragment — `<relationship_state>` only. Its producer
+   * is gated to a narrower source set (DM-only by default).
+   */
+  async getRelationshipFragmentAsync(opts?: { userId?: string }): Promise<string> {
+    return renderRelationshipFragment(await this.getPromptPatchAsync(opts));
   }
 
   private tick(): void {

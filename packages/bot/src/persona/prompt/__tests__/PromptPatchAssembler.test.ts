@@ -286,6 +286,7 @@ function makeEpigeneticsStore(behavioralBiases: Record<string, number | string>)
   return {
     getRelationship: async () => null,
     getEpigenetics: async () => epi,
+    getRecentReflections: async () => [],
   };
 }
 
