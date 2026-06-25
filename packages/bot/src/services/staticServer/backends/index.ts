@@ -3,7 +3,7 @@
  * To add a backend: register in `buildBackendRegistry()` with a stable `id` string.
  *
  * Valid `id` values (for `lanRelay.*.disabledStaticBackends` in config.d):
- *   files, cluster, lan, tickets, reports, insights, moments, zhihu, qdrant, stats, memory, output, docs, logs
+ *   files, cluster, lan, tickets, reports, persona, insights, moments, zhihu, qdrant, stats, memory, output, docs, logs
  */
 
 import { join } from 'node:path';
@@ -20,6 +20,7 @@ import { MemoryStatusBackend } from './MemoryStatusBackend';
 import { MomentsBackend } from './MomentsBackend';
 import { OutputStaticHost } from './OutputStaticHost';
 import { QdrantExplorerBackend } from './QdrantExplorerBackend';
+import { PersonaBackend } from './PersonaBackend';
 import { ReportBackend } from './ReportBackend';
 import { TicketBackend } from './TicketBackend';
 import type { Backend } from './types';
@@ -52,6 +53,7 @@ function buildBackendRegistry(): BackendFactory[] {
       create: (ctx) => new TicketBackend(ctx.config?.getTicketsDir() ?? join(getRepoRoot(), 'tickets')),
     },
     { id: 'reports', create: () => new ReportBackend() },
+    { id: 'persona', create: () => new PersonaBackend() },
     { id: 'insights', create: () => new InsightsBackend() },
     { id: 'moments', create: () => new MomentsBackend() },
     { id: 'zhihu', create: () => new ZhihuBackend() },
