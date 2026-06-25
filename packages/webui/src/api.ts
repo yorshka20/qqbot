@@ -6,6 +6,7 @@ import {
   getLanApiBase,
   getMemoryApiBase,
   getMomentsApiBase,
+  getPersonaApiBase,
   getProjectsApiBase,
   getQdrantApiBase,
   getReportApiBase,
@@ -1073,4 +1074,64 @@ export async function getTicketJobSnapshot(id: string): Promise<TicketJobSnapsho
   } catch {
     return null;
   }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Persona State API
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface PersonaPhenotype {
+  fatigue: number;
+  attention: number;
+  stimulusCount: number;
+  lastStimulusAt?: number;
+}
+
+export interface PersonaModulation {
+  intensityScale: number;
+  speedScale: number;
+  durationBias: number;
+}
+
+export interface PersonaEpigeneticsView {
+  currentTone: string;
+  behavioralBiases: Record<string, unknown>;
+  topicMastery: Record<string, unknown>;
+  learnedPreferences: Record<string, unknown>;
+  updatedAt: number;
+}
+
+export interface PersonaReflectionView {
+  id: number;
+  timestamp: number;
+  trigger: string;
+  tone: string | null;
+  insightMd: string;
+}
+
+export interface PersonaRelationshipView {
+  userId: string;
+  affinity: number;
+  familiarity: number;
+  tags: string[];
+  lastInteractionAt: number;
+}
+
+export interface PersonaStateResponse {
+  enabled: boolean;
+  personaId: string;
+  phenotype: PersonaPhenotype;
+  modulation: PersonaModulation;
+  capturedAt: number;
+  epigenetics: PersonaEpigeneticsView | null;
+  recentReflections: PersonaReflectionView[];
+  relationships: PersonaRelationshipView[];
+}
+
+export async function fetchPersonaState(): Promise<PersonaStateResponse> {
+  const res = await fetch(`${getPersonaApiBase()}/state`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch persona state: ${res.status} ${res.statusText}`);
+  }
+  return res.json();
 }

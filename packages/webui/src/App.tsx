@@ -19,6 +19,7 @@ import {
   Moon,
   Network,
   ScrollText,
+  Sparkles,
   Sun,
   Ticket as TicketIcon,
 } from 'lucide-react';
@@ -34,6 +35,7 @@ import {
   LogsPage,
   MemoryStatusPage,
   MomentsPage,
+  PersonaPage,
   QdrantExplorerPage,
   ReportsPage,
   TicketsPage,
@@ -179,6 +181,18 @@ export default function App() {
             </button>
             <button
               type="button"
+              onClick={() => navigate({ page: 'persona' })}
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+                isActivePage(route, 'persona')
+                  ? 'bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+              }`}
+            >
+              <Sparkles className="w-4 h-4" />
+              Persona
+            </button>
+            <button
+              type="button"
               onClick={() => navigate({ page: 'cluster' })}
               className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
                 isActivePage(route, 'cluster')
@@ -256,6 +270,7 @@ export default function App() {
       {route.page === 'qdrant' && <QdrantExplorerPage />}
       {route.page === 'stats' && <DailyStatsPage />}
       {route.page === 'memory' && <MemoryStatusPage />}
+      {route.page === 'persona' && <PersonaPage />}
       {route.page === 'cluster' && <ClusterPage />}
       {route.page === 'tickets' && <TicketsPage />}
       {route.page === 'lan' && <LanPage />}

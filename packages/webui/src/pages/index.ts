@@ -11,6 +11,7 @@ export { InsightsPage } from './insights';
 export { LanPage } from './lan';
 export { LogsPage } from './log';
 export { MemoryStatusPage } from './memory-status';
+export { PersonaPage } from './PersonaPage';
 export { MomentsPage } from './moments';
 export { QdrantExplorerPage } from './qdrant';
 export { ReportsPage } from './reports';
