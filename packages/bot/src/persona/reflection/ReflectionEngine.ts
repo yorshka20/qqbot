@@ -120,7 +120,6 @@ export class ReflectionEngine {
   private readonly activityWindowMs: number;
   private readonly activityMinMessages: number;
   private readonly cooldownMs: number;
-  private readonly pinnedProvider: string;
 
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastReflectionAt = 0;
@@ -146,7 +145,16 @@ export class ReflectionEngine {
     this.activityWindowMs = options.activityWindowMs ?? 5 * 60_000;
     this.activityMinMessages = options.activityMinMessages ?? 3;
     this.cooldownMs = options.cooldownMs ?? this.timerIntervalMs;
-    this.pinnedProvider = options.pinnedProvider ?? 'gemini';
+  }
+
+  /**
+   * Resolve the provider to run reflection on: the `reflection.provider` config
+   * override (read from the personaService this engine already holds), else the
+   * system default LLM. Returns undefined when no LLM is configured at all, in
+   * which case the caller skips the cycle.
+   */
+  private resolveProviderName(): string | undefined {
+    return this.personaService.getConfig().reflection?.provider ?? this.llmService.getDefaultLLMProviderName();
   }
 
   /** Start the periodic reflection timer. Idempotent. */
@@ -156,7 +164,7 @@ export class ReflectionEngine {
       void this.timerTick();
     }, this.timerIntervalMs);
     logger.info(
-      `[ReflectionEngine] Started | persona=${this.options.personaId} intervalMs=${this.timerIntervalMs} provider=${this.pinnedProvider}`,
+      `[ReflectionEngine] Started | persona=${this.options.personaId} intervalMs=${this.timerIntervalMs} provider=${this.personaService.getConfig().reflection?.provider ?? '(default)'}`,
     );
   }
 
@@ -288,10 +296,19 @@ export class ReflectionEngine {
    * Returns a validated ReflectionOutput or undefined on failure.
    */
   private async runSingleCall(systemPrompt: string): Promise<ReflectionOutput | undefined> {
-    const response = await this.llmService.generateFixed(this.pinnedProvider, '', {
+    const providerName = this.resolveProviderName();
+    if (!providerName) {
+      logger.warn('[ReflectionEngine] single-call: no LLM provider available, skipping');
+      return undefined;
+    }
+    const response = await this.llmService.generateFixed(providerName, '', {
       systemPrompt,
       maxTokens: 1024,
       temperature: 0.3,
+      // Reflection output must be JSON. Providers that honour jsonMode set the
+      // native structured-output flag (e.g. response_format json_object); a
+      // prompt-only request is not reliable (see gemini's plain-prose returns).
+      jsonMode: true,
       messages: [
         {
           role: 'user',
@@ -385,6 +402,11 @@ export class ReflectionEngine {
       return result.reply || result.data || '';
     };
 
+    const providerName = this.resolveProviderName();
+    if (!providerName) {
+      logger.warn('[ReflectionEngine] tool loop: no LLM provider available, skipping');
+      return undefined;
+    }
     const response = await this.llmService.generateWithTools(
       [{ role: 'user', content: '请根据以上输入完成反思，使用工具收集更多上下文，然后输出符合格式要求的 JSON。' }],
       toolDefinitions,
@@ -395,7 +417,7 @@ export class ReflectionEngine {
         maxToolRounds,
         toolExecutor,
       },
-      this.pinnedProvider,
+      providerName,
     );
 
     logger.debug(

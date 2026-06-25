@@ -20,6 +20,4 @@ export interface ReflectionEngineOptions {
    * Default: same as timerIntervalMs (5 min).
    */
   cooldownMs?: number;
-  /** LLM provider name to pin to for reflection calls. Default: 'gemini'. */
-  pinnedProvider?: string;
 }

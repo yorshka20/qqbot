@@ -257,6 +257,17 @@ export class LLMService {
   }
 
   /**
+   * Name of the configured default LLM provider, or undefined when none is set.
+   * Lets background jobs (e.g. reflection) run on the system default LLM via
+   * `generateFixed` instead of hardcoding a specific provider.
+   */
+  getDefaultLLMProviderName(): string | undefined {
+    const provider = this.aiManager.getDefaultProvider('llm');
+    if (!provider) return undefined;
+    return 'name' in provider ? (provider as { name: string }).name : undefined;
+  }
+
+  /**
    * Resolve the provider for a generation call.
    *
    * Rules:

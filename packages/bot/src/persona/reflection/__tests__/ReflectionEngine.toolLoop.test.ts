@@ -154,6 +154,7 @@ describe('ReflectionEngine — tool-equipped agent loop (toolEquipped=true)', ()
     const llmSvc = {
       generateFixed: mock(async () => ({ text: validFinalJson() })),
       generateWithTools: generateWithToolsMock,
+      getDefaultLLMProviderName: () => 'gemini',
     } as unknown as LLMService;
 
     const mindSvc = fakeMindService({ toolEquipped: true, maxToolRounds: 2 });
@@ -190,6 +191,7 @@ describe('ReflectionEngine — tool-equipped agent loop (toolEquipped=true)', ()
     const llmSvc = {
       generateFixed: generateFixedMock,
       generateWithTools: generateWithToolsMock,
+      getDefaultLLMProviderName: () => 'gemini',
     } as unknown as LLMService;
 
     // maxToolRounds=0 disables the loop even with toolEquipped=true.
@@ -226,6 +228,7 @@ describe('ReflectionEngine — tool-equipped agent loop (toolEquipped=true)', ()
     const llmSvc = {
       generateFixed: generateFixedMock,
       generateWithTools: generateWithToolsMock,
+      getDefaultLLMProviderName: () => 'gemini',
     } as unknown as LLMService;
 
     const mindSvc = fakeMindService({ toolEquipped: true, maxToolRounds: 3 });
@@ -262,6 +265,7 @@ describe('ReflectionEngine — tool-equipped agent loop (toolEquipped=true)', ()
     const llmSvc = {
       generateFixed: generateFixedMock,
       generateWithTools: generateWithToolsMock,
+      getDefaultLLMProviderName: () => 'gemini',
     } as unknown as LLMService;
 
     // toolEquipped=false (default).
