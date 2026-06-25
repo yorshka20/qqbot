@@ -63,7 +63,8 @@ export class LLMDumpPlugin extends PluginBase {
       if (!existsSync(dayDir)) mkdirSync(dayDir, { recursive: true });
 
       const turn = this.sanitize(entry.turnKey ?? 'background');
-      const file = join(dayDir, `${turn}.md`);
+      const hhmmss = new Date().toTimeString().split(' ')[0].replace(/:/g, '');
+      const file = join(dayDir, `${hhmmss}-${turn}.md`);
 
       let out = '';
       if (!this.headerWritten.has(file)) {
