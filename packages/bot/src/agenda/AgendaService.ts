@@ -35,6 +35,8 @@ export class AgendaService {
   private eventHandlers = new Map<string, (event: AgendaSystemEvent) => void>();
   /** Config */
   private config: Config;
+  /** Periodic cron re-hydration timer (guards against node-cron silently dropping tasks) */
+  private rehydrateTimer: ReturnType<typeof setInterval> | undefined;
 
   constructor(
     private databaseManager: DatabaseManager,
@@ -59,10 +61,21 @@ export class AgendaService {
       this.scheduleItem(item);
     }
     logger.info(`[AgendaService] Hydrated ${items.length} enabled agenda item(s)`);
+
+    // node-cron tasks can silently stop firing in long-running Bun processes.
+    // Re-hydrate all cron items every 6 hours as a guard.
+    this.rehydrateTimer = setInterval(() => {
+      void this.rehydrateCronItems();
+    }, 6 * 3600_000);
   }
 
   /** Stop all running schedules (for graceful shutdown). */
   stop(): void {
+    if (this.rehydrateTimer) {
+      clearInterval(this.rehydrateTimer);
+      this.rehydrateTimer = undefined;
+    }
+
     for (const task of this.cronTasks.values()) {
       task.stop();
     }
@@ -81,6 +94,26 @@ export class AgendaService {
     }
     this.eventHandlers.clear();
     logger.info('[AgendaService] Stopped');
+  }
+
+  /**
+   * Re-create all cron ScheduledTasks from DB. Guards against node-cron
+   * silently dropping tasks in long-running Bun processes.
+   */
+  private async rehydrateCronItems(): Promise<void> {
+    try {
+      const items = await this.listItems({ enabledOnly: true });
+      let count = 0;
+      for (const item of items) {
+        if (item.triggerType !== 'cron') continue;
+        this.cancelSchedule(item.id);
+        this.scheduleCron(item);
+        count++;
+      }
+      logger.info(`[AgendaService] Rehydrated ${count} cron item(s)`);
+    } catch (err) {
+      logger.error('[AgendaService] Cron rehydration failed:', err);
+    }
   }
 
   // ─── CRUD ────────────────────────────────────────────────────────────────────
