@@ -25,7 +25,7 @@ export class FishAudioProvider implements TTSProvider {
     this.apiKey = options.apiKey;
     this.voiceMap = options.voiceMap;
     this.defaultVoice = options.defaultVoice;
-    this.model = options.model ?? 's1';
+    this.model = options.model ?? 's2.1-pro';
     this.format = options.format ?? 'mp3';
     this.endpoint = options.endpoint ?? 'https://api.fish.audio/v1/tts';
   }

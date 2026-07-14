@@ -894,7 +894,7 @@
   // playback path) — synthesize once, consume twice is not wired; the two
   // pipelines are independent.
   //
-  // Legacy single-provider shape (`"tts": { "apiKey": "...", "model": "s1" }`)
+  // Legacy single-provider shape (`"tts": { "apiKey": "...", "model": "s2.1-pro" }`)
   // is still accepted — bootstrap synthesizes an equivalent single-entry
   // fish-audio providers array. No migration required for existing configs.
   "tts": {
@@ -904,7 +904,7 @@
         "type": "fish-audio",
         "name": "fish-audio",
         "apiKey": "your_fish_audio_api_key_here",
-        "model": "s1",
+        "model": "s2.1-pro",
         "format": "mp3",
         // Optional: name → reference_id map. `/tts --voice=<name>` picks
         // entries from this map. If empty, only `defaultVoice` is usable.
