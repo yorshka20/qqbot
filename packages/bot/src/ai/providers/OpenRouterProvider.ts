@@ -112,7 +112,10 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
 
       let messages: Array<{ role: ChatMessageRole; content: string }>;
       if (options?.messages?.length) {
-        messages = options.messages.map((m) => ({ role: m.role, content: contentToPlainString(m.content) }));
+        messages = OpenRouterProvider.withSystemPrompt(options.messages, options.systemPrompt).map((m) => ({
+          role: m.role,
+          content: contentToPlainString(m.content),
+        }));
       } else {
         const history = await this.loadHistory(options);
         messages = [];
@@ -188,7 +191,10 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
 
       let messages: Array<{ role: ChatMessageRole; content: string }>;
       if (options?.messages?.length) {
-        messages = options.messages.map((m) => ({ role: m.role, content: contentToPlainString(m.content) }));
+        messages = OpenRouterProvider.withSystemPrompt(options.messages, options.systemPrompt).map((m) => ({
+          role: m.role,
+          content: contentToPlainString(m.content),
+        }));
       } else {
         const history = await this.loadHistory(options);
         messages = [];

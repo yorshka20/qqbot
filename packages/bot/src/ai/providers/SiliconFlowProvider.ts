@@ -157,7 +157,7 @@ export class SiliconFlowProvider extends AIProvider implements LLMCapability {
 
       let messages: Array<Record<string, unknown>>;
       if (options?.messages?.length) {
-        messages = this.mapMessagesToApi(options.messages);
+        messages = this.mapMessagesToApi(SiliconFlowProvider.withSystemPrompt(options.messages, options.systemPrompt));
       } else {
         const history = await this.loadHistory(options);
         messages = [];
@@ -275,7 +275,10 @@ export class SiliconFlowProvider extends AIProvider implements LLMCapability {
 
       let messages: Array<{ role: ChatMessageRole; content: string }>;
       if (options?.messages?.length) {
-        messages = options.messages.map((m) => ({ role: m.role, content: contentToPlainString(m.content) }));
+        messages = SiliconFlowProvider.withSystemPrompt(options.messages, options.systemPrompt).map((m) => ({
+          role: m.role,
+          content: contentToPlainString(m.content),
+        }));
       } else {
         const history = await this.loadHistory(options);
         messages = [];

@@ -5,7 +5,7 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import type { CapabilityType } from '../capabilities/types';
-import type { AIGenerateOptions, ConversationMessage } from '../types';
+import type { AIGenerateOptions, ChatMessage, ConversationMessage } from '../types';
 
 /**
  * Abstract AI Provider interface
@@ -60,6 +60,21 @@ export abstract class AIProvider {
   setContextConfig(enableContext: boolean, contextMessageCount: number = 10): void {
     this.enableContext = enableContext;
     this.contextMessageCount = contextMessageCount;
+  }
+
+  /**
+   * Prepend `systemPrompt` to a caller-supplied `messages` array as a leading
+   * system-role message. Callers may pass both a `systemPrompt` and an explicit
+   * `messages` list (e.g. LLMService.generateFromMessages / generateWithTools,
+   * the reflection engine); without this the messages branch would build the API
+   * payload from `messages` alone and silently drop the system prompt. Skips
+   * injection when the array already leads with a system message so callers that
+   * embed their own system turn are not double-counted.
+   */
+  protected static withSystemPrompt(messages: ChatMessage[], systemPrompt?: string): ChatMessage[] {
+    if (!systemPrompt) return messages;
+    if (messages[0]?.role === 'system') return messages;
+    return [{ role: 'system', content: systemPrompt }, ...messages];
   }
 
   /**

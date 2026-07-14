@@ -161,7 +161,7 @@ export class OpenAIProvider
 
       let messages: ChatCompletionMessageParam[];
       if (options?.messages?.length) {
-        messages = this.mapMessagesToOpenAI(options.messages);
+        messages = this.mapMessagesToOpenAI(OpenAIProvider.withSystemPrompt(options.messages, options.systemPrompt));
       } else {
         const history = await this.loadHistory(options);
         messages = [];
@@ -269,7 +269,10 @@ export class OpenAIProvider
 
       let messages: ChatCompletionMessageParam[];
       if (options?.messages?.length) {
-        messages = options.messages.map((m) => ({ role: m.role, content: m.content })) as ChatCompletionMessageParam[];
+        messages = OpenAIProvider.withSystemPrompt(options.messages, options.systemPrompt).map((m) => ({
+          role: m.role,
+          content: m.content,
+        })) as ChatCompletionMessageParam[];
       } else {
         const history = await this.loadHistory(options);
         messages = [];
