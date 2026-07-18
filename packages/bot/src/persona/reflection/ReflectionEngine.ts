@@ -43,6 +43,13 @@ function hasStrongSignal(text: string): boolean {
   return ALL_SIGNALS.some((kw) => text.includes(kw));
 }
 
+// Reflection runs on the system default LLM, which is a reasoning model
+// (deepseek-v4-pro). For such models the chain-of-thought counts against
+// max_tokens, so the budget must cover reasoning *plus* the JSON output — a
+// small cap starves the content and yields an empty response. 8192 is
+// DeepSeek's max_tokens ceiling and leaves ample room for other providers.
+const REFLECTION_MAX_TOKENS = 8192;
+
 // ── Zod schema ───────────────────────────────────────────────────────────────
 
 const ToneEnum = z.enum(TONE_VOCABULARY);
@@ -303,7 +310,7 @@ export class ReflectionEngine {
     }
     const response = await this.llmService.generateFixed(providerName, '', {
       systemPrompt,
-      maxTokens: 1024,
+      maxTokens: REFLECTION_MAX_TOKENS,
       temperature: 0.3,
       // Reflection output must be JSON. Providers that honour jsonMode set the
       // native structured-output flag (e.g. response_format json_object); a
@@ -412,7 +419,7 @@ export class ReflectionEngine {
       toolDefinitions,
       {
         systemPrompt,
-        maxTokens: 1024,
+        maxTokens: REFLECTION_MAX_TOKENS,
         temperature: 0.3,
         maxToolRounds,
         toolExecutor,
