@@ -142,14 +142,15 @@ export class ToolManager {
    */
   toToolDefinitions(specs: ToolSpec[]): ToolDefinition[] {
     return specs.map((spec) => {
+      type ItemSchema = NonNullable<NonNullable<ToolSpec['parameters']>[string]['items']>;
       const properties: Record<
         string,
-        { type: string; description?: string; enum?: string[]; items?: { type: string } }
+        { type: string; description?: string; enum?: string[]; items?: ItemSchema }
       > = {};
       const required: string[] = [];
 
       for (const [key, def] of Object.entries(spec.parameters || {})) {
-        const prop: { type: string; description?: string; enum?: string[]; items?: { type: string } } = {
+        const prop: { type: string; description?: string; enum?: string[]; items?: ItemSchema } = {
           type: def.type,
           description: def.description || '',
         };

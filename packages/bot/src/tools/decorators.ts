@@ -10,16 +10,7 @@ export interface ToolOptions {
   description: string;
   executor: string;
   visibility?: ToolScope[] | ToolVisibility;
-  parameters?: {
-    [key: string]: {
-      type: 'string' | 'number' | 'boolean' | 'object' | 'array';
-      required: boolean;
-      description: string;
-      /** JSON Schema for array elements; required by OpenAI when type === 'array'. */
-      items?: { type: string };
-      enum?: string[];
-    };
-  };
+  parameters?: ToolSpec['parameters'];
   examples?: string[];
   triggerKeywords?: string[];
   whenToUse?: string;

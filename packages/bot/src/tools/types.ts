@@ -84,8 +84,17 @@ export interface ToolSpec {
       type: 'string' | 'number' | 'boolean' | 'object' | 'array';
       required: boolean;
       description: string;
-      /** JSON Schema for array elements; required by OpenAI when type === 'array'. */
-      items?: { type: string };
+      /**
+       * JSON Schema for array elements; required by OpenAI when type === 'array'.
+       * Element objects may declare their own `properties` (with per-field `enum`)
+       * so the model's constrained decoder enforces a discriminator instead of
+       * free-generating it — the contract must live in the schema, not only prose.
+       */
+      items?: {
+        type: string;
+        enum?: string[];
+        properties?: Record<string, { type: string; description?: string; enum?: string[] }>;
+      };
       enum?: string[];
     };
   };

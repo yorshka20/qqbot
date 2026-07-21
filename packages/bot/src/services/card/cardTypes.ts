@@ -1,18 +1,22 @@
 // Card data types for LLM response rendering
 
-export type CardType =
-  | 'qa'
-  | 'list'
-  | 'info'
-  | 'comparison'
-  | 'knowledge'
-  | 'stats'
-  | 'quote'
-  | 'steps'
-  | 'highlight'
-  | 'paragraph'
-  | 'image'
-  | 'markdown';
+/** Single source of truth for the card discriminator; the LLM tool schema's `type` enum derives from this. */
+export const CARD_TYPES = [
+  'qa',
+  'list',
+  'info',
+  'comparison',
+  'knowledge',
+  'stats',
+  'quote',
+  'steps',
+  'highlight',
+  'paragraph',
+  'image',
+  'markdown',
+] as const;
+
+export type CardType = (typeof CARD_TYPES)[number];
 
 export type InfoBoxLevel = 'info' | 'warning' | 'success' | 'tip';
 
