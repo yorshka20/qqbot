@@ -1,5 +1,7 @@
 // Card data types for LLM response rendering
 
+import type { JsonSchemaNode } from '@/ai/types';
+
 /** Single source of truth for the card discriminator; the LLM tool schema's `type` enum derives from this. */
 export const CARD_TYPES = [
   'qa',
@@ -410,6 +412,77 @@ export function isCardData(data: unknown): data is CardData {
       return false;
   }
 }
+
+const STR: JsonSchemaNode = { type: 'string' };
+const STR_ARRAY: JsonSchemaNode = { type: 'array', items: { type: 'string' } };
+
+function cardVariant(type: CardType, properties: Record<string, JsonSchemaNode>, required: string[]): JsonSchemaNode {
+  return {
+    type: 'object',
+    properties: { type: { type: 'string', enum: [type] }, ...properties },
+    required: ['type', ...required],
+  };
+}
+
+/**
+ * Machine-readable JSON Schema for a single card — a discriminated `anyOf`
+ * union over `type`, mirroring the CardData variants and their type guards.
+ * Handed to the LLM tool decoder so each variant's required content fields are
+ * part of the grammar. A schema that declares only the `type` discriminator
+ * makes every content field ungrammatical under constrained decoding (Gemini),
+ * so the model can only emit `{"type":"highlight"}` — which then fails runtime
+ * validation on every retry. Keep the variants in sync with the isXxxCardData guards.
+ */
+export const CARD_ITEM_SCHEMA: JsonSchemaNode = {
+  anyOf: [
+    cardVariant('qa', { question: STR, answer: STR }, ['question', 'answer']),
+    cardVariant('list', { title: STR, items: STR_ARRAY, emoji: STR }, ['title', 'items']),
+    cardVariant(
+      'info',
+      { title: STR, content: STR, level: { type: 'string', enum: ['info', 'warning', 'success', 'tip'] } },
+      ['title', 'content', 'level'],
+    ),
+    cardVariant(
+      'comparison',
+      {
+        title: STR,
+        leftHeader: STR,
+        rightHeader: STR,
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { label: STR, left: STR, right: STR },
+            required: ['label', 'left', 'right'],
+          },
+        },
+      },
+      ['title', 'leftHeader', 'rightHeader', 'items'],
+    ),
+    cardVariant('knowledge', { term: STR, definition: STR, examples: STR_ARRAY }, ['term', 'definition']),
+    cardVariant(
+      'stats',
+      {
+        title: STR,
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { label: STR, value: STR, highlight: { type: 'boolean' } },
+            required: ['label', 'value'],
+          },
+        },
+      },
+      ['title', 'data'],
+    ),
+    cardVariant('quote', { text: STR, source: STR }, ['text']),
+    cardVariant('steps', { title: STR, steps: STR_ARRAY }, ['title', 'steps']),
+    cardVariant('highlight', { title: STR, summary: STR, detail: STR }, ['title', 'summary']),
+    cardVariant('paragraph', { content: STR }, ['content']),
+    cardVariant('image', { src: STR, alt: STR }, ['src']),
+    cardVariant('markdown', { content: STR, title: STR }, ['content']),
+  ],
+};
 
 /**
  * Parse and validate card deck from JSON string.

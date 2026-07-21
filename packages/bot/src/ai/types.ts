@@ -241,6 +241,22 @@ export interface SystemPrompt {
  */
 
 /** Tool definition for function calling */
+/**
+ * Minimal recursive JSON Schema node. Used to describe tool parameter shapes
+ * (including array `items` and discriminated `anyOf` unions) so the model's
+ * constrained decoder enforces the real contract instead of free-generating it.
+ */
+export interface JsonSchemaNode {
+  type?: string;
+  description?: string;
+  enum?: string[];
+  default?: unknown;
+  properties?: Record<string, JsonSchemaNode>;
+  required?: string[];
+  items?: JsonSchemaNode;
+  anyOf?: JsonSchemaNode[];
+}
+
 export interface ToolDefinition {
   name: string;
   description: string;
@@ -253,7 +269,7 @@ export interface ToolDefinition {
         description?: string;
         enum?: string[];
         default?: unknown;
-        items?: { type: string };
+        items?: JsonSchemaNode;
       }
     >;
     required?: string[];

@@ -1,6 +1,6 @@
 // Tool type definitions
 
-import type { ContentPart } from '@/ai/types';
+import type { ContentPart, JsonSchemaNode } from '@/ai/types';
 import type { MessageSource } from '@/conversation/sources';
 import type { HookContext } from '@/hooks/types';
 
@@ -86,15 +86,13 @@ export interface ToolSpec {
       description: string;
       /**
        * JSON Schema for array elements; required by OpenAI when type === 'array'.
-       * Element objects may declare their own `properties` (with per-field `enum`)
-       * so the model's constrained decoder enforces a discriminator instead of
-       * free-generating it — the contract must live in the schema, not only prose.
+       * Element schemas may be a discriminated `anyOf` union with per-variant
+       * `properties`/`required` so the model's constrained decoder emits complete
+       * objects instead of free-generating them — the contract must live in the
+       * schema, not only prose. A partial object schema (only the discriminator)
+       * makes content fields ungrammatical under constrained decoding.
        */
-      items?: {
-        type: string;
-        enum?: string[];
-        properties?: Record<string, { type: string; description?: string; enum?: string[] }>;
-      };
+      items?: JsonSchemaNode;
       enum?: string[];
     };
   };

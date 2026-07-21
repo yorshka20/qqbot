@@ -5,7 +5,7 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
 import { CardRenderingService } from '@/services/card';
-import { CARD_TYPES, parseCardDeck } from '@/services/card/cardTypes';
+import { CARD_ITEM_SCHEMA, parseCardDeck } from '@/services/card/cardTypes';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -29,10 +29,12 @@ import { BaseToolExecutor } from './BaseToolExecutor';
     cards: {
       type: 'array',
       required: true,
-      // Constrain the `type` discriminator to the valid card kinds. Without this
-      // the model's constrained decoder free-generates it and can emit corrupted
-      // values (e.g. "paragraph业务"), which then fail schema validation forever.
-      items: { type: 'object', properties: { type: { type: 'string', enum: [...CARD_TYPES] } } },
+      // Full discriminated-union schema (one object shape per card type, each
+      // with its own required fields). A partial schema that constrains only the
+      // `type` discriminator makes content fields ungrammatical under constrained
+      // decoding, so the model can only emit `{"type":...}` and every card fails
+      // validation. See CARD_ITEM_SCHEMA.
+      items: CARD_ITEM_SCHEMA,
       description: `卡片数组。每项 = 一个 CardData 对象。**字段必须严格按下面 schema**，多余字段或类型不符会被拒绝。一次可塞多个卡片串成一组。
 
 可用 type：
