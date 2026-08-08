@@ -85,6 +85,10 @@ export interface HookContextMetadata {
   historyAdapterKind?: import('../conversation/sources/types').SourceConfig['historyAdapter'];
   /** Tool usage instructions string, mirrored from ReplyPipelineContext by ProviderSelectionStage so ToolInstructProducer can read it. */
   toolUsageInstructions?: string;
+  /** Resolved provider name for this turn, written by ProviderSelectionStage so ModelIdentityProducer can inject it into the system prompt. */
+  promptProviderName?: string;
+  /** Default model from the resolved provider's config, written by ProviderSelectionStage so ModelIdentityProducer can inject it into the system prompt. */
+  promptModelName?: string;
   /** Subtext extracted from LLM reply via parseSubtextTags (SUBTEXT tag content). */
   replySubtext?: string;
   /** Reply tags extracted from LLM reply via parseSubtextTags (META tag items). */
@@ -141,6 +145,8 @@ const DEFAULT_METADATA: Required<
     | 'responseCallback'
     | 'historyAdapterKind'
     | 'toolUsageInstructions'
+    | 'promptProviderName'
+    | 'promptModelName'
     | 'replySubtext'
     | 'replyTagsMeta'
     | 'replyMode'
@@ -178,6 +184,8 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'responseCallback',
   'historyAdapterKind',
   'toolUsageInstructions',
+  'promptProviderName',
+  'promptModelName',
   'replySubtext',
   'replyTagsMeta',
   'replyMode',

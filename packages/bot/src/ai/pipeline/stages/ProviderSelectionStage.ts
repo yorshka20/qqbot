@@ -3,7 +3,7 @@
 import type { PermissionChecker } from '@/command/CommandManager';
 import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
-import type { AIProvider } from '../../base/AIProvider';
+import { AIProvider } from '../../base/AIProvider';
 import type { PromptManager } from '../../prompt/PromptManager';
 import type { ProviderRouter } from '../../routing/ProviderRouter';
 import type { LLMService } from '../../services/LLMService';
@@ -94,6 +94,14 @@ export class ProviderSelectionStage implements ReplyStage {
     const providerCapabilities = resolvedProvider ? (resolvedProvider as unknown as AIProvider).getCapabilities() : [];
     ctx.providerHasFunctionCalling = providerCapabilities.includes('function_calling');
     ctx.effectiveNativeSearchEnabled = providerCapabilities.includes('native_web_search');
+
+    // Store resolved provider name and model in metadata so prompt producers can inject
+    // them into the system prompt for LLM self-identification.
+    const resolvedProviderInstance = resolvedProvider as unknown as AIProvider | null;
+    const resolvedProviderName = resolvedProviderInstance?.name ?? effectiveProvider;
+    const resolvedModel = resolvedProviderInstance?.getDefaultModel?.();
+    ctx.hookContext.metadata.set('promptProviderName', resolvedProviderName);
+    if (resolvedModel) ctx.hookContext.metadata.set('promptModelName', resolvedModel);
 
     // Resolve source and admin status for tool catalog filtering
     const source = hookContext.source;

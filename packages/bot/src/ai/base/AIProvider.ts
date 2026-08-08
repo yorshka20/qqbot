@@ -30,6 +30,17 @@ export abstract class AIProvider {
   readonly isRelay: boolean = false;
 
   /**
+   * Returns the default model this provider is configured with, used for system
+   * prompt self-identification. Reads the common `config.model` field that all
+   * concrete providers store on `this.config` — relay providers may return
+   * undefined if no fixed model is configured.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getDefaultModel(): string | undefined {
+    return (this as unknown as { config?: { model?: string } }).config?.model;
+  }
+
+  /**
    * Whether to skip health checks for this provider.
    * Serverless providers (e.g. runpod, google-cloud-run) should set this to true
    * to avoid cold-start invocations from health check pings.

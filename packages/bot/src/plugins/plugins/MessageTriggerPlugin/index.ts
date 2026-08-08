@@ -131,7 +131,17 @@ export class MessageTriggerPlugin extends PluginBase {
         messageText,
         providerAliasMap,
       });
-      const response = await this.llmService.generateLite(prompt, { maxTokens: 100, model: liteModel }, liteProvider);
+      // Budget must cover hidden reasoning, not just the true/false token. A reasoning
+      // lite model (e.g. Groq gpt-oss, which rejects none/minimal effort and always
+      // thinks) spends completion tokens on hidden CoT that counts against max_tokens;
+      // a tight cap is consumed by reasoning before any visible answer, yielding an
+      // empty response that fails the check. max_tokens is a ceiling, so this stays
+      // cheap for non-reasoning models (they emit one token and stop).
+      const response = await this.llmService.generateLite(
+        prompt,
+        { maxTokens: 2048, model: liteModel },
+        liteProvider,
+      );
       const raw = parseLlmTrueFalse(response.text);
       if (raw === null) {
         logger.warn('[MessageTriggerPlugin] Prefix-invitation LLM response not true/false; treating as no reply');

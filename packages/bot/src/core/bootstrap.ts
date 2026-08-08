@@ -11,6 +11,7 @@ import { AvatarService } from '@qqbot/avatar';
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { createBaselineProducer } from '@/ai/prompt/producers/BaselineProducer';
+import { createModelIdentityProducer } from '@/ai/prompt/producers/ModelIdentityProducer';
 import { createSceneProducer } from '@/ai/prompt/producers/SceneProducer';
 import { createToolInstructProducer } from '@/ai/prompt/producers/ToolInstructProducer';
 import { APIClient } from '@/api/APIClient';
@@ -194,9 +195,10 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     const registry = container.resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
     const wakeWords = (config.getPluginConfig('messageTrigger') as { wakeWords?: string[] } | undefined)?.wakeWords ?? [];
     registry.register(createBaselineProducer({ promptManager }));
+    registry.register(createModelIdentityProducer());
     registry.register(createSceneProducer({ promptManager, wakeWords }));
     registry.register(createToolInstructProducer({ promptManager }));
-    logger.info('[Bootstrap] Core prompt producers registered (baseline, scene, tool-instruct)');
+    logger.info('[Bootstrap] Core prompt producers registered (baseline, model-identity, scene, tool-instruct)');
   }
 
   // ── Agent Cluster (after DB is ready) ──
