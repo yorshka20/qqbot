@@ -4,7 +4,7 @@
 
 import 'reflect-metadata';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { LLMTraceEntry } from '@/ai/types';
@@ -22,15 +22,26 @@ function emit(plugin: LLMDumpPlugin, entry: LLMTraceEntry): void {
   (plugin as unknown as { handleEntry: (e: LLMTraceEntry) => void }).handleEntry(entry);
 }
 
-/** Read the single markdown file written for a turn (searches the day dir). */
+/**
+ * Read the markdown written for a turn (searches the day dir). Files are named
+ * `<HHMMSS>-<turn>.md` so same-turn dumps sort chronologically; calls in
+ * different seconds land in different files, so concatenate all matches in
+ * name (= time) order.
+ */
 function readTurnFile(turn: string): string {
-  // Find the day directory (only one created during a test) then the turn file.
-  const days = require('node:fs').readdirSync(dir) as string[];
+  const fs = require('node:fs') as typeof import('node:fs');
+  const days = fs.readdirSync(dir);
   for (const day of days) {
-    const file = join(dir, day, `${turn}.md`);
-    if (existsSync(file)) return readFileSync(file, 'utf-8');
+    const dayDir = join(dir, day);
+    const files = fs
+      .readdirSync(dayDir)
+      .filter((f) => f.endsWith(`-${turn}.md`))
+      .sort();
+    if (files.length > 0) {
+      return files.map((f) => readFileSync(join(dayDir, f), 'utf-8')).join('');
+    }
   }
-  throw new Error(`turn file ${turn}.md not found under ${dir}`);
+  throw new Error(`turn file *-${turn}.md not found under ${dir}`);
 }
 
 beforeEach(() => {
@@ -107,7 +118,7 @@ describe('LLMDumpPlugin', () => {
     expect(md).toContain('`send_card`');
   });
 
-  it('appends multiple calls of the same turn into one file in order', () => {
+  it('appends multiple calls of the same turn in chronological order', () => {
     const plugin = makePlugin();
     const base = { provider: 'deepseek', prompt: '', turnKey: 'msg:same' } as const;
     emit(plugin, {
@@ -126,8 +137,9 @@ describe('LLMDumpPlugin', () => {
     const md = readTurnFile('msg-same');
     expect(md.indexOf('first')).toBeLessThan(md.indexOf('second'));
     expect(md.indexOf('r1')).toBeLessThan(md.indexOf('r2'));
-    // One header only.
-    expect(md.match(/# LLM dump/g)?.length).toBe(1);
+    // Calls in the same second share one file (single header); a call landing
+    // in the next second starts a new time-prefixed file with its own header.
+    expect(md.match(/# LLM dump/g)?.length).toBeLessThanOrEqual(2);
   });
 
   it('falls back to a background file when no turn key is present', () => {

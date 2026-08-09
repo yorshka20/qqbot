@@ -37,7 +37,7 @@ function createMockSession(overrides?: Partial<SubAgentSession>): SubAgentSessio
 }
 
 describe('ToolRunner', () => {
-  it('run executes tool via ToolManager.getExecutor and returns result.data or result.reply', async () => {
+  it('run executes tool via ToolManager.getExecutor and returns result.reply (authoritative over data)', async () => {
     const mockResult: ToolResult = {
       success: true,
       reply: 'Search result text',
@@ -55,8 +55,10 @@ describe('ToolRunner', () => {
     const runner = new ToolRunner(toolManager, subAgentManager, new HookManager());
     const session = createMockSession();
 
+    // ToolResult contract: `reply` is the authoritative LLM-facing message;
+    // `data` is for non-LLM consumers and must not shadow it.
     const result = await runner.run({ name: 'search', arguments: '{"query":"test"}' }, session);
-    expect(result).toEqual({ query: 'test', results: ['a', 'b'] });
+    expect(result).toBe('Search result text');
   });
 
   it('run returns result.reply when result.data is undefined (normalizeResult fallback)', async () => {
@@ -87,13 +89,13 @@ describe('ToolRunner', () => {
     const result = (await runner.run(
       { name: 'read_file', arguments: '{"path":"packages/bot/src/agent","action":"list"}' },
       session,
-    )) as { action: string; path: string; content: string };
+    )) as string;
 
-    expect(result).toMatchObject({ action: 'list', path: 'packages/bot/src/agent' });
-    expect(typeof result.content).toBe('string');
-    expect(result.content.length).toBeGreaterThan(0);
+    // read_file's reply is the listing text itself (reply authoritative over data).
+    expect(typeof result).toBe('string');
+    expect(result.length).toBeGreaterThan(0);
     // Actual tool output: directory listing (e.g. contains ToolRunner.ts, SubAgentManager.ts, ...)
-    expect(result.content).toContain('ToolRunner');
+    expect(result).toContain('ToolRunner');
   });
 
   it('run read_file read with real ToolManager returns file content (text only, no card render)', async () => {

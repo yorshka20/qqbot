@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { describe, expect, it, mock } from 'bun:test';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
+import { PromptMessageAssembler } from '../../../prompt/PromptMessageAssembler';
 import type { ReplyPipelineContext } from '../../ReplyPipelineContext';
 import { PromptAssemblyStage } from '../PromptAssemblyStage';
 
@@ -57,10 +58,11 @@ function makeContext(source: string): ReplyPipelineContext {
   } as unknown as ReplyPipelineContext;
 }
 
-/** Minimal promptManager mock for the user_frame render in PromptAssemblyStage. */
+/** Minimal promptManager mock: user_frame render + the real shared assembler. */
 const mockPromptManager = {
   render: mock((name: string, vars?: Record<string, string>) => vars?.userMessage ?? ''),
   renderBasePrompt: mock(() => 'base'),
+  messageAssembler: new PromptMessageAssembler({ uid: '10000', nick: 'bot' }),
 } as any;
 
 /**

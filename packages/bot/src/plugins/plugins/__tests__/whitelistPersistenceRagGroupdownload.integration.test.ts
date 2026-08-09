@@ -330,6 +330,9 @@ describe('GroupDownload functional: plugin uses onMessageComplete hook at COMPLE
       { getResourceTempUrl: async () => null },
       { allowOverride: true },
     );
+    // GroupDownloadPlugin.onInit resolves FILE_READ_SERVICE as a hard dependency
+    // (used for deduplication); no download runs in this test, a stub suffices.
+    getContainer().registerInstance(DITokens.FILE_READ_SERVICE, {}, { allowOverride: true });
 
     const plugin = new GroupDownloadPlugin({
       name: 'groupDownload',

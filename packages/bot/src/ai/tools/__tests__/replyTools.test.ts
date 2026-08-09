@@ -284,7 +284,9 @@ describe('replyTools', () => {
       expect(executed[0].call.type).toBe('get_weather');
       expect(executed[0].call.executor).toBe('get_weather');
       expect(executed[0].call.parameters).toEqual({ city: '北京' });
-      expect(result).toEqual({ temperature: 22, city: '北京' });
+      // ToolResult contract: `reply` is the authoritative LLM-facing message;
+      // `data` is for non-LLM consumers and must not shadow it.
+      expect(result).toEqual('OK');
     });
 
     it('returns result.reply when result.data is undefined', async () => {

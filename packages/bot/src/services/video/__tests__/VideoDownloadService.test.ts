@@ -90,8 +90,10 @@ describe('VideoDownloadService', () => {
     expect(downloadToBase64).toHaveBeenCalledTimes(1);
     expect(write).toHaveBeenCalledTimes(1);
     expect(result.buffer.equals(Buffer.from('http-bytes'))).toBe(true);
-    // Generic URL skips yt-dlp entirely, so no warn about yt-dlp unavailability is expected
-    expect(warn).not.toHaveBeenCalled();
+    // Generic URL skips yt-dlp entirely, so no warn about yt-dlp unavailability is
+    // expected. logger is a process-wide singleton — unrelated async work from other
+    // test files can warn while this test runs, so only assert on yt-dlp warns.
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('yt-dlp'));
   });
 
   it('uses the HTTP path for generic URLs', async () => {
