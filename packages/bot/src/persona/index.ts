@@ -12,7 +12,7 @@ export { WanderScheduler, type WanderSchedulerOptions } from '@/integrations/ava
 export { applyStimulus, deriveModulation, derivePersonaPostureBias, freshPhenotype, tickPhenotype } from './ode';
 export { type PersonaComponents, PersonaInitializer } from './PersonaInitializer';
 export { type PersonaLifecycleHandles, startPersonaSubsystem } from './PersonaLifecycle';
-export { PERSONA_EVENT_MESSAGE_RECEIVED, PersonaService, type PoseProvider } from './PersonaService';
+export { PersonaService, type PoseProvider } from './PersonaService';
 export {
   buildPromptPatch,
   buildPromptPatchAsync,

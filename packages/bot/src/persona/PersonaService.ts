@@ -15,7 +15,7 @@
  */
 
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
-import type { AgendaSystemEvent } from '@/agenda/types';
+import { type AgendaSystemEvent, MESSAGE_RECEIVED_EVENT } from '@/agenda/types';
 import { logger } from '@/utils/logger';
 import { type CharacterBible, EMPTY_BIBLE } from './data/CharacterBibleLoader';
 import { type CoreDNA, DEFAULT_CORE_DNA } from './data/CoreDNALoader';
@@ -33,13 +33,6 @@ import {
 import type { EpigeneticsStore } from './reflection/epigenetics/EpigeneticsStore';
 import type { Tone } from './reflection/tone/types';
 import type { PersonaConfig, PersonaStateSnapshot, Phenotype, Stimulus } from './types';
-
-/**
- * The event type `MessagePipeline` publishes after a successful
- * `lifecycle.execute`. Kept as a constant here so producer + subscriber
- * stay in lockstep without a cross-package import.
- */
-export const PERSONA_EVENT_MESSAGE_RECEIVED = 'persona.message_received' as const;
 
 /**
  * Minimal view onto the avatar: "is the bot doing something right now?"
@@ -138,7 +131,7 @@ export class PersonaService {
     }
     this.lastTickAt = Date.now();
     this.tickTimer = setInterval(() => this.tick(), this.config.tickMs);
-    this.eventBus.subscribe(PERSONA_EVENT_MESSAGE_RECEIVED, this.messageHandler);
+    this.eventBus.subscribe(MESSAGE_RECEIVED_EVENT, this.messageHandler);
     this.started = true;
     logger.info(
       `[PersonaService] Started | persona=${this.config.personaId} tickMs=${this.config.tickMs} fatigueAccrual=${this.config.ode.fatigueAccrualPerMs} tauAttention=${this.config.ode.tauAttentionMs}ms`,
@@ -152,7 +145,7 @@ export class PersonaService {
       clearInterval(this.tickTimer);
       this.tickTimer = null;
     }
-    this.eventBus.unsubscribe(PERSONA_EVENT_MESSAGE_RECEIVED, this.messageHandler);
+    this.eventBus.unsubscribe(MESSAGE_RECEIVED_EVENT, this.messageHandler);
     this.started = false;
     logger.info('[PersonaService] Stopped');
   }

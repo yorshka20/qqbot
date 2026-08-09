@@ -162,16 +162,29 @@ export class AgendaCommand implements CommandHandler {
     }
   }
 
+  private isLlmSourced(item: AgendaItem): boolean {
+    if (!item.metadata) return false;
+    try {
+      const meta = JSON.parse(item.metadata) as Record<string, unknown>;
+      return meta.source === 'llm';
+    } catch {
+      return false;
+    }
+  }
+
   private formatItem(item: AgendaItem, index: number): string {
     const status = item.enabled ? '🟢' : '🔴';
+    const llmTag = this.isLlmSourced(item) ? ' 🤖' : '';
     const trigger = this.formatTrigger(item);
     const lines = [
-      `${index}. ${status} ${item.name}`,
+      `${index}. ${status} ${item.name}${llmTag}`,
       `   ID: ${item.id}`,
       `   触发: ${trigger}`,
       `   意图: ${item.intent.length > 50 ? `${item.intent.slice(0, 50)}...` : item.intent}`,
     ];
     if (item.groupId) lines.push(`   群: ${item.groupId}`);
+    if (item.maxFires != null) lines.push(`   触发次数: ${item.fireCount ?? 0}/${item.maxFires}`);
+    if (item.expiresAt) lines.push(`   过期: ${item.expiresAt}`);
     if (item.lastRunAt) lines.push(`   上次运行: ${item.lastRunAt}`);
     return lines.join('\n');
   }
@@ -184,6 +197,12 @@ export class AgendaCommand implements CommandHandler {
         return `once ${item.triggerAt ?? ''}`;
       case 'onEvent':
         return `onEvent ${item.eventType ?? ''}`;
+      case 'onMessage': {
+        const parts: string[] = [];
+        if (item.watchKeywords) parts.push(`关键词 ${item.watchKeywords}`);
+        if (item.watchUserId) parts.push(`用户 ${item.watchUserId}`);
+        return `onMessage ${parts.join(' + ')}`;
+      }
       default:
         return item.triggerType;
     }

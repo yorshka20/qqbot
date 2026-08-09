@@ -378,7 +378,7 @@ export class AgentLoop {
     const messages = this.buildPrompt(item, conversationContext, eventContext, toolInstruct);
 
     try {
-      const agendaContext = buildAgendaHookContext(item, groupId, eventContext);
+      const agendaContext = buildAgendaHookContext(item, groupId, eventContext, this.preferredProtocol);
       const toolExecutor = (call: { name: string; arguments: string }) =>
         executeToolCall(call, agendaContext, this.toolManager, this.hookManager);
       const response = await this.llmService.generateWithTools(

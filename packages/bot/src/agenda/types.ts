@@ -3,15 +3,23 @@
 import type { BaseModel } from '@/database/models/types';
 
 /** Trigger type for an agenda item */
-export type AgendaTriggerType = 'cron' | 'once' | 'onEvent';
+export type AgendaTriggerType = 'cron' | 'once' | 'onEvent' | 'onMessage';
+
+/**
+ * Event type published by MessagePipeline for every processed real-IM message.
+ * data: { source: MessageSource, text: string (flattened message) }.
+ * Consumers: PersonaService (mind stimulus), AgendaService (onMessage items).
+ */
+export const MESSAGE_RECEIVED_EVENT = 'message_received' as const;
 
 /**
  * AgendaItem - a persistent scheduled intent.
  * Stored in DB; survives restarts.
- * Supports three trigger modes:
- *   - cron:    fires on a cron schedule (e.g. "0 8 * * *")
- *   - once:    fires once at a specific time (triggerAt ISO string)
- *   - onEvent: fires when an internal system event matches eventType + optional eventFilter
+ * Supports four trigger modes:
+ *   - cron:      fires on a cron schedule (e.g. "0 8 * * *")
+ *   - once:      fires once at a specific time (triggerAt ISO string)
+ *   - onEvent:   fires when an internal system event matches eventType + optional eventFilter
+ *   - onMessage: fires when an incoming chat message matches watchKeywords / watchUserId
  */
 export interface AgendaItem extends BaseModel {
   /** Human-readable name (e.g. "daily hotspot broadcast") */
@@ -30,6 +38,10 @@ export interface AgendaItem extends BaseModel {
   eventType?: string;
   /** JSON string: additional filter criteria for event matching (e.g. {"keyword":"晚安"}) */
   eventFilter?: string;
+  /** JSON string array of keywords (for 'onMessage' trigger; any-of, case-insensitive contains) */
+  watchKeywords?: string;
+  /** Only messages from this user match (for 'onMessage' trigger) */
+  watchUserId?: string;
   /** Natural language description of what the bot should do when triggered */
   intent: string;
   /** Minimum milliseconds between runs (cooldown). Default: 60000 (1 min) */
@@ -38,6 +50,12 @@ export interface AgendaItem extends BaseModel {
   maxSteps: number;
   /** Whether this item is enabled */
   enabled: boolean;
+  /** ISO string: hard expiry — the item is deleted at this time regardless of fires */
+  expiresAt?: string;
+  /** Maximum number of fires before the item is deleted. Undefined = unlimited */
+  maxFires?: number;
+  /** Number of times this item has fired (counts failed runs — a fire consumes budget) */
+  fireCount?: number;
   /** ISO string of last successful run */
   lastRunAt?: string;
   /** ISO string of next scheduled run (populated for cron/once, null for onEvent) */
@@ -85,3 +103,34 @@ export interface AgendaSystemEvent {
   botSelfId: string;
   data?: Record<string, unknown>;
 }
+
+/**
+ * Request to create an agenda item on behalf of the LLM (schedule_task / watch_messages tools).
+ * All limits are enforced server-side by AgendaService.createLlmItem — LLM-supplied
+ * values are clamped or rejected, never trusted.
+ */
+export interface LlmAgendaRequest {
+  kind: 'once' | 'onMessage';
+  /** The prompt the LLM wrote for its future self; stored as the item's intent */
+  prompt: string;
+  /** Optional human-readable name */
+  name?: string;
+  /** Conversation scope (from tool execution context, never LLM-supplied) */
+  groupId?: string;
+  userId: string;
+  /** For kind='once': when to fire (ISO) */
+  triggerAt?: string;
+  /** For kind='onMessage': keywords to match (any-of, contains) */
+  keywords?: string[];
+  /** For kind='onMessage': only messages from this user match */
+  watchUserId?: string;
+  /** For kind='onMessage': TTL in ms (clamped to limits) */
+  ttlMs?: number;
+  /** For kind='onMessage': fire budget (clamped to limits) */
+  maxFires?: number;
+  /** Self-scheduling chain depth: 0 for reply-pipeline calls, parent+1 for agenda-run calls */
+  chainDepth: number;
+}
+
+/** Result of AgendaService.createLlmItem: either the created item or an LLM-readable rejection */
+export type LlmAgendaResult = { ok: true; item: AgendaItem } | { ok: false; error: string };

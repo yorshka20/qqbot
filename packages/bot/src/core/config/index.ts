@@ -7,6 +7,7 @@ import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import { loadConfigAuto } from './loadConfigDir';
 // Import all config types
+import { type AgendaConfig, type AgendaLlmLimits, DEFAULT_AGENDA_LLM_LIMITS } from './types/agenda';
 import type { AIConfig, AIProviderCapability, ContextMemoryConfig, SessionProviderConfig } from './types/ai';
 import type { BilibiliConfig, BilibiliLiveConfig } from './types/bilibili';
 import type {
@@ -38,6 +39,7 @@ export { updateEnabledDisabled } from './ConfigUtils';
 export { GlobalConfigManager } from './GlobalConfigManager';
 export { getSessionId, getSessionType } from './SessionUtils';
 // Re-export all types for convenience
+export type { AgendaConfig, AgendaLlmLimits } from './types/agenda';
 export type {
   AIConfig,
   AIProviderConfig,
@@ -95,6 +97,7 @@ export type { VideoKnowledgeConfig } from './types/videoKnowledge';
 export type { VKBContextEngineConfig, VKBContextEngineScope } from './types/vkbContextEngine';
 
 export interface BotConfig {
+  agenda?: AgendaConfig;
   protocols: ProtocolConfig[];
   api: APIConfig;
   events: EventConfig;
@@ -209,7 +212,7 @@ export class Config {
    *   - defaultReplyTarget on host for client sendToUser fallback
    */
   private validateLanRelayConfig(lr: LanRelayConfig | undefined): void {
-    if (!lr || !lr.enabled) {
+    if (!lr?.enabled) {
       return;
     }
     if (!lr.instanceRole) {
@@ -441,7 +444,7 @@ export class Config {
    */
   getSessionProviderConfig(sessionId: string): SessionProviderConfig | undefined {
     const aiConfig = this.config.ai;
-    if (!aiConfig || !aiConfig.sessionProviders) {
+    if (!aiConfig?.sessionProviders) {
       return undefined;
     }
 
@@ -450,6 +453,10 @@ export class Config {
 
   getContextMemoryConfig(): ContextMemoryConfig | undefined {
     return this.config.contextMemory;
+  }
+
+  getAgendaLlmLimits(): AgendaLlmLimits {
+    return { ...DEFAULT_AGENDA_LLM_LIMITS, ...this.config.agenda?.llmLimits };
   }
 
   getMemoryConfig(): MemoryConfig {
@@ -521,7 +528,7 @@ export class Config {
    */
   getBilibiliLiveConfig(): BilibiliLiveConfig | undefined {
     const live = this.config.bilibili?.live;
-    if (!live || !live.enabled) return undefined;
+    if (!live?.enabled) return undefined;
     return live;
   }
 

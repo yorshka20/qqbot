@@ -5,15 +5,32 @@
 
 import type { ConversationContext } from '@/context/types';
 import { deriveSourceFromEvent } from '@/conversation/sources';
+import type { ProtocolName } from '@/core/config/types/protocol';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { createDefaultHookMetadata } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import type { AgendaEventContext, AgendaItem } from './types';
 
+/**
+ * Chain depth of the item itself (0 for human-created items). Items the LLM
+ * registers *during this run* get depth+1, so `agendaChainDepth` in the built
+ * context already holds the depth for child registrations.
+ */
+function resolveChainDepth(item: AgendaItem): number {
+  if (!item.metadata) return 0;
+  try {
+    const depth = (JSON.parse(item.metadata) as { chainDepth?: unknown }).chainDepth;
+    return typeof depth === 'number' && Number.isFinite(depth) ? depth : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function buildAgendaHookContext(
   item: AgendaItem,
   contextId: string,
   eventContext: AgendaEventContext,
+  protocol: ProtocolName = 'milky',
 ): HookContext {
   const isPrivate = !item.groupId;
   const groupIdNum = isPrivate ? 0 : Number(contextId);
@@ -24,7 +41,7 @@ export function buildAgendaHookContext(
     id: `agenda-${item.id}-${Date.now()}`,
     type: 'message',
     timestamp: Date.now(),
-    protocol: 'milky',
+    protocol,
     messageType: isPrivate ? 'private' : 'group',
     userId,
     groupId: groupIdNum,
@@ -52,6 +69,7 @@ export function buildAgendaHookContext(
     groupId: groupIdNum,
     senderRole: '',
   });
+  metadata.set('agendaChainDepth', resolveChainDepth(item) + 1);
 
   return {
     message,

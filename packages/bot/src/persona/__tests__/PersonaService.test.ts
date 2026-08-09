@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { InternalEventBus } from '@/agenda/InternalEventBus';
-import { PERSONA_EVENT_MESSAGE_RECEIVED, PersonaService } from '../PersonaService';
+import { MESSAGE_RECEIVED_EVENT } from '@/agenda/types';
+import { PersonaService } from '../PersonaService';
 import { DEFAULT_PERSONA_CONFIG, mergePersonaConfig, type PersonaConfig } from '../types';
 
 function service(override: Partial<PersonaConfig> = {}): { persona: PersonaService; bus: InternalEventBus } {
@@ -21,7 +22,7 @@ describe('PersonaService — event subscription', () => {
     cleanups.push(() => persona.stop());
 
     bus.publish({
-      type: PERSONA_EVENT_MESSAGE_RECEIVED,
+      type: MESSAGE_RECEIVED_EVENT,
       userId: '42',
       groupId: '100',
       botSelfId: 'bot',
@@ -47,7 +48,7 @@ describe('PersonaService — event subscription', () => {
     const { persona, bus } = service();
     persona.start();
     bus.publish({
-      type: PERSONA_EVENT_MESSAGE_RECEIVED,
+      type: MESSAGE_RECEIVED_EVENT,
       userId: '1',
       groupId: '',
       botSelfId: '',
@@ -55,7 +56,7 @@ describe('PersonaService — event subscription', () => {
     });
     persona.stop();
     bus.publish({
-      type: PERSONA_EVENT_MESSAGE_RECEIVED,
+      type: MESSAGE_RECEIVED_EVENT,
       userId: '1',
       groupId: '',
       botSelfId: '',
@@ -69,7 +70,7 @@ describe('PersonaService — event subscription', () => {
     const persona = new PersonaService({ ...DEFAULT_PERSONA_CONFIG, enabled: false }, bus);
     persona.start();
     bus.publish({
-      type: PERSONA_EVENT_MESSAGE_RECEIVED,
+      type: MESSAGE_RECEIVED_EVENT,
       userId: '1',
       groupId: '',
       botSelfId: '',
@@ -88,7 +89,7 @@ describe('PersonaService — event subscription', () => {
     persona.start();
     cleanups.push(() => persona.stop());
     bus.publish({
-      type: PERSONA_EVENT_MESSAGE_RECEIVED,
+      type: MESSAGE_RECEIVED_EVENT,
       userId: '99',
       groupId: '500',
       botSelfId: 'bot',

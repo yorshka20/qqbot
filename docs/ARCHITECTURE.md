@@ -152,7 +152,7 @@ The system is organized into the following layers:
 15. **Services Layer** (`src/services/`): MCP, Claude Code, card rendering, retrieval, static server
 16. **Cluster Layer** (`src/cluster/`): Agent cluster for multi-worker coordination
 17. **Message Layer** (`src/message/`): Message construction, parsing, and caching
-18. **Agenda Layer** (`src/agenda/`): Scheduled task execution
+18. **Agenda Layer** (`src/agenda/`): Scheduled and event/message-triggered task execution (`cron` / `once` / `onEvent` / `onMessage` triggers, with optional TTL + fire-budget lifecycle; the LLM can self-register ephemeral tasks via `schedule_task` / `watch_messages` tools)
 19. **LAN Layer** (`src/lan/`): LAN relay and local network communication
 20. **Utils Layer** (`src/utils/`): Logging, error handling, shared utilities
 21. **CLI Layer** (`src/cli/`): Smoke-test, dev tooling

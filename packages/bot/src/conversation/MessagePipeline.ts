@@ -1,6 +1,7 @@
 // Message Pipeline - processes messages through the complete flow
 
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
+import { MESSAGE_RECEIVED_EVENT } from '@/agenda/types';
 import type { ProviderRouter } from '@/ai/routing/ProviderRouter';
 import type { ContextManager, ConversationContext } from '@/context';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
@@ -10,7 +11,6 @@ import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { cacheMessage } from '@/message/MessageCache';
-import { PERSONA_EVENT_MESSAGE_RECEIVED } from '@/persona';
 import { logger } from '@/utils/logger';
 import { getLogColorForKey, getLogTag } from '@/utils/messageLogContext';
 import type { ConversationConfigService } from './ConversationConfigService';
@@ -40,9 +40,9 @@ export class MessagePipeline {
     private providerRouter: ProviderRouter,
     /**
      * Optional — when present, the pipeline publishes
-     * `PERSONA_EVENT_MESSAGE_RECEIVED` after every successful `lifecycle.execute`
-     * so `PersonaService` can translate it into an attention stimulus.
-     * Absent in tests / setups without mind.
+     * `MESSAGE_RECEIVED_EVENT` after every successful `lifecycle.execute`
+     * so PersonaService can translate it into an attention stimulus and
+     * AgendaService can match onMessage items. Absent in tests / setups without mind.
      */
     private internalEventBus?: InternalEventBus,
   ) {}
@@ -132,7 +132,7 @@ export class MessagePipeline {
           // chatter never sets it. Without this gate a busy group would peg fatigue
           // and attention from messages the bot was never part of.
           if (hookContext.metadata.get('replyTriggerType')) {
-            this.publishMindStimulus(event, context);
+            this.publishMessageReceived(event, context);
           }
           return this.buildResult(hookContext, context, event);
         } catch (error) {
@@ -290,36 +290,38 @@ export class MessagePipeline {
   }
 
   /**
-   * Publish a message-received event so PersonaService can register an
-   * attention spike + relationship row for the speaker. Silently no-ops
+   * Publish a message-received event for every processed real-IM message.
+   * Consumers: PersonaService (attention spike + relationship row for the
+   * speaker) and AgendaService (onMessage item matching). Silently no-ops
    * when the event bus is not present or a subscriber throws — a failure
    * here must never break reply flow.
    *
    * Two-layer gate:
    *   1. **Synthetic exclusion (here)**: synthetic sources (avatar-cmd /
    *      bilibili-danmaku / idle-trigger / bootstrap) carry sentinel
-   *      userIds and never produce stimulus.
+   *      userIds and never publish.
    *   2. **User config (PersonaService.handleMessageEvent)**: even for real-IM
    *      sources, `PersonaService` checks `mind.applicableSources` so the
    *      user can narrow stimulus to e.g. private DM only.
    *
-   * `data.source` is forwarded so PersonaService can apply layer 2 without
-   * needing to know about MessageProcessingContext.
+   * `data.source` is forwarded so consumers can apply layer 2 without
+   * needing to know about MessageProcessingContext; `data.text` carries the
+   * flattened message for keyword matching.
    */
-  private publishMindStimulus(event: NormalizedMessageEvent, context: MessageProcessingContext): void {
+  private publishMessageReceived(event: NormalizedMessageEvent, context: MessageProcessingContext): void {
     if (!this.internalEventBus) return;
     const source = context.source;
     if (source !== 'qq-private' && source !== 'qq-group' && source !== 'discord') return;
     try {
       this.internalEventBus.publish({
-        type: PERSONA_EVENT_MESSAGE_RECEIVED,
+        type: MESSAGE_RECEIVED_EVENT,
         groupId: event.groupId != null ? String(event.groupId) : '',
         userId: event.userId != null ? String(event.userId) : '',
         botSelfId: context.botSelfId ?? '',
-        data: { source },
+        data: { source, text: event.message ?? '' },
       });
     } catch (err) {
-      logger.debug(`[MessagePipeline] mind stimulus publish failed (non-fatal): ${err}`);
+      logger.debug(`[MessagePipeline] message event publish failed (non-fatal): ${err}`);
     }
   }
 

@@ -38,7 +38,8 @@ import type { AgendaItem, AgendaTriggerType, CreateAgendaItemData } from './type
 /** Parsed item from one markdown section */
 interface ParsedScheduleItem {
   name: string;
-  triggerType: AgendaTriggerType;
+  /** onMessage is excluded: the file syntax has no watch-condition representation */
+  triggerType: Exclude<AgendaTriggerType, 'onMessage'>;
   cronExpr?: string;
   triggerAt?: string;
   eventType?: string;
@@ -57,7 +58,8 @@ interface ParsedScheduleItem {
 /** Data for appending a new section to schedule.md (e.g. from /schedule command) */
 export interface AppendItemData {
   name: string;
-  triggerType: AgendaTriggerType;
+  /** onMessage is excluded: LLM-registered watches are ephemeral and never synced to schedule.md */
+  triggerType: Exclude<AgendaTriggerType, 'onMessage'>;
   cronExpr?: string;
   triggerAt?: string;
   eventType?: string;

@@ -126,6 +126,22 @@ export interface HookContextMetadata {
    * internal/system calls).
    */
   aiUsage?: AIUsageMetadata;
+
+  /**
+   * Self-scheduling chain depth for LLM-created agenda items. Set by
+   * buildAgendaHookContext from the running item's metadata; read by
+   * schedule_task / watch_messages executors so an agenda run that registers
+   * further items inherits depth+1. AgendaService rejects registrations past
+   * the configured max depth — this is what prevents a task from perpetually
+   * re-scheduling itself. Undefined (reply pipeline) = depth 0.
+   */
+  agendaChainDepth?: number;
+  /**
+   * Number of send_message tool calls in the current LLM loop run. Incremented
+   * by SendMessageToolExecutor and checked against the per-run cap, so one
+   * generation can't flood the chat with immediate sends.
+   */
+  sendMessageCount?: number;
 }
 
 type MetadataKeys = keyof HookContextMetadata;
@@ -153,6 +169,8 @@ const DEFAULT_METADATA: Required<
     | 'activeProvider'
     | 'activeModel'
     | 'aiUsage'
+    | 'agendaChainDepth'
+    | 'sendMessageCount'
   >
 > = {
   sessionId: '',

@@ -111,6 +111,28 @@ export class MessageUtils {
   }
 
   /**
+   * Reduce a flattened message to the user-authored free text only, for keyword
+   * matching. Milky serialises non-text segments as `[Image:...]`,
+   * `[MarketFace:...]`, `[Forward:<title>]`, `[Face:id]`, etc. (possibly with
+   * nested brackets, e.g. `[Image:[动画表情]]`) and mentions as `@<id>`.
+   *
+   * These machine-generated tokens must not reach `includes()` matching: a
+   * keyword like "动画" otherwise substring-matches the sticker label inside
+   * `[Image:[动画表情]]`, and a name embedded in a forward title can match too —
+   * firing on a message that contains no actual keyword.
+   */
+  static extractUserText(message: string): string {
+    let text = message;
+    let prev: string;
+    // Innermost-first removal handles one or more levels of bracket nesting.
+    do {
+      prev = text;
+      text = text.replace(/\[[^[\]]*\]/g, '');
+    } while (text !== prev);
+    return text.replace(/@\d+/g, '').trim();
+  }
+
+  /**
    * Check if user is bot owner
    * @param userId - User ID to check
    * @param botConfig - Bot configuration (bot section)

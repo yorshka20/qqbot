@@ -386,7 +386,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
         name TEXT NOT NULL,
         groupId TEXT,
         userId TEXT,
-        triggerType TEXT NOT NULL CHECK(triggerType IN ('cron', 'once', 'onEvent')),
+        triggerType TEXT NOT NULL CHECK(triggerType IN ('cron', 'once', 'onEvent', 'onMessage')),
         cronExpr TEXT,
         triggerAt TEXT,
         eventType TEXT,
@@ -399,7 +399,15 @@ export class SQLiteAdapter implements DatabaseAdapter {
         nextRunAt TEXT,
         metadata TEXT,
         createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL
+        updatedAt TEXT NOT NULL,
+        actionType TEXT,
+        actionTarget TEXT,
+        actionParams TEXT,
+        watchKeywords TEXT,
+        watchUserId TEXT,
+        expiresAt TEXT,
+        maxFires INTEGER,
+        fireCount INTEGER
       )`,
       `CREATE TABLE IF NOT EXISTS lan_internal_reports (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -568,9 +576,80 @@ export class SQLiteAdapter implements DatabaseAdapter {
           this.db.run(`ALTER TABLE agenda_items ADD COLUMN actionParams TEXT`);
           logger.info('[SQLiteAdapter] Added actionParams column to agenda_items');
         }
+        const lifecycleColumns: Array<[string, string]> = [
+          ['watchKeywords', 'TEXT'],
+          ['watchUserId', 'TEXT'],
+          ['expiresAt', 'TEXT'],
+          ['maxFires', 'INTEGER'],
+          ['fireCount', 'INTEGER'],
+        ];
+        for (const [col, type] of lifecycleColumns) {
+          if (!cols.has(col)) {
+            this.db.run(`ALTER TABLE agenda_items ADD COLUMN ${col} ${type}`);
+            logger.info(`[SQLiteAdapter] Added ${col} column to agenda_items`);
+          }
+        }
       }
     } catch (error) {
       logger.warn(`[SQLiteAdapter] Failed to add agenda action columns: ${error}`);
+    }
+
+    // The original agenda_items CHECK constraint predates the 'onMessage' trigger
+    // type. SQLite cannot ALTER a CHECK, so tables created before it must be
+    // rebuilt (create new → copy → drop → rename) or every onMessage insert fails.
+    try {
+      const ddl = this.db
+        .query(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'agenda_items'`)
+        .get() as { sql?: string } | null;
+      if (ddl?.sql?.includes(`triggerType IN`) && !ddl.sql.includes('onMessage')) {
+        const columns =
+          'id, name, groupId, userId, triggerType, cronExpr, triggerAt, eventType, eventFilter, intent, ' +
+          'cooldownMs, maxSteps, enabled, lastRunAt, nextRunAt, metadata, createdAt, updatedAt, ' +
+          'actionType, actionTarget, actionParams, watchKeywords, watchUserId, expiresAt, maxFires, fireCount';
+        this.db.run('BEGIN');
+        try {
+          this.db.run(
+            `CREATE TABLE agenda_items_new (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              groupId TEXT,
+              userId TEXT,
+              triggerType TEXT NOT NULL CHECK(triggerType IN ('cron', 'once', 'onEvent', 'onMessage')),
+              cronExpr TEXT,
+              triggerAt TEXT,
+              eventType TEXT,
+              eventFilter TEXT,
+              intent TEXT NOT NULL,
+              cooldownMs INTEGER NOT NULL DEFAULT 60000,
+              maxSteps INTEGER NOT NULL DEFAULT 3,
+              enabled INTEGER NOT NULL DEFAULT 1,
+              lastRunAt TEXT,
+              nextRunAt TEXT,
+              metadata TEXT,
+              createdAt TEXT NOT NULL,
+              updatedAt TEXT NOT NULL,
+              actionType TEXT,
+              actionTarget TEXT,
+              actionParams TEXT,
+              watchKeywords TEXT,
+              watchUserId TEXT,
+              expiresAt TEXT,
+              maxFires INTEGER,
+              fireCount INTEGER
+            )`,
+          );
+          this.db.run(`INSERT INTO agenda_items_new (${columns}) SELECT ${columns} FROM agenda_items`);
+          this.db.run(`DROP TABLE agenda_items`);
+          this.db.run(`ALTER TABLE agenda_items_new RENAME TO agenda_items`);
+          this.db.run('COMMIT');
+          logger.info('[SQLiteAdapter] Rebuilt agenda_items with onMessage in triggerType CHECK');
+        } catch (rebuildError) {
+          this.db.run('ROLLBACK');
+          throw rebuildError;
+        }
+      }
+    } catch (error) {
+      logger.warn(`[SQLiteAdapter] Failed to migrate agenda_items triggerType CHECK: ${error}`);
     }
 
     // Add normalizedContent column to memory_fact_meta if it doesn't exist (migration)
