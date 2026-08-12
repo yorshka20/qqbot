@@ -26,7 +26,7 @@ describe('PersonaService — event subscription', () => {
       userId: '42',
       groupId: '100',
       botSelfId: 'bot',
-      data: { source: 'qq-private' },
+      data: { source: 'qq-private', triggeredBot: true },
     });
 
     const snap = persona.getSnapshot();
@@ -52,7 +52,7 @@ describe('PersonaService — event subscription', () => {
       userId: '1',
       groupId: '',
       botSelfId: '',
-      data: { source: 'qq-private' },
+      data: { source: 'qq-private', triggeredBot: true },
     });
     persona.stop();
     bus.publish({
@@ -60,7 +60,7 @@ describe('PersonaService — event subscription', () => {
       userId: '1',
       groupId: '',
       botSelfId: '',
-      data: { source: 'qq-private' },
+      data: { source: 'qq-private', triggeredBot: true },
     });
     expect(persona.getPhenotype().stimulusCount).toBe(1);
   });

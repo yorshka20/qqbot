@@ -126,14 +126,7 @@ export class MessagePipeline {
             return { success: false, error: 'Processing interrupted' };
           }
 
-          // Persona stimulus accrues only from messages that actually addressed
-          // the bot. `replyTriggerType` is set by MessageTriggerPlugin exclusively
-          // when a trigger matched (@ / wake word / provider prefix); ambient group
-          // chatter never sets it. Without this gate a busy group would peg fatigue
-          // and attention from messages the bot was never part of.
-          if (hookContext.metadata.get('replyTriggerType')) {
-            this.publishMessageReceived(event, context);
-          }
+          this.publishMessageReceived(event, context, !!hookContext.metadata.get('replyTriggerType'));
           return this.buildResult(hookContext, context, event);
         } catch (error) {
           return await this.handleError(error, event, context);
@@ -306,9 +299,15 @@ export class MessagePipeline {
    *
    * `data.source` is forwarded so consumers can apply layer 2 without
    * needing to know about MessageProcessingContext; `data.text` carries the
-   * flattened message for keyword matching.
+   * flattened message for keyword matching; `data.triggeredBot` is true when
+   * the message addressed the bot (@ / wake word / provider prefix) and false
+   * for ambient group chatter.
    */
-  private publishMessageReceived(event: NormalizedMessageEvent, context: MessageProcessingContext): void {
+  private publishMessageReceived(
+    event: NormalizedMessageEvent,
+    context: MessageProcessingContext,
+    triggeredBot: boolean,
+  ): void {
     if (!this.internalEventBus) return;
     const source = context.source;
     if (source !== 'qq-private' && source !== 'qq-group' && source !== 'discord') return;
@@ -318,7 +317,7 @@ export class MessagePipeline {
         groupId: event.groupId != null ? String(event.groupId) : '',
         userId: event.userId != null ? String(event.userId) : '',
         botSelfId: context.botSelfId ?? '',
-        data: { source, text: event.message ?? '' },
+        data: { source, text: event.message ?? '', triggeredBot },
       });
     } catch (err) {
       logger.debug(`[MessagePipeline] message event publish failed (non-fatal): ${err}`);

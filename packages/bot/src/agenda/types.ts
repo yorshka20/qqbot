@@ -7,7 +7,10 @@ export type AgendaTriggerType = 'cron' | 'once' | 'onEvent' | 'onMessage';
 
 /**
  * Event type published by MessagePipeline for every processed real-IM message.
- * data: { source: MessageSource, text: string (flattened message) }.
+ * data: { source: MessageSource, text: string (flattened message), triggeredBot: boolean }.
+ * `triggeredBot` is true when the message explicitly addressed the bot (@ / wake word /
+ * provider prefix); false for ambient group chatter. PersonaService gates stimulus accrual
+ * on this flag; AgendaService onMessage items receive all messages regardless.
  * Consumers: PersonaService (mind stimulus), AgendaService (onMessage items).
  */
 export const MESSAGE_RECEIVED_EVENT = 'message_received' as const;

@@ -320,10 +320,14 @@ export class PersonaService {
     if (!this.config.enabled) return;
     // Source-aware gate: only real-IM sources in applicableSources drive
     // stimulus accrual. Synthetic events are already filtered upstream
-    // (MessagePipeline.publishMindStimulus); this layer additionally
+    // (MessagePipeline.publishMessageReceived); this layer additionally
     // enforces the user-configured allow-list (e.g. "DM only").
     const source = (event.data?.source ?? undefined) as import('../conversation/sources').MessageSource | undefined;
     if (!this.isApplicableSource(source)) return;
+    // Persona stimulus accrues only from messages that addressed the bot —
+    // ambient group chatter must not peg fatigue and attention for conversations
+    // the bot was never part of.
+    if (!event.data?.triggeredBot) return;
     this.ingest({
       kind: 'message',
       ts: Date.now(),
