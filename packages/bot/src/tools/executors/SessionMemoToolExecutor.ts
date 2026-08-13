@@ -4,8 +4,8 @@
 // this executor surfaces those errors as tool-level failures rather than exceptions.
 
 import { inject, injectable } from 'tsyringe';
+import type { SessionMemoItem, SessionMemoStore } from '@/conversation/memo/SessionMemoStore';
 import { DITokens } from '@/core/DITokens';
-import type { SessionMemoStore } from '@/conversation/memo/SessionMemoStore';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
@@ -97,9 +97,7 @@ export class SessionMemoToolExecutor extends BaseToolExecutor {
         return this.success('当前 session 无备忘条目。', { items: [] });
       }
       const lines = items.map((item) => {
-        const tag = item.pinned
-          ? '[PIN]'
-          : `[exp ${formatExpiry(item.expiresAt as number)}]`;
+        const tag = item.pinned ? '[PIN]' : `[exp ${formatExpiry(item.expiresAt as number)}]`;
         return `- [id:${item.id}] ${tag} ${item.content}`;
       });
       const text = `当前 session 共 ${items.length} 条备忘：\n${lines.join('\n')}`;
@@ -128,7 +126,7 @@ export class SessionMemoToolExecutor extends BaseToolExecutor {
       const rawTags = call.parameters?.tags;
       const tags = Array.isArray(rawTags) && rawTags.every((t) => typeof t === 'string') ? rawTags : undefined;
 
-      let item;
+      let item: SessionMemoItem;
       try {
         item = this.store.add(sessionId, { content, pinned, ttlMs, tags });
       } catch (err) {

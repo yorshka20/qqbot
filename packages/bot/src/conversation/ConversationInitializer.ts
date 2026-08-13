@@ -177,10 +177,7 @@ export class ConversationInitializer {
         logger.debug('[ConversationInitializer] SessionMemoStore SQLite probe failed, using in-memory:', err);
       }
       const { SessionMemoStore } = await import('@/conversation/memo/SessionMemoStore');
-      container.registerInstance(
-        DITokens.SESSION_MEMO_STORE,
-        new SessionMemoStore(sessionMemoRawDb),
-      );
+      container.registerInstance(DITokens.SESSION_MEMO_STORE, new SessionMemoStore(sessionMemoRawDb));
       logger.info(
         `[ConversationInitializer] SessionMemoStore registered (persistence=${sessionMemoRawDb ? 'sqlite' : 'memory'})`,
       );
