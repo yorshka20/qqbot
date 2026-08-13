@@ -11,7 +11,7 @@ import { getChainDepth } from './ScheduleTaskToolExecutor';
 @Tool({
   name: 'watch_messages',
   description:
-    '注册一个临时的消息监听：接下来当前会话里出现匹配的消息（包含关键词，或来自指定用户）时，bot 会以你写下的 prompt 为指令被唤起执行。监听是非永久的：默认 24 小时后自动失效，默认触发 1 次后失效（最多可设 10 次）。',
+    '注册一个临时的消息监听：接下来当前会话里出现匹配的消息（包含关键词，或来自指定用户）时，bot 会以你写下的 prompt 为指令被唤起执行。监听是非永久的：默认 24 小时后自动失效，默认触发 1 次后失效（最多可设 100 次）。',
   executor: 'watch_messages',
   visibility: {
     reply: { sources: ['qq-group', 'qq-private', 'discord'] },
@@ -37,7 +37,7 @@ import { getChainDepth } from './ScheduleTaskToolExecutor';
     max_fires: {
       type: 'number',
       required: false,
-      description: '触发次数上限，达到后监听失效。默认 1，最多 10。',
+      description: '触发次数上限，达到后监听失效。默认 1，最多 100。',
     },
     ttl_hours: {
       type: 'number',

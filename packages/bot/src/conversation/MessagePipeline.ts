@@ -121,9 +121,9 @@ export class MessagePipeline {
             `[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId} | source=${resolvedSource}`,
           );
 
-          this.publishMessageReceived(event, context, !!hookContext.metadata.get('replyTriggerType'));
-
           const success = await this.lifecycle.execute(hookContext);
+          // lifecycle will update hookContext, so publish receive after lifecycle.
+          this.publishMessageReceived(event, context, !!hookContext.metadata.get('replyTriggerType'));
           if (!success) {
             return { success: false, error: 'Processing interrupted' };
           }
