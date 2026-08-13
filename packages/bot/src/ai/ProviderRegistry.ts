@@ -64,7 +64,7 @@ export class ProviderRegistry {
     }
 
     const provider = providers.get(providerName);
-    if (!provider || !provider.isAvailable()) {
+    if (!provider?.isAvailable()) {
       return null;
     }
 

@@ -614,7 +614,11 @@ export class GeminiProvider
     }
 
     const text = (response as { text?: string }).text ?? candidate.content.parts.map((p) => p.text ?? '').join('');
-    const meta = (response as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
+    const meta = (
+      response as {
+        usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
+      }
+    ).usageMetadata;
     const out: {
       text: string;
       usage?: AIGenerateResponse['usage'];

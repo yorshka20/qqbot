@@ -164,9 +164,7 @@ function ReflectionRow({ r }: { r: PersonaReflectionView }) {
           {r.trigger}
         </span>
       </div>
-      <p className="text-sm text-zinc-700 dark:text-zinc-200 whitespace-pre-wrap">
-        {expanded ? r.insightMd : preview}
-      </p>
+      <p className="text-sm text-zinc-700 dark:text-zinc-200 whitespace-pre-wrap">{expanded ? r.insightMd : preview}</p>
       {r.insightMd.length > 200 && (
         <button
           type="button"

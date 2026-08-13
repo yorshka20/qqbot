@@ -9,7 +9,8 @@
     "includes": [
       "**",
       "!!**/dist",
-      "!!**/*.min.js"
+      "!!**/*.min.js",
+      "!!**/*.test.ts"
     ]
   },
   "formatter": {

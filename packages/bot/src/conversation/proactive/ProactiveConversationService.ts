@@ -18,13 +18,13 @@ import type { Message } from '@/database/models/types';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { MemoryService } from '@/memory/MemoryService';
 import type { MessageSegment } from '@/message/types';
+import { parseSubtextTags } from '@/persona/prompt/subtextTagParser';
 import type { PluginManager } from '@/plugins/PluginManager';
 import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
 import type { RetrievalService } from '@/services/retrieval';
 import { logger } from '@/utils/logger';
 import { type FetchProgressNotifier, MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
-import { parseSubtextTags } from '@/persona/prompt/subtextTagParser';
 import type { ThreadContextCompressionService } from '../thread';
 import { isReadableTextForThread, type ProactiveThread, type ThreadService } from '../thread';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
@@ -804,7 +804,11 @@ export class ProactiveConversationService {
     const parsed = parseSubtextTags(replyText);
     const cleanReplyText = parsed.visible;
     // Optionally render as card (same pipeline as ReplyGenerationService); store card text in thread for LLM-readable history
-    const cardResult = await this.aiService.processReplyMaybeCard(cleanReplyText, thread.groupId, this.analysisProviderName);
+    const cardResult = await this.aiService.processReplyMaybeCard(
+      cleanReplyText,
+      thread.groupId,
+      this.analysisProviderName,
+    );
     const toSend = cardResult ? cardResult.segments : cleanReplyText;
     const toAppend = cardResult ? cardResult.textForHistory : cleanReplyText;
     // Update thread and DB before/on send so the next message or analysis run already sees this reply (no need to wait for echo).

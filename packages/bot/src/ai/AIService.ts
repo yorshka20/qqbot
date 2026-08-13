@@ -217,10 +217,7 @@ export class AIService {
    * JSON extractor, which mis-grabs nested arrays / bracketed substrings out of
    * a structured card. Pre-validated CardData must bypass that extraction.
    */
-  async renderCardDataToSegments(
-    cards: CardData | CardData[],
-    providerName?: string,
-  ): Promise<MessageSegment[]> {
+  async renderCardDataToSegments(cards: CardData | CardData[], providerName?: string): Promise<MessageSegment[]> {
     const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
     const deck = Array.isArray(cards) ? cards : [cards];
     const base64Image = await this.cardRenderingService.renderCardData(deck, provider);

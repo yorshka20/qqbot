@@ -1,4 +1,8 @@
-import type { PromptInjection, PromptInjectionContext, PromptInjectionProducer } from '@/conversation/promptInjection/types';
+import type {
+  PromptInjection,
+  PromptInjectionContext,
+  PromptInjectionProducer,
+} from '@/conversation/promptInjection/types';
 
 /**
  * Baseline producer — injects a one-line self-identification statement so the

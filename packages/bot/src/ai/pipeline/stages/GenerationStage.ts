@@ -81,8 +81,14 @@ export class GenerationStage implements ReplyStage {
     context: HookContext,
     params: GenerationPipelineParams,
   ): Promise<GenerationPipelineResult> {
-    const { messages, genOptions, toolDefinitions, selectedProviderName, effectiveNativeSearchEnabled, preferPaidTier } =
-      params;
+    const {
+      messages,
+      genOptions,
+      toolDefinitions,
+      selectedProviderName,
+      effectiveNativeSearchEnabled,
+      preferPaidTier,
+    } = params;
 
     // Reset per-attempt so retries with fallback providers start clean.
     context.metadata.delete('cardSent');

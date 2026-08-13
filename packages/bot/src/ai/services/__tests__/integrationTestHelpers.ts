@@ -74,7 +74,7 @@ export function getIntegrationProvider(name: IntegrationProviderName): AIProvide
     return null;
   }
   const provider = ProviderFactory.createProvider(name, providerConfig);
-  if (!provider || !provider.isAvailable()) {
+  if (!provider?.isAvailable()) {
     cachedProviders[name] = null;
     return null;
   }

@@ -2,6 +2,7 @@ import { injectable } from 'tsyringe';
 import type { AgendaService } from '@/agenda/AgendaService';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
@@ -88,6 +89,9 @@ export class WatchMessagesToolExecutor extends BaseToolExecutor {
     if (!result.ok) {
       return this.error(`消息监听注册失败：${result.error}`, result.error);
     }
+
+    logger.info(`[WatchMessagesToolExecutor] createLlmItem success | result=${JSON.stringify(result.item)}`);
+
     return this.success(
       `已注册消息监听「${result.item.name}」：触发上限 ${result.item.maxFires} 次，${result.item.expiresAt} 过期。`,
       { itemId: result.item.id, expiresAt: result.item.expiresAt, maxFires: result.item.maxFires },

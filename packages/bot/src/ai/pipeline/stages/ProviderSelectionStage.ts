@@ -3,7 +3,7 @@
 import type { PermissionChecker } from '@/command/CommandManager';
 import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
-import { AIProvider } from '../../base/AIProvider';
+import type { AIProvider } from '../../base/AIProvider';
 import type { PromptManager } from '../../prompt/PromptManager';
 import type { ProviderRouter } from '../../routing/ProviderRouter';
 import type { LLMService } from '../../services/LLMService';

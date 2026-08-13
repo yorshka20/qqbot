@@ -7,8 +7,8 @@
 
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { EpigeneticsStore } from '@/persona/reflection/epigenetics/EpigeneticsStore';
 import type { PersonaService } from '@/persona/PersonaService';
+import type { EpigeneticsStore } from '@/persona/reflection/epigenetics/EpigeneticsStore';
 import { logger } from '@/utils/logger';
 import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';
@@ -114,9 +114,7 @@ export class PersonaBackend implements Backend {
       let epigenetics: PersonaStateResponse['epigenetics'] = null;
       if (epiRaw) {
         const tone =
-          typeof epiRaw.behavioralBiases.currentTone === 'string'
-            ? epiRaw.behavioralBiases.currentTone
-            : 'neutral';
+          typeof epiRaw.behavioralBiases.currentTone === 'string' ? epiRaw.behavioralBiases.currentTone : 'neutral';
         epigenetics = {
           currentTone: tone,
           behavioralBiases: epiRaw.behavioralBiases,

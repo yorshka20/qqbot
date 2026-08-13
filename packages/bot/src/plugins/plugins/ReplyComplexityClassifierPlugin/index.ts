@@ -116,7 +116,10 @@ export class ReplyComplexityClassifierPlugin extends PluginBase {
     const response = await Promise.race([
       callPromise,
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`classifier timeout after ${CLASSIFIER_TIMEOUT_MS}ms`)), CLASSIFIER_TIMEOUT_MS),
+        setTimeout(
+          () => reject(new Error(`classifier timeout after ${CLASSIFIER_TIMEOUT_MS}ms`)),
+          CLASSIFIER_TIMEOUT_MS,
+        ),
       ),
     ]);
 
@@ -127,7 +130,7 @@ export class ReplyComplexityClassifierPlugin extends PluginBase {
     if (entries.length === 0) return '(无)';
     return entries
       .map((e) => {
-        const speaker = e.isBotReply ? 'bot' : (e.nickname?.trim() || '某人');
+        const speaker = e.isBotReply ? 'bot' : e.nickname?.trim() || '某人';
         const content = (e.content ?? '').replace(/\s+/g, ' ').slice(0, 100);
         return `[${speaker}]: ${content}`;
       })

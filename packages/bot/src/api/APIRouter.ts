@@ -37,7 +37,7 @@ export class APIRouter {
     // If user specified a protocol, use it
     if (context.protocol) {
       const adapter = this.adapters.get(context.protocol);
-      if (!adapter || !adapter.isConnected()) {
+      if (!adapter?.isConnected()) {
         const availableProtocols = this.getAvailableProtocols();
         throw new APIError(
           `Protocol "${context.protocol}" is not available. Available: ${availableProtocols.join(', ') || 'none'}`,

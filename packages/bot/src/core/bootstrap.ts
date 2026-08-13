@@ -193,7 +193,8 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   {
     const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
     const registry = container.resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
-    const wakeWords = (config.getPluginConfig('messageTrigger') as { wakeWords?: string[] } | undefined)?.wakeWords ?? [];
+    const wakeWords =
+      (config.getPluginConfig('messageTrigger') as { wakeWords?: string[] } | undefined)?.wakeWords ?? [];
     registry.register(createBaselineProducer({ promptManager }));
     registry.register(createModelIdentityProducer());
     registry.register(createSceneProducer({ promptManager, wakeWords }));

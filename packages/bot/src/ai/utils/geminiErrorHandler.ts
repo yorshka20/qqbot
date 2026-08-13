@@ -92,7 +92,7 @@ export function handleInvalidContent(
   candidate: GeminiCandidate,
   prompt: string,
 ): ProviderImageGenerationResponse | null {
-  if (!candidate.content || !candidate.content.parts) {
+  if (!candidate.content?.parts) {
     const errorMessage = 'Image generation failed: Invalid response structure (missing content.parts)';
     return createErrorResponse(errorMessage, prompt);
   }

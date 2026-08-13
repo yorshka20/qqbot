@@ -3,6 +3,7 @@
  */
 
 import type { ModelKind } from '../compiler/types';
+
 export type { ModelKind };
 
 export interface PreviewConfig {

@@ -555,7 +555,7 @@ export class AgendaService {
   private async fireItem(item: AgendaItem, eventContext: AgendaEventContext): Promise<void> {
     // Re-fetch from DB to get latest state (may have been updated/disabled since schedule was set)
     const fresh = await this.getItem(item.id);
-    if (!fresh || !fresh.enabled) {
+    if (!fresh?.enabled) {
       logger.debug(`[AgendaService] Item "${item.name}" is disabled; skipping`);
       return;
     }
@@ -595,13 +595,18 @@ export class AgendaService {
     const budgetExhausted = fresh.maxFires != null && fireCount >= fresh.maxFires;
 
     try {
-      if (fresh.actionType === 'action') {
-        await this.agentLoop.runAction(fresh, eventContext, this.actionHandlerRegistry);
-      } else if (fresh.actionType === 'subagent') {
-        await this.agentLoop.runSubAgent(fresh, eventContext);
-      } else {
-        await this.agentLoop.run(fresh, eventContext);
+      switch (fresh.actionType) {
+        case 'action':
+          await this.agentLoop.runAction(fresh, eventContext, this.actionHandlerRegistry);
+          break;
+        case 'subagent':
+          await this.agentLoop.runSubAgent(fresh, eventContext);
+          break;
+        default:
+          await this.agentLoop.run(fresh, eventContext);
+          break;
       }
+
       await this.reporter?.recordRun({
         item: fresh,
         startedAt,
