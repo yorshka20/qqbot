@@ -1,12 +1,16 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.11/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.8/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!!**/dist", "!!**/*.min.js"]
+    "includes": [
+      "**",
+      "!!**/dist",
+      "!!**/*.min.js"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -17,7 +21,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "complexity": {
         "noStaticOnlyClass": "off"
       },
