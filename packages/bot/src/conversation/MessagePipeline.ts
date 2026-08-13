@@ -121,12 +121,13 @@ export class MessagePipeline {
             `[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId} | source=${resolvedSource}`,
           );
 
+          this.publishMessageReceived(event, context, !!hookContext.metadata.get('replyTriggerType'));
+
           const success = await this.lifecycle.execute(hookContext);
           if (!success) {
             return { success: false, error: 'Processing interrupted' };
           }
 
-          this.publishMessageReceived(event, context, !!hookContext.metadata.get('replyTriggerType'));
           return this.buildResult(hookContext, context, event);
         } catch (error) {
           return await this.handleError(error, event, context);
