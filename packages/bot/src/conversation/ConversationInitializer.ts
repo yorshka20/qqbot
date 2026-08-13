@@ -160,6 +160,32 @@ export class ConversationInitializer {
       logger.debug('[ConversationInitializer] EpigeneticsStore not available (non-SQLite or init error):', err);
     }
 
+    // SessionMemoStore — LLM-writable per-session memo blackboard.
+    // Uses SQLite raw db when available; falls back to in-memory otherwise.
+    // Unlike EpigeneticsStore this store is ALWAYS registered (in-memory when
+    // SQLite is unavailable) because the session_memo tool must always be
+    // callable regardless of the configured DB backend.
+    {
+      let sessionMemoRawDb: import('bun:sqlite').Database | null = null;
+      try {
+        const { SQLiteAdapter } = await import('@/database/adapters/SQLiteAdapter');
+        const adapter = databaseManager.getAdapter();
+        if (adapter instanceof SQLiteAdapter) {
+          sessionMemoRawDb = adapter.getRawDb();
+        }
+      } catch (err) {
+        logger.debug('[ConversationInitializer] SessionMemoStore SQLite probe failed, using in-memory:', err);
+      }
+      const { SessionMemoStore } = await import('@/conversation/memo/SessionMemoStore');
+      container.registerInstance(
+        DITokens.SESSION_MEMO_STORE,
+        new SessionMemoStore(sessionMemoRawDb),
+      );
+      logger.info(
+        `[ConversationInitializer] SessionMemoStore registered (persistence=${sessionMemoRawDb ? 'sqlite' : 'memory'})`,
+      );
+    }
+
     // Conversation config services are required by CommandManager.
     const globalConfigManager = new GlobalConfigManager();
     container.registerInstance(DITokens.GLOBAL_CONFIG_MANAGER, globalConfigManager);

@@ -112,6 +112,9 @@ export const DITokens = {
   // ── Audit event ledger (required — in-memory, always registered) ──
   AUDIT_EVENT_STORE: defineToken('AuditEventStore', { required: true }),
 
+  // ── Session memo blackboard (required — LLM-writable per-session notes) ──
+  SESSION_MEMO_STORE: defineToken('SessionMemoStore', { required: true }),
+
   // ── Avatar dependents that bootstrap.ts always registers (required) ──
   TTS_MANAGER: defineToken('TTSManager', { required: true }),
   AVATAR_SESSION_SERVICE: defineToken('AvatarSessionService', { required: true }),
