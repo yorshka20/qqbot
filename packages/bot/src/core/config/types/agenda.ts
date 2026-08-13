@@ -39,15 +39,15 @@ export const DEFAULT_AGENDA_LLM_LIMITS: AgendaLlmLimits = {
   maxLiveItemsGlobal: 100,
   defaultTtlMs: 24 * 3600_000,
   maxTtlMs: 72 * 3600_000,
-  minDelayMs: 60_000,
+  minDelayMs: 30_000,
   defaultMaxFires: 1,
-  maxFiresCap: 10,
-  minCooldownMs: 60_000,
+  maxFiresCap: 100,
+  minCooldownMs: 5_000,
   maxChainDepth: 3,
   maxKeywords: 5,
   keywordMinLength: 2,
   keywordMaxLength: 20,
-  maxSendsPerRun: 3,
+  maxSendsPerRun: 5,
 };
 
 export interface AgendaConfig {
