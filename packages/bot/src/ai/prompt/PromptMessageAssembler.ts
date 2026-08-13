@@ -25,6 +25,14 @@ export interface FinalUserBlocks {
    */
   personaState?: string;
   /**
+   * LLM-written per-session memo/blackboard (SessionMemoStore). Short/medium-term
+   * items the model chose to carry across turns via the `session_memo` tool.
+   * Rendered into a `<session_memo>` block just above `<recent_actions>` so the
+   * model sees "what I chose to remember" before "what I just did", both close
+   * to the current query.
+   */
+  sessionMemo?: string;
+  /**
    * The bot's own recent actions this session (replied to whom / stayed silent
    * on what), as a short factual list. Lets the model account for what it
    * already did this turn instead of regenerating blind. Rendered into a
@@ -159,6 +167,9 @@ export class PromptMessageAssembler {
     // personaState already carries its own <mind_state>/<tone_state>/... tags.
     if (normalize(blocks.personaState)) {
       sections.push(normalize(blocks.personaState));
+    }
+    if (normalize(blocks.sessionMemo)) {
+      sections.push(`<session_memo>\n${normalize(blocks.sessionMemo)}\n</session_memo>`);
     }
     if (normalize(blocks.recentActions)) {
       sections.push(`<recent_actions>\n${normalize(blocks.recentActions)}\n</recent_actions>`);

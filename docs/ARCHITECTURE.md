@@ -577,6 +577,18 @@ export class SearchExecutor implements ToolExecutor {
 
 ## Memory System
 
+### Three-tier memory model
+
+The bot maintains three distinct memory stores that divide responsibility by writer, scope, and lifetime.
+
+| Piece | Writer | Scope | Lifetime | Purpose |
+|---|---|---|---|---|
+| `AuditEventStore` (audit log) | Bot auto-hook (COMPLETE stage) | Per-session | ~45min in-mem | Factual "what I just did" ledger — reply / silence / tool actions |
+| `MemoryService` / `memory_note` tool | LLM (extract pipeline + explicit tool) | Per group / per user | Long-term (file-backed under `memoryDir`) | Who the user IS / their preferences / group rules |
+| `SessionMemoStore` / `session_memo` tool | LLM (via tool at reply stage) | Per-session | TTL or pinned; persisted to SQLite when available, in-memory otherwise | What the bot chose to remember for the next few turns/sessions (positions, temporary agreements, upcoming events) |
+
+These three pieces are rendered into the final user message in this order: `<memory_context>` → `<rag_context>` → `<glossary>` → persona state blocks → `<session_memo>` → `<recent_actions>` → `<current_query>`. The ordering places long-term context first so the model has stable background before reading volatile items, then self-chosen short-term notes directly above recent actions, and the current query last so it is closest to the generation boundary.
+
 ### Overview
 
 `MemoryService` provides file-based long-term memory for each user and group. Memories persist in `data/memory/` and are injected into LLM prompts during context enrichment.

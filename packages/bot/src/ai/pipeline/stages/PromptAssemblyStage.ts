@@ -119,6 +119,7 @@ export class PromptAssemblyStage implements ReplyStage {
       ragContext: ctx.retrievedConversationSection,
       glossary: ctx.glossaryText,
       personaState: personaStateText,
+      sessionMemo: ctx.sessionMemoText,
       recentActions: ctx.recentActionsText,
       currentQuery: frameCurrentQuery,
     };

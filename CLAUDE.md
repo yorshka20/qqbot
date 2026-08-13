@@ -206,6 +206,8 @@ The bot automatically handles database schema initialization. For SQLite, tables
 - **TTS (bot core)**: `packages/bot/src/services/tts/` — `TTSManager`, providers (`FishAudioProvider`, `SovitsProvider`), health adapters under `packages/bot/src/core/health/TtsProviderHealthAdapter.ts`; `/tts` command: `packages/bot/src/command/handlers/TTSCommandHandler.ts`
 - **Tool System**: `packages/bot/src/tools/ToolManager.ts`
 - **Plugin Manager**: `packages/bot/src/plugins/PluginManager.ts`
+- **Session Memo Store**: `packages/bot/src/conversation/memo/SessionMemoStore.ts` — LLM-writable per-session memo/blackboard with TTL + pin. Complements AuditEventStore (bot-written) and MemoryService (long-term).
+- **Session Memo Tool**: `packages/bot/src/tools/executors/SessionMemoToolExecutor.ts` — `session_memo` tool exposed to LLM at reply stage (`action=add|delete|list`).
 - **Configuration**: `config.jsonc` (local, not committed)
 
 ## Workflow: Workbook & Learnings

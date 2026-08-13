@@ -36,6 +36,7 @@ export class ReplyPipelineContext {
   retrievedConversationSection = '';
   glossaryText = '';
   recentActionsText = '';
+  sessionMemoText = '';
 
   // --- ProviderSelectionStage ---
   providerName: string | undefined;
