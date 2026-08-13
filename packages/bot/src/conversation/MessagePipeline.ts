@@ -308,6 +308,9 @@ export class MessagePipeline {
     context: MessageProcessingContext,
     triggeredBot: boolean,
   ): void {
+    logger.info(
+      `[MessagePipeline] publishMessageReceived. triggeredBot=${triggeredBot} | source=${context.source} event=${JSON.stringify(event)}`,
+    );
     if (!this.internalEventBus) return;
     const source = context.source;
     if (source !== 'qq-private' && source !== 'qq-group' && source !== 'discord') return;

@@ -602,6 +602,9 @@ export class AgendaService {
         case 'subagent':
           await this.agentLoop.runSubAgent(fresh, eventContext);
           break;
+        case 'intent':
+          await this.agentLoop.run(fresh, eventContext);
+          break;
         default:
           await this.agentLoop.run(fresh, eventContext);
           break;
