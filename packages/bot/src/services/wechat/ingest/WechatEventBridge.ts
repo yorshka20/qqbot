@@ -172,7 +172,7 @@ export class WechatEventBridge {
       groupId: '',
       userId: '',
       botSelfId: '',
-      data: data as unknown as Record<string, unknown>,
+      data: data as unknown as AgendaSystemEvent['data'],
     };
 
     logger.debug(`[WechatEventBridge] Publishing ${type} | conv=${data.conversationId} sender=${data.sender}`);

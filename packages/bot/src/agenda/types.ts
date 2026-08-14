@@ -1,5 +1,6 @@
 // Agenda types: AgendaItem DB model, event bus types, and execution context
 
+import type { MessageSource } from '@/conversation/sources';
 import type { BaseModel } from '@/database/models/types';
 
 /** Trigger type for an agenda item */
@@ -104,7 +105,14 @@ export interface AgendaSystemEvent {
   groupId: string;
   userId: string;
   botSelfId: string;
-  data?: Record<string, unknown>;
+  data?: {
+    source?: MessageSource;
+    text?: string;
+    /** if already triggered a bot reply */
+    triggeredBot?: boolean;
+
+    [key: string]: unknown;
+  };
 }
 
 /**

@@ -462,6 +462,7 @@ export class AgendaService {
     }
 
     const handler = async (event: AgendaSystemEvent) => {
+      if (event.data?.triggeredBot) return;
       const match = matchOnMessageEvent(item, keywords, event);
       if (!match.matched) return;
 
