@@ -31,6 +31,6 @@ export { SearchChatHistoryToolExecutor } from './SearchChatHistoryToolExecutor';
 export { SearchCodeToolExecutor } from './SearchCodeToolExecutor';
 export { SearchMemoryToolExecutor } from './SearchMemoryToolExecutor';
 export { SearchToolExecutor } from './SearchToolExecutor';
-export { SessionMemoToolExecutor } from './SessionMemoToolExecutor';
 export { SendMessageToolExecutor } from './SendMessageToolExecutor';
+export { SessionMemoToolExecutor } from './SessionMemoToolExecutor';
 export { WatchMessagesToolExecutor } from './WatchMessagesToolExecutor';

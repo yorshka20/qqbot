@@ -575,6 +575,12 @@ export class SearchExecutor implements ToolExecutor {
 - `executeTool(call, context, hookManager)`: Execute a tool, firing `onTaskBeforeExecute` / `onTaskExecuted` hooks
 - Executors are created on-demand via DI (`tsyringe`)
 
+### Plugin-registered tools
+
+A plugin can register a `ToolSpec` + executor pair directly (`toolManager.registerTool` / `registerExecutor`) instead of using the `@Tool()` decorator. Use this when the tool must not exist unless the plugin is enabled in config, or when its description depends on runtime state the decorator cannot see (`SqlQueryPlugin` embeds the live table list; `GroupReportPlugin` registers a subagent-only renderer).
+
+Registration belongs in `onInit()` gated on `this.enabled`, **not** in `onEnable()` — smoke-test runs `onInit` and skips `onEnable`, so anything registered in `onEnable` is never validated. `loadConfig()` populates `this.enabled` before `onInit` runs, so the gate still honours config.
+
 ## Memory System
 
 ### Three-tier memory model
@@ -653,6 +659,20 @@ DatabaseManager.initialize(config)
 ```
 
 The Agent Cluster requires SQLite — it uses the raw `bun:sqlite` `Database` handle directly for SQLite-specific operations.
+
+### Ad-hoc read-only SQL (`SqlQueryPlugin`)
+
+`src/plugins/plugins/SqlQueryPlugin/` exposes the database to the LLM as the admin-gated `query_database` tool (`action=describe|query`) and to the owner as `/sql`. It requires `database.type = "sqlite"` and stays inactive otherwise.
+
+Three properties define the design:
+
+| Concern | Mechanism |
+|---|---|
+| Writes | The connection is opened `readonly: true` — SQLite refuses writes itself, no statement blacklist is trusted for this |
+| Runaway queries | Each statement runs in a throwaway `bun -e` child process, killed with `SIGKILL` past `timeoutMs`. bun:sqlite steps synchronously and exposes no `sqlite3_interrupt`, so an in-process query could not be cancelled and would hold the event loop |
+| Statement shape | `validateSql.ts` masks literals/comments, then requires exactly one `SELECT` / `WITH` / `EXPLAIN`. This is not the write guard — it exists because a read-only connection still accepts `ATTACH`/`PRAGMA`, and because `sqlite3_prepare` silently drops everything after the first statement |
+
+Schema introspection travels through the same read-only runner (`SELECT`s over `sqlite_master` / `pragma_table_info`), so there is no second, more-privileged path into the database.
 
 ## Cluster System
 

@@ -36,6 +36,7 @@ export * from './ProactiveConversationPlugin';
 export * from './ReactionPlugin';
 export * from './ReplyComplexityClassifierPlugin';
 export * from './RulePlugin';
+export * from './SqlQueryPlugin';
 export * from './Text2ImgSFWFilterPlugin';
 export * from './TodoPlugin';
 export * from './UsageTrackingPlugin';

@@ -565,6 +565,21 @@
         "name": "groupReport",
         "enabled": true
       },
+      // SQL Query Plugin - read-only SQL over the bot's own SQLite database.
+      // Exposes the `query_database` tool (admin/owner only) and the /sql command.
+      // Requires database.type = "sqlite"; stays inactive on mongodb.
+      {
+        "name": "sqlQuery",
+        "enabled": true,
+        "config": {
+          // Wall-clock budget per query; the child process is SIGKILLed past it
+          "timeoutMs": 15000,
+          // Hard ceiling on rows one query may return, regardless of the tool's `limit`
+          "maxRows": 200,
+          // Character budget for the result table handed back to the LLM
+          "maxOutputChars": 6000
+        }
+      },
       // PoseLifecyclePlugin — drives avatar thinking/neutral pose lifecycle for non-IM sources
       // (avatar-cmd, bilibili-danmaku, idle-trigger, bootstrap). Requires AvatarService active.
       {
