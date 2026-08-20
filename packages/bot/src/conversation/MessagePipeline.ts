@@ -60,7 +60,7 @@ export class MessagePipeline {
     const messageText = event.message ?? '';
     if (!messageText) return;
     const result = this.providerRouter.route(messageText);
-    if (result.isExplicitPrefix && result.providerName) {
+    if (result.hasExplicitProvider && result.providerName) {
       hookContext.metadata.set('resolvedProviderPrefix', {
         providerName: result.providerName,
         strippedMessage: result.strippedMessage,

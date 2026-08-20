@@ -193,7 +193,7 @@ export class MessageTriggerPlugin extends PluginBase {
     if (messageType === 'private') {
       const strippedText = this.wakeWordMatcher.getTextForMatch(messageText);
       const providerRouteResult = this.providerRouter.route(strippedText);
-      if (providerRouteResult.isExplicitPrefix && providerRouteResult.providerName) {
+      if (providerRouteResult.hasExplicitProvider && providerRouteResult.providerName) {
         context.metadata.set('resolvedProviderPrefix', {
           providerName: providerRouteResult.providerName,
           strippedMessage: providerRouteResult.strippedMessage,
@@ -215,7 +215,7 @@ export class MessageTriggerPlugin extends PluginBase {
     const wakeWordSource = this.wakeWordMatcher.match(groupId, messageText);
     const isWakeWord = wakeWordSource !== null;
     const providerRouteResult = this.providerRouter.route(strippedText);
-    const isProviderNameTrigger = providerRouteResult.isExplicitPrefix;
+    const isProviderNameTrigger = providerRouteResult.hasExplicitProvider;
 
     const allowed = replyTrigger === 'reaction' || isAtBot || isWakeWord || isProviderNameTrigger;
 

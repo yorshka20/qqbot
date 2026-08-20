@@ -42,7 +42,7 @@ export class ProviderSelectionStage implements ReplyStage {
     let userMessage: string;
     let reason: string;
     let confidence: string;
-    let usedExplicitPrefix: boolean;
+    let usedExplicitProvider: boolean;
 
     if (resolvedPrefix) {
       providerName = resolvedPrefix.providerName;
@@ -56,7 +56,7 @@ export class ProviderSelectionStage implements ReplyStage {
       }
       reason = 'explicit_prefix';
       confidence = 'high';
-      usedExplicitPrefix = true;
+      usedExplicitProvider = true;
     } else {
       const rawInput = ctx.userMessageOverride ?? hookContext.message.message ?? '';
       const result = this.providerRouter.routeReplyInput(rawInput);
@@ -64,12 +64,12 @@ export class ProviderSelectionStage implements ReplyStage {
       userMessage = result.userMessage;
       reason = result.reason;
       confidence = result.confidence;
-      usedExplicitPrefix = result.usedExplicitPrefix;
+      usedExplicitProvider = result.usedExplicitProvider;
     }
 
     ctx.providerName = providerName;
     ctx.userMessage = userMessage;
-    ctx.usedExplicitPrefix = usedExplicitPrefix;
+    ctx.usedExplicitProvider = usedExplicitProvider;
 
     // When images are present, prefer a vision-capable provider; otherwise use the routed provider.
     const hasImages = ctx.messageImages.length > 0;
@@ -138,7 +138,7 @@ export class ProviderSelectionStage implements ReplyStage {
 
     // Log
     logger.info(
-      `[ProviderSelectionStage] Provider routing | reason=${reason} | confidence=${confidence} | explicitPrefix=${usedExplicitPrefix} | provider=${providerName ?? 'default'}`,
+      `[ProviderSelectionStage] Provider routing | reason=${reason} | confidence=${confidence} | explicitProvider=${usedExplicitProvider} | provider=${providerName ?? 'default'}`,
     );
   }
 

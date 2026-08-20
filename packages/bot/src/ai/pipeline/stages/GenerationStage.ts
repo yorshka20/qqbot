@@ -60,7 +60,7 @@ export class GenerationStage implements ReplyStage {
       toolDefinitions: ctx.toolDefinitions,
       selectedProviderName: ctx.selectedProviderName,
       effectiveNativeSearchEnabled: ctx.effectiveNativeSearchEnabled,
-      preferPaidTier: ctx.usedExplicitPrefix,
+      preferPaidTier: ctx.usedExplicitProvider,
     };
 
     const result = await this.generateWithRetry(ctx.hookContext, params);

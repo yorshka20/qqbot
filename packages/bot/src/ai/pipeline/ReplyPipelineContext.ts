@@ -43,7 +43,7 @@ export class ReplyPipelineContext {
   userMessage = '';
   selectedProviderName: string | undefined;
   // User explicitly wake-worded a provider (e.g. `gemini:`); opts into its premium tier.
-  usedExplicitPrefix = false;
+  usedExplicitProvider = false;
   providerHasVision = false;
   providerHasFunctionCalling = false;
   effectiveNativeSearchEnabled = false;
