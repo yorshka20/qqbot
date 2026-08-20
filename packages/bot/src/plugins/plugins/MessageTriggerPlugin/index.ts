@@ -30,7 +30,7 @@ export type { MessageTriggerPluginConfig, SubAgentTriggerRule } from './types';
   name: 'messageTrigger',
   version: '1.0.0',
   description:
-    'Unified message trigger: decides if message should activate reply pipeline (@bot, reaction, wake words, provider-name prefix). Optionally spawns background subagents for keyword-matched tasks. Trigger only; downstream modules handle behavior.',
+    'Unified message trigger: decides if message should activate reply pipeline (@bot, reaction, wake words, provider-name prefix, color nickname). Optionally spawns background subagents for keyword-matched tasks. Trigger only; downstream modules handle behavior.',
 })
 export class MessageTriggerPlugin extends PluginBase {
   private wakeWordMatcher!: WakeWordMatcher;

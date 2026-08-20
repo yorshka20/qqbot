@@ -4,7 +4,7 @@
  * When unset or empty, the group has full access (same as current whitelist behavior).
  */
 export const WHITELIST_CAPABILITY = {
-  /** LLM reply triggered by @bot, wake word, reaction, or provider-name prefix. */
+  /** LLM reply triggered by @bot, wake word, reaction, provider-name prefix, or color nickname. */
   reply: 'reply',
   /** Command execution (e.g. /echo, builtin commands). */
   command: 'command',
