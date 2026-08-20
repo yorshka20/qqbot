@@ -54,9 +54,9 @@ export class ProviderSelectionStage implements ReplyStage {
       } else {
         userMessage = resolvedPrefix.strippedMessage;
       }
-      reason = 'explicit_prefix';
+      reason = resolvedPrefix.providerName ? 'explicit_prefix' : 'nickname_default';
       confidence = 'high';
-      usedExplicitProvider = true;
+      usedExplicitProvider = resolvedPrefix.providerName != null;
     } else {
       const rawInput = ctx.userMessageOverride ?? hookContext.message.message ?? '';
       const result = this.providerRouter.routeReplyInput(rawInput);

@@ -51,8 +51,8 @@ export interface HookContextMetadata {
   replyTrigger?: 'at' | 'reaction';
   /** Resolved trigger type for this reply; set by MessageTriggerPlugin when message is allowed for reply. Undefined = not triggered. */
   replyTriggerType?: 'at' | 'reaction' | 'wakeWordConfig' | 'wakeWordPreference' | 'providerName';
-  /** When replyTriggerType='providerName', the resolved provider name (e.g. 'anthropic') and user message with prefix stripped. Set by MessageTriggerPlugin. */
-  resolvedProviderPrefix?: { providerName: string; strippedMessage: string };
+  /** Set by MessageTriggerPlugin when a provider trigger (name prefix or color nickname) matched. providerName absent = use the configured default provider. */
+  resolvedProviderPrefix?: { providerName?: string; strippedMessage: string };
   /** Conversation mode selected for this processing run. */
   contextMode?: 'normal' | 'proactive';
 

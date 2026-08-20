@@ -537,6 +537,13 @@ Multi-provider support is handled by `AIManager` + `ProviderRouter`:
 - Minimax
 - Ollama (local)
 
+`ProviderRouter` resolves a per-request provider from two kinds of trigger words:
+
+- **Name prefix** — a provider name or alias (`claude`, `gpt`, `哈基米`, …) at the **start** of the message, followed by a separator (space, comma, colon).
+- **Color nickname** — a color nickname such as `橙色高手` / `紫色高手`, matched **anywhere** in the message.
+
+Nicknames are tried before prefixes, and longer nicknames before shorter ones, so `橙色高手` is never shadowed by the bare `高手`. The bare `高手` is the default nickname: it triggers a reply but names no provider, so the request falls back to the configured default provider and is not treated as an explicit user choice (no paid-tier preference).
+
 ## Tool System
 
 ### Overview

@@ -265,6 +265,25 @@ describe('MessageTriggerPlugin', () => {
     expect(context.metadata.get('replyTriggerType')).toBe('providerName');
   });
 
+  it('allows group message when a color nickname appears mid-message and resolves its provider', async () => {
+    const plugin = await initPlugin();
+    const context = makeHookContext({ messageText: '橙色高手 帮我看看这段代码' });
+    await plugin.onMessagePreprocess(context);
+    expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+    expect(context.metadata.get('replyTriggerType')).toBe('providerName');
+    expect(context.metadata.get('resolvedProviderPrefix')?.providerName).toBe('anthropic');
+  });
+
+  it('allows group message with the default nickname and leaves provider unresolved', async () => {
+    const plugin = await initPlugin();
+    const context = makeHookContext({ messageText: '高手 帮我看看这段代码' });
+    await plugin.onMessagePreprocess(context);
+    expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+    expect(context.metadata.get('replyTriggerType')).toBe('providerName');
+    expect(context.metadata.get('resolvedProviderPrefix')?.providerName).toBeUndefined();
+    expect(context.metadata.get('resolvedProviderPrefix')?.strippedMessage).toBe('帮我看看这段代码');
+  });
+
   it('sets postProcessOnly when no trigger matched (group)', async () => {
     const plugin = await initPlugin();
     const context = makeHookContext({ messageText: 'random message without trigger' });

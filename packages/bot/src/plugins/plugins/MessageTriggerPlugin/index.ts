@@ -113,7 +113,7 @@ export class MessageTriggerPlugin extends PluginBase {
   }
 
   /**
-   * One-shot LLM check: whether the user message (which started with a provider prefix) clearly invites a reply.
+   * One-shot LLM check: whether the user message (which matched a provider prefix or color nickname) clearly invites a reply.
    * Uses generateLite with config ai.taskProviders.lite when set.
    * @returns true to allow reply, false to skip (fail closed on error or unrecognized response).
    */
@@ -127,9 +127,13 @@ export class MessageTriggerPlugin extends PluginBase {
       const providerAliasMap = Object.entries(aliasMap)
         .map(([alias, provider]) => `${alias}→${provider}`)
         .join('；');
+      const nicknameMap = Object.entries(ProviderRouter.getNicknameAliasMap())
+        .map(([nickname, provider]) => `${nickname}→${provider ?? '默认模型'}`)
+        .join('；');
       const prompt = this.promptManager.render('analysis.prefix_invitation', {
         messageText,
         providerAliasMap,
+        nicknameMap,
       });
       // Budget must cover hidden reasoning, not just the true/false token. A reasoning
       // lite model (e.g. Groq gpt-oss, which rejects none/minimal effort and always
@@ -193,9 +197,9 @@ export class MessageTriggerPlugin extends PluginBase {
     if (messageType === 'private') {
       const strippedText = this.wakeWordMatcher.getTextForMatch(messageText);
       const providerRouteResult = this.providerRouter.route(strippedText);
-      if (providerRouteResult.hasExplicitProvider && providerRouteResult.providerName) {
+      if (providerRouteResult.triggerKind) {
         context.metadata.set('resolvedProviderPrefix', {
-          providerName: providerRouteResult.providerName,
+          providerName: providerRouteResult.providerName ?? undefined,
           strippedMessage: providerRouteResult.strippedMessage,
         });
       }
@@ -215,7 +219,7 @@ export class MessageTriggerPlugin extends PluginBase {
     const wakeWordSource = this.wakeWordMatcher.match(groupId, messageText);
     const isWakeWord = wakeWordSource !== null;
     const providerRouteResult = this.providerRouter.route(strippedText);
-    const isProviderNameTrigger = providerRouteResult.hasExplicitProvider;
+    const isProviderNameTrigger = providerRouteResult.triggerKind !== null;
 
     const allowed = replyTrigger === 'reaction' || isAtBot || isWakeWord || isProviderNameTrigger;
 
@@ -266,9 +270,9 @@ export class MessageTriggerPlugin extends PluginBase {
     }
 
     context.metadata.set('replyTriggerType', replyTriggerType);
-    if (replyTriggerType === 'providerName' && providerRouteResult.providerName) {
+    if (replyTriggerType === 'providerName') {
       context.metadata.set('resolvedProviderPrefix', {
-        providerName: providerRouteResult.providerName,
+        providerName: providerRouteResult.providerName ?? undefined,
         strippedMessage: providerRouteResult.strippedMessage,
       });
     }
