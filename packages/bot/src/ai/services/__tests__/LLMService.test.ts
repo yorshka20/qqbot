@@ -2,7 +2,7 @@ import 'reflect-metadata';
 
 import { describe, expect, it, test } from 'bun:test';
 import type { AIManager } from '@/ai/AIManager';
-import type { AIGenerateOptions, AIGenerateResponse } from '@/ai/types';
+import type { AIGenerateOptions, AIGenerateResponse, ToolDefinition } from '@/ai/types';
 import { HttpClientError } from '@/api/http/HttpClient';
 import { isTransientLLMError, LLMService } from '../LLMService';
 import {
@@ -252,5 +252,71 @@ describe('LLMService trace observers', () => {
 
     const res = await service.generate('hi', undefined, 'mock');
     expect(res.text).toBe('ok');
+  });
+});
+
+describe('LLMService resolvedModel stamping', () => {
+  it('falls back to provider.getDefaultModel() when the provider reports no resolvedModel', async () => {
+    const provider = {
+      name: 'mock',
+      getCapabilities: () => ['llm'],
+      isAvailable: () => true,
+      generate: async () => ({ text: 'ok' }),
+      getDefaultModel: () => 'gpt-4o-mini',
+    };
+    const aiManager = {
+      getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
+      getProvidersForCapability: () => [],
+      getDefaultProvider: () => provider,
+    } as unknown as AIManager;
+    const service = new LLMService(aiManager);
+
+    const res = await service.generate('hi', undefined, 'mock');
+    expect(res.resolvedModel).toBe('gpt-4o-mini');
+  });
+
+  it('prefers the model the provider reports over its configured default', async () => {
+    const provider = {
+      name: 'mock',
+      getCapabilities: () => ['llm'],
+      isAvailable: () => true,
+      generate: async () => ({ text: 'ok', resolvedModel: 'gemini-3.5-flash' }),
+      getDefaultModel: () => 'gemini-3-flash-preview',
+    };
+    const aiManager = {
+      getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
+      getProvidersForCapability: () => [],
+      getDefaultProvider: () => provider,
+    } as unknown as AIManager;
+    const service = new LLMService(aiManager);
+
+    const res = await service.generate('hi', undefined, 'mock');
+    expect(res.resolvedModel).toBe('gemini-3.5-flash');
+  });
+
+  it('stamps the provider default model on the tool-use path too', async () => {
+    const provider = {
+      name: 'mock',
+      getCapabilities: () => ['llm'],
+      isAvailable: () => true,
+      supportsToolUse: true,
+      generate: async () => ({ text: 'no tools needed' }),
+      getDefaultModel: () => 'gpt-4o-mini',
+    };
+    const aiManager = {
+      getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
+      getProvidersForCapability: () => [],
+      getDefaultProvider: () => provider,
+    } as unknown as AIManager;
+    const service = new LLMService(aiManager, undefined, undefined, {
+      toolUseProviders: ['mock'],
+      fallback: { fallbackOrder: [] },
+    });
+
+    const tools: ToolDefinition[] = [
+      { name: 'noop', description: 'does nothing', parameters: { type: 'object', properties: {} } },
+    ];
+    const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, undefined, 'mock');
+    expect(res.resolvedModel).toBe('gpt-4o-mini');
   });
 });

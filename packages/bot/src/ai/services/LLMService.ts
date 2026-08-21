@@ -374,6 +374,18 @@ export class LLMService {
     return { ...options, model: undefined } as T;
   }
 
+  /** The model that actually served a call: what the provider reported wins (Gemini
+   *  swaps to the paid model mid-call), then the caller's explicit pin, then the
+   *  provider's configured default. Stamped centrally so providers don't each have
+   *  to remember to report it. */
+  private stampResolvedModel(
+    result: AIGenerateResponse,
+    provider: LLMCapability,
+    options: AIGenerateOptions | undefined,
+  ): void {
+    result.resolvedModel = result.resolvedModel ?? options?.model ?? provider.getDefaultModel?.();
+  }
+
   /**
    * Get the first healthy provider from fallback order.
    */
@@ -477,6 +489,7 @@ export class LLMService {
       this.emitTrace('generateFixed', providerName, prompt, options, result);
       this.healthCheckManager?.markServiceHealthy(providerName);
       result.resolvedProviderName = providerName;
+      this.stampResolvedModel(result, provider, options);
       return result;
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
@@ -533,6 +546,7 @@ export class LLMService {
       // Mark provider as healthy on success
       this.healthCheckManager?.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
+      this.stampResolvedModel(result, provider, effectiveOptions);
       return result;
     } catch (err) {
       // Mark provider as failed
@@ -597,6 +611,7 @@ export class LLMService {
       this.emitTrace('generateLite', resolvedName, prompt, mergedOptions, result);
       this.healthCheckManager?.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
+      this.stampResolvedModel(result, provider, mergedOptions);
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -673,6 +688,7 @@ export class LLMService {
       // Mark provider as healthy on success
       this.healthCheckManager?.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
+      this.stampResolvedModel(result, provider, effectiveOptions);
       this.emitTrace('generateStream', resolvedName, prompt, effectiveOptions, result);
       return result;
     } catch (err) {
@@ -1081,6 +1097,7 @@ export class LLMService {
         logger.info(`[LLMService] Falling back to provider "${altName}"`);
         const result = await fn(altProvider, altName);
         result.resolvedProviderName = altName;
+        this.stampResolvedModel(result, altProvider, undefined);
         return result;
       } catch (altErr) {
         logger.warn(`[LLMService] Fallback provider "${altName}" also failed:`, altErr);

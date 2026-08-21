@@ -23,6 +23,8 @@ export interface LLMCapability {
    * When not implemented, LLMService falls back to generate() with lite options.
    */
   generateLite?(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse>;
+
+  getDefaultModel?(): string | undefined;
 }
 
 /**

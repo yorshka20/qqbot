@@ -205,11 +205,12 @@ export interface AIGenerateResponse {
    */
   resolvedProviderName?: string;
   /**
-   * The model that actually served this response. May differ from the provider's
-   * configured default — e.g. Gemini swaps to `llm.paidModel` when the free key is
-   * quota-exhausted, or to a caller-pinned model. Carried so downstream consumers
-   * (card footer, usage stats, logs) report the real model instead of guessing
-   * from static config.
+   * The model that actually served this response. LLMService stamps this centrally
+   * at each resolution point (caller-pinned `options.model`, else the provider's
+   * configured default) so callers don't have to guess from static config. A provider
+   * only needs to set this itself when the model it actually used differs from both
+   * of those — e.g. Gemini swaps to `llm.paidModel` mid-call when the free key is
+   * quota-exhausted — in which case the provider's value wins.
    */
   resolvedModel?: string;
   /**
