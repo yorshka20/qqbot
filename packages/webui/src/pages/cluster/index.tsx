@@ -4,15 +4,13 @@
  * Layout:
  *   - Header (resident): title, live status chips, lifecycle controls
  *     (Start/Stop/Pause/Resume), help-request badge, history audit, refresh.
- *   - Main area: Recent jobs / Workers as full-height tabs — each tab body is
- *     the single scroll container, so lists get the whole viewport instead of
- *     nested card-sized scrollboxes. Both panels stay mounted across tab
- *     switches to preserve expanded-row state.
- *   - Control sidebar (resident, collapsible from the tab bar on lg+):
- *     submit-task form plus the lock billboard. Stacks above the tabs on
- *     small screens, where the whole body scrolls as one column instead.
- *   - Events: bottom fold-out drawer with a one-line latest-event preview
- *     when collapsed.
+ *   - Main area: Submit task / Recent jobs / Workers as full-height tabs —
+ *     each tab body is the single scroll container, so lists get the whole
+ *     viewport instead of nested card-sized scrollboxes. All panels stay
+ *     mounted across tab switches to preserve form and expanded-row state;
+ *     a successful submit jumps to Recent jobs to show the new job.
+ *   - Bottom fold-out panel: event log + lock billboard, with a one-line
+ *     latest-event preview when collapsed.
  *   - Help requests: right-side drawer that auto-opens when a new request
  *     arrives; toggled any time from the header badge.
  *
@@ -26,7 +24,7 @@
  * are small enough that the extra round-trip is fine.
  */
 
-import { GitBranch, HelpCircle, History, PanelRightClose, PanelRightOpen, RefreshCw } from 'lucide-react';
+import { GitBranch, HelpCircle, History, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -55,19 +53,17 @@ import type {
   ClusterTask,
   ClusterWorkerRegistration,
 } from '../../types';
-import { ClusterCard } from './components/ClusterCard';
-import { EventsDrawer } from './components/EventsDrawer';
+import { BottomPanel } from './components/BottomPanel';
 import { HelpDrawer } from './components/HelpDrawer';
 import { HistoryModal } from './components/HistoryModal';
 import { JobsPanel } from './components/JobsPanel';
 import { KillConfirmDialog } from './components/KillConfirmDialog';
 import { type ClusterLifecycleAction, LifecycleControls } from './components/LifecycleControls';
-import { LocksPanel } from './components/LocksPanel';
 import { SubmitTaskCard } from './components/SubmitTaskCard';
 import { TaskOutputModal } from './components/TaskOutputModal';
 import { WorkersPanel } from './components/WorkersPanel';
 
-type ClusterTab = 'jobs' | 'workers';
+type ClusterTab = 'submit' | 'jobs' | 'workers';
 
 function StatusChips({ started, status }: { started: boolean | null; status: ClusterStatus | null }) {
   if (!status) {
@@ -141,7 +137,6 @@ export function ClusterPage() {
   const [eventTypeFilter, setEventTypeFilter] = useState<string>('');
 
   const [tab, setTab] = useState<ClusterTab>('jobs');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
 
   const [openTask, setOpenTask] = useState<ClusterTask | null>(null);
@@ -359,85 +354,75 @@ export function ClusterPage() {
           {error && <div className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</div>}
         </div>
 
-        {/* ── Body: main tabs + control sidebar ── */}
-        <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden bg-zinc-100 dark:bg-zinc-900">
-          {/* Control sidebar — DOM-first so it stacks on top on small screens */}
-          <aside
-            className={`shrink-0 flex flex-col gap-4 p-4 lg:order-last lg:pl-0 lg:w-[24rem] xl:w-[27rem] lg:min-h-0 ${
-              sidebarCollapsed ? 'lg:hidden' : ''
-            }`}
-          >
-            <ClusterCard title="Submit task" className="shrink-0">
-              <SubmitTaskCard started={started} onSubmitted={refresh} />
-            </ClusterCard>
-            <ClusterCard title="Locks" count={locks?.length} className="lg:flex-1 lg:min-h-0">
-              <LocksPanel locks={locks} />
-            </ClusterCard>
-          </aside>
-
-          {/* Main: tab bar + single-scroll tab body */}
-          <main className="flex flex-col lg:flex-1 lg:min-w-0 lg:min-h-0">
-            <div className="shrink-0 sticky top-0 z-20 lg:static bg-white dark:bg-zinc-800 border-y lg:border-t-0 border-zinc-200 dark:border-zinc-700 px-4 flex items-center gap-1">
-              <TabButton
-                active={tab === 'jobs'}
-                onClick={() => setTab('jobs')}
-                label="Recent jobs"
-                count={jobs?.length}
-              />
-              <TabButton
-                active={tab === 'workers'}
-                onClick={() => setTab('workers')}
-                label="Workers"
-                count={workers?.length}
-              />
-              <div className="flex-1" />
-              {tab === 'workers' && workers && workers.length > 0 && (
-                <span className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">
-                  active {activeWorkers.length} · exited {oldWorkers.length}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => setSidebarCollapsed((c) => !c)}
-                className="hidden lg:inline-flex p-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
-                title={sidebarCollapsed ? 'Show control panel' : 'Hide control panel'}
-              >
-                {sidebarCollapsed ? <PanelRightOpen className="w-4 h-4" /> : <PanelRightClose className="w-4 h-4" />}
-              </button>
-            </div>
-            <div className="p-4 lg:flex-1 lg:min-h-0 lg:overflow-y-auto overscroll-contain">
-              {started === false ? (
-                <div className="py-16 text-center text-sm text-zinc-500 dark:text-zinc-400">
-                  Cluster is not started — press Start in the header to boot the hub.
+        {/* ── Main: tab bar + single-scroll tab body ── */}
+        <main className="flex-1 min-h-0 flex flex-col bg-zinc-100 dark:bg-zinc-900 overflow-y-auto lg:overflow-hidden">
+          <div className="shrink-0 sticky top-0 z-20 lg:static bg-white dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 px-4 flex items-center gap-1">
+            <TabButton active={tab === 'submit'} onClick={() => setTab('submit')} label="Submit task" />
+            <TabButton
+              active={tab === 'jobs'}
+              onClick={() => setTab('jobs')}
+              label="Recent jobs"
+              count={jobs?.length}
+            />
+            <TabButton
+              active={tab === 'workers'}
+              onClick={() => setTab('workers')}
+              label="Workers"
+              count={workers?.length}
+            />
+            <div className="flex-1" />
+            {tab === 'workers' && workers && workers.length > 0 && (
+              <span className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">
+                active {activeWorkers.length} · exited {oldWorkers.length}
+              </span>
+            )}
+          </div>
+          <div className="p-4 lg:flex-1 lg:min-h-0 lg:overflow-y-auto overscroll-contain">
+            {started === false ? (
+              <div className="py-16 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                Cluster is not started — press Start in the header to boot the hub.
+              </div>
+            ) : (
+              <>
+                {/* All panels stay mounted so form state and expanded rows survive tab switches */}
+                <div className={tab === 'submit' ? '' : 'hidden'}>
+                  <SubmitTaskCard
+                    started={started}
+                    onSubmitted={() => {
+                      setTab('jobs');
+                      refresh();
+                    }}
+                  />
                 </div>
-              ) : (
-                <>
-                  {/* Both panels stay mounted so expanded rows survive tab switches */}
-                  <div className={tab === 'jobs' ? '' : 'hidden'}>
-                    <JobsPanel
-                      jobs={jobs}
-                      onTaskClick={setOpenTask}
-                      onKillJob={(id) => setKillConfirm({ kind: 'job', id })}
-                      onKillTask={(id) => setKillConfirm({ kind: 'task', id })}
-                    />
-                  </div>
-                  <div className={tab === 'workers' ? '' : 'hidden'}>
-                    <WorkersPanel
-                      workers={workers}
-                      activeWorkers={activeWorkers}
-                      oldWorkers={oldWorkers}
-                      onOpenTaskOutput={openTaskOutput}
-                      onRequestKill={(id) => setKillConfirm({ kind: 'worker', id })}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-          </main>
-        </div>
+                <div className={tab === 'jobs' ? '' : 'hidden'}>
+                  <JobsPanel
+                    jobs={jobs}
+                    onTaskClick={setOpenTask}
+                    onKillJob={(id) => setKillConfirm({ kind: 'job', id })}
+                    onKillTask={(id) => setKillConfirm({ kind: 'task', id })}
+                  />
+                </div>
+                <div className={tab === 'workers' ? '' : 'hidden'}>
+                  <WorkersPanel
+                    workers={workers}
+                    activeWorkers={activeWorkers}
+                    oldWorkers={oldWorkers}
+                    onOpenTaskOutput={openTaskOutput}
+                    onRequestKill={(id) => setKillConfirm({ kind: 'worker', id })}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        </main>
 
-        {/* ── Events: bottom fold-out drawer ── */}
-        <EventsDrawer events={events} typeFilter={eventTypeFilter} onTypeFilterChange={setEventTypeFilter} />
+        {/* ── Bottom fold-out panel: events + locks ── */}
+        <BottomPanel
+          events={events}
+          typeFilter={eventTypeFilter}
+          onTypeFilterChange={setEventTypeFilter}
+          locks={locks}
+        />
       </div>
 
       <HelpDrawer open={helpOpen} help={help} onClose={() => setHelpOpen(false)} onAnswered={refresh} />

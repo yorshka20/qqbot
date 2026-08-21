@@ -74,24 +74,21 @@ function ReportTimelineEntry({ event }: { event: ClusterEventEntry }) {
   );
 }
 
+/**
+ * Bare timeline list — no header and no own scrollbox; the caller decides
+ * where it lives and how it scrolls.
+ */
 export function ReportTimeline({ events }: { events: ClusterEventEntry[] }) {
   if (events.length === 0) return null;
 
   return (
-    <div>
-      <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-2 font-medium">
-        Report Timeline ({events.length})
-      </div>
-      <div className="max-h-[300px] overflow-y-auto">
-        {/* Inner relative wrapper so the line spans full content height, not just viewport */}
-        <div className="relative pl-8">
-          {/* Vertical timeline line at left:12px */}
-          <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-zinc-200 dark:bg-zinc-700" />
-          {events.map((ev) => (
-            <ReportTimelineEntry key={`${ev.seq}-${ev.timestamp}`} event={ev} />
-          ))}
-        </div>
-      </div>
+    // Relative wrapper so the line spans full content height, not just viewport
+    <div className="relative pl-8">
+      {/* Vertical timeline line at left:12px */}
+      <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-zinc-200 dark:bg-zinc-700" />
+      {events.map((ev) => (
+        <ReportTimelineEntry key={`${ev.seq}-${ev.timestamp}`} event={ev} />
+      ))}
     </div>
   );
 }

@@ -6,7 +6,7 @@ import type { ClusterJob, ClusterJobWithDetail, ClusterTask } from '../../../typ
 import { formatTimestamp } from '../utils';
 import { ClusterStatusBadge } from './ClusterStatusBadge';
 import { JobWorkersModal } from './JobWorkersModal';
-import { orderTasksAsTree, TaskTreeRow } from './TaskTree';
+import { groupTasks, TaskGroup } from './TaskTree';
 
 /**
  * Produce a single-line preview of the job description for the collapsed row.
@@ -42,13 +42,13 @@ function TaskOutputTail({ task }: { task: ClusterTask }) {
   const kb = ((task.outputBytes ?? output.length) / 1024).toFixed(1);
 
   return (
-    <div className="mt-1 mb-2 ml-2">
+    <div className="px-3 pb-2">
       <div className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono mb-0.5">
         {kb}KB{task.outputTruncated ? ' · truncated' : ''}
       </div>
       <pre
         ref={ref}
-        className="text-[11px] font-mono leading-relaxed bg-zinc-950 dark:bg-black text-zinc-100 rounded-md p-2 max-h-64 overflow-y-auto whitespace-pre-wrap break-words"
+        className="text-[11px] font-mono leading-relaxed bg-zinc-950 dark:bg-black text-zinc-100 rounded-md p-2 max-h-72 overflow-y-auto whitespace-pre-wrap break-words"
       >
         {tail || '(no output yet)'}
       </pre>
@@ -143,13 +143,14 @@ export function JobRow({
         </span>
       </button>
       {expanded && (
-        <div className="border-t border-zinc-200 dark:border-zinc-700 px-3 py-2 bg-zinc-50/50 dark:bg-zinc-900/50">
-          <div className="flex items-center justify-between gap-2 text-xs text-zinc-500 dark:text-zinc-400 mb-2">
-            <div className="flex items-center gap-3">
+        <div className="border-t border-zinc-200 dark:border-zinc-700 px-4 py-3 bg-zinc-50/50 dark:bg-zinc-900/50">
+          <div className="flex items-center justify-between gap-2 text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+            <div className="flex items-center gap-4 flex-wrap">
               <span>
-                project: <span className="font-mono">{job.project}</span>
+                project: <span className="font-mono text-zinc-700 dark:text-zinc-200">{job.project}</span>
               </span>
               <span>created: {formatTimestamp(job.createdAt)}</span>
+              <span className="font-mono">{job.id}</span>
             </div>
             <div className="flex items-center gap-2">
               {killableJob && onKillJob && (
@@ -188,12 +189,18 @@ export function JobRow({
             </div>
           )}
           {detail && detail.tasks.length > 0 && (
-            <div className="flex flex-col gap-1">
-              {orderTasksAsTree(detail.tasks).map(({ task, depth }) => (
-                <div key={task.id}>
-                  <TaskTreeRow task={task} depth={depth} onClick={onTaskClick} onKill={onKillTask} />
-                  {NON_TERMINAL_TASK_STATUSES.has(task.status) && <TaskOutputTail task={task} />}
-                </div>
+            <div className="flex flex-col gap-2.5">
+              {groupTasks(detail.tasks).map(({ root, children }) => (
+                <TaskGroup
+                  key={root.id}
+                  root={root}
+                  childTasks={children}
+                  onTaskClick={onTaskClick}
+                  onKill={onKillTask}
+                  renderAfterTask={(task) =>
+                    NON_TERMINAL_TASK_STATUSES.has(task.status) ? <TaskOutputTail task={task} /> : null
+                  }
+                />
               ))}
             </div>
           )}
